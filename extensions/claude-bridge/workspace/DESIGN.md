@@ -587,6 +587,42 @@ Linux Podman production-browser retention must still show one establishment,
 one submission and no interrupt across zero pages and five reattachments. The
 upstream is synthetic; this change does not close full actual-model parity.
 
+## Bounded follow-up: plugin LSP browser execution evidence
+
+Exercise the production browser transport and shared plugin LSP manager with an
+independently instrumented stdio peer installed in an isolated fixture HOME.
+Discover the plugin through `listLspServers`, route all four advertised LSP tools
+through upstream MCP frames with zero browser pages, and check both returned
+results and the peer's received document/position/root parameters. Update a real
+file and verify didChange and diagnostics. Same-project tabs must share a process;
+another project must use a separate process. Through `restartLspServers`, verify
+that old processes exit and subsequent tools initialize fresh peers. Closing the
+last project tab must stop only its peer, and host shutdown must stop the rest.
+
+Maintain a reviewed evidence mapping for the two browser API/invoke pairs and
+four tool/handler pairs. Emit sanitized partial evidence only after assertions
+complete, rejecting unknown, missing, duplicate and failed cases. Validate IDs
+against the independent capability inventory. The upstream and language server
+are synthetic; the production host, browser bundle, process ownership and tool
+handlers are real. The fixture runner builds current sources in Linux Podman,
+so these artifacts cannot claim exact candidate-image or actual-model acceptance.
+Keep the full-parity validator unchanged and INC-2026-0087 open.
+
+Acceptance: collector integrity tests, both workspace typechecks, declared
+capability gate, workspace suite and complete production-browser fixture suite
+in Linux Podman. This bounded Change PR is prepared by bridgeweb for Claude
+lead review/merge under the existing registration #638.
+
+Implementation review: [#696](https://github.com/dykamino-coder/gpui-kamin-ide/pull/696).
+
+Validation dependency: two source-fixture runs reached the final terminal tests
+but retained idle Bash PTYs on base main `f121842e`. Keep the incomplete runs;
+do not force a successful test-worker exit. Integrate the existing shared POSIX
+disposal candidate [#694](https://github.com/dykamino-coder/gpui-kamin-ide/pull/694)
+by normal merge for a combined exact-head gate, rather than copying its logic.
+Lead merged #694 and #693 into main during validation. Integrate that fresh main
+by normal merge, retaining both existing follow-ups. The LSP additions do not
+change the disposal fix; rerun the combined exact-head workspace/browser gates.
 
 ## Bounded follow-up: terminate unresponsive owned POSIX terminals
 
