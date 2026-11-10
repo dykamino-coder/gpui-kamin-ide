@@ -7,7 +7,7 @@ describe('model picker choices', () => {
       'claude-opus-5-5',
       'claude-sonnet-5-5',
       'claude-haiku-5-5',
-      'claude-fable-5-1',
+      'claude-fable-5-2',
     ])
     expect(selectedModelOption(undefined).value).toBe('claude-opus-5-5')
   })
@@ -20,6 +20,7 @@ describe('model picker choices', () => {
       name: 'claude-opus-5',
     })
     expect(selectedModelOption('claude-sonnet-5').value).toBe('claude-sonnet-5')
+    expect(selectedModelOption('claude-fable-5-1')).toMatchObject({ value: 'claude-fable-5-1', name: 'claude-fable-5-1' })
   })
 
   it('shows an older session model accurately without replacing it', () => {

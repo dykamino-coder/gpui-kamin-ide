@@ -102,12 +102,30 @@ describe('computeContextStats — general', () => {
 
 describe('Opus 5.5 estimates', () => {
   it('uses the new published pricing without changing historical Opus 5 costs', () => {
-    expect(tierForModel('claude-opus-5-5')).toEqual({ input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 })
+    expect(tierForModel('claude-opus-5-5')).toEqual({ input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2, fast: 2 })
     expect(tierForModel('claude-opus-5')).toEqual({ input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 })
   })
 
   it('uses the native 1M context window for Opus 5.5', () => {
     expect(contextLimitForModel('claude-opus-5-5')).toBe(1_000_000)
+  })
+})
+
+describe('Fable 5.2 estimates', () => {
+  it('uses the published rates and native 1M window', () => {
+    expect(tierForModel('claude-fable-5-2')).toEqual({ input: 8, output: 40, cacheWrite: 10, cacheRead: 0.2, fast: 2 })
+    expect(contextLimitForModel('claude-fable-5-2')).toBe(1_000_000)
+  })
+
+  it('bills fast-mode turns at 2x for Fable 5.2 and Opus 5.5 only', () => {
+    const usage = { input_tokens: 1_000_000, output_tokens: 100_000, cache_read_input_tokens: 1_000_000 }
+    const fable = tierForModel('claude-fable-5-2')
+    // 8 + 4 + 0.2 standard; 16 + 8 + 0.4 fast (CLI 2.1.322 fast table)
+    expect(costForUsage(usage, fable)).toBeCloseTo(12.2, 6)
+    expect(costForUsage({ ...usage, speed: 'fast' }, fable)).toBeCloseTo(24.4, 6)
+    expect(costForUsage({ ...usage, speed: null }, fable)).toBeCloseTo(12.2, 6)
+    expect(costForUsage({ ...usage, speed: 'fast' }, tierForModel('claude-opus-5-5'))).toBeCloseTo(2 * (4 + 2 + 0.2), 6)
+    expect(costForUsage({ ...usage, speed: 'fast' }, tierForModel('claude-fable-5-1'))).toBeCloseTo(10 + 5 + 0.25, 6)
   })
 })
 

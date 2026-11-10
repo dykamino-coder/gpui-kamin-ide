@@ -10,14 +10,19 @@ export interface CostTier {
   /** Long-prompt rate: applies to the WHOLE request once its prompt (input +
    *  cache read + cache write) exceeds `tokens` (Haiku 5.5: 100K). */
   above?: { tokens: number; tier: CostTier }
+  /** Fast-mode multiplier for every component when the API reports
+   *  `usage.speed === 'fast'` (CLI 2.1.322 bills Fable 5.2 and Opus 5.5 fast
+   *  turns at exactly 2× the standard rates). */
+  fast?: number
 }
 
 const TIER_3_15: CostTier = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
 const TIER_2_10: CostTier = { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 }
 const TIER_15_75: CostTier = { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }
 const TIER_5_25: CostTier = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }
-const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }
+const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2, fast: 2 }
 const TIER_FABLE_5_1: CostTier = { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 }
+const TIER_FABLE_5_2: CostTier = { input: 8, output: 40, cacheWrite: 10, cacheRead: 0.2, fast: 2 }
 const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }
 // Haiku 5.5 (platform.claude.com pricing): $0.10/$0.50 up to a 100K-token
 // prompt, $0.50/$2.50 above; cache reads $0.01/$0.05. Cache writes follow the
@@ -34,6 +39,7 @@ export function tierForModel(modelId: string | undefined | null): CostTier {
   const m = (modelId || '').toLowerCase()
   if (m.includes('haiku-5')) return TIER_HAIKU_5_5
   if (m.includes('haiku')) return TIER_HAIKU
+  if (m.includes('fable-5-2')) return TIER_FABLE_5_2
   if (m.includes('fable-5-1')) return TIER_FABLE_5_1
   if (m.includes('opus-5-5')) return TIER_4_20
   // Opus 5 and legacy 4.5+ use the previous rate.
@@ -74,6 +80,8 @@ export interface UsageBlock {
   cache_read_input_tokens?: number
   cache_creation_input_tokens?: number
   cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number }
+  /** `'fast'` on fast-mode turns; absent or `null` at standard speed. */
+  speed?: string | null
 }
 
 export function costForUsage(usage: UsageBlock, base: CostTier): number {
@@ -83,7 +91,8 @@ export function costForUsage(usage: UsageBlock, base: CostTier): number {
   const cacheWrite = usage.cache_creation_input_tokens ?? 0
   const tier = base.above && inTok + cacheRead + cacheWrite > base.above.tokens ? base.above.tier : base
   const hourWrite = Math.max(0, Math.min(cacheWrite, usage.cache_creation?.ephemeral_1h_input_tokens ?? 0))
-  return (
+  const speed = usage.speed === 'fast' ? (base.fast ?? 1) : 1
+  return speed * (
     (inTok * tier.input +
       outTok * tier.output +
       cacheWrite * tier.cacheWrite + hourWrite * (2 * tier.input - tier.cacheWrite) +
