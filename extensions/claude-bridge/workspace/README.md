@@ -112,6 +112,12 @@ receipts/32 MiB, then explicit rejection). Re-attach uses read synchronization,
 not replay of writes or commands. Presentation snapshots remain process-owned;
 full host-authoritative transcript reducers and queued-message state remain open.
 
+Escape restores fallback queue text into the initiating page's composer and
+records dismissal of those exact display rows in the host. Other and reopened
+pages honor that marker. This does not cancel text already delivered through the
+CLI terminal. Stop without restoring queue text leaves the queue display intact.
+These receipts remain process-local; host restart does not restore composer drafts.
+
 The browser shell retains session/project navigation, tabs and pins, and a
 resizable dock for Claude Bridge, Bridge Console and Agents. Dock placement,
 active panels, project expansion and sidebar dimensions live in the host and

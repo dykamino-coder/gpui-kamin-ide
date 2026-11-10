@@ -1,6 +1,6 @@
 import type { ClientFrame, HostFrame } from './protocol.js'
 import { createHash } from 'node:crypto'
-import { matchSubmissionQueue, queueRowIdentity, queueWatermark, type QueueEntry, type SubmissionUpdate } from '../../webview/shared/submission-queue.js'
+import { matchSubmissionQueue, mergeFallbackQueue, queueRowIdentity, queueWatermark, type QueueEntry, type SubmissionUpdate } from '../../webview/shared/submission-queue.js'
 
 const TAB_EVENTS = new Set(['session:activity', 'session:usage', 'session:title', 'connection-state'])
 const GLOBAL_EVENTS = new Set(['tree-update', 'mcp-servers-changed', 'mcp-loading', 'mcp-ready', 'config-ready'])
@@ -31,7 +31,9 @@ export class WorkspacePresentation {
     if (channel === 'session:submission' && args[1]?.id) {
       const key = `${args[0]}:${args[1].id}`
       const previous = this.submissions.get(key)?.args as unknown[] | undefined
-      this.submissions.set(key, { ...frame, args: [args[0], { ...(previous?.[1] as object), ...args[1] }] })
+      const receipt = { ...(previous?.[1] as SubmissionUpdate), ...args[1] }
+      receipt.fallbackQueue = mergeFallbackQueue((previous?.[1] as SubmissionUpdate)?.fallbackQueue, args[1].fallbackQueue)
+      this.submissions.set(key, { ...frame, args: [args[0], receipt] })
       if (args[1].state === 'fallback') this.reconcileFallback(args[0], this.entries(args[0]))
     }
     if (channel === 'jsonl-entries' && Array.isArray(args[1])) this.reconcileFallback(args[0], args[1])
@@ -52,6 +54,15 @@ export class WorkspacePresentation {
   accept(frame: ClientFrame): boolean {
     if (frame.kind !== 'send') return true
     const { channel, args } = frame
+    if (channel === 'session:interrupt' && typeof args[0] === 'string' && Array.isArray(args[1])) {
+      for (const id of new Set(args[1].filter((id: unknown) => typeof id === 'string'))) {
+        const receipt = (this.submissions.get(`${args[0]}:${id}`)?.args as [string, SubmissionUpdate] | undefined)?.[1]
+        if (!receipt?.fallbackQueue || receipt.fallbackQueue.consumed || receipt.fallbackQueue.dismissed) continue
+        // Это сброс отображаемой очереди, не подтверждение отмены доставки CLI.
+        receipt.fallbackQueue = { ...receipt.fallbackQueue, dismissed: true }
+        this.publish('session:submission', args[0], receipt)
+      }
+    }
     if (channel === 'pty-submit-text' && typeof args[0] === 'string' && typeof args[1] === 'string' && typeof args[2] === 'string') {
       const key = `${args[0]}:${args[2]}`
       const digest = createHash('sha256').update(args[1]).digest('hex')

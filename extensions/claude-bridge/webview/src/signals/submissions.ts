@@ -1,6 +1,7 @@
 // Receipts correlate optimistic user rows by ID and stored UUID, never prose.
 import { signal } from '@preact/signals'
 import type { SubmissionUpdate } from '../../shared/types'
+import { mergeFallbackQueue } from '../../shared/submission-queue'
 import type { JsonlEntryData } from '../types/jsonl'
 import { enqueueLocal, reconcileQueueWithEntries, removeLocalQueueItem } from './queue'
 import { jsonlEntriesByTab } from './jsonl'
@@ -18,8 +19,9 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   const current = submissions.value.get(tabId) ?? []
   const existing = current.find(item => item.id === data.id)
   const item: Submission = { text: '', timestamp: new Date().toISOString(), ...existing, ...data, warning: data.warning }
+  item.fallbackQueue = mergeFallbackQueue(existing?.fallbackQueue, data.fallbackQueue)
   if (item.state === 'fallback') {
-    if (item.fallbackQueue?.consumed) removeLocalQueueItem(tabId, item.id)
+    if (item.fallbackQueue?.consumed || item.fallbackQueue?.dismissed) removeLocalQueueItem(tabId, item.id)
     else if (item.text && existing?.state !== 'fallback') {
       enqueueLocal(tabId, item.text, { id: item.id, ...item.fallbackQueue, hostOwned: !!item.fallbackQueue })
       // Старый host без метаданных использует desktop matcher. Browser host

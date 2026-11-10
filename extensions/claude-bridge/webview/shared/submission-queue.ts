@@ -1,6 +1,6 @@
 export interface SubmissionUpdate {
   /** Browser host сохраняет курсор legacy queue независимо от страниц. */
-  fallbackQueue?: { afterOrd: number; enqueuedAt: number; consumed?: boolean }
+  fallbackQueue?: { afterOrd: number; enqueuedAt: number; consumed?: boolean; dismissed?: boolean }
   id: string
   text?: string
   state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
@@ -8,6 +8,13 @@ export interface SubmissionUpdate {
   cancelable?: boolean
   warning?: string
   capable?: boolean
+}
+
+// Поздний receipt не должен возвращать очередь после Escape или принятого JSONL.
+export function mergeFallbackQueue(previous: SubmissionUpdate['fallbackQueue'], update: SubmissionUpdate['fallbackQueue']): SubmissionUpdate['fallbackQueue'] {
+  if (!previous) return update
+  return { ...previous, ...update, ...(previous.consumed ? { consumed: true } : {}),
+    ...(previous.dismissed ? { dismissed: true } : {}) }
 }
 
 export interface LocalQueueItem {
