@@ -507,6 +507,10 @@ checks and Linux Podman production-browser fixtures. Registration #638 already
 covers this bounded Change PR under INC-2026-0087. Lead reviews/merges; exhaustive
 capability coverage and the final composed actual-model run remain open.
 
+The shared MCP serializer currently omits the enabled flag. These assertions
+cover live toggling, not disabled-state restoration after host restart; that
+persistence gap remains open alongside the broader settings acceptance.
+
 ## Bounded follow-up: one initial connection per tab
 
 The retention gate exposed a shared TabManager startup race: a foreground tab is

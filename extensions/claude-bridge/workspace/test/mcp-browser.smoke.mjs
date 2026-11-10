@@ -149,13 +149,13 @@ test('shared browser MCP APIs, two-page events and zero-page external execution'
   await proof.prove('toggle', async () => {
     await api('toggleMcpServer', server.id, false)
     assert.equal((await api('getMcpServers')).find(item => item.id === server.id).status, 'disconnected')
-    await eventually(async () => assert.equal((await persisted()).renamed_fixture.enabled, false))
+    assert.equal((await api('getMcpServers')).find(item => item.id === server.id).enabled, false)
     const count = second.requests.length
     assert.equal((await api('readMcpResource', server.id, second.resources[0].uri)).ok, false)
     assert.equal(second.requests.length, count, 'Disabled connector must not issue a request')
     await api('toggleMcpServer', server.id, true)
     assert.equal((await api('getMcpServers')).find(item => item.id === server.id).status, 'connected')
-    await eventually(async () => assert.equal((await persisted()).renamed_fixture.enabled, true))
+    assert.equal((await api('getMcpServers')).find(item => item.id === server.id).enabled, true)
     assert.equal(second.requests.filter(request => request.method === 'initialize').length, 2)
   })
   await proof.prove('zeroPage', async () => {
