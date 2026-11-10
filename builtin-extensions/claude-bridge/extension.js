@@ -44394,6 +44394,8 @@ function tabLog(msg) {
 }
 var TabManager = class {
   tabs = /* @__PURE__ */ new Map();
+  // Foreground startup owns the initial connect until user/project sync settles.
+  pendingConnect = /* @__PURE__ */ new Set();
   activeTabId = null;
   // Monotonic switch sequence. Every `tab:switched` carries the seq at which it
   // was emitted; the webview keeps the highest it has seen and rejects any lower
@@ -44456,6 +44458,7 @@ var TabManager = class {
       createdAt: opts.restored?.createdAt ?? (/* @__PURE__ */ new Date()).toISOString()
     };
     this.tabs.set(tabId, tab);
+    if (!opts.background) this.pendingConnect.add(tabId);
     if (!opts.background) this.activeTabId = tabId;
     this.window.webContents.send("tab:created", this.getTabInfo(tab));
     if (!opts.background) this.emitSwitched(tabId);
@@ -44473,10 +44476,7 @@ var TabManager = class {
       connection.setRendererMuted(true);
       return tabId;
     }
-    const connectIfAlive = () => {
-      if (this.tabs.has(tabId)) connection.connect();
-    };
-    this.triggerSync(config).then(connectIfAlive).catch(connectIfAlive);
+    this.connectAfterSync(tab);
     return tabId;
   }
   /**
@@ -44486,6 +44486,7 @@ var TabManager = class {
   disconnectTab(tabId) {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
+    this.pendingConnect.delete(tabId);
     tab.connection.disconnect({ endSession: true });
   }
   /**
@@ -44496,6 +44497,7 @@ var TabManager = class {
   reconnectTab(tabId) {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
+    this.pendingConnect.delete(tabId);
     this.window.webContents.send("bridge:console-reset", tabId);
     tab.connection.connect();
   }
@@ -44512,6 +44514,7 @@ var TabManager = class {
   closeTab(tabId) {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
+    this.pendingConnect.delete(tabId);
     this.onTabClosing?.(tab);
     tab.connection.disconnect({ endSession: true });
     const closedCwd = tab.config.cwd;
@@ -44538,7 +44541,7 @@ var TabManager = class {
     if (!tab) return;
     tabLog(`switchTab: tabId=${tabId.slice(0, 8)} seq=${this.switchSeq + 1}`);
     tab.connection.setRendererMuted(false);
-    if (tab.connection.getExtendedState().status === "disconnected") {
+    if (!this.pendingConnect.has(tabId) && tab.connection.getExtendedState().status === "disconnected") {
       tab.connection.connect();
     }
     this.activeTabId = tabId;
@@ -44680,6 +44683,7 @@ var TabManager = class {
       sessionTitle: config.sessionLabel
     };
     this.tabs.set(tabId, tab);
+    if (!opts.background) this.pendingConnect.add(tabId);
     if (!opts.background) this.activeTabId = tabId;
     this.window.webContents.send("tab:created", this.getTabInfo(tab));
     if (!opts.background) this.emitSwitched(tabId);
@@ -44688,10 +44692,7 @@ var TabManager = class {
       connection.setRendererMuted(true);
       return tabId;
     }
-    const connectIfAlive = () => {
-      if (this.tabs.has(tabId)) connection.connect();
-    };
-    this.triggerSync(config).then(connectIfAlive).catch(connectIfAlive);
+    this.connectAfterSync(tab);
     return tabId;
   }
   /**
@@ -44703,6 +44704,7 @@ var TabManager = class {
   }
   /** Terminal client disposal, without ending the server's CLI sessions. */
   dispose() {
+    this.pendingConnect.clear();
     for (const tab of this.tabs.values()) tab.connection.dispose();
     this.tabs.clear();
     this.activeTabId = null;
@@ -44736,6 +44738,12 @@ var TabManager = class {
     return first.done ? null : first.value.connection;
   }
   // ─── Private ────────────────────────────────────────────
+  connectAfterSync(tab) {
+    const connectIfAlive = () => {
+      if (this.pendingConnect.delete(tab.id) && this.tabs.get(tab.id) === tab) tab.connection.connect();
+    };
+    this.triggerSync(tab.config).then(connectIfAlive, connectIfAlive);
+  }
   /**
    * Sync user-level and project-level data to the bridge server.
    * Called before WS connect; debounced internally (60s).
