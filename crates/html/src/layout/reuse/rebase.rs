@@ -47,7 +47,13 @@ impl Store {
         match known {
             Some((None, _)) => records.clear(),
             Some((Some(roots), blocks)) => records.retain(|id, record| {
-                let verdict = match blocks.get(id) {
+                // Most rebuilds restyle no block: no lookup per record then.
+                let pair = if blocks.is_empty() {
+                    None
+                } else {
+                    blocks.get(id)
+                };
+                let verdict = match pair {
                     Some(&(x, y)) => keep(
                         record.far,
                         roots && same_cascaded_tree(x, y, false, &mut memo),
@@ -144,7 +150,12 @@ fn invalidated<'a>(
         }
         let at = holder(now, id)?;
         match (&was[at], &now[at]) {
-            (Node::Element(x), Node::Element(y)) if x.node_id == y.node_id => {
+            // A block that differs in more than paint-only values may change
+            // what follows it in document order (CSS counters and list numbers
+            // baked into later boxes): then every block is compared.
+            (Node::Element(x), Node::Element(y))
+                if x.node_id == y.node_id && same_cascaded_tree(x, y, true, memo) =>
+            {
                 blocks.insert(y.node_id, (x, y));
             }
             _ => return None,

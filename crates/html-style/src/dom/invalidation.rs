@@ -108,23 +108,14 @@ impl Invalidation {
 
 /// `sel` reads a name of `changed` in one of its compounds or arguments.
 fn reads(sel: &Selector, changed: &Changed) -> bool {
-    let named = |name: &str| {
-        let name = name.to_ascii_lowercase();
-        changed.classes.contains(&name)
-    };
-    let attr = |name: &str| changed.attrs.contains(&name.to_ascii_lowercase());
+    let among = |names: &[String], name: &str| names.iter().any(|n| n.eq_ignore_ascii_case(name));
     // An unparsed argument is read as text: any mention of a name counts.
     let text = |raw: &String| {
-        let raw = raw.to_ascii_lowercase();
-        changed
-            .classes
-            .iter()
-            .chain(&changed.attrs)
-            .any(|n| raw.contains(n.as_str()))
-            || raw.contains('\\')
+        let mut names = changed.classes.iter().chain(&changed.attrs);
+        raw.contains('\\') || names.any(|n| mentions(raw, n))
     };
-    sel.classes.iter().any(|c| named(c))
-        || sel.attrs.iter().any(|a| attr(&a.name))
+    sel.classes.iter().any(|c| among(&changed.classes, c))
+        || sel.attrs.iter().any(|a| among(&changed.attrs, &a.name))
         || sel.pseudo.iter().chain(&sel.also).any(text)
         || sel
             .arguments
@@ -134,6 +125,14 @@ fn reads(sel: &Selector, changed: &Changed) -> bool {
         || sel.prev.as_ref().is_some_and(|p| reads(&p.0, changed))
 }
 
+/// `raw` has `name` (ASCII lowercase) somewhere, ignoring ASCII case.
+fn mentions(raw: &str, name: &str) -> bool {
+    let (raw, name) = (raw.as_bytes(), name.as_bytes());
+    !name.is_empty()
+        && raw
+            .windows(name.len())
+            .any(|w| w.eq_ignore_ascii_case(name))
+}
 /// The most selective feature of the subject of `sel`: an id, a class, a
 /// tag, then an attribute name, which many elements carry; `None`: none.
 fn feature(sel: &Selector) -> Option<Feature> {

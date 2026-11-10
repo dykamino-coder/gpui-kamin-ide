@@ -137,3 +137,22 @@ fn unknown_restyles_compare_every_block(cx: &mut TestAppContext) {
         "a changed block kept its record"
     );
 }
+
+#[gpui::test]
+fn a_restyled_block_with_new_layout_values_compares_every_block(cx: &mut TestAppContext) {
+    let (store, nodes, changed, block) = case(cx);
+    // Another far recorded block is restyled and changed too: what follows
+    // it in document order (counters, list numbers) may have changed.
+    let recorded = store.recorded().into_iter().filter(|e| e.tag == "div");
+    let other = recorded
+        .filter(|e| e.node_id < block.node_id)
+        .max_by_key(|e| e.node_id)
+        .expect("two far blocks were recorded");
+    let changed = retexted(&changed, other.node_id);
+    store.rebase(&nodes, &changed, Some(&[other.node_id]));
+    assert!(store.same_tree(&other).is_none());
+    assert!(
+        store.same_tree(&block).is_none(),
+        "a later block was not compared"
+    );
+}

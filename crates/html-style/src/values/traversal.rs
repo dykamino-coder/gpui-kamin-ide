@@ -26,7 +26,7 @@ pub struct TraversalState {
     first_limit: Cell<Option<TraversalLimit>>,
     embedded: Cell<bool>,
     /// The restyle invalidation of the batch this build rebuilds for.
-    invalidation: RefCell<Option<crate::dom::invalidation::Invalidation>>,
+    invalidation: RefCell<Option<Box<crate::dom::invalidation::Invalidation>>>,
 }
 
 impl TraversalState {
@@ -99,7 +99,7 @@ impl TraversalState {
     /// it collects the elements they restyle (`crate::dom::invalidation`).
     pub fn invalidate(&self, changed: crate::dom::invalidation::Changed) {
         let invalidation = crate::dom::invalidation::Invalidation::new(changed);
-        self.invalidation.replace(Some(invalidation));
+        self.invalidation.replace(Some(Box::new(invalidation)));
     }
 
     /// The build knows its rules (`Invalidation::prepare`).
