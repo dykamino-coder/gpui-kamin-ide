@@ -52,10 +52,14 @@ and `playwright/node_modules/playwright-core`. The launcher runs each engine and
 Podman process on the shared hidden desktop. Default widths are 360, 768 and
 1280 CSS pixels; height defaults to 600. Individual snapshots, logs, comparisons
 and `first-report.json` stay in that directory. The summary contains manifest
-page names rather than host filesystem paths. Use public or sanitized inputs
-when sharing a report; element IDs and classes are page content.
+page names rather than host filesystem paths, removes element IDs, and replaces
+string metadata differences with mismatch flags. Individual snapshots and
+comparisons contain page metadata and must remain private.
 
 The library exposes synchronous `Document::element_geometry`,
 `Document::get_client_rects` and `Document::get_bounding_client_rect` queries.
 They use a temporary layout pass with the supplied `RenderOpts`, `Window` and
 `App`; the caller can consume the owned snapshot after the query returns.
+Hosts rendering multiple document instances in one window pass their
+`GlobalElementId` prefix to `element_geometry_in_scope`. An unscoped query
+returns `GeometryError::AmbiguousScrollScope` when scroll state collides.

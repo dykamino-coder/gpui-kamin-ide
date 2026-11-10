@@ -95,9 +95,16 @@ def main():
                 json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8")
             totals.update(result["totals"])
             counts.update(result["mismatched_counts_by_property"])
-            reports.append({"page": page["name"], "width": width,
-                            **{key: value for key, value in result.items()
-                               if key not in ("schema_version", "elements")}})
+            sanitized = {key: value for key, value in result.items()
+                         if key not in ("schema_version", "elements", "worst_elements")}
+            sanitized["worst_elements"] = [
+                {"path": element["path"], "tag": element["tag"],
+                 "max_abs_delta": element["max_abs_delta"],
+                 "differences": [difference if difference["delta"] is not None
+                                 else {"property": difference["property"], "mismatch": True}
+                                 for difference in element["differences"]]}
+                for element in result["worst_elements"]]
+            reports.append({"page": page["name"], "width": width, **sanitized})
             print(f"{stem}: {result['totals']['mismatched_elements']} mismatched elements", flush=True)
     if args.stage not in ("all", "compare"):
         return

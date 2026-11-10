@@ -13,7 +13,7 @@ use crate::{Group, IsValidLength, Node, NonZeroRect, Path, Size, Transform, View
 pub(crate) fn convert(
     node: SvgNode,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
     let child = match node.first_child() {
@@ -176,7 +176,7 @@ pub(crate) fn convert(
 pub(crate) fn convert_svg(
     node: SvgNode,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
     if node.viewbox_disables_rendering() {
@@ -231,7 +231,7 @@ fn clip_element(
     clip_rect: NonZeroRect,
     transform: Transform,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Group {
     // We can't set `clip-path` on the element itself,
     // because it will be affected by a possible transform.
@@ -281,7 +281,7 @@ fn convert_children(
     node: SvgNode,
     transform: Transform,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     is_context_element: bool,
     parent: &mut Group,
 ) {

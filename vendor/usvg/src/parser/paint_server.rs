@@ -20,7 +20,7 @@ pub(crate) enum ServerOrColor {
 pub(crate) fn convert(
     node: SvgNode,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Option<ServerOrColor> {
     // Check for existing.
     if let Some(paint) = cache.paint.get(node.element_id()) {
@@ -158,7 +158,7 @@ fn convert_radial(node: SvgNode, state: &converter::State) -> Option<ServerOrCol
 fn convert_pattern(
     node: SvgNode,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Option<ServerOrColor> {
     let node_with_children = find_pattern_with_children(node)?;
 
@@ -573,7 +573,7 @@ pub fn update_paint_servers(
     context_transform: Transform,
     context_bbox: Option<Rect>,
     text_bbox: Option<Rect>,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
 ) {
     for child in &mut group.children {
         // Set context transform and bbox if applicable if the
@@ -600,7 +600,7 @@ fn node_to_user_coordinates(
     context_transform: Transform,
     context_bbox: Option<Rect>,
     text_bbox: Option<Rect>,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
 ) {
     match node {
         Node::Group(g) => {
@@ -780,7 +780,7 @@ fn process_fill(
     context_transform: Transform,
     context_bbox: Option<Rect>,
     bbox: Rect,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
 ) {
     let mut ok = false;
     if let Some(fill) = fill.as_mut() {
@@ -807,7 +807,7 @@ fn process_stroke(
     context_transform: Transform,
     context_bbox: Option<Rect>,
     bbox: Rect,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
 ) {
     let mut ok = false;
     if let Some(stroke) = stroke.as_mut() {
@@ -832,7 +832,7 @@ fn process_context_paint(
     paint: &mut Paint,
     context_transform: Transform,
     path_transform: Transform,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
 ) -> Option<()> {
     // The idea is the following: We have a certain context element that has
     // a transform A, and further below in the tree we have for example a path
@@ -908,7 +908,7 @@ pub(crate) fn process_paint(
     context_bbox: Option<Rect>,
     path_transform: Transform,
     bbox: Rect,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
 ) -> bool {
     if paint.units() == Units::ObjectBoundingBox
         || paint.content_units() == Units::ObjectBoundingBox
@@ -940,7 +940,7 @@ pub(crate) fn process_paint(
     true
 }
 
-fn process_text_decoration(style: &mut Option<TextDecorationStyle>, bbox: Rect, cache: &mut Cache) {
+fn process_text_decoration(style: &mut Option<TextDecorationStyle>, bbox: Rect, cache: &mut Cache<impl crate::GeometryTrace>) {
     if let Some(style) = style.as_mut() {
         process_fill(
             &mut style.fill,
@@ -962,7 +962,7 @@ fn process_text_decoration(style: &mut Option<TextDecorationStyle>, bbox: Rect, 
 }
 
 impl Paint {
-    fn to_user_coordinates(&mut self, bbox: Rect, cache: &mut Cache) -> Option<()> {
+    fn to_user_coordinates(&mut self, bbox: Rect, cache: &mut Cache<impl crate::GeometryTrace>) -> Option<()> {
         let name = if matches!(self, Paint::Pattern(_)) {
             "Pattern"
         } else {

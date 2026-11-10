@@ -204,6 +204,7 @@ pub(crate) fn layout_text(
     text_node: &Text,
     resolver: &FontResolver,
     fontdb: &mut Arc<fontdb::Database>,
+    geometry: &mut impl crate::GeometryTrace,
 ) -> Option<(Vec<Span>, NonZeroRect)> {
     let mut fonts_cache: FontsCache = HashMap::new();
 
@@ -224,7 +225,7 @@ pub(crate) fn layout_text(
     let mut last_x = 0.0;
     let mut last_y = 0.0;
     let mut bbox = BBox::default();
-    for chunk in &text_node.chunks {
+    for (chunk_index, chunk) in text_node.chunks.iter().enumerate() {
         let (x, y) = match chunk.text_flow {
             TextFlow::Linear => (chunk.x.unwrap_or(last_x), chunk.y.unwrap_or(last_y)),
             TextFlow::Path(_) => (0.0, 0.0),
@@ -337,6 +338,11 @@ pub(crate) fn layout_text(
             }
 
             if let Some((span_fragments, span_bbox)) = convert_span(span, &clusters, span_ts) {
+                for cluster in &span_fragments {
+                    if let Some(cell) = crate::Rect::from_xywh(0.0, -cluster.ascent, cluster.advance.max(0.0), cluster.height()) {
+                        geometry.text_cell(chunk_index, cluster.byte_idx.0, cell, span_ts.pre_concat(cluster.transform()));
+                    }
+                }
                 bbox = bbox.expand(span_bbox);
 
                 let positioned_glyphs = span_fragments

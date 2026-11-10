@@ -63,7 +63,7 @@ impl Budget {
 
     pub(super) fn parse_tree<'a>(&mut self, xml: &roxmltree::Document<'a>) -> Option<Document<'a>> {
         let limit = std::mem::take(&mut self.nodes_left);
-        let doc = super::super::parse_with_limit(xml, None, true, limit).ok()?;
+        let doc = super::super::parse_with_limit(xml, None, true, limit, &mut ()).ok()?;
         self.nodes_left = limit.checked_sub(doc.nodes.len())?;
         Some(doc)
     }

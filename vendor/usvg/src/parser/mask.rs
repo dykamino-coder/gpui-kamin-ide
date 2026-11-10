@@ -13,7 +13,7 @@ pub(crate) fn convert(
     node: SvgNode,
     state: &converter::State,
     object_bbox: Option<NonZeroRect>,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Option<Arc<Mask>> {
     // A `mask` attribute must reference a `mask` element.
     if node.tag_name() != Some(EId::Mask) {

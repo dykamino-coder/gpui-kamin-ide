@@ -1,6 +1,6 @@
 //! Сериализация SVG с заданным размером области просмотра.
 
-use super::{SerializeCx, escape_attr, escape_text, write_with};
+use super::{SerializeCx, escape_attr, escape_text, write_traced};
 use crate::dom::resource_facts::view_box_ratio;
 use crate::dom::{Element, Node};
 use crate::resources::svg_document::serialize::filters::subtree_has;
@@ -11,6 +11,19 @@ use crate::values::ValueCx;
 /// Разметка с корневой канвой ЗАДАННОГО размера: собственные width/height
 /// корня заменяются, иначе растеризатор вписал бы рисунок по ним.
 pub fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32, vcx: ValueCx<'_>) -> String {
+    serialize_sized_with_trace(e, w, h, nx, ny, vcx, &mut |_, _| {})
+}
+
+/// Тот же SVG с соответствием байтов исходным узлам только на время запроса.
+pub fn serialize_sized_with_trace(
+    e: &Element,
+    w: f32,
+    h: f32,
+    nx: f32,
+    ny: f32,
+    vcx: ValueCx<'_>,
+    trace: &mut impl FnMut(u64, usize),
+) -> String {
     crate::work::add!(SvgSerializeCalls, 1);
     crate::work::add!(SvgSerializeNodes, 1);
     crate::work::time!(_svg_time, SvgSerializeNs);
@@ -27,6 +40,7 @@ pub fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32, vcx: Value
     let mut out = String::new();
     // Канва с запасом влево/вверх (`nx`, `ny` — переполнение в минус).
     let (cw, ch) = (w + nx, h + ny);
+    trace(e.node_id, out.len());
     out.push_str(&format!("<svg width=\"{cw}\" height=\"{ch}\""));
     // Пространство имён обязательно: разметка идёт растеризатору отдельным
     // документом. В XHTML рисунок часто пишут с ПРЕФИКСОМ (`<svg:svg
@@ -103,7 +117,7 @@ pub fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32, vcx: Value
     for child in &e.children {
         match child {
             Node::Text(t) => escape_text(t, &mut out),
-            Node::Element(el) => write_with(el, &mut out, &ids, cx, vcx),
+            Node::Element(el) => write_traced(el, &mut out, &ids, cx, vcx, trace),
         }
     }
     out.push_str("</svg>");

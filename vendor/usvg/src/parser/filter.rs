@@ -31,11 +31,11 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for filter::ColorInterpolation {
     }
 }
 
-pub(crate) fn convert(
+pub(crate) fn convert<T: crate::GeometryTrace>(
     node: SvgNode,
     state: &converter::State,
     object_bbox: Option<NonZeroRect>,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<T>,
 ) -> Result<Vec<Arc<Filter>>, ()> {
     let value = match node.attribute::<&str>(AId::Filter) {
         Some(v) => v,
@@ -46,7 +46,7 @@ pub(crate) fn convert(
     let mut filters = Vec::new();
 
     let create_base_filter_func =
-        |kind, filters: &mut Vec<Arc<Filter>>, cache: &mut converter::Cache| {
+        |kind, filters: &mut Vec<Arc<Filter>>, cache: &mut converter::Cache<T>| {
             // Filter functions, unlike `filter` elements, do not have a filter region.
             // We're currently do not support an unlimited region, so we simply use a fairly large one.
             // This if far from ideal, but good for now.
@@ -183,7 +183,7 @@ fn convert_url(
     node: SvgNode,
     state: &converter::State,
     object_bbox: Option<NonZeroRect>,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Result<Option<Arc<Filter>>, ()> {
     let units = convert_units(node, AId::FilterUnits, Units::ObjectBoundingBox);
     let primitive_units = convert_units(node, AId::PrimitiveUnits, Units::UserSpaceOnUse);
@@ -313,7 +313,7 @@ fn collect_children(
     state: &converter::State,
     object_bbox: Option<NonZeroRect>,
     filter_region: NonZeroRect,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Vec<Primitive> {
     let mut primitives = Vec::new();
 
@@ -829,7 +829,7 @@ fn convert_image(
     fe: SvgNode,
     filter_subregion: NonZeroRect,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Kind {
     match convert_image_inner(fe, filter_subregion, state, cache) {
         Some(kind) => kind,
@@ -841,7 +841,7 @@ fn convert_image_inner(
     fe: SvgNode,
     filter_subregion: NonZeroRect,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Option<Kind> {
     let rendering_mode = fe
         .find_attribute(AId::ImageRendering)

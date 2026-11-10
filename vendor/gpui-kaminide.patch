@@ -23959,10 +23959,10 @@ index 0000000000000000000000000000000000000000..eb14ec5ef1746ce3b906c4d62fca85f0
 +}
 diff --git a/vendor/gpui/src/window/hit_transform/geometry.rs b/vendor/gpui/src/window/hit_transform/geometry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6d0d33bd77cfae8884e71a5cc80c4f48ada544fa
+index 0000000000000000000000000000000000000000..8496afdb238436d082ff91bf690e07ea3e6b7d2e
 --- /dev/null
 +++ b/vendor/gpui/src/window/hit_transform/geometry.rs
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,52 @@
 +//! Прямое преобразование углов layout-коробки без paint- и hit-test-обрезки.
 +
 +use super::*;
@@ -23975,13 +23975,24 @@ index 0000000000000000000000000000000000000000..6d0d33bd77cfae8884e71a5cc80c4f48
 +        bounds: Bounds<Pixels>,
 +        fragment: Option<crate::PaintSegment>,
 +    ) -> Bounds<Pixels> {
++        self.layout_quad_in_viewport(
++            [bounds.origin, bounds.top_right(), bounds.bottom_left(), bounds.bottom_right()],
++            fragment,
++        )
++    }
++
++    /// Map an already positioned quad without an intermediate axis-aligned union.
++    pub fn layout_quad_in_viewport(
++        &self,
++        mut corners: [Point<Pixels>; 4],
++        fragment: Option<crate::PaintSegment>,
++    ) -> Bounds<Pixels> {
 +        let scopes = self.render_contexts.get::<SegmentHitScopes>();
 +        let scope = fragment.and_then(|route| {
 +            scopes.as_ref()?.0.iter()
 +                .find(|(id, ordinal, _)| *id == route.id && *ordinal == route.ordinal)
 +                .map(|(_, _, scope)| &scope.0)
 +        }).unwrap_or(&self.hit_scope);
-+        let mut corners = [bounds.origin, bounds.top_right(), bounds.bottom_left(), bounds.bottom_right()];
 +        let mut next = scope.as_deref();
 +        while let Some(scope) = next {
 +            let forward = match scope.inverse {

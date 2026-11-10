@@ -10,13 +10,24 @@ impl Window {
         bounds: Bounds<Pixels>,
         fragment: Option<crate::PaintSegment>,
     ) -> Bounds<Pixels> {
+        self.layout_quad_in_viewport(
+            [bounds.origin, bounds.top_right(), bounds.bottom_left(), bounds.bottom_right()],
+            fragment,
+        )
+    }
+
+    /// Map an already positioned quad without an intermediate axis-aligned union.
+    pub fn layout_quad_in_viewport(
+        &self,
+        mut corners: [Point<Pixels>; 4],
+        fragment: Option<crate::PaintSegment>,
+    ) -> Bounds<Pixels> {
         let scopes = self.render_contexts.get::<SegmentHitScopes>();
         let scope = fragment.and_then(|route| {
             scopes.as_ref()?.0.iter()
                 .find(|(id, ordinal, _)| *id == route.id && *ordinal == route.ordinal)
                 .map(|(_, _, scope)| &scope.0)
         }).unwrap_or(&self.hit_scope);
-        let mut corners = [bounds.origin, bounds.top_right(), bounds.bottom_left(), bounds.bottom_right()];
         let mut next = scope.as_deref();
         while let Some(scope) = next {
             let forward = match scope.inverse {

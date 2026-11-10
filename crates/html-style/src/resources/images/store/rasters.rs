@@ -109,6 +109,25 @@ impl ImageStore {
             self.revision += 1;
         }
     }
+    /// Временный документ использует ту же базу SVG-шрифтов без копии кэшей.
+    pub fn inherit_svg_fonts(&mut self, source: &Self) {
+        self.set_svg_fonts(source.rasters.fonts.clone());
+    }
+    /// Свежий запрос SVG-геометрии: не изменяет растровый кэш или зависимости.
+    pub fn query_svg(
+        &self,
+        markup: &str,
+        trace: impl resvg::usvg::GeometryTrace,
+    ) -> Option<resvg::usvg::Tree> {
+        let request = RasterRequest::new(1., 1., 1., 0.);
+        svg_raster::parse_tree(
+            markup,
+            self.rasters.fonts.clone(),
+            &|href| self.svg_resource(href, request).bytes,
+            self.policy.data,
+            trace,
+        )
+    }
     pub fn rasterize_svg(&self, markup: &str, request: RasterRequest) -> Option<Arc<CpuRaster>> {
         let identity = self.rasters.identities.get(markup).unwrap_or_else(|| {
             let identity = Identity::new(markup);

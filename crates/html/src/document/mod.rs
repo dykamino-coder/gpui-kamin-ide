@@ -22,7 +22,7 @@ mod budget_tests;
 mod builder;
 mod diagnostics;
 mod geometry;
-pub use crate::layout::geometry::{ElementGeometry, LineHeight, Rect};
+pub use crate::layout::geometry::{ElementGeometry, GeometryError, LineHeight, Rect};
 #[cfg(test)]
 mod diagnostics_tests;
 #[cfg(test)]

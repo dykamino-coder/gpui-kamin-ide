@@ -16,6 +16,9 @@ use crate::style::values::value::Len;
 use crate::tolerance::TEXT_COORD_EPS;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
+mod geometry;
+use geometry::Trace;
+
 struct Glyph {
     text: String,
     style: BoxStyle,
@@ -25,9 +28,10 @@ struct Glyph {
 
 /// Inline boxes (`shift` toward line-over, half line-height) and glyphs.
 #[derive(Default)]
-struct Stack {
+struct Stack<T: Trace> {
     boxes: Vec<(f32, f32)>,
     glyphs: Vec<Glyph>,
+    trace: T,
 }
 
 fn line_height(style: &Computed, size: f32, fallback: f32) -> f32 {
@@ -58,12 +62,12 @@ fn plain_span(own: &Computed, declared: &Computed) -> bool {
         )
 }
 
-fn collect(
+fn collect<T: Trace>(
     nodes: &[Node],
     style: &BoxStyle,
     shift: f32,
     opts: &RenderOpts,
-    out: &mut Stack,
+    out: &mut Stack<T>,
 ) -> Option<()> {
     let vcx = opts.cx.vcx();
     for node in nodes {
@@ -109,7 +113,10 @@ fn collect(
                 };
                 out.boxes
                     .push((shift, line_height(&child, size, opts.base_size()) / 2.0));
+                let start = out.glyphs.len();
                 collect(&e.children, &child, shift, opts, out)?;
+                out.trace
+                    .inline(e.node_id, &child, start..out.glyphs.len(), shift);
             }
         }
     }
@@ -118,16 +125,24 @@ fn collect(
 
 /// The central-baseline stack, or `None` when the plain upright stack is
 /// already exact (one size, no shifts) or the content is not plain text.
-pub(super) fn upright_central(
+pub(super) fn upright_central<const QUERY: bool>(
     nodes: &[Node],
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
+    if QUERY {
+        build::<geometry::Capture>(nodes, inherited, opts)
+    } else {
+        build::<()>(nodes, inherited, opts)
+    }
+}
+
+fn build<T: Trace>(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> Option<AnyElement> {
     if inherited.wm().rtl() {
         return None;
     }
     let em = own_size(inherited, opts);
-    let mut stack = Stack::default();
+    let mut stack = Stack::<T>::default();
     stack
         .boxes
         .push((0.0, line_height(inherited, em, opts.base_size()) / 2.0));
@@ -142,6 +157,7 @@ pub(super) fn upright_central(
     let over = stack.boxes.iter().fold(0.0f32, |m, (s, h)| m.max(s + h));
     let under = stack.boxes.iter().fold(0.0f32, |m, (s, h)| m.max(h - s));
     let lane = over + under;
+    let root = stack.trace.observe(div(), &stack.glyphs, under, opts);
     let items = stack.glyphs.into_iter().map(|g| {
         let mut style = g.style;
         style.inh.writing.flat_mode = style.flow_mode();
@@ -162,8 +178,7 @@ pub(super) fn upright_central(
         )
     });
     Some(
-        div()
-            .flex()
+        root.flex()
             .flex_col()
             .w(px(lane))
             .flex_shrink_0()

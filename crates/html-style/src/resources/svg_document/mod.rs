@@ -3,6 +3,7 @@
 
 pub mod clip;
 pub mod foreign_rasters;
+pub mod geometry;
 pub use clip::ClipIds;
 pub mod masks;
 pub mod serialize;

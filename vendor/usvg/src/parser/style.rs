@@ -47,7 +47,7 @@ pub(crate) fn resolve_fill(
     node: SvgNode,
     has_bbox: bool,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Option<Fill> {
     if state.parent_clip_path.is_some() {
         // A `clipPath` child can be filled only with a black color.
@@ -92,7 +92,7 @@ pub(crate) fn resolve_stroke(
     node: SvgNode,
     has_bbox: bool,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Option<Stroke> {
     if state.parent_clip_path.is_some() {
         // A `clipPath` child cannot be stroked.
@@ -150,7 +150,7 @@ fn convert_paint(
     has_bbox: bool,
     state: &converter::State,
     opacity: &mut Opacity,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Option<(Paint, Option<ContextElement>)> {
     let value = &*paint_keywords(value);
     let paint = match svgtypes::Paint::from_str(value) {

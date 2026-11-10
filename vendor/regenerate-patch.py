@@ -158,6 +158,7 @@ FIXES = {
         "Keep rendering compatible with the paired usvg parser/tree changes; apply usvg first (docs/VENDORING.md).",
     ],
     "usvg": [
+        "Synchronous geometry queries: an opt-in typed source/layout trace observes object bounds and shaped glyph cells before paint effects; the ordinary converter uses a zero-sized no-op trace and retains no query metadata.",
         "Typed path-tree construction: resolve bounds, ordered luminance masks, clipping and linearRGB blur through the existing renderer without XML serialization.",
         "Resource cycles: traverse the cross-resource graph, use chains and gradient href chains; discard closing edges instead of recursing indefinitely.",
         "CSS drop-shadow(): expand the region for the offset and blur support instead of clipping to the default SVG filter region.",

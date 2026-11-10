@@ -43,6 +43,28 @@ fn px4(t: Option<Len>, r: Option<Len>, b: Option<Len>, l: Option<Len>) -> [f32; 
     [t, r, b, l].map(px_lossy_zero)
 }
 
+/// Метрики содержимого inline-коробки, общие для якорей и CSSOM View.
+pub(crate) fn font_metrics(
+    style: &crate::style::computed::Computed,
+    base: &gpui::TextStyle,
+    fallback: f32,
+    vcx: crate::values::ValueCx<'_>,
+    window: &gpui::Window,
+) -> (f32, f32) {
+    let font = super::strut_font(style, base, vcx);
+    let size = gpui::px(style.used_font(fallback, vcx).size_px);
+    let ts = window.text_system();
+    let id = ts.resolve_font(&font);
+    crate::text::fonts::metric_overrides::extents(
+        &font,
+        f32::from(size),
+        (
+            f32::from(ts.ascent(id, size)),
+            f32::from(ts.descent(id, size)).abs(),
+        ),
+    )
+}
+
 /// Обернуть куски содержимого строчной коробки `e` метками краёв, если она
 /// именованный якорь или содержащий блок абсолютных потомков (тогда — только
 /// при внепоточных кусках внутри: иначе рамка никому не нужна).

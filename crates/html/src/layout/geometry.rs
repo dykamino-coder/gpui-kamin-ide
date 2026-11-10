@@ -53,6 +53,34 @@ pub enum LineHeight {
     Pixels(f64),
 }
 
+/// Отказ раскладки либо неоднозначная привязка документа к состоянию окна.
+#[derive(Debug)]
+pub enum GeometryError {
+    Document(crate::dom::outcome::DocumentFailure),
+    /// Несколько экземпляров DOM имеют одинаковые локальные идентификаторы.
+    /// Передайте scope конкретного экземпляра в `element_geometry_in_scope`.
+    AmbiguousScrollScope,
+}
+
+impl From<crate::dom::outcome::DocumentFailure> for GeometryError {
+    fn from(error: crate::dom::outcome::DocumentFailure) -> Self {
+        Self::Document(error)
+    }
+}
+
+impl std::fmt::Display for GeometryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Document(error) => error.fmt(f),
+            Self::AmbiguousScrollScope => {
+                f.write_str("Для запроса прокрутки нужен scope экземпляра документа")
+            }
+        }
+    }
+}
+
+impl std::error::Error for GeometryError {}
+
 pub(crate) fn font(
     style: &crate::style::computed::Computed,
     base: f32,

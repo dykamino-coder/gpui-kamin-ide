@@ -13,7 +13,7 @@ impl Paragraph {
         edges: [f32; 4],
         metrics: (f32, f32),
         bounds: Bounds<Pixels>,
-        mut emit: impl FnMut(Bounds<Pixels>, [bool; 4]),
+        mut emit: impl FnMut(Bounds<Pixels>, [bool; 4], (Pixels, Pixels)),
     ) {
         let end = range.end.min(self.text.len());
         let start = range.start.min(end);
@@ -29,6 +29,7 @@ impl Paragraph {
                     ),
                 ),
                 [true; 4],
+                (bounds.origin.y, px(0.)),
             );
             return;
         }
@@ -115,6 +116,8 @@ impl Paragraph {
                         fragments.push((lo, hi, rtl, x, width));
                     }
                 }
+                // CSSOM View требует порядок содержимого, а не порядок краски bidi.
+                fragments.sort_by_key(|fragment| fragment.0);
                 for (lo, hi, rtl, x, width) in fragments {
                     let mut present = [true, false, true, false];
                     let (leading, trailing) = if rtl { (1, 3) } else { (3, 1) };
@@ -130,6 +133,7 @@ impl Paragraph {
                             ),
                         ),
                         present,
+                        (y, step(row)),
                     );
                 }
             }

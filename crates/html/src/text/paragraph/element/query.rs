@@ -7,6 +7,8 @@ use crate::{
 };
 use gpui::{App, Bounds, Element, Hitbox, LayoutId, Pixels, Window, point, px, size};
 
+mod upright;
+
 struct Query(Paragraph);
 
 impl Paragraph {
@@ -15,6 +17,23 @@ impl Paragraph {
     }
 
     fn collect_geometry(&self, bounds: Bounds<Pixels>, window: &mut Window) {
+        if self.vertical {
+            let bounds = self.vertical_paint_bounds(
+                bounds,
+                self.vertical_layout_origin,
+                window.scale_factor(),
+            );
+            let flat = Bounds::new(bounds.origin, size(bounds.size.height, bounds.size.width));
+            window.with_transformation(
+                self.vertical_transform(bounds, window.scale_factor()),
+                |window| self.collect_flat_geometry(flat, window),
+            );
+        } else {
+            self.collect_flat_geometry(bounds, window);
+        }
+    }
+
+    fn collect_flat_geometry(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         let Some((values, _)) = &self.anchor_values else {
             return;
         };
@@ -26,6 +45,10 @@ impl Paragraph {
             };
             let start = (*at as isize + b.start).max(0) as usize;
             let end = (*at as isize + b.end).max(0) as usize;
+            if info.font_style.reset_context.upright_stack {
+                self.collect_upright_geometry(&segs, start..end, info, b.shift, bounds, window);
+                continue;
+            }
             let edges = std::array::from_fn(|i| info.pad[i] + info.border[i]);
             let metrics = self.inline_font_metrics(info, window);
             let font = crate::layout::geometry::font(
@@ -39,7 +62,7 @@ impl Paragraph {
                 edges,
                 metrics,
                 bounds,
-                |mut border, present| {
+                |mut border, present, _| {
                     border.origin += point(px(b.shift.0), px(b.shift.1));
                     let inset = |r: Bounds<Pixels>, e: [f32; 4]| {
                         Bounds::new(

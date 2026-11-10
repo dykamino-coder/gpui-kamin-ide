@@ -5,7 +5,7 @@ use gpui::{Bounds, Pixels, Window};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[derive(Default)]
-pub(crate) struct Boxes {
+pub(crate) struct GeometryBoxes {
     pub(crate) border: Vec<Rect>,
     pub(crate) padding: Vec<Rect>,
     pub(crate) content: Vec<Rect>,
@@ -13,9 +13,109 @@ pub(crate) struct Boxes {
 }
 
 #[derive(Default)]
-pub(crate) struct Collector(pub(crate) RefCell<HashMap<u64, Boxes>>);
+pub(crate) struct Collector(
+    pub(crate) RefCell<HashMap<u64, GeometryBoxes>>,
+    pub(crate) HashMap<u64, Rc<crate::style::computed::Computed>>,
+    HashMap<u64, Vec<u64>>,
+);
 
 impl Collector {
+    pub(crate) fn record_quad(window: &Window, node: u64, corners: [gpui::Point<Pixels>; 4]) {
+        let Some(sink) = window.render_context::<Self>() else {
+            return;
+        };
+        let boxes: &RefCell<HashMap<u64, GeometryBoxes>> = &sink.0;
+        let mut all = boxes.borrow_mut();
+        let out = all.entry(node).or_default();
+        let mut push = |corners, route| {
+            let rect = Rect::from_bounds(window.layout_quad_in_viewport(corners, route));
+            out.border.push(rect);
+            out.padding.push(rect);
+            out.content.push(rect);
+        };
+        if let Some(slices) = window.layout_fragment_slices() {
+            for slice in slices.iter() {
+                let bounds = Bounds::from_corners(corners[0], corners[0]);
+                let bounds = corners.iter().fold(bounds, |bounds, point| {
+                    bounds.union(&Bounds::from_corners(*point, *point))
+                });
+                if bounds.right() < slice.source_clip.left()
+                    || bounds.left() > slice.source_clip.right()
+                    || bounds.bottom() <= slice.source_clip.top()
+                    || bounds.top() >= slice.source_clip.bottom()
+                {
+                    continue;
+                }
+                let shift = slice.placement.destination - slice.placement.source;
+                push(corners.map(|p| p + shift), Some(slice.placement));
+            }
+        } else {
+            push(corners, None);
+        }
+    }
+
+    pub(crate) fn for_nodes(nodes: &[crate::dom::Node]) -> Self {
+        let mut out = Self::default();
+        let mut pending: Vec<_> = nodes.iter().collect();
+        while let Some(node) = pending.pop() {
+            if let crate::dom::Node::Element(element) = node {
+                out.1.insert(element.node_id, element.style.computed());
+                if matches!(
+                    element.style.used().reset_box_layout.display,
+                    Some(
+                        crate::style::computed::Display::Table
+                            | crate::style::computed::Display::InlineTable
+                    )
+                ) {
+                    let captions = element
+                        .children
+                        .iter()
+                        .filter_map(|child| {
+                            let crate::dom::Node::Element(caption) = child else {
+                                return None;
+                            };
+                            (caption.tag == "caption"
+                                || caption.style.used().reset_context.is_caption == Some(true))
+                            .then_some(caption.node_id)
+                        })
+                        .collect();
+                    out.2.insert(element.node_id, captions);
+                }
+                pending.extend(&element.children);
+            }
+        }
+        out
+    }
+
+    // CSSOM View §6: коробка таблицы и подписи, без анонимной обёртки.
+    pub(crate) fn finish_captions(&self) {
+        let boxes: &RefCell<HashMap<u64, GeometryBoxes>> = &self.0;
+        let mut all = boxes.borrow_mut();
+        for (table, captions) in &self.2 {
+            for caption in captions {
+                let Some(boxes) = all.get(caption) else {
+                    continue;
+                };
+                let (border, padding, content) = (
+                    boxes.border.clone(),
+                    boxes.padding.clone(),
+                    boxes.content.clone(),
+                );
+                let out = all.entry(*table).or_default();
+                out.border.extend(border);
+                out.padding.extend(padding);
+                out.content.extend(content);
+            }
+        }
+    }
+
+    pub(crate) fn source_style(
+        window: &Window,
+        node: u64,
+    ) -> Option<Rc<crate::style::computed::Computed>> {
+        window.render_context::<Self>()?.1.get(&node).cloned()
+    }
+
     pub(crate) fn record(
         window: &Window,
         node: u64,
@@ -26,8 +126,9 @@ impl Collector {
             return;
         };
         let sink: Rc<Collector> = sink;
-        let mut all = sink.0.borrow_mut();
-        let out: &mut Boxes = all.entry(node).or_default();
+        let boxes: &RefCell<HashMap<u64, GeometryBoxes>> = &sink.0;
+        let mut all = boxes.borrow_mut();
+        let out: &mut GeometryBoxes = all.entry(node).or_default();
         out.font = Some(font);
         match window.layout_fragment_slices() {
             Some(slices) => {

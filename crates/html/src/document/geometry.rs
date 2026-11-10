@@ -1,7 +1,9 @@
 //! Синхронный CSSOM View: временная раскладка, не состояние следующего кадра.
 
-use super::{DocState, Document, DocumentFailure, ElementGeometry, LineHeight, Rect};
-use crate::{RenderOpts, dom::Node, layout::geometry::Collector};
+use super::{
+    DocState, Document, DocumentFailure, ElementGeometry, GeometryError, LineHeight, Rect,
+};
+use crate::{RenderOpts, layout::geometry::Collector};
 use gpui::{App, AvailableSpace, IntoElement, ParentElement, Styled, Window, div, point, px, size};
 use markup5ever_rcdom::NodeData;
 use std::{collections::HashMap, rc::Rc};
@@ -27,7 +29,21 @@ impl Document {
         opts: &RenderOpts,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<Vec<ElementGeometry>, DocumentFailure> {
+    ) -> Result<Vec<ElementGeometry>, GeometryError> {
+        self.element_geometry_in_scope(None, opts, window, cx)
+    }
+
+    /// `scope` — префикс GlobalElementId, под которым host рисует этот DOM.
+    /// Он различает несколько документов или экземпляров документа в окне,
+    /// не добавляя идентичность или сохранённую геометрию в обычный кадр.
+    /// Без scope неоднозначное состояние прокрутки возвращает ошибку.
+    pub fn element_geometry_in_scope(
+        &self,
+        scope: Option<&gpui::GlobalElementId>,
+        opts: &RenderOpts,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Vec<ElementGeometry>, GeometryError> {
         let budget = self.budget();
         let revision =
             crate::budget::DocumentBudget::new(budget.limits().clone(), budget.governor().clone())
@@ -50,9 +66,15 @@ impl Document {
             #[cfg(feature = "engine-bench")]
             &mut super::BuildTimings::default(),
         )?;
+        state
+            .values()
+            .doc
+            .images
+            .borrow_mut()
+            .inherit_svg_fonts(&self.state.values().doc.images.borrow());
         let mut opts = super::scope::frame_opts(&state, &nodes, opts);
         opts.cx.contracts.build = crate::render::geometry::builder();
-        let sink: Rc<Collector> = Rc::new(Collector::default());
+        let sink: Rc<Collector> = Rc::new(Collector::for_nodes(&nodes));
         let ids: HashMap<_, _> = state
             .values
             .traversal
@@ -70,7 +92,8 @@ impl Document {
             .enumerate()
             .filter_map(|(i, address)| ids.get(address).map(|id| (i as u64 + 1, *id)))
             .collect();
-        let scroll_states = crate::interactive::scroll_area::query_states(window, &node_map);
+        let scroll_states =
+            crate::interactive::scroll_area::query_states(window, &node_map, scope)?;
         window.with_layout_query(cx, |window, cx| {
             scroll_states(window);
             window.with_render_context(Some(sink.clone()), |window| {
@@ -92,21 +115,7 @@ impl Document {
                 window.finish_layout_query(cx);
             });
         });
-        let mut styles = HashMap::new();
-        let mut pending: Vec<_> = nodes.iter().collect();
-        while let Some(node) = pending.pop() {
-            if let Node::Element(e) = node {
-                styles.insert(
-                    e.node_id,
-                    crate::layout::geometry::font(
-                        &e.style.computed(),
-                        opts.base_size(),
-                        state.values(),
-                    ),
-                );
-                pending.extend(&e.children);
-            }
-        }
+        sink.finish_captions();
         let mut boxes = sink.0.borrow_mut();
         let mut out = Vec::new();
         let mut pending = vec![(input.dom.document.clone(), Vec::new())];
@@ -122,9 +131,13 @@ impl Document {
                         .map(|a| a.value.to_string())
                         .unwrap_or_default()
                 };
-                let (font_size, line_height) = b
-                    .font
-                    .or_else(|| styles.get(&id).copied())
+                let (font_size, line_height) = sink
+                    .1
+                    .get(&id)
+                    .map(|style| {
+                        crate::layout::geometry::font(style, opts.base_size(), state.values())
+                    })
+                    .or(b.font)
                     .unwrap_or((16., LineHeight::Normal));
                 out.push(ElementGeometry {
                     path: path.clone(),
@@ -155,7 +168,7 @@ impl Document {
         opts: &RenderOpts,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<Vec<Rect>, DocumentFailure> {
+    ) -> Result<Vec<Rect>, GeometryError> {
         Ok(self
             .element_geometry(opts, window, cx)?
             .into_iter()
@@ -171,7 +184,7 @@ impl Document {
         opts: &RenderOpts,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<Rect, DocumentFailure> {
+    ) -> Result<Rect, GeometryError> {
         self.get_client_rects(path, opts, window, cx)
             .map(|r| Rect::bounding(&r))
     }

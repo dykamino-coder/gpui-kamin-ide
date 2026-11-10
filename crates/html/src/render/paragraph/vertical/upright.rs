@@ -43,7 +43,7 @@ pub(crate) fn upright_paragraph<const QUERY: bool>(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
-    if let Some(stack) = super::upright_central::upright_central(nodes, inherited, opts) {
+    if let Some(stack) = super::upright_central::upright_central::<QUERY>(nodes, inherited, opts) {
         return stack;
     }
     let mut stack = inherited.clone();

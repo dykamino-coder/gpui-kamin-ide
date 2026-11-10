@@ -73,20 +73,12 @@ impl Paragraph {
             base.font_family = font.family.clone();
             base.font_fallbacks = font.fallbacks.clone();
         }
-        let font = crate::text::inline::strut_font(&info.font_style, &base, vcx);
-        let size = px(info
-            .font_style
-            .used_font(f32::from(self.font_size), vcx)
-            .size_px);
-        let ts = window.text_system();
-        let id = ts.resolve_font(&font);
-        crate::text::fonts::metric_overrides::extents(
-            &font,
-            f32::from(size),
-            (
-                f32::from(ts.ascent(id, size)),
-                f32::from(ts.descent(id, size)).abs(),
-            ),
+        crate::text::inline::inline_box::font_metrics(
+            &info.font_style,
+            &base,
+            f32::from(self.font_size),
+            vcx,
+            window,
         )
     }
 }

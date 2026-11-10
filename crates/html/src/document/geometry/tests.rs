@@ -16,6 +16,21 @@ impl Render for View {
 
 fn snapshot(cx: &mut TestAppContext, html: &str, width: f32) -> Vec<ElementGeometry> {
     let doc = Document::builder(html, BROWSER_CSS).build().unwrap();
+    let mut fonts = resvg::usvg::fontdb::Database::new();
+    fonts.load_font_data(
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shell/assets/fonts/JetBrainsMono-Variable.ttf"
+        ))
+        .to_vec(),
+    );
+    fonts.set_monospace_family("JetBrains Mono");
+    doc.state
+        .values()
+        .doc
+        .images
+        .borrow_mut()
+        .set_svg_fonts(std::sync::Arc::new(fonts));
     let (view, cx) = cx.add_window_view(|_, _| View(Rc::new(doc)));
     cx.update(|window, cx| {
         let opts = RenderOpts {
