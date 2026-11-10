@@ -32,11 +32,16 @@ export class WorkspacePresentation {
       const key = `${args[0]}:${args[1].id}`
       const previous = this.submissions.get(key)?.args as unknown[] | undefined
       const receipt = { ...(previous?.[1] as SubmissionUpdate), ...args[1] }
+      if ((previous?.[1] as SubmissionUpdate)?.committed) receipt.committed = true
       receipt.fallbackQueue = mergeFallbackQueue((previous?.[1] as SubmissionUpdate)?.fallbackQueue, args[1].fallbackQueue)
       this.submissions.set(key, { ...frame, args: [args[0], receipt] })
+      if (!receipt.committed) this.reconcileCommitted(args[0], this.entries(args[0]))
       if (args[1].state === 'fallback') this.reconcileFallback(args[0], this.entries(args[0]))
     }
-    if (channel === 'jsonl-entries' && Array.isArray(args[1])) this.reconcileFallback(args[0], args[1])
+    if (channel === 'jsonl-entries' && Array.isArray(args[1])) {
+      this.reconcileCommitted(args[0], args[1])
+      this.reconcileFallback(args[0], args[1])
+    }
     if (channel === 'session:submission' && typeof args[1]?.capable === 'boolean') this.latest.set(`submission-capability:${args[0]}`, frame)
     if (channel === 'mcp-activity' && args[1]?.requestId) {
       const key = `mcp:${args[0]}:${args[1].requestId}`
@@ -48,6 +53,19 @@ export class WorkspacePresentation {
     }
     if (channel === 'tab:closed') this.forgetTab(args[0])
     if (channel === 'mcp-elicitation-resolved') this.resolve(args[0])
+  }
+
+  private reconcileCommitted(tabId: string, entries: readonly QueueEntry[]): void {
+    const uuids = new Set(entries.map(entry => entry.uuid).filter(Boolean))
+    if (!uuids.size) return
+    for (const frame of this.submissions.values()) {
+      const [id, receipt] = frame.args as [string, SubmissionUpdate]
+      if (id !== tabId || !receipt.uuid || receipt.committed || !uuids.has(receipt.uuid)) continue
+      // Commit before broadcasting: the process-owned observer sees this event
+      // recursively, and replicas may receive it before the original receipt.
+      receipt.committed = true
+      this.publish('session:submission', tabId, receipt)
+    }
   }
 
   /** Called once at host ingress. Never re-send accepted submissions on attach. */

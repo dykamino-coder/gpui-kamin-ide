@@ -166,6 +166,14 @@ performs read synchronization followed by live events. Request IDs are retained
 and duplicate permission responses cannot settle the same retained prompt twice.
 Stable submission IDs are deduplicated; the 10,000-receipt/32 MiB limit rejects
 new entries rather than evicting identities and allowing duplicate execution.
+The host also retains native submission commitment by stored UUID, observing
+JSONL even with zero pages. Fresh pages receive this monotonic marker after the
+accepted row leaves the bounded replay tail; equal prose never commits another
+identity. This extends receipt recovery without completing transcript reduction.
+Proof includes both receipt/row arrival orders, an actual shared-host transport
+test and Linux production-browser acceptance with zero pages, 4600 subsequent
+records and two fresh pages. Host restart persistence of in-flight receipts is
+outside this bounded change.
 Lost invoke results are unknown outcomes, never automatically retried mutations.
 These mechanisms do not complete the host-authoritative transcript reducer and
 queued-message migration; the browser still processes substantial page state.
