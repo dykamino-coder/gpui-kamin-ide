@@ -18,13 +18,13 @@ mod element;
 mod invalidation_tests;
 #[cfg(test)]
 mod paint_damage_tests;
+#[cfg(test)]
+mod rebuild_key_tests;
 mod record;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
 mod resize_tests;
-#[cfg(test)]
-mod rebuild_key_tests;
 #[cfg(test)]
 mod reuse_tests;
 #[cfg(test)]
