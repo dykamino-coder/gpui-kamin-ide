@@ -1,7 +1,8 @@
 //! Набор длинного куска частями (модель словного кэша Gecko и
 //! `ReusingTextShaper` Blink): кусок длиннее `MIN * 2` режется на части в
-//! точках, заданных самим текстом (пробел между знаками ASCII, хэш слова
-//! перед ним), поэтому правка внутри абзаца меняет одну часть, а соседние
+//! точках, заданных самим текстом (пробел между латинскими буквами на нулевом
+//! явном уровне вложения абзаца ltr, хэш слова перед ним — разбор UAX #9 от
+//! такой точки не зависит), поэтому правка внутри абзаца меняет одну часть, а соседние
 //! берутся из памяти документа по ключу своего текста и шрифтов. Резать
 //! можно только там, где набор не связывает знаки через пробел: точка
 //! принимается, если пара «знак, пробел» и следующий знак, набранные
@@ -30,37 +31,35 @@ impl Paragraph {
         window: &mut Window,
     ) -> Option<Vec<usize>> {
         let mut ends = Vec::new();
-        if end - start >= MIN * 2 && self.chunkable(start, end) {
+        // Абзац ltr: точка между сильными L на нулевом уровне вложения не
+        // меняет ни разрешение слабых и нейтральных знаков, ни переупорядочение.
+        if end - start >= MIN * 2 && !self.wrap.rtl {
             let bytes = self.text.as_bytes();
-            let (mut from, mut rejects) = (start, 0);
-            let mut c = start + MIN;
-            while c + MIN <= end && rejects < REJECTS {
-                if candidate(bytes, c)
-                    && (word_hash(bytes, c).is_multiple_of(64) || c - from >= MAX)
-                {
-                    if self.joins_cleanly(c, window) {
-                        ends.push(c);
-                        from = c;
-                        c += MIN;
-                        continue;
-                    }
+            let (mut from, mut rejects, mut levels) = (start, 0, Levels::default());
+            for c in start..end - MIN {
+                if !levels.step(bytes, c) {
+                    break;
+                }
+                if c < from + MIN || !levels.zero() || !candidate(bytes, c) {
+                    continue;
+                }
+                if !word_hash(bytes, c).is_multiple_of(64) && c - from < MAX {
+                    continue;
+                }
+                if self.joins_cleanly(c, window) {
+                    ends.push(c);
+                    (from, rejects) = (c, 0);
+                } else if rejects == REJECTS {
+                    break;
+                } else {
                     rejects += 1;
                 }
-                c += 1;
             }
         }
         (!ends.is_empty()).then(|| {
             ends.push(end);
             ends
         })
-    }
-
-    /// Резать можно только письмо без двунаправленности и комбинируемых знаков.
-    fn chunkable(&self, start: usize, end: usize) -> bool {
-        !self.wrap.rtl
-            && self.text[start..end]
-                .chars()
-                .all(|c| (c as u32) < 0x0590 && !('\u{0300}'..='\u{036F}').contains(&c))
     }
 
     /// Пара «знак, пробел» и знак после точки `c` набираются раздельно так же, как вместе.
@@ -161,9 +160,69 @@ fn list_key(key: u64) -> u64 {
     key.rotate_left(29) ^ 0x9E37_79B9_7F4A_7C15
 }
 
-/// Точка `c` — начало слова после пробела, оба соседа пробела ASCII.
+/// Точка `c` — начало слова после пробела, оба соседа пробела — латинские
+/// буквы (сильные L по UAX #9).
 fn candidate(bytes: &[u8], c: usize) -> bool {
-    bytes[c - 1] == b' ' && bytes[c].is_ascii_alphanumeric() && bytes[c - 2].is_ascii_graphic()
+    bytes[c - 1] == b' ' && bytes[c].is_ascii_alphabetic() && bytes[c - 2].is_ascii_alphabetic()
+}
+
+/// Явные уровни вложения UAX #9 (X1–X8) в начале каждого байта текста: стек
+/// битами, 1 — изоляция. Глубже 64 уровней кусок не режется.
+#[derive(Default)]
+struct Levels {
+    stack: u64,
+    depth: u32,
+    isolates: u32,
+}
+
+impl Levels {
+    /// Учесть знак, начатый байтом `i`; `false` — вложение глубже стека.
+    fn step(&mut self, bytes: &[u8], i: usize) -> bool {
+        let control = match bytes.get(i..i + 3) {
+            Some([0xE2, 0x80, b @ 0xAA..=0xAE]) => *b,
+            Some([0xE2, 0x81, b @ 0xA6..=0xA9]) => *b,
+            _ => return true,
+        };
+        match control {
+            // PDF закрывает вложение, но не изоляцию.
+            0xAC => {
+                if self.depth > 0 && self.stack & 1 == 0 {
+                    self.pop();
+                }
+            }
+            // PDI закрывает всё до ближайшей изоляции, если она открыта.
+            0xA9 => {
+                while self.isolates > 0 {
+                    if self.pop() {
+                        break;
+                    }
+                }
+            }
+            _ => {
+                if self.depth == 64 {
+                    return false;
+                }
+                let isolate = matches!(control, 0xA6..=0xA8);
+                self.stack = (self.stack << 1) | u64::from(isolate);
+                self.depth += 1;
+                self.isolates += u32::from(isolate);
+            }
+        }
+        true
+    }
+
+    /// Снять верхний уровень; `true` — это была изоляция.
+    fn pop(&mut self) -> bool {
+        let isolate = self.stack & 1 == 1;
+        self.stack >>= 1;
+        self.depth -= 1;
+        self.isolates -= u32::from(isolate);
+        isolate
+    }
+
+    fn zero(&self) -> bool {
+        self.depth == 0
+    }
 }
 
 /// Хэш восьми байт перед пробелом точки `c`: точки зависят только от текста рядом.
@@ -185,5 +244,35 @@ mod tests {
         assert!(!candidate(text, 7), "inside a word");
         let shifted = b"xxalpha beta gamma delta";
         assert_eq!(word_hash(text, 11), word_hash(shifted, 13));
+        assert!(!candidate(b"a1 b2 3c", 3), "a digit is not a strong letter");
+    }
+
+    #[test]
+    fn cuts_wait_until_every_explicit_level_is_closed() {
+        let levels_after = |text: &str| {
+            let mut levels = Levels::default();
+            (0..text.len()).all(|i| levels.step(text.as_bytes(), i));
+            levels.zero()
+        };
+        assert!(
+            !levels_after("a \u{2067}b \u{202b}c"),
+            "isolate with an embedding"
+        );
+        assert!(
+            levels_after("a \u{2067}b \u{202b}c\u{2069} d"),
+            "PDI closes both"
+        );
+        assert!(
+            !levels_after("a \u{2067}b\u{202c} c"),
+            "PDF does not close an isolate"
+        );
+        assert!(
+            levels_after("a \u{202b}b\u{202c} c"),
+            "PDF closes an embedding"
+        );
+        assert!(
+            levels_after("a\u{2069}\u{202c} b"),
+            "unmatched closers are ignored"
+        );
     }
 }
