@@ -38,6 +38,7 @@ mod width;
 
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
+pub(crate) use flow::ChildOpts;
 use frame::{placed, scaled};
 use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
 pub(crate) use key::{Counters, FlowKey};

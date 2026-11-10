@@ -19,15 +19,39 @@ pub(crate) struct Mark {
     pub(super) replay: bool,
     /// The child may be recorded as a far block (`FlowCx::far_candidate`).
     pub(super) far: bool,
+    /// `widths` is the flow's shared flag (`FlowCx::far_widths`): the child is
+    /// built with the flow's shared tracked options (`ChildOpts`).
+    pub(super) shared_widths: bool,
     /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
     pub(super) inert: super::super::plain::Inert,
 }
 
+/// Options of tracked child builds of one flow: a child whose replay record
+/// keeps its own flag gets its own copy; far candidates share one copy per
+/// flow with the flow's flag, which `mark` clears before each of them.
+#[derive(Default)]
+pub(crate) struct ChildOpts {
+    shared: Option<Box<RenderOpts>>,
+    own: Option<Box<RenderOpts>>,
+}
+
 impl Mark {
     /// Опции сборки ребёнка: с записью чтений ширин, если его записывают.
-    pub(crate) fn child_opts(&self, opts: &RenderOpts) -> Option<Box<RenderOpts>> {
-        let sink = self.widths.clone()?;
-        Some(opts.inner(|cx| cx.constraints.track_widths(sink)))
+    pub(crate) fn child_opts<'o>(
+        &self,
+        opts: &'o RenderOpts,
+        slot: &'o mut ChildOpts,
+    ) -> &'o RenderOpts {
+        let Some(sink) = self.widths.clone() else {
+            return opts;
+        };
+        if self.shared_widths {
+            slot.shared
+                .get_or_insert_with(|| opts.inner(|cx| cx.constraints.track_widths(sink)))
+        } else {
+            slot.own
+                .insert(opts.inner(|cx| cx.constraints.track_widths(sink)))
+        }
     }
 }
 
@@ -42,6 +66,7 @@ pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
         widths: None,
         replay: false,
         far: false,
+        shared_widths: false,
         inert: Default::default(),
     }
 }
@@ -54,8 +79,16 @@ impl super::FlowCx {
         let mut mark = mark_of(opts, out);
         mark.replay = self.replay_worth_recording(e);
         mark.far = self.far_candidate(e, opts);
-        if mark.replay || mark.far {
+        if mark.replay {
             mark.widths = Some(Rc::default());
+        } else if mark.far
+            && let Some(widths) = &self.far_widths
+        {
+            // Width reads happen during the child's build only, and
+            // `record_far` reads the flag right after it.
+            widths.set(false);
+            mark.widths = Some(widths.clone());
+            mark.shared_widths = true;
         }
         mark
     }

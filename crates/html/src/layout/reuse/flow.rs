@@ -14,6 +14,7 @@ mod far;
 mod mark;
 mod replay;
 mod skip;
+pub(crate) use mark::ChildOpts;
 use mark::{Mark, mark_of};
 
 /// Поток `body`, занятый повтором в этой сборке.
@@ -36,6 +37,9 @@ pub(crate) struct FlowCx {
     settled_outside_widths: bool,
     /// Прошлая сборка тоже была устоявшейся: дальние блоки уже записаны.
     warm: bool,
+    /// Outside width reads of the far candidate being built (`Mark::shared_widths`),
+    /// made while far records may be written.
+    far_widths: Option<Rc<std::cell::Cell<bool>>>,
 }
 
 impl FlowReuse {
@@ -136,6 +140,7 @@ impl FlowReuse {
             settled_outside_widths,
             warm,
             floats: std::cell::Cell::new(false),
+            far_widths: settled_outside_widths.then(Rc::default),
         })
     }
 }

@@ -36,12 +36,13 @@ impl FlowCx {
         end: Counters,
         out: &mut Vec<AnyElement>,
     ) {
-        // A build that read an outside width gives no far record.
-        let Some(widths) = mark.widths.clone().filter(|w| mark.far && !w.get()) else {
+        // A build that read an outside width gives no far record. Widths are
+        // read during the build only, so the flag is final here.
+        if !mark.far || mark.widths.as_ref().is_none_or(|w| w.get()) {
             return;
-        };
+        }
         let Some(child) = out.pop() else { return };
-        let pending = Rc::new(PendingFar::new(self.key.clone(), mark.start, end, widths));
+        let pending = Rc::new(PendingFar::new(self.key.clone(), mark.start, end));
         let source = self.reuse.shells.source(e);
         self.reuse
             .with_far(|far| far.pending.push((pending.clone(), source)));

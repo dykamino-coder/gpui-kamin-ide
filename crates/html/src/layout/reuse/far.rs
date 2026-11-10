@@ -72,8 +72,6 @@ pub(super) struct PendingFar {
     key: Rc<FlowKey>,
     start: Counters,
     end: Counters,
-    /// Width reads from outside during the block's build.
-    widths: Rc<Cell<bool>>,
     layout: RefCell<Option<RetainedSubtree>>,
     /// Prepaint left nothing but hitboxes: the union of the block's layout
     /// boxes and of its hitboxes, if any.
@@ -84,17 +82,11 @@ pub(super) struct PendingFar {
 }
 
 impl PendingFar {
-    pub(super) fn new(
-        key: Rc<FlowKey>,
-        start: Counters,
-        end: Counters,
-        widths: Rc<Cell<bool>>,
-    ) -> Self {
+    pub(super) fn new(key: Rc<FlowKey>, start: Counters, end: Counters) -> Self {
         Self {
             key,
             start,
             end,
-            widths,
             layout: RefCell::new(None),
             placed: Cell::new(None),
             sink: Rc::default(),
@@ -104,7 +96,7 @@ impl PendingFar {
 
     fn finish(&self, source: Source) -> Option<FarRecord> {
         let excess = self.excess.get()?;
-        if self.widths.get() || self.sink.tainted() {
+        if self.sink.tainted() {
             return None;
         }
         Some(FarRecord {
