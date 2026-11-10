@@ -16,14 +16,18 @@ impl Paragraph {
         text: &WindowTextSystem,
     ) -> LineLayout {
         let mut found: [Option<LinePiece>; PIECES] = std::array::from_fn(|_| None);
-        let (mut from, mut capacity) = (start, 0);
+        let (mut from, mut capacity, mut widest) = (start, 0, 0);
         for ((slot, &key), &to) in found.iter_mut().zip(keys).zip(ends) {
             *slot = text.line_piece(key);
-            capacity += slot
-                .as_ref()
-                .map_or_else(|| self.run_indices(&(from..to)).len(), |c| c.runs.len());
+            let own = self.run_indices(&(from..to)).len();
+            if slot.is_none() {
+                widest = widest.max(own);
+            }
+            capacity += slot.as_ref().map_or(own, |c| c.runs.len());
             from = to;
         }
+        // Прогоны шрифтов набираемых частей: один блок на всю сборку.
+        let mut font_runs = Vec::with_capacity(widest);
         // Ёмкость — степень двойки, как у списка, растущего удвоением.
         let mut runs = Vec::with_capacity(capacity.next_power_of_two().max(4));
         let (mut from, mut width) = (start, px(0.));
@@ -44,6 +48,7 @@ impl Paragraph {
                         tracking(self),
                         base,
                         &mut runs,
+                        &mut font_runs,
                     )
                 }
             };

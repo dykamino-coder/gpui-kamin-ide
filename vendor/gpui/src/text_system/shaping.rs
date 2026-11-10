@@ -124,8 +124,9 @@ impl WindowTextSystem {
     /// the shaped text itself: `text` is styled by `runs` with the first
     /// `skip` bytes of the first run dropped. Its glyph runs are appended to
     /// `out`, glyph indices offset by `index_base` and positions from the
-    /// start of `text`. Returns the width (letter-spacing included), ascent
-    /// and descent.
+    /// start of `text`. `font_runs` is the caller's scratch for the font runs
+    /// (a line being composed holds the pooled one). Returns the width
+    /// (letter-spacing included), ascent and descent.
     #[allow(clippy::too_many_arguments)]
     pub fn shape_into(
         &self,
@@ -136,20 +137,19 @@ impl WindowTextSystem {
         letter_spacing: Pixels,
         index_base: usize,
         out: &mut Vec<ShapedRun>,
+        font_runs: &mut Vec<FontRun>,
     ) -> (Pixels, Pixels, Pixels) {
-        let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
         font_runs.clear();
-        self.fill_font_runs_clipped(runs, skip, text.len(), font_size, &mut font_runs);
-        let shaped = self.no_break_hyphens(text, &font_runs);
+        self.fill_font_runs_clipped(runs, skip, text.len(), font_size, font_runs);
+        let shaped = self.no_break_hyphens(text, font_runs);
         let first = out.len();
         let (mut width, ascent, descent) = self.platform_text_system.layout_line_into(
             &shaped,
             font_size,
-            &font_runs,
+            font_runs,
             index_base,
             out,
         );
-        self.font_runs_pool.lock().push(font_runs);
         if letter_spacing != px(0.) {
             width += track_glyphs(&mut out[first..], &shaped, index_base, letter_spacing);
         }
