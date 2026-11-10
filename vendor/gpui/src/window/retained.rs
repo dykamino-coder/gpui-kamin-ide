@@ -359,6 +359,14 @@ impl LayoutSnapshot {
 }
 
 impl Window {
+    /// Paint `f` with the line layouts it looks up released from the text
+    /// system's frame caches: the next frame does not find them. For a
+    /// subtree whose layout the host keeps while later frames do not paint
+    /// it, so its shaped lines go with this paint instead of a frame later.
+    pub fn with_line_layouts_released<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        crate::text_system::with_layouts_released(|| f(self))
+    }
+
     /// Paint `f` with `sink` measuring its ink (see [`InkSink`]).
     pub fn with_ink_sink<R>(&mut self, sink: Rc<InkSink>, f: impl FnOnce(&mut Self) -> R) -> R {
         // At most one open sink measures scopes (`InkSink::begin_scope`).

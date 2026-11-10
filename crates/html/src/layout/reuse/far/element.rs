@@ -90,7 +90,20 @@ impl Wrap for FarRecorder {
         // block feeds its scope, not the next block's (`InkSink::begin_scope`).
         let scope = sink.begin_scope();
         let callbacks = window.next_frame_callback_count();
-        window.with_ink_sink(sink.clone(), |window| self.child.paint(window, cx));
+        // A block whose boxes lie far from the screen is claimed, not
+        // painted, by the next frames: its shaped lines go with this paint
+        // (Blink keeps the layout result, not the shaping buffers). If its
+        // ink still reaches the screen, the next build shapes them again.
+        let screen = screen_of(window);
+        let far = self
+            .pending
+            .placed
+            .is_some_and(|(boxes, _)| clear_of(boxes, Excess::default(), screen));
+        let child = &mut self.child;
+        window.with_ink_sink(sink.clone(), |window| match far {
+            true => window.with_line_layouts_released(|window| child.paint(window, cx)),
+            false => child.paint(window, cx),
+        });
         let (ink, tainted) = (sink.bounds(), sink.tainted());
         let quiet = !tainted && callbacks == window.next_frame_callback_count();
         let Some(((boxes, hits), layout)) = self
@@ -107,7 +120,7 @@ impl Wrap for FarRecorder {
             (a, b) => a.or(b),
         };
         let excess: Excess = ink_beyond(boxes, ink);
-        if !clear_of(boxes, excess, screen_of(window)) {
+        if !clear_of(boxes, excess, screen) {
             self.near();
             return;
         }
