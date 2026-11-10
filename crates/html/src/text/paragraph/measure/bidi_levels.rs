@@ -60,13 +60,6 @@ impl Levels {
     }
 }
 
-/// Хэш восьми байт перед пробелом точки `c`: точки зависят только от текста рядом.
-fn word_hash(bytes: &[u8], c: usize) -> u32 {
-    bytes[c - 9..c - 1].iter().fold(2_166_136_261u32, |h, &b| {
-        (h ^ u32::from(b)).wrapping_mul(16_777_619)
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
