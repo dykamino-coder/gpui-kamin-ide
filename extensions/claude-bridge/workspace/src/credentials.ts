@@ -4,7 +4,7 @@ import path from 'node:path'
 import { randomBytes, randomUUID } from 'node:crypto'
 
 export const CREDENTIAL_FILE = 'workspace-credentials.json'
-export const SESSION_FILE = 'workspace-sessions.json'
+export const SESSION_FILE = 'workspace-browser-sessions.json'
 export interface Credentials { version: 1; server: string; token: string; browserSecret: string }
 
 export function privateWrite(file: string, value: unknown): void {

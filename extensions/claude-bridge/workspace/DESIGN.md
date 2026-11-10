@@ -560,3 +560,28 @@ failed sync, repeated activation, cancellation and background lazy activation.
 Linux Podman production-browser retention must still show one establishment,
 one submission and no interrupt across zero pages and five reattachments. The
 upstream is synthetic; this change does not close full actual-model parity.
+
+## Bounded follow-up: isolate browser authentication from open sessions
+
+Exact-image credentials acceptance exposed two writers using the same private
+`workspace-sessions.json`: browser cookie digests (an array) and the open-tab set
+(a versioned object). Creating a tab overwrites the authentication file, so the
+next CLI startup rejects the browser session data before serving health.
+
+Keep the established open-tab filename and give browser authentication its own
+`workspace-browser-sessions.json`, selected by the existing `SESSION_FILE`
+constant in the CLI and explicit credential reset. Service credentials and the
+open-tab format remain intact. Existing pre-fix cookies need one new browser
+login after upgrade; loopback auto-login performs it through normal upstream
+authorization. Do not reconstruct overwritten cookies or accept invalid auth
+state. Subsequent restart/recreate must retain the same cookie.
+
+Fix the credentials acceptance marker to the shared turn helper's existing
+`acceptance-<uuid>` contract, so the real conversation reaches the model.
+Acceptance: an integrated auth/open-tab persistence test fails on the shared
+filename, then verifies independent formats, old-cookie validation, tab recovery
+and reset isolation. Run the strict canonical Linux Podman credentials suite on
+an exact production image: registration, actual conversation, unchanged cookie
+and credentials after restart, same conversation/model memory, recreate without
+bootstrap, and foreign Origin/Host rejection. Preserve the failed original run.
+Full capability parity/composed deployment remains open.
