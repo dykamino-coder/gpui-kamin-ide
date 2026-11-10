@@ -130,8 +130,16 @@ receives a bounded headless-xterm screen/scrollback snapshot before live output.
 Detach does not respawn a shell. Explicit kill/tab close/disconnect/shutdown
 terminates owned processes. Limits include 32 records (including pending spawns),
 5000 scrollback lines and an 8 MiB serialized snapshot budget; omitted history is
-reported. Shells/screens survive browser loss, not host restart. Remaining OSC
-palette/pixel-window query compatibility has not been accepted as full TUI parity.
+reported. Shells/screens survive browser loss, not host restart.
+
+The host answers OSC 4/10/11/12 color queries with zero pages, owns palette
+set/reset state (104/110/111/112 and RIS), and includes it in screen sync.
+Browser shell replicas apply that same shared state without emitting query
+replies as duplicate keyboard input. Their palette is consistently dark,
+independent of each page's UI theme. Hexadecimal X11 `#RGB` through
+`#RRRRGGGGBBBB` and `rgb:R/G/B` forms use 8-bit renderer precision; named colors
+are currently ignored. Pixel/window reports and other TUI compatibility remain
+open and are not covered by this bounded color-query contract.
 
 The current ChatRoot and terminal components render the shared host services. Browser
 clipboard, downloads, uploads, path dialogs, notifications, links and audio use
