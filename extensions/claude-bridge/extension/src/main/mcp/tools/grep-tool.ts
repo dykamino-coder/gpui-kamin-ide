@@ -334,10 +334,16 @@ function hasNestedQuantifier(p: string): boolean {
   return /\([^()]*[+*][^()]*\)\s*[+*{]/.test(p)
 }
 
-// Async fallback when ripgrep isn't available (streaming readdir)
-async function grepFallback(
+/** Wall-clock budget of the in-process fallback, matching ripgrep's 9 min. */
+const FALLBACK_TIMEOUT_MS = 540_000
+
+// Async fallback when ripgrep isn't available (streaming readdir). Like the rg
+// paths, a search cut off by its deadline says so: an incomplete walk must never
+// read as "No matches found." or as a complete list.
+export async function grepFallback(
   pattern: string, searchPath: string, outputMode: string,
   caseInsensitive: boolean, headLimit: number, offset: number,
+  timeoutMs = FALLBACK_TIMEOUT_MS,
 ): Promise<McpResult> {
   if (hasNestedQuantifier(pattern)) {
     return errorResult(
@@ -351,8 +357,11 @@ async function grepFallback(
   try { regex = new RegExp(pattern, flags) }
   catch (e) { return errorResult(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`) }
   const results: string[] = []
+  const deadline = Date.now() + timeoutMs
+  let timedOut = false
 
   async function searchDir(dir: string): Promise<void> {
+    if (timedOut) return
     let entries: fs.Dirent[]
     try {
       entries = await fsp.readdir(dir, { withFileTypes: true })
@@ -361,6 +370,7 @@ async function grepFallback(
     }
     for (const entry of entries) {
       if (headLimit > 0 && results.length >= headLimit) return
+      if (Date.now() > deadline) { timedOut = true; return }
       if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
       const fullPath = path.join(dir, entry.name)
       if (entry.isDirectory()) {
@@ -414,5 +424,13 @@ async function grepFallback(
   if (offset > 0) output = output.split('\n').slice(offset).join('\n')
   if (headLimit > 0) output = output.split('\n').slice(0, headLimit).join('\n')
 
-  return textResult(output || 'No matches found.')
+  const seconds = Math.round(timeoutMs / 1000)
+  if (timedOut && !output.trim()) {
+    return errorResult(
+      `Search timed out after ${seconds}s with no matches captured; not every file was searched. ` +
+      `Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`,
+    )
+  }
+  const suffix = timedOut ? `\n[Search timed out after ${seconds}s — partial results above; try a narrower path or pattern]` : ''
+  return textResult((output || 'No matches found.') + suffix)
 }

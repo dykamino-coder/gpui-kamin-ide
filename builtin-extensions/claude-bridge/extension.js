@@ -19200,7 +19200,7 @@ async function grepSearch(input) {
 function hasNestedQuantifier(p) {
   return /\([^()]*[+*][^()]*\)\s*[+*{]/.test(p);
 }
-async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset) {
+async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset, timeoutMs = FALLBACK_TIMEOUT_MS) {
   if (hasNestedQuantifier(pattern)) {
     return errorResult4(
       `Pattern "${pattern}" has a nested quantifier that can hang the JS search engine, and ripgrep isn't available on this machine to run it safely. Simplify the pattern (avoid nested quantifiers like (a+)+ / (.*x){n}) or install ripgrep on PATH.`
@@ -19214,7 +19214,10 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
     return errorResult4(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`);
   }
   const results = [];
+  const deadline = Date.now() + timeoutMs;
+  let timedOut = false;
   async function searchDir(dir) {
+    if (timedOut) return;
     let entries2;
     try {
       entries2 = await import_promises3.default.readdir(dir, { withFileTypes: true });
@@ -19223,6 +19226,10 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
     }
     for (const entry of entries2) {
       if (headLimit > 0 && results.length >= headLimit) return;
+      if (Date.now() > deadline) {
+        timedOut = true;
+        return;
+      }
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
       const fullPath = import_node_path5.default.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -19273,9 +19280,17 @@ ${matchingLines.join("\n")}`);
   let output = results.join("\n");
   if (offset > 0) output = output.split("\n").slice(offset).join("\n");
   if (headLimit > 0) output = output.split("\n").slice(0, headLimit).join("\n");
-  return textResult4(output || "No matches found.");
+  const seconds = Math.round(timeoutMs / 1e3);
+  if (timedOut && !output.trim()) {
+    return errorResult4(
+      `Search timed out after ${seconds}s with no matches captured; not every file was searched. Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`
+    );
+  }
+  const suffix = timedOut ? `
+[Search timed out after ${seconds}s \u2014 partial results above; try a narrower path or pattern]` : "";
+  return textResult4((output || "No matches found.") + suffix);
 }
-var import_promises3, import_node_path5, import_node_child_process5;
+var import_promises3, import_node_path5, import_node_child_process5, FALLBACK_TIMEOUT_MS;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
@@ -19283,6 +19298,7 @@ var init_grep_tool = __esm({
     import_node_path5 = __toESM(require("node:path"), 1);
     import_node_child_process5 = require("node:child_process");
     init_fs_shared();
+    FALLBACK_TIMEOUT_MS = 54e4;
   }
 });
 
