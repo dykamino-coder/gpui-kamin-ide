@@ -43,7 +43,9 @@ impl Cull {
         let admission = window
             .render_context::<crate::layout::fragment::line_admission::Lines>()
             .is_some();
-        if admission
+        static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *OFF.get_or_init(|| std::env::var_os("KAMIN_INBLOCK_NO_CULL").is_some())
+            || admission
             || !window.retained_root_environment()
             || p.fragment.is_some()
             || p.ruby_layers.is_some()
