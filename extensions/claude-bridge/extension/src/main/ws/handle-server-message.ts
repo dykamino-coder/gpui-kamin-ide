@@ -7,6 +7,7 @@
 import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ServerMessage } from '../../shared/mcp-protocol'
 import type { JsonlBatcher } from './jsonl-batcher'
+import { cacheFileOrder } from '../../shared/jsonl-cache-order'
 import type { ExtendedConnectionState } from './connection-manager'
 
 export interface HandlerCtx {
@@ -87,11 +88,13 @@ const JSONL_CACHE_SLACK = 1_000
 export function trimJsonlCache(cached: { _ord?: number; _pos?: number }[]): void {
   const over = cached.length - JSONL_CACHE_MAX
   if (over < JSONL_CACHE_SLACK) return
-  // Sorting the ORDS (plain numbers) is far cheaper than sorting the entry
-  // objects, and `_ord` is unique per entry, so the cutoff drops exactly `over`.
-  const ords = cached.map((e) => e._pos ?? e._ord ?? 0).sort((a, b) => a - b)
-  const cutoff = ords[over - 1] ?? 0
-  const kept = cached.filter((e) => (e._pos ?? e._ord ?? 0) > cutoff)
+  // Drop exactly the `over` oldest rows. A cutoff VALUE is not enough: untagged
+  // live rows used to share the key 0, so a cutoff of 0 dropped all of them at
+  // once (see jsonl-cache-order.ts).
+  const drop = new Uint8Array(cached.length)
+  const order = cacheFileOrder(cached)
+  for (let i = 0; i < over; i++) drop[order[i]!] = 1
+  const kept = cached.filter((_, i) => drop[i] === 0)
   // Не push(...kept): spread на ~20k элементов упирается в лимит аргументов V8.
   cached.length = kept.length
   for (let i = 0; i < kept.length; i++) cached[i] = kept[i]
