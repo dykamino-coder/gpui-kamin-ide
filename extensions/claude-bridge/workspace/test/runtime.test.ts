@@ -168,7 +168,7 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     const send = (channel: string, args: unknown[]) => a.send(JSON.stringify({ kind: 'send', channel, args }))
     send('pty-submit-text', [activeTab, 'message once', 'stable-submission'])
     await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:submitText' && frame.submissionId === 'stable-submission')
-    peer!.send(JSON.stringify({ type: 'session:submission', id: 'stable-submission', state: 'native' }))
+    peer!.send(JSON.stringify({ type: 'session:submission', id: 'stable-submission', state: 'native', uuid: 'native-history' }))
     for (const [identity, text] of [['fallback-accepted', 'fallback accepted with zero views'], ['fallback-pending', 'fallback still waiting']]) {
       send('pty-submit-text', [activeTab, text, identity])
       await wait(upstreamFrames, upstreamEvents, frame => frame.type === 'session:submitText' && frame.submissionId === identity)
@@ -196,6 +196,7 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     assert.match(JSON.stringify((await tool('Read', { file_path: file })).result), /after/)
     peer!.send(JSON.stringify({ type: 'streaming:delta', msgId: 'stream-turn', blockIdx: 0, appendText: ' during absence', kind: 'text' }))
     peer!.send(JSON.stringify({ type: 'jsonl:entries', entries: [
+      { type: 'user', uuid: 'native-history', _ord: 0, message: { role: 'user', content: 'message once' } },
       { type: 'user', uuid: 'fallback-history', _ord: 1, message: { role: 'user', content: 'fallback accepted with zero views' } },
       { type: 'user', uuid: 'closed-history', _ord: 2, message: { role: 'user', content: 'recorded with zero views' } },
     ] }))
@@ -215,6 +216,7 @@ test(`real BridgeHost pins identity, runs tools and ${lifecycle} cancels owned w
     assert.equal(snapshot.find(frame => frame.channel === 'streaming-entry').args[1].message.content[0].text, 'before during absence')
     assert.ok(snapshot.some(frame => frame.channel === 'permission-request' && frame.args[1].requestId === 'reopen-permission'))
     assert.ok(snapshot.some(frame => frame.channel === 'session:submission' && frame.args[1].text === 'message once' && frame.args[1].state === 'native'))
+    assert.equal(snapshot.find(frame => frame.channel === 'session:submission' && frame.args[1].id === 'stable-submission').args[1].committed, true)
     const fallback = (frames: any[], id: string) => frames.find(frame => frame.channel === 'session:submission' && frame.args[1].id === id).args[1]
     assert.equal(fallback(snapshot, 'fallback-accepted').fallbackQueue.consumed, true, 'Host must reconcile fallback receipts while no browser exists')
     assert.equal(fallback(snapshot, 'fallback-pending').fallbackQueue.consumed, undefined)
