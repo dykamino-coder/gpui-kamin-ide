@@ -21,7 +21,7 @@ pub(super) fn save(frame: &CapturedFrame, path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn fingerprint(frame: &CapturedFrame) -> String {
+pub(super) fn fingerprint(frame: &CapturedFrame) -> String {
     let hash = frame
         .bgra
         .chunks_exact(4)

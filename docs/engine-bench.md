@@ -117,6 +117,16 @@ Use saved first-frame PNGs and an independent exact RGB comparison for validatio
 Repeated-frame differences in a static document are an engine determinism finding
 to investigate separately; this harness records them without claiming a cause.
 
+In `relayout` and `edit` modes, `fresh_checks` also records
+`incremental_bgr_fnv1a64` and `fresh_bgr_fnv1a64`, using the same RGB-only BGR
+fingerprint as the measured sequence. `--fresh-check-dir DIR` retains both frames
+for every check, including matching checks: `relayout-N-incremental.png` and
+`relayout-N-fresh.png` for each viewport group, or `edit-N-*.png` for each variant.
+Paths are recorded in each check's `artifacts`. An edit mismatch's second fresh
+control also gets hashes and optional PNGs in `second_fresh`. Use a new directory
+for each invocation. These checks and PNG writes occur after the measured samples;
+they do not change the exact RGB verdict or discard timing samples.
+
 Known platform limitation: Intel Iris Xe with driver 32.0.101.7085 can produce
 rare single-pixel changes on the native D3D11 hardware backend, setting
 `frame_pixels_changed` on an unchanged document (roughly one per 1,000–5,000

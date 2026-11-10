@@ -67,9 +67,14 @@ pub(super) async fn run(
             luid,
         )
         .await?;
-        let different = pixels::differing(incremental, &fresh.pixels)?;
-        let mut check = json!({"variant": variant, "different_rgb_pixels": different});
-        if different != 0 {
+        let mut check = super::fresh_check::compare(
+            incremental,
+            &fresh.pixels,
+            args.fresh_check_dir.as_deref(),
+            &format!("edit-{variant}"),
+        )?;
+        check["variant"] = json!(variant);
+        if check["different_rgb_pixels"] != 0 {
             // Второй свежий кадр отличает недетерминизм свежей сборки от
             // ошибки инкрементального пути.
             let (_, again, _) = sample(
@@ -86,6 +91,12 @@ pub(super) async fn run(
                 json!(pixels::differing(&fresh.pixels, &again.pixels)?);
             check["incremental_vs_second_fresh_rgb_pixels"] =
                 json!(pixels::differing(incremental, &again.pixels)?);
+            check["second_fresh"] = super::fresh_check::compare(
+                incremental,
+                &again.pixels,
+                args.fresh_check_dir.as_deref(),
+                &format!("edit-{variant}-second"),
+            )?;
             check["detail"] = pixels::detail(incremental, &fresh.pixels);
             if let Some(dir) = &args.frame_diff_dir {
                 std::fs::create_dir_all(dir)?;
