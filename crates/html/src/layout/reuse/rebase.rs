@@ -124,9 +124,12 @@ impl Store {
         if records.len() < recorded {
             self.restyled.set(true);
         }
-        if records.is_empty() && recorded > 0 {
-            // No record holds: the store starts over as a fresh document's,
-            // whose flow keys do not hold the previous `html`/`body` boxes.
+        if records.is_empty() {
+            // No record holds (or none was made yet): the store starts over as
+            // a fresh document's, whose flow keys do not hold the previous
+            // `html`/`body` boxes. A carried key alone would make the rebuild's
+            // own frame, the costliest one, wrap every block for recording,
+            // where a fresh document waits for its next unchanged build.
             self.start_over();
             return;
         }
