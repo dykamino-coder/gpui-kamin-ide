@@ -66,10 +66,9 @@ impl Document {
             #[cfg(feature = "engine-bench")]
             &mut super::BuildTimings::default(),
         )?;
-        state
-            .values()
-            .doc
-            .images
+        let images: &std::cell::RefCell<crate::resources::images::store::ImageStore> =
+            &state.values().doc.images;
+        images
             .borrow_mut()
             .inherit_svg_fonts(&self.state.values().doc.images.borrow());
         let mut opts = super::scope::frame_opts(&state, &nodes, opts);
