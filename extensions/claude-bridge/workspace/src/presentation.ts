@@ -1,7 +1,7 @@
 import type { ClientFrame, HostFrame } from './protocol.js'
 import { createHash } from 'node:crypto'
 import type { SubmissionStorage } from './submission-state.js'
-import { matchSubmissionQueue, mergeFallbackQueue, queueRowIdentity, queueWatermark, type QueueEntry, type SubmissionUpdate } from '../../webview/shared/submission-queue.js'
+import { LOST_RECEIPT_WARNING, lostAfterSnapshot, matchReceiptsToTranscript, matchSubmissionQueue, mergeFallbackQueue, queueRowIdentity, queueWatermark, type QueueEntry, type SubmissionUpdate } from '../../webview/shared/submission-queue.js'
 
 const TAB_EVENTS = new Set(['session:activity', 'session:usage', 'session:title', 'connection-state-changed'])
 const GLOBAL_EVENTS = new Set(['tree-update', 'mcp-servers-changed', 'mcp-loading', 'mcp-ready', 'config-ready'])
@@ -71,11 +71,14 @@ export class WorkspacePresentation {
       this.submissions.set(key, { ...frame, args: [args[0], receipt] })
       if (!receipt.committed) this.reconcileCommitted(args[0], this.entries(args[0]))
       if (args[1].state === 'fallback') this.reconcileFallback(args[0], this.entries(args[0]))
+      if (!receipt.committed) this.reconcileTranscript(args[0], this.entries(args[0]))
       this.persist()
     }
+    if (channel === 'session:submission' && Array.isArray(args[1]?.known)) this.applyKnownSnapshot(args[0], new Set(args[1].known))
     if (channel === 'jsonl-entries' && Array.isArray(args[1])) {
       this.reconcileCommitted(args[0], args[1])
       this.reconcileFallback(args[0], args[1])
+      if (this.reconcileTranscript(args[0], args[1])) this.persist()
     }
     if (channel === 'session:submission' && typeof args[1]?.capable === 'boolean') this.latest.set(`submission-capability:${args[0]}`, frame)
     if (channel === 'mcp-activity' && args[1]?.requestId) {
@@ -103,6 +106,44 @@ export class WorkspacePresentation {
     }
   }
 
+  private pendingFor(tabId: string): SubmissionUpdate[] {
+    return [...this.submissions.values()].map(frame => frame.args as [string, SubmissionUpdate])
+      .filter(([id]) => id === tabId).map(([, receipt]) => receipt)
+  }
+
+  /** Receipts the server can no longer settle (restart, lost read receipt,
+   *  host restore) are committed by the prompt the CLI wrote after them. */
+  private reconcileTranscript(tabId: string, entries: readonly QueueEntry[]): boolean {
+    const receipts = this.pendingFor(tabId)
+    if (!entries.length || !receipts.some(receipt => !receipt.committed && !receipt.uuid)) return false
+    const used = this.consumedQueueRows.get(tabId) ?? new Set<string>()
+    // Rows a stored UUID already claims stay out of the match, but are not persisted.
+    const claimed = new Set(used)
+    for (const receipt of receipts) if (receipt.uuid) claimed.add(`uuid:${receipt.uuid}`)
+    const matches = matchReceiptsToTranscript(receipts.map(receipt => ({ ...receipt,
+      afterOrd: receipt.fallbackQueue?.afterOrd ?? -1 })), entries, claimed)
+    if (!matches.length) return false
+    this.consumedQueueRows.set(tabId, used)
+    for (const { id, entry } of matches) {
+      const identity = queueRowIdentity(entry)
+      if (identity) used.add(identity)
+      const receipt = receipts.find(receipt => receipt.id === id)!
+      receipt.committed = true // before publish: the observer sees it recursively
+      this.publish('session:submission', tabId, receipt)
+    }
+    return true
+  }
+
+  /** Reattach snapshot: pending receipts the server process does not track
+   *  will never be updated again; stop offering Cancel for them. */
+  private applyKnownSnapshot(tabId: string, known: ReadonlySet<string>): void {
+    const lost = this.pendingFor(tabId).filter(receipt => lostAfterSnapshot(receipt, known))
+    for (const receipt of lost) {
+      Object.assign(receipt, { state: 'uncertain', cancelable: false, warning: LOST_RECEIPT_WARNING })
+      this.publish('session:submission', tabId, receipt)
+    }
+    if (this.reconcileTranscript(tabId, this.entries(tabId)) || lost.length) this.persist()
+  }
   /** Called once at host ingress. Never re-send accepted submissions on attach. */
   accept(frame: ClientFrame): boolean {
     if (frame.kind === 'invoke' && frame.channel === 'workspace:queue-dismiss') {

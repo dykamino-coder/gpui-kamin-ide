@@ -96,6 +96,15 @@ spinner" class is one of these copies diverging from (1) (§10).
   were stored and counted by the store cap until #698; since then the store keeps only `CHAT_STORED_ENTRY_TYPES` (`extension/src/shared/chat-stored-entries.ts`).
 - Attachments render only for `queued_command` with a prompt and
   `edited_text_file`. `queue-operation` rows rebuild the pending queue.
+- Pending user bubbles come from submission receipts (`signals/submissions.ts`,
+  host copy in `workspace/src/presentation.ts`) and normally disappear by the
+  stored UUID of the read receipt. A receipt the server can no longer settle
+  stays `uncertain` and is settled from the transcript by the shared
+  `matchReceiptsToTranscript`: one row per receipt, never a row older than the
+  receipt (store watermark; server `createdAt` against the CLI `timestamp`,
+  same clock). On reattach the server lists the ids it still tracks
+  (`known`); pending receipts missing from it (server or CLI restart) turn
+  `uncertain` instead of a Queued bubble whose Cancel reaches nothing.
 
 ## 6. Compaction
 
@@ -216,6 +225,7 @@ to one copy's bookkeeping.
 | D6 | stubs always sort last, but `stubSuperseded` looks for a successor after the stub, so an aborted API attempt (new `message.id` on retry) is never swept and stays under the retry's answer | `jsonl.ts` (`stubSuperseded`) | fixed: a successor is a later CLI timestamp than the store's newest when the stub appeared |
 | D7 | live rows carry no `_pos`; after a bottom trim of a live session the oldest resident row has no page cursor, so scroll-up stops (`reachedStart`) with history above unreachable; the mirror also never gets live rows | server `jsonl-watcher.ts` (tail contract) | expected-fail; open (tag live rows with `_pos`/`_posEnd`, ADR step 1) |
 | D8 | the host cache can hold the same record twice (untagged live copy keyed by uuid, tagged page copy keyed by `_pos`); the webview dedups by uuid, but the cache cap counts both | host `connection-manager.ts` | open, low |
+| D9 | a pending receipt never settles when the read receipt is lost: the server forgets ids on restart (the client keeps a Queued bubble, Cancel does nothing), `uncertain` waits for a UUID that never comes, a stopped session sends no receipt at all | `submissions.ts`, `presentation.ts`, `cli-submissions.ts`, `session-io.ts` | fixed: reattach `known` snapshot, `createdAt`, transcript settling of `uncertain` receipts, stopped-session receipt |
 
 ## 12. Test matrix
 
@@ -229,6 +239,7 @@ to one copy's bookkeeping.
 | stream + hand-off byte-equal, D5, late stub, 2 000-delta answer, interrupt, reconnect, reload, parallel subagents, compaction mid-stream, D6 retry | streaming audit |
 | I1/I2 under random schedules (60 seeds) | property |
 | D1/D2 | host `shared/jsonl-cache-order.test.ts` |
+| D9 | `signals/submissions.test.ts` › stale pending receipts; workspace `presentation.test.ts`, `submission-state.test.ts`; server `cli-submissions.test.ts`, `session-cli-control.test.ts` |
 
 `it.fails` cases are known defects. When a fix lands the `it.fails` case turns
 red (it unexpectedly passes); the fixing PR flips it to `it`.

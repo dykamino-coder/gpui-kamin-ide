@@ -923,4 +923,8 @@ export interface SubmissionUpdate {
   cancelable?: boolean
   warning?: string
   capable?: boolean
+  /** Server time (ms) the server first accepted this id. */
+  createdAt?: number
+  /** Reattach snapshot (`id: ''`): ids the server still tracks. */
+  known?: string[]
 }

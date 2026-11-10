@@ -137,4 +137,28 @@ describe('interactive CLI control', () => {
     control.parser.feed('\x1b]7501;state=clear\x07')
     expect(control.authoritative()).toBe(false)
   })
+  it('tells a reattached client which receipts survive and answers a stopped session', () => {
+    const f = fixture()
+    expect(f.control.submit('kept', 'kept-id')).toBe(true)
+    f.frames.length = 0
+    f.control.replay()
+    expect(f.frames.filter((frame) => frame.type === 'session:submission').at(-1)).toEqual({
+      type: 'session:submission',
+      sessionId: 'control',
+      id: '',
+      known: ['kept-id'],
+    })
+    f.frames.length = 0
+    ;(f.session as { state: string }).state = 'exited'
+    submitTextToSession(f.session, 'too late', 'late-id')
+    expect(f.frames).toEqual([
+      expect.objectContaining({
+        type: 'session:submission',
+        id: 'late-id',
+        state: 'uncertain',
+        cancelable: false,
+        createdAt: expect.any(Number),
+      }),
+    ])
+  })
 })

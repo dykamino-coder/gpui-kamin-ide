@@ -174,3 +174,28 @@ test('individual queue removal validates atomically, isolates tabs and retains d
   assert.equal(receipt('tab', 'second').fallbackQueue.consumed, undefined)
   assert.ok(events.every(frame => frame.channel === 'session:submission'), 'Display removal must only publish receipts')
 })
+
+test('receipts the server forgot settle from the transcript instead of hanging forever', () => {
+  const t0 = Date.parse('2026-11-10T10:00:00Z')
+  let entries: any[] = [{ type: 'user', uuid: 'old', _ord: 3, timestamp: new Date(t0 - 60_000).toISOString(),
+    message: { content: 'keep the role as it is' } }]
+  const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }), () => entries)
+  const receipt = (id: string) => (state.snapshot().find(frame => frame.channel === 'session:submission' && (frame.args as any)[1].id === id)!.args as any)[1]
+  for (const id of ['lost', 'kept']) {
+    state.accept({ kind: 'send', channel: 'pty-submit-text', args: ['tab', 'keep the role as it is', id] })
+    state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id, state: 'queued', createdAt: t0 }] })
+  }
+  assert.equal(receipt('lost').committed, undefined, 'An older identical prompt must not confirm a new receipt')
+  // Server restarted: its reattach snapshot no longer lists 'lost'.
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: '', known: ['kept'] }] })
+  assert.equal(receipt('lost').state, 'uncertain')
+  assert.equal(receipt('lost').cancelable, false)
+  assert.match(receipt('lost').warning, /no longer tracks/)
+  assert.equal(receipt('kept').state, 'queued')
+  entries = [{ type: 'user', uuid: 'live', timestamp: new Date(t0 + 5_000).toISOString(), message: { content: 'keep the role as it is' } }]
+  state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', entries] })
+  assert.equal(receipt('lost').committed, true)
+  assert.equal(receipt('kept').committed, undefined, 'One transcript row confirms one receipt')
+  state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', entries] })
+  assert.equal(receipt('kept').committed, undefined, 'A repeated batch cannot confirm identical prose twice')
+})
