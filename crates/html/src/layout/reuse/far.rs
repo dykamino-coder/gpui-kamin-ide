@@ -64,6 +64,9 @@ impl FarRecord {
     }
 }
 
+/// Union of a far block's layout boxes and of its hitboxes, if any.
+type Placed = (Bounds<ScaledPixels>, Option<Bounds<ScaledPixels>>);
+
 /// A far record in the making: filled by `FarRecorder`, finished after paint.
 pub(super) struct PendingFar {
     key: Rc<FlowKey>,
@@ -74,7 +77,7 @@ pub(super) struct PendingFar {
     layout: RefCell<Option<RetainedSubtree>>,
     /// Prepaint left nothing but hitboxes: the union of the block's layout
     /// boxes and of its hitboxes, if any.
-    placed: Cell<Option<(Bounds<ScaledPixels>, Option<Bounds<ScaledPixels>>)>>,
+    placed: Cell<Option<Placed>>,
     sink: Rc<InkSink>,
     /// Set when the block painted far from the screen.
     excess: Cell<Option<Excess>>,

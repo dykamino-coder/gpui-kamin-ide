@@ -24,12 +24,11 @@ pub(super) struct PlainProbe {
 }
 
 impl PlainProbe {
-    /// The compact form of probe `p`, if it is plain: horizontal, with no
-    /// per-span rules other than spacing, no atoms, ruby, clamp measure,
-    /// fitting or fragmentation, so that `probe` makes `p` as its layout
-    /// request built it. Otherwise `p` is given back.
-    pub(super) fn of(mut p: Paragraph) -> Result<Self, Paragraph> {
-        let plain = !p.vertical
+    /// Probe `p` has a compact form (`of`): horizontal, with no per-span
+    /// rules other than spacing, no atoms, ruby, clamp measure, fitting or
+    /// fragmentation, so that `probe` makes `p` as its layout request built it.
+    pub(super) fn plain(p: &Paragraph) -> bool {
+        !p.vertical
             && p.vertical_inline.is_none()
             && p.clamp_rows.is_none()
             && p.ruby_base_sink.is_none()
@@ -46,19 +45,21 @@ impl PlainProbe {
             && p.spacers.is_empty()
             && p.spacer_edges.is_empty()
             && p.box_extents.is_empty()
-            && p.atom_fit.borrow().is_empty();
-        if !plain {
-            return Err(p);
-        }
+            && p.atom_fit.borrow().is_empty()
+    }
+
+    /// The compact form of a plain probe `p` (`plain`).
+    pub(super) fn of(mut p: Paragraph) -> Self {
+        debug_assert!(Self::plain(&p));
         let stops = p.kept_stops().map(PackedStops::pack);
         let word_spans = std::mem::take(&mut p.word_spans);
         let letter_spans = std::mem::take(&mut p.letter_spans);
-        Ok(Self {
+        Self {
             settings: Settings::from_probe(p),
             word_spans,
             letter_spans,
             stops,
-        })
+        }
     }
 
     /// A fresh probe equal to the one the compact form was taken from.

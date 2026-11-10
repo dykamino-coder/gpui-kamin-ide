@@ -90,23 +90,20 @@ impl<F: FnMut(Paragraph) -> Paragraph + 'static> gpui::CompactMeasure for ProbeM
     /// The plain form of a built probe (`PlainProbe`); a rebuilt or not plain
     /// probe keeps its measure.
     fn compact(&mut self) -> Option<PlainMeasure> {
-        if !matches!(self.source, Probe::Built(_)) {
+        let Probe::Built(probe) = &self.source else {
+            return None;
+        };
+        if !PlainProbe::plain(probe) {
             return None;
         }
         let Probe::Built(probe) = std::mem::replace(&mut self.source, Probe::Spent) else {
             unreachable!()
         };
-        match PlainProbe::of(probe) {
-            Ok(plain) => Some(PlainMeasure {
-                plain,
-                atom_fit: self.atom_fit.clone(),
-                normal_static: self.normal_static.clone(),
-            }),
-            Err(probe) => {
-                self.source = Probe::Built(probe);
-                None
-            }
-        }
+        Some(PlainMeasure {
+            plain: PlainProbe::of(probe),
+            atom_fit: self.atom_fit.clone(),
+            normal_static: self.normal_static.clone(),
+        })
     }
 }
 

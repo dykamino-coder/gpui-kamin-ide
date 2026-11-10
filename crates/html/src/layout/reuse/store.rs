@@ -6,6 +6,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+/// Far records by node id (`Store::far`).
+pub(super) type FarRecords = HashMap<u64, Rc<FarRecord>>;
+
 /// Записи блоков одного документа между кадрами; переживают `update`.
 #[derive(Default)]
 pub(crate) struct Store {
@@ -17,7 +20,7 @@ pub(crate) struct Store {
     pub(super) replays: RefCell<HashMap<u64, Rc<ReplayRecord>>>,
     /// Records of far blocks laid out from their kept layout subtree
     /// (`far`), by node id; allocated while there are any.
-    pub(super) far: Cell<Option<Box<HashMap<u64, Rc<FarRecord>>>>>,
+    pub(super) far: Cell<Option<Box<FarRecords>>>,
     /// The last blocks whose far recording failed (near the screen, not
     /// quiet or reading an outside width; 0 is empty): they are not wrapped
     /// again while the flow key holds outside the widths, so a block on
