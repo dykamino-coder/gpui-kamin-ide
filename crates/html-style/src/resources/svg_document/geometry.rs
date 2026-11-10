@@ -1,6 +1,5 @@
 //! Запрос SVG-коробок из канонического конвертера; соответствия живут только здесь.
 
-use crate::{dom::Element, values::ValueCx};
 use resvg::usvg::{self, GeometryTrace, Rect, Transform};
 use std::{
     cell::RefCell,
@@ -14,43 +13,8 @@ pub struct SourceBox {
     pub corners: [(f32, f32); 4],
 }
 
-/// Тот же разбор, шрифты и загрузчик, что у растеризации документа.
-pub fn query(e: &Element, width: f32, height: f32, vcx: ValueCx<'_>) -> Vec<SourceBox> {
-    let mut resources = HashSet::new();
-    let mut pending = vec![e];
-    while let Some(element) = pending.pop() {
-        if matches!(
-            element.tag.as_str(),
-            "defs" | "clipPath" | "mask" | "marker" | "pattern" | "filter" | "symbol"
-        ) {
-            resources.insert(element.node_id);
-        }
-        pending.extend(element.children.iter().filter_map(|node| match node {
-            crate::dom::Node::Element(child) => Some(child),
-            _ => None,
-        }));
-    }
-    let mut offsets = HashMap::new();
-    let markup = super::serialize::serialize_sized_with_trace(
-        e,
-        width,
-        height,
-        0.,
-        0.,
-        vcx,
-        &mut |node, at| {
-            offsets.insert(at, node);
-        },
-    );
-    let capture = Capture(Rc::new(RefCell::new(SvgGeometryState {
-        root: e.node_id,
-        offsets,
-        resources,
-        ..SvgGeometryState::default()
-    })));
-    let _ = vcx.doc.images.borrow().query_svg(&markup, capture.clone());
-    std::mem::take(&mut capture.state().boxes)
-}
+mod query;
+pub use query::query;
 
 #[derive(Default)]
 struct SvgGeometryState {

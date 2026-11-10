@@ -55,7 +55,7 @@ pub(super) fn parse_document_for<const QUERY: bool>(
     {
         timings.style = style_started.elapsed();
     }
-    let (mut nodes, root) = viewport::prepare_for::<QUERY>(styled, vcx);
+    let (mut nodes, root) = viewport::prepare::<QUERY>(styled, vcx);
     if let Some(base) = base {
         base_url::resolve(&mut nodes, base, false, &admission)?;
     }

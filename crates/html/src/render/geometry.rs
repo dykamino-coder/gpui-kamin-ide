@@ -12,8 +12,20 @@ use crate::{
 use gpui::{Bounds, LayoutId, LayoutObserver, Pixels, Window};
 
 pub(crate) fn builder() -> ChildBuild {
-    ChildBuild::default().for_geometry(super::paragraph::paragraph_for::<true>, styled_box)
+    ChildBuild::default().for_geometry(
+        super::paragraph::paragraph_for::<true>,
+        styled_box,
+        super::element::element_for::<true>,
+        |stk, e, style, opts| {
+            Box::pin(super::element::element_stack_for::<true>(
+                stk, e, style, opts,
+            ))
+        },
+        svg::build,
+    )
 }
+
+mod svg;
 
 fn styled_box(
     e: &Element,
@@ -25,10 +37,6 @@ fn styled_box(
         .also_observe_layout(Observe {
             node: e.node_id,
             font: crate::layout::geometry::font(style, 16., cx.vcx()),
-            svg: e
-                .tag
-                .eq_ignore_ascii_case("svg")
-                .then(|| (e.clone(), cx.vcx().keep())),
             layout: None,
         })
 }
@@ -36,7 +44,6 @@ fn styled_box(
 struct Observe {
     node: u64,
     font: (f64, LineHeight),
-    svg: Option<(Element, crate::values::ValueDoc)>,
     layout: Option<LayoutId>,
 }
 
@@ -54,22 +61,6 @@ impl LayoutObserver for Observe {
             let p = inset(b, border);
             let content = inset(p, padding);
             Collector::record(window, self.node, [b, p, content], self.font);
-            if let Some((element, values)) = &self.svg {
-                for source in crate::resources::svg_document::geometry::query(
-                    element,
-                    content.size.width.into(),
-                    content.size.height.into(),
-                    values.vcx(),
-                ) {
-                    Collector::record_quad(
-                        window,
-                        source.node,
-                        source
-                            .corners
-                            .map(|(x, y)| content.origin + gpui::point(gpui::px(x), gpui::px(y))),
-                    );
-                }
-            }
         }
         true
     }

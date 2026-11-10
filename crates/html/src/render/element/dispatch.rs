@@ -1,6 +1,6 @@
 //! Диспетчер специальных тегов; сохраняет порядок ветвей element.
 
-use super::element_stack;
+use super::element_stack_for;
 use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::inline_level;
@@ -23,7 +23,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn dispatch_element(
+pub(crate) async fn dispatch_element<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     e: &Element,
     merged: BoxStyle,
@@ -64,7 +64,9 @@ pub(crate) async fn dispatch_element(
         "canvas" if merged.context.parent_grid != 0 => {
             match crate::layout::replaced::canvas_grid::render(e, &merged, inherited, &opts.cx) {
                 Some(canvas) => canvas,
-                None => generic_box_stack(stk, e, merged, inherited, opts, outer_space).await,
+                None => {
+                    generic_box_stack::<QUERY>(stk, e, merged, inherited, opts, outer_space).await
+                }
             }
         }
         "img" => {
@@ -200,7 +202,7 @@ pub(crate) async fn dispatch_element(
         _ if merged.reset_box_layout.display == Some(Display::GridLanes) => {
             let mut copy = e.clone();
             crate::dom::lanes_to_grid(copy.style.used_mut());
-            stk.run(|stk| element_stack(stk, &copy, inherited, opts))
+            stk.run(|stk| element_stack_for::<QUERY>(stk, &copy, inherited, opts))
                 .await
         }
         // Таблица — независимый контекст форматирования: её строки в бюджет
@@ -239,12 +241,10 @@ pub(crate) async fn dispatch_element(
         // `white-space: pre`. Переводы строк хранят четыре режима, и три из
         // них переносят строки: `pre-wrap`, `pre-line`, `break-spaces`. Пока
         // сюда уходили все четыре, эти три шли мимо нашей строчной раскладки,
-        // где и живут висящие пробелы, разрыв после сохранённого пробела и
-        // правила куска. Отсюда же `break-spaces` был неотличим от `pre-wrap`.
+        // где живут висящие пробелы, разрывы и правила куска (`break-spaces`).
         // Внутри преформата может стоять кусок со СВОИМ `white-space`, и он
         // переносится, хотя абзац — нет. Отдельный рисователь преформата
-        // правил куска не знает, поэтому такой случай уходит в обычную
-        // строчную раскладку (`white-space-pre-031`).
-        _ => generic_box_stack(stk, e, merged, inherited, opts, outer_space).await,
+        // правил куска не знает: нужна обычная раскладка (`white-space-pre-031`).
+        _ => generic_box_stack::<QUERY>(stk, e, merged, inherited, opts, outer_space).await,
     }
 }

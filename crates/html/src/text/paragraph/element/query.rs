@@ -18,16 +18,33 @@ impl Paragraph {
 
     fn collect_geometry(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         if self.vertical {
-            let bounds = self.vertical_paint_bounds(
-                bounds,
-                self.vertical_layout_origin,
-                window.scale_factor(),
-            );
+            let mut bounds = bounds;
+            if self.lines_reversed && !self.vertical_ccw {
+                bounds.size.width = self.vertical_line_extent();
+            }
             let flat = Bounds::new(bounds.origin, size(bounds.size.height, bounds.size.width));
-            window.with_transformation(
-                self.vertical_transform(bounds, window.scale_factor()),
-                |window| self.collect_flat_geometry(flat, window),
-            );
+            window.with_hitbox_transform(query_turn(bounds, self.vertical_ccw), |window| {
+                self.collect_flat_geometry(flat, window)
+            });
+        } else if let Some(frame) = self.paint_context.frame() {
+            let b = frame.bounds;
+            let (corner, rotation_scale) = if frame.ccw {
+                (point(b.origin.x, b.bottom()), [[0., 1.], [-1., 0.]])
+            } else {
+                (point(b.right(), b.origin.y), [[0., -1.], [1., 0.]])
+            };
+            let matrix = gpui::TransformationMatrix::unit()
+                .translate(point(corner.x.scale(1.), corner.y.scale(1.)))
+                .compose(gpui::TransformationMatrix {
+                    rotation_scale,
+                    translation: [0., 0.],
+                })
+                .translate(point(
+                    (-b.origin.x).scale(1.),
+                    (-b.origin.y - frame.phase).scale(1.),
+                ));
+            window
+                .with_hitbox_transform(matrix, |window| self.collect_flat_geometry(bounds, window));
         } else {
             self.collect_flat_geometry(bounds, window);
         }
@@ -102,7 +119,11 @@ impl Hooks for Query {
         cx: &mut App,
     ) -> Self::Prepaint {
         let result = self.0.prepaint(None, None, bounds, layout, window, cx);
-        self.0.collect_geometry(bounds, window);
+        let exact = Bounds::new(
+            window.layout_origin_unrounded(*layout),
+            window.layout_size_unrounded(*layout),
+        );
+        self.0.collect_geometry(exact, window);
         result
     }
     fn paint(
@@ -116,4 +137,19 @@ impl Hooks for Query {
         self.0
             .paint(None, None, bounds, layout, prepaint, window, cx);
     }
+}
+
+fn query_turn(b: Bounds<Pixels>, ccw: bool) -> gpui::TransformationMatrix {
+    let (corner, rotation_scale) = if ccw {
+        (point(b.left(), b.bottom()), [[0., 1.], [-1., 0.]])
+    } else {
+        (point(b.right(), b.top()), [[0., -1.], [1., 0.]])
+    };
+    gpui::TransformationMatrix::unit()
+        .translate(point(corner.x.scale(1.), corner.y.scale(1.)))
+        .compose(gpui::TransformationMatrix {
+            rotation_scale,
+            translation: [0., 0.],
+        })
+        .translate(point((-b.left()).scale(1.), (-b.top()).scale(1.)))
 }

@@ -18,7 +18,7 @@ use build::build;
 use gpui::{AnyElement, AvailableSpace, px, size};
 use std::rc::Rc;
 
-pub(super) fn deferred(
+pub(super) fn deferred<const QUERY: bool>(
     e: &Element,
     merged: &BoxStyle,
     inherited: &Computed,
@@ -148,7 +148,7 @@ pub(super) fn deferred(
                     prefix.children.truncate(last + 1);
                     let prefix_style = style.clone();
                     let used = window.with_nested_layout(|window| {
-                        let mut el = build(
+                        let mut el = build::<QUERY>(
                             &prefix,
                             prefix_style,
                             &inherited,
@@ -189,7 +189,7 @@ pub(super) fn deferred(
                 pass == SpannerPass::Measure,
                 final_opts.frag.watch.is_some(),
             );
-            build(
+            build::<QUERY>(
                 &host,
                 style,
                 &inherited,

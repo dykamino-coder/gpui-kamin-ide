@@ -23959,15 +23959,33 @@ index 0000000000000000000000000000000000000000..eb14ec5ef1746ce3b906c4d62fca85f0
 +}
 diff --git a/vendor/gpui/src/window/hit_transform/geometry.rs b/vendor/gpui/src/window/hit_transform/geometry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8496afdb238436d082ff91bf690e07ea3e6b7d2e
+index 0000000000000000000000000000000000000000..5012e765d205dcfc167e582fea3899d8c8caf9b1
 --- /dev/null
 +++ b/vendor/gpui/src/window/hit_transform/geometry.rs
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,96 @@
 +//! Прямое преобразование углов layout-коробки без paint- и hit-test-обрезки.
 +
 +use super::*;
 +
++struct LayoutFragmentHitScopes {
++    source: PaintHitScope,
++    destinations: Rc<[(crate::PaintSegmentId, u32, PaintHitScope)]>,
++}
++
 +impl Window {
++    /// Query-only routing: retain source-local transforms below this entry point.
++    pub fn with_layout_fragment_hit_scopes<R>(
++        &mut self,
++        destinations: Rc<[(crate::PaintSegmentId, u32, PaintHitScope)]>,
++        query: impl FnOnce(&mut Self) -> R,
++    ) -> R {
++        let context = Rc::new(LayoutFragmentHitScopes {
++            source: self.paint_hit_scope(),
++            destinations,
++        });
++        self.with_render_context(Some(context), query)
++    }
++
 +    /// Map all four corners through ancestor transforms, then take their bounds.
 +    /// A fragment may be presented under a scope different from its source.
 +    pub fn layout_bounds_in_viewport(
@@ -23987,22 +24005,38 @@ index 0000000000000000000000000000000000000000..8496afdb238436d082ff91bf690e07ea
 +        mut corners: [Point<Pixels>; 4],
 +        fragment: Option<crate::PaintSegment>,
 +    ) -> Bounds<Pixels> {
++        let query = self.render_contexts.get::<LayoutFragmentHitScopes>();
++        let destination = fragment.and_then(|route| {
++            query.as_ref()?.destinations.iter()
++                .find(|(id, ordinal, _)| *id == route.id && *ordinal == route.ordinal)
++                .map(|(_, _, scope)| scope)
++        });
 +        let scopes = self.render_contexts.get::<SegmentHitScopes>();
 +        let scope = fragment.and_then(|route| {
 +            scopes.as_ref()?.0.iter()
 +                .find(|(id, ordinal, _)| *id == route.id && *ordinal == route.ordinal)
 +                .map(|(_, _, scope)| &scope.0)
 +        }).unwrap_or(&self.hit_scope);
-+        let mut next = scope.as_deref();
-+        while let Some(scope) = next {
-+            let forward = match scope.inverse {
-+                Mapping::Invertible(inverse) => inverse.inverse().unwrap_or_default(),
-+                Mapping::Singular(forward) => forward,
-+            };
-+            for corner in &mut corners {
-+                *corner = forward.apply(*corner);
++        if let (Some(query), Some(destination)) = (&query, destination) {
++            let mut next = self.hit_scope.as_ref();
++            while let Some(scope) = next {
++                if query.source.0.as_ref().is_some_and(|base| Rc::ptr_eq(base, scope)) {
++                    break;
++                }
++                map_corners(scope, &mut corners);
++                next = scope.parent.as_ref();
 +            }
-+            next = scope.parent.as_deref();
++            let mut next = destination.0.as_deref();
++            while let Some(scope) = next {
++                map_corners(scope, &mut corners);
++                next = scope.parent.as_deref();
++            }
++        } else {
++            let mut next = scope.as_deref();
++            while let Some(scope) = next {
++                map_corners(scope, &mut corners);
++                next = scope.parent.as_deref();
++            }
 +        }
 +        let mut min = corners[0];
 +        let mut max = min;
@@ -24013,6 +24047,16 @@ index 0000000000000000000000000000000000000000..8496afdb238436d082ff91bf690e07ea
 +            max.y = max.y.max(p.y);
 +        }
 +        Bounds::new(min, size(max.x - min.x, max.y - min.y))
++    }
++}
++
++fn map_corners(scope: &HitScope, corners: &mut [Point<Pixels>; 4]) {
++    let forward = match scope.inverse {
++        Mapping::Invertible(inverse) => inverse.inverse().unwrap_or_default(),
++        Mapping::Singular(forward) => forward,
++    };
++    for corner in corners {
++        *corner = forward.apply(*corner);
 +    }
 +}
 diff --git a/vendor/gpui/src/window/image_sampling.rs b/vendor/gpui/src/window/image_sampling.rs
@@ -25166,10 +25210,10 @@ index 0000000000000000000000000000000000000000..e7f0b2c1b76eb79ef8d5f7c294915e5c
 +}
 diff --git a/vendor/gpui/src/window/paint_record/segments/admission.rs b/vendor/gpui/src/window/paint_record/segments/admission.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c5a77ca2c9d792d3dcdfbde863a4e9feff20b980
+index 0000000000000000000000000000000000000000..95c5a7a253e1b996c9dbe5c481da3f2d6502e13d
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/segments/admission.rs
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,130 @@
 +//! Собственный срез узла и цепочка CSS clip отделены от охватывающих эффектов.
 +
 +use super::*;
@@ -25198,6 +25242,17 @@ index 0000000000000000000000000000000000000000..c5a77ca2c9d792d3dcdfbde863a4e9fe
 +    /// Physical fragments selected for the current source node, before CSS clipping.
 +    pub fn layout_fragment_slices(&self) -> Option<Rc<[PaintSegmentSlice]>> {
 +        self.render_contexts.get::<Slices>().map(|slices| slices.0.clone())
++    }
++
++    /// KaminIDE patch: supply physical layout slices to an explicit layout query without
++    /// creating a paint recording or changing its segment selection.
++    pub fn with_layout_fragment_slices<R>(
++        &mut self,
++        slices: Rc<[PaintSegmentSlice]>,
++        query: impl FnOnce(&mut Self) -> R,
++    ) -> R {
++        let _slices = self.render_contexts.enter(Some(Rc::new(Slices(slices))));
++        query(self)
 +    }
 +
 +    /// Замена собственного допуска узла. Независимый потомок не наследует

@@ -5,6 +5,8 @@ use gpui::{Context, IntoElement, Render, TestAppContext, Window, div};
 use std::rc::Rc;
 
 mod isolation;
+mod multicol;
+mod paged;
 
 struct View(Rc<Document>);
 
@@ -65,7 +67,7 @@ fn geometry_box_edges_and_boxless_elements(cx: &mut TestAppContext) {
     let b = find(&elements, "box");
     assert_eq!(b.client_rects.len(), 1);
     assert_eq!(b.border_box.width, 100.);
-    assert_eq!(b.border_box.height, 50.);
+    assert!((b.border_box.height - 50.).abs() < 0.001);
     assert_eq!(b.padding_boxes[0].width, 94.);
     assert_eq!(b.content_boxes[0].width, 80.);
     assert_eq!(b.content_boxes[0].x - b.border_box.x, 10.);

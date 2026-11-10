@@ -17,7 +17,7 @@ pub(super) fn active(e: &Element, c: &Computed) -> bool {
     crate::layout::box_kind::clamp_host(e, c)
 }
 
-pub(super) fn build(
+pub(super) fn build<const QUERY: bool>(
     e: &Element,
     c: BoxStyle,
     inherited: &BoxStyle,
@@ -67,7 +67,7 @@ pub(super) fn build(
         if content_watch.is_some() {
             opts.frag.watch = content_watch.clone();
         }
-        super::generic_box(
+        super::generic_box::<QUERY>(
             &e,
             frame::resolved_style(&c, used_box, opts.cx.vcx()),
             &inherited,

@@ -106,7 +106,7 @@ impl PageStack {
     }
 
     /// Размещения кусков ребёнка `kid` на листах; `None` — куски рисуют копии.
-    pub(super) fn page_routes(
+    pub(super) fn page_routes<const QUERY: bool>(
         &self,
         kid: usize,
         plan: &[Frag],
@@ -131,7 +131,7 @@ impl PageStack {
             clone_root: None,
         };
         let spill = window.viewport_size().width.max(bounds.size.width);
-        Routes::new(kid, plan, &geometry, source, spill)
+        Routes::new::<QUERY>(kid, plan, &geometry, source, spill)
     }
 
     /// Записи главных копий — до матрицы листов, в несдвинутых координатах стопки.
@@ -144,7 +144,7 @@ impl PageStack {
     ) -> Played {
         let mut out = HashMap::new();
         for kid in plan.iter().filter(|f| f.copy == 0).map(|f| f.kid) {
-            let Some(routes) = self.page_routes(kid, plan, bounds, window) else {
+            let Some(routes) = self.page_routes::<false>(kid, plan, bounds, window) else {
                 continue;
             };
             let records = self.copy_records();

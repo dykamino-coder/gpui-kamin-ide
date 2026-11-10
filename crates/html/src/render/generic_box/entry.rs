@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(in crate::render) fn generic_box(
+pub(in crate::render) fn generic_box<const QUERY: bool>(
     e: &Element,
     merged: BoxStyle,
     inherited: &BoxStyle,
@@ -10,6 +10,6 @@ pub(in crate::render) fn generic_box(
     outer_space: Option<Rc<Nested>>,
 ) -> AnyElement {
     reblessive::Stack::new()
-        .enter(|stk| generic_box_stack(stk, e, merged, inherited, opts, outer_space))
+        .enter(|stk| generic_box_stack::<QUERY>(stk, e, merged, inherited, opts, outer_space))
         .finish()
 }

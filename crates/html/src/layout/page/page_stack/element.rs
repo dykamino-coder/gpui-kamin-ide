@@ -29,6 +29,75 @@ impl Hooks for PageStack {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::Prepaint {
+        self.prepaint_for::<false>(bounds, window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if !self.has_complete_plan() || self.oof.plan.borrow().failure.is_some() {
+            return;
+        }
+        // Each native source is painted exactly once; sheets replay its records.
+        if self.record_native(window, cx).is_err() {
+            return;
+        }
+        let s = self.grid.get().1;
+        let pages = self.pages.get();
+        // Масштаб вокруг левого верха стопки; матрица — в точках устройства,
+        // как у `paint::effects::Transformed`.
+        let k = window.scale_factor();
+        let dev = |v: f32| px(v).scale(k);
+        let origin = point(
+            dev(f32::from(bounds.origin.x)),
+            dev(f32::from(bounds.origin.y)),
+        );
+        let back = point(
+            dev(-f32::from(bounds.origin.x)),
+            dev(-f32::from(bounds.origin.y)),
+        );
+        let matrix = gpui::TransformationMatrix::unit()
+            .translate(origin)
+            .compose(gpui::TransformationMatrix {
+                rotation_scale: [[s, 0.0], [0.0, s]],
+                translation: [0.0, 0.0],
+            })
+            .translate(back);
+        let plan = self.plan.borrow().clone();
+        let masks: Vec<gpui::ContentMask<Pixels>> =
+            (0..pages).map(|i| self.area_mask(bounds, i)).collect();
+        let rect = |x: f32, y: f32, w: f32, h: f32| Bounds {
+            origin: point(bounds.origin.x + px(x), bounds.origin.y + px(y)),
+            size: size(px(w), px(h)),
+        };
+        // Main copies record before the sheet matrix, in unscaled stack points.
+        let replayed = self.record_replays(bounds, &plan, window, cx);
+        window.with_transformation(matrix, |window| {
+            let masks = (masks, &replayed);
+            self.paint_sheets(bounds, cx, s, pages, &plan, masks, rect, window);
+        });
+        // Повёрнутые листы (`page-orientation`): тот же порядок слоёв, но под
+        // СВОЕЙ матрицей — поворот на четверть оборота вокруг листа, затем
+        // масштаб стопки. Лист разложен в ячейке как неповёрнутый (левый верх
+        // `O`); маски детей и фрагментов заданы в его непреобразованных
+        // точках и едут вместе с ним (`with_transformation_masked`: поворот на
+        // четверть оборота оси сохраняет).
+        self.paint_page_contents(bounds, window, cx, pages, k, plan.fragments, rect);
+    }
+}
+
+impl PageStack {
+    pub(super) fn prepaint_for<const QUERY: bool>(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         // Первый лист — по имени первой коробки (css-page-3 §using-named-pages,
         // п. 3: «the first page … is given the start page value of the root»):
         // его page area — начальный содержащий блок и ширина меры.
@@ -136,10 +205,13 @@ impl Hooks for PageStack {
         plan.check_copies(|kid| self.kids[kid].frags.len() + 1);
         // Pieces replayed from a main copy place it through the final sheet geometry.
         *self.geoms.borrow_mut() = geoms.clone();
-        self.prepaint_pages(bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages);
+        self.prepaint_pages::<QUERY>(bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages);
         self.prepaint_canvas(bounds, window, cx, &geoms);
         *self.geoms.borrow_mut() = geoms.clone();
-        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
+        if self
+            .prepaint_native::<QUERY>(bounds, &plan, window, cx)
+            .is_err()
+        {
             let mut oof = self.oof.plan.borrow_mut();
             oof.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
             oof.incomplete();
@@ -150,63 +222,5 @@ impl Hooks for PageStack {
         *self.plan.borrow_mut() = plan;
         *self.geoms.borrow_mut() = geoms;
         self.complete.set(true);
-    }
-
-    fn paint(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _prepaint: &mut Self::Prepaint,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        if !self.has_complete_plan() || self.oof.plan.borrow().failure.is_some() {
-            return;
-        }
-        // Each native source is painted exactly once; sheets replay its records.
-        if self.record_native(window, cx).is_err() {
-            return;
-        }
-        let s = self.grid.get().1;
-        let pages = self.pages.get();
-        // Масштаб вокруг левого верха стопки; матрица — в точках устройства,
-        // как у `paint::effects::Transformed`.
-        let k = window.scale_factor();
-        let dev = |v: f32| px(v).scale(k);
-        let origin = point(
-            dev(f32::from(bounds.origin.x)),
-            dev(f32::from(bounds.origin.y)),
-        );
-        let back = point(
-            dev(-f32::from(bounds.origin.x)),
-            dev(-f32::from(bounds.origin.y)),
-        );
-        let matrix = gpui::TransformationMatrix::unit()
-            .translate(origin)
-            .compose(gpui::TransformationMatrix {
-                rotation_scale: [[s, 0.0], [0.0, s]],
-                translation: [0.0, 0.0],
-            })
-            .translate(back);
-        let plan = self.plan.borrow().clone();
-        let masks: Vec<gpui::ContentMask<Pixels>> =
-            (0..pages).map(|i| self.area_mask(bounds, i)).collect();
-        let rect = |x: f32, y: f32, w: f32, h: f32| Bounds {
-            origin: point(bounds.origin.x + px(x), bounds.origin.y + px(y)),
-            size: size(px(w), px(h)),
-        };
-        // Main copies record before the sheet matrix, in unscaled stack points.
-        let replayed = self.record_replays(bounds, &plan, window, cx);
-        window.with_transformation(matrix, |window| {
-            let masks = (masks, &replayed);
-            self.paint_sheets(bounds, cx, s, pages, &plan, masks, rect, window);
-        });
-        // Повёрнутые листы (`page-orientation`): тот же порядок слоёв, но под
-        // СВОЕЙ матрицей — поворот на четверть оборота вокруг листа, затем
-        // масштаб стопки. Лист разложен в ячейке как неповёрнутый (левый верх
-        // `O`); маски детей и фрагментов заданы в его непреобразованных
-        // точках и едут вместе с ним (`with_transformation_masked`: поворот на
-        // четверть оборота оси сохраняет).
-        self.paint_page_contents(bounds, window, cx, pages, k, plan.fragments, rect);
     }
 }

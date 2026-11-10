@@ -11,6 +11,7 @@ mod axis;
 pub mod balance;
 pub mod element;
 mod gap_geometry;
+mod geometry;
 mod lead;
 pub(crate) mod oof;
 mod paginate;

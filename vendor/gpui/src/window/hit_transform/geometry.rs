@@ -2,7 +2,25 @@
 
 use super::*;
 
+struct LayoutFragmentHitScopes {
+    source: PaintHitScope,
+    destinations: Rc<[(crate::PaintSegmentId, u32, PaintHitScope)]>,
+}
+
 impl Window {
+    /// Query-only routing: retain source-local transforms below this entry point.
+    pub fn with_layout_fragment_hit_scopes<R>(
+        &mut self,
+        destinations: Rc<[(crate::PaintSegmentId, u32, PaintHitScope)]>,
+        query: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let context = Rc::new(LayoutFragmentHitScopes {
+            source: self.paint_hit_scope(),
+            destinations,
+        });
+        self.with_render_context(Some(context), query)
+    }
+
     /// Map all four corners through ancestor transforms, then take their bounds.
     /// A fragment may be presented under a scope different from its source.
     pub fn layout_bounds_in_viewport(
@@ -22,22 +40,38 @@ impl Window {
         mut corners: [Point<Pixels>; 4],
         fragment: Option<crate::PaintSegment>,
     ) -> Bounds<Pixels> {
+        let query = self.render_contexts.get::<LayoutFragmentHitScopes>();
+        let destination = fragment.and_then(|route| {
+            query.as_ref()?.destinations.iter()
+                .find(|(id, ordinal, _)| *id == route.id && *ordinal == route.ordinal)
+                .map(|(_, _, scope)| scope)
+        });
         let scopes = self.render_contexts.get::<SegmentHitScopes>();
         let scope = fragment.and_then(|route| {
             scopes.as_ref()?.0.iter()
                 .find(|(id, ordinal, _)| *id == route.id && *ordinal == route.ordinal)
                 .map(|(_, _, scope)| &scope.0)
         }).unwrap_or(&self.hit_scope);
-        let mut next = scope.as_deref();
-        while let Some(scope) = next {
-            let forward = match scope.inverse {
-                Mapping::Invertible(inverse) => inverse.inverse().unwrap_or_default(),
-                Mapping::Singular(forward) => forward,
-            };
-            for corner in &mut corners {
-                *corner = forward.apply(*corner);
+        if let (Some(query), Some(destination)) = (&query, destination) {
+            let mut next = self.hit_scope.as_ref();
+            while let Some(scope) = next {
+                if query.source.0.as_ref().is_some_and(|base| Rc::ptr_eq(base, scope)) {
+                    break;
+                }
+                map_corners(scope, &mut corners);
+                next = scope.parent.as_ref();
             }
-            next = scope.parent.as_deref();
+            let mut next = destination.0.as_deref();
+            while let Some(scope) = next {
+                map_corners(scope, &mut corners);
+                next = scope.parent.as_deref();
+            }
+        } else {
+            let mut next = scope.as_deref();
+            while let Some(scope) = next {
+                map_corners(scope, &mut corners);
+                next = scope.parent.as_deref();
+            }
         }
         let mut min = corners[0];
         let mut max = min;
@@ -48,5 +82,15 @@ impl Window {
             max.y = max.y.max(p.y);
         }
         Bounds::new(min, size(max.x - min.x, max.y - min.y))
+    }
+}
+
+fn map_corners(scope: &HitScope, corners: &mut [Point<Pixels>; 4]) {
+    let forward = match scope.inverse {
+        Mapping::Invertible(inverse) => inverse.inverse().unwrap_or_default(),
+        Mapping::Singular(forward) => forward,
+    };
+    for corner in corners {
+        *corner = forward.apply(*corner);
     }
 }

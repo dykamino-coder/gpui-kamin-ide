@@ -79,7 +79,7 @@ impl ColumnStack {
     }
 
     /// Размещения всех кусков ребёнка `kid` в колонках.
-    pub(super) fn replay_routes(
+    pub(super) fn replay_routes<const QUERY: bool>(
         &self,
         kid: usize,
         plan: &[Frag],
@@ -104,7 +104,7 @@ impl ColumnStack {
             effects: c.effects,
             clone_root: c.clone_deco.as_ref().map(|d| d.node),
         };
-        Routes::new(kid, plan, &geometry, source, spill)
+        Routes::new::<QUERY>(kid, plan, &geometry, source, spill)
     }
 
     /// Кусок `f` ребёнка, рисуемого записью главной копии: запись — при первом его
@@ -122,7 +122,8 @@ impl ColumnStack {
         let spill = Self::spill(bounds, window);
         let scale = window.scale_factor();
         if let std::collections::hash_map::Entry::Vacant(slot) = replayed.entry(f.kid) {
-            let routes = self.replay_routes(f.kid, plan_all, bounds, (col_w, step, spill), scale);
+            let routes =
+                self.replay_routes::<false>(f.kid, plan_all, bounds, (col_w, step, spill), scale);
             let records = self.copy_records();
             let el = (&mut self.children[f.kid].el, Some(&*self.paint), records);
             slot.insert(routes.map(|r| r.record(el, window, cx).ok()));

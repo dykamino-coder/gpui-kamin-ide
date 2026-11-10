@@ -39,7 +39,7 @@ mod tests {
             ..Default::default()
         };
         let mut seen_atom = false;
-        let pieces = inline::collect(
+        let pieces = inline::collect::<false>(
             &parsed.nodes,
             &BoxStyle::default(),
             &mut |e, atom| {
@@ -83,7 +83,7 @@ mod tests {
                 Node::Text(_) => None,
             })
         }
-        let pieces = inline::collect(
+        let pieces = inline::collect::<false>(
             &div(&parsed.nodes).expect("div").children,
             &BoxStyle::default(),
             &mut |e, _| (e.tag == "ruby").then(|| Piece::Atom(gpui::Empty.into_any_element())),

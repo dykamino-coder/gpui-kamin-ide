@@ -1,7 +1,8 @@
 //! Синхронный CSSOM View: временная раскладка, не состояние следующего кадра.
 
 use super::{
-    DocState, Document, DocumentFailure, ElementGeometry, GeometryError, LineHeight, Rect,
+    DocState, Document, DocumentFailure, ElementGeometry, GeometryError, GeometryLayout,
+    LineHeight, Rect,
 };
 use crate::{RenderOpts, layout::geometry::Collector};
 use gpui::{App, AvailableSpace, IntoElement, ParentElement, Styled, Window, div, point, px, size};
@@ -44,6 +45,18 @@ impl Document {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Vec<ElementGeometry>, GeometryError> {
+        self.element_geometry_with_layout(GeometryLayout::Continuous, scope, opts, window, cx)
+    }
+
+    /// Запрос в непрерывной или постраничной раскладке с геометрией листов host.
+    pub fn element_geometry_with_layout(
+        &self,
+        layout: GeometryLayout,
+        scope: Option<&gpui::GlobalElementId>,
+        opts: &RenderOpts,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Vec<ElementGeometry>, GeometryError> {
         let budget = self.budget();
         let revision =
             crate::budget::DocumentBudget::new(budget.limits().clone(), budget.governor().clone())
@@ -56,7 +69,7 @@ impl Document {
         media.width = opts.viewport.0;
         media.height = opts.viewport.1;
         let query_state = QueryState(DocState::new(media));
-        let (state, nodes, _) = super::prepare::parse_document_for::<true>(
+        let (state, mut nodes, _) = super::prepare::parse_document_for::<true>(
             &input,
             &self.theme_css,
             self.base_url.as_ref(),
@@ -66,14 +79,31 @@ impl Document {
             #[cfg(feature = "engine-bench")]
             &mut super::BuildTimings::default(),
         )?;
-        let images: &std::cell::RefCell<crate::resources::images::store::ImageStore> =
-            &state.values().doc.images;
-        images
-            .borrow_mut()
-            .inherit_svg_fonts(&self.state.values().doc.images.borrow());
         let mut opts = super::scope::frame_opts(&state, &nodes, opts);
         opts.cx.contracts.build = crate::render::geometry::builder();
-        let sink: Rc<Collector> = Rc::new(Collector::for_nodes(&nodes));
+        crate::text::metrics::set_doc_family(&opts.text.font_family, opts.cx.vcx());
+        crate::style::cascade::materialize::materialize(
+            &nodes,
+            opts.root_style().style_rc(),
+            opts.cx.vcx(),
+        );
+        let sink: Rc<Collector> = Rc::new(Collector::for_nodes(
+            &nodes,
+            self.state.values().doc.images.borrow().svg_fonts(),
+        ));
+        // Стили скрытого DOM уже сняты; обычный renderer получает дерево без
+        // display:none, как после обычного convert. Сам DOM не меняется.
+        let mut pending = vec![&mut nodes];
+        while let Some(children) = pending.pop() {
+            children.retain(|node| !matches!(node, crate::dom::Node::Element(e)
+                if e.style.computed().reset_box_layout.display == Some(crate::style::computed::Display::None)
+                    && e.style.cascaded().reset_context.col_role.is_none()));
+            for node in children {
+                if let crate::dom::Node::Element(e) = node {
+                    pending.push(&mut *e.children);
+                }
+            }
+        }
         let ids: HashMap<_, _> = state
             .values
             .traversal
@@ -96,11 +126,19 @@ impl Document {
         window.with_layout_query(cx, |window, cx| {
             scroll_states(window);
             window.with_render_context(Some(sink.clone()), |window| {
+                let children = match layout {
+                    GeometryLayout::Continuous => crate::render::render(&nodes, &opts),
+                    GeometryLayout::Paged { pages, margins } => {
+                        vec![crate::layout::page::paged::render_paged_for::<true>(
+                            &nodes, &opts, pages, margins, None,
+                        )]
+                    }
+                };
                 let mut root = div()
                     .block()
                     .w(px(opts.viewport.0))
                     .h(px(opts.viewport.1))
-                    .children(crate::render::render(&nodes, &opts))
+                    .children(children)
                     .into_any_element();
                 root.prepaint_as_root(
                     point(px(0.), px(0.)),
@@ -117,7 +155,7 @@ impl Document {
         sink.finish_captions();
         let mut boxes = sink.0.borrow_mut();
         let mut out = Vec::new();
-        let mut pending = vec![(input.dom.document.clone(), Vec::new())];
+        let mut pending = vec![(input.dom.document, Vec::new())];
         while let Some((node, path)) = pending.pop() {
             if let NodeData::Element { name, attrs, .. } = &node.data {
                 let id = ids.get(&(Rc::as_ptr(&node) as usize)).copied().unwrap_or(0);
@@ -126,7 +164,7 @@ impl Document {
                     attrs
                         .borrow()
                         .iter()
-                        .find(|a| a.name.local.as_ref() == key)
+                        .find(|a| &*a.name.local == key)
                         .map(|a| a.value.to_string())
                         .unwrap_or_default()
                 };
@@ -176,7 +214,7 @@ impl Document {
             .unwrap_or_default())
     }
 
-    /// CSSOM View §6: объединение непустых прямоугольников getClientRects.
+    /// CSSOM View §6: bounding box списка getClientRects по шагам 2–4.
     pub fn get_bounding_client_rect(
         &self,
         path: &[usize],

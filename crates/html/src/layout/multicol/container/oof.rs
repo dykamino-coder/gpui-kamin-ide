@@ -1,7 +1,6 @@
 //! Div стопки колонок и его завершение.
 
 use crate::dom::{Element, Node};
-use crate::hooks::IntoHooked;
 use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
 use crate::layout::options::RenderOpts;
@@ -10,7 +9,7 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn column_stack_div(
+pub(super) fn column_stack_div<const QUERY: bool>(
     d: gpui::Div,
     e: &Element,
     inherited: &Computed,
@@ -125,7 +124,7 @@ pub(super) fn column_stack_div(
                 _ => None,
             },
         )
-        .into_hooked(),
+        .into_element_for::<QUERY>(),
     )
 }
 

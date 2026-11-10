@@ -11,7 +11,6 @@ pub(super) use upright::upright_paragraph;
 
 use super::{paragraph_for, paragraph_routed};
 use crate::dom::Node;
-use crate::hooks::IntoHooked;
 use crate::layout::writing_mode::native_vertical;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
@@ -230,7 +229,7 @@ pub(crate) fn vertical_paragraph<const QUERY: bool>(
     } else {
         vt
     };
-    vt.hooked()
+    vt.into_element_for::<QUERY>()
 }
 
 mod atom_line;

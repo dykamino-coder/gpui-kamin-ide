@@ -108,7 +108,7 @@ pub(crate) fn paragraph_pieces_routed<const QUERY: bool>(
             }
             piece
         };
-    let mut pieces = inline::collect_for::<QUERY>(nodes, inherited, &mut atom_noted, &opts.cx);
+    let mut pieces = inline::collect::<QUERY>(nodes, inherited, &mut atom_noted, &opts.cx);
     if pieces.is_empty() {
         return div().into_any_element();
     }

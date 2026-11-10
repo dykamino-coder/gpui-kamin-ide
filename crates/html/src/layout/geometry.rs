@@ -1,6 +1,7 @@
 //! Снимок CSSOM View: прямоугольники фрагментов, не области краски.
 
 mod collect;
+pub(crate) mod fragments;
 pub(crate) use collect::Collector;
 
 /// Неподвижный снимок DOMRect в CSS px относительно области просмотра.
@@ -22,15 +23,16 @@ impl Rect {
         }
     }
 
-    /// CSSOM View §6: пустой список, первый вырожденный либо объединение непустых.
+    /// CSSOM View §6: пустой список, первый вырожденный либо объединение §6(4).
     pub fn bounding(rects: &[Self]) -> Self {
         let Some(first) = rects.first() else {
             return Self::default();
         };
-        let mut nonempty = rects.iter().filter(|r| r.width != 0.0 && r.height != 0.0);
-        let Some(initial) = nonempty.next().copied() else {
+        if rects.iter().all(|r| r.width == 0.0 || r.height == 0.0) {
             return *first;
-        };
+        }
+        let mut nonempty = rects.iter().filter(|r| r.width != 0.0 || r.height != 0.0);
+        let initial = *nonempty.next().expect("nondegenerate rectangle exists");
         nonempty.fold(initial, |out, r| {
             let right = (out.x + out.width).max(r.x + r.width);
             let bottom = (out.y + out.height).max(r.y + r.height);
@@ -51,6 +53,17 @@ impl Rect {
 pub enum LineHeight {
     Normal,
     Pixels(f64),
+}
+
+/// Режим явного запроса; не хранится в документе или обычном кадре.
+#[derive(Clone, Default)]
+pub enum GeometryLayout {
+    #[default]
+    Continuous,
+    Paged {
+        pages: crate::flow::PageGeomFn,
+        margins: Option<crate::render::PageMarginDeclsFn>,
+    },
 }
 
 /// Отказ раскладки либо неоднозначная привязка документа к состоянию окна.
@@ -115,7 +128,7 @@ pub struct ElementGeometry {
 mod tests {
     use super::*;
     #[test]
-    fn bounding_ignores_degenerate_rectangles_unless_all_are_degenerate() {
+    fn bounding_follows_cssom_degenerate_list_and_mixed_rect_rules() {
         let empty = Rect {
             x: 900.,
             y: 900.,
@@ -130,6 +143,26 @@ mod tests {
         };
         assert_eq!(Rect::bounding(&[]), Rect::default());
         assert_eq!(Rect::bounding(&[empty]), empty);
-        assert_eq!(Rect::bounding(&[empty, full]), full);
+        let point = Rect {
+            width: 0.,
+            height: 0.,
+            ..empty
+        };
+        let flat = Rect {
+            width: 10.,
+            height: 0.,
+            ..empty
+        };
+        assert_eq!(Rect::bounding(&[empty, flat]), empty);
+        assert_eq!(Rect::bounding(&[point, full]), full);
+        assert_eq!(
+            Rect::bounding(&[empty, full]),
+            Rect {
+                x: -5.,
+                y: 3.,
+                width: 905.,
+                height: 907.,
+            }
+        );
     }
 }

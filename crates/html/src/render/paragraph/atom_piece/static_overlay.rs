@@ -52,7 +52,11 @@ pub(crate) fn static_overlay(
         let mut copy = e.clone();
         copy.style.used_mut().inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
         copy.style.used_mut().reset_positioned.position = None;
-        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
+        opts.cx
+            .contracts
+            .build
+            .svg(&copy, opts)
+            .unwrap_or_else(|| image(&copy, &opts.cx))
     } else if e.tag == "img" {
         let mut copy = e.clone();
         copy.style.used_mut().inh.ui.image_orient_none = merged.inh.ui.image_orient_none;

@@ -20,7 +20,7 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn multicol_box(
+pub(crate) fn multicol_box<const QUERY: bool>(
     d: gpui::Div,
     e: &Element,
     merged: BoxStyle,
@@ -41,10 +41,16 @@ pub(crate) fn multicol_box(
     if has_deep_spanner(e) {
         let d = ClampScope::close(scope.as_ref(), d, e, &merged);
         return Err(d
-            .child(spanners::deferred(e, &merged, inherited, opts, outer_space))
+            .child(spanners::deferred::<QUERY>(
+                e,
+                &merged,
+                inherited,
+                opts,
+                outer_space,
+            ))
             .into_any_element());
     }
-    settled(
+    settled::<QUERY>(
         d,
         e,
         merged,
@@ -66,7 +72,7 @@ pub(crate) fn multicol_box(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn settled(
+fn settled<const QUERY: bool>(
     mut d: gpui::Div,
     e: &Element,
     merged: BoxStyle,
@@ -164,7 +170,7 @@ fn settled(
         // перебирает в `LayoutFragmentainerDescendants` только
         // `oof_positioned_candidates`; флоат идёт обычной
         // укладкой (`PositionFloat`).
-        return stack_box(
+        return stack_box::<QUERY>(
             d,
             e,
             merged,

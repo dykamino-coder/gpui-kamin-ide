@@ -193,7 +193,7 @@ pub(crate) fn svg_replaced(
 
 /// У `<svg>` есть своя CSS-коробка — ненулевая рамка или отбивка
 /// (см. ветку `"svg"` в `element`): тогда растр кладётся в стилевой `div`.
-pub(super) fn svg_has_box(c: &Computed) -> bool {
+pub(crate) fn svg_has_box(c: &Computed) -> bool {
     let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v > 0.0);
     let b = c.borders();
     nz(b.top)

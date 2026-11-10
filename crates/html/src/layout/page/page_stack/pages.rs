@@ -7,7 +7,7 @@ use gpui::{App, Bounds, Pixels, Window, point, px, size};
 impl PageStack {
     #[allow(clippy::too_many_arguments)]
     // Page indices address both the plan and parallel per-page layout state.
-    pub(super) fn prepaint_pages(
+    pub(super) fn prepaint_pages<const QUERY: bool>(
         &mut self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
@@ -81,7 +81,16 @@ impl PageStack {
             let segment = gpui::PaintSegmentId(f.col as u64);
             let scopes = self.oof.slot_scopes.clone();
             // A child replayed from its main copy lays out and prepaints only that copy.
-            let replay = self.page_routes(f.kid, plan, bounds, window);
+            let replay = self.page_routes::<QUERY>(f.kid, plan, bounds, window);
+            let query_clip = if QUERY {
+                let (qx, qy, qw, qh) = self.area_slice(&pg, f.y, f.h);
+                Some(Bounds::new(
+                    point(bounds.origin.x + px(sx + qx), bounds.origin.y + px(sy + qy)),
+                    size(px(qw), px(qh)),
+                ))
+            } else {
+                None
+            };
             let kid = &mut self.kids[f.kid];
             if let Some(r) = kid.repeat.as_mut() {
                 r.place_bands(f, |el, at| {
@@ -129,7 +138,23 @@ impl PageStack {
                             });
                         }
                         None => {
-                            el.prepaint_at(at, window, cx);
+                            if QUERY {
+                                let slice = gpui::PaintSegmentSlice {
+                                    placement: gpui::PaintSegment {
+                                        id: segment,
+                                        ordinal: 0,
+                                        source: at,
+                                        destination: at,
+                                    },
+                                    source_clip: query_clip.expect("query fragment clip"),
+                                };
+                                window.with_layout_fragment_slices(
+                                    std::rc::Rc::from([slice]),
+                                    |window| el.prepaint_at(at, window, cx),
+                                );
+                            } else {
+                                el.prepaint_at(at, window, cx);
+                            }
                         }
                     }
                 })

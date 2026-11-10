@@ -7,6 +7,7 @@
 mod layout;
 mod painting;
 mod prepaint;
+mod query;
 
 use crate::hooks::Wrap;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
@@ -73,7 +74,7 @@ impl Wrap for VerticalText {
     }
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        self.prepaint_impl(bounds, window, cx)
+        self.prepaint_impl_for::<false>(bounds, window, cx)
     }
 
     fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {

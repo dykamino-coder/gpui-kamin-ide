@@ -91,7 +91,7 @@ impl Routes {
     /// Размещения всех кусков ребёнка `kid`: источник — место главной копии, срез —
     /// снятая маска куска, перенесённая в координаты источника. `None` — перенос не на
     /// целые пиксели устройства: куски рисуют свои копии.
-    pub(crate) fn new(
+    pub(crate) fn new<const QUERY: bool>(
         kid: usize,
         plan_all: &[Frag],
         g: &impl PieceGeometry,
@@ -107,7 +107,7 @@ impl Routes {
             let at = g.piece_at(f);
             let destination = at - point(px(0.0), px(f.from));
             let delta = destination - source;
-            if !g.exact_shift(delta) {
+            if !QUERY && !g.exact_shift(delta) {
                 return None;
             }
             let (clip, mask) = g.piece_clip(f, at);
@@ -118,9 +118,17 @@ impl Routes {
                 destination,
             };
             slots.push(slots::slot_piece(f, placement, g.slot_area(f, clip, mask)));
-            let source_clip = Bounds::new(mask.origin - delta, mask.size);
+            let source_clip = if QUERY {
+                Bounds::new(at - delta, size(px(g.fragment_width(f)), px(f.h)))
+            } else {
+                Bounds::new(mask.origin - delta, mask.size)
+            };
             let across = (source_clip.left(), source_clip.right());
-            let source_clip = g.content_slice(f, source, across).unwrap_or(source_clip);
+            let source_clip = if QUERY {
+                source_clip
+            } else {
+                g.content_slice(f, source, across).unwrap_or(source_clip)
+            };
             extent = Some(extent.map_or(source_clip, |e| e.union(&source_clip)));
             pieces.push((f, placement, source_clip));
             let fragment = Bounds::new(at, size(px(g.fragment_width(f)), px(f.h)));

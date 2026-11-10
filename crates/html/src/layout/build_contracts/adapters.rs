@@ -18,9 +18,15 @@ impl ChildBuild {
             &LayoutCx,
             Option<crate::layout::block::sizing::BoxDimensions>,
         ) -> gpui::Div,
+        element: super::BuildElement,
+        element_stack: super::BuildStackElement,
+        svg: fn(&Element, &crate::RenderOpts) -> Option<AnyElement>,
     ) -> Self {
         self.flow = self.flow.with_paragraph(paragraph);
         self.boxes = self.boxes.with_styled_box(styled_box);
+        self.element = element;
+        self.element_stack = element_stack;
+        self.svg = svg;
         self
     }
     /// Native form control with its merged style; `None` for other tags.

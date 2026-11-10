@@ -119,11 +119,7 @@ pub(super) fn prepare_embedded(
 }
 
 // Keep document preparation identical for initial, updated, and embedded markup.
-pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Computed) {
-    prepare_for::<false>(nodes, vcx)
-}
-
-pub(super) fn prepare_for<const QUERY: bool>(
+pub(super) fn prepare<const QUERY: bool>(
     nodes: Vec<Node>,
     vcx: ValueCx<'_>,
 ) -> (Vec<Node>, Computed) {

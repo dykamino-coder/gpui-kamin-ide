@@ -101,11 +101,16 @@ fn geometry_native_vertical_inline_uses_the_physical_axis(cx: &mut TestAppContex
             "{mode}: {:?}",
             e.border_box
         );
-        assert!(
-            e.border_box.x >= 0. && e.border_box.y >= 0.,
-            "{mode}: {:?}",
-            e.border_box
+        let moved = html.replace(
+            "height:200px",
+            "height:200px;margin-left:17.25px;margin-top:13.5px",
         );
+        let translated = snapshot(cx, &moved, 300.);
+        let translated = find(&translated, "vertical").border_box;
+        assert_eq!(translated.width, e.border_box.width, "{mode}");
+        assert_eq!(translated.height, e.border_box.height, "{mode}");
+        assert_eq!(translated.x - e.border_box.x, 17.25, "{mode}");
+        assert_eq!(translated.y - e.border_box.y, 13.5, "{mode}");
     }
 }
 

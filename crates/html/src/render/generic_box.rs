@@ -22,7 +22,7 @@ use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, Styled, px};
 
-pub(super) async fn generic_box_stack(
+pub(super) async fn generic_box_stack<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     e: &Element,
     mut merged: BoxStyle,
@@ -106,7 +106,7 @@ pub(super) async fn generic_box_stack(
         .or(height_driven.then_some(1))
         .or(lone_span.then_some(1))
     {
-        let result = multicol_box(
+        let result = multicol_box::<QUERY>(
             d,
             e,
             merged,
@@ -240,7 +240,7 @@ pub(super) async fn generic_box_stack(
             let _ = key;
             clamp_host::frame(&mut d, width);
         } else {
-            return clamp_host::build(e, merged, inherited, opts, outer_space, d);
+            return clamp_host::build::<QUERY>(e, merged, inherited, opts, outer_space, d);
         }
     }
     generic_children(stk, e, d, merged, inherited, opts, overflow_plan).await

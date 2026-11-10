@@ -28,6 +28,17 @@ impl Window {
         self.render_contexts.get::<Slices>().map(|slices| slices.0.clone())
     }
 
+    /// KaminIDE patch: supply physical layout slices to an explicit layout query without
+    /// creating a paint recording or changing its segment selection.
+    pub fn with_layout_fragment_slices<R>(
+        &mut self,
+        slices: Rc<[PaintSegmentSlice]>,
+        query: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let _slices = self.render_contexts.enter(Some(Rc::new(Slices(slices))));
+        query(self)
+    }
+
     /// Замена собственного допуска узла. Независимый потомок не наследует
     /// этот срез; охватывающие эффекты остаются общими.
     pub fn with_paint_segment_slices<R>(

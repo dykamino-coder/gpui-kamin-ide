@@ -1,8 +1,8 @@
 //! Коллектор существует только в scoped render context явного запроса.
 
-use super::{LineHeight, Rect};
+use super::{LineHeight, Rect, fragments::BlockAxis};
 use gpui::{Bounds, Pixels, Window};
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 #[derive(Default)]
 pub(crate) struct GeometryBoxes {
@@ -12,15 +12,23 @@ pub(crate) struct GeometryBoxes {
     pub(crate) font: Option<(f64, LineHeight)>,
 }
 
-#[derive(Default)]
 pub(crate) struct Collector(
     pub(crate) RefCell<HashMap<u64, GeometryBoxes>>,
     pub(crate) HashMap<u64, Rc<crate::style::computed::Computed>>,
     HashMap<u64, Vec<u64>>,
+    Arc<resvg::usvg::fontdb::Database>,
 );
 
+struct Silent;
+
 impl Collector {
+    pub(crate) fn without_records<R>(window: &mut Window, f: impl FnOnce(&mut Window) -> R) -> R {
+        window.with_render_context(Some(Rc::new(Silent)), f)
+    }
     pub(crate) fn record_quad(window: &Window, node: u64, corners: [gpui::Point<Pixels>; 4]) {
+        if window.render_context::<Silent>().is_some() {
+            return;
+        }
         let Some(sink) = window.render_context::<Self>() else {
             return;
         };
@@ -39,11 +47,7 @@ impl Collector {
                 let bounds = corners.iter().fold(bounds, |bounds, point| {
                     bounds.union(&Bounds::from_corners(*point, *point))
                 });
-                if bounds.right() < slice.source_clip.left()
-                    || bounds.left() > slice.source_clip.right()
-                    || bounds.bottom() <= slice.source_clip.top()
-                    || bounds.top() >= slice.source_clip.bottom()
-                {
+                if !BlockAxis::admits(window, bounds, slice.source_clip) {
                     continue;
                 }
                 let shift = slice.placement.destination - slice.placement.source;
@@ -54,19 +58,24 @@ impl Collector {
         }
     }
 
-    pub(crate) fn for_nodes(nodes: &[crate::dom::Node]) -> Self {
-        let mut out = Self::default();
+    pub(crate) fn for_nodes(
+        nodes: &[crate::dom::Node],
+        fonts: Arc<resvg::usvg::fontdb::Database>,
+    ) -> Self {
+        let mut out = Self(RefCell::default(), HashMap::new(), HashMap::new(), fonts);
         let mut pending: Vec<_> = nodes.iter().collect();
         while let Some(node) = pending.pop() {
             if let crate::dom::Node::Element(element) = node {
                 out.1.insert(element.node_id, element.style.computed());
-                if matches!(
-                    element.style.used().reset_box_layout.display,
-                    Some(
-                        crate::style::computed::Display::Table
-                            | crate::style::computed::Display::InlineTable
+                if element.tag == "table" && element.style.used().reset_box_layout.display.is_none()
+                    || matches!(
+                        element.style.used().reset_box_layout.display,
+                        Some(
+                            crate::style::computed::Display::Table
+                                | crate::style::computed::Display::InlineTable
+                        )
                     )
-                ) {
+                {
                     let captions = element
                         .children
                         .iter()
@@ -116,18 +125,25 @@ impl Collector {
         window.render_context::<Self>()?.1.get(&node).cloned()
     }
 
+    pub(crate) fn svg_fonts(window: &Window) -> Option<Arc<resvg::usvg::fontdb::Database>> {
+        Some(window.render_context::<Self>()?.3.clone())
+    }
+
     pub(crate) fn record(
         window: &Window,
         node: u64,
         boxes: [Bounds<Pixels>; 3],
         font: (f64, LineHeight),
     ) {
+        if window.render_context::<Silent>().is_some() {
+            return;
+        }
         let Some(sink) = window.render_context::<Self>() else {
             return;
         };
         let sink: Rc<Collector> = sink;
-        let boxes: &RefCell<HashMap<u64, GeometryBoxes>> = &sink.0;
-        let mut all = boxes.borrow_mut();
+        let collected: &RefCell<HashMap<u64, GeometryBoxes>> = &sink.0;
+        let mut all = collected.borrow_mut();
         let out: &mut GeometryBoxes = all.entry(node).or_default();
         out.font = Some(font);
         match window.layout_fragment_slices() {
@@ -138,15 +154,11 @@ impl Collector {
                     // вырожденные копии во всех остальных колонках.
                     let b = boxes[0];
                     let clip = slice.source_clip;
-                    if b.right() < clip.left()
-                        || b.left() > clip.right()
-                        || b.bottom() <= clip.top()
-                        || b.top() >= clip.bottom()
-                    {
+                    if !BlockAxis::admits(window, b, clip) {
                         continue;
                     }
                     let mapped = boxes.map(|r| {
-                        let mut r = r.intersect(&slice.source_clip);
+                        let mut r = BlockAxis::slice(window, r, slice.source_clip);
                         r.origin += slice.placement.destination - slice.placement.source;
                         Rect::from_bounds(
                             window.layout_bounds_in_viewport(r, Some(slice.placement)),
@@ -155,6 +167,11 @@ impl Collector {
                     out.border.push(mapped[0]);
                     out.padding.push(mapped[1]);
                     out.content.push(mapped[2]);
+                    // Вырожденная коробка на разрыве принадлежит первому
+                    // допустившему её фрагменту, а не обоим соседям.
+                    if BlockAxis::empty(window, b) {
+                        break;
+                    }
                 }
             }
             None => {

@@ -113,6 +113,11 @@ def main():
                "height": args.height, "device_scale_factor": 1,
                "tolerances": {"absolute": args.absolute, "relative": args.relative},
                "totals": dict(totals), "mismatched_counts_by_property": dict(sorted(counts.items())),
+               "worst_elements": sorted(
+                   ({"page": report["page"], "width": report["width"], **element}
+                    for report in reports for element in report["worst_elements"]),
+                   key=lambda element: (-element["max_abs_delta"], element["page"],
+                                        element["width"], element["path"]))[:20],
                "per_page": reports}
     (private / "first-report.json").write_text(
         json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")

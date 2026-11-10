@@ -145,7 +145,7 @@ impl ColumnStack {
     /// месте. Копия может нести вложенный многоколоночник, и его prepaint идёт
     /// внутри этого кадра — он держится малым.
     #[inline(never)]
-    pub(super) fn prepaint_frags(
+    pub(super) fn prepaint_frags<const QUERY: bool>(
         &mut self,
         window: &mut Window,
         cx: &mut App,
@@ -157,9 +157,17 @@ impl ColumnStack {
         self.record_places(bounds, plan, step);
         for f in plan {
             let Some(prepared) =
-                self.prepare_prepaint_frag(f, plan, (bounds, col_w, step), window, cx)
+                self.prepare_prepaint_frag::<QUERY>(f, plan, (bounds, col_w, step), window, cx)
             else {
                 continue;
+            };
+            let query_clip = if QUERY {
+                Some(Bounds::new(
+                    self.piece_at(f, bounds, step),
+                    size(px(col_w), px(f.h)),
+                ))
+            } else {
+                None
             };
             let kid = &mut self.children[f.kid];
             let Some(el) =
@@ -176,7 +184,17 @@ impl ColumnStack {
                 Some(routes) => {
                     let _ = routes.prepaint(window, cx, prepaint);
                 }
-                None => prepaint(window, cx),
+                None => {
+                    if QUERY {
+                        crate::layout::geometry::fragments::with_slice(
+                            window,
+                            query_clip.expect("query clip"),
+                            |window| prepaint(window, cx),
+                        );
+                    } else {
+                        prepaint(window, cx);
+                    }
+                }
             }
             // Сохраняем реальную ширину корня для украшений фрагмента.
             kid.laid_w.set(kid.laid_w.get().max(prepared.width));

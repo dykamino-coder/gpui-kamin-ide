@@ -13,7 +13,7 @@ impl ColumnStack {
     /// `clone` и хвост `slack` сюда не приходят: `render::generic_box::multicol` их в вертикали
     /// не взводит.
     #[inline(never)]
-    pub(crate) fn prepaint_axis(
+    pub(crate) fn prepaint_axis<const QUERY: bool>(
         &mut self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
@@ -32,7 +32,10 @@ impl ColumnStack {
         plan.check_copies(|kid| self.children[kid].frags.len() + 1);
         *self.lines_plan.borrow_mut() = lines;
         self.plan_oof(&plan, bounds);
-        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
+        if self
+            .prepaint_native::<QUERY>(bounds, &plan, window, cx)
+            .is_err()
+        {
             plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
             plan.incomplete();
         }
@@ -99,7 +102,23 @@ impl ColumnStack {
                 window,
                 cx,
             );
-            el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+            if QUERY {
+                let mut clip = axis_box(
+                    axis,
+                    bounds.origin,
+                    block_avail,
+                    c as f32 * step,
+                    col_w,
+                    ry + f.y,
+                    f.h,
+                );
+                clip.origin += point(px(rel.0), px(rel.1));
+                crate::layout::geometry::fragments::with_slice(window, clip, |window| {
+                    el.prepaint_at(point(px(0.0), px(0.0)), window, cx)
+                });
+            } else {
+                el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+            }
         }
         // Спаннер — во всю СТРОЧНУЮ сторону коробки.
         for &(kid, sy) in &spans {

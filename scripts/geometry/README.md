@@ -63,3 +63,6 @@ They use a temporary layout pass with the supplied `RenderOpts`, `Window` and
 Hosts rendering multiple document instances in one window pass their
 `GlobalElementId` prefix to `element_geometry_in_scope`. An unscoped query
 returns `GeometryError::AmbiguousScrollScope` when scroll state collides.
+For paged hosts, `element_geometry_with_layout` accepts `GeometryLayout::Paged`
+with the same page geometry and margin declarations as `render_paged`. Its
+fragment rectangles use the displayed page stack's viewport coordinates.

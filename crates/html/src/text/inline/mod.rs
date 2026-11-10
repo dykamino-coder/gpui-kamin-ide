@@ -168,17 +168,7 @@ pub struct InlineCb {
 /// Собрать инлайн-куски из детей узла.
 /// `cx` — контекст раскладки блока абзаца: его доступная ширина — база
 /// долей полей и отступов строчных коробок.
-pub fn collect(
-    children: &[Node],
-    inherited: &BoxStyle,
-    atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
-    cx: &crate::layout::cx::LayoutCx,
-) -> Vec<Piece> {
-    collect_for::<false>(children, inherited, atom, cx)
-}
-
-/// Query specialization retains element boundaries without changing ordinary collection.
-pub(crate) fn collect_for<const QUERY: bool>(
+pub(crate) fn collect<const QUERY: bool>(
     children: &[Node],
     inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
