@@ -13,6 +13,8 @@ use crate::text::paragraph::*;
 use gpui::{LineLayout, Pixels, ShapedGlyph, ShapedRun, Window, px};
 use std::{ops::Range, rc::Rc, sync::Arc};
 
+mod compose;
+
 /// Наибольшее число частей одного абзаца; дальше кусок не режется.
 pub(super) const PIECES: usize = 128;
 
@@ -45,7 +47,6 @@ impl Default for Keys {
 
 #[derive(Clone, Copy, Default)]
 struct Piece {
-    key: u64,
     base: u32,
     runs_end: u32,
     width: Pixels,
@@ -69,44 +70,19 @@ impl Paragraph {
         if keys.len + 2 > PIECES {
             return None;
         }
+        // Первый проход: точки, ключи частей и их наборы в памяти.
+        let mut ends = [0usize; PIECES];
+        let mut found: [Option<Chunk>; PIECES] = std::array::from_fn(|_| None);
         let mut next = Some(cuts.next(self, window)?);
-        let text = window.text_system().with_ligature_breaking(false);
-        let mut runs = Vec::with_capacity(self.run_indices(&(start..end)).len());
-        let mut pieces = [Piece::default(); PIECES];
-        let (mut count, mut from, mut origin) = (0, start, px(0.));
+        let (mut count, mut from) = (0, start);
         loop {
             let to = next.unwrap_or(end);
             let key = self.chunk_key(&(from..to));
-            let base = from - start;
-            let (width, ascent, descent) = match self.measures.chunk(key) {
-                Some(super::Shaped::Chunk(c)) => c.copy_into(base, &mut runs),
-                _ => {
-                    let at = self.run_indices(&(from..to));
-                    let skip = at.clone().next().map_or(0, |i| {
-                        from - (self.prepared().run_ends[i] - self.runs[i].len)
-                    });
-                    text.shape_into(
-                        &self.text[from..to],
-                        self.font_size,
-                        &self.runs[at],
-                        skip,
-                        tracking(self),
-                        base,
-                        &mut runs,
-                    )
-                }
-            };
-            pieces[count] = Piece {
-                key,
-                base: base as u32,
-                runs_end: runs.len() as u32,
-                width,
-                ascent,
-                descent,
-                origin,
-            };
+            (ends[count], keys.keys[keys.len + count]) = (to, key);
+            if let Some(super::Shaped::Chunk(c)) = self.measures.chunk(key) {
+                found[count] = Some(c);
+            }
             count += 1;
-            origin += width;
             if to == end {
                 break;
             }
@@ -117,17 +93,24 @@ impl Paragraph {
                 None
             };
         }
+        let found = &found[..count];
+        let mut pieces = [Piece::default(); PIECES];
+        let layout = match self.same_layout(start, end, &ends[..count], found) {
+            // Тот же кусок (другой замер того же текста): набор общий.
+            Some(layout) => {
+                let mut origin = px(0.);
+                for (piece, c) in pieces.iter_mut().zip(found.iter().flatten()) {
+                    *piece = c.piece(origin);
+                    origin += c.width;
+                }
+                layout
+            }
+            None => self.compose(start, end, &ends[..count], found, &mut pieces, window),
+        };
         let pieces = &pieces[..count];
-        let layout = Arc::new(LineLayout {
-            font_size: self.font_size,
-            width: origin,
-            ascent: pieces.iter().map(|p| p.ascent).fold(px(0.), Pixels::max),
-            descent: pieces.iter().map(|p| p.descent).fold(px(0.), Pixels::max),
-            runs,
-            len: end - start,
-        });
         let mut runs_start = 0;
-        for piece in pieces {
+        for (i, piece) in pieces.iter().enumerate() {
+            let key = keys.keys[keys.len + i];
             let chunk = Chunk {
                 layout: layout.clone(),
                 runs: runs_start..piece.runs_end,
@@ -137,11 +120,9 @@ impl Paragraph {
                 descent: piece.descent,
             };
             runs_start = piece.runs_end;
-            self.measures
-                .put_chunk(piece.key, super::Shaped::Chunk(chunk));
-            keys.keys[keys.len] = piece.key;
-            keys.len += 1;
+            self.measures.put_chunk(key, super::Shaped::Chunk(chunk));
         }
+        keys.len += count;
         let seg = Seg {
             positions: Rc::default(),
             start,
@@ -159,30 +140,5 @@ impl Paragraph {
         });
         _ = seg.positions.set(positions);
         Some(seg)
-    }
-}
-
-impl Chunk {
-    /// Глифы части — в набор куска, где она начинается со смещения `base`.
-    fn copy_into(&self, base: usize, out: &mut Vec<ShapedRun>) -> (Pixels, Pixels, Pixels) {
-        let from = self.runs.start as usize..self.runs.end as usize;
-        let shift = |index: usize| index - self.base as usize + base;
-        out.extend(self.layout.runs[from].iter().map(|run| {
-            ShapedRun {
-                font_id: run.font_id,
-                font_size: run.font_size,
-                glyphs: run
-                    .glyphs
-                    .iter()
-                    .map(|g| ShapedGlyph {
-                        id: g.id,
-                        position: g.position,
-                        index: shift(g.index),
-                        is_emoji: g.is_emoji,
-                    })
-                    .collect(),
-            }
-        }));
-        (self.width, self.ascent, self.descent)
     }
 }

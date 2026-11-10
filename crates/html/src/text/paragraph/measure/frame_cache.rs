@@ -1,48 +1,30 @@
 //! Два поколения измерений документа: рабочий набор предыдущего кадра
 //! сохраняется целиком, неиспользованные записи удаляются на следующем.
-//! Ключи — уже готовые 64-битные хэши, поэтому таблица берёт их как есть
-//! (без повторного SipHash и без состояния хэшера в каждой таблице).
 
-use std::{collections::HashMap, hash::BuildHasherDefault};
-
-/// Хэш ключа, который сам уже хэш.
-#[derive(Default)]
-struct KeyHash(u64);
-
-impl std::hash::Hasher for KeyHash {
-    fn finish(&self) -> u64 {
-        self.0
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        for &b in bytes {
-            self.0 = (self.0.rotate_left(8) ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3);
-        }
-    }
-
-    fn write_u64(&mut self, key: u64) {
-        self.0 = key;
-    }
-}
+use std::collections::HashMap;
 
 pub(in crate::text::paragraph) struct FrameCache<V> {
-    current: HashMap<u64, V, BuildHasherDefault<KeyHash>>,
-    previous: HashMap<u64, V, BuildHasherDefault<KeyHash>>,
+    current: HashMap<u64, V>,
+    previous: HashMap<u64, V>,
 }
 
 impl<V> Default for FrameCache<V> {
     fn default() -> Self {
         Self {
-            current: HashMap::default(),
-            previous: HashMap::default(),
+            current: HashMap::new(),
+            previous: HashMap::new(),
         }
     }
 }
 
 impl<V> FrameCache<V> {
-    /// Записи, не тронутые за кадр, уходят; таблицы сохраняют свою ёмкость,
-    /// и кадр за кадром рабочий набор переезжает без новых выделений памяти.
     pub(super) fn begin_frame(&mut self) {
+        self.previous = std::mem::take(&mut self.current);
+    }
+
+    /// `begin_frame`, но таблицы сохраняют ёмкость: рабочий набор переезжает
+    /// из кадра в кадр без новых выделений памяти (малые таблицы частей).
+    pub(super) fn begin_frame_keeping(&mut self) {
         std::mem::swap(&mut self.previous, &mut self.current);
         self.current.clear();
     }

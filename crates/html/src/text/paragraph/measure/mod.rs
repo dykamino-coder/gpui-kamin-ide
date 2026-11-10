@@ -34,7 +34,7 @@ impl MeasureCache {
     pub(crate) fn begin_frame(&self) {
         self.splits.borrow_mut().begin_frame();
         self.measured.borrow_mut().begin_frame();
-        self.shaped.borrow_mut().begin_frame();
+        self.shaped.borrow_mut().begin_frame_keeping();
         self.fitted.borrow_mut().begin_frame();
     }
 
