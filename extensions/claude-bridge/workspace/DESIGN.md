@@ -4,6 +4,41 @@ Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Runtime overview: [README.md](README.md). Podman runbook: [PACKAGING.md](PACKAGING.md).
 Status: implementation in progress; the current live suite passed, while full parity and final composed acceptance remain open.
 
+## Durable submission receipts follow-up
+
+The host must retain accepted submission identities across a process crash.
+Before forwarding text to the shared handler, write an atomic, fsynced snapshot
+under `WORKSPACE_STORAGE`, scoped by the workspace/server/account hash. Keep
+the existing 10,000-identity / 32 MiB text limits, exact text digests, allowlisted
+receipt fields and consumed fallback row identities. Persist receipt transitions
+and explicit session removal independently of attached browsers. No connection
+credential is stored in this snapshot; prompt text is private workspace data.
+
+Restore only identities for the restored open tabs. Confirmed UUID commitment,
+consumed fallback receipts and cancellation survive unchanged. Unconfirmed
+delivery becomes noncancelable `uncertain`, with no automatic resend or legacy
+text matching after restart. An upstream UUID can still establish commitment.
+An identical identity is suppressed, and reuse with different text is rejected.
+This guarantees duplicate suppression within the persisted open session, not
+exactly-once CLI delivery or survival of in-flight tools. Corrupt/unreadable
+state fails startup; a failed write blocks new submissions until storage is
+repaired and the host restarted. Observer write failure does not stop existing
+agent execution. Snapshot writes are synchronous and bounded; large retained
+prompt sets may add ingress latency. Composer drafts remain a separate gap.
+
+Acceptance: a real shared-host process killed after forwarding, restored
+receipts and identical-ID suppression, committed/consumed/dismissed metadata,
+scope/validation/write failure regressions, and production Chromium in an owned
+Linux Podman fixture. Full parity and actual-model composed acceptance remain
+open; this increment does not change the strict completion validator.
+
+Executed: Windows workspace 97 passed / three Linux-only skips; Linux Podman
+production-browser fixtures 15/15, including SIGKILL/restart with zero pages,
+two fresh pages and upstream exactly-once observation for each reused ID. This
+observed fixture count is not an exactly-once delivery guarantee. The existing
+native replay fixture now waits for snapshot-end before checking receipt state:
+the final transcript row is sent before the receipt portion of that snapshot.
+
 ## Restart persistence follow-up (INC-2026-0092)
 
 The client host owns the open set and active selection across process restarts,

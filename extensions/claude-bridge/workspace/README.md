@@ -118,7 +118,17 @@ pages honor that marker. This does not cancel text already delivered through the
 CLI terminal. Stop without restoring queue text leaves the queue display intact.
 The queue's individual Remove button records the same host dismissal for that
 item, without interrupting the turn or restoring text into a composer.
-These receipts remain process-local; host restart does not restore composer drafts.
+Accepted identities and allowlisted receipts also survive host restart in the
+private `workspace-submissions.json` under `WORKSPACE_STORAGE`. A synced atomic
+write precedes submission dispatch. Confirmed commitment and queue dismissal
+remain durable; unconfirmed delivery is shown as **Unconfirmed**, with no
+automatic resend. The same ID is suppressed after restart, and different text
+cannot reuse it. Corrupt state blocks startup; a write failure blocks new
+submissions until storage is repaired and the host restarted. Keep this volume
+private: it contains prompt text, although no reusable connection token is
+stored there. Synchronous snapshots can add latency for large retained prompt
+sets. Closing a session clears its identities. Composer drafts and in-flight
+tools/PTY processes are not restored by this receipt recovery.
 
 The browser shell retains session/project navigation, tabs and pins, and a
 resizable dock for Claude Bridge, Bridge Console and Agents. Dock placement,

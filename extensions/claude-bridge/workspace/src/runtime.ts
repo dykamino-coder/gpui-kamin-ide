@@ -8,6 +8,7 @@ import type { ClientFrame, ClientView, HostAttachment, HostFrame, WorkspaceBacke
 import { WorkspacePresentation } from './presentation.js'
 import { containerSessionInstructions, projectDirectory } from './session-context.js'
 import { WorkspaceSessionState } from './session-state.js'
+import { WorkspaceSubmissionState } from './submission-state.js'
 
 export interface SharedBackendOptions {
   root: string
@@ -32,6 +33,10 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   const root = fs.realpathSync(options.root)
   const storage = path.resolve(options.storage)
   fs.mkdirSync(storage, { recursive: true, mode: 0o700 })
+  const submissionState = new WorkspaceSubmissionState(storage, root, options.serverUrl, options.token)
+  // Validate before starting any shared sessions; corruption must not discard
+  // duplicate protection and allow ambiguous delivery to execute again.
+  submissionState.load()
   // Shared handlers also use process.cwd() outside a tab context. This process
   // belongs to one workspace, so give those handlers the same local machine.
   process.chdir(root)
@@ -55,7 +60,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   }
   const attachments = new Set<HostAttachment>()
   const presentation = new WorkspacePresentation((channel, ...args) => host.broadcast(channel, ...args),
-    tabId => host.getTabManager().getConnection(tabId)?.getViewSnapshot().entries ?? [])
+    tabId => host.getTabManager().getConnection(tabId)?.getViewSnapshot().entries ?? [], submissionState)
   // This observer belongs to the process, not to a browser socket. Keep prompt,
   // activity and receipt state while no browser exists. Large history stays in
   // the shared connection caches and disk mirror.
@@ -79,6 +84,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
       else manager.createTab(connection, creation)
     } catch { console.warn('Skipped unavailable workspace session directory') }
   }
+  presentation.restore(new Set(manager.listTabs().map(tab => tab.id)))
   const active = saved.active && manager.getTab(saved.active) ? saved.active : manager.listTabs()[0]?.id
   if (active) manager.switchTab(active)
   restoring = false
