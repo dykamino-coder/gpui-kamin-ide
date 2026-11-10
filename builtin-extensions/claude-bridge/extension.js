@@ -19213,8 +19213,32 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
   } catch (e) {
     return errorResult4(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`);
   }
+  try {
+    const stat = await import_promises3.default.stat(searchPath);
+    if (stat.isFile()) {
+      const results2 = [];
+      const content = await import_promises3.default.readFile(searchPath, "utf8");
+      const lines = content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? "";
+        if (regex.test(line) && outputMode === "content") results2.push(`${i + 1}:${line}`);
+        regex.lastIndex = 0;
+      }
+      if (results2.length > 0 && outputMode === "files_with_matches") return textResult4(searchPath);
+      if (outputMode === "count") return textResult4(`${searchPath}:${results2.length}`);
+      return fallbackResult(results2, offset, headLimit, false, FALLBACK_TIMEOUT_MS);
+    }
+  } catch {
+  }
+  const { results, timedOut } = await walkFallback(regex, searchPath, outputMode, headLimit, FALLBACK_TIMEOUT_MS);
+  return fallbackResult(results, offset, headLimit, timedOut, FALLBACK_TIMEOUT_MS);
+}
+async function walkFallback(regex, searchPath, outputMode, headLimit, timeoutMs) {
   const results = [];
+  const deadline = Date.now() + timeoutMs;
+  let timedOut = false;
   async function searchDir(dir) {
+    if (timedOut) return;
     let entries2;
     try {
       entries2 = await import_promises3.default.readdir(dir, { withFileTypes: true });
@@ -19223,6 +19247,10 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
     }
     for (const entry of entries2) {
       if (headLimit > 0 && results.length >= headLimit) return;
+      if (Date.now() > deadline) {
+        timedOut = true;
+        return;
+      }
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
       const fullPath = import_node_path5.default.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -19252,30 +19280,24 @@ ${matchingLines.join("\n")}`);
       }
     }
   }
-  try {
-    const stat = await import_promises3.default.stat(searchPath);
-    if (stat.isFile()) {
-      const content = await import_promises3.default.readFile(searchPath, "utf8");
-      const lines = content.split("\n");
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] ?? "";
-        if (regex.test(line) && outputMode === "content") results.push(`${i + 1}:${line}`);
-        regex.lastIndex = 0;
-      }
-      if (results.length > 0 && outputMode === "files_with_matches") return textResult4(searchPath);
-      if (outputMode === "count") return textResult4(`${searchPath}:${results.length}`);
-    } else {
-      await searchDir(searchPath);
-    }
-  } catch {
-    await searchDir(searchPath);
-  }
+  await searchDir(searchPath);
+  return { results, timedOut };
+}
+function fallbackResult(results, offset, headLimit, timedOut, timeoutMs) {
   let output = results.join("\n");
   if (offset > 0) output = output.split("\n").slice(offset).join("\n");
   if (headLimit > 0) output = output.split("\n").slice(0, headLimit).join("\n");
-  return textResult4(output || "No matches found.");
+  const seconds = Math.round(timeoutMs / 1e3);
+  if (timedOut && !output.trim()) {
+    return errorResult4(
+      `Search timed out after ${seconds}s with no matches captured; not every file was searched. Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`
+    );
+  }
+  const suffix = timedOut ? `
+[Search timed out after ${seconds}s \u2014 partial results above; try a narrower path or pattern]` : "";
+  return textResult4((output || "No matches found.") + suffix);
 }
-var import_promises3, import_node_path5, import_node_child_process5;
+var import_promises3, import_node_path5, import_node_child_process5, FALLBACK_TIMEOUT_MS;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
@@ -19283,6 +19305,7 @@ var init_grep_tool = __esm({
     import_node_path5 = __toESM(require("node:path"), 1);
     import_node_child_process5 = require("node:child_process");
     init_fs_shared();
+    FALLBACK_TIMEOUT_MS = 54e4;
   }
 });
 

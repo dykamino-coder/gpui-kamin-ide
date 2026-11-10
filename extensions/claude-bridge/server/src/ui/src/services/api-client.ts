@@ -152,6 +152,8 @@ export interface AccountInfo {
   organization?: string | null
   apiKeySource?: string | null
   expiresAt?: number | null
+  /** End of the stored claude.ai sign-in (ISO), from `claude auth status`. */
+  loginExpiresAt?: string | null
   displayName?: string | null
   error?: string
 }
