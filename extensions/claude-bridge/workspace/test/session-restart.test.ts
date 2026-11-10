@@ -8,7 +8,12 @@ import path from 'node:path'
 import { test } from 'node:test'
 import { WebSocket, WebSocketServer } from 'ws'
 import { startRuntimeProcess } from './fixtures/runtime-process.js'
-import { waitFrame } from './fixtures/runtime-protocol.js'
+import { waitFrame as waitProtocolFrame } from './fixtures/runtime-protocol.js'
+
+async function waitFrame(...args: Parameters<typeof waitProtocolFrame>) {
+  const location = new Error('Restart fixture frame did not arrive')
+  try { return await waitProtocolFrame(...args) } catch { throw location }
+}
 
 test('real host restores open conversations, titles and active selection from disk after restart', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bridgeweb-restart-'))
@@ -26,8 +31,10 @@ test('real host restores open conversations, titles and active selection from di
   await new Promise<void>(resolve => http.listen(0, '127.0.0.1', resolve))
   const upstreamUrl = `ws://127.0.0.1:${(http.address() as { port: number }).port}`
   const sockets = new Map<string, WebSocket>()
+  const upstreamFrames: any[] = [], upstreamEvents = new EventEmitter()
   upstream.on('connection', socket => socket.on('message', raw => {
     const frame = JSON.parse(raw.toString())
+    upstreamFrames.push(frame); upstreamEvents.emit('frame')
     if (frame.type !== 'session:resume') return
     sockets.set(frame.conversationId, socket)
     socket.send(JSON.stringify({ type: 'session:created', sessionId: frame.conversationId }))
@@ -82,6 +89,8 @@ test('real host restores open conversations, titles and active selection from di
     title: tab.sessionTitle || tab.label, cwd: tab.cwd, pinned: i === 0, order: i, topOrder: 1 - i })))
   const disk = fs.readFileSync(path.join(root, 'storage', 'workspace-sessions.json'), 'utf8')
   assert.equal(disk.includes('synthetic-workspace-token'), false)
+  view.send('pty-submit-text', firstTab, 'restart delivery sentinel', 'restart-identity')
+  await waitFrame(upstreamFrames, upstreamEvents, f => f.type === 'session:submitText' && f.submissionId === 'restart-identity')
   await view.stop(true) // Persistence cannot depend on a graceful-shutdown hook.
   view = await boot()
   const restored = await view.invoke('tab:list')
@@ -90,6 +99,22 @@ test('real host restores open conversations, titles and active selection from di
   assert.deepEqual(restored.map((t: any) => [t.conversationId, t.sessionTitle, t.label, t.createdAt]),
     before.map((t: any) => [t.conversationId, t.sessionTitle, t.label, t.createdAt]))
   const active = restored.find((tab: any) => tab.conversationId === first)
+  view.send('workspace:sync')
+  await waitFrame(view.frames, view.events, f => f.channel === 'workspace:snapshot-end')
+  const receipt = view.frames.find(f => f.channel === 'session:submission' && f.args[1]?.id === 'restart-identity')?.args[1]
+  assert.equal(receipt?.state, 'uncertain', 'Crash recovery must retain an honest delivery receipt')
+  assert.equal(receipt.cancelable, false)
+  assert.equal(receipt.text, 'restart delivery sentinel')
+  await waitFrame(view.frames, view.events, f => f.channel === 'connection-state-changed' && f.args[0] === firstTab && f.args[1].status === 'connected')
+  view.send('pty-submit-text', firstTab, 'restart delivery sentinel', 'restart-identity')
+  view.send('pty-submit-text', firstTab, 'new delivery sentinel', 'new-identity')
+  await waitFrame(upstreamFrames, upstreamEvents, f => f.type === 'session:submitText' && f.submissionId === 'new-identity').catch(error => {
+    t.diagnostic(JSON.stringify({ stage: 'submission after restart', received: upstreamFrames.map(f => [f.type, f.submissionId]),
+      errors: view.frames.filter(f => f.channel === 'workspace:error') }))
+    throw error
+  })
+  assert.equal(upstreamFrames.filter(f => f.type === 'session:submitText' && f.submissionId === 'restart-identity').length, 1,
+    'A crash and fresh browser must not allow the same identity to execute twice')
   assert.equal(await view.invoke('tab:get-active'), active.id)
   assert.deepEqual(await view.invoke('workspace:draft:get', firstTab), { revision: 1, value: draft })
   assert.deepEqual(await view.invoke('workspace:draft:get', secondTab), { revision: 0, value: { text: '', attachments: [] } })

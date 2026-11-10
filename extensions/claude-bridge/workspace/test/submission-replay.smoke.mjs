@@ -51,10 +51,12 @@ test('native submissions committed with zero pages stay absent from optimistic r
     page.setDefaultTimeout(15000)
     const receipts = []
     const batches = []
+    let snapshotComplete = false
     page.on('websocket', socket => socket.on('framereceived', event => {
       const frame = JSON.parse(event.payload.toString())
       if (frame.channel === 'session:submission') receipts.push(frame.args[1])
       if (frame.channel === 'jsonl-entries') batches.push(frame.args[1].length)
+      if (frame.channel === 'workspace:snapshot-end') snapshotComplete = true
     }))
     await page.goto(fixture.origin)
     if (await page.locator('#workspace-token').isVisible()) {
@@ -67,6 +69,13 @@ test('native submissions committed with zero pages stay absent from optimistic r
       t.diagnostic(JSON.stringify({ batches, receipts, store: await page.evaluate(() =>
         Object.entries(window.__jsonlEntries ?? {}).map(([id, rows]) => ({ id, count: rows.length, last: rows.at(-1)?._ord }))) }))
       throw error
+    }
+    // Transcript chunks precede receipts in the snapshot. Rendering its final
+    // row does not prove the browser has received the remaining WS frames.
+    const snapshotDeadline = Date.now() + 15000
+    while (!snapshotComplete) {
+      assert.ok(Date.now() < snapshotDeadline, 'Host snapshot did not complete')
+      await sleep(25)
     }
     const receipt = receipts.find(receipt => receipt.id === 'native-identity')
     assert.equal(receipt?.committed, true, 'Host snapshot must carry commitment to each new page')

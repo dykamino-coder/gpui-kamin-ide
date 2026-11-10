@@ -69,8 +69,9 @@ export async function previewFixture(t, { conversations = false } = {}) {
     // Output is deliberately consumed without printing shared runtime payloads.
     child.stdout.resume(); child.stderr.resume()
     const exited = once(child, 'exit')
-    const stop = async () => {
+    const stop = async (crash = false) => {
       if (child.exitCode !== null || child.signalCode !== null) return
+      if (crash) { child.kill('SIGKILL'); await exited; return }
       if (child.connected) child.send('shutdown')
       try { await Promise.race([exited, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Preview child shutdown timeout')), 5000); timer.unref() })]) }
       catch { child.kill(); await exited }
@@ -99,7 +100,7 @@ export async function previewFixture(t, { conversations = false } = {}) {
   return { root, get origin() { return runtime.origin }, wait, tool,
     receivedFrames() { return structuredClone(frames) },
     send(conversationId, frame) { assert.ok(peers.has(conversationId)); peers.get(conversationId).send(JSON.stringify(frame)) },
-    async restart() { await runtime.stop(); runtime = await boot() },
+    async restart(crash = false) { await runtime.stop(crash); runtime = await boot() },
   }
 }
 
