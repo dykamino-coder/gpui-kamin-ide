@@ -82,29 +82,35 @@ impl Wrap for FarRecorder {
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         // Painted after its build was finished (the same tree in a later
         // frame): there is nothing to record.
-        let Some(sink) = self.reuse.far_sink() else {
+        if !self.reuse.far_open() {
             self.child.paint(window, cx);
             return;
-        };
-        // One sink per build, one scope per block: deferred paint of the
-        // block feeds its scope, not the next block's (`InkSink::begin_scope`).
-        let scope = sink.begin_scope();
-        let callbacks = window.next_frame_callback_count();
-        // A block whose boxes lie far from the screen is claimed, not
-        // painted, by the next frames: its shaped lines go with this paint
-        // (Blink keeps the layout result, not the shaping buffers). If its
-        // ink still reaches the screen, the next build shapes them again.
+        }
+        // Ink only grows the boxes (`clear_of`): a block whose boxes are not
+        // far already is near, and is painted without measuring.
         let screen = screen_of(window);
         let far = self
             .pending
             .placed
             .is_some_and(|(boxes, _)| clear_of(boxes, Excess::default(), screen));
+        if !far {
+            self.child.paint(window, cx);
+            self.near();
+            return;
+        }
+        let callbacks = window.next_frame_callback_count();
+        // One scope per block in the frame's scope sink: deferred paint of
+        // the block feeds its scope, not the next block's. A block whose
+        // boxes lie far from the screen is claimed, not painted, by the next
+        // frames: its shaped lines go with this paint (Blink keeps the layout
+        // result, not the shaping buffers). If its ink still reaches the
+        // screen, the next build shapes them again.
         let child = &mut self.child;
-        window.with_ink_sink(sink.clone(), |window| match far {
-            true => window.with_line_layouts_released(|window| child.paint(window, cx)),
-            false => child.paint(window, cx),
+        let ((), scope) = window.with_ink_scope(|window| {
+            window.with_line_layouts_released(|window| child.paint(window, cx))
         });
-        let (ink, tainted) = (sink.bounds(), sink.tainted());
+        let (ink, tainted) = (scope.bounds, scope.tainted);
+        let scope = scope.id;
         let quiet = !tainted && callbacks == window.next_frame_callback_count();
         let Some(((boxes, hits), layout)) = self
             .pending

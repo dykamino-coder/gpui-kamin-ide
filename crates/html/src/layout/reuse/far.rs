@@ -56,7 +56,7 @@ pub(crate) struct FarRecord {
     pub(super) end: Counters,
     layout: RetainedSubtree,
     excess: Excess,
-    /// Its ink scope in its build's sink (`FrameFar::sink`): a taint of the
+    /// Its ink scope in its frame (`Window::with_ink_scope`): a taint of the
     /// scope by deferred paint refuses the record when the build finishes.
     scope: u32,
     /// Claimed by the build being finished (`FlowReuse::finish_far`).

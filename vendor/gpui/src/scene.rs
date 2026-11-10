@@ -145,7 +145,7 @@ pub struct Scene {
     /// paint (Window::with_ink_sink); each one takes the placed bounds of every
     /// primitive offered to the scene, before culling.
     pub(crate) ink: Vec<std::rc::Rc<crate::InkSink>>,
-    /// KaminIDE patch: the scope of the open sink that measures scopes, 0 if none.
+    /// KaminIDE patch: the open scope of the frame's scope sink (Window::with_ink_scope), 0 if none.
     pub(crate) ink_scope: u32,
     /// Mouse listeners and element state reads declared inert while unseen
     /// (Window::offscreen_inert), counted so ink probes can allow them.
@@ -346,6 +346,7 @@ impl Scene {
         self.ink.clear();
         self.ink_scope = 0;
         self.ink_allowed = (0, 0);
+        crate::window::reset_ink_scopes();
     }
 
     pub fn len(&self) -> usize {
@@ -386,6 +387,7 @@ impl Scene {
         for sink in &self.ink {
             sink.add_in(self.ink_scope, placed_bounds);
         }
+        crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
         let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {
@@ -671,7 +673,7 @@ impl Scene {
             }
             match &mut operation {
                 PaintOperation::Primitive(primitive) => {
-                    if !self.ink.is_empty() {
+                    if !self.ink.is_empty() || self.ink_scope != 0 {
                         let placed = placed_bounds(primitive);
                         ink = Some(ink.map_or(placed, |ink| ink.union(&placed)));
                     }
@@ -690,6 +692,7 @@ impl Scene {
             for sink in &self.ink {
                 sink.add_in(self.ink_scope, ink);
             }
+            crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, ink));
         }
         let index = match graft {
             None => BlockIndex::Empty,

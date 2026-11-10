@@ -83,8 +83,15 @@ pub(crate) struct FlowReuse {
     next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
     pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Source)>>,
     replay_slots: Cell<Vec<Rc<replay::ReplaySlot>>>,
-    /// Far blocks of this build (`far`), made with the first one.
+    /// Far state of this build (`far`): the document's, or made with the
+    /// build's first far record or claim.
     far: Cell<Option<Box<far::FrameFar>>>,
+    /// Outside width reads of the far candidate being built
+    /// (`Mark::shared_widths`): the flow records them here, no flag per build.
+    far_widths: Cell<bool>,
+    /// Far recorders of this build, at most that many records
+    /// (`FlowReuse::add_far`); `FAR_DONE` once the build is finished.
+    far_recorders: Cell<u16>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
     /// Маска содержимого корня кадра: повтор краски годен только под ней.
     mask: Cell<Option<Bounds<Pixels>>>,
@@ -140,6 +147,8 @@ impl FlowReuse {
             pending_replays: Default::default(),
             replay_slots: Default::default(),
             far: Default::default(),
+            far_widths: Cell::new(false),
+            far_recorders: Cell::new(0),
             screen: Cell::new(None),
             mask: Cell::new(None),
         }))
@@ -159,6 +168,12 @@ impl FlowReuse {
         } else if e.node_id == body && self.seen.1.get().is_none() {
             let _ = self.seen.1.set(key::box_only(e));
         }
+    }
+}
+
+impl crate::layout::cx::WidthSink for FlowReuse {
+    fn note(&self) {
+        self.far_widths.set(true);
     }
 }
 

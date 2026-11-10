@@ -148,7 +148,8 @@ impl Window {
 /// a scope it observes does more than offer primitives: input state, element
 /// state, composition groups, a non-root paint environment, accessibility.
 ///
-/// One sink may measure several scopes in turn (`begin_scope`): paint
+/// The frame's scope sink measures several scopes in turn (`begin_scope`,
+/// `Window::with_ink_scope`): paint
 /// deferred past a scope feeds the scope open at capture, whose ink is no
 /// longer kept; the taint of an ended scope is kept as the range of ended
 /// scopes tainted so far (`scope_tainted`), which a host whose scopes follow
@@ -171,6 +172,17 @@ const INK_LATE_ALL: u32 = 4;
 const INK_SCOPE_SHIFT: u32 = 3;
 
 impl InkSink {
+    const fn new() -> Self {
+        Self {
+            bounds: std::cell::Cell::new(Bounds {
+                origin: Point { x: ScaledPixels(0.0), y: ScaledPixels(0.0) },
+                size: Size { width: ScaledPixels(0.0), height: ScaledPixels(0.0) },
+            }),
+            state: std::cell::Cell::new(0),
+            late: std::cell::Cell::new(0),
+        }
+    }
+
     /// The scope being measured, 0 if the sink never began one.
     pub(crate) fn scope(&self) -> u32 {
         self.state.get() >> INK_SCOPE_SHIFT
@@ -205,7 +217,7 @@ impl InkSink {
     }
 
     /// End the scope being measured and begin a new, empty one; its id.
-    pub fn begin_scope(&self) -> u32 {
+    pub(crate) fn begin_scope(&self) -> u32 {
         let scope = self.scope() + 1;
         self.state
             .set(scope << INK_SCOPE_SHIFT | self.state.get() & INK_LATE_ALL);
@@ -214,7 +226,7 @@ impl InkSink {
 
     /// Whether scope `scope` may have been tainted: while open, or by paint
     /// deferred past it (the range of tainted ended scopes holds it).
-    pub fn scope_tainted(&self, scope: u32) -> bool {
+    pub(crate) fn scope_tainted(&self, scope: u32) -> bool {
         let (state, late) = (self.state.get(), self.late.get());
         state & INK_LATE_ALL != 0
             || scope == self.scope() && state & INK_TAINTED != 0
@@ -237,6 +249,43 @@ impl InkSink {
         self.state.get() & INK_TAINTED != 0
     }
 }
+thread_local! {
+    /// The frame's scope sink (`Window::with_ink_scope`), kept outside
+    /// `Scene::ink`: a paint snapshot holds only the scope word
+    /// (`PaintCtx::ink_scope`), by which deferred paint still feeds it, and no
+    /// host allocates a sink for its scopes. Reset with the scene.
+    static SCOPES: InkSink = const { InkSink::new() };
+}
+
+/// `f` of the scope sink while scope `scope` (`Scene::ink_scope`) is not 0.
+pub(crate) fn scoped_ink(scope: u32, f: impl FnOnce(&InkSink)) {
+    if scope != 0 {
+        SCOPES.with(f);
+    }
+}
+
+/// A new frame: no scope of the last one is measured any more.
+pub(crate) fn reset_ink_scopes() {
+    SCOPES.with(InkSink::clear);
+}
+
+/// Whether ink scope `scope` of this frame (`Window::with_ink_scope`) was
+/// tainted, also by paint deferred past its end.
+pub fn ink_scope_tainted(scope: u32) -> bool {
+    SCOPES.with(|sink| sink.scope_tainted(scope))
+}
+
+/// What one ink scope measured (`Window::with_ink_scope`).
+#[derive(Clone, Copy)]
+pub struct InkScope {
+    /// The scope's id in this frame, for `ink_scope_tainted` after deferred paint.
+    pub id: u32,
+    /// Union of the placed bounds painted in the scope; `None` when nothing.
+    pub bounds: Option<Bounds<ScaledPixels>>,
+    /// The scope had effects beyond offering primitives (`InkSink::tainted`).
+    pub tainted: bool,
+}
+
 /// Paint effects of a scope observed by open ink sinks.
 pub(crate) struct InkProbe {
     start: PaintIndex,
@@ -248,7 +297,8 @@ pub(crate) struct InkProbe {
 
 impl InkProbe {
     pub(crate) fn open(window: &Window) -> Option<Self> {
-        (!window.next_frame.scene.ink.is_empty()).then(|| Self {
+        let scene = &window.next_frame.scene;
+        (!scene.ink.is_empty() || scene.ink_scope != 0).then(|| Self {
             start: window.paint_index(),
             groups: window.next_frame.scene.groups.len(),
             callbacks: window.next_frame_callback_count(),
@@ -275,6 +325,7 @@ impl InkProbe {
             for sink in &window.next_frame.scene.ink {
                 sink.taint_in(scope);
             }
+            scoped_ink(scope, |sink| sink.taint_in(scope));
         }
     }
 }
@@ -369,11 +420,6 @@ impl Window {
 
     /// Paint `f` with `sink` measuring its ink (see [`InkSink`]).
     pub fn with_ink_sink<R>(&mut self, sink: Rc<InkSink>, f: impl FnOnce(&mut Self) -> R) -> R {
-        // At most one open sink measures scopes (`InkSink::begin_scope`).
-        let outer = self.next_frame.scene.ink_scope;
-        if sink.scope() != 0 {
-            self.next_frame.scene.ink_scope = sink.scope();
-        }
         self.next_frame.scene.ink.push(sink);
         let probe = InkProbe::open(self);
         let result = f(self);
@@ -381,8 +427,36 @@ impl Window {
             probe.close(self);
         }
         self.next_frame.scene.ink.pop();
-        self.next_frame.scene.ink_scope = outer;
         result
+    }
+
+    /// Paint `f` measuring its ink in a new scope of the frame's scope sink:
+    /// a host that measures many subtrees in turn (one per block) needs no
+    /// sink of its own, and paint deferred past the scope taints it by id
+    /// (`ink_scope_tainted`). A scope opened inside another ends the outer
+    /// one, which is then tainted: its later ink would go unmeasured.
+    pub fn with_ink_scope<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> (R, InkScope) {
+        let outer = self.next_frame.scene.ink_scope;
+        let id = SCOPES.with(|sink| {
+            let id = sink.begin_scope();
+            if outer != 0 {
+                sink.taint_in(outer);
+            }
+            id
+        });
+        self.next_frame.scene.ink_scope = id;
+        let probe = InkProbe::open(self);
+        let result = f(self);
+        if let Some(probe) = probe {
+            probe.close(self);
+        }
+        self.next_frame.scene.ink_scope = outer;
+        let scope = SCOPES.with(|sink| match sink.scope() == id {
+            true => InkScope { id, bounds: sink.bounds(), tainted: sink.tainted() },
+            // A scope opened inside ended this one before its paint did.
+            false => InkScope { id, bounds: None, tainted: true },
+        });
+        (result, scope)
     }
 
     /// Run paint `f`, which reports whether its mouse listeners and element
@@ -391,7 +465,7 @@ impl Window {
     /// state records, and state that is at its default. Open ink sinks then
     /// allow those effects; otherwise they are tainted.
     pub fn offscreen_inert<R>(&mut self, f: impl FnOnce(&mut Self) -> (R, bool)) -> R {
-        if self.next_frame.scene.ink.is_empty() {
+        if self.next_frame.scene.ink.is_empty() && self.next_frame.scene.ink_scope == 0 {
             return f(self).0;
         }
         let start = self.paint_index();
@@ -406,6 +480,7 @@ impl Window {
             for sink in &scene.ink {
                 sink.taint_in(scene.ink_scope);
             }
+            scoped_ink(scene.ink_scope, |sink| sink.taint_in(scene.ink_scope));
         }
         result
     }

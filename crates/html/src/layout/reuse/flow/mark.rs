@@ -19,8 +19,9 @@ pub(crate) struct Mark {
     pub(super) replay: bool,
     /// The child may be recorded as a far block (`FlowCx::far_candidate`).
     pub(super) far: bool,
-    /// `widths` is the build's shared flag (`FrameFar::widths`): the child is
-    /// built with the flow's own options recording into it (`FlowCx::child_opts`).
+    /// The child's outside width reads go to the flow's record state
+    /// (`FlowReuse::far_widths`): it is built with the flow's own options
+    /// recording into it (`FlowCx::child_opts`); `widths` stays empty.
     pub(super) shared_widths: bool,
     /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
     pub(super) inert: super::super::plain::Inert,
@@ -33,11 +34,13 @@ impl super::FlowCx {
     /// build's shared flag (cleared by `mark`) until `give_back`, with no copy
     /// (`BoxConstraints::track_widths_in_place`).
     pub(crate) fn child_opts(&self, mark: &Mark, opts: &RenderOpts) -> Option<Box<RenderOpts>> {
-        let sink = mark.widths.clone()?;
         if mark.shared_widths {
-            opts.cx.constraints.track_widths_in_place(sink);
+            opts.cx
+                .constraints
+                .track_widths_in_place(self.reuse.clone());
             return None;
         }
+        let sink = mark.widths.clone()?;
         Some(opts.inner(|cx| cx.constraints.track_widths(sink)))
     }
 
@@ -77,9 +80,7 @@ impl super::FlowCx {
         } else if mark.far {
             // Width reads happen during the child's build only, and
             // `record_far` reads the flag right after it.
-            let widths = self.reuse.with_far(|far| far.widths.clone());
-            widths.set(false);
-            mark.widths = Some(widths);
+            self.reuse.far_widths.set(false);
             mark.shared_widths = true;
         }
         mark

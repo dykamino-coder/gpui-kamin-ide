@@ -3,42 +3,36 @@
 
 use super::{FarRecord, FarSlot};
 use crate::layout::reuse::FlowReuse;
-use gpui::InkSink;
-use std::cell::Cell;
 use std::rc::Rc;
 
+/// Recorders count of a finished build (`FlowReuse::far_recorders`): a later
+/// paint of its tree records nothing.
+const FAR_DONE: u16 = u16::MAX;
+
 /// Far records of a document and the far blocks of the build that holds
-/// them (`FlowReuse::far`), allocated with the first far block. Between
+/// them (`FlowReuse::far`), allocated with the build's first far record or
+/// claim: a build whose candidates all turn out near allocates none. Between
 /// builds the document keeps it while it keeps records (`Store::far`), so a
-/// build that claims them allocates no far state of its own.
+/// build that claims them allocates no far state of its own. Ink is measured
+/// in scopes of the frame's scope sink (`Window::with_ink_scope`), the width
+/// reads of candidates go to the flow (`FlowReuse::far_widths`).
 #[derive(Default)]
 pub(crate) struct FrameFar {
     /// Records kept from earlier builds, sorted by node id.
     pub(in crate::layout::reuse) records: Vec<FarRecord>,
     /// Records claimed by this build.
     pub(in crate::layout::reuse) claimed: u64,
-    /// Recorders this build made (`FarRecorder`): at most that many records.
-    pub(in crate::layout::reuse) recorders: usize,
     /// Records this build's recorders made, until the build is finished.
     pub(in crate::layout::reuse) done: Vec<FarRecord>,
     pub(in crate::layout::reuse) slots: Vec<Rc<FarSlot>>,
-    /// Outside width reads of the far candidate being built, shared by all
-    /// candidates of the build (`Mark::shared_widths`).
-    pub(in crate::layout::reuse) widths: Rc<Cell<bool>>,
-
-    /// The ink sink of the recorders' paints, one scope per recorder
-    /// (`InkSink::begin_scope`).
-    pub(in crate::layout::reuse) sink: Rc<InkSink>,
 }
 
 impl FrameFar {
     /// Drop what belongs to the build, keep the records and the storage.
     fn rest(&mut self) {
         self.claimed = 0;
-        self.recorders = 0;
         self.done.clear();
         self.slots.clear();
-        self.sink.clear();
     }
 
     fn find(&self, node: u64) -> Option<&FarRecord> {
@@ -75,21 +69,26 @@ impl FlowReuse {
         out
     }
 
-    /// The recorders' ink sink of this build, while it is not finished (a
-    /// later paint of the same tree finds none).
-    pub(in crate::layout::reuse) fn far_sink(&self) -> Option<Rc<InkSink>> {
-        let far = self.far.take()?;
-        let sink = far.sink.clone();
-        self.far.set(Some(far));
-        Some(sink)
+    /// A far recorder joins this build (`FlowCx::record_far`).
+    pub(in crate::layout::reuse) fn add_far_recorder(&self) {
+        let count = self.far_recorders.get();
+        self.far_recorders
+            .set(count.saturating_add(1).min(FAR_DONE - 1));
+    }
+
+    /// This build is not finished: its recorders may record (a later paint
+    /// of the same tree records nothing).
+    pub(in crate::layout::reuse) fn far_open(&self) -> bool {
+        self.far_recorders.get() != FAR_DONE
     }
 
     /// A recorder of this build made `record` (`FarRecorder::paint`). The
     /// first one reserves room for all of the build's recorders.
     pub(in crate::layout::reuse) fn add_far(&self, record: FarRecord) {
+        let recorders = usize::from(self.far_recorders.get());
         self.with_far(|far| {
             if far.done.is_empty() {
-                far.done.reserve_exact(far.recorders);
+                far.done.reserve_exact(recorders);
             }
             far.done.push(record);
         });
@@ -98,6 +97,7 @@ impl FlowReuse {
     /// After paint: far records claimed in this frame and those recorded.
     /// A failed recording marks its block near (`Store::far_near`).
     pub(in crate::layout::reuse) fn finish_far(&self) {
+        self.far_recorders.set(FAR_DONE);
         let Some(mut far) = self.far.take() else {
             // No far block in this build: no record is carried over.
             self.store.far.take();
@@ -111,7 +111,7 @@ impl FlowReuse {
             .retain(|record| record.claimed.replace(false) && claimed > 0);
         let mut done = std::mem::take(&mut far.done);
         done.retain(|record| {
-            let kept = !far.sink.scope_tainted(record.scope);
+            let kept = !gpui::ink_scope_tainted(record.scope);
             match kept {
                 true => self.store.forget_near(record.id()),
                 false => self.store.note_near(record.id()),
