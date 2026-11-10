@@ -43,6 +43,28 @@ assets before listening. It rejects linked/special files and bounded-size/depth
 violations, and returns 404 for unknown paths, sources, maps and traversal.
 Application routes never publish project files. Asset changes require restart.
 
+## Module Federation preview paths
+
+`preview_mount` accepts a container-local entry such as
+`http://127.0.0.1:3101/remoteEntry.js`. For a remote named `demo`, use the
+documented development configuration:
+
+```js
+output: { publicPath: 'auto' },
+devServer: {
+  webSocketServer: { type: 'ws', options: { path: '/preview/remotes/demo/ws' } },
+},
+```
+
+The browser loads `/preview/remotes/demo/remoteEntry.js`; the HTTP proxy maps
+that entry and its chunks to the upstream asset paths. WebSocket upgrades
+retain `/preview/remotes/demo/ws`, exactly as configured on the dev server.
+If the upstream also serves HTTP assets under `/preview/remotes/demo/`, pass
+that full entry path to `preview_mount`; HTTP forwarding and redirects retain
+the prefix once. Routing is deterministic, without retries to another path.
+Authentication, credential stripping and socket revocation apply to both
+transports. React Refresh uses the host runtime and the remote's normal plugin.
+
 ## Authentication
 
 The configured Bridge token is validated with the existing server

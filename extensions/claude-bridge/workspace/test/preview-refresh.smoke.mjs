@@ -5,7 +5,7 @@ import { chromium } from 'playwright'
 import { previewFixture } from './fixtures/preview-fixture.mjs'
 import { refreshRemote } from './fixtures/refresh-remote.mjs'
 
-test('default Rspack React Refresh preserves state and resets changed hook signatures', { timeout: 120000 }, async t => {
+test('documented Rspack HMR path preserves refresh state and resets changed hook signatures', { timeout: 120000 }, async t => {
   const fixture = await previewFixture(t)
   const remote = await refreshRemote(t, fixture.root)
   const browser = await chromium.launch({ headless: true })
@@ -14,10 +14,16 @@ test('default Rspack React Refresh preserves state and resets changed hook signa
   page.setDefaultTimeout(25000)
   const errors = [], diagnostics = []
   const sockets = []
+  const hmrFrames = []
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => diagnostics.push(message.text()))
   page.on('websocket', socket => {
     sockets.push(new URL(socket.url()).pathname)
+    if (new URL(socket.url()).pathname === '/preview/remotes/refresh_demo/ws') {
+      socket.on('framereceived', ({ payload }) => {
+        try { hmrFrames.push(JSON.parse(String(payload)).type) } catch {}
+      })
+    }
   })
   await page.route('**/*', route => new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort())
   await page.goto(fixture.origin)
@@ -42,6 +48,7 @@ test('default Rspack React Refresh preserves state and resets changed hook signa
     await page.getByRole('button', { name: 'New hook 0', exact: true }).waitFor()
     assert.equal(await page.evaluate(() => window.__refreshDocument), 'unchanged')
     assert.ok(sockets.includes('/preview/remotes/refresh_demo/ws'))
+    assert.ok(hmrFrames.includes('hash') && hmrFrames.includes('ok'), 'The prefixed socket must complete its handshake and deliver dev-server builds')
     assert.ok(!sockets.includes('/ws'), 'The remote must not start an unproxied dev client')
     await fixture.tool('preview_mount', remote)
     await page.getByRole('button', { name: 'New hook 0', exact: true }).waitFor()

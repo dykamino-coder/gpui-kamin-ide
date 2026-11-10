@@ -129,7 +129,7 @@ export async function remoteFixture(t, root, { name = 'preview_fixture', require
       shared: Object.fromEntries(['react', 'react-dom', 'react-dom/client'].map(pkg => [pkg, { singleton: true, strictVersion: true, requiredVersion, import: false }])) })],
     infrastructureLogging: { level: 'none' }, stats: 'errors-only' })
   const server = new DevServer({ host: '127.0.0.1', port: 0, hot: hot ? 'only' : false, liveReload: false,
-    client: false, allowedHosts: 'all', webSocketServer: hot ? { type: 'ws', options: { path: '/ws' } } : false }, compiler)
+    client: false, allowedHosts: 'all', webSocketServer: hot ? { type: 'ws', options: { path: `/preview/remotes/${name}/ws` } } : false }, compiler)
   await server.start()
   cleanups.get(root).push(async () => { await server.stop(); await new Promise(resolve => compiler.close(() => resolve())) })
   const port = server.server.address().port
