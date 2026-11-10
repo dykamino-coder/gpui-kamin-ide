@@ -47,6 +47,10 @@ pub(crate) struct Store {
     /// The document was patched since the last frame (`Document::commit`):
     /// the records are known to hold only by the next build's comparison.
     pub(super) patched: Cell<bool>,
+    /// The last rebuild dropped records (`rebase`): a restyle reached their
+    /// blocks, so the frame after it builds them without recording them
+    /// again, as a fresh document's first frame does (`FlowCx::restyled`).
+    pub(super) restyled: Cell<bool>,
 }
 
 impl Store {
@@ -80,13 +84,14 @@ impl Store {
             false => Damage::None,
         };
         // Compared at the rebuild of the document (`rebase`).
-        let verdict = match record.source.borrow().as_ref() {
-            None => Some(true),
-            Some(source) if source.same(e) => Some(true),
+        let source = &record.source;
+        let verdict = match source.holds() {
+            false => Some(true),
+            true if source.same(e) => Some(true),
             // A repainted block stands only off screen (`FlowCx::placeholder`):
             // the layout compare of a near one, a walk of its whole subtree,
             // would only find a record its build cannot use.
-            Some(source) => (record.far && source.same_layout(e)).then_some(false),
+            true => (record.far && source.same_layout(e)).then_some(false),
         };
         if verdict == Some(true) {
             return Some((record, damage));
@@ -111,9 +116,7 @@ impl Store {
     #[cfg(test)]
     pub(crate) fn recorded(&self) -> Vec<Element> {
         let records = self.records.borrow();
-        let sources = records
-            .values()
-            .filter_map(|r| r.source.borrow().as_ref().map(|s| s.element()));
+        let sources = records.values().filter_map(|r| r.source.element());
         sources.collect()
     }
 
@@ -123,7 +126,7 @@ impl Store {
     pub(crate) fn patch(&self) {
         self.patched.set(true);
         let mut records = self.records.take();
-        records.retain(|_, r| r.source.borrow().is_some());
+        records.retain(|_, r| r.source.holds());
         self.records.replace(records);
     }
 

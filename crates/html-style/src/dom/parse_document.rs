@@ -52,8 +52,23 @@ pub fn parse_into(
 pub fn convert(
     input: &Admitted,
     extra_css: &str,
+    media: Media,
+    doc: &Rc<crate::values::DocumentValues>,
+) -> Result<Vec<Node>, DocumentFailure> {
+    convert_restyling(input, extra_css, media, doc, None)
+}
+
+/// [`convert`] of a rebuild for a batch of attribute mutations: the walk
+/// collects in `invalidation` the elements the batch restyles. Like Blink's
+/// pending invalidations, which live for one style recalc and not with the
+/// document, it is the caller's for this one build: a document pays nothing
+/// for it.
+pub fn convert_restyling(
+    input: &Admitted,
+    extra_css: &str,
     mut media: Media,
     doc: &Rc<crate::values::DocumentValues>,
+    mut invalidation: Option<&mut super::invalidation::Invalidation>,
 ) -> Result<Vec<Node>, DocumentFailure> {
     let vcx = doc.values();
     vcx.doc.reset_font_alternates();
@@ -159,7 +174,9 @@ pub fn convert(
         clone_cost: Default::default(),
     });
     let shadows = has_declarative_shadow(&dom.document, &admission)?;
-    vcx.doc.traversal.invalidation_rules(&doc.rules, shadows);
+    if let Some(invalidation) = invalidation.as_deref_mut() {
+        invalidation.prepare(&doc.rules, shadows);
+    }
     if shadows {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
@@ -199,6 +216,7 @@ pub fn convert(
         false,
         &mut out,
         vcx,
+        invalidation,
     )?;
     super::finish_document::finish(&tree, &admission, out, vcx)
 }

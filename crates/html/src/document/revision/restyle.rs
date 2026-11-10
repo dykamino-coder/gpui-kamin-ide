@@ -7,13 +7,11 @@ use crate::dom::invalidation::Changed;
 impl Document {
     /// `next` rebuilds this document's source DOM with the same node ids: it
     /// takes over the block records, compared now by the cascaded values of
-    /// the elements the rebuild restyled (`dom::invalidation`) or, if those
-    /// are unknown, of both trees (`Store::rebase`), so the previous frame
-    /// tree goes with this document.
-    pub(super) fn hand_over_reuse(&self, next: &mut Document) {
-        let restyled = next.state.values.traversal.take_restyled();
-        self.reuse
-            .rebase(&self.nodes, &next.nodes, restyled.as_deref());
+    /// the elements the rebuild restyled (`restyled`, `dom::invalidation`)
+    /// or, if those are unknown, of both trees (`Store::rebase`), so the
+    /// previous frame tree goes with this document.
+    pub(super) fn hand_over_reuse(&self, next: &mut Document, restyled: Option<&[u64]>) {
+        self.reuse.rebase(&self.nodes, &next.nodes, restyled);
         next.reuse = self.reuse.clone();
     }
 

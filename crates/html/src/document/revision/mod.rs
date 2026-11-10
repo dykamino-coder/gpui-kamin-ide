@@ -102,10 +102,8 @@ impl Document {
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
         let state = super::state::DocState::continuing(media, &self.state);
-        if let Some(changed) = invalidation {
-            state.values.traversal.invalidate(changed);
-        }
-        let candidate = match Self::from_source(
+        let mut invalidation = invalidation.map(crate::dom::invalidation::Invalidation::new);
+        let candidate = match Self::try_source(
             source,
             theme_css,
             self.base_url.clone(),
@@ -113,15 +111,17 @@ impl Document {
             state,
             &fonts,
             revision,
+            invalidation.as_mut(),
         ) {
             Ok(candidate) => candidate,
-            Err(failure) => return Err(record(failure, self)),
+            Err((failure, _)) => return Err(record(failure, self)),
         };
         // The same source shape gives the same node ids (traversal counters):
         // the block records may hold for the restyled tree (`restyle`).
         let mut candidate = candidate;
         if same_shape {
-            self.hand_over_reuse(&mut candidate);
+            let restyled = invalidation.and_then(crate::dom::invalidation::Invalidation::finish);
+            self.hand_over_reuse(&mut candidate, restyled.as_deref());
         }
         *self = candidate;
         Ok(self.report())

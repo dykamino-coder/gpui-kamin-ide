@@ -139,3 +139,22 @@ fn a_patch_after_a_restyle_drops_the_verdicts_of_the_rebuild(cx: &mut TestAppCon
     );
     assert_eq!(rebuilt, 0);
 }
+
+#[gpui::test]
+fn the_frame_after_a_restyle_dropped_records_wraps_no_block_for_recording(cx: &mut TestAppContext) {
+    let (view, cx) = settled(cx);
+    let tracked = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
+        cx.update(|_, cx| view.read(cx).doc.tracked_blocks())
+    };
+    let before = tracked(&view, cx);
+    // The visible rows are recoloured: their records go at the rebuild, and a
+    // record made now would go at the next such restyle.
+    update(&view, cx, &page("paint", "row"));
+    assert_eq!(
+        tracked(&view, cx),
+        before,
+        "a restyled frame wrapped blocks"
+    );
+    let (_, skipped, _) = reused(&view, cx);
+    assert!(skipped > 0, "the offscreen records were dropped too");
+}

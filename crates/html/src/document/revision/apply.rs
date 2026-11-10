@@ -123,9 +123,7 @@ impl Document {
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
         let state = crate::document::state::DocState::continuing(media, &self.state);
-        if let Some(changed) = invalidation {
-            state.values.traversal.invalidate(changed);
-        }
+        let mut invalidation = invalidation.map(crate::dom::invalidation::Invalidation::new);
         match Self::try_source(
             source,
             theme_css,
@@ -134,11 +132,14 @@ impl Document {
             state,
             &fonts,
             revision,
+            invalidation.as_mut(),
         ) {
             Ok(mut next) => {
                 // Same source DOM, same node ids: the block records may hold
                 // for the restyled tree (`restyle`).
-                self.hand_over_reuse(&mut next);
+                let restyled =
+                    invalidation.and_then(crate::dom::invalidation::Invalidation::finish);
+                self.hand_over_reuse(&mut next, restyled.as_deref());
                 *self = next;
                 Ok(self.report())
             }

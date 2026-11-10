@@ -40,6 +40,7 @@ impl Store {
             _ => None,
         };
         let mut records = self.records.take();
+        let recorded = records.len();
         let keep = |far: bool, exact: bool, layout: &dyn Fn() -> bool| match exact {
             true => Some(false),
             false => (far && layout()).then_some(true),
@@ -88,9 +89,14 @@ impl Store {
                     }
                 }
                 // A record left with its source had no equal block and goes.
-                records.retain(|_, r| r.source.borrow().is_none());
+                records.retain(|_, r| !r.source.holds());
             }
         }
+        // A block whose record the restyle dropped is built by the next frame;
+        // recorded there it would hold its subtree only until the next such
+        // restyle drops it again (Blink keeps no display items of an object
+        // that needs paint until it is painted clean).
+        self.restyled.set(records.len() < recorded);
         self.records.replace(records);
     }
 }

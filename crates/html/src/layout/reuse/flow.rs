@@ -36,6 +36,9 @@ pub(crate) struct FlowCx {
     /// Прошлая сборка тоже была устоявшейся: дальние блоки уже записаны для
     /// пропуска, собираются лишь ближние и изменённые.
     warm: bool,
+    /// The rebuild before this build dropped records (`Store::restyled`):
+    /// no child is wrapped for recording.
+    restyled: bool,
 }
 
 impl FlowReuse {
@@ -140,6 +143,7 @@ impl FlowReuse {
             edges,
             settled_outside_widths,
             warm,
+            restyled: self.store.restyled.get(),
             floats: std::cell::Cell::new(false),
         })
     }
@@ -176,7 +180,7 @@ impl FlowCx {
             && now.coordinates == mark.coordinates
             && now.late == mark.late
             && out.last().is_some_and(|el| el.paint_metadata().is_none());
-        if !single {
+        if !single || self.restyled {
             return;
         }
         let skip = (self.settled || self.resized)

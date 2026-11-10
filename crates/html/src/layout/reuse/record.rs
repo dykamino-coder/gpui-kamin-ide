@@ -4,12 +4,11 @@ use super::*;
 
 /// Запись блока: вход сборки и то, что нужно заместителю и проверке экрана.
 pub(crate) struct Record {
-    /// The block's node id.
-    pub(super) id: u64,
-    /// What a later build of the block is compared with (`source`); `None`:
-    /// the block was compared at a rebuild of the document, by its document
-    /// boxes (`Store::rebase`), and has not been built since.
-    pub(super) source: RefCell<Option<Source>>,
+    /// What a later build of the block is compared with (`source`); released
+    /// (`Source::holds` false): the block was compared at a rebuild of the
+    /// document, by its document boxes (`Store::rebase`), and has not been
+    /// built since.
+    pub(super) source: Source,
     pub(super) key: Rc<FlowKey>,
     pub(super) start: Counters,
     pub(super) end: Counters,
@@ -40,10 +39,9 @@ impl Record {
     /// `repaint`: the block differs in paint-only values, so the recorded
     /// output is dropped (Blink keeps the layout result of a
     /// paint-invalidated object and drops its display items).
-    pub(super) fn moved_to(&self, source: Option<Source>, repaint: bool) -> Self {
+    pub(super) fn moved_to(&self, source: Source, repaint: bool) -> Self {
         Self {
-            id: self.id,
-            source: RefCell::new(source),
+            source,
             key: self.key.clone(),
             start: self.start,
             end: self.end,
@@ -63,7 +61,7 @@ impl Record {
     /// This record compared at a rebuild of the document (`Store::rebase`),
     /// in place: it drops its source, and with `repaint` its output.
     pub(super) fn rebased(&self, repaint: bool) {
-        self.source.take();
+        self.source.release();
         if repaint {
             self.replay.take();
             self.repaint.set(true);

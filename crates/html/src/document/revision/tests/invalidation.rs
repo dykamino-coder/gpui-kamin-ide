@@ -68,17 +68,23 @@ fn a_rebuild_restyles_the_elements_of_the_rules_that_read_a_changed_class() {
     let html = element(&doc.source_dom(), "html").unwrap();
     let changed = changed(&doc, &[set(&html, "class", "alt")]).unwrap();
     let state = crate::document::state::DocState::continuing(doc.state.media(), &doc.state);
-    state.values.traversal.invalidate(changed.clone());
+    let mut invalidation = crate::dom::invalidation::Invalidation::new(changed.clone());
     let fonts = doc.state.text.metrics.font_context();
     let html_text = page.replace("<html>", "<html class=\"alt\">");
     let revision = doc.budget().revision();
     let source = Document::admit(&html_text, "", None, false, &revision).unwrap();
-    let next = Document::from_source(source, "", None, false, state, &fonts, revision).unwrap();
-    let restyled = next.state.values.traversal.take_restyled().expect("known");
+    let next = Document::try_source(
+        source,
+        "",
+        None,
+        false,
+        state,
+        &fonts,
+        revision,
+        Some(&mut invalidation),
+    );
+    assert!(next.is_ok());
+    let restyled = invalidation.finish().expect("known");
     // `body` is left just before `html`.
     assert_eq!(restyled, [changed.elements[0], changed.elements[0] - 1]);
-    assert!(
-        next.state.values.traversal.take_restyled().is_none(),
-        "taken once"
-    );
 }

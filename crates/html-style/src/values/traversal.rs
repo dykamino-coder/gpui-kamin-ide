@@ -25,8 +25,6 @@ pub struct TraversalState {
     read: RefCell<std::collections::HashSet<usize>>,
     first_limit: Cell<Option<TraversalLimit>>,
     embedded: Cell<bool>,
-    /// The restyle invalidation of the batch this build rebuilds for.
-    invalidation: RefCell<Option<Box<crate::dom::invalidation::Invalidation>>>,
 }
 
 impl TraversalState {
@@ -93,40 +91,6 @@ impl TraversalState {
             elements.resize(slot + 1, 0);
         }
         elements[slot] = std::rc::Rc::as_ptr(handle) as usize;
-    }
-
-    /// This build rebuilds the source DOM for the attribute mutations `changed`:
-    /// it collects the elements they restyle (`crate::dom::invalidation`).
-    pub fn invalidate(&self, changed: crate::dom::invalidation::Changed) {
-        let invalidation = crate::dom::invalidation::Invalidation::new(changed);
-        self.invalidation.replace(Some(Box::new(invalidation)));
-    }
-
-    /// The build knows its rules (`Invalidation::prepare`).
-    pub fn invalidation_rules(&self, rules: &[crate::style::css::Rule], shadows: bool) {
-        let mut invalidation = self.invalidation.take();
-        if let Some(invalidation) = invalidation.as_mut() {
-            invalidation.prepare(rules, shadows);
-        }
-        self.invalidation.replace(invalidation);
-    }
-
-    /// The walk left element `id` (`Invalidation::visit`).
-    pub fn left_element(&self, tag: &str, attrs: &[(String, String)], id: u64) {
-        // Outside an edit the walk pays one check per element.
-        if self.invalidation.borrow().is_none() {
-            return;
-        }
-        let mut invalidation = self.invalidation.take();
-        if let Some(invalidation) = invalidation.as_mut() {
-            invalidation.visit(tag, attrs, id);
-        }
-        self.invalidation.replace(invalidation);
-    }
-
-    /// The elements the batch of `invalidate` restyled; `None`: unknown.
-    pub fn take_restyled(&self) -> Option<Vec<u64>> {
-        self.invalidation.take()?.finish()
     }
 
     /// Адреса исходных элементов удерживаемого DOM по `node_id - 1`.

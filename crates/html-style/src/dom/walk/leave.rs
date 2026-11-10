@@ -14,6 +14,7 @@ pub(super) fn leave(
     counters: &mut crate::style::generated::counters::Counters,
     mut children: Vec<Node>,
     out: &mut super::kids::Kids,
+    invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
 ) -> Result<(), crate::budget::admission::Error> {
     let rules = &p.visit.scope.rules;
     let frames = &p.visit.scope.frames;
@@ -27,7 +28,9 @@ pub(super) fn leave(
         counters.leave();
         *counter += 1;
         vcx.doc.traversal.record_element(p.visit.handle(), *counter);
-        vcx.doc.traversal.left_element(&p.tag, &p.attrs, *counter);
+        if let Some(invalidation) = invalidation {
+            invalidation.visit(&p.tag, &p.attrs, *counter);
+        }
         out.push(Node::Element(Element {
             marks: Default::default(),
             list_item: None,
@@ -104,7 +107,11 @@ pub(super) fn leave(
     }
     *counter += 1;
     vcx.doc.traversal.record_element(p.visit.handle(), *counter);
-    vcx.doc.traversal.left_element(&p.tag, &p.attrs, *counter);
+    // A rebuild for attribute mutations collects the restyled elements as
+    // the walk leaves them (`dom::invalidation`).
+    if let Some(invalidation) = invalidation {
+        invalidation.visit(&p.tag, &p.attrs, *counter);
+    }
     for kid in &mut children {
         if let Node::Element(c) = kid
             && c.tag.starts_with("::")
