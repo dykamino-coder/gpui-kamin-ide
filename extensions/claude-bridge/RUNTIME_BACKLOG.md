@@ -4,7 +4,7 @@
 
 [INC-0092](runtime-issues/INC-2026-0092.md): confirmed loss of host open tabs and
 saved titles on resume after restart; bounded fix and real disk/process/browser
-regressions prepared in `codex/bridgeweb-session-persistence`. Lead reviews and
+regressions prepared in [#682](https://github.com/dykamino-coder/gpui-kamin-ide/pull/682). Lead reviews and
 merges the single Change PR; owner deployment observation belongs to the lead.
 The wider INC-0087 parity/acceptance scope remains open.
 

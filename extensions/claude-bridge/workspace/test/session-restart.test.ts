@@ -109,5 +109,3 @@ test('real host restores open conversations, titles and active selection from di
   assert.deepEqual(await view.invoke('tab:list'), [], 'Explicit disconnect must durably clear the open set')
   await view.stop()
 })
-
-
