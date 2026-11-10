@@ -303,6 +303,32 @@ or every desktop tool behavior. The readiness manifest at that snapshot did not
 encode the remaining completion requirements. The strict completion gate above
 now rejects missing execution proof; it does not extend this historical evidence.
 
+## Bounded follow-up: long-turn browser retention metrics
+
+Implementation and exact-candidate validation:
+[#687](https://github.com/dykamino-coder/gpui-kamin-ide/pull/687), pending lead review.
+
+Exercise the production browser bundle and real shared BridgeHost with a
+deterministic synthetic upstream: 8,000 distinct transcript records while attached,
+another 2,000 with no attached page, then five fresh-page reattachments. Each row
+contains roughly 1 KiB of prose. Record every production JS chunk's summed raw,
+gzip and Brotli bytes, Chromium version, exact runner source/dirty state, and
+post-GC page heap at startup, during the long turn and after every reattachment.
+
+Acceptance checks the existing 4,000–4,500-record attached store window,
+200-record browser reattach snapshot and 150-row initial render window, the
+newest record and unique ordered UUIDs, a shared tool
+response while no page exists, and no extra submit or interrupt frames. Page
+heap must stay below 128 MiB at every measured point; equal-tail reattachments
+must span no more than 16 MiB of used heap. These deliberately coarse regression
+budgets measure renderer JS, not browser RSS, host memory or a universal thin-page
+guarantee. Fresh pages test recovered state; they cannot establish absence of
+leaks in a destroyed renderer. Preserve measurements even when a budget fails.
+
+This automated Linux Podman fixture adds repeatable load coverage. It does not
+emit full-parity receipts or satisfy the remaining actual-model/composed-image
+acceptance contract. No owner server or native Windows browser is involved.
+
 ## Historical follow-up: host-owned FilePanel controls (2026-11-09)
 
 This records the earlier implementation scope. The owner's later correction
