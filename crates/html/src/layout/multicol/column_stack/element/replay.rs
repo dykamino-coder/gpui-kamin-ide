@@ -69,10 +69,12 @@ impl ColumnStack {
     /// хвост её фрагмента рисуются при этом своими копиями и заливкой (`paint_frags`): поток
     /// продолжения стоит под шапкой уже в плане (`f.y`).
     /// Решение одно для prepaint и paint: от контекста краски оно не зависит.
-    pub(super) fn replays(&self, kid: usize, plan: &[Frag]) -> bool {
+    pub(super) fn replays<const QUERY: bool>(&self, kid: usize, plan: &[Frag]) -> bool {
         let c = &self.children[kid];
         self.replay
-            && c.replay
+            // Ограничения 3D/backdrop относятся к записи краски. Запрос
+            // проецирует углы из непрерывной исходной коробки сам.
+            && (QUERY || c.replay)
             && (c.clone_dec.is_none() || c.clone_deco.is_some())
             && plan.iter().any(|f| f.kid == kid && f.copy == 0)
             && plan.iter().filter(|f| f.kid == kid).count() > 1

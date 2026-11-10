@@ -11,6 +11,7 @@ struct LayoutFragmentHitScopes {
 struct LayoutProjection {
     matrix: [[f32; 4]; 4],
     flatten: bool,
+    identity: Option<(u64, bool)>,
 }
 
 #[derive(Default)]
@@ -30,11 +31,12 @@ impl Window {
         &mut self,
         matrix: [[f32; 4]; 4],
         flatten: bool,
+        identity: Option<(u64, bool)>,
         query: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let Some(projections) = self.render_context::<LayoutProjections>() else {
             return self.with_layout_projections(|window| {
-                window.with_layout_projection(matrix, flatten, query)
+                window.with_layout_projection(matrix, flatten, identity, query)
             });
         };
         let scope = Rc::new(HitScope {
@@ -45,7 +47,7 @@ impl Window {
         // A retained source/destination scope keeps its address alive. A dead
         // scope's entry can be replaced if the allocator reuses that address.
         projections.0.borrow_mut().insert(
-            Rc::as_ptr(&scope) as usize, LayoutProjection { matrix, flatten },
+            Rc::as_ptr(&scope) as usize, LayoutProjection { matrix, flatten, identity },
         );
         let saved = self.hit_scope.replace(scope);
         self.with_restore(saved, |window, saved| window.hit_scope = saved.take(), query).0
@@ -102,7 +104,12 @@ impl Window {
                 if query.source.0.as_ref().is_some_and(|base| Rc::ptr_eq(base, scope)) {
                     break;
                 }
-                map_corners(self, scope, &mut corners);
+                // A continued root's copy already carries its own CSS scope.
+                // Keep source-local descendants, then use the destination's
+                // version of shared transforms exactly once.
+                if !shared_projection(self, scope, destination) {
+                    map_corners(self, scope, &mut corners);
+                }
                 next = scope.parent.as_ref();
             }
             let mut next = destination.0.as_deref();
@@ -131,6 +138,22 @@ impl Window {
         }
         Bounds::new(min, size(max.x - min.x, max.y - min.y))
     }
+}
+
+fn shared_projection(window: &Window, source: &HitScope, destination: &PaintHitScope) -> bool {
+    let Some(projections) = window.render_context::<LayoutProjections>() else { return false };
+    let projections = projections.0.borrow();
+    let Some(identity) = projections.get(&(source as *const HitScope as usize))
+        .and_then(|projection| projection.identity) else { return false };
+    let mut next = destination.0.as_deref();
+    while let Some(scope) = next {
+        if projections.get(&(scope as *const HitScope as usize))
+            .is_some_and(|projection| projection.identity == Some(identity)) {
+            return true;
+        }
+        next = scope.parent.as_deref();
+    }
+    false
 }
 
 fn map_corners(window: &Window, scope: &HitScope, corners: &mut [[f32; 4]; 4]) {

@@ -79,9 +79,14 @@ impl Hooks for QueryTransformed {
         let flatten = group.frame_3d.is_none();
         let mut children = |window: &mut Window| {
             if let Some(perspective) = perspective {
-                window.with_layout_projection(perspective, false, |window| {
-                    group.child.prepaint(window, cx);
-                });
+                window.with_layout_projection(
+                    perspective,
+                    false,
+                    group.node.map(|id| (id, true)),
+                    |window| {
+                        group.child.prepaint(window, cx);
+                    },
+                );
             } else {
                 group.child.prepaint(window, cx);
             }
@@ -89,7 +94,7 @@ impl Hooks for QueryTransformed {
         if presented {
             children(window);
         } else {
-            window.with_layout_projection(own, flatten, children);
+            window.with_layout_projection(own, flatten, group.node.map(|id| (id, false)), children);
         }
         if flat && !presented {
             crate::layout::positioned::anchor::tf_pop(&group.layout.anchors);

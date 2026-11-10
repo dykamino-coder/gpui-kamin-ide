@@ -44,6 +44,22 @@ fn effects(
         } => crate::paint::effects::transform::transformed_inner::<true>(
             child, style, parent, ref_box, node, frame,
         ),
+        Effect::ElementTransform {
+            element,
+            parent,
+            frame,
+        } => {
+            let style =
+                crate::style::cascade::materialize::box_style(parent, &element.style, frame.values);
+            crate::paint::effects::transform::transformed_inner::<true>(
+                child,
+                &style,
+                parent,
+                None,
+                Some(element.node_id),
+                frame,
+            )
+        }
         other => super::child_builder::effects(child, other),
     }
 }

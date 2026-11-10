@@ -33,11 +33,9 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
 fn painted(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     opts.cx.contracts.build.effects(
         opts.cx.contracts.build.element(e, inherited, opts),
-        Effect::Transform {
-            node: Some(e.node_id),
-            style: &e.style.used(),
+        Effect::ElementTransform {
+            element: e,
             parent: inherited,
-            ref_box: None,
             frame: opts.cx.frame(),
         },
     )
@@ -55,11 +53,9 @@ async fn painted_stack(
             .build
             .element_stack(stk, e, inherited, opts)
             .await,
-        Effect::Transform {
-            node: Some(e.node_id),
-            style: &e.style.used(),
+        Effect::ElementTransform {
+            element: e,
             parent: inherited,
-            ref_box: None,
             frame: opts.cx.frame(),
         },
     )

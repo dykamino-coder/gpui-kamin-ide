@@ -37,10 +37,17 @@ fn geometry_fragmented_projective_box_maps_physical_column_corners(cx: &mut Test
             (0., 41.1013069153, 100.),
             (47.6263198853, 26.8835754395, 63.5017585754),
         ]) {
-            near(rect.x, x);
-            near(rect.y, y);
-            near(rect.width, width);
-            near(rect.height, height);
+            for (property, actual, expected) in [
+                ("x", rect.x, x),
+                ("y", rect.y, y),
+                ("width", rect.width, width),
+                ("height", rect.height, height),
+            ] {
+                assert!(
+                    (actual - expected).abs() < 0.002,
+                    "{id} {property}: {rects:?}, expected {expected}"
+                );
+            }
         }
     }
 }

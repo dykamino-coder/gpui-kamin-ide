@@ -98,6 +98,18 @@ pub(super) fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
             ref_box,
             frame,
         } => transform::transformed_inner::<false>(child, style, parent, ref_box, node, frame),
+        Effect::ElementTransform {
+            element,
+            parent,
+            frame,
+        } => transform::transformed_inner::<false>(
+            child,
+            &element.style.used(),
+            parent,
+            None,
+            Some(element.node_id),
+            frame,
+        ),
         Effect::Underlay => Underlay::new(child).hooked(),
         Effect::PaintLast(key) => stacking::paint_last(child, key),
     }

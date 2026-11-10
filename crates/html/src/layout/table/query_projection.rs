@@ -53,12 +53,12 @@ pub(super) fn enter<R>(
             )
         });
     let inside = |window: &mut Window| match perspective {
-        Some(matrix) => window.with_layout_projection(matrix, false, f),
+        Some(matrix) => window.with_layout_projection(matrix, false, None, f),
         None => f(window),
     };
     let flatten = style.reset_transforms.preserve_3d != Some(true) || style.flattens_3d();
     let identity = Transform::translate4(0., 0., 0.);
-    window.with_layout_projection(matrix.unwrap_or(identity), flatten, inside)
+    window.with_layout_projection(matrix.unwrap_or(identity), flatten, None, inside)
 }
 
 fn about(matrix: [[f32; 4]; 4], (x, y, z): (f32, f32, f32)) -> [[f32; 4]; 4] {

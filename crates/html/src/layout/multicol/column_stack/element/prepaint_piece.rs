@@ -25,7 +25,7 @@ impl ColumnStack {
     ) -> Option<Prepared> {
         let spill = Self::spill(bounds, window);
         // Ребёнок, чьи куски рисует запись главной копии, раскладывает только её.
-        let replay = if self.replays(f.kid, plan) {
+        let replay = if self.replays::<QUERY>(f.kid, plan) {
             self.replay_routes::<QUERY>(
                 f.kid,
                 plan,

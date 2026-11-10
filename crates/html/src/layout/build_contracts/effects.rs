@@ -51,6 +51,13 @@ pub(crate) enum Effect<'a> {
         ref_box: Option<RefBox>,
         frame: FrameCx<'a>,
     },
+    /// Преобразование исходного элемента: запросу нужен тот же box-stage,
+    /// который использовала раскладка, включая контекст фрагментации.
+    ElementTransform {
+        element: &'a Element,
+        parent: &'a BoxStyle,
+        frame: FrameCx<'a>,
+    },
     /// A negative `z-index` (CSS 2.1 §9.9, step 3): the box stays in its
     /// slot, its paint goes under the content painted before it.
     Underlay,
