@@ -57,6 +57,13 @@ export function computeChainUuids(entries: JsonlEntryData[]): Set<string> | null
       cur = p ? byUuid.get(p) : undefined
     }
   }
+  // A rewind (D4): the user went back to an earlier point and typed a new prompt,
+  // so the CLI wrote a SECOND real prompt under the same parent. The CLI resumes
+  // one branch, leaf → root, and never shows the earlier one again. The
+  // multi-tip union above kept it on screen as its own leaf. Drop the subtree of
+  // every real prompt whose sibling prompt is on the newest leaf's chain.
+  const abandoned = abandonedBranches(entries, byUuid)
+  for (const u of abandoned) chain.delete(u)
   // Safety net: still missing a user-entry? Disable filter completely —
   // better to show all than to drop the user's own message.
   for (const e of entries) {
@@ -65,6 +72,7 @@ export function computeChainUuids(entries: JsonlEntryData[]): Set<string> | null
     if ((e as any).isMeta) continue
     const u = (e as any).uuid as string | undefined
     if (!u) continue
+    if (abandoned.has(u)) continue
     if (!chain.has(u)) {
       const now = Date.now()
       if (now - lastDiagAt > 2000) {
@@ -85,3 +93,49 @@ export function computeChainUuids(entries: JsonlEntryData[]): Set<string> | null
 }
 
 let lastDiagAt = 0
+
+/** A prompt the user typed: not meta, not a tool result, not a compact summary. */
+function isRealPrompt(e: JsonlEntryData): boolean {
+  if (e.type !== 'user' || e.isMeta || e.isCompactSummary || e.isSidechain) return false
+  const c = e.message?.content
+  return !(Array.isArray(c) && c.length > 0 && c.every((b) => b?.type === 'tool_result'))
+}
+
+/** uuids of rewound-away branches: the subtree under every real prompt whose
+ *  sibling prompt (same parent) is on the newest conversation's chain. Its file
+ *  position does not matter: a later rewind can abandon a newer branch too. Only prompt
+ *  siblings count; a hook attachment or system row forking the chain (CLI
+ *  2.1.83) is not a rewind and keeps the multi-tip behaviour. */
+function abandonedBranches(
+  entries: JsonlEntryData[],
+  byUuid: Map<string, JsonlEntryData>,
+): Set<string> {
+  const out = new Set<string>()
+  const children = new Map<string, string[]>()
+  const promptsByParent = new Map<string, string[]>()
+  let leaf: JsonlEntryData | undefined
+  entries.forEach((e) => {
+    if (e.__streaming !== undefined || typeof e.uuid !== 'string' || !byUuid.has(e.uuid)) return
+    const p = e.parentUuid ?? ''
+    if (e.parentUuid) children.set(p, [...(children.get(p) ?? []), e.uuid])
+    if (isRealPrompt(e)) promptsByParent.set(p, [...(promptsByParent.get(p) ?? []), e.uuid])
+    if (!e.isSidechain && (e.type === 'user' || e.type === 'assistant')) leaf = e
+  })
+  if (!leaf) return out
+  for (let cur: JsonlEntryData | undefined = leaf, n = 0; cur && n <= entries.length; n++) {
+    if (isRealPrompt(cur)) {
+      for (const sib of promptsByParent.get(cur.parentUuid ?? '') ?? []) {
+        if (sib === cur.uuid) continue
+        const stack = [sib]
+        while (stack.length > 0) {
+          const u = stack.pop()!
+          if (out.has(u) || u === cur.uuid) continue
+          out.add(u)
+          stack.push(...(children.get(u) ?? []))
+        }
+      }
+    }
+    cur = cur.parentUuid ? byUuid.get(cur.parentUuid) : undefined
+  }
+  return out
+}
