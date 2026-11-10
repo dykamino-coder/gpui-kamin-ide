@@ -104,6 +104,9 @@ export interface JsonlEntryData {
   __streaming?: boolean
   /** Index of the currently-active content block for cursor placement. */
   __streamingActiveBlock?: number
+  /** Live marker of the CLI's compaction request (no content): drives the
+   *  Compacting indicator, never stored as a chat row. See signals/compaction.ts. */
+  __compaction?: boolean
   /** Client-stamped time the streaming stub was first seen (ms epoch). Used by
    *  the TTL sweep to retire an orphaned stub whose canonical entry never came. */
   __streamStartedAt?: number

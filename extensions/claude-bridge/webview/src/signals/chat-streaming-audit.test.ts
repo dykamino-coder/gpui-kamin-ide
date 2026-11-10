@@ -14,6 +14,7 @@ import {
   appendJsonlEntries, applyStreamingEntry, applyStreamingDelta, abortStreamingForTab, clearJsonlEntries, getJsonlEntries,
 } from './jsonl'
 import { activeTabId } from './tabs'
+import { compactingTabs, noteCompactionRows } from './compaction'
 import { TranscriptBuilder, conversation, asPaged, asLive, type Rec } from './chat-audit/transcript'
 import { cliView, chatView } from './chat-audit/views'
 import type { JsonlEntryData } from '../types/jsonl'
@@ -218,5 +219,55 @@ describe('mid-stream disruptions', () => {
     deliver(asLive(since(b, mark)))
     vi.advanceTimersByTime(30_000)
     expect(chatView(TAB).all).toEqual(cliView(b.recs))
+  })
+})
+
+// The CLI's own summary request (manual /compact or auto-compact). The server
+// sends only a contentless `__compaction` marker for it (compaction-request.ts);
+// the CLI TUI shows "Compacting conversation…" and never the summary text.
+describe('compaction request stream', () => {
+  const marker = (msgId: string, streaming: boolean): JsonlEntryData =>
+    ({ type: 'assistant', uuid: `stream-${msgId}`, __streaming: streaming, __compaction: true,
+      message: { id: msgId, role: 'assistant', content: [] } }) as unknown as JsonlEntryData
+  const compacting = () => compactingTabs.value.has(TAB)
+  const deliverRows = (rows: JsonlEntryData[]) => { deliver(rows); noteCompactionRows(TAB, rows) }
+
+  it('shows the indicator, never an answer, and leaves no stub after the compaction', () => {
+    const { b } = setup()
+    const before = chatView(TAB).all
+    applyStreamingEntry(TAB, marker(`${TAB}-compact`, true))
+    applyStreamingDelta(TAB, { msgId: `${TAB}-compact`, blockIdx: 0, appendText: '<analysis> Let me analyze', kind: 'text' })
+    expect(compacting()).toBe(true)
+    expect(chatView(TAB).all).toEqual(before)
+    applyStreamingEntry(TAB, marker(`${TAB}-compact`, false))
+    expect(compacting()).toBe(false)
+    const mark = b.recs.length
+    b.compact('the summary')
+    clearJsonlEntries(TAB) // `compacted` status
+    deliverRows(asPaged(b.recs.slice(mark)))
+    expect(getJsonlEntries(TAB).some((row) => row.__streaming !== undefined)).toBe(false)
+    expect(chatView(TAB).all).toEqual(cliView(b.recs))
+  })
+
+  it('a lost final snapshot ends with the compaction result', () => {
+    const { b } = setup()
+    applyStreamingEntry(TAB, marker(`${TAB}-lost`, true))
+    deliverRows(asLive([b.user('unrelated live row')]))
+    expect(compacting()).toBe(true)
+    const mark = b.recs.length
+    b.compact('summary after a reconnect')
+    deliverRows(asLive(b.recs.slice(mark)))
+    expect(compacting()).toBe(false)
+  })
+
+  it('a normal turn quoting the summary text still streams as an answer', () => {
+    const { b, mark } = setup()
+    const text = '<analysis> is how a compaction summary starts'
+    b.say(text)
+    const id = msgIdOf(b, mark)
+    applyStreamingEntry(TAB, stub(id))
+    streamText(id, text)
+    expect(compacting()).toBe(false)
+    expect(lastA()).toBe(`A:${text}`)
   })
 })
