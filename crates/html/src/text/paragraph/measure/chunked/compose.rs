@@ -1,5 +1,5 @@
-//! Сборка набора куска из частей: части из памяти копируются со сдвигом,
-//! остальные набираются без памяти строк текстовой системы.
+//! Сборка набора куска из частей: глифы частей из памяти копируются (со
+//! сдвигом индексов), остальные части набираются без памяти строк.
 
 use super::*;
 
@@ -26,17 +26,17 @@ impl Paragraph {
         }
         // Ёмкость — степень двойки, как у списка, растущего удвоением.
         let mut runs = Vec::with_capacity(capacity.next_power_of_two().max(4));
-        let (mut from, mut origin) = (start, px(0.));
+        let (mut from, mut width) = (start, px(0.));
         for (i, &to) in ends.iter().enumerate() {
             let (base, first) = (from - start, runs.len());
-            let (width, ascent, descent) = match &found[i] {
-                Some(c) => copy_into(c, base, origin, &mut runs),
+            let (advance, ascent, descent) = match &found[i] {
+                Some(c) => copy_into(c, base, &mut runs),
                 None => {
                     let at = self.run_indices(&(from..to));
                     let skip = at.clone().next().map_or(0, |i| {
                         from - (self.prepared().run_ends[i] - self.runs[i].len)
                     });
-                    let metrics = text.shape_into(
+                    text.shape_into(
                         &self.text[from..to],
                         self.font_size,
                         &self.runs[at],
@@ -44,28 +44,23 @@ impl Paragraph {
                         tracking(self),
                         base,
                         &mut runs,
-                    );
-                    for glyph in runs[first..].iter_mut().flat_map(|r| &mut r.glyphs) {
-                        glyph.position.x += origin;
-                    }
-                    metrics
+                    )
                 }
             };
             pieces[i] = Piece {
                 runs: (first as u32, runs.len() as u32),
                 base: base as u32,
-                origin,
-                width,
+                width: advance,
                 ascent,
                 descent,
             };
-            origin += width;
+            width += advance;
             from = to;
         }
         let pieces = &pieces[..ends.len()];
         LineLayout {
             font_size: self.font_size,
-            width: origin,
+            width,
             ascent: pieces.iter().map(|p| p.ascent).fold(px(0.), Pixels::max),
             descent: pieces.iter().map(|p| p.descent).fold(px(0.), Pixels::max),
             runs,
@@ -74,16 +69,11 @@ impl Paragraph {
     }
 }
 
-/// Глифы части `c` — в набор куска, где она начинается байтом `base` и
-/// пером `origin`; возвращает её ширину, подъём и спуск.
-fn copy_into(
-    c: &LinePiece,
-    base: usize,
-    origin: Pixels,
-    out: &mut Vec<ShapedRun>,
-) -> (Pixels, Pixels, Pixels) {
+/// Глифы части `c` — в набор куска, где она начинается байтом `base`;
+/// возвращает её ширину, подъём и спуск.
+fn copy_into(c: &LinePiece, base: usize, out: &mut Vec<ShapedRun>) -> (Pixels, Pixels, Pixels) {
     let from = c.runs.start as usize..c.runs.end as usize;
-    let (shift, index) = (origin - c.origin, |i: usize| i - c.base as usize + base);
+    let index = |i: usize| i - c.base as usize + base;
     // По одному: список растёт удвоением, как у набора.
     for run in &c.layout.runs[from] {
         out.push(ShapedRun {
@@ -94,7 +84,7 @@ fn copy_into(
                 .iter()
                 .map(|g| ShapedGlyph {
                     id: g.id,
-                    position: gpui::point(g.position.x + shift, g.position.y),
+                    position: g.position,
                     index: index(g.index),
                     is_emoji: g.is_emoji,
                 })

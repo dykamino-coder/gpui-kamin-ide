@@ -1,15 +1,18 @@
-//! Длинный кусок, набранный частями (`chunks`), — один `Seg` с одним набором,
-//! неотличимым от набора целиком: прогоны глифов частей идут подряд, глифы
-//! стоят от начала куска. Набор куска хранится в памяти строк текстовой
-//! системы под ключом всего его текста (`layout_line_composed`), как набор
-//! целиком: повторный замер того же текста — в любом документе окна — берёт
-//! его без набора. Части лежат там же (`LinePiece`: ссылка на набор куска с
-//! диапазоном прогонов), поэтому правка куска копирует глифы неизменных
-//! частей со сдвигом и перенабирает только задетые.
+//! Длинный кусок, набранный частями (`chunks`), — один `Seg` с одним набором:
+//! прогоны глифов частей идут подряд, глифы каждой части стоят от её начала
+//! (так часть переносится в другой кусок точно, без округления сдвига), а
+//! положения знаков (`positions_with`) прибавляют к ним начало части. Набор
+//! куска хранится в памяти строк текстовой системы под ключом всего его
+//! текста, отдельно от наборов целиком (`layout_line_composed`): повторный
+//! замер того же текста — в любом документе окна — берёт его без набора.
+//! Части лежат там же (`LinePiece`: ссылка на набор куска с диапазоном
+//! прогонов), поэтому правка куска копирует глифы неизменных частей и
+//! перенабирает только задетые.
 
 use super::chunks::{Cuts, tracking};
 use crate::text::paragraph::*;
 use gpui::{LineLayout, LinePiece, Pixels, ShapedGlyph, ShapedRun, Window, WindowTextSystem, px};
+use std::sync::Arc;
 
 mod compose;
 
@@ -36,7 +39,6 @@ impl Default for Keys {
 struct Piece {
     runs: (u32, u32),
     base: u32,
-    origin: Pixels,
     width: Pixels,
     ascent: Pixels,
     descent: Pixels,
@@ -80,7 +82,7 @@ impl Paragraph {
         let runs = self.own_runs(&(start..end));
         let mut pieces = [Piece::default(); PIECES];
         let mut composed = false;
-        let layout = text.layout_line_composed(
+        let mut layout = text.layout_line_composed(
             &self.text[start..end],
             self.font_size,
             &runs,
@@ -90,30 +92,61 @@ impl Paragraph {
                 self.compose(start, end, ends, piece_keys, &mut pieces, &text)
             },
         );
-        for (&key, p) in piece_keys.iter().zip(&pieces) {
-            if composed {
+        // Набор из памяти: ширины частей (они зависят только от ключа) дают
+        // их начала; без частей в памяти кусок собирается заново.
+        if !composed && !widths(piece_keys, &mut pieces, &text) {
+            layout = Arc::new(self.compose(start, end, ends, piece_keys, &mut pieces, &text));
+            composed = true;
+        }
+        if composed {
+            for (&key, p) in piece_keys.iter().zip(&pieces) {
                 let piece = LinePiece {
                     layout: layout.clone(),
                     runs: p.runs.0..p.runs.1,
                     base: p.base,
-                    origin: p.origin,
                     width: p.width,
                     ascent: p.ascent,
                     descent: p.descent,
                 };
                 text.put_line_piece(key, piece);
-            } else {
-                // Набор из памяти: его части живут столько же, сколько он.
-                _ = text.line_piece(key);
             }
         }
         keys.len += count;
-        Some(Seg {
+        let seg = Seg {
             positions: Default::default(),
             start,
             end,
             layout,
             offset,
-        })
+        };
+        // Положения считаются сразу: начала частей известны только здесь.
+        let mut origins = [px(0.); PIECES];
+        for i in 1..count {
+            origins[i] = origins[i - 1] + pieces[i - 1].width;
+        }
+        let (mut at, mut piece) = (0, 0);
+        let positions = self.positions_with(&seg, |run| {
+            if let Some(g) = seg.layout.runs[run].glyphs.first() {
+                at = g.index;
+            }
+            while piece + 1 < count && at >= ends[piece] - start {
+                piece += 1;
+            }
+            Some(origins[piece])
+        });
+        _ = seg.positions.set(positions);
+        Some(seg)
     }
+}
+
+/// Ширины частей `keys` из памяти (части продлеваются на кадр); `false`,
+/// если какой-то нет.
+fn widths(keys: &[u64], pieces: &mut [Piece; PIECES], text: &WindowTextSystem) -> bool {
+    for (p, &key) in pieces.iter_mut().zip(keys) {
+        match text.line_piece(key) {
+            Some(c) => p.width = c.width,
+            None => return false,
+        }
+    }
+    true
 }

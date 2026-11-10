@@ -488,8 +488,6 @@ pub(crate) struct LineLayoutCache {
     font_generation: Arc<AtomicUsize>,
     /// Records the generation represented by both frame caches.
     cached_font_generation: AtomicUsize,
-    /// KaminIDE patch: pieces of composed lines (`layout_line_composed`).
-    pub(crate) pieces: super::composed::PieceCache,
 }
 
 #[derive(Default)]
@@ -568,7 +566,6 @@ impl LineLayoutCache {
             platform_text_system,
             font_generation,
             cached_font_generation: AtomicUsize::new(cached_font_generation),
-            pieces: Default::default(),
         }
     }
 
@@ -681,7 +678,7 @@ impl LineLayoutCache {
         let mut curr_frame = self.current_frame.write();
         let mut prev_frame = self.previous_frame.lock();
         std::mem::swap(&mut *prev_frame, &mut *curr_frame);
-        self.pieces.finish_frame();
+        super::composed::PIECES.finish_frame();
         curr_frame.lines.clear();
         curr_frame.wrapped_lines.clear();
         curr_frame.used_lines.clear();
@@ -812,6 +809,7 @@ impl LineLayoutCache {
             text,
             font_size,
             runs,
+            None,
             force_width,
             letter_spacing,
             |text, platform| {
@@ -835,12 +833,15 @@ impl LineLayoutCache {
     }
 
     /// KaminIDE patch: `layout_line_spaced` whose miss is laid out by `shape`
-    /// (given the text and the platform shaper) and cached under the same key.
+    /// (given the text and the platform shaper) and cached under the same key;
+    /// `wrap_width` sets lines apart that are not shaped lines (`composed`).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn layout_line_with<Text>(
         &self,
         text: Text,
         font_size: Pixels,
         runs: &[FontRun],
+        wrap_width: Option<Pixels>,
         force_width: Option<Pixels>,
         letter_spacing: Pixels,
         shape: impl FnOnce(&SharedString, &dyn PlatformTextSystem) -> LineLayout,
@@ -854,7 +855,7 @@ impl LineLayoutCache {
             text: text.as_ref(),
             font_size,
             runs,
-            wrap_width: None,
+            wrap_width,
             force_width,
             letter_spacing,
         } as &dyn AsCacheKeyRef;
@@ -887,7 +888,7 @@ impl LineLayoutCache {
                 text,
                 font_size,
                 runs: SmallVec::from(runs),
-                wrap_width: None,
+                wrap_width,
                 force_width,
                 letter_spacing,
             });
@@ -1064,7 +1065,7 @@ impl LineLayoutCache {
 
         *current_frame = FrameCache::default();
         *self.previous_frame.lock() = FrameCache::default();
-        self.pieces.clear();
+        super::composed::PIECES.clear();
         self.cached_font_generation
             .store(font_generation, Ordering::Release);
         font_generation
