@@ -9,6 +9,27 @@ import { readClaudeLocalInfo } from '../helpers/system-info'
 import { TtlCache } from '../../utils/ttl-cache'
 
 const accountCache = new TtlCache<Record<string, unknown>>(5 * 60 * 1000)
+
+type LocalInfo = ReturnType<typeof readClaudeLocalInfo>
+
+/** `loginExpiresAt` (CLI 2.1.320+) is when the stored claude.ai sign-in ends,
+ *  as an ISO timestamp, or null. `expiresAt` is the short-lived OAuth access
+ *  token, which the CLI refreshes on its own. Older CLIs omit the field. */
+export function loginExpiresAtFrom(parsed: unknown): string | null {
+  const value = (parsed as { loginExpiresAt?: unknown } | null)?.loginExpiresAt
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null
+}
+
+export function accountFromAuthStatus(parsed: Record<string, any>, localInfo: LocalInfo): Record<string, unknown> {
+  return {
+    email: parsed.email || parsed.accountEmail || localInfo.email || null,
+    plan: parsed.plan || parsed.accountPlan || localInfo.plan || null,
+    organization: parsed.organization || null,
+    expiresAt: localInfo.expiresAt || null,
+    loginExpiresAt: loginExpiresAtFrom(parsed),
+    displayName: localInfo.displayName || null,
+  }
+}
 const authCache = new TtlCache<{ loggedIn: boolean; authMethod?: string; apiProvider?: string }>(2 * 60 * 1000)
 
 export function registerAccountRoutes(api: Hono): void {
@@ -33,13 +54,7 @@ export function registerAccountRoutes(api: Hono): void {
       })
       const parsed = JSON.parse(stdout.trim())
 
-      const account = {
-        email: parsed.email || parsed.accountEmail || localInfo.email || null,
-        plan: parsed.plan || parsed.accountPlan || localInfo.plan || null,
-        organization: parsed.organization || null,
-        expiresAt: localInfo.expiresAt || null,
-        displayName: localInfo.displayName || null,
-      }
+      const account = accountFromAuthStatus(parsed, localInfo)
       accountCache.set(account)
       eventBus.emit('account:updated', account)
       return c.json(account)
@@ -49,6 +64,7 @@ export function registerAccountRoutes(api: Hono): void {
         plan: localInfo.plan || null,
         organization: null,
         expiresAt: localInfo.expiresAt || null,
+        loginExpiresAt: null,
         displayName: localInfo.displayName || null,
         error: err instanceof Error ? err.message : 'CLI unavailable, using cached credentials',
       }

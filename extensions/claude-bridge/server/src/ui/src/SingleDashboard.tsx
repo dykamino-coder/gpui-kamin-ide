@@ -292,6 +292,7 @@ export function SingleDashboard() {
   ]
 
   const acct = accountData.value
+  const loginEndsAt = acct?.loginExpiresAt ? Date.parse(acct.loginExpiresAt) : NaN
   const accountItems = !isLoggedIn
     ? [
         { label: 'Status', value: 'Not authenticated', color: 'var(--accent-red)' },
@@ -310,6 +311,21 @@ export function SingleDashboard() {
                     acct.expiresAt < Date.now()
                       ? 'var(--accent-red)'
                       : acct.expiresAt < Date.now() + 86400000
+                        ? 'var(--accent-yellow)'
+                        : undefined,
+                },
+              ]
+            : []),
+          ...(Number.isFinite(loginEndsAt)
+            ? [
+                {
+                  label: 'Sign-in Ends',
+                  value: new Date(loginEndsAt).toLocaleString(),
+                  // The CLI starts warning 10 days before the stored sign-in ends.
+                  color:
+                    loginEndsAt < Date.now()
+                      ? 'var(--accent-red)'
+                      : loginEndsAt < Date.now() + 10 * 86400000
                         ? 'var(--accent-yellow)'
                         : undefined,
                 },
