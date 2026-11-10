@@ -60,16 +60,6 @@ impl Record {
         }
     }
 
-    /// This record compared at a rebuild of the document (`Store::rebase`),
-    /// in place: it drops its source, and with `repaint` its output.
-    pub(super) fn rebased(&mut self, repaint: bool) {
-        self.source = None;
-        if repaint {
-            self.replay.take();
-        }
-        self.repaint |= repaint;
-    }
-
     /// Запись годна в потоке ключа `key` другой ширины.
     pub(super) fn fits_width(&self, key: &FlowKey) -> bool {
         match self.resizable {

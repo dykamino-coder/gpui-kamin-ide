@@ -151,19 +151,14 @@ impl Store {
             _ => None,
         });
         for (a, b) in pairs.take_while(|_| !records.is_empty()) {
-            let Some(mut record) = records.remove(&a.node_id) else {
+            let Some(record) = records.remove(&a.node_id) else {
                 continue;
             };
             let exact = roots && crate::dom::same_cascaded_tree(a, b, false);
             let repaint = !exact && record.far && crate::dom::same_cascaded_tree(a, b, true);
-            if !(exact || repaint) {
-                continue;
+            if exact || repaint {
+                kept.insert(a.node_id, Rc::new(record.moved_to(None, repaint)));
             }
-            match Rc::get_mut(&mut record) {
-                Some(own) => own.rebased(repaint),
-                None => record = Rc::new(record.moved_to(None, repaint)),
-            }
-            kept.insert(a.node_id, record);
         }
         self.records.replace(kept);
     }
