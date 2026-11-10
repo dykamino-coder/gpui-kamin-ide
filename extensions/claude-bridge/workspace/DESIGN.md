@@ -586,3 +586,5 @@ Acceptance: collector integrity tests, both workspace typechecks, declared
 capability gate, workspace suite and complete production-browser fixture suite
 in Linux Podman. This bounded Change PR is prepared by bridgeweb for Claude
 lead review/merge under the existing registration #638.
+
+Implementation review: [#696](https://github.com/dykamino-coder/gpui-kamin-ide/pull/696).
