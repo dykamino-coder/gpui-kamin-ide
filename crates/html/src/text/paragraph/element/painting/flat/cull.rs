@@ -38,7 +38,13 @@ impl Cull {
         bounds: Bounds<Pixels>,
         window: &mut Window,
     ) -> Option<Self> {
-        if !window.retained_root_environment()
+        // A recorded main copy of a fragmented child admits lines across its
+        // cuts with widened masks (`line_admission`): every line is offered.
+        let admission = window
+            .render_context::<crate::layout::fragment::line_admission::Lines>()
+            .is_some();
+        if admission
+            || !window.retained_root_environment()
             || p.fragment.is_some()
             || p.ruby_layers.is_some()
             || !p.emph_spans.is_empty()
