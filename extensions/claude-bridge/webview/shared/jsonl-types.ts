@@ -48,6 +48,7 @@ export interface JsonlEntry {
     | 'agent-name' | 'agent-color' | 'agent-setting'
     | 'mode' | 'permission-mode' | 'pr-link' | 'queue-operation' | 'worktree-state' | 'content-replacement'
     | 'attachment' | 'progress' | 'speculation-accept'
+    | 'session-owner' | 'resume-head-vouch' | 'repl-mode'
   uuid: string
   parentUuid?: string | null
   isSidechain?: boolean

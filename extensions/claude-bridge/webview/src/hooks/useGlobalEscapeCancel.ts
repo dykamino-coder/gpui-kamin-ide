@@ -51,7 +51,8 @@ export function useGlobalEscapeCancel(bridge: KaminBridgeApi): void {
       // in-flight upstream response server-side so it stops NOW (SIGINT alone let
       // the already-requested SSE keep flushing). See stop() in useTabSend.
       abortStreamingForTab(tabId)
-      bridge.interruptSession(tabId) // server aborts upstream + SIGINTs the CLI (no extra \x03 — would double the signal)
+      // Host хранит сброс именно восстановленных строк для других страниц/reload.
+      bridge.interruptSession(tabId, queued.filter(item => item.hostOwned).map(item => item.id))
       // Scrub CLI input line a tick later — covers the popQueue rehydrate
       // path (handleCancel priority 2 / Esc-driven popAllCommandsFromQueue
       // when the runner already finalized). Ctrl+U is Ink TextInput's

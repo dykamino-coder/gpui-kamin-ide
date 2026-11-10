@@ -1,6 +1,65 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { fixture, nodeCommand, until, alive } from './terminal-fixture.js'
+
+test('real PTY receives current character dimensions with zero views before and after resize', { skip: process.platform === 'win32' && 'ConPTY translates window queries before the host parser; Linux wire contract' }, async t => {
+  const f = await fixture(t), a = f.attach()
+  await writeFile(join(f.root, 'size-query.cjs'), `
+    const fs = require('node:fs');
+    process.stdin.setRawMode(true); process.stdin.resume();
+    let data = '', requested = false; const reports = [];
+    process.stdin.on('data', chunk => {
+      data += chunk;
+      let match;
+      while ((match = /\\x1b\\[8;[0-9]+;[0-9]+t/.exec(data))) {
+        reports.push(match[0]); data = data.slice(match.index + match[0].length);
+        fs.writeFileSync('size-query.json', JSON.stringify(reports));
+        if (reports.length === 2) process.exit(0);
+      }
+      if (data.includes('q') && !requested) {
+        requested = true; data = '';
+        setTimeout(() => process.stdout.write('\\x1b[18t'), 200);
+      }
+    });
+    fs.writeFileSync('size-query.pid', String(process.pid));
+    setTimeout(() => { process.stdout.write('\\x1b[18'); setTimeout(() => process.stdout.write('t'), 20) }, 200);
+    setTimeout(() => process.exit(1), 5000);
+  `)
+  const id = await a.spawn('size-tab')
+  await a.send('pty:write', { ptyId: id, data: nodeCommand("require('./size-query.cjs')") })
+  a.view.dispose()
+  await until(async () => !!await f.read('size-query.pid'))
+  await until(async () => !!await f.read('size-query.json'), 'Zero-page program did not receive initial dimensions')
+  assert.deepEqual(JSON.parse(await f.read('size-query.json')), ['\x1b[8;24;80t'])
+  const b = f.attach()
+  await b.send('workspace:terminal-sync', 'size-tab')
+  assert.ok(b.frames.some(frame => frame.channel === 'workspace:terminal-state'))
+  await b.send('pty:resize', { ptyId: id, cols: 111, rows: 37 })
+  await b.send('pty:write', { ptyId: id, data: 'q' })
+  b.view.dispose()
+  await until(async () => JSON.parse(await f.read('size-query.json') || '[]').length === 2, 'Zero-page program did not receive resized dimensions')
+  assert.deepEqual(JSON.parse(await f.read('size-query.json')), ['\x1b[8;24;80t', '\x1b[8;37;111t'])
+})
+
+test('real PTY receives host color replies with zero attached views', { skip: process.platform === 'win32' && 'ConPTY translates OSC before the host parser; Linux wire contract' }, async t => {
+  const f = await fixture(t), a = f.attach()
+  await writeFile(join(f.root, 'color-query.cjs'), `
+    const fs = require('node:fs');
+    process.stdin.setRawMode(true); process.stdin.resume();
+    let data = ''; process.stdin.on('data', chunk => { data += chunk });
+    fs.writeFileSync('color-query.pid', String(process.pid));
+    setTimeout(() => process.stdout.write('\\x1b]10;?\\x07\\x1b]11;?\\x1b\\\\'), 200);
+    setTimeout(() => { fs.writeFileSync('color-query.json', JSON.stringify(data)); process.exit(0) }, 1000);
+  `)
+  const id = await a.spawn('color-tab')
+  await a.send('pty:write', { ptyId: id, data: nodeCommand("require('./color-query.cjs')") })
+  a.view.dispose()
+  await until(async () => !!await f.read('color-query.pid'))
+  await until(async () => !!await f.read('color-query.json'), 'Program did not receive replies with zero views')
+  assert.equal(JSON.parse(await f.read('color-query.json')), '\x1b]10;rgb:cfcf/d4d4/e2e2\x1b\\\x1b]11;rgb:0b0b/0c0c/0f0f\x1b\\')
+})
 
 test('PTY survives zero pages and restores output produced after the last detach', async t => {
   const f = await fixture(t), a = f.attach()

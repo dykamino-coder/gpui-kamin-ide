@@ -12,7 +12,7 @@ type Command =
   | { id: number; kind: 'arm'; submissionId: string }
 type Pending = { command: Command; claimed: boolean; fallback: () => void; accepted?: () => void }
 export const CLI_MOD_PLUGIN = fileURLToPath(new URL('../../cli-mod', import.meta.url))
-export const CLI_MOD_VERSION = '2.1.312'
+export const CLI_MOD_VERSION = '2.1.322'
 
 export class CliModTransport {
   readonly directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-mod-'))

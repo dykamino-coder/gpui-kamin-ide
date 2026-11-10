@@ -97,10 +97,11 @@ existing owner-scoped cancellation path, and output views retain a bounded
 
 [Claude Code's MCP documentation](https://code.claude.com/docs/en/mcp)
 describes Tasks as a public beta requiring CLI 2.1.304 or newer and an account
-feature flag. The companion CLI update pins 2.1.312. Version alone does not
-prove account eligibility. The session environment must permit feature-flag
-fetching; Bridge removes inherited `DISABLE_NONESSENTIAL_TRAFFIC` and
-`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. Other existing session controls,
+feature flag. Since CLI 2.1.319 terminal Tasks no longer need the feature-flag
+fetch; the image pins 2.1.322, so Bridge again sets
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and removes inherited
+`CLAUDE_CODE_DISABLE_MCP_TASKS` / `CLAUDE_CODE_DISABLE_MCP_TASK_BACKGROUND`.
+Other existing session controls,
 including the fullscreen renderer setting, remain applicable.
 
 Acceptance uses a separately named temporary Podman container based on the
@@ -110,7 +111,7 @@ owner's authentication volume or touch their containers or IDE profiles.
 An isolated cached beta flag can exercise the actual CLI Tasks implementation,
 but does not establish any real account's beta eligibility.
 
-1. Confirm CLI 2.1.312, modern discovery and Tasks capability on the actual
+1. Confirm CLI 2.1.322, modern discovery and Tasks capability on the actual
    `tools/call`. Record missing capability separately from server failures.
    A stream-json driver requires `CLAUDE_AUTO_BACKGROUND_TASKS=1` and open stdin.
 2. Return a model tool call with `run_in_background: true` and delay completion.

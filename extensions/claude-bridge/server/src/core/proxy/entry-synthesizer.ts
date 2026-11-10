@@ -33,6 +33,9 @@ export interface SynthAssistantEntry {
   }
   __streaming: boolean
   __streamingActiveBlock?: number
+  /** The CLI's compaction request (see compaction-request.ts): a status
+   *  marker for the client, never a chat answer. Content is always empty. */
+  __compaction?: true
 }
 
 export type SynthContentBlock =

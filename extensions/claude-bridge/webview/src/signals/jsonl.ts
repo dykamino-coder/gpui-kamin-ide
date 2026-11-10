@@ -1,11 +1,14 @@
 import { signal, computed } from '@preact/signals'
+import { noteCompactionStream } from './compaction'
 import { activeTabId } from './tabs'
 import type { JsonlEntryData } from '../types/jsonl'
 import { orderEntries } from './order-entries'
+import { mergeAssistantEntry, foldAssistantEntries } from './merge-assistant'
 import { setReplayProgress } from './replay-progress'
 import { dropRenderModelCache } from '../components/jsonl-viewer/derived-cache'
 import { trimHeavyToolResults } from './heavy-tool-result'
 import { appendStreamingText } from '../../../extension/src/shared/streaming-delta'
+import { CHAT_STORED_ENTRY_TYPES, isChatStoredEntry } from '../../../extension/src/shared/chat-stored-entries'
 
 // Global per-tab JSONL entries store — single source of truth.
 // Updated by useBridgeListeners (onJsonlEntries handler).
@@ -27,13 +30,47 @@ export function getJsonlStructureVersion(tabId: string): number {
 function bumpStructureVersion(tabId: string): void {
   structureVersionByTab.set(tabId, (structureVersionByTab.get(tabId) ?? 0) + 1)
 }
+// INVARIANT: a tab's seen set holds exactly the uuids its store holds (including
+// every uuid folded into a merged assistant bubble). Every path that removes
+// rows rebuilds it from what is left (`reindexSeen`), so a row that left the
+// store is re-admitted when a replay or a page brings it back. A uuid that
+// stays "seen" without its row rejects the whole replayed conversation as
+// `uuid-dup`, and the chat stays blank while the console shows everything.
 export const jsonlSeenUuidsByTab = signal<Map<string, Set<string>>>(new Map())
-// Per-tab set of replay `_ord`s (file-position tags the server puts on reverse-
-// replay entries). The reverse loader + the extension's cache re-send can deliver
-// the SAME entry twice; entries WITHOUT a uuid (system / tool rows) slip past the
-// uuid dedup and — because we sort by `_ord` — would interleave as duplicates.
-// Dedup on `_ord` too. Non-reactive: pure bookkeeping, reset in clearJsonlEntries.
-const seenOrdsByTab = new Map<string, Set<number>>()
+// Per-tab dedup keys of the uuid-less rows (mode / permission-mode /
+// queue-operation). The key is the row's file position `_pos`, which is the same
+// on every delivery of that line. `_ord` is only a fallback: every server replay
+// re-tags it from a global counter, so an `_ord` key let each reattach or
+// reconnect replay store the same uuid-less rows again. Same invariant as the
+// uuid set. Non-reactive: pure bookkeeping, reset in clearJsonlEntries.
+const seenRowKeysByTab = new Map<string, Set<string>>()
+
+/** Stable dedup key for a uuid-less row, or undefined if it has none. */
+function rowKey(e: JsonlEntryData): string | undefined {
+  if (typeof e._pos === 'number') return `p${String(e._pos)}`
+  const ord = (e as { _ord?: number })._ord
+  return typeof ord === 'number' ? `o${String(ord)}` : undefined
+}
+
+function entryUuids(e: JsonlEntryData): string[] {
+  return e.__uuids ?? (e.uuid ? [e.uuid] : [])
+}
+
+/** Rebuild both dedup sets from the rows the store holds now. */
+function reindexSeen(tabId: string, entries: readonly JsonlEntryData[]): void {
+  const seen = new Set<string>()
+  const keys = new Set<string>()
+  for (const e of entries) {
+    const uuids = entryUuids(e)
+    if (uuids.length > 0) { for (const u of uuids) seen.add(u); continue }
+    const key = rowKey(e)
+    if (key) keys.add(key)
+  }
+  const nextSeen = new Map(jsonlSeenUuidsByTab.value)
+  nextSeen.set(tabId, seen)
+  jsonlSeenUuidsByTab.value = nextSeen
+  seenRowKeysByTab.set(tabId, keys)
+}
 
 // ── Store memory cap (the OOM backstop) ──────────────────────────────────
 // The resident-store bounds. Canonical home is here, in the signal layer that
@@ -183,6 +220,7 @@ function findByMsgIdFromTail(entries: JsonlEntryData[], msgId: string): number {
 }
 
 export function applyStreamingEntry(tabId: string, entry: JsonlEntryData): void {
+  if (noteCompactionStream(tabId, entry)) return // a status, not an answer
   const msgId = entry.message?.id
   if (!msgId) return
   if (abortedStreamIds.has(msgId)) return // user interrupted this turn — freeze
@@ -209,7 +247,14 @@ export function applyStreamingEntry(tabId: string, entry: JsonlEntryData): void 
   // text vanishes mid-turn and later deltas drop (no stub) until the final
   // snapshot recreates it (#73). A truly orphaned stub stops being written and
   // ages out normally.
-  const stamped = { ...entry, __streamStartedAt: Date.now() }
+  const prev = idx >= 0 ? existing[idx]! : undefined
+  const stamped: JsonlEntryData = {
+    ...entry,
+    __streamStartedAt: Date.now(),
+    __streamAnchorTs: prev?.__streamAnchorTs ?? newestCanonicalTs(existing),
+    // Canonical rows held under the stub (holdStreamedProse) survive a snapshot.
+    ...(prev?.__assistantParts ? { __assistantParts: prev.__assistantParts, __uuids: prev.__uuids } : {}),
+  }
   let next: JsonlEntryData[]
   if (idx >= 0) {
     next = existing.slice()
@@ -344,13 +389,72 @@ export function stubHasContent(e: JsonlEntryData): boolean {
  *  can lag well past the TTL on a busy/marathon session or when the CLI defers
  *  the final flush — erasing THAT is the "answer streamed then vanished" bug. */
 export function stubSuperseded(entries: JsonlEntryData[], i: number): boolean {
-  const msgId = entries[i]!.message?.id
+  const stub = entries[i]!
+  const msgId = stub.message?.id
   for (let j = i + 1; j < entries.length; j++) {
     const e = entries[j]!
     if (e.type === 'user') return true
     if (e.type === 'assistant' && e.__streaming === undefined && e.message?.id && e.message.id !== msgId) return true
   }
+  // orderEntries sorts every stub after all canonical rows (it has no timestamp
+  // or position), so the loop above never sees a successor in a sorted store.
+  // A turn the CLI wrote AFTER the stub appeared has a later CLI timestamp than
+  // anything the store held then (D6: an aborted attempt under its retry).
+  const anchor = stub.__streamAnchorTs
+  if (typeof anchor !== 'number') return false
+  for (const e of entries) {
+    if (e.__streaming !== undefined || !startsTurn(e, msgId)) continue
+    const ts = e.timestamp ? Date.parse(e.timestamp) : NaN
+    if (ts > anchor) return true
+  }
   return false
+}
+
+/** A canonical row that begins a new turn: a real user message (not a tool
+ *  result or meta row, which the CLI writes inside a turn), or another API message. */
+function startsTurn(e: JsonlEntryData, msgId: string | undefined): boolean {
+  if (e.type === 'assistant') return !!e.message?.id && e.message.id !== msgId
+  if (e.type !== 'user' || e.isMeta) return false
+  const c = e.message?.content
+  return !(Array.isArray(c) && c.length > 0 && c.every((b) => b?.type === 'tool_result'))
+}
+
+/** Newest CLI timestamp among the canonical rows near the end of the store. */
+function newestCanonicalTs(entries: readonly JsonlEntryData[]): number {
+  let max = Number.NEGATIVE_INFINITY
+  for (let i = entries.length - 1, seen = 0; i >= 0 && seen < 64; i--) {
+    const e = entries[i]!
+    if (e.__streaming !== undefined) continue
+    seen++
+    const ts = e.timestamp ? Date.parse(e.timestamp) : NaN
+    if (ts > max) max = ts
+  }
+  return max
+}
+
+function textLength(e: JsonlEntryData): number {
+  const c = e.message?.content
+  if (!Array.isArray(c)) return 0
+  let n = 0
+  for (const b of c) if (b?.type === 'text' && typeof b.text === 'string') n += b.text.trim().length
+  return n
+}
+
+/** D5 / INC-2026-0088: the CLI writes a turn's thinking row before its text
+ *  row. Folding that row into the stub replaced the streamed prose with an
+ *  empty canonical body until the text row landed. While the canonical rows
+ *  carry no text yet, keep the stub on screen and hold them under it; the
+ *  first canonical text takes over, byte-exact. */
+function holdStreamedProse(target: JsonlEntryData, merged: JsonlEntryData): JsonlEntryData {
+  if (target.__streaming === undefined || textLength(target) === 0 || textLength(merged) > 0) return merged
+  return { ...target, __assistantParts: merged.__assistantParts, __uuids: merged.__uuids }
+}
+
+/** The canonical entry a held stub stands for, built from its held rows. */
+function foldHeldParts(stub: JsonlEntryData): JsonlEntryData | null {
+  const parts = stub.__assistantParts
+  if (!parts || parts.length === 0) return null
+  return parts.slice(1).reduce((acc, p) => mergeAssistantEntry(acc, p), parts[0]!)
 }
 
 function sweepOrphanStubs(): void {
@@ -359,108 +463,70 @@ function sweepOrphanStubs(): void {
   const nextMap = new Map(jsonlEntriesByTab.value)
   let anyStubsLeft = false
   for (const [tabId, entries] of nextMap) {
-    const kept = entries.filter((e, i) => {
+    let replaced = false
+    // flatMap, not in-place: committed store arrays are immutable.
+    const kept = entries.flatMap((e, i): JsonlEntryData[] => {
       // A canonical entry has __streaming === undefined (stripped on merge);
       // only stubs carry a defined flag + a start stamp.
-      if (e.__streaming === undefined) return true
+      if (e.__streaming === undefined) return [e]
       const started = e.__streamStartedAt
-      if (typeof started !== 'number') return true
-      if (now - started <= STUB_TTL_MS) { anyStubsLeft = true; return true }
+      if (typeof started !== 'number') return [e]
+      if (now - started <= STUB_TTL_MS) { anyStubsLeft = true; return [e] }
       // TTL expired. Only sweep a stub that a later turn has SUPERSEDED — that is
       // a genuine orphan (retry / interrupt). A tail stub that still carries
       // content is kept: its canonical merges when it finally arrives, and until
       // then a shown answer beats a vanished one. Keep the sweeper alive
       // (anyStubsLeft) so the moment a successor appears the orphan is swept.
-      if (stubHasContent(e) && !stubSuperseded(entries, i)) { anyStubsLeft = true; return true }
+      if (stubHasContent(e) && !stubSuperseded(entries, i)) { anyStubsLeft = true; return [e] }
       // #78 telemetry: record WHY a streamed bubble was dropped so the next
       // "streamed then vanished" report is root-caused from the bug-dump instead
       // of showing an empty drop log.
       logDrop(stubHasContent(e) ? 'orphan-stub-superseded' : 'orphan-stub-empty', e)
-      return false
+      // Canonical rows held under the stub are real transcript rows: they stay.
+      const held = foldHeldParts(e)
+      if (held) { replaced = true; return [held] }
+      return []
     })
-    if (kept.length !== entries.length) { nextMap.set(tabId, kept); changed = true; bumpStructureVersion(tabId) }
+    if (kept.length !== entries.length || replaced) {
+      nextMap.set(tabId, kept)
+      changed = true
+      bumpStructureVersion(tabId)
+      reindexSeen(tabId, kept)
+    }
   }
   if (changed) jsonlEntriesByTab.value = nextMap
   // Stop the timer once no stubs remain — restarts on the next stream.
   if (!anyStubsLeft && stubSweeper) { clearInterval(stubSweeper); stubSweeper = null }
 }
 
-/** Merge a watcher-delivered assistant entry into a previously-stored one
- *  that carries the same `message.id`. CLI v2.1.x splits a single model
- *  turn into separate JSONL lines per content block (thinking → text →
- *  tool_use), each with a fresh uuid but the shared message.id. The
- *  Anthropic API model treats them as ONE message with multiple blocks,
- *  and the streaming proxy renders them as one bubble — we want the same
- *  view after the watcher catches up. Without merging, the previous code
- *  pushed all three watcher entries into `replacements[]` at the same
- *  streaming-stub index and last-write-wins clobbered text + thinking,
- *  leaving only the tool_use bubble visible (the bug fixed here). */
-function mergeAssistantEntry(target: JsonlEntryData, incoming: JsonlEntryData): JsonlEntryData {
-  const targetContent = Array.isArray(target.message?.content) ? target.message!.content : []
-  const incomingContent = Array.isArray(incoming.message?.content) ? incoming.message!.content : []
-  // First real watcher entry replacing a streaming stub: drop the
-  // proxy-synthesized blocks (they were partial guesses) and adopt the
-  // canonical CLI-persisted ones. Subsequent in-batch merges concat to
-  // the already-canonical content.
-  const wasStreaming = target.__streaming !== undefined
-  const baseContent = wasStreaming ? [] : targetContent
-  // Always adopt the incoming (latest) uuid. Subsequent CLI entries point
-  // their `parentUuid` at the LAST piece of the model turn (tool_use or
-  // trailing text), so keeping the first piece's uuid would orphan the
-  // chain walk in `computeChainUuids` and `entryIsVisible` would drop the
-  // merged bubble entirely. The synthetic `stream-<msgId>` uuid was
-  // ephemeral anyway. ...incoming spread already does this, but make it
-  // explicit so the reasoning isn't buried in object-spread order.
-  // Carry EVERY folded uuid forward, so trim can forget all of them from `seen`.
-  // `.uuid` below is only the LAST one; the earlier blocks' uuids are already in
-  // `seen` and would otherwise orphan there and drop those blocks on a re-replay.
-  const uuids = new Set<string>(target.__uuids ?? (target.uuid ? [target.uuid] : []))
-  if (incoming.uuid) uuids.add(incoming.uuid)
-  return {
-    ...target,
-    ...incoming,
-    message: {
-      ...target.message,
-      ...incoming.message,
-      content: baseContent.concat(incomingContent),
-    },
-    __streaming: undefined,
-    __uuids: [...uuids],
-  } as JsonlEntryData
-}
-
-/** Types the chat stores but nothing ever reads.
- *
- *  Measured on a real 30 971-record session: 3569 records, 11.5% of the store —
- *  though only 0.6MB of 85.2MB, because the weight lives in tool results, not in
- *  bookkeeping rows. The win is not memory, it is that every pass over the store
- *  (merge, group, chain walk, visibility) has 11.5% less to walk.
- *
- *  Deliberately NOT here: `mode` / `permission-mode` feed the permissions
- *  dropdown, and `queue-operation` reconstructs the pending queue. They render
- *  nothing but are read, and dropping them would have broken both silently. */
-const UNREAD_ENTRY_TYPES: ReadonlySet<string> = new Set([
-  'last-prompt', 'ai-title', 'custom-title', 'agent-name',
-  'summary', 'todo-snapshot', 'compact-summary', 'tool-call-error',
-  'file-history-snapshot',
-])
+/** The store keeps only the types the chat renders or reads; the list is shared
+ *  with the host replay tail (see CHAT_STORED_ENTRY_TYPES). A production session
+ *  whose store held only `cost-state` and telemetry rows showed an empty chat
+ *  while the console showed the whole conversation. */
+export const STORED_ENTRY_TYPES = CHAT_STORED_ENTRY_TYPES
+const isStoredEntry = (e: JsonlEntryData): boolean => isChatStoredEntry(e)
 
 export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): boolean {
   if (entries.length === 0) return false
-  // Drop the unread rows before they ever enter the store. They used to reach
-  // the renderer and be filtered at the last moment, so each one still took a
-  // slot, a vnode and a place in every derived model.
+  // Drop the rows nothing reads before they enter the store, or the archived
+  // view's pending buffer. They used to reach the renderer and be filtered at the
+  // last moment, so each one still took a slot, a vnode and a place in every
+  // derived model.
+  entries = entries.filter(isStoredEntry)
+  if (entries.length === 0) return false
   // Viewing an archived compact segment: live entries belong to the CURRENT
   // segment, not this snapshot — dropping them here keeps the archived view
   // intact (they persist server-side and return when the user goes back to
   // Current). See archivedViewByTab.
   if (archivedViewByTab.has(tabId)) {
     const pending = archivedLiveEntries.get(tabId) ?? []
-    archivedLiveEntries.set(tabId, pending.concat(entries).slice(-STORE_WINDOW))
+    const next = pending.concat(entries)
+    // Overflow loses live rows. Going back to Current re-requests a replay
+    // (openDisplaySegment), and the debt makes sure that refill is owed.
+    if (next.length > STORE_WINDOW) needsRefill.add(tabId)
+    archivedLiveEntries.set(tabId, next.slice(-STORE_WINDOW))
     return false
   }
-  entries = entries.filter((e) => !UNREAD_ENTRY_TYPES.has(e.type))
-  if (entries.length === 0) return false
   // Offload the bytes of fat tool_result bodies before they enter the store —
   // the UI never shows past 2000 chars of one, and holding whole multi-hundred-KB
   // results is what drove the renderer to OUT_OF_MEMORY. Image payloads untouched.
@@ -469,16 +535,12 @@ export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): bo
   let seen = jsonlSeenUuidsByTab.value.get(tabId)
   let seenIsNew = false
   if (!seen) { seen = new Set<string>(); seenIsNew = true }
-  let ordSeen = seenOrdsByTab.get(tabId)
-  if (!ordSeen) { ordSeen = new Set<number>(); seenOrdsByTab.set(tabId, ordSeen) }
+  let keySeen = seenRowKeysByTab.get(tabId)
+  if (!keySeen) { keySeen = new Set<string>(); seenRowKeysByTab.set(tabId, keySeen) }
   const existing = jsonlEntriesByTab.value.get(tabId) ?? []
 
-  // Trust JSONL file order — that's the canonical source of truth. CLI
-  // sometimes back-dates timestamps on synthetic attachments (e.g. an
-  // edited_text_file attach gets ts(parent_user) - 1ms), and a naive
-  // ts-based sort then floats the attachment ABOVE the parent user
-  // message in the chat. Watcher always reads JSONL files linearly so
-  // batches arrive pre-ordered; trust that and don't second-guess.
+  // Reconcile UUIDs and split messages first; order their source rows and the
+  // resulting bubbles below, independently of replay/page delivery order.
   const ordered = entries
 
   // Walk the batch building a NEW list lazily. Track per-batch
@@ -489,17 +551,18 @@ export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): bo
   let nextEntries: JsonlEntryData[] = existing
   const msgIdToIdx = new Map<string, number>()
   for (const e of ordered) {
-    const ord = (e as { _ord?: number })._ord
-    // uuid dedup FIRST: `_ord` values are fresh on every server-side replay
-    // (monotonic per-process counter — restarts/reattaches re-tag the same
-    // entries with new ords), so uuid is the only stable cross-replay key.
-    // The ord-dedup only covers uuid-less rows within one replay stream.
+    // uuid first; uuid-less rows by file position (see seenRowKeysByTab).
+    // `_ord` is re-tagged on every server replay, so it is only the fallback
+    // for a row that has no position.
     if (e.uuid) {
       if (seen.has(e.uuid)) { logDrop('uuid-dup', e); continue }
       seen.add(e.uuid)
-    } else if (typeof ord === 'number') {
-      if (ordSeen.has(ord)) { logDrop('ord-dup', e); continue }
-      ordSeen.add(ord)
+    } else {
+      const key = rowKey(e)
+      if (key !== undefined) {
+        if (keySeen.has(key)) { logDrop(key.startsWith('p') ? 'pos-dup' : 'ord-dup', e); continue }
+        keySeen.add(key)
+      }
     }
     const incomingMsgId = e.message?.id
     if (incomingMsgId && e.type === 'assistant') {
@@ -516,7 +579,8 @@ export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): bo
       }
       if (targetIdx >= 0) {
         if (!mutated) { nextEntries = existing.slice(); mutated = true }
-        nextEntries[targetIdx] = mergeAssistantEntry(nextEntries[targetIdx]!, e)
+        const target = nextEntries[targetIdx]!
+        nextEntries[targetIdx] = holdStreamedProse(target, mergeAssistantEntry(target, e))
         msgIdToIdx.set(incomingMsgId, targetIdx)
         continue
       }
@@ -529,14 +593,8 @@ export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): bo
   }
   if (!mutated) return false
 
-  // Order the merged array: a STABLE topological sort (order-entries.ts) —
-  // `_ord` primary key (correct for reverse-emitted replay segments + compaction
-  // boundaries) tie-broken by arrival, with the parentUuid→uuid chain used only
-  // to keep a child after its parent. This fixes the two live-append drifts (a
-  // streaming stub sitting above its own prompt; live entries shoved below newer
-  // `_ord` entries after a reattach) WITHOUT the per-token full re-sort that
-  // froze large sessions — appendJsonlEntries runs on batch delivery only (a few
-  // times/sec), never on streaming deltas.
+  // Batch-only ordering preserves file positions when complete, timestamp
+  // chronology for mixed legacy history, and parent-before-child edges.
   nextEntries = orderEntries(nextEntries)
 
   const nextMap = new Map(jsonlEntriesByTab.value)
@@ -575,6 +633,20 @@ export function tabNeedsRefill(tabId: string): boolean {
   return needsRefill.has(tabId)
 }
 
+/** Does the tab still owe its conversation? It does when we dropped its store
+ *  and no user or assistant row has come back since.
+ *
+ *  "The store is non-empty" is not the same thing. After a compaction clear the
+ *  live tail keeps writing bookkeeping rows (mode, queue operations). They made
+ *  the store non-empty within seconds, the post-compaction watchdog read that as
+ *  "the replay landed", and a replay that had died mid-flight was never asked
+ *  for again. */
+export function tabOwesHistory(tabId: string): boolean {
+  if (!needsRefill.has(tabId)) return false
+  const entries = jsonlEntriesByTab.value.get(tabId) ?? []
+  return !entries.some((e) => e.type === 'user' || e.type === 'assistant')
+}
+
 /** Called once the tab has been topped up (or proven genuinely empty). */
 export function clearRefillDebt(tabId: string): void {
   needsRefill.delete(tabId)
@@ -594,7 +666,7 @@ export function clearJsonlEntries(tabId: string): void {
   const nextSeen = new Map(jsonlSeenUuidsByTab.value)
   nextSeen.delete(tabId)
   jsonlSeenUuidsByTab.value = nextSeen
-  seenOrdsByTab.delete(tabId)
+  seenRowKeysByTab.delete(tabId)
   // Drop the input-history seed reference too — JsonlViewer stashes the full
   // entries array on `window.__jsonlEntries[tabId]` and it was NEVER deleted, so
   // a closed/compacted huge session's ~100MB object graph stayed reachable
@@ -618,29 +690,16 @@ export function getJsonlEntries(tabId: string): JsonlEntryData[] {
  *  an entire marathon transcript in the renderer heap (the OOM) — the tail is
  *  kept, older pages come back from the disk mirror on scroll-up.
  *
- *  CRITICAL: the evicted uuids are removed from the seen-set. Otherwise the
- *  scroll-up prepend, which dedups on seen, would silently drop the very records
- *  it just refetched — the history would be gone with no way back. */
+ *  CRITICAL: the dedup sets are rebuilt from the kept rows. Otherwise the
+ *  scroll-up prepend or the next replay, which dedup on seen, would silently drop
+ *  the very records they bring back — the history would be gone with no way
+ *  back. Rebuilding (instead of deleting the dropped uuids) also covers every
+ *  uuid folded into a merged bubble, and costs one pass per trim, not per row. */
 export function trimTabToWindow(tabId: string, keep: number): boolean {
   const existing = jsonlEntriesByTab.value.get(tabId)
   if (!existing || existing.length <= keep) return false
-  const drop = existing.length - keep
-  const dropped = existing.slice(0, drop)
-  const kept = existing.slice(drop)
-
-  const seen = jsonlSeenUuidsByTab.value.get(tabId)
-  const ordSeen = seenOrdsByTab.get(tabId)
-  for (const e of dropped) {
-    // Forget EVERY uuid folded into this entry (a merged assistant turn holds N,
-    // in `__uuids`; `.uuid` alone leaves the earlier blocks' ids in `seen`, which
-    // then drop those blocks as duplicates on a re-replay → the middle-of-chat
-    // gap). Falls back to `.uuid` for un-merged entries.
-    const uuids = e.__uuids ?? (e.uuid ? [e.uuid] : [])
-    if (uuids.length > 0) { for (const u of uuids) seen?.delete(u) }
-    // Symmetric with the uuid set — uuid-less rows are ord-deduped; leaving their
-    // ords here would grow the set for the life of the tab across trim cycles.
-    else { const o = (e as { _ord?: number })._ord; if (typeof o === 'number') ordSeen?.delete(o) }
-  }
+  const kept = existing.slice(existing.length - keep)
+  reindexSeen(tabId, kept)
   const nextMap = new Map(jsonlEntriesByTab.value)
   nextMap.set(tabId, kept)
   bumpStructureVersion(tabId)
@@ -680,41 +739,27 @@ function enforceTabCap(tabId: string): void {
  *  order, and trim heavy tool bodies like the live ingest does. Returns the
  *  count stored. Pair with setArchivedView to gate live appends off. */
 export function replaceWindowWithSegment(tabId: string, records: JsonlEntryData[]): number {
-  const kept = records.filter((e) => !UNREAD_ENTRY_TYPES.has(e.type))
+  const kept = records.filter(isStoredEntry)
   kept.forEach((e, i) => { (e as { _ord?: number })._ord = i; trimHeavyToolResults(e) })
-  const ordered = orderEntries(kept)
-  const seen = new Set<string>()
-  for (const e of ordered) { if (e.uuid) seen.add(e.uuid) }
+  const ordered = orderEntries(foldAssistantEntries(orderEntries(kept)))
 
   const nextMap = new Map(jsonlEntriesByTab.value)
   nextMap.set(tabId, ordered)
-  const nextSeen = new Map(jsonlSeenUuidsByTab.value)
-  nextSeen.set(tabId, seen)
-  seenOrdsByTab.set(tabId, new Set())
+  reindexSeen(tabId, ordered)
   dropRenderModelCache(tabId)
   bumpStructureVersion(tabId)
   jsonlEntriesByTab.value = nextMap
-  jsonlSeenUuidsByTab.value = nextSeen
   return ordered.length
 }
 
-/** Prepend an OLDER page (from the scroll-up loader) to the front of the store.
- *
- *  The page comes from the mirror keyed on `_pos` — every record in it is
- *  strictly older than the window's current oldest, and it is already in file
- *  order. So it belongs at the front as-is; no full re-sort.
- *
- *  BUT the store's ordering key is `_ord`, and the mirror's stored `_ord` is from
- *  the session that wrote it — inconsistent with the window's fresh `_ord` from
- *  this session's replay. Left alone, the next append's `orderEntries` would
- *  interleave the page into the middle. So the page is RE-TAGGED with `_ord`
- *  values placed just below the window's minimum: legitimate (`_ord` is only ever
- *  a sort key, re-tagged on every replay) and it keeps the array valid for every
- *  later sort. Dedup on uuid so a page overlapping the window can't double a row. */
+/** Reconcile an older mirror page through the live ingest path. A page can
+ *  begin/end inside a split assistant message; raw concatenation would leave
+ *  its prefix outside the canonical bubble. Rebase replay-local ordinals only
+ *  for legacy rows without persistent file positions or timestamps. */
 export function prependJsonlEntries(tabId: string, older: JsonlEntryData[]): boolean {
   if (older.length === 0) return false
   const existing = jsonlEntriesByTab.value.get(tabId) ?? []
-  let seen = jsonlSeenUuidsByTab.value.get(tabId)
+  const seen = jsonlSeenUuidsByTab.value.get(tabId)
   // Dedup against the store's seen-set AND within the page itself: a page that
   // ever contained two lines with the same uuid (a duplicate write) must not
   // double the row — the outer `seen` check alone would pass both, as neither is
@@ -734,26 +779,15 @@ export function prependJsonlEntries(tabId: string, older: JsonlEntryData[]): boo
   // via scroll-up instead of live append (matches appendJsonlEntries).
   for (const e of fresh) trimHeavyToolResults(e)
 
-  // Place the page's `_ord` just below the window's current minimum, ascending,
-  // so the whole store stays `_ord`-ordered and orderEntries' fast path holds.
+  // Rebase the legacy ordinal fallback below the current window.
   let minOrd = Number.MAX_SAFE_INTEGER
   for (const e of existing) { const o = (e as { _ord?: number })._ord; if (typeof o === 'number' && o < minOrd) minOrd = o }
   const base = (minOrd === Number.MAX_SAFE_INTEGER ? 0 : minOrd) - fresh.length
   fresh.forEach((e, i) => { (e as { _ord?: number })._ord = base + i })
 
-  if (!seen) {
-    seen = new Set<string>()
-    const nextSeen = new Map(jsonlSeenUuidsByTab.value)
-    nextSeen.set(tabId, seen)
-    jsonlSeenUuidsByTab.value = nextSeen
-  }
-  for (const e of fresh) if (e.uuid) seen.add(e.uuid)
-
-  const nextMap = new Map(jsonlEntriesByTab.value)
-  nextMap.set(tabId, fresh.concat(existing))
-  bumpStructureVersion(tabId) // the segment/render model must recompute over the grown range
-  jsonlEntriesByTab.value = nextMap
-  return true
+  // Use the same reconciliation as live/replay ingestion. In particular, the
+  // page boundary can cut through a split assistant message already in-store.
+  return appendJsonlEntries(tabId, fresh)
 }
 
 // ── Last thinking preview for ActivityIndicator ─────────────────────────

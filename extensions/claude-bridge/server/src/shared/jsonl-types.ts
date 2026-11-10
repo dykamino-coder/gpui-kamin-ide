@@ -42,12 +42,32 @@ export interface JsonlEntry {
   // for consumers (tab title, agent colors, permission mode sync) but rendered
   // as null by the default JsonlEntry dispatcher.
   type:
-    | 'user' | 'assistant' | 'system'
-    | 'file-history-snapshot' | 'attribution-snapshot'
-    | 'summary' | 'custom-title' | 'ai-title' | 'last-prompt' | 'task-summary' | 'tag'
-    | 'agent-name' | 'agent-color' | 'agent-setting'
-    | 'mode' | 'permission-mode' | 'pr-link' | 'queue-operation' | 'worktree-state' | 'content-replacement'
-    | 'attachment' | 'progress' | 'speculation-accept'
+    | 'user'
+    | 'assistant'
+    | 'system'
+    | 'file-history-snapshot'
+    | 'attribution-snapshot'
+    | 'summary'
+    | 'custom-title'
+    | 'ai-title'
+    | 'last-prompt'
+    | 'task-summary'
+    | 'tag'
+    | 'agent-name'
+    | 'agent-color'
+    | 'agent-setting'
+    | 'mode'
+    | 'permission-mode'
+    | 'pr-link'
+    | 'queue-operation'
+    | 'worktree-state'
+    | 'content-replacement'
+    | 'attachment'
+    | 'progress'
+    | 'speculation-accept'
+    | 'session-owner'
+    | 'resume-head-vouch'
+    | 'repl-mode'
   uuid: string
   parentUuid?: string | null
   isSidechain?: boolean

@@ -31,6 +31,15 @@ describe('submission transcript identity', () => {
     expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toEqual([])
   })
 
+  it('honors host commitment on a new page without the matching transcript row', () => {
+    receiveSubmission('tab', { id: 'id', text: 'sent', state: 'read', uuid: 'stored', committed: true })
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toEqual([])
+    receiveSubmission('tab', { id: 'id', state: 'native', committed: false })
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toEqual([])
+    receiveSubmission('tab', { id: 'another', text: 'sent', state: 'read', uuid: 'different' })
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!).map(row => row.submissionId)).toEqual(['another'])
+  })
+
   it('replays a fallback identity once and never resurrects it after JSONL acceptance', () => {
     const receipt = { id: 'fallback', text: 'queued message', state: 'fallback' as const }
     receiveSubmission('tab', receipt)
@@ -78,5 +87,77 @@ describe('submission transcript identity', () => {
     submissions.value = new Map()
     receiveSubmission('tab', { ...receipt, fallbackQueue: { ...receipt.fallbackQueue, consumed: true } })
     expect(localQueue.value.has('tab')).toBe(false)
+  })
+
+  it('retains host display dismissal across late receipts and a fresh page without cancelling delivery', () => {
+    const receipt = { id: 'fallback', text: 'restore in composer', state: 'fallback' as const,
+      fallbackQueue: { afterOrd: 10, enqueuedAt: 123 } }
+    receiveSubmission('tab', receipt)
+    expect(localQueue.value.has('tab')).toBe(true)
+    receiveSubmission('tab', { ...receipt, fallbackQueue: { ...receipt.fallbackQueue, dismissed: true } })
+    expect(localQueue.value.has('tab')).toBe(false)
+    receiveSubmission('tab', receipt)
+    expect(submissions.value.get('tab')![0].fallbackQueue?.dismissed).toBe(true)
+    expect(submissions.value.get('tab')![0].state).toBe('fallback')
+    submissions.value = new Map()
+    receiveSubmission('tab', { ...receipt, fallbackQueue: { ...receipt.fallbackQueue, dismissed: true } })
+    receiveSubmission('tab', receipt)
+    expect(localQueue.value.has('tab')).toBe(false)
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toEqual([])
+  })
+})
+
+describe('stale pending receipts settle from the transcript', () => {
+  const user = (uuid: string, text: string, extra: Partial<JsonlEntryData> = {}): JsonlEntryData =>
+    ({ type: 'user', uuid, message: { role: 'user', content: text }, ...extra }) as JsonlEntryData
+  const pending = () => pendingSubmissionRows(jsonlEntriesByTab.value.get('tab') ?? [], submissions.value.get('tab') ?? [])
+    .map(row => row.submissionId)
+  const append = (...rows: JsonlEntryData[]) => {
+    jsonlEntriesByTab.value = new Map([['tab', [...(jsonlEntriesByTab.value.get('tab') ?? []), ...rows]]])
+    noteSubmissionRows('tab', rows)
+  }
+  const t0 = Date.parse('2026-11-10T10:00:00Z')
+
+  it('drops an unconfirmed bubble once the CLI wrote the same prompt after it', () => {
+    receiveSubmission('tab', { id: 'u', text: 'do not touch the role', state: 'uncertain', createdAt: t0 })
+    expect(pending()).toEqual(['u'])
+    append(user('row', 'do not touch the role', { timestamp: new Date(t0 + 500).toISOString() }))
+    expect(pending()).toEqual([])
+  })
+
+  it('turns a queued receipt the restarted server forgot into a dismissible one, then settles it', () => {
+    receiveSubmission('tab', { id: 'lost', text: 'queued before restart', state: 'queued', cancelable: true, createdAt: t0 })
+    receiveSubmission('tab', { id: 'kept', text: 'still tracked', state: 'queued', cancelable: true, createdAt: t0 })
+    receiveSubmission('tab', { id: '', known: ['kept'] })
+    const [lost, kept] = submissions.value.get('tab')!
+    expect(lost).toMatchObject({ state: 'uncertain', cancelable: false })
+    expect(lost.warning).toMatch(/no longer tracks/)
+    expect(kept).toMatchObject({ state: 'queued', cancelable: true })
+    append(user('row', 'queued before restart', { timestamp: new Date(t0 + 60_000).toISOString() }))
+    expect(pending()).toEqual(['kept'])
+  })
+
+  it('never lets an older identical prompt confirm a new receipt', () => {
+    jsonlEntriesByTab.value = new Map([['tab', [user('old', 'again', { timestamp: new Date(t0 - 60_000).toISOString() })]]])
+    receiveSubmission('tab', { id: 'new', text: 'again', state: 'uncertain', createdAt: t0 })
+    noteSubmissionRows('tab', [])
+    expect(pending()).toEqual(['new'])
+  })
+
+  it('without server time trusts only positioned rows past its watermark', () => {
+    jsonlEntriesByTab.value = new Map([['tab', [user('old', 'again', { _ord: 5 })]]])
+    receiveSubmission('tab', { id: 'new', text: 'again', state: 'uncertain' })
+    append(user('live', 'again'))
+    expect(pending()).toEqual(['new'])
+    append(user('replayed', 'again', { _ord: 6 }))
+    expect(pending()).toEqual([])
+  })
+
+  it('confirms identical prompts one row each', () => {
+    for (const id of ['a', 'b']) receiveSubmission('tab', { id, text: 'same', state: 'uncertain', createdAt: t0 })
+    append(user('r1', 'same', { timestamp: new Date(t0 + 1).toISOString() }))
+    expect(pending()).toEqual(['b'])
+    append(user('r2', 'same', { timestamp: new Date(t0 + 2).toISOString() }))
+    expect(pending()).toEqual([])
   })
 })

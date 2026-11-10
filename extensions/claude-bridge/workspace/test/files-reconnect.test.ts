@@ -2,8 +2,23 @@ import assert from 'node:assert/strict'
 import { mkdir, readFile, rename, truncate, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { MAX_FILE_BYTES } from '../src/file-operations.js'
 import { fileFixture } from './file-fixture.js'
+
+async function externalAtomicReplace(source: string, destination: string) {
+  // Windows can temporarily reject replacing a watched/read target. Retry only
+  // the external editor fixture action; persistent/other failures still fail.
+  const deadline = Date.now() + 500
+  for (;;) {
+    try { await rename(source, destination); return }
+    catch (error) {
+      if (process.platform !== 'win32' || (error as NodeJS.ErrnoException).code !== 'EPERM'
+        || Date.now() >= deadline) throw error
+      await sleep(25)
+    }
+  }
+}
 
 test('host file watches survive zero sockets; re-attach refreshes snapshots without replaying mutations', async t => {
   const f = await fileFixture(t)
@@ -46,7 +61,7 @@ test('host file watches survive zero sockets; re-attach refreshes snapshots with
   const nextFile = reopened.next('file-viewer:external-change', value => value.content === 'after reopen')
   const nextTree = reopened.next('file-tree:change', value => value.changedPath === join(f.root, 'later.txt'))
   await writeFile(join(f.root, 'atomic'), 'after reopen')
-  await rename(join(f.root, 'atomic'), renamed)
+  await externalAtomicReplace(join(f.root, 'atomic'), renamed)
   await writeFile(join(f.root, 'later.txt'), 'later')
   await Promise.all([nextFile, nextTree])
   assert.equal(first.frames.length, detachedCount)

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)]\n\
     engine_bench --list-gpus\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
     Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
@@ -110,6 +110,7 @@ pub(super) struct Args {
     pub(super) memory_settle_ms: u64,
     pub(super) snapshot: Option<PathBuf>,
     pub(super) frame_diff_dir: Option<PathBuf>,
+    pub(super) fresh_check_dir: Option<PathBuf>,
 }
 
 impl Args {
@@ -135,6 +136,7 @@ impl Args {
             memory_settle_ms: 0,
             snapshot: None,
             frame_diff_dir: None,
+            fresh_check_dir: None,
         };
         while let Some(flag) = args.next() {
             if flag == "--json" {
@@ -186,6 +188,7 @@ impl Args {
                     }
                 }
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
+                "--fresh-check-dir" => out.fresh_check_dir = Some(value.into()),
                 _ => return Err(format!("unknown option: {flag}").into()),
             }
         }

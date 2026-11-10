@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CheckFailure, outcome, exitStatus, markdown, assertImageSource } from './report.mjs'
+import { CheckFailure, outcome, exitStatus, markdown, assertImageSource, completionReceipt, scenarios } from './report.mjs'
 import { complete, used, turn } from './browser.mjs'
 import { spawn } from 'node:child_process'
 import readline from 'node:readline'
@@ -17,6 +17,24 @@ test('live acceptance rejects dirty runners and images from another source befor
     assert.throws(() => assertImageSource({ ...candidate, sourceDirty }), { code: 'RUNNER_SOURCE_DIRTY' })
   }
   assert.throws(() => assertImageSource({ ...candidate, source: '', imageSource: '' }), { code: 'IMAGE_SOURCE_MISMATCH' })
+})
+
+test('completion receipt preserves actual live outcomes and cannot invent capability or lifecycle proof', () => {
+  const report = { source: 'a'.repeat(40), sourceDirty: false, imageSource: 'a'.repeat(40),
+    imageId: 'b'.repeat(64), metrics: { browser: 'synthetic-browser' }, exitCode: 1,
+    cleanup: ['OWN_RESOURCE_CLEANUP'],
+    results: scenarios.map((name, index) => ({ name, status: ['PASS', 'FAIL', 'BLOCKED', 'XFAIL'][index % 4], reason: 'synthetic-private-text' })) }
+  const receipt = completionReceipt(report)
+  assert.equal(receipt.checks.length, scenarios.length)
+  assert.deepEqual(receipt.checks.map(check => check.status), report.results.map(result => result.status))
+  assert.ok(receipt.checks.every(check => check.id.startsWith('live:') && check.test && check.assertion))
+  assert.equal(receipt.source, report.source)
+  assert.equal(receipt.imageSource, report.imageSource)
+  assert.equal(receipt.imageId, report.imageId)
+  assert.equal(receipt.exitCode, 1)
+  assert.deepEqual(receipt.cleanup, ['OWN_RESOURCE_CLEANUP'])
+  assert.ok(!JSON.stringify(receipt).includes('synthetic-private-text'))
+  assert.deepEqual(completionReceipt({ ...report, results: [] }).checks, [])
 })
 
 test('known feature gaps never hide unrelated exceptions or convert blocked prerequisites to success', () => {

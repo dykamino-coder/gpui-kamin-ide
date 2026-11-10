@@ -1,6 +1,6 @@
 // Only projection and module rendering live here. The host owns mount/props and
 // dev-server availability, including while no browser page exists.
-import type { RemoteDescriptor } from './preview-renderer'
+import type { RemoteDescriptor, Mounted } from './preview-renderer'
 
 export function installPreviewPanel(): () => void {
   const chat = document.getElementById('root')!
@@ -32,13 +32,8 @@ export function installPreviewPanel(): () => void {
   panel.append(header, status, content)
   layout.append(separator, panel)
   let disposed = false, epoch = 0, key = '', props = '', fingerprint = '', changedAt = 0
-  let mounted: { update?(props: Record<string, unknown>): void; unmount(): void } | undefined
+  let mounted: Mounted | undefined
   let descriptor: RemoteDescriptor | null = null
-  let hotUpdate = 0
-  const observer = new PerformanceObserver(list => {
-    if (list.getEntries().some(entry => /(?:\.hot-update\.|[?&]t=\d+)/.test(entry.name))) hotUpdate = Date.now()
-  })
-  observer.observe({ type: 'resource', buffered: false })
   function clear() {
     ++epoch
     try { mounted?.unmount() } catch { /* a remote cleanup cannot stop chat */ }
@@ -55,7 +50,9 @@ export function installPreviewPanel(): () => void {
     try {
       const { renderRemote } = await import('./preview-renderer')
       if (disposed || generation !== epoch) return
-      const result = await renderRemote(element, value, build, fail)
+      const result = await renderRemote(element, value, build, fail,
+        () => {},
+        () => { if (generation === epoch && descriptor) void mount(descriptor, fingerprint) })
       if (disposed || generation !== epoch) { result.unmount(); return }
       mounted = result
       status.textContent = ''
@@ -63,7 +60,7 @@ export function installPreviewPanel(): () => void {
   }
   retry.onclick = () => { if (descriptor) void mount(descriptor, fingerprint) }
   close.onclick = () => { void fetch('/preview/unmount', { method: 'POST', credentials: 'same-origin' }).catch(fail) }
-  const width = (value: number) => { panel.style.width = `${Math.max(240, Math.min(innerWidth - 280, value))}px` }
+  const width = (value: number) => { panel.style.width = `${Math.max(240, Math.min(innerWidth - 1106, value))}px` }
   separator.onpointerdown = event => { separator.setPointerCapture(event.pointerId) }
   separator.onpointermove = event => { if (separator.hasPointerCapture(event.pointerId)) width(innerWidth - event.clientX) }
   separator.onkeydown = event => {
@@ -92,16 +89,16 @@ export function installPreviewPanel(): () => void {
         if (mounted?.update) { try { mounted.update(descriptor.props) } catch (error) { fail(error) } }
         else void mount(descriptor, state.build)
       }
-      // Framework HMR updates immediately. A stable entry change also refreshes
-      // the container after a quiet window, covering rebuilds without HMR.
+      // A native HMR runtime owns its updates and reports invalidation directly.
+      // Only servers without HMR use the stable-entry rebuild fallback.
       if (fingerprint !== state.build) {
         if (!changedAt) changedAt = Date.now()
-        if (hotUpdate >= changedAt - 2000) { fingerprint = state.build; changedAt = 0 }
+        if (mounted?.hot) { fingerprint = state.build; changedAt = 0 }
         else if (Date.now() - changedAt > 5000) { fingerprint = state.build; changedAt = 0; void mount(descriptor, state.build) }
       } else changedAt = 0
     } catch (error) { if (!disposed) fail(error) }
     finally { if (!disposed) timer = setTimeout(() => { void poll() }, 1000) }
   }
   void poll()
-  return () => { disposed = true; clearTimeout(timer); observer.disconnect(); clear() }
+  return () => { disposed = true; clearTimeout(timer); clear() }
 }

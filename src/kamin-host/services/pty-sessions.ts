@@ -8,6 +8,7 @@ import { discoverShells, type ShellProfile } from "./shells.js"
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
 const TASKKILL_TIMEOUT_MS = 3000
+const POSIX_KILL_GRACE_MS = 250
 
 export interface PtyCreateOpts {
   cwd?: string | null
@@ -33,6 +34,7 @@ export function pickProfile(profiles: ShellProfile[], id?: string | null): Shell
 
 export class PtySessions {
   private readonly handles = new Map<string, pty.IPty>()
+  private readonly pendingKills = new Map<string, ReturnType<typeof setTimeout>>()
   private nextId = 1
 
   constructor(
@@ -54,6 +56,8 @@ export class PtySessions {
     this.handles.set(ptyId, proc)
     proc.onData(data => { this.events.onData(ptyId, data) })
     proc.onExit(info => {
+      clearTimeout(this.pendingKills.get(ptyId))
+      this.pendingKills.delete(ptyId)
       // node-pty's Windows output worker also needs disposal on natural exit.
       // A requested kill has already taken ownership of that cleanup below.
       if (process.platform === "win32" && this.handles.has(ptyId)) {
@@ -83,6 +87,13 @@ export class PtySessions {
           try { proc.kill() } catch { /* already exited */ }
         })
     } else {
+      // Interactive/startup shells can ignore TERM and HUP. Retain ownership
+      // until exit or bounded escalation; onExit cancels the pending signal.
+      this.pendingKills.set(id, setTimeout(() => {
+        this.pendingKills.delete(id)
+        try { process.kill(-proc.pid, "SIGKILL") } catch { /* group already exited */ }
+        try { proc.kill("SIGKILL") } catch { /* already exited */ }
+      }, POSIX_KILL_GRACE_MS))
       try { process.kill(-proc.pid, "SIGTERM") } catch { /* group already exited */ }
       try { proc.kill() } catch { /* already exited */ }
     }

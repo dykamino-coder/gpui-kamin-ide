@@ -7,6 +7,9 @@ import { configureEnvironment, withEnvironment, type WorkspaceEnvironment } from
 import type { ClientFrame, ClientView, HostAttachment, HostFrame, WorkspaceBackend } from './protocol.js'
 import { WorkspacePresentation } from './presentation.js'
 import { containerSessionInstructions, projectDirectory } from './session-context.js'
+import { WorkspaceSessionState } from './session-state.js'
+import { WorkspaceDrafts } from './draft-state.js'
+import { WorkspaceSubmissionState } from './submission-state.js'
 
 export interface SharedBackendOptions {
   root: string
@@ -31,6 +34,10 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   const root = fs.realpathSync(options.root)
   const storage = path.resolve(options.storage)
   fs.mkdirSync(storage, { recursive: true, mode: 0o700 })
+  const submissionState = new WorkspaceSubmissionState(storage, root, options.serverUrl, options.token)
+  // Validate before starting any shared sessions; corruption must not discard
+  // duplicate protection and allow ambiguous delivery to execute again.
+  submissionState.load()
   // Shared handlers also use process.cwd() outside a tab context. This process
   // belongs to one workspace, so give those handlers the same local machine.
   process.chdir(root)
@@ -44,18 +51,49 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   const config = host.getConfigStore()
   config.set({ ...config.get(), serverUrl: options.serverUrl, token: options.token, cwd: root })
   let disposed = false
+  let restoring = true
+  const manager = host.getTabManager()
+  const sessionState = new WorkspaceSessionState(storage, root, options.serverUrl, options.token)
+  const drafts = new WorkspaceDrafts(storage, root, options.serverUrl, options.token)
+  function persistSessions(): void {
+    if (disposed || restoring) return
+    try { sessionState.save(manager.listTabs(), manager.getActiveTabId()) }
+    catch { console.warn('Could not persist workspace session state') }
+  }
   const attachments = new Set<HostAttachment>()
   const presentation = new WorkspacePresentation((channel, ...args) => host.broadcast(channel, ...args),
-    tabId => host.getTabManager().getConnection(tabId)?.getViewSnapshot().entries ?? [])
+    tabId => host.getTabManager().getConnection(tabId)?.getViewSnapshot().entries ?? [], submissionState)
   // This observer belongs to the process, not to a browser socket. Keep prompt,
   // activity and receipt state while no browser exists. Large history stays in
   // the shared connection caches and disk mirror.
   const observer = {
-    postMessage(frame: HostFrame) { presentation.observe(frame); return Promise.resolve(true) },
+    postMessage(frame: HostFrame) {
+      presentation.observe(frame)
+      if (frame.channel === 'tab:list-changed' || frame.channel === 'tab:switched') persistSessions()
+      if (frame.channel === 'tab:list-changed' && !restoring) {
+        try { drafts.prune(manager.listTabs().map(tab => tab.id)) }
+        catch { console.warn('Could not prune closed workspace drafts') }
+      }
+      return Promise.resolve(true)
+    },
     onDidReceiveMessage() { return { dispose() {} } },
   } as unknown as Webview
   const observation = host.attach(observer)
   host.setWebviewVisible(observer, true)
+  const saved = sessionState.load()
+  for (const tab of saved.tabs) {
+    try {
+      const connection = { ...config.get(), cwd: projectDirectory(root, tab.cwd) }
+      const creation = { background: true, restored: tab }
+      if (tab.conversationId) manager.resumeSession({ ...connection, conversationId: tab.conversationId,
+        sessionLabel: tab.sessionTitle }, creation)
+      else manager.createTab(connection, creation)
+    } catch { console.warn('Skipped unavailable workspace session directory') }
+  }
+  presentation.restore(new Set(manager.listTabs().map(tab => tab.id)))
+  const active = saved.active && manager.getTab(saved.active) ? saved.active : manager.listTabs()[0]?.id
+  if (active) manager.switchTab(active)
+  restoring = false
 
   // The shared core exposes desktop server administration helpers with arbitrary
   // HTTP destinations. Keep them closed until the browser's pinned proxy exists.
@@ -118,7 +156,21 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
         if (frame.kind === 'invoke-diagnostic') { await listener?.(frame); return }
         try {
           if (frame.kind === 'send' && frame.channel === 'workspace:sync') { snapshot(undefined, true); return }
+          if (frame.kind === 'invoke' && (frame.channel === 'workspace:draft:get' || frame.channel === 'workspace:draft:update')) {
+            const id = frame.args[0]
+            if (typeof id !== 'string' || !manager.getTab(id)) throw new Error('Unknown draft session')
+            const result = frame.channel === 'workspace:draft:get' ? drafts.get(id) : drafts.update(id, frame.args[1], frame.args[2])
+            if ('accepted' in result && result.accepted) host.broadcast('workspace:draft:state', id, result.state)
+            await webview.postMessage({ kind: 'invoke-reply', id: frame.id, generation: frame.generation, ok: true, result })
+            return
+          }
           if (frame.kind === 'send' && frame.channel === 'jsonl:request-replay') { snapshot(typeof frame.args[0] === 'string' ? frame.args[0] : undefined); return }
+          if (frame.kind === 'invoke' && frame.channel === 'workspace:queue-dismiss') {
+            if (typeof frame.args[0] !== 'string' || !manager.getConnection(frame.args[0])) throw new Error('Unknown queue session')
+            presentation.accept(frame)
+            await webview.postMessage({ kind: 'invoke-reply', id: frame.id, generation: frame.generation, ok: true })
+            return
+          }
           if (blocked.has(frame.channel)) throw new Error(`Browser adapter is pending for ${frame.channel}`)
           if (frame.kind === 'invoke' && !ipcMain.hasHandler(frame.channel)) throw new Error(`Unsupported workspace invoke: ${frame.channel}`)
           if (frame.kind === 'send' && ipcMain.listenerCount(frame.channel) === 0) throw new Error(`Unsupported workspace send: ${frame.channel}`)
@@ -127,7 +179,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
           if (frame.channel === 'pty-submit-text' && !host.getTabManager().getConnection(String(args[0]))) throw new Error('Unknown submission session')
           if (!presentation.accept(frame)) return
           await withEnvironment(options.environment, () => listener?.({ ...frame, args }))
-          if (frame.channel === 'disconnect') presentation.forgetSessions()
+          if (frame.channel === 'disconnect') { presentation.forgetSessions(); persistSessions() }
         } catch (error) {
           if (frame.kind !== 'invoke') throw error
           await webview.postMessage({ kind: 'invoke-reply', id: frame.id, generation: frame.generation,

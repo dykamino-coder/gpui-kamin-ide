@@ -14,7 +14,7 @@ const webpack = require('webpack')
 const DevServer = require('webpack-dev-server')
 const cleanups = new Map()
 
-export async function previewFixture(t) {
+export async function previewFixture(t, { conversations = false, holdSync = false, prepare } = {}) {
   const base = process.env.BRIDGE_PREVIEW_ROOT || os.tmpdir()
   const root = await fs.mkdtemp(path.join(base, 'bridgeweb-acc-preview-'))
   const cleanup = []
@@ -32,40 +32,68 @@ export async function previewFixture(t) {
     assert.ok(path.basename(root).startsWith('bridgeweb-acc-preview-'))
     await fs.rm(root, { recursive: true })
   })
-  const http = createServer((req, res) => { req.resume(); res.setHeader('Content-Type', 'application/json'); res.end('{"ok":true}') })
+  await prepare?.({ root, home, tmp })
+  const heldSync = []
+  let syncArrived
+  const syncPending = new Promise(resolve => { syncArrived = resolve })
+  const reply = res => { res.setHeader('Content-Type', 'application/json'); res.end('{"ok":true}') }
+  const http = createServer((req, res) => {
+    req.resume()
+    if (holdSync && /^\/api\/sync\/[a-f0-9]{16}\/user$/.test(req.url)) { heldSync.push(res); syncArrived(); return }
+    reply(res)
+  })
   const ws = new WebSocketServer({ server: http })
   await new Promise(resolve => http.listen(0, '127.0.0.1', resolve))
   let peer, id = 0
+  let conversation = 0
+  const peers = new Map()
   const frames = [], events = new EventEmitter()
   ws.on('connection', socket => {
     peer = socket
     socket.on('message', raw => {
       const frame = JSON.parse(raw.toString())
       frames.push(frame); events.emit('frame')
-      if (frame.type === 'session:create') socket.send(JSON.stringify({ type: 'session:created', sessionId: 'preview-session' }))
+      if (['session:create', 'session:resume'].includes(frame.type)) {
+        const conversationId = frame.conversationId || (conversations ? `00000000-0000-4000-8000-${String(++conversation).padStart(12, '0')}` : undefined)
+        socket.send(JSON.stringify({ type: 'session:created', sessionId: conversationId || 'preview-session' }))
+        if (conversations) {
+          peers.set(conversationId, socket)
+          socket.send(JSON.stringify({ type: 'session:conversation-id', conversationId }))
+        }
+      }
       if (frame.type === 'mcp:response') socket.send(JSON.stringify({ type: 'mcp:result-ack', sessionId: 'preview-session', requestId: frame.requestId, accepted: true }))
     })
   })
   cleanup.push(async () => {
     for (const client of ws.clients) client.terminate()
+    for (const response of heldSync.splice(0)) reply(response)
     await new Promise(resolve => ws.close(() => resolve()))
     await new Promise(resolve => http.close(() => resolve()))
   })
-  const child = fork(fileURLToPath(new URL('./preview-child.cjs', import.meta.url)), [root, `ws://127.0.0.1:${http.address().port}`], {
-    cwd: tmp, execArgv: [], stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, TMPDIR: tmp, TEMP: tmp, TMP: tmp,
-      KAMIN_CACHE_DIR: path.join(root, 'cache'), KAMIN_DISABLE_EXTERNAL_MCP: '1' },
-  })
-  // Output is deliberately consumed without printing shared runtime payloads.
-  child.stdout.resume(); child.stderr.resume()
-  const exited = once(child, 'exit')
-  cleanup.push(async () => {
-    if (child.exitCode !== null || child.signalCode !== null) return
-    if (child.connected) child.send('shutdown')
-    try { await Promise.race([exited, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Preview child shutdown timeout')), 5000); timer.unref() })]) }
-    catch { child.kill(); await exited }
-  })
-  const [ready] = await once(child, 'message', { signal: AbortSignal.timeout(15000) })
+  async function boot() {
+    const child = fork(fileURLToPath(new URL('./preview-child.cjs', import.meta.url)), [root, `ws://127.0.0.1:${http.address().port}`], {
+      cwd: tmp, execArgv: [], stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, TMPDIR: tmp, TEMP: tmp, TMP: tmp,
+        KAMIN_CACHE_DIR: path.join(root, 'cache'), KAMIN_DISABLE_EXTERNAL_MCP: '1' },
+    })
+    // Output is deliberately consumed without printing shared runtime payloads.
+    child.stdout.resume(); child.stderr.resume()
+    const exited = once(child, 'exit')
+    const stop = async (crash = false) => {
+      if (child.exitCode !== null || child.signalCode !== null) return
+      if (crash) { child.kill('SIGKILL'); await exited; return }
+      if (child.connected) child.send('shutdown')
+      let forced = false
+      try { await Promise.race([exited, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Preview child shutdown timeout')), 5000); timer.unref() })]) }
+      catch { forced = true; child.kill(); await exited }
+      const [code, signal] = await exited
+      return { code, signal, forced }
+    }
+    cleanup.push(stop)
+    const [ready] = await once(child, 'message', { signal: AbortSignal.timeout(15000) })
+    return { origin: ready.origin, stop }
+  }
+  let runtime = await boot()
   async function wait(predicate) {
     const signal = AbortSignal.timeout(15000)
     for (;;) {
@@ -74,15 +102,32 @@ export async function previewFixture(t) {
       await once(events, 'frame', { signal })
     }
   }
-  async function tool(toolName, input) {
+  async function tool(toolName, input, conversationId) {
     const requestId = `preview-${++id}`
-    peer.send(JSON.stringify({ type: 'mcp:call', requestId, toolName, input }))
+    const socket = conversationId === undefined ? peer : peers.get(conversationId)
+    assert.ok(socket, 'Synthetic upstream needs an established session')
+    socket.send(JSON.stringify({ type: 'mcp:call', requestId, toolName, input }))
     const result = await wait(frame => frame.type === 'mcp:response' && frame.requestId === requestId)
     assert.equal(result.isError, undefined)
     assert.equal(result.result?.isError, undefined, 'Shared MCP handler must succeed')
     return result
   }
-  return { root, origin: ready.origin, wait, tool }
+  async function waitForSync() {
+    await Promise.race([syncPending, new Promise((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('Initial user sync did not arrive')), 15000); timer.unref()
+    })])
+  }
+  return { root, get origin() { return runtime.origin }, wait, tool, waitForSync,
+    async releaseSync() {
+      await waitForSync()
+      holdSync = false
+      for (const response of heldSync.splice(0)) reply(response)
+    },
+    receivedFrames() { return structuredClone(frames) },
+    send(conversationId, frame) { assert.ok(peers.has(conversationId)); peers.get(conversationId).send(JSON.stringify(frame)) },
+    async restart(crash = false) { await runtime.stop(crash); runtime = await boot() },
+    async shutdown() { return await runtime.stop() },
+  }
 }
 
 export async function remoteFixture(t, root, { name = 'preview_fixture', requiredVersion = '19.3.1', hot = true } = {}) {
@@ -112,7 +157,7 @@ export async function remoteFixture(t, root, { name = 'preview_fixture', require
       shared: Object.fromEntries(['react', 'react-dom', 'react-dom/client'].map(pkg => [pkg, { singleton: true, strictVersion: true, requiredVersion, import: false }])) })],
     infrastructureLogging: { level: 'none' }, stats: 'errors-only' })
   const server = new DevServer({ host: '127.0.0.1', port: 0, hot: hot ? 'only' : false, liveReload: false,
-    client: false, allowedHosts: 'all', webSocketServer: hot ? { type: 'ws', options: { path: '/ws' } } : false }, compiler)
+    client: false, allowedHosts: 'all', webSocketServer: hot ? { type: 'ws', options: { path: `/preview/remotes/${name}/ws` } } : false }, compiler)
   await server.start()
   cleanups.get(root).push(async () => { await server.stop(); await new Promise(resolve => compiler.close(() => resolve())) })
   const port = server.server.address().port

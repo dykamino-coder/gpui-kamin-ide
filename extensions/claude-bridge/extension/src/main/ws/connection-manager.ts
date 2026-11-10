@@ -28,6 +28,8 @@ import fs from 'fs'
 import path from 'path'
 import { SessionIdleTracker } from './session-idle-tracker'
 import { handleServerMessage } from './handle-server-message'
+import { chatReplayTail, isChatStoredEntry } from '../../shared/chat-stored-entries'
+import { newestInFileOrder } from '../../shared/jsonl-cache-order'
 import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, type McpCallCtx } from './mcp-call-pipeline'
 
 export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
@@ -1043,8 +1045,7 @@ export class ConnectionManager {
     boundaries: { boundaries: { ts: string }[]; counts: number[] } | null
   } {
     const count = Math.max(1, Math.min(REPLAY_TAIL_MAX, maxRecords))
-    const ordered = [...this.cachedJsonlEntries].sort((a, b) => (a._pos ?? a._ord ?? 0) - (b._pos ?? b._ord ?? 0))
-    return { entries: ordered.slice(-count), streaming: this.cachedStreamingEntry,
+    return { entries: newestInFileOrder(this.cachedJsonlEntries.filter(isChatStoredEntry), count), streaming: this.cachedStreamingEntry,
       subagents: [...this.cachedSubagentEntries].map(([key, slot]) => ({ ...slot, agentId: slot.agentId ?? key, entries: slot.entries.slice(-count) })),
       boundaries: this.lastSegmentIndex,
       status: this.cachedJsonlStatus ?? { status: 'watching', replayComplete: this.state.status !== 'authenticated' } }
@@ -1134,11 +1135,11 @@ export class ConnectionManager {
     // FRONT is the recent tail and its END is the oldest — `.slice(-N)` would
     // grab the oldest N and could omit the current conversation entirely. `_ord`
     // is the server's file-order counter, so the largest `_ord`s are the newest.
-    let toReplay = this.cachedJsonlEntries
-    if (toReplay.length > REPLAY_TAIL_MAX) {
-      const ord = (e: { _pos?: number; _ord?: number }): number => e._pos ?? e._ord ?? 0
-      toReplay = [...toReplay].sort((a, b) => ord(a) - ord(b)).slice(-REPLAY_TAIL_MAX)
-    }
+    //
+    // Only rows the chat keeps count toward the tail (chatReplayTail): a long run
+    // of bookkeeping rows (cost-state, telemetry) at the end of the transcript
+    // used to fill all REPLAY_TAIL_MAX slots, and a reload showed an empty chat.
+    const toReplay = chatReplayTail(this.cachedJsonlEntries, REPLAY_TAIL_MAX)
     if (toReplay.length > 0) this.batcher.drainMainThen([...toReplay], tail)
     else tail()
   }
@@ -1557,6 +1558,7 @@ export class ConnectionManager {
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e
       },
+      getCachedStreamingEntry: () => this.cachedStreamingEntry,
       appendCachedStreamingDelta: (delta) => { appendStreamingText(this.cachedStreamingEntry, delta) },
       pushSubagentCache: (key, agentName, agentId, entries) => {
         const slot = this.cachedSubagentEntries.get(key) ?? {

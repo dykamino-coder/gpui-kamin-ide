@@ -6,11 +6,16 @@ const ts = (i: number): string => `2026-07-${String(10 + i).padStart(2, '0')}T00
 const user = (i: number, text = 'hi'): JsonlEntry =>
   ({ type: 'user', uuid: `u${i}`, timestamp: ts(i), message: { role: 'user', content: text } }) as JsonlEntry
 const assistant = (i: number, text = 'ok'): JsonlEntry =>
-  ({ type: 'assistant', uuid: `a${i}`, timestamp: ts(i), message: { role: 'assistant', content: [{ type: 'text', text }] } }) as JsonlEntry
+  ({
+    type: 'assistant',
+    uuid: `a${i}`,
+    timestamp: ts(i),
+    message: { role: 'assistant', content: [{ type: 'text', text }] },
+  }) as JsonlEntry
 const boundary = (i: number): JsonlEntry =>
-  ({ type: 'system', uuid: `b${i}`, timestamp: ts(i), subtype: 'compact_boundary' } as unknown as JsonlEntry)
+  ({ type: 'system', uuid: `b${i}`, timestamp: ts(i), subtype: 'compact_boundary' }) as unknown as JsonlEntry
 const noise = (type: string, i: number): JsonlEntry =>
-  ({ type, uuid: `n${i}`, timestamp: ts(i) } as unknown as JsonlEntry)
+  ({ type, uuid: `n${i}`, timestamp: ts(i) }) as unknown as JsonlEntry
 
 describe('isVisibleEntry', () => {
   it('counts real user/assistant turns', () => {
@@ -19,8 +24,30 @@ describe('isVisibleEntry', () => {
   })
 
   it('drops protocol-noise bookkeeping types (the count inflators)', () => {
-    for (const t of ['permission-mode', 'last-prompt', 'mode', 'queue-operation', 'file-history-snapshot', 'ai-title', 'summary'])
+    for (const t of [
+      'permission-mode',
+      'last-prompt',
+      'mode',
+      'queue-operation',
+      'file-history-snapshot',
+      'ai-title',
+      'summary',
+    ])
       expect(isVisibleEntry(noise(t, 0))).toBe(false)
+  })
+
+  it('drops CLI 2.1.322 bookkeeping rows and model-only attachments', () => {
+    for (const t of ['session-owner', 'resume-head-vouch', 'repl-mode']) expect(isVisibleEntry(noise(t, 0))).toBe(false)
+    for (const kind of [
+      'message_pdf_reads',
+      'widget_context_hint',
+      'claude_app_notice',
+      'file_unchanged',
+      'output_limit_note',
+    ])
+      expect(isVisibleEntry({ ...noise('attachment', 0), attachment: { type: kind } } as unknown as JsonlEntry)).toBe(
+        false,
+      )
   })
 
   it('drops compact_boundary dividers (counted structurally, not as content)', () => {
@@ -34,12 +61,22 @@ describe('isVisibleEntry', () => {
   it('drops meta / caveat / tool-result user rows', () => {
     expect(isVisibleEntry({ ...user(0), isMeta: true } as JsonlEntry)).toBe(false)
     expect(isVisibleEntry(user(0, '<command-name>/reload-skills</command-name>'))).toBe(false)
-    const toolResult = { type: 'user', uuid: 't', timestamp: ts(0), message: { content: [{ type: 'tool_result', tool_use_id: 'x', content: 'r' }] } } as JsonlEntry
+    const toolResult = {
+      type: 'user',
+      uuid: 't',
+      timestamp: ts(0),
+      message: { content: [{ type: 'tool_result', tool_use_id: 'x', content: 'r' }] },
+    } as JsonlEntry
     expect(isVisibleEntry(toolResult)).toBe(false)
   })
 
   it('counts a tool-only assistant (folds into a card in the chat, still a visible entry)', () => {
-    const toolUse = { type: 'assistant', uuid: 'a', timestamp: ts(0), message: { content: [{ type: 'tool_use', name: 'Read', input: {} }] } } as JsonlEntry
+    const toolUse = {
+      type: 'assistant',
+      uuid: 'a',
+      timestamp: ts(0),
+      message: { content: [{ type: 'tool_use', name: 'Read', input: {} }] },
+    } as JsonlEntry
     expect(isVisibleEntry(toolUse)).toBe(true)
   })
 })
@@ -48,9 +85,12 @@ describe('buildSegmentIndex', () => {
   it('splits at boundaries; counts[0]=original, counts[k+1]=after boundaries[k]', () => {
     // seg0: u0,u1 (+ noise ignored) | seg1: a3,a4 | seg2: u6
     const all: JsonlEntry[] = [
-      user(0), noise('permission-mode', 0), user(1),
+      user(0),
+      noise('permission-mode', 0),
+      user(1),
       boundary(2),
-      assistant(3), assistant(4),
+      assistant(3),
+      assistant(4),
       boundary(5),
       user(6),
     ]

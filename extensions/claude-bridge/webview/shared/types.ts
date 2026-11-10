@@ -369,8 +369,8 @@ export interface KaminBridgeApi {
 
   // ─── PTY (per-tab) ────────────────────────────────────
   sendInput(tabId: string, data: string): void
-  /** Stop: abort the in-flight upstream stream on the server + SIGINT the CLI. */
-  interruptSession(tabId: string): void
+  /** Abort upstream + SIGINT CLI; optional host queue IDs only dismiss restored display rows. */
+  interruptSession(tabId: string, dismissedQueueIds?: string[]): void
   /** Submit a full user message via server-side paste + quiet-window Enter gate. */
   submitText(tabId: string, text: string, submissionId?: string): void
   submissionAction(tabId: string, id: string, action: 'cancel' | 'push' | 'interrupt'): void

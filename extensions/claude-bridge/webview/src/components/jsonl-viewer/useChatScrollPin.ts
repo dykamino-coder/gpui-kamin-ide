@@ -45,9 +45,6 @@ export function useChatScrollPin(
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Whether the view should follow the bottom as content grows.
   const stickRef = useRef<boolean>(true)
-  // Guards the scroll event our own scrollTop write generates, so it isn't
-  // mistaken for a user scroll (which would recompute + persist state).
-  const programmaticRef = useRef<boolean>(false)
   const restoringRef = useRef<boolean>(false)
   const prevTopRef = useRef<number>(0)
   // Coalesces the many snap requests a streaming burst fires into one rAF pass.
@@ -71,8 +68,10 @@ export function useChatScrollPin(
   function snap(): void {
     const el = host()
     if (!el || !stickRef.current) return
-    programmaticRef.current = true
     el.scrollTop = el.scrollHeight
+    // Record the landed position before the asynchronous scroll event. A
+    // boolean "ignore next scroll" guard outlives no-op snaps (no event is
+    // emitted), then swallows the reader's first upward scroll instead.
     prevTopRef.current = el.scrollTop
   }
 
@@ -132,11 +131,6 @@ export function useChatScrollPin(
     if (!h) return
     function onScroll(): void {
       if (!h) return
-      if (programmaticRef.current) {
-        programmaticRef.current = false
-        prevTopRef.current = h.scrollTop
-        return
-      }
       const top = h.scrollTop
       const movedUp = top < prevTopRef.current - 1
       const atBottom = distFromBottom(h) < AT_BOTTOM_PX

@@ -19213,8 +19213,32 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
   } catch (e) {
     return errorResult4(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`);
   }
+  try {
+    const stat = await import_promises3.default.stat(searchPath);
+    if (stat.isFile()) {
+      const results2 = [];
+      const content = await import_promises3.default.readFile(searchPath, "utf8");
+      const lines = content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? "";
+        if (regex.test(line) && outputMode === "content") results2.push(`${i + 1}:${line}`);
+        regex.lastIndex = 0;
+      }
+      if (results2.length > 0 && outputMode === "files_with_matches") return textResult4(searchPath);
+      if (outputMode === "count") return textResult4(`${searchPath}:${results2.length}`);
+      return fallbackResult(results2, offset, headLimit, false, FALLBACK_TIMEOUT_MS);
+    }
+  } catch {
+  }
+  const { results, timedOut } = await walkFallback(regex, searchPath, outputMode, headLimit, FALLBACK_TIMEOUT_MS);
+  return fallbackResult(results, offset, headLimit, timedOut, FALLBACK_TIMEOUT_MS);
+}
+async function walkFallback(regex, searchPath, outputMode, headLimit, timeoutMs) {
   const results = [];
+  const deadline = Date.now() + timeoutMs;
+  let timedOut = false;
   async function searchDir(dir) {
+    if (timedOut) return;
     let entries2;
     try {
       entries2 = await import_promises3.default.readdir(dir, { withFileTypes: true });
@@ -19223,6 +19247,10 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
     }
     for (const entry of entries2) {
       if (headLimit > 0 && results.length >= headLimit) return;
+      if (Date.now() > deadline) {
+        timedOut = true;
+        return;
+      }
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
       const fullPath = import_node_path5.default.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -19252,30 +19280,24 @@ ${matchingLines.join("\n")}`);
       }
     }
   }
-  try {
-    const stat = await import_promises3.default.stat(searchPath);
-    if (stat.isFile()) {
-      const content = await import_promises3.default.readFile(searchPath, "utf8");
-      const lines = content.split("\n");
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] ?? "";
-        if (regex.test(line) && outputMode === "content") results.push(`${i + 1}:${line}`);
-        regex.lastIndex = 0;
-      }
-      if (results.length > 0 && outputMode === "files_with_matches") return textResult4(searchPath);
-      if (outputMode === "count") return textResult4(`${searchPath}:${results.length}`);
-    } else {
-      await searchDir(searchPath);
-    }
-  } catch {
-    await searchDir(searchPath);
-  }
+  await searchDir(searchPath);
+  return { results, timedOut };
+}
+function fallbackResult(results, offset, headLimit, timedOut, timeoutMs) {
   let output = results.join("\n");
   if (offset > 0) output = output.split("\n").slice(offset).join("\n");
   if (headLimit > 0) output = output.split("\n").slice(0, headLimit).join("\n");
-  return textResult4(output || "No matches found.");
+  const seconds = Math.round(timeoutMs / 1e3);
+  if (timedOut && !output.trim()) {
+    return errorResult4(
+      `Search timed out after ${seconds}s with no matches captured; not every file was searched. Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`
+    );
+  }
+  const suffix = timedOut ? `
+[Search timed out after ${seconds}s \u2014 partial results above; try a narrower path or pattern]` : "";
+  return textResult4((output || "No matches found.") + suffix);
 }
-var import_promises3, import_node_path5, import_node_child_process5;
+var import_promises3, import_node_path5, import_node_child_process5, FALLBACK_TIMEOUT_MS;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
@@ -19283,6 +19305,7 @@ var init_grep_tool = __esm({
     import_node_path5 = __toESM(require("node:path"), 1);
     import_node_child_process5 = require("node:child_process");
     init_fs_shared();
+    FALLBACK_TIMEOUT_MS = 54e4;
   }
 });
 
@@ -38120,7 +38143,10 @@ async function lspDiagnostics(input, context) {
     pluginDiags = await pluginLspManager.getDiagnostics(file, context?.tabId);
   } catch {
   }
-  const combined = [...diags ?? [], ...pluginDiags];
+  const combined = [...diags ?? [], ...pluginDiags.map((d) => ({
+    ...d,
+    severity: typeof d.severity === "number" ? d.severity - 1 : void 0
+  }))];
   if (combined.length === 0) return textResult7(`No diagnostics for ${file}.`);
   const sev = ["Error", "Warning", "Info", "Hint"];
   const lines = combined.map((d) => {
@@ -42269,15 +42295,46 @@ var SessionIdleTracker = class {
   }
 };
 
+// src/shared/jsonl-cache-order.ts
+function tagOf(e) {
+  if (typeof e._pos === "number") return e._pos;
+  if (typeof e._ord === "number") return e._ord;
+  return void 0;
+}
+function cacheFileOrderRanks(entries2) {
+  const ranks = new Float64Array(entries2.length);
+  let maxTagged = -1;
+  for (const e of entries2) {
+    const t = tagOf(e);
+    if (t !== void 0 && t > maxTagged) maxTagged = t;
+  }
+  for (let i = 0; i < entries2.length; i++) {
+    const t = tagOf(entries2[i]);
+    ranks[i] = t !== void 0 ? t : maxTagged + 1 + i;
+  }
+  return ranks;
+}
+function cacheFileOrder(entries2) {
+  const ranks = cacheFileOrderRanks(entries2);
+  const idx = Array.from({ length: entries2.length }, (_, i) => i);
+  idx.sort((a, b) => ranks[a] - ranks[b] || a - b);
+  return idx;
+}
+function newestInFileOrder(entries2, count) {
+  const order = cacheFileOrder(entries2);
+  return order.slice(Math.max(0, order.length - count)).map((i) => entries2[i]);
+}
+
 // src/main/ws/handle-server-message.ts
 var JSONL_CACHE_MAX = 2e4;
 var JSONL_CACHE_SLACK = 1e3;
 function trimJsonlCache(cached) {
   const over = cached.length - JSONL_CACHE_MAX;
   if (over < JSONL_CACHE_SLACK) return;
-  const ords = cached.map((e) => e._pos ?? e._ord ?? 0).sort((a, b) => a - b);
-  const cutoff = ords[over - 1] ?? 0;
-  const kept = cached.filter((e) => (e._pos ?? e._ord ?? 0) > cutoff);
+  const drop = new Uint8Array(cached.length);
+  const order = cacheFileOrder(cached);
+  for (let i = 0; i < over; i++) drop[order[i]] = 1;
+  const kept = cached.filter((_, i) => drop[i] === 0);
   cached.length = kept.length;
   for (let i = 0; i < kept.length; i++) cached[i] = kept[i];
 }
@@ -42350,6 +42407,8 @@ function handleServerMessage(msg, ctx) {
     case "jsonl:entries": {
       const entries2 = msg.entries;
       ctx.pushJsonlCache(entries2, msg.replay === true);
+      if (ctx.getCachedStreamingEntry?.()?.__compaction && entries2.some((e) => e.type === "system" && e.subtype === "compact_boundary" || e.isCompactSummary))
+        ctx.setCachedStreamingEntry?.(null);
       trimJsonlCache(ctx.getCachedJsonl());
       ctx.batcher.queueMain(entries2);
       for (let i = entries2.length - 1; i >= 0; i--) {
@@ -42532,6 +42591,25 @@ function handleServerMessage(msg, ctx) {
       ctx.notifySessionInfo(msg.effort, msg.model);
       break;
   }
+}
+
+// src/shared/chat-stored-entries.ts
+var CHAT_STORED_ENTRY_TYPES = /* @__PURE__ */ new Set([
+  "user",
+  "assistant",
+  "system",
+  "attachment",
+  "mode",
+  "permission-mode",
+  "queue-operation"
+]);
+function isChatStoredEntry(entry) {
+  return typeof entry?.type === "string" && CHAT_STORED_ENTRY_TYPES.has(entry.type);
+}
+function chatReplayTail(entries2, max) {
+  const kept = entries2.filter(isChatStoredEntry);
+  if (kept.length <= max) return kept;
+  return newestInFileOrder(kept, max);
 }
 
 // src/main/ws/connection-manager.ts
@@ -43293,9 +43371,8 @@ var ConnectionManager = class _ConnectionManager {
    * Serialization by the caller detaches the disposable renderer projection. */
   getViewSnapshot(maxRecords = 200) {
     const count = Math.max(1, Math.min(REPLAY_TAIL_MAX, maxRecords));
-    const ordered = [...this.cachedJsonlEntries].sort((a, b) => (a._pos ?? a._ord ?? 0) - (b._pos ?? b._ord ?? 0));
     return {
-      entries: ordered.slice(-count),
+      entries: newestInFileOrder(this.cachedJsonlEntries.filter(isChatStoredEntry), count),
       streaming: this.cachedStreamingEntry,
       subagents: [...this.cachedSubagentEntries].map(([key2, slot]) => ({ ...slot, agentId: slot.agentId ?? key2, entries: slot.entries.slice(-count) })),
       boundaries: this.lastSegmentIndex,
@@ -43337,11 +43414,7 @@ var ConnectionManager = class _ConnectionManager {
         this.window.webContents.send("streaming-entry", this.tabId, this.cachedStreamingEntry);
       }
     };
-    let toReplay = this.cachedJsonlEntries;
-    if (toReplay.length > REPLAY_TAIL_MAX) {
-      const ord = (e) => e._pos ?? e._ord ?? 0;
-      toReplay = [...toReplay].sort((a, b) => ord(a) - ord(b)).slice(-REPLAY_TAIL_MAX);
-    }
+    const toReplay = chatReplayTail(this.cachedJsonlEntries, REPLAY_TAIL_MAX);
     if (toReplay.length > 0) this.batcher.drainMainThen([...toReplay], tail);
     else tail();
   }
@@ -43681,6 +43754,7 @@ var ConnectionManager = class _ConnectionManager {
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e;
       },
+      getCachedStreamingEntry: () => this.cachedStreamingEntry,
       appendCachedStreamingDelta: (delta) => {
         appendStreamingText(this.cachedStreamingEntry, delta);
       },
@@ -44391,6 +44465,8 @@ function tabLog(msg) {
 }
 var TabManager = class {
   tabs = /* @__PURE__ */ new Map();
+  // Foreground startup owns the initial connect until user/project sync settles.
+  pendingConnect = /* @__PURE__ */ new Set();
   activeTabId = null;
   // Monotonic switch sequence. Every `tab:switched` carries the seq at which it
   // was emitted; the webview keeps the highest it has seen and rejects any lower
@@ -44413,9 +44489,9 @@ var TabManager = class {
   onProjectOpened = null;
   /** Invoked when a tab with a cwd is closed and no other tab references that cwd. */
   onProjectClosed = null;
-  /** Fires just before a tab is deleted, so the caller can persist a saved
-   *  session record. Receiver may inspect tab.conversationId, sessionTitle,
-   *  model, etc. */
+  /** Fires before disconnect and deletion for every tab, including sessions
+   *  without a conversation ID. Used to clean up tab-owned background work;
+   *  callers may also inspect the optional session metadata. */
   onTabClosing = null;
   /** Fires right after a tab is created and registered. Used to start
    *  per-tab background work — plugin monitors, etc. — that needs to die
@@ -44436,13 +44512,13 @@ var TabManager = class {
    * Create a new tab with its own ConnectionManager.
    * Automatically connects and becomes the active tab.
    */
-  createTab(config) {
-    const tabId = (0, import_crypto4.randomUUID)();
+  createTab(config, opts = {}) {
+    const tabId = opts.restored?.id ?? (0, import_crypto4.randomUUID)();
     const folderName = config.cwd ? import_path9.default.basename(config.cwd) : "default";
     tabLog(`createTab: tabId=${tabId.slice(0, 8)} folder=${folderName} cwd=${config.cwd || "none"} total=${this.tabs.size + 1} stack=${new Error().stack?.split("\n").slice(1, 4).map((l) => l.trim()).join(" | ")}`);
-    const counter = (this.folderCounters.get(folderName) ?? 0) + 1;
+    const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1;
     this.folderCounters.set(folderName, counter);
-    const label = `#${counter}`;
+    const label = opts.restored?.label ?? `#${counter}`;
     const connection = new ConnectionManager(config, this.window, tabId);
     const tab = {
       id: tabId,
@@ -44450,12 +44526,13 @@ var TabManager = class {
       connection,
       label,
       folderName,
-      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      createdAt: opts.restored?.createdAt ?? (/* @__PURE__ */ new Date()).toISOString()
     };
     this.tabs.set(tabId, tab);
-    this.activeTabId = tabId;
+    if (!opts.background) this.pendingConnect.add(tabId);
+    if (!opts.background) this.activeTabId = tabId;
     this.window.webContents.send("tab:created", this.getTabInfo(tab));
-    this.emitSwitched(tabId);
+    if (!opts.background) this.emitSwitched(tabId);
     this.notifyTabListChanged();
     try {
       this.onTabCreated?.(tab);
@@ -44466,10 +44543,11 @@ var TabManager = class {
       const otherRefs = [...this.tabs.values()].filter((t) => t.id !== tabId && t.config.cwd === config.cwd).length;
       if (otherRefs === 0) this.onProjectOpened?.(config.cwd);
     }
-    const connectIfAlive = () => {
-      if (this.tabs.has(tabId)) connection.connect();
-    };
-    this.triggerSync(config).then(connectIfAlive).catch(connectIfAlive);
+    if (opts.background) {
+      connection.setRendererMuted(true);
+      return tabId;
+    }
+    this.connectAfterSync(tab);
     return tabId;
   }
   /**
@@ -44479,6 +44557,7 @@ var TabManager = class {
   disconnectTab(tabId) {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
+    this.pendingConnect.delete(tabId);
     tab.connection.disconnect({ endSession: true });
   }
   /**
@@ -44489,6 +44568,7 @@ var TabManager = class {
   reconnectTab(tabId) {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
+    this.pendingConnect.delete(tabId);
     this.window.webContents.send("bridge:console-reset", tabId);
     tab.connection.connect();
   }
@@ -44499,14 +44579,14 @@ var TabManager = class {
    *  tabs belong to the old token's server-side sessions and can't be reused. */
   closeAllTabs() {
     const ids = Array.from(this.tabs.keys());
+    this.activeTabId = null;
     for (const id of ids) this.closeTab(id);
   }
   closeTab(tabId) {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
-    if (tab.conversationId && this.onTabClosing) {
-      this.onTabClosing(tab);
-    }
+    this.pendingConnect.delete(tabId);
+    this.onTabClosing?.(tab);
     tab.connection.disconnect({ endSession: true });
     const closedCwd = tab.config.cwd;
     this.tabs.delete(tabId);
@@ -44514,7 +44594,7 @@ var TabManager = class {
       const remaining = Array.from(this.tabs.keys());
       this.activeTabId = remaining.length > 0 ? remaining[remaining.length - 1] : null;
       if (this.activeTabId) {
-        this.emitSwitched(this.activeTabId);
+        this.switchTab(this.activeTabId);
       }
     }
     this.window.webContents.send("tab:closed", tabId);
@@ -44532,7 +44612,7 @@ var TabManager = class {
     if (!tab) return;
     tabLog(`switchTab: tabId=${tabId.slice(0, 8)} seq=${this.switchSeq + 1}`);
     tab.connection.setRendererMuted(false);
-    if (tab.connection.getExtendedState().status === "disconnected") {
+    if (!this.pendingConnect.has(tabId) && tab.connection.getExtendedState().status === "disconnected") {
       tab.connection.connect();
     }
     this.activeTabId = tabId;
@@ -44656,12 +44736,12 @@ var TabManager = class {
    * the user data, and a burst of warm-pool resumes must not become a sync storm.
    */
   resumeSession(config, opts = {}) {
-    const tabId = (0, import_crypto4.randomUUID)();
+    const tabId = opts.restored?.id ?? (0, import_crypto4.randomUUID)();
     const folderName = config.cwd ? import_path9.default.basename(config.cwd) : "default";
     tabLog(`resumeSession: tabId=${tabId.slice(0, 8)} convId=${config.conversationId.slice(0, 8)} folder=${folderName} label=${config.sessionLabel || "none"} bg=${opts.background ? 1 : 0} total=${this.tabs.size + 1}`);
-    const counter = (this.folderCounters.get(folderName) ?? 0) + 1;
+    const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1;
     this.folderCounters.set(folderName, counter);
-    const label = `#${counter}`;
+    const label = opts.restored?.label ?? `#${counter}`;
     const connection = new ConnectionManager(config, this.window, tabId, config.conversationId);
     const tab = {
       id: tabId,
@@ -44669,11 +44749,12 @@ var TabManager = class {
       connection,
       label,
       folderName,
-      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      createdAt: opts.restored?.createdAt ?? (/* @__PURE__ */ new Date()).toISOString(),
       conversationId: config.conversationId,
       sessionTitle: config.sessionLabel
     };
     this.tabs.set(tabId, tab);
+    if (!opts.background) this.pendingConnect.add(tabId);
     if (!opts.background) this.activeTabId = tabId;
     this.window.webContents.send("tab:created", this.getTabInfo(tab));
     if (!opts.background) this.emitSwitched(tabId);
@@ -44682,10 +44763,7 @@ var TabManager = class {
       connection.setRendererMuted(true);
       return tabId;
     }
-    const connectIfAlive = () => {
-      if (this.tabs.has(tabId)) connection.connect();
-    };
-    this.triggerSync(config).then(connectIfAlive).catch(connectIfAlive);
+    this.connectAfterSync(tab);
     return tabId;
   }
   /**
@@ -44697,6 +44775,7 @@ var TabManager = class {
   }
   /** Terminal client disposal, without ending the server's CLI sessions. */
   dispose() {
+    this.pendingConnect.clear();
     for (const tab of this.tabs.values()) tab.connection.dispose();
     this.tabs.clear();
     this.activeTabId = null;
@@ -44730,6 +44809,12 @@ var TabManager = class {
     return first.done ? null : first.value.connection;
   }
   // ─── Private ────────────────────────────────────────────
+  connectAfterSync(tab) {
+    const connectIfAlive = () => {
+      if (this.pendingConnect.delete(tab.id) && this.tabs.get(tab.id) === tab) tab.connection.connect();
+    };
+    this.triggerSync(tab.config).then(connectIfAlive, connectIfAlive);
+  }
   /**
    * Sync user-level and project-level data to the bridge server.
    * Called before WS connect; debounced internally (60s).
@@ -45163,7 +45248,8 @@ function registerSessionsIPC(ctx) {
         serverUrl: config.serverUrl,
         token: config.token
       });
-      return tm()?.resumeSession(config) ?? null;
+      const saved = ctx.configStore.getSavedSessions().find((session) => session.conversationId === config.conversationId);
+      return tm()?.resumeSession({ ...config, sessionLabel: config.sessionLabel ?? saved?.label }) ?? null;
     }
   );
   ipcMain.handle("session:get-saved", () => {

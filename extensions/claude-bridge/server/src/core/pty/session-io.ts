@@ -198,7 +198,21 @@ export function writeInputToSession(session: PtySession, data: string): boolean 
  *      Raw input and additional submissions stay serialized around this unit.
  */
 export function submitTextToSession(session: PtySession, text: string, submissionId?: string): void {
-  if (session.state !== 'running') return
+  if (session.state !== 'running') {
+    // Without a receipt the client keeps its optimistic Queued bubble forever.
+    if (submissionId)
+      sendToClient(session.ws, {
+        type: 'session:submission',
+        sessionId: session.id,
+        id: submissionId,
+        text,
+        state: 'uncertain',
+        cancelable: false,
+        warning: 'Session is not running; this message was not delivered.',
+        createdAt: Date.now(),
+      })
+    return
+  }
   session.lastActivityAt = new Date()
   if (sessionCliControl(session)?.submit(text, submissionId)) return
   if (submissionId)
@@ -210,6 +224,7 @@ export function submitTextToSession(session: PtySession, text: string, submissio
       state: 'fallback',
       cancelable: false,
       warning: 'Using native terminal delivery for this message.',
+      createdAt: Date.now(),
     })
   submitCoordinatedText(session, text)
 }

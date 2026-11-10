@@ -12,7 +12,7 @@ accepts `--token-stdin` for callers that already hold a bootstrap token in memor
 
 The service stores the token and a random browser secret in
 `/home/workspace/.local/state/bridge/workspace-credentials.json`, and HMAC-keyed
-browser-session records in `workspace-sessions.json`. Both files have mode 0600;
+browser-session records in `workspace-browser-sessions.json`. Both files have mode 0600;
 the directory has mode 0700 and belongs to the image's non-root user. Raw browser
 cookies are not persisted. Keep `/home/workspace` on its named volume across
 container replacement. A later start uses these credentials without reading the
@@ -93,3 +93,8 @@ volumes and registered token, and cleans up those exact resources. It never
 reads server volumes. Reports contain fixed assertions and measurements, with
 no credentials or raw transcripts. Chromium runs headless in the Linux runner
 with its private browser cache and `PLAYWRIGHT_SKIP_BROWSER_GC=1`.
+
+Browser authentication records are separate from the open-tab set in
+`workspace-sessions.json`. Upgrading a pre-isolation workspace requires one new
+browser login (automatic on loopback); service credentials and open tabs remain.
+Subsequent restarts retain the newly issued browser cookie.

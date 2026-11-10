@@ -2,7 +2,7 @@
 
 use super::{
     args::{Args, Mode},
-    pixels::{Recorder, detail, differing},
+    pixels::Recorder,
     run::{Step, sample},
     view::View,
 };
@@ -162,11 +162,13 @@ impl Frames {
             window.update(cx, |view, _, _| view.viewport = Some(css))?;
             let (_, fresh, _) =
                 sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
-            let different = differing(incremental, &fresh.pixels)?;
-            let mut check = json!({"css_viewport": css, "different_rgb_pixels": different});
-            if different != 0 {
-                check["detail"] = detail(incremental, &fresh.pixels);
-            }
+            let mut check = super::fresh_check::compare(
+                incremental,
+                &fresh.pixels,
+                args.fresh_check_dir.as_deref(),
+                &format!("relayout-{group}"),
+            )?;
+            check["css_viewport"] = json!(css);
             checks.push(check);
         }
         let mode = &mut report["modes"]["relayout"];

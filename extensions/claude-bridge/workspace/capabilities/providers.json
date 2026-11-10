@@ -1,4 +1,9 @@
 {
+  "session-restart": {
+    "file": "workspace/src/session-state.ts",
+    "test": "workspace/test/session-restart.test.ts",
+    "contract": "Atomic scoped open-session persistence through the real host: stable tab identity, title, empty tabs, active selection, explicit close/disconnect and abrupt process restart."
+  },
   "shell": {
     "file": "workspace/src/shell-state.ts",
     "test": "workspace/test/shell-state.test.ts",
@@ -54,5 +59,10 @@
   "title": {
     "requires": "title-regeneration",
     "contract": "Shared BridgeHost /rename ingress validates live tabs; native SessionsBridge keeps title metadata through its callback."
+  },
+  "drafts": {
+    "file": "workspace/src/draft-state.ts",
+    "test": "workspace/test/session-restart.test.ts",
+    "contract": "Scoped per-session text/attachment drafts with atomic persist-before-ack CAS, stale update rejection, empty tombstones, and explicit browser conflict resolution. Production two-page/restart coverage in composer-drafts.smoke.mjs uses synthetic upstream."
   }
 }

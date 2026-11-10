@@ -74,7 +74,7 @@ export class SessionCliControl {
     sendToClient(this.session.ws, {
       type: 'session:output',
       sessionId: this.session.id,
-      data: '\r\n[Bridge: CLI mod unavailable or incompatible (requires 2.1.312); using native terminal delivery and OSC status.]\r\n',
+      data: '\r\n[Bridge: CLI mod unavailable or incompatible (requires 2.1.322); using native terminal delivery and OSC status.]\r\n',
     })
   }
 
@@ -136,6 +136,14 @@ export class SessionCliControl {
   replay(): void {
     this.snapshot()
     this.submissions?.replay()
+    // After a server or CLI restart the client may still show receipts this
+    // process never saw; list what is tracked so it can stop waiting for them.
+    sendToClient(this.session.ws, {
+      type: 'session:submission',
+      sessionId: this.session.id,
+      id: '',
+      known: this.submissions?.ids() ?? [],
+    })
   }
 
   rawInput(data: string): void {

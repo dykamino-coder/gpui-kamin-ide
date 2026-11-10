@@ -5,6 +5,7 @@ import { compactSegments, activeSegmentIdx } from '../../signals/compact-segment
 import { activeTabId, tabs } from '../../signals/tabs'
 import { jsonlEntriesByTab, getJsonlStructureVersion, tabNeedsRefill, clearRefillDebt, prependJsonlEntries, trimTabToWindow, archivedViewTs, STORE_WINDOW, STORE_SLACK, SCROLL_UP_MAX } from '../../signals/jsonl'
 import { boundTabId } from '../../signals/session-binding'
+import { compactingTabs } from '../../signals/compaction'
 import { useBridge } from '../../hooks/useBridge'
 import { JsonlEntry } from './JsonlEntry'
 import type { JsonlEntryData } from '../../types/jsonl'
@@ -71,11 +72,10 @@ export function JsonlViewer(): JSX.Element {
   // so a stream frame only rebuilds the live tail, not all ~150 shown rows.
   // Invalidated wholesale on tab switch (Preact mutates vnodes on diff, so a
   // vnode mounted then unmounted by a switch can't be safely re-used across the
-  // remount); per-entry on a tool-result/interrupt/skip version bump (the only
-  // things that change a committed row's output).
+  // remount); per-entry on immutable row replacement or tool-result/flag changes.
   // A cached `null` remembers that a committed row draws nothing, so the
   // drawable window (render-window.ts) can skip it without re-rendering.
-  const vnodeCacheRef = useRef(new Map<string, { vnode: JSX.Element | null; ver: string }>())
+  const vnodeCacheRef = useRef(new Map<string, { entry: JsonlEntryData; vnode: JSX.Element | null; ver: string }>())
   // Tab whose JSONL is still replaying (no entries yet). Lets us show a
   // "Loading conversation…" cue instead of the "empty session" placeholder —
   // a large session's replay otherwise looks identical to a brand-new session.
@@ -466,8 +466,8 @@ export function JsonlViewer(): JSX.Element {
           const total = visibleMerged.length
 
           // Per-entry vnode cache (see vnodeCacheRef). A committed row's rendered
-          // output only changes when `ver` (tool-result text sum + interrupt/skip
-          // counts, computed in the render model) changes.
+          // output changes when its immutable entry changes (including older-page
+          // fusion under the same UUID), or when tool results/flags change.
           const cache = vnodeCacheRef.current
           // The in-flight turn — last assistant + any trailing attachment/system
           // rows the CLI appends after it — churns through the stub→canonical
@@ -487,9 +487,9 @@ export function JsonlViewer(): JSX.Element {
             if (cacheable && cacheKey != null) {
               usedCacheKeys.add(cacheKey)
               const hit = cache.get(cacheKey)
-              if (hit && hit.ver === ver) return hit.vnode
+              if (hit && hit.entry === e && hit.ver === ver) return hit.vnode
               const rendered = JsonlEntry({ entry: e, toolResults })
-              cache.set(cacheKey, { vnode: rendered, ver })
+              cache.set(cacheKey, { entry: e, vnode: rendered, ver })
               return rendered
             }
             return JsonlEntry({ entry: e, toolResults })
@@ -618,6 +618,14 @@ export function JsonlViewer(): JSX.Element {
           }
           return out
         })()
+      )}
+      {currentTabId && compactingTabs.value.has(currentTabId) && (
+        // The CLI TUI shows only this while it summarizes; the summary text
+        // itself arrives as the compact boundary and summary row afterwards.
+        <div role="status" style="display:flex;align-items:center;gap:8px;padding:10px 4px 2px;color:var(--text-muted);font-size:12px">
+          <i class="fas fa-spinner fa-spin" style="font-size:12px" aria-hidden="true" />
+          <span>Compacting conversation…</span>
+        </div>
       )}
       {/* Tail spacer — gives the user a few extra pixels of scroll past the
           last message so the bottom card edge isn't pinned to the input bar

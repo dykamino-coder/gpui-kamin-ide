@@ -202,7 +202,7 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   // ─── Session Resume ───────────────────────────────
   ipcMain.handle(
     'session:resume',
-    async (_event: IpcMainInvokeEvent, config: ConnectionConfig & { conversationId: string }) => {
+    async (_event: IpcMainInvokeEvent, config: ConnectionConfig & { conversationId: string; sessionLabel?: string }) => {
       const userCwd = ctx.getUserCwd()
       if (!config.cwd && userCwd) {
         config.cwd = userCwd
@@ -212,7 +212,10 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
         serverUrl: config.serverUrl,
         token: config.token,
       })
-      return tm()?.resumeSession(config) ?? null
+      // History callers need not carry the label. Seed it before the server's
+      // conversation-id confirmation saves this tab back into history.
+      const saved = ctx.configStore.getSavedSessions().find(session => session.conversationId === config.conversationId)
+      return tm()?.resumeSession({ ...config, sessionLabel: config.sessionLabel ?? saved?.label }) ?? null
     },
   )
 

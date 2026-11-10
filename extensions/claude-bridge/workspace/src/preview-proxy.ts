@@ -28,8 +28,11 @@ export function proxyHttp(request: IncomingMessage, response: ServerResponse, ta
     outgoing['service-worker-allowed'] = '/__preview/no-service-workers/'
     if (outgoing.location) {
       try {
-        const location = new URL(outgoing.location, `http://127.0.0.1:${port}`)
-        if (location.origin === `http://127.0.0.1:${port}`) outgoing.location = origin + base + location.pathname + location.search + location.hash
+        const location = new URL(outgoing.location, `http://127.0.0.1:${port}${path}`)
+        if (location.origin === `http://127.0.0.1:${port}`) {
+          const pathname = location.pathname.startsWith(base + '/') ? location.pathname : base + location.pathname
+          outgoing.location = origin + pathname + location.search + location.hash
+        }
       } catch { delete outgoing.location }
     }
     response.writeHead(incoming.statusCode ?? 502, outgoing)

@@ -26,8 +26,16 @@ export interface Tab {
   settingsDir?: string    // server-side settings directory path
 }
 
+/** Trusted host restoration metadata; never accepted directly from renderer IPC. */
+interface TabCreationOptions {
+  background?: boolean
+  restored?: Pick<Tab, 'id' | 'label' | 'createdAt'>
+}
+
 export class TabManager {
   private tabs = new Map<string, Tab>()
+  // Foreground startup owns the initial connect until user/project sync settles.
+  private pendingConnect = new Set<string>()
   private activeTabId: string | null = null
   // Monotonic switch sequence. Every `tab:switched` carries the seq at which it
   // was emitted; the webview keeps the highest it has seen and rejects any lower
@@ -52,9 +60,9 @@ export class TabManager {
   onProjectOpened: ((cwd: string) => void) | null = null
   /** Invoked when a tab with a cwd is closed and no other tab references that cwd. */
   onProjectClosed: ((cwd: string) => void) | null = null
-  /** Fires just before a tab is deleted, so the caller can persist a saved
-   *  session record. Receiver may inspect tab.conversationId, sessionTitle,
-   *  model, etc. */
+  /** Fires before disconnect and deletion for every tab, including sessions
+   *  without a conversation ID. Used to clean up tab-owned background work;
+   *  callers may also inspect the optional session metadata. */
   onTabClosing: ((tab: Tab) => void) | null = null
   /** Fires right after a tab is created and registered. Used to start
    *  per-tab background work — plugin monitors, etc. — that needs to die
@@ -78,15 +86,15 @@ export class TabManager {
    * Create a new tab with its own ConnectionManager.
    * Automatically connects and becomes the active tab.
    */
-  createTab(config: ConnectionConfig): string {
-    const tabId = randomUUID()
+  createTab(config: ConnectionConfig, opts: TabCreationOptions = {}): string {
+    const tabId = opts.restored?.id ?? randomUUID()
     const folderName = config.cwd ? path.basename(config.cwd) : 'default'
     tabLog(`createTab: tabId=${tabId.slice(0,8)} folder=${folderName} cwd=${config.cwd || 'none'} total=${this.tabs.size + 1} stack=${new Error().stack?.split('\n').slice(1, 4).map(l => l.trim()).join(' | ')}`)
 
     // Increment per-folder counter
-    const counter = (this.folderCounters.get(folderName) ?? 0) + 1
+    const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1
     this.folderCounters.set(folderName, counter)
-    const label = `#${counter}`
+    const label = opts.restored?.label ?? `#${counter}`
 
     const connection = new ConnectionManager(config, this.window, tabId)
 
@@ -96,15 +104,16 @@ export class TabManager {
       connection,
       label,
       folderName,
-      createdAt: new Date().toISOString(),
+      createdAt: opts.restored?.createdAt ?? new Date().toISOString(),
     }
 
     this.tabs.set(tabId, tab)
-    this.activeTabId = tabId
+    if (!opts.background) this.pendingConnect.add(tabId)
+    if (!opts.background) this.activeTabId = tabId
 
     // Notify renderer
     this.window.webContents.send('tab:created', this.getTabInfo(tab))
-    this.emitSwitched(tabId)
+    if (!opts.background) this.emitSwitched(tabId)
     this.notifyTabListChanged()
 
     // Fire after renderer is notified so the listener can already query
@@ -122,8 +131,8 @@ export class TabManager {
     // closed it, or a token swap ran closeAllTabs), connect() would spawn an
     // orphan CLI session for a ghost tab that nothing ever closes until the
     // server's 30-min idle reaper.
-    const connectIfAlive = () => { if (this.tabs.has(tabId)) connection.connect() }
-    this.triggerSync(config).then(connectIfAlive).catch(connectIfAlive)
+    if (opts.background) { connection.setRendererMuted(true); return tabId }
+    this.connectAfterSync(tab)
 
     return tabId
   }
@@ -135,6 +144,7 @@ export class TabManager {
   disconnectTab(tabId: string): void {
     const tab = this.tabs.get(tabId)
     if (!tab) return
+    this.pendingConnect.delete(tabId)
     // Explicit user action — end the server session now (a bare socket close
     // would only detach it for the reattach grace window).
     tab.connection.disconnect({ endSession: true })
@@ -148,6 +158,7 @@ export class TabManager {
   reconnectTab(tabId: string): void {
     const tab = this.tabs.get(tabId)
     if (!tab) return
+    this.pendingConnect.delete(tabId)
     // The prior disconnectTab ended the server session (endSession), so this
     // connect() resumes a BRAND-NEW PTY. Tell every webview to wipe the dead
     // session's console screen — the terminal lives in the Console tool's iframe
@@ -166,20 +177,19 @@ export class TabManager {
    *  tabs belong to the old token's server-side sessions and can't be reused. */
   closeAllTabs(): void {
     const ids = Array.from(this.tabs.keys())
+    // Bulk close must not lazily connect the next tab on its way to closing it.
+    this.activeTabId = null
     for (const id of ids) this.closeTab(id)
   }
 
   closeTab(tabId: string): void {
     const tab = this.tabs.get(tabId)
     if (!tab) return
+    this.pendingConnect.delete(tabId)
 
-    // Persist the session BEFORE deletion so closing a tab mid-dialog moves
-    // it to "inactive" instead of silently dropping it. `configStore.addSavedSession`
-    // dedups by conversationId — if a save already happened via
-    // onConversationId, this is a no-op upsert with a fresher lastActivity.
-    if (tab.conversationId && this.onTabClosing) {
-      this.onTabClosing(tab)
-    }
+    // Tab-owned monitors and language servers can start before the CLI
+    // announces a conversation ID. Their cleanup must not depend on identity.
+    this.onTabClosing?.(tab)
 
     // Explicit close — end the server session (see disconnectTab).
     tab.connection.disconnect({ endSession: true })
@@ -191,7 +201,7 @@ export class TabManager {
       const remaining = Array.from(this.tabs.keys())
       this.activeTabId = remaining.length > 0 ? remaining[remaining.length - 1] : null
       if (this.activeTabId) {
-        this.emitSwitched(this.activeTabId)
+        this.switchTab(this.activeTabId)
       }
     }
 
@@ -217,7 +227,7 @@ export class TabManager {
     tab.connection.setRendererMuted(false)
     // Lazy attach: warm-pool tabs are created WITHOUT a server connection (see
     // resumeSession background) — the first switch binds to the live CLI.
-    if (tab.connection.getExtendedState().status === 'disconnected') {
+    if (!this.pendingConnect.has(tabId) && tab.connection.getExtendedState().status === 'disconnected') {
       tab.connection.connect()
     }
     this.activeTabId = tabId
@@ -357,14 +367,14 @@ export class TabManager {
    * also skip the per-tab sync: the foreground session's sync already pushed
    * the user data, and a burst of warm-pool resumes must not become a sync storm.
    */
-  resumeSession(config: ConnectionConfig & { conversationId: string; sessionLabel?: string }, opts: { background?: boolean } = {}): string {
-    const tabId = randomUUID()
+  resumeSession(config: ConnectionConfig & { conversationId: string; sessionLabel?: string }, opts: TabCreationOptions = {}): string {
+    const tabId = opts.restored?.id ?? randomUUID()
     const folderName = config.cwd ? path.basename(config.cwd) : 'default'
     tabLog(`resumeSession: tabId=${tabId.slice(0,8)} convId=${config.conversationId.slice(0,8)} folder=${folderName} label=${config.sessionLabel || 'none'} bg=${opts.background ? 1 : 0} total=${this.tabs.size + 1}`)
 
-    const counter = (this.folderCounters.get(folderName) ?? 0) + 1
+    const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1
     this.folderCounters.set(folderName, counter)
-    const label = `#${counter}`
+    const label = opts.restored?.label ?? `#${counter}`
 
     const connection = new ConnectionManager(config, this.window, tabId, config.conversationId)
 
@@ -374,12 +384,13 @@ export class TabManager {
       connection,
       label,
       folderName,
-      createdAt: new Date().toISOString(),
+      createdAt: opts.restored?.createdAt ?? new Date().toISOString(),
       conversationId: config.conversationId,
       sessionTitle: config.sessionLabel,
     }
 
     this.tabs.set(tabId, tab)
+    if (!opts.background) this.pendingConnect.add(tabId)
     if (!opts.background) this.activeTabId = tabId
 
     this.window.webContents.send('tab:created', this.getTabInfo(tab))
@@ -401,8 +412,7 @@ export class TabManager {
     // Тот же guard, что в createTab: закрытый за время sync таб не должен
     // порождать orphan-сессию (WS open handler шлёт session:resume сам —
     // conversationId передан конструктору).
-    const connectIfAlive = () => { if (this.tabs.has(tabId)) connection.connect() }
-    this.triggerSync(config).then(connectIfAlive).catch(connectIfAlive)
+    this.connectAfterSync(tab)
 
     return tabId
   }
@@ -417,6 +427,7 @@ export class TabManager {
 
   /** Terminal client disposal, without ending the server's CLI sessions. */
   dispose(): void {
+    this.pendingConnect.clear()
     for (const tab of this.tabs.values()) tab.connection.dispose()
     this.tabs.clear()
     this.activeTabId = null
@@ -455,6 +466,13 @@ export class TabManager {
   }
 
   // ─── Private ────────────────────────────────────────────
+
+  private connectAfterSync(tab: Tab): void {
+    const connectIfAlive = () => {
+      if (this.pendingConnect.delete(tab.id) && this.tabs.get(tab.id) === tab) tab.connection.connect()
+    }
+    this.triggerSync(tab.config).then(connectIfAlive, connectIfAlive)
+  }
 
   /**
    * Sync user-level and project-level data to the bridge server.

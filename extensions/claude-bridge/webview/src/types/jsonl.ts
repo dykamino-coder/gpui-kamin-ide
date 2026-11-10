@@ -38,9 +38,11 @@ export interface JsonlEntryData {
   /** parentUuid→uuid chain — used by orderEntries to keep a child after its
    *  parent, and by compute-chain-uuids for the active-branch membership set. */
   parentUuid?: string
-  /** Server reverse-replay file-position tag (monotonic per process); primary
-   *  sort key in orderEntries. Absent on live streaming stubs (they sort last). */
+  /** Server reverse-replay ordinal (monotonic per process); fallback
+   *  for rows without timestamps/positions. Absent on live streaming stubs. */
   _ord?: number
+  /** Stable byte offset in the session JSONL file (absent on legacy rows). */
+  _pos?: number
   timestamp?: string
   message?: JsonlMessage
   /** For system entries */
@@ -102,9 +104,16 @@ export interface JsonlEntryData {
   __streaming?: boolean
   /** Index of the currently-active content block for cursor placement. */
   __streamingActiveBlock?: number
+  /** Live marker of the CLI's compaction request (no content): drives the
+   *  Compacting indicator, never stored as a chat row. See signals/compaction.ts. */
+  __compaction?: boolean
   /** Client-stamped time the streaming stub was first seen (ms epoch). Used by
    *  the TTL sweep to retire an orphaned stub whose canonical entry never came. */
   __streamStartedAt?: number
+  /** Newest canonical CLI timestamp (ms) in the store when this stub first
+   *  appeared. Stubs always sort last, so a successor turn is recognised by a
+   *  later timestamp, not by position (stubSuperseded). */
+  __streamAnchorTs?: number
   /** Every source uuid FOLDED into this entry. The CLI splits one model turn into
    *  N JSONL rows sharing a message.id but each with its OWN uuid; appendJsonlEntries
    *  merges them into one entry (whose `.uuid` is only the LAST one) and adds every
@@ -112,6 +121,8 @@ export interface JsonlEntryData {
    *  or the non-surviving uuids stay in `seen` forever and a re-replay drops those
    *  content blocks as duplicates — the middle-of-chat data-loss gap. */
   __uuids?: string[]
+  /** Original canonical rows, retained to merge out-of-order content blocks. */
+  __assistantParts?: JsonlEntryData[]
 
   // Optional API-error subtype fields (rendered in SystemEntry.ApiErrorBlock).
   retryInMs?: number
