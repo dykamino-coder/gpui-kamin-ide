@@ -76,7 +76,10 @@ pub(crate) struct FlowReuse {
     /// Wraps of this build's blocks (`narrow`).
     narrowed: narrow::Wraps,
     /// Pending records of this build's wrapped blocks (`recorder`), owned
-    /// here alone: each goes as soon as its record is made (`finish`).
+    /// here alone: each goes as soon as its record is made (`finish`). Boxed,
+    /// so each frees its own memory there and the growing list moves only
+    /// pointers, not thousands of pending records.
+    #[allow(clippy::vec_box)]
     pending: RefCell<Vec<Box<recorder::Pending>>>,
     /// Shells the sources of this build share (`source`).
     shells: Shells,
