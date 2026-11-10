@@ -2,6 +2,11 @@
 use super::DocumentValues;
 use crate::style::computed::Computed;
 
+/// Shared by the revisions of one document (`DocumentValues::continuing`):
+/// a rebuild of the same source DOM cascades from the same initial groups, so
+/// a group no rule wrote is the same pointer in both trees, and the ledger
+/// follows the document, not one revision.
+#[derive(Clone)]
 pub(super) struct InitialStyles {
     seed: Computed,
     #[cfg(feature = "work-counters")]
@@ -54,6 +59,18 @@ mod tests {
         assert_eq!(base, doc.initial_style());
         assert!(!base.reset_border.ptr_eq(&changed.reset_border));
         assert!(base.reset_grid.ptr_eq(&changed.reset_grid));
+    }
+    #[test]
+    fn a_revision_cascades_from_the_initial_groups_of_its_document() {
+        let doc = DocumentValues::detached(Default::default());
+        let next = DocumentValues::continuing(&doc, Default::default(), |_| {
+            std::rc::Rc::new(super::super::font_facts::Detached)
+        });
+        let (a, b) = (doc.initial_style(), next.initial_style());
+        assert!(a.reset_border.ptr_eq(&b.reset_border));
+        assert!(std::rc::Rc::ptr_eq(&a.inh.0, &b.inh.0));
+        drop(doc);
+        assert_eq!(a, next.initial_style(), "the revision keeps them");
     }
     #[cfg(feature = "work-counters")]
     #[test]

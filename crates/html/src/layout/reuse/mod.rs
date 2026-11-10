@@ -94,10 +94,10 @@ fn find<'a>(nodes: impl Iterator<Item = &'a Node>, tag: &str) -> Option<&'a Elem
     })
 }
 
-/// The block children of the root flow of `nodes` by node id (`Root`), and
-/// the `html`/`body` boxes above them; `None` for blocks of unwrapped roots,
-/// whose styles the root style folds.
-fn flow_blocks(nodes: &[Node]) -> (HashMap<u64, &Element>, Option<Vec<&Element>>) {
+/// The children of the root flow of `nodes` (`Root`), and the `html`/`body`
+/// boxes above them; `None` for blocks of unwrapped roots, whose styles the
+/// root style folds.
+fn flow_blocks(nodes: &[Node]) -> (&[Node], Option<Vec<&Element>>) {
     let (flow, roots) = match find(nodes.iter(), "html") {
         Some(html) => match find(html.children.iter(), "body") {
             Some(body) => (body.children.as_slice(), Some(vec![html, body])),
@@ -108,11 +108,7 @@ fn flow_blocks(nodes: &[Node]) -> (HashMap<u64, &Element>, Option<Vec<&Element>>
             None => (nodes, None),
         },
     };
-    let elements = flow.iter().filter_map(|n| match n {
-        Node::Element(e) => Some((e.node_id, e)),
-        _ => None,
-    });
-    (elements.collect(), roots)
+    (flow, roots)
 }
 
 impl FlowReuse {

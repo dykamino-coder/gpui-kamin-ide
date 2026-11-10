@@ -132,6 +132,7 @@ impl Store {
             return;
         }
         self.reset_replays();
+        let mut records = self.records.take();
         let ((was, a), (now, b)) = (super::flow_blocks(old), super::flow_blocks(new));
         let roots = match (a, b) {
             (Some(a), Some(b)) => {
@@ -142,14 +143,29 @@ impl Store {
             }
             _ => false,
         };
-        let records = self.records.take().into_iter();
-        let records = records.filter_map(|(id, record)| {
-            let (a, b) = (was.get(&id)?, now.get(&id)?);
+        // The same source DOM: the flows have the same children in the same
+        // order, so the blocks pair by position (no map of either tree).
+        let mut kept = HashMap::with_capacity(records.len());
+        let pairs = was.iter().zip(now).filter_map(|pair| match pair {
+            (crate::dom::Node::Element(a), crate::dom::Node::Element(b)) => Some((a, b)),
+            _ => None,
+        });
+        for (a, b) in pairs.take_while(|_| !records.is_empty()) {
+            let Some(mut record) = records.remove(&a.node_id) else {
+                continue;
+            };
             let exact = roots && crate::dom::same_cascaded_tree(a, b, false);
             let repaint = !exact && record.far && crate::dom::same_cascaded_tree(a, b, true);
-            (exact || repaint).then(|| (id, Rc::new(record.moved_to(None, repaint))))
-        });
-        self.records.replace(records.collect());
+            if !(exact || repaint) {
+                continue;
+            }
+            match Rc::get_mut(&mut record) {
+                Some(own) => own.rebased(repaint),
+                None => record = Rc::new(record.moved_to(None, repaint)),
+            }
+            kept.insert(a.node_id, record);
+        }
+        self.records.replace(kept);
     }
 
     /// The document was patched (`Document::commit`): records compared at a
