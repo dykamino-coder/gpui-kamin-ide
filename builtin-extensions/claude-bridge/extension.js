@@ -42272,15 +42272,42 @@ var SessionIdleTracker = class {
   }
 };
 
+// src/main/ws/jsonl-cache-order.ts
+function tagOf(e) {
+  if (typeof e._pos === "number") return e._pos;
+  if (typeof e._ord === "number") return e._ord;
+  return void 0;
+}
+function cacheFileOrderRanks(entries2) {
+  const ranks = new Float64Array(entries2.length);
+  let maxTagged = -1;
+  for (const e of entries2) {
+    const t = tagOf(e);
+    if (t !== void 0 && t > maxTagged) maxTagged = t;
+  }
+  for (let i = 0; i < entries2.length; i++) {
+    const t = tagOf(entries2[i]);
+    ranks[i] = t !== void 0 ? t : maxTagged + 1 + i;
+  }
+  return ranks;
+}
+function cacheFileOrder(entries2) {
+  const ranks = cacheFileOrderRanks(entries2);
+  const idx = Array.from({ length: entries2.length }, (_, i) => i);
+  idx.sort((a, b) => ranks[a] - ranks[b] || a - b);
+  return idx;
+}
+
 // src/main/ws/handle-server-message.ts
 var JSONL_CACHE_MAX = 2e4;
 var JSONL_CACHE_SLACK = 1e3;
 function trimJsonlCache(cached) {
   const over = cached.length - JSONL_CACHE_MAX;
   if (over < JSONL_CACHE_SLACK) return;
-  const ords = cached.map((e) => e._pos ?? e._ord ?? 0).sort((a, b) => a - b);
-  const cutoff = ords[over - 1] ?? 0;
-  const kept = cached.filter((e) => (e._pos ?? e._ord ?? 0) > cutoff);
+  const drop = new Uint8Array(cached.length);
+  const order = cacheFileOrder(cached);
+  for (let i = 0; i < over; i++) drop[order[i]] = 1;
+  const kept = cached.filter((_, i) => drop[i] === 0);
   cached.length = kept.length;
   for (let i = 0; i < kept.length; i++) cached[i] = kept[i];
 }
