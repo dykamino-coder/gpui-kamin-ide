@@ -103,6 +103,11 @@ impl Document {
         let fonts = self.state.text.metrics.font_context();
         let state = super::state::DocState::continuing(media, &self.state);
         let mut invalidation = invalidation.map(crate::dom::invalidation::Invalidation::new);
+        if same_shape {
+            // The records go to the rebuilt document (`restyle`); their
+            // sources are not needed for that.
+            self.reuse.release_sources();
+        }
         let candidate = match Self::try_source(
             source,
             theme_css,
@@ -114,7 +119,12 @@ impl Document {
             invalidation.as_mut(),
         ) {
             Ok(candidate) => candidate,
-            Err((failure, _)) => return Err(record(failure, self)),
+            Err((failure, _)) => {
+                if same_shape {
+                    self.reuse.forget();
+                }
+                return Err(record(failure, self));
+            }
         };
         // The same source shape gives the same node ids (traversal counters):
         // the block records may hold for the restyled tree (`restyle`).

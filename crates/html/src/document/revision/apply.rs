@@ -124,6 +124,9 @@ impl Document {
         let fonts = self.state.text.metrics.font_context();
         let state = crate::document::state::DocState::continuing(media, &self.state);
         let mut invalidation = invalidation.map(crate::dom::invalidation::Invalidation::new);
+        // The records go to the rebuilt document (`restyle`); their sources
+        // are not needed for that.
+        self.reuse.release_sources();
         match Self::try_source(
             source,
             theme_css,
@@ -144,7 +147,10 @@ impl Document {
                 *self = next;
                 Ok(self.report())
             }
-            Err((failure, source)) => Err(refused(self, failure, source.input)),
+            Err((failure, source)) => {
+                self.reuse.forget();
+                Err(refused(self, failure, source.input))
+            }
         }
     }
 

@@ -150,6 +150,30 @@ impl Store {
         self.narrow.reset();
     }
 
+    /// The document is about to be rebuilt from the same source DOM, and the
+    /// rebuild hands this store over (`rebase`, which compares document boxes,
+    /// not record sources): the records release their sources, blocks of the
+    /// previous frame tree, before the new tree is built, so the previous frame
+    /// tree does not live beside it (Blink keeps a layout result, not the
+    /// inputs that made it). After a patch the next build compares by the
+    /// sources, so they stay.
+    pub(crate) fn release_sources(&self) {
+        if self.patched.get() {
+            return;
+        }
+        for record in self.records.borrow().values() {
+            record.source.release();
+        }
+    }
+
+    /// The rebuild of `release_sources` failed: the records cannot be
+    /// compared with the document any more.
+    pub(crate) fn forget(&self) {
+        if !self.patched.get() {
+            self.start_over();
+        }
+    }
+
     /// Nothing recorded holds (`rebase`): the state of a fresh document, so
     /// the next build is not settled and records nothing, as a fresh one.
     pub(super) fn start_over(&self) {

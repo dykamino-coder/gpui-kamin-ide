@@ -32,6 +32,9 @@ pub(crate) struct Record {
     /// (`Store::same_tree`): the layout leaf holds, the recorded paint and
     /// ink do not (`FlowReuse::validate` tests the leaf's box as well).
     pub(super) repaint: Cell<bool>,
+    /// The last rebase kept the record (`Store::rebase`): its source was
+    /// released before the rebuild built the new tree (`release_sources`).
+    pub(super) kept: Cell<bool>,
 }
 
 impl Record {
@@ -55,6 +58,7 @@ impl Record {
                 false => self.replay.take(),
             }),
             repaint: Cell::new(self.repaint.get() || repaint),
+            kept: Cell::new(false),
         }
     }
 
@@ -62,6 +66,7 @@ impl Record {
     /// in place: it drops its source, and with `repaint` its output.
     pub(super) fn rebased(&self, repaint: bool) {
         self.source.release();
+        self.kept.set(true);
         if repaint {
             self.replay.take();
             self.repaint.set(true);

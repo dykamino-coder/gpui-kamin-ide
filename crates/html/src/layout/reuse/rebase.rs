@@ -63,7 +63,10 @@ impl Store {
                     None => keep(record.far, roots, &|| true),
                 };
                 verdict
-                    .inspect(|&repaint| record.rebased(repaint))
+                    .inspect(|&repaint| {
+                        record.rebased(repaint);
+                        record.kept.set(false);
+                    })
                     .is_some()
             }),
             None => {
@@ -88,8 +91,8 @@ impl Store {
                         record.rebased(repaint);
                     }
                 }
-                // A record left with its source had no equal block and goes.
-                records.retain(|_, r| !r.source.holds());
+                // A record not kept had no equal block and goes.
+                records.retain(|_, r| r.kept.replace(false));
             }
         }
         // A block whose record the restyle dropped is built by the next frame;

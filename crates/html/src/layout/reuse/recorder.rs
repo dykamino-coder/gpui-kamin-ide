@@ -200,6 +200,7 @@ impl Pending {
             far,
             replay: RefCell::new(replay),
             repaint: Cell::new(false),
+            kept: Cell::new(false),
         })
     }
 }
