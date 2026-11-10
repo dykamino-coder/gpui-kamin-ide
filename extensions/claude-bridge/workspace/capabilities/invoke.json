@@ -122,5 +122,7 @@
   {"id":"invoke:whisper:transcribe","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:write-clipboard","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:workspace:shell:get","status":"supported-in-browser-host","provider":"shell","sources":{"webview/src/browser/shell/state.ts":1}},
-  {"id":"invoke:workspace:shell:update","status":"supported-in-browser-host","provider":"shell","sources":{"webview/src/browser/shell/state.ts":1}}
+  {"id":"invoke:workspace:shell:update","status":"supported-in-browser-host","provider":"shell","sources":{"webview/src/browser/shell/state.ts":1}},
+  {"id":"invoke:workspace:draft:get","status":"supported-in-browser-host","provider":"drafts","sources":{"webview/src/browser/drafts.tsx":1,"workspace/src/runtime.ts":2}},
+  {"id":"invoke:workspace:draft:update","status":"supported-in-browser-host","provider":"drafts","sources":{"webview/src/browser/drafts.tsx":1,"workspace/src/runtime.ts":1}}
 ]

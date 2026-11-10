@@ -127,8 +127,22 @@ cannot reuse it. Corrupt state blocks startup; a write failure blocks new
 submissions until storage is repaired and the host restarted. Keep this volume
 private: it contains prompt text, although no reusable connection token is
 stored there. Synchronous snapshots can add latency for large retained prompt
-sets. Closing a session clears its identities. Composer drafts and in-flight
-tools/PTY processes are not restored by this receipt recovery.
+sets. Closing a session clears its identities. In-flight tools/PTY processes
+are not restored by this receipt recovery.
+
+Unsent composer text and attachment metadata are saved per session in
+`workspace-drafts.json` under `WORKSPACE_STORAGE`. Only **Draft saved** confirms
+the host has persisted that revision; keep a page open while it reports unsaved
+changes. Reopened pages and restarted hosts restore acknowledged drafts without
+submitting them. Preserve uploaded files at their existing workspace paths.
+Clean pages follow changes from other pages. Conflicting edits stay local until
+you choose **Use workspace draft** or **Keep this draft**. Reconnect reads state
+without automatically replaying writes. Empty saved revisions prevent a stale
+page from restoring sent text. Submission delivery and draft clearing have
+separate acknowledgements: closing before the clear is saved can retain the old
+text. Closing a session removes its draft. Limits are 256 KiB text, 32 attachments,
+8 MiB per draft, 128 session drafts and 32 MiB overall; storage failures stay
+visible and preserve the last accepted revision.
 
 The browser shell retains session/project navigation, tabs and pins, and a
 resizable dock for Claude Bridge, Bridge Console and Agents. Dock placement,

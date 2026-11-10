@@ -16,8 +16,10 @@ import { installHljsThemeSwapper } from '../theme/highlight-theme'
 import { notifyHostReady } from '../lib/host-ready'
 import { installExternalLinkHandler } from '../lib/external-links'
 import { installCommandApi } from '../lib/command-api'
+import { connectDrafts } from './drafts'
 
 export function mount(root: HTMLElement): void {
+  connectDrafts()
   applyInitialTheme()
   installHljsThemeSwapper()
   installExternalLinkHandler()
