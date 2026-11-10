@@ -5,7 +5,7 @@ import type { JsonlEntryData } from '../types/jsonl'
 import { enqueueLocal, reconcileQueueWithEntries, removeLocalQueueItem } from './queue'
 import { jsonlEntriesByTab } from './jsonl'
 
-export interface Submission extends SubmissionUpdate { text: string; timestamp: string; committed?: boolean }
+export interface Submission extends SubmissionUpdate { text: string; timestamp: string }
 export const modCapabilities = signal(new Map<string, boolean>())
 export const submissions = signal(new Map<string, Submission[]>())
 
@@ -18,6 +18,7 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   const current = submissions.value.get(tabId) ?? []
   const existing = current.find(item => item.id === data.id)
   const item: Submission = { text: '', timestamp: new Date().toISOString(), ...existing, ...data, warning: data.warning }
+  if (existing?.committed) item.committed = true
   if (item.state === 'fallback') {
     if (item.fallbackQueue?.consumed) removeLocalQueueItem(tabId, item.id)
     else if (item.text && existing?.state !== 'fallback') {

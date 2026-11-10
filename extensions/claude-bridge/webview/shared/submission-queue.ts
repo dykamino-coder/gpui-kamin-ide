@@ -1,4 +1,6 @@
 export interface SubmissionUpdate {
+  /** Host observed the stored UUID; survives eviction from replay windows. */
+  committed?: boolean
   /** Browser host сохраняет курсор legacy queue независимо от страниц. */
   fallbackQueue?: { afterOrd: number; enqueuedAt: number; consumed?: boolean }
   id: string

@@ -31,6 +31,15 @@ describe('submission transcript identity', () => {
     expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toEqual([])
   })
 
+  it('honors host commitment on a new page without the matching transcript row', () => {
+    receiveSubmission('tab', { id: 'id', text: 'sent', state: 'read', uuid: 'stored', committed: true })
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toEqual([])
+    receiveSubmission('tab', { id: 'id', state: 'native', committed: false })
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toEqual([])
+    receiveSubmission('tab', { id: 'another', text: 'sent', state: 'read', uuid: 'different' })
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!).map(row => row.submissionId)).toEqual(['another'])
+  })
+
   it('replays a fallback identity once and never resurrects it after JSONL acceptance', () => {
     const receipt = { id: 'fallback', text: 'queued message', state: 'fallback' as const }
     receiveSubmission('tab', receipt)
