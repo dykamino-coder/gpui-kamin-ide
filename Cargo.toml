@@ -17,7 +17,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "1.0.88"
+version = "1.0.89"
 edition = "2024"
 
 # Keep fallible results visible at every workspace boundary.
