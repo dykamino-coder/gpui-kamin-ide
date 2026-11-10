@@ -1558,6 +1558,7 @@ export class ConnectionManager {
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e
       },
+      getCachedStreamingEntry: () => this.cachedStreamingEntry,
       appendCachedStreamingDelta: (delta) => { appendStreamingText(this.cachedStreamingEntry, delta) },
       pushSubagentCache: (key, agentName, agentId, entries) => {
         const slot = this.cachedSubagentEntries.get(key) ?? {
