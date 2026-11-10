@@ -38,7 +38,7 @@ async function main() {
     const b=fs.readFileSync(p+'workspace-credentials.json');
     process.stdout.write(JSON.stringify({digest:c.createHash('sha256').update(b).digest('hex'),
       mode:fs.statSync(p+'workspace-credentials.json').mode&511,
-      sessionMode:fs.statSync(p+'workspace-sessions.json').mode&511,
+      sessionMode:fs.statSync(p+'workspace-browser-sessions.json').mode&511,
       dirMode:fs.statSync(p).mode&511}));`).then(JSON.parse)
   const sameCookie = async () => {
     const response = await context.request.get(`${owned.origin}/auth/session`)
@@ -78,7 +78,7 @@ async function main() {
       if (loggedIn) {
         const chatted = await record('conversation-before-restart', async () => {
           const id = await newTab(page)
-          nonce = `bridgeweb-acc-${randomUUID()}`
+          nonce = `acceptance-${randomUUID()}`
           await turn(page, `Remember this exact marker for our conversation: ${nonce}. Reply with exactly ${nonce}:ok and use no tools.`)
           complete(await transcript(page, nonce))
           conversationId = (await raw(page, 'listTabs')).find(t => t.id === id)?.conversationId
@@ -95,7 +95,7 @@ async function main() {
           const id = await raw(page, 'resumeSession', { ...config, cwd: '/workspace', conversationId })
           await page.evaluate(id => window.bridgeCmd.switchTab(id), id)
           await poll(async () => (await transcript(page, nonce)).done, { timeout: 30_000, code: 'HISTORY_AFTER_RESTART' })
-          const followup = `bridgeweb-acc-${randomUUID()}`
+          const followup = `acceptance-${randomUUID()}`
           await turn(page, `What exact marker did I ask you to remember before the workspace restarted? Reply with that marker followed by :ok, then ${followup}:ok. Use no tools.`)
           check(await page.evaluate(({ nonce, followup }) => {
             const id = window.bridgeCmd.state().activeTabId
