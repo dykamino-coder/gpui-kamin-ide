@@ -7,6 +7,7 @@ import { configureEnvironment, withEnvironment, type WorkspaceEnvironment } from
 import type { ClientFrame, ClientView, HostAttachment, HostFrame, WorkspaceBackend } from './protocol.js'
 import { WorkspacePresentation } from './presentation.js'
 import { containerSessionInstructions, projectDirectory } from './session-context.js'
+import { WorkspaceSessionState } from './session-state.js'
 
 export interface SharedBackendOptions {
   root: string
@@ -44,6 +45,14 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   const config = host.getConfigStore()
   config.set({ ...config.get(), serverUrl: options.serverUrl, token: options.token, cwd: root })
   let disposed = false
+  let restoring = true
+  const manager = host.getTabManager()
+  const sessionState = new WorkspaceSessionState(storage, root, options.serverUrl, options.token)
+  function persistSessions(): void {
+    if (disposed || restoring) return
+    try { sessionState.save(manager.listTabs(), manager.getActiveTabId()) }
+    catch { console.warn('Could not persist workspace session state') }
+  }
   const attachments = new Set<HostAttachment>()
   const presentation = new WorkspacePresentation((channel, ...args) => host.broadcast(channel, ...args),
     tabId => host.getTabManager().getConnection(tabId)?.getViewSnapshot().entries ?? [])
@@ -51,11 +60,28 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   // activity and receipt state while no browser exists. Large history stays in
   // the shared connection caches and disk mirror.
   const observer = {
-    postMessage(frame: HostFrame) { presentation.observe(frame); return Promise.resolve(true) },
+    postMessage(frame: HostFrame) {
+      presentation.observe(frame)
+      if (frame.channel === 'tab:list-changed' || frame.channel === 'tab:switched') persistSessions()
+      return Promise.resolve(true)
+    },
     onDidReceiveMessage() { return { dispose() {} } },
   } as unknown as Webview
   const observation = host.attach(observer)
   host.setWebviewVisible(observer, true)
+  const saved = sessionState.load()
+  for (const tab of saved.tabs) {
+    try {
+      const connection = { ...config.get(), cwd: projectDirectory(root, tab.cwd) }
+      const creation = { background: true, restored: tab }
+      if (tab.conversationId) manager.resumeSession({ ...connection, conversationId: tab.conversationId,
+        sessionLabel: tab.sessionTitle }, creation)
+      else manager.createTab(connection, creation)
+    } catch { console.warn('Skipped unavailable workspace session directory') }
+  }
+  const active = saved.active && manager.getTab(saved.active) ? saved.active : manager.listTabs()[0]?.id
+  if (active) manager.switchTab(active)
+  restoring = false
 
   // The shared core exposes desktop server administration helpers with arbitrary
   // HTTP destinations. Keep them closed until the browser's pinned proxy exists.
@@ -127,7 +153,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
           if (frame.channel === 'pty-submit-text' && !host.getTabManager().getConnection(String(args[0]))) throw new Error('Unknown submission session')
           if (!presentation.accept(frame)) return
           await withEnvironment(options.environment, () => listener?.({ ...frame, args }))
-          if (frame.channel === 'disconnect') presentation.forgetSessions()
+          if (frame.channel === 'disconnect') { presentation.forgetSessions(); persistSessions() }
         } catch (error) {
           if (frame.kind !== 'invoke') throw error
           await webview.postMessage({ kind: 'invoke-reply', id: frame.id, generation: frame.generation,

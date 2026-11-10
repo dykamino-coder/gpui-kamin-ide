@@ -90,6 +90,14 @@ publication configuration.
 
 ## Browser lifetime and host state
 
+Open chat tabs, names, numbered labels and active selection survive host/container
+restart using an atomic `workspace-sessions.json` in `WORKSPACE_STORAGE`. Keep
+the workspace and HOME volumes: HOME retains the existing history and pin/order
+preferences. Restored conversations reconnect lazily when selected. This does
+not restart in-flight tools or preserve PTY processes across a host restart.
+The first upgrade cannot reconstruct an open set that was never persisted or
+recover a historical title already overwritten by the old resume path.
+
 Owner requirement (2026-11-09): closing the browser must not interrupt agent work.
 The host owns sessions, connections, foreground/background Bash, MCP calls,
 pending prompts, submission receipts, file subscriptions and local PTYs with

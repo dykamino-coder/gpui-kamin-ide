@@ -4,6 +4,8 @@ vi.mock('./ws/connection-manager', () => ({ ConnectionManager: class {
   connect = vi.fn()
   disconnect = vi.fn()
   getState = () => ({ status: 'authenticated', authority: 'session', revision: 1 })
+  setRendererMuted = vi.fn()
+  getExtendedState = () => ({ status: 'disconnected' })
 } }))
 vi.mock('./sync/sync-client', () => ({ syncUserData: vi.fn(), syncProjectData: vi.fn(), resetSyncTimers: vi.fn() }))
 vi.mock('fs', () => ({ default: { appendFileSync: vi.fn() } }))
@@ -47,5 +49,20 @@ describe('tab-owned close cleanup', () => {
     tabs.closeAllTabs()
     expect(onClose.mock.calls.map(([tab]) => tab.id)).toEqual([first, second])
     expect(tabs.size).toBe(0)
+  })
+
+  it('does not connect dormant restored tabs during bulk close', () => {
+    const tabs = manager()
+    const first = tabs.resumeSession({ ...config, conversationId: 'first' }, { background: true })
+    const second = tabs.resumeSession({ ...config, conversationId: 'second' }, { background: true })
+    tabs.switchTab(first)
+    const connections = [tabs.getConnection(first)!, tabs.getConnection(second)!]
+    for (const connection of connections) vi.mocked(connection.connect).mockClear()
+    tabs.closeAllTabs()
+    for (const connection of connections) {
+      expect(connection.connect).not.toHaveBeenCalled()
+      expect(connection.disconnect).toHaveBeenCalledExactlyOnceWith({ endSession: true })
+    }
+    expect(tabs.getActiveTabId()).toBeNull()
   })
 })

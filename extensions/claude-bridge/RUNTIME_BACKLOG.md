@@ -1,5 +1,13 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Browser restart persistence follow-up — 2026-11-10
+
+[INC-0092](runtime-issues/INC-2026-0092.md): confirmed loss of host open tabs and
+saved titles on resume after restart; bounded fix and real disk/process/browser
+regressions prepared in [#682](https://github.com/dykamino-coder/gpui-kamin-ide/pull/682). Lead reviews and
+merges the single Change PR; owner deployment observation belongs to the lead.
+The wider INC-0087 parity/acceptance scope remains open.
+
 ## Выборочная сверка browser workspace INC-0087 — 2026-11-09
 
 Source `origin/main` `65fa7467`: [INC-0087](runtime-issues/INC-2026-0087.md)
