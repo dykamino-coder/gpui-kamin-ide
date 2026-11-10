@@ -170,8 +170,10 @@ Browser shell replicas apply that same shared state without emitting query
 replies as duplicate keyboard input. Their palette is consistently dark,
 independent of each page's UI theme. Hexadecimal X11 `#RGB` through
 `#RRRRGGGGBBBB` and `rgb:R/G/B` forms use 8-bit renderer precision; named colors
-are currently ignored. Pixel/window reports and other TUI compatibility remain
-open and are not covered by this bounded color-query contract.
+are currently ignored. The host also answers `CSI 18 t` with its current text-area
+rows/columns, including after resize and with zero pages. Browser replicas
+suppress this reply so multiple pages cannot inject duplicate reports. Pixel
+reports and other window/TUI compatibility remain open.
 
 The current ChatRoot and terminal components render the shared host services. Browser
 clipboard, downloads, uploads, path dialogs, notifications, links and audio use
@@ -206,6 +208,19 @@ The LSP integration installs an isolated synthetic stdio plugin and exercises
 discovery, hover/definition/references/diagnostics, document changes, shared and
 separate project processes, zero-page continuation and identified-session cleanup.
 Its upstream protocol peer is synthetic; it is not live Claude acceptance.
+
+`test/core-tools.smoke.mjs` creates a session in the production browser UI,
+closes every page and invokes eleven actual shared client tools over upstream
+MCP frames. Independent checks cover filesystem bytes, search results, foreground
+and background shell output/cursors/termination, notebook edits and todo state.
+A fresh browser then reads the edited file through the existing bridge API and
+reattaches to the same session. The fixture emits `core-tool-checks.json` outside
+the checkout with 22 reviewed tool/handler assertion IDs. Collector tests reject
+omitted, unknown, duplicate and failed cases; inventory tests validate bindings.
+This is partial synthetic execution evidence. It explicitly records
+`candidateImageTested: false`: the fixture runner builds current sources inside
+an existing image. It is not a full-completion receipt, candidate-image or
+actual-model acceptance, and it does not lower the strict completion gate.
 
 Production browser smoke uses the real asset handler and boundary with an
 explicit synthetic backend. Linux CI/Podman runs headless Chromium and reports

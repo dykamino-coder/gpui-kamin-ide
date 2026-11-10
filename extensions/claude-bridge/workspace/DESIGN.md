@@ -4,6 +4,29 @@ Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Runtime overview: [README.md](README.md). Podman runbook: [PACKAGING.md](PACKAGING.md).
 Status: implementation in progress; the current live suite passed, while full parity and final composed acceptance remain open.
 
+## Host text-area size query follow-up
+
+Terminal applications can query the current character dimensions with `CSI 18 t`.
+The browser suppresses replica query responses, but the headless host currently
+leaves xterm's `getWinSizeChars` option disabled, so no parser answers this query.
+Enable only that existing xterm response in the authoritative `TerminalScreen`.
+The reply must use its current rows/columns, including after an ordered resize,
+and work with zero pages. Browser replicas remain silent even when their own
+window-report option is enabled; user input must remain unaffected.
+
+Acceptance: parser regression before the fix, initial/resized/split queries,
+real Linux PTY with zero attached pages and after reopen/resize, and two production
+browser xterm replicas. Retain disabled unrelated pixel/window operations and
+existing resource limits. This bounded change does not establish full TUI parity,
+actual-model acceptance or exhaustive capability proof. Completion is a green
+Change PR and READY handoff; the Claude lead reviews and merges implementation.
+
+Refresh validation exposed a Windows-only fixture rename sharing violation while
+replacing a watched file. Bound retries to 500 ms for that external editor action
+and only Windows `EPERM`; retain a real atomic rename and all watcher assertions.
+Other errors and persistent sharing violations fail. No production file operation
+or acceptance timeout changes.
+
 ## Durable submission receipts follow-up
 
 The host must retain accepted submission identities across a process crash.
@@ -437,6 +460,37 @@ real Remove button with two pages, an unrelated remaining item, zero-page late
 receipts and a reopened page through the shared BridgeHost and production UI.
 The upstream fixture is synthetic. Restart durability, exhaustive capability
 proof and composed actual-model acceptance remain open in INC-2026-0087.
+
+## Bounded follow-up: core tool execution evidence
+
+The inventory validates registrations and providers; it does not demonstrate
+handler behavior. Add a Linux production-browser fixture using the existing
+shared BridgeHost and synthetic upstream. Create a session through the shared
+UI, close every page, then execute Read, Write, Edit, Glob, Grep, Bash,
+BashOutput, KillShell, NotebookEdit, TodoWrite and TodoList through upstream MCP
+frames. Assert independent filesystem bytes, search results, shell output and
+process termination, notebook cells and todo round trips. Reopen the browser
+and verify that the same session and edited file remain accessible.
+
+A small reviewed mapping ties each asserted tool case to its tool and handler
+capability IDs. Record a PASS only after the case's assertions complete; reject
+unknown, duplicate, failed or omitted cases. Validate that mapping against the
+independent inventory. Emit sanitized partial execution evidence with source,
+browser and synthetic-upstream provenance, never filesystem contents or tool
+payloads. The fixture runner builds current sources inside an existing image;
+it must explicitly disclaim candidate-image acceptance and must not generate
+a full-completion receipt. Keep the strict parity validator unchanged.
+
+Acceptance: evidence collector negative tests, inventory checks, existing
+workspace tests and the complete Linux Podman production-browser fixture suite.
+This is a bounded test Change PR under INC-2026-0087; registration #638 already
+exists. Claude lead owns review/merge. Full per-capability coverage and composed
+actual-model/image acceptance remain open.
+
+Implementation: [#691](https://github.com/dykamino-coder/gpui-kamin-ide/pull/691).
+The partial artifact intentionally has no completion-receipt schema or image
+provenance fields. Only an entirely passing fixture run can support its listed
+assertions; it cannot establish restart survival or exhaustive input coverage.
 
 Implemented in [#686](https://github.com/dykamino-coder/gpui-kamin-ide/pull/686).
 The host ingress regression failed before the fix and now passes; Windows
