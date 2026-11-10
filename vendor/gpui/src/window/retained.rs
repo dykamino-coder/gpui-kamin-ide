@@ -391,6 +391,16 @@ impl Window {
         }
     }
 
+    /// Let the kept measure functions of the leaves of `layout`, claimed in
+    /// this pass, prepare at request time what their measures will read
+    /// (`Measure::prepare`), so a host builds its measure state where a
+    /// request would have built it.
+    pub fn prepare_retained_measures(&mut self, layout: &RetainedSubtree) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.prepare_measures(&layout.nodes);
+        }
+    }
+
     /// Union of the layout bounds of every node of `layout` in this pass,
     /// relative to the window like [`Self::layout_bounds`].
     pub fn retained_layout_bounds(&mut self, layout: &RetainedSubtree) -> Option<Bounds<Pixels>> {

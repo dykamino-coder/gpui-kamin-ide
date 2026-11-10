@@ -62,14 +62,13 @@ impl PlainProbe {
         }
     }
 
-    /// A fresh probe equal to the one the compact form was taken from.
-    pub(super) fn probe(&self) -> Paragraph {
+    /// A fresh probe equal to the one the compact form was taken from, with
+    /// the break opportunities its first measure seeds (`Paragraph::seed_stops`
+    /// prepares the probe, which a measure does in any case).
+    pub(super) fn probe(&self) -> (Paragraph, Option<Box<[u32]>>) {
         let mut p = self.settings.probe();
         p.word_spans = self.word_spans.clone();
         p.letter_spans = self.letter_spans.clone();
-        if let Some(stops) = &self.stops {
-            p.seed_stops(stops.unpack());
-        }
-        p
+        (p, self.stops.as_ref().map(PackedStops::unpack))
     }
 }

@@ -473,6 +473,22 @@ impl TaffyLayoutEngine {
         }
     }
 
+    /// Let the kept measure functions of the leaves of `nodes`, claimed in
+    /// this pass, prepare for its measures (`Measure::prepare`).
+    pub fn prepare_measures(&mut self, nodes: &[NodeId]) {
+        if !self.frame_tree {
+            return;
+        }
+        for &node in nodes {
+            if self.retained.live.contains(&node)
+                && self.taffy.has_node_context(node)
+                && let Some(context) = self.taffy.get_node_context_mut(node)
+            {
+                context.measure.borrow_mut().prepare();
+            }
+        }
+    }
+
     /// Union of the absolute layout bounds of `nodes` in this pass.
     pub fn nodes_layout_bounds(
         &mut self,

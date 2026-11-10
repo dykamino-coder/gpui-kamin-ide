@@ -19,7 +19,7 @@ impl FlowCx {
             return None;
         }
         record.end.write(&opts.cx);
-        let slot = Rc::new(FarSlot::new(record.clone()));
+        let slot = Rc::new(FarSlot::new(record.clone(), !self.settled));
         self.reuse.with_far(|far| {
             far.next.insert(e.node_id, record);
             far.slots.push(slot.clone());

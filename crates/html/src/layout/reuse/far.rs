@@ -122,13 +122,18 @@ impl PendingFar {
 pub(super) struct FarSlot {
     record: Rc<FarRecord>,
     layout: Cell<Option<LayoutId>>,
+    /// The flow's widths changed since the last build: the claimed leaves
+    /// will be measured, so they make their probes at request time. With the
+    /// same widths Taffy's cache serves the subtree and nothing is made.
+    prepare: bool,
 }
 
 impl FarSlot {
-    pub(super) fn new(record: Rc<FarRecord>) -> Self {
+    pub(super) fn new(record: Rc<FarRecord>, prepare: bool) -> Self {
         Self {
             record,
             layout: Cell::new(None),
+            prepare,
         }
     }
 }

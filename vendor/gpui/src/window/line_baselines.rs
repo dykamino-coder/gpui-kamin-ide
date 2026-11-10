@@ -123,4 +123,8 @@ impl<M: crate::CompactMeasure> crate::Measure for Scoped<M> {
         let inner = self.inner.compact()?;
         Some(Box::new(Scoped { scope: self.scope.clone(), inner }))
     }
+
+    fn prepare(&mut self) {
+        self.inner.prepare();
+    }
 }

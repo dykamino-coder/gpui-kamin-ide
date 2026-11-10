@@ -108,6 +108,12 @@ impl Hooks for Far {
         match window.request_retained_layout(&self.slot.record.layout) {
             Some(id) => {
                 self.slot.layout.set(Some(id));
+                // The kept leaves make their probes here, where the build of
+                // the block would have requested them, unless the widths are
+                // those of the last pass (Taffy's cache, no measure).
+                if self.slot.prepare {
+                    window.prepare_retained_measures(&self.slot.record.layout);
+                }
                 (id, ())
             }
             // The nodes are gone: the frame check refuses the block.

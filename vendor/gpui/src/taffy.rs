@@ -92,6 +92,10 @@ pub trait Measure: 'static {
     fn compacted(&mut self) -> Option<Box<dyn Measure>> {
         None
     }
+
+    /// A kept leaf is claimed for a new pass (`Window::prepare_retained_measures`):
+    /// make at request time what its measures of that pass will read.
+    fn prepare(&mut self) {}
 }
 
 /// KaminIDE patch: a host measure that may give a smaller form of itself
@@ -113,6 +117,9 @@ pub trait CompactMeasure: 'static {
 
     /// The smaller form with the same results, if there is one.
     fn compact(&mut self) -> Option<Self::Compact>;
+
+    /// See [`Measure::prepare`].
+    fn prepare(&mut self) {}
 }
 
 impl<F> Measure for F
