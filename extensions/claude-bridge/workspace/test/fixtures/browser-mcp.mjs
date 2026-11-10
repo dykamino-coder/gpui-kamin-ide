@@ -9,6 +9,7 @@ export async function browserMcp(t, root, label) {
   const journal = path.join(root, `mcp-${label}.jsonl`)
   const resource = path.join(root, 'mcp-resource.txt')
   const requests = []
+  const errors = []
   const tools = ['fixture_record', 'fixture_second'].map(name => ({ name,
     description: `Synthetic ${label} tool`, inputSchema: { type: 'object', properties: { nonce: { type: 'string' } }, required: ['nonce'] } }))
   const resources = [1, 2].map(i => ({ uri: `fixture://${label}/${i}`, name: `Resource ${i}`, mimeType: 'text/plain' }))
@@ -29,6 +30,7 @@ export async function browserMcp(t, root, label) {
         capabilities: { tools: {}, resources: {}, prompts: {} }, serverInfo: { name: `fixture-${label}`, version: '1' } }
       else if (lists[message.method]) {
         const [key, items] = lists[message.method]
+        assert.ok(message.params?.cursor === undefined || message.params.cursor === 'second')
         const second = message.params?.cursor === 'second'
         result = { [key]: [items[second ? 1 : 0]], ...(!second ? { nextCursor: 'second' } : {}) }
       } else if (message.method === 'resources/read') {
@@ -51,9 +53,15 @@ export async function browserMcp(t, root, label) {
       } else throw new Error('Unexpected synthetic MCP method')
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }))
-    })().catch(() => { res.writeHead(500); res.end('Synthetic MCP fixture assertion failed') })
+    })().catch(error => {
+      errors.push(error)
+      res.writeHead(500); res.end('Synthetic MCP fixture assertion failed')
+    })
   })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
-  t.after(() => new Promise(resolve => server.close(resolve)))
+  t.after(async () => {
+    await new Promise(resolve => server.close(resolve))
+    assert.deepEqual(errors, [], 'Every received MCP request must satisfy the independent fixture assertions')
+  })
   return { url: `http://127.0.0.1:${server.address().port}/mcp`, journal, requests, resources, prompts, templates }
 }
