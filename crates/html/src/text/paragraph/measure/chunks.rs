@@ -21,8 +21,14 @@ const MAX: usize = 8192;
 const REJECTS: usize = 16;
 
 impl Paragraph {
-    /// Границы частей куска `start..end`; последняя — `end`.
-    pub(super) fn chunk_ends(&self, start: usize, end: usize, window: &mut Window) -> Vec<usize> {
+    /// Границы частей куска `start..end` (последняя — `end`) или `None`, если
+    /// кусок набирается целиком.
+    pub(super) fn chunk_ends(
+        &self,
+        start: usize,
+        end: usize,
+        window: &mut Window,
+    ) -> Option<Vec<usize>> {
         let mut ends = Vec::new();
         if end - start >= MIN * 2 && self.chunkable(start, end) {
             let bytes = self.text.as_bytes();
@@ -43,8 +49,10 @@ impl Paragraph {
                 c += 1;
             }
         }
-        ends.push(end);
-        ends
+        (!ends.is_empty()).then(|| {
+            ends.push(end);
+            ends
+        })
     }
 
     /// Резать можно только письмо без двунаправленности и комбинируемых знаков.
@@ -94,15 +102,32 @@ impl Paragraph {
         let key = self.chunk_key(&r);
         keys.push(key);
         let hit = self.measures.shaped.borrow_mut().get(&key).cloned();
-        if let Some(hit) = hit {
+        if let Some(Shaped::Chunk(hit)) = hit {
             return hit;
         }
         let layout = self.shape(r, window);
-        self.measures
-            .shaped
-            .borrow_mut()
-            .insert(key, layout.clone());
+        let chunk = Shaped::Chunk(layout.clone());
+        self.measures.shaped.borrow_mut().insert(key, chunk);
         layout
+    }
+
+    /// Запомнить части абзаца с ключом замера `key` (абзац без частей — ничего).
+    pub(super) fn remember_chunks(&self, key: u64, chunks: Vec<u64>) {
+        if !chunks.is_empty() {
+            let list = Shaped::Keys(chunks.into());
+            self.measures
+                .shaped
+                .borrow_mut()
+                .insert(list_key(key), list);
+        }
+    }
+
+    /// Части держатся в памяти, пока держится замер их абзаца.
+    pub(super) fn keep_chunks(&self, key: u64) {
+        let mut shaped = self.measures.shaped.borrow_mut();
+        if let Some(Shaped::Keys(keys)) = shaped.get(&list_key(key)).cloned() {
+            keys.iter().for_each(|k| _ = shaped.get(k));
+        }
     }
 
     /// Ключ набора части: её текст, кегль, трекинг и шрифты прогонов.
@@ -126,6 +151,18 @@ impl Paragraph {
         }
         h.finish()
     }
+}
+
+/// Запись памяти частей: набор части или список частей одного замера.
+#[derive(Clone)]
+pub(in crate::text::paragraph) enum Shaped {
+    Chunk(Arc<LineLayout>),
+    Keys(std::rc::Rc<[u64]>),
+}
+
+/// Ключ списка частей замера `key`: не совпадает с ключами самих частей.
+fn list_key(key: u64) -> u64 {
+    key.rotate_left(29) ^ 0x9E37_79B9_7F4A_7C15
 }
 
 /// Точка `c` — начало слова после пробела, оба соседа пробела ASCII.

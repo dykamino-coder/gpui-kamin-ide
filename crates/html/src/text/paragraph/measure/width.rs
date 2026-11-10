@@ -19,22 +19,13 @@ impl Paragraph {
         let key = self.measure_key();
         let hit = self.measures.measured.borrow_mut().get(&key).cloned();
         crate::work::cache!(hit, MeasureCacheHits, MeasureCacheMisses);
-        if let Some((segs, chunks)) = hit {
-            // Части держатся в памяти, пока держится их замер.
-            let mut shaped = self.measures.shaped.borrow_mut();
-            chunks
-                .iter()
-                .flat_map(|c| c.iter())
-                .for_each(|k| _ = shaped.get(k));
+        if let Some(segs) = hit {
+            self.keep_chunks(key);
             return segs;
         }
         let (out, chunks) = self.measure_uncached(window);
-        // Абзац без частей не платит за пустой список.
-        let chunks = (!chunks.is_empty()).then(|| chunks.into());
-        self.measures
-            .measured
-            .borrow_mut()
-            .insert(key, (out.clone(), chunks));
+        self.remember_chunks(key, chunks);
+        self.measures.measured.borrow_mut().insert(key, out.clone());
         out
     }
 }
@@ -55,10 +46,11 @@ impl Paragraph {
                 .unwrap_or(self.text.len());
             // Длинный кусок набирается частями (`chunks`): каждая — свой `Seg`
             // со сдвигом, как кусок за мягким переносом.
-            let ends = self.chunk_ends(start, end, window);
+            let parts = self.chunk_ends(start, end, window);
+            let ends = parts.as_deref().unwrap_or(std::slice::from_ref(&end));
             let (mut from, mut width) = (start, px(0.));
-            for &to in &ends {
-                let layout = if ends.len() > 1 {
+            for &to in ends {
+                let layout = if parts.is_some() {
                     self.shape_chunk(from..to, &mut chunks, window)
                 } else {
                     self.shape(from..to, window)

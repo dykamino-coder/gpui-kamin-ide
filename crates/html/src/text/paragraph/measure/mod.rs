@@ -13,20 +13,16 @@ mod width_tests;
 
 use crate::text::paragraph::{Line, Seg};
 use frame_cache::FrameCache;
-use std::{cell::RefCell, rc::Rc, sync::Arc};
-
-/// Положения знаков абзаца и ключи наборов частей его длинных кусков.
-pub(in crate::text::paragraph) type Measured = (Vec<Seg>, Option<Rc<[u64]>>);
+use std::{cell::RefCell, rc::Rc};
 
 /// Paragraphs and their layout probes share only their document's measurements.
 #[derive(Default)]
 pub(crate) struct MeasureCache {
     pub(in crate::text::paragraph) splits: RefCell<FrameCache<Rc<Vec<Line>>>>,
     pub(in crate::text::paragraph) fitted: RefCell<FrameCache<f32>>,
-    /// Замер абзаца и ключи частей его длинных кусков (`chunks`).
-    pub(in crate::text::paragraph) measured: RefCell<FrameCache<Measured>>,
-    /// Наборы частей длинных кусков по ключу текста и шрифтов части.
-    pub(in crate::text::paragraph) shaped: RefCell<FrameCache<Arc<gpui::LineLayout>>>,
+    pub(in crate::text::paragraph) measured: RefCell<FrameCache<Vec<Seg>>>,
+    /// Наборы частей длинных кусков и списки частей их абзацев (`chunks`).
+    pub(in crate::text::paragraph) shaped: RefCell<FrameCache<chunks::Shaped>>,
     /// Line splits computed because the cache had no entry (observation for tests).
     #[cfg(test)]
     pub(crate) split_misses: std::cell::Cell<usize>,

@@ -45,7 +45,7 @@ impl Paragraph {
         let mut rev_off = self.reversed_offset(count, &step);
         let mut y = bounds.origin.y + px(rev_off);
         let runs = self.selection_runs(id, window);
-        let cull = cull::Cull::new(self, &segs, bounds, window);
+        let cull = cull::Cull::new(self, &segs, &pads, bounds, window);
         // Строка неделима: в записи главной копии кусков она допускается целиком.
         let mut bands = Vec::with_capacity(count);
         for (i, line) in self.lines.iter().enumerate() {

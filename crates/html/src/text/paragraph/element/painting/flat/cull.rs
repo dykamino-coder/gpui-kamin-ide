@@ -34,6 +34,7 @@ impl Cull {
     pub(super) fn new(
         p: &Paragraph,
         segs: &[Seg],
+        pads: &[(f32, f32)],
         bounds: Bounds<Pixels>,
         window: &mut Window,
     ) -> Option<Self> {
@@ -46,7 +47,7 @@ impl Cull {
             return None;
         }
         let mask = window.content_mask().bounds;
-        let bleed = bleed(p, segs, window);
+        let bleed = bleed(p, segs, pads, window);
         let widest = p
             .lines
             .iter()
@@ -123,7 +124,7 @@ mod tests {
 }
 
 /// How far a line's ink may reach beyond its band in the block direction.
-fn bleed(p: &Paragraph, segs: &[Seg], window: &mut Window) -> Pixels {
+fn bleed(p: &Paragraph, segs: &[Seg], pads: &[(f32, f32)], window: &mut Window) -> Pixels {
     let mut glyph = p.font_size;
     let mut offset = px(0.);
     let text = window.text_system().clone();
@@ -178,8 +179,7 @@ fn bleed(p: &Paragraph, segs: &[Seg], window: &mut Window) -> Pixels {
         .iter()
         .map(|(_, a, b)| a.1.abs().max(b.1.abs()))
         .fold(0., f32::max);
-    let pads = p
-        .line_padding()
+    let pads = pads
         .iter()
         .map(|(a, b)| a.abs() + b.abs())
         .fold(0., f32::max);

@@ -1,18 +1,42 @@
 //! Два поколения измерений документа: рабочий набор предыдущего кадра
 //! сохраняется целиком, неиспользованные записи удаляются на следующем.
+//! Ключи — уже готовые 64-битные хэши, поэтому таблица берёт их как есть
+//! (без повторного SipHash и без состояния хэшера в каждой таблице).
 
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::BuildHasherDefault};
+
+type Table<V> = HashMap<u64, V, BuildHasherDefault<KeyHash>>;
+
+/// Хэш ключа, который сам уже хэш.
+#[derive(Default)]
+struct KeyHash(u64);
+
+impl std::hash::Hasher for KeyHash {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = (self.0.rotate_left(8) ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3);
+        }
+    }
+
+    fn write_u64(&mut self, key: u64) {
+        self.0 = key;
+    }
+}
 
 pub(in crate::text::paragraph) struct FrameCache<V> {
-    current: HashMap<u64, V>,
-    previous: HashMap<u64, V>,
+    current: Table<V>,
+    previous: Table<V>,
 }
 
 impl<V> Default for FrameCache<V> {
     fn default() -> Self {
         Self {
-            current: HashMap::new(),
-            previous: HashMap::new(),
+            current: Table::default(),
+            previous: Table::default(),
         }
     }
 }
