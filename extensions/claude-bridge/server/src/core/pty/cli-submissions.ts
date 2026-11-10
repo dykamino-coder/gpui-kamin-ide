@@ -12,6 +12,8 @@ interface Submission {
   uuid?: string
   warning?: string
   interrupt?: boolean
+  /** Server time of acceptance: lets a client settle a lost receipt from the transcript. */
+  createdAt: number
 }
 
 export class CliSubmissions {
@@ -54,11 +56,17 @@ export class CliSubmissions {
       uuid: item.uuid,
       cancelable: item.state === 'queued',
       warning: item.warning,
+      createdAt: item.createdAt,
     })
   }
 
   replay(): void {
     for (const item of this.items.values()) this.emit(item)
+  }
+
+  /** Every id still tracked; a client drops pending receipts missing from it. */
+  ids(): string[] {
+    return [...this.items.keys()]
   }
 
   submit(id: string, text: string): boolean {
@@ -84,7 +92,7 @@ export class CliSubmissions {
       }
       if (this.items.size >= 256) return false
     }
-    const item: Submission = { id, text, state: 'queued' }
+    const item: Submission = { id, text, state: 'queued', createdAt: Date.now() }
     this.items.set(id, item)
     this.emit(item)
     this.drain()

@@ -136,6 +136,14 @@ export class SessionCliControl {
   replay(): void {
     this.snapshot()
     this.submissions?.replay()
+    // After a server or CLI restart the client may still show receipts this
+    // process never saw; list what is tracked so it can stop waiting for them.
+    sendToClient(this.session.ws, {
+      type: 'session:submission',
+      sessionId: this.session.id,
+      id: '',
+      known: this.submissions?.ids() ?? [],
+    })
   }
 
   rawInput(data: string): void {
