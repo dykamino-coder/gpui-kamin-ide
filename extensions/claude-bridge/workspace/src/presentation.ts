@@ -1,8 +1,9 @@
 import type { ClientFrame, HostFrame } from './protocol.js'
 import { createHash } from 'node:crypto'
+import type { SubmissionStorage } from './submission-state.js'
 import { matchSubmissionQueue, mergeFallbackQueue, queueRowIdentity, queueWatermark, type QueueEntry, type SubmissionUpdate } from '../../webview/shared/submission-queue.js'
 
-const TAB_EVENTS = new Set(['session:activity', 'session:usage', 'session:title', 'connection-state'])
+const TAB_EVENTS = new Set(['session:activity', 'session:usage', 'session:title', 'connection-state-changed'])
 const GLOBAL_EVENTS = new Set(['tree-update', 'mcp-servers-changed', 'mcp-loading', 'mcp-ready', 'config-ready'])
 const QUESTIONS = new Set(['permission-request', 'elicitation-request', 'ask-user-question', 'mcp-elicitation-request'])
 
@@ -15,9 +16,42 @@ export class WorkspacePresentation {
   private accepted = new Map<string, { digest: string; bytes: number }>()
   private acceptedBytes = 0
   private consumedQueueRows = new Map<string, Set<string>>()
+  private storageFailed = false
 
   constructor(private publish: (channel: string, ...args: unknown[]) => void,
-    private entries: (tabId: string) => readonly QueueEntry[] = () => []) {}
+    private entries: (tabId: string) => readonly QueueEntry[] = () => [],
+    private storage?: SubmissionStorage) {}
+
+  restore(tabIds: Set<string>): void {
+    const state = this.storage?.load()
+    for (const item of state?.submissions ?? []) {
+      if (!tabIds.has(item.tabId)) continue
+      const receipt = { ...item.receipt, cancelable: false }
+      if (!receipt.committed && receipt.state !== 'cancelled' && !receipt.fallbackQueue?.consumed) {
+        receipt.state = 'uncertain'
+        receipt.warning = 'Workspace host restarted; delivery is uncertain. This message will not be sent again automatically.'
+      }
+      const key = `${item.tabId}:${receipt.id}`
+      this.accepted.set(key, { digest: item.digest, bytes: item.bytes })
+      this.acceptedBytes += item.bytes
+      this.submissions.set(key, { kind: 'event', channel: 'session:submission', args: [item.tabId, receipt] })
+    }
+    for (const [tabId, rows] of state?.consumedRows ?? []) if (tabIds.has(tabId)) this.consumedQueueRows.set(tabId, new Set(rows))
+  }
+
+  private persist(strict = false): void {
+    if (!this.storage) return
+    try {
+      this.storage.save({ submissions: [...this.accepted].map(([key, identity]) => {
+        const [tabId, receipt] = this.submissions.get(key)!.args as [string, SubmissionUpdate & { text: string }]
+        return { tabId, ...identity, receipt }
+      }), consumedRows: [...this.consumedQueueRows].map(([tab, rows]) => [tab, [...rows]]) })
+    } catch {
+      if (!this.storageFailed) console.warn('Could not persist workspace submission state; new submissions blocked')
+      this.storageFailed = true
+    }
+    if (strict && this.storageFailed) throw new Error('Submission persistence unavailable; restore storage and restart the workspace host')
+  }
 
   observe(frame: HostFrame): void {
     if (frame.kind !== 'event' || typeof frame.channel !== 'string' || !Array.isArray(frame.args)) return
@@ -37,6 +71,7 @@ export class WorkspacePresentation {
       this.submissions.set(key, { ...frame, args: [args[0], receipt] })
       if (!receipt.committed) this.reconcileCommitted(args[0], this.entries(args[0]))
       if (args[1].state === 'fallback') this.reconcileFallback(args[0], this.entries(args[0]))
+      this.persist()
     }
     if (channel === 'jsonl-entries' && Array.isArray(args[1])) {
       this.reconcileCommitted(args[0], args[1])
@@ -83,6 +118,8 @@ export class WorkspacePresentation {
       this.dismissQueue(args[0], args[1].filter((id: unknown) => typeof id === 'string'))
     }
     if (channel === 'pty-submit-text' && typeof args[0] === 'string' && typeof args[1] === 'string' && typeof args[2] === 'string') {
+      if (this.storageFailed) throw new Error('Submission persistence unavailable; restore storage and restart the workspace host')
+      if (!args[2] || args[2].length > 1024) throw new Error('Expected a submission identity')
       const key = `${args[0]}:${args[2]}`
       const digest = createHash('sha256').update(args[1]).digest('hex')
       const prior = this.accepted.get(key)
@@ -96,8 +133,11 @@ export class WorkspacePresentation {
       if (this.accepted.size >= 10000 || this.acceptedBytes + bytes > 32 * 1024 * 1024) throw new Error('Submission limit reached; end a session before sending more')
       this.accepted.set(key, { digest, bytes })
       this.acceptedBytes += bytes
-      this.publish('session:submission', args[0], { id: args[2], text: args[1], state: 'queued', cancelable: true,
-        fallbackQueue: { afterOrd: queueWatermark(this.entries(args[0])), enqueuedAt: Date.now() } })
+      const receipt: SubmissionUpdate = { id: args[2], text: args[1], state: 'queued', cancelable: true,
+        fallbackQueue: { afterOrd: queueWatermark(this.entries(args[0])), enqueuedAt: Date.now() } }
+      this.submissions.set(key, { kind: 'event', channel: 'session:submission', args: [args[0], receipt] })
+      this.persist(true) // The duplicate barrier must reach disk BEFORE handler dispatch.
+      this.publish('session:submission', args[0], receipt)
     }
     if (['permission-response', 'elicitation-response', 'ask-user-response'].includes(channel)) return this.resolve(args[0])
     if (['mcp-respond', 'mcp-deny'].includes(channel)) this.resolve(args[0])
@@ -150,6 +190,7 @@ export class WorkspacePresentation {
       this.acceptedBytes -= value.bytes
       this.accepted.delete(key)
     }
+    this.persist()
   }
 
   forgetSessions(): void {
@@ -159,6 +200,7 @@ export class WorkspacePresentation {
     this.accepted.clear()
     this.acceptedBytes = 0
     this.consumedQueueRows.clear()
+    this.persist()
   }
 
   snapshot(): HostFrame[] {

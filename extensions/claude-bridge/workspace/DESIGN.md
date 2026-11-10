@@ -21,6 +21,41 @@ existing resource limits. This bounded change does not establish full TUI parity
 actual-model acceptance or exhaustive capability proof. Completion is a green
 Change PR and READY handoff; the Claude lead reviews and merges implementation.
 
+## Durable submission receipts follow-up
+
+The host must retain accepted submission identities across a process crash.
+Before forwarding text to the shared handler, write an atomic, fsynced snapshot
+under `WORKSPACE_STORAGE`, scoped by the workspace/server/account hash. Keep
+the existing 10,000-identity / 32 MiB text limits, exact text digests, allowlisted
+receipt fields and consumed fallback row identities. Persist receipt transitions
+and explicit session removal independently of attached browsers. No connection
+credential is stored in this snapshot; prompt text is private workspace data.
+
+Restore only identities for the restored open tabs. Confirmed UUID commitment,
+consumed fallback receipts and cancellation survive unchanged. Unconfirmed
+delivery becomes noncancelable `uncertain`, with no automatic resend or legacy
+text matching after restart. An upstream UUID can still establish commitment.
+An identical identity is suppressed, and reuse with different text is rejected.
+This guarantees duplicate suppression within the persisted open session, not
+exactly-once CLI delivery or survival of in-flight tools. Corrupt/unreadable
+state fails startup; a failed write blocks new submissions until storage is
+repaired and the host restarted. Observer write failure does not stop existing
+agent execution. Snapshot writes are synchronous and bounded; large retained
+prompt sets may add ingress latency. Composer drafts remain a separate gap.
+
+Acceptance: a real shared-host process killed after forwarding, restored
+receipts and identical-ID suppression, committed/consumed/dismissed metadata,
+scope/validation/write failure regressions, and production Chromium in an owned
+Linux Podman fixture. Full parity and actual-model composed acceptance remain
+open; this increment does not change the strict completion validator.
+
+Executed: Windows workspace 97 passed / three Linux-only skips; Linux Podman
+production-browser fixtures 15/15, including SIGKILL/restart with zero pages,
+two fresh pages and upstream exactly-once observation for each reused ID. This
+observed fixture count is not an exactly-once delivery guarantee. The existing
+native replay fixture now waits for snapshot-end before checking receipt state:
+the final transcript row is sent before the receipt portion of that snapshot.
+
 ## Restart persistence follow-up (INC-2026-0092)
 
 The client host owns the open set and active selection across process restarts,
@@ -319,6 +354,32 @@ recovery and does not prove full host-owned page state, host/container restart,
 or every desktop tool behavior. The readiness manifest at that snapshot did not
 encode the remaining completion requirements. The strict completion gate above
 now rejects missing execution proof; it does not extend this historical evidence.
+
+## Bounded follow-up: long-turn browser retention metrics
+
+Implementation and exact-candidate validation:
+[#687](https://github.com/dykamino-coder/gpui-kamin-ide/pull/687), pending lead review.
+
+Exercise the production browser bundle and real shared BridgeHost with a
+deterministic synthetic upstream: 8,000 distinct transcript records while attached,
+another 2,000 with no attached page, then five fresh-page reattachments. Each row
+contains roughly 1 KiB of prose. Record every production JS chunk's summed raw,
+gzip and Brotli bytes, Chromium version, exact runner source/dirty state, and
+post-GC page heap at startup, during the long turn and after every reattachment.
+
+Acceptance checks the existing 4,000–4,500-record attached store window,
+200-record browser reattach snapshot and 150-row initial render window, the
+newest record and unique ordered UUIDs, a shared tool
+response while no page exists, and no extra submit or interrupt frames. Page
+heap must stay below 128 MiB at every measured point; equal-tail reattachments
+must span no more than 16 MiB of used heap. These deliberately coarse regression
+budgets measure renderer JS, not browser RSS, host memory or a universal thin-page
+guarantee. Fresh pages test recovered state; they cannot establish absence of
+leaks in a destroyed renderer. Preserve measurements even when a budget fails.
+
+This automated Linux Podman fixture adds repeatable load coverage. It does not
+emit full-parity receipts or satisfy the remaining actual-model/composed-image
+acceptance contract. No owner server or native Windows browser is involved.
 
 ## Historical follow-up: host-owned FilePanel controls (2026-11-09)
 

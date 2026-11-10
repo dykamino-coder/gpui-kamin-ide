@@ -118,7 +118,17 @@ pages honor that marker. This does not cancel text already delivered through the
 CLI terminal. Stop without restoring queue text leaves the queue display intact.
 The queue's individual Remove button records the same host dismissal for that
 item, without interrupting the turn or restoring text into a composer.
-These receipts remain process-local; host restart does not restore composer drafts.
+Accepted identities and allowlisted receipts also survive host restart in the
+private `workspace-submissions.json` under `WORKSPACE_STORAGE`. A synced atomic
+write precedes submission dispatch. Confirmed commitment and queue dismissal
+remain durable; unconfirmed delivery is shown as **Unconfirmed**, with no
+automatic resend. The same ID is suppressed after restart, and different text
+cannot reuse it. Corrupt state blocks startup; a write failure blocks new
+submissions until storage is repaired and the host restarted. Keep this volume
+private: it contains prompt text, although no reusable connection token is
+stored there. Synchronous snapshots can add latency for large retained prompt
+sets. Closing a session clears its identities. Composer drafts and in-flight
+tools/PTY processes are not restored by this receipt recovery.
 
 The browser shell retains session/project navigation, tabs and pins, and a
 resizable dock for Claude Bridge, Bridge Console and Agents. Dock placement,
@@ -254,5 +264,16 @@ current browser shell and does not establish its visual parity.
 The owner task remains open for remaining host-authoritative page state,
 exhaustive behavior proof and final composed live acceptance. FilePanel state
 polish is explicitly outside the revised browser scope.
+
+`test/browser-retention.smoke.mjs` adds a deterministic load regression to
+`test:browser:container`: the real shared host receives 10,000 synthetic
+transcript records, continues with zero pages, executes Bash, and restores five
+fresh pages without resubmitting or interrupting the session. TAP diagnostics
+record all production JS chunks (raw/gzip/Brotli), Chromium/source provenance
+and post-GC page heap. The test checks existing store/snapshot/render bounds,
+a 128 MiB page-heap ceiling and a 16 MiB spread between equal-tail reopens.
+These coarse renderer regression budgets do not measure host memory or browser
+RSS and do not replace the actual-model/composed-image acceptance contract.
+
 No release, version bump or image publication is part of this work. Claude lead
 reviews/merges implementation and the consolidated documentation PR.
