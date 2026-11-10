@@ -71,6 +71,35 @@ test('JSONL arriving before fallback is reconciled from the shared cache', () =>
   assert.equal((state.snapshot()[0].args as any)[1].fallbackQueue.consumed, true)
 })
 
+test('native receipt commitment survives zero views and transcript eviction in either event order', () => {
+  for (const order of ['receipt-first', 'row-first']) {
+    let entries: any[] = []
+    const events: any[] = []
+    const state = new WorkspacePresentation((channel, ...args) => {
+      events.push({ channel, args })
+      state.observe({ kind: 'event', channel, args })
+    }, () => entries)
+    const receipt = () => (state.snapshot().find(frame => frame.channel === 'session:submission')!.args as any)[1]
+    state.accept({ kind: 'send', channel: 'pty-submit-text', args: ['tab', 'same prose', 'id'] })
+    const native = () => state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'id', state: 'read', uuid: 'stored' }] })
+    if (order === 'receipt-first') native()
+    // Equal prose and a different session's UUID cannot commit this receipt.
+    state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['other', [{ type: 'user', uuid: 'stored' }]] })
+    state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', [{ type: 'user', uuid: 'different', message: { content: 'same prose' } }]] })
+    assert.notEqual(receipt().committed, true)
+    entries = [{ type: 'user', uuid: 'stored', message: { content: 'same prose' } }]
+    state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', entries] })
+    if (order === 'row-first') native()
+    assert.equal(receipt().committed, true, order)
+    entries = []
+    native() // Late duplicate receipts must never undo host commitment.
+    assert.equal(receipt().committed, true)
+    assert.equal(events.filter(frame => frame.args[1]?.committed).length, 1)
+    state.observe({ kind: 'event', channel: 'tab:closed', args: ['tab'] })
+    assert.deepEqual(state.snapshot(), [])
+  }
+})
+
 test('Escape dismisses only selected queue displays and retains delivery matching across pages', () => {
   const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }))
   const receipt = (tab: string, id: string) => (state.snapshot().find(frame => frame.channel === 'session:submission'
