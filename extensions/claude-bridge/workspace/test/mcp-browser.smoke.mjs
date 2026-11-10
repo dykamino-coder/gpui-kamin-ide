@@ -64,7 +64,7 @@ test('shared browser MCP APIs, two-page events and zero-page external execution'
       assert.equal(live?.status, 'connected')
       assert.deepEqual(live.tools, ['fixture_record', 'fixture_second'])
       assert.equal(live.resources.length, 2)
-      assert.equal(live.resourceTemplates.length, 2)
+      assert.deepEqual(live.resourceTemplates, first.templates)
       assert.equal(live.prompts.length, 2)
       for (const page of [a, b]) assert.ok((await page.evaluate(() => window.__mcpProof.servers))
         .some(servers => servers.some(item => item.id === server.id && item.status === 'connected' && item.prompts.length === 2)))
@@ -149,11 +149,13 @@ test('shared browser MCP APIs, two-page events and zero-page external execution'
   await proof.prove('toggle', async () => {
     await api('toggleMcpServer', server.id, false)
     assert.equal((await api('getMcpServers')).find(item => item.id === server.id).status, 'disconnected')
+    await eventually(async () => assert.equal((await persisted()).renamed_fixture.enabled, false))
     const count = second.requests.length
     assert.equal((await api('readMcpResource', server.id, second.resources[0].uri)).ok, false)
     assert.equal(second.requests.length, count, 'Disabled connector must not issue a request')
     await api('toggleMcpServer', server.id, true)
     assert.equal((await api('getMcpServers')).find(item => item.id === server.id).status, 'connected')
+    await eventually(async () => assert.equal((await persisted()).renamed_fixture.enabled, true))
     assert.equal(second.requests.filter(request => request.method === 'initialize').length, 2)
   })
   await proof.prove('zeroPage', async () => {
@@ -170,11 +172,16 @@ test('shared browser MCP APIs, two-page events and zero-page external execution'
     const resource = catalog.resources.find(item => item.rawUri === second.resources[1].uri)
     assert.ok(resource)
     const read = await fixture.tool('__bridge_mcp_resource_read', { uri: resource.uri })
-    assert.equal(read.result.contents[0].text, 'independently seeded MCP resource')
+    assert.deepEqual(read.result.contents, [{ uri: second.resources[1].uri,
+      mimeType: 'text/plain', text: 'independently seeded MCP resource' }])
+    assert.deepEqual(second.requests.filter(request => request.method === 'resources/read').map(request => request.params),
+      [{ uri: second.resources[1].uri }])
     const prompt = catalog.prompts.find(item => item.rawName === 'prompt_2')
     assert.ok(prompt)
     const filled = await fixture.tool('__bridge_mcp_prompt_get', { name: prompt.name, arguments: { topic: nonce } })
     assert.equal(filled.result.messages[0].content.text, `second:${nonce}`)
+    assert.deepEqual(second.requests.filter(request => request.method === 'prompts/get').map(request => request.params),
+      [{ name: 'prompt_2', arguments: { topic: nonce } }])
     assert.equal(context.pages().length, 0)
     a = await open(); b = await open()
     assert.equal((await api('listTabs'))[0].conversationId, tab.conversationId)
@@ -183,6 +190,7 @@ test('shared browser MCP APIs, two-page events and zero-page external execution'
     assert.equal(fixture.receivedFrames().filter(frame => ['session:create', 'session:resume'].includes(frame.type)).length, 1)
   })
   await proof.prove('remove', async () => {
+    for (const page of [a, b]) await page.evaluate(() => { window.__mcpProof.servers = [] })
     await api('removeMcpServer', server.id)
     assert.deepEqual(await api('getMcpServers'), [])
     await eventually(async () => assert.equal((await persisted()).renamed_fixture, undefined))
