@@ -29,12 +29,13 @@ import { Buffer } from 'node:buffer'
 import * as http from 'node:http'
 import * as https from 'node:https'
 import * as net from 'node:net'
-import { PassThrough, Readable } from 'node:stream'
+import { PassThrough, Readable, pipeline } from 'node:stream'
 import * as tls from 'node:tls'
 import { fetch as undiciFetch } from 'undici'
 import { createOutboundDispatcher } from './outbound-tls'
 import type { Dispatcher, RequestInit as UndiciRequestInit } from 'undici'
 import { getOrCreateBridgeCA } from './ca-store'
+import { CompactionRequestScanner, compactionMarker, isCompactionRequestBody } from './compaction-request'
 import { EntrySynthesizer, type SynthAssistantEntry } from './entry-synthesizer'
 import { mintLeafCert } from './leaf-cert'
 import { SseStreamParser } from './sse-parser'
@@ -453,7 +454,13 @@ async function handleRequest(
     }
   }
 
-  const body = hasBody ? (bufferedBody ?? Readable.toWeb(req)) : undefined
+  // Compaction requests (manual /compact and auto-compact) are recognised by
+  // their system prompt while the body streams through; see compaction-request.ts.
+  const compactionScan = hasBody && isMessagesPostReq && !bufferedBody ? new CompactionRequestScanner() : undefined
+  const isCompaction = () => (bufferedBody ? isCompactionRequestBody(bufferedBody) : !!compactionScan?.matched)
+  const body = hasBody
+    ? (bufferedBody ?? Readable.toWeb(compactionScan ? pipeline(req, compactionScan, () => {}) : req))
+    : undefined
 
   const usedDispatcher = await getDispatcher(opts.upstreamProxyUrl)
   const { dispatcher, generation } = usedDispatcher
@@ -682,19 +689,30 @@ async function handleRequest(
       /* не JSON — не субагент */
     }
   }
+  const compacting = isCompaction()
   const synth = new EntrySynthesizer({
     ptySessionId: opts.ptySessionId,
     cliConversationId: opts.cliConversationId,
     mainModel: opts.mainModel,
     ...(subagentId ? { markSidechain: true, subagentId } : {}),
-    callbacks: {
-      onUpdate: (entry) => {
-        if (!entry.__streaming) opts.onUsage?.(entry)
-        opts.onEntryUpdate(entry, !!entry.isSidechain)
-      },
-      ...(opts.onSnapshot ? { onSnapshot: opts.onSnapshot } : {}),
-      ...(opts.onDelta ? { onDelta: opts.onDelta } : {}),
-    },
+    callbacks: compacting
+      ? {
+          // The summary text is not a chat answer. Clients get only a
+          // contentless marker that opens and closes the "Compacting" state.
+          onUpdate: (entry) => {
+            if (!entry.__streaming) opts.onUsage?.(entry)
+            opts.onEntryUpdate(compactionMarker(entry), !!entry.isSidechain)
+          },
+          ...(opts.onSnapshot ? { onSnapshot: (entry) => opts.onSnapshot!(compactionMarker(entry)) } : {}),
+        }
+      : {
+          onUpdate: (entry) => {
+            if (!entry.__streaming) opts.onUsage?.(entry)
+            opts.onEntryUpdate(entry, !!entry.isSidechain)
+          },
+          ...(opts.onSnapshot ? { onSnapshot: opts.onSnapshot } : {}),
+          ...(opts.onDelta ? { onDelta: opts.onDelta } : {}),
+        },
   })
   const parser = new SseStreamParser()
   const tee = new PassThrough()

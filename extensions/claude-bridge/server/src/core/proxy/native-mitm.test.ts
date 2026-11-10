@@ -550,3 +550,83 @@ it('aborts a CLI write exception while draining after upstream EOF', async () =>
   expect(res.listenerCount('drain')).toBe(0)
   expect(mocks.fetch).toHaveBeenCalledTimes(1)
 })
+
+it.each([
+  ['manual /compact', true, 'summarize'],
+  ['auto-compact', true, ''],
+  ['a turn that quotes the compaction prompt', false, 'quoted'],
+])(
+  'streams %s as a contentless compaction marker only when the system prompt asks for it',
+  async (_name, compaction, variant) => {
+    const { startNativeMitm } = await import('./native-mitm')
+    const { COMPACTION_SYSTEM_PROMPT } = await import('./compaction-request')
+    const onSnapshot = vi.fn()
+    const onDelta = vi.fn()
+    const onEntryUpdate = vi.fn()
+    const onUsage = vi.fn()
+    await startNativeMitm({ ptySessionId: 'compact', onEntryUpdate, onSnapshot, onDelta, onUsage })
+    const messages = [
+      { role: 'user', content: variant === 'quoted' ? `Why does "${COMPACTION_SYSTEM_PROMPT}" show up?` : 'hi' },
+    ]
+    const system = compaction
+      ? [
+          { type: 'text', text: 'x-anthropic-billing-header: cc_version=0' },
+          { type: 'text', text: COMPACTION_SYSTEM_PROMPT },
+        ]
+      : [{ type: 'text', text: 'You are Claude Code.' }]
+    const json = JSON.stringify({ model: 'claude-opus-5-5', messages, system, stream: true })
+    // Split the marker across chunks: the scan must not depend on chunk borders.
+    const at = json.indexOf('helpful AI') > 0 ? json.indexOf('helpful AI') : 10
+    const chunks = [json.slice(0, at), json.slice(at, at + 3), json.slice(at + 3)].map((s) => Buffer.from(s))
+    const message = {
+      type: 'message',
+      id: `msg-${variant || 'auto'}`,
+      model: 'claude-opus-5-5',
+      role: 'assistant',
+      content: [],
+      usage: { input_tokens: 9, output_tokens: 3 },
+    }
+    const sse = [
+      { type: 'message_start', message },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '<analysis> Let me analyze' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_stop' },
+    ]
+      .map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`)
+      .join('')
+    mocks.fetch.mockImplementation(async (_url: string, init: { body: ReadableStream<Uint8Array> }) => {
+      for await (const _ of init.body as unknown as AsyncIterable<Uint8Array>) void _ // upload completes before the answer
+      return streamResponse(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(Buffer.from(sse))
+            c.close()
+          },
+        }),
+      )
+    })
+    const req = Object.assign(Readable.from(chunks), {
+      headers: { host: 'api.anthropic.com' },
+      method: 'POST',
+      url: '/v1/messages',
+    })
+    const res = new CliResponse()
+    responses.push(res)
+    mocks.servers.at(-1)!.emit('request', req as unknown as IncomingMessage, res as unknown as ServerResponse)
+    await waitFor(() => expect(res.writableFinished).toBe(true))
+    expect(Buffer.concat(res.chunks).toString()).toBe(sse) // the CLI still gets the whole answer
+    expect(onUsage).toHaveBeenCalledTimes(1) // and the cost is still accounted
+    const snapshots = onSnapshot.mock.calls.map(([entry]) => entry)
+    expect(snapshots.at(-1).__streaming).toBe(false)
+    if (compaction) {
+      expect(onDelta).not.toHaveBeenCalled()
+      for (const entry of [...snapshots, ...onEntryUpdate.mock.calls.map(([entry]) => entry)]) {
+        expect(entry).toMatchObject({ __compaction: true, message: { content: [] } })
+      }
+    } else {
+      expect(onDelta).toHaveBeenCalledWith(expect.objectContaining({ appendText: '<analysis> Let me analyze' }))
+      expect(snapshots.some((entry) => entry.__compaction)).toBe(false)
+    }
+  },
+)

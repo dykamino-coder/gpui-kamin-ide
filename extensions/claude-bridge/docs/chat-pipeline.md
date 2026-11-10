@@ -115,6 +115,14 @@ spinner" class is one of these copies diverging from (1) (§10).
   with `setArchivedView(tab, ts)`. While archived, live rows and stream snapshots
   are buffered (capped) and replayed into the live window on return to Current.
 - `compacted` status clears the store (`clearJsonlEntries`) and owes a refill.
+- The CLI's own summary request (manual `/compact` and auto-compact) is
+  recognised by the server MITM at its system prompt
+  (`server/src/core/proxy/compaction-request.ts`). Clients get only a
+  contentless `__compaction` marker. The chat shows "Compacting
+  conversation…", as the CLI TUI does, never the `<analysis>` summary text
+  as an answer, and no stub is left behind. The final snapshot closes the
+  indicator; if that snapshot is lost, the compact boundary or summary row
+  closes it (`signals/compaction.ts`; the host stub cache also drops the marker).
 
 ## 7. Window, cap, eviction, refill, virtualized view
 
@@ -226,6 +234,7 @@ to one copy's bookkeeping.
 | D7 | live rows carry no `_pos`; after a bottom trim of a live session the oldest resident row has no page cursor, so scroll-up stops (`reachedStart`) with history above unreachable; the mirror also never gets live rows | server `jsonl-watcher.ts` (tail contract) | expected-fail; open (tag live rows with `_pos`/`_posEnd`, ADR step 1) |
 | D8 | the host cache can hold the same record twice (untagged live copy keyed by uuid, tagged page copy keyed by `_pos`); the webview dedups by uuid, but the cache cap counts both | host `connection-manager.ts` | open, low |
 | D9 | a pending receipt never settles when the read receipt is lost: the server forgets ids on restart (the client keeps a Queued bubble, Cancel does nothing), `uncertain` waits for a UUID that never comes, a stopped session sends no receipt at all | `submissions.ts`, `presentation.ts`, `cli-submissions.ts`, `session-io.ts` | fixed: reattach `known` snapshot, `createdAt`, transcript settling of `uncertain` receipts, stopped-session receipt |
+| D10 | the CLI's compaction request streamed into the chat as an assistant answer (the `<analysis>` summary text), and its stub had no canonical twin, so it stayed as a ghost until the TTL sweep; the CLI TUI shows only "Compacting conversation…" | server `native-mitm.ts`, webview `jsonl.ts` | fixed: the request is recognised by its system prompt; clients get a contentless `__compaction` marker that drives an indicator |
 
 ## 12. Test matrix
 
@@ -240,6 +249,7 @@ to one copy's bookkeeping.
 | I1/I2 under random schedules (60 seeds) | property |
 | D1/D2 | host `shared/jsonl-cache-order.test.ts` |
 | D9 | `signals/submissions.test.ts` › stale pending receipts; workspace `presentation.test.ts`, `submission-state.test.ts`; server `cli-submissions.test.ts`, `session-cli-control.test.ts` |
+| D10 | server `native-mitm.test.ts` (compaction marker); `chat-streaming-audit.test.ts` › compaction request stream; host `streaming-cache.test.ts`; workspace `compaction-stream.smoke.mjs` (IDE chat.html and browser) |
 
 `it.fails` cases are known defects. When a fix lands the `it.fails` case turns
 red (it unexpectedly passes); the fixing PR flips it to `it`.
