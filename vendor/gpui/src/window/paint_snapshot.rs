@@ -25,10 +25,19 @@ pub struct PaintCtx {
     image_cache_stack: Vec<AnyImageCache>,
     /// KaminIDE patch: ink sinks open at capture keep measuring deferred paint.
     ink: Vec<Rc<InkSink>>,
+    /// The ink scope at capture; its top bit (`LAYOUTS_RELEASED`) holds the
+    /// line-layout release scope, which deferred paint keeps too
+    /// (`Window::with_line_layouts_released`), so the snapshot keeps its size.
     ink_scope: u32,
-    /// KaminIDE patch: deferred paint keeps the line-layout release scope it
-    /// was captured in (`Window::with_line_layouts_released`).
-    layouts_released: bool,
+}
+
+/// KaminIDE patch: the release-scope bit of `PaintCtx::ink_scope`.
+const LAYOUTS_RELEASED: u32 = 1 << 31;
+
+/// The capture word of the open ink scope and the release scope.
+pub(super) fn capture_scope(window: &Window) -> u32 {
+    let released = crate::text_system::layouts_released();
+    window.next_frame.scene.ink_scope | if released { LAYOUTS_RELEASED } else { 0 }
 }
 
 /// Full paint environment, including device scale and exact raster placement.
@@ -65,8 +74,11 @@ impl PaintCtx {
         mem::swap(&mut window.content_mask_stack, &mut self.content_mask_stack);
         mem::swap(&mut window.image_cache_stack, &mut self.image_cache_stack);
         mem::swap(&mut window.next_frame.scene.ink, &mut self.ink);
-        mem::swap(&mut window.next_frame.scene.ink_scope, &mut self.ink_scope);
-        crate::text_system::swap_layouts_released(&mut self.layouts_released);
+        let mut released = self.ink_scope & LAYOUTS_RELEASED != 0;
+        crate::text_system::swap_layouts_released(&mut released);
+        let mut scope = self.ink_scope & !LAYOUTS_RELEASED;
+        mem::swap(&mut window.next_frame.scene.ink_scope, &mut scope);
+        self.ink_scope = scope | if released { LAYOUTS_RELEASED } else { 0 };
     }
 }
 
@@ -89,8 +101,7 @@ impl Window {
             content_mask_stack: self.content_mask_stack.clone(),
             image_cache_stack: self.image_cache_stack.clone(),
             ink: self.next_frame.scene.ink.clone(),
-            ink_scope: self.next_frame.scene.ink_scope,
-            layouts_released: crate::text_system::layouts_released(),
+            ink_scope: capture_scope(self),
         }
     }
 

@@ -25602,10 +25602,10 @@ index 0000000000000000000000000000000000000000..ea39641835bab004bb51e7bef5393ff4
 +}
 diff --git a/vendor/gpui/src/window/paint_snapshot.rs b/vendor/gpui/src/window/paint_snapshot.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3167014e710a4c139c534b25b310c42e8e5cf494
+index 0000000000000000000000000000000000000000..f4d0473734d80276e64471463ed7e92332f968c7
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_snapshot.rs
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,186 @@
 +//! Снимок окружения и единый проверяемый replay с восстановлением через guard.
 +
 +use super::*;
@@ -25633,10 +25633,19 @@ index 0000000000000000000000000000000000000000..3167014e710a4c139c534b25b310c42e
 +    image_cache_stack: Vec<AnyImageCache>,
 +    /// KaminIDE patch: ink sinks open at capture keep measuring deferred paint.
 +    ink: Vec<Rc<InkSink>>,
++    /// The ink scope at capture; its top bit (`LAYOUTS_RELEASED`) holds the
++    /// line-layout release scope, which deferred paint keeps too
++    /// (`Window::with_line_layouts_released`), so the snapshot keeps its size.
 +    ink_scope: u32,
-+    /// KaminIDE patch: deferred paint keeps the line-layout release scope it
-+    /// was captured in (`Window::with_line_layouts_released`).
-+    layouts_released: bool,
++}
++
++/// KaminIDE patch: the release-scope bit of `PaintCtx::ink_scope`.
++const LAYOUTS_RELEASED: u32 = 1 << 31;
++
++/// The capture word of the open ink scope and the release scope.
++pub(super) fn capture_scope(window: &Window) -> u32 {
++    let released = crate::text_system::layouts_released();
++    window.next_frame.scene.ink_scope | if released { LAYOUTS_RELEASED } else { 0 }
 +}
 +
 +/// Full paint environment, including device scale and exact raster placement.
@@ -25673,8 +25682,11 @@ index 0000000000000000000000000000000000000000..3167014e710a4c139c534b25b310c42e
 +        mem::swap(&mut window.content_mask_stack, &mut self.content_mask_stack);
 +        mem::swap(&mut window.image_cache_stack, &mut self.image_cache_stack);
 +        mem::swap(&mut window.next_frame.scene.ink, &mut self.ink);
-+        mem::swap(&mut window.next_frame.scene.ink_scope, &mut self.ink_scope);
-+        crate::text_system::swap_layouts_released(&mut self.layouts_released);
++        let mut released = self.ink_scope & LAYOUTS_RELEASED != 0;
++        crate::text_system::swap_layouts_released(&mut released);
++        let mut scope = self.ink_scope & !LAYOUTS_RELEASED;
++        mem::swap(&mut window.next_frame.scene.ink_scope, &mut scope);
++        self.ink_scope = scope | if released { LAYOUTS_RELEASED } else { 0 };
 +    }
 +}
 +
@@ -25697,8 +25709,7 @@ index 0000000000000000000000000000000000000000..3167014e710a4c139c534b25b310c42e
 +            content_mask_stack: self.content_mask_stack.clone(),
 +            image_cache_stack: self.image_cache_stack.clone(),
 +            ink: self.next_frame.scene.ink.clone(),
-+            ink_scope: self.next_frame.scene.ink_scope,
-+            layouts_released: crate::text_system::layouts_released(),
++            ink_scope: capture_scope(self),
 +        }
 +    }
 +
@@ -25783,10 +25794,10 @@ index 0000000000000000000000000000000000000000..3167014e710a4c139c534b25b310c42e
 +}
 diff --git a/vendor/gpui/src/window/paint_snapshot/raster_env.rs b/vendor/gpui/src/window/paint_snapshot/raster_env.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..03829ccdeadafcfb7bd11035750e681e1e52f1d4
+index 0000000000000000000000000000000000000000..f2aa648eb85f21dd864f2f2f769621066ff13327
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_snapshot/raster_env.rs
-@@ -0,0 +1,241 @@
+@@ -0,0 +1,239 @@
 +//! KaminIDE patch: raster captures of sibling elements share one environment.
 +//!
 +//! A deferred inline job used to carry a full copy of the paint environment (~1.5 KB, the
@@ -25891,8 +25902,7 @@ index 0000000000000000000000000000000000000000..03829ccdeadafcfb7bd11035750e681e
 +            && b.image_cache_stack.iter().zip(&window.image_cache_stack).all(|(a, b)| a.same(b))
 +            && b.ink.len() == window.next_frame.scene.ink.len()
 +            && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| Rc::ptr_eq(a, b))
-+            && b.ink_scope == window.next_frame.scene.ink_scope
-+            && b.layouts_released == crate::text_system::layouts_released()
++            && b.ink_scope == super::capture_scope(window)
 +            && self.contexts == window.raster_frame.contexts
 +    }
 +}
@@ -25942,7 +25952,6 @@ index 0000000000000000000000000000000000000000..03829ccdeadafcfb7bd11035750e681e
 +            image_cache_stack: mem::take(&mut self.images),
 +            ink: mem::take(&mut self.ink),
 +            ink_scope: b.ink_scope,
-+            layouts_released: b.layouts_released,
 +        }
 +    }
 +
