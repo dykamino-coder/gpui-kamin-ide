@@ -100,6 +100,12 @@ impl Store {
         if records.len() < recorded {
             self.restyled.set(true);
         }
+        if records.is_empty() && recorded > 0 {
+            // No record holds: the store starts over as a fresh document's,
+            // whose flow keys do not hold the previous `html`/`body` boxes.
+            self.start_over();
+            return;
+        }
         self.records.replace(records);
     }
 }

@@ -150,6 +150,20 @@ impl Store {
         self.narrow.reset();
     }
 
+    /// Nothing recorded holds (`rebase`): the state of a fresh document, so
+    /// the next build is not settled and records nothing, as a fresh one.
+    pub(super) fn start_over(&self) {
+        self.reset();
+        self.reset_replays();
+        self.unrecorded.take();
+        self.refused.take();
+        self.last.take();
+        self.prev.take();
+        self.settled.set(false);
+        self.warm.set(false);
+        self.restyled.set(false);
+    }
+
     /// The flow key changed outside its widths: no replay record holds.
     pub(super) fn reset_replays(&self) {
         self.replays.take();
