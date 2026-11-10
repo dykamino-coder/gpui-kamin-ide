@@ -16,6 +16,7 @@ import { SessionSidebar } from './shell/SessionSidebar'
 import { SessionTabs } from './shell/SessionTabs'
 import { PanelDock } from './shell/PanelDock'
 import { connectShell, shellError, shellState, updateShell } from './shell/state'
+import { DraftNotice } from './drafts'
 import './shell/browser-theme.css'
 import './shell/workspace-shell.css'
 
@@ -90,6 +91,7 @@ export function WorkspaceShell() {
           onKeyDown={e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); updateShell({ type: 'resize', sidebarWidth: Math.max(200, Math.min(600, state.sidebarWidth + (e.key === 'ArrowRight' ? 20 : -20))) }) } }} />
       </div>}
       <main class="ws-main">
+        <DraftNotice />
         {shellError.value && <div class="ws-layout-error" role="status">{shellError.value}</div>}
         <div class="ws-work-area" hidden={settings}><PanelDock>{{ chat: <ChatRoot />, console: <TerminalPanel visible showResizeHandle={false} fill />, agents: <div class="ws-agents"><AgentsPanel /></div> }}</PanelDock></div>
         {settings && <div class="ws-settings-content"><CustomizeContentPanel /></div>}

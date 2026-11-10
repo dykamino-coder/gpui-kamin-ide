@@ -467,3 +467,43 @@ workspace passes 92 tests (three Linux-only skips), shared webview passes 469,
 and Linux Podman Chromium passes all 13 production browser fixtures. The Remove
 fixture confirms processing of the zero-page duplicate before reopening through
 the next shared tool response. These bounded checks do not close full parity.
+
+## Bounded follow-up: durable composer drafts
+
+Retain each open session's unsent text and attachment metadata in the workspace
+host, scoped to workspace root, pinned server and token identity. Persist before
+acknowledging a private draft update using an atomic replacement. Keep a monotonic
+revision, including empty drafts, so an old page cannot resurrect cleared text.
+The browser's existing composer hook uses a browser-installed persistence port;
+the native client keeps its existing storage behavior and there is no second UI.
+
+Every user edit sends a bounded update, without replaying writes on reconnect.
+Read-only sync restores the host draft after reopening or restarting. Concurrent
+pages use compare-and-set revisions: clean pages follow host changes; a page with
+local conflicting edits retains them and offers explicit workspace/local choices.
+Storage and disconnect failures remain visible as unsaved, never as Saved. Text
+or attachments are not put in localStorage or sessionStorage. Sending clears the
+draft through the ordinary composer clear path; clearing is acknowledged separately
+from PTY delivery and does not assert atomic submission-plus-draft durability.
+
+Bounds: 128 session drafts, 256 KiB text, 32 attachments, 8 MiB per draft and
+32 MiB total, with strict JSON shape validation. Draft references never cause file
+writes or tool execution. Closing a session prunes its draft. Attachment contents
+remain at their existing container paths; image previews may retain bounded data
+URIs. Invalid data and write failures must preserve the previously accepted state.
+
+Acceptance: real host restart and two-page production Chromium tests for text,
+attachments, per-session isolation, conflict rejection/resolution and sent-text
+clearing; unit coverage of scope, malformed/oversized data, stale revisions and
+storage failure barriers. Linux Podman uses the real shared BridgeHost and a
+synthetic upstream. Full parity and composed actual-model acceptance remain open.
+
+Queue Escape restoration now uses the same per-session durable draft: clean other
+pages and reopened pages recover the restored text. Queue dismissal still never
+resubmits or claims cancellation; conflicting pages retain their explicit choice.
+
+Implementation: [#690](https://github.com/dykamino-coder/gpui-kamin-ide/pull/690).
+The initial real-host draft invoke failed before implementation. The combined
+candidate with durable submission receipts passes all 17 Linux Podman production
+browser fixtures; this fixture upstream is synthetic. Strict full completion
+continues rejecting 545 missing execution-proof gaps.
