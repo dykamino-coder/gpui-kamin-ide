@@ -6,8 +6,7 @@
 // messages the CLI shows, once each, in CLI order, after the refill the viewer
 // requests. Mid-run it must never render a message twice.
 //
-// Rewinds are left out on purpose: the chat keeps abandoned branches visible
-// (known divergence D4, pinned as expected-fail in chat-render-matrix.test.ts).
+// Rewinds are included: the CLI shows only the branch it resumes (D4).
 import { describe, it, expect } from 'vitest'
 import { appendJsonlEntries, clearJsonlEntries, trimTabToWindow, getJsonlEntries, tabNeedsRefill, clearRefillDebt } from './jsonl'
 import { activeTabId } from './tabs'
@@ -19,7 +18,10 @@ function randomTranscript(seed: number, rand: () => number): TranscriptBuilder {
   const b = new TranscriptBuilder(`p${String(seed)}`)
   const turns = 8 + Math.floor(rand() * 40)
   let compactions = 0
+  const forks: (string | undefined)[] = []
   for (let t = 0; t < turns; t++) {
+    forks.push(b.parent)
+    if (t > 2 && rand() < 0.06) b.rewindTo(forks[Math.floor(rand() * forks.length)]!)
     b.user(`prompt ${String(seed)}.${String(t)}`)
     const k = rand()
     if (k < 0.3) b.say(`reply ${String(seed)}.${String(t)}`)
@@ -30,7 +32,8 @@ function randomTranscript(seed: number, rand: () => number): TranscriptBuilder {
     else if (k < 0.84) { b.bookkeeping(1 + Math.floor(rand() * 20), rand() < 0.5 ? 'cost-state' : 'api-request'); b.say(`after bookkeeping ${String(t)}`) }
     else if (k < 0.9) { b.sidechain(`sub ${String(t)}`); b.say(`after sub ${String(t)}`) }
     else if (k < 0.96) { b.queueOperation('enqueue', `q${String(t)}`); b.say(`busy ${String(t)}`); b.queueOperation('dequeue', `q${String(t)}`) }
-    else if (compactions < 2) { compactions++; b.compact(`summary ${String(t)}`) }
+    // A rewind only reaches back inside the current conversation.
+    else if (compactions < 2) { compactions++; b.compact(`summary ${String(t)}`); forks.length = 0 }
     else b.say(`reply ${String(seed)}.${String(t)}`)
   }
   return b

@@ -238,9 +238,9 @@ describe('turn shapes', () => {
     expectCli(b.recs)
   })
 
-  // The CLI resumes ONE branch (leaf → root). Our chain filter unions every
-  // leaf (compute-chain-uuids.ts), so a rewound-away branch stays on screen.
-  it.fails('rewind: the abandoned branch is hidden like in the CLI (expected-fail: chat-pipeline.md D4)', () => {
+  // D4: the CLI resumes ONE branch (leaf → root); a rewound-away branch must not
+  // stay on screen as its own leaf (compute-chain-uuids.ts).
+  it('rewind: the abandoned branch is hidden like in the CLI (D4)', () => {
     const b = conversation(2)
     const fork = b.parent!
     b.user('first try')
@@ -250,6 +250,44 @@ describe('turn shapes', () => {
     b.say('second try answer')
     deliver(asPaged(b.recs))
     expectCli(b.recs)
+  })
+})
+
+describe('rewinds (D4)', () => {
+  it('rewind to the start: only the new root conversation shows', () => {
+    const b = new TranscriptBuilder('rw-root')
+    b.user('abandoned opening')
+    b.say('abandoned reply')
+    b.rewindTo(undefined as unknown as string)
+    b.user('fresh opening')
+    b.say('fresh reply')
+    deliver(asLive(b.recs), rng(13))
+    expectCli(b.recs)
+  })
+
+  it('two rewinds in a row, then several turns, delivered as paged chunks', () => {
+    const b = conversation(3, 'rw-two')
+    const fork = b.parent!
+    b.user('try one'); b.say('one')
+    b.rewindTo(fork)
+    b.user('try two'); b.toolBurst('checking', 2); b.say('two')
+    b.rewindTo(fork)
+    b.user('try three'); b.say('three')
+    for (let t = 0; t < 4; t++) { b.user(`after ${String(t)}`); b.say(`after answer ${String(t)}`) }
+    deliver(asPaged(b.recs), rng(14))
+    expectCli(b.recs)
+  })
+
+  it('a non-prompt fork (hook attachment) is not a rewind: the conversation stays', () => {
+    const b = conversation(2, 'rw-hook')
+    const parent = b.parent!
+    b.user('real follow-up')
+    b.say('real answer')
+    // A hook attachment written under an earlier assistant row (CLI 2.1.83 fork).
+    b.recs.push({ type: 'attachment', uuid: 'rw-hook-att', parentUuid: parent, timestamp: '2026-01-01T10:00:00.000Z',
+      _pos: 999_999, attachment: { type: 'hook_success', content: '' } } as unknown as Rec)
+    deliver(asPaged(b.recs))
+    expect(chatView(TAB).all.slice(-2)).toEqual(['U:real follow-up', 'A:real answer'])
   })
 })
 

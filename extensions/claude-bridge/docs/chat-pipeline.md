@@ -170,7 +170,7 @@ Observed or documented CLI behaviour:
 
 | Topic | CLI | Bridge chat | Verdict |
 |---|---|---|---|
-| Branch selection | single branch from the leaf | union of every leaf (`computeChainUuids`) | **our bug D4**: a rewound-away branch stays visible |
+| Branch selection | single branch from the leaf | union of every leaf minus rewound-away prompt branches (`computeChainUuids`) | match for rewinds (D4 fixed); a non-prompt fork (hook attachment) still shows both sides, deliberately |
 | Compaction | post-boundary only; earlier history not reachable after resume | current segment by default; earlier segments selectable / loadable | intended, better |
 | Split blocks | one message | one message (store + render fold) | match |
 | Sidechains | hidden from main view | hidden | match |
@@ -211,7 +211,7 @@ to one copy's bookkeeping.
 | D1 | `trimJsonlCache` ranked untagged live rows as 0; past the 21 000 cap the cutoff 0 dropped **every** live row at once (a test reproduced 21 700 → 199 rows), so the next renderer replay showed only the first page | host `handle-server-message.ts` | **fixed here** (`shared/jsonl-cache-order.ts`) |
 | D2 | the renderer replay took the newest 4 500 by `_pos ?? _ord ?? 0`, putting the tagged first page in front and cutting the middle of a live session; scroll-up then pages before the first page, so the gap never fills | host `shared/chat-stored-entries.ts` (`chatReplayTail`), `connection-manager.ts` (view snapshot) | **fixed here** (`newestInFileOrder`) |
 | D3 | uuid-less bookkeeping (cost-state, api-request, …) is stored and counted by the store cap; a flood after the last message evicts every real row → empty chat while the console shows everything | webview `jsonl.ts`, host replay tail | fixed by #698; regression test now a plain `it` |
-| D4 | multi-leaf chain union keeps a rewound-away branch visible; the CLI shows one branch | `compute-chain-uuids.ts` | expected-fail; open (leaf rule must follow the CLI: `last-prompt.leafUuid`, else last main-chain line) |
+| D4 | multi-leaf chain union keeps a rewound-away branch visible; the CLI shows one branch | `compute-chain-uuids.ts` (`abandonedBranches`) | fixed: the subtree of every prompt whose sibling prompt is on the newest leaf's chain is hidden; non-prompt forks keep the multi-tip union |
 | D5 | the thinking-only canonical row replaces the stub's blocks, so streamed prose disappears until the text row lands | `jsonl.ts` (`holdStreamedProse`) | fixed: canonical rows without text are held under the stub until the first canonical text takes over |
 | D6 | stubs always sort last, but `stubSuperseded` looks for a successor after the stub, so an aborted API attempt (new `message.id` on retry) is never swept and stays under the retry's answer | `jsonl.ts` (`stubSuperseded`) | fixed: a successor is a later CLI timestamp than the store's newest when the stub appeared |
 | D7 | live rows carry no `_pos`; after a bottom trim of a live session the oldest resident row has no page cursor, so scroll-up stops (`reachedStart`) with history above unreachable; the mirror also never gets live rows | server `jsonl-watcher.ts` (tail contract) | expected-fail; open (tag live rows with `_pos`/`_posEnd`, ADR step 1) |
