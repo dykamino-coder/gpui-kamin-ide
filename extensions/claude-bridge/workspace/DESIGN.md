@@ -368,3 +368,10 @@ real Remove button with two pages, an unrelated remaining item, zero-page late
 receipts and a reopened page through the shared BridgeHost and production UI.
 The upstream fixture is synthetic. Restart durability, exhaustive capability
 proof and composed actual-model acceptance remain open in INC-2026-0087.
+
+Implemented in [#686](https://github.com/dykamino-coder/gpui-kamin-ide/pull/686).
+The host ingress regression failed before the fix and now passes; Windows
+workspace passes 92 tests (three Linux-only skips), shared webview passes 469,
+and Linux Podman Chromium passes all 13 production browser fixtures. The Remove
+fixture confirms processing of the zero-page duplicate before reopening through
+the next shared tool response. These bounded checks do not close full parity.
