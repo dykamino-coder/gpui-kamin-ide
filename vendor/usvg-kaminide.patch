@@ -52,7 +52,7 @@ index 03f6b91f7884b528a042564310a46ee5f178b886..0126b579b3c6f2266f6e9b4b3cfe43be
 -    cache: &mut converter::Cache,
 +    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 diff --git a/vendor/usvg/src/parser/converter.rs b/vendor/usvg/src/parser/converter.rs
-index cd902d18fa0f8a5c2d763246c74be5612d080012..9cbc16646b6e152c56484789b66283ae13b0ed86
+index cd902d18fa0f8a5c2d763246c74be5612d080012..ea5f59e2d49e097c6853125582d908bf13d26b7d
 --- a/vendor/usvg/src/parser/converter.rs
 +++ b/vendor/usvg/src/parser/converter.rs
 @@ -46 +46,2 @@
@@ -148,13 +148,13 @@ index cd902d18fa0f8a5c2d763246c74be5612d080012..9cbc16646b6e152c56484789b66283ae
 @@ -854,0 +902,4 @@
 +    let geometry_group = state.parent_clip_path.is_none() && state.parent_markers.is_empty();
 +    if geometry_group {
-+        cache.geometry.group_start(node.id.get_usize(), g.abs_transform, g.transform);
++        cache.geometry.group_start(node.geometry_id(), g.abs_transform, g.transform);
 +    }
 @@ -859,0 +911,8 @@
 +    if geometry_group {
 +        if node.tag_name() == Some(EId::Image) {
 +            if let Some(bbox) = object_bbox {
-+                cache.geometry.object(node.id.get_usize(), bbox.to_rect(), g.abs_transform);
++                cache.geometry.object(node.geometry_id(), bbox.to_rect(), g.abs_transform);
 +            }
 +        }
 +        cache.geometry.group_end();
@@ -169,7 +169,7 @@ index cd902d18fa0f8a5c2d763246c74be5612d080012..9cbc16646b6e152c56484789b66283ae
 @@ -1060,0 +1123,4 @@
 +
 +    if state.parent_clip_path.is_none() && state.parent_markers.is_empty() {
-+        cache.geometry.object(node.id.get_usize(), path.bounding_box(), parent.abs_transform);
++        cache.geometry.object(node.geometry_id(), path.bounding_box(), parent.abs_transform);
 +    }
 @@ -1153,0 +1220,29 @@
 +
@@ -704,7 +704,7 @@ index 0000000000000000000000000000000000000000..16564783a1955a8190fff5f9515ce712
 +    }
 +}
 diff --git a/vendor/usvg/src/parser/svgtree/mod.rs b/vendor/usvg/src/parser/svgtree/mod.rs
-index dd0bdf78d012cbbf2e4a9cb75c10db476f506a91..1e97919762416cb7aa7c7d468bb0e780c9bd8a6d
+index dd0bdf78d012cbbf2e4a9cb75c10db476f506a91..f23002deeb442af0700b243b4f076e4951b28293
 --- a/vendor/usvg/src/parser/svgtree/mod.rs
 +++ b/vendor/usvg/src/parser/svgtree/mod.rs
 @@ -0,0 +1 @@
@@ -719,20 +719,27 @@ index dd0bdf78d012cbbf2e4a9cb75c10db476f506a91..1e97919762416cb7aa7c7d468bb0e780
 @@ -25,0 +32,2 @@
 +    // KaminIDE patch: bound typed nodes, including local use expansion and text.
 +    node_limit: usize,
-@@ -491,0 +500 @@
+@@ -392,0 +401,6 @@
++    /// Opaque identity used only by an explicitly requested geometry trace.
++    #[inline]
++    pub(super) fn geometry_id(&self) -> usize {
++        self.id.get_usize()
++    }
++
+@@ -491,0 +506 @@
 +            visited: Vec::new(),
-@@ -616,0 +626,4 @@
+@@ -616,0 +632,4 @@
 +    /// KaminIDE: elements already yielded. Upstream only stopped on a link
 +    /// back to the origin or to the current element, so `a -> b -> c -> b`
 +    /// looped forever.
 +    visited: Vec<NodeId>,
-@@ -633 +646,4 @@
+@@ -633 +652,4 @@
 -            if link.id() == self.curr || link.id() == self.origin {
 +            if link.id() == self.curr
 +                || link.id() == self.origin
 +                || self.visited.contains(&link.id())
 +            {
-@@ -641,0 +658 @@
+@@ -641,0 +664 @@
 +            self.visited.push(self.curr);
 diff --git a/vendor/usvg/src/parser/svgtree/parse.rs b/vendor/usvg/src/parser/svgtree/parse.rs
 index 524654a790d12df2fcf93df5e69872aff5436419..7092215f98f165d7064291971520191bf1df2925
@@ -2829,14 +2836,14 @@ index 9b0d892c0eb8190ab0fc34d02f3f3bd3cdd7f88f..1cf300bb4fa088b774513d5816a35350
 -    cache: &mut converter::Cache,
 +    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 diff --git a/vendor/usvg/src/parser/text.rs b/vendor/usvg/src/parser/text.rs
-index 1cac7a4ad37361826b77517e9c1a2be444dcd971..deb1d76699faec4ea305c120bd73c8a7679f5060
+index 1cac7a4ad37361826b77517e9c1a2be444dcd971..d7b5d8fd0937b8aa97cc91e40ed6a3238b5d559a
 --- a/vendor/usvg/src/parser/text.rs
 +++ b/vendor/usvg/src/parser/text.rs
 @@ -103 +103 @@
 -    cache: &mut converter::Cache,
 +    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 @@ -105,0 +106 @@
-+    cache.geometry.text_start(text_node.id.get_usize(), parent.abs_transform);
++    cache.geometry.text_start(text_node.geometry_id(), parent.abs_transform);
 @@ -143,0 +145 @@
 +        cache.geometry.text_end();
 @@ -146,0 +149 @@
@@ -2848,7 +2855,7 @@ index 1cac7a4ad37361826b77517e9c1a2be444dcd971..deb1d76699faec4ea305c120bd73c8a7
 -    cache: &mut converter::Cache,
 +    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 @@ -357,0 +361 @@
-+            cache.geometry.text_char(parent.id.get_usize(), iter_state.chunks.len() - 1, iter_state.chunk_bytes_count);
++            cache.geometry.text_char(parent.geometry_id(), iter_state.chunks.len() - 1, iter_state.chunk_bytes_count);
 @@ -780 +784 @@
 -    cache: &mut converter::Cache,
 +    cache: &mut converter::Cache<impl crate::GeometryTrace>,

@@ -103,7 +103,7 @@ pub(crate) fn convert(
     cache: &mut converter::Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
-    cache.geometry.text_start(text_node.id.get_usize(), parent.abs_transform);
+    cache.geometry.text_start(text_node.geometry_id(), parent.abs_transform);
     let pos_list = resolve_positions_list(text_node, state);
     let rotate_list = resolve_rotate_list(text_node);
     let writing_mode = convert_writing_mode(text_node);
@@ -358,7 +358,7 @@ fn collect_text_chunks_impl(
                 }
             }
 
-            cache.geometry.text_char(parent.id.get_usize(), iter_state.chunks.len() - 1, iter_state.chunk_bytes_count);
+            cache.geometry.text_char(parent.geometry_id(), iter_state.chunks.len() - 1, iter_state.chunk_bytes_count);
             is_new_span = false;
             iter_state.chars_count += 1;
             iter_state.chunk_bytes_count += char_len;

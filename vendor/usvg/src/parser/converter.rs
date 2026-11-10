@@ -901,7 +901,7 @@ pub(crate) fn convert_group<T: crate::GeometryTrace>(
     };
     let geometry_group = state.parent_clip_path.is_none() && state.parent_markers.is_empty();
     if geometry_group {
-        cache.geometry.group_start(node.id.get_usize(), g.abs_transform, g.transform);
+        cache.geometry.group_start(node.geometry_id(), g.abs_transform, g.transform);
     }
     collect_children(cache, &mut g);
 
@@ -911,7 +911,7 @@ pub(crate) fn convert_group<T: crate::GeometryTrace>(
     if geometry_group {
         if node.tag_name() == Some(EId::Image) {
             if let Some(bbox) = object_bbox {
-                cache.geometry.object(node.id.get_usize(), bbox.to_rect(), g.abs_transform);
+                cache.geometry.object(node.geometry_id(), bbox.to_rect(), g.abs_transform);
             }
         }
         cache.geometry.group_end();
@@ -1122,7 +1122,7 @@ fn convert_path(
     };
 
     if state.parent_clip_path.is_none() && state.parent_markers.is_empty() {
-        cache.geometry.object(node.id.get_usize(), path.bounding_box(), parent.abs_transform);
+        cache.geometry.object(node.geometry_id(), path.bounding_box(), parent.abs_transform);
     }
 
     match (raw_paint_order.order, marker) {
