@@ -331,3 +331,26 @@ Chromium runs the production App and real file adapter across close/reopen.
 This increment does not retain unsaved drafts, undo history, scroll, multiple
 selection ranges or state after host restart. Those were gaps in the earlier
 FilePanel scope, not requirements of the corrected browser layout.
+
+## Bounded follow-up: Escape queue restoration
+
+The existing Escape hook restores fallback queue text into the current page's
+composer, but clears only its local queue. A second or reopened page can recreate
+that queue from the host receipt. Extend the existing `interruptSession` call with
+optional exact queue IDs, and retain a host-owned display dismissal marker for
+those receipts. Keep forwarding the ordinary shared interrupt handler; dismissal
+does not claim that already delivered PTY text was cancelled in CLI. Stop without
+queue IDs keeps its current behavior. Dismissed receipts must still participate in
+JSONL matching so their eventual rows cannot consume a later identical message.
+
+Acceptance for this increment: real host reducer regressions for selected IDs,
+tab isolation, late fallback/duplicate receipts and identical-message matching;
+shared renderer receipt tests; Linux Podman production-browser Escape with two
+pages and a reopened page through the real BridgeHost. Full INC-2026-0087 parity
+and actual-model acceptance remain separate, open requirements.
+
+Validated on this increment: the host reducer first failed before the fix;
+the Windows workspace suite passes 89 tests (two Linux-only skips), shared
+webview passes 469 tests, and Linux Podman Chromium passes all 11 production
+browser fixtures including Escape across two pages and zero-page duplicate
+replay. The browser upstream is synthetic; this is not actual-model acceptance.

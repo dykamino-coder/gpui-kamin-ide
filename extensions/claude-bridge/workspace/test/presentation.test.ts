@@ -99,3 +99,43 @@ test('native receipt commitment survives zero views and transcript eviction in e
     assert.deepEqual(state.snapshot(), [])
   }
 })
+
+test('Escape dismisses only selected queue displays and retains delivery matching across pages', () => {
+  const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }))
+  const receipt = (tab: string, id: string) => (state.snapshot().find(frame => frame.channel === 'session:submission'
+    && (frame.args as any)[0] === tab && (frame.args as any)[1].id === id)!.args as any)[1]
+  for (const tab of ['tab', 'other']) for (const id of ['first', 'second']) {
+    state.accept({ kind: 'send', channel: 'pty-submit-text', args: [tab, 'same queued text', id] })
+    state.observe({ kind: 'event', channel: 'session:submission', args: [tab, { id, state: 'fallback' }] })
+  }
+  // A plain Stop interrupts without restoring any queue text.
+  state.accept({ kind: 'send', channel: 'session:interrupt', args: ['tab'] })
+  assert.equal(receipt('tab', 'first').fallbackQueue.dismissed, undefined)
+  state.accept({ kind: 'send', channel: 'session:interrupt', args: ['tab', ['first', 'unknown', 42]] })
+  assert.equal(receipt('tab', 'first').fallbackQueue.dismissed, true)
+  assert.equal(receipt('tab', 'first').state, 'fallback', 'Display dismissal is not CLI delivery cancellation')
+  assert.equal(receipt('tab', 'second').fallbackQueue.dismissed, undefined)
+  assert.equal(receipt('other', 'first').fallbackQueue.dismissed, undefined)
+  // A late duplicate cannot reset host-owned dismissal, even with old metadata.
+  const queue = receipt('tab', 'first').fallbackQueue
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'first', state: 'fallback',
+    fallbackQueue: { afterOrd: queue.afterOrd, enqueuedAt: queue.enqueuedAt } }] })
+  assert.equal(receipt('tab', 'first').fallbackQueue.dismissed, true)
+  state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', [{ type: 'user', uuid: 'accepted-first',
+    _ord: 1, message: { content: 'same queued text' } }]] })
+  assert.equal(receipt('tab', 'first').fallbackQueue.consumed, true)
+  assert.equal(receipt('tab', 'second').fallbackQueue.consumed, undefined, 'Dismissal cannot give its row to a later identical prompt')
+  assert.equal(receipt('tab', 'first').fallbackQueue.dismissed, true)
+  state.observe({ kind: 'event', channel: 'tab:closed', args: ['tab'] })
+  assert.ok(state.snapshot().every(frame => (frame.args as any)[0] !== 'tab'))
+})
+
+test('queue dismissal survives fallback arriving after Escape', () => {
+  const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }))
+  state.accept({ kind: 'send', channel: 'pty-submit-text', args: ['tab', 'pending fallback', 'id'] })
+  state.accept({ kind: 'send', channel: 'session:interrupt', args: ['tab', ['id']] })
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'id', state: 'fallback' }] })
+  assert.equal((state.snapshot()[0].args as any)[1].fallbackQueue.dismissed, true)
+  state.forgetSessions()
+  assert.deepEqual(state.snapshot(), [])
+})
