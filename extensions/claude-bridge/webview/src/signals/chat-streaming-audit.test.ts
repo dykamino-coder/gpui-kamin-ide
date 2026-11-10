@@ -71,10 +71,9 @@ describe('stream, then the canonical hand-off', () => {
     expect(getJsonlEntries(TAB).some((e) => e.__streaming !== undefined)).toBe(false)
   })
 
-  // INC-2026-0088 (#673/#675): the CLI writes the thinking row first. Merging it
-  // into the stub drops the streamed prose until the text row lands — the
-  // visible "answer prefix vanished" transition.
-  it.fails('the thinking-only canonical row does not blank the streamed prose (expected-fail: INC-2026-0088)', () => {
+  // D5 / INC-2026-0088 (#673/#675): the CLI writes the thinking row first. Merging
+  // it into the stub used to drop the streamed prose until the text row landed.
+  it('the thinking-only canonical row does not blank the streamed prose (D5, INC-2026-0088)', () => {
     const { b, mark } = setup()
     b.say('visible prose')
     const id = msgIdOf(b, mark)
@@ -83,6 +82,27 @@ describe('stream, then the canonical hand-off', () => {
     const [thinkingRow] = asLive(since(b, mark))
     deliver([thinkingRow!])
     expect(lastA()).toBe('A:visible prose')
+    expect(countOf('visible prose')).toBe(1)
+    deliver(asLive(since(b, mark)).slice(1))
+    expect(chatView(TAB).all).toEqual(cliView(b.recs))
+    expect(getJsonlEntries(TAB).some((e) => e.__streaming !== undefined)).toBe(false)
+  })
+
+  it('rows held under the stub survive a later stub snapshot and the TTL sweep', () => {
+    const { b, mark } = setup()
+    b.say('held prose')
+    const id = msgIdOf(b, mark)
+    applyStreamingEntry(TAB, stub(id))
+    streamText(id, 'held prose')
+    const [thinkingRow, textRow] = asLive(since(b, mark))
+    deliver([thinkingRow!])
+    applyStreamingEntry(TAB, stub(id, 'held prose')) // snapshot after the hold
+    b.user('next prompt') // a later turn supersedes the stub
+    deliver(asLive(b.recs.slice(-1)))
+    vi.advanceTimersByTime(30_000) // swept: the held thinking row must stay in the store
+    expect(getJsonlEntries(TAB).some((e) => e.uuid === thinkingRow!.uuid || e.__uuids?.includes(thinkingRow!.uuid!))).toBe(true)
+    deliver([textRow!])
+    expect(chatView(TAB).all).toEqual(cliView(b.recs))
   })
 
   it('a late stub snapshot after the canonical rows changes nothing', () => {
@@ -188,10 +208,9 @@ describe('mid-stream disruptions', () => {
     void mark
   })
 
-  // orderEntries sorts every stub (no timestamp/position) after all canonical
-  // rows, but stubSuperseded only looks for a successor AFTER the stub, so an
-  // aborted attempt is never superseded and stays below the retry's answer.
-  it.fails('API retry with a new message id: the superseded stub is swept, only the retry stays (expected-fail: chat-pipeline.md D6)', () => {
+  // D6: orderEntries sorts every stub after all canonical rows, so a successor
+  // is recognised by its later CLI timestamp, not by its position.
+  it('API retry with a new message id: the superseded stub is swept, only the retry stays (D6)', () => {
     const { b, mark } = setup()
     applyStreamingEntry(TAB, stub('msg-aborted'))
     applyStreamingDelta(TAB, { msgId: 'msg-aborted', blockIdx: 1, appendText: 'first attempt', kind: 'text' })

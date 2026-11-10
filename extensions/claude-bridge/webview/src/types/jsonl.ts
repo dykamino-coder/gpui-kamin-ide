@@ -107,6 +107,10 @@ export interface JsonlEntryData {
   /** Client-stamped time the streaming stub was first seen (ms epoch). Used by
    *  the TTL sweep to retire an orphaned stub whose canonical entry never came. */
   __streamStartedAt?: number
+  /** Newest canonical CLI timestamp (ms) in the store when this stub first
+   *  appeared. Stubs always sort last, so a successor turn is recognised by a
+   *  later timestamp, not by position (stubSuperseded). */
+  __streamAnchorTs?: number
   /** Every source uuid FOLDED into this entry. The CLI splits one model turn into
    *  N JSONL rows sharing a message.id but each with its OWN uuid; appendJsonlEntries
    *  merges them into one entry (whose `.uuid` is only the LAST one) and adds every

@@ -245,7 +245,14 @@ export function applyStreamingEntry(tabId: string, entry: JsonlEntryData): void 
   // text vanishes mid-turn and later deltas drop (no stub) until the final
   // snapshot recreates it (#73). A truly orphaned stub stops being written and
   // ages out normally.
-  const stamped = { ...entry, __streamStartedAt: Date.now() }
+  const prev = idx >= 0 ? existing[idx]! : undefined
+  const stamped: JsonlEntryData = {
+    ...entry,
+    __streamStartedAt: Date.now(),
+    __streamAnchorTs: prev?.__streamAnchorTs ?? newestCanonicalTs(existing),
+    // Canonical rows held under the stub (holdStreamedProse) survive a snapshot.
+    ...(prev?.__assistantParts ? { __assistantParts: prev.__assistantParts, __uuids: prev.__uuids } : {}),
+  }
   let next: JsonlEntryData[]
   if (idx >= 0) {
     next = existing.slice()
@@ -380,13 +387,72 @@ export function stubHasContent(e: JsonlEntryData): boolean {
  *  can lag well past the TTL on a busy/marathon session or when the CLI defers
  *  the final flush — erasing THAT is the "answer streamed then vanished" bug. */
 export function stubSuperseded(entries: JsonlEntryData[], i: number): boolean {
-  const msgId = entries[i]!.message?.id
+  const stub = entries[i]!
+  const msgId = stub.message?.id
   for (let j = i + 1; j < entries.length; j++) {
     const e = entries[j]!
     if (e.type === 'user') return true
     if (e.type === 'assistant' && e.__streaming === undefined && e.message?.id && e.message.id !== msgId) return true
   }
+  // orderEntries sorts every stub after all canonical rows (it has no timestamp
+  // or position), so the loop above never sees a successor in a sorted store.
+  // A turn the CLI wrote AFTER the stub appeared has a later CLI timestamp than
+  // anything the store held then (D6: an aborted attempt under its retry).
+  const anchor = stub.__streamAnchorTs
+  if (typeof anchor !== 'number') return false
+  for (const e of entries) {
+    if (e.__streaming !== undefined || !startsTurn(e, msgId)) continue
+    const ts = e.timestamp ? Date.parse(e.timestamp) : NaN
+    if (ts > anchor) return true
+  }
   return false
+}
+
+/** A canonical row that begins a new turn: a real user message (not a tool
+ *  result or meta row, which the CLI writes inside a turn), or another API message. */
+function startsTurn(e: JsonlEntryData, msgId: string | undefined): boolean {
+  if (e.type === 'assistant') return !!e.message?.id && e.message.id !== msgId
+  if (e.type !== 'user' || e.isMeta) return false
+  const c = e.message?.content
+  return !(Array.isArray(c) && c.length > 0 && c.every((b) => b?.type === 'tool_result'))
+}
+
+/** Newest CLI timestamp among the canonical rows near the end of the store. */
+function newestCanonicalTs(entries: readonly JsonlEntryData[]): number {
+  let max = Number.NEGATIVE_INFINITY
+  for (let i = entries.length - 1, seen = 0; i >= 0 && seen < 64; i--) {
+    const e = entries[i]!
+    if (e.__streaming !== undefined) continue
+    seen++
+    const ts = e.timestamp ? Date.parse(e.timestamp) : NaN
+    if (ts > max) max = ts
+  }
+  return max
+}
+
+function textLength(e: JsonlEntryData): number {
+  const c = e.message?.content
+  if (!Array.isArray(c)) return 0
+  let n = 0
+  for (const b of c) if (b?.type === 'text' && typeof b.text === 'string') n += b.text.trim().length
+  return n
+}
+
+/** D5 / INC-2026-0088: the CLI writes a turn's thinking row before its text
+ *  row. Folding that row into the stub replaced the streamed prose with an
+ *  empty canonical body until the text row landed. While the canonical rows
+ *  carry no text yet, keep the stub on screen and hold them under it; the
+ *  first canonical text takes over, byte-exact. */
+function holdStreamedProse(target: JsonlEntryData, merged: JsonlEntryData): JsonlEntryData {
+  if (target.__streaming === undefined || textLength(target) === 0 || textLength(merged) > 0) return merged
+  return { ...target, __assistantParts: merged.__assistantParts, __uuids: merged.__uuids }
+}
+
+/** The canonical entry a held stub stands for, built from its held rows. */
+function foldHeldParts(stub: JsonlEntryData): JsonlEntryData | null {
+  const parts = stub.__assistantParts
+  if (!parts || parts.length === 0) return null
+  return parts.slice(1).reduce((acc, p) => mergeAssistantEntry(acc, p), parts[0]!)
 }
 
 function sweepOrphanStubs(): void {
@@ -395,26 +461,31 @@ function sweepOrphanStubs(): void {
   const nextMap = new Map(jsonlEntriesByTab.value)
   let anyStubsLeft = false
   for (const [tabId, entries] of nextMap) {
-    const kept = entries.filter((e, i) => {
+    let replaced = false
+    // flatMap, not in-place: committed store arrays are immutable.
+    const kept = entries.flatMap((e, i): JsonlEntryData[] => {
       // A canonical entry has __streaming === undefined (stripped on merge);
       // only stubs carry a defined flag + a start stamp.
-      if (e.__streaming === undefined) return true
+      if (e.__streaming === undefined) return [e]
       const started = e.__streamStartedAt
-      if (typeof started !== 'number') return true
-      if (now - started <= STUB_TTL_MS) { anyStubsLeft = true; return true }
+      if (typeof started !== 'number') return [e]
+      if (now - started <= STUB_TTL_MS) { anyStubsLeft = true; return [e] }
       // TTL expired. Only sweep a stub that a later turn has SUPERSEDED — that is
       // a genuine orphan (retry / interrupt). A tail stub that still carries
       // content is kept: its canonical merges when it finally arrives, and until
       // then a shown answer beats a vanished one. Keep the sweeper alive
       // (anyStubsLeft) so the moment a successor appears the orphan is swept.
-      if (stubHasContent(e) && !stubSuperseded(entries, i)) { anyStubsLeft = true; return true }
+      if (stubHasContent(e) && !stubSuperseded(entries, i)) { anyStubsLeft = true; return [e] }
       // #78 telemetry: record WHY a streamed bubble was dropped so the next
       // "streamed then vanished" report is root-caused from the bug-dump instead
       // of showing an empty drop log.
       logDrop(stubHasContent(e) ? 'orphan-stub-superseded' : 'orphan-stub-empty', e)
-      return false
+      // Canonical rows held under the stub are real transcript rows: they stay.
+      const held = foldHeldParts(e)
+      if (held) { replaced = true; return [held] }
+      return []
     })
-    if (kept.length !== entries.length) {
+    if (kept.length !== entries.length || replaced) {
       nextMap.set(tabId, kept)
       changed = true
       bumpStructureVersion(tabId)
@@ -506,7 +577,8 @@ export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): bo
       }
       if (targetIdx >= 0) {
         if (!mutated) { nextEntries = existing.slice(); mutated = true }
-        nextEntries[targetIdx] = mergeAssistantEntry(nextEntries[targetIdx]!, e)
+        const target = nextEntries[targetIdx]!
+        nextEntries[targetIdx] = holdStreamedProse(target, mergeAssistantEntry(target, e))
         msgIdToIdx.set(incomingMsgId, targetIdx)
         continue
       }

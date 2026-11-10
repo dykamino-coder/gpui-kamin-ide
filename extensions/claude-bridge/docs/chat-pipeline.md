@@ -71,11 +71,16 @@ spinner" class is one of these copies diverging from (1) (§10).
   `__streaming`) and text deltas appended in place (coalesced to one signal write
   per frame). Canonical wins: once a canonical row for the id is stored, later
   stub snapshots and deltas are ignored. A canonical row merging into a stub
-  **replaces** the stub's blocks with the canonical blocks known so far.
+  replaces the stub's blocks with the canonical blocks, except while those carry
+  no text yet (the thinking row comes first): then the rows are held under the
+  stub (`__assistantParts`) and the streamed prose stays until the first
+  canonical text takes over (D5).
 - Interrupt (`abortStreamingForTab`) freezes the in-flight ids; the committed
   partial plus the interrupt marker arrive canonically.
 - Orphan stubs: a 20 s TTL sweep removes a stub only when a later turn
-  supersedes it (`stubSuperseded`) or it is empty.
+  supersedes it (`stubSuperseded`: a turn row after it, or one with a later CLI
+  timestamp than the store's newest when the stub appeared, since stubs sort
+  last) or it is empty. Rows held under a swept stub become a canonical entry.
 - The render-model cache is keyed on a structure version that text deltas do not
   bump; stub objects are re-pointed in O(tail).
 
@@ -207,8 +212,8 @@ to one copy's bookkeeping.
 | D2 | the renderer replay took the newest 4 500 by `_pos ?? _ord ?? 0`, putting the tagged first page in front and cutting the middle of a live session; scroll-up then pages before the first page, so the gap never fills | host `shared/chat-stored-entries.ts` (`chatReplayTail`), `connection-manager.ts` (view snapshot) | **fixed here** (`newestInFileOrder`) |
 | D3 | uuid-less bookkeeping (cost-state, api-request, …) is stored and counted by the store cap; a flood after the last message evicts every real row → empty chat while the console shows everything | webview `jsonl.ts`, host replay tail | fixed by #698; regression test now a plain `it` |
 | D4 | multi-leaf chain union keeps a rewound-away branch visible; the CLI shows one branch | `compute-chain-uuids.ts` | expected-fail; open (leaf rule must follow the CLI: `last-prompt.leafUuid`, else last main-chain line) |
-| D5 | the thinking-only canonical row replaces the stub's blocks, so streamed prose disappears until the text row lands | `merge-assistant.ts` | expected-fail; open, INC-2026-0088 transition |
-| D6 | stubs always sort last, but `stubSuperseded` looks for a successor after the stub, so an aborted API attempt (new `message.id` on retry) is never swept and stays under the retry's answer | `jsonl.ts` | expected-fail; open |
+| D5 | the thinking-only canonical row replaces the stub's blocks, so streamed prose disappears until the text row lands | `jsonl.ts` (`holdStreamedProse`) | fixed: canonical rows without text are held under the stub until the first canonical text takes over |
+| D6 | stubs always sort last, but `stubSuperseded` looks for a successor after the stub, so an aborted API attempt (new `message.id` on retry) is never swept and stays under the retry's answer | `jsonl.ts` (`stubSuperseded`) | fixed: a successor is a later CLI timestamp than the store's newest when the stub appeared |
 | D7 | live rows carry no `_pos`; after a bottom trim of a live session the oldest resident row has no page cursor, so scroll-up stops (`reachedStart`) with history above unreachable; the mirror also never gets live rows | server `jsonl-watcher.ts` (tail contract) | expected-fail; open (tag live rows with `_pos`/`_posEnd`, ADR step 1) |
 | D8 | the host cache can hold the same record twice (untagged live copy keyed by uuid, tagged page copy keyed by `_pos`); the webview dedups by uuid, but the cache cap counts both | host `connection-manager.ts` | open, low |
 
