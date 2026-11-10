@@ -6,7 +6,31 @@ import { createServer, get } from 'node:http'
 import { test } from 'node:test'
 import { CREDENTIAL_FILE, SESSION_FILE, loadCredentials, resetCredentials } from '../src/credentials.js'
 import { WorkspaceAuth } from '../src/auth.js'
+import { WorkspaceSessionState } from '../src/session-state.js'
 import { startWorkspaceServer } from '../src/server.js'
+
+test('browser auth and open tabs persist independently across restart and credential reset', async t => {
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'bridgeweb-credentials-'))
+  t.after(() => fs.rmSync(storage, { recursive: true }))
+  const credentials = await loadCredentials(storage, 'http://127.0.0.1:1', { BRIDGE_TOKEN: 'synthetic-token' })
+  const persistent = { secret: credentials.browserSecret, file: path.join(storage, SESSION_FILE) }
+  const auth = () => new WorkspaceAuth(credentials.token, async () => ({ id: 'identity' }), 60_000, Date.now, persistent)
+  const cookie = await auth().loginLocal()
+  assert.ok(cookie)
+  const originalAuth = fs.readFileSync(persistent.file, 'utf8')
+  const store = () => new WorkspaceSessionState(storage, '/workspace', 'ws://127.0.0.1:1', credentials.token)
+  const tabs = [{ id: 'open-tab', cwd: '/workspace', label: '#1', createdAt: new Date().toISOString() }]
+  store().save(tabs, 'open-tab')
+  assert.equal(await auth().validate(cookie), true)
+  assert.equal(fs.readFileSync(persistent.file, 'utf8'), originalAuth)
+  assert.deepEqual(store().load(), { active: 'open-tab', tabs })
+  auth().logout(cookie)
+  assert.equal(await auth().validate(cookie), false)
+  assert.deepEqual(store().load(), { active: 'open-tab', tabs })
+  resetCredentials(storage)
+  assert.equal(fs.existsSync(persistent.file), false)
+  assert.deepEqual(store().load(), { active: 'open-tab', tabs })
+})
 
 test('service registers once, imports once, persists private secrets and resets explicitly', async t => {
   const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'bridgeweb-credentials-'))

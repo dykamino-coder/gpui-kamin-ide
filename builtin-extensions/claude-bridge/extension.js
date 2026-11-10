@@ -42564,6 +42564,26 @@ function handleServerMessage(msg, ctx) {
   }
 }
 
+// src/shared/chat-stored-entries.ts
+var CHAT_STORED_ENTRY_TYPES = /* @__PURE__ */ new Set([
+  "user",
+  "assistant",
+  "system",
+  "attachment",
+  "mode",
+  "permission-mode",
+  "queue-operation"
+]);
+function isChatStoredEntry(entry) {
+  return typeof entry?.type === "string" && CHAT_STORED_ENTRY_TYPES.has(entry.type);
+}
+function chatReplayTail(entries2, max) {
+  const kept = entries2.filter(isChatStoredEntry);
+  if (kept.length <= max) return kept;
+  const key2 = (e) => e._pos ?? e._ord ?? 0;
+  return kept.sort((a, b) => key2(a) - key2(b)).slice(-max);
+}
+
 // src/main/ws/connection-manager.ts
 var MIRROR_PAINT_RECORDS = 200;
 var REPLAY_TAIL_MAX = 4500;
@@ -43325,7 +43345,7 @@ var ConnectionManager = class _ConnectionManager {
     const count = Math.max(1, Math.min(REPLAY_TAIL_MAX, maxRecords));
     const ordered = [...this.cachedJsonlEntries].sort((a, b) => (a._pos ?? a._ord ?? 0) - (b._pos ?? b._ord ?? 0));
     return {
-      entries: ordered.slice(-count),
+      entries: ordered.filter(isChatStoredEntry).slice(-count),
       streaming: this.cachedStreamingEntry,
       subagents: [...this.cachedSubagentEntries].map(([key2, slot]) => ({ ...slot, agentId: slot.agentId ?? key2, entries: slot.entries.slice(-count) })),
       boundaries: this.lastSegmentIndex,
@@ -43367,11 +43387,7 @@ var ConnectionManager = class _ConnectionManager {
         this.window.webContents.send("streaming-entry", this.tabId, this.cachedStreamingEntry);
       }
     };
-    let toReplay = this.cachedJsonlEntries;
-    if (toReplay.length > REPLAY_TAIL_MAX) {
-      const ord = (e) => e._pos ?? e._ord ?? 0;
-      toReplay = [...toReplay].sort((a, b) => ord(a) - ord(b)).slice(-REPLAY_TAIL_MAX);
-    }
+    const toReplay = chatReplayTail(this.cachedJsonlEntries, REPLAY_TAIL_MAX);
     if (toReplay.length > 0) this.batcher.drainMainThen([...toReplay], tail);
     else tail();
   }
