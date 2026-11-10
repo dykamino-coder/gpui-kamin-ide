@@ -10,13 +10,14 @@ import type { SessionConfig } from '../types/pty'
 const session = (model?: string): SessionConfig => ({ cwd: '/repo', model }) as SessionConfig
 vi.mock('../config/settings', () => ({ injectProxyEnv: vi.fn() }))
 
-it('permits MCP Tasks feature discovery while preserving native-agent and renderer controls', () => {
-  vi.stubEnv('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', '1')
-  vi.stubEnv('DISABLE_NONESSENTIAL_TRAFFIC', '1')
+it('trims nonessential traffic and keeps MCP Tasks in the background (CLI 2.1.319+)', () => {
+  vi.stubEnv('CLAUDE_CODE_DISABLE_MCP_TASK_BACKGROUND', '1')
+  vi.stubEnv('CLAUDE_CODE_DISABLE_MCP_TASKS', '1')
   try {
     const env = buildSessionEnv('synthetic-session', 'synthetic-user')
-    expect(env).not.toHaveProperty('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
-    expect(env).not.toHaveProperty('DISABLE_NONESSENTIAL_TRAFFIC')
+    expect(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
+    expect(env).not.toHaveProperty('CLAUDE_CODE_DISABLE_MCP_TASK_BACKGROUND')
+    expect(env).not.toHaveProperty('CLAUDE_CODE_DISABLE_MCP_TASKS')
     expect(env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS).toBe('1')
     expect(env.CLAUDE_CODE_NO_FLICKER).toBe('1')
   } finally {

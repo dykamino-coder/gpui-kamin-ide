@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { register } from '../../cli-mod/hooks/bridge.js'
 
-// Replay the public event shapes observed on CLI 2.1.312. In particular, abort
+// Replay the public event shapes observed on CLI 2.1.322. In particular, abort
 // drains native queued prompts through door:prompt without a second submit.
 async function harness() {
   const hooks = new Map<string, (...args: any[]) => any>()
@@ -11,7 +11,7 @@ async function harness() {
   const reads: unknown[] = []
   const engine = {
     env: { get: async () => 'test' },
-    session: { version: async () => ({ version: '2.1.312' }) },
+    session: { version: async () => ({ version: '2.1.322' }) },
     clock: {
       now: async () => 0,
       every: (_: number, callback: () => Promise<void>) => {

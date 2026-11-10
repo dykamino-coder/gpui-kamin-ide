@@ -104,6 +104,10 @@ export const NON_RENDERING_ENTRY_TYPES: ReadonlySet<string> = new Set([
   'todo-snapshot',
   'compact-summary',
   'tool-call-error',
+  // CLI 2.1.313+ ownership/resume/REPL bookkeeping.
+  'session-owner',
+  'resume-head-vouch',
+  'repl-mode',
 ])
 
 /** Does an `attachment` row actually DRAW anything?
