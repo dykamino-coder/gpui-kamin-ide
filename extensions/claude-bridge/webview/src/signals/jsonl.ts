@@ -1,4 +1,5 @@
 import { signal, computed } from '@preact/signals'
+import { noteCompactionStream } from './compaction'
 import { activeTabId } from './tabs'
 import type { JsonlEntryData } from '../types/jsonl'
 import { orderEntries } from './order-entries'
@@ -219,6 +220,7 @@ function findByMsgIdFromTail(entries: JsonlEntryData[], msgId: string): number {
 }
 
 export function applyStreamingEntry(tabId: string, entry: JsonlEntryData): void {
+  if (noteCompactionStream(tabId, entry)) return // a status, not an answer
   const msgId = entry.message?.id
   if (!msgId) return
   if (abortedStreamIds.has(msgId)) return // user interrupted this turn — freeze

@@ -1,4 +1,5 @@
 import { receiveSubmission, noteSubmissionRows, forgetSubmissions } from '../signals/submissions'
+import { forgetCompaction, noteCompactionRows } from '../signals/compaction'
 import { setTabUsage } from '../signals/session-usage'
 import { useEffect, useRef } from 'preact/hooks'
 
@@ -145,6 +146,7 @@ export function useBridgeListeners(
       terminalSnapshots.close(tabId)
       forgetTabConnection(tabId)
       forgetSubmissions(tabId)
+      forgetCompaction(tabId)
       const closedTab = tabs.value.find(t => t.id === tabId)
       const remaining = tabs.value.filter(t => t.id !== tabId)
       tabs.value = remaining
@@ -348,6 +350,7 @@ export function useBridgeListeners(
       const toStore = role === 'tools' ? projectPlanTodoEntries(entries as any) : (entries as any)
       appendJsonlEntries(tabId, toStore)
       noteSubmissionRows(tabId, toStore)
+      noteCompactionRows(tabId, entries)
       // Счётчики панели Tools: из ПОЛНОГО батча (не среза), записей не хранит —
       // только имя→count с дедупом по id tool_use.
       recordToolUsage(tabId, entries)

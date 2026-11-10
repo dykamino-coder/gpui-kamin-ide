@@ -20,3 +20,24 @@ it('accumulates streaming text and thinking in the host while every renderer is 
   message({ type: 'streaming:entry', entry: { __streaming: false, message: { id: 'turn' } } })
   expect(cached).toBeNull()
 })
+
+it('drops a cached compaction marker once the compaction result arrives', () => {
+  let cached: any
+  const cache: any[] = []
+  const ctx = {
+    tabId: 'tab', window: { webContents: { send: vi.fn() } }, isRendererMuted: () => false,
+    setCachedStreamingEntry: (entry: any) => { cached = entry },
+    getCachedStreamingEntry: () => cached,
+    pushJsonlCache: (entries: any[]) => cache.push(...entries),
+    getCachedJsonl: () => cache,
+    batcher: { queueMain: vi.fn() },
+    setLastModel: vi.fn(),
+  } as unknown as HandlerCtx
+  const message = (data: unknown) => handleServerMessage(data as any, ctx)
+  // The final snapshot was lost (reconnect mid-compaction).
+  message({ type: 'streaming:entry', entry: { __streaming: true, __compaction: true, message: { id: 'compact', content: [] } } })
+  message({ type: 'jsonl:entries', entries: [{ type: 'user', uuid: 'u', message: { role: 'user', content: 'unrelated' } }] })
+  expect(cached?.__compaction).toBe(true)
+  message({ type: 'jsonl:entries', entries: [{ type: 'system', subtype: 'compact_boundary', uuid: 'b' }] })
+  expect(cached).toBeNull()
+})

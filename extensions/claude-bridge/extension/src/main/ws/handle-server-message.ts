@@ -44,6 +44,7 @@ export interface HandlerCtx {
   pushJsonlCache: (entries: any[], replay?: boolean) => void
   getCachedJsonl: () => any[]
   setCachedStreamingEntry: (entry: any) => void
+  getCachedStreamingEntry?: () => any
   appendCachedStreamingDelta?: (delta: import('../../shared/streaming-delta').StreamingTextDelta) => void
   pushSubagentCache: (key: string, agentName: string, agentId: string | undefined, entries: any[]) => void
   setCachedJsonlStatus: (status: any) => void
@@ -206,6 +207,10 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       // realistic single-session conversation while keeping the cache
       // <50MB on assistant-heavy streams.
       ctx.pushJsonlCache(entries, (msg as any).replay === true)
+      // A compaction marker whose final snapshot was lost must not come back
+      // on the next renderer replay once the compaction result is in.
+      if (ctx.getCachedStreamingEntry?.()?.__compaction && entries.some(e => (e.type === 'system' && e.subtype === 'compact_boundary') || e.isCompactSummary))
+        ctx.setCachedStreamingEntry?.(null)
       trimJsonlCache(ctx.getCachedJsonl())
       ctx.batcher.queueMain(entries)
       // Cache last model from assistant entries

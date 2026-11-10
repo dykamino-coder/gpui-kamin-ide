@@ -42384,6 +42384,8 @@ function handleServerMessage(msg, ctx) {
     case "jsonl:entries": {
       const entries2 = msg.entries;
       ctx.pushJsonlCache(entries2, msg.replay === true);
+      if (ctx.getCachedStreamingEntry?.()?.__compaction && entries2.some((e) => e.type === "system" && e.subtype === "compact_boundary" || e.isCompactSummary))
+        ctx.setCachedStreamingEntry?.(null);
       trimJsonlCache(ctx.getCachedJsonl());
       ctx.batcher.queueMain(entries2);
       for (let i = entries2.length - 1; i >= 0; i--) {
@@ -43729,6 +43731,7 @@ var ConnectionManager = class _ConnectionManager {
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e;
       },
+      getCachedStreamingEntry: () => this.cachedStreamingEntry,
       appendCachedStreamingDelta: (delta) => {
         appendStreamingText(this.cachedStreamingEntry, delta);
       },
