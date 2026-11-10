@@ -79,4 +79,21 @@ describe('submission transcript identity', () => {
     receiveSubmission('tab', { ...receipt, fallbackQueue: { ...receipt.fallbackQueue, consumed: true } })
     expect(localQueue.value.has('tab')).toBe(false)
   })
+
+  it('retains host display dismissal across late receipts and a fresh page without cancelling delivery', () => {
+    const receipt = { id: 'fallback', text: 'restore in composer', state: 'fallback' as const,
+      fallbackQueue: { afterOrd: 10, enqueuedAt: 123 } }
+    receiveSubmission('tab', receipt)
+    expect(localQueue.value.has('tab')).toBe(true)
+    receiveSubmission('tab', { ...receipt, fallbackQueue: { ...receipt.fallbackQueue, dismissed: true } })
+    expect(localQueue.value.has('tab')).toBe(false)
+    receiveSubmission('tab', receipt)
+    expect(submissions.value.get('tab')![0].fallbackQueue?.dismissed).toBe(true)
+    expect(submissions.value.get('tab')![0].state).toBe('fallback')
+    submissions.value = new Map()
+    receiveSubmission('tab', { ...receipt, fallbackQueue: { ...receipt.fallbackQueue, dismissed: true } })
+    receiveSubmission('tab', receipt)
+    expect(localQueue.value.has('tab')).toBe(false)
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toEqual([])
+  })
 })
