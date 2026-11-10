@@ -340,10 +340,9 @@ const FALLBACK_TIMEOUT_MS = 540_000
 // Async fallback when ripgrep isn't available (streaming readdir). Like the rg
 // paths, a search cut off by its deadline says so: an incomplete walk must never
 // read as "No matches found." or as a complete list.
-export async function grepFallback(
+async function grepFallback(
   pattern: string, searchPath: string, outputMode: string,
   caseInsensitive: boolean, headLimit: number, offset: number,
-  timeoutMs = FALLBACK_TIMEOUT_MS,
 ): Promise<McpResult> {
   if (hasNestedQuantifier(pattern)) {
     return errorResult(
@@ -356,6 +355,33 @@ export async function grepFallback(
   let regex: RegExp
   try { regex = new RegExp(pattern, flags) }
   catch (e) { return errorResult(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`) }
+
+  try {
+    const stat = await fsp.stat(searchPath)
+    if (stat.isFile()) {
+      const results: string[] = []
+      const content = await fsp.readFile(searchPath, 'utf8')
+      const lines = content.split('\n')
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? ''
+        if (regex.test(line) && outputMode === 'content') results.push(`${i + 1}:${line}`)
+        regex.lastIndex = 0
+      }
+      if (results.length > 0 && outputMode === 'files_with_matches') return textResult(searchPath)
+      if (outputMode === 'count') return textResult(`${searchPath}:${results.length}`)
+      return fallbackResult(results, offset, headLimit, false, FALLBACK_TIMEOUT_MS)
+    }
+  } catch {
+    // Not stat-able: walk it as a directory below (readdir failure yields nothing).
+  }
+  const { results, timedOut } = await walkFallback(regex, searchPath, outputMode, headLimit, FALLBACK_TIMEOUT_MS)
+  return fallbackResult(results, offset, headLimit, timedOut, FALLBACK_TIMEOUT_MS)
+}
+
+/** Directory walk of the fallback, bounded by `timeoutMs` of wall clock. */
+export async function walkFallback(
+  regex: RegExp, searchPath: string, outputMode: string, headLimit: number, timeoutMs: number,
+): Promise<{ results: string[]; timedOut: boolean }> {
   const results: string[] = []
   const deadline = Date.now() + timeoutMs
   let timedOut = false
@@ -401,25 +427,14 @@ export async function grepFallback(
     }
   }
 
-  try {
-    const stat = await fsp.stat(searchPath)
-    if (stat.isFile()) {
-      const content = await fsp.readFile(searchPath, 'utf8')
-      const lines = content.split('\n')
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] ?? ''
-        if (regex.test(line) && outputMode === 'content') results.push(`${i + 1}:${line}`)
-        regex.lastIndex = 0
-      }
-      if (results.length > 0 && outputMode === 'files_with_matches') return textResult(searchPath)
-      if (outputMode === 'count') return textResult(`${searchPath}:${results.length}`)
-    } else {
-      await searchDir(searchPath)
-    }
-  } catch {
-    await searchDir(searchPath)
-  }
+  await searchDir(searchPath)
+  return { results, timedOut }
+}
 
+/** Final fallback text; a deadline-cut walk is reported, never passed off as complete. */
+export function fallbackResult(
+  results: string[], offset: number, headLimit: number, timedOut: boolean, timeoutMs: number,
+): McpResult {
   let output = results.join('\n')
   if (offset > 0) output = output.split('\n').slice(offset).join('\n')
   if (headLimit > 0) output = output.split('\n').slice(0, headLimit).join('\n')

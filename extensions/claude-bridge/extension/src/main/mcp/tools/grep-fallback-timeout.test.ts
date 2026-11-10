@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { grepFallback } from './grep-tool'
+import { fallbackResult, walkFallback } from './grep-tool'
 
 // The no-ripgrep fallback must tell the model when its deadline cut the walk
 // short, instead of returning a partial list or "No matches found." as if the
@@ -21,27 +21,37 @@ const text = (r: { content: Array<{ text?: string }> }): string => r.content.map
 
 describe('grep fallback deadline', () => {
   it('completes within budget without a timeout notice', async () => {
-    const r = await grepFallback('needle', dir, 'files_with_matches', false, 0, 0)
+    const walk = await walkFallback(/needle/g, dir, 'files_with_matches', 0, 60_000)
+    expect(walk).toMatchObject({ timedOut: false })
+    expect(walk.results).toHaveLength(3)
+    const r = fallbackResult(walk.results, 0, 0, walk.timedOut, 60_000)
     expect(text(r)).not.toMatch(/^Error:/)
     expect(text(r)).not.toContain('timed out')
-    expect(text(r).split('\n')).toHaveLength(3)
   })
 
   it('reports a timeout instead of "No matches found." when nothing was searched', async () => {
-    const r = await grepFallback('needle', dir, 'files_with_matches', false, 0, 0, -1)
+    const walk = await walkFallback(/needle/g, dir, 'files_with_matches', 0, -1)
+    expect(walk).toEqual({ results: [], timedOut: true })
+    const r = fallbackResult(walk.results, 0, 0, walk.timedOut, 540_000)
     expect(text(r)).toMatch(/^Error:/)
-    expect(text(r)).toContain('timed out')
+    expect(text(r)).toContain('timed out after 540s')
     expect(text(r)).not.toContain('No matches found.')
   })
 
   it('marks results as partial when the deadline passes mid-walk', async () => {
     const start = Date.now()
     let calls = 0
-    // First entry check is inside the budget, every later one is past it.
+    // The deadline and the first entry check are inside the budget, later checks are past it.
     vi.spyOn(Date, 'now').mockImplementation(() => (calls++ < 2 ? start : start + 10_000))
-    const r = await grepFallback('needle', dir, 'files_with_matches', false, 0, 0, 1_000)
+    const walk = await walkFallback(/needle/g, dir, 'files_with_matches', 0, 1_000)
+    expect(walk.timedOut).toBe(true)
+    expect(walk.results).toHaveLength(1)
+    const r = fallbackResult(walk.results, 0, 0, walk.timedOut, 1_000)
     expect(text(r)).not.toMatch(/^Error:/)
     expect(text(r)).toContain('partial results above')
-    expect(text(r).split('\n')[0]).toContain(dir)
+  })
+
+  it('keeps a complete empty search as "No matches found."', () => {
+    expect(text(fallbackResult([], 0, 0, false, 540_000))).toBe('No matches found.')
   })
 })

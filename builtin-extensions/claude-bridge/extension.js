@@ -19200,7 +19200,7 @@ async function grepSearch(input) {
 function hasNestedQuantifier(p) {
   return /\([^()]*[+*][^()]*\)\s*[+*{]/.test(p);
 }
-async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset, timeoutMs = FALLBACK_TIMEOUT_MS) {
+async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset) {
   if (hasNestedQuantifier(pattern)) {
     return errorResult4(
       `Pattern "${pattern}" has a nested quantifier that can hang the JS search engine, and ripgrep isn't available on this machine to run it safely. Simplify the pattern (avoid nested quantifiers like (a+)+ / (.*x){n}) or install ripgrep on PATH.`
@@ -19213,6 +19213,27 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
   } catch (e) {
     return errorResult4(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`);
   }
+  try {
+    const stat = await import_promises3.default.stat(searchPath);
+    if (stat.isFile()) {
+      const results2 = [];
+      const content = await import_promises3.default.readFile(searchPath, "utf8");
+      const lines = content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? "";
+        if (regex.test(line) && outputMode === "content") results2.push(`${i + 1}:${line}`);
+        regex.lastIndex = 0;
+      }
+      if (results2.length > 0 && outputMode === "files_with_matches") return textResult4(searchPath);
+      if (outputMode === "count") return textResult4(`${searchPath}:${results2.length}`);
+      return fallbackResult(results2, offset, headLimit, false, FALLBACK_TIMEOUT_MS);
+    }
+  } catch {
+  }
+  const { results, timedOut } = await walkFallback(regex, searchPath, outputMode, headLimit, FALLBACK_TIMEOUT_MS);
+  return fallbackResult(results, offset, headLimit, timedOut, FALLBACK_TIMEOUT_MS);
+}
+async function walkFallback(regex, searchPath, outputMode, headLimit, timeoutMs) {
   const results = [];
   const deadline = Date.now() + timeoutMs;
   let timedOut = false;
@@ -19259,24 +19280,10 @@ ${matchingLines.join("\n")}`);
       }
     }
   }
-  try {
-    const stat = await import_promises3.default.stat(searchPath);
-    if (stat.isFile()) {
-      const content = await import_promises3.default.readFile(searchPath, "utf8");
-      const lines = content.split("\n");
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] ?? "";
-        if (regex.test(line) && outputMode === "content") results.push(`${i + 1}:${line}`);
-        regex.lastIndex = 0;
-      }
-      if (results.length > 0 && outputMode === "files_with_matches") return textResult4(searchPath);
-      if (outputMode === "count") return textResult4(`${searchPath}:${results.length}`);
-    } else {
-      await searchDir(searchPath);
-    }
-  } catch {
-    await searchDir(searchPath);
-  }
+  await searchDir(searchPath);
+  return { results, timedOut };
+}
+function fallbackResult(results, offset, headLimit, timedOut, timeoutMs) {
   let output = results.join("\n");
   if (offset > 0) output = output.split("\n").slice(offset).join("\n");
   if (headLimit > 0) output = output.split("\n").slice(0, headLimit).join("\n");
