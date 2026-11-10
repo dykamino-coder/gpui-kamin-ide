@@ -478,3 +478,9 @@ synthetic upstream. Full parity and composed actual-model acceptance remain open
 Queue Escape restoration now uses the same per-session durable draft: clean other
 pages and reopened pages recover the restored text. Queue dismissal still never
 resubmits or claims cancellation; conflicting pages retain their explicit choice.
+
+Implementation: [#690](https://github.com/dykamino-coder/gpui-kamin-ide/pull/690).
+The initial real-host draft invoke failed before implementation. The combined
+candidate with durable submission receipts passes all 17 Linux Podman production
+browser fixtures; this fixture upstream is synthetic. Strict full completion
+continues rejecting 545 missing execution-proof gaps.
