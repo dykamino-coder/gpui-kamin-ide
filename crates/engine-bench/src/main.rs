@@ -18,6 +18,8 @@ mod edits;
 #[cfg(windows)]
 mod frames;
 #[cfg(windows)]
+mod fresh_check;
+#[cfg(windows)]
 mod gpu;
 #[cfg(windows)]
 mod host;
