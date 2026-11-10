@@ -14,6 +14,12 @@
 //! (transforms, opacity, masks, groups, segment capture), where the mask is
 //! not in window space. Open ink sinks (`gpui::InkSink`) still receive the
 //! bounds of a skipped line: they measure culled ink too.
+//!
+//! Those bounds are wider than the glyph ink the line would have offered, and
+//! the root flow keeps a block's record or skips it by its ink's distance from
+//! the screen (`layout::reuse`: farther than the larger viewport side). So only
+//! lines whose grown band lies beyond that distance from the mask are skipped:
+//! a block's ink then decides the same as if every line had been painted.
 
 use crate::text::paragraph::*;
 use gpui::{Bounds, Pixels, Window, point, px, size};
@@ -24,6 +30,8 @@ pub(super) struct Cull {
     top: Pixels,
     bottom: Pixels,
     bleed: Pixels,
+    /// Least distance of a skipped line's grown band from the mask.
+    far: Pixels,
     /// Horizontal extent offered to ink sinks for a skipped line.
     left: Pixels,
     right: Pixels,
@@ -59,10 +67,12 @@ impl Cull {
             .iter()
             .map(|l| l.width + l.indent.abs())
             .fold(px(0.), Pixels::max);
+        let viewport = window.viewport_size();
         Some(Self {
             top: mask.origin.y,
             bottom: mask.origin.y + mask.size.height,
             bleed,
+            far: viewport.width.max(viewport.height) + px(1.),
             left: bounds.origin.x - widest - bleed,
             right: bounds.origin.x + bounds.size.width + widest + bleed,
         })
@@ -80,10 +90,11 @@ impl Cull {
         }
     }
 
-    /// The ink bounds of a line of band `band` when they miss the mask.
+    /// The ink bounds of a line of band `band` when they lie farther than
+    /// `far` from the mask.
     fn ink_outside(&self, band: (Pixels, Pixels)) -> Option<Bounds<Pixels>> {
         let (top, bottom) = (band.0 - self.bleed, band.1 + self.bleed);
-        (bottom <= self.top || top >= self.bottom).then(|| Bounds {
+        (bottom + self.far <= self.top || top - self.far >= self.bottom).then(|| Bounds {
             origin: point(self.left, top),
             size: size(self.right - self.left, bottom - top),
         })
@@ -100,6 +111,7 @@ mod tests {
             top: px(100.),
             bottom: px(700.),
             bleed: px(30.),
+            far: px(0.),
             left: px(-50.),
             right: px(850.),
         };
@@ -126,6 +138,22 @@ mod tests {
         let ink = cull.ink_outside((px(800.), px(820.))).expect("below");
         assert_eq!(ink.origin, point(px(-50.), px(770.)));
         assert_eq!(ink.size, size(px(900.), px(80.)));
+        let farther = Cull {
+            far: px(100.),
+            ..cull
+        };
+        assert!(
+            farther.ink_outside((px(800.), px(820.))).is_none(),
+            "within the far distance"
+        );
+        let ink = farther
+            .ink_outside((px(900.), px(920.)))
+            .expect("beyond it");
+        assert_eq!(
+            ink.origin,
+            point(px(-50.), px(870.)),
+            "offered grown by the bleed only"
+        );
     }
 }
 
