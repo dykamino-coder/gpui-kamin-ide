@@ -60,6 +60,10 @@ const NON_RENDERING = new Set<string>([
   'content-replacement',
   'progress',
   'speculation-accept',
+  // CLI 2.1.313+ ownership/resume/REPL bookkeeping.
+  'session-owner',
+  'resume-head-vouch',
+  'repl-mode',
 ])
 
 // CLI-synthesised placeholder texts that never render as a bubble (mirrors

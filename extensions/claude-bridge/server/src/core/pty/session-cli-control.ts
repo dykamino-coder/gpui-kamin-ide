@@ -74,7 +74,7 @@ export class SessionCliControl {
     sendToClient(this.session.ws, {
       type: 'session:output',
       sessionId: this.session.id,
-      data: '\r\n[Bridge: CLI mod unavailable or incompatible (requires 2.1.312); using native terminal delivery and OSC status.]\r\n',
+      data: '\r\n[Bridge: CLI mod unavailable or incompatible (requires 2.1.322); using native terminal delivery and OSC status.]\r\n',
     })
   }
 

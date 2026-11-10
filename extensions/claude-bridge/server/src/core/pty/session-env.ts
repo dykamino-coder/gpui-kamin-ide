@@ -109,10 +109,21 @@ export function buildSessionEnv(sessionId: string, userName: string): Record<str
   // Per-CLI cost trims for the headless multi-session pool (verified against the
   // real 2.1.202 binary — every flag's read-site + gated feature grep-confirmed):
   //
-  // MCP Tasks beta negotiation fetches the account feature flags in 2.1.312.
-  // Essential-only mode suppresses that fetch and silently disables Tasks.
-  delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
-  delete env.DISABLE_NONESSENTIAL_TRAFFIC
+  // NONESSENTIAL_TRAFFIC → "essential-traffic" mode: kills the per-session
+  //   version-check, MCP-registry/directory fetch, Grove settings, Claude
+  //   Projects, DesignSync, asset fetch and error-reporting (Sentry). It sits on
+  //   a SEPARATE branch from telemetry and does NOT touch OTEL export,
+  //   streaming, resume, MCP tool routing, or the terminal title.
+  //   2.1.312–2.1.318 needed the account feature flags for MCP Tasks, so the
+  //   trim was dropped; since 2.1.319 terminal MCP Tasks work without fetching
+  //   flags, so it is back.
+  env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+  // Bridge's long local tools rely on the CLI moving an MCP task to the
+  // background at once and reporting its completion later (2.1.319+). Native
+  // background Bash stays off above; an inherited opt-out must not turn
+  // Bridge's tasks back into blocking calls.
+  delete env.CLAUDE_CODE_DISABLE_MCP_TASK_BACKGROUND
+  delete env.CLAUDE_CODE_DISABLE_MCP_TASKS
   // Memory subsystem: we already run with auto-memory off, so kill its two
   // background costs too — the 60-min periodic resync timer and the startup
   // multi-store bulk inflate.

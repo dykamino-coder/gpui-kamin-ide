@@ -1,6 +1,6 @@
 # Claude Bridge runtime reliability backlog
 
-Текущий CLI pin и аудит перехода `2.1.296` → `2.1.312`:
+Текущий CLI pin и аудит переходов `2.1.296` → `2.1.312` → `2.1.322`:
 [CLI compatibility](server/CLAUDE_CODE_COMPATIBILITY.md). Старые versioned gates
 ниже сохраняют исходную версию и не заменяют приёмку нового binary.
 

@@ -15,7 +15,7 @@ test('interactive transport queues submit without blocking polls or abort', asyn
   const clock = mock.clock(on)
   mock.env(on, { BRIDGE_CLI_MOD_SOCKET: '/tmp/probe.sock', BRIDGE_CLI_MOD_SESSION: 'probe' })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('session.version', () => ({ value: { version: '2.1.312' } }))
+  on('session.version', () => ({ value: { version: '2.1.322' } }))
   let polls = 0
   const submits: unknown[] = [],
     aborts: unknown[] = []
@@ -50,7 +50,7 @@ test('unsupported CLI version stays on the legacy path', async ($, on) => {
   mock.env(on, { BRIDGE_CLI_MOD_SOCKET: '/tmp/probe.sock', BRIDGE_CLI_MOD_SESSION: 'probe' })
   let calls = 0
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('session.version', () => ({ value: { version: '2.1.313' } }))
+  on('session.version', () => ({ value: { version: '2.1.323' } }))
   on('http.fetch', () => {
     calls++
     return { deny: 'must not call' }

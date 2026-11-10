@@ -32,7 +32,7 @@ async function setup() {
           protocol: 1,
           session: 'session-a',
           instance: 'one',
-          version: '2.1.312',
+          version: '2.1.322',
           turnId: null,
           ...extra,
         }),
@@ -59,7 +59,7 @@ describe('private mod transport', () => {
   socketIt('enables the pinned CLI by default, using the session invocation and environment', async () => {
     vi.stubEnv('BRIDGE_CLI_MOD', undefined)
     vi.stubGlobal('process', { ...process, platform: 'linux' })
-    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.312 (Claude Code)\n'))
+    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.322 (Claude Code)\n'))
     const cli = { command: '/cli/claude', prefix: ['--custom'], env: { PATH: '/cli' } }
     const transport = await createCliModTransport('default', cli)
     expect(transport).toBeDefined()
@@ -71,7 +71,7 @@ describe('private mod transport', () => {
       expect.any(Function),
     )
   })
-  it.each(['2.1.311 (Claude Code)', '2.1.313 (Claude Code)', 'unknown', ''])(
+  it.each(['2.1.312 (Claude Code)', '2.1.323 (Claude Code)', 'unknown', ''])(
     'falls back cleanly for CLI %j',
     async (version) => {
       vi.stubEnv('BRIDGE_CLI_MOD', undefined)
@@ -90,7 +90,7 @@ describe('private mod transport', () => {
     expect(await createCliModTransport('unused')).toBeUndefined()
   })
   socketIt('disposes a transport whose socket cannot listen', async () => {
-    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.312 (Claude Code)'))
+    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.322 (Claude Code)'))
     vi.spyOn(CliModTransport.prototype, 'listen').mockRejectedValue(new Error('socket unavailable'))
     const dispose = vi.spyOn(CliModTransport.prototype, 'dispose')
     expect(await createCliModTransport('unused')).toBeUndefined()
@@ -100,7 +100,7 @@ describe('private mod transport', () => {
     const { transport, call } = await setup()
     expect((await call('/poll')).status).toBe(409)
     expect((await call('/hello', { session: 'other' })).status).toBe(409)
-    expect((await call('/hello', { version: '2.1.313' })).status).toBe(409)
+    expect((await call('/hello', { version: '2.1.312' })).status).toBe(409)
     expect(transport.healthy()).toBe(false)
     expect((await call('/hello')).status).toBe(200)
     expect(transport.healthy()).toBe(true)

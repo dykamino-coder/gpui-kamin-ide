@@ -1,10 +1,41 @@
 # Совместимость Claude Code CLI
 
-Текущий образ закрепляет **2.1.312** в `Dockerfile`. На 2026-10-28
-`npm view @anthropic-ai/claude-code version` и `dist-tags.latest` возвращали
-`2.1.312` (отдельный tag `stable` возвращал `2.1.308`). Выбор следует
-поручению владельца использовать npm `latest`, без диапазона или auto-update.
-Версии самого Bridge и workspace этим обновлением не меняются.
+Текущий образ закрепляет **2.1.322** в `Dockerfile`. На 2026-11-10 npm
+`dist-tags.latest` возвращал `2.1.322`. Выбор следует поручению владельца
+использовать npm `latest`, без диапазона или auto-update. Версии самого Bridge
+и workspace этим обновлением не меняются. CLI mod (`src/cli-mod`) по-прежнему
+привязан к одной точной версии: `CLI_MOD_VERSION`, проверка в `bridge.js` и
+tests меняются вместе с pin.
+
+## Проверка перехода с 2.1.312 на 2.1.322
+
+Источники: changelog 2.1.313–2.1.322 из npm package `2.1.322` и сравнение
+Linux x64 binaries `2.1.312` / `2.1.322` (строки контрактов и env-переменных).
+
+| Контракт            | Изменения upstream и решение Bridge                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI mod             | 2.1.318 оставляет вложения мода из `prompt.submit` в user turn (Bridge ничего не прикладывает). 2.1.321 автоматически включает моды, _написанные Claude_, в auto/bypass и не грузит их в `dontAsk`; это не касается `--plugin-dir` и не меняется Bridge. API `prompt.submit`/`session.append`/`turn.*`/`http.fetch` для Bridge совпадает: `claude plugin test` проходит на обеих версиях, синтетическая проба (ниже) даёт одинаковые hello, submit-ack, read-receipt, turn start/complete и abort.               |
+| JSONL / resume      | Новые служебные записи `session-owner`, `resume-head-vouch`, `repl-mode` добавлены в списки не отображаемых типов webview и server segment index. Новые attachment-типы `message_pdf_reads`, `widget_context_hint`, `claude_app_notice` уже скрыты allowlist-предикатом; удалённые `file_unchanged` (Read stub) и `output_limit_note` в старых transcripts тоже остаются скрытыми. 2.1.314 исправляет resume/rewind после смены модели; 2.1.317 больше не хранит прежний thinking при resume (снят fix 2.1.288). |
+| Model / effort      | Тексты cache-warning диалога (`Switch model?`, `Change effort level?`, `This conversation is cached for the current …`, `Yes, switch to …`) и `PreModelSwitch` сохранены. `/model` picker с 2.1.319/2.1.321 группирует старые модели под «More models», но Bridge передаёт `/model <id>` и по строкам picker не навигирует. 2.1.321 добавляет `claude-fable-5-2` и переводит alias `fable` на него; сохранённые выборы 5.1 переходят на `fable`.                                                                 |
+| MCP                 | 2.1.319: MCP Tasks в терминале работают без fetch feature flags; `CLAUDE_CODE_DISABLE_MCP_TASKS=1` выключает их, `CLAUDE_CODE_DISABLE_MCP_TASK_BACKGROUND=1` заставляет ждать внутри tool call. Bridge снова включает `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` и удаляет унаследованные оба opt-out, чтобы длинные локальные tools оставались фоновыми задачами.                                                                                                                                             |
+| Environment         | Все env-переменные из `session-env.ts`/`session-settings.ts` присутствуют в 2.1.322. 2.1.319 меняет auto mode без feature flags (Bridge использует bypass) и self-paced `/loop` (Bridge не использует).                                                                                                                                                                                                                                                                                                          |
+| Statusline / limits | `rate_limits.five_hour/seven_day`, `Current session` / `Current week` в `/usage` сохранены. При essential-traffic стартовый quota probe пропускается; `account-limits.ts` сохраняет последние окна.                                                                                                                                                                                                                                                                                                              |
+
+Gate 2.1.322 (2026-11-10, временные Podman-контейнеры `bridge-cli322-*` из
+`open-claude-bridge:6.3.164` с подмонтированным binary 2.1.322):
+
+- `claude plugin test` для `src/cli-mod`: 3/3 на 2.1.312 и на 2.1.322;
+- синтетическая проба без credentials: loopback fake Messages API и fake
+  Bridge UDS transport, интерактивный `claude --plugin-dir` под `script`.
+  На обеих версиях: один hello, submit → ack и read receipt с uuid записи,
+  turn start/complete, второй submit и abort активного turn (ack, закрытие
+  запроса к API, turn complete).
+
+Не выполнено: authenticated live turn с реальной моделью, MCP tool round trip,
+SessionStart/Stop hooks, statusline, detach/resume на образе этой ветки и MCP
+Tasks при essential-traffic. Сценарий: собрать образ этой ветки, в отдельном
+контейнере с выданной для приёмки авторизацией пройти start → turn → MCP tool →
+detach → resume → turn и фоновую MCP Task. Это не Windows/CEF-приёмка.
 
 ## Проверка перехода с 2.1.296
 
