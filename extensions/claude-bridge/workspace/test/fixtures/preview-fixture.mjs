@@ -14,7 +14,7 @@ const webpack = require('webpack')
 const DevServer = require('webpack-dev-server')
 const cleanups = new Map()
 
-export async function previewFixture(t) {
+export async function previewFixture(t, { conversations = false } = {}) {
   const base = process.env.BRIDGE_PREVIEW_ROOT || os.tmpdir()
   const root = await fs.mkdtemp(path.join(base, 'bridgeweb-acc-preview-'))
   const cleanup = []
@@ -36,13 +36,22 @@ export async function previewFixture(t) {
   const ws = new WebSocketServer({ server: http })
   await new Promise(resolve => http.listen(0, '127.0.0.1', resolve))
   let peer, id = 0
+  let conversation = 0
+  const peers = new Map()
   const frames = [], events = new EventEmitter()
   ws.on('connection', socket => {
     peer = socket
     socket.on('message', raw => {
       const frame = JSON.parse(raw.toString())
       frames.push(frame); events.emit('frame')
-      if (frame.type === 'session:create') socket.send(JSON.stringify({ type: 'session:created', sessionId: 'preview-session' }))
+      if (['session:create', 'session:resume'].includes(frame.type)) {
+        const conversationId = frame.conversationId || (conversations ? `00000000-0000-4000-8000-${String(++conversation).padStart(12, '0')}` : undefined)
+        socket.send(JSON.stringify({ type: 'session:created', sessionId: conversationId || 'preview-session' }))
+        if (conversations) {
+          peers.set(conversationId, socket)
+          socket.send(JSON.stringify({ type: 'session:conversation-id', conversationId }))
+        }
+      }
       if (frame.type === 'mcp:response') socket.send(JSON.stringify({ type: 'mcp:result-ack', sessionId: 'preview-session', requestId: frame.requestId, accepted: true }))
     })
   })
@@ -51,21 +60,26 @@ export async function previewFixture(t) {
     await new Promise(resolve => ws.close(() => resolve()))
     await new Promise(resolve => http.close(() => resolve()))
   })
-  const child = fork(fileURLToPath(new URL('./preview-child.cjs', import.meta.url)), [root, `ws://127.0.0.1:${http.address().port}`], {
-    cwd: tmp, execArgv: [], stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, TMPDIR: tmp, TEMP: tmp, TMP: tmp,
-      KAMIN_CACHE_DIR: path.join(root, 'cache'), KAMIN_DISABLE_EXTERNAL_MCP: '1' },
-  })
-  // Output is deliberately consumed without printing shared runtime payloads.
-  child.stdout.resume(); child.stderr.resume()
-  const exited = once(child, 'exit')
-  cleanup.push(async () => {
-    if (child.exitCode !== null || child.signalCode !== null) return
-    if (child.connected) child.send('shutdown')
-    try { await Promise.race([exited, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Preview child shutdown timeout')), 5000); timer.unref() })]) }
-    catch { child.kill(); await exited }
-  })
-  const [ready] = await once(child, 'message', { signal: AbortSignal.timeout(15000) })
+  async function boot() {
+    const child = fork(fileURLToPath(new URL('./preview-child.cjs', import.meta.url)), [root, `ws://127.0.0.1:${http.address().port}`], {
+      cwd: tmp, execArgv: [], stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, TMPDIR: tmp, TEMP: tmp, TMP: tmp,
+        KAMIN_CACHE_DIR: path.join(root, 'cache'), KAMIN_DISABLE_EXTERNAL_MCP: '1' },
+    })
+    // Output is deliberately consumed without printing shared runtime payloads.
+    child.stdout.resume(); child.stderr.resume()
+    const exited = once(child, 'exit')
+    const stop = async () => {
+      if (child.exitCode !== null || child.signalCode !== null) return
+      if (child.connected) child.send('shutdown')
+      try { await Promise.race([exited, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Preview child shutdown timeout')), 5000); timer.unref() })]) }
+      catch { child.kill(); await exited }
+    }
+    cleanup.push(stop)
+    const [ready] = await once(child, 'message', { signal: AbortSignal.timeout(15000) })
+    return { origin: ready.origin, stop }
+  }
+  let runtime = await boot()
   async function wait(predicate) {
     const signal = AbortSignal.timeout(15000)
     for (;;) {
@@ -82,7 +96,10 @@ export async function previewFixture(t) {
     assert.equal(result.result?.isError, undefined, 'Shared MCP handler must succeed')
     return result
   }
-  return { root, origin: ready.origin, wait, tool }
+  return { root, get origin() { return runtime.origin }, wait, tool,
+    send(conversationId, frame) { assert.ok(peers.has(conversationId)); peers.get(conversationId).send(JSON.stringify(frame)) },
+    async restart() { await runtime.stop(); runtime = await boot() },
+  }
 }
 
 export async function remoteFixture(t, root, { name = 'preview_fixture', requiredVersion = '19.3.1', hot = true } = {}) {

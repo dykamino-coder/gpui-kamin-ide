@@ -4,6 +4,19 @@ Task: [INC-2026-0087](../runtime-issues/INC-2026-0087.md).
 Runtime overview: [README.md](README.md). Podman runbook: [PACKAGING.md](PACKAGING.md).
 Status: implementation in progress; the current live suite passed, while full parity and final composed acceptance remain open.
 
+## Restart persistence follow-up (INC-2026-0092)
+
+The client host owns the open set and active selection across process restarts,
+in addition to the existing renderer pin/order preferences. An atomic snapshot
+under `WORKSPACE_STORAGE` stores only tab identity, cwd, label, title and creation
+time, scoped by server/account hash. Restore uses the shared TabManager's lazy
+background resume and selects the saved active tab, without browser requests or
+parallel CLI startup for every saved conversation. Observer writes are paused
+during restore/disposal. Explicit close/disconnect updates the durable open set.
+History resume uses the existing ConfigStore label before creating the tab.
+Real host process restarts and own-container headless tests verify this contract;
+this follow-up does not establish full browser parity.
+
 ## Problem and completion contract
 
 The Bridge server owns Claude CLI sessions. Its client owns project operations,

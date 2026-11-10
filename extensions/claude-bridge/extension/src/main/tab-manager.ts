@@ -26,6 +26,12 @@ export interface Tab {
   settingsDir?: string    // server-side settings directory path
 }
 
+/** Trusted host restoration metadata; never accepted directly from renderer IPC. */
+interface TabCreationOptions {
+  background?: boolean
+  restored?: Pick<Tab, 'id' | 'label' | 'createdAt'>
+}
+
 export class TabManager {
   private tabs = new Map<string, Tab>()
   private activeTabId: string | null = null
@@ -78,15 +84,15 @@ export class TabManager {
    * Create a new tab with its own ConnectionManager.
    * Automatically connects and becomes the active tab.
    */
-  createTab(config: ConnectionConfig): string {
-    const tabId = randomUUID()
+  createTab(config: ConnectionConfig, opts: TabCreationOptions = {}): string {
+    const tabId = opts.restored?.id ?? randomUUID()
     const folderName = config.cwd ? path.basename(config.cwd) : 'default'
     tabLog(`createTab: tabId=${tabId.slice(0,8)} folder=${folderName} cwd=${config.cwd || 'none'} total=${this.tabs.size + 1} stack=${new Error().stack?.split('\n').slice(1, 4).map(l => l.trim()).join(' | ')}`)
 
     // Increment per-folder counter
-    const counter = (this.folderCounters.get(folderName) ?? 0) + 1
+    const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1
     this.folderCounters.set(folderName, counter)
-    const label = `#${counter}`
+    const label = opts.restored?.label ?? `#${counter}`
 
     const connection = new ConnectionManager(config, this.window, tabId)
 
@@ -96,15 +102,15 @@ export class TabManager {
       connection,
       label,
       folderName,
-      createdAt: new Date().toISOString(),
+      createdAt: opts.restored?.createdAt ?? new Date().toISOString(),
     }
 
     this.tabs.set(tabId, tab)
-    this.activeTabId = tabId
+    if (!opts.background) this.activeTabId = tabId
 
     // Notify renderer
     this.window.webContents.send('tab:created', this.getTabInfo(tab))
-    this.emitSwitched(tabId)
+    if (!opts.background) this.emitSwitched(tabId)
     this.notifyTabListChanged()
 
     // Fire after renderer is notified so the listener can already query
@@ -122,6 +128,7 @@ export class TabManager {
     // closed it, or a token swap ran closeAllTabs), connect() would spawn an
     // orphan CLI session for a ghost tab that nothing ever closes until the
     // server's 30-min idle reaper.
+    if (opts.background) { connection.setRendererMuted(true); return tabId }
     const connectIfAlive = () => { if (this.tabs.has(tabId)) connection.connect() }
     this.triggerSync(config).then(connectIfAlive).catch(connectIfAlive)
 
@@ -353,14 +360,14 @@ export class TabManager {
    * also skip the per-tab sync: the foreground session's sync already pushed
    * the user data, and a burst of warm-pool resumes must not become a sync storm.
    */
-  resumeSession(config: ConnectionConfig & { conversationId: string; sessionLabel?: string }, opts: { background?: boolean } = {}): string {
-    const tabId = randomUUID()
+  resumeSession(config: ConnectionConfig & { conversationId: string; sessionLabel?: string }, opts: TabCreationOptions = {}): string {
+    const tabId = opts.restored?.id ?? randomUUID()
     const folderName = config.cwd ? path.basename(config.cwd) : 'default'
     tabLog(`resumeSession: tabId=${tabId.slice(0,8)} convId=${config.conversationId.slice(0,8)} folder=${folderName} label=${config.sessionLabel || 'none'} bg=${opts.background ? 1 : 0} total=${this.tabs.size + 1}`)
 
-    const counter = (this.folderCounters.get(folderName) ?? 0) + 1
+    const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1
     this.folderCounters.set(folderName, counter)
-    const label = `#${counter}`
+    const label = opts.restored?.label ?? `#${counter}`
 
     const connection = new ConnectionManager(config, this.window, tabId, config.conversationId)
 
@@ -370,7 +377,7 @@ export class TabManager {
       connection,
       label,
       folderName,
-      createdAt: new Date().toISOString(),
+      createdAt: opts.restored?.createdAt ?? new Date().toISOString(),
       conversationId: config.conversationId,
       sessionTitle: config.sessionLabel,
     }

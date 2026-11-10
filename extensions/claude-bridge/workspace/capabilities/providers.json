@@ -1,4 +1,9 @@
 {
+  "session-restart": {
+    "file": "workspace/src/session-state.ts",
+    "test": "workspace/test/session-restart.test.ts",
+    "contract": "Atomic scoped open-session persistence through the real host: stable tab identity, title, empty tabs, active selection, explicit close/disconnect and abrupt process restart."
+  },
   "shell": {
     "file": "workspace/src/shell-state.ts",
     "test": "workspace/test/shell-state.test.ts",
