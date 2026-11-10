@@ -120,6 +120,13 @@ pub(super) fn prepare_embedded(
 
 // Keep document preparation identical for initial, updated, and embedded markup.
 pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Computed) {
+    prepare_for::<false>(nodes, vcx)
+}
+
+pub(super) fn prepare_for<const QUERY: bool>(
+    nodes: Vec<Node>,
+    vcx: ValueCx<'_>,
+) -> (Vec<Node>, Computed) {
     crate::values::image_values::prepare(&nodes, vcx);
     let canvas = canvas_backing(&nodes, None);
     let viewport = policy(&nodes, vcx)
@@ -130,16 +137,20 @@ pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Compute
                 || c.reset_box_layout.scroll.forced.into_iter().any(|v| v)
                 || c.reset_box_layout.scroll.gutter.is_some_and(|v| v != 0)
         });
-    let (nodes, root) = super::unwrap_document(
-        super::mark_canvas_background(
-            super::resolve_logical(
-                super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
-                vcx,
-            ),
+    let nodes = super::mark_canvas_background(
+        super::resolve_logical(
+            super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
             vcx,
         ),
         vcx,
     );
+    // Виртуализация удаляет только нейтральные html/body. Явный запрос
+    // сохраняет их собственные CSS-коробки, включая пустые.
+    let (nodes, root) = if QUERY {
+        (nodes, Computed::default())
+    } else {
+        super::unwrap_document(nodes, vcx)
+    };
     (wrap(nodes, viewport, canvas), root)
 }
 

@@ -52,6 +52,16 @@ pub fn parse_into(
 pub fn convert(
     input: &Admitted,
     extra_css: &str,
+    media: Media,
+    doc: &Rc<crate::values::DocumentValues>,
+) -> Result<Vec<Node>, DocumentFailure> {
+    convert_for::<false>(input, extra_css, media, doc)
+}
+
+/// Запрос сохраняет вычисленные стили элементов без layout-коробок.
+pub fn convert_for<const QUERY: bool>(
+    input: &Admitted,
+    extra_css: &str,
     mut media: Media,
     doc: &Rc<crate::values::DocumentValues>,
 ) -> Result<Vec<Node>, DocumentFailure> {
@@ -73,6 +83,16 @@ pub fn convert(
     // Каскадные слои у всех таблиц документа общие (css-cascade-5 §6.4.3).
     let mut layers = LayerRegistry::default();
     let mut rules = parse_document_sheet(user_agent_css(), media, &mut layers, vcx)?;
+    // Обычный обход удаляет эти узлы до каскада. Запрос сохраняет их стили;
+    // умолчание UA остаётся переопределяемым авторским display.
+    if QUERY {
+        rules.extend(parse_document_sheet(
+            "script, style, noscript { display: none }",
+            media,
+            &mut layers,
+            vcx,
+        )?);
+    }
     let base = rules.len();
     for (i, r) in parse_document_sheet(extra_css, media, &mut layers, vcx)?
         .into_iter()
@@ -186,7 +206,7 @@ pub fn convert(
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
     let mut counters = crate::style::generated::counters::Counters::default();
-    walk_children(
+    walk_children::<QUERY>(
         &dom.document,
         &tree,
         &doc,

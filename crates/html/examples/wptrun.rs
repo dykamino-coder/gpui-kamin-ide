@@ -42,6 +42,8 @@ mod css_scan;
 mod fonts;
 #[path = "wptrun/frame_metrics.rs"]
 mod frame_metrics;
+#[path = "wptrun/geometry.rs"]
+mod geometry;
 #[path = "wptrun/gpu.rs"]
 mod gpu;
 #[path = "wptrun/html_attrs.rs"]
@@ -117,6 +119,10 @@ fn main() {
     }));
     let mut args: Vec<String> = std::env::args().collect();
     let host = gpu::Host::new(&mut args).unwrap_or_else(|e| audit::fatal(e));
+    if args.get(1).is_some_and(|a| a == "--geometry") {
+        geometry::run(host, &args, instrumentation);
+        return;
+    }
     let list = args.get(1).cloned().unwrap_or_default();
     let w: f32 = args.get(2).and_then(|v| v.parse().ok()).unwrap_or(800.);
     let h: f32 = args.get(3).and_then(|v| v.parse().ok()).unwrap_or(600.);

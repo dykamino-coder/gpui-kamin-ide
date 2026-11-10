@@ -3,7 +3,6 @@
 use crate::dom::Node;
 use crate::layout::options::RenderOpts;
 use crate::paint::decorations::text_shadows::with_text_shadow;
-use crate::render::paragraph::paragraph;
 use crate::style::computed::BoxStyle;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -41,7 +40,11 @@ pub(crate) fn paragraph_probed(
     let paragraph_opts = opts.inner(|cx| {
         cx.clamp.paragraph = ctx.zip(seq).map(|((key, _), s)| (key, s));
     });
-    let para = paragraph(taken, inherited, &paragraph_opts);
+    let para = opts
+        .cx
+        .contracts
+        .build
+        .paragraph(taken, inherited, &paragraph_opts);
     let para = with_text_shadow(para, inherited, taken, opts);
     // A paragraph after the clamp point is hidden for paint once the clip
     // reveals the overflow of earlier content (css-overflow-4 §5.3).

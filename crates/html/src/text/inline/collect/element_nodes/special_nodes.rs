@@ -9,13 +9,13 @@ use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
 use crate::text::inline::*;
 
-pub(super) async fn special_node(
+pub(super) async fn special_node<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     e: &Element,
     inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
-    cx: &mut CollectCx,
+    cx: &mut CollectCx<QUERY>,
     out: &mut Vec<Piece>,
 ) -> bool {
     let doc = cx.layout.doc().clone();

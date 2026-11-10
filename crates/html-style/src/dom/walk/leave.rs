@@ -7,7 +7,7 @@ use crate::dom::*;
 use crate::style::computed::Display;
 use crate::style::select::Ancestor;
 
-pub(super) fn leave(
+pub(super) fn leave<const QUERY: bool>(
     mut p: Box<Pending<'_>>,
     path: &[Ancestor],
     counter: &mut u64,
@@ -22,9 +22,12 @@ pub(super) fn leave(
     let sibs = p.visit.sibs();
     let vcx = p.visit.vcx;
     if p.hidden {
-        children
-            .retain(|n| matches!(n, Node::Element(c) if c.style.cascaded().reset_context.col_role == Some(0)));
-        counters.leave();
+        if !QUERY {
+            children.retain(|n| matches!(n, Node::Element(c) if c.style.cascaded().reset_context.col_role == Some(0)));
+        }
+        if !QUERY || p.box_level {
+            counters.leave();
+        }
         *counter += 1;
         vcx.doc.traversal.record_element(p.visit.handle(), *counter);
         out.push(Node::Element(Element {

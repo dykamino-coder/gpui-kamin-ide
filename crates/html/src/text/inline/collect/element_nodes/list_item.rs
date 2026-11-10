@@ -6,13 +6,13 @@ use crate::style::computed::BoxStyle;
 use crate::text::inline::Piece;
 use crate::text::inline::collect::CollectCx;
 
-pub(super) async fn children(
+pub(super) async fn children<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     e: &Element,
     merged: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
-    cx: &mut CollectCx,
+    cx: &mut CollectCx<QUERY>,
 ) -> Vec<Piece> {
     let doc = cx.layout.doc().clone();
     let vcx = doc.frame_values();

@@ -23,6 +23,11 @@ pub struct PaintSegmentClips {
 }
 
 impl Window {
+    /// Physical fragments selected for the current source node, before CSS clipping.
+    pub fn layout_fragment_slices(&self) -> Option<Rc<[PaintSegmentSlice]>> {
+        self.render_contexts.get::<Slices>().map(|slices| slices.0.clone())
+    }
+
     /// Замена собственного допуска узла. Независимый потомок не наследует
     /// этот срез; охватывающие эффекты остаются общими.
     pub fn with_paint_segment_slices<R>(

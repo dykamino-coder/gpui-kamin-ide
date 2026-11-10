@@ -43,6 +43,10 @@ pub(crate) struct BoxBuild {
 }
 
 impl BoxBuild {
+    pub(super) fn with_styled_box(mut self, styled_box: StyledBox) -> Self {
+        self.styled_box = styled_box;
+        self
+    }
     pub(crate) const fn new(
         styled_box: StyledBox,
         styled_div: StyledDiv,

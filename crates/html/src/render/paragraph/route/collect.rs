@@ -18,7 +18,7 @@ use crate::text::inline;
 use crate::text::ruby::ruby_role;
 use gpui::{AnyElement, IntoElement, div};
 
-pub(crate) fn paragraph_pieces_routed(
+pub(crate) fn paragraph_pieces_routed<const QUERY: bool>(
     nodes: &[Node],
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -108,7 +108,7 @@ pub(crate) fn paragraph_pieces_routed(
             }
             piece
         };
-    let mut pieces = inline::collect(nodes, inherited, &mut atom_noted, &opts.cx);
+    let mut pieces = inline::collect_for::<QUERY>(nodes, inherited, &mut atom_noted, &opts.cx);
     if pieces.is_empty() {
         return div().into_any_element();
     }
@@ -234,7 +234,7 @@ pub(crate) fn paragraph_pieces_routed(
         }
         pieces = out;
     }
-    route_pieces(
+    route_pieces::<QUERY>(
         pieces,
         inherited,
         opts,

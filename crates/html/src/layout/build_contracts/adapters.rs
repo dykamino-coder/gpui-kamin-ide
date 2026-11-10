@@ -2,12 +2,27 @@
 
 use super::{ChildBuild, GridPlacement};
 use crate::dom::Element;
+use crate::layout::cx::LayoutCx;
 use crate::style::computed::{Align, BoxStyle};
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
 use gpui::AnyElement;
 
 impl ChildBuild {
+    pub(crate) fn for_geometry(
+        mut self,
+        paragraph: fn(&[crate::dom::Node], &BoxStyle, &crate::RenderOpts) -> AnyElement,
+        styled_box: fn(
+            &Element,
+            &BoxStyle,
+            &LayoutCx,
+            Option<crate::layout::block::sizing::BoxDimensions>,
+        ) -> gpui::Div,
+    ) -> Self {
+        self.flow = self.flow.with_paragraph(paragraph);
+        self.boxes = self.boxes.with_styled_box(styled_box);
+        self
+    }
     /// Native form control with its merged style; `None` for other tags.
     pub(crate) fn control(
         &self,

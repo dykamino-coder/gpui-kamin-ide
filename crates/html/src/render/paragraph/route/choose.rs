@@ -15,7 +15,7 @@ use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn route_pieces(
+pub(crate) fn route_pieces<const QUERY: bool>(
     pieces: Vec<inline::Piece>,
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -87,7 +87,7 @@ pub(crate) fn route_pieces(
                 .is_some_and(|request| request.accepts(&pieces, !line_atoms.is_empty()));
         let selectable = inherited.reset_context.no_select != Some(true)
             && inherited.inh.ui.pointer_events_none != Some(true);
-        if !native && !selectable {
+        if !QUERY && !native && !selectable {
             return gpui::StyledText::new(SharedString::from(text))
                 .with_ligature_breaking(false)
                 .with_runs(runs)
@@ -95,7 +95,7 @@ pub(crate) fn route_pieces(
         }
         // Native construction remains available without installing selection handlers.
         if let Some(wrap) = wrap_rules {
-            return native_paragraph(
+            return native_paragraph::<QUERY>(
                 inherited,
                 opts,
                 native_request,
@@ -221,7 +221,7 @@ mod tests {
                     },
                     inline::Piece::Overlay(div().into_any_element(), Default::default()),
                 ];
-                let mut element = route_pieces(
+                let mut element = route_pieces::<false>(
                     pieces,
                     &BoxStyle::from(inherited.clone()),
                     &opts,

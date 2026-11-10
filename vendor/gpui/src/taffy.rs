@@ -569,6 +569,16 @@ impl TaffyLayoutEngine {
         )
     }
 
+    /// Resolved box edges; used only by explicit layout queries.
+    pub fn layout_box_edges(&self, id: LayoutId, scale_factor: f32) -> (Edges<Pixels>, Edges<Pixels>) {
+        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
+        let edges = |r: taffy::Rect<f32>| Edges {
+            top: Pixels(r.top / scale_factor), right: Pixels(r.right / scale_factor),
+            bottom: Pixels(r.bottom / scale_factor), left: Pixels(r.left / scale_factor),
+        };
+        (edges(layout.border), edges(layout.padding))
+    }
+
     /// KaminIDE patch: протяжённость СОДЕРЖИМОГО узла (taffy `scrollable_overflow_rect`,
     /// видимое переполнение потомков) без округления к физической точке.
     pub fn layout_content_size_unrounded(&self, id: LayoutId, scale_factor: f32) -> Size<Pixels> {

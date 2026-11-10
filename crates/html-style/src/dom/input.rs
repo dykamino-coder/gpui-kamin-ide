@@ -37,6 +37,22 @@ pub struct Admitted {
 }
 
 impl Admitted {
+    /// Независимая admission policy для синхронного читателя того же DOM.
+    /// RcDom не владеет отдельным teardown: сильная ссылка сохраняет исходный корень.
+    #[allow(clippy::field_reassign_with_default)]
+    pub fn for_query(&self, revision: crate::budget::RevisionBudget) -> Self {
+        // Служебные поля RcDom приватны; исходный корень допускает общий доступ.
+        let mut dom = RcDom::default();
+        dom.document = self.dom.document.clone();
+        dom.quirks_mode.set(self.dom.quirks_mode.get());
+        Self {
+            dom,
+            xhtml: self.xhtml,
+            context: Context::new(revision),
+            agent_css: Default::default(),
+        }
+    }
+
     #[cfg(any(test, feature = "engine-test-support"))]
     pub fn parse(source: &str, xml: bool) -> Result<Self, DocumentFailure> {
         let budget = crate::budget::DocumentBudget::new(Default::default(), Default::default())

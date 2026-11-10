@@ -46,7 +46,7 @@ fn visits<'a>(
     }
     Ok(jobs)
 }
-fn descend<'a>(
+fn descend<'a, const QUERY: bool>(
     p: &Pending<'a>,
     tree: &TreeIndex,
     path: &mut Vec<Ancestor>,
@@ -59,7 +59,7 @@ fn descend<'a>(
         .text_flow
         .preserve_newlines
         .unwrap_or(p.visit.preserve);
-    if p.hidden && p.style.reset_context.col_role != Some(1) {
+    if !QUERY && p.hidden && p.style.reset_context.col_role != Some(1) {
         return Ok((Buffer::default(), restore));
     }
     if !p.hidden {
@@ -123,7 +123,7 @@ fn descend<'a>(
     ))
 }
 #[allow(clippy::too_many_arguments)]
-pub fn walk_children(
+pub fn walk_children<const QUERY: bool>(
     handle: &Handle,
     tree: &TreeIndex,
     scope: &Rc<Scope>,
@@ -152,14 +152,18 @@ pub fn walk_children(
     }
     drop(jobs);
     let mut output = Buffer::default();
+    // Только запрос посещает display:none ради computed values. Его счётчики
+    // изолированы от видимых соседей; обычный проход не выделяет этот стек.
+    let mut hidden_counters = Vec::new();
     output.push(super::kids::Kids::from_vec(std::mem::take(out)), &admission)?;
     while let Some(next) = work.pop() {
         admission.work(1)?;
         match next {
             Work::Leave(p, restore) => {
+                let hidden = QUERY && p.hidden;
                 restore.apply(path);
                 let children = output.pop().expect("children output").into_vec();
-                leave(
+                leave::<QUERY>(
                     p,
                     path,
                     counter,
@@ -167,6 +171,9 @@ pub fn walk_children(
                     children,
                     output.last_mut().expect("parent output"),
                 )?;
+                if hidden {
+                    *counters = hidden_counters.pop().expect("hidden counter scope");
+                }
             }
             Work::Visit(v) => {
                 let limit = crate::values::MAX_DEPTH;
@@ -192,7 +199,8 @@ pub fn walk_children(
                         output.last_mut().expect("output"),
                     ),
                     NodeData::Element { .. } => {
-                        if let Some(mut p) = enter(
+                        let saved = QUERY.then(|| counters.clone());
+                        if let Some(mut p) = enter::<QUERY>(
                             v,
                             tree,
                             &sharing,
@@ -201,7 +209,10 @@ pub fn walk_children(
                             path,
                             output.last_mut().expect("output"),
                         ) {
-                            let (mut children, restore) = descend(&p, tree, path)?;
+                            if QUERY && p.hidden {
+                                hidden_counters.push(saved.expect("query counters"));
+                            }
+                            let (mut children, restore) = descend::<QUERY>(&p, tree, path)?;
                             output.push(std::mem::take(&mut p.children), &admission)?;
                             work.push(Work::Leave(p, restore), &admission)?;
                             while let Some(job) = children.pop() {

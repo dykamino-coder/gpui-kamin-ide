@@ -25,11 +25,15 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 pub(crate) mod atom_piece;
 pub(crate) mod route;
 
-pub(crate) fn paragraph(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
-    paragraph_routed(nodes, inherited, opts, None)
+pub(crate) fn paragraph_for<const QUERY: bool>(
+    nodes: &[Node],
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
+    paragraph_routed::<QUERY>(nodes, inherited, opts, None)
 }
 
-fn paragraph_routed(
+fn paragraph_routed<const QUERY: bool>(
     nodes: &[Node],
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -37,7 +41,7 @@ fn paragraph_routed(
 ) -> AnyElement {
     // Vertical paragraphs choose the physical text route after inline collection.
     if inherited.wm().vertical() {
-        return vertical_paragraph(nodes, inherited, opts, native_request);
+        return vertical_paragraph::<QUERY>(nodes, inherited, opts, native_request);
     }
     // Первая строка со своим стилем: где она кончается, известно только после
     // переноса, поэтому абзац собирается замером (см. `float::FirstLine`).
@@ -71,8 +75,13 @@ fn paragraph_routed(
                 std::rc::Rc::new(move |at, width| {
                     let mut styled = base.clone();
                     styled.reset_text_box.first_line = Some(for_build.clone());
-                    let mut para =
-                        paragraph_pieces(&nodes_owned, &styled, &opts_owned, at, &for_build);
+                    let mut para = paragraph_pieces::<QUERY>(
+                        &nodes_owned,
+                        &styled,
+                        &opts_owned,
+                        at,
+                        &for_build,
+                    );
                     para = div().w(width).child(para).into_any_element();
                     para
                 });
@@ -130,7 +139,7 @@ fn paragraph_routed(
             .hooked();
         }
     }
-    paragraph_pieces_routed(
+    paragraph_pieces_routed::<QUERY>(
         nodes,
         inherited,
         opts,
@@ -141,14 +150,14 @@ fn paragraph_routed(
 }
 
 /// Абзац с готовым разрезом первой строки: `at` — сколько байт в неё вошло.
-fn paragraph_pieces(
+fn paragraph_pieces<const QUERY: bool>(
     nodes: &[Node],
     inherited: &BoxStyle,
     opts: &RenderOpts,
     first_line_at: usize,
     first_line: &Computed,
 ) -> AnyElement {
-    paragraph_pieces_routed(nodes, inherited, opts, first_line_at, first_line, None)
+    paragraph_pieces_routed::<QUERY>(nodes, inherited, opts, first_line_at, first_line, None)
 }
 
 /// Параметры маршрута и набора абзаца; строка слогораздела остаётся за стилем.
@@ -166,4 +175,9 @@ pub(super) fn paragraph_style(c: &Computed) -> ParagraphStyle<'_> {
         text_fit: c.inh.text_flow.text_fit.flatten(),
         hyphen_char: &c.inh.text_flow.hyphen_char,
     }
+}
+
+/// Ordinary paragraph construction has no query state.
+pub(crate) fn paragraph(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+    paragraph_for::<false>(nodes, inherited, opts)
 }

@@ -14,7 +14,7 @@ use gpui::{AnyElement, IntoElement, SharedString};
 #[allow(clippy::too_many_arguments)]
 // Paragraph construction consumes the span geometry records used by the probes.
 #[allow(clippy::type_complexity)]
-pub(crate) fn native_paragraph(
+pub(crate) fn native_paragraph<const QUERY: bool>(
     inherited: &BoxStyle,
     opts: &RenderOpts,
     native_request: Option<&NativeRequest<'_>>,
@@ -230,9 +230,11 @@ pub(crate) fn native_paragraph(
         .as_ref()
         .map(|p| p.link().clone())
         .or_else(|| opts.cx.scroll.sticky.clone());
-    crate::interactive::scroll_extent::project(
-        para.scroll_owner(inherited.self_node, sticky, opts.cx.scroll.frame.clone())
-            .into_any_element(),
-        projection,
-    )
+    let para = para.scroll_owner(inherited.self_node, sticky, opts.cx.scroll.frame.clone());
+    let para = if QUERY {
+        para.geometry_query()
+    } else {
+        para.into_any_element()
+    };
+    crate::interactive::scroll_extent::project(para, projection)
 }

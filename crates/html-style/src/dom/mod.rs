@@ -53,8 +53,8 @@ mod ua_style;
 mod white_space_tests;
 use crate::dom::direction::first_strong;
 use crate::dom::direction::squeeze_parens;
-pub use parse_document::convert;
 pub use parse_document::parse_into;
+pub use parse_document::{convert, convert_for};
 
 #[cfg(test)]
 mod fixture_parse;

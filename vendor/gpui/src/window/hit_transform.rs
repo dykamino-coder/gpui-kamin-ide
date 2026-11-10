@@ -4,14 +4,34 @@
 
 use super::*;
 
+mod geometry;
+
 /// Inverse mapping of one transformed subtree, recorded at prepaint.
 #[derive(Debug)]
 pub(crate) struct HitScope {
     parent: Option<Rc<HitScope>>,
-    /// Parent-space logical pixels to local logical pixels; `None` is a singular matrix.
-    inverse: Option<TransformationMatrix>,
+    /// Parent-to-local map, or the original forward map when it is singular.
+    inverse: Mapping,
     /// The parent's clip at scope entry, in parent space.
     clip: Bounds<Pixels>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Mapping {
+    Invertible(TransformationMatrix),
+    Singular(TransformationMatrix),
+}
+
+// A singular transform reuses the old optional matrix's payload and tag.
+const _: () = assert!(mem::size_of::<Mapping>() == mem::size_of::<Option<TransformationMatrix>>());
+
+impl Mapping {
+    fn new(forward: TransformationMatrix) -> Self {
+        match forward.inverse() {
+            Some(inverse) => Self::Invertible(inverse),
+            None => Self::Singular(forward),
+        }
+    }
 }
 
 impl HitScope {
@@ -29,7 +49,8 @@ impl HitScope {
             if !scope.clip.contains(&point) {
                 return None;
             }
-            point = scope.inverse?.apply(point);
+            let Mapping::Invertible(inverse) = scope.inverse else { return None };
+            point = inverse.apply(point);
             if !point.x.0.is_finite() || !point.y.0.is_finite() {
                 return None;
             }
@@ -71,7 +92,7 @@ impl Window {
         self.invalidator.debug_assert_prepaint();
         let scope = Rc::new(HitScope {
             parent: self.hit_scope.clone(),
-            inverse: matrix.inverse(),
+            inverse: Mapping::new(matrix),
             clip: self.content_mask().bounds,
         });
         let saved = Box::new((
@@ -113,7 +134,7 @@ impl Window {
         let radius = f32::MAX / 64.0;
         PaintHitScope(Some(Rc::new(HitScope {
             parent: base.0.clone(),
-            inverse: matrix.inverse(),
+            inverse: Mapping::new(matrix),
             clip: Bounds::new(point(px(-radius), px(-radius)), size(px(radius * 2.0), px(radius * 2.0))),
         })))
     }
