@@ -596,3 +596,35 @@ disposal candidate [#694](https://github.com/dykamino-coder/gpui-kamin-ide/pull/
 by normal merge for a combined exact-head gate, rather than copying its logic.
 Lead should review/merge #694 before #696. The LSP additions do not change that
 fix; the combined candidate must pass the full workspace/browser suites naturally.
+
+## Bounded follow-up: terminate unresponsive owned POSIX terminals
+
+A Linux Podman workspace run printed all assertions but retained three idle Bash
+children of its PTY test worker. Current shared disposal sends TERM to the owned
+process group and HUP to its shell, without waiting or escalation. Independently
+reproduce ignored TERM/HUP before attributing the observed hang to this mechanism.
+
+Keep disposal in the shared native/workspace PtySessions service. Remove a closed
+session from writable handles immediately. Preserve the initial TERM/HUP attempt,
+then after a short bounded grace period force-kill only its still-owned POSIX
+process group and shell. Cancel escalation on that PTY's exit event, so a completed
+session never receives a late signal. Repeated disposal must be idempotent; other
+live terminals and ordinary browser-page detach must retain their current policy.
+Windows retains its existing taskkill tree cleanup. This does not promise cleanup
+of descendants that deliberately detach into an independent process session.
+
+Acceptance: a real Linux shell that ignores TERM and HUP must exit after explicit
+kill, tab close, tab disconnect, Disconnect and host shutdown. Independently read
+fixture-owned PID files, verify another terminal remains live where applicable,
+and use only those recorded PIDs for regression cleanup. Fake-clock shared-service
+tests verify graceful exit cancellation and one escalation per disposal. Run the
+workspace and production-browser fixtures in Linux Podman; synthetic upstream
+acceptance and this bounded teardown proof do not close full model/parity gates.
+
+Controlled Linux Podman result: the ignored-signal shell survives the old code's
+7-second deadline (exit 1), but exits in approximately 315 ms with escalation.
+The first fixture attempt omitted required dimensions and failed validation;
+that setup failure is not evidence for the product defect. Full candidate
+validation is recorded separately in the linked Change PR.
+
+Implementation: [#694](https://github.com/dykamino-coder/gpui-kamin-ide/pull/694).
