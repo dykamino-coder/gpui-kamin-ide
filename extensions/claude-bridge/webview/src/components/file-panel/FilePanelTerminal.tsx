@@ -8,36 +8,16 @@ import { vscodeApi } from '../../lib/webview-api'
 import { guardTerminalQueries } from '../../browser/terminal-query-guards'
 import { attachWorkspaceTerminal } from '../../browser/workspace-terminal'
 import { resolvedTheme } from '../../theme/apply-theme'
+import { DARK_TERMINAL_PALETTE } from '../../../shared/terminal-colors'
+import { attachTerminalColors } from '../../browser/terminal-colors'
 
 // FilePanel terminal palette is *always* dark — same Catppuccin-mocha
-// values whether the app theme is dark or light. We pin them here
+// values whether the app theme is dark or light. The shared palette is fixed
 // (rather than reading --term-* CSS vars via `buildTerminalTheme`)
 // because in light mode those tokens flip to deep inks meant for
 // readability on cream paper, which would tint the cell-grid text
 // dark on dark and make the terminal unreadable. Only `background`
-// follows the active theme — see `resolveBg()` in the component.
-const DARK_TERMINAL_PALETTE: Record<string, string> = {
-  foreground: '#cfd4e2',
-  cursor: '#f5e0dc',
-  selectionBackground: '#515567',
-  selectionForeground: '#cfd4e2',
-  black: '#515567',
-  red: '#f38ba8',
-  green: '#a6e3a1',
-  yellow: '#f9e2af',
-  blue: '#89b4fa',
-  magenta: '#f5c2e7',
-  cyan: '#94e2d5',
-  white: '#afb6ca',
-  brightBlack: '#60667b',
-  brightRed: '#f38ba8',
-  brightGreen: '#a6e3a1',
-  brightYellow: '#f9e2af',
-  brightBlue: '#89b4fa',
-  brightMagenta: '#f5c2e7',
-  brightCyan: '#94e2d5',
-  brightWhite: '#adb3c7',
-}
+// follows the active theme on desktop. Browser workspace colors are host-owned.
 
 interface ShellProfile {
   id: string
@@ -126,6 +106,7 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
     term.open(containerRef.current)
     try { fit.fit() } catch { /* container not laid out yet */ }
     const offQueries = browserWorkspace ? guardTerminalQueries(term.parser) : () => {}
+    const offColors = browserWorkspace ? attachTerminalColors(term) : () => {}
     termRef.current = term
     fitRef.current = fit
 
@@ -233,6 +214,7 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
     // `term.options.theme` on every resolvedTheme.value flip. signals'
     // `subscribe` returns an unsubscribe function we call on cleanup.
     const unsubTheme = resolvedTheme.subscribe(() => {
+      if (browserWorkspace) return // Host-owned colors survive page/theme changes.
       try {
         term.options.theme = { ...DARK_TERMINAL_PALETTE, background: resolveBg() }
       } catch { /* terminal already disposed */ }
@@ -240,6 +222,7 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
 
     return () => {
       offQueries()
+      offColors()
       offData()
       offExit()
       unsubTheme()
