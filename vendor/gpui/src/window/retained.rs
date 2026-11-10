@@ -150,63 +150,93 @@ impl Window {
 ///
 /// One sink may measure several scopes in turn (`begin_scope`): paint
 /// deferred past a scope feeds the scope open at capture, whose ink is no
-/// longer kept and whose taint is kept for `scope_tainted`.
+/// longer kept; the taint of an ended scope is kept as the range of ended
+/// scopes tainted so far (`scope_tainted`), which a host whose scopes follow
+/// its blocks in order sees as the run of blocks around the tainted ones. The
+/// sink stays the size of one that measures a single scope.
 #[derive(Default)]
 pub struct InkSink {
-    bounds: std::cell::Cell<Option<Bounds<ScaledPixels>>>,
-    tainted: std::cell::Cell<bool>,
-    scope: std::cell::Cell<u32>,
-    /// Ended scopes tainted by deferred paint.
-    late: std::cell::RefCell<Vec<u32>>,
+    bounds: std::cell::Cell<Bounds<ScaledPixels>>,
+    /// Bit 0: the open scope (or the sink without scopes) is tainted; bit 1:
+    /// `bounds` holds ink; bit 2: an ended scope beyond the range of `late`
+    /// was tainted; the bits above: the open scope, 0 if none.
+    state: std::cell::Cell<u32>,
+    /// The first (low half) and last (high half) ended scope tainted, 0 if none.
+    late: std::cell::Cell<u32>,
 }
 
+const INK_TAINTED: u32 = 1;
+const INK_PAINTED: u32 = 2;
+const INK_LATE_ALL: u32 = 4;
+const INK_SCOPE_SHIFT: u32 = 3;
+
 impl InkSink {
+    /// The scope being measured, 0 if the sink never began one.
+    pub(crate) fn scope(&self) -> u32 {
+        self.state.get() >> INK_SCOPE_SHIFT
+    }
+
     /// Add ink painted under scope `scope` (`Scene::ink_scope`); a sink that
     /// never began a scope takes all of it.
     pub(crate) fn add_in(&self, scope: u32, bounds: Bounds<ScaledPixels>) {
-        if self.scope.get() != 0 && scope != self.scope.get() {
+        if self.scope() != 0 && scope != self.scope() {
             return;
         }
-        self.bounds.set(Some(match self.bounds.get() {
-            Some(ink) => ink.union(&bounds),
-            None => bounds,
-        }));
+        let state = self.state.get();
+        self.bounds.set(match state & INK_PAINTED {
+            0 => bounds,
+            _ => self.bounds.get().union(&bounds),
+        });
+        self.state.set(state | INK_PAINTED);
     }
 
     pub(crate) fn taint_in(&self, scope: u32) {
-        if self.scope.get() == 0 || scope == self.scope.get() {
-            self.tainted.set(true);
-        } else if !self.late.borrow().contains(&scope) {
-            self.late.borrow_mut().push(scope);
+        let open = self.scope();
+        if open == 0 || scope == open {
+            self.state.set(self.state.get() | INK_TAINTED);
+        } else if scope > 0xffff {
+            self.state.set(self.state.get() | INK_LATE_ALL);
+        } else {
+            let late = self.late.get();
+            let (first, last) = (late & 0xffff, late >> 16);
+            let first = if first == 0 { scope } else { first.min(scope) };
+            self.late.set(last.max(scope) << 16 | first);
         }
     }
 
     /// End the scope being measured and begin a new, empty one; its id.
     pub fn begin_scope(&self) -> u32 {
-        let scope = self.scope.get() + 1;
-        self.scope.set(scope);
-        self.bounds.set(None);
-        self.tainted.set(false);
+        let scope = self.scope() + 1;
+        self.state
+            .set(scope << INK_SCOPE_SHIFT | self.state.get() & INK_LATE_ALL);
         scope
     }
 
-    /// Whether scope `scope` was tainted, while open or by paint deferred
-    /// past it.
+    /// Whether scope `scope` may have been tainted: while open, or by paint
+    /// deferred past it (the range of tainted ended scopes holds it).
     pub fn scope_tainted(&self, scope: u32) -> bool {
-        (scope == self.scope.get() && self.tainted.get()) || self.late.borrow().contains(&scope)
+        let (state, late) = (self.state.get(), self.late.get());
+        state & INK_LATE_ALL != 0
+            || scope == self.scope() && state & INK_TAINTED != 0
+            || late != 0 && (late & 0xffff..=late >> 16).contains(&scope)
+    }
+
+    /// Forget all scopes and ink: the sink measures as if new.
+    pub fn clear(&self) {
+        self.state.set(0);
+        self.late.set(0);
     }
 
     /// Union of the placed bounds offered so far; `None` when nothing painted.
     pub fn bounds(&self) -> Option<Bounds<ScaledPixels>> {
-        self.bounds.get()
+        (self.state.get() & INK_PAINTED != 0).then(|| self.bounds.get())
     }
 
     /// Whether an observed scope had effects beyond offering primitives.
     pub fn tainted(&self) -> bool {
-        self.tainted.get()
+        self.state.get() & INK_TAINTED != 0
     }
 }
-
 /// Paint effects of a scope observed by open ink sinks.
 pub(crate) struct InkProbe {
     start: PaintIndex,
@@ -333,8 +363,8 @@ impl Window {
     pub fn with_ink_sink<R>(&mut self, sink: Rc<InkSink>, f: impl FnOnce(&mut Self) -> R) -> R {
         // At most one open sink measures scopes (`InkSink::begin_scope`).
         let outer = self.next_frame.scene.ink_scope;
-        if sink.scope.get() != 0 {
-            self.next_frame.scene.ink_scope = sink.scope.get();
+        if sink.scope() != 0 {
+            self.next_frame.scene.ink_scope = sink.scope();
         }
         self.next_frame.scene.ink.push(sink);
         let probe = InkProbe::open(self);

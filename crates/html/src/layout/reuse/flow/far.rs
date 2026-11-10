@@ -15,8 +15,8 @@ impl FlowCx {
     /// build of the frame, no float before, no ban or refusal.
     pub(super) fn far(&self, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         let start = Counters::read(&opts.cx);
-        let slot = self.reuse.store.with_far_record(e.node_id, |record| {
-            if !record.fits(&self.key, start, e) {
+        let slot = self.reuse.with_far_record(e.node_id, |record| {
+            if !record.fits(start, e) {
                 return None;
             }
             record.end.write(&opts.cx);
@@ -45,12 +45,9 @@ impl FlowCx {
             return;
         }
         let Some(child) = out.pop() else { return };
-        let pending = PendingFar::new(self.key.clone(), mark.start, end);
+        let pending = PendingFar::new(mark.start, end);
         let source = self.reuse.shells.source(e);
-        let index = self.reuse.with_far(|far| {
-            far.pending.push((pending, source));
-            far.pending.len() - 1
-        });
-        out.push(FarRecorder::new(child, self.reuse.clone(), index).hooked());
+        self.reuse.with_far(|far| far.recorders += 1);
+        out.push(FarRecorder::new(child, self.reuse.clone(), pending, source).hooked());
     }
 }

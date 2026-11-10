@@ -31,11 +31,10 @@ pub(super) use candidate::far_replayable;
 pub(super) use element::{Far, FarRecorder};
 pub(crate) use state::FrameFar;
 
-use super::{Counters, FlowKey, FlowReuse, Source, scaled};
+use super::{Counters, FlowReuse, Source, scaled};
 use crate::dom::Element;
-use gpui::{Bounds, InkSink, LayoutId, Pixels, RetainedSubtree, ScaledPixels, Window, point, size};
+use gpui::{Bounds, LayoutId, Pixels, RetainedSubtree, ScaledPixels, Window, point, size};
 use std::cell::Cell;
-use std::rc::Rc;
 
 /// How far ink reached outside the layout boxes of a block, per side, in
 /// device pixels (`ink_beyond`).
@@ -47,79 +46,77 @@ pub(super) struct Excess {
     left: f32,
 }
 
-/// A far block's layout subtree with the build inputs it was requested for.
+/// A far block's layout subtree with the build inputs it was requested for,
+/// kept in the far state of the document (`FrameFar::records`). Its flow key
+/// is the store's: records of another key outside the widths are dropped
+/// with the key (`Store::reset_replays`).
 pub(crate) struct FarRecord {
     source: Source,
-    key: Rc<FlowKey>,
     start: Counters,
     pub(super) end: Counters,
     layout: RetainedSubtree,
     excess: Excess,
+    /// Its ink scope in its build's sink (`FrameFar::sink`): a taint of the
+    /// scope by deferred paint refuses the record when the build finishes.
+    scope: u32,
     /// Claimed by the build being finished (`FlowReuse::finish_far`).
     claimed: Cell<bool>,
 }
 
 impl FarRecord {
-    /// The record fits a flow of `key` at counters `start` with subtree `e`.
-    pub(super) fn fits(&self, key: &FlowKey, start: Counters, e: &Element) -> bool {
-        self.key.same_outside_widths(key) && self.start == start && self.source.same(e)
+    /// The record fits a flow at counters `start` with subtree `e`.
+    pub(super) fn fits(&self, start: Counters, e: &Element) -> bool {
+        self.start == start && self.source.same(e)
     }
 
     /// Mark the record claimed by this build; it stays for the next one.
     pub(super) fn claim(&self) {
         self.claimed.set(true);
     }
+
+    pub(super) fn id(&self) -> u64 {
+        self.source.id()
+    }
 }
 
 /// Union of a far block's layout boxes and of its hitboxes, if any.
 type Placed = (Bounds<ScaledPixels>, Option<Bounds<ScaledPixels>>);
 
-/// A far record in the making, kept by value in the build's far state
-/// (`FrameFar::pending`): filled by `FarRecorder`, finished after paint.
+/// A far record in the making, kept in its recorder (`FarRecorder`), which
+/// lives in the frame's element arena like the block's own elements.
 pub(super) struct PendingFar {
-    key: Rc<FlowKey>,
     start: Counters,
     end: Counters,
     layout: Option<RetainedSubtree>,
     /// Prepaint left nothing but hitboxes: the union of the block's layout
     /// boxes and of its hitboxes, if any.
     placed: Option<Placed>,
-    /// Set when the block painted far from the screen.
-    excess: Option<Excess>,
-    /// Its ink scope in the build's sink (`FrameFar::sink`): a taint of it
-    /// by deferred paint refuses the record.
-    scope: u32,
 }
 
 impl PendingFar {
-    pub(super) fn new(key: Rc<FlowKey>, start: Counters, end: Counters) -> Self {
+    pub(super) fn new(start: Counters, end: Counters) -> Self {
         Self {
-            key,
             start,
             end,
             layout: None,
             placed: None,
-            excess: None,
-            scope: 0,
         }
     }
 
-    fn finish(self, source: Source, sink: &InkSink) -> Option<FarRecord> {
-        if sink.scope_tainted(self.scope) {
-            return None;
-        }
+    /// The record of a block that painted far from the screen with ink
+    /// `excess` in scope `scope`.
+    fn finish(&self, source: Source, excess: Excess, scope: u32) -> Option<FarRecord> {
         Some(FarRecord {
             source,
-            key: self.key,
             start: self.start,
             end: self.end,
-            layout: self.layout?,
-            excess: self.excess?,
+            layout: self.layout.clone()?,
+            excess,
+            scope,
             claimed: Cell::new(false),
         })
     }
 }
-
 /// A claimed far block in this frame: what its stand-in and the frame check
 /// read of its record (`FarRecord`, kept in `Store::far`).
 pub(super) struct FarSlot {

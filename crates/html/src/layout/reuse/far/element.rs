@@ -1,31 +1,43 @@
 //! Elements of a far block: the recording wrapper around a built block and
 //! the stand-in that claims its layout subtree (`super`).
 
-use super::{Excess, FarSlot, clear_of, device, ink_beyond, screen_of};
+use super::{Excess, FarSlot, PendingFar, clear_of, device, ink_beyond, screen_of};
 use crate::hooks::{Hooks, Wrap};
-use crate::layout::reuse::FlowReuse;
+use crate::layout::reuse::{FlowReuse, Source};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, point, px};
 use std::rc::Rc;
 
 /// Transparent wrapper of a built block: captures its layout nodes, checks
-/// that its prepaint left nothing but hitboxes and measures its ink, into
-/// its pending recording `index` of the build (`FrameFar::pending`).
+/// that its prepaint left nothing but hitboxes and measures its ink. The
+/// recording in the making lives in the wrapper, in the frame's element
+/// arena; a block that painted far from the screen hands its record to the
+/// build (`FlowReuse::add_far`).
 pub(in crate::layout::reuse) struct FarRecorder {
     child: AnyElement,
     reuse: Rc<FlowReuse>,
-    index: usize,
+    pending: PendingFar,
+    source: Option<Source>,
 }
 
 impl FarRecorder {
     pub(in crate::layout::reuse) fn new(
         child: AnyElement,
         reuse: Rc<FlowReuse>,
-        index: usize,
+        pending: PendingFar,
+        source: Source,
     ) -> Self {
         Self {
             child,
             reuse,
-            index,
+            pending,
+            source: Some(source),
+        }
+    }
+
+    /// The recording failed: the block is near (`Store::far_near`).
+    fn near(&mut self) {
+        if let Some(source) = self.source.take() {
+            self.reuse.store.note_near(source.id());
         }
     }
 }
@@ -42,8 +54,7 @@ impl Wrap for FarRecorder {
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         let start = window.layout_request_position();
         let id = self.child.request_layout(window, cx);
-        let layout = window.capture_layout(start, id);
-        self.reuse.with_pending(self.index, |p| p.layout = layout);
+        self.pending.layout = window.capture_layout(start, id);
         id
     }
 
@@ -58,13 +69,14 @@ impl Wrap for FarRecorder {
         else {
             return;
         };
-        let layout = self.reuse.with_pending(self.index, |p| p.layout.clone());
-        let boxes = layout
-            .flatten()
-            .and_then(|layout| window.retained_layout_bounds(&layout));
+        let boxes = self
+            .pending
+            .layout
+            .as_ref()
+            .and_then(|layout| window.retained_layout_bounds(layout));
         let scale = window.scale_factor();
-        let placed = boxes.map(|boxes| (device(boxes, scale), hits.map(|b| device(b, scale))));
-        self.reuse.with_pending(self.index, |p| p.placed = placed);
+        self.pending.placed =
+            boxes.map(|boxes| (device(boxes, scale), hits.map(|b| device(b, scale))));
     }
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
@@ -81,13 +93,13 @@ impl Wrap for FarRecorder {
         window.with_ink_sink(sink.clone(), |window| self.child.paint(window, cx));
         let (ink, tainted) = (sink.bounds(), sink.tainted());
         let quiet = !tainted && callbacks == window.next_frame_callback_count();
-        let Some((boxes, hits, layout)) = self
-            .reuse
-            .with_pending(self.index, |p| Some((p.placed?, p.layout.clone()?)))
-            .flatten()
+        let Some(((boxes, hits), layout)) = self
+            .pending
+            .placed
+            .zip(self.pending.layout.as_ref())
             .filter(|_| quiet)
-            .map(|((boxes, hits), layout)| (boxes, hits, layout))
         else {
+            self.near();
             return;
         };
         let ink = match (ink, hits) {
@@ -95,15 +107,20 @@ impl Wrap for FarRecorder {
             (a, b) => a.or(b),
         };
         let excess: Excess = ink_beyond(boxes, ink);
-        if clear_of(boxes, excess, screen_of(window)) {
-            self.reuse.with_pending(self.index, |p| {
-                p.excess = Some(excess);
-                p.scope = scope;
-            });
-            // Kept for the next pass as their requests made them: the
-            // recording frame allocates nothing for the keep. The first pass
-            // that claims the block compacts them after its paint.
-            window.keep_retained_measures(&layout, false);
+        if !clear_of(boxes, excess, screen_of(window)) {
+            self.near();
+            return;
+        }
+        // Kept for the next pass as their requests made them: the recording
+        // frame allocates nothing for the keep. The first pass that claims
+        // the block compacts them after its paint.
+        window.keep_retained_measures(layout, false);
+        let record = self
+            .source
+            .take()
+            .and_then(|source| self.pending.finish(source, excess, scope));
+        if let Some(record) = record {
+            self.reuse.add_far(record);
         }
     }
 }
