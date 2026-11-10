@@ -118,7 +118,9 @@ type PassProbe = (Paragraph, Option<Box<[u32]>>);
 /// frames only the plain form lives.
 pub(super) struct PlainMeasure {
     plain: PlainProbe,
-    pass: Option<PassProbe>,
+    /// Boxed: the kept leaf's measure box stays the size of the plain form
+    /// between passes.
+    pass: Option<Box<PassProbe>>,
     atom_fit: Rc<RefCell<AtomFit>>,
     normal_static: NormalStatic,
 }
@@ -135,7 +137,7 @@ impl gpui::CompactMeasure for PlainMeasure {
         cx: &mut App,
     ) -> MeasuredContent {
         let plain = &self.plain;
-        let (probe, stops) = self.pass.get_or_insert_with(|| plain.probe());
+        let (probe, stops) = &mut **self.pass.get_or_insert_with(|| Box::new(plain.probe()));
         if let Some(stops) = stops.take() {
             probe.seed_stops(stops);
         }
@@ -158,7 +160,7 @@ impl gpui::CompactMeasure for PlainMeasure {
 
     fn prepare(&mut self) {
         if self.pass.is_none() {
-            self.pass = Some(self.plain.probe());
+            self.pass = Some(Box::new(self.plain.probe()));
         }
     }
 }
