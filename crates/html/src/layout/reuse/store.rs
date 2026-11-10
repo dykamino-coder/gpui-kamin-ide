@@ -75,21 +75,23 @@ impl Store {
     /// the recorded layout leaf, not the recorded paint, holds.
     pub(crate) fn same_tree(&self, e: &Element) -> Option<(Rc<Record>, Damage)> {
         let record = self.records.borrow().get(&e.node_id).cloned()?;
-        let damage = match record.repaint {
+        let damage = match record.repaint.get() {
             true => Damage::Paint,
             false => Damage::None,
         };
         // Compared at the rebuild of the document (`rebase`).
-        let Some(source) = &record.source else {
-            return Some((record, damage));
+        let verdict = match record.source.borrow().as_ref() {
+            None => Some(true),
+            Some(source) if source.same(e) => Some(true),
+            // A repainted block stands only off screen (`FlowCx::placeholder`):
+            // the layout compare of a near one, a walk of its whole subtree,
+            // would only find a record its build cannot use.
+            Some(source) => (record.far && source.same_layout(e)).then_some(false),
         };
-        if source.same(e) {
+        if verdict == Some(true) {
             return Some((record, damage));
         }
-        // A repainted block stands only off screen (`FlowCx::placeholder`):
-        // the layout compare of a near one, a walk of its whole subtree,
-        // would only find a record its build cannot use.
-        if record.far && source.same_layout(e) {
+        if verdict == Some(false) {
             // The caller keeps the layout under a record of this tree
             // (`FlowCx::placeholder`): the previous subtree goes now, not at
             // the end of the frame.
@@ -109,8 +111,10 @@ impl Store {
     #[cfg(test)]
     pub(crate) fn recorded(&self) -> Vec<Element> {
         let records = self.records.borrow();
-        let sources = records.values().filter_map(|r| r.source.as_ref());
-        sources.map(|s| s.element()).collect()
+        let sources = records
+            .values()
+            .filter_map(|r| r.source.borrow().as_ref().map(|s| s.element()));
+        sources.collect()
     }
 
     /// The document `old` was rebuilt as `new` from the same source DOM
@@ -146,26 +150,30 @@ impl Store {
         };
         // The same source DOM: the flows have the same children in the same
         // order, so the blocks pair by position (no map of either tree).
-        let mut kept = HashMap::with_capacity(records.len());
+        // A kept record drops its source in place (`Record::rebased`); a
+        // record left with its source had no block to compare and goes.
+        let mut dropped = Vec::new();
         let pairs = was.iter().zip(now).filter_map(|pair| match pair {
             (crate::dom::Node::Element(a), crate::dom::Node::Element(b)) => Some((a, b)),
             _ => None,
         });
         for (a, b) in pairs {
-            if records.is_empty() {
-                break;
-            }
-            let Some(record) = records.remove(&a.node_id) else {
+            let Some(record) = records.get(&a.node_id) else {
                 continue;
             };
             let exact = roots && crate::dom::same_cascaded_tree(a, b, false, &mut memo);
             let repaint =
                 !exact && record.far && crate::dom::same_cascaded_tree(a, b, true, &mut memo);
-            if exact || repaint {
-                kept.insert(a.node_id, Rc::new(record.moved_to(None, repaint)));
+            match exact || repaint {
+                true => record.rebased(repaint),
+                false => dropped.push(a.node_id),
             }
         }
-        self.records.replace(kept);
+        for id in dropped {
+            records.remove(&id);
+        }
+        records.retain(|_, r| r.source.borrow().is_none());
+        self.records.replace(records);
     }
 
     /// The document was patched (`Document::commit`): records compared at a
@@ -174,7 +182,7 @@ impl Store {
     pub(crate) fn patch(&self) {
         self.patched.set(true);
         let mut records = self.records.take();
-        records.retain(|_, r| r.source.is_some());
+        records.retain(|_, r| r.source.borrow().is_some());
         self.records.replace(records);
     }
 

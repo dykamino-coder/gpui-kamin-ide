@@ -185,7 +185,7 @@ impl Pending {
         let snapshot = self.snapshot.take()?;
         Some(Record {
             id: source.id(),
-            source: Some(source),
+            source: RefCell::new(Some(source)),
             key: self.key.clone(),
             start: self.start,
             end: self.end,
@@ -200,7 +200,7 @@ impl Pending {
                     .is_some_and(|flow| self.border.get() <= flow + 0.5),
             far,
             replay: RefCell::new(replay),
-            repaint: false,
+            repaint: Cell::new(false),
         })
     }
 }

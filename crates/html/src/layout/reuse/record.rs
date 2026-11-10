@@ -9,7 +9,7 @@ pub(crate) struct Record {
     /// What a later build of the block is compared with (`source`); `None`:
     /// the block was compared at a rebuild of the document, by its document
     /// boxes (`Store::rebase`), and has not been built since.
-    pub(super) source: Option<Source>,
+    pub(super) source: RefCell<Option<Source>>,
     pub(super) key: Rc<FlowKey>,
     pub(super) start: Counters,
     pub(super) end: Counters,
@@ -32,7 +32,7 @@ pub(crate) struct Record {
     /// The block's paint-only values changed since its paint was recorded
     /// (`Store::same_tree`): the layout leaf holds, the recorded paint and
     /// ink do not (`FlowReuse::validate` tests the leaf's box as well).
-    pub(super) repaint: bool,
+    pub(super) repaint: Cell<bool>,
 }
 
 impl Record {
@@ -43,7 +43,7 @@ impl Record {
     pub(super) fn moved_to(&self, source: Option<Source>, repaint: bool) -> Self {
         Self {
             id: self.id,
-            source,
+            source: RefCell::new(source),
             key: self.key.clone(),
             start: self.start,
             end: self.end,
@@ -56,7 +56,17 @@ impl Record {
                 true => None,
                 false => self.replay.take(),
             }),
-            repaint: self.repaint || repaint,
+            repaint: Cell::new(self.repaint.get() || repaint),
+        }
+    }
+
+    /// This record compared at a rebuild of the document (`Store::rebase`),
+    /// in place: it drops its source, and with `repaint` its output.
+    pub(super) fn rebased(&self, repaint: bool) {
+        self.source.take();
+        if repaint {
+            self.replay.take();
+            self.repaint.set(true);
         }
     }
 
