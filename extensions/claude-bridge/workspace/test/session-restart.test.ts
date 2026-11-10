@@ -71,8 +71,8 @@ test('real host restores open conversations, titles and active selection from di
   await waitFrame(view.frames, view.events, f => f.channel === 'connection-state-changed' && f.args[0] === firstTab && f.args[1].status === 'connected' && f.args[1].sessionId === first)
   sockets.get(first)!.send(JSON.stringify({ type: 'session:title', title: 'Named persistent conversation' }))
   await waitFrame(view.frames, view.events, f => f.channel === 'tab:list-changed' && f.args[0].some((t: any) => t.sessionTitle === 'Named persistent conversation'))
-  const secondTab = await view.invoke('session:resume', { cwd: root, conversationId: second })
   await view.invoke('tab:create', { cwd: root }) // Empty tabs have no conversation identity yet.
+  const secondTab = await view.invoke('session:resume', { cwd: root, conversationId: second })
   view.send('tab:switch', firstTab)
   const before = await view.invoke('tab:list')
   assert.equal(await view.invoke('tab:get-active'), firstTab)
@@ -91,10 +91,12 @@ test('real host restores open conversations, titles and active selection from di
   assert.equal(await view.invoke('tab:get-active'), active.id)
   assert.equal((await view.invoke('tabs:restore-state')).find((tab: any) => tab.conversationId === first).pinned, true)
   view.send('tab:close', active.id)
+  await waitFrame(view.frames, view.events, f => f.channel === 'connection-state-changed' && f.args[0] === secondTab && f.args[1].status === 'connected' && f.args[1].sessionId === second)
+  assert.equal(await view.invoke('tab:get-active'), secondTab, 'Closing the active restored tab must connect its lazy replacement')
   await view.invoke('tab:list') // Ordered dispatch barrier.
   await view.stop()
   view = await boot()
-  assert.deepEqual((await view.invoke('tab:list')).map((tab: any) => tab.conversationId), [second, undefined], 'Closed conversations must not reopen')
+  assert.deepEqual((await view.invoke('tab:list')).map((tab: any) => tab.conversationId), [undefined, second], 'Closed conversations must not reopen')
   // History resume without an explicit label must not overwrite the saved name.
   const resumed = await view.invoke('session:resume', { cwd: root, conversationId: first })
   await waitFrame(view.frames, view.events, f => f.channel === 'connection-state-changed' && f.args[0] === resumed && f.args[1].status === 'connected' && f.args[1].sessionId === first)

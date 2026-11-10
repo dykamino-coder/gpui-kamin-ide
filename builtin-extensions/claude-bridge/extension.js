@@ -44506,6 +44506,7 @@ var TabManager = class {
    *  tabs belong to the old token's server-side sessions and can't be reused. */
   closeAllTabs() {
     const ids = Array.from(this.tabs.keys());
+    this.activeTabId = null;
     for (const id of ids) this.closeTab(id);
   }
   closeTab(tabId) {
@@ -44519,7 +44520,7 @@ var TabManager = class {
       const remaining = Array.from(this.tabs.keys());
       this.activeTabId = remaining.length > 0 ? remaining[remaining.length - 1] : null;
       if (this.activeTabId) {
-        this.emitSwitched(this.activeTabId);
+        this.switchTab(this.activeTabId);
       }
     }
     this.window.webContents.send("tab:closed", tabId);

@@ -59,6 +59,7 @@ test('browser restores named open sessions, selection and pins after real host r
   assert.equal(await page.evaluate(() => window.kaminBridge.getActiveTab()), first.id)
   await strip.locator(`[data-tab-id="${first.id}"]`).getByRole('button', { name: 'Close tab', exact: true }).press('Space')
   await waitRead(async () => (await window.kaminBridge.listTabs()).length === 1)
+  await fixture.wait(frame => frame.type === 'session:resume' && frame.conversationId === before[1].conversationId)
   await fixture.restart()
   await open()
   await waitRead(async () => (await window.kaminBridge.listTabs()).length === 1)

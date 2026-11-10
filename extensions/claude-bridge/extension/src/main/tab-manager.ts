@@ -173,6 +173,8 @@ export class TabManager {
    *  tabs belong to the old token's server-side sessions and can't be reused. */
   closeAllTabs(): void {
     const ids = Array.from(this.tabs.keys())
+    // Bulk close must not lazily connect the next tab on its way to closing it.
+    this.activeTabId = null
     for (const id of ids) this.closeTab(id)
   }
 
@@ -194,7 +196,7 @@ export class TabManager {
       const remaining = Array.from(this.tabs.keys())
       this.activeTabId = remaining.length > 0 ? remaining[remaining.length - 1] : null
       if (this.activeTabId) {
-        this.emitSwitched(this.activeTabId)
+        this.switchTab(this.activeTabId)
       }
     }
 
