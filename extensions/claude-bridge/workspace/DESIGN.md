@@ -711,3 +711,5 @@ Keep the strict full-parity gate and INC-2026-0087 open.
 Acceptance: collector integrity tests, workspace typechecks, declared parity,
 workspace tests and the full Linux Podman production-browser fixture suite.
 Registration #638 covers this bounded Change PR; Claude lead reviews/merges it.
+
+Implementation review: [#697](https://github.com/dykamino-coder/gpui-kamin-ide/pull/697).
