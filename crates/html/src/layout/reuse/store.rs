@@ -150,7 +150,10 @@ impl Store {
             (crate::dom::Node::Element(a), crate::dom::Node::Element(b)) => Some((a, b)),
             _ => None,
         });
-        for (a, b) in pairs.take_while(|_| !records.is_empty()) {
+        for (a, b) in pairs {
+            if records.is_empty() {
+                break;
+            }
             let Some(record) = records.remove(&a.node_id) else {
                 continue;
             };

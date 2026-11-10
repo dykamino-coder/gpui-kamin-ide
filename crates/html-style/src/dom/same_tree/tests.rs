@@ -154,7 +154,7 @@ fn cascaded_values_decide_a_rebuilt_tree_before_its_styles_are_computed() {
     );
     let d = block(vec![text("onf"), Node::Element(inner.clone())]);
     assert!(!same_cascaded_tree(&a, &d, true), "texts stay exact");
-    let mut e = rebuilt.clone();
+    let mut e = rebuilt;
     e.node_id += 1;
     assert!(!same_cascaded_tree(&a, &e, true), "node ids stay exact");
     assert!(same_cascaded_box(&inner, &recoloured(&inner), true));
