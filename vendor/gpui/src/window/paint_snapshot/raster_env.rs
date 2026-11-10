@@ -101,7 +101,8 @@ impl RasterEnv {
             && b.image_cache_stack.len() == window.image_cache_stack.len()
             && b.image_cache_stack.iter().zip(&window.image_cache_stack).all(|(a, b)| a.same(b))
             && b.ink.len() == window.next_frame.scene.ink.len()
-            && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| a.same(b))
+            && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| Rc::ptr_eq(a, b))
+            && b.ink_scope == window.next_frame.scene.ink_scope
             && self.contexts == window.raster_frame.contexts
     }
 }
@@ -117,7 +118,7 @@ struct ReplayBuffers {
     transforms: Vec<TransformationMatrix>,
     masks: Vec<ContentMask<Pixels>>,
     images: Vec<AnyImageCache>,
-    ink: Vec<InkScope>,
+    ink: Vec<Rc<InkSink>>,
     raster_contexts: render_context::Snapshot,
 }
 
@@ -150,6 +151,7 @@ impl ReplayBuffers {
             content_mask_stack: mem::take(&mut self.masks),
             image_cache_stack: mem::take(&mut self.images),
             ink: mem::take(&mut self.ink),
+            ink_scope: b.ink_scope,
         }
     }
 

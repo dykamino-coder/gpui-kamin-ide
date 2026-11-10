@@ -161,8 +161,10 @@ pub struct InkSink {
 }
 
 impl InkSink {
-    fn add_in(&self, scope: u32, bounds: Bounds<ScaledPixels>) {
-        if scope != self.scope.get() {
+    /// Add ink painted under scope `scope` (`Scene::ink_scope`); a sink that
+    /// never began a scope takes all of it.
+    pub(crate) fn add_in(&self, scope: u32, bounds: Bounds<ScaledPixels>) {
+        if self.scope.get() != 0 && scope != self.scope.get() {
             return;
         }
         self.bounds.set(Some(match self.bounds.get() {
@@ -171,8 +173,8 @@ impl InkSink {
         }));
     }
 
-    fn taint_in(&self, scope: u32) {
-        if scope == self.scope.get() {
+    pub(crate) fn taint_in(&self, scope: u32) {
+        if self.scope.get() == 0 || scope == self.scope.get() {
             self.tainted.set(true);
         } else if !self.late.borrow().contains(&scope) {
             self.late.borrow_mut().push(scope);
@@ -202,28 +204,6 @@ impl InkSink {
     /// Whether an observed scope had effects beyond offering primitives.
     pub fn tainted(&self) -> bool {
         self.tainted.get()
-    }
-}
-
-/// KaminIDE patch: an open ink sink with the scope it measures.
-#[derive(Clone)]
-pub(crate) struct InkScope {
-    sink: Rc<InkSink>,
-    scope: u32,
-}
-
-impl InkScope {
-    pub(crate) fn add(&self, bounds: Bounds<ScaledPixels>) {
-        self.sink.add_in(self.scope, bounds);
-    }
-
-    fn taint(&self) {
-        self.sink.taint_in(self.scope);
-    }
-
-    /// The same sink measuring the same scope.
-    pub(crate) fn same(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.sink, &other.sink) && self.scope == other.scope
     }
 }
 
@@ -261,8 +241,9 @@ impl InkProbe {
             && self.groups == window.next_frame.scene.groups.len()
             && self.callbacks == window.next_frame_callback_count();
         if !quiet {
-            for scope in &window.next_frame.scene.ink {
-                scope.taint();
+            let scope = window.next_frame.scene.ink_scope;
+            for sink in &window.next_frame.scene.ink {
+                sink.taint_in(scope);
             }
         }
     }
@@ -350,14 +331,19 @@ impl LayoutSnapshot {
 impl Window {
     /// Paint `f` with `sink` measuring its ink (see [`InkSink`]).
     pub fn with_ink_sink<R>(&mut self, sink: Rc<InkSink>, f: impl FnOnce(&mut Self) -> R) -> R {
-        let scope = sink.scope.get();
-        self.next_frame.scene.ink.push(InkScope { sink, scope });
+        // At most one open sink measures scopes (`InkSink::begin_scope`).
+        let outer = self.next_frame.scene.ink_scope;
+        if sink.scope.get() != 0 {
+            self.next_frame.scene.ink_scope = sink.scope.get();
+        }
+        self.next_frame.scene.ink.push(sink);
         let probe = InkProbe::open(self);
         let result = f(self);
         if let Some(probe) = probe {
             probe.close(self);
         }
         self.next_frame.scene.ink.pop();
+        self.next_frame.scene.ink_scope = outer;
         result
     }
 
@@ -379,8 +365,8 @@ impl Window {
             scene.ink_allowed.1 +=
                 end.accessed_element_states_index - start.accessed_element_states_index;
         } else {
-            for scope in &scene.ink {
-                scope.taint();
+            for sink in &scene.ink {
+                sink.taint_in(scene.ink_scope);
             }
         }
         result

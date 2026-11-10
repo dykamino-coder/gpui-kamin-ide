@@ -144,7 +144,9 @@ pub struct Scene {
     /// KaminIDE patch: ink sinks of retained subtrees open at this point of the
     /// paint (Window::with_ink_sink); each one takes the placed bounds of every
     /// primitive offered to the scene, before culling.
-    pub(crate) ink: Vec<crate::window::InkScope>,
+    pub(crate) ink: Vec<std::rc::Rc<crate::InkSink>>,
+    /// KaminIDE patch: the scope of the open sink that measures scopes, 0 if none.
+    pub(crate) ink_scope: u32,
     /// Mouse listeners and element state reads declared inert while unseen
     /// (Window::offscreen_inert), counted so ink probes can allow them.
     pub(crate) ink_allowed: (usize, usize),
@@ -342,6 +344,7 @@ impl Scene {
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();
         self.ink.clear();
+        self.ink_scope = 0;
         self.ink_allowed = (0, 0);
     }
 
@@ -381,7 +384,7 @@ impl Scene {
         let placed_bounds = placed_bounds(&primitive);
         // KaminIDE patch: ink of open retained subtrees, culled or not.
         for sink in &self.ink {
-            sink.add(placed_bounds);
+            sink.add_in(self.ink_scope, placed_bounds);
         }
         let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
 
@@ -685,7 +688,7 @@ impl Scene {
         }
         if let Some(ink) = ink {
             for sink in &self.ink {
-                sink.add(ink);
+                sink.add_in(self.ink_scope, ink);
             }
         }
         let index = match graft {

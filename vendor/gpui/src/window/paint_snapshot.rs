@@ -24,7 +24,8 @@ pub struct PaintCtx {
     content_mask_stack: Vec<ContentMask<Pixels>>,
     image_cache_stack: Vec<AnyImageCache>,
     /// KaminIDE patch: ink sinks open at capture keep measuring deferred paint.
-    ink: Vec<InkScope>,
+    ink: Vec<Rc<InkSink>>,
+    ink_scope: u32,
 }
 
 /// Full paint environment, including device scale and exact raster placement.
@@ -61,6 +62,7 @@ impl PaintCtx {
         mem::swap(&mut window.content_mask_stack, &mut self.content_mask_stack);
         mem::swap(&mut window.image_cache_stack, &mut self.image_cache_stack);
         mem::swap(&mut window.next_frame.scene.ink, &mut self.ink);
+        mem::swap(&mut window.next_frame.scene.ink_scope, &mut self.ink_scope);
     }
 }
 
@@ -83,6 +85,7 @@ impl Window {
             content_mask_stack: self.content_mask_stack.clone(),
             image_cache_stack: self.image_cache_stack.clone(),
             ink: self.next_frame.scene.ink.clone(),
+            ink_scope: self.next_frame.scene.ink_scope,
         }
     }
 
