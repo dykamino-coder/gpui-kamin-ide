@@ -304,3 +304,12 @@ RSS and do not replace the actual-model/composed-image acceptance contract.
 
 No release, version bump or image publication is part of this work. Claude lead
 reviews/merges implementation and the consolidated documentation PR.
+
+`test/lsp.smoke.mjs` exercises the production browser API and shared plugin LSP
+manager against an isolated synthetic stdio peer. It verifies four zero-page
+tools, document updates, browser list/restart, project process sharing/isolation,
+last-owner cleanup and natural host shutdown. The runner writes sanitized
+`lsp-checks.json` with 12 reviewed API/channel/tool/handler assertions after all
+checks pass. The fixture builds current sources in the runner image; this
+partial artifact explicitly disclaims candidate-image acceptance and is not a
+completion receipt. Collector integrity tests run in `test:acceptance`.

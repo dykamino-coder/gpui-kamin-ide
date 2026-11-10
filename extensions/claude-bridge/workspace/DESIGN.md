@@ -539,6 +539,32 @@ candidate with durable submission receipts passes all 17 Linux Podman production
 browser fixtures; this fixture upstream is synthetic. Strict full completion
 continues rejecting 545 missing execution-proof gaps.
 
+## Bounded follow-up: browser external MCP behavior
+
+Exercise the production browser transport and shared MCP manager against an
+owned loopback HTTP MCP fixture. Assert paginated tools, resources, templates
+and prompts; resource reads and parameterized prompts; connection edits,
+disable/enable/removal; and two-page server/log/progress notifications. Independently
+inspect the fixture's received requests, container files and MCP configuration.
+Close every page, execute an upstream external-tool call and resource/prompt
+forwarding, then reopen the same session without a repeated create or tool call.
+
+Use the existing shared handlers without alternate implementations or external
+network services. The fixture is synthetic and does not invoke a model. Emit
+only explicitly executed partial checks after their assertions pass; missing,
+duplicate and failed cases must prevent a passing artifact. Cross-check their
+API/channel IDs against the independent capability inventory. Do not change the
+strict completion validator or claim candidate-image/model acceptance.
+
+Acceptance: evidence accounting negative tests, Windows workspace/acceptance
+checks and Linux Podman production-browser fixtures. Registration #638 already
+covers this bounded Change PR under INC-2026-0087. Lead reviews/merges; exhaustive
+capability coverage and the final composed actual-model run remain open.
+
+The shared MCP serializer currently omits the enabled flag. These assertions
+cover live toggling, not disabled-state restoration after host restart; that
+persistence gap remains open alongside the broader settings acceptance.
+
 ## Bounded follow-up: one initial connection per tab
 
 The retention gate exposed a shared TabManager startup race: a foreground tab is
@@ -585,3 +611,78 @@ an exact production image: registration, actual conversation, unchanged cookie
 and credentials after restart, same conversation/model memory, recreate without
 bootstrap, and foreign Origin/Host rejection. Preserve the failed original run.
 Full capability parity/composed deployment remains open.
+
+Implementation review: [#695](https://github.com/dykamino-coder/gpui-kamin-ide/pull/695).
+Refresh by normal merge from main `118beaad`, retaining the independent MCP, LSP
+and POSIX teardown follow-ups. Rebuild the exact production image and repeat
+credentials/model acceptance after this refresh; older image results do not
+verify the combined candidate.
+
+## Bounded follow-up: plugin LSP browser execution evidence
+
+Exercise the production browser transport and shared plugin LSP manager with an
+independently instrumented stdio peer installed in an isolated fixture HOME.
+Discover the plugin through `listLspServers`, route all four advertised LSP tools
+through upstream MCP frames with zero browser pages, and check both returned
+results and the peer's received document/position/root parameters. Update a real
+file and verify didChange and diagnostics. Same-project tabs must share a process;
+another project must use a separate process. Through `restartLspServers`, verify
+that old processes exit and subsequent tools initialize fresh peers. Closing the
+last project tab must stop only its peer, and host shutdown must stop the rest.
+
+Maintain a reviewed evidence mapping for the two browser API/invoke pairs and
+four tool/handler pairs. Emit sanitized partial evidence only after assertions
+complete, rejecting unknown, missing, duplicate and failed cases. Validate IDs
+against the independent capability inventory. The upstream and language server
+are synthetic; the production host, browser bundle, process ownership and tool
+handlers are real. The fixture runner builds current sources in Linux Podman,
+so these artifacts cannot claim exact candidate-image or actual-model acceptance.
+Keep the full-parity validator unchanged and INC-2026-0087 open.
+
+Acceptance: collector integrity tests, both workspace typechecks, declared
+capability gate, workspace suite and complete production-browser fixture suite
+in Linux Podman. This bounded Change PR is prepared by bridgeweb for Claude
+lead review/merge under the existing registration #638.
+
+Implementation review: [#696](https://github.com/dykamino-coder/gpui-kamin-ide/pull/696).
+
+Validation dependency: two source-fixture runs reached the final terminal tests
+but retained idle Bash PTYs on base main `f121842e`. Keep the incomplete runs;
+do not force a successful test-worker exit. Integrate the existing shared POSIX
+disposal candidate [#694](https://github.com/dykamino-coder/gpui-kamin-ide/pull/694)
+by normal merge for a combined exact-head gate, rather than copying its logic.
+Lead merged #694 and #693 into main during validation. Integrate that fresh main
+by normal merge, retaining both existing follow-ups. The LSP additions do not
+change the disposal fix; rerun the combined exact-head workspace/browser gates.
+
+## Bounded follow-up: terminate unresponsive owned POSIX terminals
+
+A Linux Podman workspace run printed all assertions but retained three idle Bash
+children of its PTY test worker. Current shared disposal sends TERM to the owned
+process group and HUP to its shell, without waiting or escalation. Independently
+reproduce ignored TERM/HUP before attributing the observed hang to this mechanism.
+
+Keep disposal in the shared native/workspace PtySessions service. Remove a closed
+session from writable handles immediately. Preserve the initial TERM/HUP attempt,
+then after a short bounded grace period force-kill only its still-owned POSIX
+process group and shell. Cancel escalation on that PTY's exit event, so a completed
+session never receives a late signal. Repeated disposal must be idempotent; other
+live terminals and ordinary browser-page detach must retain their current policy.
+Windows retains its existing taskkill tree cleanup. This does not promise cleanup
+of descendants that deliberately detach into an independent process session.
+
+Acceptance: a real Linux shell that ignores TERM and HUP must exit after explicit
+kill, tab close, tab disconnect, Disconnect and host shutdown. Independently read
+fixture-owned PID files, verify another terminal remains live where applicable,
+and use only those recorded PIDs for regression cleanup. Fake-clock shared-service
+tests verify graceful exit cancellation and one escalation per disposal. Run the
+workspace and production-browser fixtures in Linux Podman; synthetic upstream
+acceptance and this bounded teardown proof do not close full model/parity gates.
+
+Controlled Linux Podman result: the ignored-signal shell survives the old code's
+7-second deadline (exit 1), but exits in approximately 315 ms with escalation.
+The first fixture attempt omitted required dimensions and failed validation;
+that setup failure is not evidence for the product defect. Full candidate
+validation is recorded separately in the linked Change PR.
+
+Implementation: [#694](https://github.com/dykamino-coder/gpui-kamin-ide/pull/694).
