@@ -15,6 +15,8 @@
 
 mod element;
 #[cfg(test)]
+mod invalidation_tests;
+#[cfg(test)]
 mod paint_damage_tests;
 mod record;
 #[cfg(test)]

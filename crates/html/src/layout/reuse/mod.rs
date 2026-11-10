@@ -26,6 +26,7 @@ pub(crate) mod lines;
 mod narrow;
 mod placeholder;
 mod plain;
+mod rebase;
 mod record;
 mod recorder;
 mod replay;

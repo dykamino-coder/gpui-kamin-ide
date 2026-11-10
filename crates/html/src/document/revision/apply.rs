@@ -90,6 +90,8 @@ impl Document {
         key: u64,
         revision: crate::budget::RevisionBudget,
     ) -> Result<BuildReport, DocumentFailure> {
+        // Read from the source DOM before it is taken and the batch written.
+        let invalidation = self.invalidation(batch, theme_css);
         let input = self
             .state
             .values
@@ -120,12 +122,16 @@ impl Document {
         };
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
+        let state = crate::document::state::DocState::continuing(media, &self.state);
+        if let Some(changed) = invalidation {
+            state.values.traversal.invalidate(changed);
+        }
         match Self::try_source(
             source,
             theme_css,
             self.base_url.clone(),
             self.xml,
-            crate::document::state::DocState::continuing(media, &self.state),
+            state,
             &fonts,
             revision,
         ) {

@@ -75,6 +75,7 @@ impl Document {
         // Та же форма: отличие — записи мутаций прежнего DOM, путь применения
         // общий с `apply`; иначе новая разметка собирается целиком.
         let mut same_shape = false;
+        let mut invalidation = None;
         if let Some(old) = self.state.values.source_dom()
             && let Some(shape) = shape::compare(&old, &source.input.dom.document)
             && let Some(batch) = mutation::Batch::new(&shape.records())
@@ -82,6 +83,7 @@ impl Document {
             #[cfg(feature = "engine-bench")]
             let started = std::time::Instant::now();
             same_shape = true;
+            invalidation = self.invalidation(&batch, theme_css);
             if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
                 batch.write();
                 self.commit(
@@ -99,12 +101,16 @@ impl Document {
         }
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
+        let state = super::state::DocState::continuing(media, &self.state);
+        if let Some(changed) = invalidation {
+            state.values.traversal.invalidate(changed);
+        }
         let candidate = match Self::from_source(
             source,
             theme_css,
             self.base_url.clone(),
             self.xml,
-            super::state::DocState::continuing(media, &self.state),
+            state,
             &fonts,
             revision,
         ) {

@@ -158,7 +158,9 @@ pub fn convert(
         frames,
         clone_cost: Default::default(),
     });
-    if has_declarative_shadow(&dom.document, &admission)? {
+    let shadows = has_declarative_shadow(&dom.document, &admission)?;
+    vcx.doc.traversal.invalidation_rules(&doc.rules, shadows);
+    if shadows {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
         let prepared = prepare(

@@ -117,65 +117,6 @@ impl Store {
         sources.collect()
     }
 
-    /// The document `old` was rebuilt as `new` from the same source DOM
-    /// (`Document::apply`, same-shape `Document::update`): the node ids are
-    /// the same. Each record's block is compared in the two trees by its
-    /// cascaded values (`dom::same_cascaded_tree`: both computed from them
-    /// under the root boxes, whose layout values the flow key compares), and
-    /// the record drops its source, a block of the previous frame tree, which
-    /// then goes with the previous document, as for a fresh one, instead of
-    /// living into the next build. A block is equal only if the `html`/`body`
-    /// boxes cascade equal values too (their paint-only values reach it as
-    /// its own); a block equal but for paint-only values keeps its record only
-    /// if it was far from the screen (`Damage::Paint` stands only there).
-    /// Replay records, which hold their output, go. After a patch since the
-    /// last frame (`patch`), the records hold only by the next build's
-    /// comparison.
-    pub(crate) fn rebase(&self, old: &[crate::dom::Node], new: &[crate::dom::Node]) {
-        if self.patched.get() {
-            return;
-        }
-        self.reset_replays();
-        let mut records = self.records.take();
-        let mut memo = crate::dom::CascadedMemo::default();
-        let ((was, a), (now, b)) = (super::flow_blocks(old), super::flow_blocks(new));
-        let roots = match (a, b) {
-            (Some(a), Some(b)) => {
-                a.len() == b.len()
-                    && a.iter()
-                        .zip(&b)
-                        .all(|(&x, &y)| crate::dom::same_cascaded_box(x, y, false, &mut memo))
-            }
-            _ => false,
-        };
-        // The same source DOM: the flows have the same children in the same
-        // order, so the blocks pair by position (no map of either tree).
-        // A kept record drops its source in place (`Record::rebased`); a
-        // record left with its source had no block to compare and goes.
-        let mut dropped = Vec::new();
-        let pairs = was.iter().zip(now).filter_map(|pair| match pair {
-            (crate::dom::Node::Element(a), crate::dom::Node::Element(b)) => Some((a, b)),
-            _ => None,
-        });
-        for (a, b) in pairs {
-            let Some(record) = records.get(&a.node_id) else {
-                continue;
-            };
-            let exact = roots && crate::dom::same_cascaded_tree(a, b, false, &mut memo);
-            let repaint =
-                !exact && record.far && crate::dom::same_cascaded_tree(a, b, true, &mut memo);
-            match exact || repaint {
-                true => record.rebased(repaint),
-                false => dropped.push(a.node_id),
-            }
-        }
-        for id in dropped {
-            records.remove(&id);
-        }
-        records.retain(|_, r| r.source.borrow().is_none());
-        self.records.replace(records);
-    }
-
     /// The document was patched (`Document::commit`): records compared at a
     /// rebuild (`rebase`) no longer hold, the others are compared by the
     /// next build.

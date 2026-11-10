@@ -17,6 +17,7 @@ pub use same_tree::{
 };
 mod intrinsic;
 pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
+pub mod invalidation;
 pub mod traversal;
 pub use children::{Children, ChildrenMark};
 mod direction;
