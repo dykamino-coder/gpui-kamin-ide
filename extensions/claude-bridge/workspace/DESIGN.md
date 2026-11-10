@@ -464,6 +464,11 @@ This is a bounded test Change PR under INC-2026-0087; registration #638 already
 exists. Claude lead owns review/merge. Full per-capability coverage and composed
 actual-model/image acceptance remain open.
 
+Implementation: [#691](https://github.com/dykamino-coder/gpui-kamin-ide/pull/691).
+The partial artifact intentionally has no completion-receipt schema or image
+provenance fields. Only an entirely passing fixture run can support its listed
+assertions; it cannot establish restart survival or exhaustive input coverage.
+
 Implemented in [#686](https://github.com/dykamino-coder/gpui-kamin-ide/pull/686).
 The host ingress regression failed before the fix and now passes; Windows
 workspace passes 92 tests (three Linux-only skips), shared webview passes 469,
