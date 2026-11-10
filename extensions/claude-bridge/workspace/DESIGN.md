@@ -21,6 +21,12 @@ existing resource limits. This bounded change does not establish full TUI parity
 actual-model acceptance or exhaustive capability proof. Completion is a green
 Change PR and READY handoff; the Claude lead reviews and merges implementation.
 
+Refresh validation exposed a Windows-only fixture rename sharing violation while
+replacing a watched file. Bound retries to 500 ms for that external editor action
+and only Windows `EPERM`; retain a real atomic rename and all watcher assertions.
+Other errors and persistent sharing violations fail. No production file operation
+or acceptance timeout changes.
+
 ## Durable submission receipts follow-up
 
 The host must retain accepted submission identities across a process crash.
