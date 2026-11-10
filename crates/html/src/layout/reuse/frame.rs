@@ -111,9 +111,11 @@ impl FlowReuse {
         let pending = self.pending.take();
         let tracked = pending.len() as u64;
         let mut unrecorded = self.store.unrecorded.take();
-        for (pending, source) in pending {
-            let node = source.id();
-            let finished = pending.finish(source, screen, mask, epoch);
+        // Each pending record goes as its record is made: the two do not
+        // live side by side for the whole flow.
+        for pending in pending {
+            let node = pending.id();
+            let finished = pending.finish(screen, mask, epoch);
             if let Some(narrow) = finished.narrow {
                 self.narrowed.add(narrow);
             }

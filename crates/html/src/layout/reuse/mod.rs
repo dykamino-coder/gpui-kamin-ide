@@ -75,8 +75,9 @@ pub(crate) struct FlowReuse {
     resized: Cell<bool>,
     /// Wraps of this build's blocks (`narrow`).
     narrowed: narrow::Wraps,
-    /// Pending records with the comparison inputs of their blocks.
-    pending: RefCell<Vec<(Rc<recorder::Pending>, Source)>>,
+    /// Pending records of this build's wrapped blocks (`recorder`), owned
+    /// here alone: each goes as soon as its record is made (`finish`).
+    pending: RefCell<Vec<Box<recorder::Pending>>>,
     /// Shells the sources of this build share (`source`).
     shells: Shells,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
