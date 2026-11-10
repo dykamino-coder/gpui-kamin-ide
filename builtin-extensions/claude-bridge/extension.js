@@ -44439,13 +44439,13 @@ var TabManager = class {
    * Create a new tab with its own ConnectionManager.
    * Automatically connects and becomes the active tab.
    */
-  createTab(config) {
-    const tabId = (0, import_crypto4.randomUUID)();
+  createTab(config, opts = {}) {
+    const tabId = opts.restored?.id ?? (0, import_crypto4.randomUUID)();
     const folderName = config.cwd ? import_path9.default.basename(config.cwd) : "default";
     tabLog(`createTab: tabId=${tabId.slice(0, 8)} folder=${folderName} cwd=${config.cwd || "none"} total=${this.tabs.size + 1} stack=${new Error().stack?.split("\n").slice(1, 4).map((l) => l.trim()).join(" | ")}`);
-    const counter = (this.folderCounters.get(folderName) ?? 0) + 1;
+    const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1;
     this.folderCounters.set(folderName, counter);
-    const label = `#${counter}`;
+    const label = opts.restored?.label ?? `#${counter}`;
     const connection = new ConnectionManager(config, this.window, tabId);
     const tab = {
       id: tabId,
@@ -44453,12 +44453,12 @@ var TabManager = class {
       connection,
       label,
       folderName,
-      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      createdAt: opts.restored?.createdAt ?? (/* @__PURE__ */ new Date()).toISOString()
     };
     this.tabs.set(tabId, tab);
-    this.activeTabId = tabId;
+    if (!opts.background) this.activeTabId = tabId;
     this.window.webContents.send("tab:created", this.getTabInfo(tab));
-    this.emitSwitched(tabId);
+    if (!opts.background) this.emitSwitched(tabId);
     this.notifyTabListChanged();
     try {
       this.onTabCreated?.(tab);
@@ -44468,6 +44468,10 @@ var TabManager = class {
     if (config.cwd) {
       const otherRefs = [...this.tabs.values()].filter((t) => t.id !== tabId && t.config.cwd === config.cwd).length;
       if (otherRefs === 0) this.onProjectOpened?.(config.cwd);
+    }
+    if (opts.background) {
+      connection.setRendererMuted(true);
+      return tabId;
     }
     const connectIfAlive = () => {
       if (this.tabs.has(tabId)) connection.connect();
@@ -44502,6 +44506,7 @@ var TabManager = class {
    *  tabs belong to the old token's server-side sessions and can't be reused. */
   closeAllTabs() {
     const ids = Array.from(this.tabs.keys());
+    this.activeTabId = null;
     for (const id of ids) this.closeTab(id);
   }
   closeTab(tabId) {
@@ -44515,7 +44520,7 @@ var TabManager = class {
       const remaining = Array.from(this.tabs.keys());
       this.activeTabId = remaining.length > 0 ? remaining[remaining.length - 1] : null;
       if (this.activeTabId) {
-        this.emitSwitched(this.activeTabId);
+        this.switchTab(this.activeTabId);
       }
     }
     this.window.webContents.send("tab:closed", tabId);
@@ -44657,12 +44662,12 @@ var TabManager = class {
    * the user data, and a burst of warm-pool resumes must not become a sync storm.
    */
   resumeSession(config, opts = {}) {
-    const tabId = (0, import_crypto4.randomUUID)();
+    const tabId = opts.restored?.id ?? (0, import_crypto4.randomUUID)();
     const folderName = config.cwd ? import_path9.default.basename(config.cwd) : "default";
     tabLog(`resumeSession: tabId=${tabId.slice(0, 8)} convId=${config.conversationId.slice(0, 8)} folder=${folderName} label=${config.sessionLabel || "none"} bg=${opts.background ? 1 : 0} total=${this.tabs.size + 1}`);
-    const counter = (this.folderCounters.get(folderName) ?? 0) + 1;
+    const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1;
     this.folderCounters.set(folderName, counter);
-    const label = `#${counter}`;
+    const label = opts.restored?.label ?? `#${counter}`;
     const connection = new ConnectionManager(config, this.window, tabId, config.conversationId);
     const tab = {
       id: tabId,
@@ -44670,7 +44675,7 @@ var TabManager = class {
       connection,
       label,
       folderName,
-      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      createdAt: opts.restored?.createdAt ?? (/* @__PURE__ */ new Date()).toISOString(),
       conversationId: config.conversationId,
       sessionTitle: config.sessionLabel
     };
@@ -45164,7 +45169,8 @@ function registerSessionsIPC(ctx) {
         serverUrl: config.serverUrl,
         token: config.token
       });
-      return tm()?.resumeSession(config) ?? null;
+      const saved = ctx.configStore.getSavedSessions().find((session) => session.conversationId === config.conversationId);
+      return tm()?.resumeSession({ ...config, sessionLabel: config.sessionLabel ?? saved?.label }) ?? null;
     }
   );
   ipcMain.handle("session:get-saved", () => {
