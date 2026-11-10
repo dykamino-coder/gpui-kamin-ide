@@ -16,9 +16,9 @@ use gpui::{LineLayout, Pixels, Window, px};
 use std::{ops::Range, sync::Arc};
 
 /// Наименьшая часть: короче — набор целиком дешевле поиска точек.
-const MIN: usize = 2048;
+const MIN: usize = 4096;
 /// Наибольшая часть, если хэш слов долго не даёт точки.
-const MAX: usize = 8192;
+const MAX: usize = 16384;
 /// Сколько отвергнутых точек терпеть: шрифт, связывающий пробел, режет всё одинаково плохо.
 const REJECTS: usize = 16;
 
@@ -44,7 +44,7 @@ impl Paragraph {
                 if c < from + MIN || !levels.zero() || !candidate(bytes, c) {
                     continue;
                 }
-                if !word_hash(bytes, c).is_multiple_of(64) && c - from < MAX {
+                if !word_hash(bytes, c).is_multiple_of(128) && c - from < MAX {
                     continue;
                 }
                 if self.joins_cleanly(c, window) {
@@ -134,8 +134,14 @@ impl Paragraph {
         f32::from(self.font_size).to_bits().hash(&mut h);
         f32::from(self.letter_spacing).to_bits().hash(&mut h);
         self.joined_spacing().hash(&mut h);
-        for run in self.own_runs(r) {
-            run.len.hash(&mut h);
+        // Прогоны части — как у `own_runs`, но без копии списка.
+        for i in self.run_indices(r) {
+            let (run, end) = (&self.runs[i], self.prepared().run_ends[i]);
+            let len = end.min(r.end).saturating_sub((end - run.len).max(r.start));
+            if len == 0 {
+                continue;
+            }
+            len.hash(&mut h);
             run.font_size.map(|s| f32::from(s).to_bits()).hash(&mut h);
             run.font.family.hash(&mut h);
             run.font.weight.0.to_bits().hash(&mut h);
