@@ -37,11 +37,12 @@ export class WorkspacePreview {
     }
     if (input.type !== undefined && !['global', 'module'].includes(String(input.type))) throw new Error('Invalid remote entry type')
     const props = this.props(input.props ?? {})
-    // Configure the dev server's asset/HMR base to /preview/remotes/<name>/,
-    // or use webpack publicPath: auto. Credentials never reach the dev server.
+    // publicPath:auto использует проксированный каталог entry. Если dev server
+    // уже обслуживает этот prefix, не добавляем его второй раз.
     url.hostname = '127.0.0.1'
     this.upstream = url
-    this.descriptor = { name: input.name, entry: `/preview/remotes/${input.name}${url.pathname}`,
+    const base = `/preview/remotes/${input.name}`
+    this.descriptor = { name: input.name, entry: url.pathname.startsWith(base + '/') ? url.pathname : base + url.pathname,
       exposedModule: input.exposedModule, props, type: input.type === 'module' ? 'module' : 'global', revision: ++this.revision }
     for (const listener of this.listeners) listener()
     return this.copy()!
@@ -63,11 +64,15 @@ export class WorkspacePreview {
     return JSON.parse(json) as Record<string, unknown>
   }
 
-  target(url: string): { port: number; path: string } | undefined {
+  target(url: string, transport: 'http' | 'websocket' = 'http'): { port: number; path: string } | undefined {
     if (!this.descriptor || !this.upstream || !url.startsWith(`/preview/remotes/${this.descriptor.name}/`)) return undefined
     const path = url.slice(`/preview/remotes/${this.descriptor.name}`.length)
     if (!path.startsWith('/') || path.startsWith('//') || /[\\\x00-\x1f\x7f]/.test(path)) return undefined
-    return { port: Number(this.upstream.port), path }
+    // Контракт инструмента: HTTP assets относительно entry (publicPath:auto),
+    // но HMR server слушает полный /preview/remotes/<name>/ws. Не подменяем
+    // его на /ws. HTTP entry с явным prefix сохраняет тот же upstream base.
+    const prefixed = this.upstream.pathname.startsWith(`/preview/remotes/${this.descriptor.name}/`)
+    return { port: Number(this.upstream.port), path: transport === 'websocket' || prefixed ? url : path }
   }
 
   async snapshot(): Promise<{ descriptor: PreviewDescriptor | null; build: string | null; available: boolean }> {
