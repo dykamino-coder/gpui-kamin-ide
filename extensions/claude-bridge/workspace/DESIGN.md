@@ -305,6 +305,9 @@ now rejects missing execution proof; it does not extend this historical evidence
 
 ## Bounded follow-up: long-turn browser retention metrics
 
+Implementation and exact-candidate validation:
+[#687](https://github.com/dykamino-coder/gpui-kamin-ide/pull/687), pending lead review.
+
 Exercise the production browser bundle and real shared BridgeHost with a
 deterministic synthetic upstream: 8,000 distinct transcript records while attached,
 another 2,000 with no attached page, then five fresh-page reattachments. Each row
