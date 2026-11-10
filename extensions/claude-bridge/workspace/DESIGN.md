@@ -354,3 +354,32 @@ the Windows workspace suite passes 89 tests (two Linux-only skips), shared
 webview passes 469 tests, and Linux Podman Chromium passes all 11 production
 browser fixtures including Escape across two pages and zero-page duplicate
 replay. The browser upstream is synthetic; this is not actual-model acceptance.
+
+## Bounded follow-up: individual queue removal
+
+The Message Queue Remove button currently mutates only the initiating page's
+signal. Reuse the process-owned dismissal metadata introduced for Escape through
+a private `workspace:queue-dismiss` invoke; keep the existing generic bridge
+transport and shared widget. Only host-owned items use this route. The native
+client's local queue continues using its existing local removal behavior.
+
+Validate the session and exact item IDs before changing any receipts. Broadcast
+the resulting receipt to all pages and retain dismissal in reconnect snapshots,
+including late duplicate fallback receipts with no attached pages. This operation
+only hides the delivered queue display: it must not interrupt, resubmit text,
+restore composer text or claim that the CLI cancelled delivery. Dismissed items
+still reserve their eventual JSONL match, as with Escape.
+
+Acceptance: host reducer regressions for selected IDs, tab isolation, malformed
+requests, idempotence and retained matching; Linux Podman Chromium exercises the
+real Remove button with two pages, an unrelated remaining item, zero-page late
+receipts and a reopened page through the shared BridgeHost and production UI.
+The upstream fixture is synthetic. Restart durability, exhaustive capability
+proof and composed actual-model acceptance remain open in INC-2026-0087.
+
+Implemented in [#686](https://github.com/dykamino-coder/gpui-kamin-ide/pull/686).
+The host ingress regression failed before the fix and now passes; Windows
+workspace passes 92 tests (three Linux-only skips), shared webview passes 469,
+and Linux Podman Chromium passes all 13 production browser fixtures. The Remove
+fixture confirms processing of the zero-page duplicate before reopening through
+the next shared tool response. These bounded checks do not close full parity.

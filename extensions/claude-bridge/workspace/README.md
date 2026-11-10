@@ -116,6 +116,8 @@ Escape restores fallback queue text into the initiating page's composer and
 records dismissal of those exact display rows in the host. Other and reopened
 pages honor that marker. This does not cancel text already delivered through the
 CLI terminal. Stop without restoring queue text leaves the queue display intact.
+The queue's individual Remove button records the same host dismissal for that
+item, without interrupting the turn or restoring text into a composer.
 These receipts remain process-local; host restart does not restore composer drafts.
 
 The browser shell retains session/project navigation, tabs and pins, and a

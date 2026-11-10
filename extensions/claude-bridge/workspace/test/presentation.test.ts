@@ -139,3 +139,38 @@ test('queue dismissal survives fallback arriving after Escape', () => {
   state.forgetSessions()
   assert.deepEqual(state.snapshot(), [])
 })
+
+test('individual queue removal validates atomically, isolates tabs and retains delivery matching', () => {
+  const events: any[] = []
+  const state = new WorkspacePresentation((channel, ...args) => {
+    events.push({ kind: 'event', channel, args })
+    state.observe({ kind: 'event', channel, args })
+  })
+  const remove = (tab: string, ids: unknown) => state.accept({ kind: 'invoke', id: 1, generation: 'test',
+    channel: 'workspace:queue-dismiss', args: [tab, ids] })
+  const receipt = (tab: string, id: string) => (state.snapshot().find(frame => frame.channel === 'session:submission'
+    && (frame.args as any)[0] === tab && (frame.args as any)[1].id === id)!.args as any)[1]
+  for (const tab of ['tab', 'other']) for (const id of ['first', 'second']) {
+    state.accept({ kind: 'send', channel: 'pty-submit-text', args: [tab, 'same queued text', id] })
+    state.observe({ kind: 'event', channel: 'session:submission', args: [tab, { id, state: 'fallback' }] })
+  }
+  remove('tab', ['first', 'first', 'unknown'])
+  assert.equal(receipt('tab', 'first').fallbackQueue.dismissed, true)
+  assert.equal(receipt('tab', 'first').state, 'fallback')
+  assert.equal(receipt('other', 'first').fallbackQueue.dismissed, undefined)
+  assert.equal(receipt('tab', 'second').fallbackQueue.dismissed, undefined)
+  for (const ids of [null, 'second', ['second', 42], ['second', 'x'.repeat(1025)], Array(257).fill('second')]) {
+    assert.throws(() => remove('tab', ids), /queue item IDs/)
+    assert.equal(receipt('tab', 'second').fallbackQueue.dismissed, undefined)
+  }
+  const count = events.length
+  remove('tab', ['first'])
+  assert.equal(events.length, count, 'Repeated removal must not rebroadcast or perform another action')
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'first', state: 'fallback' }] })
+  assert.equal(receipt('tab', 'first').fallbackQueue.dismissed, true)
+  state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', [{ type: 'user', uuid: 'first-row',
+    _ord: 1, message: { content: 'same queued text' } }]] })
+  assert.equal(receipt('tab', 'first').fallbackQueue.consumed, true)
+  assert.equal(receipt('tab', 'second').fallbackQueue.consumed, undefined)
+  assert.ok(events.every(frame => frame.channel === 'session:submission'), 'Display removal must only publish receipts')
+})
