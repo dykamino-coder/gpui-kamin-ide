@@ -44,7 +44,9 @@ impl Cull {
             .render_context::<crate::layout::fragment::line_admission::Lines>()
             .is_some();
         static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if *OFF.get_or_init(|| std::env::var_os("KAMIN_INBLOCK_NO_CULL").is_some())
+        #[allow(clippy::disallowed_methods)]
+        let off = *OFF.get_or_init(|| std::env::var_os("KAMIN_INBLOCK_NO_CULL").is_some());
+        if off
             || admission
             || !window.retained_root_environment()
             || p.fragment.is_some()
