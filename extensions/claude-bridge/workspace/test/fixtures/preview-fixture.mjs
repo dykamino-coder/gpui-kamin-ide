@@ -14,7 +14,7 @@ const webpack = require('webpack')
 const DevServer = require('webpack-dev-server')
 const cleanups = new Map()
 
-export async function previewFixture(t, { conversations = false } = {}) {
+export async function previewFixture(t, { conversations = false, holdSync = false } = {}) {
   const base = process.env.BRIDGE_PREVIEW_ROOT || os.tmpdir()
   const root = await fs.mkdtemp(path.join(base, 'bridgeweb-acc-preview-'))
   const cleanup = []
@@ -32,7 +32,15 @@ export async function previewFixture(t, { conversations = false } = {}) {
     assert.ok(path.basename(root).startsWith('bridgeweb-acc-preview-'))
     await fs.rm(root, { recursive: true })
   })
-  const http = createServer((req, res) => { req.resume(); res.setHeader('Content-Type', 'application/json'); res.end('{"ok":true}') })
+  const heldSync = []
+  let syncArrived
+  const syncPending = new Promise(resolve => { syncArrived = resolve })
+  const reply = res => { res.setHeader('Content-Type', 'application/json'); res.end('{"ok":true}') }
+  const http = createServer((req, res) => {
+    req.resume()
+    if (holdSync && /^\/api\/sync\/[a-f0-9]{16}\/user$/.test(req.url)) { heldSync.push(res); syncArrived(); return }
+    reply(res)
+  })
   const ws = new WebSocketServer({ server: http })
   await new Promise(resolve => http.listen(0, '127.0.0.1', resolve))
   let peer, id = 0
@@ -57,6 +65,7 @@ export async function previewFixture(t, { conversations = false } = {}) {
   })
   cleanup.push(async () => {
     for (const client of ws.clients) client.terminate()
+    for (const response of heldSync.splice(0)) reply(response)
     await new Promise(resolve => ws.close(() => resolve()))
     await new Promise(resolve => http.close(() => resolve()))
   })
@@ -97,7 +106,17 @@ export async function previewFixture(t, { conversations = false } = {}) {
     assert.equal(result.result?.isError, undefined, 'Shared MCP handler must succeed')
     return result
   }
-  return { root, get origin() { return runtime.origin }, wait, tool,
+  async function waitForSync() {
+    await Promise.race([syncPending, new Promise((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('Initial user sync did not arrive')), 15000); timer.unref()
+    })])
+  }
+  return { root, get origin() { return runtime.origin }, wait, tool, waitForSync,
+    async releaseSync() {
+      await waitForSync()
+      holdSync = false
+      for (const response of heldSync.splice(0)) reply(response)
+    },
     receivedFrames() { return structuredClone(frames) },
     send(conversationId, frame) { assert.ok(peers.has(conversationId)); peers.get(conversationId).send(JSON.stringify(frame)) },
     async restart(crash = false) { await runtime.stop(crash); runtime = await boot() },
