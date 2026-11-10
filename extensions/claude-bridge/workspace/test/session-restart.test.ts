@@ -83,6 +83,8 @@ test('real host restores open conversations, titles and active selection from di
   view.send('tab:switch', firstTab)
   const before = await view.invoke('tab:list')
   assert.equal(await view.invoke('tab:get-active'), firstTab)
+  const draft = { text: 'Unsent restart proof', attachments: [{ path: path.join(root, 'proof.txt'), name: 'proof.txt', ext: 'txt' }] }
+  assert.equal((await view.invoke('workspace:draft:update', firstTab, 0, draft)).accepted, true)
   await view.invoke('tabs:save-state', before.map((tab: any, i: number) => ({ id: tab.id, conversationId: tab.conversationId,
     title: tab.sessionTitle || tab.label, cwd: tab.cwd, pinned: i === 0, order: i, topOrder: 1 - i })))
   const disk = fs.readFileSync(path.join(root, 'storage', 'workspace-sessions.json'), 'utf8')
@@ -114,6 +116,10 @@ test('real host restores open conversations, titles and active selection from di
   assert.equal(upstreamFrames.filter(f => f.type === 'session:submitText' && f.submissionId === 'restart-identity').length, 1,
     'A crash and fresh browser must not allow the same identity to execute twice')
   assert.equal(await view.invoke('tab:get-active'), active.id)
+  assert.deepEqual(await view.invoke('workspace:draft:get', firstTab), { revision: 1, value: draft })
+  assert.deepEqual(await view.invoke('workspace:draft:get', secondTab), { revision: 0, value: { text: '', attachments: [] } })
+  assert.deepEqual(await view.invoke('workspace:draft:update', firstTab, 0, { text: 'stale page', attachments: [] }),
+    { accepted: false, state: { revision: 1, value: draft } })
   assert.equal((await view.invoke('tabs:restore-state')).find((tab: any) => tab.conversationId === first).pinned, true)
   view.send('tab:close', active.id)
   await waitFrame(view.frames, view.events, f => f.channel === 'connection-state-changed' && f.args[0] === secondTab && f.args[1].status === 'connected' && f.args[1].sessionId === second)

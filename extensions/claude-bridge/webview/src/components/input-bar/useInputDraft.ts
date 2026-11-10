@@ -1,3 +1,6 @@
+// Browser workspace installs a host-owned draft port; native webviews use the
+// storage behavior below. Browser attachment and CAS synchronization is delegated
+// to workspace-draft-binding.
 // Per-session input draft persistence. The composer textarea is a single shared
 // uncontrolled element, so without this switching sessions bleeds one tab's typed
 // text into another and any unsent text is lost on reload/reconnect. Here each
@@ -26,6 +29,9 @@
 import { useLayoutEffect, useRef, useCallback } from 'preact/hooks'
 import { storage } from '../../lib/storage'
 import { pendingAttachments, type FileAttachment } from '../../signals/ui'
+import { inputDraftPort } from '../../lib/input-draft-port'
+import { emptyDraft } from '../../../shared/workspace-draft'
+import { bindWorkspaceDraft } from './workspace-draft-binding'
 
 const DRAFT_PREFIX = 'input-draft:'
 const ATTACH_PREFIX = 'input-attachments:'
@@ -59,12 +65,14 @@ interface Args {
   setHasText: (v: boolean) => void
 }
 
-export function useInputDraft({ tabId, textareaRef, setHasText }: Args): { clearDraft: () => void } {
+export function useInputDraft({ tabId, textareaRef, setHasText }: Args): { clearDraft: () => void; ready: boolean } {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useLayoutEffect(() => {
     if (!tabId) return
     const el = textareaRef.current
+    const port = inputDraftPort()
+    if (port) return bindWorkspaceDraft(port, tabId, el, setHasText)
 
     // Load this session's saved draft (empty clears the shared textarea).
     if (el) {
@@ -107,10 +115,12 @@ export function useInputDraft({ tabId, textareaRef, setHasText }: Args): { clear
   const clearDraft = useCallback((): void => {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     if (tabId) {
+      const port = inputDraftPort()
+      if (port) { port.save(tabId, emptyDraft()); return }
       storage.removeItem(key(tabId))
       storage.removeItem(attachKey(tabId))
     }
   }, [tabId])
 
-  return { clearDraft }
+  return { clearDraft, ready: !tabId || (inputDraftPort()?.ready(tabId) ?? true) }
 }
