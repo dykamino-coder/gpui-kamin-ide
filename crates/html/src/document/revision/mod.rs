@@ -120,8 +120,10 @@ impl Document {
         // the block records may hold for the restyled tree (`restyle`).
         let mut candidate = candidate;
         if same_shape {
-            let restyled = invalidation.and_then(crate::dom::invalidation::Invalidation::finish);
-            self.hand_over_reuse(&mut candidate, restyled.as_deref());
+            let restyled = invalidation
+                .as_ref()
+                .and_then(crate::dom::invalidation::Invalidation::finish);
+            self.hand_over_reuse(&mut candidate, restyled);
         }
         *self = candidate;
         Ok(self.report())

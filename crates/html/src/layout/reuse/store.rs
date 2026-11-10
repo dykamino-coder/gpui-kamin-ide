@@ -47,10 +47,14 @@ pub(crate) struct Store {
     /// The document was patched since the last frame (`Document::commit`):
     /// the records are known to hold only by the next build's comparison.
     pub(super) patched: Cell<bool>,
-    /// The last rebuild dropped records (`rebase`): a restyle reached their
-    /// blocks, so the frame after it builds them without recording them
-    /// again, as a fresh document's first frame does (`FlowCx::restyled`).
+    /// A rebuild dropped records (`rebase`), and every frame since followed
+    /// a rebuild: restyles keep reaching the blocks, so the frames build them
+    /// without recording them again (`FlowCx::restyled`). The first frame
+    /// after no rebuild still records nothing, as a fresh document's first
+    /// frame; the next records the blocks.
     pub(super) restyled: Cell<bool>,
+    /// The document was rebuilt since the last frame (`rebase`).
+    pub(super) rebased: Cell<bool>,
 }
 
 impl Store {

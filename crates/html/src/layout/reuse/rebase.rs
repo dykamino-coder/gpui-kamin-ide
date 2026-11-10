@@ -96,7 +96,10 @@ impl Store {
         // recorded there it would hold its subtree only until the next such
         // restyle drops it again (Blink keeps no display items of an object
         // that needs paint until it is painted clean).
-        self.restyled.set(records.len() < recorded);
+        self.rebased.set(true);
+        if records.len() < recorded {
+            self.restyled.set(true);
+        }
         self.records.replace(records);
     }
 }

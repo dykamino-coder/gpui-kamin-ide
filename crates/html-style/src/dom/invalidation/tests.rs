@@ -15,9 +15,9 @@ fn restyled(css: &str, changed: Changed, tree: &[(&str, &str, u64)]) -> Option<V
     let mut invalidation = Invalidation::new(changed);
     invalidation.prepare(&rules, false);
     for &(tag, class, id) in tree {
-        invalidation.visit(tag, &[("class".into(), class.into())], id);
+        invalidation.visit(&rules, tag, &[("class".into(), class.into())], id);
     }
-    invalidation.finish()
+    invalidation.finish().map(<[u64]>::to_vec)
 }
 
 const TREE: [(&str, &str, u64); 4] = [

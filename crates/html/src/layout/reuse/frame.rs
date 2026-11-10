@@ -94,8 +94,10 @@ impl FlowReuse {
         self.store.refused.take();
         // This frame compared the records with the patched document.
         self.store.patched.set(false);
-        // It also built the blocks whose records the rebuild dropped.
-        self.store.restyled.set(false);
+        // A frame after no rebuild ends the restyles (`Store::restyled`).
+        if !self.store.rebased.replace(false) {
+            self.store.restyled.set(false);
+        }
         let mut next = self.next.take();
         let skipped = next.len() as u64;
         let replayed = self

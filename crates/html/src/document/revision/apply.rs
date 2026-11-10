@@ -137,9 +137,10 @@ impl Document {
             Ok(mut next) => {
                 // Same source DOM, same node ids: the block records may hold
                 // for the restyled tree (`restyle`).
-                let restyled =
-                    invalidation.and_then(crate::dom::invalidation::Invalidation::finish);
-                self.hand_over_reuse(&mut next, restyled.as_deref());
+                let restyled = invalidation
+                    .as_ref()
+                    .and_then(crate::dom::invalidation::Invalidation::finish);
+                self.hand_over_reuse(&mut next, restyled);
                 *self = next;
                 Ok(self.report())
             }

@@ -29,7 +29,7 @@ pub(super) fn leave(
         *counter += 1;
         vcx.doc.traversal.record_element(p.visit.handle(), *counter);
         if let Some(invalidation) = invalidation {
-            invalidation.visit(&p.tag, &p.attrs, *counter);
+            invalidation.visit(&p.visit.scope.rules, &p.tag, &p.attrs, *counter);
         }
         out.push(Node::Element(Element {
             marks: Default::default(),
@@ -110,7 +110,7 @@ pub(super) fn leave(
     // A rebuild for attribute mutations collects the restyled elements as
     // the walk leaves them (`dom::invalidation`).
     if let Some(invalidation) = invalidation {
-        invalidation.visit(&p.tag, &p.attrs, *counter);
+        invalidation.visit(&p.visit.scope.rules, &p.tag, &p.attrs, *counter);
     }
     for kid in &mut children {
         if let Node::Element(c) = kid
