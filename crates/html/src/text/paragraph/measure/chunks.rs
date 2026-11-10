@@ -118,10 +118,15 @@ impl Cuts {
 }
 
 /// Точка `c` нейтральна для разрешения уровней: по обе стороны латинская
-/// буква (сильная L по UAX #9) либо пробел, за которым (или перед которым) она.
+/// буква (сильная L по UAX #9) либо пробел при ней (слева — и после знака препинания).
 fn quiet(bytes: &[u8], c: usize) -> bool {
+    // Знак препинания между буквой и пробелом (CS/ON) чисел рядом не имеет
+    // (W4 их не касается) и разрешается по буквам вокруг (N1), как и пробел.
+    let punct = |b: u8| matches!(b, b'.' | b',' | b';' | b':' | b'!' | b'?');
     let left = bytes[c - 1].is_ascii_alphabetic()
-        || (bytes[c - 1] == b' ' && bytes[c - 2].is_ascii_alphabetic());
+        || (bytes[c - 1] == b' '
+            && (bytes[c - 2].is_ascii_alphabetic()
+                || (punct(bytes[c - 2]) && bytes[c - 3].is_ascii_alphabetic())));
     let right = bytes[c].is_ascii_alphabetic()
         || (bytes[c] == b' ' && bytes.get(c + 1).is_some_and(u8::is_ascii_alphabetic));
     left && right
@@ -155,6 +160,11 @@ mod tests {
         assert!(quiet(text, 6), "after the space");
         assert!(!quiet(b"a1 b2 3c", 3), "a digit is not a strong letter");
         assert!(!quiet(b"ab, cd", 3), "punctuation is not a strong letter");
+        assert!(
+            quiet(b"ab, cd", 4),
+            "after a letter, punctuation and a space"
+        );
+        assert!(!quiet(b"a1, cd", 4), "after a digit");
         let shifted = b"xxalpha beta gamma delta";
         assert_eq!(word_hash(text, 11), word_hash(shifted, 13));
     }

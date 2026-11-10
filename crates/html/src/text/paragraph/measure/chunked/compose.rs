@@ -47,7 +47,8 @@ impl Paragraph {
                 .map_or_else(|| self.run_indices(&(from..to)).len(), |c| c.runs.len());
             from = to;
         }
-        let mut runs = Vec::with_capacity(capacity);
+        // Ёмкость — степень двойки, как у списка, растущего удвоением.
+        let mut runs = Vec::with_capacity(capacity.next_power_of_two().max(4));
         let (mut from, mut origin) = (start, px(0.));
         for (i, (c, &to)) in found.iter().zip(ends).enumerate() {
             let base = from - start;
@@ -109,8 +110,9 @@ impl Chunk {
     fn copy_into(&self, base: usize, out: &mut Vec<ShapedRun>) -> (Pixels, Pixels, Pixels) {
         let from = self.runs.start as usize..self.runs.end as usize;
         let shift = |index: usize| index - self.base as usize + base;
-        out.extend(self.layout.runs[from].iter().map(|run| {
-            ShapedRun {
+        // По одному: список растёт удвоением, как у набора.
+        for run in &self.layout.runs[from] {
+            out.push(ShapedRun {
                 font_id: run.font_id,
                 font_size: run.font_size,
                 glyphs: run
@@ -123,8 +125,8 @@ impl Chunk {
                         is_emoji: g.is_emoji,
                     })
                     .collect(),
-            }
-        }));
+            });
+        }
         (self.width, self.ascent, self.descent)
     }
 }

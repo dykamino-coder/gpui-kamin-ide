@@ -715,9 +715,15 @@ impl DirectWriteState {
                 ..Default::default()
             });
         }
-        // KaminIDE patch: every font run gives at least one glyph run, so the
-        // list starts at that size instead of growing by doubling.
-        let mut runs = Vec::with_capacity(font_runs.len());
+        // KaminIDE patch: every non-empty font run gives at least one glyph
+        // run, so the list starts at that size (rounded to the power of two
+        // that doubling from an empty list would reach anyway).
+        let shaped_runs = font_runs.iter().filter(|r| r.len > 0).count();
+        let mut runs = if shaped_runs == 0 {
+            Vec::new()
+        } else {
+            Vec::with_capacity(shaped_runs.next_power_of_two().max(4))
+        };
         let (width, ascent, descent) =
             self.layout_line_into(components, text, font_size, font_runs, 0, &mut runs)?;
         Ok(LineLayout {
