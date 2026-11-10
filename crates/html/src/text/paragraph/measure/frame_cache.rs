@@ -40,8 +40,11 @@ impl<V> Default for FrameCache<V> {
 }
 
 impl<V> FrameCache<V> {
+    /// Записи, не тронутые за кадр, уходят; таблицы сохраняют свою ёмкость,
+    /// и кадр за кадром рабочий набор переезжает без новых выделений памяти.
     pub(super) fn begin_frame(&mut self) {
-        self.previous = std::mem::take(&mut self.current);
+        std::mem::swap(&mut self.previous, &mut self.current);
+        self.current.clear();
     }
 
     pub(in crate::text::paragraph) fn get(&mut self, key: &u64) -> Option<&V> {

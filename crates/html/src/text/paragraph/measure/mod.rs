@@ -2,6 +2,7 @@
 
 mod bidi_levels;
 mod cache_keys;
+mod chunked;
 mod chunks;
 mod flow_cut;
 mod frame_cache;
@@ -13,7 +14,6 @@ mod width;
 mod width_tests;
 
 use crate::text::paragraph::{Line, Seg};
-use chunks::Shaped;
 use frame_cache::FrameCache;
 use std::{cell::RefCell, rc::Rc};
 
@@ -50,6 +50,35 @@ impl MeasureCache {
     pub(super) fn remember_fit(&self, key: u64, k: f32) {
         self.fitted.borrow_mut().insert(key, k);
     }
+}
+
+/// Запись памяти частей: набор части или список частей одного замера.
+#[derive(Clone)]
+pub(in crate::text::paragraph) enum Shaped {
+    Chunk(chunked::Chunk),
+    Keys(Rc<[u64]>),
+}
+
+impl crate::text::paragraph::Paragraph {
+    /// Запомнить части абзаца с ключом замера `key` (абзац без частей — ничего).
+    fn remember_chunks(&self, key: u64, chunks: &chunked::Keys) {
+        if chunks.len > 0 {
+            let list = Shaped::Keys(chunks.keys[..chunks.len].into());
+            self.measures.put_chunk(list_key(key), list);
+        }
+    }
+
+    /// Части держатся в памяти, пока держится замер их абзаца.
+    fn keep_chunks(&self, key: u64) {
+        if let Some(Shaped::Keys(keys)) = self.measures.chunk(list_key(key)) {
+            keys.iter().for_each(|&k| _ = self.measures.chunk(k));
+        }
+    }
+}
+
+/// Ключ списка частей замера `key`: не совпадает с ключами самих частей.
+fn list_key(key: u64) -> u64 {
+    key.rotate_left(29) ^ 0x9E37_79B9_7F4A_7C15
 }
 
 #[cfg(test)]

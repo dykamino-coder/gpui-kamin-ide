@@ -851,36 +851,7 @@ impl LineLayoutCache {
             // (`index_for_x`) считает по тем же координатам и отдельной
             // правки не требует (план 99)
             if letter_spacing != px(0.) {
-                // KaminIDE patch: cursive scripts (Arabic, Syriac, N'Ko,
-                // Mongolian, Hanifi Rohingya) take no tracking — it would
-                // break their joining (css-text-3 §8.2.1 cursive tracking,
-                // `letter-spacing-cursive-001/002`); other characters, even
-                // spaces between such words, keep it.
-                let mut i = 0usize;
-                let mut shift = px(0.);
-                for run in layout.runs.iter_mut() {
-                    for glyph in run.glyphs.iter_mut() {
-                        glyph.position.x += shift;
-                        let cursive = text
-                            .get(glyph.index..)
-                            .and_then(|t| t.chars().next())
-                            .is_some_and(cursive_script);
-                        if !cursive {
-                            shift += letter_spacing;
-                        }
-                        i += 1;
-                    }
-                }
-                layout.width += shift;
-                // KaminIDE patch: знак без глифа. Набор выбрасывает
-                // «default ignorable» (U+FEFF и родню) целиком, и трекинг на
-                // нём не даёт ширины ни одному глифу. А для CSS такой знак —
-                // носитель ПРОДВИЖЕНИЯ: строчная коробка держит им место под
-                // своё поле и отступ (§8.4). Ширину набора считаем по знакам,
-                // раз глифов не осталось вовсе.
-                if i == 0 {
-                    layout.width += letter_spacing * (text.chars().count() as f32);
-                }
+                layout.width += track_glyphs(&mut layout.runs, &text, 0, letter_spacing);
             }
 
             let key = Arc::new(CacheKey {
@@ -1270,6 +1241,48 @@ fn cursive_script(c: char) -> bool {
     matches!(c as u32,
         0x0600..=0x08FF | 0x1800..=0x18AF
         | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
+}
+
+/// KaminIDE patch: letter-spacing of a shaped line. CSS adds it AFTER each
+/// character, the last one included, so glyph `i` moves by `i × spacing` and
+/// the line grows by `n × spacing`; the shift is applied where `force_width`
+/// shifts glyphs, so hit testing (`index_for_x`) reads the same coordinates.
+/// `runs` are the glyphs of `text`, their indices offset by `index_base`.
+/// Returns the growth of the line's width.
+pub(crate) fn track_glyphs(
+    runs: &mut [ShapedRun],
+    text: &str,
+    index_base: usize,
+    letter_spacing: Pixels,
+) -> Pixels {
+    // KaminIDE patch: cursive scripts (Arabic, Syriac, N'Ko, Mongolian,
+    // Hanifi Rohingya) take no tracking — it would break their joining
+    // (css-text-3 §8.2.1 cursive tracking, `letter-spacing-cursive-001/002`);
+    // other characters, even spaces between such words, keep it.
+    let mut i = 0usize;
+    let mut shift = px(0.);
+    for run in runs.iter_mut() {
+        for glyph in run.glyphs.iter_mut() {
+            glyph.position.x += shift;
+            let cursive = text
+                .get(glyph.index - index_base..)
+                .and_then(|t| t.chars().next())
+                .is_some_and(cursive_script);
+            if !cursive {
+                shift += letter_spacing;
+            }
+            i += 1;
+        }
+    }
+    // KaminIDE patch: знак без глифа. Набор выбрасывает «default ignorable»
+    // (U+FEFF и родню) целиком, и трекинг на нём не даёт ширины ни одному
+    // глифу. А для CSS такой знак — носитель ПРОДВИЖЕНИЯ: строчная коробка
+    // держит им место под своё поле и отступ (§8.4). Ширину набора считаем по
+    // знакам, раз глифов не осталось вовсе.
+    if i == 0 {
+        shift += letter_spacing * (text.chars().count() as f32);
+    }
+    shift
 }
 
 #[cfg(test)]

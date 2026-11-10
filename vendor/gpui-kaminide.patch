@@ -11309,7 +11309,7 @@ index 0000000000000000000000000000000000000000..afbb9d8b0564f29410a266c1c7108dac
 +    }
 +}
 diff --git a/vendor/gpui/src/platform.rs b/vendor/gpui/src/platform.rs
-index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..4cba0be6f46c91ab9176c3db40d6b9f5cb6ee03c
+index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..7adb32306145d9324a942261d35bf1e639784a4e
 --- a/vendor/gpui/src/platform.rs
 +++ b/vendor/gpui/src/platform.rs
 @@ -327,0 +328,2 @@
@@ -11359,7 +11359,33 @@ index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..4cba0be6f46c91ab9176c3db40d6b9f5
 +    /// Rasterize an isolated transparent scene without presenting the window.
 +    fn rasterize_scene(&self, _scene: &Scene, _size: Size<DevicePixels>) -> Result<image::RgbaImage> {
 +        anyhow::bail!("isolated scene capture is unavailable on this platform")
-@@ -1468,0 +1512,7 @@
+@@ -1468,0 +1512,33 @@
++    /// KaminIDE patch: `layout_line` whose glyph runs are appended to `out`
++    /// (glyph indices offset by `index_base`, positions from the line start);
++    /// returns the line's width, ascent and descent.
++    fn layout_line_into(
++        &self,
++        text: &str,
++        font_size: Pixels,
++        runs: &[FontRun],
++        index_base: usize,
++        out: &mut Vec<ShapedRun>,
++    ) -> (Pixels, Pixels, Pixels) {
++        let layout = self.layout_line(text, font_size, runs);
++        out.extend(layout.runs.into_iter().map(|mut run| {
++            for glyph in &mut run.glyphs {
++                glyph.index += index_base;
++            }
++            run
++        }));
++        (layout.width, layout.ascent, layout.descent)
++    }
++    /// KaminIDE patch: whether a line shapes text in font `a` and text in
++    /// font `b` (with their sizes) apart, so that no kerning, contextual form
++    /// or ligature joins glyphs across a boundary between them.
++    fn shapes_apart(&self, _a: (FontId, Pixels), _b: (FontId, Pixels)) -> bool {
++        false
++    }
 +    /// KaminIDE patch: glyphs of this font are axis-aligned em-grid rectangles
 +    /// (the Ahem test font) and are rasterized bi-level at their exact
 +    /// sub-pixel position, so their edges snap to device pixels exactly like
@@ -11367,7 +11393,7 @@ index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..4cba0be6f46c91ab9176c3db40d6b9f5
 +    fn pixel_exact_glyphs(&self, _font_id: FontId) -> bool {
 +        false
 +    }
-@@ -1583,0 +1634 @@
+@@ -1583,0 +1660 @@
 +                font_size,
 diff --git a/vendor/gpui/src/prepaint_prof.rs b/vendor/gpui/src/prepaint_prof.rs
 new file mode 100644
@@ -19709,7 +19735,7 @@ index 0000000000000000000000000000000000000000..c7192dafd55b740b61081d8f06a45ba4
 +    }
 +}
 diff --git a/vendor/gpui/src/text_system.rs b/vendor/gpui/src/text_system.rs
-index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811d5dfa066
+index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf823791be7d
 --- a/vendor/gpui/src/text_system.rs
 +++ b/vendor/gpui/src/text_system.rs
 @@ -5,0 +6,2 @@
@@ -19961,7 +19987,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
 +    ) -> Arc<LineLayout> {
-@@ -897,25 +1108,35 @@
+@@ -897,30 +1108,14 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -19987,6 +20013,11 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 -                    len: run.len,
 -                    font_id,
 -                });
+-            }
+-        }
+-
+-        let layout = self.line_layout_cache.layout_line(
+-            &SharedString::new(text),
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
 +
 +        // KaminIDE patch: неразрывный дефис (U+2011) без своего глифа в шрифте
@@ -19998,48 +20029,17 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +        // (`line-break-anywhere-overrides-uax-behavior-013/014`). Длина в UTF-8
 +        // у обоих знаков одна, смещения прогонов не меняются; перенос
 +        // считается раньше и по исходному тексту.
-+        let substituted;
-+        let text = if text.contains('\u{2011}') {
-+            let mut out = String::with_capacity(text.len());
-+            let mut runs_iter = font_runs.iter();
-+            let mut run = runs_iter.next();
-+            let mut run_end = run.map_or(usize::MAX, |r| r.len);
-+            for (i, ch) in text.char_indices() {
-+                while i >= run_end {
-+                    run = runs_iter.next();
-+                    let start = run_end;
-+                    run_end = run.map_or(usize::MAX, |r| start + r.len);
-+                }
-+                // Отсутствующий знак DirectWrite отдаёт глифом 0 (.notdef), а
-+                // не `None`.
-+                let has = |font_id: FontId, c: char| {
-+                    self.platform_text_system
-+                        .glyph_for_char(font_id, c)
-+                        .is_some_and(|g| g.0 != 0)
-+                };
-+                let swap = ch == '\u{2011}'
-+                    && run.is_some_and(|r| {
-+                        !has(r.font_id, '\u{2011}') && has(r.font_id, '\u{2010}')
-+                    });
-+                out.push(if swap { '\u{2010}' } else { ch });
-@@ -923,3 +1144,6 @@
--        }
--
--        let layout = self.line_layout_cache.layout_line(
-+            substituted = out;
-+            substituted.as_str()
-+        } else {
-+            text
-+        };
++        let text = self.no_break_hyphens(text, &font_runs);
 +        let layout = self.line_layout_cache.layout_line_spaced(
-@@ -929,0 +1154 @@
++            &SharedString::new(&*text),
+@@ -929,0 +1125 @@
 +            letter_spacing,
-@@ -947,0 +1173,2 @@
+@@ -947,0 +1144,2 @@
 +                    font_size,
 +                    break_ligatures: true,
-@@ -975 +1201,0 @@
+@@ -975 +1172,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -979,27 +1205 @@
+@@ -979,27 +1176 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -20068,9 +20068,9 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1037 +1236,0 @@
+@@ -1037 +1207,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -1041,27 +1240 @@
+@@ -1041,27 +1211 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -20099,7 +20099,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1236,0 +1410,20 @@
+@@ -1236,0 +1381,20 @@
 +    /// KaminIDE patch: свой кегль прогона (`font-size` у `<span>` в строке).
 +    ///
 +    /// `None` — кегль всего блока. Без этого поля кусок другого размера
@@ -20120,7 +20120,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +    /// (the HTML engine's inline box content area). `false` (IDE text) keeps
 +    /// the band at ascent + descent.
 +    pub background_line_gap: bool,
-@@ -1308,0 +1502,49 @@
+@@ -1308,0 +1473,49 @@
 +
 +    /// KaminIDE patch: ширина начертания (`font-stretch`).
 +    ///
@@ -20170,7 +20170,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +            _ => FontStretch::UltraExpanded,
 +        }
 +    }
-@@ -1323,0 +1566 @@
+@@ -1323,0 +1537 @@
 +        stretch: crate::FontStretch::default(),
 diff --git a/vendor/gpui/src/text_system/font_fallbacks.rs b/vendor/gpui/src/text_system/font_fallbacks.rs
 index 63dc89ba41ea9cf44bdffb7d81d3015d696f4413..5462b9187e77fa30da6629fa4f46aacec8bba755
@@ -20804,7 +20804,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                background_line_gap: false,
 +                background_border: None,
 diff --git a/vendor/gpui/src/text_system/line_layout.rs b/vendor/gpui/src/text_system/line_layout.rs
-index f0bf1211114e4522a5310067e2549ba2727a4c1d..9f7c261c95c92426e6b01f76e3c06b6d79991f08
+index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78838fd454
 --- a/vendor/gpui/src/text_system/line_layout.rs
 +++ b/vendor/gpui/src/text_system/line_layout.rs
 @@ -40,0 +41,5 @@
@@ -21046,7 +21046,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..9f7c261c95c92426e6b01f76e3c06b6d
 +                shape_started.elapsed().as_micros() as u32,
 +                std::sync::atomic::Ordering::Relaxed,
 +            );
-@@ -705,0 +845,39 @@
+@@ -705,0 +845,10 @@
 +            }
 +
 +            // KaminIDE patch: трекинг. CSS добавляет `letter-spacing` ПОСЛЕ
@@ -21056,43 +21056,14 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..9f7c261c95c92426e6b01f76e3c06b6d
 +            // (`index_for_x`) считает по тем же координатам и отдельной
 +            // правки не требует (план 99)
 +            if letter_spacing != px(0.) {
-+                // KaminIDE patch: cursive scripts (Arabic, Syriac, N'Ko,
-+                // Mongolian, Hanifi Rohingya) take no tracking — it would
-+                // break their joining (css-text-3 §8.2.1 cursive tracking,
-+                // `letter-spacing-cursive-001/002`); other characters, even
-+                // spaces between such words, keep it.
-+                let mut i = 0usize;
-+                let mut shift = px(0.);
-+                for run in layout.runs.iter_mut() {
-+                    for glyph in run.glyphs.iter_mut() {
-+                        glyph.position.x += shift;
-+                        let cursive = text
-+                            .get(glyph.index..)
-+                            .and_then(|t| t.chars().next())
-+                            .is_some_and(cursive_script);
-+                        if !cursive {
-+                            shift += letter_spacing;
-+                        }
-+                        i += 1;
-+                    }
-+                }
-+                layout.width += shift;
-+                // KaminIDE patch: знак без глифа. Набор выбрасывает
-+                // «default ignorable» (U+FEFF и родню) целиком, и трекинг на
-+                // нём не даёт ширины ни одному глифу. А для CSS такой знак —
-+                // носитель ПРОДВИЖЕНИЯ: строчная коробка держит им место под
-+                // своё поле и отступ (§8.4). Ширину набора считаем по знакам,
-+                // раз глифов не осталось вовсе.
-+                if i == 0 {
-+                    layout.width += letter_spacing * (text.chars().count() as f32);
-+                }
-@@ -713,0 +892 @@
++                layout.width += track_glyphs(&mut layout.runs, &text, 0, letter_spacing);
+@@ -713,0 +863 @@
 +                letter_spacing,
-@@ -927,0 +1107,3 @@
+@@ -927,0 +1078,3 @@
 +    /// Break ligatures at style boundaries (the normal GPUI text policy).
 +    /// Included in layout cache keys so browser shaping cannot reuse IDE layouts.
 +    pub break_ligatures: bool,
-@@ -929,0 +1112,7 @@
+@@ -929,0 +1083,7 @@
 +    /// KaminIDE patch: свой кегль прогона.
 +    ///
 +    /// Кегль был один на всю строку, и кусок другого размера внутри абзаца
@@ -21100,16 +21071,16 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..9f7c261c95c92426e6b01f76e3c06b6d
 +    /// запасную ветку из отдельных слов, где строки наезжали друг на друга.
 +    /// Ноль означает «кегль строки».
 +    pub font_size: Pixels,
-@@ -942,0 +1132,3 @@
+@@ -942,0 +1103,3 @@
 +    /// KaminIDE patch: трекинг (`letter-spacing`). В ключе ОБЯЗАТЕЛЕН — без
 +    /// него строка с другим трекингом придёт из кэша со старыми позициями.
 +    letter_spacing: Pixels,
-@@ -951,0 +1144,2 @@
+@@ -951,0 +1115,2 @@
 +    /// KaminIDE patch: см. `CacheKey::letter_spacing`.
 +    letter_spacing: Pixels,
-@@ -1043,0 +1238 @@
+@@ -1043,0 +1209 @@
 +            letter_spacing: self.letter_spacing,
-@@ -1070,0 +1266,11 @@
+@@ -1070,0 +1237,53 @@
 +
 +/// KaminIDE patch: characters of cursive (joining) scripts, which take no
 +/// letter-spacing (css-text-3 §8.2.1).
@@ -21119,9 +21090,51 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..9f7c261c95c92426e6b01f76e3c06b6d
 +        | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
 +}
 +
++/// KaminIDE patch: letter-spacing of a shaped line. CSS adds it AFTER each
++/// character, the last one included, so glyph `i` moves by `i × spacing` and
++/// the line grows by `n × spacing`; the shift is applied where `force_width`
++/// shifts glyphs, so hit testing (`index_for_x`) reads the same coordinates.
++/// `runs` are the glyphs of `text`, their indices offset by `index_base`.
++/// Returns the growth of the line's width.
++pub(crate) fn track_glyphs(
++    runs: &mut [ShapedRun],
++    text: &str,
++    index_base: usize,
++    letter_spacing: Pixels,
++) -> Pixels {
++    // KaminIDE patch: cursive scripts (Arabic, Syriac, N'Ko, Mongolian,
++    // Hanifi Rohingya) take no tracking — it would break their joining
++    // (css-text-3 §8.2.1 cursive tracking, `letter-spacing-cursive-001/002`);
++    // other characters, even spaces between such words, keep it.
++    let mut i = 0usize;
++    let mut shift = px(0.);
++    for run in runs.iter_mut() {
++        for glyph in run.glyphs.iter_mut() {
++            glyph.position.x += shift;
++            let cursive = text
++                .get(glyph.index - index_base..)
++                .and_then(|t| t.chars().next())
++                .is_some_and(cursive_script);
++            if !cursive {
++                shift += letter_spacing;
++            }
++            i += 1;
++        }
++    }
++    // KaminIDE patch: знак без глифа. Набор выбрасывает «default ignorable»
++    // (U+FEFF и родню) целиком, и трекинг на нём не даёт ширины ни одному
++    // глифу. А для CSS такой знак — носитель ПРОДВИЖЕНИЯ: строчная коробка
++    // держит им место под своё поле и отступ (§8.4). Ширину набора считаем по
++    // знакам, раз глифов не осталось вовсе.
++    if i == 0 {
++        shift += letter_spacing * (text.chars().count() as f32);
++    }
++    shift
++}
++
 +#[cfg(test)]
 +mod reuse_tests;
-@@ -1094,0 +1301 @@
+@@ -1094,0 +1314 @@
 +                font_size: px(16.),
 diff --git a/vendor/gpui/src/text_system/line_layout/reuse_tests.rs b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
 new file mode 100644
@@ -21559,14 +21572,18 @@ index 0000000000000000000000000000000000000000..7424b609883fa81a6e6c218496f9153c
 +}
 diff --git a/vendor/gpui/src/text_system/shaping.rs b/vendor/gpui/src/text_system/shaping.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c6dc6ab34b3e34d2a9673c58d063371defd290f2
+index 0000000000000000000000000000000000000000..5a8462dca168f489dfff7ec3f9eb9438033d9b8f
 --- /dev/null
 +++ b/vendor/gpui/src/text_system/shaping.rs
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,175 @@
 +//! Caller-local shaping policy; browser text retains shaping across inline boxes.
++//! KaminIDE patch: uncached shaping for callers that keep their own shaped
++//! pieces (a long paragraph shaped piece by piece, `shape_into`).
 +
-+use super::{FontRun, TextRun, WindowTextSystem};
-+use crate::Pixels;
++use super::{FontId, FontRun, ShapedRun, TextRun, WindowTextSystem, line_layout::track_glyphs};
++use super::Font;
++use crate::{Pixels, px};
++use std::borrow::Cow;
 +
 +impl WindowTextSystem {
 +    /// Return a caller-local handle with the chosen style-boundary shaping policy.
@@ -21590,13 +21607,7 @@ index 0000000000000000000000000000000000000000..c6dc6ab34b3e34d2a9673c58d063371d
 +        for (index, run) in runs.iter().enumerate() {
 +            let font_id = self.resolve_font(&run.font);
 +            let run_size = run.font_size.unwrap_or(font_size);
-+            let same_style = index > 0 && {
-+                let previous = &runs[index - 1];
-+                previous.color == run.color
-+                    && previous.underline == run.underline
-+                    && previous.strikethrough == run.strikethrough
-+                    && previous.background_color == run.background_color
-+            };
++            let same_style = index > 0 && same_style(&runs[index - 1], run);
 +            if let Some(font_run) = font_runs.last_mut()
 +                && font_run.font_id == font_id
 +                && font_run.font_size == run_size
@@ -21613,6 +21624,132 @@ index 0000000000000000000000000000000000000000..c6dc6ab34b3e34d2a9673c58d063371d
 +            }
 +        }
 +    }
++
++    /// `fill_font_runs` for the text that starts `skip` bytes into the first
++    /// of `runs` and is `len` bytes long.
++    fn fill_font_runs_clipped(
++        &self,
++        runs: &[TextRun],
++        skip: usize,
++        len: usize,
++        font_size: Pixels,
++        font_runs: &mut Vec<FontRun>,
++    ) {
++        let mut left = len;
++        let mut previous: Option<&TextRun> = None;
++        for (index, run) in runs.iter().enumerate() {
++            let run_len = run
++                .len
++                .saturating_sub(if index == 0 { skip } else { 0 })
++                .min(left);
++            // Like a caller's own slice of the runs: empty pieces are left out.
++            if run_len == 0 {
++                continue;
++            }
++            left -= run_len;
++            let font_id = self.resolve_font(&run.font);
++            let run_size = run.font_size.unwrap_or(font_size);
++            let same_style = previous.is_some_and(|previous| same_style(previous, run));
++            previous = Some(run);
++            if let Some(font_run) = font_runs.last_mut()
++                && font_run.font_id == font_id
++                && font_run.font_size == run_size
++                && (!self.break_ligatures || same_style)
++            {
++                font_run.len += run_len;
++            } else {
++                font_runs.push(FontRun {
++                    len: run_len,
++                    font_id,
++                    font_size: run_size,
++                    break_ligatures: self.break_ligatures,
++                });
++            }
++        }
++    }
++
++    /// The text a line shapes: a non-breaking hyphen (U+2011) without a glyph
++    /// in its run's font takes that font's hyphen U+2010 (see
++    /// `layout_line_spaced`); both are three UTF-8 bytes, so run lengths hold.
++    pub(super) fn no_break_hyphens<'t>(&self, text: &'t str, font_runs: &[FontRun]) -> Cow<'t, str> {
++        if !text.contains('\u{2011}') {
++            return Cow::Borrowed(text);
++        }
++        let mut out = String::with_capacity(text.len());
++        let mut runs_iter = font_runs.iter();
++        let mut run = runs_iter.next();
++        let mut run_end = run.map_or(usize::MAX, |r| r.len);
++        for (i, ch) in text.char_indices() {
++            while i >= run_end {
++                run = runs_iter.next();
++                let start = run_end;
++                run_end = run.map_or(usize::MAX, |r| start + r.len);
++            }
++            // Отсутствующий знак DirectWrite отдаёт глифом 0 (.notdef), а не `None`.
++            let has = |font_id: FontId, c: char| {
++                self.platform_text_system
++                    .glyph_for_char(font_id, c)
++                    .is_some_and(|g| g.0 != 0)
++            };
++            let swap = ch == '\u{2011}'
++                && run.is_some_and(|r| !has(r.font_id, '\u{2011}') && has(r.font_id, '\u{2010}'));
++            out.push(if swap { '\u{2010}' } else { ch });
++        }
++        Cow::Owned(out)
++    }
++
++    /// `layout_line_spaced` without the line cache, for a caller that keeps
++    /// the shaped text itself: `text` is styled by `runs` with the first
++    /// `skip` bytes of the first run dropped. Its glyph runs are appended to
++    /// `out`, glyph indices offset by `index_base` and positions from the
++    /// start of `text`. Returns the width (letter-spacing included), ascent
++    /// and descent.
++    #[allow(clippy::too_many_arguments)]
++    pub fn shape_into(
++        &self,
++        text: &str,
++        font_size: Pixels,
++        runs: &[TextRun],
++        skip: usize,
++        letter_spacing: Pixels,
++        index_base: usize,
++        out: &mut Vec<ShapedRun>,
++    ) -> (Pixels, Pixels, Pixels) {
++        let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
++        font_runs.clear();
++        self.fill_font_runs_clipped(runs, skip, text.len(), font_size, &mut font_runs);
++        let shaped = self.no_break_hyphens(text, &font_runs);
++        let first = out.len();
++        let (mut width, ascent, descent) = self.platform_text_system.layout_line_into(
++            &shaped,
++            font_size,
++            &font_runs,
++            index_base,
++            out,
++        );
++        self.font_runs_pool.lock().push(font_runs);
++        if letter_spacing != px(0.) {
++            width += track_glyphs(&mut out[first..], &shaped, index_base, letter_spacing);
++        }
++        (width, ascent, descent)
++    }
++
++    /// Whether a line shapes text in `a` (at size `a_size`) and text in `b`
++    /// apart: no kerning, contextual form or ligature joins glyphs across a
++    /// boundary between them.
++    pub fn shapes_apart(&self, a: &Font, a_size: Pixels, b: &Font, b_size: Pixels) -> bool {
++        let (a, b) = (self.resolve_font(a), self.resolve_font(b));
++        self.platform_text_system
++            .shapes_apart((a, a_size), (b, b_size))
++    }
++}
++
++/// Neighbouring runs drawn alike (a ligature across them is kept when breaking is on).
++fn same_style(previous: &TextRun, run: &TextRun) -> bool {
++    previous.color == run.color
++        && previous.underline == run.underline
++        && previous.strikethrough == run.strikethrough
++        && previous.background_color == run.background_color
 +}
 diff --git a/vendor/gpui/src/view.rs b/vendor/gpui/src/view.rs
 index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970cbca3154

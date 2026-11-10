@@ -1,140 +1,59 @@
-//! Набор длинного куска частями (модель словного кэша Gecko и
-//! `ReusingTextShaper` Blink): кусок длиннее `MIN * 2` режется на части в
-//! точках, заданных самим текстом (пробел между латинскими буквами на нулевом
-//! явном уровне вложения абзаца ltr, хэш слова перед ним — разбор UAX #9 от
-//! такой точки не зависит), поэтому правка внутри абзаца меняет одну часть, а соседние
-//! берутся из памяти документа по ключу своего текста и шрифтов. Резать
-//! можно только там, где набор не связывает знаки через пробел: точка
-//! принимается, если пара «знак, пробел» и следующий знак, набранные
-//! раздельно, дают те же продвижения, что и вместе (кернинг с пробелом,
-//! трекинг). Свежий и повторный замер режут одинаково — положение знаков
-//! от части не зависит от того, были ли соседи в памяти.
+//! Точки разреза длинного куска для набора частями (модель словного кэша
+//! Gecko и `ReusingTextShaper` Blink: правка внутри абзаца перенабирает одну
+//! часть, остальные берутся из памяти документа по ключу своего текста и
+//! шрифтов, `chunked`).
+//!
+//! Режется только там, где набор целого куска и так рвётся: на границе
+//! прогонов, которые текстовая система набирает порознь (другая грань, кегль
+//! или возможности шрифта — `shapes_apart`), поэтому ни кернинг, ни лигатура,
+//! ни контекстная форма через точку не проходят, а глифы части те же, что в
+//! наборе целиком. По UAX #9 точка нейтральна: она вне всех явных вложений
+//! абзаца ltr, и с обеих сторон латинская буква (или пробел при ней), так что
+//! разрешение уровней от разреза не зависит. Из таких точек берутся те, где
+//! хэш слова перед точкой кратен 128 (или часть уже длиннее `MAX`): точки
+//! заданы текстом рядом, и правка сдвигает лишь границы своей части.
 
 use super::bidi_levels::Levels;
 use crate::text::paragraph::*;
-use gpui::{LineLayout, Pixels, Window, px};
-use std::{ops::Range, sync::Arc};
+use gpui::{Window, px};
+use std::ops::Range;
 
-/// Наименьшая часть: короче — набор целиком дешевле поиска точек.
+/// Наименьшая часть: кусок короче двух таких набирается целиком.
 const MIN: usize = 4096;
-/// Наибольшая часть, если хэш слов долго не даёт точки.
+/// Часть длиннее режется в первой же годной точке.
 const MAX: usize = 16384;
-/// Сколько отвергнутых точек терпеть: шрифт, связывающий пробел, режет всё одинаково плохо.
-const REJECTS: usize = 16;
+
+/// Поиск точек разреза куска `from..end` слева направо.
+pub(super) struct Cuts {
+    from: usize,
+    end: usize,
+    /// Следующий байт для разбора явных уровней.
+    at: usize,
+    /// Следующий прогон, чей конец — кандидат.
+    run: usize,
+    levels: Levels,
+}
 
 impl Paragraph {
-    /// Границы частей куска `start..end` (последняя — `end`) или `None`, если
-    /// кусок набирается целиком.
-    pub(super) fn chunk_ends(
-        &self,
-        start: usize,
-        end: usize,
-        window: &mut Window,
-    ) -> Option<Vec<usize>> {
-        let mut ends = Vec::new();
-        // Абзац ltr: точка между сильными L на нулевом уровне вложения не
-        // меняет ни разрешение слабых и нейтральных знаков, ни переупорядочение.
-        if end - start >= MIN * 2 && !self.wrap.rtl {
-            let bytes = self.text.as_bytes();
-            let (mut from, mut rejects, mut levels) = (start, 0, Levels::default());
-            for c in start..end - MIN {
-                if !levels.step(bytes, c) {
-                    break;
-                }
-                if c < from + MIN || !levels.zero() || !candidate(bytes, c) {
-                    continue;
-                }
-                if !word_hash(bytes, c).is_multiple_of(128) && c - from < MAX {
-                    continue;
-                }
-                if self.joins_cleanly(c, window) {
-                    ends.push(c);
-                    (from, rejects) = (c, 0);
-                } else if rejects == REJECTS {
-                    break;
-                } else {
-                    rejects += 1;
-                }
-            }
-        }
-        (!ends.is_empty()).then(|| {
-            ends.push(end);
-            ends
+    /// Поиск точек для куска `start..end` или `None`, если кусок набирается целиком.
+    pub(super) fn cuts(&self, start: usize, end: usize) -> Option<Cuts> {
+        (end - start >= MIN * 2 && !self.wrap.rtl && !self.vertical).then(|| Cuts {
+            from: start,
+            end,
+            at: start,
+            run: self.run_indices(&(start..end)).start,
+            levels: Levels::default(),
         })
     }
 
-    /// Пара «знак, пробел» и знак после точки `c` набираются раздельно так же, как вместе.
-    fn joins_cleanly(&self, c: usize, window: &mut Window) -> bool {
-        let whole = self.shape(c - 2..c + 1, window);
-        let left = self.shape(c - 2..c, window);
-        let right = self.shape(c..c + 1, window);
-        let at = whole.x_for_index(2);
-        let near = |a: Pixels, b: Pixels| f32::from(a - b).abs() < 1e-3;
-        near(at, left.width) && near(whole.width - at, right.width)
-    }
-
-    /// Набор отрезка текста абзаца без перевода строки, табуляции и мягкого переноса.
-    pub(super) fn shape(&self, r: Range<usize>, window: &mut Window) -> Arc<LineLayout> {
-        let runs = self.own_runs(&r);
-        window
-            .text_system()
-            .with_ligature_breaking(false)
-            .layout_line_spaced(
-                &self.text[r],
-                self.font_size,
-                &runs,
-                None,
-                if self.joined_spacing() {
-                    px(0.)
-                } else {
-                    self.letter_spacing
-                },
-            )
-    }
-
-    /// Набор части `r` из памяти документа (или заново, с записью).
-    pub(super) fn shape_chunk(
-        &self,
-        r: Range<usize>,
-        keys: &mut Vec<u64>,
-        window: &mut Window,
-    ) -> Arc<LineLayout> {
-        let key = self.chunk_key(&r);
-        keys.push(key);
-        let hit = self.measures.chunk(key);
-        if let Some(Shaped::Chunk(hit)) = hit {
-            return hit;
-        }
-        let layout = self.shape(r, window);
-        let chunk = Shaped::Chunk(layout.clone());
-        self.measures.put_chunk(key, chunk);
-        layout
-    }
-
-    /// Запомнить части абзаца с ключом замера `key` (абзац без частей — ничего).
-    pub(super) fn remember_chunks(&self, key: u64, chunks: Vec<u64>) {
-        if !chunks.is_empty() {
-            let list = Shaped::Keys(chunks.into());
-            self.measures.put_chunk(list_key(key), list);
-        }
-    }
-
-    /// Части держатся в памяти, пока держится замер их абзаца.
-    pub(super) fn keep_chunks(&self, key: u64) {
-        if let Some(Shaped::Keys(keys)) = self.measures.chunk(list_key(key)) {
-            keys.iter().for_each(|&k| _ = self.measures.chunk(k));
-        }
-    }
-
     /// Ключ набора части: её текст, кегль, трекинг и шрифты прогонов.
-    fn chunk_key(&self, r: &Range<usize>) -> u64 {
+    pub(super) fn chunk_key(&self, r: &Range<usize>) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.text[r.clone()].hash(&mut h);
         f32::from(self.font_size).to_bits().hash(&mut h);
         f32::from(self.letter_spacing).to_bits().hash(&mut h);
         self.joined_spacing().hash(&mut h);
-        // Прогоны части — как у `own_runs`, но без копии списка.
         for i in self.run_indices(r) {
             let (run, end) = (&self.runs[i], self.prepared().run_ends[i]);
             let len = end.min(r.end).saturating_sub((end - run.len).max(r.start));
@@ -155,29 +74,73 @@ impl Paragraph {
     }
 }
 
-/// Запись памяти частей: набор части или список частей одного замера.
-#[derive(Clone)]
-pub(in crate::text::paragraph) enum Shaped {
-    Chunk(Arc<LineLayout>),
-    Keys(std::rc::Rc<[u64]>),
+impl Cuts {
+    /// Следующая точка разреза или `None`: дальше кусок идёт одной частью.
+    pub(super) fn next(&mut self, p: &Paragraph, window: &mut Window) -> Option<usize> {
+        let bytes = p.text.as_bytes();
+        let ends = &p.prepared().run_ends;
+        while self.run < ends.len() {
+            let (i, c) = (self.run, ends[self.run]);
+            self.run += 1;
+            if c + MIN > self.end {
+                self.run = ends.len();
+                break;
+            }
+            while self.at < c {
+                if !self.levels.step(bytes, self.at) {
+                    self.run = ends.len();
+                    return None;
+                }
+                self.at += 1;
+            }
+            if c < self.from + MIN || p.runs[i].len == 0 || !self.levels.zero() || !quiet(bytes, c)
+            {
+                continue;
+            }
+            if !word_hash(bytes, c).is_multiple_of(128) && c - self.from < MAX {
+                continue;
+            }
+            let Some(next) = (i + 1..ends.len()).find(|&j| p.runs[j].len > 0) else {
+                continue;
+            };
+            let size = |k: usize| p.runs[k].font_size.unwrap_or(p.font_size);
+            let (a, b) = (&p.runs[i], &p.runs[next]);
+            if window
+                .text_system()
+                .shapes_apart(&a.font, size(i), &b.font, size(next))
+            {
+                self.from = c;
+                return Some(c);
+            }
+        }
+        None
+    }
 }
 
-/// Ключ списка частей замера `key`: не совпадает с ключами самих частей.
-fn list_key(key: u64) -> u64 {
-    key.rotate_left(29) ^ 0x9E37_79B9_7F4A_7C15
+/// Точка `c` нейтральна для разрешения уровней: по обе стороны латинская
+/// буква (сильная L по UAX #9) либо пробел, за которым (или перед которым) она.
+fn quiet(bytes: &[u8], c: usize) -> bool {
+    let left = bytes[c - 1].is_ascii_alphabetic()
+        || (bytes[c - 1] == b' ' && bytes[c - 2].is_ascii_alphabetic());
+    let right = bytes[c].is_ascii_alphabetic()
+        || (bytes[c] == b' ' && bytes.get(c + 1).is_some_and(u8::is_ascii_alphabetic));
+    left && right
 }
 
-/// Точка `c` — начало слова после пробела, оба соседа пробела — латинские
-/// буквы (сильные L по UAX #9).
-fn candidate(bytes: &[u8], c: usize) -> bool {
-    bytes[c - 1] == b' ' && bytes[c].is_ascii_alphabetic() && bytes[c - 2].is_ascii_alphabetic()
-}
-
-/// Хэш восьми байт перед пробелом точки `c`: точки зависят только от текста рядом.
+/// Хэш восьми байт перед точкой `c`: точки зависят только от текста рядом.
 fn word_hash(bytes: &[u8], c: usize) -> u32 {
-    bytes[c - 9..c - 1].iter().fold(2_166_136_261u32, |h, &b| {
+    bytes[c - 8..c].iter().fold(2_166_136_261u32, |h, &b| {
         (h ^ u32::from(b)).wrapping_mul(16_777_619)
     })
+}
+
+/// Трекинг, который набор применяет сам (при совместном пути абзац добавляет его позже).
+pub(super) fn tracking(p: &Paragraph) -> gpui::Pixels {
+    if p.joined_spacing() {
+        px(0.)
+    } else {
+        p.letter_spacing
+    }
 }
 
 #[cfg(test)]
@@ -185,13 +148,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn points_follow_the_text_not_the_offset() {
+    fn points_are_neutral_and_follow_the_text_not_the_offset() {
         let text = b"alpha beta gamma delta";
-        assert!(candidate(text, 6), "after `alpha `");
-        assert!(!candidate(text, 5), "the space itself");
-        assert!(!candidate(text, 7), "inside a word");
+        assert!(quiet(text, 2), "inside a word");
+        assert!(quiet(text, 5), "before the space");
+        assert!(quiet(text, 6), "after the space");
+        assert!(!quiet(b"a1 b2 3c", 3), "a digit is not a strong letter");
+        assert!(!quiet(b"ab, cd", 3), "punctuation is not a strong letter");
         let shifted = b"xxalpha beta gamma delta";
         assert_eq!(word_hash(text, 11), word_hash(shifted, 13));
-        assert!(!candidate(b"a1 b2 3c", 3), "a digit is not a strong letter");
     }
 }

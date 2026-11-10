@@ -1509,6 +1509,32 @@ pub trait PlatformTextSystem: Send + Sync {
     ) -> Result<(Size<DevicePixels>, Vec<u8>)>;
     /// Layout a line of text with the given font runs.
     fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout;
+    /// KaminIDE patch: `layout_line` whose glyph runs are appended to `out`
+    /// (glyph indices offset by `index_base`, positions from the line start);
+    /// returns the line's width, ascent and descent.
+    fn layout_line_into(
+        &self,
+        text: &str,
+        font_size: Pixels,
+        runs: &[FontRun],
+        index_base: usize,
+        out: &mut Vec<ShapedRun>,
+    ) -> (Pixels, Pixels, Pixels) {
+        let layout = self.layout_line(text, font_size, runs);
+        out.extend(layout.runs.into_iter().map(|mut run| {
+            for glyph in &mut run.glyphs {
+                glyph.index += index_base;
+            }
+            run
+        }));
+        (layout.width, layout.ascent, layout.descent)
+    }
+    /// KaminIDE patch: whether a line shapes text in font `a` and text in
+    /// font `b` (with their sizes) apart, so that no kerning, contextual form
+    /// or ligature joins glyphs across a boundary between them.
+    fn shapes_apart(&self, _a: (FontId, Pixels), _b: (FontId, Pixels)) -> bool {
+        false
+    }
     /// KaminIDE patch: glyphs of this font are axis-aligned em-grid rectangles
     /// (the Ahem test font) and are rasterized bi-level at their exact
     /// sub-pixel position, so their edges snap to device pixels exactly like
