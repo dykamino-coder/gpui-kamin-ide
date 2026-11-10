@@ -539,6 +539,32 @@ candidate with durable submission receipts passes all 17 Linux Podman production
 browser fixtures; this fixture upstream is synthetic. Strict full completion
 continues rejecting 545 missing execution-proof gaps.
 
+## Bounded follow-up: browser external MCP behavior
+
+Exercise the production browser transport and shared MCP manager against an
+owned loopback HTTP MCP fixture. Assert paginated tools, resources, templates
+and prompts; resource reads and parameterized prompts; connection edits,
+disable/enable/removal; and two-page server/log/progress notifications. Independently
+inspect the fixture's received requests, container files and MCP configuration.
+Close every page, execute an upstream external-tool call and resource/prompt
+forwarding, then reopen the same session without a repeated create or tool call.
+
+Use the existing shared handlers without alternate implementations or external
+network services. The fixture is synthetic and does not invoke a model. Emit
+only explicitly executed partial checks after their assertions pass; missing,
+duplicate and failed cases must prevent a passing artifact. Cross-check their
+API/channel IDs against the independent capability inventory. Do not change the
+strict completion validator or claim candidate-image/model acceptance.
+
+Acceptance: evidence accounting negative tests, Windows workspace/acceptance
+checks and Linux Podman production-browser fixtures. Registration #638 already
+covers this bounded Change PR under INC-2026-0087. Lead reviews/merges; exhaustive
+capability coverage and the final composed actual-model run remain open.
+
+The shared MCP serializer currently omits the enabled flag. These assertions
+cover live toggling, not disabled-state restoration after host restart; that
+persistence gap remains open alongside the broader settings acceptance.
+
 ## Bounded follow-up: one initial connection per tab
 
 The retention gate exposed a shared TabManager startup race: a foreground tab is
@@ -594,8 +620,9 @@ but retained idle Bash PTYs on base main `f121842e`. Keep the incomplete runs;
 do not force a successful test-worker exit. Integrate the existing shared POSIX
 disposal candidate [#694](https://github.com/dykamino-coder/gpui-kamin-ide/pull/694)
 by normal merge for a combined exact-head gate, rather than copying its logic.
-Lead should review/merge #694 before #696. The LSP additions do not change that
-fix; the combined candidate must pass the full workspace/browser suites naturally.
+Lead merged #694 and #693 into main during validation. Integrate that fresh main
+by normal merge, retaining both existing follow-ups. The LSP additions do not
+change the disposal fix; rerun the combined exact-head workspace/browser gates.
 
 ## Bounded follow-up: terminate unresponsive owned POSIX terminals
 
