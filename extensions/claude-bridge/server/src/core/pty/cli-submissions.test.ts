@@ -107,4 +107,14 @@ describe('hybrid message receipts', () => {
     f.mod.onRead('pending', 'stored')
     expect(f.frames.at(-1)).toMatchObject({ state: 'read', uuid: 'stored' })
   })
+  it('stamps receipts with server time and lists the ids it still tracks', () => {
+    const f = fixture()
+    vi.setSystemTime(Date.parse('2026-11-10T10:00:00Z'))
+    f.queue.submit('first', 'one')
+    f.queue.submit('second', 'two')
+    expect(f.frames.find((frame) => frame.id === 'first')).toMatchObject({
+      createdAt: Date.parse('2026-11-10T10:00:00Z'),
+    })
+    expect(f.queue.ids()).toEqual(['first', 'second'])
+  })
 })

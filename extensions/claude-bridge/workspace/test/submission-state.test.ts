@@ -125,3 +125,21 @@ test('an actual failed atomic write leaves the last durable duplicate barrier in
   assert.equal(storage.load().submissions.length, 1)
   assert.equal(send(host(['tab']), 'durable'), false)
 })
+
+test('a receipt recovered as uncertain keeps server time and settles from a later transcript row', t => {
+  const { host } = fixture(t)
+  const t0 = Date.parse('2026-11-10T10:00:00Z')
+  const before = host()
+  send(before, 'pending')
+  update(before, { id: 'pending', state: 'native', createdAt: t0 })
+  const after = host(['tab'])
+  assert.equal(receipt(after, 'pending').state, 'uncertain')
+  assert.equal(receipt(after, 'pending').createdAt, t0)
+  const row = (uuid: string, at: number) => after.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', [
+    { type: 'user', uuid, timestamp: new Date(at).toISOString(), message: { role: 'user', content: 'same text' } }]] })
+  row('earlier', t0 - 60_000)
+  assert.equal(receipt(after, 'pending').committed, undefined)
+  row('answered', t0 + 1_000)
+  assert.equal(receipt(after, 'pending').committed, true)
+  assert.equal(receipt(host(['tab']), 'pending').committed, true, 'Settlement is durable')
+})

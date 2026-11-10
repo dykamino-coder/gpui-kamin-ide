@@ -75,7 +75,8 @@ export class WorkspaceSubmissionState implements SubmissionStorage {
           receipt.state !== undefined && !STATES.has(receipt.state) ||
           !boolean(receipt.cancelable) || !boolean(receipt.committed) ||
           !(receipt.uuid === undefined || text(receipt.uuid, 1024)) ||
-          !(receipt.warning === undefined || typeof receipt.warning === 'string' && receipt.warning.length <= 4096)) throw new Error('Invalid submission')
+          !(receipt.warning === undefined || typeof receipt.warning === 'string' && receipt.warning.length <= 4096) ||
+          !(receipt.createdAt === undefined || Number.isSafeInteger(receipt.createdAt) && receipt.createdAt >= 0)) throw new Error('Invalid submission')
       const key = `${item.tabId}:${receipt.id}`
       bytes += item.bytes
       if (ids.has(key) || bytes > MAX_TEXT) throw new Error('Invalid submission identities')
@@ -86,7 +87,7 @@ export class WorkspaceSubmissionState implements SubmissionStorage {
           !boolean(queue.consumed) || !boolean(queue.dismissed))) throw new Error('Invalid queue receipt')
       return { tabId: item.tabId, digest: item.digest, bytes: item.bytes,
         receipt: { id: receipt.id, text: receipt.text, state: receipt.state, uuid: receipt.uuid,
-          committed: receipt.committed, cancelable: receipt.cancelable, warning: receipt.warning,
+          committed: receipt.committed, cancelable: receipt.cancelable, warning: receipt.warning, createdAt: receipt.createdAt,
           fallbackQueue: queue && { afterOrd: queue.afterOrd, enqueuedAt: queue.enqueuedAt, consumed: queue.consumed, dismissed: queue.dismissed } } }
     })
     const tabs = new Set<string>()
