@@ -24,6 +24,8 @@ mod replay_tests;
 #[cfg(test)]
 mod resize_tests;
 #[cfg(test)]
+mod rebuild_key_tests;
+#[cfg(test)]
 mod reuse_tests;
 #[cfg(test)]
 mod tests;
