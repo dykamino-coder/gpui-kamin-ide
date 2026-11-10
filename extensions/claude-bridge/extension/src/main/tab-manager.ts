@@ -34,6 +34,8 @@ interface TabCreationOptions {
 
 export class TabManager {
   private tabs = new Map<string, Tab>()
+  // Foreground startup owns the initial connect until user/project sync settles.
+  private pendingConnect = new Set<string>()
   private activeTabId: string | null = null
   // Monotonic switch sequence. Every `tab:switched` carries the seq at which it
   // was emitted; the webview keeps the highest it has seen and rejects any lower
@@ -106,6 +108,7 @@ export class TabManager {
     }
 
     this.tabs.set(tabId, tab)
+    if (!opts.background) this.pendingConnect.add(tabId)
     if (!opts.background) this.activeTabId = tabId
 
     // Notify renderer
@@ -129,8 +132,7 @@ export class TabManager {
     // orphan CLI session for a ghost tab that nothing ever closes until the
     // server's 30-min idle reaper.
     if (opts.background) { connection.setRendererMuted(true); return tabId }
-    const connectIfAlive = () => { if (this.tabs.has(tabId)) connection.connect() }
-    this.triggerSync(config).then(connectIfAlive).catch(connectIfAlive)
+    this.connectAfterSync(tab)
 
     return tabId
   }
@@ -142,6 +144,7 @@ export class TabManager {
   disconnectTab(tabId: string): void {
     const tab = this.tabs.get(tabId)
     if (!tab) return
+    this.pendingConnect.delete(tabId)
     // Explicit user action — end the server session now (a bare socket close
     // would only detach it for the reattach grace window).
     tab.connection.disconnect({ endSession: true })
@@ -155,6 +158,7 @@ export class TabManager {
   reconnectTab(tabId: string): void {
     const tab = this.tabs.get(tabId)
     if (!tab) return
+    this.pendingConnect.delete(tabId)
     // The prior disconnectTab ended the server session (endSession), so this
     // connect() resumes a BRAND-NEW PTY. Tell every webview to wipe the dead
     // session's console screen — the terminal lives in the Console tool's iframe
@@ -181,6 +185,7 @@ export class TabManager {
   closeTab(tabId: string): void {
     const tab = this.tabs.get(tabId)
     if (!tab) return
+    this.pendingConnect.delete(tabId)
 
     // Tab-owned monitors and language servers can start before the CLI
     // announces a conversation ID. Their cleanup must not depend on identity.
@@ -222,7 +227,7 @@ export class TabManager {
     tab.connection.setRendererMuted(false)
     // Lazy attach: warm-pool tabs are created WITHOUT a server connection (see
     // resumeSession background) — the first switch binds to the live CLI.
-    if (tab.connection.getExtendedState().status === 'disconnected') {
+    if (!this.pendingConnect.has(tabId) && tab.connection.getExtendedState().status === 'disconnected') {
       tab.connection.connect()
     }
     this.activeTabId = tabId
@@ -385,6 +390,7 @@ export class TabManager {
     }
 
     this.tabs.set(tabId, tab)
+    if (!opts.background) this.pendingConnect.add(tabId)
     if (!opts.background) this.activeTabId = tabId
 
     this.window.webContents.send('tab:created', this.getTabInfo(tab))
@@ -406,8 +412,7 @@ export class TabManager {
     // Тот же guard, что в createTab: закрытый за время sync таб не должен
     // порождать orphan-сессию (WS open handler шлёт session:resume сам —
     // conversationId передан конструктору).
-    const connectIfAlive = () => { if (this.tabs.has(tabId)) connection.connect() }
-    this.triggerSync(config).then(connectIfAlive).catch(connectIfAlive)
+    this.connectAfterSync(tab)
 
     return tabId
   }
@@ -422,6 +427,7 @@ export class TabManager {
 
   /** Terminal client disposal, without ending the server's CLI sessions. */
   dispose(): void {
+    this.pendingConnect.clear()
     for (const tab of this.tabs.values()) tab.connection.dispose()
     this.tabs.clear()
     this.activeTabId = null
@@ -460,6 +466,13 @@ export class TabManager {
   }
 
   // ─── Private ────────────────────────────────────────────
+
+  private connectAfterSync(tab: Tab): void {
+    const connectIfAlive = () => {
+      if (this.pendingConnect.delete(tab.id) && this.tabs.get(tab.id) === tab) tab.connection.connect()
+    }
+    this.triggerSync(tab.config).then(connectIfAlive, connectIfAlive)
+  }
 
   /**
    * Sync user-level and project-level data to the bridge server.
