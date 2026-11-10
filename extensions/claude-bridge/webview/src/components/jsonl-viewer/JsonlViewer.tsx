@@ -5,6 +5,7 @@ import { compactSegments, activeSegmentIdx } from '../../signals/compact-segment
 import { activeTabId, tabs } from '../../signals/tabs'
 import { jsonlEntriesByTab, getJsonlStructureVersion, tabNeedsRefill, clearRefillDebt, prependJsonlEntries, trimTabToWindow, archivedViewTs, STORE_WINDOW, STORE_SLACK, SCROLL_UP_MAX } from '../../signals/jsonl'
 import { boundTabId } from '../../signals/session-binding'
+import { compactingTabs } from '../../signals/compaction'
 import { useBridge } from '../../hooks/useBridge'
 import { JsonlEntry } from './JsonlEntry'
 import type { JsonlEntryData } from '../../types/jsonl'
@@ -617,6 +618,14 @@ export function JsonlViewer(): JSX.Element {
           }
           return out
         })()
+      )}
+      {currentTabId && compactingTabs.value.has(currentTabId) && (
+        // The CLI TUI shows only this while it summarizes; the summary text
+        // itself arrives as the compact boundary and summary row afterwards.
+        <div role="status" style="display:flex;align-items:center;gap:8px;padding:10px 4px 2px;color:var(--text-muted);font-size:12px">
+          <i class="fas fa-spinner fa-spin" style="font-size:12px" aria-hidden="true" />
+          <span>Compacting conversation…</span>
+        </div>
       )}
       {/* Tail spacer — gives the user a few extra pixels of scroll past the
           last message so the bottom card edge isn't pinned to the input bar
