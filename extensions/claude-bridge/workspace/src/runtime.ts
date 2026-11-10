@@ -8,6 +8,7 @@ import type { ClientFrame, ClientView, HostAttachment, HostFrame, WorkspaceBacke
 import { WorkspacePresentation } from './presentation.js'
 import { containerSessionInstructions, projectDirectory } from './session-context.js'
 import { WorkspaceSessionState } from './session-state.js'
+import { WorkspaceDrafts } from './draft-state.js'
 
 export interface SharedBackendOptions {
   root: string
@@ -48,6 +49,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   let restoring = true
   const manager = host.getTabManager()
   const sessionState = new WorkspaceSessionState(storage, root, options.serverUrl, options.token)
+  const drafts = new WorkspaceDrafts(storage, root, options.serverUrl, options.token)
   function persistSessions(): void {
     if (disposed || restoring) return
     try { sessionState.save(manager.listTabs(), manager.getActiveTabId()) }
@@ -63,6 +65,10 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
     postMessage(frame: HostFrame) {
       presentation.observe(frame)
       if (frame.channel === 'tab:list-changed' || frame.channel === 'tab:switched') persistSessions()
+      if (frame.channel === 'tab:list-changed' && !restoring) {
+        try { drafts.prune(manager.listTabs().map(tab => tab.id)) }
+        catch { console.warn('Could not prune closed workspace drafts') }
+      }
       return Promise.resolve(true)
     },
     onDidReceiveMessage() { return { dispose() {} } },
@@ -144,6 +150,14 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
         if (frame.kind === 'invoke-diagnostic') { await listener?.(frame); return }
         try {
           if (frame.kind === 'send' && frame.channel === 'workspace:sync') { snapshot(undefined, true); return }
+          if (frame.kind === 'invoke' && (frame.channel === 'workspace:draft:get' || frame.channel === 'workspace:draft:update')) {
+            const id = frame.args[0]
+            if (typeof id !== 'string' || !manager.getTab(id)) throw new Error('Unknown draft session')
+            const result = frame.channel === 'workspace:draft:get' ? drafts.get(id) : drafts.update(id, frame.args[1], frame.args[2])
+            if ('accepted' in result && result.accepted) host.broadcast('workspace:draft:state', id, result.state)
+            await webview.postMessage({ kind: 'invoke-reply', id: frame.id, generation: frame.generation, ok: true, result })
+            return
+          }
           if (frame.kind === 'send' && frame.channel === 'jsonl:request-replay') { snapshot(typeof frame.args[0] === 'string' ? frame.args[0] : undefined); return }
           if (frame.kind === 'invoke' && frame.channel === 'workspace:queue-dismiss') {
             if (typeof frame.args[0] !== 'string' || !manager.getConnection(frame.args[0])) throw new Error('Unknown queue session')

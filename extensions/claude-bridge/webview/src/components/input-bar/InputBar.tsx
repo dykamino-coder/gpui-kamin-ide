@@ -42,6 +42,7 @@ export function InputBar(): JSX.Element {
     const el = textareaRef.current
     if (!el) return
     el.value = el.value + text
+    el.dispatchEvent(new Event('input', { bubbles: true }))
     el.focus()
     setHasText(true)
   })
@@ -80,10 +81,10 @@ export function InputBar(): JSX.Element {
   // ONLY during that download and self-clears at replay-complete, so this can
   // never wedge the box on (a small/empty session sends no progress → enabled).
   const isLoading = tabId ? replayProgressByTab.value.get(tabId) != null : false
-  const isNotReady = isSwitching || isLoading
   const qCount = activeLocalQueue.value.length
 
-  const { clearDraft } = useInputDraft({ tabId: tabId ?? undefined, textareaRef, setHasText })
+  const { clearDraft, ready: draftReady } = useInputDraft({ tabId: tabId ?? undefined, textareaRef, setHasText })
+  const isNotReady = isSwitching || isLoading || !draftReady
   useAppendToInputBridge(textareaRef, setHasText)
   useAutoFocusOnTabSwitch(tabId ?? undefined, textareaRef)
 
@@ -132,6 +133,7 @@ export function InputBar(): JSX.Element {
           const cmd = slashHandlers.applySelected()
           if (cmd && textareaRef.current) {
             textareaRef.current.value = cmd
+            textareaRef.current.dispatchEvent(new Event('input', { bubbles: true }))
             textareaRef.current.focus()
             slashHandlers.hide()
             setHasText(true)
@@ -188,6 +190,7 @@ export function InputBar(): JSX.Element {
   function handleSlashSelect(cmd: string): void {
     if (!textareaRef.current) return
     textareaRef.current.value = cmd
+    textareaRef.current.dispatchEvent(new Event('input', { bubbles: true }))
     textareaRef.current.focus()
     slashHandlers.hide()
     setHasText(true)

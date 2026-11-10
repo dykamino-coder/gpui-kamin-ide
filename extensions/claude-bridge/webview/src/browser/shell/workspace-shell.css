@@ -91,3 +91,5 @@
 .ws-notices > div { position:relative; background:var(--bg-surface); border:1px solid var(--bg-overlay); border-radius:8px; padding:12px 32px 12px 12px; box-shadow:0 4px 16px #0004; }
 .ws-notices p { margin-top:4px; line-height:1.5; }
 .ws-notices button { position:absolute; right:8px; top:8px; border:0; background:transparent; color:inherit; cursor:pointer; }
+.ws-draft-status { flex-shrink: 0; padding: 3px 10px; font-size: 11px; color: var(--text-secondary); }
+.ws-draft-status button { margin-left: 8px; font: inherit; cursor: pointer; }
