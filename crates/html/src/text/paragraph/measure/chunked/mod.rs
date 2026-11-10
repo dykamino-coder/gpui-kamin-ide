@@ -144,7 +144,12 @@ impl Paragraph {
 fn widths(keys: &[u64], pieces: &mut [Piece; PIECES], text: &WindowTextSystem) -> bool {
     for (p, &key) in pieces.iter_mut().zip(keys) {
         match text.line_piece(key) {
-            Some(c) => p.width = c.width,
+            Some(c) => {
+                *p = Piece {
+                    width: c.width,
+                    ..*p
+                }
+            }
             None => return false,
         }
     }
