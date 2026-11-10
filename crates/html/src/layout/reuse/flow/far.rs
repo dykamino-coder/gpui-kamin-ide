@@ -14,14 +14,17 @@ impl FlowCx {
     /// caller (`replay`) has checked what a subtree claim needs: no repeated
     /// build of the frame, no float before, no ban or refusal.
     pub(super) fn far(&self, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
-        let record = self.reuse.store.far_record(e.node_id)?;
-        if !record.fits(&self.key, Counters::read(&opts.cx), e) {
-            return None;
-        }
-        record.end.write(&opts.cx);
-        let slot = Rc::new(FarSlot::new(record.clone(), !self.settled));
+        let start = Counters::read(&opts.cx);
+        let slot = self.reuse.store.with_far_record(e.node_id, |record| {
+            if !record.fits(&self.key, start, e) {
+                return None;
+            }
+            record.end.write(&opts.cx);
+            record.claim();
+            Some(Rc::new(FarSlot::new(record, !self.settled)))
+        })??;
         self.reuse.with_far(|far| {
-            far.next.insert(e.node_id, record);
+            far.claimed += 1;
             far.slots.push(slot.clone());
         });
         Some(Far::new(slot).hooked())
@@ -42,10 +45,12 @@ impl FlowCx {
             return;
         }
         let Some(child) = out.pop() else { return };
-        let pending = Rc::new(PendingFar::new(self.key.clone(), mark.start, end));
+        let pending = PendingFar::new(self.key.clone(), mark.start, end);
         let source = self.reuse.shells.source(e);
-        self.reuse
-            .with_far(|far| far.pending.push((pending.clone(), source)));
-        out.push(FarRecorder::new(child, pending).hooked());
+        let index = self.reuse.with_far(|far| {
+            far.pending.push((pending, source));
+            far.pending.len() - 1
+        });
+        out.push(FarRecorder::new(child, self.reuse.clone(), index).hooked());
     }
 }

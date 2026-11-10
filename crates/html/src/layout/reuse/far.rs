@@ -34,7 +34,7 @@ pub(crate) use state::FrameFar;
 use super::{Counters, FlowKey, FlowReuse, Source, scaled};
 use crate::dom::Element;
 use gpui::{Bounds, InkSink, LayoutId, Pixels, RetainedSubtree, ScaledPixels, Window, point, size};
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// How far ink reached outside the layout boxes of a block, per side, in
@@ -55,6 +55,8 @@ pub(crate) struct FarRecord {
     pub(super) end: Counters,
     layout: RetainedSubtree,
     excess: Excess,
+    /// Claimed by the build being finished (`FlowReuse::finish_far`).
+    claimed: Cell<bool>,
 }
 
 impl FarRecord {
@@ -62,23 +64,31 @@ impl FarRecord {
     pub(super) fn fits(&self, key: &FlowKey, start: Counters, e: &Element) -> bool {
         self.key.same_outside_widths(key) && self.start == start && self.source.same(e)
     }
+
+    /// Mark the record claimed by this build; it stays for the next one.
+    pub(super) fn claim(&self) {
+        self.claimed.set(true);
+    }
 }
 
 /// Union of a far block's layout boxes and of its hitboxes, if any.
 type Placed = (Bounds<ScaledPixels>, Option<Bounds<ScaledPixels>>);
 
-/// A far record in the making: filled by `FarRecorder`, finished after paint.
+/// A far record in the making, kept by value in the build's far state
+/// (`FrameFar::pending`): filled by `FarRecorder`, finished after paint.
 pub(super) struct PendingFar {
     key: Rc<FlowKey>,
     start: Counters,
     end: Counters,
-    layout: RefCell<Option<RetainedSubtree>>,
+    layout: Option<RetainedSubtree>,
     /// Prepaint left nothing but hitboxes: the union of the block's layout
     /// boxes and of its hitboxes, if any.
-    placed: Cell<Option<Placed>>,
-    sink: Rc<InkSink>,
+    placed: Option<Placed>,
     /// Set when the block painted far from the screen.
-    excess: Cell<Option<Excess>>,
+    excess: Option<Excess>,
+    /// The sink its deferred paint feeds (`FrameFar::sink`): a taint there
+    /// refuses the record.
+    deferred: Option<Rc<InkSink>>,
 }
 
 impl PendingFar {
@@ -87,32 +97,35 @@ impl PendingFar {
             key,
             start,
             end,
-            layout: RefCell::new(None),
-            placed: Cell::new(None),
-            sink: Rc::default(),
-            excess: Cell::new(None),
+            layout: None,
+            placed: None,
+            excess: None,
+            deferred: None,
         }
     }
 
-    fn finish(&self, source: Source) -> Option<FarRecord> {
-        let excess = self.excess.get()?;
-        if self.sink.tainted() {
+    fn finish(self, source: Source) -> Option<FarRecord> {
+        if self.deferred.is_some_and(|sink| sink.tainted()) {
             return None;
         }
         Some(FarRecord {
             source,
-            key: self.key.clone(),
+            key: self.key,
             start: self.start,
             end: self.end,
-            layout: self.layout.take()?,
-            excess,
+            layout: self.layout?,
+            excess: self.excess?,
+            claimed: Cell::new(false),
         })
     }
 }
 
-/// A claimed far block in this frame.
+/// A claimed far block in this frame: what its stand-in and the frame check
+/// read of its record (`FarRecord`, kept in `Store::far`).
 pub(super) struct FarSlot {
-    record: Rc<FarRecord>,
+    id: u64,
+    subtree: RetainedSubtree,
+    excess: Excess,
     layout: Cell<Option<LayoutId>>,
     /// The flow's widths changed since the last build: the claimed leaves
     /// will be measured, so they make their probes at request time. With the
@@ -121,9 +134,11 @@ pub(super) struct FarSlot {
 }
 
 impl FarSlot {
-    pub(super) fn new(record: Rc<FarRecord>, prepare: bool) -> Self {
+    pub(super) fn new(record: &FarRecord, prepare: bool) -> Self {
         Self {
-            record,
+            id: record.source.id(),
+            subtree: record.layout.clone(),
+            excess: record.excess,
             layout: Cell::new(None),
             prepare,
         }
@@ -197,10 +212,10 @@ impl FlowReuse {
                 && !stale
                 && slot.layout.get().is_some()
                 && window
-                    .retained_layout_bounds(&slot.record.layout)
-                    .is_some_and(|b| clear_of(device(b, scale), slot.record.excess, screen));
+                    .retained_layout_bounds(&slot.subtree)
+                    .is_some_and(|b| clear_of(device(b, scale), slot.excess, screen));
             if !fits {
-                failed.push(slot.record.source.id());
+                failed.push(slot.id);
             }
         }
         failed

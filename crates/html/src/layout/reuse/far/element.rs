@@ -1,21 +1,32 @@
 //! Elements of a far block: the recording wrapper around a built block and
 //! the stand-in that claims its layout subtree (`super`).
 
-use super::{Excess, FarSlot, PendingFar, clear_of, device, ink_beyond, screen_of};
+use super::{Excess, FarSlot, clear_of, device, ink_beyond, screen_of};
 use crate::hooks::{Hooks, Wrap};
+use crate::layout::reuse::FlowReuse;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, point, px};
 use std::rc::Rc;
 
 /// Transparent wrapper of a built block: captures its layout nodes, checks
-/// that its prepaint left nothing but hitboxes and measures its ink.
+/// that its prepaint left nothing but hitboxes and measures its ink, into
+/// its pending recording `index` of the build (`FrameFar::pending`).
 pub(in crate::layout::reuse) struct FarRecorder {
     child: AnyElement,
-    pending: Rc<PendingFar>,
+    reuse: Rc<FlowReuse>,
+    index: usize,
 }
 
 impl FarRecorder {
-    pub(in crate::layout::reuse) fn new(child: AnyElement, pending: Rc<PendingFar>) -> Self {
-        Self { child, pending }
+    pub(in crate::layout::reuse) fn new(
+        child: AnyElement,
+        reuse: Rc<FlowReuse>,
+        index: usize,
+    ) -> Self {
+        Self {
+            child,
+            reuse,
+            index,
+        }
     }
 }
 
@@ -31,9 +42,8 @@ impl Wrap for FarRecorder {
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         let start = window.layout_request_position();
         let id = self.child.request_layout(window, cx);
-        self.pending
-            .layout
-            .replace(window.capture_layout(start, id));
+        let layout = window.capture_layout(start, id);
+        self.reuse.with_pending(self.index, |p| p.layout = layout);
         id
     }
 
@@ -48,36 +58,56 @@ impl Wrap for FarRecorder {
         else {
             return;
         };
-        let layout = self.pending.layout.borrow().clone();
-        let boxes = layout.and_then(|layout| window.retained_layout_bounds(&layout));
+        let layout = self.reuse.with_pending(self.index, |p| p.layout.clone());
+        let boxes = layout
+            .flatten()
+            .and_then(|layout| window.retained_layout_bounds(&layout));
         let scale = window.scale_factor();
-        self.pending
-            .placed
-            .set(boxes.map(|boxes| (device(boxes, scale), hits.map(|b| device(b, scale)))));
+        let placed = boxes.map(|boxes| (device(boxes, scale), hits.map(|b| device(b, scale))));
+        self.reuse.with_pending(self.index, |p| p.placed = placed);
     }
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let sink = self.pending.sink.clone();
-        let callbacks = window.next_frame_callback_count();
-        window.with_ink_sink(sink, |window| self.child.paint(window, cx));
-        let Some((boxes, hits)) = self.pending.placed.get() else {
+        // Painted after its build was finished (the same tree in a later
+        // frame): there is nothing to record.
+        let Some(sink) = self.reuse.far_sink() else {
+            self.child.paint(window, cx);
             return;
         };
-        if self.pending.sink.tainted() || callbacks != window.next_frame_callback_count() {
+        let callbacks = window.next_frame_callback_count();
+        window.with_ink_sink(sink.clone(), |window| self.child.paint(window, cx));
+        let (ink, tainted) = sink.take();
+        // Held beyond this build's state and `sink`: snapshots of this paint
+        // feed it later. The block keeps it, so a taint from them still
+        // refuses its record, and the next recorder paints into a new one.
+        let deferred = (Rc::strong_count(&sink) > 2).then(|| {
+            self.reuse.renew_far_sink();
+            sink
+        });
+        let quiet = !tainted && callbacks == window.next_frame_callback_count();
+        let Some((boxes, hits, layout)) = self
+            .reuse
+            .with_pending(self.index, |p| Some((p.placed?, p.layout.clone()?)))
+            .flatten()
+            .filter(|_| quiet)
+            .map(|((boxes, hits), layout)| (boxes, hits, layout))
+        else {
             return;
-        }
-        let layout = self.pending.layout.borrow().clone();
-        let Some(layout) = layout else { return };
-        let ink = match (self.pending.sink.bounds(), hits) {
+        };
+        let ink = match (ink, hits) {
             (Some(a), Some(b)) => Some(a.union(&b)),
             (a, b) => a.or(b),
         };
         let excess: Excess = ink_beyond(boxes, ink);
         if clear_of(boxes, excess, screen_of(window)) {
-            self.pending.excess.set(Some(excess));
-            // Kept for the next pass, the leaves' measures shrink to what a
-            // new measure reads (`gpui::CompactMeasure`).
-            window.keep_retained_measures(&layout);
+            self.reuse.with_pending(self.index, |p| {
+                p.excess = Some(excess);
+                p.deferred = deferred;
+            });
+            // Kept for the next pass as their requests made them: the
+            // recording frame allocates nothing for the keep. The first pass
+            // that claims the block compacts them after its paint.
+            window.keep_retained_measures(&layout, false);
         }
     }
 }
@@ -102,14 +132,14 @@ impl Hooks for Far {
     type Prepaint = ();
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        match window.request_retained_layout(&self.slot.record.layout) {
+        match window.request_retained_layout(&self.slot.subtree) {
             Some(id) => {
                 self.slot.layout.set(Some(id));
                 // The kept leaves make their probes here, where the build of
                 // the block would have requested them, unless the widths are
                 // those of the last pass (Taffy's cache, no measure).
                 if self.slot.prepare {
-                    window.prepare_retained_measures(&self.slot.record.layout);
+                    window.prepare_retained_measures(&self.slot.subtree);
                 }
                 (id, ())
             }
@@ -129,9 +159,10 @@ impl Hooks for Far {
         _: &mut App,
     ) {
         // Painted means the frame check kept the block: the next pass may
-        // claim it again with the same functions.
+        // claim it again with the same functions, shrunk to what a new
+        // measure reads (`gpui::CompactMeasure`).
         if self.slot.layout.get().is_some() {
-            window.keep_retained_measures(&self.slot.record.layout);
+            window.keep_retained_measures(&self.slot.subtree, true);
         }
     }
 }

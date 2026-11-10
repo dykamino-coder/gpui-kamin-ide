@@ -15,8 +15,6 @@ use std::rc::Rc;
 #[allow(clippy::large_enum_variant)] // вариант выбран на всю жизнь замера
 pub(super) enum Probe<F> {
     Built(Paragraph),
-    /// A built probe kept once (`compact`): the next keep compacts it.
-    Kept(Paragraph),
     Rebuild(Settings, F),
     /// Moved out by a compaction that is being made.
     Spent,
@@ -80,9 +78,7 @@ impl<F: FnMut(Paragraph) -> Paragraph + 'static> gpui::CompactMeasure for ProbeM
     ) -> MeasuredContent {
         let (fit, normal) = (&self.atom_fit, &self.normal_static);
         match &mut self.source {
-            Probe::Built(probe) | Probe::Kept(probe) => {
-                measure(probe, fit, normal, known, available, window, cx)
-            }
+            Probe::Built(probe) => measure(probe, fit, normal, known, available, window, cx),
             Probe::Rebuild(settings, make_probe) => {
                 let mut probe = make_probe(settings.probe());
                 measure(&mut probe, fit, normal, known, available, window, cx)
@@ -91,26 +87,19 @@ impl<F: FnMut(Paragraph) -> Paragraph + 'static> gpui::CompactMeasure for ProbeM
         }
     }
 
-    /// The plain form of a built probe (`PlainProbe`) at its second keep; a
-    /// rebuilt or not plain probe keeps its measure. The first keep, in the
-    /// frame that records the far block, only marks the probe: that frame
-    /// allocates nothing for it, and the next pass measures the built probe
-    /// as its request would, then compacts it after its paint.
+    /// The plain form of a built probe (`PlainProbe`); a rebuilt or not plain
+    /// probe keeps its measure. The far block's recording frame keeps the leaf
+    /// without compacting it (`Window::keep_retained_measures`), so the first
+    /// pass that claims the block measures the built probe as its request
+    /// would and compacts it after its paint.
     fn compact(&mut self) -> Option<PlainMeasure> {
-        if matches!(self.source, Probe::Built(_)) {
-            let Probe::Built(probe) = std::mem::replace(&mut self.source, Probe::Spent) else {
-                unreachable!()
-            };
-            self.source = Probe::Kept(probe);
-            return None;
-        }
-        let Probe::Kept(probe) = &self.source else {
+        let Probe::Built(probe) = &self.source else {
             return None;
         };
         if !PlainProbe::plain(probe) {
             return None;
         }
-        let Probe::Kept(probe) = std::mem::replace(&mut self.source, Probe::Spent) else {
+        let Probe::Built(probe) = std::mem::replace(&mut self.source, Probe::Spent) else {
             unreachable!()
         };
         Some(PlainMeasure {

@@ -1,20 +1,28 @@
 //! The far state of one build and its hand-over to the document (`Store`).
 
-use super::{FarRecord, FarSlot, PendingFar};
+use super::{FarSlot, PendingFar};
 use crate::layout::reuse::{FlowReuse, Source};
-use std::collections::HashMap;
+use gpui::InkSink;
 use std::rc::Rc;
 
 /// Far blocks of one build (`FlowReuse::far`), allocated with the first one:
-/// records claimed, recordings pending and slots to check before prepaint.
+/// the count of records claimed, recordings pending and slots to check
+/// before prepaint.
 #[derive(Default)]
 pub(crate) struct FrameFar {
-    pub(in crate::layout::reuse) next: HashMap<u64, Rc<FarRecord>>,
-    pub(in crate::layout::reuse) pending: Vec<(Rc<PendingFar>, Source)>,
+    pub(in crate::layout::reuse) claimed: u64,
+    /// By value: a recorder reaches its own by index (`FarRecorder`).
+    pub(in crate::layout::reuse) pending: Vec<(PendingFar, Source)>,
     pub(in crate::layout::reuse) slots: Vec<Rc<FarSlot>>,
     /// Outside width reads of the far candidate being built, shared by all
     /// candidates of the build (`Mark::shared_widths`).
     pub(in crate::layout::reuse) widths: Rc<std::cell::Cell<bool>>,
+    /// The ink sink of the recorders' paints, emptied after each one. A
+    /// recorder whose paint left snapshots holding it (paint deferred past
+    /// the block, `Window::paint_ctx`) records nothing and leaves it to them:
+    /// the next one paints into a new sink, so no deferred ink or taint
+    /// reaches another block.
+    pub(in crate::layout::reuse) sink: Rc<InkSink>,
 }
 
 impl FlowReuse {
@@ -26,6 +34,36 @@ impl FlowReuse {
         out
     }
 
+    /// The pending recording `index` of this build, while the build is not
+    /// finished (a later paint of the same tree finds none).
+    pub(in crate::layout::reuse) fn with_pending<R>(
+        &self,
+        index: usize,
+        f: impl FnOnce(&mut PendingFar) -> R,
+    ) -> Option<R> {
+        let mut far = self.far.take()?;
+        let out = far.pending.get_mut(index).map(|(pending, _)| f(pending));
+        self.far.set(Some(far));
+        out
+    }
+
+    /// The recorders' ink sink of this build (empty, held by no snapshot).
+    pub(in crate::layout::reuse) fn far_sink(&self) -> Option<Rc<InkSink>> {
+        let far = self.far.take()?;
+        let sink = far.sink.clone();
+        self.far.set(Some(far));
+        Some(sink)
+    }
+
+    /// The recorders' sink `sink` is held by snapshots of the last paint:
+    /// the next recorder paints into a new one (`FrameFar::sink`).
+    pub(in crate::layout::reuse) fn renew_far_sink(&self) {
+        if let Some(mut far) = self.far.take() {
+            far.sink = Rc::default();
+            self.far.set(Some(far));
+        }
+    }
+
     /// After paint: far records claimed in this frame and those recorded.
     /// A failed recording marks its block near (`Store::far_near`).
     pub(in crate::layout::reuse) fn finish_far(&self) {
@@ -34,25 +72,24 @@ impl FlowReuse {
             self.store.far.take();
             return;
         };
-        let claimed = frame.next.len() as u64;
-        let mut records = frame.next;
+        let claimed = frame.claimed;
+        let mut kept = self.store.far.take().unwrap_or_default();
+        // The records claimed by this build stay; a build that claimed none
+        // (the second build of a refused frame) keeps none, like the marks
+        // of a refused build it replaces.
+        kept.retain(|_, record| record.claimed.replace(false) && claimed > 0);
         for (pending, source) in frame.pending {
             let node = source.id();
             match pending.finish(source) {
                 Some(record) => {
                     self.store.forget_near(node);
-                    records.insert(node, Rc::new(record));
+                    kept.insert(node, record);
                 }
                 None => self.store.note_near(node),
             }
         }
-        // The kept map reuses its box between frames.
-        let kept = (!records.is_empty()).then(|| {
-            let mut kept = self.store.far.take().unwrap_or_default();
-            *kept = records;
-            kept
-        });
-        self.store.far.set(kept);
+        // The kept map reuses its box and table between frames.
+        self.store.far.set((!kept.is_empty()).then_some(kept));
         let mut stats = self.store.stats.get();
         stats.far += claimed;
         self.store.stats.set(stats);

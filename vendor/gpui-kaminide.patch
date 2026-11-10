@@ -17964,10 +17964,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c3389fe9f620ff648a4334cfa1f850907b2d651a
+index 0000000000000000000000000000000000000000..9b9ab9dc1105e92006ffbbd720c4925ad0c90637
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,528 @@
+@@ -0,0 +1,531 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -18422,9 +18422,9 @@ index 0000000000000000000000000000000000000000..c3389fe9f620ff648a4334cfa1f85090
 +    /// a fresh request of the same subtree, and the pass does not go stale.
 +    /// The host vouches that the functions read nothing that changes between
 +    /// the passes; it keeps them pass by pass, as long as it claims them.
-+    /// A kept function that has a smaller form (Measure::compacted) is
-+    /// replaced by it.
-+    pub fn keep_measures(&mut self, nodes: &[NodeId]) {
++    /// With `compact`, a kept function that has a smaller form
++    /// (Measure::compacted) is replaced by it.
++    pub fn keep_measures(&mut self, nodes: &[NodeId], compact: bool) {
 +        if !self.frame_tree {
 +            return;
 +        }
@@ -18434,6 +18434,9 @@ index 0000000000000000000000000000000000000000..c3389fe9f620ff648a4334cfa1f85090
 +                && let Some(context) = self.taffy.get_node_context_mut(node)
 +            {
 +                context.keep_measure = true;
++                if !compact {
++                    continue;
++                }
 +                // The kept function gives way to its compacted form, if any.
 +                let compacted = context.measure.borrow_mut().compacted();
 +                if let Some(measure) = compacted {
@@ -26727,10 +26730,10 @@ index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ac011e8d0f9322ac17c546db1a116a6a1d0a5135
+index 0000000000000000000000000000000000000000..77b8ba6dcdbba86ff06667d87c5fa1d3afafa2d5
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,438 @@
+@@ -0,0 +1,445 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -26902,6 +26905,12 @@ index 0000000000000000000000000000000000000000..ac011e8d0f9322ac17c546db1a116a6a
 +    /// Whether an observed scope had effects beyond offering primitives.
 +    pub fn tainted(&self) -> bool {
 +        self.tainted.get()
++    }
++
++    /// The bounds and taint observed so far, leaving the sink empty: one sink
++    /// may then measure several scopes in turn.
++    pub fn take(&self) -> (Option<Bounds<ScaledPixels>>, bool) {
++        (self.bounds.take(), self.tainted.take())
 +    }
 +}
 +
@@ -27116,11 +27125,12 @@ index 0000000000000000000000000000000000000000..ac011e8d0f9322ac17c546db1a116a6a
 +    /// claimed in this pass) for the next pass: claimed whole there, the
 +    /// subtree is laid out at new constraints by those functions instead of
 +    /// going stale. The caller vouches that they read nothing else that
-+    /// changes between the passes, and keeps them pass by pass. A host measure
-+    /// with a smaller form (CompactMeasure) is replaced by it.
-+    pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree) {
++    /// changes between the passes, and keeps them pass by pass. With `compact`,
++    /// a host measure with a smaller form (CompactMeasure) is replaced by it;
++    /// without, it stays as its request made it, so the keep allocates nothing.
++    pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree, compact: bool) {
 +        if let Some(engine) = self.layout_engine.as_mut() {
-+            engine.keep_measures(&layout.nodes);
++            engine.keep_measures(&layout.nodes, compact);
 +        }
 +    }
 +

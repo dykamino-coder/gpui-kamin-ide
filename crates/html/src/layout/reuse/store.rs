@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// Far records by node id (`Store::far`).
-pub(super) type FarRecords = HashMap<u64, Rc<FarRecord>>;
+pub(super) type FarRecords = HashMap<u64, FarRecord>;
 
 /// Записи блоков одного документа между кадрами; переживают `update`.
 #[derive(Default)]
@@ -131,12 +131,16 @@ impl Store {
         found
     }
 
-    /// The far record of block `node`.
-    pub(super) fn far_record(&self, node: u64) -> Option<Rc<FarRecord>> {
+    /// `f` of the far record of block `node`, if any.
+    pub(super) fn with_far_record<R>(
+        &self,
+        node: u64,
+        f: impl FnOnce(&FarRecord) -> R,
+    ) -> Option<R> {
         let far = self.far.take();
-        let record = far.as_ref().and_then(|far| far.get(&node).cloned());
+        let out = far.as_ref().and_then(|far| far.get(&node)).map(f);
         self.far.set(far);
-        record
+        out
     }
 
     /// The last far recording of block `node` failed (`far_near`).

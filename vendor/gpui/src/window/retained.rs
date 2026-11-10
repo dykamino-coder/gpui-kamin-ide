@@ -170,6 +170,12 @@ impl InkSink {
     pub fn tainted(&self) -> bool {
         self.tainted.get()
     }
+
+    /// The bounds and taint observed so far, leaving the sink empty: one sink
+    /// may then measure several scopes in turn.
+    pub fn take(&self) -> (Option<Bounds<ScaledPixels>>, bool) {
+        (self.bounds.take(), self.tainted.take())
+    }
 }
 
 /// Paint effects of a scope observed by open ink sinks.
@@ -383,11 +389,12 @@ impl Window {
     /// claimed in this pass) for the next pass: claimed whole there, the
     /// subtree is laid out at new constraints by those functions instead of
     /// going stale. The caller vouches that they read nothing else that
-    /// changes between the passes, and keeps them pass by pass. A host measure
-    /// with a smaller form (CompactMeasure) is replaced by it.
-    pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree) {
+    /// changes between the passes, and keeps them pass by pass. With `compact`,
+    /// a host measure with a smaller form (CompactMeasure) is replaced by it;
+    /// without, it stays as its request made it, so the keep allocates nothing.
+    pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree, compact: bool) {
         if let Some(engine) = self.layout_engine.as_mut() {
-            engine.keep_measures(&layout.nodes);
+            engine.keep_measures(&layout.nodes, compact);
         }
     }
 
