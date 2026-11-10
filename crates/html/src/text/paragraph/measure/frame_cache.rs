@@ -5,8 +5,6 @@
 
 use std::{collections::HashMap, hash::BuildHasherDefault};
 
-type Table<V> = HashMap<u64, V, BuildHasherDefault<KeyHash>>;
-
 /// Хэш ключа, который сам уже хэш.
 #[derive(Default)]
 struct KeyHash(u64);
@@ -28,15 +26,15 @@ impl std::hash::Hasher for KeyHash {
 }
 
 pub(in crate::text::paragraph) struct FrameCache<V> {
-    current: Table<V>,
-    previous: Table<V>,
+    current: HashMap<u64, V, BuildHasherDefault<KeyHash>>,
+    previous: HashMap<u64, V, BuildHasherDefault<KeyHash>>,
 }
 
 impl<V> Default for FrameCache<V> {
     fn default() -> Self {
         Self {
-            current: Table::default(),
-            previous: Table::default(),
+            current: HashMap::default(),
+            previous: HashMap::default(),
         }
     }
 }

@@ -12,6 +12,7 @@ mod width;
 mod width_tests;
 
 use crate::text::paragraph::{Line, Seg};
+use chunks::Shaped;
 use frame_cache::FrameCache;
 use std::{cell::RefCell, rc::Rc};
 
@@ -22,7 +23,7 @@ pub(crate) struct MeasureCache {
     pub(in crate::text::paragraph) fitted: RefCell<FrameCache<f32>>,
     pub(in crate::text::paragraph) measured: RefCell<FrameCache<Vec<Seg>>>,
     /// Наборы частей длинных кусков и списки частей их абзацев (`chunks`).
-    pub(in crate::text::paragraph) shaped: RefCell<FrameCache<chunks::Shaped>>,
+    pub(in crate::text::paragraph) shaped: RefCell<FrameCache<Shaped>>,
     /// Line splits computed because the cache had no entry (observation for tests).
     #[cfg(test)]
     pub(crate) split_misses: std::cell::Cell<usize>,
@@ -34,6 +35,15 @@ impl MeasureCache {
         self.measured.borrow_mut().begin_frame();
         self.shaped.borrow_mut().begin_frame();
         self.fitted.borrow_mut().begin_frame();
+    }
+
+    /// Запись памяти частей по ключу; чтение продлевает её жизнь на кадр.
+    fn chunk(&self, key: u64) -> Option<Shaped> {
+        self.shaped.borrow_mut().get(&key).cloned()
+    }
+
+    fn put_chunk(&self, key: u64, value: Shaped) {
+        self.shaped.borrow_mut().insert(key, value);
     }
 
     pub(super) fn remember_fit(&self, key: u64, k: f32) {

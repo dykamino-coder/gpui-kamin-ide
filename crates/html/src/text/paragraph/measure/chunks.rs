@@ -101,13 +101,13 @@ impl Paragraph {
     ) -> Arc<LineLayout> {
         let key = self.chunk_key(&r);
         keys.push(key);
-        let hit = self.measures.shaped.borrow_mut().get(&key).cloned();
+        let hit = self.measures.chunk(key);
         if let Some(Shaped::Chunk(hit)) = hit {
             return hit;
         }
         let layout = self.shape(r, window);
         let chunk = Shaped::Chunk(layout.clone());
-        self.measures.shaped.borrow_mut().insert(key, chunk);
+        self.measures.put_chunk(key, chunk);
         layout
     }
 
@@ -115,18 +115,14 @@ impl Paragraph {
     pub(super) fn remember_chunks(&self, key: u64, chunks: Vec<u64>) {
         if !chunks.is_empty() {
             let list = Shaped::Keys(chunks.into());
-            self.measures
-                .shaped
-                .borrow_mut()
-                .insert(list_key(key), list);
+            self.measures.put_chunk(list_key(key), list);
         }
     }
 
     /// Части держатся в памяти, пока держится замер их абзаца.
     pub(super) fn keep_chunks(&self, key: u64) {
-        let mut shaped = self.measures.shaped.borrow_mut();
-        if let Some(Shaped::Keys(keys)) = shaped.get(&list_key(key)).cloned() {
-            keys.iter().for_each(|k| _ = shaped.get(k));
+        if let Some(Shaped::Keys(keys)) = self.measures.chunk(list_key(key)) {
+            keys.iter().for_each(|&k| _ = self.measures.chunk(k));
         }
     }
 
