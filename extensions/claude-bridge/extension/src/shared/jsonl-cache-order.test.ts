@@ -2,8 +2,9 @@
 // untagged live-tail rows. Ranking untagged rows as 0 made the cap drop the
 // whole live session and the renderer replay cut out the middle of it.
 import { describe, it, expect } from "vitest"
-import { trimJsonlCache } from "./handle-server-message"
+import { trimJsonlCache } from "../main/ws/handle-server-message"
 import { newestInFileOrder } from "./jsonl-cache-order"
+import { chatReplayTail } from "./chat-stored-entries"
 
 type Row = { _pos?: number; _ord?: number; uuid?: string }
 
@@ -34,6 +35,14 @@ describe("host cache file order with untagged live rows", () => {
     expect(tail[0]?.uuid).toBe("live-500")
     expect(tail.at(-1)?.uuid).toBe("live-4999")
     // No tagged first-page rows wedged in front of a gap in the live session.
+    expect(tail.some((r) => r.uuid?.startsWith("page-"))).toBe(false)
+  })
+
+  it("the renderer replay tail (chatReplayTail) keeps the live session contiguous", () => {
+    const cached = pagedThenLive(5_000).map((r) => ({ ...r, type: "user" }))
+    const tail = chatReplayTail(cached, 4_500)
+    expect(tail[0]?.uuid).toBe("live-500")
+    expect(tail.at(-1)?.uuid).toBe("live-4999")
     expect(tail.some((r) => r.uuid?.startsWith("page-"))).toBe(false)
   })
 

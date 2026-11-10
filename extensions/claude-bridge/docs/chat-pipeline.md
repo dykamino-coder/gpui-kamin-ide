@@ -3,7 +3,7 @@
 Status: audit of `origin/main` at 2026-11-10 (after #679). Tests:
 `webview/src/signals/chat-render-matrix.test.ts`,
 `chat-render-property.test.ts`, `chat-streaming-audit.test.ts` (fixtures in
-`webview/src/signals/chat-audit/`), host: `extension/src/main/ws/jsonl-cache-order.test.ts`.
+`webview/src/signals/chat-audit/`), host: `extension/src/shared/jsonl-cache-order.test.ts`.
 Structural proposal: [adr-chat-transcript-projection.md](adr-chat-transcript-projection.md).
 
 All fixtures are synthetic. No text, id or timing comes from a real session.
@@ -88,7 +88,7 @@ spinner" class is one of these copies diverging from (1) (§10).
   synthetic texts ("No response requested.") do not render.
 - `NON_RENDERING_ENTRY_TYPES` (mode, permission-mode, queue-operation, …) and any
   type outside `RENDERABLE_ENTRY_TYPES` (cost-state, api-request*, …) are hidden
-  but, on `main`, **still stored and counted by the store cap**.
+  were stored and counted by the store cap until #698; since then the store keeps only `CHAT_STORED_ENTRY_TYPES` (`extension/src/shared/chat-stored-entries.ts`).
 - Attachments render only for `queued_command` with a prompt and
   `edited_text_file`. `queue-operation` rows rebuild the pending queue.
 
@@ -203,9 +203,9 @@ to one copy's bookkeeping.
 
 | ID | Defect | Where | Status |
 |---|---|---|---|
-| D1 | `trimJsonlCache` ranked untagged live rows as 0; past the 21 000 cap the cutoff 0 dropped **every** live row at once (a test reproduced 21 700 → 199 rows), so the next renderer replay showed only the first page | host `handle-server-message.ts` | **fixed here** (`jsonl-cache-order.ts`) |
-| D2 | the renderer replay took the newest 4 500 by `_pos ?? _ord ?? 0`, putting the tagged first page in front and cutting the middle of a live session; scroll-up then pages before the first page, so the gap never fills | host `connection-manager.ts` | open: `newestInFileOrder` is added and tested here; wiring its two call sites into `connection-manager.ts` follows once `fix/chat-seen-refill` is merged (same file) |
-| D3 | uuid-less bookkeeping (cost-state, api-request, …) is stored and counted by the store cap; a flood after the last message evicts every real row → empty chat while the console shows everything | webview `jsonl.ts` | expected-fail; fixed by `fix/chat-seen-refill` (chatempty) |
+| D1 | `trimJsonlCache` ranked untagged live rows as 0; past the 21 000 cap the cutoff 0 dropped **every** live row at once (a test reproduced 21 700 → 199 rows), so the next renderer replay showed only the first page | host `handle-server-message.ts` | **fixed here** (`shared/jsonl-cache-order.ts`) |
+| D2 | the renderer replay took the newest 4 500 by `_pos ?? _ord ?? 0`, putting the tagged first page in front and cutting the middle of a live session; scroll-up then pages before the first page, so the gap never fills | host `shared/chat-stored-entries.ts` (`chatReplayTail`), `connection-manager.ts` (view snapshot) | **fixed here** (`newestInFileOrder`) |
+| D3 | uuid-less bookkeeping (cost-state, api-request, …) is stored and counted by the store cap; a flood after the last message evicts every real row → empty chat while the console shows everything | webview `jsonl.ts`, host replay tail | fixed by #698; regression test now a plain `it` |
 | D4 | multi-leaf chain union keeps a rewound-away branch visible; the CLI shows one branch | `compute-chain-uuids.ts` | expected-fail; open (leaf rule must follow the CLI: `last-prompt.leafUuid`, else last main-chain line) |
 | D5 | the thinking-only canonical row replaces the stub's blocks, so streamed prose disappears until the text row lands | `merge-assistant.ts` | expected-fail; open, INC-2026-0088 transition |
 | D6 | stubs always sort last, but `stubSuperseded` looks for a successor after the stub, so an aborted API attempt (new `message.id` on retry) is never swept and stays under the retry's answer | `jsonl.ts` | expected-fail; open |
@@ -223,7 +223,7 @@ to one copy's bookkeeping.
 | split blocks out of order, parallel tools, sidechains, interrupt, queue, meta + bookkeeping, 200 KB message, D4 rewind | matrix › turn shapes |
 | stream + hand-off byte-equal, D5, late stub, 2 000-delta answer, interrupt, reconnect, reload, parallel subagents, compaction mid-stream, D6 retry | streaming audit |
 | I1/I2 under random schedules (60 seeds) | property |
-| D1/D2 | host `jsonl-cache-order.test.ts` |
+| D1/D2 | host `shared/jsonl-cache-order.test.ts` |
 
 `it.fails` cases are known defects. When a fix lands the `it.fails` case turns
 red (it unexpectedly passes); the fixing PR flips it to `it`.

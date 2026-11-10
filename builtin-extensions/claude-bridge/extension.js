@@ -42272,7 +42272,7 @@ var SessionIdleTracker = class {
   }
 };
 
-// src/main/ws/jsonl-cache-order.ts
+// src/shared/jsonl-cache-order.ts
 function tagOf(e) {
   if (typeof e._pos === "number") return e._pos;
   if (typeof e._ord === "number") return e._ord;
@@ -42296,6 +42296,10 @@ function cacheFileOrder(entries2) {
   const idx = Array.from({ length: entries2.length }, (_, i) => i);
   idx.sort((a, b) => ranks[a] - ranks[b] || a - b);
   return idx;
+}
+function newestInFileOrder(entries2, count) {
+  const order = cacheFileOrder(entries2);
+  return order.slice(Math.max(0, order.length - count)).map((i) => entries2[i]);
 }
 
 // src/main/ws/handle-server-message.ts
@@ -42580,8 +42584,7 @@ function isChatStoredEntry(entry) {
 function chatReplayTail(entries2, max) {
   const kept = entries2.filter(isChatStoredEntry);
   if (kept.length <= max) return kept;
-  const key2 = (e) => e._pos ?? e._ord ?? 0;
-  return kept.sort((a, b) => key2(a) - key2(b)).slice(-max);
+  return newestInFileOrder(kept, max);
 }
 
 // src/main/ws/connection-manager.ts
@@ -43343,9 +43346,8 @@ var ConnectionManager = class _ConnectionManager {
    * Serialization by the caller detaches the disposable renderer projection. */
   getViewSnapshot(maxRecords = 200) {
     const count = Math.max(1, Math.min(REPLAY_TAIL_MAX, maxRecords));
-    const ordered = [...this.cachedJsonlEntries].sort((a, b) => (a._pos ?? a._ord ?? 0) - (b._pos ?? b._ord ?? 0));
     return {
-      entries: ordered.filter(isChatStoredEntry).slice(-count),
+      entries: newestInFileOrder(this.cachedJsonlEntries.filter(isChatStoredEntry), count),
       streaming: this.cachedStreamingEntry,
       subagents: [...this.cachedSubagentEntries].map(([key2, slot]) => ({ ...slot, agentId: slot.agentId ?? key2, entries: slot.entries.slice(-count) })),
       boundaries: this.lastSegmentIndex,

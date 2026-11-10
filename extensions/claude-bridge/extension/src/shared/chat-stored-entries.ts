@@ -11,6 +11,8 @@
  *  because a denylist only knows the types that existed when it was written:
  *  newer rows got through, took window slots and replay-tail slots, and a
  *  bookkeeping-heavy transcript tail left the chat with nothing to show. */
+import { newestInFileOrder } from './jsonl-cache-order'
+
 export const CHAT_STORED_ENTRY_TYPES: ReadonlySet<string> = new Set([
   'user', 'assistant', 'system', 'attachment',
   'mode', 'permission-mode', 'queue-operation',
@@ -28,6 +30,7 @@ export function chatReplayTail<T extends { type?: unknown; _pos?: number; _ord?:
 ): T[] {
   const kept = entries.filter(isChatStoredEntry)
   if (kept.length <= max) return kept
-  const key = (e: T): number => e._pos ?? e._ord ?? 0
-  return kept.sort((a, b) => key(a) - key(b)).slice(-max)
+  // File order with untagged live rows AFTER the tagged ones (jsonl-cache-order):
+  // `_pos ?? _ord ?? 0` ranked them oldest and cut the session's middle out (D2).
+  return newestInFileOrder(kept, max)
 }

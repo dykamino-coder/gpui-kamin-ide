@@ -7,7 +7,7 @@
 import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ServerMessage } from '../../shared/mcp-protocol'
 import type { JsonlBatcher } from './jsonl-batcher'
-import { cacheFileOrder } from './jsonl-cache-order'
+import { cacheFileOrder } from '../../shared/jsonl-cache-order'
 import type { ExtendedConnectionState } from './connection-manager'
 
 export interface HandlerCtx {

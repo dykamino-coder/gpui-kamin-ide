@@ -125,9 +125,9 @@ describe('long sessions over the store cap', () => {
     expect(typeof getJsonlEntries(TAB)[0]?._pos).toBe('number')
   })
 
-  // chatempty (fix/chat-seen-refill): uuid-less bookkeeping rows are stored and
-  // counted by the cap, so a flood after the last message evicts every real row.
-  it.fails('cost-state flood after the last message keeps the conversation (expected-fail: fix/chat-seen-refill)', () => {
+  // D3, fixed by #698: uuid-less bookkeeping rows were stored and counted by the
+  // cap, so a flood after the last message evicted every real row.
+  it('cost-state flood after the last message keeps the conversation (D3, #698)', () => {
     const f = conversation(10)
     f.bookkeeping(STORE_WINDOW + STORE_SLACK + 10)
     activeTabId.value = 'some-other-tab'

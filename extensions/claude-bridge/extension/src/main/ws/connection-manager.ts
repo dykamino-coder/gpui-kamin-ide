@@ -29,6 +29,7 @@ import path from 'path'
 import { SessionIdleTracker } from './session-idle-tracker'
 import { handleServerMessage } from './handle-server-message'
 import { chatReplayTail, isChatStoredEntry } from '../../shared/chat-stored-entries'
+import { newestInFileOrder } from '../../shared/jsonl-cache-order'
 import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, type McpCallCtx } from './mcp-call-pipeline'
 
 export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
@@ -1044,8 +1045,7 @@ export class ConnectionManager {
     boundaries: { boundaries: { ts: string }[]; counts: number[] } | null
   } {
     const count = Math.max(1, Math.min(REPLAY_TAIL_MAX, maxRecords))
-    const ordered = [...this.cachedJsonlEntries].sort((a, b) => (a._pos ?? a._ord ?? 0) - (b._pos ?? b._ord ?? 0))
-    return { entries: ordered.filter(isChatStoredEntry).slice(-count), streaming: this.cachedStreamingEntry,
+    return { entries: newestInFileOrder(this.cachedJsonlEntries.filter(isChatStoredEntry), count), streaming: this.cachedStreamingEntry,
       subagents: [...this.cachedSubagentEntries].map(([key, slot]) => ({ ...slot, agentId: slot.agentId ?? key, entries: slot.entries.slice(-count) })),
       boundaries: this.lastSegmentIndex,
       status: this.cachedJsonlStatus ?? { status: 'watching', replayComplete: this.state.status !== 'authenticated' } }
