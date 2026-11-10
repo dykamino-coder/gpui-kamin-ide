@@ -19,7 +19,7 @@ pub(crate) struct Mark {
     pub(super) replay: bool,
     /// The child may be recorded as a far block (`FlowCx::far_candidate`).
     pub(super) far: bool,
-    /// `widths` is the flow's shared flag (`FlowCx::far_widths`): the child is
+    /// `widths` is the build's shared flag (`FrameFar::widths`): the child is
     /// built with the flow's shared tracked options (`ChildOpts`).
     pub(super) shared_widths: bool,
     /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
@@ -81,13 +81,12 @@ impl super::FlowCx {
         mark.far = self.far_candidate(e, opts);
         if mark.replay {
             mark.widths = Some(Rc::default());
-        } else if mark.far
-            && let Some(widths) = &self.far_widths
-        {
+        } else if mark.far {
             // Width reads happen during the child's build only, and
             // `record_far` reads the flag right after it.
+            let widths = self.reuse.with_far(|far| far.widths.clone());
             widths.set(false);
-            mark.widths = Some(widths.clone());
+            mark.widths = Some(widths);
             mark.shared_widths = true;
         }
         mark

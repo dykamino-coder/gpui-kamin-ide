@@ -12,6 +12,9 @@ pub(crate) struct FrameFar {
     pub(in crate::layout::reuse) next: HashMap<u64, Rc<FarRecord>>,
     pub(in crate::layout::reuse) pending: Vec<(Rc<PendingFar>, Source)>,
     pub(in crate::layout::reuse) slots: Vec<Rc<FarSlot>>,
+    /// Outside width reads of the far candidate being built, shared by all
+    /// candidates of the build (`Mark::shared_widths`).
+    pub(in crate::layout::reuse) widths: Rc<std::cell::Cell<bool>>,
 }
 
 impl FlowReuse {
