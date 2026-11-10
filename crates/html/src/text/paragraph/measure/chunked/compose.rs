@@ -76,25 +76,47 @@ impl Paragraph {
 
 /// Глифы части `c` — в набор куска, где она начинается байтом `base`;
 /// возвращает её ширину, подъём и спуск.
+///
+/// DirectWrite отдаёт пробел в конце набранного текста отдельным прогоном
+/// глифов того же шрифта; в наборе целиком он идёт в прогоне слова перед ним.
+/// Копия сливает такие прогоны (тот же шрифт и кегль, слева направо подряд)
+/// в один, как в наборе целиком.
 fn copy_into(c: &LinePiece, base: usize, out: &mut Vec<ShapedRun>) -> (Pixels, Pixels, Pixels) {
-    let from = c.runs.start as usize..c.runs.end as usize;
+    let runs = &c.layout.runs[c.runs.start as usize..c.runs.end as usize];
     let index = |i: usize| i - c.base as usize + base;
-    // По одному: список растёт удвоением, как у набора.
-    for run in &c.layout.runs[from] {
+    let mut i = 0;
+    while i < runs.len() {
+        let mut j = i + 1;
+        while j < runs.len() && continues(&runs[j - 1], &runs[j]) {
+            j += 1;
+        }
+        let mut glyphs = Vec::with_capacity(runs[i..j].iter().map(|r| r.glyphs.len()).sum());
+        for run in &runs[i..j] {
+            glyphs.extend(run.glyphs.iter().map(|g| ShapedGlyph {
+                id: g.id,
+                position: g.position,
+                index: index(g.index),
+                is_emoji: g.is_emoji,
+            }));
+        }
+        // По одному: список растёт удвоением, как у набора.
         out.push(ShapedRun {
-            font_id: run.font_id,
-            font_size: run.font_size,
-            glyphs: run
-                .glyphs
-                .iter()
-                .map(|g| ShapedGlyph {
-                    id: g.id,
-                    position: g.position,
-                    index: index(g.index),
-                    is_emoji: g.is_emoji,
-                })
-                .collect(),
+            font_id: runs[i].font_id,
+            font_size: runs[i].font_size,
+            glyphs,
         });
+        i = j;
     }
     (c.width, c.ascent, c.descent)
+}
+
+/// Прогон `b` продолжает `a`: тот же шрифт и кегль, глифы дальше по тексту и
+/// по строке.
+fn continues(a: &ShapedRun, b: &ShapedRun) -> bool {
+    a.font_id == b.font_id
+        && a.font_size == b.font_size
+        && match (a.glyphs.last(), b.glyphs.first()) {
+            (Some(x), Some(y)) => y.index > x.index && y.position.x >= x.position.x,
+            _ => false,
+        }
 }
