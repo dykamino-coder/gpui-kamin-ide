@@ -75,7 +75,6 @@ pub(super) async fn blocks_flow(
     // The open inline run is always `nodes[start..idx]`: its nodes are not
     // cloned into a separate list, the paragraph gets a slice of the children.
     let mut start = 0;
-    let mut child_opts = crate::layout::reuse::ChildOpts::default();
     for (idx, n) in nodes.iter().enumerate() {
         if run_breaks.contains(&idx) && start < idx {
             let taken = &nodes[start..idx];
@@ -173,16 +172,17 @@ pub(super) async fn blocks_flow(
                 continue;
             }
             let mark = reuse.as_ref().map(|flow| flow.mark(e, opts, out.len()));
-            let tracked = mark
+            let tracked = reuse
                 .as_ref()
-                .map(|mark| mark.child_opts(opts, &mut child_opts));
+                .zip(mark.as_ref())
+                .and_then(|(flow, mark)| flow.child_opts(mark, opts));
             paint_element(
                 stk,
                 e,
                 nodes,
                 idx,
                 inherited,
-                tracked.unwrap_or(opts),
+                tracked.as_deref().unwrap_or(opts),
                 ordered_context,
                 under_tf,
                 &frame,
@@ -191,6 +191,7 @@ pub(super) async fn blocks_flow(
             )
             .await;
             if let (Some(flow), Some(mark)) = (&reuse, mark) {
+                flow.give_back(&mark, tracked);
                 flow.record(e, edge, mark, opts, &mut out);
                 flow.built(n);
             }

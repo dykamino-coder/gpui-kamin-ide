@@ -17,6 +17,9 @@ pub(crate) struct FrameFar {
     /// Outside width reads of the far candidate being built, shared by all
     /// candidates of the build (`Mark::shared_widths`).
     pub(in crate::layout::reuse) widths: Rc<std::cell::Cell<bool>>,
+    /// The flow's options tracking `widths`, made for the first candidate
+    /// and lent to each one's build (`FlowCx::child_opts`).
+    pub(in crate::layout::reuse) opts: Option<Box<crate::layout::options::RenderOpts>>,
     /// The ink sink of the recorders' paints, emptied after each one. A
     /// recorder whose paint left snapshots holding it (paint deferred past
     /// the block, `Window::paint_ctx`) records nothing and leaves it to them:

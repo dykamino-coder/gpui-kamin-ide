@@ -20,41 +20,35 @@ pub(crate) struct Mark {
     /// The child may be recorded as a far block (`FlowCx::far_candidate`).
     pub(super) far: bool,
     /// `widths` is the build's shared flag (`FrameFar::widths`): the child is
-    /// built with the flow's shared tracked options (`ChildOpts`).
+    /// built with the build's shared tracked options (`FlowCx::child_opts`).
     pub(super) shared_widths: bool,
     /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
     pub(super) inert: super::super::plain::Inert,
 }
 
-/// Options of tracked child builds of one flow: a child whose replay record
-/// keeps its own flag gets its own copy; far candidates share one copy per
-/// flow with the flow's flag, which `mark` clears before each of them.
-#[derive(Default)]
-pub(crate) struct ChildOpts {
-    shared: Option<Box<RenderOpts>>,
-    own: Option<Box<RenderOpts>>,
-}
-
-impl Mark {
-    /// Опции сборки ребёнка: с записью чтений ширин, если его записывают.
-    pub(crate) fn child_opts<'o>(
-        &self,
-        opts: &'o RenderOpts,
-        slot: &'o mut ChildOpts,
-    ) -> &'o RenderOpts {
-        let Some(sink) = self.widths.clone() else {
-            return opts;
+impl super::FlowCx {
+    /// Опции сборки ребёнка: с записью чтений ширин, если его записывают. A
+    /// child whose replay record keeps its own flag gets its own copy; far
+    /// candidates borrow the build's one copy with the shared flag, which
+    /// `mark` clears before each of them (`FrameFar::opts`), and hand it
+    /// back to `record`.
+    pub(crate) fn child_opts(&self, mark: &Mark, opts: &RenderOpts) -> Option<Box<RenderOpts>> {
+        let sink = mark.widths.clone()?;
+        let lent = match mark.shared_widths {
+            true => self.reuse.with_far(|far| far.opts.take()),
+            false => None,
         };
-        if self.shared_widths {
-            slot.shared
-                .get_or_insert_with(|| opts.inner(|cx| cx.constraints.track_widths(sink)))
-        } else {
-            slot.own
-                .insert(opts.inner(|cx| cx.constraints.track_widths(sink)))
+        Some(lent.unwrap_or_else(|| opts.inner(|cx| cx.constraints.track_widths(sink))))
+    }
+
+    /// The options `child_opts` lent for the build of a far candidate go
+    /// back to the build's far state.
+    pub(crate) fn give_back(&self, mark: &Mark, tracked: Option<Box<RenderOpts>>) {
+        if mark.shared_widths && tracked.is_some() {
+            self.reuse.with_far(|far| far.opts = tracked);
         }
     }
 }
-
 pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
     let paint = &opts.cx.deferred.paint;
     Mark {
