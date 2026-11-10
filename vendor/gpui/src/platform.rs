@@ -327,6 +327,11 @@ bitflags::bitflags! {
 pub trait Platform: 'static {
     /// Передать типизированные настройки измерений до запуска платформы.
     fn set_instrumentation(&self, _instrumentation: crate::Instrumentation) {}
+    /// KaminIDE patch: run `callback` once no window has drawn a frame for
+    /// `delay` (`App::on_idle`); without heap memory. Default: never.
+    fn on_idle(&self, _delay: std::time::Duration, _callback: fn()) {}
+    /// KaminIDE patch: a window drew a frame (restarts the `on_idle` period).
+    fn frame_drawn(&self) {}
     fn background_executor(&self) -> BackgroundExecutor;
     fn foreground_executor(&self) -> ForegroundExecutor;
     fn text_system(&self) -> Arc<dyn PlatformTextSystem>;

@@ -567,6 +567,14 @@ fn encode_restart_arguments(arguments: &[OsString]) -> OsString {
 }
 
 impl Platform for WindowsPlatform {
+    fn on_idle(&self, delay: std::time::Duration, callback: fn()) {
+        crate::idle::on_idle(delay, callback);
+    }
+
+    fn frame_drawn(&self) {
+        crate::idle::frame_drawn();
+    }
+
     fn set_instrumentation(&self, instrumentation: Instrumentation) {
         *self.inner.state.instrumentation.borrow_mut() = instrumentation;
     }

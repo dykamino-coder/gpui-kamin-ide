@@ -95,6 +95,12 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     startup.mark("gpui_application");
     application.run(move |cx| {
         startup.mark("event_loop_entry");
+        // Как приложение: простой без кадров отдаёт свободную память системе.
+        cx.on_idle(
+            kamin_alloc::IDLE_RELEASE_DELAY,
+            kamin_alloc::release_idle_memory,
+        );
+
         let setup = || -> Result<_, Box<dyn std::error::Error>> {
             cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
             let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
