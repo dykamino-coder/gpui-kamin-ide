@@ -28,7 +28,7 @@ import { parseAgentEntries, markAllAgentsExited, scheduleCleanup, mergeAgentTree
 import { beginAgentReplay, stageAgentEntries, publishAgentReplay, abandonAgentReplay } from '../signals/agent-replay'
 
 // Queue: auto-send queued messages when CLI becomes idle
-import { appendJsonlEntries, applyStreamingEntry, applyStreamingDelta, clearJsonlEntries, jsonlEntriesByTab, replaceWindowWithSegment, setArchivedView, archivedViewTs } from '../signals/jsonl'
+import { appendJsonlEntries, applyStreamingEntry, applyStreamingDelta, clearJsonlEntries, jsonlEntriesByTab, replaceWindowWithSegment, setArchivedView, archivedViewTs, tabOwesHistory } from '../signals/jsonl'
 import { setSegmentIndex, dropSegmentIndex, type SegmentIndex } from '../signals/all-segments'
 import { setReplayProgress } from '../signals/replay-progress'
 import { touchTab, sweepTabMemory, forgetTabRecency } from '../signals/jsonl-eviction'
@@ -70,6 +70,9 @@ const stuckIdleTimers = new Map<string, ReturnType<typeof setTimeout>>()
 // на каждое переподключившееся соединение, а реплей нужен один.
 let lastReconnectReplayAt = 0
 const RECONNECT_REPLAY_DEBOUNCE_MS = 2000
+// Post-compaction refill watchdog: first check after 2.5s, then 5s and 10s.
+const POST_COMPACTION_REPLAY_DELAY_MS = 2500
+const POST_COMPACTION_REPLAY_ATTEMPTS = 3
 function cancelStuckIdle(tabId: string): void {
   const t = stuckIdleTimers.get(tabId)
   if (t) { clearTimeout(t); stuckIdleTimers.delete(tabId) }
@@ -457,16 +460,24 @@ export function useBridgeListeners(
         // vanished"). Watchdog: if entries haven't repopulated shortly, actively
         // re-request the replay, targeting this tab (compactions fire on the
         // session in use, and an untargeted replay re-pushes every open one).
+        // "Landed" means the conversation came back, not that the store is
+        // non-empty: the live tail writes bookkeeping rows within seconds of the
+        // switch, and those used to cancel the re-request (see tabOwesHistory).
+        // A few spaced attempts, because the re-requested replay can be
+        // superseded too.
         if (tabId === activeTabId.value) {
-          setTimeout(() => {
-            if (tabId !== activeTabId.value) return
-            const cur = jsonlEntriesByTab.value.get(tabId)
-            if (cur && cur.length > 0) return // replay landed — nothing to do
-            if (tabJsonlLive.value.has(tabId)) return // replay completed empty-but-live (genuinely empty)
-            try { bridge.requestJsonlReplay(tabId) } catch (err) {
-              console.warn('[bridge] post-compaction replay watchdog failed', err)
-            }
-          }, 2500)
+          const check = (attempt: number): void => {
+            setTimeout(() => {
+              if (disposed || tabId !== activeTabId.value) return
+              if (!tabOwesHistory(tabId)) return // conversation is back, or the refill completed
+              if (tabJsonlLive.value.has(tabId)) return // replay completed empty-but-live (genuinely empty)
+              try { bridge.requestJsonlReplay(tabId) } catch (err) {
+                console.warn('[bridge] post-compaction replay watchdog failed', err)
+              }
+              if (attempt < POST_COMPACTION_REPLAY_ATTEMPTS) check(attempt + 1)
+            }, POST_COMPACTION_REPLAY_DELAY_MS * 2 ** (attempt - 1))
+          }
+          check(1)
         }
       }
     })
