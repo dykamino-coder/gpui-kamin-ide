@@ -507,3 +507,25 @@ The initial real-host draft invoke failed before implementation. The combined
 candidate with durable submission receipts passes all 17 Linux Podman production
 browser fixtures; this fixture upstream is synthetic. Strict full completion
 continues rejecting 545 missing execution-proof gaps.
+
+## Bounded follow-up: one initial connection per tab
+
+The retention gate exposed a shared TabManager startup race: a foreground tab is
+published before its asynchronous user/project sync completes. An immediate tab
+activation sees it as disconnected and connects; sync completion then connects
+again, detaching that socket and sending another create/resume. This affects the
+shared native and workspace host, so fix it in the shared manager, without a
+browser-only workaround or weakening the one-establishment acceptance assertion.
+
+Track foreground initial sync before publishing a tab. Activation may select the
+tab while sync is pending but must leave connection ownership to that completion.
+Background restored tabs retain lazy activation. Closing, explicit disconnect,
+manual reconnect and manager disposal invalidate the pending initial connection;
+a late completion must not reconnect cancelled or removed tabs. Preserve the
+existing sync failure fallback and manual reconnect behavior.
+
+Acceptance: deferred-sync tests exercise both create and resume, successful and
+failed sync, repeated activation, cancellation and background lazy activation.
+Linux Podman production-browser retention must still show one establishment,
+one submission and no interrupt across zero pages and five reattachments. The
+upstream is synthetic; this change does not close full actual-model parity.

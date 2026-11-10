@@ -21,7 +21,7 @@ test('long transcript stays bounded through zero-page output and five fresh reat
     rawBytes: scripts.reduce((sum, bytes) => sum + bytes.length, 0),
     gzipBytes: scripts.reduce((sum, bytes) => sum + gzipSync(bytes).length, 0),
     brotliBytes: scripts.reduce((sum, bytes) => sum + brotliCompressSync(bytes).length, 0) }))
-  const fixture = await previewFixture(t, { conversations: true })
+  const fixture = await previewFixture(t, { conversations: true, holdSync: true })
   const browser = await chromium.launch({ headless: true })
   t.after(() => browser.close())
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
@@ -58,6 +58,16 @@ test('long transcript stays bounded through zero-page output and five fresh reat
   let page = await open()
   await measure(page, 'startup')
   await page.getByRole('button', { name: 'No folder session', exact: true }).click()
+  await fixture.waitForSync()
+  await page.evaluate(async () => {
+    const id = (await window.kaminBridge.listTabs())[0].id
+    window.kaminBridge.switchTab(id)
+    window.kaminBridge.switchTab(id)
+    await window.kaminBridge.getActiveTab() // Same-socket dispatch barrier.
+  })
+  assert.equal(fixture.receivedFrames().filter(frame => ['session:create', 'session:resume'].includes(frame.type)).length,
+    0, 'Activation must wait for initial user/project sync')
+  await fixture.releaseSync()
   let tab
   const deadline = Date.now() + 20000
   while (!(tab = (await page.evaluate(() => window.kaminBridge.listTabs()))[0])?.conversationId) {
