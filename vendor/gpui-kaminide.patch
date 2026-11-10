@@ -19735,13 +19735,18 @@ index 0000000000000000000000000000000000000000..c7192dafd55b740b61081d8f06a45ba4
 +    }
 +}
 diff --git a/vendor/gpui/src/text_system.rs b/vendor/gpui/src/text_system.rs
-index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf823791be7d
+index cf6bb10293699bb4b9a5c8149f996822444fd732..cd38f842bf10dd45aa9361da39b8c370f6a30927
 --- a/vendor/gpui/src/text_system.rs
 +++ b/vendor/gpui/src/text_system.rs
-@@ -5,0 +6,2 @@
+@@ -0,0 +1 @@
++mod composed;
+@@ -6 +7,4 @@
+-
 +mod measure;
 +mod shaping;
-@@ -431,0 +434,8 @@
++
++pub use composed::LinePiece;
+@@ -431,0 +436,8 @@
 +    /// Whether the font maps `ch` to a real glyph. DirectWrite reports a
 +    /// missing character as glyph 0 (.notdef) rather than `None`.
 +    pub fn has_glyph(&self, font_id: FontId, ch: char) -> bool {
@@ -19750,10 +19755,10 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 +            .is_some_and(|g| g.0 != 0)
 +    }
 +
-@@ -455,0 +466,2 @@
+@@ -455,0 +468,2 @@
 +                    font_size,
 +                    break_ligatures: true,
-@@ -514,0 +527,18 @@
+@@ -514,0 +529,18 @@
 +    }
 +
 +    /// KaminIDE patch: the font's recommended line gap at the given size, for
@@ -19772,27 +19777,27 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 +    /// `text-decoration-thickness: from-font`.
 +    pub fn underline_thickness(&self, font_id: FontId, font_size: Pixels) -> Pixels {
 +        self.read_metrics(font_id, |metrics| metrics.underline_thickness(font_size))
-@@ -573,0 +604,5 @@
+@@ -573,0 +606,5 @@
 +    /// KaminIDE patch: see `PlatformTextSystem::pixel_exact_glyphs`.
 +    pub fn pixel_exact_glyphs(&self, font_id: FontId) -> bool {
 +        self.platform_text_system.pixel_exact_glyphs(font_id)
 +    }
 +
-@@ -601 +636 @@
+@@ -601 +638 @@
 -#[derive(Deref)]
 +#[derive(Clone, Deref)]
-@@ -603 +638,2 @@
+@@ -603 +640,2 @@
 -    line_layout_cache: LineLayoutCache,
 +    line_layout_cache: Arc<LineLayoutCache>,
 +    break_ligatures: bool,
-@@ -612 +648 @@
+@@ -612 +650 @@
 -            line_layout_cache: LineLayoutCache::new(
 +            line_layout_cache: Arc::new(LineLayoutCache::new(
-@@ -615 +651,2 @@
+@@ -615 +653,2 @@
 -            ),
 +            )),
 +            break_ligatures: true,
-@@ -643,0 +681,13 @@
+@@ -643,0 +683,13 @@
 +    ) -> ShapedLine {
 +        self.shape_line_spaced(text, font_size, runs, force_width, px(0.))
 +    }
@@ -19806,15 +19811,15 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 +        runs: &[TextRun],
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
-@@ -664,0 +715,4 @@
+@@ -664,0 +717,4 @@
 +                background_pad: run.background_pad,
 +                background_radius: run.background_radius,
 +                background_line_gap: run.background_line_gap,
 +                background_border: run.background_border,
-@@ -670 +724 @@
+@@ -670 +726 @@
 -        let layout = self.layout_line(&text, font_size, runs, force_width);
 +        let layout = self.layout_line_spaced(&text, font_size, runs, force_width, letter_spacing);
-@@ -674,0 +729,117 @@
+@@ -674,0 +731,117 @@
 +            decoration_runs,
 +        }
 +    }
@@ -19932,12 +19937,12 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 +                len: layout.len,
 +            }),
 +            text: line.text,
-@@ -712,0 +884,4 @@
+@@ -712,0 +886,4 @@
 +                background_pad: run.background_pad,
 +                background_radius: run.background_radius,
 +                background_line_gap: run.background_line_gap,
 +                background_border: run.background_border,
-@@ -757,0 +933,16 @@
+@@ -757,0 +935,16 @@
 +        self.shape_text_spaced(text, font_size, runs, wrap_width, line_clamp, px(0.))
 +    }
 +
@@ -19954,26 +19959,26 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 +        line_clamp: Option<usize>,
 +        letter_spacing: Pixels,
 +    ) -> Result<SmallVec<[WrappedLine; 1]>> {
-@@ -790,0 +982,4 @@
+@@ -790,0 +984,4 @@
 +                        background_pad: run.background_pad,
 +                        background_radius: run.background_radius,
 +                        background_line_gap: run.background_line_gap,
 +                        background_border: run.background_border,
-@@ -797,0 +993 @@
+@@ -797,0 +995 @@
 +                let run_size = run.font_size.unwrap_or(font_size);
-@@ -800 +996,2 @@
+@@ -800 +998,2 @@
 -                    && !decoration_changed
 +                    && font_run.font_size == run_size
 +                    && (!self.break_ligatures || !decoration_changed)
-@@ -806,0 +1004,2 @@
+@@ -806,0 +1006,2 @@
 +                        font_size: run_size,
 +                        break_ligatures: self.break_ligatures,
-@@ -818 +1017 @@
+@@ -818 +1019 @@
 -            let layout = self.line_layout_cache.layout_wrapped_line(
 +            let layout = self.line_layout_cache.layout_wrapped_line_spaced(
-@@ -823,0 +1023 @@
+@@ -823,0 +1025 @@
 +                letter_spacing,
-@@ -893 +1093,12 @@
+@@ -893 +1095,12 @@
 -        let mut last_run = None::<&TextRun>;
 +        self.layout_line_spaced(text, font_size, runs, force_width, px(0.))
 +    }
@@ -19987,7 +19992,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
 +    ) -> Arc<LineLayout> {
-@@ -897,30 +1108,14 @@
+@@ -897,30 +1110,14 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -20032,14 +20037,14 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 +        let text = self.no_break_hyphens(text, &font_runs);
 +        let layout = self.line_layout_cache.layout_line_spaced(
 +            &SharedString::new(&*text),
-@@ -929,0 +1125 @@
+@@ -929,0 +1127 @@
 +            letter_spacing,
-@@ -947,0 +1144,2 @@
+@@ -947,0 +1146,2 @@
 +                    font_size,
 +                    break_ligatures: true,
-@@ -975 +1172,0 @@
+@@ -975 +1174,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -979,27 +1176 @@
+@@ -979,27 +1178 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -20068,9 +20073,9 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1037 +1207,0 @@
+@@ -1037 +1209,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -1041,27 +1211 @@
+@@ -1041,27 +1213 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -20099,7 +20104,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1236,0 +1381,20 @@
+@@ -1236,0 +1383,20 @@
 +    /// KaminIDE patch: свой кегль прогона (`font-size` у `<span>` в строке).
 +    ///
 +    /// `None` — кегль всего блока. Без этого поля кусок другого размера
@@ -20120,7 +20125,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 +    /// (the HTML engine's inline box content area). `false` (IDE text) keeps
 +    /// the band at ascent + descent.
 +    pub background_line_gap: bool,
-@@ -1308,0 +1473,49 @@
+@@ -1308,0 +1475,49 @@
 +
 +    /// KaminIDE patch: ширина начертания (`font-stretch`).
 +    ///
@@ -20170,8 +20175,226 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..1ba6822980449485f8e266b5516aaf82
 +            _ => FontStretch::UltraExpanded,
 +        }
 +    }
-@@ -1323,0 +1537 @@
+@@ -1323,0 +1539 @@
 +        stretch: crate::FontStretch::default(),
+diff --git a/vendor/gpui/src/text_system/composed.rs b/vendor/gpui/src/text_system/composed.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..18e2a8957bda0552bd2664b7fbc519a535b5bd0c
+--- /dev/null
++++ b/vendor/gpui/src/text_system/composed.rs
+@@ -0,0 +1,211 @@
++//! KaminIDE patch: a line laid out from pieces shaped apart. A caller that
++//! cuts a long line where the shaper breaks it anyway (no kerning, ligature or
++//! contextual form across the cut) composes the line from its pieces: the line
++//! is cached like any other, under the key of its whole text, and its pieces
++//! are kept beside it by the caller's keys, so an edit of the text reshapes
++//! only the pieces it touches and copies the glyphs of the others.
++//!
++//! Pieces age by the frames that use them: a frame that neither looks up nor
++//! stores a piece leaves them all in place (an idle window keeps them for the
++//! next edit), and a piece unused for one whole active frame is dropped.
++
++use super::{LineLayout, TextRun, WindowTextSystem};
++use crate::{Pixels, SharedString};
++use collections::FxHashMap;
++use parking_lot::Mutex;
++use std::{ops::Range, sync::Arc};
++
++/// A piece of a composed line: its glyph runs in the line `layout`.
++#[derive(Clone)]
++pub struct LinePiece {
++    /// The composed line the piece was laid out in.
++    pub layout: Arc<LineLayout>,
++    /// The glyph runs of the piece in `layout`.
++    pub runs: Range<u32>,
++    /// Byte offset of the piece in the text of `layout`.
++    pub base: u32,
++    /// Pen position where the piece starts in `layout`.
++    pub origin: Pixels,
++    /// Advance of the piece (letter-spacing included).
++    pub width: Pixels,
++    /// Ascent of the piece's runs.
++    pub ascent: Pixels,
++    /// Descent of the piece's runs.
++    pub descent: Pixels,
++}
++
++#[derive(Default)]
++struct Frame {
++    pieces: FxHashMap<u64, LinePiece>,
++    lists: FxHashMap<u64, Arc<[u64]>>,
++}
++
++#[derive(Default)]
++struct Frames {
++    current: Frame,
++    previous: Frame,
++    used: bool,
++}
++
++/// Pieces of composed lines, kept for the current and the previous active frame.
++#[derive(Default)]
++pub(crate) struct PieceCache(Mutex<Frames>);
++
++impl PieceCache {
++    fn get(&self, key: u64) -> Option<LinePiece> {
++        let mut f = self.0.lock();
++        f.used = true;
++        if let Some(piece) = f.current.pieces.get(&key) {
++            return Some(piece.clone());
++        }
++        let piece = f.previous.pieces.remove(&key)?;
++        f.current.pieces.insert(key, piece.clone());
++        Some(piece)
++    }
++
++    fn put(&self, key: u64, piece: LinePiece) {
++        let mut f = self.0.lock();
++        f.used = true;
++        f.current.pieces.insert(key, piece);
++    }
++
++    /// Keep the list `list` and its pieces for this frame; `false` when it is gone.
++    fn keep(&self, list: u64) -> bool {
++        let f = &mut *self.0.lock();
++        f.used = true;
++        let keys = match f.current.lists.get(&list) {
++            Some(keys) => keys.clone(),
++            None => match f.previous.lists.remove(&list) {
++                Some(keys) => {
++                    f.current.lists.insert(list, keys.clone());
++                    keys
++                }
++                None => return false,
++            },
++        };
++        for key in keys.iter() {
++            if let Some(piece) = f.previous.pieces.remove(key) {
++                f.current.pieces.insert(*key, piece);
++            }
++        }
++        true
++    }
++
++    fn put_list(&self, list: u64, keys: &[u64]) {
++        let f = &mut *self.0.lock();
++        f.used = true;
++        if f.current.lists.get(&list).is_some_and(|k| **k == *keys) {
++            return;
++        }
++        if let Some(old) = f.previous.lists.remove(&list)
++            && *old == *keys
++        {
++            f.current.lists.insert(list, old);
++            return;
++        }
++        f.current.lists.insert(list, keys.into());
++    }
++
++    /// End of a window frame: pieces unused for a whole active frame go.
++    pub(crate) fn finish_frame(&self) {
++        let f = &mut *self.0.lock();
++        if std::mem::take(&mut f.used) {
++            std::mem::swap(&mut f.previous, &mut f.current);
++            f.current.pieces.clear();
++            f.current.lists.clear();
++        }
++    }
++
++    /// Fonts changed: no piece is valid any more.
++    pub(crate) fn clear(&self) {
++        *self.0.lock() = Frames::default();
++    }
++}
++
++impl WindowTextSystem {
++    /// `layout_line_spaced` (no forced width) whose miss is laid out by
++    /// `compose` instead of the platform shaper: the composed line is cached
++    /// under the key of the whole text. `compose` must give the line the
++    /// shaper would (glyph positions from the start of the line, tracking
++    /// applied) and must not lay out lines through this text system.
++    pub fn layout_line_composed(
++        &self,
++        text: &str,
++        font_size: Pixels,
++        runs: &[TextRun],
++        letter_spacing: Pixels,
++        compose: impl FnOnce() -> LineLayout,
++    ) -> Arc<LineLayout> {
++        let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
++        font_runs.clear();
++        self.fill_font_runs(runs, font_size, &mut font_runs);
++        let text = self.no_break_hyphens(text, &font_runs);
++        let layout = self.line_layout_cache.layout_line_with(
++            &SharedString::new(&*text),
++            font_size,
++            &font_runs,
++            None,
++            letter_spacing,
++            |_, _| compose(),
++        );
++        self.font_runs_pool.lock().push(font_runs);
++        layout
++    }
++
++    /// The piece stored under `key`, kept for this frame.
++    pub fn line_piece(&self, key: u64) -> Option<LinePiece> {
++        self.line_layout_cache.pieces.get(key)
++    }
++
++    /// Store a piece of a composed line under `key`.
++    pub fn put_line_piece(&self, key: u64, piece: LinePiece) {
++        self.line_layout_cache.pieces.put(key, piece);
++    }
++
++    /// Store the keys of pieces a caller keeps together under `list`.
++    pub fn put_line_piece_list(&self, list: u64, keys: &[u64]) {
++        self.line_layout_cache.pieces.put_list(list, keys);
++    }
++
++    /// Keep the pieces listed under `list` for this frame; `false` when the
++    /// list is gone.
++    pub fn keep_line_pieces(&self, list: u64) -> bool {
++        self.line_layout_cache.pieces.keep(list)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::px;
++
++    fn piece(width: f32) -> LinePiece {
++        LinePiece {
++            layout: Arc::default(),
++            runs: 0..0,
++            base: 0,
++            origin: px(0.),
++            width: px(width),
++            ascent: px(0.),
++            descent: px(0.),
++        }
++    }
++
++    #[test]
++    fn pieces_age_only_by_frames_that_use_them() {
++        let cache = PieceCache::default();
++        cache.put(1, piece(1.));
++        cache.put(2, piece(2.));
++        cache.put_list(9, &[1]);
++        cache.finish_frame();
++        // Idle frames keep everything.
++        cache.finish_frame();
++        cache.finish_frame();
++        assert!(cache.keep(9), "the list survives idle frames");
++        cache.finish_frame();
++        assert_eq!(cache.get(1).map(|p| p.width), Some(px(1.)), "kept by its list");
++        assert!(cache.get(2).is_none(), "unused for a whole active frame");
++        cache.clear();
++        assert!(!cache.keep(9));
++    }
++}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/text_system/font_fallbacks.rs b/vendor/gpui/src/text_system/font_fallbacks.rs
 index 63dc89ba41ea9cf44bdffb7d81d3015d696f4413..5462b9187e77fa30da6629fa4f46aacec8bba755
 --- a/vendor/gpui/src/text_system/font_fallbacks.rs
@@ -20804,7 +21027,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                background_line_gap: false,
 +                background_border: None,
 diff --git a/vendor/gpui/src/text_system/line_layout.rs b/vendor/gpui/src/text_system/line_layout.rs
-index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78838fd454
+index f0bf1211114e4522a5310067e2549ba2727a4c1d..c87ec97340da94f5a6b658d741c275bd01bd28e0
 --- a/vendor/gpui/src/text_system/line_layout.rs
 +++ b/vendor/gpui/src/text_system/line_layout.rs
 @@ -40,0 +41,5 @@
@@ -20845,7 +21068,10 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +            }
 +
 +            if width - trailing_space > wrap_width && boundary > last_boundary {
-@@ -487 +512,37 @@
+@@ -465,0 +491,2 @@
++    /// KaminIDE patch: pieces of composed lines (`layout_line_composed`).
++    pub(crate) pieces: super::composed::PieceCache,
+@@ -487 +514,37 @@
 -#[derive(Clone, Default)]
 +impl FrameCache {
 +    /// KaminIDE patch: nothing laid out in this frame yet.
@@ -20884,7 +21110,9 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +}
 +
 +#[derive(Clone, Default, PartialEq)]
-@@ -530,12 +591,21 @@
+@@ -507,0 +571 @@
++            pieces: Default::default(),
+@@ -530,12 +594,21 @@
 -        let mut current_frame = &mut *self.current_frame.write();
 -        let mut previous_frame = &mut *self.previous_frame.lock();
 -
@@ -20918,7 +21146,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +        if let Some(keys) = previous_frame
 +            .used_lines
 +            .get(range.start.lines_index..range.end.lines_index)
-@@ -543,8 +613,11 @@
+@@ -543,8 +616,11 @@
 -            if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
 -                current_frame.wrapped_lines.insert(key, line);
 -            }
@@ -20938,7 +21166,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +        if let Some(keys) = previous_frame
 +            .used_wrapped_lines
 +            .get(range.start.wrapped_lines_index..range.end.wrapped_lines_index)
-@@ -552,8 +625,11 @@
+@@ -552,8 +628,11 @@
 -            if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(key) {
 -                current_frame.lines_by_hash.insert(key, line);
 -            }
@@ -20958,7 +21186,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +        if let Some(keys) = previous_frame
 +            .used_lines_by_hash
 +            .get(range.start.lines_by_hash_index..range.end.lines_by_hash_index)
-@@ -561,4 +637,18 @@
+@@ -561,4 +640,18 @@
 -            if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(key) {
 -                current_frame.wrapped_lines_by_hash.insert(key, line);
 -            }
@@ -20981,7 +21209,9 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +                }
 +                current_frame.used_wrapped_lines_by_hash.push(key.clone());
 +            }
-@@ -602 +692,7 @@
+@@ -590,0 +684 @@
++        self.pieces.finish_frame();
+@@ -602 +696,7 @@
 -    pub fn layout_wrapped_line<Text>(
 +    /// KaminIDE patch: раскладка строки с переносом и трекингом (вместо
 +    /// upstream `layout_wrapped_line`). Трекинг применяется
@@ -20990,17 +21220,17 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +    /// строка порвалась бы не там. Все наши цели трекинга (заголовки секций,
 +    /// подписи табов, чипы) — однострочные `nowrap` (план 99).
 +    pub fn layout_wrapped_line_spaced<Text>(
-@@ -608,0 +705 @@
+@@ -608,0 +709 @@
 +        letter_spacing: Pixels,
-@@ -613,0 +711,5 @@
+@@ -613,0 +715,5 @@
 +        let letter_spacing = if wrap_width.is_some() {
 +            px(0.)
 +        } else {
 +            letter_spacing
 +        };
-@@ -620,0 +723 @@
+@@ -620,0 +727 @@
 +            letter_spacing,
-@@ -639 +742,7 @@
+@@ -639 +746,7 @@
 -            let unwrapped_layout = self.layout_line::<&SharedString>(&text, font_size, runs, None);
 +            let unwrapped_layout = self.layout_line_spaced::<&SharedString>(
 +                &text,
@@ -21009,9 +21239,9 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +                None,
 +                letter_spacing,
 +            );
-@@ -655,0 +765 @@
+@@ -655,0 +769 @@
 +                letter_spacing,
-@@ -673,0 +784,18 @@
+@@ -673,0 +788,59 @@
 +    ) -> Arc<LineLayout>
 +    where
 +        Text: AsRef<str>,
@@ -21030,40 +21260,80 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +        runs: &[FontRun],
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
-@@ -685,0 +814 @@
++    ) -> Arc<LineLayout>
++    where
++        Text: AsRef<str>,
++        SharedString: From<Text>,
++    {
++        self.layout_line_with(
++            text,
++            font_size,
++            runs,
++            force_width,
 +            letter_spacing,
-@@ -689,0 +819,2 @@
++            |text, platform| {
++                let mut layout = platform.layout_line(text, font_size, runs);
++                if let Some(force_width) = force_width {
++                    apply_force_width_to_layout(&mut layout, force_width);
++                }
++
++                // KaminIDE patch: трекинг. CSS добавляет `letter-spacing` ПОСЛЕ
++                // каждого символа, включая последний, поэтому ширина растёт на
++                // `n × spacing`, а i-й глиф сдвигается на `i × spacing`. Правим
++                // ровно там же, где сдвиг под `force_width`, — тогда хит-тест
++                // (`index_for_x`) считает по тем же координатам и отдельной
++                // правки не требует (план 99)
++                if letter_spacing != px(0.) {
++                    layout.width += track_glyphs(&mut layout.runs, text, 0, letter_spacing);
++                }
++                layout
++            },
++        )
++    }
++
++    /// KaminIDE patch: `layout_line_spaced` whose miss is laid out by `shape`
++    /// (given the text and the platform shaper) and cached under the same key.
++    pub(crate) fn layout_line_with<Text>(
++        &self,
++        text: Text,
++        font_size: Pixels,
++        runs: &[FontRun],
++        force_width: Option<Pixels>,
++        letter_spacing: Pixels,
++        shape: impl FnOnce(&SharedString, &dyn PlatformTextSystem) -> LineLayout,
+@@ -685,0 +859 @@
++            letter_spacing,
+@@ -689,0 +864,2 @@
 +            // KaminIDE patch (#76): счётчики кэша шейпинга.
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -694,0 +826 @@
+@@ -694,0 +871 @@
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -698,0 +831,3 @@
+@@ -698,0 +876,3 @@
 +            // KaminIDE patch (#76): промах кэша = реальный шейпинг.
 +            let shape_started = std::time::Instant::now();
 +            crate::frame_perf::SHAPED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -702,0 +838,4 @@
+@@ -700,7 +880,5 @@
+-            let mut layout = self
+-                .platform_text_system
+-                .layout_line(&text, font_size, runs);
+-
+-            if let Some(force_width) = force_width {
+-                apply_force_width_to_layout(&mut layout, force_width);
+-            }
++            let layout = shape(&text, &*self.platform_text_system);
 +            crate::frame_perf::SHAPE_US.fetch_add(
 +                shape_started.elapsed().as_micros() as u32,
 +                std::sync::atomic::Ordering::Relaxed,
 +            );
-@@ -705,0 +845,10 @@
-+            }
-+
-+            // KaminIDE patch: трекинг. CSS добавляет `letter-spacing` ПОСЛЕ
-+            // каждого символа, включая последний, поэтому ширина растёт на
-+            // `n × spacing`, а i-й глиф сдвигается на `i × spacing`. Правим
-+            // ровно там же, где сдвиг под `force_width`, — тогда хит-тест
-+            // (`index_for_x`) считает по тем же координатам и отдельной
-+            // правки не требует (план 99)
-+            if letter_spacing != px(0.) {
-+                layout.width += track_glyphs(&mut layout.runs, &text, 0, letter_spacing);
-@@ -713,0 +863 @@
+@@ -713,0 +892 @@
 +                letter_spacing,
-@@ -927,0 +1078,3 @@
+@@ -887,0 +1067 @@
++        self.pieces.clear();
+@@ -927,0 +1108,3 @@
 +    /// Break ligatures at style boundaries (the normal GPUI text policy).
 +    /// Included in layout cache keys so browser shaping cannot reuse IDE layouts.
 +    pub break_ligatures: bool,
-@@ -929,0 +1083,7 @@
+@@ -929,0 +1113,7 @@
 +    /// KaminIDE patch: свой кегль прогона.
 +    ///
 +    /// Кегль был один на всю строку, и кусок другого размера внутри абзаца
@@ -21071,16 +21341,16 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +    /// запасную ветку из отдельных слов, где строки наезжали друг на друга.
 +    /// Ноль означает «кегль строки».
 +    pub font_size: Pixels,
-@@ -942,0 +1103,3 @@
+@@ -942,0 +1133,3 @@
 +    /// KaminIDE patch: трекинг (`letter-spacing`). В ключе ОБЯЗАТЕЛЕН — без
 +    /// него строка с другим трекингом придёт из кэша со старыми позициями.
 +    letter_spacing: Pixels,
-@@ -951,0 +1115,2 @@
+@@ -951,0 +1145,2 @@
 +    /// KaminIDE patch: см. `CacheKey::letter_spacing`.
 +    letter_spacing: Pixels,
-@@ -1043,0 +1209 @@
+@@ -1043,0 +1239 @@
 +            letter_spacing: self.letter_spacing,
-@@ -1070,0 +1237,53 @@
+@@ -1070,0 +1267,53 @@
 +
 +/// KaminIDE patch: characters of cursive (joining) scripts, which take no
 +/// letter-spacing (css-text-3 §8.2.1).
@@ -21134,7 +21404,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..55edbb672def8a2b5b9fd36178ed0e78
 +
 +#[cfg(test)]
 +mod reuse_tests;
-@@ -1094,0 +1314 @@
+@@ -1094,0 +1344 @@
 +                font_size: px(16.),
 diff --git a/vendor/gpui/src/text_system/line_layout/reuse_tests.rs b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
 new file mode 100644

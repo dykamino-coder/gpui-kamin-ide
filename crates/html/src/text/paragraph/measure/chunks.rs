@@ -22,6 +22,8 @@ use std::ops::Range;
 const MIN: usize = 4096;
 /// Часть длиннее режется в первой же годной точке.
 const MAX: usize = 16384;
+/// Абзац короче не режется ни в одном куске.
+pub(super) const LONG: usize = MIN * 2;
 
 /// Поиск точек разреза куска `from..end` слева направо.
 pub(super) struct Cuts {
@@ -37,7 +39,7 @@ pub(super) struct Cuts {
 impl Paragraph {
     /// Поиск точек для куска `start..end` или `None`, если кусок набирается целиком.
     pub(super) fn cuts(&self, start: usize, end: usize) -> Option<Cuts> {
-        (end - start >= MIN * 2 && !self.wrap.rtl && !self.vertical).then(|| Cuts {
+        (end - start >= LONG && !self.wrap.rtl && !self.vertical).then(|| Cuts {
             from: start,
             end,
             at: start,

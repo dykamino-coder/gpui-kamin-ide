@@ -488,6 +488,8 @@ pub(crate) struct LineLayoutCache {
     font_generation: Arc<AtomicUsize>,
     /// Records the generation represented by both frame caches.
     cached_font_generation: AtomicUsize,
+    /// KaminIDE patch: pieces of composed lines (`layout_line_composed`).
+    pub(crate) pieces: super::composed::PieceCache,
 }
 
 #[derive(Default)]
@@ -566,6 +568,7 @@ impl LineLayoutCache {
             platform_text_system,
             font_generation,
             cached_font_generation: AtomicUsize::new(cached_font_generation),
+            pieces: Default::default(),
         }
     }
 
@@ -678,6 +681,7 @@ impl LineLayoutCache {
         let mut curr_frame = self.current_frame.write();
         let mut prev_frame = self.previous_frame.lock();
         std::mem::swap(&mut *prev_frame, &mut *curr_frame);
+        self.pieces.finish_frame();
         curr_frame.lines.clear();
         curr_frame.wrapped_lines.clear();
         curr_frame.used_lines.clear();
@@ -804,6 +808,47 @@ impl LineLayoutCache {
         Text: AsRef<str>,
         SharedString: From<Text>,
     {
+        self.layout_line_with(
+            text,
+            font_size,
+            runs,
+            force_width,
+            letter_spacing,
+            |text, platform| {
+                let mut layout = platform.layout_line(text, font_size, runs);
+                if let Some(force_width) = force_width {
+                    apply_force_width_to_layout(&mut layout, force_width);
+                }
+
+                // KaminIDE patch: трекинг. CSS добавляет `letter-spacing` ПОСЛЕ
+                // каждого символа, включая последний, поэтому ширина растёт на
+                // `n × spacing`, а i-й глиф сдвигается на `i × spacing`. Правим
+                // ровно там же, где сдвиг под `force_width`, — тогда хит-тест
+                // (`index_for_x`) считает по тем же координатам и отдельной
+                // правки не требует (план 99)
+                if letter_spacing != px(0.) {
+                    layout.width += track_glyphs(&mut layout.runs, text, 0, letter_spacing);
+                }
+                layout
+            },
+        )
+    }
+
+    /// KaminIDE patch: `layout_line_spaced` whose miss is laid out by `shape`
+    /// (given the text and the platform shaper) and cached under the same key.
+    pub(crate) fn layout_line_with<Text>(
+        &self,
+        text: Text,
+        font_size: Pixels,
+        runs: &[FontRun],
+        force_width: Option<Pixels>,
+        letter_spacing: Pixels,
+        shape: impl FnOnce(&SharedString, &dyn PlatformTextSystem) -> LineLayout,
+    ) -> Arc<LineLayout>
+    where
+        Text: AsRef<str>,
+        SharedString: From<Text>,
+    {
         let _font_generation = self.clear_if_font_generation_changed();
         let key = &CacheKeyRef {
             text: text.as_ref(),
@@ -832,27 +877,11 @@ impl LineLayoutCache {
             let shape_started = std::time::Instant::now();
             crate::frame_perf::SHAPED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let text = SharedString::from(text);
-            let mut layout = self
-                .platform_text_system
-                .layout_line(&text, font_size, runs);
+            let layout = shape(&text, &*self.platform_text_system);
             crate::frame_perf::SHAPE_US.fetch_add(
                 shape_started.elapsed().as_micros() as u32,
                 std::sync::atomic::Ordering::Relaxed,
             );
-
-            if let Some(force_width) = force_width {
-                apply_force_width_to_layout(&mut layout, force_width);
-            }
-
-            // KaminIDE patch: трекинг. CSS добавляет `letter-spacing` ПОСЛЕ
-            // каждого символа, включая последний, поэтому ширина растёт на
-            // `n × spacing`, а i-й глиф сдвигается на `i × spacing`. Правим
-            // ровно там же, где сдвиг под `force_width`, — тогда хит-тест
-            // (`index_for_x`) считает по тем же координатам и отдельной
-            // правки не требует (план 99)
-            if letter_spacing != px(0.) {
-                layout.width += track_glyphs(&mut layout.runs, &text, 0, letter_spacing);
-            }
 
             let key = Arc::new(CacheKey {
                 text,
@@ -1035,6 +1064,7 @@ impl LineLayoutCache {
 
         *current_frame = FrameCache::default();
         *self.previous_frame.lock() = FrameCache::default();
+        self.pieces.clear();
         self.cached_font_generation
             .store(font_generation, Ordering::Release);
         font_generation

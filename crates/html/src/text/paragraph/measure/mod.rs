@@ -23,8 +23,6 @@ pub(crate) struct MeasureCache {
     pub(in crate::text::paragraph) splits: RefCell<FrameCache<Rc<Vec<Line>>>>,
     pub(in crate::text::paragraph) fitted: RefCell<FrameCache<f32>>,
     pub(in crate::text::paragraph) measured: RefCell<FrameCache<Vec<Seg>>>,
-    /// Наборы частей длинных кусков и списки частей их абзацев (`chunks`).
-    pub(in crate::text::paragraph) shaped: RefCell<FrameCache<Shaped>>,
     /// Line splits computed because the cache had no entry (observation for tests).
     #[cfg(test)]
     pub(crate) split_misses: std::cell::Cell<usize>,
@@ -34,17 +32,7 @@ impl MeasureCache {
     pub(crate) fn begin_frame(&self) {
         self.splits.borrow_mut().begin_frame();
         self.measured.borrow_mut().begin_frame();
-        self.shaped.borrow_mut().begin_frame_keeping();
         self.fitted.borrow_mut().begin_frame();
-    }
-
-    /// Запись памяти частей по ключу; чтение продлевает её жизнь на кадр.
-    fn chunk(&self, key: u64) -> Option<Shaped> {
-        self.shaped.borrow_mut().get(&key).cloned()
-    }
-
-    fn put_chunk(&self, key: u64, value: Shaped) {
-        self.shaped.borrow_mut().insert(key, value);
     }
 
     pub(super) fn remember_fit(&self, key: u64, k: f32) {
@@ -52,26 +40,21 @@ impl MeasureCache {
     }
 }
 
-/// Запись памяти частей: набор части или список частей одного замера.
-#[derive(Clone)]
-pub(in crate::text::paragraph) enum Shaped {
-    Chunk(chunked::Chunk),
-    Keys(Rc<[u64]>),
-}
-
 impl crate::text::paragraph::Paragraph {
-    /// Запомнить части абзаца с ключом замера `key` (абзац без частей — ничего).
-    fn remember_chunks(&self, key: u64, chunks: &chunked::Keys) {
+    /// Запомнить части замера `key` (абзац без частей — ничего): список
+    /// хранится в памяти строк текстовой системы рядом с самими частями.
+    fn remember_chunks(&self, key: u64, chunks: &chunked::Keys, window: &gpui::Window) {
         if chunks.len > 0 {
-            let list = Shaped::Keys(chunks.keys[..chunks.len].into());
-            self.measures.put_chunk(list_key(key), list);
+            window
+                .text_system()
+                .put_line_piece_list(list_key(key), &chunks.keys[..chunks.len]);
         }
     }
 
     /// Части держатся в памяти, пока держится замер их абзаца.
-    fn keep_chunks(&self, key: u64) {
-        if let Some(Shaped::Keys(keys)) = self.measures.chunk(list_key(key)) {
-            keys.iter().for_each(|&k| _ = self.measures.chunk(k));
+    fn keep_chunks(&self, key: u64, window: &gpui::Window) {
+        if self.text.len() >= chunks::LONG {
+            window.text_system().keep_line_pieces(list_key(key));
         }
     }
 }

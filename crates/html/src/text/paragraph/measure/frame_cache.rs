@@ -22,13 +22,6 @@ impl<V> FrameCache<V> {
         self.previous = std::mem::take(&mut self.current);
     }
 
-    /// `begin_frame`, но таблицы сохраняют ёмкость: рабочий набор переезжает
-    /// из кадра в кадр без новых выделений памяти (малые таблицы частей).
-    pub(super) fn begin_frame_keeping(&mut self) {
-        std::mem::swap(&mut self.previous, &mut self.current);
-        self.current.clear();
-    }
-
     pub(in crate::text::paragraph) fn get(&mut self, key: &u64) -> Option<&V> {
         if let Some(value) = self.previous.remove(key) {
             self.current.insert(*key, value);

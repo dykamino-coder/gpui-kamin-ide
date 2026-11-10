@@ -20,12 +20,12 @@ impl Paragraph {
         let hit = self.measures.measured.borrow_mut().get(&key).cloned();
         crate::work::cache!(hit, MeasureCacheHits, MeasureCacheMisses);
         if let Some(segs) = hit {
-            self.keep_chunks(key);
+            self.keep_chunks(key, window);
             return segs;
         }
         let mut chunks = super::chunked::Keys::default();
         let out = self.measure_uncached(&mut chunks, window);
-        self.remember_chunks(key, &chunks);
+        self.remember_chunks(key, &chunks, window);
         self.measures.measured.borrow_mut().insert(key, out.clone());
         out
     }

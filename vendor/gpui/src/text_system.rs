@@ -1,3 +1,4 @@
+mod composed;
 mod font_fallbacks;
 mod font_features;
 mod line;
@@ -6,6 +7,7 @@ mod line_wrapper;
 mod measure;
 mod shaping;
 
+pub use composed::LinePiece;
 pub use font_fallbacks::*;
 pub use font_features::*;
 pub use line::*;
