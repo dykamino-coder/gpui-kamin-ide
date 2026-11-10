@@ -133,13 +133,14 @@ impl Store {
         }
         self.reset_replays();
         let mut records = self.records.take();
+        let mut memo = crate::dom::CascadedMemo::default();
         let ((was, a), (now, b)) = (super::flow_blocks(old), super::flow_blocks(new));
         let roots = match (a, b) {
             (Some(a), Some(b)) => {
                 a.len() == b.len()
                     && a.iter()
                         .zip(&b)
-                        .all(|(x, y)| crate::dom::same_cascaded_box(x, y, false))
+                        .all(|(&x, &y)| crate::dom::same_cascaded_box(x, y, false, &mut memo))
             }
             _ => false,
         };
@@ -157,8 +158,9 @@ impl Store {
             let Some(record) = records.remove(&a.node_id) else {
                 continue;
             };
-            let exact = roots && crate::dom::same_cascaded_tree(a, b, false);
-            let repaint = !exact && record.far && crate::dom::same_cascaded_tree(a, b, true);
+            let exact = roots && crate::dom::same_cascaded_tree(a, b, false, &mut memo);
+            let repaint =
+                !exact && record.far && crate::dom::same_cascaded_tree(a, b, true, &mut memo);
             if exact || repaint {
                 kept.insert(a.node_id, Rc::new(record.moved_to(None, repaint)));
             }

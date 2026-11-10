@@ -12,7 +12,7 @@ pub use box_text::{Text, TextId};
 mod children;
 mod same_tree;
 pub use same_tree::{
-    BoxStyles, same_box, same_cascaded_box, same_cascaded_tree, same_layout_box,
+    BoxStyles, CascadedMemo, same_box, same_cascaded_box, same_cascaded_tree, same_layout_box,
     same_layout_tree_as, same_shell, same_tree, same_tree_as, same_values,
 };
 mod intrinsic;

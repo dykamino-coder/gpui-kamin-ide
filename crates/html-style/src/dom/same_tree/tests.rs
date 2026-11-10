@@ -137,10 +137,21 @@ fn cascaded_values_decide_a_rebuilt_tree_before_its_styles_are_computed() {
     let inner = block(vec![text("two")]);
     let a = block(vec![text("one"), Node::Element(inner.clone())]);
     let rebuilt = block(vec![text("one"), Node::Element(inner.clone())]);
-    assert!(same_cascaded_tree(&a, &rebuilt, false));
+    assert!(same_cascaded_tree(
+        &a,
+        &rebuilt,
+        false,
+        &mut CascadedMemo::default()
+    ));
     let b = block(vec![text("one"), Node::Element(recoloured(&inner))]);
-    assert!(!same_cascaded_tree(&a, &b, false), "a colour is not exact");
-    assert!(same_cascaded_tree(&a, &b, true), "but lays out the same");
+    assert!(
+        !same_cascaded_tree(&a, &b, false, &mut CascadedMemo::default()),
+        "a colour is not exact"
+    );
+    assert!(
+        same_cascaded_tree(&a, &b, true, &mut CascadedMemo::default()),
+        "but lays out the same"
+    );
     let mut boxed = inner.clone();
     boxed.style = Computed {
         decor_box: 1,
@@ -149,14 +160,55 @@ fn cascaded_values_decide_a_rebuilt_tree_before_its_styles_are_computed() {
     .into();
     let c = block(vec![text("one"), Node::Element(boxed)]);
     assert!(
-        !same_cascaded_tree(&a, &c, true),
+        !same_cascaded_tree(&a, &c, true, &mut CascadedMemo::default()),
         "layout values stay exact"
     );
     let d = block(vec![text("onf"), Node::Element(inner.clone())]);
-    assert!(!same_cascaded_tree(&a, &d, true), "texts stay exact");
+    assert!(
+        !same_cascaded_tree(&a, &d, true, &mut CascadedMemo::default()),
+        "texts stay exact"
+    );
     let mut e = rebuilt;
     e.node_id += 1;
-    assert!(!same_cascaded_tree(&a, &e, true), "node ids stay exact");
-    assert!(same_cascaded_box(&inner, &recoloured(&inner), true));
-    assert!(!same_cascaded_box(&inner, &recoloured(&inner), false));
+    assert!(
+        !same_cascaded_tree(&a, &e, true, &mut CascadedMemo::default()),
+        "node ids stay exact"
+    );
+    assert!(same_cascaded_box(
+        &inner,
+        &recoloured(&inner),
+        true,
+        &mut CascadedMemo::default()
+    ));
+    assert!(!same_cascaded_box(
+        &inner,
+        &recoloured(&inner),
+        false,
+        &mut CascadedMemo::default()
+    ));
+}
+
+#[test]
+fn a_memo_decides_pairs_of_the_same_group_owners_once_and_each_box_by_itself() {
+    let inner = block(vec![text("two")]);
+    let red = recoloured(&inner);
+    let (copy, red_copy) = (inner.clone(), red.clone());
+    let mut boxed = inner.clone();
+    boxed.style = Computed {
+        decor_box: 2,
+        ..inner.style.cascaded().clone()
+    }
+    .into();
+    let mut memo = CascadedMemo::default();
+    assert!(same_cascaded_box(&inner, &red, true, &mut memo));
+    assert!(!same_cascaded_box(&inner, &red, false, &mut memo));
+    assert!(
+        same_cascaded_box(&copy, &red_copy, true, &mut memo),
+        "same owners"
+    );
+    assert!(!same_cascaded_box(&copy, &red_copy, false, &mut memo));
+    assert!(
+        !same_cascaded_box(&boxed, &red, true, &mut memo),
+        "same owners, another decorating box"
+    );
 }

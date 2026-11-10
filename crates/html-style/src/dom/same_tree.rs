@@ -170,13 +170,13 @@ pub fn same_tree_as(shell: &Element, styles: &BoxStyles, children: &Children, b:
 
 /// The roots are equal (`root`), every pair of their descendants passes
 /// `same` and has the same node id, and their texts are equal.
-fn walk(
+fn walk<'a>(
     root: bool,
-    children: &Children,
-    b: &Element,
-    same: fn(&Element, &Element) -> bool,
+    children: &'a Children,
+    b: &'a Element,
+    mut same: impl FnMut(&'a Element, &'a Element) -> bool,
 ) -> bool {
-    let mut pending: Vec<(&Element, &Element)> = Vec::new();
+    let mut pending: Vec<(&'a Element, &'a Element)> = Vec::new();
     if !root || !same_children(children, &b.children, &mut pending) {
         return false;
     }
@@ -219,7 +219,7 @@ fn same_children<'a>(
 }
 
 mod cascaded;
-pub use cascaded::{same_cascaded_box, same_cascaded_tree};
+pub use cascaded::{CascadedMemo, same_cascaded_box, same_cascaded_tree};
 
 #[cfg(test)]
 mod tests;
