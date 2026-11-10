@@ -16,10 +16,11 @@ pub(crate) struct HitScope {
     clip: Bounds<Pixels>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 enum Mapping {
     Invertible(TransformationMatrix),
     Singular(TransformationMatrix),
+    LayoutProjection,
 }
 
 // A singular transform reuses the old optional matrix's payload and tag.
@@ -49,7 +50,7 @@ impl HitScope {
             if !scope.clip.contains(&point) {
                 return None;
             }
-            let Mapping::Invertible(inverse) = scope.inverse else { return None };
+            let Mapping::Invertible(inverse) = &scope.inverse else { return None };
             point = inverse.apply(point);
             if !point.x.0.is_finite() || !point.y.0.is_finite() {
                 return None;

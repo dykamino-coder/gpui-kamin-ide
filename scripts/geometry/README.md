@@ -56,6 +56,12 @@ page names rather than host filesystem paths, removes element IDs, and replaces
 string metadata differences with mismatch flags. Individual snapshots and
 comparisons contain page metadata and must remain private.
 
+Pass `--chromium-fonts` with the host font directory when comparing against a
+Windows engine. The directory is mounted read-only under Linux fontconfig's font
+search path. Without matching fonts, the container may substitute families such
+as Liberation Serif for Times New Roman; those metric differences then appear
+in the diagnostic report.
+
 The library exposes synchronous `Document::element_geometry`,
 `Document::get_client_rects` and `Document::get_bounding_client_rect` queries.
 They use a temporary layout pass with the supplied `RenderOpts`, `Window` and

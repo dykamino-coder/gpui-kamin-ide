@@ -63,7 +63,7 @@ pub(crate) fn paragraph_pieces_routed<const QUERY: bool>(
                 atom_cx: &inline::atom_parent::AtomCx,
                 ruby: &AtomRuby|
      -> Option<inline::Piece> {
-        atom_piece(e, inherited, opts, flow_text, atom_cx, ruby)
+        atom_piece::<QUERY>(e, inherited, opts, flow_text, atom_cx, ruby)
     };
     // Каждому атому — признак, можно ли поставить его В СТРОКУ абзаца
     // (`atom_line_align`): порядок записей совпадает с порядком `Piece::Atom`.

@@ -22,6 +22,8 @@ def main():
     parser.add_argument("--engine", type=Path, required=True)
     parser.add_argument("--hidden-launcher", type=Path, required=True)
     parser.add_argument("--podman", type=Path, required=True)
+    parser.add_argument("--chromium-fonts", type=Path,
+                        help="matching host fonts, mounted read-only for Linux fontconfig")
     parser.add_argument("--image", default="mcr.microsoft.com/playwright:v1.65.0-noble")
     parser.add_argument("--widths", type=int, nargs="+", default=[360, 768, 1280])
     parser.add_argument("--height", type=int, default=600)
@@ -36,6 +38,9 @@ def main():
     root = args.input_root.resolve(strict=True)
     coordination = (args.coordination_root or root).resolve(strict=True)
     private = args.private.resolve(strict=True)
+    chromium_fonts = args.chromium_fonts.resolve(strict=True) if args.chromium_fonts else None
+    if chromium_fonts and not chromium_fonts.is_dir():
+        parser.error("--chromium-fonts must be a directory")
     checkout = Path(__file__).resolve().parents[2]
     if private.is_relative_to(checkout):
         parser.error("diagnostics must be outside the checkout")
@@ -78,7 +83,9 @@ def main():
             if args.stage in ("all", "chromium"):
                 run([args.podman, "run", "--rm", "--name", f"geomdump-{stem}",
                      "-v", f"{checkout}:/src:ro", "-v", f"{root}:/pages:ro",
-                     "-v", f"{private}:/private", args.image,
+                     "-v", f"{private}:/private",
+                     *(["-v", f"{chromium_fonts}:/usr/local/share/fonts/geometry:ro"]
+                       if chromium_fonts else []), args.image,
                      "node", "/src/scripts/geometry/chromium.cjs",
                      "--input", f"/pages/{source}", "--output", f"/private/{chromium.name}",
                      "--width", width, "--height", args.height,

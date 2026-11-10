@@ -79,7 +79,7 @@ impl Window {
                         // enclosing text frame. Restore all query state first.
                         window.with_paint_pass(|window| {
                             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                query(window, cx)
+                                window.with_layout_projections(|window| query(window, cx))
                             }))
                         })
                     })

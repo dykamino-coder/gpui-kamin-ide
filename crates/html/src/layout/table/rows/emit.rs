@@ -139,6 +139,7 @@ fn push_cell_wrapped(
     built = build.effects(
         built,
         Effect::Transform {
+            node: None,
             style: &row_state.row.style.used(),
             parent: row_state.inherited,
             ref_box: rb,
@@ -157,6 +158,7 @@ fn push_cell_wrapped(
         built = build.effects(
             built,
             Effect::Transform {
+                node: None,
                 style: &g.style.used(),
                 parent: geom.inherited,
                 ref_box: rb,

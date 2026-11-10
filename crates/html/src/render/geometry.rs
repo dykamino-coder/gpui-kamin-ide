@@ -22,10 +22,31 @@ pub(crate) fn builder() -> ChildBuild {
             ))
         },
         svg::build,
+        effects,
+        crate::paint::effects::grouped::paint_group::<true>,
     )
 }
 
 mod svg;
+
+fn effects(
+    child: gpui::AnyElement,
+    effect: crate::layout::build_contracts::Effect<'_>,
+) -> gpui::AnyElement {
+    use crate::layout::build_contracts::Effect;
+    match effect {
+        Effect::Transform {
+            node,
+            style,
+            parent,
+            ref_box,
+            frame,
+        } => crate::paint::effects::transform::transformed_inner::<true>(
+            child, style, parent, ref_box, node, frame,
+        ),
+        other => super::child_builder::effects(child, other),
+    }
+}
 
 fn styled_box(
     e: &Element,

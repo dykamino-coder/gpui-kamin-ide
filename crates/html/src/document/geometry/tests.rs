@@ -4,9 +4,11 @@ use crate::{BROWSER_CSS, Document, ElementGeometry, RenderOpts};
 use gpui::{Context, IntoElement, Render, TestAppContext, Window, div};
 use std::rc::Rc;
 
+mod composite;
 mod isolation;
 mod multicol;
 mod paged;
+mod projection;
 
 struct View(Rc<Document>);
 

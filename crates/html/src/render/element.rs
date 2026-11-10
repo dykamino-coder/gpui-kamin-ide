@@ -18,9 +18,9 @@ mod dispatch;
 pub(super) use dispatch::dispatch_element;
 
 use crate::dom::Element;
+use crate::layout::build_contracts::Effect;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::writing_mode::orthogonal_inline;
-use crate::paint::effects::transform::transformed;
 use crate::style::cascade::materialize::box_style;
 use gpui::AnyElement;
 
@@ -167,7 +167,11 @@ async fn element_inner<const QUERY: bool>(
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::paint::controls::element(e, &merged, opts) {
-        let el = transformed(el, &merged, inherited, frame);
+        let el = opts
+            .cx
+            .contracts
+            .build
+            .effects(el, Effect::transform(&merged, inherited, frame));
         let el = match geometry {
             Some(geometry) => geometry.wrap(el),
             None => el,

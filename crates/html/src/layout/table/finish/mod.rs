@@ -19,12 +19,13 @@ use captions::{collect_captions, wrap_with_captions};
 
 use super::context::{RowsOut, TableGeom, TableLayers};
 
-pub(super) async fn table_finish(
+pub(super) async fn table_finish<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     geom: &TableGeom<'_>,
     layers: &TableLayers<'_>,
     out: &mut RowsOut,
     opts: &RenderOpts,
+    refs: &std::collections::HashMap<u64, crate::layout::build_contracts::RefBox>,
 ) -> AnyElement {
     let px_of = |l| geom.px_of(l, opts);
     let mut grid_children = std::mem::take(&mut out.under);
@@ -79,7 +80,7 @@ pub(super) async fn table_finish(
     // `table-cell-overflow-explicit-height-001/002`,
     // `percentage-sizing-of-table-cell-children-004`,
     // `subpixel-table-cell-height-001`).
-    let grid_box = table_grid_box(
+    let mut grid_box = table_grid_box(
         geom.e,
         geom.inherited,
         &geom.row_elements,
@@ -87,6 +88,9 @@ pub(super) async fn table_finish(
         tracks,
         table_tall,
     );
+    if QUERY {
+        grid_box = grid_box.also_observe_layout(super::query::TableQuery::new(geom, refs, opts));
+    }
     // Сросшиеся рамки: у таблицы нет паддинга, а кромка между её рамкой и
     // краевыми ячейками одна — ячейки накрывают ВНУТРЕННЮЮ ПОЛОВИНУ рамки
     // (CSS 2.1 §17.6.2). Рамка при этом рисуется ПОВЕРХ фонов ячеек, как и

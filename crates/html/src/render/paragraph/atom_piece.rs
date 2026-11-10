@@ -26,7 +26,7 @@ use crate::text::vertical::combined_text;
 pub(crate) use atom_cx::AtomRuby;
 use gpui::{IntoElement, ParentElement};
 
-pub(crate) fn atom_piece(
+pub(crate) fn atom_piece<const QUERY: bool>(
     e: &Element,
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -50,7 +50,7 @@ pub(crate) fn atom_piece(
                 cx.clamp.atom_depth + 1
             };
     });
-    atom_piece_in(
+    atom_piece_in::<QUERY>(
         e,
         inherited,
         &child_opts,
@@ -60,7 +60,7 @@ pub(crate) fn atom_piece(
     )
 }
 
-fn atom_piece_in(
+fn atom_piece_in<const QUERY: bool>(
     e: &Element,
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -110,7 +110,7 @@ fn atom_piece_in(
             || rot_block
             || inherited.reset_context.band_kid)
     {
-        return static_overlay(e, inherited, opts, rot_block);
+        return static_overlay::<QUERY>(e, inherited, opts, rot_block);
     }
     // Не контр-поворачивать физические четвёрки краёв (`margin`/`padding`/
     // `border-width` и четвёрки цвета, стиля, видимости) у КАЖДОГО куска
@@ -238,5 +238,7 @@ fn atom_piece_in(
     let opts = &*atom_cx::atom_opts(opts, ruby, &line_box, &offer);
     let built = atom_element(e, inherited, opts);
     let abs_cb = offer.as_ref().is_some_and(|o| o.taken());
-    built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box, frame))
+    built.map(|el| {
+        decorate_atom::<QUERY>(el, e, inherited, original_margin, abs_cb, line_box, frame)
+    })
 }

@@ -215,7 +215,7 @@ pub(crate) async fn dispatch_element<const QUERY: bool>(
         ) =>
         {
             let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
-            table_stack(stk, e, &merged, opts).await
+            table_stack::<QUERY>(stk, e, &merged, opts).await
         }
         // css-tables-3 §3.1: вне таблицы ряд, группа рядов и ячейка получают
         // анонимную таблицу, иначе ячейки складывались бы столбиком обычных блоков.
@@ -226,11 +226,11 @@ pub(crate) async fn dispatch_element<const QUERY: bool>(
         {
             let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             let wrapper = anon_element("table", vec![Node::Element(e.clone())]);
-            table_stack(stk, &wrapper, &merged, opts).await
+            table_stack::<QUERY>(stk, &wrapper, &merged, opts).await
         }
         "table" => {
             let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
-            table_stack(stk, e, &merged, opts).await
+            table_stack::<QUERY>(stk, e, &merged, opts).await
         }
         // `ul` с заданной раскладкой служит контейнером навигации или чипов.
         "ul" | "ol" if geometry.display.is_none() => list::render(stk, e, &merged, opts).await,

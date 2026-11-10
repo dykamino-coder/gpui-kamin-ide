@@ -18,10 +18,14 @@ impl Paragraph {
 
     fn collect_geometry(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         if self.vertical {
-            let mut bounds = bounds;
-            if self.lines_reversed && !self.vertical_ccw {
-                bounds.size.width = self.vertical_line_extent();
-            }
+            let bounds = if self.lines_reversed && !self.vertical_ccw {
+                Bounds::new(
+                    bounds.origin,
+                    size(self.vertical_line_extent(), bounds.size.height),
+                )
+            } else {
+                bounds
+            };
             let flat = Bounds::new(bounds.origin, size(bounds.size.height, bounds.size.width));
             window.with_hitbox_transform(query_turn(bounds, self.vertical_ccw), |window| {
                 self.collect_flat_geometry(flat, window)

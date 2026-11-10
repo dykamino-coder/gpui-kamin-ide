@@ -8,6 +8,6 @@ pub(in crate::layout) fn is_cell(e: &Element) -> bool {
 
 pub(crate) fn table(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     reblessive::Stack::new()
-        .enter(|stk| table_stack(stk, e, inherited, opts))
+        .enter(|stk| table_stack::<false>(stk, e, inherited, opts))
         .finish()
 }

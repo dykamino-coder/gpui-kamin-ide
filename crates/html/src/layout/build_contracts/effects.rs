@@ -45,6 +45,7 @@ pub(crate) enum Effect<'a> {
     /// reference box shared by the cells of a table row or row group
     /// (`ref_box`) or the box's own one (`None`).
     Transform {
+        node: Option<u64>,
         style: &'a Computed,
         parent: &'a Computed,
         ref_box: Option<RefBox>,
@@ -72,6 +73,7 @@ impl<'a> Effect<'a> {
     /// reference box.
     pub(crate) fn transform(style: &'a Computed, parent: &'a Computed, frame: FrameCx<'a>) -> Self {
         Effect::Transform {
+            node: None,
             style,
             parent,
             ref_box: None,
@@ -97,6 +99,12 @@ pub(crate) struct EffectBuild {
 }
 
 impl EffectBuild {
+    pub(crate) fn with_effect(mut self, effect: ApplyEffect, paint_group: PaintGroup) -> Self {
+        self.paint_group = paint_group;
+        self.effect = effect;
+        self
+    }
+
     pub(crate) const fn new(
         effect: ApplyEffect,
         paint_group: PaintGroup,

@@ -11,7 +11,7 @@ use super::*;
 /// Это стало возможно только вместе с патчем произвольных дорожек в GPUI —
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
-pub(crate) async fn table_stack(
+pub(crate) async fn table_stack<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     e: &Element,
     inherited: &BoxStyle,
@@ -212,5 +212,5 @@ pub(crate) async fn table_stack(
         cells_over,
         ..Default::default()
     };
-    table_rows_with_bands(stk, geom, rows, &mut out, opts).await
+    table_rows_with_bands::<QUERY>(stk, geom, rows, &mut out, opts).await
 }

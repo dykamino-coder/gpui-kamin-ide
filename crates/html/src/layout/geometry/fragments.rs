@@ -31,19 +31,24 @@ impl BlockAxis {
     }
     pub(crate) fn slice(
         window: &Window,
-        mut b: Bounds<Pixels>,
+        b: Bounds<Pixels>,
         clip: Bounds<Pixels>,
     ) -> Bounds<Pixels> {
         if Self::vertical(window) {
             let right = b.right().min(clip.right()).max(clip.left());
-            b.origin.x = b.left().max(clip.left()).min(clip.right());
-            b.size.width = (right - b.left()).max(gpui::px(0.));
+            let left = b.left().max(clip.left()).min(clip.right());
+            Bounds::new(
+                gpui::point(left, b.top()),
+                gpui::size((right - left).max(gpui::px(0.)), b.size.height),
+            )
         } else {
             let bottom = b.bottom().min(clip.bottom()).max(clip.top());
-            b.origin.y = b.top().max(clip.top()).min(clip.bottom());
-            b.size.height = (bottom - b.top()).max(gpui::px(0.));
+            let top = b.top().max(clip.top()).min(clip.bottom());
+            Bounds::new(
+                gpui::point(b.left(), top),
+                gpui::size(b.size.width, (bottom - top).max(gpui::px(0.))),
+            )
         }
-        b
     }
 }
 
