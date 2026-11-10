@@ -1,5 +1,6 @@
 import headless from '@xterm/headless'
 import serialization from '@xterm/addon-serialize'
+import { TerminalColors } from '../../webview/shared/terminal-colors.js'
 
 const { Terminal } = headless
 const { SerializeAddon } = serialization
@@ -11,6 +12,7 @@ const MAX_SNAPSHOT = 8 * 1024 * 1024
 export class TerminalScreen {
   private readonly terminal: InstanceType<typeof Terminal>
   private readonly serializer = new SerializeAddon()
+  private readonly colors = new TerminalColors()
   private queue = Promise.resolve()
   private pending = 0
   private closed = false
@@ -20,6 +22,7 @@ export class TerminalScreen {
     this.terminal = new Terminal({ cols, rows, scrollback: SCROLLBACK, allowProposedApi: true })
     this.terminal.loadAddon(this.serializer)
     this.terminal.onData(respond)
+    this.colors.attach(this.terminal.parser, respond)
   }
 
   write(data: string, committed: () => void): void {
@@ -48,11 +51,12 @@ export class TerminalScreen {
 
   snapshot(): { screen: string; truncated: boolean } {
     let lines = SCROLLBACK
-    let screen = this.serializer.serialize({ scrollback: lines })
+    const palette = this.colors.snapshot()
+    let screen = palette + this.serializer.serialize({ scrollback: lines })
     // The websocket limit applies to JSON, where an ESC becomes six bytes.
     while (Buffer.byteLength(JSON.stringify(screen)) > MAX_SNAPSHOT && lines > 0) {
       lines = Math.floor(lines / 2)
-      screen = this.serializer.serialize({ scrollback: lines })
+      screen = palette + this.serializer.serialize({ scrollback: lines })
     }
     if (Buffer.byteLength(JSON.stringify(screen)) > MAX_SNAPSHOT) throw new Error('Terminal screen exceeds snapshot limit')
     return { screen, truncated: lines < SCROLLBACK }

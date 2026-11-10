@@ -203,7 +203,7 @@ Source classification or a named test path alone is not behavioral coverage.
 | File tools and shells | Exact shared Read/Write/Edit/Glob/Grep/NotebookEdit/Bash/PowerShell handlers | Real bytes/search/cwd/env/output, background work, errors/cancellation |
 | Agent/team/task/plan/skill/widget/todo tools | Exact tool registry and routing | Actual requests, responses, state and identity isolation |
 | Files and attachments | WorkspaceFiles and browser environment | Shared file tools and attachment services; FilePanel/explorer hidden by owner scope |
-| Interactive terminals | Host PTY registry/headless screen and same terminal UI | Input/output/resize/exit/kill, zero-view work, scrollback and TUI behavior |
+| Interactive terminals | Host PTY registry/headless screen and same terminal UI | Input/output/resize/exit/kill, zero-view work, scrollback, shared OSC palette state; remaining TUI behavior stays open |
 | Hooks | Shared approval/hash store and relay | Inert before approval, real execution, changed hash reapproval |
 | MCP and plugin discovery/configuration | Shared manager, IPC, sync and registry | Local stdio/HTTP tools/resources/prompts, OAuth/elicitation/cancellation/cleanup |
 | LSP and monitors | Shared plugin managers | Real fixture server diagnostics/hover/definition/references, restart and cleanup |
