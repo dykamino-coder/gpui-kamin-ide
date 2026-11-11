@@ -1,5 +1,34 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.93 delivery: host tool declaration and client management groups — 2026-11-11
+
+Delivery reconciliation 2026-11-11, source `origin/main`
+`a977a737899d6ad5bdad01a03877a9ec1dbc95d4`:
+[KaminIDE 1.0.93](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.93)
+/ server 6.3.170 is published (tag commit `1fe4cac5`, ancestry checked), with
+the embedding packages `kaminide-bridge-workspace-host-6.3.170.tgz` and
+`kaminide-bridge-browser-client-6.3.170.tgz`. Publication is not acceptance:
+INC-0097 stays `verify`. Do not reimplement #732.
+
+- [INC-0097](runtime-issues/INC-2026-0097.md): the Bridge server serves the
+  tools and the wording that the client host declares,
+  [#732](https://github.com/dykamino-coder/gpui-kamin-ide/pull/732)
+  (`3c323c2c`). Owner: next maintainer run. Gate: on a server deployed from
+  image 6.3.170 or newer, a session through a Linux workspace host without
+  `pwsh` is asked which tools it has and where they run; PowerShell and "the
+  user's machine" are absent from the answer. Next artifact: a verification
+  Diagnostic PR.
+- The typed `mcp`, `skills`, `agents`, `plugins` and `hooks` groups of
+  `@kaminide/bridge-browser-client`,
+  [#730](https://github.com/dykamino-coder/gpui-kamin-ide/pull/730)
+  (`2c8a0eb5`), ship in the same release. They have no runtime card; the
+  published package was checked for these types and for version 6.3.170.
+- [INC-0095](runtime-issues/INC-2026-0095.md) (`done`) and
+  [INC-0096](runtime-issues/INC-2026-0096.md) (`ready/change`): no new change
+  in 1.0.93. Their state was set by the acceptance run on 1.0.92 / 6.3.169 (see
+  the section below). The Windows process-tree stop for INC-0096 is not in this
+  release.
+
 ## KaminIDE 1.0.92 delivery: mod sync and interrupt — 2026-11-11
 
 Delivery reconciliation 2026-11-11, source `origin/main`
