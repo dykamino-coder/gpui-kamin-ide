@@ -1,8 +1,11 @@
 //! Общий обход длин в единицах окна и контейнера.
 //!
-//! Длины сворачиваются в копиях, а группа пишется, только если значение изменилось:
-//! общая группа без единиц окна остаётся общей (Blink `ComputedStyle` setters сравнивают
-//! перед записью, `computed_style.h` `SetBorderImageOutset`).
+//! Обход один для записи и для проверки без записи (`Computed::has_viewport_lengths`): каждый
+//! шаг читает стиль, сворачивает длины в копиях и отдаёт приёмнику (`unit_change::Target`) только
+//! изменение. Группа пишется, только если значение изменилось: общая группа без единиц окна
+//! остаётся общей (Blink `ComputedStyle` setters сравнивают перед записью, `computed_style.h`
+//! `SetBorderImageOutset`).
+use super::unit_change::{Change, Target, step};
 use super::*;
 
 /// The lengths of `now` after `fix`, in the same order; `None` when none changed.
@@ -21,13 +24,121 @@ fn sides_of(s: &Sides) -> [Option<Len>; 4] {
     [s.top, s.right, s.bottom, s.left]
 }
 
-fn set_sides(s: &mut Sides, [top, right, bottom, left]: [Option<Len>; 4]) {
-    *s = Sides {
-        top,
-        right,
-        bottom,
-        left,
-    };
+/// Радиус после свёртки: отрицательный в точках — ноль.
+fn radius(fix: &impl Fn(&mut Option<Len>), mut radius: Option<Len>) -> Option<Len> {
+    fix(&mut radius);
+    if let Some(Len::Px(value)) = &mut radius {
+        *value = value.max(0.0);
+    }
+    radius
+}
+
+fn walk_radius_lengths<T: Target>(target: &mut T, fix: &impl Fn(&mut Option<Len>)) {
+    step(target, |s| {
+        let r = &s.reset_border.radius;
+        let now = [r.tl, r.tr, r.br, r.bl];
+        let next = now.map(|corner| radius(fix, corner));
+        (next != now).then_some(Change::Radius(next))
+    });
+    step(target, |s| {
+        let now = s.reset_border.radius_ell?;
+        let next = now.map(|corner| {
+            corner.map(|(x, y)| {
+                let axis = |v| radius(fix, Some(v)).unwrap_or(Len::Px(0.0));
+                (axis(x), axis(y))
+            })
+        });
+        (next != now).then_some(Change::RadiusEll(next))
+    });
+}
+
+/// Обход длин стиля приёмника. Порядок свёртки постоянный: `calc` пишет в арену кадра по порядку.
+pub(super) fn walk_unit_lengths<T: Target>(
+    target: &mut T,
+    fix: impl Fn(&mut Option<Len>) + Copy,
+    vcx: ValueCx<'_>,
+) {
+    step(target, |s| {
+        let l = &*s.reset_box_layout;
+        let now = [
+            l.width,
+            l.height,
+            l.min_width,
+            l.min_height,
+            l.max_width,
+            l.max_height,
+        ];
+        fixed(fix, now).map(Change::Sizes)
+    });
+    step(target, |s| {
+        fixed(fix, [s.reset_flex.flex_basis]).map(|[basis]| Change::Basis(basis))
+    });
+    step(target, |s| {
+        fixed(fix, [s.reset_svg_math.svg_path_length]).map(|[path]| Change::PathLength(path))
+    });
+    // Кегль — в общей группе наследуемых: правится, только если он в
+    // единицах окна или контейнера.
+    step(target, |s| {
+        let size = s.inh.font.font_size?;
+        fixed(fix, [Some(size)]).map(|[size]| Change::FontSize(size))
+    });
+    step(target, |s| {
+        let l = &*s.reset_box_layout;
+        let next = [&l.padding, &l.snap.padding, &l.snap.margin, &l.margin]
+            .map(|sides| fixed(fix, sides_of(sides)));
+        next.iter()
+            .any(Option::is_some)
+            .then_some(Change::Boxes(next))
+    });
+    // Толщина рамки в единицах окна (`border-bottom: 50vh solid`,
+    // `monolithic-overflow-021`): без перевода рамка выходила нулевой.
+    step(target, |s| {
+        fixed(fix, sides_of(&s.reset_border.border_width)).map(Change::BorderWidth)
+    });
+    step(target, |s| {
+        fixed(fix, sides_of(&s.reset_positioned.inset)).map(Change::Inset)
+    });
+    walk_radius_lengths(target, &fix);
+    step(target, |s| {
+        let group = &*s.reset_background;
+        let now = [&group.gradient, &group.gradient_current];
+        if !now
+            .iter()
+            .any(|g| g.as_ref().is_some_and(Gradient::has_lengths))
+        {
+            return None;
+        }
+        let mut next = now.map(Clone::clone);
+        for gradient in next.iter_mut().flatten() {
+            gradient.resolve_lengths(fix, vcx);
+        }
+        (next.each_ref() != now).then_some(Change::Gradients(next))
+    });
+    step(target, |s| {
+        let now = &s.reset_background.bg_lists;
+        if now.is_empty() {
+            return None;
+        }
+        let mut next = now.clone();
+        next.resolve_lengths(&fix, vcx);
+        (next != *now).then_some(Change::BgLists(next))
+    });
+    step(target, |s| {
+        if !s.image_operands_ref().any(ImageSource::has_lengths) {
+            return None;
+        }
+        let mut next: Vec<ImageSource> = s.image_operands_ref().cloned().collect();
+        for image in &mut next {
+            image.resolve_lengths(&fix, vcx);
+        }
+        next.iter()
+            .ne(s.image_operands_ref())
+            .then_some(Change::Images(next))
+    });
+    step(target, |s| {
+        let (row, col) = s.reset_flex.gap?;
+        fixed(fix, [row, col]).map(|[row, col]| Change::Gap(row, col))
+    });
 }
 
 impl Computed {
@@ -36,103 +147,11 @@ impl Computed {
         fix: impl Fn(&mut Option<Len>) + Copy,
         vcx: ValueCx<'_>,
     ) {
-        // Тот же порядок свёртки, что и прежде: `calc` пишет в арену кадра по порядку.
-        let layout = &*self.reset_box_layout;
-        let sizes = fixed(
-            fix,
-            [
-                layout.width,
-                layout.height,
-                layout.min_width,
-                layout.min_height,
-                layout.max_width,
-                layout.max_height,
-            ],
-        );
-        let basis = fixed(fix, [self.reset_flex.flex_basis]);
-        let path = fixed(fix, [self.reset_svg_math.svg_path_length]);
-        // Кегль — в общей группе наследуемых: правится, только если он в
-        // единицах окна или контейнера.
-        if let Some(size) = self.inh.font.font_size {
-            let mut folded = Some(size);
-            fix(&mut folded);
-            if folded != Some(size) {
-                self.inh.font.font_size = folded;
-            }
-        }
-        let layout = &*self.reset_box_layout;
-        let padding = fixed(fix, sides_of(&layout.padding));
-        let snap_padding = fixed(fix, sides_of(&layout.snap.padding));
-        let snap_margin = fixed(fix, sides_of(&layout.snap.margin));
-        let margin = fixed(fix, sides_of(&layout.margin));
-        if sizes.is_some()
-            || padding.is_some()
-            || snap_padding.is_some()
-            || snap_margin.is_some()
-            || margin.is_some()
-        {
-            let layout = &mut *self.reset_box_layout;
-            if let Some([w, h, min_w, min_h, max_w, max_h]) = sizes {
-                (layout.width, layout.height) = (w, h);
-                (layout.min_width, layout.min_height) = (min_w, min_h);
-                (layout.max_width, layout.max_height) = (max_w, max_h);
-            }
-            for (side, value) in [
-                (&mut layout.padding, padding),
-                (&mut layout.snap.padding, snap_padding),
-                (&mut layout.snap.margin, snap_margin),
-                (&mut layout.margin, margin),
-            ] {
-                if let Some(value) = value {
-                    set_sides(side, value);
-                }
-            }
-        }
-        if let Some([basis]) = basis {
-            self.reset_flex.flex_basis = basis;
-        }
-        if let Some([path]) = path {
-            self.reset_svg_math.svg_path_length = path;
-        }
-        // Толщина рамки в единицах окна (`border-bottom: 50vh solid`,
-        // `monolithic-overflow-021`): без перевода рамка выходила нулевой.
-        if let Some(width) = fixed(fix, sides_of(&self.reset_border.border_width)) {
-            set_sides(&mut self.reset_border.border_width, width);
-        }
-        if let Some(inset) = fixed(fix, sides_of(&self.reset_positioned.inset)) {
-            set_sides(&mut self.reset_positioned.inset, inset);
-        }
-        self.resolve_radius_lengths(fix);
-        if [
-            self.reset_background.gradient.as_ref(),
-            self.reset_background.gradient_current.as_ref(),
-        ]
-        .into_iter()
-        .flatten()
-        .any(Gradient::has_lengths)
-        {
-            for gradient in {
-                let group = &mut *self.reset_background;
-                [group.gradient.as_mut(), group.gradient_current.as_mut()]
-            }
-            .into_iter()
-            .flatten()
-            {
-                gradient.resolve_lengths(fix, vcx);
-            }
-        }
-        if !self.reset_background.bg_lists.is_empty() {
-            self.reset_background.bg_lists.resolve_lengths(&fix, vcx);
-        }
-        if self.image_operands_ref().any(ImageSource::has_lengths) {
-            for image in self.image_operands() {
-                image.resolve_lengths(&fix, vcx);
-            }
-        }
-        if let Some((row, col)) = self.reset_flex.gap
-            && let Some([row, col]) = fixed(fix, [row, col])
-        {
-            self.reset_flex.gap = Some((row, col));
-        }
+        walk_unit_lengths(self, fix, vcx);
+    }
+
+    /// Свернуть радиусы скругления; отрицательный радиус в точках — ноль.
+    pub fn resolve_radius_lengths(&mut self, fix: impl Fn(&mut Option<Len>)) {
+        walk_radius_lengths(self, &fix);
     }
 }

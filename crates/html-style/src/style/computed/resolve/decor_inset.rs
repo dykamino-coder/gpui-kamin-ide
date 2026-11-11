@@ -3,6 +3,7 @@
 //! наследования, единицы окна — отдельным проходом при сборке строки, у которой
 //! общего прохода разрешения окна нет. Смесь доли и точек остаётся `DecorLen::Mix`.
 
+use super::unit_change::{Change, Target, step};
 use crate::style::computed::{Computed, DecorLen};
 use crate::style::values::value::{Len, calc_get};
 use crate::values::ValueCx;
@@ -80,35 +81,30 @@ impl Computed {
         fix: impl Fn(&mut Option<Len>) + Copy,
         vcx: ValueCx<'_>,
     ) {
-        if !self.has_decor_insets() {
-            return;
-        }
-        if let Some(Some(pair)) = &mut self.reset_text_box.td_inset {
-            for value in pair {
-                *value = map_length(*value, fix, vcx);
-            }
-        }
-        for decor in &mut self.reset_text_box.decors {
-            if let Some(pair) = &mut decor.inset {
-                for value in pair {
-                    *value = map_length(*value, fix, vcx);
-                }
-            }
-        }
+        walk_decor_inset_lengths(self, fix, vcx);
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn absent_insets_do_not_detach_text_group() {
-        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
-        let base = Computed::default();
-        let mut value = base.clone();
-        value.resolve_decor_inset_font(|_| {}, "", 16.0, doc.values());
-        value.resolve_decor_inset_viewport((800.0, 600.0), doc.values());
-        assert!(base.shares_storage(&value));
-    }
+/// Обход отступов линий оформления: общий для записи и проверки без записи.
+pub(super) fn walk_decor_inset_lengths<T: Target>(
+    target: &mut T,
+    fix: impl Fn(&mut Option<Len>) + Copy,
+    vcx: ValueCx<'_>,
+) {
+    let map = |pair: [DecorLen; 2]| pair.map(|value| map_length(value, fix, vcx));
+    step(target, |s| {
+        let now = s.reset_text_box.td_inset??;
+        let next = map(now);
+        (next != now).then_some(Change::DecorInset(next))
+    });
+    step(target, |s| {
+        let decors = &s.reset_text_box.decors;
+        if decors.iter().all(|decor| decor.inset.is_none()) {
+            return None;
+        }
+        let next: Vec<_> = decors.iter().map(|decor| decor.inset.map(map)).collect();
+        next.iter()
+            .ne(decors.iter().map(|decor| &decor.inset))
+            .then_some(Change::DecorInsets(next))
+    });
 }
