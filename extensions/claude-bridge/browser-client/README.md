@@ -44,6 +44,16 @@ client.submitPrompt(tab, 'Build a landing page with a form')
 | `submitPrompt(tab, text, submissionId?)` | send `pty-submit-text` |
 | `interrupt(tab)` | send `session:interrupt` |
 | `onJsonlEntries`, `onStreaming`, `onStatus` | events `jsonl-entries`, `streaming-entry`, `jsonl-status` |
+| `onStreamingDelta` | event `streaming-delta` (only when the Bridge server streams for this credential) |
+| `onActivity` (busy/idle), `onUsage` (model, effort, context, limits) | events `session:activity`, `session:usage` |
+| `savedSessions()` | invoke `session:get-saved`; pass `conversationId` to `resumeSession` |
+| `onPermissionRequest`, `respondPermission(id, 'allow_once' \| 'allow_session' \| 'always' \| 'deny')` | event `permission-request`, send `permission-response` |
+| `onQuestion`, `answerQuestion(id, text)` | event `ask-user-question`, send `ask-user-response` |
+| `onElicitation`, `respondElicitation(id, action, content?)` | event `elicitation-request`, send `elicitation-response` |
+| `setModel(tab, 'haiku')`, `setEffort(tab, 'low')`, `setToolPermissionMode(tab, 'ask')` | send `change-model`, `change-effort`, `change-permission-mode` |
+| `saveImage(base64, mime)`, `saveAttachment(base64, name)` → path | invoke `save-clipboard-image`, `save-dropped-file` |
+| `selectSubagent(tab, agentId \| null)`, `onSubagentEntries` | send `jsonl:subagent-select`, event `jsonl-subagent-entries` |
+| `monitors.list()`, `monitors.log(id)`, `monitors.onEvent()` | invoke `monitors:list`, `monitors:get-log`; events `monitor:*` |
 | `invoke(channel, ...args)`, `send(...)`, `on(...)` | any channel of the KaminIDE bridge API |
 | `preview.state()`, `preview.onState()` | event `workspace:preview-state` |
 | `preview.fetchState()`, `preview.unmount()` | `GET /preview/state`, `POST /preview/unmount` |
@@ -67,6 +77,37 @@ Connection semantics are those of the KaminIDE browser UI:
   client sends `workspace:sync` (option `syncOnReconnect`, default on) and the
   snapshot arrives through the same subscriptions.
 - Subscriptions survive reconnects and `disconnect()` / `connect()` cycles.
+
+Chat semantics an embedding UI has to follow, checked live against a Bridge
+server with the packaged client:
+
+- A turn ends with an assistant entry whose `message.stop_reason` is
+  `end_turn`; `onActivity` reports `isWorking` around it. A prompt sent during
+  a turn is queued by the CLI (`queue-operation` entries) and runs afterwards.
+- Attachments are files in the workspace: save the bytes with `saveImage` or
+  `saveAttachment` and append each returned path on its own line after the
+  prompt text, as the KaminIDE input bar does.
+- `AskUserQuestion` returns to the agent at once; `answerQuestion` delivers the
+  answer as the user's next message, which starts a new turn.
+- `setToolPermissionMode` governs the workspace tools (Bash, Write, Edit, …)
+  that run in the host; `'ask'` raises `onPermissionRequest`. The CLI's own
+  permission mode is a separate setting of the Bridge server session.
+- `/compact`, `/clear`, `/model` and other slash commands are prompts:
+  `submitPrompt(tab, '/compact')`.
+- Subagent transcripts are not pushed by default. The parent transcript carries
+  the `Agent` tool result with `agentId: <id>`; `selectSubagent(tab, id)`
+  streams that subagent's entries until `selectSubagent(tab, null)`.
+- Plugin monitors run in the workspace host while a session is open, are
+  listed by `monitors.list()` and stopped when the session closes.
+- Hooks run where the Bridge server routes them: `command` hooks of prompt,
+  subagent and task events (`UserPromptSubmit`, `SubagentStop`, …) and of
+  `PreToolUse` on CLI-internal tools run on the Bridge server, the others in
+  the workspace; `host: 'local'` or `host: 'server'` overrides this. `http`
+  hooks are requested by the CLI on the Bridge server, so their URL must be
+  reachable from that server.
+- CLI mods (plugins with a hooks module) are not delivered to the Bridge
+  server's CLI by the current sync, and mod UI (`ui.render`) has no structured
+  channel; see INC-2026-0095 in the source repository.
 
 ## Preview
 
