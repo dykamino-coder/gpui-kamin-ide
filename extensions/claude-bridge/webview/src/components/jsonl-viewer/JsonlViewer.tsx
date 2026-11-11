@@ -9,7 +9,8 @@ import { compactingTabs } from '../../signals/compaction'
 import { useBridge } from '../../hooks/useBridge'
 import { JsonlEntry } from './JsonlEntry'
 import type { JsonlEntryData } from '../../types/jsonl'
-import { useChatScrollPin } from './useChatScrollPin'
+import { useChatScrollPin, NEAR_TOP_PX } from './useChatScrollPin'
+import { viewportUnfilled, olderPageIsStale } from './fill-viewport'
 import { getRenderModel } from './derived-cache'
 import { isApiErrorEntry } from './prepare-jsonl-entries'
 import { shouldShrinkWindow } from './shrink-window'
@@ -105,7 +106,7 @@ export function JsonlViewer(): JSX.Element {
   const olderLoadingRef = useRef(false)
   const reachedStartRef = useRef(false)
   const pageCursorRef = useRef<number | null>(null)
-  const pendingPageRef = useRef<{ tab: string; segment: string | null; before: number } | null>(null)
+  const pendingPageRef = useRef<{ tab: string; segment: string | null; before: number; fill: boolean } | null>(null)
   const segment = currentTabId ? archivedViewTs(currentTabId) : null
   useEffect(() => {
     pageCursorRef.current = null
@@ -114,7 +115,8 @@ export function JsonlViewer(): JSX.Element {
     reachedStartRef.current = false
   }, [currentTabId, segment])
 
-  const onNearTop = useCallback(() => {
+  // `fill`: asked for by the viewport-fill effect below, not by a scroll-up.
+  const onNearTop = useCallback((fill = false) => {
     if (loadingMoreRef.current || olderLoadingRef.current) return
     // First mount more of the rows already HELD (cheap — no fetch).
     if (hiddenCountRef.current > 0) {
@@ -133,7 +135,7 @@ export function JsonlViewer(): JSX.Element {
     const oldestPos = pageCursorRef.current ?? (store[0] as { _pos?: number } | undefined)?._pos
     if (typeof oldestPos !== 'number' || oldestPos <= 0) { reachedStartRef.current = true; return }
     olderLoadingRef.current = true
-    pendingPageRef.current = { tab: currentTabId, segment: archivedViewTs(currentTabId) ?? null, before: oldestPos }
+    pendingPageRef.current = { tab: currentTabId, segment: archivedViewTs(currentTabId) ?? null, before: oldestPos, fill }
     bridge.loadOlderPage(currentTabId, oldestPos, OLDER_PAGE)
   }, [currentTabId, bridge])
 
@@ -150,18 +152,21 @@ export function JsonlViewer(): JSX.Element {
       // If the reader scrolled back to the bottom while this was in flight, don't
       // prepend rows they're no longer looking at (and don't grow the cap the
       // bottom-trim is about to shrink) — the request is stale.
-      if (chatAtBottom.peek()) return
+      // …unless the page was asked for to FILL a window shorter than the
+      // viewport, which is always "at the bottom" (see fill-viewport.ts).
+      if (olderPageIsStale(chatAtBottom.peek(), pending.fill)) return
       pageCursorRef.current = p.nextPos ?? null
-      if (!p?.records || p.records.length === 0) {
-        reachedStartRef.current = p.nextPos === undefined || p.nextPos <= 0 || p.nextPos >= pending.before
-        if (!reachedStartRef.current) {
-          olderLoadingRef.current = true
-          pendingPageRef.current = { ...pending, before: p.nextPos! }
-          bridge.loadOlderPage(tabId, p.nextPos!, OLDER_PAGE)
-        }
-        return
+      // A page that adds nothing — empty, or every row already held — is not the
+      // start of history while the cursor still moves: keep walking back, or the
+      // window would stop growing with history left above it.
+      const added = !!p?.records && p.records.length > 0 && prependJsonlEntries(tabId, p.records)
+      if (added) { setRenderCap((c) => c + p.records.length); return }
+      reachedStartRef.current = p.nextPos === undefined || p.nextPos <= 0 || p.nextPos >= pending.before
+      if (!reachedStartRef.current) {
+        olderLoadingRef.current = true
+        pendingPageRef.current = { ...pending, before: p.nextPos! }
+        bridge.loadOlderPage(tabId, p.nextPos!, OLDER_PAGE)
       }
-      if (prependJsonlEntries(tabId, p.records)) setRenderCap((c) => c + p.records.length)
     })
     return unsub
   }, [])
@@ -392,6 +397,20 @@ export function JsonlViewer(): JSX.Element {
     // тяжёлый компонент на каждую запись tabs (реконнект-флап, смена title).
     tabs: tabs.peek().map(t => t.id.slice(0, 8)),
   }
+
+  // Page older history without a scroll gesture while the drawn rows do not
+  // fill the viewport (fill-viewport.ts): nothing can be scrolled there, so the
+  // scroll-up loader never runs. Re-checked after every change of the window —
+  // each landed page or grown cap re-runs this until the panel overflows or the
+  // start is reached. Measured after layout, hence the frame.
+  useEffect(() => {
+    if (!currentTabId || loadingUnderway || currentEntries.length === 0) return
+    const raf = requestAnimationFrame(() => {
+      const host = containerRef.current?.closest('.chat-panel') as HTMLElement | null | undefined
+      if (host && viewportUnfilled(host.scrollHeight, host.clientHeight, NEAR_TOP_PX)) onNearTop(true)
+    })
+    return () => { cancelAnimationFrame(raf) }
+  }, [currentTabId, segment, currentEntries, renderCap, loadingUnderway, onNearTop])
 
   useEffect(() => {
     if (!showCover) { setCoverSecs(0); return }

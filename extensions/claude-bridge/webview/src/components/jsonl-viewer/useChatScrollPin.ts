@@ -26,7 +26,7 @@ import { tabScrollMemory } from '../../signals/scroll-memory'
 const AT_BOTTOM_PX = 80
 // Distance (px) from the top that triggers auto-loading older messages — so the
 // user just scrolls up instead of clicking a "show earlier" button.
-const NEAR_TOP_PX = 400
+export const NEAR_TOP_PX = 400
 
 export interface ScrollPinHandle {
   containerRef: { current: HTMLDivElement | null }
