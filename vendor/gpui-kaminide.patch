@@ -5462,10 +5462,14 @@ zkM>{l3K%`3(KC#gJ$m%yCf=k&EI7J-M06&mjuG)0LTUu?0%mN!T7eI+yKfFc@eL+j
 KHi`M@(SHGAT(5lq
 
 diff --git a/vendor/gpui/src/app.rs b/vendor/gpui/src/app.rs
-index a921de1aa0358a8672425fa241e14f38b70825ab..cb230f9ca7a259ea6cb541358b7861c555ec988b
+index a921de1aa0358a8672425fa241e14f38b70825ab..a5366f85e54bfa7239cc6d9ca5650357bc76b58b
 --- a/vendor/gpui/src/app.rs
 +++ b/vendor/gpui/src/app.rs
-@@ -200,0 +201,9 @@
+@@ -68,0 +69 @@
++mod idle;
+@@ -198,0 +200,9 @@
++    }
++
 +    /// Настроить измерения до запуска платформы.
 +    pub fn with_instrumentation(self, config: crate::InstrumentationConfig) -> Self {
 +        let mut app = self.0.borrow_mut();
@@ -5473,32 +5477,30 @@ index a921de1aa0358a8672425fa241e14f38b70825ab..cb230f9ca7a259ea6cb541358b7861c5
 +        app.platform.set_instrumentation(app.instrumentation.clone());
 +        drop(app);
 +        self
-+    }
-+
-@@ -760,0 +770 @@
+@@ -760,0 +771 @@
 +    instrumentation: crate::Instrumentation,
-@@ -857,0 +868,5 @@
+@@ -857,0 +869,5 @@
 +    /// Измерения этого приложения, независимые от других экземпляров.
 +    pub fn instrumentation(&self) -> &crate::Instrumentation {
 +        &self.instrumentation
 +    }
 +
-@@ -881,0 +897,2 @@
+@@ -881,0 +898,2 @@
 +        let instrumentation = crate::Instrumentation::default();
 +        platform.set_instrumentation(instrumentation.clone());
-@@ -885,0 +903 @@
+@@ -885,0 +904 @@
 +                instrumentation,
-@@ -1236,0 +1255,2 @@
+@@ -1236,0 +1256,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -1237,0 +1258 @@
+@@ -1237,0 +1259 @@
 +        crate::dirty_sources::note("refresh-all", std::panic::Location::caller());
-@@ -2931,0 +2953,2 @@
+@@ -2931,0 +2954,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2932,0 +2956 @@
+@@ -2932,0 +2957 @@
 +        let caller = std::panic::Location::caller();
-@@ -2952,0 +2977,4 @@
+@@ -2952,0 +2978,4 @@
 +        crate::dirty_sources::note(
 +            if live_invalidators.is_empty() { "notify-deferred" } else { "notify" },
 +            caller,
@@ -5510,6 +5512,38 @@ index bce22b59f3751b7854f5127cf99737b55b89a186..ebc33c4de05e23f3b65bab3cdf245e4b
 @@ -220,0 +221,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
+diff --git a/vendor/gpui/src/app/idle.rs b/vendor/gpui/src/app/idle.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..47b85d470245d4c36bf45fdce26fb3159c809ed1
+--- /dev/null
++++ b/vendor/gpui/src/app/idle.rs
+@@ -0,0 +1,26 @@
++//! KaminIDE patch: work run once the app has drawn no frame for a while.
++//!
++//! A host registers one callback ([`App::on_idle`]) — the binary's allocator
++//! returning freed memory to the system, as Blink's `PurgeMemory` on idle
++//! does for PartitionAlloc. The platform keeps the idle period without heap
++//! memory: the first frame after an idle period arms one timer, frames drawn
++//! while it waits only move its deadline, so the callback runs once, `delay`
++//! after the last frame, and an idle app has no timer. A platform without
++//! such a timer never calls the callback.
++
++use super::App;
++use std::time::Duration;
++
++impl App {
++    /// KaminIDE patch: run `callback` once no window has drawn a frame for
++    /// `delay`; again after each later period of frames. The first
++    /// registration holds.
++    pub fn on_idle(&mut self, delay: Duration, callback: fn()) {
++        self.platform.on_idle(delay, callback);
++    }
++
++    /// A window drew a frame: the idle period starts again.
++    pub(crate) fn frame_drawn(&self) {
++        self.platform.frame_drawn();
++    }
++}
 diff --git a/vendor/gpui/src/app/test_context.rs b/vendor/gpui/src/app/test_context.rs
 index e7a8c06fd5fbda341f1c91ae0c526ae85e53daec..d1883d27ad7110b19ff441946c5ceacf9f4d3245
 --- a/vendor/gpui/src/app/test_context.rs
@@ -11309,13 +11343,18 @@ index 0000000000000000000000000000000000000000..afbb9d8b0564f29410a266c1c7108dac
 +    }
 +}
 diff --git a/vendor/gpui/src/platform.rs b/vendor/gpui/src/platform.rs
-index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..4cba0be6f46c91ab9176c3db40d6b9f5cb6ee03c
+index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..94c97fa107ef2a421f03415587405673fe5f4280
 --- a/vendor/gpui/src/platform.rs
 +++ b/vendor/gpui/src/platform.rs
-@@ -327,0 +328,2 @@
+@@ -327,0 +328,7 @@
 +    /// Передать типизированные настройки измерений до запуска платформы.
 +    fn set_instrumentation(&self, _instrumentation: crate::Instrumentation) {}
-@@ -1144,0 +1147,8 @@
++    /// KaminIDE patch: run `callback` once no window has drawn a frame for
++    /// `delay` (`App::on_idle`); without heap memory. Default: never.
++    fn on_idle(&self, _delay: std::time::Duration, _callback: fn()) {}
++    /// KaminIDE patch: a window drew a frame (restarts the `on_idle` period).
++    fn frame_drawn(&self) {}
+@@ -1144,0 +1152,8 @@
 +    /// Установить единственный readback endpoint; неподдерживаемый backend вернёт ошибку.
 +    fn set_frame_capture(
 +        &self,
@@ -11324,7 +11363,7 @@ index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..4cba0be6f46c91ab9176c3db40d6b9f5
 +        anyhow::bail!("frame readback capture is unsupported on this platform")
 +    }
 +
-@@ -1272,0 +1283,28 @@
+@@ -1272,0 +1288,28 @@
 +
 +    /// KaminIDE patch: raw ID3D11Device окна (Windows), иначе None.
 +    fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
@@ -11353,13 +11392,39 @@ index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..4cba0be6f46c91ab9176c3db40d6b9f5
 +    /// KaminIDE patch: забыть чужую текстуру.
 +    fn unregister_external_texture(&self, _id: AtlasTextureId) {}
 +
-@@ -1344,0 +1383,5 @@
+@@ -1344,0 +1388,5 @@
 +    }
 +
 +    /// Rasterize an isolated transparent scene without presenting the window.
 +    fn rasterize_scene(&self, _scene: &Scene, _size: Size<DevicePixels>) -> Result<image::RgbaImage> {
 +        anyhow::bail!("isolated scene capture is unavailable on this platform")
-@@ -1468,0 +1512,7 @@
+@@ -1468,0 +1517,33 @@
++    /// KaminIDE patch: `layout_line` whose glyph runs are appended to `out`
++    /// (glyph indices offset by `index_base`, positions from the line start);
++    /// returns the line's width, ascent and descent.
++    fn layout_line_into(
++        &self,
++        text: &str,
++        font_size: Pixels,
++        runs: &[FontRun],
++        index_base: usize,
++        out: &mut Vec<ShapedRun>,
++    ) -> (Pixels, Pixels, Pixels) {
++        let layout = self.layout_line(text, font_size, runs);
++        out.extend(layout.runs.into_iter().map(|mut run| {
++            for glyph in &mut run.glyphs {
++                glyph.index += index_base;
++            }
++            run
++        }));
++        (layout.width, layout.ascent, layout.descent)
++    }
++    /// KaminIDE patch: whether a line shapes text in font `a` and text in
++    /// font `b` (with their sizes) apart, so that no kerning, contextual form
++    /// or ligature joins glyphs across a boundary between them.
++    fn shapes_apart(&self, _a: (FontId, Pixels), _b: (FontId, Pixels)) -> bool {
++        false
++    }
 +    /// KaminIDE patch: glyphs of this font are axis-aligned em-grid rectangles
 +    /// (the Ahem test font) and are rasterized bi-level at their exact
 +    /// sub-pixel position, so their edges snap to device pixels exactly like
@@ -11367,7 +11432,7 @@ index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..4cba0be6f46c91ab9176c3db40d6b9f5
 +    fn pixel_exact_glyphs(&self, _font_id: FontId) -> bool {
 +        false
 +    }
-@@ -1583,0 +1634 @@
+@@ -1583,0 +1665 @@
 +                font_size,
 diff --git a/vendor/gpui/src/prepaint_prof.rs b/vendor/gpui/src/prepaint_prof.rs
 new file mode 100644
@@ -19881,13 +19946,18 @@ index 0000000000000000000000000000000000000000..0f7110e1019bd308ec84e84e4d75d522
 +    }
 +}
 diff --git a/vendor/gpui/src/text_system.rs b/vendor/gpui/src/text_system.rs
-index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811d5dfa066
+index cf6bb10293699bb4b9a5c8149f996822444fd732..cd38f842bf10dd45aa9361da39b8c370f6a30927
 --- a/vendor/gpui/src/text_system.rs
 +++ b/vendor/gpui/src/text_system.rs
-@@ -5,0 +6,2 @@
+@@ -0,0 +1 @@
++mod composed;
+@@ -6 +7,4 @@
+-
 +mod measure;
 +mod shaping;
-@@ -431,0 +434,8 @@
++
++pub use composed::LinePiece;
+@@ -431,0 +436,8 @@
 +    /// Whether the font maps `ch` to a real glyph. DirectWrite reports a
 +    /// missing character as glyph 0 (.notdef) rather than `None`.
 +    pub fn has_glyph(&self, font_id: FontId, ch: char) -> bool {
@@ -19896,10 +19966,10 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +            .is_some_and(|g| g.0 != 0)
 +    }
 +
-@@ -455,0 +466,2 @@
+@@ -455,0 +468,2 @@
 +                    font_size,
 +                    break_ligatures: true,
-@@ -514,0 +527,18 @@
+@@ -514,0 +529,18 @@
 +    }
 +
 +    /// KaminIDE patch: the font's recommended line gap at the given size, for
@@ -19918,27 +19988,27 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +    /// `text-decoration-thickness: from-font`.
 +    pub fn underline_thickness(&self, font_id: FontId, font_size: Pixels) -> Pixels {
 +        self.read_metrics(font_id, |metrics| metrics.underline_thickness(font_size))
-@@ -573,0 +604,5 @@
+@@ -573,0 +606,5 @@
 +    /// KaminIDE patch: see `PlatformTextSystem::pixel_exact_glyphs`.
 +    pub fn pixel_exact_glyphs(&self, font_id: FontId) -> bool {
 +        self.platform_text_system.pixel_exact_glyphs(font_id)
 +    }
 +
-@@ -601 +636 @@
+@@ -601 +638 @@
 -#[derive(Deref)]
 +#[derive(Clone, Deref)]
-@@ -603 +638,2 @@
+@@ -603 +640,2 @@
 -    line_layout_cache: LineLayoutCache,
 +    line_layout_cache: Arc<LineLayoutCache>,
 +    break_ligatures: bool,
-@@ -612 +648 @@
+@@ -612 +650 @@
 -            line_layout_cache: LineLayoutCache::new(
 +            line_layout_cache: Arc::new(LineLayoutCache::new(
-@@ -615 +651,2 @@
+@@ -615 +653,2 @@
 -            ),
 +            )),
 +            break_ligatures: true,
-@@ -643,0 +681,13 @@
+@@ -643,0 +683,13 @@
 +    ) -> ShapedLine {
 +        self.shape_line_spaced(text, font_size, runs, force_width, px(0.))
 +    }
@@ -19952,15 +20022,15 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +        runs: &[TextRun],
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
-@@ -664,0 +715,4 @@
+@@ -664,0 +717,4 @@
 +                background_pad: run.background_pad,
 +                background_radius: run.background_radius,
 +                background_line_gap: run.background_line_gap,
 +                background_border: run.background_border,
-@@ -670 +724 @@
+@@ -670 +726 @@
 -        let layout = self.layout_line(&text, font_size, runs, force_width);
 +        let layout = self.layout_line_spaced(&text, font_size, runs, force_width, letter_spacing);
-@@ -674,0 +729,117 @@
+@@ -674,0 +731,117 @@
 +            decoration_runs,
 +        }
 +    }
@@ -20078,12 +20148,12 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +                len: layout.len,
 +            }),
 +            text: line.text,
-@@ -712,0 +884,4 @@
+@@ -712,0 +886,4 @@
 +                background_pad: run.background_pad,
 +                background_radius: run.background_radius,
 +                background_line_gap: run.background_line_gap,
 +                background_border: run.background_border,
-@@ -757,0 +933,16 @@
+@@ -757,0 +935,16 @@
 +        self.shape_text_spaced(text, font_size, runs, wrap_width, line_clamp, px(0.))
 +    }
 +
@@ -20100,26 +20170,26 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +        line_clamp: Option<usize>,
 +        letter_spacing: Pixels,
 +    ) -> Result<SmallVec<[WrappedLine; 1]>> {
-@@ -790,0 +982,4 @@
+@@ -790,0 +984,4 @@
 +                        background_pad: run.background_pad,
 +                        background_radius: run.background_radius,
 +                        background_line_gap: run.background_line_gap,
 +                        background_border: run.background_border,
-@@ -797,0 +993 @@
+@@ -797,0 +995 @@
 +                let run_size = run.font_size.unwrap_or(font_size);
-@@ -800 +996,2 @@
+@@ -800 +998,2 @@
 -                    && !decoration_changed
 +                    && font_run.font_size == run_size
 +                    && (!self.break_ligatures || !decoration_changed)
-@@ -806,0 +1004,2 @@
+@@ -806,0 +1006,2 @@
 +                        font_size: run_size,
 +                        break_ligatures: self.break_ligatures,
-@@ -818 +1017 @@
+@@ -818 +1019 @@
 -            let layout = self.line_layout_cache.layout_wrapped_line(
 +            let layout = self.line_layout_cache.layout_wrapped_line_spaced(
-@@ -823,0 +1023 @@
+@@ -823,0 +1025 @@
 +                letter_spacing,
-@@ -893 +1093,12 @@
+@@ -893 +1095,12 @@
 -        let mut last_run = None::<&TextRun>;
 +        self.layout_line_spaced(text, font_size, runs, force_width, px(0.))
 +    }
@@ -20133,7 +20203,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
 +    ) -> Arc<LineLayout> {
-@@ -897,25 +1108,35 @@
+@@ -897,30 +1110,14 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -20159,6 +20229,11 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 -                    len: run.len,
 -                    font_id,
 -                });
+-            }
+-        }
+-
+-        let layout = self.line_layout_cache.layout_line(
+-            &SharedString::new(text),
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
 +
 +        // KaminIDE patch: неразрывный дефис (U+2011) без своего глифа в шрифте
@@ -20170,48 +20245,17 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +        // (`line-break-anywhere-overrides-uax-behavior-013/014`). Длина в UTF-8
 +        // у обоих знаков одна, смещения прогонов не меняются; перенос
 +        // считается раньше и по исходному тексту.
-+        let substituted;
-+        let text = if text.contains('\u{2011}') {
-+            let mut out = String::with_capacity(text.len());
-+            let mut runs_iter = font_runs.iter();
-+            let mut run = runs_iter.next();
-+            let mut run_end = run.map_or(usize::MAX, |r| r.len);
-+            for (i, ch) in text.char_indices() {
-+                while i >= run_end {
-+                    run = runs_iter.next();
-+                    let start = run_end;
-+                    run_end = run.map_or(usize::MAX, |r| start + r.len);
-+                }
-+                // Отсутствующий знак DirectWrite отдаёт глифом 0 (.notdef), а
-+                // не `None`.
-+                let has = |font_id: FontId, c: char| {
-+                    self.platform_text_system
-+                        .glyph_for_char(font_id, c)
-+                        .is_some_and(|g| g.0 != 0)
-+                };
-+                let swap = ch == '\u{2011}'
-+                    && run.is_some_and(|r| {
-+                        !has(r.font_id, '\u{2011}') && has(r.font_id, '\u{2010}')
-+                    });
-+                out.push(if swap { '\u{2010}' } else { ch });
-@@ -923,3 +1144,6 @@
--        }
--
--        let layout = self.line_layout_cache.layout_line(
-+            substituted = out;
-+            substituted.as_str()
-+        } else {
-+            text
-+        };
++        let text = self.no_break_hyphens(text, &font_runs);
 +        let layout = self.line_layout_cache.layout_line_spaced(
-@@ -929,0 +1154 @@
++            &SharedString::new(&*text),
+@@ -929,0 +1127 @@
 +            letter_spacing,
-@@ -947,0 +1173,2 @@
+@@ -947,0 +1146,2 @@
 +                    font_size,
 +                    break_ligatures: true,
-@@ -975 +1201,0 @@
+@@ -975 +1174,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -979,27 +1205 @@
+@@ -979,27 +1178 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -20240,9 +20284,9 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1037 +1236,0 @@
+@@ -1037 +1209,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -1041,27 +1240 @@
+@@ -1041,27 +1213 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -20271,7 +20315,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1236,0 +1410,20 @@
+@@ -1236,0 +1383,20 @@
 +    /// KaminIDE patch: свой кегль прогона (`font-size` у `<span>` в строке).
 +    ///
 +    /// `None` — кегль всего блока. Без этого поля кусок другого размера
@@ -20292,7 +20336,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +    /// (the HTML engine's inline box content area). `false` (IDE text) keeps
 +    /// the band at ascent + descent.
 +    pub background_line_gap: bool,
-@@ -1308,0 +1502,49 @@
+@@ -1308,0 +1475,49 @@
 +
 +    /// KaminIDE patch: ширина начертания (`font-stretch`).
 +    ///
@@ -20342,8 +20386,237 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..f301dd5b0d0a09b0bb33af01703f7811
 +            _ => FontStretch::UltraExpanded,
 +        }
 +    }
-@@ -1323,0 +1566 @@
+@@ -1323,0 +1539 @@
 +        stretch: crate::FontStretch::default(),
+diff --git a/vendor/gpui/src/text_system/composed.rs b/vendor/gpui/src/text_system/composed.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a0a0eabb7fd8055cfd94f99e122f029a98cec70c
+--- /dev/null
++++ b/vendor/gpui/src/text_system/composed.rs
+@@ -0,0 +1,223 @@
++//! KaminIDE patch: a line laid out from pieces shaped apart. A caller that
++//! cuts a long line where the shaper breaks it anyway (no kerning, ligature or
++//! contextual form across the cut) composes the line from its pieces. The
++//! glyphs of each piece keep their positions from the start of the piece, so
++//! a piece moves into another line exactly, without rounding: such a line is
++//! not a shaped line and is cached apart from shaped lines, under the key of
++//! its whole text. Its pieces are kept by the caller's keys, so an edit of the
++//! text reshapes only the pieces it touches and copies the glyphs of the others.
++//!
++//! Pieces live in one store per process (font ids belong to the process text
++//! system) and age with the window frames like cached lines: a piece no frame
++//! used for two frames is dropped, and the store frees its tables once empty.
++
++use super::{LineLayout, TextRun, WindowTextSystem};
++use crate::{Pixels, SharedString, px};
++use collections::FxHashMap;
++use parking_lot::Mutex;
++use std::{ops::Range, sync::Arc};
++
++/// A piece of a composed line: its glyph runs in the line `layout`.
++#[derive(Clone)]
++pub struct LinePiece {
++    /// The composed line the piece was laid out in.
++    pub layout: Arc<LineLayout>,
++    /// The glyph runs of the piece in `layout`.
++    pub runs: Range<u32>,
++    /// Byte offset of the piece in the text of `layout`.
++    pub base: u32,
++    /// Advance of the piece (letter-spacing included).
++    pub width: Pixels,
++    /// Ascent of the piece's runs.
++    pub ascent: Pixels,
++    /// Descent of the piece's runs.
++    pub descent: Pixels,
++}
++
++/// Wrap width under which composed lines are cached: no shaped line uses it.
++pub(crate) const COMPOSED: Option<Pixels> = Some(px(-1.));
++
++#[derive(Default)]
++struct Frame {
++    pieces: FxHashMap<u64, LinePiece>,
++    lists: FxHashMap<u64, Arc<[u64]>>,
++}
++
++impl Frame {
++    fn is_empty(&self) -> bool {
++        self.pieces.is_empty() && self.lists.is_empty()
++    }
++}
++
++#[derive(Default)]
++struct Frames {
++    current: Frame,
++    previous: Frame,
++}
++
++/// Pieces of composed lines used in the current and the previous frame.
++pub(crate) struct PieceCache(Mutex<Option<Frames>>);
++
++/// The pieces of every window of the process.
++pub(crate) static PIECES: PieceCache = PieceCache(parking_lot::const_mutex(None));
++
++impl PieceCache {
++    fn get(&self, key: u64) -> Option<LinePiece> {
++        let mut f = self.0.lock();
++        let f = f.as_mut()?;
++        if let Some(piece) = f.current.pieces.get(&key) {
++            return Some(piece.clone());
++        }
++        let piece = f.previous.pieces.remove(&key)?;
++        f.current.pieces.insert(key, piece.clone());
++        Some(piece)
++    }
++
++    fn put(&self, key: u64, piece: LinePiece) {
++        let mut f = self.0.lock();
++        f.get_or_insert_default().current.pieces.insert(key, piece);
++    }
++
++    /// Keep the list `list` and its pieces for this frame; `false` when it is gone.
++    fn keep(&self, list: u64) -> bool {
++        let mut f = self.0.lock();
++        let Some(f) = f.as_mut() else {
++            return false;
++        };
++        let keys = match f.current.lists.get(&list) {
++            Some(keys) => keys.clone(),
++            None => match f.previous.lists.remove(&list) {
++                Some(keys) => {
++                    f.current.lists.insert(list, keys.clone());
++                    keys
++                }
++                None => return false,
++            },
++        };
++        for key in keys.iter() {
++            if let Some(piece) = f.previous.pieces.remove(key) {
++                f.current.pieces.insert(*key, piece);
++            }
++        }
++        true
++    }
++
++    fn put_list(&self, list: u64, keys: &[u64]) {
++        let mut f = self.0.lock();
++        let f = f.get_or_insert_default();
++        if f.current.lists.get(&list).is_some_and(|k| **k == *keys) {
++            return;
++        }
++        if let Some(old) = f.previous.lists.remove(&list)
++            && *old == *keys
++        {
++            f.current.lists.insert(list, old);
++            return;
++        }
++        f.current.lists.insert(list, keys.into());
++    }
++
++    /// End of a window frame: pieces unused for two frames go.
++    pub(crate) fn finish_frame(&self) {
++        let mut guard = self.0.lock();
++        let Some(f) = guard.as_mut() else {
++            return;
++        };
++        std::mem::swap(&mut f.previous, &mut f.current);
++        f.current.pieces.clear();
++        f.current.lists.clear();
++        if f.previous.is_empty() {
++            *guard = None;
++        }
++    }
++
++    /// Fonts changed: no piece is valid any more.
++    pub(crate) fn clear(&self) {
++        *self.0.lock() = None;
++    }
++}
++
++impl WindowTextSystem {
++    /// A line composed by `compose` from pieces shaped apart, cached under the
++    /// key of the whole text apart from shaped lines. `compose` gives the
++    /// glyphs of each piece positions from the start of the piece (tracking
++    /// applied) and must not lay out lines through this text system.
++    pub fn layout_line_composed(
++        &self,
++        text: &str,
++        font_size: Pixels,
++        runs: &[TextRun],
++        letter_spacing: Pixels,
++        compose: impl FnOnce() -> LineLayout,
++    ) -> Arc<LineLayout> {
++        let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
++        font_runs.clear();
++        self.fill_font_runs(runs, font_size, &mut font_runs);
++        let text = self.no_break_hyphens(text, &font_runs);
++        let layout = self.line_layout_cache.layout_line_with(
++            &SharedString::new(&*text),
++            font_size,
++            &font_runs,
++            COMPOSED,
++            None,
++            letter_spacing,
++            |_, _| compose(),
++        );
++        self.font_runs_pool.lock().push(font_runs);
++        layout
++    }
++
++    /// The piece stored under `key`, kept for this frame.
++    pub fn line_piece(&self, key: u64) -> Option<LinePiece> {
++        PIECES.get(key)
++    }
++
++    /// Store a piece of a composed line under `key`.
++    pub fn put_line_piece(&self, key: u64, piece: LinePiece) {
++        PIECES.put(key, piece);
++    }
++
++    /// Store the keys of pieces a caller keeps together under `list`.
++    pub fn put_line_piece_list(&self, list: u64, keys: &[u64]) {
++        PIECES.put_list(list, keys);
++    }
++
++    /// Keep the pieces listed under `list` for this frame; `false` when the
++    /// list is gone.
++    pub fn keep_line_pieces(&self, list: u64) -> bool {
++        PIECES.keep(list)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn piece(width: f32) -> LinePiece {
++        LinePiece {
++            layout: Arc::default(),
++            runs: 0..0,
++            base: 0,
++            width: px(width),
++            ascent: px(0.),
++            descent: px(0.),
++        }
++    }
++
++    #[test]
++    fn pieces_age_with_frames_and_lists_keep_them() {
++        let cache = PieceCache(parking_lot::const_mutex(None));
++        cache.put(1, piece(1.));
++        cache.put(2, piece(2.));
++        cache.put_list(9, &[1]);
++        cache.finish_frame();
++        assert!(cache.keep(9), "the list survives one frame");
++        cache.finish_frame();
++        assert_eq!(cache.get(1).map(|p| p.width), Some(px(1.)), "kept by its list");
++        assert!(cache.get(2).is_none(), "unused for two frames");
++        cache.finish_frame();
++        cache.finish_frame();
++        assert!(cache.0.lock().is_none(), "an empty store frees its tables");
++        assert!(!cache.keep(9));
++    }
++}
 diff --git a/vendor/gpui/src/text_system/font_fallbacks.rs b/vendor/gpui/src/text_system/font_fallbacks.rs
 index 63dc89ba41ea9cf44bdffb7d81d3015d696f4413..5462b9187e77fa30da6629fa4f46aacec8bba755
 --- a/vendor/gpui/src/text_system/font_fallbacks.rs
@@ -20976,7 +21249,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                background_line_gap: false,
 +                background_border: None,
 diff --git a/vendor/gpui/src/text_system/line_layout.rs b/vendor/gpui/src/text_system/line_layout.rs
-index f0bf1211114e4522a5310067e2549ba2727a4c1d..154c4b6ba38ffd19bd6d50a43da549d4953f1ed6
+index f0bf1211114e4522a5310067e2549ba2727a4c1d..6af78c441ca07c8eb2b2d006a81e72a5f82fb210
 --- a/vendor/gpui/src/text_system/line_layout.rs
 +++ b/vendor/gpui/src/text_system/line_layout.rs
 @@ -40,0 +41,5 @@
@@ -21180,7 +21453,9 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..154c4b6ba38ffd19bd6d50a43da549d4
 +                }
 +                current_frame.used_wrapped_lines_by_hash.push(key.clone());
 +            }
-@@ -602 +719,7 @@
+@@ -590,0 +708 @@
++        super::composed::PIECES.finish_frame();
+@@ -602 +720,7 @@
 -    pub fn layout_wrapped_line<Text>(
 +    /// KaminIDE patch: раскладка строки с переносом и трекингом (вместо
 +    /// upstream `layout_wrapped_line`). Трекинг применяется
@@ -21189,28 +21464,28 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..154c4b6ba38ffd19bd6d50a43da549d4
 +    /// строка порвалась бы не там. Все наши цели трекинга (заголовки секций,
 +    /// подписи табов, чипы) — однострочные `nowrap` (план 99).
 +    pub fn layout_wrapped_line_spaced<Text>(
-@@ -608,0 +732 @@
+@@ -608,0 +733 @@
 +        letter_spacing: Pixels,
-@@ -613,0 +738,5 @@
+@@ -613,0 +739,5 @@
 +        let letter_spacing = if wrap_width.is_some() {
 +            px(0.)
 +        } else {
 +            letter_spacing
 +        };
-@@ -620,0 +750 @@
+@@ -620,0 +751 @@
 +            letter_spacing,
-@@ -625 +755,5 @@
+@@ -625 +756,5 @@
 -            return layout.clone();
 +            let layout = layout.clone();
 +            if layouts_released() {
 +                RwLockUpgradableReadGuard::upgrade(current_frame).wrapped_lines.remove(key);
 +            }
 +            return layout;
-@@ -629,0 +764,3 @@
+@@ -629,0 +765,3 @@
 +            if layouts_released() {
 +                return layout;
 +            }
-@@ -639 +776,7 @@
+@@ -639 +777,7 @@
 -            let unwrapped_layout = self.layout_line::<&SharedString>(&text, font_size, runs, None);
 +            let unwrapped_layout = self.layout_line_spaced::<&SharedString>(
 +                &text,
@@ -21219,18 +21494,13 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..154c4b6ba38ffd19bd6d50a43da549d4
 +                None,
 +                letter_spacing,
 +            );
-@@ -649,0 +793,3 @@
+@@ -649,0 +794,3 @@
 +            if layouts_released() {
 +                return layout;
 +            }
-@@ -655,0 +802 @@
+@@ -655,0 +803 @@
 +                letter_spacing,
-@@ -673,0 +821,18 @@
-+    ) -> Arc<LineLayout>
-+    where
-+        Text: AsRef<str>,
-+        SharedString: From<Text>,
-+    {
+@@ -678,0 +827,63 @@
 +        self.layout_line_spaced(text, font_size, runs, force_width, px(0.))
 +    }
 +
@@ -21244,9 +21514,62 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..154c4b6ba38ffd19bd6d50a43da549d4
 +        runs: &[FontRun],
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
-@@ -685,0 +851 @@
++    ) -> Arc<LineLayout>
++    where
++        Text: AsRef<str>,
++        SharedString: From<Text>,
++    {
++        self.layout_line_with(
++            text,
++            font_size,
++            runs,
++            None,
++            force_width,
 +            letter_spacing,
-@@ -690 +856,7 @@
++            |text, platform| {
++                let mut layout = platform.layout_line(text, font_size, runs);
++                if let Some(force_width) = force_width {
++                    apply_force_width_to_layout(&mut layout, force_width);
++                }
++
++                // KaminIDE patch: трекинг. CSS добавляет `letter-spacing` ПОСЛЕ
++                // каждого символа, включая последний, поэтому ширина растёт на
++                // `n × spacing`, а i-й глиф сдвигается на `i × spacing`. Правим
++                // ровно там же, где сдвиг под `force_width`, — тогда хит-тест
++                // (`index_for_x`) считает по тем же координатам и отдельной
++                // правки не требует (план 99)
++                if letter_spacing != px(0.) {
++                    layout.width += track_glyphs(&mut layout.runs, text, 0, letter_spacing);
++                }
++                layout
++            },
++        )
++    }
++
++    /// KaminIDE patch: `layout_line_spaced` whose miss is laid out by `shape`
++    /// (given the text and the platform shaper) and cached under the same key;
++    /// `wrap_width` sets lines apart that are not shaped lines (`composed`).
++    #[allow(clippy::too_many_arguments)]
++    pub(crate) fn layout_line_with<Text>(
++        &self,
++        text: Text,
++        font_size: Pixels,
++        runs: &[FontRun],
++        wrap_width: Option<Pixels>,
++        force_width: Option<Pixels>,
++        letter_spacing: Pixels,
++        shape: impl FnOnce(&SharedString, &dyn PlatformTextSystem) -> LineLayout,
++    ) -> Arc<LineLayout>
++    where
++        Text: AsRef<str>,
++        SharedString: From<Text>,
++    {
+@@ -684 +895 @@
+-            wrap_width: None,
++            wrap_width,
+@@ -685,0 +897 @@
++            letter_spacing,
+@@ -690 +902,7 @@
 -            return layout.clone();
 +            // KaminIDE patch (#76): счётчики кэша шейпинга.
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -21255,70 +21578,45 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..154c4b6ba38ffd19bd6d50a43da549d4
 +                RwLockUpgradableReadGuard::upgrade(current_frame).lines.remove(key);
 +            }
 +            return layout;
-@@ -694,0 +867,4 @@
+@@ -694,0 +913,4 @@
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +            if layouts_released() {
 +                return layout;
 +            }
-@@ -698,0 +875,3 @@
+@@ -698,0 +921,3 @@
 +            // KaminIDE patch (#76): промах кэша = реальный шейпинг.
 +            let shape_started = std::time::Instant::now();
 +            crate::frame_perf::SHAPED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -702,0 +882,4 @@
+@@ -700,8 +925,9 @@
+-            let mut layout = self
+-                .platform_text_system
+-                .layout_line(&text, font_size, runs);
+-
+-            if let Some(force_width) = force_width {
+-                apply_force_width_to_layout(&mut layout, force_width);
+-            }
+-
++            let layout = shape(&text, &*self.platform_text_system);
 +            crate::frame_perf::SHAPE_US.fetch_add(
 +                shape_started.elapsed().as_micros() as u32,
 +                std::sync::atomic::Ordering::Relaxed,
 +            );
-@@ -707,0 +891,42 @@
-+            // KaminIDE patch: трекинг. CSS добавляет `letter-spacing` ПОСЛЕ
-+            // каждого символа, включая последний, поэтому ширина растёт на
-+            // `n × spacing`, а i-й глиф сдвигается на `i × spacing`. Правим
-+            // ровно там же, где сдвиг под `force_width`, — тогда хит-тест
-+            // (`index_for_x`) считает по тем же координатам и отдельной
-+            // правки не требует (план 99)
-+            if letter_spacing != px(0.) {
-+                // KaminIDE patch: cursive scripts (Arabic, Syriac, N'Ko,
-+                // Mongolian, Hanifi Rohingya) take no tracking — it would
-+                // break their joining (css-text-3 §8.2.1 cursive tracking,
-+                // `letter-spacing-cursive-001/002`); other characters, even
-+                // spaces between such words, keep it.
-+                let mut i = 0usize;
-+                let mut shift = px(0.);
-+                for run in layout.runs.iter_mut() {
-+                    for glyph in run.glyphs.iter_mut() {
-+                        glyph.position.x += shift;
-+                        let cursive = text
-+                            .get(glyph.index..)
-+                            .and_then(|t| t.chars().next())
-+                            .is_some_and(cursive_script);
-+                        if !cursive {
-+                            shift += letter_spacing;
-+                        }
-+                        i += 1;
-+                    }
-+                }
-+                layout.width += shift;
-+                // KaminIDE patch: знак без глифа. Набор выбрасывает
-+                // «default ignorable» (U+FEFF и родню) целиком, и трекинг на
-+                // нём не даёт ширины ни одному глифу. А для CSS такой знак —
-+                // носитель ПРОДВИЖЕНИЯ: строчная коробка держит им место под
-+                // своё поле и отступ (§8.4). Ширину набора считаем по знакам,
-+                // раз глифов не осталось вовсе.
-+                if i == 0 {
-+                    layout.width += letter_spacing * (text.chars().count() as f32);
-+                }
-+            }
 +
 +            if layouts_released() {
 +                return Arc::new(layout);
 +            }
-@@ -713,0 +939 @@
+@@ -712 +938 @@
+-                wrap_width: None,
++                wrap_width,
+@@ -713,0 +940 @@
 +                letter_spacing,
-@@ -927,0 +1154,3 @@
+@@ -887,0 +1115 @@
++        super::composed::PIECES.clear();
+@@ -927,0 +1156,3 @@
 +    /// Break ligatures at style boundaries (the normal GPUI text policy).
 +    /// Included in layout cache keys so browser shaping cannot reuse IDE layouts.
 +    pub break_ligatures: bool,
-@@ -929,0 +1159,7 @@
+@@ -929,0 +1161,7 @@
 +    /// KaminIDE patch: свой кегль прогона.
 +    ///
 +    /// Кегль был один на всю строку, и кусок другого размера внутри абзаца
@@ -21326,16 +21624,16 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..154c4b6ba38ffd19bd6d50a43da549d4
 +    /// запасную ветку из отдельных слов, где строки наезжали друг на друга.
 +    /// Ноль означает «кегль строки».
 +    pub font_size: Pixels,
-@@ -942,0 +1179,3 @@
+@@ -942,0 +1181,3 @@
 +    /// KaminIDE patch: трекинг (`letter-spacing`). В ключе ОБЯЗАТЕЛЕН — без
 +    /// него строка с другим трекингом придёт из кэша со старыми позициями.
 +    letter_spacing: Pixels,
-@@ -951,0 +1191,2 @@
+@@ -951,0 +1193,2 @@
 +    /// KaminIDE patch: см. `CacheKey::letter_spacing`.
 +    letter_spacing: Pixels,
-@@ -1043,0 +1285 @@
+@@ -1043,0 +1287 @@
 +            letter_spacing: self.letter_spacing,
-@@ -1070,0 +1313,11 @@
+@@ -1070,0 +1315,53 @@
 +
 +/// KaminIDE patch: characters of cursive (joining) scripts, which take no
 +/// letter-spacing (css-text-3 §8.2.1).
@@ -21345,9 +21643,51 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..154c4b6ba38ffd19bd6d50a43da549d4
 +        | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x10D00..=0x10D3F)
 +}
 +
++/// KaminIDE patch: letter-spacing of a shaped line. CSS adds it AFTER each
++/// character, the last one included, so glyph `i` moves by `i × spacing` and
++/// the line grows by `n × spacing`; the shift is applied where `force_width`
++/// shifts glyphs, so hit testing (`index_for_x`) reads the same coordinates.
++/// `runs` are the glyphs of `text`, their indices offset by `index_base`.
++/// Returns the growth of the line's width.
++pub(crate) fn track_glyphs(
++    runs: &mut [ShapedRun],
++    text: &str,
++    index_base: usize,
++    letter_spacing: Pixels,
++) -> Pixels {
++    // KaminIDE patch: cursive scripts (Arabic, Syriac, N'Ko, Mongolian,
++    // Hanifi Rohingya) take no tracking — it would break their joining
++    // (css-text-3 §8.2.1 cursive tracking, `letter-spacing-cursive-001/002`);
++    // other characters, even spaces between such words, keep it.
++    let mut i = 0usize;
++    let mut shift = px(0.);
++    for run in runs.iter_mut() {
++        for glyph in run.glyphs.iter_mut() {
++            glyph.position.x += shift;
++            let cursive = text
++                .get(glyph.index - index_base..)
++                .and_then(|t| t.chars().next())
++                .is_some_and(cursive_script);
++            if !cursive {
++                shift += letter_spacing;
++            }
++            i += 1;
++        }
++    }
++    // KaminIDE patch: знак без глифа. Набор выбрасывает «default ignorable»
++    // (U+FEFF и родню) целиком, и трекинг на нём не даёт ширины ни одному
++    // глифу. А для CSS такой знак — носитель ПРОДВИЖЕНИЯ: строчная коробка
++    // держит им место под своё поле и отступ (§8.4). Ширину набора считаем по
++    // знакам, раз глифов не осталось вовсе.
++    if i == 0 {
++        shift += letter_spacing * (text.chars().count() as f32);
++    }
++    shift
++}
++
 +#[cfg(test)]
 +mod reuse_tests;
-@@ -1094,0 +1348 @@
+@@ -1094,0 +1392 @@
 +                font_size: px(16.),
 diff --git a/vendor/gpui/src/text_system/line_layout/reuse_tests.rs b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
 new file mode 100644
@@ -21785,14 +22125,18 @@ index 0000000000000000000000000000000000000000..7424b609883fa81a6e6c218496f9153c
 +}
 diff --git a/vendor/gpui/src/text_system/shaping.rs b/vendor/gpui/src/text_system/shaping.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c6dc6ab34b3e34d2a9673c58d063371defd290f2
+index 0000000000000000000000000000000000000000..3e03218444cdd66fc87c1b4311ab49c7dca06ac5
 --- /dev/null
 +++ b/vendor/gpui/src/text_system/shaping.rs
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,175 @@
 +//! Caller-local shaping policy; browser text retains shaping across inline boxes.
++//! KaminIDE patch: uncached shaping for callers that keep their own shaped
++//! pieces (a long paragraph shaped piece by piece, `shape_into`).
 +
-+use super::{FontRun, TextRun, WindowTextSystem};
-+use crate::Pixels;
++use super::{FontId, FontRun, ShapedRun, TextRun, WindowTextSystem, line_layout::track_glyphs};
++use super::Font;
++use crate::{Pixels, px};
++use std::borrow::Cow;
 +
 +impl WindowTextSystem {
 +    /// Return a caller-local handle with the chosen style-boundary shaping policy.
@@ -21816,13 +22160,7 @@ index 0000000000000000000000000000000000000000..c6dc6ab34b3e34d2a9673c58d063371d
 +        for (index, run) in runs.iter().enumerate() {
 +            let font_id = self.resolve_font(&run.font);
 +            let run_size = run.font_size.unwrap_or(font_size);
-+            let same_style = index > 0 && {
-+                let previous = &runs[index - 1];
-+                previous.color == run.color
-+                    && previous.underline == run.underline
-+                    && previous.strikethrough == run.strikethrough
-+                    && previous.background_color == run.background_color
-+            };
++            let same_style = index > 0 && same_style(&runs[index - 1], run);
 +            if let Some(font_run) = font_runs.last_mut()
 +                && font_run.font_id == font_id
 +                && font_run.font_size == run_size
@@ -21839,6 +22177,132 @@ index 0000000000000000000000000000000000000000..c6dc6ab34b3e34d2a9673c58d063371d
 +            }
 +        }
 +    }
++
++    /// `fill_font_runs` for the text that starts `skip` bytes into the first
++    /// of `runs` and is `len` bytes long.
++    fn fill_font_runs_clipped(
++        &self,
++        runs: &[TextRun],
++        skip: usize,
++        len: usize,
++        font_size: Pixels,
++        font_runs: &mut Vec<FontRun>,
++    ) {
++        let mut left = len;
++        let mut previous: Option<&TextRun> = None;
++        for (index, run) in runs.iter().enumerate() {
++            let run_len = run
++                .len
++                .saturating_sub(if index == 0 { skip } else { 0 })
++                .min(left);
++            // Like a caller's own slice of the runs: empty pieces are left out.
++            if run_len == 0 {
++                continue;
++            }
++            left -= run_len;
++            let font_id = self.resolve_font(&run.font);
++            let run_size = run.font_size.unwrap_or(font_size);
++            let same_style = previous.is_some_and(|previous| same_style(previous, run));
++            previous = Some(run);
++            if let Some(font_run) = font_runs.last_mut()
++                && font_run.font_id == font_id
++                && font_run.font_size == run_size
++                && (!self.break_ligatures || same_style)
++            {
++                font_run.len += run_len;
++            } else {
++                font_runs.push(FontRun {
++                    len: run_len,
++                    font_id,
++                    font_size: run_size,
++                    break_ligatures: self.break_ligatures,
++                });
++            }
++        }
++    }
++
++    /// The text a line shapes: a non-breaking hyphen (U+2011) without a glyph
++    /// in its run's font takes that font's hyphen U+2010 (see
++    /// `layout_line_spaced`); both are three UTF-8 bytes, so run lengths hold.
++    pub(super) fn no_break_hyphens<'t>(&self, text: &'t str, font_runs: &[FontRun]) -> Cow<'t, str> {
++        if !text.contains('\u{2011}') {
++            return Cow::Borrowed(text);
++        }
++        let mut out = String::with_capacity(text.len());
++        let mut runs_iter = font_runs.iter();
++        let mut run = runs_iter.next();
++        let mut run_end = run.map_or(usize::MAX, |r| r.len);
++        for (i, ch) in text.char_indices() {
++            while i >= run_end {
++                run = runs_iter.next();
++                let start = run_end;
++                run_end = run.map_or(usize::MAX, |r| start + r.len);
++            }
++            // Отсутствующий знак DirectWrite отдаёт глифом 0 (.notdef), а не `None`.
++            let has = |font_id: FontId, c: char| {
++                self.platform_text_system
++                    .glyph_for_char(font_id, c)
++                    .is_some_and(|g| g.0 != 0)
++            };
++            let swap = ch == '\u{2011}'
++                && run.is_some_and(|r| !has(r.font_id, '\u{2011}') && has(r.font_id, '\u{2010}'));
++            out.push(if swap { '\u{2010}' } else { ch });
++        }
++        Cow::Owned(out)
++    }
++
++    /// `layout_line_spaced` without the line cache, for a caller that keeps
++    /// the shaped text itself: `text` is styled by `runs` with the first
++    /// `skip` bytes of the first run dropped. Its glyph runs are appended to
++    /// `out`, glyph indices offset by `index_base` and positions from the
++    /// start of `text`. `font_runs` is the caller's scratch for the font runs
++    /// (a line being composed holds the pooled one). Returns the width
++    /// (letter-spacing included), ascent and descent.
++    #[allow(clippy::too_many_arguments)]
++    pub fn shape_into(
++        &self,
++        text: &str,
++        font_size: Pixels,
++        runs: &[TextRun],
++        skip: usize,
++        letter_spacing: Pixels,
++        index_base: usize,
++        out: &mut Vec<ShapedRun>,
++        font_runs: &mut Vec<FontRun>,
++    ) -> (Pixels, Pixels, Pixels) {
++        font_runs.clear();
++        self.fill_font_runs_clipped(runs, skip, text.len(), font_size, font_runs);
++        let shaped = self.no_break_hyphens(text, font_runs);
++        let first = out.len();
++        let (mut width, ascent, descent) = self.platform_text_system.layout_line_into(
++            &shaped,
++            font_size,
++            font_runs,
++            index_base,
++            out,
++        );
++        if letter_spacing != px(0.) {
++            width += track_glyphs(&mut out[first..], &shaped, index_base, letter_spacing);
++        }
++        (width, ascent, descent)
++    }
++
++    /// Whether a line shapes text in `a` (at size `a_size`) and text in `b`
++    /// apart: no kerning, contextual form or ligature joins glyphs across a
++    /// boundary between them.
++    pub fn shapes_apart(&self, a: &Font, a_size: Pixels, b: &Font, b_size: Pixels) -> bool {
++        let (a, b) = (self.resolve_font(a), self.resolve_font(b));
++        self.platform_text_system
++            .shapes_apart((a, a_size), (b, b_size))
++    }
++}
++
++/// Neighbouring runs drawn alike (a ligature across them is kept when breaking is on).
++fn same_style(previous: &TextRun, run: &TextRun) -> bool {
++    previous.color == run.color
++        && previous.underline == run.underline
++        && previous.strikethrough == run.strikethrough
++        && previous.background_color == run.background_color
 +}
 diff --git a/vendor/gpui/src/view.rs b/vendor/gpui/src/view.rs
 index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970cbca3154
@@ -21849,7 +22313,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdbd005407d
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2ab2d1c5063c4939d6c7550cd16432e63762e4ca
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -22006,7 +22470,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +                                let t0 = std::time::Instant::now();
 @@ -1843,0 +1959 @@
 +                                let t1 = std::time::Instant::now();
-@@ -1844,0 +1961,8 @@
+@@ -1844,0 +1961,10 @@
 +                                {
 +                                    use crate::frame_perf::*;
 +                                    use std::sync::atomic::Ordering::Relaxed;
@@ -22014,74 +22478,76 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +                                    PRESENT_US.fetch_add(t1.elapsed().as_micros() as u32, Relaxed);
 +                                    FRAMES.fetch_add(1, Relaxed);
 +                                }
++                                // KaminIDE patch: the app is not idle (`App::on_idle`).
++                                cx.frame_drawn();
 +                                // drop the arena elements after present to reduce latency
-@@ -1872,0 +1997,2 @@
+@@ -1872,0 +1999,2 @@
 +                log::debug!(target: "gpui::frame", "complete dirty={} next={}",
 +                    invalidator.is_dirty(), next_frame_callbacks.borrow().len());
-@@ -2079,0 +2206 @@
+@@ -2079,0 +2208 @@
 +            layout_owner: RetainedLayout::active(),
-@@ -2082 +2209,5 @@
+@@ -2082 +2211,5 @@
 -            text_style_stack: Vec::new(),
 +            text_style_stack: TextStyleScope::default(),
 +            render_contexts: Default::default(),
 +            paint_window: Rc::new(()),
 +            paint_pass: PaintPassId::default(),
 +            paint_scope: PaintScopeId::default(),
-@@ -2084,0 +2216,6 @@
+@@ -2084,0 +2218,6 @@
 +            exact_element_offset_depth: 0,
 +            raster_frame: RasterFrame::default(),
 +            transformation_stack: Vec::new(),
 +            mask_scale: None,
 +            mask_map: None,
 +            plane_contexts: Vec::new(),
-@@ -2085,0 +2223 @@
+@@ -2085,0 +2225 @@
 +            hit_scope: None,
-@@ -2127,0 +2266,2 @@
+@@ -2127,0 +2268,2 @@
 +            layout_retry: false,
 +            layout_inputs: None,
-@@ -2129,0 +2270,2 @@
+@@ -2129,0 +2272,2 @@
 +            // KaminIDE patch: см. `Window::focus_visible`
 +            focus_visible: false,
-@@ -2131,0 +2274,2 @@
+@@ -2131,0 +2276,2 @@
 +            interaction_epoch: 0,
 +            frame_serial: 0,
-@@ -2191,0 +2336 @@
+@@ -2191,0 +2338 @@
 +
-@@ -2315,0 +2461,2 @@
+@@ -2315,0 +2463,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2317,0 +2465 @@
+@@ -2317,0 +2467 @@
 +            crate::dirty_sources::note("refresh", std::panic::Location::caller());
-@@ -2352,0 +2501 @@
+@@ -2352,0 +2503 @@
 +        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -2367,0 +2517 @@
+@@ -2367,0 +2519 @@
 +            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -2378,0 +2529,5 @@
+@@ -2378,0 +2531,5 @@
 +    /// KaminIDE patch: фокус получен клавиатурой — рисуем `:focus-visible`.
 +    pub fn focus_visible(&self) -> bool {
 +        self.focus_visible
 +    }
 +
-@@ -2385,0 +2541,2 @@
+@@ -2385,0 +2543,2 @@
 +            // KaminIDE patch: Tab — клавиатурная модальность
 +            self.focus_visible = true;
-@@ -2396,0 +2554,2 @@
+@@ -2396,0 +2556,2 @@
 +            // KaminIDE patch: Shift+Tab — тоже клавиатура
 +            self.focus_visible = true;
-@@ -2409,3 +2568 @@
+@@ -2409,3 +2570 @@
 -        for refinement in &self.text_style_stack {
 -            style.refine(refinement);
 -        }
 +        self.text_style_stack.refine(&mut style);
-@@ -2649,0 +2807,2 @@
+@@ -2649,0 +2809,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2650,0 +2810 @@
+@@ -2650,0 +2812 @@
 +        crate::dirty_sources::note("next-frame", std::panic::Location::caller());
-@@ -2669,0 +2830,2 @@
+@@ -2669,0 +2832,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2884,2 +3046,52 @@
+@@ -2884,2 +3048,52 @@
 -    /// Handle window movement for Linux and macOS.
 -    /// Tells the compositor to take control of window movement (Wayland and X11)
 +    /// KaminIDE patch: raw ID3D11Device окна — по нему открывается общий
@@ -22136,7 +22602,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +
 +    /// KaminIDE patch: нарисовать чужую текстуру как обычный спрайт — с теми
 +    /// же скруглением и маской, что у картинок.
-@@ -2887 +3099,71 @@
+@@ -2887 +3101,71 @@
 -    /// Events may not be received during a move operation.
 +    /// Зовётся в фазе отрисовки элемента.
 +    pub fn paint_external_texture(
@@ -22209,27 +22675,27 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +    }
 +
 +    /// Start moving the window (drag) via the platform.
-@@ -3019,0 +3302 @@
+@@ -3019,0 +3304 @@
 +        let depth = self.element_id_stack.len();
-@@ -3021,3 +3304 @@
+@@ -3021,3 +3306 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -3038,0 +3320 @@
+@@ -3038,0 +3322 @@
 +            let depth = self.rem_size_override_stack.len();
-@@ -3040,3 +3322 @@
+@@ -3040,3 +3324 @@
 -            let result = f(self);
 -            self.rem_size_override_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.rem_size_override_stack.truncate(*depth), f).0
-@@ -3189,5 +3468,0 @@
+@@ -3189,5 +3470,0 @@
 -    #[inline]
 -    fn snap_border_widths(&self, edges: Edges<Pixels>) -> Edges<ScaledPixels> {
 -        edges.map(|e| self.snap_stroke(*e))
 -    }
 -
-@@ -3305,0 +3581,7 @@
+@@ -3305,0 +3583,7 @@
 +        let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
 +        // KaminIDE patch: the empty base style new elements share must not outlive them.
 +        crate::elements::refinement_share::release_empty();
@@ -22237,18 +22703,18 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +    }
 +
 +    fn draw_frame(&mut self, cx: &mut App) -> ArenaClearNeeded {
-@@ -3354,0 +3637,4 @@
+@@ -3354,0 +3639,4 @@
 +        }
 +        // A caught unwind still aborts this pass; never publish its partial scene.
 +        if !self.paint_pass.is_live() {
 +            return arena_scope.exit(&cx.element_arena);
-@@ -3395,0 +3682 @@
+@@ -3395,0 +3684 @@
 +        self.frame_serial += 1;
-@@ -3554,3 +3840,0 @@
+@@ -3554,3 +3842,0 @@
 -        if self.a11y.is_active() {
 -            self.a11y.begin_frame();
 -        }
-@@ -3579,37 +3863,16 @@
+@@ -3579,37 +3865,16 @@
 -        let scale_factor = self.scale_factor();
 -        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
 -        let root_layout_id = root_element.request_layout(self, cx);
@@ -22302,27 +22768,27 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        );
 +
 +        let _hit_started = std::time::Instant::now();
-@@ -3616,0 +3880,4 @@
+@@ -3616,0 +3882,4 @@
 +        crate::frame_perf::HITTEST_US.fetch_add(
 +            _hit_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3619,0 +3887 @@
+@@ -3619,0 +3889 @@
 +        let _paint_started = std::time::Instant::now();
-@@ -3620,0 +3889,4 @@
+@@ -3620,0 +3891,4 @@
 +        crate::frame_perf::PAINT_US.fetch_add(
 +            _paint_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3763,0 +4036,3 @@
+@@ -3763,0 +4038,3 @@
 +                let _render_scope = self.render_contexts.enter_snapshot(
 +                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
 +                );
-@@ -3768,2 +4043 @@
+@@ -3768,2 +4045 @@
 -                    self.text_style_stack
 -                        .clone_from(&deferred_draw.text_style_stack);
 +                    self.text_style_stack = deferred_draw.text_style_stack.clone();
-@@ -3783,4 +4057,8 @@
+@@ -3783,4 +4059,8 @@
 -                    self.with_rendered_view(current_view, |window| {
 -                        window.with_rem_size(Some(rem_size), |window| {
 -                            window.with_absolute_element_offset(absolute_offset, |window| {
@@ -22335,13 +22801,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +                                window.with_absolute_element_offset(absolute_offset, |window| {
 +                                    element.prepaint(window, cx);
 +                                });
-@@ -3800 +4078 @@
+@@ -3800 +4080 @@
 -            self.text_style_stack.clear();
 +            self.text_style_stack = TextStyleScope::default();
-@@ -3817,0 +4096,2 @@
+@@ -3817,0 +4098,2 @@
 +            let _render_scope = self.render_contexts
 +                .enter_snapshot(deferred_draw.render_contexts.clone());
-@@ -3827,5 +4107,7 @@
+@@ -3827,5 +4109,7 @@
 -                self.with_rendered_view(deferred_draw.current_view, |window| {
 -                    window.with_content_mask(content_mask, |window| {
 -                        window.with_rem_size(Some(deferred_draw.rem_size), |window| {
@@ -22354,7 +22820,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +                                element.paint(window, cx);
 +                            });
 +                        })
-@@ -3862,0 +4145,12 @@
+@@ -3862,0 +4147,12 @@
 +        for hitbox in &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index] {
 +            if let Some(scope) = self.rendered_frame.hitbox_scopes.get(&hitbox.id) {
 +                self.next_frame.hitbox_scopes.insert(hitbox.id, scope.clone());
@@ -22367,10 +22833,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +                self.next_frame.hitbox_entry_scopes.insert(entry, scope.clone());
 +            }
 +        }
-@@ -3901,0 +4196,2 @@
+@@ -3901,0 +4198,2 @@
 +                    render_contexts: deferred_draw.render_contexts.clone(),
 +                    layout_owner: deferred_draw.layout_owner.clone(),
-@@ -3972,0 +4269,19 @@
+@@ -3972,0 +4271,19 @@
 +    /// KaminIDE patch: read the host context of type `T` for this traversal.
 +    /// Values belong to this window; callers retain ownership through `Rc`.
 +    pub fn render_context<T: 'static>(&self) -> Option<Rc<T>> {
@@ -22390,7 +22856,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        self.with_restore(scope, |_, _| {}, f).0
 +    }
 +
-@@ -3982,4 +4297,3 @@
+@@ -3982,4 +4299,3 @@
 -            self.text_style_stack.push(style);
 -            let result = f(self);
 -            self.text_style_stack.pop();
@@ -22398,7 +22864,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            let inner = self.text_style_stack.push(style);
 +            let outer = std::mem::replace(&mut self.text_style_stack, inner);
 +            self.with_restore(outer, |window, outer| window.text_style_stack = std::mem::take(outer), f).0
-@@ -3988,0 +4303,24 @@
+@@ -3988,0 +4305,24 @@
 +    }
 +
 +    /// Apply borrowed text and overflow context together during child drawing.
@@ -22423,7 +22889,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +    #[inline(never)]
 +    fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
 +        self.text_style_stack = self.text_style_stack.push(style.clone());
-@@ -4034,0 +4373,8 @@
+@@ -4034,0 +4375,8 @@
 +        let depth = self.content_mask_stack.len();
 +        let _clip_scope = self.push_content_mask(mask);
 +        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
@@ -22432,7 +22898,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +    // Prepare mask temporaries before entering the recursive child traversal.
 +    #[inline(never)]
 +    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> Option<render_context::Scope> {
-@@ -4036,5 +4382,12 @@
+@@ -4036,5 +4384,12 @@
 -            let mask = mask.intersect(&self.content_mask());
 -            self.content_mask_stack.push(mask);
 -            let result = f(self);
@@ -22450,7 +22916,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            let scope = self.segment_clip_scope(mask, false);
 +            self.content_mask_stack.push(mask.intersect(&self.content_mask()));
 +            scope
-@@ -4042,2 +4395,136 @@
+@@ -4042,2 +4397,136 @@
 -            f(self)
 -        }
 +            None
@@ -22589,7 +23055,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +    ) -> R {
 +        let prev = self.mask_scale.replace((origin, scale));
 +        self.with_restore(prev, |window, prev| window.mask_scale = *prev, f).0
-@@ -4060,0 +4548,19 @@
+@@ -4060,0 +4550,19 @@
 +    }
 +
 +    /// KaminIDE patch: like [`Self::with_element_offset`], but descendants'
@@ -22609,21 +23075,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        let abs_offset = self.element_offset() + offset;
 +        self.with_restore(depth, |window, depth| window.exact_element_offset_depth = *depth,
 +            |window| window.with_absolute_element_offset(abs_offset, f)).0
-@@ -4071,0 +4578 @@
+@@ -4071,0 +4580 @@
 +        let depth = self.element_offset_stack.len();
-@@ -4073,3 +4580 @@
+@@ -4073,3 +4582 @@
 -        let result = f(self);
 -        self.element_offset_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_offset_stack.truncate(*depth), f).0
-@@ -4091,3 +4596 @@
+@@ -4091,3 +4598 @@
 -        let result = f(self);
 -        self.element_opacity = previous_opacity;
 -        result
 +        self.with_restore(previous_opacity, |window, previous| window.element_opacity = *previous, f).0
-@@ -4106,0 +4610 @@
+@@ -4106,0 +4612 @@
 +            self.next_frame.hitbox_entry_scopes.retain(|entry, _| *entry < index.hitboxes_index);
-@@ -4147 +4651,10 @@
+@@ -4147 +4653,10 @@
 -        cx.asset_entry::<A>(source).use_by(self.current_view())
 +        // KaminIDE patch: a measure callback (detached layout during
 +        // `compute_layout`) has no current view; then the window's root view
@@ -22635,7 +23101,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            Some(view) => entry.use_by(view),
 +            None => entry.get(),
 +        }
-@@ -4157,0 +4671,56 @@
+@@ -4157,0 +4673,56 @@
 +    /// Obtain the current element offset. This method should only be called during the
 +    /// prepaint phase of element drawing.
 +    /// KaminIDE patch: действующее преобразование.
@@ -22692,26 +23158,26 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        self.with_transform_frame(combined, keeps_axes.then_some(combined), f)
 +    }
 +
-@@ -4168,2 +4737 @@
+@@ -4168,2 +4739 @@
 -    /// Obtain the current element opacity. This method should only be called during the
 -    /// prepaint phase of element drawing.
 +    /// Текущая накопленная непрозрачность элемента в фазе prepaint или paint.
-@@ -4171 +4739 @@
+@@ -4171 +4741 @@
 -    pub(crate) fn element_opacity(&self) -> f32 {
 +    pub fn element_opacity(&self) -> f32 {
-@@ -4178,0 +4747 @@
+@@ -4178,0 +4749 @@
 +        if let Some(mask) = self.segment_capture_mask() { return mask; }
-@@ -4196,0 +4766 @@
+@@ -4196,0 +4768 @@
 +        let depth = self.element_id_stack.len();
-@@ -4198,3 +4768 @@
+@@ -4198,3 +4770 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -4383,0 +4952,2 @@
+@@ -4383,0 +4954,2 @@
 +            render_contexts: self.render_contexts.snapshot(),
 +            layout_owner: self.retained_layout(),
-@@ -4405,12 +4975,91 @@
+@@ -4405,12 +4977,91 @@
 -            self.next_frame
 -                .scene
 -                .push_layer(self.cover_bounds(clipped_bounds));
@@ -22815,7 +23281,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        }, |window| {
 +            if pushed { window.with_paint_scope(f) } else { f(window) }
 +        }).0
-@@ -4554,2 +5203,8 @@
+@@ -4554,2 +5205,8 @@
 -        let snapped_bounds = self.snap_bounds(quad.bounds);
 -        let snapped_border_widths = self.snap_border_widths(quad.border_widths);
 +        // KaminIDE patch: действующее преобразование едет вместе с квадом.
@@ -22826,24 +23292,24 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        // округление сдвигало бы их второй раз, а у преобразованного квада
 +        // локальные координаты снэпать нельзя вовсе (см. decisions.md).
 +        let scale_factor = self.scale_factor();
-@@ -4556,0 +5212 @@
+@@ -4556,0 +5214 @@
 +            transformation,
-@@ -4558,2 +5214,2 @@
+@@ -4558,2 +5216,2 @@
 -            bounds: snapped_bounds,
 -            content_mask: self.snapped_content_mask(),
 +            bounds: quad.bounds.scale(scale_factor),
 +            content_mask: self.content_mask().scale(scale_factor),
-@@ -4562,2 +5218,2 @@
+@@ -4562,2 +5220,2 @@
 -            corner_radii: quad.corner_radii.scale(self.scale_factor()),
 -            border_widths: snapped_border_widths,
 +            corner_radii: quad.corner_radii.scale(scale_factor),
 +            border_widths: quad.border_widths.scale(scale_factor),
-@@ -4567 +5223,3 @@
+@@ -4567 +5225,3 @@
 -        if !quad.background.is_transparent() {
 +        // The strip split below restricts screen-space content masks, which
 +        // only matches the quad's own coordinates without a transformation.
 +        if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
-@@ -4678,0 +5337,9 @@
+@@ -4678,0 +5339,9 @@
 +    /// KaminIDE patch: set the offset added to the origin of every glyph
 +    /// painted afterwards and return the previous one. Layout snaps a box's
 +    /// edges to device pixels, but text inside it belongs at the box's exact
@@ -22853,7 +23319,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        std::mem::replace(&mut self.raster_frame.glyph_offset, offset)
 +    }
 +
-@@ -4699,14 +5366,32 @@
+@@ -4699,14 +5368,32 @@
 -        let glyph_origin = origin.scale(scale_factor);
 -
 -        let quantized_origin = Point::new(
@@ -22900,7 +23366,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            )
 +        };
 +        let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size, pixel_exact);
-@@ -4738 +5423,6 @@
+@@ -4738 +5425,6 @@
 -            let content_mask = self.snapped_content_mask();
 +            // KaminIDE patch: маска без upstream-расширения до целых пикселей
 +            // (как у квада, см. `paint_quad`).
@@ -22908,13 +23374,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            // KaminIDE patch: глиф едет тем же преобразованием, что и
 +            // подложка, — иначе повёрнутая кнопка оставляла бы ровный текст.
 +            let transformation = self.current_transformation();
-@@ -4748 +5438 @@
+@@ -4748 +5440 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4758 +5448 @@
+@@ -4758 +5450 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4763,19 +5452,0 @@
+@@ -4763,19 +5454,0 @@
 -    }
 -
 -    fn should_use_subpixel_rendering(&self, font_id: FontId, font_size: Pixels) -> bool {
@@ -22934,7 +23400,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 -        };
 -
 -        mode == TextRenderingMode::Subpixel
-@@ -4798,0 +5470,14 @@
+@@ -4798,0 +5472,14 @@
 +        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
 +    }
 +
@@ -22949,11 +23415,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        font_size: Pixels,
 +        alpha: f32,
 +    ) -> Result<()> {
-@@ -4803 +5488,2 @@
+@@ -4803 +5490,2 @@
 -        let integer_origin = glyph_origin.map(|c| ScaledPixels(round_half_toward_zero(c.0)));
 +        // KaminIDE patch: floor, as for monochrome glyphs (see `paint_glyph`).
 +        let integer_origin = glyph_origin.map(|px| px.floor());
-@@ -4829,3 +5515,4 @@
+@@ -4829,3 +5517,4 @@
 -            let content_mask = self.snapped_content_mask();
 -            let opacity = self.element_opacity();
 -
@@ -22961,14 +23427,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            let opacity = self.element_opacity() * alpha;
 +
 +            let transformation = self.current_transformation();
-@@ -4832,0 +5520 @@
+@@ -4832,0 +5522 @@
 +                transformation,
-@@ -5003,0 +5692,2 @@
+@@ -5003,0 +5694,2 @@
 +        // KaminIDE patch: картинка едет действующим преобразованием.
 +        let transformation = self.current_transformation();
-@@ -5004,0 +5695 @@
+@@ -5004,0 +5697 @@
 +            transformation,
-@@ -5016,0 +5708,71 @@
+@@ -5016,0 +5710,71 @@
 +    /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
 +    ///
 +    /// `paint_image` вписывает ВЕСЬ образ в `bounds` — для software-кадров CEF
@@ -23040,7 +23506,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        Ok(())
 +    }
 +
-@@ -5018,0 +5781,219 @@
+@@ -5018,0 +5783,219 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -23260,7 +23726,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        result
 +    }
 +
-@@ -5076,0 +6058,22 @@
+@@ -5076,0 +6060,22 @@
 +        self.request_layout_ref(&style, children, cx)
 +    }
 +
@@ -23283,7 +23749,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
-@@ -5082,0 +6086,26 @@
+@@ -5082,0 +6088,26 @@
 +        self.reserve_layout_nodes();
 +
 +        self.layout_engine.as_mut().unwrap().request_layout_refined(
@@ -23310,7 +23776,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        let rem_size = self.rem_size();
 +        let scale_factor = self.scale_factor();
 +        self.reserve_layout_nodes();
-@@ -5089,0 +6119,66 @@
+@@ -5089,0 +6121,66 @@
 +    }
 +
 +    /// KaminIDE patch: key the next measured leaf request of the frame tree.
@@ -23377,10 +23843,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            engine.set_layout_keys(previous);
 +        }
 +        result
-@@ -5108,0 +6204,2 @@
+@@ -5108,0 +6206,2 @@
 +        let scope = self.measure_scope();
 +        self.reserve_layout_nodes();
-@@ -5112 +6209,229 @@
+@@ -5112 +6211,229 @@
 -            .request_measured_layout(style, rem_size, scale_factor, measure)
 +            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
 +                scope.enter(window, |window| measure(known, available, window, cx))
@@ -23611,7 +24077,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            .as_mut()?
 +            .grid_tracks(grid, scale_factor)?;
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
-@@ -5132,0 +6458,48 @@
+@@ -5132,0 +6460,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -23660,7 +24126,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6520,6 @@
+@@ -5147,2 +6522,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -23669,7 +24135,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5169 +6546,6 @@
+@@ -5169 +6548,6 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -23677,7 +24143,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +        if !self.insert_segment_hitbox(&hitbox) {
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +6594,16 @@
+@@ -5211,0 +6596,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -23694,51 +24160,51 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cc348a3eaa1bb9aafd2a37338f056bdb
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6622 @@
+@@ -5223,0 +6624 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6624 @@
+@@ -5225,3 +6626 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6633 @@
+@@ -5235,0 +6635 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6635 @@
+@@ -5237,3 +6637 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +6855,2 @@
+@@ -5458,0 +6857,2 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -5792,0 +7191,5 @@
+@@ -5792,0 +7193,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -6132 +7535 @@
+@@ -6132 +7537 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6144 +7547 @@
+@@ -6144 +7549 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6164 +7567 @@
+@@ -6164 +7569 @@
 -            for listener in node.modifiers_changed_listeners.clone() {
 +            for listener in node.modifiers_changed_listeners().to_vec() {
-@@ -6396 +7799 @@
+@@ -6396 +7801 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6419 +7822 @@
+@@ -6419 +7824 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6598 +8001 @@
+@@ -6598 +8003 @@
 -            .filter_map(move |&node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(move |&node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6701 +8104 @@
+@@ -6701 +8106 @@
 -            .filter_map(|node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(|node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -7752,0 +9156,31 @@
+@@ -7752,0 +9158,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
@@ -26812,10 +27278,10 @@ index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fc1f47e127517309fc2c0c6c9c35bb3ed5db3ce1
+index 0000000000000000000000000000000000000000..ce01aeaed2f6b7cf1759997e35518547357b0ccb
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,594 @@
+@@ -0,0 +1,610 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -27246,6 +27712,22 @@ index 0000000000000000000000000000000000000000..fc1f47e127517309fc2c0c6c9c35bb3e
 +        }
 +        self.next_frame.scene.ink.pop();
 +        result
++    }
++
++    /// KaminIDE patch: offer `bounds` (window coordinates of the root paint
++    /// environment) to the open ink sinks as the ink of paint the caller
++    /// skipped because the content mask would cull all of it.
++    pub fn offer_ink(&mut self, bounds: Bounds<Pixels>) {
++        let scene = &self.next_frame.scene;
++        if scene.ink.is_empty() && scene.ink_scope == 0 {
++            return;
++        }
++        let scaled = bounds.scale(self.scale_factor());
++        let scene = &self.next_frame.scene;
++        for sink in &scene.ink {
++            sink.add_in(scene.ink_scope, scaled);
++        }
++        scoped_ink(scene.ink_scope, |sink| sink.add_in(scene.ink_scope, scaled));
 +    }
 +
 +    /// Paint `f` measuring its ink in a new scope of the frame's scope sink:

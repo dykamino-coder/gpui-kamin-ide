@@ -21,17 +21,32 @@ fn tracked(base: f32, tracking: f64) -> f32 {
 
 impl Paragraph {
     pub(in crate::text::paragraph) fn segment_positions(&self, seg: &Seg) -> Vec<Pixels> {
+        self.positions_with(seg, |_| None)
+    }
+
+    /// Положения знаков сегмента; `origin(run)` — начало части, к которой
+    /// принадлежит прогон глифов `run`, если сегмент набран частями
+    /// (`measure::chunked`: положения глифов там считаются от начала части).
+    pub(in crate::text::paragraph) fn positions_with(
+        &self,
+        seg: &Seg,
+        mut origin: impl FnMut(usize) -> Option<Pixels>,
+    ) -> Vec<Pixels> {
         let len = seg.end - seg.start;
         crate::work::add!(TextPositionBuildBytes, len + 1);
         let mut positions = vec![seg.layout.width; len + 1];
         // x_for_index берёт ПЕРВЫЙ глиф с индексом >= байта, даже когда
         // индексы повторяются или убывают в визуальном порядке.
         let mut filled = 0;
-        for glyph in seg.layout.runs.iter().flat_map(|r| &r.glyphs) {
-            let end = glyph.index.min(len);
-            if filled <= end {
-                positions[filled..=end].fill(glyph.position.x);
-                filled = end + 1;
+        for (r, run) in seg.layout.runs.iter().enumerate() {
+            let at = origin(r);
+            for glyph in &run.glyphs {
+                let end = glyph.index.min(len);
+                if filled <= end {
+                    let x = at.map_or(glyph.position.x, |at| at + glyph.position.x);
+                    positions[filled..=end].fill(x);
+                    filled = end + 1;
+                }
             }
         }
         crate::work::add!(

@@ -80,7 +80,7 @@
     "reason": "layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle."
   },
   {
-    "file": "crates/html/src/text/inline/runs/mod.rs",
+    "file": "crates/html/src/text/inline/runs/face.rs",
     "task": "cascade-7b-font-size-adjust",
     "reason": "A03-backend после F2 должен подгонять каждый нативный fallback face; TextRun пока передаёт только размер first available face."
   },
