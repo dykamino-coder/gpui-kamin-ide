@@ -55,23 +55,23 @@ export function tierForModel(modelId: string | undefined | null): CostTier {
   return TIER_3_15
 }
 
-/** Context window size in tokens. CLI reads this from model configs; we
- *  approximate by model-name suffix — the `[1m]` tag marks the extended
- *  1M-context variant, everything else defaults to the standard 200K. */
+/** Fallback context window size in tokens, used only while the CLI has not
+ *  reported its own `context_window.context_window_size` (see
+ *  computeContextStats). Every model the current CLI offers — Opus/Sonnet/
+ *  Haiku 5.5, Fable 5.x — has a 1M window, and so do the aliases the CLI keeps
+ *  in a session (`opus`, `fable`, `sonnet`, `haiku`, `default`, …: 2.1.321
+ *  migrates saved Fable picks to the bare `fable` alias). Only ids that NAME a
+ *  pre-5 family are 200K: those windows really were 200K unless the session
+ *  ran the `[1m]` variant. Keying 1M on a whitelist of 5.x spellings instead
+ *  made every alias or unfamiliar id read "100%" at 200K tokens. */
 export function contextLimitForModel(modelId: string | undefined | null): number {
   const m = (modelId || '').toLowerCase()
-  // Легаси-тег `[1m]` (эпоха Opus 4.x): старые сессии могли писать
-  // `claude-opus-4-8[1m]` — уважаем при подсчёте их окна. Новых [1m]-id
-  // пикер не выдаёт: у Opus 5.x миллион нативный.
-  if (m.includes('[1m]') || m.includes('1m')) return 1_000_000
-  // Models whose window is 1M NATIVELY. There is no `[1m]` suffix for these
-  // because 1M is the base, not a beta — Opus 5.x, Fable 5, Mythos 5 and
-  // Sonnet 5 all ship at 1M by default. Without this branch they fell through
-  // to 200K, so the usage bar read "full" at a fifth of the real window (the
-  // Fable indicator the user flagged). Opus 4.x (200K base) and Haiku 4.5
-  // (genuinely 200K) are intentionally NOT matched here; Haiku 5.5 is 1M.
-  if (/claude-(?:fable|mythos|opus)-5|claude-(?:sonnet|haiku)-5/.test(m)) return 1_000_000
-  return 200_000
+  // `claude-opus-4-8[1m]` и подобные легаси-id расширенного окна.
+  if (m.includes('1m')) return 1_000_000
+  // claude-3-5-sonnet-…, claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5,
+  // Bedrock/Vertex/gateway spellings of the same families.
+  if (/claude-(?:instant|[23])\b|(?:opus|sonnet|haiku)-[34]\b/.test(m)) return 200_000
+  return 1_000_000
 }
 
 export interface UsageBlock {
@@ -135,9 +135,11 @@ export interface ContextStats {
   used: number | null
   /** Model context-window size the pct is against. */
   limit: number
+  /** `cli` — the CLI-reported window; `model` — estimated from the model id. */
+  limitSource: 'cli' | 'model'
   /** Cumulative $ cost across the segment (deduped by message.id). */
   cost: number
-  /** Model id used to resolve the limit. */
+  /** Model id used to estimate the limit (empty when none is known). */
   model: string
   /** Compact metadata is provisional until a real post-boundary usage arrives. */
   freshness: 'usage' | 'compact' | 'pending'
@@ -161,6 +163,9 @@ export function computeContextStats(
   entries: StatEntry[],
   isLiveSegment: boolean,
   tabModel: string | null | undefined,
+  /** `context_window.context_window_size` from the session's CLI status line
+   *  (`session:usage`); authoritative for the live segment when present. */
+  cliWindowSize?: number | null,
 ): ContextStats | null {
   let cumulativeCost = 0
   let peakUsage: UsageBlock | null = null
@@ -212,15 +217,19 @@ export function computeContextStats(
   const useUsage = isLiveSegment ? (latestUsage ?? peakUsage) : peakUsage
   const useUsedTokens = isLiveSegment && latestUsedTokens >= 0 ? latestUsedTokens : peakUsedTokens
   const useModel = isLiveSegment ? (latestModel ?? peakModel) : peakModel
-  // Окно контекста: у сессии ДВА источника модели, и легаси может застрять в
-  // ЛЮБОМ из них (таб хранил opus-4-8 при витках на 1M — старый инцидент; витки
-  // хранят opus-4-8 до апгрейда, а таб уже живой opus-5 после hot-switch —
-  // инцидент «100% при 510K»). Берём максимум окон обоих — окно определяется
-  // тем, на чём сессия реально может работать сейчас.
+  // Окно текущего разговора знает только CLI: его status line сообщает
+  // `context_window_size` для той модели, на которой сессия работает сейчас.
+  // Архивный сегмент мог идти на другой модели, поэтому там — только оценка.
+  const cliLimit = isLiveSegment && cliWindowSize && Number.isSafeInteger(cliWindowSize) && cliWindowSize > 0
+    ? cliWindowSize
+    : 0
+  // Оценка по имени: у сессии ДВА источника модели, и легаси может застрять в
+  // ЛЮБОМ из них (витки хранят opus-4-8 до апгрейда, а таб уже живой opus-5
+  // после hot-switch — инцидент «100% при 510K»). Берём максимум окон обоих.
   const tabLimit = tabModel ? contextLimitForModel(tabModel) : 0
   const jsonlLimit = useModel ? contextLimitForModel(useModel) : 0
-  const limit = Math.max(tabLimit, jsonlLimit) || contextLimitForModel('claude-opus-5-5')
-  const modelForLimit = (tabLimit >= jsonlLimit ? tabModel : useModel) ?? useModel ?? tabModel ?? 'claude-opus-5-5'
+  const limit = cliLimit || Math.max(tabLimit, jsonlLimit) || contextLimitForModel(null)
+  const modelForLimit = (tabLimit >= jsonlLimit ? tabModel : useModel) ?? useModel ?? tabModel ?? ''
   let used: number | null = useUsedTokens >= 0 ? useUsedTokens : (useUsage ? effectiveInputTokens(useUsage) : null)
   let freshness: ContextStats['freshness'] = 'usage'
   if (isLiveSegment && lastCompact && !latestUsage) {
@@ -229,5 +238,7 @@ export function computeContextStats(
     freshness = used === null ? 'pending' : 'compact'
   }
   const pct = used === null ? null : Math.min(100, Math.round((used / limit) * 100))
-  return { pct, used, limit, cost: cumulativeCost, model: modelForLimit, freshness }
+  return {
+    pct, used, limit, limitSource: cliLimit ? 'cli' : 'model', cost: cumulativeCost, model: modelForLimit, freshness,
+  }
 }
