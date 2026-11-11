@@ -50,8 +50,7 @@ export async function writePluginModuleTree(root: string, plugin: SyncPluginData
 
   const hooksDir = path.join(base, 'hooks')
   const modules = plugin.modules.filter(
-    (ref): ref is string =>
-      typeof ref === 'string' && !ref.includes('\\') && written.has(path.resolve(hooksDir, ref)),
+    (ref): ref is string => typeof ref === 'string' && !ref.includes('\\') && written.has(path.resolve(hooksDir, ref)),
   )
   if (modules.length === 0) return []
   await fsp.mkdir(hooksDir, { recursive: true })
