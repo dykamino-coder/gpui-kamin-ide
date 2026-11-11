@@ -7,6 +7,7 @@
   {"id":"invoke:bridge:server-fetch","status":"supported-in-browser-host","provider":"server","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:bridge:server-version","status":"supported-in-browser-host","provider":"server","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:diag:save","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
+  {"id":"invoke:file-tree:create-dir","status":"supported-in-browser-host","provider":"files","sources":{"workspace/src/file-operations.ts":1}},
   {"id":"invoke:file-tree:list-dir","status":"supported-in-browser-host","provider":"files","sources":{"webview/src/lib/bridge-channels.ts":1,"workspace/src/file-operations.ts":1}},
   {"id":"invoke:file-tree:rename","status":"supported-in-browser-host","provider":"files","sources":{"webview/src/lib/bridge-channels.ts":1,"workspace/src/file-operations.ts":1}},
   {"id":"invoke:file-viewer:read","status":"supported-in-browser-host","provider":"files","sources":{"webview/src/lib/bridge-channels.ts":1,"workspace/src/file-operations.ts":1}},

@@ -5,6 +5,7 @@
 // failures, not authority.
 import { captureRuntime, shareRefresh, connectHot, supportsHot, type RefreshRuntime, type RemoteRequire } from './hot'
 import { prepareEntry } from './entry'
+import { hostAddresses, type HostAddresses, type HostBase } from '../address'
 import type { PreviewDescriptor } from '../types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- React is injected structurally */
@@ -42,10 +43,48 @@ type RemoteModule = {
 // this remote, so a rebuilt entry cannot replay the previous exposed module.
 const isChunkGlobal = (key: string) => /^(webpack|rspack)Chunk/.test(key)
 
+export interface PreviewRendererOptions {
+  react: PreviewReact
+  federation: FederationRuntime
+  hostName?: string
+  /**
+   * Where the host's `/preview/remotes/<name>/…` paths are published. Remote
+   * files load from `<base.http>/preview/remotes/<name>/…`, the HMR socket opens
+   * at `<base.ws>/preview/remotes/<name>/ws`. Default: the root of the page origin.
+   */
+  base?: HostBase
+}
+
+// With `publicPath: 'auto'` the remote derives chunk, asset and hot-update
+// addresses from its entry address, which is already under the base. A remote
+// that names the host path itself (`publicPath: '/preview/remotes/<name>/'`)
+// would leave the base, so its public path goes through the same addresses.
+function relocate(require: RemoteRequire, root: string, addresses: HostAddresses): void {
+  const base = addresses.http(root).href
+  const map = (value: unknown): unknown => {
+    if (typeof value !== 'string') return value
+    let url: URL
+    try { url = new URL(value, location.href) } catch { return value }
+    if (url.href.startsWith(base) || url.origin !== location.origin || !url.pathname.startsWith(root)) return value
+    return addresses.http(url.pathname + url.search).href
+  }
+  let current = map(require.p)
+  Object.defineProperty(require, 'p', { configurable: true, enumerable: true,
+    get: () => current, set(value: unknown) { current = map(value) } })
+}
+
 /** Initialise the federation host once per page and return the remote renderer. */
-export function createPreviewRenderer(options: { react: PreviewReact; federation: FederationRuntime; hostName?: string }): RenderRemote {
+export function createPreviewRenderer(options: PreviewRendererOptions): RenderRemote {
   const { React, ReactDOM, ReactClient, JSXRuntime, JSXDevRuntime, Refresh, version } = options.react
   const { init, registerRemotes, loadRemote } = options.federation
+  let addresses: HostAddresses | undefined
+  const remoteRoot = (name: string) => `/preview/remotes/${name}/`
+  const adopt = (context: { runtimes: RemoteRequire[]; cleanups: (() => void)[] }, name: string, require: RemoteRequire) => {
+    if (context.runtimes.includes(require)) return
+    context.runtimes.push(require)
+    if (options.base && addresses) relocate(require, remoteRoot(name), addresses)
+    context.cleanups.push(shareRefresh(require, name, Refresh))
+  }
   const chunkGlobals = new Map<string, Map<string, unknown>>()
   const pending = new Map<string, { before: Set<string>; runtimes: RemoteRequire[]; cleanups: (() => void)[] }>()
   const shared = (lib: object) => ({ version, lib: () => lib,
@@ -57,12 +96,7 @@ export function createPreviewRenderer(options: { react: PreviewReact; federation
       const globals = globalThis as unknown as Record<string, unknown>
       for (const key of Object.keys(globals)) {
         if (context.before.has(key) || !isChunkGlobal(key)) continue
-        captureRuntime(globals[key], require => {
-          if (!context.runtimes.includes(require)) {
-            context.runtimes.push(require)
-            context.cleanups.push(shareRefresh(require, remoteInfo.name, Refresh))
-          }
-        })
+        captureRuntime(globals[key], require => adopt(context, remoteInfo.name, require))
       }
     },
   }], shared: {
@@ -80,10 +114,13 @@ export function createPreviewRenderer(options: { react: PreviewReact; federation
   }
 
   return async function renderRemote(element, descriptor, build, failed, applied, invalidated) {
-    const entry = new URL(descriptor.entry, location.origin)
-    if (entry.origin !== location.origin || !entry.pathname.startsWith(`/preview/remotes/${descriptor.name}/`)) {
+    addresses ??= hostAddresses(options.base)
+    const hostRoot = remoteRoot(descriptor.name)
+    const hosted = new URL(descriptor.entry, location.origin)
+    if (hosted.origin !== location.origin || !hosted.pathname.startsWith(hostRoot)) {
       throw new Error('Remote entry must use the authenticated workspace proxy')
     }
+    const entry = addresses.http(hosted.pathname + hosted.search)
     entry.searchParams.set('build', build)
     entry.searchParams.set('revision', String(descriptor.revision))
     const globals = globalThis as unknown as Record<string, unknown>
@@ -94,11 +131,7 @@ export function createPreviewRenderer(options: { react: PreviewReact; federation
     const context = { before, runtimes: [] as RemoteRequire[], cleanups: [] as (() => void)[] }
     const response = await fetch(entry, { credentials: 'same-origin', cache: 'no-store' })
     if (!response.ok) throw new Error('Preview dev server is unavailable')
-    context.cleanups.push(prepareEntry(await response.text(), globals, require => {
-      if (context.runtimes.includes(require)) return
-      context.runtimes.push(require)
-      context.cleanups.push(shareRefresh(require, descriptor.name, Refresh))
-    }))
+    context.cleanups.push(prepareEntry(await response.text(), globals, require => adopt(context, descriptor.name, require)))
     pending.set(descriptor.name, context)
     registerRemotes([{ name: descriptor.name, entry: entry.href, type: descriptor.type }], { force: true })
     let module: RemoteModule | null
@@ -114,7 +147,7 @@ export function createPreviewRenderer(options: { react: PreviewReact; federation
     const managed = (mounted: MountedPreview): MountedPreview => ({ update: mounted.update?.bind(mounted), hot: context.runtimes.some(supportsHot),
       unmount() { cleanup(); mounted.unmount() } })
     try {
-      for (const require of context.runtimes) context.cleanups.push(connectHot(require, descriptor.name, applied, invalidated))
+      for (const require of context.runtimes) context.cleanups.push(connectHot(require, addresses!.ws(hostRoot + 'ws'), applied, invalidated))
       if (!module) throw new Error('The remote did not expose a module')
       if (typeof module.mount === 'function') {
         const mounted = await module.mount(element, descriptor.props)

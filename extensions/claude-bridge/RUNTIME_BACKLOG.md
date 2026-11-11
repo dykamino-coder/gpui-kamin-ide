@@ -1,5 +1,82 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Merged after 1.0.93, not published yet: interrupt tree stop, hooks and past segment scroll — 2026-11-11
+
+Reconciliation 2026-11-11, source `origin/main`
+`4ecb8cbbba30198c39efca35d70b2ea3bb4361a7`. The three fixes below are in
+`main` and in no published release at the time of this update; the next
+release (planned 1.0.94) is expected to carry them. Merge is not publication
+and not acceptance. Do not reimplement #738, #743 or #747.
+
+- [INC-0096](runtime-issues/INC-2026-0096.md): `verify`. The Windows client
+  part is merged, [#738](https://github.com/dykamino-coder/gpui-kamin-ide/pull/738) (`2c5ea735`): foreground commands run under
+  a Job Object runner. Gate 2 passed on the candidate (13 interrupts, MSYS
+  children included, tree gone in 40 to 90 ms). Next artifact: a repeat of
+  gate 2 on the installed release that contains #738. Owner: the maintainer of
+  that release. This replaces the `ready/change` state in the 1.0.93 and
+  1.0.92 sections below, which are history.
+- [INC-0103](runtime-issues/INC-2026-0103.md): `verify`. Fix
+  [#743](https://github.com/dykamino-coder/gpui-kamin-ide/pull/743) (`83053f75`): hooks start in a directory that exists on the
+  client, the server waits for a client reattach and reports an absent client
+  once. Live Windows gate passed on the candidate. Next artifact: a check in
+  the installed release that a session shows no hook error lines. Owner: the
+  maintainer of that release.
+- [INC-0106](runtime-issues/INC-2026-0106.md): `verify`. Fix
+  [#747](https://github.com/dykamino-coder/gpui-kamin-ide/pull/747) (`4ecb8cbb`), server only: a hook matcher written for a
+  native tool (`Edit|Write`, `Bash`) fires on the Bridge tool that replaces
+  it, once, and the hook reads the native tool name. Live Windows gate passed
+  on the candidate. Next artifact: a check in the published release that the
+  owner's `Edit|Write` hook runs. Owner: the maintainer of that release.
+  Open and not part of #747: the `if` field of a hook is still evaluated
+  against the MCP tool name.
+- [INC-0104](runtime-issues/INC-2026-0104.md): `verify`. Fix
+  [#752](https://github.com/dykamino-coder/gpui-kamin-ide/pull/752) (`5a8752ea`), webview only, added to this section on
+  2026-11-11 at `origin/main` `5a8752ea06389ac5dd764734298f8d926dd58841`: a
+  past conversation segment loads its older pages into the window on screen,
+  pages back by itself while it does not fill the viewport, and the current
+  conversation follows new messages again after a past segment was scrolled.
+  Unit tests cover the cause; a live check passed on the candidate. Next
+  artifact: a check in the installed release that a past segment scrolls to
+  its first record. Owner: the maintainer of that release. Do not reimplement
+  #752.
+## KaminIDE 1.0.93 delivery: host tool declaration and client management groups — 2026-11-11
+
+Delivery reconciliation 2026-11-11, source `origin/main`
+`a977a737899d6ad5bdad01a03877a9ec1dbc95d4`:
+[KaminIDE 1.0.93](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.93)
+/ server 6.3.170 is published (tag commit `1fe4cac5`, ancestry checked), with
+the embedding packages `kaminide-bridge-workspace-host-6.3.170.tgz` and
+`kaminide-bridge-browser-client-6.3.170.tgz`. Publication is not acceptance.
+Acceptance run 2026-11-11 on the released image and packages: INC-0097 is
+`done`. Do not reimplement #732.
+
+- [INC-0097](runtime-issues/INC-2026-0097.md): the Bridge server serves the
+  tools and the wording that the client host declares,
+  [#732](https://github.com/dykamino-coder/gpui-kamin-ide/pull/732)
+  (`3c323c2c`). `done`: the gate passed on 2026-11-11 on a server from image
+  6.3.170 for a Linux workspace host of the same release (no PowerShell, "the
+  workspace host (Linux)", an undeclared tool is rejected), for KaminIDE 1.0.93
+  on Windows (PowerShell present, "the user's machine (Windows)") and for a
+  6.3.169 host without a declaration (full list, earlier texts). No next
+  artifact; the table is in the card.
+- The typed `mcp`, `skills`, `agents`, `plugins` and `hooks` groups of
+  `@kaminide/bridge-browser-client`,
+  [#730](https://github.com/dykamino-coder/gpui-kamin-ide/pull/730)
+  (`2c8a0eb5`), ship in the same release. They have no runtime card; the
+  published package was checked for these types and for version 6.3.170.
+  Live check 2026-11-11 from the released client against the 6.3.170 server:
+  a read and a write with rollback passed for `mcp` (`servers`, `addServer`,
+  `testServer`, `removeServer`), `skills` (`list`, `create`, `read`, `remove`),
+  `plugins` (`installed`, `marketplaces`, `addMarketplace`, `browse`,
+  `removeMarketplace`) and `hooks` (`list`, `listAll`, `save`, `remove`);
+  `agents` has only `list`, which passed. The state after the run equals the
+  state before it.
+- [INC-0095](runtime-issues/INC-2026-0095.md) (`done`) and
+  [INC-0096](runtime-issues/INC-2026-0096.md) (`ready/change`): no new change
+  in 1.0.93. Their state was set by the acceptance run on 1.0.92 / 6.3.169 (see
+  the section below). The Windows process-tree stop for INC-0096 is not in this
+  release.
+
 ## KaminIDE 1.0.92 delivery: mod sync and interrupt — 2026-11-11
 
 Delivery reconciliation 2026-11-11, source `origin/main`

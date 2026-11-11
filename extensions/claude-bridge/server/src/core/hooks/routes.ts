@@ -18,7 +18,7 @@ import { finalizeSessionTeardown, isSessionTearingDown } from '../pty/session-co
 import type { HookInputPayload } from './types'
 import { warnLog } from '../logging'
 import { readRecentExecutions, clearLog } from './audit-log'
-import { listSession } from './registry'
+import { getHook, listSession } from './registry'
 import { HOOK_LIBRARY } from './library'
 import { emitBridgeEvent } from './bridge-emitter'
 import { applyDeterministicStatus, isBridgeStatusEvent } from './bridge-status-hooks'
@@ -125,8 +125,15 @@ export function createHooksRoutes(): Hono {
 
     // CLI runs in a synthetic container directory; local hooks must receive
     // the real client project cwd both as process cwd and in their stdin JSON.
+    // A session without a client folder has no such directory: the container
+    // path means nothing on the client, so the client picks the directory.
     if (session.cwd) payload.cwd = session.cwd
-    const result = await dispatchHook(sessionId, hookId, payload, session.ws ?? null, session.tokenId)
+    else if (getHook(sessionId, hookId)?.effectiveHost === 'local') delete payload.cwd
+    // A running session passes a reader, so a hook that arrives while the
+    // client reconnects waits for the new socket. A session that is shutting
+    // down has no client to wait for.
+    const clientWs = isSessionTearingDown(sessionId) ? (session.ws ?? null) : () => session.ws ?? null
+    const result = await dispatchHook(sessionId, hookId, payload, clientWs, session.tokenId)
     c.header('X-Bridge-Hook-Exit-Code', String(result.exitCode))
 
     // The SessionEnd this window was held open for has been served, so close it

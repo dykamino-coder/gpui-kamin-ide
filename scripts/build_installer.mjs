@@ -48,6 +48,13 @@ if (!existsSync(join(release, "kaminide-gpui.exe"))) {
   }
 }
 
+// Без него остановка команды на Windows молча откатывается на taskkill и
+// оставляет MSYS-потомков (INC-2026-0096) — такой инсталлер не собираем.
+if (!existsSync(join(release, "kamin-jobrun.exe"))) {
+  console.error("нет target/release/kamin-jobrun.exe — прогони cargo build --release")
+  process.exit(1)
+}
+
 if (!existsSync(payload)) {
   console.error(`нет ${payload} — прогони npm run build:payload`)
   process.exit(1)
@@ -69,6 +76,9 @@ mkdirSync(dist, { recursive: true })
 // target/release (pdb, тестовые exe) не уехал в инсталлер.
 const shipFiles = [
   "kaminide-gpui.exe",
+  // Запускает команды инструментов в собственном Job Object (crates/jobrun,
+  // INC-2026-0096). Лежит рядом с runtime/, расширение ищет его там.
+  "kamin-jobrun.exe",
   "libcef.dll", "chrome_elf.dll", "icudtl.dat",
   "chrome_100_percent.pak", "chrome_200_percent.pak", "resources.pak",
   "v8_context_snapshot.bin", "snapshot_blob.bin",
