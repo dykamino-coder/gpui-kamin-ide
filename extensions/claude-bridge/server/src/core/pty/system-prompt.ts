@@ -5,7 +5,14 @@
 // builder impossible to unit-test — and it went untested long enough to ship a
 // parameter that was accepted and never read.
 
-export function buildSystemPrompt(userCwd?: string, basePrompt?: string, transcriptMirrorDir?: string): string {
+import { hostShells, type HostDeclaration } from './host-declaration'
+
+export function buildSystemPrompt(
+  userCwd?: string,
+  basePrompt?: string,
+  transcriptMirrorDir?: string,
+  host?: HostDeclaration,
+): string {
   const lines: string[] = []
 
   lines.push('# Open Claude Bridge — Remote Session')
@@ -26,16 +33,17 @@ export function buildSystemPrompt(userCwd?: string, basePrompt?: string, transcr
   // that a /compact has since summarized out of your live context, which is the
   // whole reason to advertise it: it's how you recall earlier history on demand.
   const mirrorDir = transcriptMirrorDir?.trim()
+  const shells = hostShells(host).join('/')
   if (mirrorDir) {
     lines.push('')
     lines.push('## Conversation History (full transcript)')
     lines.push('')
     lines.push(
-      `Bridge mirrors conversation history on the user's machine, including turns that a /compact has summarized out of your active context, at:`,
+      `Bridge mirrors conversation history on ${host?.place ?? "the user's machine"}, including turns that a /compact has summarized out of your active context, at:`,
     )
     lines.push(`  ${mirrorDir}`)
     lines.push(
-      `This directory is shared by multiple conversations. Each JSONL file is named <conversationId>.jsonl (one JSON entry per line). Use the current conversationId when known and verify that the file belongs to this conversation before reading history; modification time alone does not identify the current session. Read with mcp__user-tools__Read (or Bash/PowerShell). The mirror may still be catching up after reconnect: report missing history rather than assuming it is complete or using another conversation.`,
+      `This directory is shared by multiple conversations. Each JSONL file is named <conversationId>.jsonl (one JSON entry per line). Use the current conversationId when known and verify that the file belongs to this conversation before reading history; modification time alone does not identify the current session. Read with mcp__user-tools__Read${shells ? ` (or ${shells})` : ''}. The mirror may still be catching up after reconnect: report missing history rather than assuming it is complete or using another conversation.`,
     )
     lines.push(`It is append-only history: read it, never write to or delete it.`)
   }

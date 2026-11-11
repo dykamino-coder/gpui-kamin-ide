@@ -14,7 +14,8 @@ import { getUserSyncDir, getProjectSyncDir } from '../sync/routes'
 import { mergeAllHooks, rewriteHooksForCli } from '../hooks'
 import { bridgeStatusHookMatchers } from '../hooks/bridge-status-hooks'
 import type { HookMatcher } from '../hooks/types'
-import { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
+import { bridgeClaudeMd } from './bridge-default-claude-md'
+import type { HostDeclaration } from './host-declaration'
 import { getDisallowedBuiltinTools } from './session-env'
 import { replaceSkillsOverlay } from './skills-snapshot'
 import { preModelSwitchAllowMatcher } from './live-switch'
@@ -267,8 +268,8 @@ export function settingsDenyRules(): string[] {
   return getDisallowedBuiltinTools().filter((tool) => tool !== 'Read')
 }
 
-export function writeSessionClaudeMd(settingsDir: string): void {
-  fs.writeFileSync(path.join(settingsDir, 'CLAUDE.md'), BRIDGE_DEFAULT_CLAUDE_MD)
+export function writeSessionClaudeMd(settingsDir: string, host?: HostDeclaration): void {
+  fs.writeFileSync(path.join(settingsDir, 'CLAUDE.md'), bridgeClaudeMd(host))
   debugLog('Session CLAUDE.md written')
 }
 

@@ -6,7 +6,7 @@ import { ipcMain } from '../../extension/src/shim/host-compat'
 import { configureEnvironment, withEnvironment, type WorkspaceEnvironment } from './environment.js'
 import type { ClientFrame, ClientView, HostAttachment, HostFrame, WorkspaceBackend } from './protocol.js'
 import { WorkspacePresentation } from './presentation.js'
-import { containerSessionInstructions, projectDirectory } from './session-context.js'
+import { WORKSPACE_HOST_PLACE, projectDirectory, workspaceSessionInstructions } from './session-context.js'
 import { WorkspaceSessionState } from './session-state.js'
 import { WorkspaceDrafts } from './draft-state.js'
 import { WorkspaceSubmissionState } from './submission-state.js'
@@ -47,7 +47,8 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
     globalStorageUri: { fsPath: storage },
     extension: { packageJSON: { version: options.version } },
   } as ExtensionContext, { persistConnectionToken: false,
-    sessionInstructions: cwd => containerSessionInstructions(cwd || root) })
+    sessionInstructions: cwd => workspaceSessionInstructions(cwd || root),
+    hostTraits: { place: WORKSPACE_HOST_PLACE, preview: Boolean(options.environment.preview) } })
   const config = host.getConfigStore()
   config.set({ ...config.get(), serverUrl: options.serverUrl, token: options.token, cwd: root })
   let disposed = false

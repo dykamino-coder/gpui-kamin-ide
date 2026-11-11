@@ -38277,8 +38277,21 @@ var init_lsp = __esm({
 });
 
 // src/main/mcp/tool-registry.ts
+var tool_registry_exports = {};
+__export(tool_registry_exports, {
+  getRegisteredTools: () => getRegisteredTools,
+  getToolHandler: () => getToolHandler,
+  hasToolHandler: () => hasToolHandler,
+  toolRegistry: () => toolRegistry
+});
 function getRegisteredTools() {
   return Array.from(toolRegistry.keys());
+}
+function hasToolHandler(toolName) {
+  return toolRegistry.has(toolName);
+}
+function getToolHandler(toolName) {
+  return toolRegistry.get(toolName);
 }
 var toolRegistry;
 var init_tool_registry = __esm({
@@ -42664,6 +42677,12 @@ var ConnectionManager = class _ConnectionManager {
   // Resolves instantly once the initial discovery is done, so only the first
   // session after a cold launch pays the wait.
   static whenExternalToolsReady = null;
+  // What this host can execute (built-in tools, platform, place). Sent with
+  // session:create/resume so the server serves exactly these tools and words
+  // its instructions for this host; unset → the server's legacy full set.
+  static getHostDeclaration = null;
+  // Last resolved declaration, for the synchronous resume path.
+  static hostDeclaration;
   // Notification hooks — fired so main/index.ts can spawn background-toast
   // mini-windows when the user is not looking at the main window.
   static onElicitationRequest = null;
@@ -42934,6 +42953,13 @@ var ConnectionManager = class _ConnectionManager {
       await _ConnectionManager.whenExternalToolsReady?.();
     } catch {
     }
+    if (!_ConnectionManager.hostDeclaration && _ConnectionManager.getHostDeclaration) {
+      try {
+        _ConnectionManager.hostDeclaration = await _ConnectionManager.getHostDeclaration();
+      } catch {
+      }
+    }
+    const host = _ConnectionManager.hostDeclaration;
     const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null;
     if (this.ws !== sock || sock.readyState !== wrapper_default.OPEN) return;
     const externalTools = _ConnectionManager.getExternalToolSchemas?.() ?? [];
@@ -42954,7 +42980,8 @@ var ConnectionManager = class _ConnectionManager {
         history: { mode: "paged", ...cursor ? { cursor } : {} },
         ...basePrompt ? { basePrompt } : {},
         ...transcriptMirrorDir ? { transcriptMirrorDir } : {},
-        ...externalTools.length > 0 ? { externalTools } : {}
+        ...externalTools.length > 0 ? { externalTools } : {},
+        ...host ? { host } : {}
       });
     } else {
       this.sendRaw({
@@ -42967,7 +42994,8 @@ var ConnectionManager = class _ConnectionManager {
         history: { mode: "paged" },
         ...basePrompt ? { basePrompt } : {},
         ...transcriptMirrorDir ? { transcriptMirrorDir } : {},
-        ...externalTools.length > 0 ? { externalTools } : {}
+        ...externalTools.length > 0 ? { externalTools } : {},
+        ...host ? { host } : {}
       });
     }
     this.armEstablishTimer();
@@ -43476,7 +43504,8 @@ var ConnectionManager = class _ConnectionManager {
       rows: 40,
       protocolVersion: CLIENT_STREAM_PROTOCOL,
       history: { mode: "paged" },
-      ...basePrompt ? { basePrompt } : {}
+      ...basePrompt ? { basePrompt } : {},
+      ..._ConnectionManager.hostDeclaration ? { host: _ConnectionManager.hostDeclaration } : {}
     });
   }
   /** Request raw JSONL file content from the server for download.
@@ -51911,6 +51940,37 @@ var McpServerManager = class _McpServerManager {
   }
 };
 
+// src/main/mcp/host-declaration.ts
+init_command_runtime();
+var USER_MACHINE_TRAITS = { place: "the user's machine", preview: false };
+var PREVIEW_TOOLS = ["preview_mount", "preview_update", "preview_unmount"];
+var BACKGROUND_SHELL_TOOLS = ["BashOutput", "KillShell"];
+var GIT_TOOLS = ["EnterWorktree", "ExitWorktree"];
+async function resolves(find) {
+  try {
+    return Boolean(await find());
+  } catch {
+    return false;
+  }
+}
+async function probeHostDeclaration(registered, traits, lookup2 = {}) {
+  const platform = lookup2.platform ?? process.platform;
+  const which = lookup2.which ?? ((command) => whichExecutable(command, platform));
+  const [bash, powerShell, git] = await Promise.all([
+    resolves(() => findBashExecutable(lookup2)),
+    resolves(() => findPowerShellExecutable(lookup2)),
+    resolves(() => which("git"))
+  ]);
+  const missing = /* @__PURE__ */ new Set([
+    ...bash ? [] : ["Bash"],
+    ...powerShell ? [] : ["PowerShell"],
+    ...bash || powerShell ? [] : BACKGROUND_SHELL_TOOLS,
+    ...git ? [] : GIT_TOOLS,
+    ...traits.preview ? [] : PREVIEW_TOOLS
+  ]);
+  return { tools: registered.filter((name) => !missing.has(name)), platform, place: traits.place };
+}
+
 // src/bridge-host.ts
 init_executor2();
 init_host_compat();
@@ -52688,6 +52748,11 @@ var BridgeHost = class {
       connection.sendRaw({ type: "mcp:register-external-content", ...catalog });
     };
     ConnectionManager.getExternalToolSchemas = buildPayload;
+    ConnectionManager.hostDeclaration = void 0;
+    ConnectionManager.getHostDeclaration = async () => {
+      const { getRegisteredTools: getRegisteredTools2 } = await Promise.resolve().then(() => (init_tool_registry(), tool_registry_exports));
+      return probeHostDeclaration(getRegisteredTools2(), opts?.hostTraits ?? USER_MACHINE_TRAITS);
+    };
     ConnectionManager.getBasePrompt = (cwd) => [this.configStore.getBasePrompt(), opts?.sessionInstructions?.(cwd)].filter(Boolean).join("\n\n");
     const prevOnAuth = ConnectionManager.onAuthenticated;
     ConnectionManager.onAuthenticated = (connection) => {
