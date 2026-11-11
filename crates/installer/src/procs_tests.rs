@@ -4,7 +4,7 @@
 
 use super::*;
 
-const IMAGES: [&str; 3] = ["kaminide-gpui.exe", "kaminhost.exe", "kaminide-web.exe"];
+const IMAGES: [&str; 4] = crate::unlock::IMAGES;
 
 fn p(s: &str) -> PathBuf {
     PathBuf::from(s)

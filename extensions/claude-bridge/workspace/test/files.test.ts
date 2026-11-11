@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, readFile, rename, truncate, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, stat, truncate, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -31,6 +31,10 @@ test('all file invoke channels act on real container paths and preserve reply id
   assert.equal(await readFile(join(f.root, 'nested/final.txt'), 'utf8'), 'x')
   await client.invoke('file-tree:rename', 'nested', 'renamed')
   assert.equal(await readFile(join(f.root, 'renamed/final.txt'), 'utf8'), 'x')
+  const made = await client.invoke('file-tree:create-dir', 'renamed/made')
+  assert.deepEqual({ created: made.created, path: made.path }, { created: true, path: join(f.root, 'renamed', 'made') })
+  assert.equal(made.mtimeMs, (await stat(made.path)).mtimeMs)
+  assert.ok((await client.invoke('file-tree:list-dir', 'renamed')).some((entry: any) => entry.name === 'made' && entry.isDir && entry.path === made.path))
   assert.deepEqual(new Set(client.frames.filter(frame => frame.kind === 'invoke-reply').map(frame => frame.generation)), new Set(['file-document']))
   assert.equal(f.forwarded.length, 0)
   assert.deepEqual(new Set(client.calls), new Set(FILE_INVOKES))
@@ -48,6 +52,10 @@ test('file errors are explicit replies; invalid writes do not truncate existing 
     ['file-viewer:write', 'keep.txt', '🙂'.repeat(MAX_FILE_BYTES / 4 + 1)],
     ['file-viewer:write', 'no-parent/file', 'data'],
     ['file-tree:rename', 'missing', 'next'], ['file-tree:list-dir', 'keep.txt'],
+    ['file-tree:create-dir', 'no-parent/child'], ['file-tree:create-dir', 'keep.txt'],
+    ['file-tree:create-dir', 'keep.txt/child'], ['file-tree:create-dir', ''],
+    ['file-tree:create-dir', 'bad\0path'], ['file-tree:create-dir', 123],
+    ['file-tree:create-dir', 'extra', true], ['file-tree:create-dir'],
   ]
   for (const [channel, ...args] of bad) {
     const reply = await client.reply(channel, ...args)
@@ -65,6 +73,35 @@ test('file errors are explicit replies; invalid writes do not truncate existing 
   await writeFile(large, Buffer.alloc(2 * 1024 * 1024))
   assert.match(String((await client.reply('file-viewer:read', large)).error), /encoded frame limit/)
   assert.equal((await client.invoke('file-viewer:read-binary', large)).size, 2 * 1024 * 1024)
+})
+
+test('create-dir makes one level, reports an existing directory and fails like rename', async t => {
+  const f = await fileFixture(t)
+  const other = await fileFixture(t)
+  const client = f.client()
+  await writeFile(join(f.root, 'file.txt'), 'keep')
+  const first = await client.invoke('file-tree:create-dir', 'made')
+  assert.equal(first.created, true)
+  assert.equal(first.path, join(f.root, 'made'))
+  await writeFile(join(f.root, 'made', 'inside.txt'), 'kept')
+  // An existing directory is an explicit result and is left untouched.
+  assert.deepEqual(await client.invoke('file-tree:create-dir', 'made'), { ...first, created: false, mtimeMs: (await stat(first.path)).mtimeMs })
+  assert.deepEqual(await readdir(first.path), ['inside.txt'])
+  assert.equal((await client.invoke('file-tree:create-dir', 'made/child')).path, join(f.root, 'made', 'child'))
+  // Error text starts with the file-system code, exactly as rename reports it.
+  const error = async (channel: string, ...args: unknown[]) => String((await client.reply(channel, ...args)).error)
+  assert.match(await error('file-tree:create-dir', 'a/b'), /^ENOENT: /)
+  assert.match(await error('file-tree:rename', 'a/b', 'c'), /^ENOENT: /)
+  assert.match(await error('file-tree:create-dir', 'file.txt'), /^EEXIST: /)
+  assert.match(await error('file-tree:create-dir', ''), /nonempty container file path/)
+  assert.match(await error('file-tree:create-dir', 'x', 'y'), /Expected 1 file arguments/)
+  assert.deepEqual((await readdir(f.root)).sort(), ['file.txt', 'made'])
+  assert.equal(await readFile(join(f.root, 'file.txt'), 'utf8'), 'keep')
+  // The path boundary is the one of rename and list-dir: absolute stays absolute.
+  const outside = join(other.root, 'outside')
+  assert.equal((await client.invoke('file-tree:create-dir', outside)).path, outside)
+  assert.ok((await stat(outside)).isDirectory())
+  assert.equal(f.forwarded.length, 0)
 })
 
 test('absolute paths outside root name the same container machine, not a root sandbox', async t => {

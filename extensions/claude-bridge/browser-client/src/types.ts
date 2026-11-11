@@ -12,6 +12,15 @@ import type { ExternalMcpServerConfig, McpRegistryEntry } from '../../webview/sh
 
 export type TabId = string
 
+/** Result of `files.createDirectory` (`file-tree:create-dir`). */
+export interface CreatedDirectory {
+  /** False when the directory already existed; nothing was changed then. */
+  created: boolean
+  /** Absolute path in the workspace container, as `file-tree:list-dir` reports it. */
+  path: string
+  mtimeMs: number
+}
+
 /** Incremental text or thinking append of the live turn (`streaming-delta`). Sent only when the
  * Bridge server streams for this credential; otherwise the transcript arrives as whole entries. */
 export interface StreamingDelta { msgId: string; blockIdx: number; appendText: string; kind: 'text' | 'thinking' }

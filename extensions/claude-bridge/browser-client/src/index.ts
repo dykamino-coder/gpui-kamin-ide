@@ -2,5 +2,6 @@
 // Bridge workspace host. Preview rendering lives in the ./preview entry.
 export { createBridgeClient, type BridgeClient, type BridgeClientOptions, type WorkspaceSnapshot } from './client'
 export { createBrowserSocket, type BridgeSocket, type BridgeSocketLike, type BridgeSocketOptions, type ConnectionState, type HostPort } from './socket'
+export type { HostBase } from './address'
 export { createBridgeTransport, type BridgeTransport, type Dispose, type EventCallback } from './transport'
 export type * from './types'

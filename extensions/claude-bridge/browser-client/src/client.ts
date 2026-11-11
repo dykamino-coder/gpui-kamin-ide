@@ -4,8 +4,9 @@
 // (see the channel tables in webview/src/lib/bridge-channels.ts).
 import { createBrowserSocket, type BridgeSocket, type BridgeSocketLike, type ConnectionState } from './socket'
 import { createBridgeTransport, type BridgeTransport, type Dispose } from './transport'
+import { hostAddresses, type HostBase } from './address'
 import type {
-  Agent, BrowseProgress, CreatedSkill, CreateTabOptions, ElicitationRequest, HookDraft, HookEntry, HooksByEvent, HookTemplate,
+  Agent, BrowseProgress, CreatedDirectory, CreatedSkill, CreateTabOptions, ElicitationRequest, HookDraft, HookEntry, HooksByEvent, HookTemplate,
   HookTestResult, InstalledPlugin, JsonlEntry, JsonlStatus, Marketplace, MarketplacePlugin, MarketplaceRefresh, MarketplaceUpdate,
   McpActivity, McpCallResult, McpPromptInfo, McpRegistryResult, McpResourceInfo, McpServer, McpServerInput, McpTestResult,
   MonitorEvent, MonitorInfo, MonitorLine, PendingPluginHookApproval, PermissionDecision, PermissionRequest, PluginContents,
@@ -16,6 +17,12 @@ import type {
 export interface BridgeClientOptions {
   /** Workspace origin, e.g. https://studio.example/workspace-proxy origin. Defaults to location.origin. */
   origin?: string
+  /**
+   * Where the host's paths are published when a gateway puts them under a
+   * prefix: `/bridge` opens at `<base.ws>/bridge`, `/preview/state` is requested
+   * at `<base.http>/preview/state`. Default: the root of `origin`.
+   */
+  base?: HostBase
   createSocket?: (url: string) => BridgeSocketLike
   /** Keeps the host's logical file view across reloads; sessionStorage by default. */
   fileViewIdentity?: { get(): string | undefined; set(id: string): void }
@@ -80,6 +87,13 @@ export interface BridgeClient {
   /** Stores bytes in the workspace and returns the path to append to a prompt, one path per line. */
   saveAttachment(base64: string, name: string): Promise<string>
   saveImage(base64: string, mimeType: 'image/png' | 'image/jpeg'): Promise<string>
+
+  /** Files of the workspace container. Relative paths resolve against the workspace root. */
+  readonly files: {
+    /** Creates one directory (`file-tree:create-dir`). An existing directory resolves with
+     * `created: false`; a missing parent or a file at the path rejects (ENOENT, EEXIST). */
+    createDirectory(path: string): Promise<CreatedDirectory>
+  }
 
   /** Subagent transcripts are sent on demand: select one, then receive its entries; null stops. */
   selectSubagent(tab: TabId, agentId: string | null): void
@@ -185,8 +199,8 @@ function sessionStorageIdentity(): BridgeClientOptions['fileViewIdentity'] {
 
 export function createBridgeClient(options: BridgeClientOptions = {}): BridgeClient {
   const origin = new URL(options.origin ?? location.origin).origin
-  const socketUrl = new URL('/bridge', origin)
-  socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+  const addresses = hostAddresses(options.base, origin)
+  const socketUrl = addresses.ws('/bridge')
   const request = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init))
   const stateListeners = new Set<(state: ConnectionState) => void>()
   let connectionState: ConnectionState = 'closed'
@@ -320,6 +334,10 @@ export function createBridgeClient(options: BridgeClientOptions = {}): BridgeCli
     saveAttachment: (base64, name) => client.invoke<string>('save-dropped-file', base64, name),
     saveImage: (base64, mimeType) => client.invoke<string>('save-clipboard-image', base64, mimeType),
 
+    files: {
+      createDirectory: path => client.invoke<CreatedDirectory>('file-tree:create-dir', path),
+    },
+
     selectSubagent(tab, agentId) { live().snd('jsonl:subagent-select', tab, agentId) },
     onSubagentEntries: listener => on('jsonl-subagent-entries', (tab, agentName, entries, agentId) => listener({
       tab: tab as TabId, agentName: String(agentName ?? ''), entries: Array.isArray(entries) ? entries : [],
@@ -410,12 +428,12 @@ export function createBridgeClient(options: BridgeClientOptions = {}): BridgeCli
         return on('workspace:preview-state', state => listener(state as PreviewState))
       },
       async fetchState() {
-        const response = await request(new URL('/preview/state', origin), { credentials: 'same-origin', cache: 'no-store' })
+        const response = await request(addresses.http('/preview/state'), { credentials: 'same-origin', cache: 'no-store' })
         if (!response.ok) throw new Error(response.status === 404 ? 'Preview is not configured' : 'Workspace session unavailable')
         return await response.json() as PreviewState
       },
       async unmount() {
-        const response = await request(new URL('/preview/unmount', origin), { method: 'POST', credentials: 'same-origin' })
+        const response = await request(addresses.http('/preview/unmount'), { method: 'POST', credentials: 'same-origin' })
         if (!response.ok) throw new Error('Preview unmount failed')
       },
     },

@@ -18,6 +18,8 @@ export type RemoteRequire = {
   i?: Interceptor[]
   c?: Record<string, Module>
   h?: () => string
+  /** Public path: the prefix of chunk, asset and hot-update addresses. */
+  p?: unknown
 }
 
 export function supportsHot(require: RemoteRequire): boolean {
@@ -74,12 +76,10 @@ export function shareRefresh(require: RemoteRequire, name: string, runtime: Refr
 // on the application's dev-server client being present. Run
 // the native HMR check/apply protocol here; the remote plugin alone decides
 // whether to refresh a boundary, reset hooks, invalidate, or reject the update.
-export function connectHot(require: RemoteRequire, name: string,
+export function connectHot(require: RemoteRequire, url: URL,
   applied: () => void, invalidated: () => void): () => void {
   const hot = Object.values(require.c ?? {}).find(module => module.hot)?.hot
   if (!hot || !require.h) return () => {}
-  const url = new URL(`/preview/remotes/${name}/ws`, location.href)
-  url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
   let socket: WebSocket | undefined, reconnect: ReturnType<typeof setTimeout> | undefined
   let disposed = false, checking = false, hash = '', ready = false
   async function update() {

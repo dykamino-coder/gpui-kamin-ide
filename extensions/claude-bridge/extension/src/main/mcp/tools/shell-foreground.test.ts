@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runForegroundCommand } from './shell-foreground'
 
 const spawn = vi.hoisted(() => vi.fn())
+const windowsJobRunner = vi.hoisted(() => vi.fn<() => string | null>(() => null))
 vi.mock('node:child_process', () => ({ spawn }))
+vi.mock('./windows-job-runner', () => ({ windowsJobRunner }))
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
@@ -71,5 +73,25 @@ describe('foreground shell deadline', () => {
     expect(spawn.mock.lastCall?.[2].cwd).toBe('/session project')
     proc.emit('close', 0)
     await pending
+  })
+
+  it('runs the command through the Windows job runner and stops it by ending the runner', async () => {
+    windowsJobRunner.mockReturnValueOnce('C:\\install\\kamin-jobrun.exe')
+    const proc = child()
+    spawn.mockReturnValue(proc)
+    const stop = new AbortController()
+    const pending = runForegroundCommand('sleep 600', 'bash.exe', 60_000, ['-c'], {}, stop.signal)
+    expect(spawn.mock.lastCall?.slice(0, 2)).toEqual([
+      'C:\\install\\kamin-jobrun.exe',
+      ['bash.exe', '-c', 'sleep 600'],
+    ])
+    stop.abort()
+    // No taskkill: the job, not a walk over parent PIDs, ends the tree.
+    expect(spawn).toHaveBeenCalledTimes(1)
+    expect(proc.kill).toHaveBeenCalledWith('SIGKILL')
+    proc.emit('close', null)
+    const result = await pending
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toContain('Command cancelled')
   })
 })

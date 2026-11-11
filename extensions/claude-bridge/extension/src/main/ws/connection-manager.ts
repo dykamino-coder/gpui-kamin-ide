@@ -31,7 +31,7 @@ import { SessionIdleTracker } from './session-idle-tracker'
 import { handleServerMessage } from './handle-server-message'
 import { chatReplayTail, isChatStoredEntry } from '../../shared/chat-stored-entries'
 import { newestInFileOrder } from '../../shared/jsonl-cache-order'
-import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, type McpCallCtx } from './mcp-call-pipeline'
+import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, tabWorkingDirectory, type McpCallCtx } from './mcp-call-pipeline'
 
 export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
 
@@ -1635,7 +1635,7 @@ export class ConnectionManager {
    *  pipeline helpers need to peek at. */
   private mcpCallCtx(): McpCallCtx {
     return {
-      workingDirectory: () => this.config.cwd,
+      workingDirectory: () => tabWorkingDirectory(this.config.cwd),
       commandOwner: () => this.mcpTaskOwner,
       window: this.window,
       tabId: this.tabId,
