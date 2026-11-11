@@ -342,6 +342,49 @@ impl PlatformTextSystem for DirectWriteTextSystem {
             })
     }
 
+    fn layout_line_into(
+        &self,
+        text: &str,
+        font_size: Pixels,
+        runs: &[FontRun],
+        index_base: usize,
+        out: &mut Vec<ShapedRun>,
+    ) -> (Pixels, Pixels, Pixels) {
+        let first = out.len();
+        let shaped = self
+            .state
+            .write()
+            .layout_line_into(
+                &self.components,
+                text,
+                font_size,
+                runs,
+                index_base,
+                out,
+                false,
+            )
+            .log_err();
+        shaped.unwrap_or_else(|| {
+            out.truncate(first);
+            (px(0.), px(0.), px(0.))
+        })
+    }
+
+    /// KaminIDE patch: a run joins the shaping range of the run before it
+    /// exactly when `layout_line_into` folds it (same size, collection,
+    /// physical face and features); every other boundary starts a new
+    /// DirectWrite format range, and DirectWrite shapes ranges apart.
+    fn shapes_apart(&self, a: (FontId, Pixels), b: (FontId, Pixels)) -> bool {
+        let state = self.state.read();
+        let (Some(x), Some(y)) = (state.fonts.get(a.0.0), state.fonts.get(b.0.0)) else {
+            return false;
+        };
+        a.1 != b.1
+            || x.font_collection != y.font_collection
+            || x.face_key != y.face_key
+            || x.features_key != y.features_key
+    }
+
     fn recommended_rendering_mode(
         &self,
         font_id: FontId,
@@ -680,6 +723,64 @@ impl DirectWriteState {
                 ..Default::default()
             });
         }
+        // KaminIDE patch: the glyph run list is sized at its first run
+        // (`RendererContext::reserve`): a line that draws no glyph run keeps
+        // no list, as before.
+        let mut runs = Vec::new();
+        let (width, ascent, descent) =
+            self.layout_line_into(components, text, font_size, font_runs, 0, &mut runs, true)?;
+        Ok(LineLayout {
+            font_size,
+            width,
+            ascent,
+            descent,
+            runs,
+            len: text.len(),
+        })
+    }
+
+    /// KaminIDE patch: the shaping ranges `layout_line_into` gives the
+    /// non-empty runs of `font_runs` (a run joins the range before it when it
+    /// is folded there: same size, collection, physical face and features).
+    /// No more than the glyph runs DirectWrite draws for them.
+    fn shaping_ranges(&self, font_runs: &[FontRun]) -> usize {
+        let mut ranges = 0;
+        let mut applied: Option<&FontRun> = None;
+        for run in font_runs.iter().filter(|r| r.len > 0) {
+            let joins = applied.is_some_and(|a| {
+                let (x, y) = (&self.fonts[run.font_id.0], &self.fonts[a.font_id.0]);
+                !run.break_ligatures
+                    && run.font_size == a.font_size
+                    && x.font_collection == y.font_collection
+                    && x.face_key == y.face_key
+                    && x.features_key == y.features_key
+            });
+            if !joins {
+                ranges += 1;
+                applied = Some(run);
+            }
+        }
+        ranges
+    }
+
+    /// KaminIDE patch: `layout_line` appending its glyph runs to `out`, glyph
+    /// indices offset by `index_base`; returns width, ascent and descent.
+    /// `own`: `out` holds only this line, so runs split back from folded
+    /// ranges go into a list sized like the drawn one.
+    #[allow(clippy::too_many_arguments)]
+    fn layout_line_into(
+        &mut self,
+        components: &DirectWriteComponents,
+        text: &str,
+        font_size: Pixels,
+        font_runs: &[FontRun],
+        index_base: usize,
+        out: &mut Vec<ShapedRun>,
+        own: bool,
+    ) -> Result<(Pixels, Pixels, Pixels)> {
+        if font_runs.is_empty() {
+            return Ok((px(0.), px(0.), px(0.)));
+        }
         unsafe {
             self.layout_line_scratch.clear();
             self.layout_line_scratch.extend(text.encode_utf16());
@@ -877,7 +978,12 @@ impl DirectWriteState {
                 descent = descent.max(m.descent(size).abs());
             }
 
-            let mut runs = Vec::new();
+            let first = out.len();
+            let reserve = if own {
+                self.shaping_ranges(font_runs)
+            } else {
+                0
+            };
             // KaminIDE patch: контекст ОБЯЗАН быть &mut с рождения — колбэк
             // отрисовщика мутирует его через указатель, а указатель,
             // производный от &T, мутировать нельзя (UB по правилам
@@ -886,7 +992,9 @@ impl DirectWriteState {
                 text_system: self,
                 components,
                 index_converter: StringIndexConverter::new(text),
-                runs: &mut runs,
+                runs: &mut *out,
+                reserve,
+                index_base,
                 width: 0.0,
                 vert_ranges,
             };
@@ -899,8 +1007,14 @@ impl DirectWriteState {
             drawn?;
             let width = px(renderer_context.width);
             if !folded.is_empty() {
-                let mut out: Vec<ShapedRun> = Vec::with_capacity(runs.len());
-                for run in runs.drain(..) {
+                let runs: Vec<ShapedRun> = if own {
+                    let drawn = std::mem::take(out);
+                    *out = Vec::with_capacity(drawn.len());
+                    drawn
+                } else {
+                    out.drain(first..).collect()
+                };
+                for run in runs {
                     let (base_id, size) = (run.font_id, run.font_size);
                     let base_key = &self.fonts[base_id.0].face_key;
                     let mut cur: Option<ShapedRun> = None;
@@ -910,8 +1024,8 @@ impl DirectWriteState {
                         let id = folded
                             .iter()
                             .find(|&&(s, l, fid)| {
-                                g.index >= s
-                                    && g.index < s + l
+                                g.index - index_base >= s
+                                    && g.index - index_base < s + l
                                     && self.fonts[fid.0].face_key == *base_key
                             })
                             .map_or(base_id, |&(_, _, fid)| fid);
@@ -933,17 +1047,9 @@ impl DirectWriteState {
                         out.push(c);
                     }
                 }
-                runs = out;
             }
 
-            Ok(LineLayout {
-                font_size,
-                width,
-                ascent,
-                descent,
-                runs,
-                len: text.len(),
-            })
+            Ok((width, ascent, descent))
         }
     }
 
@@ -1783,6 +1889,12 @@ struct RendererContext<'t, 'a, 'b> {
     components: &'a DirectWriteComponents,
     index_converter: StringIndexConverter<'a>,
     runs: &'b mut Vec<ShapedRun>,
+    /// KaminIDE patch: glyph runs the line draws at least (its shaping
+    /// ranges); the empty list takes room for them, rounded to the power of
+    /// two that doubling from empty would reach, at its first run. 0: grow.
+    reserve: usize,
+    /// KaminIDE patch: added to every glyph index (the line is a piece of a longer text).
+    index_base: usize,
     width: f32,
     /// KaminIDE patch: utf16-участки, где продвижение глифа берётся из
     /// вертикальных метрик (`vert`, стоячее вертикальное письмо).
@@ -2060,7 +2172,7 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
                             px(-glyph_offsets[this_glyph_idx].ascenderOffset)
                         },
                     ),
-                    index: context.index_converter.utf8_ix,
+                    index: context.index_converter.utf8_ix + context.index_base,
                     is_emoji,
                 });
                 context.width += vert_advances
@@ -2068,6 +2180,11 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
                     .map_or(glyph_advances[this_glyph_idx], |v| v[this_glyph_idx]);
             }
             glyph_idx += cluster_glyph_count;
+        }
+        if context.reserve > 0 && context.runs.capacity() == 0 {
+            context
+                .runs
+                .reserve_exact(context.reserve.next_power_of_two().max(4));
         }
         // KaminIDE patch: кегль прогона знает сам прогон глифов.
         context.runs.push(ShapedRun {

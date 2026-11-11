@@ -4,8 +4,9 @@
 //! кусков рисуются по словам, остальное — сплошным набором), удаление
 //! схлопываемого хвоста (CSS 2.1 §16.6.1), висящий хвост rtl, знак обрыва
 //! и переноса, маска при визуальном усечении; затем атомы, куски вне потока
-//! и слежение за выделением.
+//! и слежение за выделением. Строки, чьи чернила целиком вне маски, не рисуются (`cull`).
 
+mod cull;
 mod rows;
 
 use crate::layout::fragment::line_admission;
@@ -44,11 +45,21 @@ impl Paragraph {
         let mut rev_off = self.reversed_offset(count, &step);
         let mut y = bounds.origin.y + px(rev_off);
         let runs = self.selection_runs(id, window);
+        let cull = cull::Cull::new(self, &segs, &pads, bounds, window);
         // Строка неделима: в записи главной копии кусков она допускается целиком.
         let mut bands = Vec::with_capacity(count);
         for (i, line) in self.lines.iter().enumerate() {
             let band = (y + above(i), y + above(i) + self.line_height);
             bands.push(band);
+            if cull.as_ref().is_some_and(|c| c.skip(band, window)) {
+                if self.lines_reversed {
+                    rev_off -= f32::from(step(i + 1));
+                    y = bounds.origin.y + px(rev_off);
+                } else {
+                    y += step(i);
+                }
+                continue;
+            }
             // Перевод строки в набор не отдаём: он уже сработал разрывом.
             let body = self.text[line.range.clone()].trim_end_matches('\n');
             let range = line.range.start..line.range.start + body.len();

@@ -157,7 +157,12 @@ async fn build_stack(
         roots: vec![],
         rule: None,
         color: style.inh.ui.color.map_or(opts.text.color, |c| c.to_hsla()),
-        font: crate::text::inline::strut_font(&style, &opts.text, opts.cx.vcx()),
+        font: crate::text::inline::strut_font(
+            &style,
+            &opts.text,
+            opts.cx.vcx(),
+            opts.cx.layout().run_faces.active(),
+        ),
         font_size: px_strict(style.inh.font.font_size).unwrap_or(opts.base_size()),
         glyph: None,
         glyph_offset: (0.0, 0.0),

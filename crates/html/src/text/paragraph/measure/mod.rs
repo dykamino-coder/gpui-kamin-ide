@@ -1,12 +1,17 @@
 //! Измерения абзацев, принадлежащие документу, и результаты text-fit от измерения к отрисовке.
 
+mod bidi_levels;
 mod cache_keys;
+mod chunked;
+mod chunks;
 mod flow_cut;
 mod frame_cache;
 mod geometry_key;
 mod min_content;
 mod padding;
 mod width;
+#[cfg(test)]
+mod width_tests;
 
 use crate::text::paragraph::{Line, Seg};
 use frame_cache::FrameCache;
@@ -33,6 +38,30 @@ impl MeasureCache {
     pub(super) fn remember_fit(&self, key: u64, k: f32) {
         self.fitted.borrow_mut().insert(key, k);
     }
+}
+
+impl crate::text::paragraph::Paragraph {
+    /// Запомнить части замера `key` (абзац без частей — ничего): список
+    /// хранится в памяти строк текстовой системы рядом с самими частями.
+    fn remember_chunks(&self, key: u64, chunks: &chunked::Keys, window: &gpui::Window) {
+        if chunks.len > 0 {
+            window
+                .text_system()
+                .put_line_piece_list(list_key(key), &chunks.keys[..chunks.len]);
+        }
+    }
+
+    /// Части держатся в памяти, пока держится замер их абзаца.
+    fn keep_chunks(&self, key: u64, window: &gpui::Window) {
+        if self.text.len() >= chunks::LONG {
+            window.text_system().keep_line_pieces(list_key(key));
+        }
+    }
+}
+
+/// Ключ списка частей замера `key`: не совпадает с ключами самих частей.
+fn list_key(key: u64) -> u64 {
+    key.rotate_left(29) ^ 0x9E37_79B9_7F4A_7C15
 }
 
 #[cfg(test)]

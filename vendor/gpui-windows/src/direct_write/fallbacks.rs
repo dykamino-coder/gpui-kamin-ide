@@ -97,7 +97,8 @@ impl DirectWriteState {
         runs: &[FontRun],
     ) -> Result<Option<IDWriteFontFallback>> {
         let first = &self.fonts[runs[0].font_id.0];
-        let mut families: Vec<&FontInfo> = Vec::new();
+        // KaminIDE patch: a line uses few families; the list stays on the stack.
+        let mut families: smallvec::SmallVec<[&FontInfo; 8]> = smallvec::SmallVec::new();
         for run in runs {
             let font = &self.fonts[run.font_id.0];
             if let Some(previous) = families.iter().find(|f| f.font_family_h == font.font_family_h) {

@@ -218,7 +218,7 @@ pub(super) async fn run(
         let mut diagnostics = Vec::with_capacity(args.runs);
         let mut work = Vec::with_capacity(args.runs);
         let mut usage = Vec::with_capacity(args.runs);
-        let step = if cold { Step::Cold(None) } else { Step::Warm };
+        let step = super::memory::phase_step(cx, capture, cold).await?;
         for index in 1..=args.runs {
             frames.prepare(cx, window, index)?;
             let (sample, frame, (counts, resources)) =

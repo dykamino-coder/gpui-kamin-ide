@@ -46,7 +46,7 @@ impl Paragraph {
                 base.font_family = font.family.clone();
                 base.font_fallbacks = font.fallbacks.clone();
             }
-            let font = crate::text::inline::strut_font(&info.font_style, &base, vcx);
+            let font = crate::text::inline::strut_font(&info.font_style, &base, vcx, None);
             let size = px(info
                 .font_style
                 .used_font(f32::from(self.font_size), vcx)

@@ -13,7 +13,12 @@ pub(super) struct FontParameters {
 }
 impl FontParameters {
     pub fn new(e: &Element, style: &BoxStyle, opts: &RenderOpts) -> Self {
-        let font = strut_font(style, &opts.text, opts.cx.vcx());
+        let font = strut_font(
+            style,
+            &opts.text,
+            opts.cx.vcx(),
+            opts.cx.layout().run_faces.active(),
+        );
         let size = px_strict(style.inh.font.font_size).unwrap_or(opts.base_size());
         let (x, rule) = math_metrics(&font, size, opts.cx.text_fonts());
         let constants = math::for_family(&font.family, opts.cx.text_fonts());
