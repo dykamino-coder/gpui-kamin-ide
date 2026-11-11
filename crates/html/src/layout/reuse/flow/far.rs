@@ -44,10 +44,25 @@ impl FlowCx {
         if !mark.far || !mark.shared_widths || self.reuse.far_widths.get() {
             return;
         }
+        // The wrappers of a long flow would grow the frame's element arena
+        // by chunks the frame does not otherwise need: blocks are wrapped
+        // while the room the last frame left lasts, the rest in later frames
+        // (a block not wrapped now stays a candidate).
+        if gpui::element_arena_spare() < FAR_ROOM {
+            return;
+        }
         let Some(child) = out.pop() else { return };
         let pending = PendingFar::new(mark.start, end);
         let source = self.reuse.shells.source(e);
         self.reuse.add_far_recorder();
-        out.push(FarRecorder::new(child, self.reuse.clone(), pending, source).hooked());
+        let reuse = self.reuse.clone();
+        out.push(gpui::spend_element_arena(|| {
+            FarRecorder::new(child, reuse, pending, source).hooked()
+        }));
     }
 }
+
+/// Arena room a far wrapper needs left (`gpui::element_arena_spare`): the
+/// wrapper itself (a few hundred bytes) and a margin for a frame that builds
+/// a little more than the last one.
+const FAR_ROOM: usize = 64 * 1024;
