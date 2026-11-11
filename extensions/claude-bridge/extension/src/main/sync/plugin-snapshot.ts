@@ -5,6 +5,7 @@ import path from 'path'
 import type { SyncPluginData } from '../../shared/sync-types'
 import { listEnabledInstalledPlugins, readEffectivePluginManifest, substituteUserConfig } from '../plugin-helpers'
 import { buildMonitorTriggerHooks } from '../plugin-monitors'
+import { collectPluginModuleTree } from './plugin-modules'
 
 const MAX_TEXT_FILE_BYTES = 100_000
 
@@ -289,7 +290,8 @@ export function rewritePluginMcpMatchers(pluginName: string, hooks: HookSettings
 }
 
 function proxyManifest(manifest: Record<string, unknown>, fallbackName: string): Record<string, unknown> {
-  const allowed = ['name', 'displayName', 'version', 'description', 'author', 'homepage', 'repository', 'license', 'keywords']
+  // `types` is the contract of a hooks module, which does run in the CLI.
+  const allowed = ['name', 'displayName', 'version', 'description', 'author', 'homepage', 'repository', 'license', 'keywords', 'types']
   const out: Record<string, unknown> = { name: typeof manifest.name === 'string' ? manifest.name : fallbackName }
   for (const key of allowed) {
     if (key in manifest && manifest[key] !== undefined) out[key] = manifest[key]
@@ -331,7 +333,7 @@ export async function buildPluginSnapshots(): Promise<Record<string, SyncPluginD
 
     const workflowRefs = manifest.workflows !== undefined ? manifestPathRefs(manifest.workflows) : ['workflows']
 
-    const [skills, agents, commands, workflows, outputStyles, themes, hooks, monitorHooks, settings] = await Promise.all([
+    const [skills, agents, commands, workflows, outputStyles, themes, hooks, monitorHooks, settings, moduleTree] = await Promise.all([
       collectComponentFiles(plugin.installPath, skillsRefs, 'skills', options),
       collectComponentFiles(plugin.installPath, agentsRefs, 'agents', options),
       collectComponentFiles(plugin.installPath, commandsRefs, 'commands', options),
@@ -341,6 +343,9 @@ export async function buildPluginSnapshots(): Promise<Record<string, SyncPluginD
       collectPluginHooks(plugin.installPath, manifest),
       buildMonitorTriggerHooks(plugin.installPath, manifest, plugin.key),
       readText(path.join(plugin.installPath, 'settings.json')),
+      collectPluginModuleTree(plugin.installPath, manifest, (reason) => {
+        console.warn(`[sync] Hooks modules of plugin ${plugin.key} are not synced: ${reason}`)
+      }),
     ])
 
     const pluginName = plugin.name
@@ -362,6 +367,7 @@ export async function buildPluginSnapshots(): Promise<Record<string, SyncPluginD
       themes,
       hooks: approvedHooks,
       settings,
+      ...(moduleTree ?? {}),
     }
   }))
 

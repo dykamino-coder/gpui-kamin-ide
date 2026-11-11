@@ -105,9 +105,10 @@ server with the packaged client:
   the workspace; `host: 'local'` or `host: 'server'` overrides this. `http`
   hooks are requested by the CLI on the Bridge server, so their URL must be
   reachable from that server.
-- CLI mods (plugins with a hooks module) are not delivered to the Bridge
-  server's CLI by the current sync, and mod UI (`ui.render`) has no structured
-  channel; see INC-2026-0095 in the source repository.
+- CLI mods (plugins with a hooks module) are synced to the Bridge server's CLI
+  with their file tree, so their hooks run there. Mod UI (`ui.render` panes,
+  bands, status entries) is not supported: the client has no structured channel
+  for it.
 
 ## Preview
 
