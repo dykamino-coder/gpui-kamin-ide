@@ -13,6 +13,7 @@ import { getHook } from './registry'
 import type { HookExecutionResult, HookInputPayload, RegisteredHook } from './types'
 import { debugLog, warnLog } from '../logging'
 import { appendExecution } from './audit-log'
+import { payloadForHook } from './tool-names'
 
 // Match Claude Code's DEFAULT_HTTP_HOOK_TIMEOUT_MS = 10 * 60 * 1000.
 // Long-running hooks (formatters, test runners) need this room.
@@ -76,6 +77,7 @@ export async function dispatchHook(
     return errorResult(`Unknown hook ${hookId} for session ${sessionId}`)
   }
   const start = Date.now()
+  payload = payloadForHook(reg.matcher, payload)
   let result: HookExecutionResult
   let auditNote: string | undefined
   try {

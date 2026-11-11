@@ -10,6 +10,7 @@
 import { config } from '../config'
 import type { HookHandler, HookMatcher, HookSettings, HookSource } from './types'
 import { registerSessionHooks } from './registry'
+import { matcherForCli } from './tool-names'
 
 /** Env var the CLI process carries for us. The relay credential travels in
  *  the session's own process environment, never in the command text: the
@@ -109,7 +110,7 @@ export function rewriteHooksForCli(
         }
         return relay
       })
-      return { matcher: m.matcher, hooks: newHandlers }
+      return { matcher: matcherForCli(event, m.matcher), hooks: newHandlers }
     })
     ;(out as Record<string, unknown>)[event] = newMatchers
   }
