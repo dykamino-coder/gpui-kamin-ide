@@ -1,6 +1,6 @@
 # Runtime backlog: что осталось и как продолжать
 
-## Merged after 1.0.93, not published yet: interrupt tree stop and hooks — 2026-11-11
+## Merged after 1.0.93, not published yet: interrupt tree stop, hooks and past segment scroll — 2026-11-11
 
 Reconciliation 2026-11-11, source `origin/main`
 `4ecb8cbbba30198c39efca35d70b2ea3bb4361a7`. The three fixes below are in
@@ -29,6 +29,16 @@ and not acceptance. Do not reimplement #738, #743 or #747.
   owner's `Edit|Write` hook runs. Owner: the maintainer of that release.
   Open and not part of #747: the `if` field of a hook is still evaluated
   against the MCP tool name.
+- [INC-0104](runtime-issues/INC-2026-0104.md): `verify`. Fix
+  [#752](https://github.com/dykamino-coder/gpui-kamin-ide/pull/752) (`5a8752ea`), webview only, added to this section on
+  2026-11-11 at `origin/main` `5a8752ea06389ac5dd764734298f8d926dd58841`: a
+  past conversation segment loads its older pages into the window on screen,
+  pages back by itself while it does not fill the viewport, and the current
+  conversation follows new messages again after a past segment was scrolled.
+  Unit tests cover the cause; a live check passed on the candidate. Next
+  artifact: a check in the installed release that a past segment scrolls to
+  its first record. Owner: the maintainer of that release. Do not reimplement
+  #752.
 ## KaminIDE 1.0.93 delivery: host tool declaration and client management groups — 2026-11-11
 
 Delivery reconciliation 2026-11-11, source `origin/main`

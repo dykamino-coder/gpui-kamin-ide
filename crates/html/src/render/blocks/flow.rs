@@ -172,7 +172,10 @@ pub(super) async fn blocks_flow(
                 continue;
             }
             let mark = reuse.as_ref().map(|flow| flow.mark(e, opts, out.len()));
-            let tracked = mark.as_ref().and_then(|mark| mark.child_opts(opts));
+            let tracked = reuse
+                .as_ref()
+                .zip(mark.as_ref())
+                .and_then(|(flow, mark)| flow.child_opts(mark, opts));
             paint_element(
                 stk,
                 e,
@@ -188,6 +191,7 @@ pub(super) async fn blocks_flow(
             )
             .await;
             if let (Some(flow), Some(mark)) = (&reuse, mark) {
+                flow.give_back(&mark, opts);
                 flow.record(e, edge, mark, opts, &mut out);
                 flow.built(n);
             }

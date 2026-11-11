@@ -145,9 +145,13 @@ pub struct Scene {
     /// paint (Window::with_ink_sink); each one takes the placed bounds of every
     /// primitive offered to the scene, before culling.
     pub(crate) ink: Vec<std::rc::Rc<crate::InkSink>>,
+    /// KaminIDE patch: the open scope of the frame's scope sink (Window::with_ink_scope), 0 if none.
+    pub(crate) ink_scope: u32,
     /// Mouse listeners and element state reads declared inert while unseen
     /// (Window::offscreen_inert), counted so ink probes can allow them.
-    pub(crate) ink_allowed: (usize, usize),
+    /// Counters of one frame, 32 bits each: with `ink_scope` the scene (two
+    /// in every `Window`) stays the size it had without scopes.
+    pub(crate) ink_allowed: (u32, u32),
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -342,7 +346,9 @@ impl Scene {
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();
         self.ink.clear();
+        self.ink_scope = 0;
         self.ink_allowed = (0, 0);
+        crate::window::reset_ink_scopes();
     }
 
     pub fn len(&self) -> usize {
@@ -381,8 +387,9 @@ impl Scene {
         let placed_bounds = placed_bounds(&primitive);
         // KaminIDE patch: ink of open retained subtrees, culled or not.
         for sink in &self.ink {
-            sink.add(placed_bounds);
+            sink.add_in(self.ink_scope, placed_bounds);
         }
+        crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
         let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {
@@ -668,7 +675,7 @@ impl Scene {
             }
             match &mut operation {
                 PaintOperation::Primitive(primitive) => {
-                    if !self.ink.is_empty() {
+                    if !self.ink.is_empty() || self.ink_scope != 0 {
                         let placed = placed_bounds(primitive);
                         ink = Some(ink.map_or(placed, |ink| ink.union(&placed)));
                     }
@@ -685,8 +692,9 @@ impl Scene {
         }
         if let Some(ink) = ink {
             for sink in &self.ink {
-                sink.add(ink);
+                sink.add_in(self.ink_scope, ink);
             }
+            crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, ink));
         }
         let index = match graft {
             None => BlockIndex::Empty,

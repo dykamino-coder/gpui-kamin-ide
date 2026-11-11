@@ -507,6 +507,15 @@ export const STORED_ENTRY_TYPES = CHAT_STORED_ENTRY_TYPES
 const isStoredEntry = (e: JsonlEntryData): boolean => isChatStoredEntry(e)
 
 export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): boolean {
+  return ingestEntries(tabId, entries, false)
+}
+
+/** `ofShownWindow`: the rows are an older page of the window ON SCREEN (the
+ *  scroll-up path), so the archived-view gate below does not apply to them. The
+ *  gate exists for rows of the CURRENT conversation; a page of the archived
+ *  segment sent through it was held back as if it were live, never reached the
+ *  window, and later surfaced inside the current conversation (INC-2026-0104). */
+function ingestEntries(tabId: string, entries: JsonlEntryData[], ofShownWindow: boolean): boolean {
   if (entries.length === 0) return false
   // Drop the rows nothing reads before they enter the store, or the archived
   // view's pending buffer. They used to reach the renderer and be filtered at the
@@ -518,7 +527,7 @@ export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): bo
   // segment, not this snapshot — dropping them here keeps the archived view
   // intact (they persist server-side and return when the user goes back to
   // Current). See archivedViewByTab.
-  if (archivedViewByTab.has(tabId)) {
+  if (!ofShownWindow && archivedViewByTab.has(tabId)) {
     const pending = archivedLiveEntries.get(tabId) ?? []
     const next = pending.concat(entries)
     // Overflow loses live rows. Going back to Current re-requests a replay
@@ -787,7 +796,7 @@ export function prependJsonlEntries(tabId: string, older: JsonlEntryData[]): boo
 
   // Use the same reconciliation as live/replay ingestion. In particular, the
   // page boundary can cut through a split assistant message already in-store.
-  return appendJsonlEntries(tabId, fresh)
+  return ingestEntries(tabId, fresh, true)
 }
 
 // ── Last thinking preview for ActivityIndicator ─────────────────────────

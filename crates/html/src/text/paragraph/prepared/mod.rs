@@ -5,6 +5,7 @@ mod bidi;
 mod boxes;
 mod intervals;
 mod justification;
+mod kept;
 pub(super) mod paint_runs;
 mod positions;
 mod runs;

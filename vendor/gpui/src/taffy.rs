@@ -69,16 +69,84 @@ type StackSafe<T> = T;
 
 /// Actual content geometry includes both physical baseline axes and optional line metadata.
 /// Legacy horizontal callback APIs adapt to this contract without synthesizing X baselines.
-type MeasureFn = dyn FnMut(
-    Size<Option<Pixels>>,
-    Size<AvailableSpace>,
-    MeasuredBox,
-    &mut Window,
-    &mut App,
-) -> MeasuredContent;
+type MeasureFn = dyn Measure;
 type NodeMeasureFn = StackSafe<Box<MeasureFn>>;
 
-fn node_measure(measure: Box<MeasureFn>) -> NodeMeasureFn {
+/// KaminIDE patch: the measure function of a measured leaf. Every closure of
+/// the measured-layout requests is one; a host type may in addition offer a
+/// smaller form that gives the same results, which replaces it when the host
+/// keeps the leaf's function for later passes (`Window::keep_retained_measures`).
+pub trait Measure: 'static {
+    /// Content geometry of the leaf for the given constraints.
+    fn measure(
+        &mut self,
+        known: Size<Option<Pixels>>,
+        available: Size<AvailableSpace>,
+        geometry: MeasuredBox,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> MeasuredContent;
+
+    /// A smaller measure with the same results, if this one holds state that
+    /// a later measure does not read.
+    fn compacted(&mut self) -> Option<Box<dyn Measure>> {
+        None
+    }
+
+    /// A kept leaf is claimed for a new pass (`Window::prepare_retained_measures`):
+    /// make at request time what its measures of that pass will read.
+    fn prepare(&mut self) {}
+}
+
+/// KaminIDE patch: a host measure that may give a smaller form of itself
+/// (`Window::request_measured_layout_with_measure`): the leaf's function is
+/// replaced by it in place, so the request allocates no more than a closure.
+pub trait CompactMeasure: 'static {
+    /// The smaller form.
+    type Compact: CompactMeasure;
+
+    /// Content geometry of the leaf for the given constraints.
+    fn measure(
+        &mut self,
+        known: Size<Option<Pixels>>,
+        available: Size<AvailableSpace>,
+        geometry: MeasuredBox,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> MeasuredContent;
+
+    /// The smaller form with the same results, if there is one.
+    fn compact(&mut self) -> Option<Self::Compact>;
+
+    /// See [`Measure::prepare`].
+    fn prepare(&mut self) {}
+}
+
+impl<F> Measure for F
+where
+    F: FnMut(Size<Option<Pixels>>, Size<AvailableSpace>, MeasuredBox, &mut Window, &mut App) -> MeasuredContent
+        + 'static,
+{
+    fn measure(
+        &mut self,
+        known: Size<Option<Pixels>>,
+        available: Size<AvailableSpace>,
+        geometry: MeasuredBox,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> MeasuredContent {
+        self(known, available, geometry, window, cx)
+    }
+}
+
+fn node_measure(
+    measure: impl FnMut(Size<Option<Pixels>>, Size<AvailableSpace>, MeasuredBox, &mut Window, &mut App) -> MeasuredContent
+        + 'static,
+) -> NodeMeasureFn {
+    boxed_measure(Box::new(measure))
+}
+
+fn boxed_measure(measure: Box<MeasureFn>) -> NodeMeasureFn {
     #[cfg(feature = "stacker")]
     let measure = StackSafe::new(measure);
     measure
@@ -95,9 +163,12 @@ struct NodeContext {
     /// KaminIDE patch: index of this keyed leaf in its key's candidate list
     /// (`retained::NO_SLOT` outside it). Lives in the struct's padding.
     key_slot: u32,
+    /// KaminIDE patch: the next pass keeps this leaf's measure function
+    /// (`TaffyLayoutEngine::keep_measures`). Lives in the struct's padding.
+    keep_measure: bool,
 }
 
-// The retained-tree field above fills padding: every node of the frame tree has
+// The retained-tree fields above fill padding: every node of the frame tree has
 // a context slot (a dense secondary map), so a larger context costs every node.
 const _: () = assert!(
     std::mem::size_of::<NodeContext>() == 11 * std::mem::size_of::<usize>()
