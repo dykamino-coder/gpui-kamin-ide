@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PtySession } from './types'
 const mock = vi.hoisted(() => ({ pending: new Map(), tasks: [] as any[], send: vi.fn() }))
-vi.mock('./session-mcp-call', () => ({ pendingMcpCalls: mock.pending }))
+vi.mock('./session-mcp-call', () => ({ pendingMcpCalls: mock.pending, redeliverCallsMissingFromReport: vi.fn() }))
 vi.mock('./mcp-tasks', () => ({
   mcpTasks: {
     working: async () => mock.tasks,
