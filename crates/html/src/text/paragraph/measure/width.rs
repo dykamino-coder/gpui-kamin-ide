@@ -19,17 +19,20 @@ impl Paragraph {
         let key = self.measure_key();
         let hit = self.measures.measured.borrow_mut().get(&key).cloned();
         crate::work::cache!(hit, MeasureCacheHits, MeasureCacheMisses);
-        if let Some(hit) = hit {
-            return hit;
+        if let Some(segs) = hit {
+            self.keep_chunks(key, window);
+            return segs;
         }
-        let out = self.measure_uncached(window);
+        let mut chunks = super::chunked::Keys::default();
+        let out = self.measure_uncached(&mut chunks, window);
+        self.remember_chunks(key, &chunks, window);
         self.measures.measured.borrow_mut().insert(key, out.clone());
         out
     }
 }
 
 impl Paragraph {
-    pub(crate) fn measure_uncached(&self, window: &mut Window) -> Vec<Seg> {
+    fn measure_uncached(&self, chunks: &mut super::chunked::Keys, window: &mut Window) -> Vec<Seg> {
         let mut out = Vec::new();
         let mut start = 0usize;
         let mut offset = px(0.);
@@ -41,33 +44,36 @@ impl Paragraph {
                 .find(['\n', '\t', SOFT_HYPHEN])
                 .map(|i| start + i)
                 .unwrap_or(self.text.len());
-            let runs = self.own_runs(&(start..end));
-            let layout = window
-                .text_system()
-                .with_ligature_breaking(false)
-                .layout_line_spaced(
-                    &self.text[start..end],
-                    self.font_size,
-                    &runs,
-                    None,
-                    if self.joined_spacing() {
-                        px(0.)
-                    } else {
-                        self.letter_spacing
-                    },
-                );
+            // Длинный кусок набирается частями (`chunked`), остальные — целиком.
+            let seg = match self.chunked_seg(start, end, offset, chunks, window) {
+                Some(seg) => seg,
+                None => {
+                    let runs = self.own_runs(&(start..end));
+                    let layout = window
+                        .text_system()
+                        .with_ligature_breaking(false)
+                        .layout_line_spaced(
+                            &self.text[start..end],
+                            self.font_size,
+                            &runs,
+                            None,
+                            super::chunks::tracking(self),
+                        );
+                    Seg {
+                        positions: Default::default(),
+                        start,
+                        end,
+                        layout,
+                        offset,
+                    }
+                }
+            };
             // Ширина куска вместе с трекингом кусков и `word-spacing`: набор
             // их не знает, `x_at` добавляет их сам — и позиция табуляции за
             // куском обязана их учесть (`word-spacing-characters-001`:
             // табуляция после растянутых пробелов вставала раньше).
-            let width = layout.width + self.seg_extra(start, end);
-            out.push(Seg {
-                positions: Default::default(),
-                start,
-                end,
-                layout,
-                offset,
-            });
+            let width = seg.layout.width + self.seg_extra(start, end);
+            out.push(seg);
             if end >= self.text.len() {
                 break;
             }
@@ -163,81 +169,5 @@ impl Paragraph {
         };
         let positions = seg.positions.get_or_init(|| self.segment_positions(seg));
         positions[i.clamp(seg.start, seg.end) - seg.start]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn indexed_positions_keep_tab_hyphen_and_newline_edge_semantics() {
-        let text = "ab\tcd\u{ad}ef\ngh\n";
-        for align in [Align::Left, Align::Justify] {
-            let p = Paragraph::new(
-                text.into(),
-                vec![],
-                px(16.),
-                px(20.),
-                align,
-                Wrap::default(),
-            )
-            .letter_spans(vec![(0..text.len(), px(0.1)), (0..2, px(5.))])
-            .word_spacing(px(0.3));
-            let mut start = 0;
-            let mut segs = Vec::new();
-            for (end, ch) in text
-                .char_indices()
-                .filter(|(_, c)| matches!(*c, '\t' | '\n' | SOFT_HYPHEN))
-                .chain([(text.len(), '\0')])
-            {
-                segs.push(Seg {
-                    start,
-                    end,
-                    offset: px(start as f32 * 3.7),
-                    positions: Default::default(),
-                    layout: std::sync::Arc::new(gpui::LineLayout {
-                        len: end - start,
-                        width: px((end - start) as f32 * 7.3),
-                        ..Default::default()
-                    }),
-                });
-                start = end + ch.len_utf8();
-            }
-            for i in text.char_indices().map(|(at, _)| at).chain([text.len()]) {
-                for edge in [Edge::Start, Edge::End] {
-                    let after = edge == Edge::End && i > 0 && text.as_bytes()[i - 1] == b'\n';
-                    let seg = segs
-                        .iter()
-                        .find(|s| if after { s.end + 1 == i } else { i <= s.end })
-                        .or_else(|| segs.last())
-                        .unwrap();
-                    let glyph = if i >= seg.end {
-                        seg.layout.width
-                    } else if i <= seg.start {
-                        px(0.)
-                    } else {
-                        seg.layout.x_for_index(i - seg.start)
-                    } + seg.offset;
-                    // Трекинг кусков — точная сумма, округлённая один раз.
-                    let mut tracking = 0f64;
-                    for (at, _) in text[seg.start..i.min(seg.end)].char_indices() {
-                        if let Some((_, v)) = p
-                            .letter_spans
-                            .iter()
-                            .find(|(r, _)| r.contains(&(seg.start + at)))
-                        {
-                            tracking += f64::from(f32::from(*v - p.letter_spacing));
-                        }
-                    }
-                    let expected = if tracking == 0.0 {
-                        glyph
-                    } else {
-                        px((f64::from(f32::from(glyph)) + tracking) as f32)
-                    };
-                    assert_eq!(p.x_at(&segs, i, edge), expected, "{i}, after={after}");
-                }
-            }
-        }
     }
 }

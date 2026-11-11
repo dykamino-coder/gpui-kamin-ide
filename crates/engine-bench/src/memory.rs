@@ -8,6 +8,30 @@ use std::time::{Duration, Instant};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+/// Окно устойчивой памяти между построением документа и замерами того же
+/// документа (warm, relayout, edit). Без него память этих кадров зависит от
+/// времени холодных кадров, а не от страницы: отложенная очистка mimalloc
+/// (около 1 с) успевает сработать до них у медленного процесса и не успевает
+/// у быстрого, и быстрый кандидат выглядит тяжелее базы.
+pub(super) async fn steady(cx: &AsyncApp, capture: &CaptureSession) -> Result<()> {
+    idle(cx, capture, super::args::MEMORY_STEADY_WINDOW_MS)
+        .await
+        .map(drop)
+}
+
+/// Шаг кадров фазы замера; фаза того же документа начинается после [`steady`].
+pub(super) async fn phase_step(
+    cx: &AsyncApp,
+    capture: &CaptureSession,
+    cold: bool,
+) -> Result<run::Step<'static>> {
+    if cold {
+        return Ok(run::Step::Cold(None));
+    }
+    steady(cx, capture).await?;
+    Ok(run::Step::Warm)
+}
+
 async fn idle(cx: &AsyncApp, capture: &CaptureSession, milliseconds: u64) -> Result<Value> {
     let sequence = capture.sequence();
     let before = Snapshot::read()?;
@@ -47,5 +71,5 @@ pub(super) async fn finish(
     let empty = idle(cx, capture, args.memory_settle_ms).await?;
     Ok(json!({"stable_warm_frames": args.runs, "page": page,
         "after_empty_document_two_frames": empty,
-        "scope": "live window; no allocator collection or working-set trimming"}))
+        "scope": "live window; only the host's own idle memory release, no harness collection or working-set trimming"}))
 }

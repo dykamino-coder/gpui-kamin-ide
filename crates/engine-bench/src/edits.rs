@@ -28,6 +28,7 @@ pub(super) async fn run(
     let edited = args.edit.markup(&base)?;
     // Вариант 0 — вход, 1 — правка; первый замер идёт после холодного кадра входа.
     let variants = [base.as_str(), edited.as_str()];
+    super::memory::steady(cx, capture).await?;
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
     let mut work = Vec::with_capacity(args.runs);
