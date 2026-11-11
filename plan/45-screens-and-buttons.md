@@ -127,7 +127,7 @@ CommandPalette (Ctrl+Shift+P), QuickOpen (Ctrl+P), FindInFiles (Ctrl+Shift+F), W
 - AgentsToolPanel — PanelTabs Active/Completed; дерево TeamGroup (badge disbanded / running/total) → AgentRow (terminated→«kicked»); клик строки → AgentReader (inline chat + Back). **Действий disband/kick в вебвью НЕТ** — статус display-only (завершение — CLI-side)
 
 ### Ч.6 jsonl-viewer
-- ThinkingBlock «▶ Thinking» → toggle; CollapsibleBlock «▶/▼» → toggle (усечение 1000 симв)
+- ThinkingBlock — обычный текст с лампочкой, без toggle; CollapsibleBlock «▶/▼» → toggle (усечение 1000 симв)
 - ToolUseGroup/ToolGroupEntry (ToolGroupSummary «N tool calls · chips ›», role=button, Enter/Space) → раскрыть отдельные JsonlToolUse
 - MessageActions (hover): Copy → electronBridge.writeClipboard (check 1.2s); Save as file… → electronBridge.saveTextAs (фолбэк blob)
 - WriteToolRender/EditToolRender — «Show full/Collapse» для >40 строк
