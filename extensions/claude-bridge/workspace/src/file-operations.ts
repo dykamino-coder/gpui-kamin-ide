@@ -1,10 +1,10 @@
 import { constants } from 'node:fs'
-import { open, opendir, rename, stat } from 'node:fs/promises'
+import { mkdir, open, opendir, rename, stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 export const FILE_INVOKES = Object.freeze([
   'file-viewer:read', 'file-viewer:read-binary', 'file-viewer:write',
-  'file-tree:list-dir', 'file-tree:rename',
+  'file-tree:list-dir', 'file-tree:rename', 'file-tree:create-dir',
 ] as const)
 
 // Leave room for base64/JSON inside the transport's 16 MiB frame limit.
@@ -85,6 +85,18 @@ export async function invokeFile(root: string, channel: string, args: unknown[])
     const destination = filePath(root, args[1])
     await rename(path, destination)
     return metadata(await stat(destination))
+  }
+  if (channel === 'file-tree:create-dir') {
+    // One level only, like write and rename: a missing parent is an error, so
+    // a mistyped path cannot create a tree. An existing directory is a result,
+    // not an error; anything else at the path keeps the EEXIST error.
+    let created = true
+    try { await mkdir(path) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      if (!(await stat(path).catch(() => undefined))?.isDirectory()) throw error
+      created = false
+    }
+    return { created, path, mtimeMs: (await stat(path)).mtimeMs }
   }
   if (channel !== 'file-tree:list-dir') throw new Error('Unsupported file operation')
   const entries = []

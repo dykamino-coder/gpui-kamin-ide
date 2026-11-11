@@ -5,7 +5,7 @@
 import { createBrowserSocket, type BridgeSocket, type BridgeSocketLike, type ConnectionState } from './socket'
 import { createBridgeTransport, type BridgeTransport, type Dispose } from './transport'
 import type {
-  Agent, BrowseProgress, CreatedSkill, CreateTabOptions, ElicitationRequest, HookDraft, HookEntry, HooksByEvent, HookTemplate,
+  Agent, BrowseProgress, CreatedDirectory, CreatedSkill, CreateTabOptions, ElicitationRequest, HookDraft, HookEntry, HooksByEvent, HookTemplate,
   HookTestResult, InstalledPlugin, JsonlEntry, JsonlStatus, Marketplace, MarketplacePlugin, MarketplaceRefresh, MarketplaceUpdate,
   McpActivity, McpCallResult, McpPromptInfo, McpRegistryResult, McpResourceInfo, McpServer, McpServerInput, McpTestResult,
   MonitorEvent, MonitorInfo, MonitorLine, PendingPluginHookApproval, PermissionDecision, PermissionRequest, PluginContents,
@@ -80,6 +80,13 @@ export interface BridgeClient {
   /** Stores bytes in the workspace and returns the path to append to a prompt, one path per line. */
   saveAttachment(base64: string, name: string): Promise<string>
   saveImage(base64: string, mimeType: 'image/png' | 'image/jpeg'): Promise<string>
+
+  /** Files of the workspace container. Relative paths resolve against the workspace root. */
+  readonly files: {
+    /** Creates one directory (`file-tree:create-dir`). An existing directory resolves with
+     * `created: false`; a missing parent or a file at the path rejects (ENOENT, EEXIST). */
+    createDirectory(path: string): Promise<CreatedDirectory>
+  }
 
   /** Subagent transcripts are sent on demand: select one, then receive its entries; null stops. */
   selectSubagent(tab: TabId, agentId: string | null): void
@@ -319,6 +326,10 @@ export function createBridgeClient(options: BridgeClientOptions = {}): BridgeCli
 
     saveAttachment: (base64, name) => client.invoke<string>('save-dropped-file', base64, name),
     saveImage: (base64, mimeType) => client.invoke<string>('save-clipboard-image', base64, mimeType),
+
+    files: {
+      createDirectory: path => client.invoke<CreatedDirectory>('file-tree:create-dir', path),
+    },
 
     selectSubagent(tab, agentId) { live().snd('jsonl:subagent-select', tab, agentId) },
     onSubagentEntries: listener => on('jsonl-subagent-entries', (tab, agentName, entries, agentId) => listener({
