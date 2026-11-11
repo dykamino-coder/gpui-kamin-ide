@@ -28,17 +28,37 @@ impl Gradient {
         !self.stop_lengths.is_empty() || matches!(self.shape, GradientShape::Radial { .. })
     }
 
+    /// Изменит ли `resolve_lengths` градиент: `moves` — длины, которые меняет его `fix`. Ответ
+    /// по ссылке, без копии: стоп сворачивается или уже приводится к доле и точкам, список
+    /// длин стопов пора очистить, у радиального сворачивается позиция или размер.
+    pub fn lengths_pending(&self, moves: impl Fn(Len) -> bool, vcx: ValueCx<'_>) -> bool {
+        let moves = |length: &Option<Len>| length.is_some_and(&moves);
+        let stops = &self.stop_lengths;
+        (!stops.is_empty()
+            && (stops.iter().all(Option::is_none)
+                || stops
+                    .iter()
+                    .any(|l| moves(l) || stop_terms(*l, vcx).is_some())))
+            || match &self.shape {
+                GradientShape::Radial { position, size, .. } => {
+                    moves(&position.x)
+                        || moves(&position.y)
+                        || match size {
+                            RadialSize::Explicit(first, second) => {
+                                moves(&Some(*first)) || moves(second)
+                            }
+                            _ => false,
+                        }
+                }
+                _ => false,
+            }
+    }
+
     pub fn resolve_lengths(&mut self, fix: impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
         if !self.stop_lengths.is_empty() {
             for (length, stop) in self.stop_lengths.iter_mut().zip(&mut self.stops_raw) {
                 fix(length);
-                let terms = match *length {
-                    Some(Len::Px(px)) => Some((0.0, px)),
-                    Some(Len::Pct(pct)) => Some((pct, 0.0)),
-                    Some(Len::Calc(id)) => calc_get(id, vcx).length_percentage(),
-                    _ => None,
-                };
-                if let Some((pct, px)) = terms {
+                if let Some((pct, px)) = stop_terms(*length, vcx) {
                     stop.1 = (pct != 0.0 || matches!(length, Some(Len::Pct(_) | Len::Calc(_))))
                         .then_some(pct);
                     stop.2 = (px != 0.0 || pct == 0.0).then_some(px);
@@ -79,6 +99,16 @@ impl Gradient {
                 fix(second);
             }
         }
+    }
+}
+
+/// Доля и точки стопа, который уже можно нормализовать; `None` — длина ещё не решена.
+fn stop_terms(length: Option<Len>, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
+    match length? {
+        Len::Px(px) => Some((0.0, px)),
+        Len::Pct(pct) => Some((pct, 0.0)),
+        Len::Calc(id) => calc_get(id, vcx).length_percentage(),
+        _ => None,
     }
 }
 

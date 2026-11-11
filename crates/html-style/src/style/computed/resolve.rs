@@ -80,7 +80,7 @@ impl Computed {
                 *l = Some(v.fold_viewport(vp, vcx));
             }
         };
-        self.resolve_unit_lengths(fix, vcx);
+        self.resolve_unit_lengths(|l| l.folds_viewport(vcx), fix, vcx);
     }
 
     /// Итоговые возможности OpenType куска — в порядке старшинства

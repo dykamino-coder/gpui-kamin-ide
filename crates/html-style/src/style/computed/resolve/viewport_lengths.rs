@@ -9,24 +9,19 @@ use crate::values::ValueCx;
 impl Computed {
     /// Есть ли что решать `resolve_viewport`. Проверка идёт тем же обходом, что и запись
     /// (`decor_inset::walk_decor_inset_lengths`, `unit_lengths::walk_unit_lengths`), только
-    /// длины не сворачивает, а отмечает те, что свернул бы `Len::fold_viewport`. «Да» — такая
-    /// длина есть или обход пишет в стиль и без неё (не приведённые стопы градиента,
-    /// отрицательный радиус).
+    /// шаги не пишут, а отвечают по ссылке — без копий и выделений памяти. «Да» — есть длина,
+    /// которую свернул бы `Len::fold_viewport`, или обход пишет в стиль и без неё (не
+    /// приведённые стопы градиента, отрицательный радиус).
     pub fn has_viewport_lengths(&self, vcx: ValueCx<'_>) -> bool {
-        let seen = std::cell::Cell::new(false);
-        let fix = |length: &mut Option<Len>| {
-            if length.is_some_and(|l| l.folds_viewport(vcx)) {
-                seen.set(true);
-            }
-        };
+        let moves = |length: Len| length.folds_viewport(vcx);
+        let fix = |_: &mut Option<Len>| {};
         let mut probe = Probe {
             style: self,
-            seen: &seen,
-            changed: false,
+            pending: false,
         };
-        super::decor_inset::walk_decor_inset_lengths(&mut probe, fix, vcx);
-        super::unit_lengths::walk_unit_lengths(&mut probe, fix, vcx);
-        probe.changed || seen.get()
+        super::decor_inset::walk_decor_inset_lengths(&mut probe, moves, fix, vcx);
+        super::unit_lengths::walk_unit_lengths(&mut probe, moves, fix, vcx);
+        probe.pending
     }
 }
 

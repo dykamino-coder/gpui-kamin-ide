@@ -3,7 +3,7 @@
 //! наследования, единицы окна — отдельным проходом при сборке строки, у которой
 //! общего прохода разрешения окна нет. Смесь доли и точек остаётся `DecorLen::Mix`.
 
-use super::unit_change::{Change, Target, step};
+use super::unit_change::Target;
 use crate::style::computed::{Computed, DecorLen};
 use crate::style::values::value::{Len, calc_get};
 use crate::values::ValueCx;
@@ -73,38 +73,56 @@ impl Computed {
                 *length = Some(v.fold_viewport(vp, vcx));
             }
         };
-        self.resolve_decor_inset_lengths(fix, vcx);
+        self.resolve_decor_inset_lengths(|l| l.folds_viewport(vcx), fix, vcx);
     }
 
     pub(super) fn resolve_decor_inset_lengths(
         &mut self,
+        moves: impl Fn(Len) -> bool + Copy,
         fix: impl Fn(&mut Option<Len>) + Copy,
         vcx: ValueCx<'_>,
     ) {
-        walk_decor_inset_lengths(self, fix, vcx);
+        walk_decor_inset_lengths(self, moves, fix, vcx);
     }
 }
 
 /// Обход отступов линий оформления: общий для записи и проверки без записи.
 pub(super) fn walk_decor_inset_lengths<T: Target>(
     target: &mut T,
+    moves: impl Fn(Len) -> bool + Copy,
     fix: impl Fn(&mut Option<Len>) + Copy,
     vcx: ValueCx<'_>,
 ) {
-    let map = |pair: [DecorLen; 2]| pair.map(|value| map_length(value, fix, vcx));
-    step(target, |s| {
-        let now = s.reset_text_box.td_inset??;
-        let next = map(now);
-        (next != now).then_some(Change::DecorInset(next))
-    });
-    step(target, |s| {
-        let decors = &s.reset_text_box.decors;
-        if decors.iter().all(|decor| decor.inset.is_none()) {
-            return None;
-        }
-        let next: Vec<_> = decors.iter().map(|decor| decor.inset.map(map)).collect();
-        next.iter()
-            .ne(decors.iter().map(|decor| &decor.inset))
-            .then_some(Change::DecorInsets(next))
-    });
+    // Запись меняет отступ, если длина сворачивается или ещё не приведена к точкам и долям.
+    let pending = |pair: &[DecorLen; 2]| {
+        pair.iter().any(|&value| {
+            matches!(value, DecorLen::Raw(raw) if moves(raw))
+                || map_length(value, |_| {}, vcx) != value
+        })
+    };
+    let map = |pair: &mut [DecorLen; 2]| *pair = pair.map(|value| map_length(value, fix, vcx));
+    target.rewrite(
+        |s| matches!(&s.reset_text_box.td_inset, Some(Some(pair)) if pending(pair)),
+        |s| {
+            if let Some(Some(pair)) = &mut s.reset_text_box.td_inset {
+                map(pair);
+            }
+        },
+    );
+    target.rewrite(
+        |s| {
+            let mut insets = s.reset_text_box.decors.iter().flat_map(|d| &d.inset);
+            insets.any(pending)
+        },
+        |s| {
+            for pair in s
+                .reset_text_box
+                .decors
+                .iter_mut()
+                .flat_map(|d| &mut d.inset)
+            {
+                map(pair);
+            }
+        },
+    );
 }
