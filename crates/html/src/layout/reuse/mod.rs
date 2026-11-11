@@ -76,12 +76,10 @@ pub(crate) struct FlowReuse {
     resized: Cell<bool>,
     /// Wraps of this build's blocks (`narrow`).
     narrowed: narrow::Wraps,
-    /// Pending records of this build's wrapped blocks (`recorder`), owned
-    /// here alone: each goes as soon as its record is made (`finish`). Boxed,
-    /// so each frees its own memory there and the growing list moves only
-    /// pointers, not thousands of pending records.
-    #[allow(clippy::vec_box)]
-    pending: RefCell<Vec<Box<recorder::Pending>>>,
+    /// The records this build's wrapped blocks are making (`recorder`): the
+    /// wrap of a block knows its record by number here, and `finish` seals
+    /// each in place and keeps it, so a recorded block is one allocation.
+    pending: RefCell<Vec<Rc<Record>>>,
     /// Shells the sources of this build share (`source`).
     shells: Shells,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,

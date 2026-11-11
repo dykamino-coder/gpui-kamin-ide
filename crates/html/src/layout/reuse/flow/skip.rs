@@ -1,7 +1,8 @@
 //! Запись пропуска и повтора на месте (`recorder`) инертного ребёнка
 //! корневого потока.
 
-use super::super::recorder::{Pending, Recorder};
+use super::super::Record;
+use super::super::recorder::{Making, Recorder};
 use super::{Counters, FlowCx, Mark};
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -32,14 +33,17 @@ impl FlowCx {
         let unpainted = child
             .downcast_mut::<crate::hooks::Hooked<crate::layout::table::StartWrapper>>()
             .is_some();
-        let pending = Box::new(Pending::new(
+        // The one allocation of a block being recorded: its record.
+        let pending = std::rc::Rc::new(Record::new(
             self.reuse.shells.source(e),
             self.key.clone(),
             (mark.start, end),
-            width,
-            self.settled,
-            unpainted,
-            super::super::width::tracks_flow(e),
+            Making::new(
+                width,
+                self.settled,
+                unpainted,
+                super::super::width::tracks_flow(e),
+            ),
         ));
         let at = self.reuse.pending.borrow().len();
         super::super::push(&self.reuse.pending, pending);

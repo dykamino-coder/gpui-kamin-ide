@@ -1,6 +1,6 @@
 //! Запись блока: прозрачная обёртка (`wrap`) снимает лист раскладки, начало
 //! коробки, инертность prepaint и чернила краски, включая отложенную краску
-//! строк; `Pending::finish` делает из них запись.
+//! строк прямо в запись блока (`Making`); `Record::seal` завершает её.
 
 use super::lines::LineSink;
 use super::narrow::Narrow;
@@ -8,8 +8,7 @@ use super::width::{Width, reusable_range};
 use super::{Counters, FlowKey, Record, Replay, Source, placed};
 use crate::hooks::LineCapture;
 use gpui::{
-    Bounds, InkSink, LayoutId, LayoutSnapshot, Pixels, Point, RetainedPaint, RetainedPrepaint,
-    ScaledPixels, point,
+    Bounds, InkSink, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint, ScaledPixels, point,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -17,32 +16,27 @@ use std::rc::Rc;
 mod wrap;
 pub(super) use wrap::Recorder;
 
-/// Запись, которая завершится после краски кадра (`FlowReuse::finish`). Её
-/// держит только `FlowReuse` (обёртка в дереве GPUI знает лишь её номер),
-/// поэтому каждая освобождается, как только из неё сделана запись, и
-/// ожидающие записи не живут рядом с готовыми (Blink хранит результат, а не
-/// вход, который его дал).
-pub(super) struct Pending {
-    /// What the record will compare a later build of the block with.
-    source: Source,
-    key: Rc<FlowKey>,
-    start: Counters,
-    end: Counters,
+/// What the frame that makes a record measures, inline in the record: a
+/// block being recorded costs one allocation, the record itself, and nothing
+/// when the frame ends (Blink stores the result where the object keeps it,
+/// with no input object beside it). `FlowReuse` owns the records being made
+/// (the wrap in the GPUI tree knows only a number), so one that fails goes
+/// with the frame's list.
+pub(super) struct Making {
     layout: Cell<Option<LayoutId>>,
-    snapshot: RefCell<Option<LayoutSnapshot>>,
     origin: Cell<Option<Point<ScaledPixels>>>,
     /// Простые hitbox поддерева: пропуск теряет их только вне экрана.
     hits: Cell<Option<Bounds<ScaledPixels>>>,
     quiet: Cell<bool>,
     painted: Cell<bool>,
-    sink: Rc<InkSink>,
+    sink: InkSink,
     /// Зависимость раскладки блока от ширины потока (`width::independent`).
     width: Width,
     /// Ключ потока прошлой сборки тот же: запись годна хотя бы при нём.
     /// Иначе (ширина меняется) пишется лишь запись, годная и при другой.
     settled: bool,
     /// Корень блока — обёртка, которая ничего не рисует и держит содержимое
-    /// у начального края (	able::StartWrapper): лист снимается сквозь неё,
+    /// у начального края (`table::StartWrapper`): лист снимается сквозь неё,
     /// а ширина блока — ширина содержимого, если оно шире обёртки.
     unpainted: bool,
     /// The block's border box is the flow width less fixed margins
@@ -52,14 +46,14 @@ pub(super) struct Pending {
     /// Ширина рамки блока в этом кадре.
     border: Cell<f32>,
     /// Строки абзацев блока в этом кадре.
-    lines: Rc<LineSink>,
+    lines: LineSink,
     /// Вывод prepaint и краски этого кадра для повтора; только у блока
-    /// рядом с экраном (Output).
+    /// рядом с экраном (`Output`).
     output: RefCell<Option<Box<Output>>>,
 }
 
 /// Вывод блока в кадре для его повтора в следующем. Повтор нужен лишь
-/// блоку рядом с экраном: далёкий пропускается и без него (ar), а
+/// блоку рядом с экраном: далёкий пропускается и без него (`far`), а
 /// записываемых блоков в кадре тысячи, поэтому вывод — в куче и только у
 /// ближних.
 struct Output {
@@ -68,86 +62,108 @@ struct Output {
     paint: Option<(RetainedPaint, Rc<LineCapture>, Bounds<Pixels>)>,
 }
 
-/// What a pending record became after the frame (`Pending::finish`).
-pub(super) struct Finished {
-    pub(super) record: Option<Record>,
-    /// The block's text wrapped: no record at any narrower flow (`narrow`).
-    pub(super) narrow: Option<Narrow>,
+impl Making {
+    pub(super) fn new(width: Width, settled: bool, unpainted: bool, tracks_flow: bool) -> Self {
+        Self {
+            layout: Cell::new(None),
+            origin: Cell::new(None),
+            hits: Cell::new(None),
+            quiet: Cell::new(false),
+            painted: Cell::new(false),
+            sink: InkSink::default(),
+            width,
+            settled,
+            unpainted,
+            tracks_flow,
+            border: Cell::new(0.0),
+            lines: LineSink::default(),
+            output: RefCell::new(None),
+        }
+    }
+
+    /// The same inputs with nothing measured: of a record made from a
+    /// sealed one (`Record::moved_to`).
+    pub(super) fn sealed(&self) -> Self {
+        Self::new(self.width, self.settled, self.unpainted, self.tracks_flow)
+    }
+
+    /// Строки абзацев блока (`lines::report`).
+    pub(super) fn lines(&self) -> &LineSink {
+        &self.lines
+    }
 }
 
-impl Pending {
+impl gpui::InkTarget for Record {
+    fn ink_sink(&self) -> &InkSink {
+        &self.making.sink
+    }
+}
+
+impl Record {
+    /// The record of the block `source`, to be made by this frame.
     pub(super) fn new(
         source: Source,
         key: Rc<FlowKey>,
         (start, end): (Counters, Counters),
-        width: Width,
-        settled: bool,
-        unpainted: bool,
-        tracks_flow: bool,
+        making: Making,
     ) -> Self {
         Self {
             source,
             key,
             start,
             end,
-            layout: Cell::new(None),
-            snapshot: RefCell::new(None),
-            origin: Cell::new(None),
-            hits: Cell::new(None),
-            quiet: Cell::new(false),
-            painted: Cell::new(false),
-            sink: Rc::default(),
-            width,
-            settled,
-            unpainted,
-            tracks_flow,
-            border: Cell::new(0.0),
-            lines: Rc::default(),
-            output: RefCell::new(None),
+            snapshot: Cell::new(None),
+            ink: Cell::new(None),
+            resizable: Cell::new(None),
+            stretch: Cell::new(false),
+            far: Cell::new(false),
+            replay: RefCell::new(None),
+            repaint: Cell::new(false),
+            kept: Cell::new(false),
+            making,
         }
     }
 
-    /// The node id of the block.
-    pub(super) fn id(&self) -> u64 {
-        self.source.id()
-    }
-
-    /// Готовая запись блока `source`, если он прошёл prepaint и краску
-    /// инертно и либо был далеко от экрана `screen`, либо его вывод кадра
-    /// `epoch` повторяем под маской корня `mask`.
-    pub(super) fn finish(
-        self: Box<Self>,
+    /// Завершить запись после краски кадра, на месте: `true`, если блок
+    /// прошёл prepaint и краску инертно и либо был далеко от экрана
+    /// `screen`, либо его вывод кадра `epoch` повторяем под маской корня
+    /// `mask`. С ним — перенос текста блока: нет записи ни в одном потоке
+    /// уже (`narrow`).
+    pub(super) fn seal(
+        &self,
         screen: Bounds<ScaledPixels>,
         mask: Bounds<Pixels>,
         epoch: u64,
-    ) -> Finished {
+    ) -> (bool, Option<Narrow>) {
+        let m = &self.making;
         // A block whose text wrapped here wraps at any narrower flow, where
         // a record made while the width changes would be refused (`narrow`).
         let flow = self.key.flow_width();
-        let wrapped = self.width == Width::Stretch
-            && self.tracks_flow
-            && self.lines.broken()
-            && reusable_range(self.width, self.border.get(), flow, None).is_none();
+        let wrapped = m.width == Width::Stretch
+            && m.tracks_flow
+            && m.lines.broken()
+            && reusable_range(m.width, m.border.get(), flow, None).is_none();
         let narrow = flow
             .filter(|_| wrapped)
             .map(|flow| Narrow::of(&self.source, flow));
-        Finished {
-            record: self.record(screen, mask, epoch),
-            narrow,
-        }
+        // The frame's output goes with the frame whatever the record became.
+        let output = m.output.take();
+        (self.sealed(output, screen, mask, epoch).is_some(), narrow)
     }
 
-    fn record(
-        self,
+    fn sealed(
+        &self,
+        output: Option<Box<Output>>,
         screen: Bounds<ScaledPixels>,
         mask: Bounds<Pixels>,
         epoch: u64,
-    ) -> Option<Record> {
-        if !self.quiet.get() || !self.painted.get() || self.sink.tainted() {
+    ) -> Option<()> {
+        let m = &self.making;
+        if !m.quiet.get() || !m.painted.get() || m.sink.tainted() {
             return None;
         }
-        let origin = self.origin.get()?;
-        let ink = match (self.sink.bounds(), self.hits.get()) {
+        let origin = m.origin.get()?;
+        let ink = match (m.sink.bounds(), m.hits.get()) {
             (Some(a), Some(b)) => Some(a.union(&b)),
             (a, b) => a.or(b),
         };
@@ -162,8 +178,7 @@ impl Pending {
         // Далёкий блок на том же месте под той же маской вне экрана и без
         // повтора (`FlowReuse::validate` пропускает его по чернилам), а на
         // другом месте повтор не годен: его вывод не хранится.
-        let output = self.output.take().map(|o| (o.prepaint, o.paint));
-        let replay = match output {
+        let replay = match output.map(|o| (o.prepaint, o.paint)) {
             Some((prepaint, Some((paint, deferred, at))))
                 if !far && at == mask && paint.replayable() && deferred.complete() =>
             {
@@ -182,38 +197,30 @@ impl Pending {
             return None;
         }
         let resizable = reusable_range(
-            self.width,
-            self.border.get(),
+            m.width,
+            m.border.get(),
             self.key.flow_width(),
-            self.lines.slack(),
+            m.lines.slack(),
         );
-        if !self.settled && resizable.is_none() {
+        if !m.settled && resizable.is_none() {
             return None;
         }
-        let snapshot = self.snapshot.take()?;
+        // The wrap wrote the leaf itself (`wrap`).
+        self.snapshot.get()?;
         // Блок шире потока держит пол (`Width::Floor`), а не поток.
-        let stretch = self.width == Width::Stretch
+        let stretch = m.width == Width::Stretch
             && self
                 .key
                 .flow_width()
-                .is_some_and(|flow| self.border.get() <= flow + 0.5);
-        Some(Record {
-            source: self.source,
-            key: self.key,
-            start: self.start,
-            end: self.end,
-            snapshot,
-            ink,
-            resizable,
-            stretch,
-            far,
-            replay: RefCell::new(replay),
-            repaint: Cell::new(false),
-            kept: Cell::new(false),
-        })
+                .is_some_and(|flow| m.border.get() <= flow + 0.5);
+        self.ink.set(ink);
+        self.resizable.set(resizable);
+        self.stretch.set(stretch);
+        self.far.set(far);
+        self.replay.replace(replay);
+        Some(())
     }
 }
-
 /// Блок с чернилами `ink` (относительно начала `origin`) был дальше экрана
 /// `screen` по каждой оси. Сдвиг следующего кадра обычно меньше, а точный
 /// ответ даёт `FlowReuse::validate`; ближний блок не пропустит ни один кадр,

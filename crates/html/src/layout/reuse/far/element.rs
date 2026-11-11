@@ -47,6 +47,11 @@ impl Wrap for FarRecorder {
         false
     }
 
+    /// Transparent to dispatch, as `recorder::Recorder` is.
+    fn dispatch_node(&self) -> bool {
+        false
+    }
+
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child
     }
@@ -157,6 +162,11 @@ impl Far {
 
 impl Hooks for Far {
     fn paint_boundary(&self) -> bool {
+        false
+    }
+
+    /// A leaf with no prepaint: nothing to dispatch to, as `recorder::Recorder` is.
+    fn dispatch_node(&self) -> bool {
         false
     }
 

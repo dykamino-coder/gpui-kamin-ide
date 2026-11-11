@@ -166,6 +166,23 @@ pub struct InkSink {
     late: std::cell::Cell<u32>,
 }
 
+/// KaminIDE patch: a value that holds an ink sink inline. A host that records
+/// thousands of blocks a frame opens the record of each as its sink
+/// (`Window::with_ink_sink`) instead of allocating a sink beside it.
+pub trait InkTarget {
+    /// The sink the paint under this target is measured into.
+    fn ink_sink(&self) -> &InkSink;
+}
+
+impl InkTarget for InkSink {
+    fn ink_sink(&self) -> &InkSink {
+        self
+    }
+}
+
+/// The ink sinks open at a point of paint: rarely more than one, and copied
+/// into every deferred paint environment, so the usual depth stays inline.
+pub(crate) type InkSinks = smallvec::SmallVec<[Rc<dyn InkTarget>; 2]>;
 const INK_TAINTED: u32 = 1;
 const INK_PAINTED: u32 = 2;
 const INK_LATE_ALL: u32 = 4;
@@ -323,7 +340,7 @@ impl InkProbe {
         if !quiet {
             let scope = window.next_frame.scene.ink_scope;
             for sink in &window.next_frame.scene.ink {
-                sink.taint_in(scope);
+                sink.ink_sink().taint_in(scope);
             }
             scoped_ink(scope, |sink| sink.taint_in(scope));
         }
@@ -424,8 +441,9 @@ impl Window {
         crate::text_system::with_layouts_released(|| f(self))
     }
 
-    /// Paint `f` with `sink` measuring its ink (see [`InkSink`]).
-    pub fn with_ink_sink<R>(&mut self, sink: Rc<InkSink>, f: impl FnOnce(&mut Self) -> R) -> R {
+    /// Paint `f` with `sink` measuring its ink (see [`InkSink`]). The sink
+    /// may live inside a value the caller already holds ([`InkTarget`]).
+    pub fn with_ink_sink<R>(&mut self, sink: Rc<dyn InkTarget>, f: impl FnOnce(&mut Self) -> R) -> R {
         self.next_frame.scene.ink.push(sink);
         let probe = InkProbe::open(self);
         let result = f(self);
@@ -447,7 +465,7 @@ impl Window {
         let scaled = bounds.scale(self.scale_factor());
         let scene = &self.next_frame.scene;
         for sink in &scene.ink {
-            sink.add_in(scene.ink_scope, scaled);
+            sink.ink_sink().add_in(scene.ink_scope, scaled);
         }
         scoped_ink(scene.ink_scope, |sink| sink.add_in(scene.ink_scope, scaled));
     }
@@ -500,7 +518,7 @@ impl Window {
                 (end.accessed_element_states_index - start.accessed_element_states_index) as u32;
         } else {
             for sink in &scene.ink {
-                sink.taint_in(scene.ink_scope);
+                sink.ink_sink().taint_in(scene.ink_scope);
             }
             scoped_ink(scene.ink_scope, |sink| sink.taint_in(scene.ink_scope));
         }

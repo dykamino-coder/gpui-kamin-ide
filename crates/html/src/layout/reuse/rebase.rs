@@ -67,11 +67,11 @@ impl Store {
                     };
                     let verdict = match pair {
                         Some(&(x, y)) => keep(
-                            record.far,
+                            record.far.get(),
                             roots && same_cascaded_tree(x, y, false, &mut memo),
                             &|| same_cascaded_tree(x, y, true, &mut CascadedMemo::default()),
                         ),
-                        None => keep(record.far, roots, &|| true),
+                        None => keep(record.far.get(), roots, &|| true),
                     };
                     verdict
                         .inspect(|&repaint| {
@@ -107,7 +107,8 @@ impl Store {
                         continue;
                     };
                     let exact = roots && same_cascaded_tree(x, y, false, &mut memo);
-                    let repaint = !exact && record.far && same_cascaded_tree(x, y, true, &mut memo);
+                    let repaint =
+                        !exact && record.far.get() && same_cascaded_tree(x, y, true, &mut memo);
                     if exact || repaint {
                         record.rebased(repaint);
                     }
