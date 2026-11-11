@@ -51,7 +51,7 @@ pub(crate) fn font_metrics(
     vcx: crate::values::ValueCx<'_>,
     window: &gpui::Window,
 ) -> (f32, f32) {
-    let font = super::strut_font(style, base, vcx);
+    let font = super::strut_font(style, base, vcx, None);
     let size = gpui::px(style.used_font(fallback, vcx).size_px);
     let ts = window.text_system();
     let id = ts.resolve_font(&font);

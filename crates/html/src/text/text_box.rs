@@ -215,21 +215,15 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
     // `use_text_system`): `normal` выходил 1.33 вместо 1.15 у того шрифта,
     // которым строка нарисована, и струт строки из одних атомов был выше
     // атома (`inlines-017-ref`: ячейка 21.3px при картинке 20px).
-    let family = style
-        .inh
-        .font
-        .font_family
-        .clone()
-        .filter(|f| !f.is_empty())
-        .unwrap_or_else(|| {
-            if style.inh.font.monospace == Some(true) {
-                super::metrics::mono_family_for(style.inh.text_flow.lang.as_deref(), opts.cx.vcx())
-                    .to_string()
-            } else {
-                opts.text.font_family.to_string()
-            }
-        });
-    let measured = crate::style::font_metrics::normal(&family, 1.0, opts.cx.vcx())
+    let own = style.inh.font.font_family.as_deref();
+    let family: &str = match own.filter(|f| !f.is_empty()) {
+        Some(family) => family,
+        None if style.inh.font.monospace == Some(true) => {
+            super::metrics::mono_family_for(style.inh.text_flow.lang.as_deref(), opts.cx.vcx())
+        }
+        None => opts.text.font_family.as_ref(),
+    };
+    let measured = crate::style::font_metrics::normal(family, 1.0, opts.cx.vcx())
         .fraction
         .unwrap_or(opts.normal_line_height);
     if measured > 0.0 {

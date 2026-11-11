@@ -66,7 +66,12 @@ fn paragraph_routed<const QUERY: bool>(
                     opts.cx.text_fonts(),
                 )
             });
-            let normal_font = crate::text::inline::strut_font(&base, &opts.text, opts.cx.vcx());
+            let normal_font = crate::text::inline::strut_font(
+                &base,
+                &opts.text,
+                opts.cx.vcx(),
+                opts.cx.layout().run_faces.active(),
+            );
             let base_lh = base.inh.font.line_height;
             let for_build = first.clone();
             // Абзац соберётся при раскладке, вне цикла `blocks_flow`: флаги
@@ -88,7 +93,12 @@ fn paragraph_routed<const QUERY: bool>(
             // Мерить надо ТЕМ начертанием, каким строка и будет набрана:
             // жирная первая строка занимает больше места, и разрез по
             // обычному шрифту не помещался бы в неё целиком.
-            let font = crate::text::inline::strut_font(&first, &opts.text, opts.cx.vcx());
+            let font = crate::text::inline::strut_font(
+                &first,
+                &opts.text,
+                opts.cx.vcx(),
+                opts.cx.layout().run_faces.active(),
+            );
             let computed_base = match inherited.inh.font.font_size {
                 Some(Len::Px(v)) => v,
                 _ => opts.base_size(),
