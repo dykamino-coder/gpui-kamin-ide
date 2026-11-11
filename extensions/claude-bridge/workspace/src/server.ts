@@ -62,6 +62,8 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
   const sockets = new Map<WebSocket, string>()
   const alive = new Set<WebSocket>()
   const previewSockets = new Map<Duplex, string>()
+  /** Upgrades without a session, open only until their 4001 close is delivered. */
+  const signedOut = new Set<Duplex>()
   const detachPreview = options.preview?.onRemount(() => { for (const socket of previewSockets.keys()) socket.destroy() })
   const previewFeed = options.preview && createPreviewFeed(options.preview, options.previewSampleMs)
   const attempts = new Map<string, { count: number; reset: number }>()
@@ -174,11 +176,25 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
       }, refuse).finally(() => { pendingUpgrades-- })
       return
     }
-    if (closing || request.url !== '/bridge' || !sameOrigin(request) || sockets.size + pendingUpgrades >= 32) { refuse(); return }
+    if (closing || request.url !== '/bridge' || !sameOrigin(request) || sockets.size + signedOut.size + pendingUpgrades >= 32) { refuse(); return }
     const cookie = readSessionCookie(request.headers.cookie)
     pendingUpgrades++
     void options.auth.validate(cookie).then(valid => {
-      if (!valid || closing || socket.destroyed || sockets.size >= 32) { refuse(); return }
+      if (closing || socket.destroyed || sockets.size + signedOut.size >= 32) { refuse(); return }
+      if (!valid) {
+        // A browser cannot read a refused handshake, only a close code. Complete
+        // the handshake and close with 4001 so the client stops reconnecting.
+        // The socket never reaches the backend: no handler, no frame, no data.
+        signedOut.add(socket)
+        const limit = setTimeout(refuse, 5000)
+        limit.unref()
+        socket.once('close', () => { clearTimeout(limit); signedOut.delete(socket) })
+        wss.handleUpgrade(request, socket, head, ws => {
+          ws.on('error', () => { /* the time limit destroys the connection */ })
+          ws.close(4001, 'Authentication required')
+        })
+        return
+      }
       wss.handleUpgrade(request, socket, head, ws => {
         sockets.set(ws, cookie!)
         wss.emit('connection', ws)
@@ -256,6 +272,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
       previewFeed?.close()
       clearInterval(timer)
       for (const socket of previewSockets.keys()) socket.destroy()
+      for (const socket of signedOut) socket.destroy()
       for (const socket of sockets.keys()) socket.terminate()
       await new Promise<void>(resolve => wss.close(() => resolve()))
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))

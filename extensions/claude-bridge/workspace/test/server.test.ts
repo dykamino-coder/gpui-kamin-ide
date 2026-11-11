@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter, once } from 'node:events'
 import { get } from 'node:http'
+import { connect as connectTcp } from 'node:net'
 import { test, type TestContext } from 'node:test'
 import { WebSocket } from 'ws'
 import { WorkspaceAuth } from '../src/auth.js'
@@ -73,13 +74,78 @@ test('loopback default, same-origin login, opaque session and strict Host', asyn
   assert.equal((await fetch(`${f.server.origin}/bridge?token=fixture-token`)).status, 404)
 })
 
-test('upgrade rejects missing auth, cross origin, and token-in-URL before attaching', async t => {
+test('upgrade rejects cross origin and token-in-URL before attaching', async t => {
   const f = await fixture(t)
   const cookie = (await f.login()).headers.get('set-cookie')!.split(';')[0]
-  for (const ws of [f.connect(''), f.connect(cookie, 'https://attacker.test'), f.connect(cookie, f.server.origin, '/bridge?token=fixture-token')]) {
+  for (const ws of [f.connect(cookie, 'https://attacker.test'), f.connect('', 'https://attacker.test'), f.connect(cookie, f.server.origin, '/bridge?token=fixture-token')]) {
     await new Promise<void>(resolve => ws.once('error', () => resolve()))
     assert.notEqual(ws.readyState, WebSocket.OPEN)
   }
+  assert.equal(f.counts().attached, 0)
+})
+
+test('upgrade without a session is closed with 4001 before any data or attachment', async t => {
+  const f = await fixture(t)
+  const unknown = `kamin_workspace=${'A'.repeat(43)}`
+  for (const cookie of ['', unknown]) {
+    const ws = f.connect(cookie)
+    let messages = 0
+    ws.on('message', () => { messages++ })
+    await once(ws, 'open')
+    // Frames of a signed-out peer are not dispatched and get no reply.
+    ws.send(JSON.stringify({ kind: 'invoke', id: 1, generation: 'document-a', channel: 'fixture:echo', args: ['text'] }))
+    const [code, reason] = await once(ws, 'close')
+    assert.equal(code, 4001)
+    assert.equal(String(reason), 'Authentication required')
+    assert.equal(messages, 0)
+  }
+  assert.deepEqual(f.counts(), { attached: 0, disposed: 0 })
+  // A live session is unaffected by the refused peers.
+  const cookie = (await f.login()).headers.get('set-cookie')!.split(';')[0]
+  const live = f.connect(cookie)
+  await once(live, 'open')
+  const reply = once(live, 'message')
+  live.send(JSON.stringify({ kind: 'invoke', id: 2, generation: 'document-a', channel: 'fixture:echo', args: ['text'] }))
+  assert.equal(JSON.parse(String((await reply)[0])).ok, true)
+  const closed = once(live, 'close')
+  live.close()
+  await closed
+  await f.waitDisposed(1)
+  assert.deepEqual(f.counts(), { attached: 1, disposed: 1 })
+})
+
+test('a signed-out peer that never answers the close frame is dropped by the host', async t => {
+  const f = await fixture(t)
+  const url = new URL(f.server.origin)
+  const peer = connectTcp(Number(url.port), url.hostname)
+  await once(peer, 'connect')
+  let received = Buffer.alloc(0)
+  peer.on('data', chunk => { received = Buffer.concat([received, chunk]) })
+  peer.write(`GET /bridge HTTP/1.1\r\nHost: ${url.host}\r\nOrigin: ${f.server.origin}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+    'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n')
+  const started = Date.now()
+  await once(peer, 'close')
+  assert.ok(Date.now() - started < 10_000)
+  const text = received.toString('latin1')
+  assert.match(text, /^HTTP\/1\.1 101 /)
+  // Only the close frame follows the handshake: FIN+close opcode, status 4001.
+  const frame = received.subarray(text.indexOf('\r\n\r\n') + 4)
+  assert.equal(frame[0], 0x88)
+  assert.equal(frame.readUInt16BE(2), 4001)
+  assert.equal(frame.length, 2 + frame[1])
+  assert.equal(f.counts().attached, 0)
+})
+
+test('signed-out upgrades stay within the connection limit', async t => {
+  const f = await fixture(t)
+  const peers = Array.from({ length: 40 }, () => f.connect(''))
+  const results = await Promise.all(peers.map(ws => new Promise<number | 'refused'>(resolve => {
+    ws.once('close', code => resolve(code))
+    ws.once('error', () => resolve('refused'))
+  })))
+  // Each one ends; over the connection limit the upgrade is refused outright.
+  assert.ok(results.every(result => result === 4001 || result === 'refused'))
+  assert.ok(results.includes(4001))
   assert.equal(f.counts().attached, 0)
 })
 
@@ -117,7 +183,7 @@ test('logout closes existing sockets and prevents another upgrade', async t => {
   assert.equal((await fetch(`${f.server.origin}/auth/logout`, { method: 'POST', headers: { Origin: f.server.origin, Cookie: cookie } })).status, 200)
   assert.equal((await closed)[0], 4001)
   const refused = f.connect(cookie)
-  await new Promise<void>(resolve => refused.once('error', () => resolve()))
+  assert.equal((await once(refused, 'close'))[0], 4001)
   await f.waitDisposed(1)
   assert.deepEqual(f.counts(), { attached: 1, disposed: 1 })
 })
