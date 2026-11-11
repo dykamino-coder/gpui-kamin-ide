@@ -18,9 +18,13 @@ mod wrap;
 pub(super) use wrap::Recorder;
 
 /// Запись, которая завершится после краски кадра (`FlowReuse::finish`). Её
-/// держит и обёртка в дереве GPUI до следующего кадра, поэтому вход сравнения
-/// блока лежит не здесь, а у `FlowReuse` и переходит в запись без копии.
+/// держит только `FlowReuse` (обёртка в дереве GPUI знает лишь её номер),
+/// поэтому каждая освобождается, как только из неё сделана запись, и
+/// ожидающие записи не живут рядом с готовыми (Blink хранит результат, а не
+/// вход, который его дал).
 pub(super) struct Pending {
+    /// What the record will compare a later build of the block with.
+    source: Source,
     key: Rc<FlowKey>,
     start: Counters,
     end: Counters,
@@ -73,15 +77,16 @@ pub(super) struct Finished {
 
 impl Pending {
     pub(super) fn new(
+        source: Source,
         key: Rc<FlowKey>,
-        start: Counters,
-        end: Counters,
+        (start, end): (Counters, Counters),
         width: Width,
         settled: bool,
         unpainted: bool,
         tracks_flow: bool,
     ) -> Self {
         Self {
+            source,
             key,
             start,
             end,
@@ -102,12 +107,16 @@ impl Pending {
         }
     }
 
+    /// The node id of the block.
+    pub(super) fn id(&self) -> u64 {
+        self.source.id()
+    }
+
     /// Готовая запись блока `source`, если он прошёл prepaint и краску
     /// инертно и либо был далеко от экрана `screen`, либо его вывод кадра
     /// `epoch` повторяем под маской корня `mask`.
     pub(super) fn finish(
-        &self,
-        source: Source,
+        self: Box<Self>,
         screen: Bounds<ScaledPixels>,
         mask: Bounds<Pixels>,
         epoch: u64,
@@ -121,16 +130,15 @@ impl Pending {
             && reusable_range(self.width, self.border.get(), flow, None).is_none();
         let narrow = flow
             .filter(|_| wrapped)
-            .map(|flow| Narrow::of(&source, flow));
+            .map(|flow| Narrow::of(&self.source, flow));
         Finished {
-            record: self.record(source, screen, mask, epoch),
+            record: self.record(screen, mask, epoch),
             narrow,
         }
     }
 
     fn record(
-        &self,
-        source: Source,
+        self,
         screen: Bounds<ScaledPixels>,
         mask: Bounds<Pixels>,
         epoch: u64,
@@ -183,22 +191,25 @@ impl Pending {
             return None;
         }
         let snapshot = self.snapshot.take()?;
+        // Блок шире потока держит пол (`Width::Floor`), а не поток.
+        let stretch = self.width == Width::Stretch
+            && self
+                .key
+                .flow_width()
+                .is_some_and(|flow| self.border.get() <= flow + 0.5);
         Some(Record {
-            source,
-            key: self.key.clone(),
+            source: self.source,
+            key: self.key,
             start: self.start,
             end: self.end,
             snapshot,
             ink,
             resizable,
-            // Блок шире потока держит пол (`Width::Floor`), а не поток.
-            stretch: self.width == Width::Stretch
-                && self
-                    .key
-                    .flow_width()
-                    .is_some_and(|flow| self.border.get() <= flow + 0.5),
+            stretch,
             far,
             replay: RefCell::new(replay),
+            repaint: Cell::new(false),
+            kept: Cell::new(false),
         })
     }
 }

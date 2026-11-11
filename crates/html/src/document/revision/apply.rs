@@ -90,6 +90,8 @@ impl Document {
         key: u64,
         revision: crate::budget::RevisionBudget,
     ) -> Result<BuildReport, DocumentFailure> {
+        // Read from the source DOM before it is taken and the batch written.
+        let invalidation = self.invalidation(batch, theme_css);
         let input = self
             .state
             .values
@@ -120,20 +122,35 @@ impl Document {
         };
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
+        let state = crate::document::state::DocState::continuing(media, &self.state);
+        let mut invalidation = invalidation.map(crate::dom::invalidation::Invalidation::new);
+        // The records go to the rebuilt document (`restyle`); their sources
+        // are not needed for that.
+        self.reuse.release_sources();
         match Self::try_source(
             source,
             theme_css,
             self.base_url.clone(),
             self.xml,
-            crate::document::state::DocState::continuing(media, &self.state),
+            state,
             &fonts,
             revision,
+            invalidation.as_mut(),
         ) {
-            Ok(next) => {
+            Ok(mut next) => {
+                // Same source DOM, same node ids: the block records may hold
+                // for the restyled tree (`restyle`).
+                let restyled = invalidation
+                    .as_ref()
+                    .and_then(crate::dom::invalidation::Invalidation::finish);
+                self.hand_over_reuse(&mut next, restyled);
                 *self = next;
                 Ok(self.report())
             }
-            Err((failure, source)) => Err(refused(self, failure, source.input)),
+            Err((failure, source)) => {
+                self.reuse.forget();
+                Err(refused(self, failure, source.input))
+            }
         }
     }
 

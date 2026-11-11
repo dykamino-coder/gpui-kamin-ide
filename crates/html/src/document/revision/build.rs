@@ -80,12 +80,17 @@ impl Document {
         fonts: &crate::text::metrics::FontContext,
         revision: crate::budget::RevisionBudget,
     ) -> Result<Self, DocumentFailure> {
-        Self::try_source(source, theme_css, base_url, xml, state, fonts, revision)
-            .map_err(|(failure, _)| failure)
+        Self::try_source(
+            source, theme_css, base_url, xml, state, fonts, revision, None,
+        )
+        .map_err(|(failure, _)| failure)
     }
 
     /// Каскад `source`; при отказе разобранный вход возвращается вызывающему
     /// (сборка из исходного DOM прежней ревизии кладёт его обратно).
+    /// `invalidation`: a rebuild for attribute mutations collects the
+    /// elements they restyle (`dom::convert_restyling`).
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn try_source(
         source: Source,
         theme_css: &str,
@@ -94,6 +99,7 @@ impl Document {
         state: Rc<state::DocState>,
         fonts: &crate::text::metrics::FontContext,
         revision: crate::budget::RevisionBudget,
+        invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
     ) -> Result<Self, (DocumentFailure, Box<Source>)> {
         let key = source.key;
         #[cfg(feature = "engine-bench")]
@@ -108,6 +114,7 @@ impl Document {
             state,
             fonts,
             revision,
+            invalidation,
             #[cfg(feature = "engine-bench")]
             &mut timings,
         );

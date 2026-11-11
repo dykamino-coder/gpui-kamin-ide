@@ -33,7 +33,8 @@ pub(super) struct Narrow {
 
 impl Narrow {
     pub(super) fn of(source: &Source, flow: f32) -> Self {
-        let children = source.children();
+        // A source is released only in a record (`Source::release`).
+        let children = source.children().unwrap_or_default();
         Self {
             id: source.id(),
             children: children.mark(),

@@ -2,6 +2,7 @@
 //! by pointer first, layout's used layer by value.
 
 use super::SharedStyle;
+use crate::style::computed::Computed;
 use std::rc::Rc;
 
 fn same_rc<T: PartialEq>(a: &Rc<T>, b: &Rc<T>) -> bool {
@@ -30,6 +31,27 @@ impl SharedStyle {
             && same_rc(&self.base(), &other.base())
             && same_ptr(&self.box_facts, &other.box_facts)
             && same_ptr(&self.decoration, &other.decoration)
+    }
+
+    /// Like `same`, but the stages may differ in paint-only values
+    /// (`Computed::same_layout`): layout reads the same values from both.
+    pub fn same_layout(&self, other: &Self) -> bool {
+        let layout = |a: &Rc<Computed>, b: &Rc<Computed>| Rc::ptr_eq(a, b) || a.same_layout(b);
+        let used = match (&self.used, &other.used) {
+            (None, None) => true,
+            (Some(a), Some(b)) => layout(a, b),
+            _ => false,
+        };
+        // A rebuilt tree carries its own decoration inputs: by value, as layout reads them.
+        let decoration = match (&self.decoration, &other.decoration) {
+            (None, None) => true,
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b) || a.same_layout(b),
+            _ => false,
+        };
+        used && layout(&self.cascaded, &other.cascaded)
+            && layout(&self.base(), &other.base())
+            && same_ptr(&self.box_facts, &other.box_facts)
+            && decoration
     }
 }
 

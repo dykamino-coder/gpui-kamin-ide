@@ -121,7 +121,10 @@ impl Document {
 /// `handles`, в их порядке. Один проход по списку без карты всех узлов:
 /// карта — только из адресов пакета. `None` — узел не построен или его адрес у
 /// двух номеров (такой узел правкой не адресуется).
-fn source_ids<'a>(list: &[usize], handles: impl Iterator<Item = &'a Handle>) -> Vec<Option<u64>> {
+pub(super) fn source_ids<'a>(
+    list: &[usize],
+    handles: impl Iterator<Item = &'a Handle>,
+) -> Vec<Option<u64>> {
     let wanted: Vec<usize> = handles.map(|h| Rc::as_ptr(h) as usize).collect();
     let mut found: HashMap<usize, Option<u64>> = wanted.iter().map(|&a| (a, None)).collect();
     let mut seen = std::collections::HashSet::with_capacity(wanted.len());
