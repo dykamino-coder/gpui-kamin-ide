@@ -167,27 +167,37 @@ describe('Haiku 5.5 estimates', () => {
   })
 })
 
-describe('context window: the CLI status line is the source of truth', () => {
+describe('context meter limit: compact point, then CLI window, then model estimate', () => {
   // Owner report 2026-11-11: "CTX 100% 282.2K" on a 1M Fable/Opus session. The
   // tab carried a CLI alias and the turns no recognised id, so the name table
   // fell back to 200K although the CLI itself knew the window.
   const aliasTurn = (msgId: string, inputTok: number) => ({ ...turn(msgId, inputTok), model: undefined })
 
-  it('uses context_window_size for the live segment over any model-name guess', () => {
-    const s = computeContextStats([aliasTurn('m1', 282_200)], true, 'fable', 1_000_000)!
-    expect(s.limit).toBe(1_000_000)
-    expect(s.limitSource).toBe('cli')
-    expect(s.pct).toBe(28)
-    // The CLI wins even where the name table says otherwise.
-    expect(computeContextStats([turn('m1', 150_000)], true, 'claude-opus-5-5', 200_000)!.pct).toBe(75)
+  it('measures 100% at the server-reported auto-compact point in every segment', () => {
+    const session = { autoCompactAt: 469_200, contextWindowSize: 1_000_000 }
+    const s = computeContextStats([aliasTurn('m1', 330_000)], true, 'fable', session)!
+    expect(s).toMatchObject({ limit: 469_200, limitSource: 'compact', pct: 70 })
+    // Archived segments compacted at the same point.
+    expect(computeContextStats([turn('m1', 469_200)], false, TAB_MODEL, session)).toMatchObject({
+      limit: 469_200, limitSource: 'compact', pct: 100,
+    })
   })
 
-  it('keeps the estimate for archived segments and for missing or invalid CLI sizes', () => {
-    const archived = computeContextStats([turn('m1', 150_000)], false, TAB_MODEL, 200_000)!
+  it('uses the CLI model window on the live segment when an older server sends no compact point', () => {
+    const s = computeContextStats([aliasTurn('m1', 282_200)], true, 'fable', { contextWindowSize: 1_000_000 })!
+    expect(s).toMatchObject({ limit: 1_000_000, limitSource: 'cli', pct: 28 })
+    // The CLI wins even where the name table says otherwise.
+    expect(computeContextStats([turn('m1', 150_000)], true, 'claude-opus-5-5', { contextWindowSize: 200_000 })!.pct).toBe(75)
+  })
+
+  it('keeps the estimate for archived segments and for missing or invalid sizes', () => {
+    const archived = computeContextStats([turn('m1', 150_000)], false, TAB_MODEL, { contextWindowSize: 200_000 })!
     expect(archived).toMatchObject({ limit: 1_000_000, limitSource: 'model' })
     for (const size of [null, undefined, 0, -1, 1.5, Number.NaN]) {
-      expect(computeContextStats([turn('m1', 150_000)], true, TAB_MODEL, size)!.limitSource).toBe('model')
+      const session = { autoCompactAt: size, contextWindowSize: size }
+      expect(computeContextStats([turn('m1', 150_000)], true, TAB_MODEL, session)!.limitSource).toBe('model')
     }
+    expect(computeContextStats([turn('m1', 150_000)], true, TAB_MODEL, null)!.limitSource).toBe('model')
   })
 
   it('falls back to the family window for CLI aliases and unrecognised ids', () => {
