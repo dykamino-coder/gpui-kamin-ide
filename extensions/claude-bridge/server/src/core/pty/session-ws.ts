@@ -56,7 +56,8 @@ import { sessionCliControl } from './session-cli-control'
 import { interruptSessionToolCalls } from './mcp-foreground-calls'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
-import { replaceRegisteredTools } from './mcp-tool-notify'
+import { notifyToolListChanged, replaceRegisteredTools } from './mcp-tool-notify'
+import { normalizeHostDeclaration, sameHostDeclaration } from './host-declaration'
 
 /**
  * Map: sessionId → WS client.
@@ -230,6 +231,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 rows: msg.rows,
                 basePrompt: msg.basePrompt,
                 transcriptMirrorDir: msg.transcriptMirrorDir,
+                host: normalizeHostDeclaration(msg.host),
                 bearerHash,
                 protocolVersion: msg.protocolVersion ?? 0,
                 history: msg.history,
@@ -502,11 +504,18 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // mode it actually supports).
               live.streamProtocol = msg.protocolVersion ?? 0
 
+              // The declaration belongs to the attached client as well: a different
+              // host kind changes which built-in tools the reused CLI may see.
+              const declared = normalizeHostDeclaration(msg.host)
+              const hostChanged = !sameHostDeclaration(live.host, declared)
+              live.host = declared
+
               if (msg.externalTools && Array.isArray(msg.externalTools)) {
                 // The reused CLI keeps its MCP connection: announce a changed
                 // catalog instead of silently swapping the snapshot.
                 replaceRegisteredTools(live, msg.externalTools, 'reattach')
               }
+              if (hostChanged && live.mcpInitialized) notifyToolListChanged(live.id)
 
               ws.send(
                 JSON.stringify({
@@ -560,6 +569,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 // brand-new sessions.
                 basePrompt: msg.basePrompt,
                 transcriptMirrorDir: msg.transcriptMirrorDir,
+                host: normalizeHostDeclaration(msg.host),
                 bearerHash,
                 protocolVersion: msg.protocolVersion ?? 0,
                 history: msg.history,
@@ -727,6 +737,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 effort: msg.effort,
                 model: preservedModel || undefined,
                 protocolVersion: preservedProto,
+                host: session.host,
               })
             }
             if (!ownsStartup(operation)) {
@@ -844,6 +855,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 model: msg.model,
                 effort: preservedEffort || undefined,
                 protocolVersion: preservedProto,
+                host: session.host,
               })
             }
             if (!ownsStartup(operation)) {

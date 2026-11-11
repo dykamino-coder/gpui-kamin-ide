@@ -33,6 +33,7 @@ import { setupUiTools, updateUiToolsWindow } from "./main/mcp/tools/ui-tools"
 import { setToastRouteHandler } from "./main/notifications/toast-window"
 import { setPermissionStorageDir } from "./main/mcp/permission-manager"
 import { McpServerManager } from "./main/mcp/manager"
+import { probeHostDeclaration, USER_MACHINE_TRAITS, type HostDeclaration, type HostTraits } from "./main/mcp/host-declaration"
 import { setExternalMcpManager } from "./main/mcp/executor"
 import { registerShimWindow, unregisterShimWindow } from "@kaminide/host-compat"
 import { setHookEmitConfigStore } from "./main/hooks/emit-bridge-event"
@@ -184,6 +185,8 @@ export class BridgeHost {
     onRegenerateTitle?: (tabId: string) => void
     persistConnectionToken?: boolean
     sessionInstructions?: (cwd?: string) => string
+    /** What the embedding host is and has; defaults to the user's machine (KaminIDE). */
+    hostTraits?: HostTraits
   }) {
     const webContents: WebContents = {
       send: (channel, ...args) => {
@@ -387,6 +390,13 @@ export class BridgeHost {
       connection.sendRaw({ type: "mcp:register-external-content", ...catalog })
     }
     ConnectionManager.getExternalToolSchemas = buildPayload
+    // Declare what this host can execute (registered tools minus the ones with
+    // no shell, git or preview behind them); the connection caches the result.
+    ConnectionManager.hostDeclaration = undefined
+    ConnectionManager.getHostDeclaration = async (): Promise<HostDeclaration> => {
+      const { getRegisteredTools } = await import("./main/mcp/tool-registry")
+      return probeHostDeclaration(getRegisteredTools(), opts?.hostTraits ?? USER_MACHINE_TRAITS)
+    }
     // The user's standing instructions ride every session:create/resume and are
     // APPENDED server-side to the technical prompt. Read through the store on
     // each session so an edit takes effect on the next one, and so it follows
