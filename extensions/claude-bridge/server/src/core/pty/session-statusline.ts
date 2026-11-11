@@ -23,6 +23,7 @@ import { quoteCaptureArgument } from '../server/utils/usage-statusline'
 import { sendToClient } from './session-io'
 import { currentAccountLimits, onAccountLimitsChanged, recordAccountLimits } from './account-limits'
 import type { PtySession } from '../types/pty'
+import { autoCompactThreshold } from './auto-compact'
 
 export const STATUSLINE_SCRIPT_NAME = 'bridge-statusline.cjs'
 export const STATUSLINE_RESULT_NAME = 'bridge-statusline.json'
@@ -73,6 +74,9 @@ export interface SessionUsage {
   windows: SessionUsageWindow[]
   contextPercent: number | null
   contextWindowSize: number | null
+  /** Tokens at which the CLI auto-compacts this session (auto-compact.ts):
+   *  the context meter's 100%. */
+  autoCompactAt: number
   model: string | null
   effort: string | null
   observedAt: string
@@ -94,10 +98,12 @@ export function parseSessionStatus(raw: unknown): SessionUsage | null {
   const context = data.context && typeof data.context === 'object' ? (data.context as Record<string, unknown>) : {}
   const pct = context.used_percentage
   const size = context.size
+  const windowSize = typeof size === 'number' && Number.isSafeInteger(size) && size > 0 ? size : null
   return {
     windows: windows.map((w) => ({ id: w.id, label: w.label, percent: w.percent, resetsAt: w.resetsAt ?? '' })),
     contextPercent: typeof pct === 'number' && Number.isFinite(pct) && pct >= 0 && pct <= 100 ? pct : null,
-    contextWindowSize: typeof size === 'number' && Number.isSafeInteger(size) && size > 0 ? size : null,
+    contextWindowSize: windowSize,
+    autoCompactAt: autoCompactThreshold(windowSize),
     model: clean(data.model),
     effort: clean(data.effort),
     observedAt:

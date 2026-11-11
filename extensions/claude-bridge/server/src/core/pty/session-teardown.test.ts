@@ -8,13 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eventBus } from '../events/bus'
 import { clearSession, listSession, registerSessionHooks } from '../hooks/registry'
 import type { HookSettings } from '../hooks/types'
-import {
-  destroySession,
-  detachSession,
-  finalizeSessionTeardown,
-  isSessionTearingDown,
-  sessions,
-} from './session-core'
+import { destroySession, detachSession, finalizeSessionTeardown, isSessionTearingDown, sessions } from './session-core'
 import type { PtySession } from '../types/pty'
 
 const HOOKS: HookSettings = { SessionEnd: [{ hooks: [{ type: 'command', command: 'notify' }] }] }
@@ -166,6 +160,19 @@ describe('session teardown window', () => {
     finalizeSessionTeardown('missing-session', 'timeout', -1)
     expect(sessions.has('never-destroyed')).toBe(true)
     expect(destroyed).toEqual([])
+  })
+
+  it('never finalizes a running session on SessionEnd or timeout, only on PTY exit', () => {
+    fakeSession('still-running')
+    finalizeSessionTeardown('still-running', 'session-end', -1)
+    finalizeSessionTeardown('still-running', 'timeout', -1)
+    expect(sessions.has('still-running')).toBe(true)
+    expect(listSession('still-running')).toHaveLength(1)
+    expect(destroyed).toEqual([])
+
+    finalizeSessionTeardown('still-running', 'pty-exit', 0)
+    expect(sessions.has('still-running')).toBe(false)
+    expect(destroyed).toEqual(['still-running'])
   })
 
   it('refuses to reopen a window for a session already tearing down', () => {

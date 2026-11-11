@@ -15,6 +15,9 @@ export interface SessionUsage {
   windows: SessionUsageWindow[]
   contextPercent: number | null
   contextWindowSize: number | null
+  /** Tokens at which the CLI auto-compacts (server auto-compact.ts); the
+   *  context meter's 100%. Older servers omit it. */
+  autoCompactAt?: number | null
   model: string | null
   effort: string | null
   observedAt: string

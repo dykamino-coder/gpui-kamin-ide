@@ -75,6 +75,8 @@ describe('parseSessionStatus', () => {
       ],
       contextPercent: 12,
       contextWindowSize: 200000,
+      // 200K model: min(180000 * 0.92, 180000 - 13000) — CLI 2.1.322 threshold.
+      autoCompactAt: 165600,
       model: 'claude-sonnet-4-6',
       effort: 'medium',
       observedAt: '2026-10-13T15:35:00.000Z',

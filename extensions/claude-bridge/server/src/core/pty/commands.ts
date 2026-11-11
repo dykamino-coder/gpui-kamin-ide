@@ -1,5 +1,5 @@
 // Session-scoped projection of the execution owners. Never consumes BashOutput.
-import { pendingMcpCalls } from './session-mcp-call'
+import { pendingMcpCalls, redeliverCallsMissingFromReport } from './session-mcp-call'
 import { mcpTasks } from './mcp-tasks'
 import { sendToClient } from './session-io'
 import type { PtySession } from './types'
@@ -35,6 +35,11 @@ export function rememberCommandResult(session: PtySession, id: string, result: u
 }
 export async function acceptCommandReport(session: PtySession, report: CommandReport): Promise<void> {
   if (!report || !Array.isArray(report.calls) || !Array.isArray(report.shells)) return
+  // The client caps its list at 128; only a complete list proves absence.
+  if (report.calls.length < 128) {
+    const held = new Set(report.calls.map((call) => call?.id).filter((id): id is string => typeof id === 'string'))
+    redeliverCallsMissingFromReport(session, held)
+  }
   const tasks = await mcpTasks.working()
   for (const call of report.calls.slice(0, 128)) {
     if (typeof call?.id !== 'string' || typeof call.output !== 'string') continue

@@ -4,22 +4,16 @@ import { jsonlEntriesByTab, getJsonlStructureVersion } from '../../signals/jsonl
 import { activeTabId, tabs } from '../../signals/tabs'
 import { compactSegments, activeSegmentIdx } from '../../signals/compact-segments'
 import { replayProgressByTab } from '../../signals/replay-progress'
+import { usageByTab } from '../../signals/session-usage'
 import { useBridge } from '../../hooks/useBridge'
 import { computeContextStats, formatCost } from '../../utils/session-cost'
 import { CHIP_LABEL_STYLE, CHIP_STYLE, METER_TRACK_STYLE, meterFillStyle } from '../input-bar/usage-chip'
 
-// Context pressure bands — reused by color AND by /compact prompt. 70%
-// is the "auto-compact zone" CLI hits by default; we expose a one-click
-// button the moment we cross it so users don't get surprised by a
-// mid-turn auto-compact.
+// Context pressure bands — reused by color AND by the Compact button. The pct
+// is measured against the auto-compact point (100% = the CLI compacts), so
+// the button appears before a mid-turn auto-compact surprises the user.
 const WARN_PCT = 70
 const DANGER_PCT = 90
-// Absolute-token triggers for the big-context models. On a 1M-context tier 70%
-// is 700k — a lot of conversation to lose in one compaction. Warn (orange) from
-// half a million tokens, danger (red) from 700k — independent of the
-// percentage bands, which still cover the 200K-window models.
-const EARLY_COMPACT_TOKENS = 500_000
-const DANGER_COMPACT_TOKENS = 700_000
 
 // Instructions piped after `/compact` when the user clicks Compact. `/compact
 // [instructions]` steers the SUMMARY the CLI writes over the conversation — it
@@ -59,7 +53,10 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
     const replayingNow = replayProgressByTab.value.get(id) != null
     const segIdxNow = replayingNow ? 0 : activeSegmentIdx.value
     const model = tabs.value.find(t => t.id === id)?.model
-    const key = `${id}|${getJsonlStructureVersion(id)}|${segIdxNow}|${replayingNow}|${model ?? ''}`
+    // Точка автосжатия (и окно модели) из session:usage — 100% индикатора.
+    const usage = usageByTab.value.get(id)
+    const session = { autoCompactAt: usage?.autoCompactAt ?? null, contextWindowSize: usage?.contextWindowSize ?? null }
+    const key = `${id}|${getJsonlStructureVersion(id)}|${segIdxNow}|${replayingNow}|${model ?? ''}|${session.autoCompactAt ?? ''}|${session.contextWindowSize ?? ''}`
     if (statsCache.key === key) return statsCache.value
     // While the transcript is still replaying, the segment set and every
     // boundary index are in flux (reverse-load prepends older history), so a
@@ -78,7 +75,7 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
     // The live "Current" segment (the last one, or the whole session when there
     // are no compactions) reflects the CURRENT window; an archived one its peak.
     const isLiveSegment = segs.length === 0 || segIdx === segs.length - 1
-    const out = computeContextStats(entries, isLiveSegment, model)
+    const out = computeContextStats(entries, isLiveSegment, model, session)
     statsCache.key = key
     statsCache.value = out
     return out
@@ -97,11 +94,7 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
   const replayingId = activeTabId.value
   const costSettling = replayingId ? replayProgressByTab.value.get(replayingId) != null : false
 
-  // Half-a-million tokens is worth offering the hand-off even on a 1M tier
-  // still at ~50% — treat it as at least the warn band so the button appears.
-  const early = s.used !== null && s.used >= EARLY_COMPACT_TOKENS
-  const band = ((s.pct !== null && s.pct >= DANGER_PCT) || (s.used !== null && s.used >= DANGER_COMPACT_TOKENS)) ? 'danger'
-    : ((s.pct !== null && s.pct >= WARN_PCT) || early) ? 'warn' : 'ok'
+  const band = s.pct !== null && s.pct >= DANGER_PCT ? 'danger' : s.pct !== null && s.pct >= WARN_PCT ? 'warn' : 'ok'
   // Only highlight when we're approaching the limit. Below the warn band
   // the bar is just a muted progress indicator — colour is reserved for
   // signal ("getting close" / "about to auto-compact").
@@ -120,12 +113,15 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
     bridge.submitText(id, `/compact ${HANDOFF_COMPACT_INSTRUCTIONS}`)
   }
 
+  const limitNote = s.limitSource === 'compact'
+    ? ` (auto-compact at ${formatTokens(s.limit)})`
+    : s.limitSource === 'model' ? ' (estimated window)' : ''
   const contextText = s.used === null ? 'Context pending' : `${s.freshness === 'compact' ? '≈' : ''}${formatTokens(s.used)}`
   const contextTooltip = s.freshness === 'pending'
     ? 'Compact completed; waiting for post-compact context usage.'
     : s.freshness === 'compact'
       ? `Post-compact context ≈ ${formatTokens(s.used!)} / ${formatTokens(s.limit)}; waiting for the next model usage.`
-      : `Context: ${formatTokens(s.used!)} / ${formatTokens(s.limit)}`
+      : `Context: ${formatTokens(s.used!)} / ${formatTokens(s.limit)}${limitNote}`
 
   if (variant === 'pills') {
     // Pills for the row under the chat input (UsageLimitsRow): context meter +

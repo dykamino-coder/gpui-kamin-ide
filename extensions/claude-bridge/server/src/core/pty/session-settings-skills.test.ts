@@ -107,15 +107,19 @@ describe('session settings skills integration', () => {
     fs.mkdirSync(settingsDir, { recursive: true })
     fs.mkdirSync(syncRoots.home, { recursive: true })
 
-    writeSessionSettings('session-id', settingsDir, 'mcp-token')
+    const flagSettings = JSON.parse(writeSessionSettings('session-id', settingsDir, 'mcp-token'))
 
     const localSettings = JSON.parse(fs.readFileSync(path.join(settingsDir, '.claude', 'settings.local.json'), 'utf-8'))
     expect(localSettings.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe('1')
     expect(localSettings.env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('1h')
     expect(localSettings.env.CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL).toBe('1h')
     expect(localSettings.env.CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS).toBe('350000')
-    expect(localSettings.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('380k')
-    expect(localSettings.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE).toBe('92')
+    // Compaction policy rides the --settings flag, which outranks user/project/
+    // local settings and the process env in CLI 2.1.322 (a stale profile value
+    // cannot win); the shared local file no longer carries it.
+    expect(flagSettings.env).toEqual({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '530k', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '92' })
+    expect(localSettings.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
+    expect(localSettings.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE).toBeUndefined()
     expect(localSettings.env.DISABLE_AUTOUPDATER).toBe('1')
 
     const settings = JSON.parse(fs.readFileSync(path.join(settingsDir, '.claude', 'settings.json'), 'utf-8'))

@@ -19,6 +19,7 @@ import { getDisallowedBuiltinTools } from './session-env'
 import { replaceSkillsOverlay } from './skills-snapshot'
 import { preModelSwitchAllowMatcher } from './live-switch'
 import { writeStatusLineScript } from './session-statusline'
+import { autoCompactEnv } from './auto-compact'
 
 export { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
 
@@ -218,11 +219,6 @@ export function writeSessionSettings(
   const localSettings = {
     skipDangerousModePermissionPrompt: true,
     env: {
-      // CLI 2.1.312 clamps to the real model window, then reserves up to 20k
-      // output tokens before min(92% of the remainder, remainder - 13k).
-      // Thus 380k compacts around 331k–350k; a 200k model never gains context.
-      CLAUDE_CODE_AUTO_COMPACT_WINDOW: '380k',
-      CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '92',
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
       // One-hour prompt cache for the main loop and for subagents/teammates.
       // The CLI already uses 1h for the main loop on subscriptions, but caches
@@ -252,7 +248,10 @@ export function writeSessionSettings(
     mcpUrl,
     settings: path.join(claudeDir, 'settings.json'),
   })
-  return JSON.stringify({ hooks: cliHooks })
+  // Auto-compaction policy (auto-compact.ts) goes with the --settings flag:
+  // flag settings outrank user, project and local settings, and settings env
+  // outranks the process env, so a stale value in a profile cannot win.
+  return JSON.stringify({ hooks: cliHooks, env: autoCompactEnv() })
 }
 
 /**
