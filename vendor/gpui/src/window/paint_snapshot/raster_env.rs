@@ -102,6 +102,7 @@ impl RasterEnv {
             && b.image_cache_stack.iter().zip(&window.image_cache_stack).all(|(a, b)| a.same(b))
             && b.ink.len() == window.next_frame.scene.ink.len()
             && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| Rc::ptr_eq(a, b))
+            && b.ink_scope == super::capture_scope(window)
             && self.contexts == window.raster_frame.contexts
     }
 }
@@ -150,6 +151,7 @@ impl ReplayBuffers {
             content_mask_stack: mem::take(&mut self.masks),
             image_cache_stack: mem::take(&mut self.images),
             ink: mem::take(&mut self.ink),
+            ink_scope: b.ink_scope,
         }
     }
 

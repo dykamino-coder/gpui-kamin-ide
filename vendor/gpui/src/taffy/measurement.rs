@@ -167,7 +167,7 @@ pub(super) fn leaf(
                 height: input.known_dimensions.height.is_some(),
             };
         }
-        let measured = (context.measure.borrow_mut())(known, available, geometry, window, cx);
+        let measured = context.measure.borrow_mut().measure(known, available, geometry, window, cx);
         let output = measured.to_native(scale);
         // Intrinsic probes must not replace metadata belonging to a cached full layout.
         if performed {

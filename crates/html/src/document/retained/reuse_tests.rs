@@ -130,12 +130,27 @@ fn a_flow_resized_every_frame_records_nothing_and_drops_its_records(cx: &mut Tes
     // Back at the recorded width: records of another key were dropped (they
     // would hold the styles of their frame), so nothing is skipped.
     assert_eq!((skipped, rebuilt), (0, 0));
+    // Blocks far from the screen are laid out from their far records
+    // (`layout::reuse::far`) without a build; every built one records.
+    let far = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
+        cx.update(|_, cx| view.read(cx).doc.far_blocks())
+    };
+    let far_before = far(&view, cx);
     update(&view, cx, &rows(300, "row 300"));
     let (again, skipped, _) = reused(&view, cx);
-    assert!(again > recorded + 400 && skipped == 0, "{again} {skipped}");
+    let far_again = far(&view, cx) - far_before;
+    assert!(
+        again - recorded + far_again > 400 && skipped == 0,
+        "{again} {far_again} {skipped}"
+    );
+    let far_before = far(&view, cx);
     update(&view, cx, &rows(300, "row edited"));
     let (_, skipped, rebuilt) = reused(&view, cx);
-    assert!(skipped > 300 && rebuilt == 0, "{skipped} {rebuilt}");
+    let far_edit = far(&view, cx) - far_before;
+    assert!(
+        skipped + far_edit > 300 && rebuilt == 0,
+        "{skipped} {far_edit} {rebuilt}"
+    );
 }
 
 /// Blocks near the screen are recorded with their frame output and replayed
