@@ -1,6 +1,7 @@
 // Owns bounded foreground shell output and process deadline settlement.
 import { spawn } from 'node:child_process'
 import type { McpResult } from './shell'
+import { windowsJobRunner } from './windows-job-runner'
 
 const MAX_OUTPUT_BYTES = 100 * 1024
 const TERMINATION_GRACE_MS = 1000
@@ -69,7 +70,11 @@ export function runForegroundCommand(
       resolve(result)
     }
 
-    const child = spawn(shell, [...shellFlags, command], {
+    // On Windows the command runs inside its own Job Object when the runner is
+    // installed: ending the runner then ends every process of the command.
+    const runner = windowsJobRunner()
+    const argv = [...shellFlags, command]
+    const child = spawn(runner ?? shell, runner ? [shell, ...argv] : argv, {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: process.platform !== 'win32',
@@ -103,6 +108,17 @@ export function runForegroundCommand(
         signalTree('SIGKILL')
         finish(child.exitCode)
       }, TERMINATION_GRACE_MS)
+      if (runner) {
+        // The runner holds the only handle of the job. Its end closes the job,
+        // Windows ends every process in it, the pipes close and `close`
+        // settles the call; the timer above is only the ceiling.
+        try {
+          child.kill('SIGKILL')
+        } catch {
+          /* close/exit race */
+        }
+        return
+      }
       if (process.platform === 'win32' && child.pid) {
         try {
           const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
