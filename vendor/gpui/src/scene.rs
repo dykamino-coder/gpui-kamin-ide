@@ -149,7 +149,9 @@ pub struct Scene {
     pub(crate) ink_scope: u32,
     /// Mouse listeners and element state reads declared inert while unseen
     /// (Window::offscreen_inert), counted so ink probes can allow them.
-    pub(crate) ink_allowed: (usize, usize),
+    /// Counters of one frame, 32 bits each: with `ink_scope` the scene (two
+    /// in every `Window`) stays the size it had without scopes.
+    pub(crate) ink_allowed: (u32, u32),
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине

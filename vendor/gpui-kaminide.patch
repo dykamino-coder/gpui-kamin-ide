@@ -11491,7 +11491,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f407a1717
+index 160587a4ad924f80c2dd01b90a8300febbc13105..373b2d2cc861302c307e17ea2d2fc71239a22efc
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,7 @@
@@ -11582,7 +11582,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 @@ -44,0 +124,2 @@
 +    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
 +    bottom_seq: DrawOrder,
-@@ -52,0 +134,47 @@
+@@ -52,0 +134,49 @@
 +    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
 +    pub(crate) in_group: bool,
 +    /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
@@ -11601,7 +11601,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +    pub(crate) ink_scope: u32,
 +    /// Mouse listeners and element state reads declared inert while unseen
 +    /// (Window::offscreen_inert), counted so ink probes can allow them.
-+    pub(crate) ink_allowed: (usize, usize),
++    /// Counters of one frame, 32 bits each: with `ink_scope` the scene (two
++    /// in every `Window`) stays the size it had without scopes.
++    pub(crate) ink_allowed: (u32, u32),
 +}
 +
 +/// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -11630,7 +11632,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +    outer_plane: Option<u32>,
 +    plane_depth: usize,
 +    union: Option<Bounds<ScaledPixels>>,
-@@ -56,0 +185,140 @@
+@@ -56,0 +187,140 @@
 +    /// KaminIDE patch: начать объёмный контекст.
 +    pub fn push_depth_context(&mut self) {
 +        self.paint_operations.push(PaintOperation::StartDepthContext);
@@ -11771,9 +11773,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +        }
 +    }
 +
-@@ -57,0 +326 @@
+@@ -57,0 +328 @@
 +        self.segment_capture = None;
-@@ -59 +328,6 @@
+@@ -59 +330,6 @@
 -        self.primitive_bounds.clear();
 +        self.groups.clear();
 +        match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
@@ -11781,22 +11783,22 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +            None => self.primitive_bounds = Default::default(),
 +        }
 +        self.blocks.clear();
-@@ -60,0 +335 @@
+@@ -60,0 +337 @@
 +        self.bottom_seq = 0;
-@@ -68,0 +344,6 @@
+@@ -68,0 +346,6 @@
 +        self.hoisted_backdrops.clear();
 +        self.depth = DepthSort::default();
 +        self.ink.clear();
 +        self.ink_scope = 0;
 +        self.ink_allowed = (0, 0);
 +        crate::window::reset_ink_scopes();
-@@ -76 +357 @@
+@@ -76 +359 @@
 -        let order = self.primitive_bounds.insert(bounds);
 +        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
-@@ -79 +360 @@
+@@ -79 +362 @@
 -            .push(PaintOperation::StartLayer(bounds));
 +            .push(PaintOperation::StartLayer(bounds, order));
-@@ -86,0 +368,15 @@
+@@ -86,0 +370,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
 +    ///
 +    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
@@ -11812,7 +11814,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -89,3 +385,7 @@
+@@ -89,3 +387,7 @@
 -        let clipped_bounds = primitive
 -            .bounds()
 -            .intersect(&primitive.content_mask().bounds);
@@ -11823,7 +11825,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +        }
 +        crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
 +        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -97,5 +397,10 @@
+@@ -97,5 +399,10 @@
 -        let order = self
 -            .layer_stack
 -            .last()
@@ -11839,7 +11841,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +            Some(o) => o,
 +            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
 +        };
-@@ -136,0 +442,16 @@
+@@ -136,0 +444,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
 +            let (kind, index) = match &primitive {
 +                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
@@ -11856,7 +11858,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -139,2 +460,40 @@
+@@ -139,2 +462,40 @@
 -    }
 -
 +        if let Some(capture) = self.segment_capture.as_mut() {
@@ -11899,7 +11901,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +501,76 @@
+@@ -142 +503,76 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let operations = &prev_scene.paint_operations[range.clone()];
 +        // A block whose borrowed tree died with its record is packed again.
@@ -11977,7 +11979,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +578,203 @@
+@@ -144,4 +580,203 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -12185,7 +12187,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -193,0 +827,92 @@
+@@ -193,0 +829,92 @@
 +/// KaminIDE patch: bounds of a primitive at its place on screen (after its
 +/// transformation), before the content mask.
 +fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
@@ -12278,20 +12280,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +        }
 +}
 +
-@@ -213,0 +939 @@
+@@ -213,0 +941 @@
 +#[derive(Clone)]
-@@ -216 +942,4 @@
+@@ -216 +944,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +947,4 @@
+@@ -217,0 +949,4 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
-@@ -259,0 +993,55 @@
+@@ -259,0 +995,55 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -12347,7 +12349,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -543,0 +1332,10 @@
+@@ -543,0 +1334,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -12358,19 +12360,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +1379,5 @@
+@@ -580,0 +1381,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1406,5 @@
+@@ -602,0 +1408,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1458,12 @@
+@@ -649,0 +1460,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -12383,10 +12385,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1571 @@
+@@ -751 +1573 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1578,54 @@
+@@ -757,0 +1580,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -12441,7 +12443,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1648,23 @@
+@@ -773,0 +1650,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -12465,12 +12467,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f9584d419e8045369d06a33b3b4bff9f
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1693,2 @@
+@@ -795,0 +1695,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1715 @@
+@@ -815,0 +1717 @@
 +            color_mapping: None,
-@@ -835,0 +1736,6 @@
+@@ -835,0 +1738,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
@@ -26812,7 +26814,7 @@ index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4ace173ac3168b84f6040ce29dece0375878faef
+index 0000000000000000000000000000000000000000..fc1f47e127517309fc2c0c6c9c35bb3ed5db3ce1
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
 @@ -0,0 +1,594 @@
@@ -27109,7 +27111,7 @@ index 0000000000000000000000000000000000000000..4ace173ac3168b84f6040ce29dece037
 +    start: PaintIndex,
 +    groups: usize,
 +    callbacks: usize,
-+    allowed: (usize, usize),
++    allowed: (u32, u32),
 +    clean: bool,
 +}
 +
@@ -27130,11 +27132,11 @@ index 0000000000000000000000000000000000000000..4ace173ac3168b84f6040ce29dece037
 +        let start = &self.start;
 +        let allowed = window.next_frame.scene.ink_allowed;
 +        let quiet = self.clean
-+            && end.mouse_listeners_index - start.mouse_listeners_index == allowed.0 - self.allowed.0
++            && end.mouse_listeners_index - start.mouse_listeners_index == (allowed.0 - self.allowed.0) as usize
 +            && start.input_handlers_index == end.input_handlers_index
 +            && start.cursor_styles_index == end.cursor_styles_index
 +            && end.accessed_element_states_index - start.accessed_element_states_index
-+                == allowed.1 - self.allowed.1
++                == (allowed.1 - self.allowed.1) as usize
 +            && start.tab_handle_index == end.tab_handle_index
 +            && self.groups == window.next_frame.scene.groups.len()
 +            && self.callbacks == window.next_frame_callback_count();
@@ -27291,9 +27293,9 @@ index 0000000000000000000000000000000000000000..4ace173ac3168b84f6040ce29dece037
 +        let end = self.paint_index();
 +        let scene = &mut self.next_frame.scene;
 +        if inert {
-+            scene.ink_allowed.0 += end.mouse_listeners_index - start.mouse_listeners_index;
++            scene.ink_allowed.0 += (end.mouse_listeners_index - start.mouse_listeners_index) as u32;
 +            scene.ink_allowed.1 +=
-+                end.accessed_element_states_index - start.accessed_element_states_index;
++                (end.accessed_element_states_index - start.accessed_element_states_index) as u32;
 +        } else {
 +            for sink in &scene.ink {
 +                sink.taint_in(scene.ink_scope);

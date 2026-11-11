@@ -291,7 +291,7 @@ pub(crate) struct InkProbe {
     start: PaintIndex,
     groups: usize,
     callbacks: usize,
-    allowed: (usize, usize),
+    allowed: (u32, u32),
     clean: bool,
 }
 
@@ -312,11 +312,11 @@ impl InkProbe {
         let start = &self.start;
         let allowed = window.next_frame.scene.ink_allowed;
         let quiet = self.clean
-            && end.mouse_listeners_index - start.mouse_listeners_index == allowed.0 - self.allowed.0
+            && end.mouse_listeners_index - start.mouse_listeners_index == (allowed.0 - self.allowed.0) as usize
             && start.input_handlers_index == end.input_handlers_index
             && start.cursor_styles_index == end.cursor_styles_index
             && end.accessed_element_states_index - start.accessed_element_states_index
-                == allowed.1 - self.allowed.1
+                == (allowed.1 - self.allowed.1) as usize
             && start.tab_handle_index == end.tab_handle_index
             && self.groups == window.next_frame.scene.groups.len()
             && self.callbacks == window.next_frame_callback_count();
@@ -473,9 +473,9 @@ impl Window {
         let end = self.paint_index();
         let scene = &mut self.next_frame.scene;
         if inert {
-            scene.ink_allowed.0 += end.mouse_listeners_index - start.mouse_listeners_index;
+            scene.ink_allowed.0 += (end.mouse_listeners_index - start.mouse_listeners_index) as u32;
             scene.ink_allowed.1 +=
-                end.accessed_element_states_index - start.accessed_element_states_index;
+                (end.accessed_element_states_index - start.accessed_element_states_index) as u32;
         } else {
             for sink in &scene.ink {
                 sink.taint_in(scene.ink_scope);
