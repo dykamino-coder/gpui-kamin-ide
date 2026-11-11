@@ -7,22 +7,31 @@ Delivery reconciliation 2026-11-11, source `origin/main`
 [KaminIDE 1.0.93](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.93)
 / server 6.3.170 is published (tag commit `1fe4cac5`, ancestry checked), with
 the embedding packages `kaminide-bridge-workspace-host-6.3.170.tgz` and
-`kaminide-bridge-browser-client-6.3.170.tgz`. Publication is not acceptance:
-INC-0097 stays `verify`. Do not reimplement #732.
+`kaminide-bridge-browser-client-6.3.170.tgz`. Publication is not acceptance.
+Acceptance run 2026-11-11 on the released image and packages: INC-0097 is
+`done`. Do not reimplement #732.
 
 - [INC-0097](runtime-issues/INC-2026-0097.md): the Bridge server serves the
   tools and the wording that the client host declares,
   [#732](https://github.com/dykamino-coder/gpui-kamin-ide/pull/732)
-  (`3c323c2c`). Owner: next maintainer run. Gate: on a server deployed from
-  image 6.3.170 or newer, a session through a Linux workspace host without
-  `pwsh` is asked which tools it has and where they run; PowerShell and "the
-  user's machine" are absent from the answer. Next artifact: a verification
-  Diagnostic PR.
+  (`3c323c2c`). `done`: the gate passed on 2026-11-11 on a server from image
+  6.3.170 for a Linux workspace host of the same release (no PowerShell, "the
+  workspace host (Linux)", an undeclared tool is rejected), for KaminIDE 1.0.93
+  on Windows (PowerShell present, "the user's machine (Windows)") and for a
+  6.3.169 host without a declaration (full list, earlier texts). No next
+  artifact; the table is in the card.
 - The typed `mcp`, `skills`, `agents`, `plugins` and `hooks` groups of
   `@kaminide/bridge-browser-client`,
   [#730](https://github.com/dykamino-coder/gpui-kamin-ide/pull/730)
   (`2c8a0eb5`), ship in the same release. They have no runtime card; the
   published package was checked for these types and for version 6.3.170.
+  Live check 2026-11-11 from the released client against the 6.3.170 server:
+  a read and a write with rollback passed for `mcp` (`servers`, `addServer`,
+  `testServer`, `removeServer`), `skills` (`list`, `create`, `read`, `remove`),
+  `plugins` (`installed`, `marketplaces`, `addMarketplace`, `browse`,
+  `removeMarketplace`) and `hooks` (`list`, `listAll`, `save`, `remove`);
+  `agents` has only `list`, which passed. The state after the run equals the
+  state before it.
 - [INC-0095](runtime-issues/INC-2026-0095.md) (`done`) and
   [INC-0096](runtime-issues/INC-2026-0096.md) (`ready/change`): no new change
   in 1.0.93. Their state was set by the acceptance run on 1.0.92 / 6.3.169 (see
