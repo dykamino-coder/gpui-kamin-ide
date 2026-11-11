@@ -47,12 +47,15 @@ async fn painted_stack(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
+    // Evaluate the receiver after await so it adds no saved pointer to the future.
+    let child = opts
+        .cx
+        .contracts
+        .build
+        .element_stack(stk, e, inherited, opts)
+        .await;
     opts.cx.contracts.build.effects(
-        opts.cx
-            .contracts
-            .build
-            .element_stack(stk, e, inherited, opts)
-            .await,
+        child,
         Effect::ElementTransform {
             element: e,
             parent: inherited,
