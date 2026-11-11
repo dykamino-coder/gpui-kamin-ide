@@ -15,6 +15,7 @@ import { refreshSessionSkills } from '../pty/session-settings'
 import { resolveToken } from '../auth/tokens'
 import { withProjectSyncLock, withUserSyncLock } from './lock'
 import { prepareSyncStorage, resolveSyncBase } from './storage'
+import { writePluginModuleTree } from './plugin-modules'
 import { readSkillsReloadTelemetry, recordSkillsSnapshot } from './skills-reload-telemetry'
 import type { SkillsReloadContext } from './skills-reload-telemetry'
 
@@ -188,6 +189,8 @@ async function writePluginSnapshots(userDir: string, plugins: SyncUserData['plug
       JSON.stringify({ ...plugin.manifest, name: plugin.name }, null, 2),
       'utf-8',
     )
+    const modules = await writePluginModuleTree(root, plugin)
+    if (modules.length > 0) debugLog('[sync] Plugin hooks modules synced', { plugin: pluginId, modules })
     await writeFileMap(path.join(root, 'skills'), plugin.skills ?? {})
     await writeFileMap(path.join(root, 'agents'), plugin.agents ?? {})
     await writeFileMap(path.join(root, 'commands'), plugin.commands ?? {})

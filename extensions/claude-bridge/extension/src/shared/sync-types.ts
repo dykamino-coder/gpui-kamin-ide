@@ -4,8 +4,14 @@
 
 /** Declarative part of an enabled plugin that the remote Claude CLI can load
  *  safely. Executable components (hooks/MCP/LSP/monitors) stay on the local
- *  extension host and are represented separately by `hooks`; the server-side
- *  proxy plugin contains only prompt/config assets. */
+ *  extension host and are represented separately by `hooks`. Hooks modules
+ *  are the exception: they run inside the CLI process, so a plugin that
+ *  declares them also carries its file tree in `files`. */
+export interface SyncPluginFile {
+  encoding: 'utf8' | 'base64'
+  content: string
+}
+
 export interface SyncPluginData {
   id: string
   name: string
@@ -20,6 +26,10 @@ export interface SyncPluginData {
   themes: Record<string, string>
   hooks: Record<string, unknown>
   settings?: string
+  /** Hooks module paths relative to the proxy plugin's `hooks/` directory. */
+  modules?: string[]
+  /** Plugin file tree (relativePath → file), present only with `modules`. */
+  files?: Record<string, SyncPluginFile>
 }
 
 export interface SyncUserData {

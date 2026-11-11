@@ -273,6 +273,15 @@ export interface SyncPluginData {
   themes: Record<string, string>
   hooks: Record<string, unknown>
   settings?: string
+  /** Hooks module paths relative to the proxy plugin's `hooks/` directory. */
+  modules?: string[]
+  /** Plugin file tree (relativePath → file), present only with `modules`. */
+  files?: Record<string, SyncPluginFile>
+}
+
+export interface SyncPluginFile {
+  encoding: 'utf8' | 'base64'
+  content: string
 }
 
 export interface SyncUserData {
