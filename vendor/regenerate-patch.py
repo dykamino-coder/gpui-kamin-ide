@@ -134,7 +134,7 @@ FIXES = {
         "calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.",
         "Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.",
         "Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.",
-        "Retained trees: retain_nodes drops unkept nodes in one sweep, reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.",
+        "Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.",
         "Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.",
     ],
     "html5ever": [

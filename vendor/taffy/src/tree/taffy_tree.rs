@@ -289,6 +289,11 @@ pub struct TaffyTree<NodeContext = ()> {
     /// (`kamin_calc`); cleared with the nodes.
     #[cfg(feature = "std")]
     calc: super::kamin_calc::SharedRegistry,
+
+    /// KaminIDE patch: the keys `retain_nodes` drops, kept empty between
+    /// calls (up to 1024 keys of capacity): a host that sweeps a few nodes
+    /// every frame allocates no list per sweep.
+    swept: Vec<DefaultKey>,
 }
 
 impl Default for TaffyTree {
@@ -992,6 +997,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
             config: TaffyConfig::default(),
             #[cfg(feature = "std")]
             calc: Default::default(),
+            swept: Vec::new(),
         }
     }
 
@@ -1156,16 +1162,21 @@ impl<NodeContext> TaffyTree<NodeContext> {
     /// kept: its pairs are interned by value, so handles stay valid for the
     /// kept styles.
     pub fn retain_nodes(&mut self, mut keep: impl FnMut(NodeId) -> bool) {
-        let dropped: Vec<DefaultKey> =
-            self.nodes.keys().filter(|key| !keep(NodeId::from(*key))).collect();
+        let mut dropped = core::mem::take(&mut self.swept);
+        dropped.extend(self.nodes.keys().filter(|key| !keep(NodeId::from(*key))));
         if dropped.is_empty() {
+            self.swept = dropped;
             return;
         }
-        for key in &dropped {
-            let _ = self.children.remove(*key);
-            let _ = self.parents.remove(*key);
-            let _ = self.nodes.remove(*key);
-            let _ = self.node_context_data.remove(*key);
+        for key in dropped.drain(..) {
+            let _ = self.children.remove(key);
+            let _ = self.parents.remove(key);
+            let _ = self.nodes.remove(key);
+            let _ = self.node_context_data.remove(key);
+        }
+        // A sweep of a whole document is rare: its list is not worth keeping.
+        if dropped.capacity() <= 1024 {
+            self.swept = dropped;
         }
         let mut orphaned = Vec::new();
         for (key, parent) in self.parents.iter_mut() {
