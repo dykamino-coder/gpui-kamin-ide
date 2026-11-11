@@ -3,6 +3,9 @@
 These tools compare layout measurements alongside the exact-RGB gate. Geometry
 tolerances never affect screenshot verdicts.
 
+See [design.md](design.md) for the query lifecycle, cost model, and inspected
+Blink/Servo source references.
+
 Build the existing `wptrun` example with the `wpt-harness` feature, using the
 shared build script on the Windows benchmark host. Run its diagnostic mode on
 the shared hidden desktop:
