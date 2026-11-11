@@ -52,6 +52,7 @@ client.submitPrompt(tab, 'Build a landing page with a form')
 | `onElicitation`, `respondElicitation(id, action, content?)` | event `elicitation-request`, send `elicitation-response` |
 | `setModel(tab, 'haiku')`, `setEffort(tab, 'low')`, `setToolPermissionMode(tab, 'ask')` | send `change-model`, `change-effort`, `change-permission-mode` |
 | `saveImage(base64, mime)`, `saveAttachment(base64, name)` → path | invoke `save-clipboard-image`, `save-dropped-file` |
+| `files.createDirectory(path)` → `{ created, path, mtimeMs }` | invoke `file-tree:create-dir` |
 | `selectSubagent(tab, agentId \| null)`, `onSubagentEntries` | send `jsonl:subagent-select`, event `jsonl-subagent-entries` |
 | `monitors.list()`, `monitors.log(id)`, `monitors.onEvent()` | invoke `monitors:list`, `monitors:get-log`; events `monitor:*` |
 | `mcp.servers()`, `mcp.ready()`, `mcp.onServersChanged()` | invoke `mcp:get-servers`, `mcp:status`; event `mcp:servers-changed` |
@@ -131,6 +132,32 @@ server with the packaged client:
   with their file tree, so their hooks run there. Mod UI (`ui.render` panes,
   bands, status entries) is not supported: the client has no structured channel
   for it.
+
+## Files
+
+`files.createDirectory(path)` creates one directory in the workspace container
+(channel `file-tree:create-dir`, one argument).
+
+- **Path.** The same rule as `file-tree:rename`, `file-tree:list-dir` and the
+  file viewer channels, not wider: a nonempty string, a relative path resolves
+  against the workspace root, an absolute path stays absolute. The container is
+  the boundary; there is no narrower sandbox for any of these channels.
+- **Result.** `{ created: true, path, mtimeMs }` with the absolute path, the
+  form `file-tree:list-dir` uses for its entries. When a directory (or a link
+  to one) is already there, the call resolves with `created: false` and changes
+  nothing, so a repeated call is safe.
+- **Missing parent.** The call rejects; it creates exactly one level, like
+  `file-viewer:write` and `file-tree:rename`, which never create parents. A
+  mistyped path therefore cannot leave a tree behind. Create a nested path one
+  level per call.
+- **Errors.** As for `file-tree:rename`: the promise rejects with an `Error`
+  whose message is the host's file-system error and starts with its code,
+  e.g. `ENOENT: …` (missing parent), `EEXIST: …` (a file is at the path),
+  `EACCES: …`, `ENOTDIR: …`. A wrong argument rejects with
+  `Expected a nonempty container file path` or `Expected 1 file arguments`.
+
+Listing, renaming, reading and writing are available through
+`invoke('file-tree:list-dir' | 'file-tree:rename' | 'file-viewer:read' | 'file-viewer:write', …)`.
 
 ## Management: MCP, skills, agents, plugins, hooks
 

@@ -135,6 +135,18 @@ test('chat controls, prompts, subagents and monitors map onto the host channels'
   const file = client.saveAttachment('BBBB', 'notes.txt')
   assert.deepEqual(reply('save-dropped-file', '/workspace/.bridge-uploads/b/notes.txt'), ['BBBB', 'notes.txt'])
   assert.equal(await file, '/workspace/.bridge-uploads/b/notes.txt')
+  const made = client.files.createDirectory('assets/icons')
+  const directory = { created: true, path: '/workspace/assets/icons', mtimeMs: 5 }
+  assert.deepEqual(reply('file-tree:create-dir', directory), ['assets/icons'])
+  assert.deepEqual(await made, directory)
+  const again = client.files.createDirectory('assets/icons')
+  reply('file-tree:create-dir', { ...directory, created: false })
+  assert.equal((await again).created, false)
+  // A host error rejects with the host's message, code first, as for rename.
+  const orphan = client.files.createDirectory('missing/child')
+  const refused = socket.sent.filter(sent => sent.channel === 'file-tree:create-dir').at(-1)
+  socket.push({ kind: 'invoke-reply', id: refused.id, generation: refused.generation, ok: false, error: "ENOENT: no such file or directory, mkdir '/workspace/missing/child'" })
+  await assert.rejects(orphan, /^Error: ENOENT: /)
   const saved = client.savedSessions()
   reply('session:get-saved', [{ conversationId: 'c1', cwd: '/workspace', label: 'Landing' }])
   assert.equal((await saved)[0].conversationId, 'c1')
