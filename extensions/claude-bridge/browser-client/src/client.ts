@@ -4,7 +4,11 @@
 // (see the channel tables in webview/src/lib/bridge-channels.ts).
 import { createBrowserSocket, type BridgeSocket, type BridgeSocketLike, type ConnectionState } from './socket'
 import { createBridgeTransport, type BridgeTransport, type Dispose } from './transport'
-import type { CreateTabOptions, JsonlEntry, JsonlStatus, PreviewState, Tab, TabId } from './types'
+import type {
+  CreateTabOptions, ElicitationRequest, JsonlEntry, JsonlStatus, MonitorEvent, MonitorInfo, MonitorLine, PermissionDecision,
+  PermissionRequest, PreviewState, SavedSession, SessionActivity, SessionUsage, StreamingDelta, SubagentEntries, Tab, TabId,
+  ToolPermissionMode, UserQuestion,
+} from './types'
 
 export interface BridgeClientOptions {
   /** Workspace origin, e.g. https://studio.example/workspace-proxy origin. Defaults to location.origin. */
@@ -48,6 +52,42 @@ export interface BridgeClient {
   onStreaming(listener: (tab: TabId, entry: JsonlEntry) => void): Dispose
   onStatus(listener: (tab: TabId, status: JsonlStatus) => void): Dispose
   onTabsChanged(listener: (tabs: Tab[], active: TabId | null) => void): Dispose
+  /** Live appends between whole transcript entries; only while the server streams for this credential. */
+  onStreamingDelta(listener: (tab: TabId, delta: StreamingDelta) => void): Dispose
+  onActivity(listener: (tab: TabId, activity: SessionActivity) => void): Dispose
+  /** Model, effort, context fill and plan limits for a status line. */
+  onUsage(listener: (tab: TabId, usage: SessionUsage) => void): Dispose
+  /** Conversations of this workspace that resumeSession() can reopen. */
+  savedSessions(): Promise<SavedSession[]>
+
+  /** Approval of the workspace tools the agent calls (depends on setToolPermissionMode). */
+  onPermissionRequest(listener: (tab: TabId, request: PermissionRequest) => void): Dispose
+  respondPermission(requestId: string, decision: PermissionDecision): void
+  onQuestion(listener: (tab: TabId, question: UserQuestion) => void): Dispose
+  answerQuestion(requestId: string, answer: string): void
+  /** MCP elicitations and other structured prompts. */
+  onElicitation(listener: (tab: TabId, request: ElicitationRequest) => void): Dispose
+  respondElicitation(requestId: string, action: 'accept' | 'deny' | 'dismiss', content?: Record<string, unknown>): void
+
+  /** CLI model alias or id, e.g. 'haiku', 'opus', 'default'. Applied when the session is idle. */
+  setModel(tab: TabId, model: string): void
+  setEffort(tab: TabId, effort: string): void
+  setToolPermissionMode(tab: TabId, mode: ToolPermissionMode): void
+
+  /** Stores bytes in the workspace and returns the path to append to a prompt, one path per line. */
+  saveAttachment(base64: string, name: string): Promise<string>
+  saveImage(base64: string, mimeType: 'image/png' | 'image/jpeg'): Promise<string>
+
+  /** Subagent transcripts are sent on demand: select one, then receive its entries; null stops. */
+  selectSubagent(tab: TabId, agentId: string | null): void
+  onSubagentEntries(listener: (entries: SubagentEntries) => void): Dispose
+
+  /** Plugin monitors started for open sessions by the host. */
+  readonly monitors: {
+    list(): Promise<MonitorInfo[]>
+    log(id: string): Promise<MonitorLine[]>
+    onEvent(listener: (event: MonitorEvent) => void): Dispose
+  }
 
   readonly preview: {
     /** Last state pushed by the host, or null before the first event. */
@@ -184,6 +224,45 @@ export function createBridgeClient(options: BridgeClientOptions = {}): BridgeCli
       const notify = () => listener(structuredClone(tabs), active)
       const stops = [on('tab:list-changed', notify), on('tab:switched', notify), on('workspace:snapshot-start', notify)]
       return () => { for (const stop of stops) stop() }
+    },
+    onStreamingDelta: listener => on('streaming-delta', (tab, delta) => listener(tab as TabId, delta as StreamingDelta)),
+    onActivity: listener => on('session:activity', (tab, activity) => listener(tab as TabId, activity as SessionActivity)),
+    onUsage: listener => on('session:usage', (tab, usage) => listener(tab as TabId, usage as SessionUsage)),
+    savedSessions: () => client.invoke<SavedSession[]>('session:get-saved'),
+
+    onPermissionRequest: listener => on('permission-request', (tab, request) => listener(tab as TabId, request as PermissionRequest)),
+    respondPermission(requestId, decision) { live().snd('permission-response', requestId, decision) },
+    onQuestion: listener => on('ask-user-question', (tab, question) => listener(tab as TabId, question as UserQuestion)),
+    answerQuestion(requestId, answer) { live().snd('ask-user-response', requestId, answer) },
+    onElicitation: listener => on('elicitation-request', (tab, request) => listener(tab as TabId, request as ElicitationRequest)),
+    respondElicitation(requestId, action, content) { live().snd('elicitation-response', requestId, action, ...(content ? [content] : [])) },
+
+    setModel(tab, model) { live().snd('change-model', tab, model) },
+    setEffort(tab, effort) { live().snd('change-effort', tab, effort) },
+    setToolPermissionMode(tab, mode) { live().snd('change-permission-mode', tab, mode) },
+
+    saveAttachment: (base64, name) => client.invoke<string>('save-dropped-file', base64, name),
+    saveImage: (base64, mimeType) => client.invoke<string>('save-clipboard-image', base64, mimeType),
+
+    selectSubagent(tab, agentId) { live().snd('jsonl:subagent-select', tab, agentId) },
+    onSubagentEntries: listener => on('jsonl-subagent-entries', (tab, agentName, entries, agentId) => listener({
+      tab: tab as TabId, agentName: String(agentName ?? ''), entries: Array.isArray(entries) ? entries : [],
+      ...(typeof agentId === 'string' ? { agentId } : {}),
+    })),
+
+    monitors: {
+      list: () => client.invoke<MonitorInfo[]>('monitors:list'),
+      log: id => client.invoke<MonitorLine[]>('monitors:get-log', id),
+      onEvent(listener) {
+        const stops = [
+          on('monitor:started', monitor => listener({ type: 'started', monitor: monitor as Extract<MonitorEvent, { type: 'started' }>['monitor'] })),
+          on('monitor:output', payload => { const { id, entry } = payload as { id: string; entry: MonitorLine }; listener({ type: 'output', id, line: entry }) }),
+          on('monitor:status', payload => listener({ type: 'status', ...(payload as { id: string; status: MonitorInfo['status']; exitCode?: number | null }) })),
+          on('monitor:stopped', payload => listener({ type: 'stopped', id: (payload as { id: string }).id })),
+          on('monitor:error', payload => listener({ type: 'error', ...(payload as { tabId: TabId; pluginId: string; monitorName: string; error: string }) })),
+        ]
+        return () => { for (const stop of stops) stop() }
+      },
     },
 
     preview: {

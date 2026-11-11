@@ -73,6 +73,80 @@ test('connect, sync snapshot, typed sends and event facade use the existing fram
   assert.throws(() => client.submitPrompt('tab-1', 'late'), /disconnected/)
 })
 
+test('chat controls, prompts, subagents and monitors map onto the host channels', async () => {
+  const host = fakeHost()
+  const client = createBridgeClient(options(host))
+  const connected = client.connect()
+  host.sockets[0].open()
+  await connected
+  const socket = host.sockets[0]
+  const seen: unknown[] = []
+  client.onStreamingDelta((tab, delta) => seen.push(['delta', tab, delta.appendText]))
+  client.onActivity((tab, activity) => seen.push(['activity', tab, activity.isWorking]))
+  client.onUsage((tab, usage) => seen.push(['usage', tab, usage.model]))
+  client.onPermissionRequest((tab, request) => { seen.push(['permission', tab, request.toolName]); client.respondPermission(request.requestId, 'allow_once') })
+  client.onQuestion((tab, question) => { seen.push(['question', tab, question.options]); client.answerQuestion(question.requestId, 'beta') })
+  client.onElicitation((tab, request) => { seen.push(['elicitation', tab, request.message]); client.respondElicitation(request.requestId, 'accept', { response: 'ok' }) })
+  client.onSubagentEntries(batch => seen.push(['subagent', batch.tab, batch.agentName, batch.agentId, batch.entries.length]))
+  const monitorEvents: unknown[] = []
+  const stopMonitors = client.monitors.onEvent(event => monitorEvents.push(event.type))
+
+  socket.push(event('streaming-delta', 'tab-1', { msgId: 'm', blockIdx: 0, appendText: 'Hel', kind: 'text' }))
+  socket.push(event('session:activity', 'tab-1', { rawTitle: '', isWorking: true }))
+  socket.push(event('session:usage', 'tab-1', { windows: [], contextPercent: 5, model: 'claude-haiku-5-5' }))
+  socket.push(event('permission-request', 'tab-1', { requestId: 'p1', toolName: 'Bash', input: {}, category: 'shell' }))
+  socket.push(event('ask-user-question', 'tab-1', { requestId: 'q1', question: 'Pick', options: ['alpha', 'beta'] }))
+  socket.push(event('elicitation-request', 'tab-1', { requestId: 'e1', toolName: 'mcp', message: 'Confirm?' }))
+  socket.push(event('jsonl-subagent-entries', 'tab-1', 'general-purpose', [{ type: 'assistant' }], 'agent-1'))
+  socket.push(event('monitor:started', { id: 'tab-1/p@m/tick', tabId: 'tab-1', pluginId: 'p@m', pluginName: 'p', monitorName: 'tick', description: '', command: 'echo' }))
+  socket.push(event('monitor:output', { id: 'tab-1/p@m/tick', entry: { ts: 1, stream: 'stdout', text: 'tick 1' } }))
+  socket.push(event('monitor:status', { id: 'tab-1/p@m/tick', status: 'exited', exitCode: 0 }))
+  socket.push(event('monitor:stopped', { id: 'tab-1/p@m/tick' }))
+  socket.push(event('monitor:error', { tabId: 'tab-1', pluginId: 'p@m', monitorName: 'bad', error: 'refused' }))
+  stopMonitors()
+  socket.push(event('monitor:stopped', { id: 'late' }))
+  assert.deepEqual(seen, [
+    ['delta', 'tab-1', 'Hel'], ['activity', 'tab-1', true], ['usage', 'tab-1', 'claude-haiku-5-5'],
+    ['permission', 'tab-1', 'Bash'], ['question', 'tab-1', ['alpha', 'beta']], ['elicitation', 'tab-1', 'Confirm?'],
+    ['subagent', 'tab-1', 'general-purpose', 'agent-1', 1],
+  ])
+  assert.deepEqual(monitorEvents, ['started', 'output', 'status', 'stopped', 'error'])
+
+  client.setModel('tab-1', 'haiku')
+  client.setEffort('tab-1', 'low')
+  client.setToolPermissionMode('tab-1', 'ask')
+  client.selectSubagent('tab-1', 'agent-1')
+  client.selectSubagent('tab-1', null)
+  const sends = socket.sent.filter(frame => frame.kind === 'send').map(frame => [frame.channel, ...frame.args])
+  assert.deepEqual(sends, [
+    ['permission-response', 'p1', 'allow_once'], ['ask-user-response', 'q1', 'beta'], ['elicitation-response', 'e1', 'accept', { response: 'ok' }],
+    ['change-model', 'tab-1', 'haiku'], ['change-effort', 'tab-1', 'low'], ['change-permission-mode', 'tab-1', 'ask'],
+    ['jsonl:subagent-select', 'tab-1', 'agent-1'], ['jsonl:subagent-select', 'tab-1', null],
+  ])
+
+  const reply = (channel: string, result: unknown) => {
+    const frame = socket.sent.filter(sent => sent.kind === 'invoke' && sent.channel === channel).at(-1)
+    socket.push({ kind: 'invoke-reply', id: frame.id, generation: frame.generation, ok: true, result })
+    return frame.args
+  }
+  const image = client.saveImage('AAAA', 'image/png')
+  assert.deepEqual(reply('save-clipboard-image', '/workspace/.bridge-uploads/a/pasted-image.png'), ['AAAA', 'image/png'])
+  assert.equal(await image, '/workspace/.bridge-uploads/a/pasted-image.png')
+  const file = client.saveAttachment('BBBB', 'notes.txt')
+  assert.deepEqual(reply('save-dropped-file', '/workspace/.bridge-uploads/b/notes.txt'), ['BBBB', 'notes.txt'])
+  assert.equal(await file, '/workspace/.bridge-uploads/b/notes.txt')
+  const saved = client.savedSessions()
+  reply('session:get-saved', [{ conversationId: 'c1', cwd: '/workspace', label: 'Landing' }])
+  assert.equal((await saved)[0].conversationId, 'c1')
+  const list = client.monitors.list()
+  reply('monitors:list', [{ id: 'tab-1/p@m/tick', status: 'running' }])
+  assert.equal((await list)[0].status, 'running')
+  const log = client.monitors.log('tab-1/p@m/tick')
+  assert.deepEqual(reply('monitors:get-log', [{ ts: 1, stream: 'stdout', text: 'tick 1' }]), ['tab-1/p@m/tick'])
+  assert.equal((await log)[0].text, 'tick 1')
+  client.disconnect()
+})
+
 test('preview state is pushed, replayed to late subscribers and survives reconnect with a fresh sync', async () => {
   const host = fakeHost()
   const client = createBridgeClient(options(host))

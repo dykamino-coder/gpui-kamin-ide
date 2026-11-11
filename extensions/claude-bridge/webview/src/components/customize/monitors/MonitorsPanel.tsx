@@ -105,7 +105,7 @@ export function MonitorsPanel(): JSX.Element {
       ) : loadError && monitors.length === 0 ? (
         <PanelError message="Could not load monitors." onRetry={() => { setLoading(true); void refreshList() }} />
       ) : monitors.length === 0 ? (
-        <div class={styles.empty}>No active monitors. Open a tab so plugins with <code>monitors</code> in their manifest can start.</div>
+        <div class={styles.empty}>No active monitors. Open a session so enabled plugins with monitors (<code>experimental.monitors</code> in <code>plugin.json</code> or <code>monitors/monitors.json</code>) can start.</div>
       ) : (
         <>
           <div class={styles.chips}>
