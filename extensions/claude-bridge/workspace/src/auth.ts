@@ -5,6 +5,29 @@ import { privateRead, privateWrite } from './credentials.js'
 
 export const SESSION_COOKIE = 'kamin_workspace'
 
+/** The sign-in contract of the workspace HTTP/WebSocket boundary. The server
+ * calls only these members. Cookie values are opaque to the server but must
+ * satisfy readSessionCookie(); createSessionCookie() mints one. `validate` is
+ * called for every API request, every upgrade and periodically for open sockets,
+ * so revocation closes existing connections. */
+export interface WorkspaceAuthPolicy {
+  /** `candidate` is the `token` field of the POST /auth/login JSON body. Returns a new cookie value or null. */
+  login(candidate: unknown): Promise<string | null>
+  /** Loopback auto-login; required only when the server is started with `autoLogin`. */
+  loginLocal?(): Promise<string | null>
+  validate(cookie: string | undefined): Promise<boolean>
+  logout(cookie: string | undefined): void
+  /** Complete Set-Cookie value; sessionCookieHeader() builds the standard one. */
+  cookieHeader(cookie: string, secure: boolean): string
+}
+
+/** A fresh opaque session value accepted by readSessionCookie(). */
+export function createSessionCookie(): string { return randomBytes(32).toString('base64url') }
+
+export function sessionCookieHeader(cookie: string, options: { secure: boolean; maxAgeSeconds: number }): string {
+  return `${SESSION_COOKIE}=${cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(options.maxAgeSeconds)}${options.secure ? '; Secure' : ''}`
+}
+
 export interface TokenIdentity { id: string }
 export type ResolveToken = (token: string) => Promise<TokenIdentity | null>
 interface Session { identity: string; expiresAt: number }
@@ -35,7 +58,8 @@ export function serverTokenResolver(serverUrl: string): ResolveToken {
   }
 }
 
-export class WorkspaceAuth {
+/** Built-in policy: possession of the workspace's own Bridge token. */
+export class WorkspaceAuth implements WorkspaceAuthPolicy {
   private readonly sessions = new Map<string, Session>()
   private identity: string | undefined
   private readonly digest: Buffer
@@ -83,7 +107,7 @@ export class WorkspaceAuth {
     this.identity = identity.id
     this.prune()
     if (this.sessions.size >= 128) return null
-    const cookie = randomBytes(32).toString('base64url')
+    const cookie = createSessionCookie()
     this.sessions.set(this.key(cookie), { identity: identity.id, expiresAt: this.now() + this.ttlMs })
     this.save()
     return cookie
@@ -112,7 +136,7 @@ export class WorkspaceAuth {
   logout(cookie: string | undefined): void { if (cookie) { this.sessions.delete(this.key(cookie)); this.save() } }
 
   cookieHeader(cookie: string, secure: boolean): string {
-    return `${SESSION_COOKIE}=${cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(this.ttlMs / 1000)}${secure ? '; Secure' : ''}`
+    return sessionCookieHeader(cookie, { secure, maxAgeSeconds: this.ttlMs / 1000 })
   }
 }
 

@@ -1,0 +1,9 @@
+{
+  "name": "kamin-workspace-embedding-example",
+  "private": true,
+  "type": "module",
+  "description": "Own HTTP server, sign-in and UI around @kaminide/bridge-workspace-host and @kaminide/bridge-browser-client.",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}
