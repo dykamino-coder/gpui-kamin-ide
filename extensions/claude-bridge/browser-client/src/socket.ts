@@ -40,7 +40,7 @@ export type BridgeSocket = HostPort & Required<Pick<HostPort, 'onHostMessage' | 
 export function createBrowserSocket(options: BridgeSocketOptions): BridgeSocket {
   const url = new URL(options.url)
   if (!['ws:', 'wss:'].includes(url.protocol) || url.username || url.password || url.search || url.hash
-    || url.pathname !== '/bridge') throw new Error('Invalid workspace socket URL')
+    || !url.pathname.endsWith('/bridge')) throw new Error('Invalid workspace socket URL')
   const messages = new Set<(frame: unknown) => void>()
   const disconnects = new Set<() => void>()
   const factory = options.createSocket ?? (address => new WebSocket(address))

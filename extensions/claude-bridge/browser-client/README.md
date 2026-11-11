@@ -246,11 +246,66 @@ optional peer dependencies; the bundled KaminIDE UI is tested with the versions
 listed in the package's `peerDependencies`. Remotes are trusted same-origin
 code.
 
+## Host addresses behind a gateway
+
+By default every address is a host path at the root of the page origin
+(`/bridge`, `/preview/state`, `/preview/remotes/<name>/…`). When a gateway
+publishes the host under a prefix, pass `base` to both APIs:
+
+```ts
+const base = { http: '/workspaces/42/files', ws: 'wss://live.example/workspaces/42' }
+const client = createBridgeClient({ base })
+const render = createPreviewRenderer({ react, federation, base })
+```
+
+```ts
+interface HostBase { http?: string | URL; ws?: string | URL }
+```
+
+- **Rule.** A host path `/x` is requested as `<base.http>/x` over HTTP and as
+  `<base.ws>/x` over WebSocket. The gateway removes its prefix and forwards
+  `/x` unchanged; the host and the remotes are configured as without a
+  gateway.
+- **Values.** A URL or a path; a path resolves against the page (for the
+  client, against its `origin` option). Query and fragment are dropped, a
+  trailing slash is optional. `ws` also accepts `http(s):`, read as `ws(s):`.
+  The two members are independent: either may be omitted, and they may name
+  different prefixes or different hosts.
+- **What goes through it.** In the renderer: the remote entry, the chunks,
+  assets and hot-update files of the remote, the imports the remote resolves
+  against its own address, and the HMR socket
+  (`<base.ws>/preview/remotes/<name>/ws`). In the client: the `/bridge` socket,
+  `preview.fetchState()` and `preview.unmount()`. No address is built anywhere
+  else, and a path that would resolve outside its base (`..`, another host) is
+  refused before a request is made.
+- **Why a prefix and not a callback.** `fetch` and `createSocket` of the
+  client replace the transport of requests the package makes itself. Most
+  preview requests are not made by the package: the remote's bundler runtime
+  and the browser load chunks, styles, images and relative imports, and they
+  derive each address from the address of the entry (`publicPath: 'auto'`) or
+  from the public path. Only a prefix is something that derivation can
+  follow; a function called per request would never see those requests. One
+  form therefore serves both APIs.
+- **Remotes.** A remote with `publicPath: 'auto'` (the documented setup) needs
+  nothing: its files follow the entry address. For a remote that names the
+  host path itself (`publicPath: '/preview/remotes/<name>/'`) the renderer
+  maps that public path into `base.http`. Addresses a remote writes out in
+  full in its own code (`fetch('/preview/remotes/…')`, an absolute URL in CSS)
+  are outside the renderer's reach; use relative ones.
+- **Sign-in.** `base` moves addresses only. The preview entry is fetched with
+  `credentials: 'same-origin'`, and the host's session cookie is bound to one
+  origin, so a base on another origin works only when the gateway there
+  authenticates the requests itself.
+
+Without `base` nothing changes: the addresses and the remote's public path
+are exactly as before.
+
 ## Responsibilities of the embedding page
 
 - Serve the page from the workspace origin (or a reverse proxy that presents
   the host's exact `origin`): the socket, cookies and preview proxy are
-  same-origin only.
+  same-origin only. A gateway that publishes the host under a prefix is
+  described in [Host addresses behind a gateway](#host-addresses-behind-a-gateway).
 - Establish the cookie session before `connect()`, and handle
   `authentication-required` by signing in again.
 - Render everything: the package draws nothing except the remote preview into

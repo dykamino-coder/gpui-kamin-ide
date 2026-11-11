@@ -75,7 +75,6 @@ it.each(['webpack', 'rspack'])('attaches before %s startup, delegates injection 
 
 it('applies native HMR and remounts only when the runtime rejects an update', async () => {
   let socket: { onmessage?: (event: { data: string }) => void; close(): void }
-  vi.stubGlobal('location', new URL('https://workspace.test/'))
   const close = vi.fn()
   vi.stubGlobal('WebSocket', class {
     constructor(url: URL) { expect(url.href).toBe('wss://workspace.test/preview/remotes/demo/ws'); socket = this }
@@ -85,7 +84,7 @@ it('applies native HMR and remounts only when the runtime rejects an update', as
   const hot = { status: () => 'idle', addStatusHandler: vi.fn(), removeStatusHandler: vi.fn(),
     check: vi.fn(async () => { hash = 'after'; return ['App'] as unknown[] | null }) }
   const applied = vi.fn(), invalidated = vi.fn()
-  const dispose = connectHot({ c: { App: { exports: {}, hot } }, h: () => hash }, 'demo', applied, invalidated)
+  const dispose = connectHot({ c: { App: { exports: {}, hot } }, h: () => hash }, new URL('wss://workspace.test/preview/remotes/demo/ws'), applied, invalidated)
   const message = (type: string, data?: string) => socket.onmessage?.({ data: JSON.stringify({ type, data }) })
   message('hash', 'after'); message('ok')
   await vi.waitFor(() => expect(applied).toHaveBeenCalledOnce())

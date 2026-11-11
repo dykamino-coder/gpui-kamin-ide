@@ -4,6 +4,7 @@
 // (see the channel tables in webview/src/lib/bridge-channels.ts).
 import { createBrowserSocket, type BridgeSocket, type BridgeSocketLike, type ConnectionState } from './socket'
 import { createBridgeTransport, type BridgeTransport, type Dispose } from './transport'
+import { hostAddresses, type HostBase } from './address'
 import type {
   Agent, BrowseProgress, CreatedDirectory, CreatedSkill, CreateTabOptions, ElicitationRequest, HookDraft, HookEntry, HooksByEvent, HookTemplate,
   HookTestResult, InstalledPlugin, JsonlEntry, JsonlStatus, Marketplace, MarketplacePlugin, MarketplaceRefresh, MarketplaceUpdate,
@@ -16,6 +17,12 @@ import type {
 export interface BridgeClientOptions {
   /** Workspace origin, e.g. https://studio.example/workspace-proxy origin. Defaults to location.origin. */
   origin?: string
+  /**
+   * Where the host's paths are published when a gateway puts them under a
+   * prefix: `/bridge` opens at `<base.ws>/bridge`, `/preview/state` is requested
+   * at `<base.http>/preview/state`. Default: the root of `origin`.
+   */
+  base?: HostBase
   createSocket?: (url: string) => BridgeSocketLike
   /** Keeps the host's logical file view across reloads; sessionStorage by default. */
   fileViewIdentity?: { get(): string | undefined; set(id: string): void }
@@ -192,8 +199,8 @@ function sessionStorageIdentity(): BridgeClientOptions['fileViewIdentity'] {
 
 export function createBridgeClient(options: BridgeClientOptions = {}): BridgeClient {
   const origin = new URL(options.origin ?? location.origin).origin
-  const socketUrl = new URL('/bridge', origin)
-  socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+  const addresses = hostAddresses(options.base, origin)
+  const socketUrl = addresses.ws('/bridge')
   const request = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init))
   const stateListeners = new Set<(state: ConnectionState) => void>()
   let connectionState: ConnectionState = 'closed'
@@ -421,12 +428,12 @@ export function createBridgeClient(options: BridgeClientOptions = {}): BridgeCli
         return on('workspace:preview-state', state => listener(state as PreviewState))
       },
       async fetchState() {
-        const response = await request(new URL('/preview/state', origin), { credentials: 'same-origin', cache: 'no-store' })
+        const response = await request(addresses.http('/preview/state'), { credentials: 'same-origin', cache: 'no-store' })
         if (!response.ok) throw new Error(response.status === 404 ? 'Preview is not configured' : 'Workspace session unavailable')
         return await response.json() as PreviewState
       },
       async unmount() {
-        const response = await request(new URL('/preview/unmount', origin), { method: 'POST', credentials: 'same-origin' })
+        const response = await request(addresses.http('/preview/unmount'), { method: 'POST', credentials: 'same-origin' })
         if (!response.ok) throw new Error('Preview unmount failed')
       },
     },
