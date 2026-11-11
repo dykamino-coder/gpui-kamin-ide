@@ -17,13 +17,23 @@ use crate::style::computed::{Computed, InheritedFont, InheritedTextFlow, StyleGr
 use crate::values::ValueCx;
 use std::cell::Cell;
 
-/// Distinct recent inputs kept: a page sets its text in a few fonts.
-const CAPACITY: usize = 8;
+/// Distinct recent inputs kept: a page sets its text in a few fonts, each in two roles.
+const CAPACITY: usize = 16;
 
 /// The font of a run and its own size, when the run's style declares one.
 pub(crate) type RunFace = (gpui::Font, Option<gpui::Pixels>);
 
+/// What the font is derived for: the two derivations differ for the same style.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Role {
+    /// The font a run of the style's text is set in.
+    Run,
+    /// The font the style's own text is measured with.
+    Measure,
+}
+
 struct Entry {
+    role: Role,
     /// The groups are held, so their identity is stable while the entry lives.
     font: StyleGroup<InheritedFont>,
     text_flow: StyleGroup<InheritedTextFlow>,
@@ -76,6 +86,7 @@ impl RunFaces {
     /// The face derived earlier in this build from equal inputs, else `derive`d and kept.
     pub(crate) fn face(
         &self,
+        role: Role,
         style: &Computed,
         base: &gpui::Font,
         base_px: f32,
@@ -89,7 +100,8 @@ impl RunFaces {
         let hit = entries
             .iter()
             .find(|e| {
-                e.base_px == base_px.to_bits()
+                e.role == role
+                    && e.base_px == base_px.to_bits()
                     && e.orientation == orientation
                     && e.doc == doc
                     && e.generation == generation
@@ -105,6 +117,7 @@ impl RunFaces {
         // `derive` reads the document's fonts and may come back here: nothing is held.
         let face = derive();
         let entry = Entry {
+            role,
             font: style.inh.font.clone(),
             text_flow: style.inh.text_flow.clone(),
             orientation,

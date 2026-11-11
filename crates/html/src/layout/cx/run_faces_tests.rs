@@ -21,7 +21,7 @@ fn lookup(
     vcx: ValueCx<'_>,
     derived: &Count<u32>,
 ) -> RunFace {
-    memo.face(style, base, base_px, vcx, || {
+    memo.face(Role::Run, style, base, base_px, vcx, || {
         derived.set(derived.get() + 1);
         face(style.inh.font.font_weight.unwrap_or(400) as f32)
     })
@@ -76,6 +76,18 @@ fn another_font_flow_base_or_size_derives_anew() {
     // The first input is still remembered.
     lookup(&memo, &plain, &base, 16.0, vcx, &derived);
     assert_eq!(derived.get(), 5);
+}
+
+#[test]
+fn another_role_derives_anew() {
+    let doc = state();
+    let vcx = doc.frame_values();
+    let (memo, base, style) = (RunFaces::default(), gpui::font("a"), Computed::default());
+    let run = memo.face(Role::Run, &style, &base, 16.0, vcx, || face(400.0));
+    let measure = memo.face(Role::Measure, &style, &base, 16.0, vcx, || face(700.0));
+    assert_eq!((run, measure), (face(400.0), face(700.0)));
+    let again = memo.face(Role::Measure, &style, &base, 16.0, vcx, || face(100.0));
+    assert_eq!(again, face(700.0));
 }
 
 #[test]

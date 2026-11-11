@@ -1,7 +1,7 @@
 //! Шрифт прогона и его кегль: вывод из унаследованных групп стиля и базового шрифта абзаца.
 //! Внутри сборки документа результат общий для кусков с теми же группами (`RunFaces`).
 
-use crate::layout::cx::run_faces::{RunFace, RunFaces};
+use crate::layout::cx::run_faces::{Role, RunFace, RunFaces};
 use crate::style::computed::Computed;
 use crate::values::ValueCx;
 use gpui::{FontStyle, FontWeight, TextStyle};
@@ -16,7 +16,7 @@ pub(super) fn run_face(
 ) -> RunFace {
     let font = base.font();
     match faces {
-        Some(memo) => memo.face(style, &font, base_px, vcx, || {
+        Some(memo) => memo.face(Role::Run, style, &font, base_px, vcx, || {
             derive(style, font.clone(), base_px, vcx)
         }),
         None => derive(style, font, base_px, vcx),
