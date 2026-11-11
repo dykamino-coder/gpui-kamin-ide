@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   jsonlEntriesByTab, jsonlSeenUuidsByTab, appendJsonlEntries,
-  replaceWindowWithSegment, setArchivedView, archivedViewTs,
+  replaceWindowWithSegment, setArchivedView, archivedViewTs, prependJsonlEntries,
 } from './jsonl'
 import type { JsonlEntryData } from '../types/jsonl'
 
@@ -59,5 +59,33 @@ describe('archived-view append gate', () => {
     setArchivedView(TAB, null)
     appendJsonlEntries(TAB, [rec('live-again', 6100)])
     expect(store().map((e) => e.uuid)).toContain('live-again')
+  })
+})
+
+// INC-2026-0104: an archived segment arrives as its NEWEST page only (the server
+// pages history: 200 records / 512 KiB). The rest comes through the scroll-up
+// path, which must land in the archived window on screen — not in the buffer
+// that holds live rows back until the reader returns to Current.
+describe('archived segment: older pages (INC-2026-0104)', () => {
+  it('prepends an older page of the archived segment into the visible window', () => {
+    appendJsonlEntries(TAB, [rec('live1', 9000)])
+    setArchivedView(TAB, 'seg-ts')
+    const all = Array.from({ length: 270 }, (_, i) => rec(`old${String(i)}`, 100 + i * 10))
+    replaceWindowWithSegment(TAB, all.slice(70)) // the newest 200 of 270
+    expect(store()).toHaveLength(200)
+
+    expect(prependJsonlEntries(TAB, all.slice(0, 70))).toBe(true)
+    expect(store().map((e) => e.uuid)).toEqual(all.map((e) => e.uuid)) // all 270, in file order
+  })
+
+  it('keeps archived pages out of the live rows restored on return to Current', () => {
+    appendJsonlEntries(TAB, [rec('live1', 9000)])
+    setArchivedView(TAB, 'seg-ts')
+    replaceWindowWithSegment(TAB, [rec('old2', 20)])
+    prependJsonlEntries(TAB, [rec('old1', 10)])
+    appendJsonlEntries(TAB, [rec('live2', 9100)]) // a running turn, held back
+
+    setArchivedView(TAB, null)
+    expect(store().map((e) => e.uuid)).toEqual(['live1', 'live2'])
   })
 })
