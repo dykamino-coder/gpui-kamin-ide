@@ -37,8 +37,7 @@ export function registerSessionHooks(
     bySession.set(sessionId, bucket)
   }
   const annotated = new Map<HookHandler, RegisteredHook>()
-  const resolveSource = (m: HookMatcher): HookSource =>
-    typeof sourceFn === 'function' ? sourceFn(m) : sourceFn
+  const resolveSource = (m: HookMatcher): HookSource => (typeof sourceFn === 'function' ? sourceFn(m) : sourceFn)
 
   for (const [event, matchers] of Object.entries(hooks)) {
     if (!Array.isArray(matchers)) continue
@@ -53,11 +52,12 @@ export function registerSessionHooks(
         // extension, so their default must be local even for events otherwise
         // preferred on server; in the container such a command only fails.
         const explicitHost = h.type === 'command' ? h.host : undefined
-        const clientCommand = source.kind === 'plugin'
-          || ((source.kind === 'user' || source.kind === 'project') && source.client === true)
-        const effectiveHost = clientCommand && h.type === 'command' && (!explicitHost || explicitHost === 'auto')
-          ? 'local'
-          : resolveHost(event as HookEvent, h, m.matcher)
+        const clientCommand =
+          source.kind === 'plugin' || ((source.kind === 'user' || source.kind === 'project') && source.client === true)
+        const effectiveHost =
+          clientCommand && h.type === 'command' && (!explicitHost || explicitHost === 'auto')
+            ? 'local'
+            : resolveHost(event as HookEvent, h, m.matcher)
         const reg: RegisteredHook = {
           id,
           sessionId,

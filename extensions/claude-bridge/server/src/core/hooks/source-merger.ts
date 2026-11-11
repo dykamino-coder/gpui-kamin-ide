@@ -74,7 +74,9 @@ function loadEnabledPlugins(): InstalledPlugin[] {
         const s = JSON.parse(fs.readFileSync(settingsFile, 'utf-8')) as { enabledPlugins?: Record<string, boolean> }
         enabledMap = s.enabledPlugins ?? {}
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     const out: InstalledPlugin[] = []
     for (const [key, entries] of Object.entries(parsed.plugins ?? {})) {
@@ -154,10 +156,7 @@ export function mergeAllHooks(
   const merged: HookSettings = {}
   const sourceByMatcher = new Map<HookMatcher, HookSource>()
 
-  const effectiveSettingsFiles = [
-    path.join(os.homedir(), '.claude', 'settings.json'),
-    ...(syncedSettingsFiles ?? []),
-  ]
+  const effectiveSettingsFiles = [path.join(os.homedir(), '.claude', 'settings.json'), ...(syncedSettingsFiles ?? [])]
   if (effectiveSettingsFiles.some(hooksDisabled)) return { hooks: merged, sourceByMatcher }
 
   // ── 1. user-global ─────────────────────────────────────────
@@ -174,9 +173,8 @@ export function mergeAllHooks(
     const hooks = readJsonHooks(file)
     if (!hooks) continue
     pushAll(merged, hooks)
-    const source: HookSource = index === 0 || !userCwd
-      ? { kind: 'user', client: true }
-      : { kind: 'project', projectPath: userCwd, client: true }
+    const source: HookSource =
+      index === 0 || !userCwd ? { kind: 'user', client: true } : { kind: 'project', projectPath: userCwd, client: true }
     for (const matchers of Object.values(hooks)) {
       if (Array.isArray(matchers)) for (const m of matchers) sourceByMatcher.set(m, source)
     }
@@ -189,9 +187,10 @@ export function mergeAllHooks(
     if (projectHooks) {
       pushAll(merged, projectHooks)
       for (const matchers of Object.values(projectHooks)) {
-        if (Array.isArray(matchers)) for (const m of matchers) {
-          sourceByMatcher.set(m, { kind: 'project', projectPath: userCwd })
-        }
+        if (Array.isArray(matchers))
+          for (const m of matchers) {
+            sourceByMatcher.set(m, { kind: 'project', projectPath: userCwd })
+          }
       }
     }
   }
@@ -204,9 +203,10 @@ export function mergeAllHooks(
     const manifestPath = path.join(plugin.installPath, '.claude-plugin', 'plugin.json')
     const pluginId = `${plugin.name}@${plugin.marketplace}`
     for (const matchers of Object.values(pluginHooks)) {
-      if (Array.isArray(matchers)) for (const m of matchers) {
-        sourceByMatcher.set(m, { kind: 'plugin', pluginId, manifestPath })
-      }
+      if (Array.isArray(matchers))
+        for (const m of matchers) {
+          sourceByMatcher.set(m, { kind: 'plugin', pluginId, manifestPath })
+        }
     }
   }
 
@@ -216,13 +216,14 @@ export function mergeAllHooks(
   for (const plugin of loadSyncedPluginHooks(syncedPluginsFile)) {
     pushAll(merged, plugin.hooks)
     for (const matchers of Object.values(plugin.hooks)) {
-      if (Array.isArray(matchers)) for (const m of matchers) {
-        sourceByMatcher.set(m, {
-          kind: 'plugin',
-          pluginId: plugin.id,
-          manifestPath: path.join(plugin.sourceRoot, '.claude-plugin', 'plugin.json'),
-        })
-      }
+      if (Array.isArray(matchers))
+        for (const m of matchers) {
+          sourceByMatcher.set(m, {
+            kind: 'plugin',
+            pluginId: plugin.id,
+            manifestPath: path.join(plugin.sourceRoot, '.claude-plugin', 'plugin.json'),
+          })
+        }
     }
   }
 

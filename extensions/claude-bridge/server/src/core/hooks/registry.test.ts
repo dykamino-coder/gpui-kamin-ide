@@ -17,7 +17,9 @@ const hooks = (): HookSettings => ({
 })
 
 function hosts(): string[] {
-  return listSession(SESSION).map(hook => `${hook.event}:${hook.effectiveHost}`).sort()
+  return listSession(SESSION)
+    .map((hook) => `${hook.event}:${hook.effectiveHost}`)
+    .sort()
 }
 
 describe('hook host for client settings', () => {
@@ -50,7 +52,7 @@ describe('hook host for client settings', () => {
       fs.writeFileSync(userFile, JSON.stringify({ hooks: { UserPromptSubmit: hooks().UserPromptSubmit } }))
       fs.writeFileSync(projectFile, JSON.stringify({ hooks: { SubagentStop: hooks().SubagentStop } }))
       const merged = mergeAllHooks('C:\\proj', [userFile, projectFile])
-      const sources = [...merged.sourceByMatcher.values()].filter(source => 'client' in source)
+      const sources = [...merged.sourceByMatcher.values()].filter((source) => 'client' in source)
       expect(sources).toEqual([
         { kind: 'user', client: true },
         { kind: 'project', projectPath: 'C:\\proj', client: true },
