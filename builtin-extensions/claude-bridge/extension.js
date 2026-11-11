@@ -47436,6 +47436,83 @@ function registerLogsIPC(getMainWindow) {
 
 // src/main/ipc/mcp.ts
 init_host_compat();
+
+// src/main/mcp/registry.ts
+var REGISTRY_URL = "https://api.anthropic.com/mcp-registry/v0/servers";
+var PAGE_SIZE = 100;
+var MAX_PAGES = 20;
+var isRegistryObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var registryText = (value) => typeof value === "string" && value.trim() ? value : void 0;
+function remoteInstall(remotes) {
+  if (!Array.isArray(remotes)) return void 0;
+  for (const remote of remotes) {
+    if (!isRegistryObject(remote)) continue;
+    const url = registryText(remote.url);
+    if (!url) continue;
+    if (remote.type === "streamable-http" || remote.type === "http") return { type: "http", url };
+    if (remote.type === "sse") return { type: "sse", url };
+  }
+  return void 0;
+}
+function packageInstall(packages) {
+  if (!Array.isArray(packages)) return void 0;
+  for (const pkg of packages) {
+    if (!isRegistryObject(pkg)) continue;
+    const identifier = registryText(pkg.identifier);
+    const transport = isRegistryObject(pkg.transport) ? pkg.transport.type : "stdio";
+    if (!identifier || transport !== "stdio") continue;
+    if (pkg.registryType === "npm") return { type: "stdio", command: registryText(pkg.runtimeHint) ?? "npx", args: ["-y", identifier] };
+    if (pkg.registryType === "pypi") return { type: "stdio", command: registryText(pkg.runtimeHint) ?? "uvx", args: [identifier] };
+  }
+  return void 0;
+}
+function toRegistryEntry(record) {
+  const server = isRegistryObject(record) && isRegistryObject(record.server) ? record.server : record;
+  if (!isRegistryObject(server)) return null;
+  const name = registryText(server.name);
+  if (!name) return null;
+  const entry = { name };
+  const title = registryText(server.title);
+  if (title) entry.title = title;
+  const description = registryText(server.description);
+  if (description) entry.description = description;
+  const repository = isRegistryObject(server.repository) ? registryText(server.repository.url) : registryText(server.repository);
+  if (repository) entry.repository = repository;
+  const homepage = registryText(server.websiteUrl) ?? registryText(server.homepage);
+  if (homepage) entry.homepage = homepage;
+  const install = remoteInstall(server.remotes) ?? packageInstall(server.packages);
+  if (install) entry.install = install;
+  return entry;
+}
+async function listMcpRegistry(fetchPage = fetch) {
+  const servers = [];
+  try {
+    let cursor;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const url = new URL(REGISTRY_URL);
+      url.searchParams.set("version", "latest");
+      url.searchParams.set("visibility", "commercial");
+      url.searchParams.set("limit", String(PAGE_SIZE));
+      if (cursor) url.searchParams.set("cursor", cursor);
+      const res = await fetchPage(url, { headers: { "User-Agent": "open-claude-bridge" } });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, servers };
+      const data = await res.json();
+      const records = Array.isArray(data) ? data : isRegistryObject(data) && Array.isArray(data.servers) ? data.servers : [];
+      for (const record of records) {
+        const entry = toRegistryEntry(record);
+        if (entry) servers.push(entry);
+      }
+      const next = isRegistryObject(data) && isRegistryObject(data.metadata) ? registryText(data.metadata.nextCursor) : void 0;
+      if (!next || next === cursor || records.length === 0) break;
+      cursor = next;
+    }
+    return { ok: true, servers };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err), servers };
+  }
+}
+
+// src/main/ipc/mcp.ts
 function registerMcpIPC(ctx) {
   const mgr = () => ctx.getMcpServerManager();
   ipcMain.handle("mcp:get-servers", () => {
@@ -47573,19 +47650,7 @@ function registerMcpIPC(ctx) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
-  ipcMain.handle("mcp:registry-list", async () => {
-    try {
-      const res = await fetch("https://api.anthropic.com/mcp-registry/v0/servers", {
-        headers: { "User-Agent": "open-claude-bridge" }
-      });
-      if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, servers: [] };
-      const data = await res.json();
-      const servers = Array.isArray(data?.servers) ? data.servers : Array.isArray(data) ? data : [];
-      return { ok: true, servers };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), servers: [] };
-    }
-  });
+  ipcMain.handle("mcp:registry-list", () => listMcpRegistry());
 }
 
 // src/main/ipc/plugins/handlers-content.ts
@@ -49146,7 +49211,8 @@ function removeMarketplace(name) {
   const known = readKnownMarketplaces();
   const entry = known[name];
   if (entry) {
-    if (entry.installLocation && import_fs30.default.existsSync(entry.installLocation)) {
+    const ownsFiles = entry.source?.source !== "directory";
+    if (ownsFiles && entry.installLocation && import_fs30.default.existsSync(entry.installLocation)) {
       import_fs30.default.rmSync(entry.installLocation, { recursive: true, force: true });
     }
     delete known[name];

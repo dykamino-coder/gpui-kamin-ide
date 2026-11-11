@@ -248,6 +248,7 @@ export interface McpPromptInfo {
 /** Item returned by the official Anthropic MCP registry. */
 export interface McpRegistryEntry {
   name: string
+  title?: string
   description?: string
   repository?: string
   homepage?: string
