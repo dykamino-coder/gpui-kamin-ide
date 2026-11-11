@@ -361,22 +361,28 @@ impl RetainedPrepaint {
 /// KaminIDE patch: the layout nodes one subtree requested in a pass
 /// (`Window::capture_layout`). A later pass that keeps the root's stamp can
 /// claim them whole (`Window::request_retained_layout`) instead of requesting
-/// every node again: the subtree's elements need not be built.
-#[derive(Clone)]
+/// every node again: the subtree's elements need not be built. It names the
+/// range of the subtree's requests in its pass, so it is a few numbers
+/// (`Copy`) and holds for the next pass only; the claim renews it for the
+/// pass after.
+#[derive(Clone, Copy)]
 pub struct RetainedSubtree {
-    stamp: u64,
-    nodes: Rc<[::taffy::tree::NodeId]>,
+    pub(crate) stamp: u64,
+    /// The pass whose request sequence holds the nodes.
+    pub(crate) pass: u64,
+    pub(crate) start: u32,
+    pub(crate) len: u32,
 }
 
 impl RetainedSubtree {
     /// Number of layout nodes in the subtree.
     pub fn len(&self) -> usize {
-        self.nodes.len()
+        self.len as usize
     }
 
     /// Whether the subtree has no nodes (never: the root is one).
     pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
+        self.len == 0
     }
 }
 
@@ -534,20 +540,19 @@ impl Window {
     /// The nodes of the subtree `root` requested since `start`, when the frame
     /// tree keeps them (`None` otherwise).
     pub fn capture_layout(&mut self, start: usize, root: LayoutId) -> Option<RetainedSubtree> {
-        let (stamp, nodes) = self.layout_engine.as_mut()?.capture_subtree(start, root)?;
-        Some(RetainedSubtree { stamp, nodes })
+        self.layout_engine.as_mut()?.capture_subtree(start, root)
     }
 
     /// Claim a subtree captured in the previous pass whole. `None` when a node
-    /// of it changed or was dropped. Its leaves are not measured again: if the
+    /// of it changed or was dropped. A claimed `layout` becomes the capture of
+    /// this pass: the caller keeps it to claim the subtree in the next one.
+    /// Its leaves are not measured again: if the
     /// layout needs a new measurement, `layout_stale` reports it after
     /// `compute_layout`, and the caller must discard this layout (the frame
     /// tree drops itself at the end of such a pass).
-    pub fn request_retained_layout(&mut self, layout: &RetainedSubtree) -> Option<LayoutId> {
+    pub fn request_retained_layout(&mut self, layout: &mut RetainedSubtree) -> Option<LayoutId> {
         self.invalidator.debug_assert_prepaint();
-        self.layout_engine
-            .as_mut()?
-            .claim_subtree(layout.stamp, &layout.nodes)
+        self.layout_engine.as_mut()?.claim_subtree(layout)
     }
 
     /// Keep the measure functions of the leaves of `layout` (requested or
@@ -559,7 +564,7 @@ impl Window {
     /// without, it stays as its request made it, so the keep allocates nothing.
     pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree, compact: bool) {
         if let Some(engine) = self.layout_engine.as_mut() {
-            engine.keep_measures(&layout.nodes, compact);
+            engine.keep_measures(layout, compact);
         }
     }
 
@@ -569,7 +574,7 @@ impl Window {
     /// request would have built it.
     pub fn prepare_retained_measures(&mut self, layout: &RetainedSubtree) {
         if let Some(engine) = self.layout_engine.as_mut() {
-            engine.prepare_measures(&layout.nodes);
+            engine.prepare_measures(layout);
         }
     }
 
@@ -581,7 +586,7 @@ impl Window {
         let mut bounds = self
             .layout_engine
             .as_mut()?
-            .nodes_layout_bounds(&layout.nodes, scale_factor)?;
+            .nodes_layout_bounds(layout, scale_factor)?;
         let offset = if self.exact_element_offset_depth > 0 {
             self.element_offset()
         } else {

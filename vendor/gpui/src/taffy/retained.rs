@@ -53,6 +53,7 @@
 //! Taffy node; only keys and memos are side tables.
 
 use super::{LayoutId, NodeContext, NodeMeasureFn, TaffyLayoutEngine, node_measure};
+use crate::RetainedSubtree;
 use collections::{FxHashMap, FxHashSet};
 use std::any::Any;
 use std::rc::Rc;
@@ -92,6 +93,10 @@ pub(super) struct Retained {
     prev: Vec<NodeId>,
     /// Nodes in request order of this pass.
     seq: Vec<NodeId>,
+    /// Name of this pass, and of the pass `prev` was requested in (0: none):
+    /// a captured subtree is a range of one of them (`RetainedSubtree`).
+    pass: Pass,
+    prev_pass: u64,
     /// Position in `prev` that corresponds to the next request of this pass.
     cursor: usize,
     /// The cursor may be off: a node was created since it was last confirmed
@@ -125,7 +130,45 @@ pub(super) struct Retained {
     stale: Rc<std::cell::Cell<bool>>,
 }
 
+/// Name of a pass, unique among the passes of every engine of the process:
+/// a range captured in one sequence is never read from another.
+struct Pass(u64);
+
+impl Default for Pass {
+    fn default() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// The request sequence a captured subtree lies in.
+#[derive(Clone, Copy)]
+enum Sequence {
+    This,
+    Previous,
+}
+
 impl Retained {
+    /// The sequence and range of `subtree`, if it was captured or claimed in
+    /// this pass or in the previous one. A range of an older pass names
+    /// nothing: nodes no pass requested since were swept.
+    fn span(&self, subtree: &RetainedSubtree) -> Option<(Sequence, std::ops::Range<usize>)> {
+        let sequence = match subtree.pass {
+            pass if pass == self.pass.0 => Sequence::This,
+            pass if pass == self.prev_pass => Sequence::Previous,
+            _ => return None,
+        };
+        let range = subtree.start as usize..subtree.start as usize + subtree.len as usize;
+        (range.end <= self.nodes(sequence).len()).then_some((sequence, range))
+    }
+
+    fn nodes(&self, sequence: Sequence) -> &[NodeId] {
+        match sequence {
+            Sequence::This => &self.seq,
+            Sequence::Previous => &self.prev,
+        }
+    }
+
     fn note(&mut self, node: NodeId) {
         self.live.insert(node);
         self.seq.push(node);
@@ -346,6 +389,7 @@ impl TaffyLayoutEngine {
             }
         }
         retained.prev = std::mem::take(&mut retained.seq);
+        retained.prev_pass = std::mem::take(&mut retained.pass).0;
         retained.cursor = 0;
         retained.astray = false;
         retained.next_key = None;
@@ -401,16 +445,25 @@ impl TaffyLayoutEngine {
     }
 
     /// The nodes requested since `start` when they form the subtree of `root`
-    /// (requested last), with the stamp of `root`. A later pass that keeps the
-    /// stamp may claim the subtree whole (`claim_subtree`).
-    pub fn capture_subtree(&mut self, start: usize, root: LayoutId) -> Option<(u64, Rc<[NodeId]>)> {
+    /// (requested last), with the stamp of `root`. The next pass may claim the
+    /// subtree whole while it keeps the stamp (`claim_subtree`). The capture
+    /// is the range of the requests in this pass's sequence, not a copy of
+    /// them: it allocates nothing.
+    pub fn capture_subtree(&mut self, start: usize, root: LayoutId) -> Option<RetainedSubtree> {
         let nodes = self.retained.seq.get(start..)?;
         if nodes.last() != Some(&root.0) {
             return None;
         }
-        let nodes: Rc<[NodeId]> = nodes.into();
+        let (start, len) = (u32::try_from(start).ok()?, u32::try_from(nodes.len()).ok()?);
         let stamp = self.layout_stamp(root)?;
-        Some((stamp, nodes))
+        Some(RetainedSubtree { stamp, pass: self.retained.pass.0, start, len })
+    }
+
+    /// The nodes of `subtree`, if its pass is this one or the previous one.
+    #[cfg(test)]
+    pub(super) fn subtree_nodes(&self, subtree: &RetainedSubtree) -> Option<&[NodeId]> {
+        let (sequence, range) = self.retained.span(subtree)?;
+        self.retained.nodes(sequence).get(range)
     }
 
     /// Claim a subtree captured in a previous pass without its requests. The
@@ -419,17 +472,26 @@ impl TaffyLayoutEngine {
     /// that needs a new measurement marks the pass stale (`layout_stale`).
     /// The root's id is its stamp: a pinned node is never recycled and a swept
     /// one leaves its slot with a new version, so a live pinned root with that
-    /// id is the stamped node.
-    pub fn claim_subtree(&mut self, stamp: u64, nodes: &[NodeId]) -> Option<LayoutId> {
+    /// id is the stamped node. The claim puts the nodes into this pass's
+    /// sequence, and `subtree` becomes their range there: the capture the
+    /// next pass claims.
+    pub fn claim_subtree(&mut self, subtree: &mut RetainedSubtree) -> Option<LayoutId> {
+        let (Sequence::Previous, range) = self.retained.span(subtree)? else {
+            // Captured or claimed in this pass: its nodes are requested.
+            return None;
+        };
+        let nodes = &self.retained.prev[range.clone()];
         let root = *nodes.last()?;
         if !self.frame_tree
-            || u64::from(root) != stamp
+            || u64::from(root) != subtree.stamp
             || !self.taffy.identity_pinned(root)
             || nodes.iter().any(|node| self.retained.live.contains(node))
         {
             return None;
         }
-        for &node in nodes {
+        let start = u32::try_from(self.retained.seq.len()).ok()?;
+        for at in range {
+            let node = self.retained.prev[at];
             // A keyed leaf leaves its candidate list, as when its request claims it.
             if self
                 .taffy
@@ -441,11 +503,13 @@ impl TaffyLayoutEngine {
             }
             self.retained.note(node);
         }
-        self.retained.claimed += nodes.len() as u64;
+        self.retained.claimed += u64::from(subtree.len);
+        subtree.pass = self.retained.pass.0;
+        subtree.start = start;
         Some(LayoutId(root))
     }
 
-    /// Keep the measure functions of the measured leaves among `nodes`
+    /// Keep the measure functions of the measured leaves of `subtree`
     /// (requested in this pass) for the next pass, instead of retiring them:
     /// a subtree the next pass claims whole (`claim_subtree`) is then laid
     /// out at any new constraints by the functions of its own requests, like
@@ -454,11 +518,14 @@ impl TaffyLayoutEngine {
     /// the passes; it keeps them pass by pass, as long as it claims them.
     /// With `compact`, a kept function that has a smaller form
     /// (Measure::compacted) is replaced by it.
-    pub fn keep_measures(&mut self, nodes: &[NodeId], compact: bool) {
+    pub fn keep_measures(&mut self, subtree: &RetainedSubtree, compact: bool) {
         if !self.frame_tree {
             return;
         }
-        for &node in nodes {
+        let Some((sequence, range)) = self.retained.span(subtree) else {
+            return;
+        };
+        for &node in &self.retained.nodes(sequence)[range] {
             if self.retained.live.contains(&node)
                 && self.taffy.has_node_context(node)
                 && let Some(context) = self.taffy.get_node_context_mut(node)
@@ -476,13 +543,16 @@ impl TaffyLayoutEngine {
         }
     }
 
-    /// Let the kept measure functions of the leaves of `nodes`, claimed in
+    /// Let the kept measure functions of the leaves of `subtree`, claimed in
     /// this pass, prepare for its measures (`Measure::prepare`).
-    pub fn prepare_measures(&mut self, nodes: &[NodeId]) {
+    pub fn prepare_measures(&mut self, subtree: &RetainedSubtree) {
         if !self.frame_tree {
             return;
         }
-        for &node in nodes {
+        let Some((sequence, range)) = self.retained.span(subtree) else {
+            return;
+        };
+        for &node in &self.retained.nodes(sequence)[range] {
             if self.retained.live.contains(&node)
                 && self.taffy.has_node_context(node)
                 && let Some(context) = self.taffy.get_node_context_mut(node)
@@ -492,15 +562,19 @@ impl TaffyLayoutEngine {
         }
     }
 
-    /// Union of the absolute layout bounds of `nodes` in this pass.
+    /// Union of the absolute layout bounds of the nodes of `subtree` in this
+    /// pass.
     pub fn nodes_layout_bounds(
         &mut self,
-        nodes: &[NodeId],
+        subtree: &RetainedSubtree,
         scale_factor: f32,
     ) -> Option<crate::Bounds<crate::Pixels>> {
-        nodes
-            .iter()
-            .map(|&node| self.layout_bounds(LayoutId(node), scale_factor))
+        let (sequence, range) = self.retained.span(subtree)?;
+        range
+            .map(|at| {
+                let node = self.retained.nodes(sequence)[at];
+                self.layout_bounds(LayoutId(node), scale_factor)
+            })
             .reduce(|a, b| a.union(&b))
     }
 

@@ -54,7 +54,9 @@ pub(crate) struct FarRecord {
     source: Source,
     start: Counters,
     pub(super) end: Counters,
-    layout: RetainedSubtree,
+    /// The capture of the last pass that requested or claimed the subtree
+    /// (`FrameFar::renew`): a capture holds for the next pass only.
+    layout: Cell<RetainedSubtree>,
     excess: Excess,
     /// Its ink scope in its frame (`Window::with_ink_scope`): a taint of the
     /// scope by deferred paint refuses the record when the build finishes.
@@ -110,7 +112,7 @@ impl PendingFar {
             source,
             start: self.start,
             end: self.end,
-            layout: self.layout.clone()?,
+            layout: Cell::new(self.layout?),
             excess,
             scope,
             claimed: Cell::new(false),
@@ -121,7 +123,10 @@ impl PendingFar {
 /// read of its record (`FarRecord`, kept in `Store::far`).
 pub(super) struct FarSlot {
     id: u64,
-    subtree: RetainedSubtree,
+    /// Place of its record in the build's records (`FrameFar::records`).
+    at: u32,
+    /// The record's capture; the claim makes it this pass's (`Far`).
+    subtree: Cell<RetainedSubtree>,
     excess: Excess,
     layout: Cell<Option<LayoutId>>,
     /// The flow's widths changed since the last build: the claimed leaves
@@ -131,10 +136,11 @@ pub(super) struct FarSlot {
 }
 
 impl FarSlot {
-    pub(super) fn new(record: &FarRecord, prepare: bool) -> Self {
+    pub(super) fn new(at: usize, record: &FarRecord, prepare: bool) -> Self {
         Self {
             id: record.source.id(),
-            subtree: record.layout.clone(),
+            at: at as u32,
+            subtree: Cell::new(record.layout.get()),
             excess: record.excess,
             layout: Cell::new(None),
             prepare,
@@ -195,6 +201,7 @@ impl FlowReuse {
         let Some(mut far) = self.far.take() else {
             return Vec::new();
         };
+        far.renew();
         let slots = std::mem::take(&mut far.slots);
         self.far.set(Some(far));
         if slots.is_empty() {
@@ -209,7 +216,7 @@ impl FlowReuse {
                 && !stale
                 && slot.layout.get().is_some()
                 && window
-                    .retained_layout_bounds(&slot.subtree)
+                    .retained_layout_bounds(&slot.subtree.get())
                     .is_some_and(|b| clear_of(device(b, scale), slot.excess, screen));
             if !fits {
                 failed.push(slot.id);

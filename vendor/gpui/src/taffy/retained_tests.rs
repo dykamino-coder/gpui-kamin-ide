@@ -167,25 +167,59 @@ fn leaves_of_one_key_are_kept_at_their_positions_with_their_parents() {
 #[test]
 fn a_captured_subtree_is_claimed_whole_while_its_root_keeps_the_stamp() {
     let mut engine = TaffyLayoutEngine::new();
+    // A request before the subtree: the pass that claims it first has the
+    // subtree at another place of its sequence.
+    let _ = leaf(&mut engine, 5.);
     let start = engine.request_position();
     let (a, b) = (leaf(&mut engine, 10.), leaf(&mut engine, 20.));
     let p = parent(&mut engine, &[a, b]);
-    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
-    assert_eq!(&*nodes, &[a.0, b.0, p.0]);
+    let mut subtree = engine.capture_subtree(start, p).expect("captured");
+    let nodes = [a.0, b.0, p.0];
+    assert_eq!(engine.subtree_nodes(&subtree), Some(&nodes[..]));
+    let captured = subtree;
     let root = parent(&mut engine, &[p]);
     engine.clear();
     // Claimed whole: no requests for its nodes, the next pass keeps them.
-    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
-    assert_eq!(engine.claim_subtree(stamp, &nodes), None, "claimed once per pass");
+    assert_eq!(engine.claim_subtree(&mut subtree), Some(p));
+    // The claim renews the capture: the same nodes at their place in this pass.
+    assert_eq!(engine.subtree_nodes(&subtree), Some(&nodes[..]));
+    assert_eq!(engine.claim_subtree(&mut subtree), None, "claimed once per pass");
+    assert_eq!(engine.claim_subtree(&mut { captured }), None, "claimed once per pass");
     assert_eq!(parent(&mut engine, &[p]), root);
     assert!(!engine.layout_stale());
     engine.clear();
     assert_eq!(engine.taffy.total_node_count(), 4);
+    // The capture of the first pass names nothing two passes later; the
+    // renewed one is claimed again.
+    assert_eq!(engine.claim_subtree(&mut { captured }), None);
+    assert_eq!(engine.claim_subtree(&mut subtree), Some(p));
+    assert_eq!(engine.subtree_nodes(&subtree), Some(&nodes[..]));
+    engine.clear();
     // A pass that renews the subtree drops the stamp: the capture is void.
     let (a2, c) = (leaf(&mut engine, 10.), leaf(&mut engine, 30.));
     let _ = parent(&mut engine, &[a2, c]);
     engine.clear();
-    assert_eq!(engine.claim_subtree(stamp, &nodes), None);
+    assert_eq!(engine.claim_subtree(&mut subtree), None);
+}
+
+#[test]
+fn a_capture_is_not_read_from_another_engine_or_after_the_tree_is_forgotten() {
+    let mut engine = TaffyLayoutEngine::new();
+    let start = engine.request_position();
+    let a = leaf(&mut engine, 10.);
+    let p = parent(&mut engine, &[a]);
+    let subtree = engine.capture_subtree(start, p).expect("captured");
+    // Another engine with the same requests has nodes of the same ids.
+    let mut other = TaffyLayoutEngine::new();
+    let a2 = leaf(&mut other, 10.);
+    let p2 = parent(&mut other, &[a2]);
+    let _ = other.layout_stamp(p2);
+    other.clear();
+    assert_eq!(other.claim_subtree(&mut { subtree }), None);
+    assert!(other.subtree_nodes(&subtree).is_none());
+    engine.clear();
+    engine.forget();
+    assert_eq!(engine.claim_subtree(&mut { subtree }), None);
 }
 
 #[test]
@@ -195,10 +229,10 @@ fn a_keyed_leaf_of_a_subtree_claimed_whole_leaves_the_candidates_of_its_key() {
     let start = engine.request_position();
     let m = measured(&mut engine, Some(1));
     let p = parent(&mut engine, &[m]);
-    let (stamp, nodes) = engine.capture_subtree(start, p).expect("captured");
+    let mut subtree = engine.capture_subtree(start, p).expect("captured");
     engine.clear();
     engine.set_layout_keys(true);
-    assert_eq!(engine.claim_subtree(stamp, &nodes), Some(p));
+    assert_eq!(engine.claim_subtree(&mut subtree), Some(p));
     assert!(engine.retained.by_key.get(&1).is_none_or(|list| list.is_empty()));
     let context = engine.taffy.get_node_context(m.0).expect("measured leaf");
     assert_eq!(context.key_slot, super::retained::NO_SLOT);

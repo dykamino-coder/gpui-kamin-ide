@@ -164,14 +164,16 @@ impl Hooks for Far {
     type Prepaint = ();
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        match window.request_retained_layout(&self.slot.subtree) {
+        let mut subtree = self.slot.subtree.get();
+        match window.request_retained_layout(&mut subtree) {
             Some(id) => {
+                self.slot.subtree.set(subtree);
                 self.slot.layout.set(Some(id));
                 // The kept leaves make their probes here, where the build of
                 // the block would have requested them, unless the widths are
                 // those of the last pass (Taffy's cache, no measure).
                 if self.slot.prepare {
-                    window.prepare_retained_measures(&self.slot.subtree);
+                    window.prepare_retained_measures(&subtree);
                 }
                 (id, ())
             }
@@ -194,7 +196,7 @@ impl Hooks for Far {
         // claim it again with the same functions, shrunk to what a new
         // measure reads (`gpui::CompactMeasure`).
         if self.slot.layout.get().is_some() {
-            window.keep_retained_measures(&self.slot.subtree, true);
+            window.keep_retained_measures(&self.slot.subtree.get(), true);
         }
     }
 }

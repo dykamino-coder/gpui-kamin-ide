@@ -15,13 +15,13 @@ impl FlowCx {
     /// build of the frame, no float before, no ban or refusal.
     pub(super) fn far(&self, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         let start = Counters::read(&opts.cx);
-        let slot = self.reuse.with_far_record(e.node_id, |record| {
+        let slot = self.reuse.with_far_record(e.node_id, |at, record| {
             if !record.fits(start, e) {
                 return None;
             }
             record.end.write(&opts.cx);
             record.claim();
-            Some(Rc::new(FarSlot::new(record, !self.settled)))
+            Some(Rc::new(FarSlot::new(at, record, !self.settled)))
         })??;
         self.reuse.with_far(|far| {
             far.claimed += 1;
