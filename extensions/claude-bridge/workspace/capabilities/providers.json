@@ -41,7 +41,7 @@
     "contract": "Validated process-local logical-view projection: per-chat open order, active file, main selection/context, attach toggle and preview choice. Does not retain drafts, undo, scroll or host-restart state."
   },
   "transport": {
-    "file": "webview/src/lib/bridge-transport.ts",
+    "file": "browser-client/src/transport.ts",
     "test": "workspace/test/protocol.test.ts",
     "contract": "Known-channel invocation and private authenticated wire forwarding."
   },

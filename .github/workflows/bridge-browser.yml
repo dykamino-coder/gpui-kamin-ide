@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/browser-client/**
       - extensions/claude-bridge/workspace/**
       - .github/workflows/bridge-browser.yml
   push:
     branches: [main]
     paths:
       - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/browser-client/**
       - extensions/claude-bridge/workspace/**
       - .github/workflows/bridge-browser.yml
   workflow_dispatch:

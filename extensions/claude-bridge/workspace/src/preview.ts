@@ -11,6 +11,8 @@ export interface PreviewDescriptor {
   revision: number
 }
 export interface PreviewMount { name?: unknown; entry?: unknown; exposedModule?: unknown; props?: unknown; type?: unknown }
+/** What a browser needs to render the preview: the descriptor and the current entry fingerprint. */
+export interface PreviewSnapshot { descriptor: PreviewDescriptor | null; build: string | null; available: boolean }
 
 export class WorkspacePreview {
   private descriptor: PreviewDescriptor | null = null
@@ -18,8 +20,13 @@ export class WorkspacePreview {
   private revision = 0
   private forbidden: number[] = []
   private listeners = new Set<() => void>()
+  private changes = new Set<() => void>()
 
+  /** Fires on mount, remount and unmount; open preview sockets belong to the previous remote. */
   onRemount(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
+  /** Fires on every descriptor change, including props updates. */
+  onChange(listener: () => void): () => void { this.changes.add(listener); return () => { this.changes.delete(listener) } }
+  private changed(): void { for (const listener of [...this.changes]) listener() }
 
   blockPorts(ports: number[]): void { this.forbidden = [...new Set([...this.forbidden, ...ports])] }
 
@@ -45,16 +52,23 @@ export class WorkspacePreview {
     this.descriptor = { name: input.name, entry: url.pathname.startsWith(base + '/') ? url.pathname : base + url.pathname,
       exposedModule: input.exposedModule, props, type: input.type === 'module' ? 'module' : 'global', revision: ++this.revision }
     for (const listener of this.listeners) listener()
+    this.changed()
     return this.copy()!
   }
 
   update(props: unknown): PreviewDescriptor {
     if (!this.descriptor) throw new Error('No remote is mounted')
     this.descriptor = { ...this.descriptor, props: this.props(props) }
+    this.changed()
     return this.copy()!
   }
 
-  unmount(): void { this.descriptor = null; this.upstream = undefined; for (const listener of this.listeners) listener() }
+  unmount(): void {
+    this.descriptor = null
+    this.upstream = undefined
+    for (const listener of this.listeners) listener()
+    this.changed()
+  }
   copy(): PreviewDescriptor | null { return this.descriptor ? structuredClone(this.descriptor) : null }
 
   private props(value: unknown): Record<string, unknown> {
@@ -75,7 +89,7 @@ export class WorkspacePreview {
     return { port: Number(this.upstream.port), path: transport === 'websocket' || prefixed ? url : path }
   }
 
-  async snapshot(): Promise<{ descriptor: PreviewDescriptor | null; build: string | null; available: boolean }> {
+  async snapshot(): Promise<PreviewSnapshot> {
     const descriptor = this.copy()
     const upstream = this.upstream
     if (!descriptor || !upstream) return { descriptor, build: null, available: false }

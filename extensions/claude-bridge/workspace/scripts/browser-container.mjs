@@ -24,7 +24,7 @@ cp /source/src/kamin-host/rolling-log.ts /tmp/task/src/kamin-host/rolling-log.ts
 mkdir -p /tmp/task/src/kamin-host/services
 cp /source/src/kamin-host/services/pty-sessions.ts /source/src/kamin-host/services/shells.ts /tmp/task/src/kamin-host/services/
 cd /source/extensions/claude-bridge
-tar --exclude=node_modules --exclude=dist -cf - extension webview workspace server/src/ui/src/lib/terminal-console | tar -xf - -C /tmp/task/extensions/claude-bridge
+tar --exclude=node_modules --exclude=dist -cf - extension webview browser-client workspace server/src/ui/src/lib/terminal-console | tar -xf - -C /tmp/task/extensions/claude-bridge
 cp -a /ms-playwright /tmp/bridgeweb-playwright
 cd /tmp/task/extensions/claude-bridge/extension
 npm ci --no-audit --no-fund
@@ -33,7 +33,8 @@ npm ci --no-audit --no-fund
 npm run build:browser
 cd ../workspace
 npm ci --no-audit --no-fund
-npm run build
+# Runtime bundles only: declarations need the root dependencies, absent here.
+node build.mjs --no-types
 result=0
 npm run test:browser > /tmp/browser-output/tests.log 2>&1 || result=$?
 cat /tmp/browser-output/tests.log
