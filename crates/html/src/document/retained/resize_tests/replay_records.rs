@@ -57,13 +57,33 @@ fn a_warm_settled_build_records_for_replay_only_what_may_serve_another_width(
 ) {
     let fixed = warm_wraps(cx, &fixed_rows(""));
     let filling = warm_wraps(cx, &text_rows(""));
+    // A capped auto-width row whose inline padding resolves against the
+    // width it gets from the flow: its build reads that width from outside.
+    let reading = warm_wraps(cx, &capped_reading_rows());
     assert_eq!(
         fixed.0,
         filling.0 + 1,
         "a fixed-width block was not wrapped, or a filling one was"
     );
     assert_eq!(
-        fixed.1, filling.1,
+        fixed.1,
+        filling.1 + 1,
+        "a fixed-width block whose record read no width was not wrapped again"
+    );
+    assert_eq!(reading.0, fixed.0, "a capped block was not wrapped");
+    assert_eq!(
+        reading.1, filling.1,
         "a block whose replay record read the width was wrapped again"
     );
+}
+
+fn capped_reading_rows() -> String {
+    let rows: String = (0..600)
+        .map(|i| {
+            format!(
+                "<div style='max-width:500px;height:20px'><span style='padding-left:1%'>row {i}</span></div>"
+            )
+        })
+        .collect();
+    format!("<body style='margin:0'>{rows}</body>")
 }

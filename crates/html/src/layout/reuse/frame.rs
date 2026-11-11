@@ -72,6 +72,8 @@ impl FlowReuse {
                 refused.insert(record.source.id());
             }
         }
+        // Far blocks laid out at their new place must still be far (`far`).
+        refused.extend(self.validate_far(window, root));
         let ok = refused.is_empty();
         // Отказанный блок сдвинулся: как и при отказе повтора с поддеревом,
         // он не повторяется на экране, пока ключ потока тот же (`Store::banned`).
@@ -81,7 +83,7 @@ impl FlowReuse {
         // Повторная сборка кадра проверяется снова: отказы копятся до `finish`.
         let mut all = self.store.refused.take();
         all.extend(refused);
-        self.store.refused.replace(all);
+        self.store.refused.set(all);
         self.validate_replays(window) && ok
     }
 
@@ -130,6 +132,7 @@ impl FlowReuse {
         self.store.unrecorded.replace(unrecorded);
         self.learn_wraps();
         self.finish_replays(screen);
+        self.finish_far();
         // Кадр без записей и пропусков под тем же ключом оставляет прежние:
         // они подойдут следующему кадру, а их сброс стоил бы этому.
         if recorded > 0 || skipped > 0 {

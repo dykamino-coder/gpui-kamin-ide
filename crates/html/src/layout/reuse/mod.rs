@@ -19,6 +19,7 @@
 //! ключей краски и якорей. Запись не копирует поддерево: элемент делит детей
 //! и стили с деревом кадра, а лист — несколько чисел.
 
+mod far;
 mod flow;
 mod frame;
 mod key;
@@ -86,7 +87,16 @@ pub(crate) struct FlowReuse {
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
     next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
     pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Source)>>,
-    replay_slots: RefCell<Vec<Rc<replay::ReplaySlot>>>,
+    replay_slots: Cell<Vec<Rc<replay::ReplaySlot>>>,
+    /// Far state of this build (`far`): the document's, or made with the
+    /// build's first far record or claim.
+    far: Cell<Option<Box<far::FrameFar>>>,
+    /// Outside width reads of the far candidate being built
+    /// (`Mark::shared_widths`): the flow records them here, no flag per build.
+    far_widths: Cell<bool>,
+    /// Far recorders of this build, at most that many records
+    /// (`FlowReuse::add_far`); `FAR_DONE` once the build is finished.
+    far_recorders: Cell<u16>,
     screen: Cell<Option<Bounds<ScaledPixels>>>,
     /// Маска содержимого корня кадра: повтор краски годен только под ней.
     mask: Cell<Option<Bounds<Pixels>>>,
@@ -158,6 +168,9 @@ impl FlowReuse {
             next_replays: Default::default(),
             pending_replays: Default::default(),
             replay_slots: Default::default(),
+            far: Default::default(),
+            far_widths: Cell::new(false),
+            far_recorders: Cell::new(0),
             screen: Cell::new(None),
             mask: Cell::new(None),
         }))
@@ -180,7 +193,19 @@ impl FlowReuse {
     }
 }
 
+impl crate::layout::cx::WidthSink for FlowReuse {
+    fn note(&self) {
+        self.far_widths.set(true);
+    }
+}
+
 /// Добавить в конец списка в ячейке, не держа её заём.
+fn push_cell<T>(cell: &Cell<Vec<T>>, value: T) {
+    let mut all = cell.take();
+    all.push(value);
+    cell.set(all);
+}
+
 fn push<T>(cell: &RefCell<Vec<T>>, value: T) {
     let mut all = cell.take();
     all.push(value);

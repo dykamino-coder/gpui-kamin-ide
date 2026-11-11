@@ -22,7 +22,7 @@ impl FlowCx {
         if !self.reuse.allow || edge && !self.edges || e.node_id == 0 || self.floats.get() {
             return None;
         }
-        if self.reuse.store.refused.borrow().contains(&e.node_id) {
+        if self.reuse.store.refused(e.node_id) {
             return None;
         }
         let (record, damage) = self.reuse.store.same_tree(e)?;

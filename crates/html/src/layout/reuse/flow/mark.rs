@@ -15,18 +15,42 @@ pub(crate) struct Mark {
     pub(super) late: bool,
     /// Чтения ширин снаружи сборкой ребёнка (`BoxConstraints::track_widths`).
     pub(super) widths: Option<Rc<std::cell::Cell<bool>>>,
+    /// The child's subtree replay record may pay off (`replay_worth_recording`).
+    pub(super) replay: bool,
+    /// The child may be recorded as a far block (`FlowCx::far_candidate`).
+    pub(super) far: bool,
+    /// The child's outside width reads go to the flow's record state
+    /// (`FlowReuse::far_widths`): it is built with the flow's own options
+    /// recording into it (`FlowCx::child_opts`); `widths` stays empty.
+    pub(super) shared_widths: bool,
     /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
     pub(super) inert: super::super::plain::Inert,
 }
 
-impl Mark {
-    /// Опции сборки ребёнка: с записью чтений ширин, если его записывают.
-    pub(crate) fn child_opts(&self, opts: &RenderOpts) -> Option<Box<RenderOpts>> {
-        let sink = self.widths.clone()?;
+impl super::FlowCx {
+    /// Опции сборки ребёнка: с записью чтений ширин, если его записывают. A
+    /// child whose replay record keeps its own flag gets its own copy; a far
+    /// candidate is built with the flow's own options, which record into the
+    /// build's shared flag (cleared by `mark`) until `give_back`, with no copy
+    /// (`BoxConstraints::track_widths_in_place`).
+    pub(crate) fn child_opts(&self, mark: &Mark, opts: &RenderOpts) -> Option<Box<RenderOpts>> {
+        if mark.shared_widths {
+            opts.cx
+                .constraints
+                .track_widths_in_place(self.reuse.clone());
+            return None;
+        }
+        let sink = mark.widths.clone()?;
         Some(opts.inner(|cx| cx.constraints.track_widths(sink)))
     }
-}
 
+    /// The build of the child is over: the flow's options stop recording.
+    pub(crate) fn give_back(&self, mark: &Mark, opts: &RenderOpts) {
+        if mark.shared_widths {
+            opts.cx.constraints.untrack_widths();
+        }
+    }
+}
 pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
     let paint = &opts.cx.deferred.paint;
     Mark {
@@ -36,19 +60,49 @@ pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
         coordinates: paint.coordinates.borrow().len(),
         late: opts.cx.position.state.late_pending(),
         widths: None,
+        replay: false,
+        far: false,
+        shared_widths: false,
         inert: Default::default(),
     }
 }
 
 impl super::FlowCx {
     /// Состояние до сборки ребёнка `e`; с записью чтений ширин, если его
-    /// запись повтора может пригодиться (`replay_worth_recording`).
+    /// запись повтора может пригодиться (`replay_worth_recording`) или он
+    /// может оказаться далёким блоком (`far_worth_recording`).
     pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
-        if self.replay_worth_recording(e) {
+        mark.replay = self.replay_worth_recording(e);
+        // A build of a run of restyles wraps no child (`FlowCx::record`).
+        mark.far = !self.restyled && self.far_candidate(e, opts);
+        if mark.replay {
             mark.widths = Some(Rc::default());
+        } else if mark.far {
+            // Width reads happen during the child's build only, and
+            // `record_far` reads the flag right after it.
+            self.reuse.far_widths.set(false);
+            mark.shared_widths = true;
         }
         mark
+    }
+
+    /// A far record of child `e` may serve a later build of the same flow
+    /// outside the widths (`far`). Whether the block is far is known only
+    /// after its paint; a near one costs the wrapper and a node list.
+    pub(super) fn far_worth_recording(&self, e: &Element) -> bool {
+        self.settled_outside_widths && !self.floats.get() && !self.reuse.store.banned(e.node_id)
+    }
+
+    /// Child `e` is wrapped for a far record after its build: worth it, not
+    /// near in its last recording (`Store::far_near`), and its subtree can
+    /// be laid out again from kept nodes (`far::far_replayable`). Decided
+    /// before the build, so a child that cannot be far costs no width
+    /// tracking (`Mark::child_opts`).
+    fn far_candidate(&self, e: &Element, opts: &RenderOpts) -> bool {
+        self.far_worth_recording(e)
+            && !self.reuse.store.far_near(e.node_id)
+            && super::super::far::far_replayable(e, opts.cx.vcx())
     }
 
     /// Запись повтора ребёнка `e` может подойти следующей сборке и окупиться.

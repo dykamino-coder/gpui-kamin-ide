@@ -65,6 +65,28 @@ impl TaffyLayoutEngine {
         ) -> MeasuredContent
         + 'static,
     ) -> LayoutId {
+        self.request_boxed_measure(style, rem_size, scale_factor, Box::new(measure))
+    }
+
+    /// KaminIDE patch: a measured leaf whose measure function is a host type
+    /// (`Measure`), which may later be replaced by its compacted form.
+    pub fn request_measured_layout_with_measure(
+        &mut self,
+        style: Style,
+        rem_size: Pixels,
+        scale_factor: f32,
+        measure: impl Measure,
+    ) -> LayoutId {
+        self.request_boxed_measure(style, rem_size, scale_factor, Box::new(measure))
+    }
+
+    fn request_boxed_measure(
+        &mut self,
+        style: Style,
+        rem_size: Pixels,
+        scale_factor: f32,
+        measure: Box<super::MeasureFn>,
+    ) -> LayoutId {
         // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
         let taffy_style = {
             let _calc = self.taffy.calc_scope();
@@ -72,7 +94,7 @@ impl TaffyLayoutEngine {
         };
         let taffy_style = self.styles.share(taffy_style);
         // KaminIDE patch: measurement also supports the ordinary native stack.
-        let measure = node_measure(Box::new(measure));
+        let measure = super::boxed_measure(measure);
         let mut context = Some(NodeContext {
             static_positions: Vec::new(),
             measure: std::rc::Rc::new(std::cell::RefCell::new(measure)),
@@ -80,6 +102,7 @@ impl TaffyLayoutEngine {
             layout_lines_x: None,
             layout_lines_x_from_right: false,
             key_slot: crate::taffy::retained::NO_SLOT,
+            keep_measure: false,
         });
         // KaminIDE patch: a keyed leaf keeps a previous leaf of the same key.
         let key = self.retained.next_key.take();
