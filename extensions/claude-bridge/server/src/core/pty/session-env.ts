@@ -8,6 +8,7 @@ import { injectProxyEnv } from '../config/settings'
 import { config, DEFAULT_SESSION_MODEL } from '../config'
 import type { SessionConfig } from './types'
 import { MCP_TOOL_NAMES } from './mcp-http-handler'
+import { BRIDGE_ONLY_MCP_TOOLS } from './mcp-tools-defs'
 import { buildSystemPrompt } from './system-prompt'
 
 export { buildSystemPrompt }
@@ -37,18 +38,8 @@ export const EXTRA_NATIVE_DENY = ['Monitor', 'CronCreate', 'CronDelete', 'CronLi
 // (empty), so the natives resolve cleanly instead of erroring.
 // LEGACY_DENY выпилен: TodoRead не существует в CLI годами (аудит 2.1.220).
 export const LEGACY_DENY: string[] = []
-// Bridge MCP tools with no native counterpart: denying their names blocks
-// nothing, and Claude Code (2.1.304+) prints "Deny rule X matches no tool ·
-// check for typos" for each one at startup. Only names that shadow a native
-// tool are denied.
-export const BRIDGE_ONLY_MCP_TOOLS: ReadonlySet<string> = new Set([
-  'ShowWidget',
-  'TodoList',
-  'LspDiagnostics',
-  'LspHover',
-  'LspDefinition',
-  'LspReferences',
-])
+export { BRIDGE_ONLY_MCP_TOOLS }
+
 /** Lazily-resolved (avoids import-time circular evaluation with
  *  mcp-http-handler.ts: that module triggers session-manager, which re-exports
  *  this file → spreading MCP_TOOL_NAMES at module load throws "not iterable"
