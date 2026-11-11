@@ -4,6 +4,7 @@ import { jsonlEntriesByTab, getJsonlStructureVersion } from '../../signals/jsonl
 import { activeTabId, tabs } from '../../signals/tabs'
 import { compactSegments, activeSegmentIdx } from '../../signals/compact-segments'
 import { replayProgressByTab } from '../../signals/replay-progress'
+import { usageByTab } from '../../signals/session-usage'
 import { useBridge } from '../../hooks/useBridge'
 import { computeContextStats, formatCost } from '../../utils/session-cost'
 import { CHIP_LABEL_STYLE, CHIP_STYLE, METER_TRACK_STYLE, meterFillStyle } from '../input-bar/usage-chip'
@@ -59,7 +60,9 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
     const replayingNow = replayProgressByTab.value.get(id) != null
     const segIdxNow = replayingNow ? 0 : activeSegmentIdx.value
     const model = tabs.value.find(t => t.id === id)?.model
-    const key = `${id}|${getJsonlStructureVersion(id)}|${segIdxNow}|${replayingNow}|${model ?? ''}`
+    // Размер окна из status line CLI — истина для текущего сегмента.
+    const cliWindowSize = usageByTab.value.get(id)?.contextWindowSize ?? null
+    const key = `${id}|${getJsonlStructureVersion(id)}|${segIdxNow}|${replayingNow}|${model ?? ''}|${cliWindowSize ?? ''}`
     if (statsCache.key === key) return statsCache.value
     // While the transcript is still replaying, the segment set and every
     // boundary index are in flux (reverse-load prepends older history), so a
@@ -78,7 +81,7 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
     // The live "Current" segment (the last one, or the whole session when there
     // are no compactions) reflects the CURRENT window; an archived one its peak.
     const isLiveSegment = segs.length === 0 || segIdx === segs.length - 1
-    const out = computeContextStats(entries, isLiveSegment, model)
+    const out = computeContextStats(entries, isLiveSegment, model, cliWindowSize)
     statsCache.key = key
     statsCache.value = out
     return out
@@ -125,7 +128,7 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
     ? 'Compact completed; waiting for post-compact context usage.'
     : s.freshness === 'compact'
       ? `Post-compact context ≈ ${formatTokens(s.used!)} / ${formatTokens(s.limit)}; waiting for the next model usage.`
-      : `Context: ${formatTokens(s.used!)} / ${formatTokens(s.limit)}`
+      : `Context: ${formatTokens(s.used!)} / ${formatTokens(s.limit)}${s.limitSource === 'cli' ? '' : ' (estimated window)'}`
 
   if (variant === 'pills') {
     // Pills for the row under the chat input (UsageLimitsRow): context meter +
