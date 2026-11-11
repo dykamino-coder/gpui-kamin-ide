@@ -11,9 +11,13 @@ mod box_text;
 pub use box_text::{Text, TextId};
 mod children;
 mod same_tree;
-pub use same_tree::{BoxStyles, same_box, same_shell, same_tree, same_tree_as, same_values};
+pub use same_tree::{
+    BoxStyles, CascadedMemo, same_box, same_cascaded_box, same_cascaded_tree, same_layout_box,
+    same_layout_tree_as, same_shell, same_tree, same_tree_as, same_values,
+};
 mod intrinsic;
 pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
+pub mod invalidation;
 pub mod traversal;
 pub use children::{Children, ChildrenMark};
 mod direction;
@@ -54,7 +58,7 @@ mod white_space_tests;
 use crate::dom::direction::first_strong;
 use crate::dom::direction::squeeze_parens;
 pub use parse_document::parse_into;
-pub use parse_document::{convert, convert_for};
+pub use parse_document::{convert, convert_for, convert_restyling};
 
 #[cfg(test)]
 mod fixture_parse;

@@ -1,10 +1,8 @@
 //! Корневой поток с повтором: заместители и записи его блочных детей.
 
-use super::placeholder::{Placeholder, Slot};
 use super::plain::edges_free;
 use super::{Counters, FlowKey, FlowReuse, Root};
 use crate::dom::Element;
-use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
@@ -14,6 +12,7 @@ mod far;
 pub(crate) mod mark;
 mod replay;
 mod skip;
+mod substitute;
 use mark::{Mark, mark_of};
 
 /// Поток `body`, занятый повтором в этой сборке.
@@ -36,6 +35,9 @@ pub(crate) struct FlowCx {
     settled_outside_widths: bool,
     /// Прошлая сборка тоже была устоявшейся: дальние блоки уже записаны.
     warm: bool,
+    /// The rebuild before this build dropped records (`Store::restyled`):
+    /// no child is wrapped for recording.
+    restyled: bool,
 }
 
 impl FlowReuse {
@@ -94,6 +96,11 @@ impl FlowReuse {
             self.store.prev.replace(last.clone());
             last
         };
+        // A key whose boxes a rebuild compared and dropped (`Store::rebase`)
+        // takes the rebuild's verdict on their paint-only values.
+        let last_exact = last.as_ref().map(|last| {
+            last.same_paint(&key) && !(last.stripped(&key) && self.store.repainted_roots.get())
+        });
         let (settled, resized, settled_outside_widths) = match last {
             Some(last) => (
                 last.same(&key),
@@ -102,6 +109,10 @@ impl FlowReuse {
             ),
             None => (false, false, false),
         };
+        // Replays compare exactly: after a paint-only change of the root boxes
+        // no block will match one, so none is kept or recorded for the next
+        // frame (as for a key changed outside its widths).
+        let settled_outside_widths = settled_outside_widths && last_exact != Some(false);
         let wm = inherited.wm();
         let resized = !settled && resized && !wm.rtl() && !wm.vertical();
         let warm = if self.again {
@@ -135,56 +146,13 @@ impl FlowReuse {
             edges,
             settled_outside_widths,
             warm,
+            restyled: self.store.restyled.get(),
             floats: std::cell::Cell::new(false),
         })
     }
 }
 
 impl FlowCx {
-    /// Заместитель ребёнка `e`, если его запись (блока, бывшего далеко от
-    /// экрана) подходит.
-    /// `edge` — первый или последний элемент потока: его базовые линии может
-    /// читать контейнер, такой ребёнок всегда собирается.
-    pub(crate) fn placeholder(
-        &self,
-        e: &Element,
-        edge: bool,
-        opts: &RenderOpts,
-    ) -> Option<AnyElement> {
-        if !self.reuse.allow || edge && !self.edges || e.node_id == 0 || self.floats.get() {
-            return None;
-        }
-        if self.reuse.store.refused(e.node_id) {
-            return None;
-        }
-        let record = self.reuse.store.same_tree(e)?;
-        let width = || {
-            self.resized && record.fits_width(&self.key) && record.key.same_except_width(&self.key)
-        };
-        let same = record.key.same(&self.key);
-        // Растянутый блок при другой ширине — та же раскладка в коробке
-        // другой ширины: лист по потоку, краска записи не годна.
-        let stretched = !same && record.stretch;
-        // Ближний блок без свежего повтора почти наверняка попадёт на экран,
-        // а отказ заместителя на экране собирает кадр второй раз. Растянутый
-        // блок не повторяется никогда, поэтому заменяется только далёкий.
-        // Блок, уже отказанный на экране при этом ключе (`Store::banned`),
-        // замещается только далёким: повтор на месте его снова сдвинул бы.
-        let paintable = record.far
-            || (!stretched && !self.reuse.store.banned(e.node_id) && record.current(&self.reuse));
-        let fits = (same || width()) && paintable && Counters::read(&opts.cx) == record.start;
-        if !fits {
-            return None;
-        }
-        record.end.write(&opts.cx);
-        let mut next = self.reuse.next.take();
-        next.insert(e.node_id, record.clone());
-        self.reuse.next.replace(next);
-        let slot = Rc::new(Slot::new(record, stretched));
-        super::push(&self.reuse.placeholders, slot.clone());
-        Some(Placeholder::new(slot).hooked())
-    }
-
     /// Ребёнок `n` собран (или ушёл в анонимный абзац): запомнить его флоаты.
     pub(crate) fn built(&self, n: &crate::dom::Node) {
         if let crate::dom::Node::Element(e) = n
@@ -215,7 +183,7 @@ impl FlowCx {
             && now.coordinates == mark.coordinates
             && now.late == mark.late
             && out.last().is_some_and(|el| el.paint_metadata().is_none());
-        if !single {
+        if !single || self.restyled {
             return;
         }
         let skip = (self.settled || self.resized)

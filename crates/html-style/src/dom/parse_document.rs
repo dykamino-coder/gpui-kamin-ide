@@ -55,15 +55,27 @@ pub fn convert(
     media: Media,
     doc: &Rc<crate::values::DocumentValues>,
 ) -> Result<Vec<Node>, DocumentFailure> {
-    convert_for::<false>(input, extra_css, media, doc)
+    convert_restyling(input, extra_css, media, doc, None)
 }
 
-/// Запрос сохраняет вычисленные стили элементов без layout-коробок.
+/// Обычная пересборка собирает инвалидации только для текущего обхода.
+pub fn convert_restyling(
+    input: &Admitted,
+    extra_css: &str,
+    media: Media,
+    doc: &Rc<crate::values::DocumentValues>,
+    invalidation: Option<&mut super::invalidation::Invalidation>,
+) -> Result<Vec<Node>, DocumentFailure> {
+    convert_for::<false>(input, extra_css, media, doc, invalidation)
+}
+
+/// Запрос сохраняет стили элементов без коробок; инвалидации принадлежат вызывающему.
 pub fn convert_for<const QUERY: bool>(
     input: &Admitted,
     extra_css: &str,
     mut media: Media,
     doc: &Rc<crate::values::DocumentValues>,
+    mut invalidation: Option<&mut super::invalidation::Invalidation>,
 ) -> Result<Vec<Node>, DocumentFailure> {
     let vcx = doc.values();
     vcx.doc.reset_font_alternates();
@@ -178,7 +190,11 @@ pub fn convert_for<const QUERY: bool>(
         frames,
         clone_cost: Default::default(),
     });
-    if has_declarative_shadow(&dom.document, &admission)? {
+    let shadows = has_declarative_shadow(&dom.document, &admission)?;
+    if let Some(invalidation) = invalidation.as_deref_mut() {
+        invalidation.prepare(&doc.rules, shadows);
+    }
+    if shadows {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
         let prepared = prepare(
@@ -217,6 +233,7 @@ pub fn convert_for<const QUERY: bool>(
         false,
         &mut out,
         vcx,
+        invalidation,
     )?;
     super::finish_document::finish(&tree, &admission, out, vcx)
 }

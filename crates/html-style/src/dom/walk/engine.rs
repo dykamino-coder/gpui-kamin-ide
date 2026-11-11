@@ -134,6 +134,7 @@ pub fn walk_children<const QUERY: bool>(
     preserve: bool,
     out: &mut Vec<Node>,
     vcx: ValueCx<'_>,
+    mut invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
 ) -> Result<(), crate::budget::admission::Error> {
     let admission = tree.admission();
     let mut jobs = visits(
@@ -170,6 +171,7 @@ pub fn walk_children<const QUERY: bool>(
                     counters,
                     children,
                     output.last_mut().expect("parent output"),
+                    invalidation.as_deref_mut(),
                 )?;
                 if hidden {
                     *counters = hidden_counters.pop().expect("hidden counter scope");

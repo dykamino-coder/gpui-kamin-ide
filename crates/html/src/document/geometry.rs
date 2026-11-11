@@ -76,6 +76,7 @@ impl Document {
             query_state.0.clone(),
             &self.font_context(),
             revision,
+            None,
             #[cfg(feature = "engine-bench")]
             &mut super::BuildTimings::default(),
         )?;

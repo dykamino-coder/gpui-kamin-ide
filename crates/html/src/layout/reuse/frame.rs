@@ -33,7 +33,7 @@ impl FlowReuse {
                 && slot.layout().is_some_and(|id| {
                     let origin = scaled(window.layout_origin_unrounded(id), scale);
                     let replay = replayable
-                        && !slot.stretched()
+                        && slot.paint_holds()
                         && record.replay.borrow().as_ref().is_some_and(|r| {
                             r.follows(epoch)
                                 && r.origin == origin
@@ -49,10 +49,24 @@ impl FlowReuse {
                         },
                         false => ink,
                     };
+                    // A repainted block may now paint its box where it painted
+                    // nothing (a new background): its leaf counts as ink too.
+                    let painted = match slot.repainted() {
+                        true => {
+                            let s = window.layout_bounds(id).size;
+                            let leaf = Bounds {
+                                origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                                size: size(
+                                    ScaledPixels(s.width.as_f32() * scale),
+                                    ScaledPixels(s.height.as_f32() * scale),
+                                ),
+                            };
+                            Some(record.ink.map_or(leaf, |i| i.union(&leaf)))
+                        }
+                        false => record.ink,
+                    };
                     replay
-                        || record
-                            .ink
-                            .is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
+                        || painted.is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
                 });
             if !fits {
                 refused.insert(record.source.id());
@@ -80,6 +94,12 @@ impl FlowReuse {
             return;
         };
         self.store.refused.take();
+        // This frame compared the records with the patched document.
+        self.store.patched.set(false);
+        // A frame after no rebuild ends the restyles (`Store::restyled`).
+        if !self.store.rebased.replace(false) {
+            self.store.restyled.set(false);
+        }
         let mut next = self.next.take();
         let skipped = next.len() as u64;
         let replayed = self
@@ -93,9 +113,11 @@ impl FlowReuse {
         let pending = self.pending.take();
         let tracked = pending.len() as u64;
         let mut unrecorded = self.store.unrecorded.take();
-        for (pending, source) in pending {
-            let node = source.id();
-            let finished = pending.finish(source, screen, mask, epoch);
+        // Each pending record goes as its record is made: the two do not
+        // live side by side for the whole flow.
+        for pending in pending {
+            let node = pending.id();
+            let finished = pending.finish(screen, mask, epoch);
             if let Some(narrow) = finished.narrow {
                 self.narrowed.add(narrow);
             }

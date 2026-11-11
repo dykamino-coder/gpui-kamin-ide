@@ -430,6 +430,22 @@ impl Window {
         result
     }
 
+    /// KaminIDE patch: offer `bounds` (window coordinates of the root paint
+    /// environment) to the open ink sinks as the ink of paint the caller
+    /// skipped because the content mask would cull all of it.
+    pub fn offer_ink(&mut self, bounds: Bounds<Pixels>) {
+        let scene = &self.next_frame.scene;
+        if scene.ink.is_empty() && scene.ink_scope == 0 {
+            return;
+        }
+        let scaled = bounds.scale(self.scale_factor());
+        let scene = &self.next_frame.scene;
+        for sink in &scene.ink {
+            sink.add_in(scene.ink_scope, scaled);
+        }
+        scoped_ink(scene.ink_scope, |sink| sink.add_in(scene.ink_scope, scaled));
+    }
+
     /// Paint `f` measuring its ink in a new scope of the frame's scope sink:
     /// a host that measures many subtrees in turn (one per block) needs no
     /// sink of its own, and paint deferred past the scope taints it by id

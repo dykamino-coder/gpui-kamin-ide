@@ -74,7 +74,8 @@ impl super::FlowCx {
     pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
         mark.replay = self.replay_worth_recording(e);
-        mark.far = self.far_candidate(e, opts);
+        // A build of a run of restyles wraps no child (`FlowCx::record`).
+        mark.far = !self.restyled && self.far_candidate(e, opts);
         if mark.replay {
             mark.widths = Some(Rc::default());
         } else if mark.far {

@@ -1966,6 +1966,8 @@ impl Window {
                                     PRESENT_US.fetch_add(t1.elapsed().as_micros() as u32, Relaxed);
                                     FRAMES.fetch_add(1, Relaxed);
                                 }
+                                // KaminIDE patch: the app is not idle (`App::on_idle`).
+                                cx.frame_drawn();
                                 // drop the arena elements after present to reduce latency
                                 arena_clear_needed.clear(cx);
                             })

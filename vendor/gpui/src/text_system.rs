@@ -1,3 +1,4 @@
+mod composed;
 mod font_fallbacks;
 mod font_features;
 mod line;
@@ -6,6 +7,7 @@ mod line_wrapper;
 mod measure;
 mod shaping;
 
+pub use composed::LinePiece;
 pub use font_fallbacks::*;
 pub use font_features::*;
 pub use line::*;
@@ -1116,38 +1118,9 @@ impl WindowTextSystem {
         // (`line-break-anywhere-overrides-uax-behavior-013/014`). Длина в UTF-8
         // у обоих знаков одна, смещения прогонов не меняются; перенос
         // считается раньше и по исходному тексту.
-        let substituted;
-        let text = if text.contains('\u{2011}') {
-            let mut out = String::with_capacity(text.len());
-            let mut runs_iter = font_runs.iter();
-            let mut run = runs_iter.next();
-            let mut run_end = run.map_or(usize::MAX, |r| r.len);
-            for (i, ch) in text.char_indices() {
-                while i >= run_end {
-                    run = runs_iter.next();
-                    let start = run_end;
-                    run_end = run.map_or(usize::MAX, |r| start + r.len);
-                }
-                // Отсутствующий знак DirectWrite отдаёт глифом 0 (.notdef), а
-                // не `None`.
-                let has = |font_id: FontId, c: char| {
-                    self.platform_text_system
-                        .glyph_for_char(font_id, c)
-                        .is_some_and(|g| g.0 != 0)
-                };
-                let swap = ch == '\u{2011}'
-                    && run.is_some_and(|r| {
-                        !has(r.font_id, '\u{2011}') && has(r.font_id, '\u{2010}')
-                    });
-                out.push(if swap { '\u{2010}' } else { ch });
-            }
-            substituted = out;
-            substituted.as_str()
-        } else {
-            text
-        };
+        let text = self.no_break_hyphens(text, &font_runs);
         let layout = self.line_layout_cache.layout_line_spaced(
-            &SharedString::new(text),
+            &SharedString::new(&*text),
             font_size,
             &font_runs,
             force_width,

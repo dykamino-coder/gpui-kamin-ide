@@ -33,6 +33,9 @@ pub fn run(on_launch: impl FnOnce(&mut gpui::App) + 'static) {
     app.with_instrumentation(super::instrumentation())
         .with_assets(super::assets::Assets)
         .run(move |cx| {
+            // Простой без кадров отдаёт свободную память кучи системе
+            // (ленивая очистка mimalloc без новых освобождений не срабатывает).
+            cx.on_idle(kamin_alloc::IDLE_RELEASE_DELAY, kamin_alloc::release_idle_memory);
             #[cfg(windows)]
             match platform.gpu_device_context() {
                 Ok(actual) => crate::web::startup_log(format!(

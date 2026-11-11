@@ -15,6 +15,15 @@ use std::rc::Rc;
 /// The comparison input of one block record.
 pub(crate) struct Source {
     id: u64,
+    /// `None` once released (`release`): the record was compared at a
+    /// rebuild of the document (`Store::rebase`) and has not been built
+    /// since. A `Cell`, not a `RefCell`: the record is shared and its size is
+    /// that of a source that cannot be released (the `Rc` niche).
+    tree: std::cell::Cell<Option<Tree>>,
+}
+
+/// The recorded values of the block.
+struct Tree {
     shell: Rc<Element>,
     styles: BoxStyles,
     children: Children,
@@ -25,25 +34,57 @@ impl Source {
         self.id
     }
 
-    /// The recorded child list.
-    pub(super) fn children(&self) -> &Children {
-        &self.children
+    /// `f` of the recorded values, if they are held.
+    fn with<R>(&self, f: impl FnOnce(&Tree) -> R) -> Option<R> {
+        let tree = self.tree.take();
+        let out = tree.as_ref().map(f);
+        self.tree.set(tree);
+        out
     }
 
-    /// The subtree of `e` carries the recorded values throughout.
+    /// The recorded values are held (not `release`d).
+    pub(super) fn holds(&self) -> bool {
+        self.with(|_| ()).is_some()
+    }
+
+    /// Drop the recorded values: the block of a previous frame tree goes
+    /// with its document.
+    pub(super) fn release(&self) {
+        self.tree.take();
+    }
+
+    /// The recorded child list.
+    pub(super) fn children(&self) -> Option<Children> {
+        self.with(|t| t.children.clone())
+    }
+
+    /// The subtree of `e` carries the recorded values throughout (a released
+    /// source carries none).
     pub(super) fn same(&self, e: &Element) -> bool {
-        self.id == e.node_id
-            && crate::dom::same_tree_as(&self.shell, &self.styles, &self.children, e)
+        self.with(|t| {
+            self.id == e.node_id && crate::dom::same_tree_as(&t.shell, &t.styles, &t.children, e)
+        })
+        .unwrap_or(false)
+    }
+
+    /// The subtree of `e` lays out like the recorded one: equal values but
+    /// for paint-only style values (`dom::same_layout_tree_as`).
+    pub(super) fn same_layout(&self, e: &Element) -> bool {
+        self.with(|t| {
+            self.id == e.node_id
+                && crate::dom::same_layout_tree_as(&t.shell, &t.styles, &t.children, e)
+        })
+        .unwrap_or(false)
     }
 
     /// The recorded element, for tests.
     #[cfg(test)]
-    pub(super) fn element(&self) -> Element {
-        Element {
+    pub(super) fn element(&self) -> Option<Element> {
+        self.with(|t| Element {
             node_id: self.id,
-            children: self.children.clone(),
-            ..self.styles.apply(&self.shell)
-        }
+            children: t.children.clone(),
+            ..t.styles.apply(&t.shell)
+        })
     }
 }
 
@@ -77,9 +118,11 @@ impl Shells {
         self.0.replace(recent);
         Source {
             id: e.node_id,
-            shell,
-            styles: BoxStyles::of(e),
-            children: e.children.clone(),
+            tree: std::cell::Cell::new(Some(Tree {
+                shell,
+                styles: BoxStyles::of(e),
+                children: e.children.clone(),
+            })),
         }
     }
 }
@@ -98,6 +141,10 @@ mod tests {
         e
     }
 
+    fn shell(s: &Source) -> Rc<Element> {
+        s.with(|t| t.shell.clone()).unwrap()
+    }
+
     #[test]
     fn equal_boxes_share_one_shell_and_each_source_matches_only_its_block() {
         let shells = Shells::default();
@@ -107,13 +154,16 @@ mod tests {
             para(3, "t2", "one"),
         );
         let (sa, sb, sc) = (shells.source(&a), shells.source(&b), shells.source(&c));
-        assert!(Rc::ptr_eq(&sa.shell, &sb.shell), "same class, same shell");
-        assert!(!Rc::ptr_eq(&sa.shell, &sc.shell), "another class");
+        assert!(
+            Rc::ptr_eq(&shell(&sa), &shell(&sb)),
+            "same class, same shell"
+        );
+        assert!(!Rc::ptr_eq(&shell(&sa), &shell(&sc)), "another class");
         assert!(sa.same(&a) && sb.same(&b) && sc.same(&c));
         assert!(!sa.same(&b), "another node id");
         assert!(!sb.same(&para(2, "t1", "twp")), "changed text");
         assert!(!sc.same(&para(3, "t1", "one")), "changed attribute");
-        assert!(crate::dom::same_tree(&sb.element(), &b));
+        assert!(crate::dom::same_tree(&sb.element().unwrap(), &b));
         // A style knows its node: boxes of one kind share the shell anyway.
         let mut d = para(4, "t1", "one");
         d.style = Computed {
@@ -122,12 +172,15 @@ mod tests {
         }
         .into();
         let sd = shells.source(&d);
-        assert!(Rc::ptr_eq(&sa.shell, &sd.shell), "own styles, same shell");
+        assert!(
+            Rc::ptr_eq(&shell(&sa), &shell(&sd)),
+            "own styles, same shell"
+        );
         let restyled = Element {
             style: a.style,
             ..d.clone()
         };
         assert!(sd.same(&d) && !sd.same(&restyled), "changed style");
-        assert!(crate::dom::same_tree(&sd.element(), &d));
+        assert!(crate::dom::same_tree(&sd.element().unwrap(), &d));
     }
 }
