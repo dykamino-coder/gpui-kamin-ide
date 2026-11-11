@@ -4,8 +4,8 @@
 
 [INC-0093](runtime-issues/INC-2026-0093.md): SessionEnd from a running CLI
 (`/clear`, `/resume`) finalized the live session, and calls lost with a dead
-client socket were never redelivered after reattach. Fix and card in
-[#714](https://github.com/dykamino-coder/gpui-kamin-ide/pull/714); lead observes the next release.
+client socket were never redelivered after reattach. Fix merged in
+[#714](https://github.com/dykamino-coder/gpui-kamin-ide/pull/714) (`3aae2d07`); status `verify` until the lead observes the next release.
 
 ## Browser restart persistence follow-up — 2026-11-10
 
