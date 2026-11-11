@@ -1,0 +1,22 @@
+{
+  "name": "claude-bridge-browser-client",
+  "private": true,
+  "type": "module",
+  "description": "Sources of @kaminide/bridge-browser-client: framework-agnostic browser client of a Kamin Bridge workspace host.",
+  "engines": {
+    "node": "^22.19.0 || ^24.0.0 || ^26.0.0"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "pack:client": "node pack.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "dts-bundle-generator": "^9.5.1",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

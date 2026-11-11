@@ -97,7 +97,12 @@ test('long assistant prose stays complete and readable across streaming and cano
         const entry = window.__jsonlEntries?.['scroll-tab']?.find(e => e.message?.id === 'scroll-message')
         return entry?.__streaming === undefined && JSON.stringify(entry.message.content) === JSON.stringify(expected)
       }, blocks)
-      const prose = page.locator('.jsonl-entry-assistant .block-text')
+      // Thinking is readable text too, marked by a lightbulb; the answer is the direct children.
+      const prose = page.locator('.jsonl-entry-assistant > .block-text')
+      const thinking = page.locator('.jsonl-entry-assistant .block-thinking')
+      assert.equal(await thinking.locator('.block-text').innerText(), blocks[0].thinking)
+      assert.equal(await thinking.locator('.fa-lightbulb').count(), 1)
+      assert.equal((await thinking.innerText()).trim(), blocks[0].thinking, 'no label, no collapsed teaser')
       await page.waitForFunction(markers => markers.every(marker => document.querySelector('#content-area').innerText.includes(marker)), markers)
       const texts = await prose.allTextContents()
       assert.equal(texts.length, 3)
@@ -112,7 +117,7 @@ test('long assistant prose stays complete and readable across streaming and cano
       await page.waitForTimeout(250)
       await page.evaluate(() => window.__scrollChatToBottom())
       const mutate = () => page.evaluate(() => {
-        const text = document.querySelector('.jsonl-entry-assistant .block-text').firstChild
+        const text = document.querySelector('.jsonl-entry-assistant > .block-text').firstChild
         text.textContent += ' '
       })
       await mutate()

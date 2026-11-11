@@ -9,14 +9,15 @@ export function projectDirectory(root: string, requested: unknown): string {
   return directory
 }
 
-/** Clarify the legacy server template's "user machine" for a container client. */
-export function containerSessionInstructions(cwd: string): string {
-  return `## Browser workspace execution environment
-This session's tool host is the Linux workspace container. The browser is only a thin interface.
-The Bridge server's remote-session instructions use "user's machine" to mean this MCP client host: here that is the workspace container, not the browser user's computer and not the separate Bridge server container.
-The project working directory is ${JSON.stringify(cwd)} in the workspace container. Use this directory as the project root and resolve relative paths against it.
-Read, Write, Edit, Glob, Grep, Bash, PowerShell, hooks and client MCP tools operate on this container's filesystem and network. Bash starts in this project directory; use Linux paths and shell syntax.
-Act directly on the container project using these tools, as you would on a local machine. The project is already selected; do not ask the user for a folder on their computer or ask them to run commands there.
-The whole workspace container filesystem is available when the task requires it. The separate Bridge server's CLI/settings filesystem is not the project.
+/** Declared to the Bridge server as the place where this host's tools run. */
+export const WORKSPACE_HOST_PLACE = 'the workspace host'
+
+/** What the declaration cannot say: whose machine this is and how to act on it. */
+export function workspaceSessionInstructions(cwd: string): string {
+  return `## Workspace host
+The tool host of this session is the Bridge workspace host; the browser is only a thin interface to it. The workspace host is not the browser user's computer and not the Bridge server container.
+The project working directory is ${JSON.stringify(cwd)} on the workspace host. Use it as the project root and resolve relative paths against it.
+The user-tools of this session, hooks and client MCP tools operate on the workspace host's filesystem and network; shell tools start in the project directory.
+Act directly on the project with these tools. The project is already selected: do not ask the user for a folder on their computer or ask them to run commands there.
 Preserve the user's task, project instructions and tool permission decisions.`
 }

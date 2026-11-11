@@ -19,11 +19,16 @@ source revision and image, including failures and unrun scenarios.
 
 ## Runtime composition
 
-`src/cli.ts` builds the shared runtime, pins server administration requests to
-its configured upstream, installs browser environment services, then wraps it
-with persistent workspace-shell state, `WorkspaceFiles` and `TerminalWorkspaceBackend`. The resulting host serves
-the production browser bundle. Shutdown disposes terminals, file watches and
-the shared runtime; a lost browser socket only detaches delivery.
+`src/headless.ts` (`startHeadlessWorkspace`) builds the shared runtime, pins
+server administration requests to its configured upstream, installs browser
+environment services, then wraps it with persistent workspace-shell state,
+`WorkspaceFiles` and `TerminalWorkspaceBackend`. `src/cli.ts` reads the
+container environment, adds Bridge-token sign-in and the production browser
+bundle (`WORKSPACE_UI_DIR` overrides its directory) and loads the same
+`dist/headless.cjs`; the UI-less package for other applications is described in
+[HEADLESS.md](HEADLESS.md). Shutdown disposes terminals, file watches and the
+shared runtime; a lost browser socket only detaches delivery. Preview state is
+pushed to every socket as `workspace:preview-state`.
 
 `createSharedBackend` sets process cwd and initial project root to `/workspace`
 and supports one shared runtime per process. Project files and client settings

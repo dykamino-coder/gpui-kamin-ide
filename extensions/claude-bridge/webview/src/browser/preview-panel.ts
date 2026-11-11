@@ -1,8 +1,23 @@
-// Only projection and module rendering live here. The host owns mount/props and
-// dev-server availability, including while no browser page exists.
-import type { RemoteDescriptor, Mounted } from './preview-renderer'
+// Only the panel chrome lives here. The host owns mount/props and dev-server
+// availability and pushes `workspace:preview-state` over /bridge; the shared
+// preview view (browser-client) follows it and renders the remote.
+import type { HostPort } from '../../../browser-client/src/socket'
+import type { PreviewState } from '../../../browser-client/src/types'
+import { createPreviewView } from '../../../browser-client/src/preview/view'
+import type { RenderRemote } from '../../../browser-client/src/preview/renderer'
 
-export function installPreviewPanel(): () => void {
+/** Host event frames from the installed socket; this module must not import the
+ * shared transport, which binds to the API only after authentication. */
+function previewStates(port: Required<Pick<HostPort, 'onHostMessage'>>) {
+  return (listener: (state: PreviewState) => void) => port.onHostMessage(frame => {
+    const event = frame as { kind?: unknown; channel?: unknown; args?: unknown[] } | null
+    if (event?.kind === 'event' && event.channel === 'workspace:preview-state' && event.args?.[0] && typeof event.args[0] === 'object') {
+      listener(event.args[0] as PreviewState)
+    }
+  })
+}
+
+export function installPreviewPanel(port: Required<Pick<HostPort, 'onHostMessage'>>): () => void {
   const chat = document.getElementById('root')!
   const layout = document.createElement('div')
   layout.className = 'workspace-layout'
@@ -31,34 +46,19 @@ export function installPreviewPanel(): () => void {
   content.className = 'preview-content'
   panel.append(header, status, content)
   layout.append(separator, panel)
-  let disposed = false, epoch = 0, key = '', props = '', fingerprint = '', changedAt = 0
-  let mounted: Mounted | undefined
-  let descriptor: RemoteDescriptor | null = null
-  function clear() {
-    ++epoch
-    try { mounted?.unmount() } catch { /* a remote cleanup cannot stop chat */ }
-    mounted = undefined
-    content.replaceChildren()
-  }
-  function fail(error: unknown) { status.textContent = `Preview: ${error instanceof Error ? error.message : 'Remote failed'}` }
-  async function mount(value: RemoteDescriptor, build: string) {
-    clear()
-    const generation = epoch
-    status.textContent = 'Loading preview…'
-    const element = document.createElement('div')
-    content.append(element)
-    try {
-      const { renderRemote } = await import('./preview-renderer')
-      if (disposed || generation !== epoch) return
-      const result = await renderRemote(element, value, build, fail,
-        () => {},
-        () => { if (generation === epoch && descriptor) void mount(descriptor, fingerprint) })
-      if (disposed || generation !== epoch) { result.unmount(); return }
-      mounted = result
-      status.textContent = ''
-    } catch (error) { if (generation === epoch) { element.replaceChildren(); fail(error) } }
-  }
-  retry.onclick = () => { if (descriptor) void mount(descriptor, fingerprint) }
+  // React and federation load only when a remote is first rendered.
+  const render: RenderRemote = async (...args) => (await import('./preview-renderer')).renderRemote(...args)
+  const view = createPreviewView({ states: previewStates(port), render, element: content })
+  const fail = (error: unknown) => { status.textContent = `Preview: ${error instanceof Error ? error.message : 'Remote failed'}` }
+  view.onChange(() => {
+    const descriptor = view.descriptor
+    panel.hidden = separator.hidden = !descriptor
+    if (descriptor) title.textContent = `Preview · ${descriptor.name}`
+    status.textContent = view.status === 'mounting' ? 'Loading preview…'
+      : view.status === 'unavailable' ? 'Preview dev server is unavailable. The agent can restart it.'
+        : view.status === 'error' ? `Preview: ${view.error?.message || 'Remote failed'}` : ''
+  })
+  retry.onclick = () => view.reload()
   close.onclick = () => { void fetch('/preview/unmount', { method: 'POST', credentials: 'same-origin' }).catch(fail) }
   const width = (value: number) => { panel.style.width = `${Math.max(240, Math.min(innerWidth - 1106, value))}px` }
   separator.onpointerdown = event => { separator.setPointerCapture(event.pointerId) }
@@ -66,39 +66,5 @@ export function installPreviewPanel(): () => void {
   separator.onkeydown = event => {
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); width(panel.offsetWidth + (event.key === 'ArrowLeft' ? 32 : -32)) }
   }
-  let timer: ReturnType<typeof setTimeout>
-  async function poll() {
-    try {
-      const response = await fetch('/preview/state', { credentials: 'same-origin', cache: 'no-store' })
-      if (response.status === 404) return
-      if (!response.ok) throw new Error('Workspace session unavailable')
-      const state = await response.json() as { descriptor: RemoteDescriptor | null; build: string | null; available: boolean }
-      if (disposed) return
-      descriptor = state.descriptor
-      panel.hidden = separator.hidden = !descriptor
-      if (!descriptor) { if (key) clear(); key = props = fingerprint = ''; return }
-      title.textContent = `Preview · ${descriptor.name}`
-      if (!state.available || !state.build) { status.textContent = 'Preview dev server is unavailable. The agent can restart it.'; return }
-      const nextKey = `${descriptor.name}:${descriptor.revision}`
-      const nextProps = JSON.stringify(descriptor.props)
-      if (nextKey !== key) {
-        key = nextKey; props = nextProps; fingerprint = state.build; changedAt = 0
-        void mount(descriptor, state.build)
-      } else if (props !== nextProps) {
-        props = nextProps
-        if (mounted?.update) { try { mounted.update(descriptor.props) } catch (error) { fail(error) } }
-        else void mount(descriptor, state.build)
-      }
-      // A native HMR runtime owns its updates and reports invalidation directly.
-      // Only servers without HMR use the stable-entry rebuild fallback.
-      if (fingerprint !== state.build) {
-        if (!changedAt) changedAt = Date.now()
-        if (mounted?.hot) { fingerprint = state.build; changedAt = 0 }
-        else if (Date.now() - changedAt > 5000) { fingerprint = state.build; changedAt = 0; void mount(descriptor, state.build) }
-      } else changedAt = 0
-    } catch (error) { if (!disposed) fail(error) }
-    finally { if (!disposed) timer = setTimeout(() => { void poll() }, 1000) }
-  }
-  void poll()
-  return () => { disposed = true; clearTimeout(timer); clear() }
+  return () => view.dispose()
 }

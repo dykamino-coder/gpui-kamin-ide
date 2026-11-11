@@ -155,7 +155,7 @@ workspace HTTP host: browser effects + files/views + host PTYs
 Bridge server: Claude CLI PTYs and session-local proxy plugin
 ```
 
-`src/cli.ts` composes `createBrowserEnvironment`, `createSharedBackend`,
+`src/headless.ts` (used by `src/cli.ts`) composes `createBrowserEnvironment`, `createSharedBackend`,
 `withBrowserServer`, persisted workspace-shell state, `WorkspaceFiles` and
 `TerminalWorkspaceBackend` before
 listening. Disposal unwinds terminals, watches and shared runtime. The workspace

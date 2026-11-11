@@ -9,6 +9,16 @@ import type { PendingElicitation } from './elicitation'
 // Session
 // ---------------------------------------------------------------------------
 
+/** What a client host declared about itself at session create/resume (INC-2026-0097). */
+export interface HostDeclaration {
+  /** Built-in tool names the host can execute. */
+  tools: string[]
+  /** Node-style platform id: win32, darwin, linux or another short token. */
+  platform: string
+  /** Noun phrase naming where the tools run, e.g. "the user's machine". */
+  place: string
+}
+
 export type SessionState = 'starting' | 'running' | 'exiting' | 'exited'
 
 export interface McpLogEntry {
@@ -95,6 +105,8 @@ export interface PtySession {
      *  file's fingerprint first. */
     streamFrom?(offset: number, live: () => boolean): Promise<number>
   }
+  /** What the client host declared it can execute; absent for older clients. */
+  host?: HostDeclaration
   /** Tool definitions registered for this session (dynamic list) */
   registeredTools: ToolDefinition[]
   /** External MCP resources/prompts flattened into the bridge MCP server. */
@@ -224,6 +236,8 @@ export interface SessionConfig {
    *  Surfaced in the system prompt so Claude can read its own history (the
    *  user-tools file MCP runs on that same machine). */
   transcriptMirrorDir?: string
+  /** Normalized host declaration (tools, platform, place); absent → legacy full set. */
+  host?: HostDeclaration
 }
 
 // ---------------------------------------------------------------------------
@@ -273,6 +287,15 @@ export interface SyncPluginData {
   themes: Record<string, string>
   hooks: Record<string, unknown>
   settings?: string
+  /** Hooks module paths relative to the proxy plugin's `hooks/` directory. */
+  modules?: string[]
+  /** Plugin file tree (relativePath → file), present only with `modules`. */
+  files?: Record<string, SyncPluginFile>
+}
+
+export interface SyncPluginFile {
+  encoding: 'utf8' | 'base64'
+  content: string
 }
 
 export interface SyncUserData {

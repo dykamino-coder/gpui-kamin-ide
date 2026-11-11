@@ -103,7 +103,7 @@ jobs:
           set_scope bridge_server '^extensions/claude-bridge/server/'
           set_scope bridge_dashboard '^extensions/claude-bridge/server/src/ui/'
           set_scope bridge_extension '^(extensions/claude-bridge/(extension/|server/)|builtin-extensions/claude-bridge/(extension\.js|package\.json)$|src/kamin-host/rolling-log\.ts$)'
-          set_scope bridge_webview '^(extensions/claude-bridge/webview/|extensions/claude-bridge/server/src/ui/src/lib/terminal-console/|builtin-extensions/claude-bridge/(chat|tools|customize)\.html$)'
+          set_scope bridge_webview '^(extensions/claude-bridge/(webview|browser-client)/|extensions/claude-bridge/server/src/ui/src/lib/terminal-console/|builtin-extensions/claude-bridge/(chat|tools|customize)\.html$)'
           set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/(check_(event_routing|conventions|engine_test_support)|fetch_main_baseline|test_fetch_main_baseline|ci/(build_main_baseline|test_build_main_baseline))\.py$|(clippy|rustfmt)\.toml$)'
           set_scope vendor '^(vendor/|rust-toolchain\.toml$)'
           set_scope vendor_taffy '^(vendor/taffy/|vendor/taffy-kaminide\.patch$|rust-toolchain\.toml$)'
@@ -269,12 +269,24 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: extensions/claude-bridge/webview/package-lock.json
+          cache-dependency-path: |
+            extensions/claude-bridge/webview/package-lock.json
+            extensions/claude-bridge/browser-client/package-lock.json
 
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # The webview bundles compile the browser-client sources; the package is
+      # checked and packed here so its release asset cannot drift from them.
+      - name: Check and pack the browser client package
+        working-directory: extensions/claude-bridge/browser-client
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run build
+          npm run pack:client -- --out "$RUNNER_TEMP/browser-client"
       - name: Verify the committed webview bundles
         working-directory: ${{ github.workspace }}
         run: git diff --exit-code -- builtin-extensions/claude-bridge/chat.html builtin-extensions/claude-bridge/tools.html builtin-extensions/claude-bridge/customize.html
@@ -586,6 +598,20 @@ jobs:
           node scripts/release/provenance-cli.mjs verify \
             --installer "$installer" --provenance "$provenance" \
             --release-sha "$(git rev-parse HEAD)"
+
+      - name: Pack the embedding release assets without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          for package in extension workspace browser-client; do
+            npm --prefix "extensions/claude-bridge/$package" ci --no-audit --no-fund
+          done
+          node scripts/release/pack-embedding.mjs --out "$RUNNER_TEMP/embedding"
+          version="$(jq -r .version extensions/claude-bridge/server/package.json)"
+          for name in workspace-host browser-client; do
+            test -s "$RUNNER_TEMP/embedding/kaminide-bridge-${name}-${version}.tgz"
+          done
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4

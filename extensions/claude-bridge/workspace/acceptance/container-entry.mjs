@@ -6,7 +6,7 @@ if (process.platform !== 'linux' || process.env.BRIDGEWEB_ACC_CONTAINER !== '1')
 // Copy only source roots into the disposable Linux filesystem. Never use host
 // node_modules, build outputs, Git metadata, dotenv or credential files.
 const roots = ['src', 'builtin-extensions/claude-bridge/package.json', 'builtin-extensions/claude-bridge/chat.html', 'extensions/claude-bridge/extension', 'extensions/claude-bridge/workspace',
-  'extensions/claude-bridge/webview', 'extensions/claude-bridge/server/src/ui/src/lib/terminal-console']
+  'extensions/claude-bridge/webview', 'extensions/claude-bridge/browser-client/src', 'extensions/claude-bridge/server/src/ui/src/lib/terminal-console']
 const excluded = /^(node_modules|dist|\.git|test-results|playwright-report)$|^\.env|\.(log.*|pem|key)$/
 for (const relative of roots) {
   await cp(path.join('/source', relative), path.join('/opt/bridge', relative), {

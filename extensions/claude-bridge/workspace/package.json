@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./dist/index.js",
-    "./runtime": "./dist/runtime.cjs"
+    "./runtime": "./dist/runtime.cjs",
+    "./headless": { "types": "./dist/headless.d.ts", "default": "./dist/headless.cjs" }
   },
   "engines": {
     "node": "^22.19.0 || ^24.0.0 || ^26.0.0"
@@ -12,6 +13,7 @@
   "description": "Browser workspace client host for the shared Kamin bridge runtime.",
   "scripts": {
     "build": "node build.mjs",
+    "pack:headless": "node pack-headless.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.runtime.json",
     "test": "npm run build && node --import tsx --test --test-timeout=30000 --test-concurrency=1 test/*.test.ts",
     "test:capabilities": "tsx --test test/capability-matrix.test.ts",
@@ -36,6 +38,7 @@
     "@types/node": "^22.20.5",
     "@types/vscode": "^1.140.0",
     "@types/ws": "^8.18.2",
+    "dts-bundle-generator": "^9.5.1",
     "esbuild": "^0.28.2",
     "playwright": "^1.65.0",
     "tsx": "^4.21.0",

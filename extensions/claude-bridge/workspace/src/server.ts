@@ -2,8 +2,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { WebSocketServer, WebSocket } from 'ws'
-import { WorkspaceAuth, readSessionCookie } from './auth.js'
-import { parseClientFrame, type HostAttachment, type WorkspaceBackend } from './protocol.js'
+import { readSessionCookie, type WorkspaceAuthPolicy } from './auth.js'
+import { parseClientFrame, type ClientView, type HostAttachment, type WorkspaceBackend } from './protocol.js'
+import { createPreviewFeed } from './preview-feed.js'
 import type { WorkspacePreview } from './preview.js'
 import { proxyHttp, proxyUpgrade } from './preview-proxy.js'
 import type { Duplex } from 'node:stream'
@@ -13,7 +14,7 @@ const MAX_BUFFER = 32 * 1024 * 1024
 const MAX_INFLIGHT = 64
 
 export interface WorkspaceServerOptions {
-  auth: WorkspaceAuth
+  auth: WorkspaceAuthPolicy
   backend: WorkspaceBackend
   /** Exact browser origin; required for non-loopback/reverse-proxy deployment. */
   origin?: string
@@ -22,8 +23,10 @@ export interface WorkspaceServerOptions {
   revalidateMs?: number
   /** Only for an exactly pinned loopback browser origin, including port mapping. */
   autoLogin?: boolean
-  /** Trusted Module Federation remote; state is owned by this host process. */
+  /** Trusted Module Federation remote; state is owned by this host process and
+   * pushed to every /bridge socket as workspace:preview-state events. */
   preview?: WorkspacePreview
+  previewSampleMs?: number
   /** Serve only trusted application assets; this callback never receives API routes. */
   serveApp?: (request: IncomingMessage, response: ServerResponse) => void | Promise<void>
 }
@@ -55,10 +58,12 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
   if (options.autoLogin && origin && !['127.0.0.1', '[::1]', 'localhost'].includes(new URL(origin).hostname)) {
     throw new Error('Automatic login requires a loopback browser origin')
   }
+  if (options.autoLogin && !options.auth.loginLocal) throw new Error('Automatic login requires an auth policy with loginLocal')
   const sockets = new Map<WebSocket, string>()
   const alive = new Set<WebSocket>()
   const previewSockets = new Map<Duplex, string>()
   const detachPreview = options.preview?.onRemount(() => { for (const socket of previewSockets.keys()) socket.destroy() })
+  const previewFeed = options.preview && createPreviewFeed(options.preview, options.previewSampleMs)
   const attempts = new Map<string, { count: number; reset: number }>()
   let closing = false
   let pendingUpgrades = 0
@@ -118,7 +123,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
     }
     if (request.url === '/auth/session' && request.method === 'GET') {
       let authenticated = await options.auth.validate(readSessionCookie(request.headers.cookie))
-      if (!authenticated && options.autoLogin) {
+      if (!authenticated && options.autoLogin && options.auth.loginLocal) {
         const cookie = await options.auth.loginLocal()
         if (cookie) {
           response.setHeader('Set-Cookie', options.auth.cookieHeader(cookie, origin.startsWith('https:')))
@@ -184,11 +189,12 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
   wss.on('connection', socket => {
     let inflight = 0
     let attachment: HostAttachment
+    let stopPreview: (() => void) | undefined
     alive.add(socket)
     socket.on('pong', () => { alive.add(socket) })
     socket.on('error', () => { /* close releases the owned attachment */ })
-    socket.once('close', () => { sockets.delete(socket); alive.delete(socket); attachment?.dispose() })
-    try { attachment = options.backend.attach({
+    socket.once('close', () => { sockets.delete(socket); alive.delete(socket); stopPreview?.(); attachment?.dispose() })
+    const view: ClientView = {
       async postMessage(frame) {
         if (socket.readyState !== WebSocket.OPEN) return false
         const text = JSON.stringify(frame)
@@ -197,7 +203,10 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
         }
         return new Promise(resolve => socket.send(text, error => resolve(!error)))
       },
-    }) } catch { socket.close(1011, 'Host attachment failed'); return }
+    }
+    try { attachment = options.backend.attach(view) } catch { socket.close(1011, 'Host attachment failed'); return }
+    // Preview state belongs to this host, not to the shared BridgeHost graph.
+    stopPreview = previewFeed?.subscribe(state => { void view.postMessage({ kind: 'event', channel: 'workspace:preview-state', args: [state] }) })
     socket.on('message', (raw, binary) => {
       if (socket.readyState !== WebSocket.OPEN) return
       if (binary || inflight >= MAX_INFLIGHT) { socket.close(4008, 'Input limit'); return }
@@ -233,7 +242,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
       server.once('error', reject)
       server.listen(options.port ?? 3460, bind, () => { server.off('error', reject); resolve() })
     })
-  } catch (error) { clearInterval(timer); detachPreview?.(); wss.close(); throw error }
+  } catch (error) { clearInterval(timer); detachPreview?.(); previewFeed?.close(); wss.close(); throw error }
   const address = server.address() as AddressInfo
   if (!origin) origin = `http://${bind === '::1' ? '[::1]' : bind}:${address.port}`
   options.preview?.blockPorts([address.port])
@@ -244,6 +253,7 @@ export async function startWorkspaceServer(options: WorkspaceServerOptions) {
     async close(): Promise<void> {
       closing = true
       detachPreview?.()
+      previewFeed?.close()
       clearInterval(timer)
       for (const socket of previewSockets.keys()) socket.destroy()
       for (const socket of sockets.keys()) socket.terminate()

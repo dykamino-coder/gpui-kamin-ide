@@ -31,6 +31,11 @@ export interface WsMsgSessionCreate {
    *  prompt so Claude can read its own history via the user-tools file MCP,
    *  which runs on the same (client) machine. */
   transcriptMirrorDir?: string
+  /** What this client host can execute: built-in tool names, platform and the
+   *  name of the place where they run. The server serves exactly the declared
+   *  tools and words its instructions from it; absent (older clients) → full
+   *  tool list and the legacy texts. */
+  host?: { tools: string[]; platform?: string; place?: string }
 }
 
 export interface WsMsgSessionInput {
@@ -112,6 +117,8 @@ export interface WsMsgSessionResume {
   basePrompt?: string
   /** See WsMsgSessionCreate. */
   transcriptMirrorDir?: string
+  /** See WsMsgSessionCreate. */
+  host?: { tools: string[]; platform?: string; place?: string }
 }
 
 /** Client requests effort level change (live `/effort`; PTY restart only as fallback) */

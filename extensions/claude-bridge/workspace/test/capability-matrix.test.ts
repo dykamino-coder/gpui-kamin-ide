@@ -51,7 +51,7 @@ test('new source APIs, channels, dynamic dispatchers and unregistered handlers f
     fs.rmSync(fixture, { recursive: true })
   })
   // Copy only production sources; never traverse server/data or dependencies.
-  for (const directory of ['extension/src', 'webview/shared', 'webview/src', 'workspace/src']) {
+  for (const directory of ['extension/src', 'webview/shared', 'webview/src', 'workspace/src', 'browser-client/src']) {
     fs.cpSync(path.join(bridgeRoot, directory), path.join(fixture, directory), {
       recursive: true,
       filter: file => fs.statSync(file).isDirectory() || /\.tsx?$/.test(file) && !/\.(test|spec)\./.test(file),
