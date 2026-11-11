@@ -87,7 +87,12 @@ pub(crate) fn native_paragraph(
             // (`Paragraph::shared_base`), so it needs the strut font as well.
             (boxes.is_some() || rotated_central(inherited)).then(|| {
                 (
-                    inline::strut_font(inherited, &opts.text, opts.cx.vcx()),
+                    inline::strut_font(
+                        inherited,
+                        &opts.text,
+                        opts.cx.vcx(),
+                        opts.cx.layout().run_faces.active(),
+                    ),
                     gpui::px(own_size(inherited, opts)),
                 )
             }),

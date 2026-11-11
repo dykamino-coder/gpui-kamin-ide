@@ -44,7 +44,7 @@ fn nested_inline_runs_keep_ancestor_band_and_original_css() {
             style: child,
         },
     ];
-    let (text, runs) = text_and_runs(&pieces, &Default::default(), vcx).unwrap();
+    let (text, runs) = text_and_runs(&pieces, &Default::default(), vcx, None).unwrap();
     assert_eq!(text, "ab");
     assert_eq!(runs[0].background_color, runs[1].background_color);
     assert!(runs[0].background_color.is_some());
@@ -120,7 +120,8 @@ fn splitting_a_run_keeps_band_geometry_independent_of_css() {
         assert_eq!(style.reset_border.radius, css.reset_border.radius);
     }
     let (text, runs) =
-        crate::text::inline::text_and_runs(&pieces, &Default::default(), doc.values()).unwrap();
+        crate::text::inline::text_and_runs(&pieces, &Default::default(), doc.values(), None)
+            .unwrap();
     assert_eq!(text, "abcd");
     assert_eq!(runs.len(), 2);
     for run in runs {

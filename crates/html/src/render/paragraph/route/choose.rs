@@ -28,7 +28,7 @@ pub(crate) fn route_pieces(
     let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
     if inline::single_block(&pieces, opts.base_size())
-        && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text, opts.cx.vcx())
+        && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text, opts.cx.vcx(), opts.cx.layout().run_faces.active())
         // A physical atom row has no turned inline frame for a phantom static point.
         && (!text.is_empty() || !opts.cx.inline.pure_atom_paragraph)
     {

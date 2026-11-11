@@ -3,14 +3,16 @@
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 mod atom_glue;
 mod capacity;
+mod face;
 mod wrapped_row;
 use crate::text::inline::runs::atom_glue::glue_atoms;
 pub use crate::text::inline::runs::wrapped_row::as_wrapped_row;
 
+use crate::layout::cx::run_faces::RunFaces;
 use crate::style::computed::Computed;
 use crate::style::values::value::Color;
 use crate::text::inline::*;
-use gpui::{FontStyle, FontWeight, TextRun, TextStyle, UnderlineStyle};
+use gpui::{TextRun, TextStyle, UnderlineStyle};
 
 /// Можно ли собрать всё в один текстовый блок: одинаковый размер шрифта и ни
 /// одного не-текстового куска.
@@ -94,6 +96,7 @@ pub fn text_and_runs(
     pieces: &[Piece],
     base: &TextStyle,
     vcx: crate::values::ValueCx<'_>,
+    faces: Option<&RunFaces>,
 ) -> Option<(String, Vec<TextRun>)> {
     let (bytes, count) = capacity::sizes(pieces)?;
     let (mut text, mut runs) = (String::with_capacity(bytes), Vec::with_capacity(count));
@@ -111,6 +114,7 @@ pub fn text_and_runs(
                     style.ink(),
                     base,
                     vcx,
+                    faces,
                 ));
             }
             // Кусок вне потока в текст не входит: его место помечает нулевой
@@ -128,8 +132,10 @@ pub fn strut_font(
     style: &Computed,
     base: &TextStyle,
     vcx: crate::values::ValueCx<'_>,
+    faces: Option<&RunFaces>,
 ) -> gpui::Font {
-    run_for("x", style, base, vcx).font
+    let base_px = f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX)));
+    face::run_face(style, base, base_px, vcx, faces).0
 }
 
 pub(super) fn run_for(
@@ -139,7 +145,7 @@ pub(super) fn run_for(
     vcx: crate::values::ValueCx<'_>,
 ) -> TextRun {
     let ink = style.inh.ui.color;
-    decorated_run(text, style, Default::default(), ink, base, vcx)
+    decorated_run(text, style, Default::default(), ink, base, vcx, None)
 }
 
 fn decorated_run(
@@ -149,40 +155,11 @@ fn decorated_run(
     ink: Option<Color>,
     base: &TextStyle,
     vcx: crate::values::ValueCx<'_>,
+    faces: Option<&RunFaces>,
 ) -> TextRun {
-    let font_style = &style.inh.font;
     let decoration = &style.reset_text_box;
-    let mut font = base.font();
-    font.fallbacks = crate::text::fonts::fallbacks::fallbacks(style, font.fallbacks, vcx);
-    // Названное семейство сильнее родового; пустое имя сохраняет базовый шрифт.
-    if let Some(family) = font_style.font_family.as_ref().filter(|f| !f.is_empty()) {
-        // Имя из разметки может быть придуманным (`@font-face`) — система
-        // шрифтов знает файл под его собственным именем. Лиц у имени бывает
-        // несколько, и нужное выбирает ширина начертания (§font-matching).
-        font.family = crate::text::fonts::alias_for(family, style, vcx)
-            .unwrap_or_else(|| family.clone())
-            .into();
-    } else if font_style.monospace == Some(true) {
-        font.family =
-            crate::text::metrics::mono_family_for(style.inh.text_flow.lang.as_deref(), vcx).into();
-    }
-    // Вес и курсив — ВСЕГДА от стиля куска: `None` в слитом стиле — это
-    // обычное начертание, а не «как у базы» (база абзаца строится по
-    // первому куску, и `abc<b>def</b>ghi` набирался одним прогоном его
-    // веса — сквозной дефект по всему корпусу).
-    font.weight = FontWeight(font_style.font_weight.unwrap_or(400) as f32);
-    font.style = if font_style.italic == Some(true) {
-        FontStyle::Italic
-    } else {
-        FontStyle::Normal
-    };
-    if let Some(pct) = font_style.font_stretch {
-        font.stretch = gpui::FontStretch::from_percent(pct);
-    }
-    let features = style.used_features(vcx);
-    if !features.is_empty() {
-        font.features = gpui::FontFeatures(std::sync::Arc::new(features));
-    }
+    let base_px = f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX)));
+    let (font, font_size) = face::run_face(style, base, base_px, vcx, faces);
     // `visibility: hidden` на самом куске: место в строке он держит, а чернил
     // не даёт (§11.2). Прозрачный цвет, а не пропуск куска, — иначе поехали бы
     // ширины и переносы.
@@ -195,13 +172,6 @@ fn decorated_run(
             .map(Color::to_hsla)
             .unwrap_or(base.color)
     };
-    // Кегль куска: без него разный размер в строке собрать в один блок было
-    // нельзя (см. `single_block`).
-    let base_px = f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX)));
-    // TRANSITIONAL(cascade-7b-font-size-adjust): A03-backend после F2 должен подгонять каждый нативный fallback face; TextRun пока передаёт только размер first available face.
-    let font_size = font_style
-        .font_size
-        .map(|_| gpui::px(style.used_font(base_px, vcx).size_px));
     TextRun {
         len: text.len(),
         font,
