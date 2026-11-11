@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workspace embedding example</title>
+  <style>
+    [hidden] { display: none !important; }
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; display: grid; grid-template-columns: 1fr 22rem; height: 100vh; }
+    main, aside { padding: 1rem; overflow: auto; }
+    aside { border-left: 1px solid #ccc; }
+    #transcript { white-space: pre-wrap; font-family: ui-monospace, monospace; }
+    form { display: flex; gap: .5rem; margin: .5rem 0; }
+    textarea { flex: 1; min-height: 3rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <form id="sign-in">
+      <input id="user" placeholder="User" value="demo" autocomplete="username">
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+      <button>Sign in</button>
+    </form>
+    <p id="state" role="status">Signed out.</p>
+    <form id="prompt" hidden>
+      <textarea id="text" placeholder="Ask the agent"></textarea>
+      <button>Send</button>
+      <button id="stop" type="button">Stop</button>
+    </form>
+    <div id="transcript"></div>
+  </main>
+  <aside>
+    <h2>Preview state</h2>
+    <pre id="preview">none</pre>
+  </aside>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

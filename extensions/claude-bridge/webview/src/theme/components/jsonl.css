@@ -244,28 +244,22 @@
   color: var(--text-secondary); margin: 8px 0;
 }
 
+/* Thinking reads as ordinary message text (.block-text inside); only the
+ * left rule and the lightbulb in the gutter set it apart from the answer. */
 .block-thinking {
-  margin: 4px 12px; border-left: 4px solid var(--bg-overlay);
-  border-radius: 0 var(--radius-xs) var(--radius-xs) 0; overflow: hidden;
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 4px 0; padding-left: 10px;
+  border-left: 4px solid var(--bg-overlay);
 }
-.block-thinking .thinking-toggle {
-  padding: 6px 10px; cursor: pointer; display: flex;
-  align-items: center; gap: 6px; font-size: var(--fs-sm);
-  color: var(--text-muted); background: var(--bg-sidebar);
-  transition: background 0.15s;
+.block-thinking .thinking-mark {
+  flex: none; padding-top: 6px;
+  font-size: var(--fs-sm); color: var(--accent-yellow);
+  line-height: calc(var(--fs-md) * var(--lh-relaxed));
 }
-.block-thinking .thinking-toggle:hover { background: var(--bg-mantle); }
-.block-thinking .thinking-toggle .arrow {
-  transition: transform 0.2s; font-size: var(--fs-10);
+.block-thinking .block-text {
+  flex: 1; min-width: 0; padding-bottom: 6px;
+  overflow-wrap: anywhere;
 }
-.block-thinking.expanded .thinking-toggle .arrow { transform: rotate(90deg); }
-.block-thinking .thinking-content {
-  display: none; padding: 8px 10px; font-size: var(--fs-base);
-  font-style: italic; color: var(--text-disabled); line-height: var(--lh-base);
-  max-height: 300px; overflow-y: auto;
-  white-space: pre-wrap; word-break: break-word;
-}
-.block-thinking.expanded .thinking-content { display: block; }
 
 .block-tool-use {
   margin: 6px 12px; border: 1px solid var(--bg-surface);

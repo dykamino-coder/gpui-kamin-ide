@@ -1,26 +1,22 @@
 import type { JSX } from 'preact'
-import { useState } from 'preact/hooks'
-import { escapeHtml } from './utils'
+import { JsonlTextBlock } from './JsonlTextBlock'
 
-export function ThinkingBlock({ thinking }: { thinking: string }): JSX.Element | null {
-  // Хук ДО раннего return (rules of hooks): пустой thinking, ставший
-  // непустым в том же mounted-инстансе, раньше сдвигал порядок хуков.
-  const [expanded, setExpanded] = useState(false)
+/** Model thinking, drawn as ordinary readable message text: the same markdown
+ *  renderer and typography as the answer, full width, never truncated. The
+ *  lightbulb in the gutter is the only thing that tells it apart from the
+ *  answer — there is no "Thinking" label and nothing to expand.
+ *
+ *  Thinking with no text (signature only / stripped) draws nothing, so a
+ *  lightbulb never stands alone; `redacted_thinking` keeps its own compact
+ *  fallback in ContentBlocks. */
+export function ThinkingBlock(
+  { thinking, isStreaming }: { thinking: string; isStreaming?: boolean },
+): JSX.Element | null {
   if (!thinking || !thinking.trim()) return null
-  const preview = thinking.slice(0, 80).replace(/\n/g, ' ')
-
   return (
-    <div class={`block-thinking ${expanded ? 'expanded' : ''}`}>
-      <div class="thinking-toggle" onClick={() => setExpanded(!expanded)}>
-        <span class="arrow">&#9654;</span>
-        {' '}
-        <i class="fas fa-lightbulb" style="font-size:10px;color:var(--accent-yellow)" />
-        {' '}Thinking{' '}
-        <span style="color:var(--text-disabled);font-size:10px;margin-left:4px">
-          {escapeHtml(preview)}{(thinking || '').length > 80 ? '...' : ''}
-        </span>
-      </div>
-      <div class="thinking-content">{thinking || ''}</div>
+    <div class="block-thinking">
+      <i class="fas fa-lightbulb thinking-mark" role="img" aria-label="Thinking" title="Thinking" />
+      <JsonlTextBlock text={thinking} isStreaming={isStreaming} />
     </div>
   )
 }

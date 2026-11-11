@@ -125,6 +125,22 @@ export async function createMcpTask(
   return { ...taskView(task), resultType: 'task' }
 }
 
+/** Stops a task the user interrupted: an undelivered one never starts, a
+ *  delivered one is cancelled on the client host (the drain loop repeats the
+ *  cancel until the client settles it). */
+export async function cancelMcpTask(session: PtySession, taskId: string): Promise<void> {
+  const owner = session.mcpEndpoint?.id
+  if (!owner) return
+  const task = await mcpTasks.update(owner, taskId, (record) => {
+    record.cancelRequested = true
+    if (!record.delivered) {
+      record.status = 'cancelled'
+      record.input = {}
+    }
+  })
+  if (task?.status === 'working') sendToClient(session.ws, { type: 'mcp:cancel', requestId: taskId, taskOwner: owner })
+}
+
 /** Waits up to `graceMs` for a task to leave `working`; returns the latest record. */
 export async function awaitMcpTask(
   owner: string,

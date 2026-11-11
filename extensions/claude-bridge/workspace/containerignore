@@ -12,6 +12,9 @@
 !extensions/claude-bridge/workspace/**
 !extensions/claude-bridge/webview
 !extensions/claude-bridge/webview/**
+!extensions/claude-bridge/browser-client
+!extensions/claude-bridge/browser-client/src
+!extensions/claude-bridge/browser-client/src/**
 !extensions/claude-bridge/server/src/ui/src/lib/terminal-console/**
 **/node_modules
 **/dist

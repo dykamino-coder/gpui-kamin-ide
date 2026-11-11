@@ -121,7 +121,8 @@ export function capabilityInventory(base = fileURLToPath(new URL('../../', impor
     })
   }
   const all = new Set([...shared, ...desktop, ...files(path.join(base, 'extension/src')),
-    ...files(path.join(base, 'workspace/src')), ...files(path.join(base, 'webview/src'))])
+    ...files(path.join(base, 'workspace/src')), ...files(path.join(base, 'webview/src')),
+    ...files(path.join(base, 'browser-client/src'))])
   function channel(file: string, node: ts.Node | undefined): string | undefined {
     const value = literal(node)
     if (value || !node || !ts.isIdentifier(node)) return value

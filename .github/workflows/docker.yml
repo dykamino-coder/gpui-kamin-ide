@@ -291,6 +291,24 @@ jobs:
             --provenance "$CONTEXT/installer/KaminIDE_${APP_VERSION}_provenance.json" \
             --release-sha "$RELEASE_SHA"
 
+      # Embedders install these tarballs from the release by their stable names:
+      # kaminide-bridge-{workspace-host,browser-client}-<server version>.tgz.
+      # Packed before any publication so a failure cannot leave a partial release.
+      - name: Pack the embedding packages from the release commit
+        env:
+          SERVER_VERSION: ${{ needs.release-context.outputs.server_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          for package in extension workspace browser-client; do
+            npm --prefix "extensions/claude-bridge/$package" ci --no-audit --no-fund
+          done
+          node scripts/release/pack-embedding.mjs --out "$RUNNER_TEMP/embedding"
+          for name in workspace-host browser-client; do
+            test -s "$RUNNER_TEMP/embedding/kaminide-bridge-${name}-${SERVER_VERSION}.tgz"
+          done
+
       - name: Check whether the immutable version tag exists
         id: existing
         env:
@@ -431,6 +449,10 @@ jobs:
           tag="kaminide-v${APP_VERSION}"
           installer="$CONTEXT/installer/KaminIDE_${APP_VERSION}_x64-setup.exe"
           provenance="$CONTEXT/installer/KaminIDE_${APP_VERSION}_provenance.json"
+          packages=(
+            "$RUNNER_TEMP/embedding/kaminide-bridge-workspace-host-${SERVER_VERSION}.tgz"
+            "$RUNNER_TEMP/embedding/kaminide-bridge-browser-client-${SERVER_VERSION}.tgz"
+          )
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             tag_sha="$(gh api "/repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)"
             if [[ "$tag_sha" != "$RELEASE_SHA" ]]; then
@@ -447,13 +469,20 @@ jobs:
               --installer "$verify_dir/KaminIDE_${APP_VERSION}_x64-setup.exe" \
               --provenance "$verify_dir/KaminIDE_${APP_VERSION}_provenance.json" \
               --release-sha "$RELEASE_SHA"
+            # A retry adds a missing package asset and never replaces one.
+            assets="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+            for package in "${packages[@]}"; do
+              if ! grep -Fxq "$(basename "$package")" <<< "$assets"; then
+                gh release upload "$tag" "$package" --repo "$GITHUB_REPOSITORY"
+              fi
+            done
           else
             notes_file="$RUNNER_TEMP/published-release-notes.md"
             {
               printf 'Docker image: %s@%s\n\n' "$IMAGE" "$IMAGE_DIGEST"
               cat "$RUNNER_TEMP/release-notes.md"
             } > "$notes_file"
-            gh release create "$tag" "$installer" "$provenance" \
+            gh release create "$tag" "$installer" "$provenance" "${packages[@]}" \
               --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --latest=false \
               --title "KaminIDE ${APP_VERSION} / Bridge ${SERVER_VERSION}" \
               --notes-file "$notes_file"

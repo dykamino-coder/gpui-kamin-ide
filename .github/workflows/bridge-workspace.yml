@@ -11,6 +11,7 @@ on:
       - package-lock.json
       - extensions/claude-bridge/extension/**
       - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/browser-client/**
       - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
       - .github/workflows/bridge-workspace.yml
   push:
@@ -23,6 +24,7 @@ on:
       - package-lock.json
       - extensions/claude-bridge/extension/**
       - extensions/claude-bridge/webview/**
+      - extensions/claude-bridge/browser-client/**
       - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
       - .github/workflows/bridge-workspace.yml
   workflow_dispatch:
