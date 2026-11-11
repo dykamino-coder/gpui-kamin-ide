@@ -14,7 +14,9 @@
 import type { Context } from 'hono'
 import crypto from 'crypto'
 import { MODERN_MCP, TASK_EXTENSION, modernRequest, record, supportsTasks } from './mcp-modern'
-import { awaitMcpTask, createMcpTask, mcpTasks, resolveMcpEndpoint } from './mcp-tasks'
+import { awaitMcpTask, cancelMcpTask, createMcpTask, mcpTasks, resolveMcpEndpoint } from './mcp-tasks'
+import { cancelForegroundCalls, trackForegroundCall } from './mcp-foreground-calls'
+import { McpCallInterrupted } from './session-mcp-call'
 import { TASK_LIMITS, taskView } from './mcp-task-store'
 import { TaskAdmissionError, TaskPersistenceQueueError, isTaskRetentionPressure } from './mcp-task-admission'
 import { debugLog, warnLog, errorLog } from '../logging'
@@ -552,6 +554,15 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
 
     case 'notifications/initialized':
     case 'notifications/cancelled': {
+      // The CLI gave up on a request (user interrupt, its own timeout): stop the
+      // tool call that request is still waiting on (INC-2026-0096).
+      if (body.method === 'notifications/cancelled') {
+        const cancelledId = record(body.params)?.requestId
+        if (typeof cancelledId === 'string' || typeof cancelledId === 'number') {
+          const stopped = cancelForegroundCalls(session.id, cancelledId)
+          debugLog('MCP request cancelled by CLI', { sessionId, requestId: cancelledId, stopped })
+        }
+      }
       logMcpRequest(session, body.method, 'ok')
       // Notifications have no id — return 202 Accepted per MCP Streamable HTTP spec
       return new Response(null, {
@@ -671,18 +682,45 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           // makes the CLI background it and the agent wait on a notification.
           return sseStreamResponse(body.id ?? null, async () => {
             const owner = session.mcpEndpoint!.id
-            const task = await awaitMcpTask(owner, String(handle!.taskId), TASK_LIMITS.foregroundGraceMs, requestSignal)
-            if (task?.status === 'completed' && task.result) {
-              logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, Date.now() - reqStart, false)
-              return jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+            const taskId = String(handle!.taskId)
+            // An interrupt stops the command instead of leaving it as a
+            // background task nobody asked for (INC-2026-0096).
+            const interrupted = new AbortController()
+            let stopping: Promise<void> | undefined
+            const release = trackForegroundCall(session.id, body.id, () => {
+              stopping = cancelMcpTask(session, taskId).catch(() => {})
+              interrupted.abort(new McpCallInterrupted())
+            })
+            try {
+              const task = await awaitMcpTask(
+                owner,
+                taskId,
+                TASK_LIMITS.foregroundGraceMs,
+                requestSignal ? AbortSignal.any([requestSignal, interrupted.signal]) : interrupted.signal,
+              )
+              if (task?.status === 'completed' && task.result) {
+                logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, Date.now() - reqStart, false)
+                return jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+              }
+              if (task?.status === 'failed' && task.error)
+                return jsonRpcError(body.id, task.error.code, task.error.message)
+              if (stopping) {
+                await stopping
+                const reason = new McpCallInterrupted().message
+                logMcpRequest(session, `tools/call:${toolName}`, 'error', reason, Date.now() - reqStart, false)
+                return jsonRpcResponse(body.id, {
+                  content: [{ type: 'text', text: `Error: ${reason}` }],
+                  isError: true,
+                })
+              }
+              if (task?.status === 'working')
+                await mcpTasks.update(owner, task.taskId, (record) => {
+                  record.background = true
+                })
+              return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
+            } finally {
+              release()
             }
-            if (task?.status === 'failed' && task.error)
-              return jsonRpcError(body.id, task.error.code, task.error.message)
-            if (task?.status === 'working')
-              await mcpTasks.update(owner, task.taskId, (record) => {
-                record.background = true
-              })
-            return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
           })
         }
       }
@@ -694,8 +732,17 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       // legitimately take minutes show up as "The operation timed out" on
       // the client, even though our bridge happily finishes the work.
       return sseStreamResponse(body.id ?? null, async () => {
+        // A user interrupt or the CLI's `notifications/cancelled` stops the call
+        // on the client host; without it the command ran on (INC-2026-0096).
+        const interrupted = new AbortController()
+        const release = trackForegroundCall(session.id, body.id, () => interrupted.abort(new McpCallInterrupted()))
         try {
-          const result = await sendMcpCall(sessionId, toolName, toolInput, requestSignal)
+          const result = await sendMcpCall(
+            sessionId,
+            toolName,
+            toolInput,
+            requestSignal ? AbortSignal.any([requestSignal, interrupted.signal]) : interrupted.signal,
+          )
           const dur = Date.now() - reqStart
           logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, dur)
 
@@ -741,6 +788,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             isError: true,
           })
         } finally {
+          release()
           releaseInline?.()
         }
       })

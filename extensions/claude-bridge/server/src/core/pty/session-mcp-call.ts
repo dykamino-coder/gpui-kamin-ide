@@ -91,6 +91,12 @@ export function sendMcpCall(
       rejectRaw(error)
     }
     const abort = (): void => {
+      // A user interrupt carries its own wording so the tool result says the
+      // call was stopped instead of "denied" (INC-2026-0096).
+      if (signal?.reason instanceof McpCallInterrupted) {
+        interruptPendingCall(session, requestId, signal.reason.message)
+        return
+      }
       sendToClient(session.ws, { type: 'mcp:cancel', requestId })
       handleMcpDenied(requestId, 'MCP request cancelled')
     }
@@ -256,6 +262,44 @@ export function handleMcpDenied(requestId: string, reason: string): void {
   pendingMcpCalls.delete(requestId)
   debugLog('MCP call denied', { requestId, toolName: pending.toolName, reason })
   pending.reject(new Error(`Tool denied by user: ${reason}`))
+}
+
+/** Abort reason of a tool call the user stopped (Stop button or the CLI's
+ *  `notifications/cancelled`). Distinguishes an interrupt from a dropped request. */
+export class McpCallInterrupted extends Error {
+  constructor() {
+    super('Interrupted by user; the client host was told to stop this tool call')
+    this.name = 'McpCallInterrupted'
+  }
+}
+
+function interruptPendingCall(session: PtySession, requestId: string, reason: string): boolean {
+  const pending = pendingMcpCalls.get(requestId)
+  if (!pending || pending.sessionId !== session.id) return false
+  // An undelivered call is simply never sent; a delivered one is running on the
+  // client host, which kills the process tree it started for this request.
+  if (pending.delivered) sendToClient(session.ws, { type: 'mcp:cancel', requestId })
+  if (pending.timer) clearTimeout(pending.timer)
+  if (pending.retryTimer) clearInterval(pending.retryTimer)
+  pendingMcpCalls.delete(requestId)
+  // The client still reports the outcome of the stopped call; acknowledge it
+  // as settled so its outbox does not retry a result nobody waits for.
+  settledResults.set(requestId, { sessionId: session.id, expires: Date.now() + RESULT_ACK_TTL_MS })
+  if (settledResults.size > RESULT_ACK_MAX) settledResults.delete(settledResults.keys().next().value!)
+  debugLog('MCP call interrupted', { sessionId: session.id, requestId, toolName: pending.toolName })
+  pending.reject(new Error(reason))
+  return true
+}
+
+/** Stop every tool call of ONE session that is waiting for the client host.
+ *  The turn that issued them is over, so nothing will consume their results. */
+export function interruptPendingForSession(session: PtySession): number {
+  const reason = new McpCallInterrupted().message
+  let stopped = 0
+  for (const [requestId, pending] of [...pendingMcpCalls]) {
+    if (pending.sessionId === session.id && interruptPendingCall(session, requestId, reason)) stopped++
+  }
+  return stopped
 }
 
 /** Reject all pending MCP calls — used on graceful shutdown. */

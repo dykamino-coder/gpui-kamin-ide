@@ -7,6 +7,8 @@ import {
   rejectAllPending,
   rejectPendingForSession,
   handleMcpResponse,
+  interruptPendingForSession,
+  settleMcpResult,
 } from './session-mcp-call.js'
 import type { PtySession } from './types.js'
 
@@ -188,5 +190,49 @@ describe('MCP retry ownership cleanup', () => {
     expect(live.frames).toHaveLength(0)
     expect(pendingMcpCalls.size).toBe(0)
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe('INC-2026-0096: interrupt of the calls a session still waits on', () => {
+  afterEach(() => {
+    rejectAllPending('test cleanup')
+  })
+
+  it('cancels a delivered call on the client and rejects it as interrupted', async () => {
+    const live = socket()
+    const target = session(live.ws)
+    const call = sendMcpCall(target, 'Bash', { command: 'sleep 90' })
+    const requestId = JSON.parse(live.frames[0]!).requestId as string
+
+    expect(interruptPendingForSession(target)).toBe(1)
+
+    await expect(call).rejects.toThrow('Interrupted by user')
+    expect(live.frames.slice(1).map((frame) => JSON.parse(frame))).toEqual([{ type: 'mcp:cancel', requestId }])
+    expect(pendingFor(target.id)).toHaveLength(0)
+    // The client still reports its "cancelled" result; it must be acknowledged.
+    expect(settleMcpResult(target.id, { type: 'mcp:response', requestId, result: 'cancelled' })).toBe(true)
+  })
+
+  it('drops a call the client never received without sending a cancel', async () => {
+    const live = socket({ buffered: OVER_CAP })
+    const target = session(live.ws)
+    const call = sendMcpCall(target, 'Bash', { command: 'sleep 90' })
+
+    expect(interruptPendingForSession(target)).toBe(1)
+    live.ws.bufferedAmount = 0
+
+    await expect(call).rejects.toThrow('Interrupted by user')
+    expect(live.frames).toHaveLength(0)
+  })
+
+  it('leaves the calls of another session alone', () => {
+    const live = socket()
+    const target = session(live.ws)
+    void sendMcpCall(target, 'Bash', { command: 'sleep 90' }).catch(() => {})
+
+    expect(interruptPendingForSession({ ...target, id: 'another-session' })).toBe(0)
+
+    expect(onlyPending(target.id).delivered).toBe(true)
+    expect(live.frames).toHaveLength(1)
   })
 })

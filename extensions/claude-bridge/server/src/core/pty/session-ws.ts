@@ -53,6 +53,7 @@ import {
 import { settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
 import { sessionCliControl } from './session-cli-control'
+import { interruptSessionToolCalls } from './mcp-foreground-calls'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 import { replaceRegisteredTools } from './mcp-tool-notify'
@@ -319,13 +320,17 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // then SIGINT the CLI to end the turn.
           if (!authenticatedSessionId) return
           const interruptSession = getSession(authenticatedSessionId)
-          if (interruptSession && sessionCliControl(interruptSession)?.interrupt()) break
-          try {
-            getSession(authenticatedSessionId)?.streamingProxy?.interrupt()
-          } catch {
-            /* no proxy this session */
+          if (!(interruptSession && sessionCliControl(interruptSession)?.interrupt())) {
+            try {
+              getSession(authenticatedSessionId)?.streamingProxy?.interrupt()
+            } catch {
+              /* no proxy this session */
+            }
+            writeInput(authenticatedSessionId, '\x03')
           }
-          writeInput(authenticatedSessionId, '\x03')
+          // Ending the turn does not reach the client host: stop the tool calls
+          // the CLI was waiting on, after the CLI was told (INC-2026-0096).
+          if (interruptSession) interruptSessionToolCalls(interruptSession)
           break
         }
 
