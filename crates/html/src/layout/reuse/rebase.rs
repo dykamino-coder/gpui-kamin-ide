@@ -8,6 +8,7 @@
 //! values of a restyled `html`/`body` reach every block as paint-only values:
 //! the records are repainted in place, without a walk of either tree.
 
+mod handover;
 mod keys;
 
 use super::{Store, flow_blocks};
@@ -126,10 +127,7 @@ impl Store {
         }
         // The last frame wrapped blocks and none gave a record: the next would
         // wrap them again for nothing, so the run of restyles covers them.
-        let unrecorded = self.unrecorded.take();
-        let tried = !unrecorded.is_empty();
-        self.unrecorded.set(unrecorded);
-        if records.is_empty() && tried {
+        if records.is_empty() && self.tried() {
             self.restyled.set(true);
         }
         if records.is_empty() && (recorded > 0 || self.restyled.get()) {
