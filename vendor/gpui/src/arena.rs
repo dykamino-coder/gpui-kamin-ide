@@ -85,10 +85,6 @@ pub struct Arena {
     current_chunk_index: usize,
     chunk_size: NonZeroUsize,
     scope_depth: usize,
-    /// KaminIDE patch: room the last frame left in its chunks (`spare`).
-    last_room: usize,
-    /// KaminIDE patch: bytes of host bookkeeping elements of this frame (`spend_since`).
-    spent: usize,
 }
 
 impl Drop for Arena {
@@ -107,8 +103,6 @@ impl Arena {
             current_chunk_index: 0,
             chunk_size,
             scope_depth: 0,
-            last_room: 0,
-            spent: 0,
         }
     }
 
@@ -159,10 +153,6 @@ impl Arena {
     }
 
     fn force_clear(&mut self) {
-        let current = &self.chunks[self.current_chunk_index];
-        let unused = self.chunks.len() - self.current_chunk_index - 1;
-        self.last_room = current.end.addr() - current.offset.addr() + unused * self.chunk_size.get();
-        self.spent = 0;
         self.valid.set(false);
         self.valid = Rc::new(Cell::new(true));
         self.elements.clear();
@@ -173,24 +163,6 @@ impl Arena {
         self.elements.shrink_to(1024);
         self.chunks[0].reset();
         self.current_chunk_index = 0;
-    }
-
-    /// KaminIDE patch: bytes this frame may still give host bookkeeping
-    /// elements without a chunk the last frame did not need, if it builds like
-    /// the last one: the room the last frame left, less what was spent.
-    pub fn spare(&self) -> usize {
-        self.last_room.saturating_sub(self.spent)
-    }
-
-    /// KaminIDE patch: the frame's arena position (bytes into its chunks).
-    pub fn position(&self) -> usize {
-        let current = &self.chunks[self.current_chunk_index];
-        self.current_chunk_index * self.chunk_size.get() + (current.offset.addr() - current.start.addr())
-    }
-
-    /// KaminIDE patch: count the bytes since `position` as host bookkeeping.
-    pub fn spend_since(&mut self, position: usize) {
-        self.spent += self.position().saturating_sub(position);
     }
 
     #[inline(always)]

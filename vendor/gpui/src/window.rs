@@ -413,24 +413,6 @@ pub(crate) fn with_element_arena<R>(callback: impl FnOnce(&mut Arena) -> R) -> R
     result.expect("arena callback produces a result")
 }
 
-/// KaminIDE patch: bytes the frame being built may still add to the element
-/// arena for optional host bookkeeping elements (`spend_element_arena`) and
-/// stay in the chunks the last frame needed, if it builds like the last one.
-/// A host that wraps many elements to observe them (a record of a block)
-/// spreads the wraps over frames instead of growing the arena by a chunk.
-pub fn element_arena_spare() -> usize {
-    with_element_arena(|arena| arena.spare())
-}
-
-/// KaminIDE patch: build optional host bookkeeping elements `f`, counted
-/// against `element_arena_spare`.
-pub fn spend_element_arena<R>(f: impl FnOnce() -> R) -> R {
-    let start = with_element_arena(|arena| arena.position());
-    let result = f();
-    with_element_arena(|arena| arena.spend_since(start));
-    result
-}
-
 /// KaminIDE patch: private measurement storage, released on return or unwind.
 /// Returned values must not use elements allocated inside the closure: their
 /// arena generation is invalidated before returning. Nested layout callbacks
