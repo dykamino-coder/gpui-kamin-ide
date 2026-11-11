@@ -205,7 +205,7 @@ mod tests {
         let n = 4096;
         let text: String = "ab".repeat(n / 2);
         let p = Paragraph::new(
-            text.clone().into(),
+            text.into(),
             vec![],
             px(16.),
             px(20.),
