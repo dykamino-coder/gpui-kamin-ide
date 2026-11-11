@@ -5,7 +5,17 @@
 [INC-0093](runtime-issues/INC-2026-0093.md): SessionEnd from a running CLI
 (`/clear`, `/resume`) finalized the live session, and calls lost with a dead
 client socket were never redelivered after reattach. Fix merged in
-[#714](https://github.com/dykamino-coder/gpui-kamin-ide/pull/714) (`3aae2d07`); status `verify` until the lead observes the next release.
+[#714](https://github.com/dykamino-coder/gpui-kamin-ide/pull/714) (`3aae2d07`).
+
+Delivery reconciliation 2026-11-11, source `origin/main`
+`f36b0b75d7c01f3954b669b762f55c995d3a2fcc`: #714 is published in
+[KaminIDE 1.0.91](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.91)
+/ server 6.3.168 (tag commit `5f91653a`, ancestry checked). Status stays
+`verify`: the field observation has not been run. Owner: lead. Gate: on
+production sessions upgraded to 6.3.168 or newer, no `Session destroyed` on a
+running CLI and no client call hanging after a reconnect. Next artifact: a
+verification Diagnostic PR. Do not reimplement #714. Other sections of this
+overview keep their own dates and baselines.
 
 ## Browser restart persistence follow-up — 2026-11-10
 
