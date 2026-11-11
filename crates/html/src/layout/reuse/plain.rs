@@ -88,17 +88,25 @@ fn inert(e: &Element) -> bool {
 /// и сеточных коробок: их сборка читает размеры окна напрямую, а не через
 /// ограничения, чьи чтения записываются.
 pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
+    all_elements(e, |e| replayable_node(e, vcx))
+}
+
+/// Элемент `e` сам по себе не мешает повтору поддерева (`replayable`).
+pub(super) fn replayable_node(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
     use crate::style::computed::Display;
-    all_elements(e, |e| {
-        let style = e.style.used();
-        inert(e)
-            && !style.wm().vertical()
-            && !style.has_viewport_lengths(vcx)
-            && !matches!(
-                style.reset_box_layout.display,
-                Some(Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid)
-            )
-    })
+    let style = e.style.used();
+    inert(e)
+        && !style.wm().vertical()
+        && !style.has_viewport_lengths(vcx)
+        && !matches!(
+            style.reset_box_layout.display,
+            Some(Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid)
+        )
+}
+
+/// A table element (`far::replayable` admits none).
+pub(super) fn table(e: &Element) -> bool {
+    TABLE.contains(&e.tag.as_str())
 }
 
 /// Блок `e` заполняет доступную ширину (CSS 2.1 §10.3.3): `width: auto` без

@@ -9,13 +9,14 @@ fn first_content_uses_later_line_without_remeasurement_and_rejects_dirty_tree() 
     tree.disable_rounding();
     let context = || NodeContext {
         static_positions: Vec::new(),
-        measure: Rc::new(RefCell::new(node_measure(Box::new(
+        measure: Rc::new(RefCell::new(node_measure(
             |_, _, _, _, _| unreachable!(),
-        )))),
+        ))),
         layout_lines: None,
         layout_lines_x: None,
         layout_lines_x_from_right: false,
         key_slot: crate::taffy::retained::NO_SLOT,
+        keep_measure: false,
     };
     let empty = tree
         .new_leaf(taffy::Style {

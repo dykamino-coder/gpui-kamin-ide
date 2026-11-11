@@ -36,6 +36,18 @@ impl Window {
         )
     }
 
+    /// KaminIDE patch: measure content with a host measure (`CompactMeasure`), which
+    /// `keep_retained_measures` may replace by its compacted form.
+    pub fn request_measured_layout_with_measure(&mut self, style: Style, measure: impl crate::CompactMeasure) -> LayoutId {
+        self.invalidator.debug_assert_prepaint();
+        let rem_size = self.rem_size();
+        let scale_factor = self.scale_factor();
+        let scope = self.measure_scope();
+        self.layout_engine.as_mut().unwrap().request_measured_layout_with_measure(
+            style, rem_size, scale_factor, Scoped { scope, inner: measure },
+        )
+    }
+
     /// Copy a subtree for independent measurement during the current layout phase.
     pub fn snapshot_layout_measurement(&self, layout_id: LayoutId) -> crate::LayoutMeasurement {
         self.layout_engine
@@ -86,4 +98,33 @@ impl Window {
             })
     }
 
+}
+
+/// KaminIDE patch: a host measure run in the text style scope of its request.
+struct Scoped<M> {
+    scope: super::text_style_scope::MeasureScope,
+    inner: M,
+}
+
+impl<M: crate::CompactMeasure> crate::Measure for Scoped<M> {
+    fn measure(
+        &mut self,
+        known: Size<Option<Pixels>>,
+        available: Size<AvailableSpace>,
+        geometry: crate::MeasuredBox,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> crate::MeasuredContent {
+        let inner = &mut self.inner;
+        self.scope.enter(window, |window| inner.measure(known, available, geometry, window, cx))
+    }
+
+    fn compacted(&mut self) -> Option<Box<dyn crate::Measure>> {
+        let inner = self.inner.compact()?;
+        Some(Box::new(Scoped { scope: self.scope.clone(), inner }))
+    }
+
+    fn prepare(&mut self) {
+        self.inner.prepare();
+    }
 }

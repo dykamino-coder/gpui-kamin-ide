@@ -545,6 +545,33 @@ impl FrameCache {
     }
 }
 
+thread_local! {
+    /// KaminIDE patch: see [`with_layouts_released`].
+    static LAYOUTS_RELEASED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(crate) fn layouts_released() -> bool {
+    LAYOUTS_RELEASED.with(|released| released.get())
+}
+
+/// KaminIDE patch: exchange the release scope with `released` (deferred
+/// paint runs in the scope it was captured in, `PaintCtx`).
+pub(crate) fn swap_layouts_released(released: &mut bool) {
+    *released = LAYOUTS_RELEASED.with(|scope| scope.replace(*released));
+}
+
+/// KaminIDE patch: run `f` with the line layouts it looks up released from
+/// the frame caches: a hit is handed out and dropped from the cache, a miss
+/// is not cached. For paint that the next frames will not repeat (a host
+/// that keeps a block's layout and stops painting it), so its shaped lines
+/// do not outlive the paint by a frame.
+pub(crate) fn with_layouts_released<R>(f: impl FnOnce() -> R) -> R {
+    let outer = LAYOUTS_RELEASED.with(|released| released.replace(true));
+    let result = f();
+    LAYOUTS_RELEASED.with(|released| released.set(outer));
+    result
+}
+
 #[derive(Clone, Default, PartialEq)]
 pub(crate) struct LineLayoutIndex {
     font_generation: usize,
@@ -725,11 +752,18 @@ impl LineLayoutCache {
 
         let current_frame = self.current_frame.upgradable_read();
         if let Some(layout) = current_frame.wrapped_lines.get(key) {
-            return layout.clone();
+            let layout = layout.clone();
+            if layouts_released() {
+                RwLockUpgradableReadGuard::upgrade(current_frame).wrapped_lines.remove(key);
+            }
+            return layout;
         }
 
         let previous_frame_entry = self.previous_frame.lock().wrapped_lines.remove_entry(key);
         if let Some((key, layout)) = previous_frame_entry {
+            if layouts_released() {
+                return layout;
+            }
             let mut current_frame = RwLockUpgradableReadGuard::upgrade(current_frame);
             current_frame
                 .wrapped_lines
@@ -756,6 +790,9 @@ impl LineLayoutCache {
                 wrap_boundaries,
                 wrap_width,
             });
+            if layouts_released() {
+                return layout;
+            }
             let key = Arc::new(CacheKey {
                 text,
                 font_size,
@@ -818,12 +855,19 @@ impl LineLayoutCache {
         if let Some(layout) = current_frame.lines.get(key) {
             // KaminIDE patch (#76): счётчики кэша шейпинга.
             crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return layout.clone();
+            let layout = layout.clone();
+            if layouts_released() {
+                RwLockUpgradableReadGuard::upgrade(current_frame).lines.remove(key);
+            }
+            return layout;
         }
 
         let mut current_frame = RwLockUpgradableReadGuard::upgrade(current_frame);
         if let Some((key, layout)) = self.previous_frame.lock().lines.remove_entry(key) {
             crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if layouts_released() {
+                return layout;
+            }
             current_frame.lines.insert(key.clone(), layout.clone());
             current_frame.used_lines.push(key);
             layout
@@ -883,6 +927,9 @@ impl LineLayoutCache {
                 }
             }
 
+            if layouts_released() {
+                return Arc::new(layout);
+            }
             let key = Arc::new(CacheKey {
                 text,
                 font_size,
