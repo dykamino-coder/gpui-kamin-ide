@@ -49211,7 +49211,8 @@ function removeMarketplace(name) {
   const known = readKnownMarketplaces();
   const entry = known[name];
   if (entry) {
-    if (entry.installLocation && import_fs30.default.existsSync(entry.installLocation)) {
+    const ownsFiles = entry.source?.source !== "directory";
+    if (ownsFiles && entry.installLocation && import_fs30.default.existsSync(entry.installLocation)) {
       import_fs30.default.rmSync(entry.installLocation, { recursive: true, force: true });
     }
     delete known[name];

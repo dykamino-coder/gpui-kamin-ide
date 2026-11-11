@@ -66,7 +66,7 @@ client.submitPrompt(tab, 'Build a landing page with a form')
 | `plugins.onMarketplaceUpdated()`, `plugins.onBrowseProgress()`, `plugins.onHooksAwaitingApproval()` | events `marketplace-updated`, `plugins:browse-progress`, `plugin-hooks-pending-approval` |
 | `hooks.list()`, `hooks.listAll(cwd?)`, `hooks.save(draft)`, `hooks.remove(event, matcherIdx, handlerIdx)`, `hooks.test(draft)` | invoke `hooks:list`, `hooks:list-all`, `hooks:save`, `hooks:delete`, `hooks:test` |
 | `hooks.library()`, `hooks.installTemplate(id)` | invoke `hooks:library`, `hooks:install-template` |
-| `hooks.pendingPluginApprovals()`, `hooks.pluginApproval(id)`, `hooks.setPluginApproval(id, hashes)` | invoke `hooks:pending-plugin-approvals`, `hooks:get-plugin-approval`, `hooks:set-plugin-approval` |
+| `hooks.pendingPluginApprovals()`, `hooks.pluginApproval(id)`, `hooks.setPluginApproval(id, hashes)` | invoke `hooks:list-pending-plugin-approvals`, `hooks:get-plugin-approval`, `hooks:set-plugin-approval` |
 | `invoke(channel, ...args)`, `send(...)`, `on(...)` | any channel of the KaminIDE bridge API |
 | `preview.state()`, `preview.onState()` | event `workspace:preview-state` |
 | `preview.fetchState()`, `preview.unmount()` | `GET /preview/state`, `POST /preview/unmount` |
@@ -152,6 +152,9 @@ embedding deployment decides what persists by what it mounts.
   `saveOptions` return `{ ok, restartRequired }`: open sessions pick the
   change up after a restart. `options(id)` returns the plugin's `userConfig` schema
   with stored values; values of `sensitive` fields are never returned.
+  `removeMarketplace` deletes the host's clone of a git marketplace and the
+  plugins installed from it; a directory marketplace is only forgotten, the
+  folder stays.
 - **Hooks**: `list()` is the user settings by event; `listAll(cwd?)` is every
   hook that applies (user, project, local, plugin) with its `source` and
   `editable`. `save({ event, matcher, handler, index? })` appends, or replaces
@@ -160,7 +163,8 @@ embedding deployment decides what persists by what it mounts.
   output. Plugin hooks run only after approval: `pendingPluginApprovals()` /
   `onHooksAwaitingApproval` give the hashes to pass to `setPluginApproval`;
   `pluginApproval(id).hashes` may also hold the host's own `reviewed:<hash>`
-  bookkeeping entries.
+  bookkeeping entries, and `approved` only says that an approval is stored:
+  compare `hashes` with the pending ones.
 
 Not included, with the reason:
 
@@ -171,6 +175,7 @@ Not included, with the reason:
 | `mcp:oauth-connect` | Opens the sign-in page in a browser on the host and waits for the redirect on a loopback port of the host, which an embedded page cannot reach. `oauthStatus` and `oauthDisconnect` work. |
 | events `mcp:loading`, `mcp:ready` | Declared but never sent by the host; use `mcp.ready()`. |
 | `plugins:set-marketplace-auth`, `plugins:set-marketplace-autoupdate` | Served by the host and reachable through `invoke`; not typed here. |
+
 ## Preview
 
 ```ts
