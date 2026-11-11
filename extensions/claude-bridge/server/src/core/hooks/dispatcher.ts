@@ -13,6 +13,7 @@ import { getHook } from './registry'
 import type { HookExecutionResult, HookInputPayload, RegisteredHook } from './types'
 import { debugLog, warnLog } from '../logging'
 import { appendExecution } from './audit-log'
+import { payloadForHook } from './tool-names'
 
 // Match Claude Code's DEFAULT_HTTP_HOOK_TIMEOUT_MS = 10 * 60 * 1000.
 // Long-running hooks (formatters, test runners) need this room.
@@ -25,12 +26,50 @@ interface PendingHookExec {
 }
 const pendingLocalExecs: Map<string, PendingHookExec> = new Map()
 
+/** How long a local hook waits for a dropped client to reattach before it is
+ * given up. The client retries after 1 s and then 2 s, so this covers its
+ * first two attempts without holding a turn for long. */
+export const LOCAL_HOOK_REATTACH_WAIT_MS = 5000
+const REATTACH_POLL_MS = 100
+
+/** The client socket of a session: a fixed socket, or a reader of the current
+ * one. Only a reader can observe a reattach, so only a reader waits. */
+export type ClientWsSource = WS | null | (() => WS | null)
+
+/** Sessions whose absent client was already reported. Further local hooks of
+ * the same disconnect are skipped without a console line. */
+const absentClientReported: Set<string> = new Set()
+
+/** Sessions whose reattach wait already ran out. Reporting and waiting are
+ * tracked apart: a hook lost in flight reports the disconnect, and the next
+ * hook still gets its one bounded wait for the client to come back. */
+const reattachGivenUp: Set<string> = new Set()
+
+function openClientWs(source: ClientWsSource): WS | null {
+  const ws = typeof source === 'function' ? source() : source
+  return ws?.readyState === 1 ? ws : null
+}
+
+async function waitForReattach(sessionId: string, source: ClientWsSource): Promise<WS | null> {
+  if (typeof source !== 'function' || reattachGivenUp.has(sessionId)) return null
+  // The wait ends before the hook is sent, never after: a command that was
+  // sent may already have had its side effect and is not sent again.
+  const deadline = Date.now() + LOCAL_HOOK_REATTACH_WAIT_MS
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, REATTACH_POLL_MS))
+    const ws = openClientWs(source)
+    if (ws) return ws
+  }
+  reattachGivenUp.add(sessionId)
+  return null
+}
+
 /** Dispatch a webhook payload to its handler's runtime location. */
 export async function dispatchHook(
   sessionId: string,
   hookId: string,
   payload: HookInputPayload,
-  ws: WS | null,
+  wsSource: ClientWsSource,
   auditTokenId?: string,
 ): Promise<HookExecutionResult> {
   const reg = getHook(sessionId, hookId)
@@ -38,13 +77,27 @@ export async function dispatchHook(
     return errorResult(`Unknown hook ${hookId} for session ${sessionId}`)
   }
   const start = Date.now()
+  payload = payloadForHook(reg.matcher, payload)
   let result: HookExecutionResult
+  let auditNote: string | undefined
   try {
     if (reg.effectiveHost === 'local') {
-      if (!ws) {
-        result = errorResult('No active client-host WS — local hook unavailable', start, reg)
-      } else {
+      // An open socket is used at once, in the same tick as before.
+      const ws = openClientWs(wsSource) ?? (await waitForReattach(sessionId, wsSource))
+      if (ws) {
+        absentClientReported.delete(sessionId)
+        reattachGivenUp.delete(sessionId)
         result = await dispatchLocal(reg, payload, ws)
+      } else if (absentClientReported.has(sessionId)) {
+        auditNote = 'Skipped: client host is still disconnected'
+        result = { stdout: '', stderr: '', exitCode: 0, outcome: 'cancelled', durationMs: Date.now() - start }
+      } else {
+        absentClientReported.add(sessionId)
+        result = errorResult(
+          'Client-host WS is not open — local hooks are skipped until the client reconnects',
+          start,
+          reg,
+        )
       }
     } else if (reg.effectiveHost === 'server') {
       result = await dispatchServer(reg, payload, start)
@@ -74,7 +127,7 @@ export async function dispatchHook(
     exitCode: result.exitCode,
     durationMs: result.durationMs,
     stdoutPreview: result.stdout ? result.stdout.slice(0, 256) : undefined,
-    stderrPreview: result.stderr ? result.stderr.slice(0, 256) : undefined,
+    stderrPreview: (auditNote ?? result.stderr)?.slice(0, 256) || undefined,
   })
   return result
 }
@@ -99,7 +152,11 @@ async function dispatchLocal(reg: RegisteredHook, payload: HookInputPayload, ws:
       ws.off('error', disconnected)
       resolve(result)
     }
-    const disconnected = () => finish(errorResult('Client-host WS disconnected during local hook', start, reg))
+    const disconnected = () => {
+      // This line is the report of the disconnect; later hooks stay quiet.
+      absentClientReported.add(reg.sessionId)
+      finish(errorResult('Client-host WS disconnected during local hook', start, reg))
+    }
     const timer = setTimeout(() => {
       finish({
         stdout: '',
@@ -153,6 +210,8 @@ export function handleLocalHookResponse(requestId: string, result: HookExecution
 
 /** Cancel any pending local execs for a session (called on PTY teardown). */
 export function cancelSessionLocalExecs(sessionId: string): void {
+  absentClientReported.delete(sessionId)
+  reattachGivenUp.delete(sessionId)
   for (const p of pendingLocalExecs.values()) {
     if (p.sessionId !== sessionId) continue
     p.resolve({

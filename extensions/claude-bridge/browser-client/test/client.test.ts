@@ -135,6 +135,18 @@ test('chat controls, prompts, subagents and monitors map onto the host channels'
   const file = client.saveAttachment('BBBB', 'notes.txt')
   assert.deepEqual(reply('save-dropped-file', '/workspace/.bridge-uploads/b/notes.txt'), ['BBBB', 'notes.txt'])
   assert.equal(await file, '/workspace/.bridge-uploads/b/notes.txt')
+  const made = client.files.createDirectory('assets/icons')
+  const directory = { created: true, path: '/workspace/assets/icons', mtimeMs: 5 }
+  assert.deepEqual(reply('file-tree:create-dir', directory), ['assets/icons'])
+  assert.deepEqual(await made, directory)
+  const again = client.files.createDirectory('assets/icons')
+  reply('file-tree:create-dir', { ...directory, created: false })
+  assert.equal((await again).created, false)
+  // A host error rejects with the host's message, code first, as for rename.
+  const orphan = client.files.createDirectory('missing/child')
+  const refused = socket.sent.filter(sent => sent.channel === 'file-tree:create-dir').at(-1)
+  socket.push({ kind: 'invoke-reply', id: refused.id, generation: refused.generation, ok: false, error: "ENOENT: no such file or directory, mkdir '/workspace/missing/child'" })
+  await assert.rejects(orphan, /^Error: ENOENT: /)
   const saved = client.savedSessions()
   reply('session:get-saved', [{ conversationId: 'c1', cwd: '/workspace', label: 'Landing' }])
   assert.equal((await saved)[0].conversationId, 'c1')
@@ -275,5 +287,33 @@ test('sign-in loss rejects connect waiters and the next connect opens a new sock
   assert.equal(host.sockets.length, 2)
   host.sockets[1].open()
   await second
+  client.disconnect()
+})
+
+test('a host that accepts the upgrade and closes with 4001 ends the reconnect loop', async () => {
+  const host = fakeHost()
+  const client = createBridgeClient(options(host))
+  const states: string[] = []
+  client.onConnectionState(state => { states.push(state) })
+  const first = client.connect()
+  host.sockets[0].open()
+  await first
+  // Host restart: the socket drops, the retry is accepted and closed with 4001.
+  host.sockets[0].drop(1006)
+  await new Promise(resolve => setTimeout(resolve, 400))
+  assert.equal(host.sockets.length, 2)
+  host.sockets[1].open()
+  host.sockets[1].drop(4001)
+  assert.equal(client.connectionState, 'authentication-required')
+  assert.deepEqual(states, ['connecting', 'connected', 'offline', 'connecting', 'connected', 'authentication-required'])
+  assert.throws(() => client.send('workspace:sync'), /disconnected/)
+  // Longer than the first backoff steps: no further socket is opened.
+  await new Promise(resolve => setTimeout(resolve, 1200))
+  assert.equal(host.sockets.length, 2)
+  assert.equal(client.connectionState, 'authentication-required')
+  const again = client.connect()
+  assert.equal(host.sockets.length, 3)
+  host.sockets[2].open()
+  await again
   client.disconnect()
 })

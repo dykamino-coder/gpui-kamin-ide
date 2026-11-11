@@ -556,3 +556,21 @@ The height parameter caps the frame with scrolling; omit it for natural height.`
  *  picks it up to deny the matching CLI native (so the model uses our MCP
  *  version instead of the CLI's own implementation). */
 export const MCP_TOOL_NAMES: readonly string[] = MCP_TOOLS.map((t) => t.name)
+
+/** Bridge MCP tools with no native counterpart: denying their names blocks
+ *  nothing, and Claude Code (2.1.304+) prints "Deny rule X matches no tool ·
+ *  check for typos" for each one at startup. Only names that shadow a native
+ *  tool are denied. */
+export const BRIDGE_ONLY_MCP_TOOLS: ReadonlySet<string> = new Set([
+  'ShowWidget',
+  'TodoList',
+  'LspDiagnostics',
+  'LspHover',
+  'LspDefinition',
+  'LspReferences',
+])
+
+/** Bridge tools that replace the native tool of the same name. */
+export const NATIVE_REPLACED_TOOL_NAMES: readonly string[] = MCP_TOOL_NAMES.filter(
+  (name) => !BRIDGE_ONLY_MCP_TOOLS.has(name),
+)

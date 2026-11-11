@@ -121,21 +121,23 @@ export type HookSettings = Partial<Record<HookEvent, HookMatcher[]>>
  *  inserted into the proxy URL so an incoming webhook can be matched back to
  *  its original handler. */
 export interface RegisteredHook {
-  id: string                  // uuid, unique per (session, event, handler) tuple
+  id: string // uuid, unique per (session, event, handler) tuple
   sessionId: string
   event: HookEvent
   matcher?: string
   handler: HookHandler
   source: HookSource
-  effectiveHost: 'local' | 'server' | 'http'  // resolved from handler.host + defaults
+  effectiveHost: 'local' | 'server' | 'http' // resolved from handler.host + defaults
 }
 
 export type HookSource =
-  | { kind: 'user' }
-  | { kind: 'project'; projectPath: string }
+  // `client` marks settings uploaded by the client's sync: their commands
+  // name programs and files of the client host, not of the container.
+  | { kind: 'user'; client?: true }
+  | { kind: 'project'; projectPath: string; client?: true }
   | { kind: 'plugin'; pluginId: string; manifestPath: string }
   | { kind: 'library'; templateId: string }
-  | { kind: 'bridge' }                            // bridge-emit defaults
+  | { kind: 'bridge' } // bridge-emit defaults
 
 /** What an incoming webhook from CLI carries (per Claude Code hook input
  *  spec — the JSON written to hook's stdin OR posted as JSON body for http

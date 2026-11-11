@@ -22,6 +22,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { spawn, type ChildProcess } from 'child_process'
+import { resolveWorkingDirectory } from './utils/working-directory'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import {
   listEnabledInstalledPlugins,
@@ -177,7 +178,7 @@ function substituteAll(
   }
   let out = str
   out = out.replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot)
-  out = out.replace(/\$\{CLAUDE_PROJECT_DIR\}/g, projectCwd || os.homedir())
+  out = out.replace(/\$\{CLAUDE_PROJECT_DIR\}/g, resolveWorkingDirectory(projectCwd))
   if (pluginId && out.includes('${CLAUDE_PLUGIN_DATA}')) {
     const dataDir = path.join(os.homedir(), '.claude', 'plugins', 'data', pluginId.replace(/[^a-zA-Z0-9\-_]/g, '-'))
     try { fs.mkdirSync(dataDir, { recursive: true }) } catch { /* best effort */ }
@@ -326,11 +327,11 @@ export async function startMonitorsForTab(
         monitorName,
         description,
         command,
-        cwd: projectCwd || os.homedir(),
+        cwd: resolveWorkingDirectory(projectCwd),
         env: Object.fromEntries([
           ['CLAUDE_PLUGIN_ROOT', pluginRoot],
           ['CLAUDE_PLUGIN_DATA', pluginDataDir],
-          ['CLAUDE_PROJECT_DIR', projectCwd || os.homedir()],
+          ['CLAUDE_PROJECT_DIR', resolveWorkingDirectory(projectCwd)],
         ]),
         notifyClaude: notifyClaude ? (line) => notifyClaude(plugin.key, monitorName, line) : undefined,
         pendingNotifications: [],
@@ -451,11 +452,11 @@ export async function handleMonitorTriggerCommand(tabId: string, command: string
     monitorName,
     description: typeof declaration.description === 'string' ? declaration.description : '',
     command: resolvedCommand,
-    cwd: tabContext.projectCwd || os.homedir(),
+    cwd: resolveWorkingDirectory(tabContext.projectCwd),
     env: Object.fromEntries([
       ['CLAUDE_PLUGIN_ROOT', plugin.installPath],
       ['CLAUDE_PLUGIN_DATA', pluginDataDir],
-      ['CLAUDE_PROJECT_DIR', tabContext.projectCwd || os.homedir()],
+      ['CLAUDE_PROJECT_DIR', resolveWorkingDirectory(tabContext.projectCwd)],
     ]),
     notifyClaude: tabContext.notifyClaude ? (line) => tabContext.notifyClaude!(plugin.key, monitorName, line) : undefined,
     pendingNotifications: [],
