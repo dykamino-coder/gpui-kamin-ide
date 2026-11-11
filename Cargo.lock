@@ -3891,6 +3891,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kamin-jobrun"
+version = "1.0.93"
+dependencies = [
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "kamin-metrics"
 version = "1.0.93"
 

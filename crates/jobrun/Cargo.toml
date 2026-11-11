@@ -1,0 +1,23 @@
+[package]
+name = "kamin-jobrun"
+version.workspace = true
+edition.workspace = true
+
+# Runs one command inside its own Windows Job Object, so that stopping the
+# runner stops every process the command started (INC-2026-0096). The Bridge
+# extension host is Node and cannot create a Job Object itself.
+[[bin]]
+name = "kamin-jobrun"
+path = "src/main.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Security",            # SECURITY_ATTRIBUTES in CreateJobObjectW
+  "Win32_System_Environment",  # GetCommandLineW
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",    # GetCurrentProcess, IO_COUNTERS in the limit struct
+] }
+
+[lints]
+workspace = true
