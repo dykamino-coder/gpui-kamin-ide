@@ -19,6 +19,7 @@ mod frame;
 mod inline;
 mod position;
 mod ruby;
+pub(crate) mod run_faces;
 pub(crate) mod scope;
 mod scroll;
 pub(crate) mod subtree;

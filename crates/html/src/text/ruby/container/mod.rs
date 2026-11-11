@@ -50,7 +50,12 @@ pub(crate) fn ruby_container_atom(
     // Полулидинг базы: стопка стоит на краю её коробки строки.
     let base_half = {
         let size = merged.used_font(opts.base_size(), vcx).size_px;
-        let font = crate::text::inline::strut_font(&merged, &opts.text, opts.cx.vcx());
+        let font = crate::text::inline::strut_font(
+            &merged,
+            &opts.text,
+            opts.cx.vcx(),
+            opts.cx.layout().run_faces.active(),
+        );
         let (asc, desc) =
             crate::text::metrics::font_extents(&font, size, opts.cx.text_fonts(), vcx);
         let line = merged.numeric_line_px(opts.base_size()).unwrap_or_else(|| {

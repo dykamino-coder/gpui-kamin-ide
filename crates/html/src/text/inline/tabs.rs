@@ -39,7 +39,7 @@ pub fn tab_stops(
             ""
         }
     });
-    let font = super::strut_font(block, base, vcx);
+    let font = super::strut_font(block, base, vcx, None);
     let space = metrics::space_advance(&font, size, fonts)
         .unwrap_or_else(|| metrics::ch_ex_px(family, size, fonts, vcx).0)
         + metrics::spacing_px(block.inh.text_flow.letter_spacing, family, size, vcx)

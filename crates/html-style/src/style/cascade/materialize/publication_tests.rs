@@ -67,6 +67,40 @@ fn restyle_replaces_publication_and_preserves_retained_reader() {
 }
 
 #[test]
+fn parent_edit_rematerializes_descendants_and_retains_the_unchanged_branch() {
+    let parsed = crate::dom::parse(
+        r#"<style>section,article{font-size:10px}i{width:2em}</style>
+        <section style="opacity:.2"><i>x</i></section>
+        <article style="opacity:.8"><i>y</i></article>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    let root = Rc::new(Computed::default());
+    materialize(&parsed.nodes, &root, vcx);
+    let section = element(&parsed.nodes, "section");
+    let article = element(&parsed.nodes, "article");
+    let (_, parent) = section.style.slot().with_parent().unwrap();
+    let before = element(&section.children, "i").style.published().unwrap();
+    let untouched = element(&article.children, "i").style.published().unwrap();
+    let mut edited = section.clone();
+    edited.style.cascaded_mut().inh.font.font_size = Some(Len::Px(20.0));
+    let nodes = [Node::Element(edited), Node::Element(article.clone())];
+    materialize(&nodes, &parent, vcx);
+    let after = element(&element(&nodes, "section").children, "i")
+        .style
+        .published()
+        .unwrap();
+    let retained = element(&element(&nodes, "article").children, "i")
+        .style
+        .published()
+        .unwrap();
+    assert_eq!(before.reset_box_layout.width, Some(Len::Px(20.0)));
+    assert_eq!(after.reset_box_layout.width, Some(Len::Px(40.0)));
+    assert!(untouched.ptr_eq(&retained));
+    assert!(!materialize_changed(&nodes, &parent, vcx));
+}
+
+#[test]
 fn inherited_explicit_and_environment_inputs_control_cache_misses() {
     let parsed = crate::dom::parse(
         r#"<body style="font-size:20px;padding-left:3px"><p>x</p><span style="padding-left:inherit">x</span></body>"#,
