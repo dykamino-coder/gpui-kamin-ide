@@ -124,12 +124,18 @@ impl Store {
         if records.len() < recorded {
             self.restyled.set(true);
         }
-        if records.is_empty() {
-            // No record holds (or none was made yet): the store starts over as
-            // a fresh document's, whose flow keys do not hold the previous
-            // `html`/`body` boxes. A carried key alone would make the rebuild's
-            // own frame, the costliest one, wrap every block for recording,
-            // where a fresh document waits for its next unchanged build.
+        // The last frame wrapped blocks and none gave a record: the next would
+        // wrap them again for nothing, so the run of restyles covers them.
+        let tried = !self.unrecorded.borrow().is_empty();
+        if records.is_empty() && tried {
+            self.restyled.set(true);
+        }
+        if records.is_empty() && (recorded > 0 || self.restyled.get()) {
+            // No record holds: the store starts over as a fresh document's,
+            // whose flow keys do not hold the previous `html`/`body` boxes.
+            // With no record made or tried yet the key is carried instead:
+            // the rebuild's own frame records the blocks, so that the first
+            // restyle after a load already serves the second.
             self.start_over();
             return;
         }

@@ -47,12 +47,34 @@ fn a_rebuild_keeps_the_flow_key_without_the_previous_root_boxes(cx: &mut TestApp
 }
 
 #[gpui::test]
-fn a_rebuild_without_records_drops_the_previous_root_boxes(cx: &mut TestAppContext) {
+fn a_first_restyle_carries_the_flow_key_and_records_in_its_own_frame(cx: &mut TestAppContext) {
     let (view, cx) = open(cx, &page("", "row"));
     frame(cx);
     let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
     assert_eq!(store.key_holds_boxes(), Some(true));
     let html = page("paint", "row");
+    cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&html, "").unwrap()));
+    // No record was made or tried yet: the key is carried, without the boxes.
+    assert_eq!(
+        store.key_holds_boxes(),
+        Some(false),
+        "the flow key held the previous html/body boxes over the rebuild"
+    );
+    let tracked = cx.update(|_, cx| view.read(cx).doc.tracked_blocks());
+    frame(cx);
+    // The rebuild's own frame records the blocks for the next restyle.
+    let wrapped = cx.update(|_, cx| view.read(cx).doc.tracked_blocks()) - tracked;
+    assert!(wrapped > 400, "the first restyled frame wrapped {wrapped}");
+}
+
+#[gpui::test]
+fn a_rebuild_that_drops_every_record_drops_the_previous_root_boxes(cx: &mut TestAppContext) {
+    let (view, cx) = open(cx, &page("", "row"));
+    frame(cx);
+    // The first restyled frame records the rows; a new margin leaves none.
+    update(&view, cx, &page("paint", "row"));
+    let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
+    let html = page("layout", "row");
     cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&html, "").unwrap()));
     assert_eq!(
         store.key_holds_boxes(),
