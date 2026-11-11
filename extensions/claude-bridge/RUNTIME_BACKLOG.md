@@ -8,28 +8,31 @@ Delivery reconciliation 2026-11-11, source `origin/main`
 / server 6.3.169 is published (tag commit `b73bc76d`, ancestry checked). It is
 the first release that attaches the embedding packages
 `kaminide-bridge-workspace-host-6.3.169.tgz` and
-`kaminide-bridge-browser-client-6.3.169.tgz`. Publication is not acceptance:
-both cards below stay `verify`. Do not reimplement #724 or #727.
+`kaminide-bridge-browser-client-6.3.169.tgz`. Publication is not acceptance.
+Acceptance run 2026-11-11 on the released image and packages, reconciled at
+`origin/main` `1fe4cac5`: results per card below. Do not reimplement #724 or
+#727.
 
-- [INC-0095](runtime-issues/INC-2026-0095.md): plugins with a hooks module
-  reach the Bridge server's CLI with their file tree,
+- [INC-0095](runtime-issues/INC-2026-0095.md): `done`. Plugins with a hooks
+  module reach the Bridge server's CLI with their file tree,
   [#724](https://github.com/dykamino-coder/gpui-kamin-ide/pull/724)
-  (`8ea084b0`). Owner: studiohost. Gate: on a server deployed from image
-  6.3.169 or newer, a test mod installed through the client library is synced
-  through the route and its hook fires in the CLI of a new Bridge session.
-  Next artifact: a verification Diagnostic PR. Mod UI has no client channel and
-  no fix is planned.
-- [INC-0096](runtime-issues/INC-2026-0096.md): interrupt stops the running
-  tool call on the client host,
+  (`8ea084b0`). Verified 2026-11-11 on the released image 6.3.169 with the
+  released client package: a test mod installed through the client library is
+  synced and its hook fires in a new Bridge session. Mod UI has no client
+  channel and no fix is planned.
+- [INC-0096](runtime-issues/INC-2026-0096.md): `ready/change`. The server fix
   [#727](https://github.com/dykamino-coder/gpui-kamin-ide/pull/727)
-  (`54fea075`). Gate 1 (owner: next maintainer run): Linux client host against
-  the released image, 10 interrupts of a bridge Bash `sleep 90`, the process is
-  gone within 1 second. Gate 2 (KaminIDE owner's environment): the same from
-  KaminIDE on Windows, including a command with child processes. Next artifact:
-  a verification Diagnostic PR; `done` only after both gates.
-- [INC-0093](runtime-issues/INC-2026-0093.md): no new change in 1.0.92; #714
-  stays published since 1.0.91 and the field observation by the lead is still
-  not run (see the section below).
+  (`54fea075`) is verified: gate 1 passed 10 of 10 on a Linux client host
+  (process gone in 16 to 27 ms). Gate 2 failed in KaminIDE 1.0.92 on Windows:
+  the tree that `taskkill /T /F` sees exits in 1.38 to 1.65 seconds, and an
+  MSYS child (`sleep` from Git Bash) survives in 8 of 8 runs. Next artifact: a
+  client Change PR for the Windows tree stop (Job Object is the candidate),
+  then a repeat of gate 2. Owner: next maintainer run. Do not reimplement #727.
+- [INC-0093](runtime-issues/INC-2026-0093.md): stays `verify`. No new change in
+  1.0.92. A stand run on server 6.3.169 (Linux embedding client and KaminIDE
+  1.0.92 on Windows, tool calls around `/clear`, a reconnect and in-session
+  `/resume`) found no `Session destroyed`. The field observation of production
+  sessions by the lead is still not run (see the section below).
 - [INC-0094](runtime-issues/INC-2026-0094.md) stays `reported`: the embedding
   packages ship with the single-owner state model; research is the next step.
 
