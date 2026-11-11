@@ -126,7 +126,9 @@ impl Store {
         }
         // The last frame wrapped blocks and none gave a record: the next would
         // wrap them again for nothing, so the run of restyles covers them.
-        let tried = !self.unrecorded.borrow().is_empty();
+        let unrecorded = self.unrecorded.take();
+        let tried = !unrecorded.is_empty();
+        self.unrecorded.set(unrecorded);
         if records.is_empty() && tried {
             self.restyled.set(true);
         }
