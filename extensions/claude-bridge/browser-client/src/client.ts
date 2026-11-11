@@ -5,9 +5,12 @@
 import { createBrowserSocket, type BridgeSocket, type BridgeSocketLike, type ConnectionState } from './socket'
 import { createBridgeTransport, type BridgeTransport, type Dispose } from './transport'
 import type {
-  CreateTabOptions, ElicitationRequest, JsonlEntry, JsonlStatus, MonitorEvent, MonitorInfo, MonitorLine, PermissionDecision,
-  PermissionRequest, PreviewState, SavedSession, SessionActivity, SessionUsage, StreamingDelta, SubagentEntries, Tab, TabId,
-  ToolPermissionMode, UserQuestion,
+  Agent, BrowseProgress, CreatedSkill, CreateTabOptions, ElicitationRequest, HookDraft, HookEntry, HooksByEvent, HookTemplate,
+  HookTestResult, InstalledPlugin, JsonlEntry, JsonlStatus, Marketplace, MarketplacePlugin, MarketplaceRefresh, MarketplaceUpdate,
+  McpActivity, McpCallResult, McpPromptInfo, McpRegistryResult, McpResourceInfo, McpServer, McpServerInput, McpTestResult,
+  MonitorEvent, MonitorInfo, MonitorLine, PendingPluginHookApproval, PermissionDecision, PermissionRequest, PluginContents,
+  PluginOptions, PreviewState, RestartResult, SavedSession, SessionActivity, SessionUsage, Skill, StreamingDelta, SubagentEntries,
+  Tab, TabId, ToolPermissionMode, UserQuestion,
 } from './types'
 
 export interface BridgeClientOptions {
@@ -87,6 +90,79 @@ export interface BridgeClient {
     list(): Promise<MonitorInfo[]>
     log(id: string): Promise<MonitorLine[]>
     onEvent(listener: (event: MonitorEvent) => void): Dispose
+  }
+
+  /** MCP servers the workspace host connects for its sessions. */
+  readonly mcp: {
+    servers(): Promise<McpServer[]>
+    /** False until the host has finished connecting the configured servers. */
+    ready(): Promise<boolean>
+    addServer(config: McpServerInput): Promise<McpServer | null>
+    /** Null when the server is unknown, comes from a plugin or project file, or the new name is taken. */
+    updateServer(id: string, patch: Partial<McpServerInput>): Promise<McpServer | null>
+    removeServer(id: string): Promise<void>
+    setServerEnabled(id: string, enabled: boolean): Promise<void>
+    testServer(id: string): Promise<McpTestResult>
+    oauthStatus(id: string): Promise<{ connected: boolean }>
+    oauthDisconnect(id: string): Promise<{ ok: boolean }>
+    resources(id: string): Promise<McpResourceInfo[]>
+    readResource(id: string, uri: string): Promise<McpCallResult>
+    prompts(id: string): Promise<McpPromptInfo[]>
+    getPrompt(id: string, name: string, args?: Record<string, string>): Promise<McpCallResult>
+    registry(): Promise<McpRegistryResult>
+    onServersChanged(listener: (servers: McpServer[]) => void): Dispose
+    /** Tool calls the host executes for a session, as they start and finish. */
+    onActivity(listener: (tab: TabId, activity: McpActivity) => void): Dispose
+  }
+
+  readonly skills: {
+    list(): Promise<Skill[]>
+    /** Creates a project skill (user skill when the workspace has no project settings). */
+    create(name: string, content: string): Promise<CreatedSkill>
+    read(path: string): Promise<string | null>
+    /** Project and user skills only. */
+    remove(path: string): Promise<void>
+  }
+
+  readonly agents: {
+    list(): Promise<Agent[]>
+  }
+
+  readonly plugins: {
+    installed(): Promise<InstalledPlugin[]>
+    contents(pluginDir: string): Promise<PluginContents | null>
+    install(name: string, marketplace: string, pluginPath: string): Promise<void>
+    uninstall(name: string, marketplace: string): Promise<void>
+    /** `pluginId` is `<name>@<marketplace>`. */
+    setEnabled(pluginId: string, enabled: boolean): Promise<RestartResult>
+    options(pluginId: string): Promise<PluginOptions>
+    saveOptions(pluginId: string, values: Record<string, unknown>): Promise<RestartResult>
+    marketplaces(): Promise<Marketplace[]>
+    /** `source` is a git URL, `owner/repo`, or a directory inside the workspace container. */
+    addMarketplace(name: string, source: string, auth?: { username?: string; token?: string }): Promise<Marketplace>
+    removeMarketplace(name: string): Promise<void>
+    updateMarketplace(name: string): Promise<MarketplaceUpdate>
+    refreshMarketplaces(): Promise<{ ok: boolean; results: MarketplaceRefresh[] }>
+    browse(marketplace: string): Promise<MarketplacePlugin[]>
+    onMarketplaceUpdated(listener: (update: MarketplaceRefresh) => void): Dispose
+    onBrowseProgress(listener: (progress: BrowseProgress) => void): Dispose
+    onHooksAwaitingApproval(listener: (pending: PendingPluginHookApproval) => void): Dispose
+  }
+
+  readonly hooks: {
+    /** User hooks; positions in the result address save() and remove(). */
+    list(): Promise<HooksByEvent>
+    /** User, project and plugin hooks with their source. */
+    listAll(cwd?: string): Promise<HookEntry[]>
+    library(): Promise<HookTemplate[]>
+    installTemplate(templateId: string): Promise<RestartResult>
+    save(draft: HookDraft): Promise<RestartResult>
+    remove(event: string, matcherIdx: number, handlerIdx: number): Promise<RestartResult>
+    /** Runs the handler once against `mockPayload` without storing it. */
+    test(draft: Omit<HookDraft, 'index'> & { mockPayload?: Record<string, unknown> }): Promise<HookTestResult>
+    pendingPluginApprovals(): Promise<PendingPluginHookApproval[]>
+    pluginApproval(pluginId: string): Promise<{ approved: boolean; hashes: string[] }>
+    setPluginApproval(pluginId: string, hashes: string[]): Promise<RestartResult>
   }
 
   readonly preview: {
@@ -263,6 +339,68 @@ export function createBridgeClient(options: BridgeClientOptions = {}): BridgeCli
         ]
         return () => { for (const stop of stops) stop() }
       },
+    },
+
+    mcp: {
+      servers: () => client.invoke<McpServer[]>('mcp:get-servers'),
+      ready: () => client.invoke<boolean>('mcp:status'),
+      addServer: config => client.invoke<McpServer | null>('mcp:add-server', config),
+      updateServer: (id, patch) => client.invoke<McpServer | null>('mcp:update-server', id, patch),
+      removeServer: id => client.invoke<void>('mcp:remove-server', id),
+      setServerEnabled: (id, enabled) => client.invoke<void>('mcp:toggle-server', id, enabled),
+      testServer: id => client.invoke<McpTestResult>('mcp:test-server', id),
+      oauthStatus: id => client.invoke<{ connected: boolean }>('mcp:oauth-status', id),
+      oauthDisconnect: id => client.invoke<{ ok: boolean }>('mcp:oauth-disconnect', id),
+      resources: id => client.invoke<McpResourceInfo[]>('mcp:get-resources', id),
+      readResource: (id, uri) => client.invoke<McpCallResult>('mcp:read-resource', id, uri),
+      prompts: id => client.invoke<McpPromptInfo[]>('mcp:get-prompts', id),
+      getPrompt: (id, name, args) => client.invoke<McpCallResult>('mcp:get-prompt', id, name, ...(args ? [args] : [])),
+      registry: () => client.invoke<McpRegistryResult>('mcp:registry-list'),
+      onServersChanged: listener => on('mcp-servers-changed', servers => listener(Array.isArray(servers) ? servers as McpServer[] : [])),
+      onActivity: listener => on('mcp-activity', (tab, activity) => listener(tab as TabId, activity as McpActivity)),
+    },
+
+    skills: {
+      list: () => client.invoke<Skill[]>('skills:list'),
+      create: (name, content) => client.invoke<CreatedSkill>('skills:create', name, content),
+      read: path => client.invoke<string | null>('skills:read', path),
+      remove: path => client.invoke<void>('skills:delete', path),
+    },
+
+    agents: {
+      list: () => client.invoke<Agent[]>('agents:list'),
+    },
+
+    plugins: {
+      installed: () => client.invoke<InstalledPlugin[]>('plugins:list-installed'),
+      contents: pluginDir => client.invoke<PluginContents | null>('plugins:get-contents', pluginDir),
+      install: (name, marketplace, pluginPath) => client.invoke<void>('plugins:install', name, marketplace, pluginPath),
+      uninstall: (name, marketplace) => client.invoke<void>('plugins:uninstall', name, marketplace),
+      setEnabled: (pluginId, enabled) => client.invoke<RestartResult>('plugins:set-enabled', pluginId, enabled),
+      options: pluginId => client.invoke<PluginOptions>('plugins:get-options-schema', pluginId),
+      saveOptions: (pluginId, values) => client.invoke<RestartResult>('plugins:save-options', pluginId, values),
+      marketplaces: () => client.invoke<Marketplace[]>('plugins:list-marketplaces'),
+      addMarketplace: (name, source, auth) => client.invoke<Marketplace>('plugins:add-marketplace', name, source, ...(auth ? [auth] : [])),
+      removeMarketplace: name => client.invoke<void>('plugins:remove-marketplace', name),
+      updateMarketplace: name => client.invoke<MarketplaceUpdate>('plugins:update-marketplace', name),
+      refreshMarketplaces: () => client.invoke<{ ok: boolean; results: MarketplaceRefresh[] }>('plugins:refresh-all-marketplaces'),
+      browse: marketplace => client.invoke<MarketplacePlugin[]>('plugins:browse-marketplace', marketplace),
+      onMarketplaceUpdated: listener => on('marketplaces:updated', update => listener(update as MarketplaceRefresh)),
+      onBrowseProgress: listener => on('plugins:browse-progress', progress => listener(progress as BrowseProgress)),
+      onHooksAwaitingApproval: listener => on('plugin-hooks:awaiting-approval', pending => listener(pending as PendingPluginHookApproval)),
+    },
+
+    hooks: {
+      list: async () => (await client.invoke<{ hooks?: HooksByEvent }>('hooks:list'))?.hooks ?? {},
+      listAll: async cwd => (await client.invoke<{ hooks?: HookEntry[] }>('hooks:list-all', ...(cwd ? [cwd] : [])))?.hooks ?? [],
+      library: async () => (await client.invoke<{ templates?: HookTemplate[] }>('hooks:get-library'))?.templates ?? [],
+      installTemplate: templateId => client.invoke<RestartResult>('hooks:install-template', templateId),
+      save: draft => client.invoke<RestartResult>('hooks:save', draft),
+      remove: (event, matcherIdx, handlerIdx) => client.invoke<RestartResult>('hooks:delete', event, matcherIdx, handlerIdx),
+      test: draft => client.invoke<HookTestResult>('hooks:test', draft),
+      pendingPluginApprovals: () => client.invoke<PendingPluginHookApproval[]>('hooks:list-pending-plugin-approvals'),
+      pluginApproval: pluginId => client.invoke<{ approved: boolean; hashes: string[] }>('hooks:get-plugin-approval', pluginId),
+      setPluginApproval: (pluginId, hashes) => client.invoke<RestartResult>('hooks:set-plugin-approval', pluginId, hashes),
     },
 
     preview: {
