@@ -9,6 +9,8 @@ mod clamp;
 mod layout_key;
 mod measured_layout;
 mod normal_static;
+mod plain_probe;
+mod probe_measure;
 pub(crate) use crate::text::paragraph::element::layout::measured_layout::measured_layout;
 
 use crate::text::paragraph::*;
@@ -62,32 +64,17 @@ impl Paragraph {
         }
         self.measure_first_strut(window);
         self.invalidate_prepared();
-        let first_strut = self.first_strut.clone();
+        // Ширина известна только раскладке, поэтому строки считаются в замере:
+        // сколько дали места — столько строк и получилось. Текст, прогоны,
+        // строка, отступ первой строки, обрыв `line-clamp` и струты — общие
+        // с ужатым щупом далёкого блока (`plain_probe::Settings`).
+        let settings = plain_probe::Settings::of(self);
         let atom_boxes = self.atom_boxes.clone();
         let edge_spans = self.edge_spans.clone();
-        let ruby_trim = self.ruby_trim;
-        let ruby_unit = self.ruby_unit;
-        let ruby_justify = self.ruby_justify;
         let emph_spans = self.emph_spans.clone();
         let box_spans = self.box_spans.clone();
-        let strut_box = self.strut_box;
-        let run_metrics = self.run_metrics.clone();
-        let strut = self.strut;
-        // Ширина известна только раскладке, поэтому строки считаются в замере:
-        // сколько дали места — столько строк и получилось.
-        let text = self.text.clone();
-        let text_hash = self.text_hash();
-        let runs = self.runs.clone();
-        let font_size = self.font_size;
-        let line_height = self.line_height;
-        let wrap = self.wrap;
-        let align = self.align;
         let vertical = self.vertical;
-        let lines_reversed = self.lines_reversed;
-        let vertical_central_baseline = self.vertical_central_baseline;
-        let vertical_ccw = self.vertical_ccw;
         let vertical_inline = self.vertical_inline;
-        let ortho_limit = self.ortho_limit;
         // Правила КУСКОВ обязаны доехать и до замера: без них щуп считает
         // абзац по общим правилам и отдаёт другое число строк, чем потом
         // рисуется. Коробка тогда выходит по замеру, а текст по отрисовке —
@@ -101,49 +88,21 @@ impl Paragraph {
         // считается по ПОЛНОМУ числу строк, а рисуются обрезанные, и рамка
         // выходит выше текста (`text-wrap-balance-line-clamp-004`).
         let clamp_rows = self.clamp_rows.clone();
-        let clamp_tag = self.clamp_tag;
-        let clamp = self.clamp;
-        let clamp_force = self.clamp_force;
         let fit = self.fit;
-        let tab_stop = self.tab_stop.clone();
-        // Отступ первой строки решает и число строк, и ширину коробки —
-        // без него щуп мерил абзац по чужой раскладке.
-        let indent = self.indent;
-        let hanging = self.hanging;
         let spacers = self.spacers.clone();
         let spacer_edges = self.spacer_edges.clone();
         let box_extents = self.box_extents.clone();
-        let flow = self.flow.clone();
         let fragment = self.fragment.clone();
         let atom_fit = self.atom_fit.clone();
         let ruby_base_sink = self.ruby_base_sink.clone();
         let ruby_layers = self.ruby_layers.clone();
-        let measures = self.measures.clone();
-        let paint_context = self.paint_context.clone();
-        let inline_measure = self.inline_measure.clone();
         let normal_static = normal_static::NormalStatic::new(self, window, cx);
         let static_bind = normal_static.clone();
         let rebuild = fit.is_some() || !atom_fit.borrow().is_empty();
-        let make_probe = move || {
-            let mut probe = Paragraph::new(
-                text.clone(),
-                runs.clone(),
-                font_size,
-                line_height,
-                align,
-                wrap,
-            )
-            .ortho_limit(ortho_limit);
-            probe.prepared.seed_text_hash(text_hash);
+        // Completes a probe made from the settings (`plain_probe::Settings`).
+        let make_probe = move |mut probe: Paragraph| {
             probe.clamp_rows = clamp_rows.clone();
-            probe.clamp_tag = clamp_tag;
-            probe.measures = measures.clone();
-            probe.paint_context = paint_context.clone();
-            probe.inline_measure = inline_measure.clone();
             probe.vertical = vertical;
-            probe.lines_reversed = lines_reversed;
-            probe.vertical_central_baseline = vertical_central_baseline;
-            probe.vertical_ccw = vertical_ccw;
             probe.vertical_inline = vertical_inline;
             probe.ruby_base_sink = ruby_base_sink.clone();
             probe.spans = spans.clone();
@@ -151,29 +110,13 @@ impl Paragraph {
             probe.letter_spans = letter_spans.clone();
             probe.shift_spans = shift_spans.clone();
             probe.lh_spans = lh_spans.clone();
-            probe.clamp = clamp;
-            probe.clamp_force = clamp_force;
             probe.fit = fit;
-            probe.tab_stop = tab_stop.clone();
-            probe.indent = indent;
-            probe.hanging = hanging;
-            probe.flow = flow.clone();
             probe.fragment = fragment.clone();
             probe.atom_boxes = atom_boxes.clone();
             probe.edge_spans = edge_spans.clone();
-            probe.ruby_trim = ruby_trim;
-            // Ruby's sub-line keeps trailing spaces and suppresses word
-            // justification. Its intrinsic probe must use the same rules
-            // as the paragraph that later places the base/annotation.
-            probe.ruby_unit = ruby_unit;
             probe.ruby_layers = ruby_layers.clone();
-            probe.ruby_justify = ruby_justify;
             probe.emph_spans = emph_spans.clone();
             probe.box_spans = box_spans.clone();
-            probe.strut_box = strut_box;
-            probe.first_strut = first_strut.clone();
-            probe.run_metrics = run_metrics.clone();
-            probe.strut = strut;
             probe.spacers = spacers.clone();
             probe.spacer_edges = spacer_edges.clone();
             probe.box_extents = box_extents.clone();
@@ -184,34 +127,16 @@ impl Paragraph {
         if let Some(key) = self.layout_key(window) {
             window.set_next_layout_key(key);
         }
-        let mut source = if rebuild {
-            Probe::Rebuild(make_probe)
+        let source = if rebuild {
+            probe_measure::Probe::Rebuild(settings, make_probe)
         } else {
-            Probe::Built(make_probe())
+            probe_measure::Probe::Built(make_probe(settings.into_probe()))
         };
-        let id = window.request_measured_layout_with_physical_baselines(
+        // A far block's kept measure shrinks to its plain form
+        // (`probe_measure::ProbeMeasure::compact`).
+        let id = window.request_measured_layout_with_measure(
             gpui::Style::default(),
-            move |known, available, window, _cx| {
-                // Заданная ширина сильнее доступной: раскладка уже решила, в
-                // какую коробку абзац ставится, и переносы считаются по ней.
-                let mut fresh;
-                let probe = match &mut source {
-                    Probe::Built(probe) => probe,
-                    Probe::Rebuild(make_probe) => {
-                        fresh = make_probe();
-                        &mut fresh
-                    }
-                };
-                measured_layout(
-                    probe,
-                    atom_fit.clone(),
-                    known,
-                    available,
-                    &normal_static,
-                    window,
-                    _cx,
-                )
-            },
+            probe_measure::ProbeMeasure::new(source, atom_fit, normal_static),
         );
         static_bind.bind(crate::layout::fragment::geometry::Node::capture(id, window));
         if let Some(f) = &self.fragment {
@@ -219,11 +144,4 @@ impl Paragraph {
         }
         (id, id)
     }
-}
-
-/// Щуп замера: собран один раз либо пересобирается на каждый вызов.
-#[allow(clippy::large_enum_variant)] // вариант выбран на всю жизнь замыкания
-enum Probe<F> {
-    Built(Paragraph),
-    Rebuild(F),
 }

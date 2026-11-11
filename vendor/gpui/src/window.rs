@@ -75,7 +75,8 @@ mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained;
-pub use retained::{InkSink, LayoutSnapshot, RetainedPaint, RetainedSubtree, RetainedPrepaint};
+pub(crate) use retained::{reset_ink_scopes, scoped_ink};
+pub use retained::{InkScope, InkSink, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
 mod hit_transform;
 pub use hit_transform::PaintHitScope;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,

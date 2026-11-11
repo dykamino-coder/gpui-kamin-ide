@@ -102,7 +102,7 @@ impl Paragraph {
 
     /// The preparation's packed list (`offset << 1 | mandatory`, ascending
     /// offsets); `None` for text too long to pack.
-    fn kept_stops(&self) -> Option<&[u32]> {
+    pub(in crate::text::paragraph) fn kept_stops(&self) -> Option<&[u32]> {
         if self.text.len() > (u32::MAX >> 1) as usize {
             return None;
         }

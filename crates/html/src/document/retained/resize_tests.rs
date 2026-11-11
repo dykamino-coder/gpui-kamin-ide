@@ -185,17 +185,22 @@ fn a_wrapped_text_block_is_not_tracked_in_a_narrower_flow(cx: &mut TestAppContex
         assert_eq!(tracked(&view, cx), wrapped, "tracked again at {width}");
     }
     let before = reused(&view, cx).0;
+    let far_before = cx.update(|_, cx| view.read(cx).doc.far_blocks());
     resize(&view, cx, 1200.);
+    // A block far from the screen is laid out from its far record
+    // (`layout::reuse::far`) without a build; every built one is tracked.
     let wide = tracked(&view, cx) - wrapped;
+    let far = cx.update(|_, cx| view.read(cx).doc.far_blocks()) - far_before;
     assert!(
-        wide > 500,
-        "blocks in a wider flow were not tracked: {wide}"
+        wide + far > 500,
+        "blocks in a wider flow were neither tracked nor far: {wide} {far}"
     );
     let (recorded, _, rebuilt) = reused(&view, cx);
     let recorded = recorded - before;
+    // Every built one-line block records but at most one edge row of the flow.
     assert!(
-        recorded > 500,
-        "one-line blocks were not recorded: {recorded}"
+        recorded <= wide && wide - recorded <= 1,
+        "built one-line blocks were not recorded: {recorded} of {wide}"
     );
     assert_eq!(rebuilt, 0);
 }

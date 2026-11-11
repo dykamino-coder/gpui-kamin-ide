@@ -147,29 +147,143 @@ impl Window {
 /// snapshots) keeps feeding the sinks open at capture. A sink is tainted when
 /// a scope it observes does more than offer primitives: input state, element
 /// state, composition groups, a non-root paint environment, accessibility.
+///
+/// The frame's scope sink measures several scopes in turn (`begin_scope`,
+/// `Window::with_ink_scope`): paint
+/// deferred past a scope feeds the scope open at capture, whose ink is no
+/// longer kept; the taint of an ended scope is kept as the range of ended
+/// scopes tainted so far (`scope_tainted`), which a host whose scopes follow
+/// its blocks in order sees as the run of blocks around the tainted ones. The
+/// sink stays the size of one that measures a single scope.
 #[derive(Default)]
 pub struct InkSink {
-    bounds: std::cell::Cell<Option<Bounds<ScaledPixels>>>,
-    tainted: std::cell::Cell<bool>,
+    bounds: std::cell::Cell<Bounds<ScaledPixels>>,
+    /// Bit 0: the open scope (or the sink without scopes) is tainted; bit 1:
+    /// `bounds` holds ink; bit 2: an ended scope beyond the range of `late`
+    /// was tainted; the bits above: the open scope, 0 if none.
+    state: std::cell::Cell<u32>,
+    /// The first (low half) and last (high half) ended scope tainted, 0 if none.
+    late: std::cell::Cell<u32>,
 }
 
+const INK_TAINTED: u32 = 1;
+const INK_PAINTED: u32 = 2;
+const INK_LATE_ALL: u32 = 4;
+const INK_SCOPE_SHIFT: u32 = 3;
+
 impl InkSink {
-    pub(crate) fn add(&self, bounds: Bounds<ScaledPixels>) {
-        self.bounds.set(Some(match self.bounds.get() {
-            Some(ink) => ink.union(&bounds),
-            None => bounds,
-        }));
+    const fn new() -> Self {
+        Self {
+            bounds: std::cell::Cell::new(Bounds {
+                origin: Point { x: ScaledPixels(0.0), y: ScaledPixels(0.0) },
+                size: Size { width: ScaledPixels(0.0), height: ScaledPixels(0.0) },
+            }),
+            state: std::cell::Cell::new(0),
+            late: std::cell::Cell::new(0),
+        }
+    }
+
+    /// The scope being measured, 0 if the sink never began one.
+    pub(crate) fn scope(&self) -> u32 {
+        self.state.get() >> INK_SCOPE_SHIFT
+    }
+
+    /// Add ink painted under scope `scope` (`Scene::ink_scope`); a sink that
+    /// never began a scope takes all of it.
+    pub(crate) fn add_in(&self, scope: u32, bounds: Bounds<ScaledPixels>) {
+        if self.scope() != 0 && scope != self.scope() {
+            return;
+        }
+        let state = self.state.get();
+        self.bounds.set(match state & INK_PAINTED {
+            0 => bounds,
+            _ => self.bounds.get().union(&bounds),
+        });
+        self.state.set(state | INK_PAINTED);
+    }
+
+    pub(crate) fn taint_in(&self, scope: u32) {
+        let open = self.scope();
+        if open == 0 || scope == open {
+            self.state.set(self.state.get() | INK_TAINTED);
+        } else if scope > 0xffff {
+            self.state.set(self.state.get() | INK_LATE_ALL);
+        } else {
+            let late = self.late.get();
+            let (first, last) = (late & 0xffff, late >> 16);
+            let first = if first == 0 { scope } else { first.min(scope) };
+            self.late.set(last.max(scope) << 16 | first);
+        }
+    }
+
+    /// End the scope being measured and begin a new, empty one; its id.
+    pub(crate) fn begin_scope(&self) -> u32 {
+        let scope = self.scope() + 1;
+        self.state
+            .set(scope << INK_SCOPE_SHIFT | self.state.get() & INK_LATE_ALL);
+        scope
+    }
+
+    /// Whether scope `scope` may have been tainted: while open, or by paint
+    /// deferred past it (the range of tainted ended scopes holds it).
+    pub(crate) fn scope_tainted(&self, scope: u32) -> bool {
+        let (state, late) = (self.state.get(), self.late.get());
+        state & INK_LATE_ALL != 0
+            || scope == self.scope() && state & INK_TAINTED != 0
+            || late != 0 && (late & 0xffff..=late >> 16).contains(&scope)
+    }
+
+    /// Forget all scopes and ink: the sink measures as if new.
+    pub fn clear(&self) {
+        self.state.set(0);
+        self.late.set(0);
     }
 
     /// Union of the placed bounds offered so far; `None` when nothing painted.
     pub fn bounds(&self) -> Option<Bounds<ScaledPixels>> {
-        self.bounds.get()
+        (self.state.get() & INK_PAINTED != 0).then(|| self.bounds.get())
     }
 
     /// Whether an observed scope had effects beyond offering primitives.
     pub fn tainted(&self) -> bool {
-        self.tainted.get()
+        self.state.get() & INK_TAINTED != 0
     }
+}
+thread_local! {
+    /// The frame's scope sink (`Window::with_ink_scope`), kept outside
+    /// `Scene::ink`: a paint snapshot holds only the scope word
+    /// (`PaintCtx::ink_scope`), by which deferred paint still feeds it, and no
+    /// host allocates a sink for its scopes. Reset with the scene.
+    static SCOPES: InkSink = const { InkSink::new() };
+}
+
+/// `f` of the scope sink while scope `scope` (`Scene::ink_scope`) is not 0.
+pub(crate) fn scoped_ink(scope: u32, f: impl FnOnce(&InkSink)) {
+    if scope != 0 {
+        SCOPES.with(f);
+    }
+}
+
+/// A new frame: no scope of the last one is measured any more.
+pub(crate) fn reset_ink_scopes() {
+    SCOPES.with(InkSink::clear);
+}
+
+/// Whether ink scope `scope` of this frame (`Window::with_ink_scope`) was
+/// tainted, also by paint deferred past its end.
+pub fn ink_scope_tainted(scope: u32) -> bool {
+    SCOPES.with(|sink| sink.scope_tainted(scope))
+}
+
+/// What one ink scope measured (`Window::with_ink_scope`).
+#[derive(Clone, Copy)]
+pub struct InkScope {
+    /// The scope's id in this frame, for `ink_scope_tainted` after deferred paint.
+    pub id: u32,
+    /// Union of the placed bounds painted in the scope; `None` when nothing.
+    pub bounds: Option<Bounds<ScaledPixels>>,
+    /// The scope had effects beyond offering primitives (`InkSink::tainted`).
+    pub tainted: bool,
 }
 
 /// Paint effects of a scope observed by open ink sinks.
@@ -177,13 +291,14 @@ pub(crate) struct InkProbe {
     start: PaintIndex,
     groups: usize,
     callbacks: usize,
-    allowed: (usize, usize),
+    allowed: (u32, u32),
     clean: bool,
 }
 
 impl InkProbe {
     pub(crate) fn open(window: &Window) -> Option<Self> {
-        (!window.next_frame.scene.ink.is_empty()).then(|| Self {
+        let scene = &window.next_frame.scene;
+        (!scene.ink.is_empty() || scene.ink_scope != 0).then(|| Self {
             start: window.paint_index(),
             groups: window.next_frame.scene.groups.len(),
             callbacks: window.next_frame_callback_count(),
@@ -197,18 +312,20 @@ impl InkProbe {
         let start = &self.start;
         let allowed = window.next_frame.scene.ink_allowed;
         let quiet = self.clean
-            && end.mouse_listeners_index - start.mouse_listeners_index == allowed.0 - self.allowed.0
+            && end.mouse_listeners_index - start.mouse_listeners_index == (allowed.0 - self.allowed.0) as usize
             && start.input_handlers_index == end.input_handlers_index
             && start.cursor_styles_index == end.cursor_styles_index
             && end.accessed_element_states_index - start.accessed_element_states_index
-                == allowed.1 - self.allowed.1
+                == (allowed.1 - self.allowed.1) as usize
             && start.tab_handle_index == end.tab_handle_index
             && self.groups == window.next_frame.scene.groups.len()
             && self.callbacks == window.next_frame_callback_count();
         if !quiet {
+            let scope = window.next_frame.scene.ink_scope;
             for sink in &window.next_frame.scene.ink {
-                sink.tainted.set(true);
+                sink.taint_in(scope);
             }
+            scoped_ink(scope, |sink| sink.taint_in(scope));
         }
     }
 }
@@ -293,6 +410,14 @@ impl LayoutSnapshot {
 }
 
 impl Window {
+    /// Paint `f` with the line layouts it looks up released from the text
+    /// system's frame caches: the next frame does not find them. For a
+    /// subtree whose layout the host keeps while later frames do not paint
+    /// it, so its shaped lines go with this paint instead of a frame later.
+    pub fn with_line_layouts_released<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        crate::text_system::with_layouts_released(|| f(self))
+    }
+
     /// Paint `f` with `sink` measuring its ink (see [`InkSink`]).
     pub fn with_ink_sink<R>(&mut self, sink: Rc<InkSink>, f: impl FnOnce(&mut Self) -> R) -> R {
         self.next_frame.scene.ink.push(sink);
@@ -309,13 +434,45 @@ impl Window {
     /// environment) to the open ink sinks as the ink of paint the caller
     /// skipped because the content mask would cull all of it.
     pub fn offer_ink(&mut self, bounds: Bounds<Pixels>) {
-        if self.next_frame.scene.ink.is_empty() {
+        let scene = &self.next_frame.scene;
+        if scene.ink.is_empty() && scene.ink_scope == 0 {
             return;
         }
         let scaled = bounds.scale(self.scale_factor());
-        for sink in &self.next_frame.scene.ink {
-            sink.add(scaled);
+        let scene = &self.next_frame.scene;
+        for sink in &scene.ink {
+            sink.add_in(scene.ink_scope, scaled);
         }
+        scoped_ink(scene.ink_scope, |sink| sink.add_in(scene.ink_scope, scaled));
+    }
+
+    /// Paint `f` measuring its ink in a new scope of the frame's scope sink:
+    /// a host that measures many subtrees in turn (one per block) needs no
+    /// sink of its own, and paint deferred past the scope taints it by id
+    /// (`ink_scope_tainted`). A scope opened inside another ends the outer
+    /// one, which is then tainted: its later ink would go unmeasured.
+    pub fn with_ink_scope<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> (R, InkScope) {
+        let outer = self.next_frame.scene.ink_scope;
+        let id = SCOPES.with(|sink| {
+            let id = sink.begin_scope();
+            if outer != 0 {
+                sink.taint_in(outer);
+            }
+            id
+        });
+        self.next_frame.scene.ink_scope = id;
+        let probe = InkProbe::open(self);
+        let result = f(self);
+        if let Some(probe) = probe {
+            probe.close(self);
+        }
+        self.next_frame.scene.ink_scope = outer;
+        let scope = SCOPES.with(|sink| match sink.scope() == id {
+            true => InkScope { id, bounds: sink.bounds(), tainted: sink.tainted() },
+            // A scope opened inside ended this one before its paint did.
+            false => InkScope { id, bounds: None, tainted: true },
+        });
+        (result, scope)
     }
 
     /// Run paint `f`, which reports whether its mouse listeners and element
@@ -324,7 +481,7 @@ impl Window {
     /// state records, and state that is at its default. Open ink sinks then
     /// allow those effects; otherwise they are tainted.
     pub fn offscreen_inert<R>(&mut self, f: impl FnOnce(&mut Self) -> (R, bool)) -> R {
-        if self.next_frame.scene.ink.is_empty() {
+        if self.next_frame.scene.ink.is_empty() && self.next_frame.scene.ink_scope == 0 {
             return f(self).0;
         }
         let start = self.paint_index();
@@ -332,13 +489,14 @@ impl Window {
         let end = self.paint_index();
         let scene = &mut self.next_frame.scene;
         if inert {
-            scene.ink_allowed.0 += end.mouse_listeners_index - start.mouse_listeners_index;
+            scene.ink_allowed.0 += (end.mouse_listeners_index - start.mouse_listeners_index) as u32;
             scene.ink_allowed.1 +=
-                end.accessed_element_states_index - start.accessed_element_states_index;
+                (end.accessed_element_states_index - start.accessed_element_states_index) as u32;
         } else {
             for sink in &scene.ink {
-                sink.tainted.set(true);
+                sink.taint_in(scene.ink_scope);
             }
+            scoped_ink(scene.ink_scope, |sink| sink.taint_in(scene.ink_scope));
         }
         result
     }
@@ -390,6 +548,47 @@ impl Window {
         self.layout_engine
             .as_mut()?
             .claim_subtree(layout.stamp, &layout.nodes)
+    }
+
+    /// Keep the measure functions of the leaves of `layout` (requested or
+    /// claimed in this pass) for the next pass: claimed whole there, the
+    /// subtree is laid out at new constraints by those functions instead of
+    /// going stale. The caller vouches that they read nothing else that
+    /// changes between the passes, and keeps them pass by pass. With `compact`,
+    /// a host measure with a smaller form (CompactMeasure) is replaced by it;
+    /// without, it stays as its request made it, so the keep allocates nothing.
+    pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree, compact: bool) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.keep_measures(&layout.nodes, compact);
+        }
+    }
+
+    /// Let the kept measure functions of the leaves of `layout`, claimed in
+    /// this pass, prepare at request time what their measures will read
+    /// (`Measure::prepare`), so a host builds its measure state where a
+    /// request would have built it.
+    pub fn prepare_retained_measures(&mut self, layout: &RetainedSubtree) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.prepare_measures(&layout.nodes);
+        }
+    }
+
+    /// Union of the layout bounds of every node of `layout` in this pass,
+    /// relative to the window like [`Self::layout_bounds`].
+    pub fn retained_layout_bounds(&mut self, layout: &RetainedSubtree) -> Option<Bounds<Pixels>> {
+        self.invalidator.debug_assert_prepaint();
+        let scale_factor = self.scale_factor();
+        let mut bounds = self
+            .layout_engine
+            .as_mut()?
+            .nodes_layout_bounds(&layout.nodes, scale_factor)?;
+        let offset = if self.exact_element_offset_depth > 0 {
+            self.element_offset()
+        } else {
+            self.pixel_snap_point(self.element_offset())
+        };
+        bounds.origin += offset;
+        Some(bounds)
     }
 
     /// Whether this pass measured a leaf of a subtree claimed whole.
