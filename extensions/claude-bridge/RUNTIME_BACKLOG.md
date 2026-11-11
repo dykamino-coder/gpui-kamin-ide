@@ -1,5 +1,12 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Live CLI calls ending in `Session destroyed` — 2026-11-11
+
+[INC-0093](runtime-issues/INC-2026-0093.md): SessionEnd from a running CLI
+(`/clear`, `/resume`) finalized the live session, and calls lost with a dead
+client socket were never redelivered after reattach. The Change PR carries the
+card and the fix; lead observes the next release.
+
 ## Browser restart persistence follow-up — 2026-11-10
 
 [INC-0092](runtime-issues/INC-2026-0092.md): confirmed loss of host open tabs and
