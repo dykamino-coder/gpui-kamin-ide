@@ -86,6 +86,14 @@ Connection semantics are those of the KaminIDE browser UI:
   4008 a protocol or size violation (`closed`). Both reject pending `connect()`
   calls; call `connect()` again after a new sign-in. Other losses reconnect with
   backoff (`offline` → `connecting` → `connected`).
+- A host without a live session for the cookie (never signed in, signed out,
+  or restarted with in-memory sessions) accepts the `/bridge` upgrade and
+  closes it at once with 4001; it sends no frame and runs no command. A close
+  code is the only refusal a browser can read, so the client sees `connected`
+  for a moment and then `authentication-required`, and a `connect()` call may
+  resolve just before that. Follow `onConnectionState`, or ask
+  `GET /auth/session` before `connect()`. Hosts older than this behaviour drop
+  the handshake instead, which the client retries as an ordinary loss.
 - An `invoke` pending during a loss rejects with an unknown outcome: the host
   may already have executed it. Nothing is replayed. After a reconnect the
   client sends `workspace:sync` (option `syncOnReconnect`, default on) and the

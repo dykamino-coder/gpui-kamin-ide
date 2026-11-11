@@ -100,7 +100,7 @@ test('headless host starts with an external auth policy, guards /preview/state a
   assert.deepEqual(await state.json(), { descriptor: null, build: null, available: false })
 
   const refused = new WebSocket(`ws://127.0.0.1:${port}/bridge`, { headers: { Origin: origin } })
-  await new Promise<void>(resolve => refused.once('error', () => resolve()))
+  assert.equal((await once(refused, 'close'))[0], 4001)
   const socket = new WebSocket(`ws://127.0.0.1:${port}/bridge`, { headers: { Origin: origin, Cookie: cookie } })
   const next = frames(socket)
   await once(socket, 'open')
