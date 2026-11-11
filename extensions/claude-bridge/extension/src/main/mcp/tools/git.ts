@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
+import { resolveToolPath, resolveWorkingDirectory } from '../../utils/working-directory'
+import type { ToolCallContext } from '../executor'
 
 export type McpResult = { content: Array<{ type: string; text: string }> }
 
@@ -33,16 +35,16 @@ function runGitLocal(args: string[], opts: { cwd?: string; timeoutMs?: number } 
 
 async function getGitRoot(cwd?: string): Promise<string | null> {
   try {
-    const { stdout } = await runGitLocal(['rev-parse', '--show-toplevel'], { cwd: cwd || process.cwd(), timeoutMs: 5000 })
+    const { stdout } = await runGitLocal(['rev-parse', '--show-toplevel'], { cwd: resolveWorkingDirectory(cwd), timeoutMs: 5000 })
     return stdout.trim()
   } catch {
     return null
   }
 }
 
-export async function exitWorktree(input: Record<string, unknown>): Promise<McpResult> {
-  const worktreePath = input.path as string
-  if (!worktreePath) return errorResult('path is required')
+export async function exitWorktree(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
+  if (!input.path) return errorResult('path is required')
+  const worktreePath = resolveToolPath(input.path as string, context?.cwd)
 
   // Validate worktree path: extract basename and check for injection
   const worktreeName = path.basename(worktreePath)
@@ -51,7 +53,7 @@ export async function exitWorktree(input: Record<string, unknown>): Promise<McpR
   }
 
   try {
-    const gitRoot = await getGitRoot()
+    const gitRoot = await getGitRoot(context?.cwd)
     if (!gitRoot) return errorResult('Not inside a git repository.')
 
     if (!fs.existsSync(worktreePath)) {
@@ -67,7 +69,7 @@ export async function exitWorktree(input: Record<string, unknown>): Promise<McpR
   }
 }
 
-export async function enterWorktree(input: Record<string, unknown>): Promise<McpResult> {
+export async function enterWorktree(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const name = (input.name as string) || `worktree-${crypto.randomBytes(4).toString('hex')}`
 
   // Validate worktree name to prevent command injection
@@ -76,7 +78,7 @@ export async function enterWorktree(input: Record<string, unknown>): Promise<Mcp
   }
 
   try {
-    const gitRoot = await getGitRoot()
+    const gitRoot = await getGitRoot(context?.cwd)
     if (!gitRoot) {
       return errorResult('Not inside a git repository. Cannot create worktree.')
     }

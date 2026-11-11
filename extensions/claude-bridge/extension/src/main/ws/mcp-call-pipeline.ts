@@ -10,6 +10,13 @@ import type { McpOutcome } from './mcp-result-outbox'
 import type { ClientMessage } from '../../shared/mcp-protocol'
 import type { PermissionManager } from '../mcp/permission-manager'
 import type { PermissionMode } from './connection-manager'
+import { resolveWorkingDirectory } from '../utils/working-directory'
+
+/** Working directory of the tab for client-side work: its folder when that
+ *  exists on this host, otherwise the home directory. */
+export function tabWorkingDirectory(configured: string | undefined): string {
+  return resolveWorkingDirectory(configured)
+}
 
 export interface PendingMcpExecution {
   toolName: string
@@ -108,7 +115,7 @@ export async function handleHookExecute(ctx: McpCallCtx, msg: any): Promise<void
       return
     }
     const { executeHook } = await import('../hooks/executor')
-    const result = await executeHook(msg)
+    const result = await executeHook(msg, ctx.workingDirectory?.())
     ctx.send({ type: 'hook:response', requestId: msg.requestId, result })
   } catch (err) {
     ctx.send({

@@ -131,8 +131,10 @@ export interface RegisteredHook {
 }
 
 export type HookSource =
-  | { kind: 'user' }
-  | { kind: 'project'; projectPath: string }
+  // `client` marks settings uploaded by the client's sync: their commands
+  // name programs and files of the client host, not of the container.
+  | { kind: 'user'; client?: true }
+  | { kind: 'project'; projectPath: string; client?: true }
   | { kind: 'plugin'; pluginId: string; manifestPath: string }
   | { kind: 'library'; templateId: string }
   | { kind: 'bridge' }                            // bridge-emit defaults

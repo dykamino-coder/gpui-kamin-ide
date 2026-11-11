@@ -47,11 +47,15 @@ export function registerSessionHooks(
       const source = resolveSource(m)
       for (const h of m.hooks) {
         const id = randomUUID()
-        // Plugin commands reference files and binaries on the client host.
-        // Claude plugins do not know the bridge-only `host` extension, so their
-        // default must be local even for events otherwise preferred on server.
+        // Plugin commands and commands from the client's own synced settings
+        // reference files and binaries on the client host. They are written
+        // for plain Claude Code and do not know the bridge-only `host`
+        // extension, so their default must be local even for events otherwise
+        // preferred on server; in the container such a command only fails.
         const explicitHost = h.type === 'command' ? h.host : undefined
-        const effectiveHost = source.kind === 'plugin' && h.type === 'command' && (!explicitHost || explicitHost === 'auto')
+        const clientCommand = source.kind === 'plugin'
+          || ((source.kind === 'user' || source.kind === 'project') && source.client === true)
+        const effectiveHost = clientCommand && h.type === 'command' && (!explicitHost || explicitHost === 'auto')
           ? 'local'
           : resolveHost(event as HookEvent, h, m.matcher)
         const reg: RegisteredHook = {

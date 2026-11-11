@@ -175,8 +175,8 @@ export function mergeAllHooks(
     if (!hooks) continue
     pushAll(merged, hooks)
     const source: HookSource = index === 0 || !userCwd
-      ? { kind: 'user' }
-      : { kind: 'project', projectPath: userCwd }
+      ? { kind: 'user', client: true }
+      : { kind: 'project', projectPath: userCwd, client: true }
     for (const matchers of Object.values(hooks)) {
       if (Array.isArray(matchers)) for (const m of matchers) sourceByMatcher.set(m, source)
     }

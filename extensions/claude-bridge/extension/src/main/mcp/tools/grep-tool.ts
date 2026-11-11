@@ -7,6 +7,8 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import { resolveToolPath, resolveWorkingDirectory } from '../../utils/working-directory'
+import type { ToolCallContext } from '../executor'
 import {
   type McpResult,
   textResult,
@@ -186,11 +188,13 @@ function isEagainError(stderr: string): boolean {
   return stderr.includes('os error 11') || stderr.includes('Resource temporarily unavailable')
 }
 
-export async function grepSearch(input: Record<string, unknown>): Promise<McpResult> {
+export async function grepSearch(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const pattern = input.pattern as string
   if (!pattern) return errorResult('pattern is required')
 
-  const searchPath = (input.path as string) || process.cwd()
+  const searchPath = input.path
+    ? resolveToolPath(input.path as string, context?.cwd)
+    : resolveWorkingDirectory(context?.cwd)
   const outputMode = (input.output_mode as string) || 'files_with_matches'
   const glob = input.glob as string | undefined
   const fileType = input.type as string | undefined

@@ -4,7 +4,7 @@ import type { WebSocket } from 'ws'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { sessions } from '../pty/session-core'
 import type { PtySession } from '../types/pty'
-import { cancelSessionLocalExecs, handleLocalHookResponse } from './dispatcher'
+import { LOCAL_HOOK_REATTACH_WAIT_MS, cancelSessionLocalExecs, handleLocalHookResponse } from './dispatcher'
 import { clearSession, registerSessionHooks } from './registry'
 import { createHooksRoutes } from './routes'
 
@@ -27,7 +27,21 @@ function seed(ws: ReturnType<typeof client> | null, source: 'user' | 'bridge' = 
   return [...registered.values()][0]!.id
 }
 
-async function request(hookId: string) {
+function answer(ws: ReturnType<typeof client>) {
+  ws.send.mockImplementation((raw: string) => {
+    const frame = JSON.parse(raw)
+    if (frame.type === 'hook:execute')
+      handleLocalHookResponse(frame.requestId, {
+        stdout: 'ok',
+        stderr: '',
+        exitCode: 0,
+        outcome: 'success',
+        durationMs: 1,
+      })
+  })
+}
+
+async function request(hookId: string, extra: Record<string, unknown> = {}) {
   return app.request(`/api/hooks/${id}/SessionStart/${hookId}`, {
     method: 'POST',
     headers: {
@@ -35,7 +49,7 @@ async function request(hookId: string) {
       'X-Bridge-Hook-Relay': 'command',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }),
+    body: JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact', ...extra }),
   })
 }
 
@@ -47,13 +61,77 @@ afterEach(() => {
 })
 
 describe('local SessionStart relay while the IDE disconnects', () => {
-  it.each([null, 2, 3])('returns an HTTP result when the client is absent or closed (%s)', async (state) => {
+  it.each([null, 2, 3])('reports an absent or closed client once per disconnect (%s)', async (state) => {
+    vi.useFakeTimers()
     const ws = state === null ? null : client()
     if (ws) ws.readyState = state!
-    const res = await request(seed(ws))
+    const hookId = seed(ws)
+    const first = request(hookId)
+    let settled = false
+    void first.then(() => (settled = true))
+    await vi.advanceTimersByTimeAsync(LOCAL_HOOK_REATTACH_WAIT_MS - 200)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(400)
+    const res = await first
     expect(res.status).toBe(200)
-    expect((await res.json()).result).toMatchObject({ exitCode: 1, outcome: 'error' })
+    expect((await res.json()).result).toMatchObject({
+      exitCode: 1,
+      outcome: 'error',
+      stderr:
+        'Bridge hook dispatch {"event":"SessionStart","type":"command","host":"local"}: Client-host WS is not open — local hooks are skipped until the client reconnects',
+    })
+    // The same disconnect: no second wait and no second console line.
+    const again = await request(hookId)
+    expect((await again.json()).result).toMatchObject({ exitCode: 0, stdout: '', stderr: '', outcome: 'cancelled' })
     if (ws) expect(ws.send).not.toHaveBeenCalled()
+  })
+
+  it('waits for the client to reattach and runs the hook once on the new socket', async () => {
+    vi.useFakeTimers()
+    const oldWs = client()
+    oldWs.readyState = 3
+    const hookId = seed(oldWs)
+    const pending = request(hookId)
+    await vi.advanceTimersByTimeAsync(1500)
+    const ws = client()
+    answer(ws)
+    sessions.get(id)!.ws = ws as unknown as WebSocket
+    await vi.advanceTimersByTimeAsync(200)
+    expect((await (await pending).json()).result).toMatchObject({ stdout: 'ok', exitCode: 0 })
+    expect(ws.send).toHaveBeenCalledTimes(1)
+    expect(oldWs.send).not.toHaveBeenCalled()
+  })
+
+  it('reports again after the client came back and dropped a second time', async () => {
+    vi.useFakeTimers()
+    const hookId = seed(null)
+    const first = request(hookId)
+    await vi.advanceTimersByTimeAsync(LOCAL_HOOK_REATTACH_WAIT_MS + 200)
+    expect((await (await first).json()).result.exitCode).toBe(1)
+    const ws = client()
+    answer(ws)
+    sessions.get(id)!.ws = ws as unknown as WebSocket
+    expect((await (await request(hookId)).json()).result).toMatchObject({ stdout: 'ok', exitCode: 0 })
+    ws.readyState = 3
+    const second = request(hookId)
+    await vi.advanceTimersByTimeAsync(LOCAL_HOOK_REATTACH_WAIT_MS + 200)
+    expect((await (await second).json()).result).toMatchObject({ exitCode: 1, outcome: 'error' })
+  })
+
+  it.each([
+    ['/client', '/client'],
+    ['', undefined],
+  ])('sends the client folder %j as the hook directory %j, never the container one', async (folder, expected) => {
+    const ws = client()
+    const hookId = seed(ws)
+    sessions.get(id)!.cwd = folder
+    answer(ws)
+    await request(hookId, { cwd: '/home/bridge/.claude/bridge-sessions/token/session' })
+    const frame = ws.send.mock.calls
+      .map((call) => JSON.parse(call[0] as string))
+      .find((sent) => sent.type === 'hook:execute')
+    expect(frame.cwd).toBe(expected)
+    expect(frame.payload.cwd).toBe(expected)
   })
 
   it.each(['close', 'error', 'send-error', 'send-throw'])('answers HTTP when WS fails via %s', async (failure) => {
@@ -110,6 +188,28 @@ describe('local SessionStart relay while the IDE disconnects', () => {
     const res = await request(hookId)
     expect((await res.json()).result).toMatchObject({ stdout: 'ok', exitCode: 0 })
     expect(ws.listenerCount('close')).toBe(0)
+  })
+
+  it('counts a hook lost in flight as the one report of that disconnect', async () => {
+    vi.useFakeTimers()
+    const ws = client()
+    const hookId = seed(ws)
+    const sent = new Promise<void>((resolve) => ws.send.mockImplementation(() => resolve()))
+    const lost = request(hookId)
+    await sent
+    ws.readyState = 3
+    ws.emit('close')
+    expect((await (await lost).json()).result).toMatchObject({ exitCode: 1, outcome: 'error' })
+    // The next hook still waits for the client, then stays quiet.
+    const next = request(hookId)
+    let settled = false
+    void next.then(() => (settled = true))
+    await vi.advanceTimersByTimeAsync(LOCAL_HOOK_REATTACH_WAIT_MS - 200)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(400)
+    expect((await (await next).json()).result).toMatchObject({ exitCode: 0, stderr: '', outcome: 'cancelled' })
+    const frames = ws.send.mock.calls.map((call) => JSON.parse(call[0] as string).type)
+    expect(frames.filter((type) => type === 'hook:execute')).toHaveLength(1)
   })
 
   it('returns the dispatcher timeout as an HTTP envelope', async () => {

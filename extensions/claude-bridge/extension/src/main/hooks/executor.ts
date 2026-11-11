@@ -15,6 +15,7 @@ import {
   toPosixShellPath,
   type ResolvedShell,
 } from '../utils/command-runtime'
+import { resolveWorkingDirectory } from '../utils/working-directory'
 
 export interface HookExecuteRequest {
   type: 'hook:execute'
@@ -70,6 +71,16 @@ export function localizeHookPayload(
   return localized
 }
 
+/** Directory a local hook runs in. The server sends the client project
+ * directory when the session has one; otherwise the request carries no
+ * directory or one that exists only in the container. Starting a process in a
+ * missing directory fails with ENOENT for the program itself, so the first
+ * directory that exists on this host wins: the requested one, the tab's
+ * working directory, the home directory. */
+export function resolveHookCwd(requested: string | undefined, fallback?: string): string {
+  return resolveWorkingDirectory(requested, fallback)
+}
+
 function nativeNodeCommand(command: string): string {
   return /(^|[\\/])node(?:\.exe)?$/i.test(command) ? process.execPath : command
 }
@@ -114,10 +125,13 @@ async function killProcessTree(proc: import('node:child_process').ChildProcess):
   }
 }
 
-export async function executeHook(req: HookExecuteRequest): Promise<HookExecuteResponse['result']> {
+export async function executeHook(
+  req: HookExecuteRequest,
+  fallbackCwd?: string,
+): Promise<HookExecuteResponse['result']> {
   const start = Date.now()
   const timeoutMs = req.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const cwd = req.cwd && req.cwd.length > 0 ? req.cwd : os.homedir()
+  const cwd = resolveHookCwd(req.cwd, fallbackCwd)
   const execForm = req.args !== undefined
 
   let shell: ResolvedShell | undefined
@@ -187,7 +201,11 @@ export async function executeHook(req: HookExecuteRequest): Promise<HookExecuteR
   if (execForm) command = nativeNodeCommand(command)
   else command = shellNodeShim(shell!) + command
 
-  const payload = localizeHookPayload(req.payload, req.env?.KAMIN_CACHE_DIR ?? process.env.KAMIN_CACHE_DIR)
+  // The hook reads the directory it really runs in, not a container path.
+  const payload = {
+    ...localizeHookPayload(req.payload, req.env?.KAMIN_CACHE_DIR ?? process.env.KAMIN_CACHE_DIR),
+    cwd,
+  }
   return new Promise((resolve) => {
     let proc: import('node:child_process').ChildProcess
     let settled = false
