@@ -88,11 +88,8 @@ pub(super) async fn table_finish<const QUERY: bool>(
         table_tall,
     );
     if QUERY {
-        grid_box = grid_box.also_observe_layout(super::query::TableQuery::new(
-            geom,
-            &out.group_refs,
-            opts,
-        ));
+        let query = super::query::TableQuery::new(geom, &out.group_refs, opts);
+        grid_box = grid_box.also_observe_layout(query);
     }
     // Сросшиеся рамки: у таблицы нет паддинга, а кромка между её рамкой и
     // краевыми ячейками одна — ячейки накрывают ВНУТРЕННЮЮ ПОЛОВИНУ рамки
