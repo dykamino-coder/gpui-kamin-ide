@@ -38,7 +38,7 @@ pub(super) async fn table_rows<const QUERY: bool>(
         cursor.row_ix += 1;
         let row_ref: crate::layout::build_contracts::RefBox = Default::default();
         if QUERY {
-            cursor.group_refs.insert(row.node_id, row_ref.clone());
+            out.group_refs.insert(row.node_id, row_ref.clone());
         }
         let RowBands {
             row_rects,
@@ -108,5 +108,5 @@ pub(super) async fn table_rows<const QUERY: bool>(
     // Порядок слоёв сетки: полосы дорожек/рядов → фоны ячеек → сросшиеся
     // кромки → коробки ячеек с содержимым (см. `under`, `cell_bgs`). Прежде
     // слой кромок шёл ПОСЛЕДНИМ и накрывал всё содержимое ячеек.
-    table_finish::<QUERY>(stk, geom, layers, out, opts, &cursor.group_refs).await
+    table_finish::<QUERY>(stk, geom, layers, out, opts).await
 }

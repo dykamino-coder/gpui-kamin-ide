@@ -77,7 +77,6 @@ pub(super) async fn emit_cell(
     push_cell_wrapped(
         geom,
         layers,
-        cursor,
         out,
         row_state,
         CellContent { cell, inside, d },
@@ -94,7 +93,6 @@ struct CellContent<'a> {
 fn push_cell_wrapped(
     geom: &TableGeom<'_>,
     layers: &TableLayers<'_>,
-    cursor: &mut RowCursor,
     out: &mut RowsOut,
     row_state: &RowState<'_>,
     content: CellContent<'_>,
@@ -154,7 +152,7 @@ fn push_cell_wrapped(
             .transform
             .as_ref()
             .is_some_and(|t| !pure_shift(t))
-            .then(|| cursor.group_refs.entry(g.node_id).or_default().clone());
+            .then(|| out.group_refs.entry(g.node_id).or_default().clone());
         built = build.effects(
             built,
             Effect::Transform {

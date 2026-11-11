@@ -54,12 +54,12 @@ pub(super) struct TableLayers<'a> {
 pub(super) struct RowCursor {
     pub row_ix: usize,
     pub col_ix: usize,
-    pub group_refs: HashMap<u64, RefBox>,
     pub group_bands: HashMap<u64, RowRects>,
 }
 
 #[derive(Default)]
 pub(super) struct RowsOut {
+    pub group_refs: HashMap<u64, RefBox>,
     pub under: Vec<AnyElement>,
     pub cells: Vec<AnyElement>,
     pub cells_over: Vec<AnyElement>,

@@ -64,14 +64,11 @@ pub(super) async fn table_rows_with_bands<const QUERY: bool>(
     // схлопнутые колонки и пробы фона приписывались не тем колонкам.
     // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
     // пропускаются.
-    let group_refs: std::collections::HashMap<u64, crate::layout::build_contracts::RefBox> =
-        std::collections::HashMap::new();
     layers.group_of = group_of;
     layers.rules_groups = rules_groups;
     let mut cursor = RowCursor {
         row_ix,
         col_ix: 0,
-        group_refs,
         group_bands: Default::default(),
     };
     table_rows::<QUERY>(stk, &rows, &geom, &layers, &mut cursor, out, opts).await

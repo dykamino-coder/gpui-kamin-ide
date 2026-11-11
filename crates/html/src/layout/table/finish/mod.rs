@@ -25,7 +25,6 @@ pub(super) async fn table_finish<const QUERY: bool>(
     layers: &TableLayers<'_>,
     out: &mut RowsOut,
     opts: &RenderOpts,
-    refs: &std::collections::HashMap<u64, crate::layout::build_contracts::RefBox>,
 ) -> AnyElement {
     let px_of = |l| geom.px_of(l, opts);
     let mut grid_children = std::mem::take(&mut out.under);
@@ -89,7 +88,11 @@ pub(super) async fn table_finish<const QUERY: bool>(
         table_tall,
     );
     if QUERY {
-        grid_box = grid_box.also_observe_layout(super::query::TableQuery::new(geom, refs, opts));
+        grid_box = grid_box.also_observe_layout(super::query::TableQuery::new(
+            geom,
+            &out.group_refs,
+            opts,
+        ));
     }
     // Сросшиеся рамки: у таблицы нет паддинга, а кромка между её рамкой и
     // краевыми ячейками одна — ячейки накрывают ВНУТРЕННЮЮ ПОЛОВИНУ рамки
