@@ -32,7 +32,7 @@ impl Default for ChildBuild {
             ),
             element,
             |stk, e, inherited, opts| {
-                Box::pin(crate::render::element::element_stack(
+                Box::pin(crate::render::element::element_stack_for::<false>(
                     stk, e, inherited, opts,
                 ))
             },

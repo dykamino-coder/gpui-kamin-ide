@@ -227,15 +227,6 @@ pub(crate) fn element_for<const QUERY: bool>(
         .finish()
 }
 
-pub(crate) async fn element_stack(
-    stk: &mut reblessive::Stk,
-    e: &Element,
-    inherited: &BoxStyle,
-    opts: &RenderOpts,
-) -> AnyElement {
-    element_stack_for::<false>(stk, e, inherited, opts).await
-}
-
 pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     element_for::<false>(e, inherited, opts)
 }
