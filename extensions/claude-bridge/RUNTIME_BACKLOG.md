@@ -3,12 +3,12 @@
 ## KaminIDE 1.0.93 delivery: host tool declaration and client management groups — 2026-11-11
 
 Delivery reconciliation 2026-11-11, source `origin/main`
-`1fe4cac519575c50867978ef443a529fdc18cfac`:
+`a977a737899d6ad5bdad01a03877a9ec1dbc95d4`:
 [KaminIDE 1.0.93](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.93)
 / server 6.3.170 is published (tag commit `1fe4cac5`, ancestry checked), with
 the embedding packages `kaminide-bridge-workspace-host-6.3.170.tgz` and
 `kaminide-bridge-browser-client-6.3.170.tgz`. Publication is not acceptance:
-the cards below stay `verify`. Do not reimplement #732.
+INC-0097 stays `verify`. Do not reimplement #732.
 
 - [INC-0097](runtime-issues/INC-2026-0097.md): the Bridge server serves the
   tools and the wording that the client host declares,
@@ -23,11 +23,11 @@ the cards below stay `verify`. Do not reimplement #732.
   [#730](https://github.com/dykamino-coder/gpui-kamin-ide/pull/730)
   (`2c8a0eb5`), ship in the same release. They have no runtime card; the
   published package was checked for these types and for version 6.3.170.
-- [INC-0095](runtime-issues/INC-2026-0095.md) and
-  [INC-0096](runtime-issues/INC-2026-0096.md): no new change in 1.0.93. Their
-  fixes stay published since 1.0.92 and their live gates are still not run (see
-  the section below); image 6.3.170 also satisfies the "6.3.169 or newer"
-  condition.
+- [INC-0095](runtime-issues/INC-2026-0095.md) (`done`) and
+  [INC-0096](runtime-issues/INC-2026-0096.md) (`ready/change`): no new change
+  in 1.0.93. Their state was set by the acceptance run on 1.0.92 / 6.3.169 (see
+  the section below). The Windows process-tree stop for INC-0096 is not in this
+  release.
 
 ## KaminIDE 1.0.92 delivery: mod sync and interrupt — 2026-11-11
 
