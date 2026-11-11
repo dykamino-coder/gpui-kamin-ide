@@ -236,6 +236,7 @@ struct BoxFacts {
     moved_from: Option<Rc<BoxStyle>>,
 }
 
+mod layer;
 mod same;
 #[cfg(test)]
 mod tests;

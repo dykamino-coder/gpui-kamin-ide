@@ -32,37 +32,33 @@ pub(super) async fn table_cell(
     let прячем_пустую = hides_empty_cell(geom.e, &row_state.row_style, cell, vcx);
     // Ячейка в НУЛЕВОЙ дорожке: свои горизонтальные отступ и рамку
     // она держать не может — дорожки под них нет (§17.5.2.1).
-    let cell = &if прячем_пустую {
-        let mut copy = cell.clone();
-        copy.style.used_mut().reset_background.background = None;
-        copy.style.used_mut().reset_background.gradient = None;
-        copy.style.used_mut().reset_background.bg_image = None;
-        copy.style.used_mut().reset_border.border_visible = [Some(false); 4];
-        copy.style.used_mut().reset_border.border_width = Default::default();
-        copy
-    } else {
-        cell.clone()
-    };
-    let cell = &if geom.zero_cols.get(cursor.col_ix).copied().unwrap_or(false) {
-        let mut copy = cell.clone();
-        if geom.table_is_vertical {
-            copy.style.used_mut().reset_box_layout.padding.top = Some(Len::Px(0.0));
-            copy.style.used_mut().reset_box_layout.padding.bottom = Some(Len::Px(0.0));
-            copy.style.used_mut().reset_border.border_width.top = Some(Len::Px(0.0));
-            copy.style.used_mut().reset_border.border_width.bottom = Some(Len::Px(0.0));
-        } else {
-            copy.style.used_mut().reset_box_layout.padding.left = Some(Len::Px(0.0));
-            copy.style.used_mut().reset_box_layout.padding.right = Some(Len::Px(0.0));
-            copy.style.used_mut().reset_border.border_width.left = Some(Len::Px(0.0));
-            copy.style.used_mut().reset_border.border_width.right = Some(Len::Px(0.0));
-        }
-        copy
-    } else {
-        cell.clone()
-    };
-    let mut cm = cell_cascaded_style(geom.e, &row_state.row_style, cell, vcx);
-    let spans = cell_spans(slot, &geom.cols_collapsed, cell);
+    // The one copy of the cell this build edits: its box, not its subtree.
     let mut cell = cell.clone();
+    if прячем_пустую {
+        let style = cell.style.used_mut();
+        style.reset_background.background = None;
+        style.reset_background.gradient = None;
+        style.reset_background.bg_image = None;
+        style.reset_border.border_visible = [Some(false); 4];
+        style.reset_border.border_width = Default::default();
+    }
+    if geom.zero_cols.get(cursor.col_ix).copied().unwrap_or(false) {
+        let zero = Some(Len::Px(0.0));
+        let style = cell.style.used_mut();
+        if geom.table_is_vertical {
+            style.reset_box_layout.padding.top = zero;
+            style.reset_box_layout.padding.bottom = zero;
+            style.reset_border.border_width.top = zero;
+            style.reset_border.border_width.bottom = zero;
+        } else {
+            style.reset_box_layout.padding.left = zero;
+            style.reset_box_layout.padding.right = zero;
+            style.reset_border.border_width.left = zero;
+            style.reset_border.border_width.right = zero;
+        }
+    }
+    let mut cm = cell_cascaded_style(geom.e, &row_state.row_style, &cell, vcx);
+    let spans = cell_spans(slot, &geom.cols_collapsed, &cell);
     let cell_edge = prepare_cell_box(geom, row_state, cursor, &cm, &spans, &mut cell, opts);
     resolve_cell_heights(
         opts,

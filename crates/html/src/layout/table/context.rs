@@ -17,6 +17,8 @@ pub(super) struct TableGeom<'a> {
     pub cols_collapsed: Vec<bool>,
     pub collapse_cells: bool,
     pub win_edges: HashMap<u64, [f32; 4]>,
+    /// Used styles of collapsed-model cells, shared by like cells of this build.
+    pub edge_styles: super::cell_borders::EdgeStyles,
     pub table_is_vertical: bool,
     pub table_font: f32,
     pub table_em: f32,
