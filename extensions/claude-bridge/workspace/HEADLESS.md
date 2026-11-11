@@ -59,7 +59,7 @@ container: sign-in with the Bridge token).
 | Member | Called by | Contract |
 | --- | --- | --- |
 | `login(candidate)` | `POST /auth/login` | `candidate` is the `token` field of the JSON body. Return a new cookie value or `null` (401). |
-| `validate(cookie)` | every `/preview/*` request, every `/bridge` upgrade, and every 15 s for open sockets | `false` closes existing sockets with code 4001. |
+| `validate(cookie)` | every `/preview/*` request, every `/bridge` upgrade, and every 15 s for open sockets | `false` closes existing sockets with code 4001. A same-origin `/bridge` upgrade that fails it is accepted and closed with 4001 before any frame, handler or backend attachment; the peer is dropped after 5 s if it does not finish the close. Cross-origin, other paths and over-limit upgrades are refused without a handshake. |
 | `logout(cookie)` | `POST /auth/logout` | Forget the session; the server closes its sockets. |
 | `cookieHeader(cookie, secure)` | after login/logout | Full `Set-Cookie` value. Use `sessionCookieHeader`. |
 | `loginLocal()` | only with `autoLogin: true` | Optional loopback auto-login. Off by default. |
