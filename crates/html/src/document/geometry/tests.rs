@@ -9,6 +9,7 @@ mod isolation;
 mod multicol;
 mod paged;
 mod projection;
+mod special;
 
 struct View(Rc<Document>);
 

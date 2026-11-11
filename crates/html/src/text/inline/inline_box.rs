@@ -101,8 +101,17 @@ pub(super) fn mark_inline_box<const QUERY: bool>(
         cb,
         own_cb: merged.cb_node,
         seq: crate::layout::positioned::anchor::next_seq(anchors),
-        pad: px4(p.top, p.right, p.bottom, p.left),
-        border: px4(b.top, b.right, b.bottom, b.left),
+        // BR is a text break, not a decorated inline box.
+        pad: if QUERY && e.tag == "br" {
+            [0.; 4]
+        } else {
+            px4(p.top, p.right, p.bottom, p.left)
+        },
+        border: if QUERY && e.tag == "br" {
+            [0.; 4]
+        } else {
+            px4(b.top, b.right, b.bottom, b.left)
+        },
         hidden: merged.inh.ui.hidden == Some(true),
         font_style: (**merged).clone(),
     });

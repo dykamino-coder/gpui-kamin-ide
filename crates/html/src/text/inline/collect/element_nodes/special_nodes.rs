@@ -37,6 +37,19 @@ pub(super) async fn special_node<const QUERY: bool>(
             return true;
         }
         cx.case.boundary();
+        if QUERY {
+            // BR has a zero-width fragment at the end of this line, unlike
+            // WBR (Blink Element::ClientQuads explicitly includes IsBR).
+            // Keep the marker before the newline so it cannot include the
+            // following line or turn into a second fragment there.
+            let merged = box_style(inherited, &e.style, vcx);
+            out.extend(crate::text::inline::inline_box::mark_inline_box::<true>(
+                Vec::new(),
+                e,
+                &merged,
+                &cx.layout.layout().anchors,
+            ));
+        }
         out.push(Piece::Text {
             text: "\n".into(),
             style: inherited.clone(),
