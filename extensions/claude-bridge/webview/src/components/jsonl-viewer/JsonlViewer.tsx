@@ -1,7 +1,7 @@
 import { submissions, pendingSubmissionRows } from '../../signals/submissions'
 import type { JSX } from 'preact'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { compactSegments, activeSegmentIdx } from '../../signals/compact-segments'
+import { compactSegments, activeSegmentIdx, activeSegmentTsByTab } from '../../signals/compact-segments'
 import { activeTabId, tabs } from '../../signals/tabs'
 import { jsonlEntriesByTab, getJsonlStructureVersion, tabNeedsRefill, clearRefillDebt, prependJsonlEntries, trimTabToWindow, archivedViewTs, STORE_WINDOW, STORE_SLACK, SCROLL_UP_MAX } from '../../signals/jsonl'
 import { boundTabId } from '../../signals/session-binding'
@@ -183,7 +183,10 @@ export function JsonlViewer(): JSX.Element {
     }
   }, [currentTabId, atBottomForTrim, currentEntries.length])
 
-  const { containerRef } = useChatScrollPin(currentTabId ?? undefined, currentEntries, onNearTop)
+  // An archived view of the first segment has an EMPTY start timestamp, so
+  // 'archived or not' is part of the key, not implied by it.
+  const shownSegment = (segment == null ? 'live' : 'archived:' + segment) + '|' + ((currentTabId && activeSegmentTsByTab.value.get(currentTabId)) || '')
+  const { containerRef } = useChatScrollPin(currentTabId ?? undefined, currentEntries, onNearTop, shownSegment)
 
   // Give the window back once the reader is at the bottom again. See
   // CAP_SHRINK_DELAY_MS for why this is the only safe moment and why it waits.

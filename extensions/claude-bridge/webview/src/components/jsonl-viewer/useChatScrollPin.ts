@@ -38,6 +38,8 @@ export function useChatScrollPin(
   currentTabId: string | undefined,
   entries: ReadonlyArray<unknown>,
   onNearTop?: () => void,
+  /** Which conversation segment of the tab is shown; '' when the caller has none. */
+  viewKey = '',
 ): ScrollPinHandle {
   const onNearTopRef = useRef(onNearTop)
   onNearTopRef.current = onNearTop
@@ -117,6 +119,21 @@ export function useChatScrollPin(
     })
     return () => { cancelled = true }
   }, [currentTabId])
+
+  // Another conversation segment of the SAME tab was opened: it starts at its
+  // end and follows it, whatever the reader did in the segment they left. The
+  // tab did not change, so nothing above re-derives the pin — a scroll-up in a
+  // past segment used to leave Current unpinned, no longer following new
+  // messages. A tab switch is the restore effect's business, not this one's.
+  const viewRef = useRef({ tab: currentTabId, key: viewKey })
+  useEffect(() => {
+    const prev = viewRef.current
+    viewRef.current = { tab: currentTabId, key: viewKey }
+    if (prev.tab !== currentTabId || prev.key === viewKey) return
+    stickRef.current = true
+    chatAtBottom.value = true
+    requestSnap()
+  }, [currentTabId, viewKey])
 
   // New entries arrived OR a streaming entry was replaced in place — snap if
   // sticking. Depends on the array REFERENCE (in-place replacements keep length
