@@ -1,5 +1,34 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Merged after 1.0.93, not published yet: interrupt tree stop and hooks — 2026-11-11
+
+Reconciliation 2026-11-11, source `origin/main`
+`4ecb8cbbba30198c39efca35d70b2ea3bb4361a7`. The three fixes below are in
+`main` and in no published release at the time of this update; the next
+release (planned 1.0.94) is expected to carry them. Merge is not publication
+and not acceptance. Do not reimplement #738, #743 or #747.
+
+- [INC-0096](runtime-issues/INC-2026-0096.md): `verify`. The Windows client
+  part is merged, [#738](https://github.com/dykamino-coder/gpui-kamin-ide/pull/738) (`2c5ea735`): foreground commands run under
+  a Job Object runner. Gate 2 passed on the candidate (13 interrupts, MSYS
+  children included, tree gone in 40 to 90 ms). Next artifact: a repeat of
+  gate 2 on the installed release that contains #738. Owner: the maintainer of
+  that release. This replaces the `ready/change` state in the 1.0.93 and
+  1.0.92 sections below, which are history.
+- [INC-0103](runtime-issues/INC-2026-0103.md): `verify`. Fix
+  [#743](https://github.com/dykamino-coder/gpui-kamin-ide/pull/743) (`83053f75`): hooks start in a directory that exists on the
+  client, the server waits for a client reattach and reports an absent client
+  once. Live Windows gate passed on the candidate. Next artifact: a check in
+  the installed release that a session shows no hook error lines. Owner: the
+  maintainer of that release.
+- [INC-0106](runtime-issues/INC-2026-0106.md): `verify`. Fix
+  [#747](https://github.com/dykamino-coder/gpui-kamin-ide/pull/747) (`4ecb8cbb`), server only: a hook matcher written for a
+  native tool (`Edit|Write`, `Bash`) fires on the Bridge tool that replaces
+  it, once, and the hook reads the native tool name. Live Windows gate passed
+  on the candidate. Next artifact: a check in the published release that the
+  owner's `Edit|Write` hook runs. Owner: the maintainer of that release.
+  Open and not part of #747: the `if` field of a hook is still evaluated
+  against the MCP tool name.
 ## KaminIDE 1.0.93 delivery: host tool declaration and client management groups — 2026-11-11
 
 Delivery reconciliation 2026-11-11, source `origin/main`
