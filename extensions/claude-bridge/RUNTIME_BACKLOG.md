@@ -1,44 +1,57 @@
 # Runtime backlog: что осталось и как продолжать
 
-## Merged after 1.0.93, not published yet: interrupt tree stop, hooks and past segment scroll — 2026-11-11
+## KaminIDE 1.0.94 delivery: interrupt tree stop, hooks, past segment scroll and embedding API — 2026-11-11
 
-Reconciliation 2026-11-11, source `origin/main`
-`4ecb8cbbba30198c39efca35d70b2ea3bb4361a7`. The three fixes below are in
-`main` and in no published release at the time of this update; the next
-release (planned 1.0.94) is expected to carry them. Merge is not publication
-and not acceptance. Do not reimplement #738, #743 or #747.
+Delivery reconciliation 2026-11-11, source `origin/main`
+`b04b4b2d1bb152ae8f3c0ffe8dead522671c957a`:
+[KaminIDE 1.0.94](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.94)
+/ server 6.3.171 is published (tag commit `8dff4308`, ancestry checked), with
+the embedding packages `kaminide-bridge-workspace-host-6.3.171.tgz` and
+`kaminide-bridge-browser-client-6.3.171.tgz`. Publication is not acceptance.
+Acceptance run 2026-11-11 on the released installer, server image and
+packages, Windows only: the five cards below are `done`. Do not reimplement
+#738, #743, #745, #747, #748, #749 or #752. This section replaces the earlier
+"merged, not published yet" section; the `ready/change` and `verify` states
+of these cards in the 1.0.93 and 1.0.92 sections below are history.
 
-- [INC-0096](runtime-issues/INC-2026-0096.md): `verify`. The Windows client
-  part is merged, [#738](https://github.com/dykamino-coder/gpui-kamin-ide/pull/738) (`2c5ea735`): foreground commands run under
-  a Job Object runner. Gate 2 passed on the candidate (13 interrupts, MSYS
-  children included, tree gone in 40 to 90 ms). Next artifact: a repeat of
-  gate 2 on the installed release that contains #738. Owner: the maintainer of
-  that release. This replaces the `ready/change` state in the 1.0.93 and
-  1.0.92 sections below, which are history.
-- [INC-0103](runtime-issues/INC-2026-0103.md): `verify`. Fix
-  [#743](https://github.com/dykamino-coder/gpui-kamin-ide/pull/743) (`83053f75`): hooks start in a directory that exists on the
-  client, the server waits for a client reattach and reports an absent client
-  once. Live Windows gate passed on the candidate. Next artifact: a check in
-  the installed release that a session shows no hook error lines. Owner: the
-  maintainer of that release.
-- [INC-0106](runtime-issues/INC-2026-0106.md): `verify`. Fix
-  [#747](https://github.com/dykamino-coder/gpui-kamin-ide/pull/747) (`4ecb8cbb`), server only: a hook matcher written for a
-  native tool (`Edit|Write`, `Bash`) fires on the Bridge tool that replaces
-  it, once, and the hook reads the native tool name. Live Windows gate passed
-  on the candidate. Next artifact: a check in the published release that the
-  owner's `Edit|Write` hook runs. Owner: the maintainer of that release.
-  Open and not part of #747: the `if` field of a hook is still evaluated
-  against the MCP tool name.
-- [INC-0104](runtime-issues/INC-2026-0104.md): `verify`. Fix
-  [#752](https://github.com/dykamino-coder/gpui-kamin-ide/pull/752) (`5a8752ea`), webview only, added to this section on
-  2026-11-11 at `origin/main` `5a8752ea06389ac5dd764734298f8d926dd58841`: a
-  past conversation segment loads its older pages into the window on screen,
-  pages back by itself while it does not fill the viewport, and the current
-  conversation follows new messages again after a past segment was scrolled.
-  Unit tests cover the cause; a live check passed on the candidate. Next
-  artifact: a check in the installed release that a past segment scrolls to
-  its first record. Owner: the maintainer of that release. Do not reimplement
-  #752.
+- [INC-0096](runtime-issues/INC-2026-0096.md): `done`. Windows client part
+  [#738](https://github.com/dykamino-coder/gpui-kamin-ide/pull/738) (`2c5ea735`). Gate 2 passed on the installed 1.0.94: 8
+  interrupts in 4 variants (native child, MSYS child, both, PowerShell tool)
+  ran under the Job Object runner, the whole tree was gone 36 to 57 ms after
+  Stop and nothing was left. Not run: background shells, hooks and plugin
+  monitors, which keep the earlier cleanup. No next artifact.
+- [INC-0103](runtime-issues/INC-2026-0103.md): `done`. Fix
+  [#743](https://github.com/dykamino-coder/gpui-kamin-ide/pull/743) (`83053f75`). On the installed 1.0.94 hooks ran in the tab
+  folder, and in the home directory for a tab without a folder or with a
+  missing folder, with no hook error line in the chat or the server log. The
+  socket cuts and the resumed session were verified on the candidate only and
+  were not repeated on the released build. No next artifact.
+- [INC-0106](runtime-issues/INC-2026-0106.md): `done`. Fix
+  [#747](https://github.com/dykamino-coder/gpui-kamin-ide/pull/747) (`4ecb8cbb`), server only. On image 6.3.171 hooks with the
+  matchers `Bash` and `Edit|Write` ran once per matching tool call in three
+  tabs and read the native tool name. Not run live: matchers for
+  `PostToolUseFailure`, `PermissionRequest` and `PermissionDenied` and
+  regular-expression matchers. No next artifact.
+- [INC-0104](runtime-issues/INC-2026-0104.md): `done`. Fix
+  [#752](https://github.com/dykamino-coder/gpui-kamin-ide/pull/752) (`5a8752ea`), webview only. On the installed 1.0.94 a past
+  segment scrolls to its first record with the wheel, End, PageUp and Home, and
+  the current conversation follows a streamed reply after the return. Not run
+  on the released build: a tab with a working folder, the scrollbar thumb and
+  scrolling during a running turn. No next artifact.
+- [INC-0105](runtime-issues/INC-2026-0105.md): `done`. Embedding changes
+  [#745](https://github.com/dykamino-coder/gpui-kamin-ide/pull/745) (`d42127f0`, close code 4001 on `/bridge`),
+  [#748](https://github.com/dykamino-coder/gpui-kamin-ide/pull/748) (`6e5c262a`, `file-tree:create-dir`) and
+  [#749](https://github.com/dykamino-coder/gpui-kamin-ide/pull/749) (`7429e318`, HTTP and WebSocket bases). All three passed in
+  a real browser from the released packages on Windows; the host dependencies
+  and the page scaffolding came from a repository checkout. Not run: a Linux
+  host, a webpack or `type: 'module'` remote, a base on another site, CSS and
+  image assets. No next artifact.
+- Open and not delivered by this release:
+  [INC-0107](runtime-issues/INC-2026-0107.md) (`confirmed`; the `if` field
+  of a hook written for a native tool never holds; seen again in this run) and
+  [INC-0108](runtime-issues/INC-2026-0108.md) (confirmed by source, not run
+  live; an external stdio MCP server without a configured directory starts in
+  the application directory). Next artifact for each: a Fix PR by its executor.
 ## KaminIDE 1.0.93 delivery: host tool declaration and client management groups — 2026-11-11
 
 Delivery reconciliation 2026-11-11, source `origin/main`
