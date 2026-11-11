@@ -35,14 +35,14 @@ pub(crate) fn sized<'a>(
 ) -> std::borrow::Cow<'a, Element> {
     use std::borrow::Cow;
     let svg = super::svg_percentage_size::resolve(e, inherited);
-    let avail_w = opts.cx.constraints.avail_w();
-    let media = resolve(
-        svg.as_ref().unwrap_or(e),
-        inherited,
-        opts.viewport,
-        avail_w,
-        vcx,
-    );
+    let target = svg.as_ref().unwrap_or(e);
+    // Only default-sized media resolve against the width: reading it for any
+    // other element would record an outside width read its build never
+    // consumed (`BoxConstraints::track_widths`).
+    let avail_w = empty(target)
+        .then(|| opts.cx.constraints.avail_w())
+        .flatten();
+    let media = resolve(target, inherited, opts.viewport, avail_w, vcx);
     match (media, svg) {
         (Some(media), _) => Cow::Owned(media),
         (None, Some(svg)) => Cow::Owned(svg),

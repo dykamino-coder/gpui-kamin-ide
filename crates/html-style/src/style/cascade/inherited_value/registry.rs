@@ -178,6 +178,7 @@ properties! {
     TransformOrigin: "transform-origin" => [reset_transforms.transform_origin, reset_transforms.transform_origin_px, reset_transforms.transform_origin_z, reset_transforms.transform_origin_raw];
     Translate: "translate" => [reset_transforms.translate];
     Filter: "filter" => [reset_effects.filter, reset_effects.filter_ref];
+    Opacity: "opacity" => [reset_effects.opacity];
     ZIndex: "z-index" => [reset_positioned.z_index];
     VerticalAlign: "vertical-align" => [inh.text_flow.vertical_align, reset_text_box.vertical_align_text, reset_text_box.vertical_shift, reset_text_box.vertical_shift_pct, reset_text_box.vertical_shift_px, reset_text_box.vertical_shift_len];
     DecorationLine: "text-decoration-line" => [reset_text_box.td_lines, reset_text_box.underline, reset_text_box.line_through];

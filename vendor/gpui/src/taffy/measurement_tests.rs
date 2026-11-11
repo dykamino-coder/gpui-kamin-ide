@@ -53,7 +53,7 @@ fn copied_subtree_keeps_actual_callback_alive_after_source_clear() {
     let mut source = TaffyTree::new();
     let context = NodeContext {
         static_positions: Vec::new(),
-        measure: Rc::new(RefCell::new(node_measure(Box::new(|_, _, _, _, _| {
+        measure: Rc::new(RefCell::new(node_measure(|_, _, _, _, _| {
             (
                 crate::size(crate::px(12.0), crate::px(8.0)),
                 None,
@@ -61,11 +61,12 @@ fn copied_subtree_keeps_actual_callback_alive_after_source_clear() {
                 None,
             )
                 .into()
-        })))),
+        }))),
         layout_lines: None,
         layout_lines_x: None,
         layout_lines_x_from_right: false,
         key_slot: crate::taffy::retained::NO_SLOT,
+        keep_measure: false,
     };
     let callback = Rc::downgrade(&context.measure);
     let root = source

@@ -26,6 +26,24 @@ pub(crate) struct BoxConstraints {
     pub(crate) cell_bfc: bool,
     /// Reads of widths that come from outside a retained subtree.
     widths: WidthReads,
+    /// `cb_width` / `avail_w` come from outside the tracked subtree; next to
+    /// `cell_bfc`, so the fat sink of `widths` keeps the struct's size.
+    cb_outside: Cell<bool>,
+    avail_outside: Cell<bool>,
+}
+
+/// Where the outside width reads of a tracked subtree go
+/// (`BoxConstraints::track_widths`): a flag of one subtree, or the record
+/// state of a flow that tracks its children one by one in its own context
+/// (`layout::reuse::FlowReuse`), which then needs no flag of its own.
+pub(crate) trait WidthSink {
+    fn note(&self);
+}
+
+impl WidthSink for Cell<bool> {
+    fn note(&self) {
+        self.set(true);
+    }
 }
 
 /// Read set of the widths of a subtree kept across frames (`layout::reuse`):
@@ -36,18 +54,47 @@ pub(crate) struct BoxConstraints {
 /// a measured column) is its own, and any outside width it was computed from
 /// was already read through an accessor. Like the revalidation selectors of
 /// Servo's style sharing: what the build consulted is recorded, not guessed.
-#[derive(Clone, Debug, Default)]
+///
+/// The set is in cells, so a flow can record the reads of each of its
+/// children's builds in its own context, without a copy per child
+/// (`BoxConstraints::track_widths_in_place`).
+#[derive(Default)]
 struct WidthReads {
-    sink: Option<Rc<Cell<bool>>>,
-    cb: bool,
-    avail: bool,
+    sink: Cell<Option<Rc<dyn WidthSink>>>,
 }
 
 impl WidthReads {
     fn note(&self, outside: bool) {
-        if outside && let Some(sink) = &self.sink {
-            sink.set(true);
+        if !outside {
+            return;
         }
+        let sink = self.sink.take();
+        if let Some(sink) = &sink {
+            sink.note();
+        }
+        self.sink.set(sink);
+    }
+
+    fn sink(&self) -> Option<Rc<dyn WidthSink>> {
+        let sink = self.sink.take();
+        self.sink.set(sink.clone());
+        sink
+    }
+}
+
+impl Clone for WidthReads {
+    fn clone(&self) -> Self {
+        Self {
+            sink: Cell::new(self.sink()),
+        }
+    }
+}
+
+impl std::fmt::Debug for WidthReads {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WidthReads")
+            .field("tracked", &self.sink().is_some())
+            .finish()
     }
 }
 
@@ -64,27 +111,27 @@ impl BoxConstraints {
     /// Containing-block width (see the field); a read of an outside width
     /// is recorded.
     pub(crate) fn cb_width(&self) -> Option<f32> {
-        self.widths.note(self.widths.cb);
+        self.widths.note(self.cb_outside.get());
         self.cb_width
     }
 
     /// Available width of `width: auto` blocks (see the field); a read of an
     /// outside width is recorded.
     pub(crate) fn avail_w(&self) -> Option<f32> {
-        self.widths.note(self.widths.avail);
+        self.widths.note(self.avail_outside.get());
         self.avail_w
     }
 
     /// A containing-block width the box sets itself.
     pub(crate) fn set_cb_width(&mut self, width: Option<f32>) {
         self.cb_width = width;
-        self.widths.cb = false;
+        self.cb_outside.set(false);
     }
 
     /// An available width the box sets itself.
     pub(crate) fn set_avail_w(&mut self, width: Option<f32>) {
         self.avail_w = width;
-        self.widths.avail = false;
+        self.avail_outside.set(false);
     }
 
     /// The available width of a child box: `inner(outer)`. When the result
@@ -107,7 +154,7 @@ impl BoxConstraints {
         }
         let seen = f(self.avail_w);
         if seen != blind {
-            self.widths.note(self.widths.avail);
+            self.widths.note(self.avail_outside.get());
         }
         seen
     }
@@ -120,12 +167,28 @@ impl BoxConstraints {
 
     /// Start recording outside width reads of a subtree into `sink`: both
     /// widths of this context come from outside it.
-    pub(crate) fn track_widths(&mut self, sink: Rc<Cell<bool>>) {
-        self.widths = WidthReads {
-            sink: Some(sink),
-            cb: true,
-            avail: true,
-        };
+    pub(crate) fn track_widths(&mut self, sink: Rc<dyn WidthSink>) {
+        self.track_widths_in_place(sink);
+    }
+
+    /// `track_widths` in this shared context, until `untrack_widths`: the
+    /// subtrees built with it and with its copies record into `sink`. For a
+    /// context that tracks nothing itself (a document's root flow).
+    pub(crate) fn track_widths_in_place(&self, sink: Rc<dyn WidthSink>) {
+        debug_assert!(
+            self.widths.sink().is_none() && !self.cb_outside.get() && !self.avail_outside.get(),
+            "a tracking context"
+        );
+        self.widths.sink.set(Some(sink));
+        self.cb_outside.set(true);
+        self.avail_outside.set(true);
+    }
+
+    /// End `track_widths_in_place`: the context tracks nothing again.
+    pub(crate) fn untrack_widths(&self) {
+        self.widths.sink.set(None);
+        self.cb_outside.set(false);
+        self.avail_outside.set(false);
     }
 }
 
@@ -156,51 +219,5 @@ pub(crate) struct FragmentConstraints {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_consumed_outside_widths_are_recorded() {
-        let sink = Rc::new(Cell::new(false));
-        let mut outer = BoxConstraints::default();
-        outer.set_avail_w(Some(800.0));
-        outer.set_cb_width(Some(800.0));
-        outer.track_widths(sink.clone());
-        // A derived width stays outside without a read.
-        let mut child = outer.clone();
-        child.derive_avail_w(|w| w.map(|w| w - 10.0));
-        assert!(!sink.get());
-        // A width that does not change the result is not a read.
-        assert_eq!(child.with_avail_w(|_| 1), 1);
-        assert!(!sink.get());
-        // A definite own width is the subtree's own.
-        let mut own = child.clone();
-        own.derive_avail_w(|_| Some(300.0));
-        own.set_cb_width(Some(300.0));
-        assert_eq!((own.avail_w(), own.cb_width()), (Some(300.0), Some(300.0)));
-        assert!(!sink.get());
-        assert_eq!(child.avail_w(), Some(790.0));
-        assert!(sink.get());
-        assert_eq!(child, {
-            let mut plain = BoxConstraints::default();
-            plain.set_avail_w(Some(790.0));
-            plain.set_cb_width(Some(800.0));
-            plain
-        });
-    }
-
-    #[test]
-    fn a_width_basis_records_the_read_only_when_it_is_resolved() {
-        let sink = Rc::new(Cell::new(false));
-        let mut outer = BoxConstraints::default();
-        outer.set_cb_width(Some(640.0));
-        outer.track_widths(sink.clone());
-        let read = || outer.cb_width();
-        let basis = WidthBasis::Read(&read);
-        assert!(!sink.get(), "passing the basis down reads nothing");
-        assert_eq!(WidthBasis::Known(Some(5.0)).get(), Some(5.0));
-        assert!(!sink.get());
-        assert_eq!(basis.get(), Some(640.0));
-        assert!(sink.get(), "a resolved outside width is recorded");
-    }
-}
+#[cfg(test)]
+mod tests;
