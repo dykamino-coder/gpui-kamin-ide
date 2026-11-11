@@ -7,7 +7,6 @@ use crate::dom::Element;
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use gpui::AnyElement;
-use std::rc::Rc;
 
 impl FlowCx {
     /// Обернуть собранный элемент инертного ребёнка `e` записью пропуска,
@@ -33,18 +32,18 @@ impl FlowCx {
         let unpainted = child
             .downcast_mut::<crate::hooks::Hooked<crate::layout::table::StartWrapper>>()
             .is_some();
-        let pending = Rc::new(Pending::new(
+        let pending = Box::new(Pending::new(
+            self.reuse.shells.source(e),
             self.key.clone(),
-            mark.start,
-            end,
+            (mark.start, end),
             width,
             self.settled,
             unpainted,
             super::super::width::tracks_flow(e),
         ));
-        let source = self.reuse.shells.source(e);
-        super::super::push(&self.reuse.pending, (pending.clone(), source));
-        out.push(Recorder::new(child, pending).hooked());
+        let at = self.reuse.pending.borrow().len();
+        super::super::push(&self.reuse.pending, pending);
+        out.push(Recorder::new(child, (self.reuse.clone(), at)).hooked());
         true
     }
 }

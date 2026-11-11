@@ -134,6 +134,7 @@ pub fn walk_children(
     preserve: bool,
     out: &mut Vec<Node>,
     vcx: ValueCx<'_>,
+    mut invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
 ) -> Result<(), crate::budget::admission::Error> {
     let admission = tree.admission();
     let mut jobs = visits(
@@ -166,6 +167,7 @@ pub fn walk_children(
                     counters,
                     children,
                     output.last_mut().expect("parent output"),
+                    invalidation.as_deref_mut(),
                 )?;
             }
             Work::Visit(v) => {

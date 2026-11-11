@@ -113,9 +113,31 @@ impl DocumentValues {
             Weak<DocumentValues>,
         ) -> Rc<dyn kamin_font_facts::font_facts::FontFactsProvider>,
     ) -> Rc<Self> {
+        Self::with_initial(media, fonts, Default::default())
+    }
+
+    /// The values of the next revision of the document of `previous`: new
+    /// in everything but its initial style groups (`InitialStyles`).
+    pub fn continuing(
+        previous: &Self,
+        media: Media,
+        fonts: impl FnOnce(
+            Weak<DocumentValues>,
+        ) -> Rc<dyn kamin_font_facts::font_facts::FontFactsProvider>,
+    ) -> Rc<Self> {
+        Self::with_initial(media, fonts, previous.initial_styles.clone())
+    }
+
+    fn with_initial(
+        media: Media,
+        fonts: impl FnOnce(
+            Weak<DocumentValues>,
+        ) -> Rc<dyn kamin_font_facts::font_facts::FontFactsProvider>,
+        initial_styles: style_storage::InitialStyles,
+    ) -> Rc<Self> {
         let doc = Rc::new_cyclic(|this| Self {
             this: this.clone(),
-            initial_styles: Default::default(),
+            initial_styles,
             derived: Default::default(),
             media: Cell::new(media),
             owner: Cell::new(arena::new_owner()),

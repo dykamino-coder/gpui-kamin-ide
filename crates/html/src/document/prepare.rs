@@ -7,6 +7,9 @@ use super::{DocState, Node, Rc, base_url, viewport};
 /// `@color-profile` из листов страницы (до разбора: иначе первый же замер
 /// ширины пойдёт по подстановке), разметка (XML — своим разборщиком,
 /// `dom::xml`), правка адресов от действующей базы.
+/// `invalidation`: a rebuild for attribute mutations collects the elements
+/// they restyle (`dom::convert_restyling`).
+#[allow(clippy::too_many_arguments)]
 pub(super) fn parse_document(
     input: &crate::dom::input::Admitted,
     theme_css: &str,
@@ -14,6 +17,7 @@ pub(super) fn parse_document(
     state: Rc<DocState>,
     fonts: &crate::text::metrics::FontContext,
     revision: crate::budget::RevisionBudget,
+    invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
     #[cfg(feature = "engine-bench")] timings: &mut super::BuildTimings,
 ) -> Result<(Rc<DocState>, Vec<Node>, crate::style::computed::Computed), super::DocumentFailure> {
     let media = state.media();
@@ -28,7 +32,7 @@ pub(super) fn parse_document(
     let style_started = std::time::Instant::now();
     let styled = {
         crate::work::phase!(_phase, Style);
-        crate::dom::convert(input, theme_css, media, &state.values)?
+        crate::dom::convert_restyling(input, theme_css, media, &state.values, invalidation)?
     };
     #[cfg(feature = "engine-bench")]
     {

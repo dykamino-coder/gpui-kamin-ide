@@ -7,6 +7,7 @@ mod commit;
 mod mentions;
 mod mutation;
 mod patch;
+mod restyle;
 mod shape;
 #[cfg(test)]
 mod tests;
@@ -73,12 +74,16 @@ impl Document {
         };
         // Та же форма: отличие — записи мутаций прежнего DOM, путь применения
         // общий с `apply`; иначе новая разметка собирается целиком.
+        let mut same_shape = false;
+        let mut invalidation = None;
         if let Some(old) = self.state.values.source_dom()
             && let Some(shape) = shape::compare(&old, &source.input.dom.document)
             && let Some(batch) = mutation::Batch::new(&shape.records())
         {
             #[cfg(feature = "engine-bench")]
             let started = std::time::Instant::now();
+            same_shape = true;
+            invalidation = self.invalidation(&batch, theme_css);
             if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
                 batch.write();
                 self.commit(
@@ -96,18 +101,40 @@ impl Document {
         }
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
-        let candidate = match Self::from_source(
+        let state = super::state::DocState::continuing(media, &self.state);
+        let mut invalidation = invalidation.map(crate::dom::invalidation::Invalidation::new);
+        if same_shape {
+            // The records go to the rebuilt document (`restyle`); their
+            // sources are not needed for that.
+            self.reuse.release_sources();
+        }
+        let candidate = match Self::try_source(
             source,
             theme_css,
             self.base_url.clone(),
             self.xml,
-            super::state::DocState::continuing(media, &self.state),
+            state,
             &fonts,
             revision,
+            invalidation.as_mut(),
         ) {
             Ok(candidate) => candidate,
-            Err(failure) => return Err(record(failure, self)),
+            Err((failure, _)) => {
+                if same_shape {
+                    self.reuse.forget();
+                }
+                return Err(record(failure, self));
+            }
         };
+        // The same source shape gives the same node ids (traversal counters):
+        // the block records may hold for the restyled tree (`restyle`).
+        let mut candidate = candidate;
+        if same_shape {
+            let restyled = invalidation
+                .as_ref()
+                .and_then(crate::dom::invalidation::Invalidation::finish);
+            self.hand_over_reuse(&mut candidate, restyled);
+        }
         *self = candidate;
         Ok(self.report())
     }

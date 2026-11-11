@@ -27,6 +27,7 @@ pub(crate) mod lines;
 mod narrow;
 mod placeholder;
 mod plain;
+mod rebase;
 mod record;
 mod recorder;
 mod replay;
@@ -47,7 +48,7 @@ use source::{Shells, Source};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-pub(crate) use store::Store;
+pub(crate) use store::{Damage, Store};
 
 /// Какой поток документа корневой: дети `body` или блоки верхнего уровня.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -75,8 +76,12 @@ pub(crate) struct FlowReuse {
     resized: Cell<bool>,
     /// Wraps of this build's blocks (`narrow`).
     narrowed: narrow::Wraps,
-    /// Pending records with the comparison inputs of their blocks.
-    pending: RefCell<Vec<(Rc<recorder::Pending>, Source)>>,
+    /// Pending records of this build's wrapped blocks (`recorder`), owned
+    /// here alone: each goes as soon as its record is made (`finish`). Boxed,
+    /// so each frees its own memory there and the growing list moves only
+    /// pointers, not thousands of pending records.
+    #[allow(clippy::vec_box)]
+    pending: RefCell<Vec<Box<recorder::Pending>>>,
     /// Shells the sources of this build share (`source`).
     shells: Shells,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
@@ -102,6 +107,23 @@ fn find<'a>(nodes: impl Iterator<Item = &'a Node>, tag: &str) -> Option<&'a Elem
         Node::Element(e) if e.tag == tag => Some(e),
         _ => None,
     })
+}
+
+/// The children of the root flow of `nodes` (`Root`), and the `html`/`body`
+/// boxes above them; `None` for blocks of unwrapped roots, whose styles the
+/// root style folds.
+fn flow_blocks(nodes: &[Node]) -> (&[Node], Option<Vec<&Element>>) {
+    let (flow, roots) = match find(nodes.iter(), "html") {
+        Some(html) => match find(html.children.iter(), "body") {
+            Some(body) => (body.children.as_slice(), Some(vec![html, body])),
+            None => (&[][..], None),
+        },
+        None => match find(nodes.iter(), "body") {
+            Some(body) => (body.children.as_slice(), Some(vec![body])),
+            None => (nodes, None),
+        },
+    };
+    (flow, roots)
 }
 
 impl FlowReuse {

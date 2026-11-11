@@ -78,6 +78,9 @@ impl Document {
         state.values.admit_revision(revision.clone(), base.as_ref());
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
+        // The records hold for the patched tree only by the next build's
+        // comparison (`layout::reuse::Store::patch`).
+        self.reuse.patch();
         Document {
             state,
             nodes: Rc::new(nodes),

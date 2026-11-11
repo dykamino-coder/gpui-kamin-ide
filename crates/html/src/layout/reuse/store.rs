@@ -54,6 +54,20 @@ pub(crate) struct Store {
     pub(super) epoch: Cell<u64>,
     /// Наблюдение для тестов и стенда: записано, пропущено, кадров заново.
     pub(crate) stats: Cell<ReuseStats>,
+    /// The document was patched since the last frame (`Document::commit`):
+    /// the records are known to hold only by the next build's comparison.
+    pub(super) patched: Cell<bool>,
+    /// A rebuild dropped records (`rebase`), and every frame since followed
+    /// a rebuild: restyles keep reaching the blocks, so the frames build them
+    /// without recording them again (`FlowCx::restyled`). The first frame
+    /// after no rebuild still records nothing, as a fresh document's first
+    /// frame; the next records the blocks.
+    pub(super) restyled: Cell<bool>,
+    /// The document was rebuilt since the last frame (`rebase`).
+    pub(super) rebased: Cell<bool>,
+    /// The rebuild that stripped the last flow key's boxes
+    /// (`FlowKey::strip_boxes`) found them different in paint-only values.
+    pub(super) repainted_roots: Cell<bool>,
 }
 
 impl Store {
@@ -78,10 +92,38 @@ impl Store {
     /// изменённого блока (`Document::update`) не подойдёт ему никогда, а держит
     /// прежнее поддерево (узлы, стили) всю сборку нового: она удаляется сразу,
     /// до сборки блока, а не в конце кадра.
-    pub(crate) fn same_tree(&self, e: &Element) -> Option<Rc<Record>> {
+    ///
+    /// A block whose subtree differs only in paint-only style values
+    /// (`Computed::same_layout`, Blink paint invalidation without layout) keeps
+    /// its record for its layout: the answer is then `Damage::Paint`, and only
+    /// the recorded layout leaf, not the recorded paint, holds.
+    pub(crate) fn same_tree(&self, e: &Element) -> Option<(Rc<Record>, Damage)> {
         let record = self.records.borrow().get(&e.node_id).cloned()?;
-        if record.source.same(e) {
-            return Some(record);
+        let damage = match record.repaint.get() {
+            true => Damage::Paint,
+            false => Damage::None,
+        };
+        // Compared at the rebuild of the document (`rebase`).
+        let source = &record.source;
+        let verdict = match source.holds() {
+            false => Some(true),
+            true if source.same(e) => Some(true),
+            // A repainted block stands only off screen (`FlowCx::placeholder`):
+            // the layout compare of a near one, a walk of its whole subtree,
+            // would only find a record its build cannot use.
+            true => (record.far && source.same_layout(e)).then_some(false),
+        };
+        if verdict == Some(true) {
+            return Some((record, damage));
+        }
+        if verdict == Some(false) {
+            // The caller keeps the layout under a record of this tree
+            // (`FlowCx::placeholder`): the previous subtree goes now, not at
+            // the end of the frame.
+            let mut records = self.records.take();
+            records.remove(&e.node_id);
+            self.records.replace(records);
+            return Some((record, Damage::Paint));
         }
         // Записи держат стили: карта меняется целиком, без `&mut` на них.
         let mut records = self.records.take();
@@ -90,11 +132,19 @@ impl Store {
         None
     }
 
+    /// The last flow key holds `html`/`body` boxes, for tests.
+    #[cfg(test)]
+    pub(crate) fn key_holds_boxes(&self) -> Option<bool> {
+        let last = self.last.borrow();
+        last.as_ref().map(|key| key.body.is_some())
+    }
+
     /// Build inputs of the kept records, for tests.
     #[cfg(test)]
     pub(crate) fn recorded(&self) -> Vec<Element> {
         let records = self.records.borrow();
-        records.values().map(|r| r.source.element()).collect()
+        let sources = records.values().filter_map(|r| r.source.element());
+        sources.collect()
     }
 
     /// Ширина потока сменилась: годны только записи, чья раскладка от неё
@@ -166,6 +216,15 @@ impl Store {
         self.unrecorded.set(unrecorded);
         found
     }
+}
+
+/// What changed in a recorded block since its record (`Store::same_tree`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Damage {
+    /// Nothing: the recorded layout and paint hold.
+    None,
+    /// Paint-only values: the recorded layout holds, its paint does not.
+    Paint,
 }
 
 /// Счётчики наблюдения повтора блоков.
