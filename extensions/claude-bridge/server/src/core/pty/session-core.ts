@@ -991,6 +991,11 @@ export function finalizeSessionTeardown(
 ): void {
   const session = sessions.get(sessionId)
   if (!session) return
+  // Only a real PTY exit may end a session nobody is tearing down. The CLI also
+  // fires SessionEnd while it keeps running (`/clear`, in-session `/resume`);
+  // finalizing on that rejected the live CLI's in-flight tools with
+  // `Session destroyed` and unregistered its MCP endpoint (INC-2026-0093).
+  if (reason !== 'pty-exit' && !session.teardown) return
   finalizeTeardownFor(session, reason, exitCode)
 }
 
