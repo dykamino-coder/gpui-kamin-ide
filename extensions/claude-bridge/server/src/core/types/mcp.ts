@@ -43,4 +43,8 @@ export interface PendingMcpCall {
    *  that were delivered are NOT (the surviving client may still be
    *  executing them — re-sending would double side effects). */
   delivered: boolean
+  /** Client socket that accepted the frame. A call delivered to an earlier
+   *  socket is redelivered when the currently bound client reports that it
+   *  does not hold it (INC-2026-0093). */
+  deliveredTo?: unknown
 }

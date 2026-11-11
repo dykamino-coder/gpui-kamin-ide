@@ -37,7 +37,7 @@ export function findOwnedLiveSession<T extends { tokenId: string; ws?: unknown }
   sessions: readonly T[],
   tokenId: string,
 ): T | undefined {
-  return sessions.find(session => Boolean(session.ws) && session.tokenId === tokenId)
+  return sessions.find((session) => Boolean(session.ws) && session.tokenId === tokenId)
 }
 
 export function createHooksRoutes(): Hono {
@@ -49,10 +49,7 @@ export function createHooksRoutes(): Hono {
   // /test (spawns bash), /emit (fires host command hooks), /library, /log,
   // /merged, /active — requires a valid API token. These used to be wide
   // open: an unauthenticated caller could run arbitrary server-side shell.
-  const requireApiToken = async (
-    c: import('hono').Context,
-    next: import('hono').Next,
-  ): Promise<Response | void> => {
+  const requireApiToken = async (c: import('hono').Context, next: import('hono').Next): Promise<Response | void> => {
     if (!(await resolveCaller(c))) {
       return c.json({ error: 'Unauthorized' }, 401)
     }
@@ -106,15 +103,21 @@ export function createHooksRoutes(): Hono {
       applyDeterministicStatus(session, event, payload)
       // Our own no-op status hook has nothing to run — skip the dispatch (and
       // its shell spawn). A user's real hook for the same event still dispatches.
-      const reg = listSession(sessionId).find(h => h.id === hookId)
+      const reg = listSession(sessionId).find((h) => h.id === hookId)
       if (reg?.source.kind === 'bridge') {
         if (commandRelay) {
-          return c.json({
-            result: {
-              stdout: '', stderr: '', exitCode: 0,
-              outcome: 'success', durationMs: 0,
+          return c.json(
+            {
+              result: {
+                stdout: '',
+                stderr: '',
+                exitCode: 0,
+                outcome: 'success',
+                durationMs: 0,
+              },
             },
-          }, 200)
+            200,
+          )
         }
         return c.json({ continue: true, suppressOutput: true }, 200)
       }
@@ -128,8 +131,11 @@ export function createHooksRoutes(): Hono {
 
     // The SessionEnd this window was held open for has been served, so close it
     // instead of waiting out the timeout. Idempotent: a duplicate callback finds
-    // the window already finalized and the session already gone.
-    if (event === 'SessionEnd') finalizeSessionTeardown(sessionId, 'session-end', -1)
+    // the window already finalized and the session already gone. A SessionEnd
+    // from a running CLI (`/clear`, `/resume`) opens no window and ends nothing.
+    if (event === 'SessionEnd' && isSessionTearingDown(sessionId)) {
+      finalizeSessionTeardown(sessionId, 'session-end', -1)
+    }
 
     if (commandRelay) {
       return c.json({ result }, 200)
@@ -142,11 +148,14 @@ export function createHooksRoutes(): Hono {
     //   - 2xx with plain text                          → printed as systemMessage
     if (result.exitCode === 2) {
       // Exit 2 must win over stdout JSON, matching native command hooks.
-      return c.json({
-        continue: false,
-        stopReason: result.stderr || result.stdout || 'Hook blocked',
-        decision: 'block',
-      }, 200)
+      return c.json(
+        {
+          continue: false,
+          stopReason: result.stderr || result.stdout || 'Hook blocked',
+          decision: 'block',
+        },
+        200,
+      )
     }
     if (result.jsonOutput) {
       // Hook returned structured JSON on exit 0 — pass through unchanged.
@@ -154,17 +163,23 @@ export function createHooksRoutes(): Hono {
     }
     if (result.outcome === 'success') {
       // Plain text stdout — surface as systemMessage if non-empty.
-      return c.json({
-        continue: true,
-        suppressOutput: !result.stdout,
-        systemMessage: result.stdout || undefined,
-      }, 200)
+      return c.json(
+        {
+          continue: true,
+          suppressOutput: !result.stdout,
+          systemMessage: result.stdout || undefined,
+        },
+        200,
+      )
     }
     // Error / timeout / cancelled
-    return c.json({
-      continue: true,
-      systemMessage: `Hook error (${result.outcome}): ${result.stderr || result.stdout}`,
-    }, 200)
+    return c.json(
+      {
+        continue: true,
+        systemMessage: `Hook error (${result.outcome}): ${result.stderr || result.stdout}`,
+      },
+      200,
+    )
   })
 
   // ── Read-only management endpoints (UI consumes these) ───────
@@ -191,18 +206,22 @@ export function createHooksRoutes(): Hono {
       return c.json({ ok: false, error: `Unknown bridge event: ${event}` }, 400)
     }
     let payload: Record<string, unknown> = {}
-    try { payload = await c.req.json() } catch { /* allow empty body */ }
+    try {
+      payload = await c.req.json()
+    } catch {
+      /* allow empty body */
+    }
     const caller = await resolveCaller(c)
     if (!caller) return c.json({ error: 'Unauthorized' }, 401)
     const ownedSessionIds = getAllSessions()
-      .filter(session => session.tokenId === caller.tokenId)
-      .map(session => session.id)
+      .filter((session) => session.tokenId === caller.tokenId)
+      .map((session) => session.id)
     const requestedSessionId = typeof payload.sessionId === 'string' ? payload.sessionId : undefined
     if (requestedSessionId && !ownedSessionIds.includes(requestedSessionId)) {
       return c.json({ ok: false, error: 'Session not found' }, 404)
     }
     const targets = requestedSessionId ? [requestedSessionId] : ownedSessionIds
-    await Promise.all(targets.map(sessionId => emitBridgeEvent(event as BridgeHookEvent, { ...payload, sessionId })))
+    await Promise.all(targets.map((sessionId) => emitBridgeEvent(event as BridgeHookEvent, { ...payload, sessionId })))
     return c.json({ ok: true })
   })
 
@@ -217,8 +236,17 @@ export function createHooksRoutes(): Hono {
   // session registry — spawns a one-shot dispatch matching the same
   // behaviour the real hook would have when fired from CLI.
   app.post('/api/hooks/test', async (c) => {
-    let draft: { event: string; matcher?: string; handler: import('./types').HookHandler; mockPayload?: Record<string, unknown> }
-    try { draft = await c.req.json() } catch { return c.json({ ok: false, error: 'Invalid JSON' }, 400) }
+    let draft: {
+      event: string
+      matcher?: string
+      handler: import('./types').HookHandler
+      mockPayload?: Record<string, unknown>
+    }
+    try {
+      draft = await c.req.json()
+    } catch {
+      return c.json({ ok: false, error: 'Invalid JSON' }, 400)
+    }
     if (!draft?.handler || !draft.event) return c.json({ ok: false, error: 'event and handler required' }, 400)
 
     const { resolveHost } = await import('./host-resolver')
@@ -230,7 +258,9 @@ export function createHooksRoutes(): Hono {
     // Allocate a throwaway session id for the registry
     const fakeSessionId = `__test__${Date.now()}`
     try {
-      const fakeHooks = { [draft.event]: [{ matcher: draft.matcher, hooks: [draft.handler] }] } as import('./types').HookSettings
+      const fakeHooks = {
+        [draft.event]: [{ matcher: draft.matcher, hooks: [draft.handler] }],
+      } as import('./types').HookSettings
       const reg = registerSessionHooks(fakeSessionId, fakeHooks, { kind: 'user' })
       const hookId = Array.from(reg.values())[0]?.id
       if (!hookId) return c.json({ ok: false, error: 'Failed to register draft' }, 500)
@@ -270,12 +300,18 @@ export function createHooksRoutes(): Hono {
     const merged = mergeAllHooks(cwd)
     // Convert sourceByMatcher Map to a parallel array indexed the same way
     // the hooks object iterates so the renderer can reconstruct it.
-    const flat: Array<{ event: string; matcherIdx: number; matcher?: string; handler: import('./types').HookHandler; source: import('./types').HookSource }> = []
+    const flat: Array<{
+      event: string
+      matcherIdx: number
+      matcher?: string
+      handler: import('./types').HookHandler
+      source: import('./types').HookSource
+    }> = []
     for (const [event, matchers] of Object.entries(merged.hooks)) {
       if (!Array.isArray(matchers)) continue
       matchers.forEach((m, mi) => {
         const source = merged.sourceByMatcher.get(m) ?? { kind: 'user' as const }
-        m.hooks.forEach(h => {
+        m.hooks.forEach((h) => {
           flat.push({ event, matcherIdx: mi, matcher: m.matcher, handler: h, source })
         })
       })
@@ -291,7 +327,7 @@ export function createHooksRoutes(): Hono {
     if (!caller) return c.json({ error: 'Unauthorized' }, 401)
     const session = getSession(sessionId)
     if (!session || session.tokenId !== caller.tokenId) return c.json({ error: 'Session not found' }, 404)
-    const hooks = listSession(sessionId).map(h => ({
+    const hooks = listSession(sessionId).map((h) => ({
       id: h.id,
       event: h.event,
       matcher: h.matcher,

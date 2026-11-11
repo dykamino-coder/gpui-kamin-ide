@@ -160,14 +160,46 @@ export function resendUndeliveredMcpCalls(session: PtySession): void {
   }
 }
 
+/**
+ * Redeliver calls that went out on an earlier client socket but that the
+ * currently bound client does not hold. A transport-accepted frame on a
+ * half-open socket, or a client instance replaced by restart/self-update,
+ * never answers; skipping it on reattach left the CLI waiting for the full
+ * tool timeout (INC-2026-0093). The client keeps every call it received in
+ * its report until the result is delivered, and drops duplicate request ids,
+ * so an absent id means this client never got it and resending cannot repeat
+ * a side effect on this client.
+ */
+export function redeliverCallsMissingFromReport(session: PtySession, reportedIds: ReadonlySet<string>): void {
+  for (const [requestId, pending] of pendingMcpCalls) {
+    if (pending.sessionId !== session.id || !pending.delivered) continue
+    if (pending.deliveredTo === session.ws || reportedIds.has(requestId)) continue
+    warnLog('MCP call lost with a previous client socket — redelivering', {
+      sessionId: session.id,
+      requestId,
+      toolName: pending.toolName,
+      elapsedMs: Date.now() - pending.createdAt,
+    })
+    pending.delivered = false
+    pending.deliveredTo = undefined
+    trySendMcpCall(session, requestId, pending)
+    if (!pending.delivered && !pending.retryTimer) {
+      pending.retryTimer = setInterval(() => trySendMcpCall(session, requestId, pending), 1000)
+      pending.retryTimer.unref?.()
+    }
+  }
+}
+
 function trySendMcpCall(session: PtySession, requestId: string, pending: PendingMcpCall): void {
   if (pending.delivered || pendingMcpCalls.get(requestId) !== pending) return
-  pending.delivered = sendToClient(session.ws, {
+  const ws = session.ws
+  pending.delivered = sendToClient(ws, {
     type: 'mcp:call',
     requestId,
     toolName: pending.toolName,
     input: pending.input,
   })
+  if (pending.delivered) pending.deliveredTo = ws
   if (pending.delivered && pending.retryTimer) {
     clearInterval(pending.retryTimer)
     pending.retryTimer = undefined
