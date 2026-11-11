@@ -133,10 +133,11 @@ export interface ContextStats {
   pct: number | null
   /** Effective input tokens driving the bar (window occupancy). */
   used: number | null
-  /** Model context-window size the pct is against. */
+  /** Token count the pct is against: the auto-compact point when known. */
   limit: number
-  /** `cli` — the CLI-reported window; `model` — estimated from the model id. */
-  limitSource: 'cli' | 'model'
+  /** `compact` — where the CLI auto-compacts (server policy); `cli` — the
+   *  CLI-reported model window (older servers); `model` — estimated from the id. */
+  limitSource: 'compact' | 'cli' | 'model'
   /** Cumulative $ cost across the segment (deduped by message.id). */
   cost: number
   /** Model id used to estimate the limit (empty when none is known). */
@@ -163,9 +164,9 @@ export function computeContextStats(
   entries: StatEntry[],
   isLiveSegment: boolean,
   tabModel: string | null | undefined,
-  /** `context_window.context_window_size` from the session's CLI status line
-   *  (`session:usage`); authoritative for the live segment when present. */
-  cliWindowSize?: number | null,
+  /** The session's `session:usage`: `autoCompactAt` is the meter's 100%;
+   *  `contextWindowSize` (older servers) is the live model window. */
+  session?: { autoCompactAt?: number | null; contextWindowSize?: number | null } | null,
 ): ContextStats | null {
   let cumulativeCost = 0
   let peakUsage: UsageBlock | null = null
@@ -217,18 +218,19 @@ export function computeContextStats(
   const useUsage = isLiveSegment ? (latestUsage ?? peakUsage) : peakUsage
   const useUsedTokens = isLiveSegment && latestUsedTokens >= 0 ? latestUsedTokens : peakUsedTokens
   const useModel = isLiveSegment ? (latestModel ?? peakModel) : peakModel
-  // Окно текущего разговора знает только CLI: его status line сообщает
-  // `context_window_size` для той модели, на которой сессия работает сейчас.
-  // Архивный сегмент мог идти на другой модели, поэтому там — только оценка.
-  const cliLimit = isLiveSegment && cliWindowSize && Number.isSafeInteger(cliWindowSize) && cliWindowSize > 0
-    ? cliWindowSize
-    : 0
+  // 100% — точка автосжатия, которую сервер задаёт CLI и сообщает в
+  // session:usage: сжатие к ней и приводит, в любом сегменте. Без неё (старый
+  // сервер) — окно модели из status line, только для текущего сегмента:
+  // архивный мог идти на другой модели.
+  const valid = (n: number | null | undefined): number => (typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : 0)
+  const compactLimit = valid(session?.autoCompactAt)
+  const cliLimit = compactLimit ? 0 : isLiveSegment ? valid(session?.contextWindowSize) : 0
   // Оценка по имени: у сессии ДВА источника модели, и легаси может застрять в
   // ЛЮБОМ из них (витки хранят opus-4-8 до апгрейда, а таб уже живой opus-5
   // после hot-switch — инцидент «100% при 510K»). Берём максимум окон обоих.
   const tabLimit = tabModel ? contextLimitForModel(tabModel) : 0
   const jsonlLimit = useModel ? contextLimitForModel(useModel) : 0
-  const limit = cliLimit || Math.max(tabLimit, jsonlLimit) || contextLimitForModel(null)
+  const limit = compactLimit || cliLimit || Math.max(tabLimit, jsonlLimit) || contextLimitForModel(null)
   const modelForLimit = (tabLimit >= jsonlLimit ? tabModel : useModel) ?? useModel ?? tabModel ?? ''
   let used: number | null = useUsedTokens >= 0 ? useUsedTokens : (useUsage ? effectiveInputTokens(useUsage) : null)
   let freshness: ContextStats['freshness'] = 'usage'
@@ -239,6 +241,6 @@ export function computeContextStats(
   }
   const pct = used === null ? null : Math.min(100, Math.round((used / limit) * 100))
   return {
-    pct, used, limit, limitSource: cliLimit ? 'cli' : 'model', cost: cumulativeCost, model: modelForLimit, freshness,
+    pct, used, limit, limitSource: compactLimit ? 'compact' : cliLimit ? 'cli' : 'model', cost: cumulativeCost, model: modelForLimit, freshness,
   }
 }

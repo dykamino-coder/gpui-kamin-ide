@@ -208,6 +208,28 @@ it('removes a failed launch snapshot without touching another CLI in the reused 
   expect(await hookStatus(h.spawn.mock.calls[0]!, 'PreToolUse')).toBe(200)
 })
 
+it('hands the auto-compact policy to the spawned CLI at the --settings level', async () => {
+  // A profile value (here the old 380k, in the server env the PTY inherits and
+  // in a stale local file) must not decide compaction. CLI 2.1.322 order:
+  // policy > --settings > local > project > user settings > process env.
+  vi.stubEnv('CLAUDE_CODE_AUTO_COMPACT_WINDOW', '380k')
+  const settingsDir = path.join(h.root, 'conversation')
+  fs.mkdirSync(path.join(settingsDir, '.claude'), { recursive: true })
+  fs.writeFileSync(
+    path.join(settingsDir, '.claude', 'settings.local.json'),
+    JSON.stringify({ env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '380k' } }),
+  )
+  await core.createSession(socket, 'synthetic', 'owner', { resumeConversationId: conversation, bearerHash: 'owner' })
+  const call = h.spawn.mock.calls[0]!
+  const file = call[1][call[1].indexOf('--settings') + 1]!
+  expect(JSON.parse(fs.readFileSync(file, 'utf8')).env).toEqual({
+    CLAUDE_CODE_AUTO_COMPACT_WINDOW: '530k',
+    CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '92',
+  })
+  // The regenerated local file no longer carries a competing value.
+  const local = JSON.parse(fs.readFileSync(path.join(settingsDir, '.claude', 'settings.local.json'), 'utf8'))
+  expect(local.env).not.toHaveProperty('CLAUDE_CODE_AUTO_COMPACT_WINDOW')
+})
 it('passes large native hook declarations through a file instead of an oversized argv value', async () => {
   fs.writeFileSync(
     path.join(h.sync, 'settings.json'),
