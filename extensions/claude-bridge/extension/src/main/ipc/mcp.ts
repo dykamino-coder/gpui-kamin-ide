@@ -1,6 +1,7 @@
 import { ipcMain, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import type { McpServerManager } from '../mcp/mcp-server-manager'
 import type { ExternalMcpServerConfig } from '../../shared/types'
+import { listMcpRegistry } from '../mcp/registry'
 
 export interface McpIpcContext {
   getMcpServerManager: () => McpServerManager | null
@@ -172,17 +173,5 @@ export function registerMcpIPC(ctx: McpIpcContext): void {
   })
 
   // ─── MCP official registry ───
-  ipcMain.handle('mcp:registry-list', async () => {
-    try {
-      const res = await fetch('https://api.anthropic.com/mcp-registry/v0/servers', {
-        headers: { 'User-Agent': 'open-claude-bridge' },
-      })
-      if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, servers: [] }
-      const data = await res.json() as any
-      const servers = Array.isArray(data?.servers) ? data.servers : Array.isArray(data) ? data : []
-      return { ok: true, servers }
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), servers: [] }
-    }
-  })
+  ipcMain.handle('mcp:registry-list', () => listMcpRegistry())
 }

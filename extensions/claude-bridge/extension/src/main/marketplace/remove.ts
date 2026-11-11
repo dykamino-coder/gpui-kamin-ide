@@ -7,7 +7,10 @@ export function removeMarketplace(name: string): void {
   const known = readKnownMarketplaces() as any
   const entry = known[name]
   if (entry) {
-    if (entry.installLocation && fs.existsSync(entry.installLocation)) {
+    // A directory marketplace is the user's own folder, used in place: forget
+    // it, never delete it. Only a clone made by addMarketplace is ours to remove.
+    const ownsFiles = entry.source?.source !== 'directory'
+    if (ownsFiles && entry.installLocation && fs.existsSync(entry.installLocation)) {
       fs.rmSync(entry.installLocation, { recursive: true, force: true })
     }
     delete known[name]
