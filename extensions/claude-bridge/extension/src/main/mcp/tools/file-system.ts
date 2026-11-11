@@ -4,6 +4,8 @@ import path from 'node:path'
 import fg from 'fast-glob'
 import { notebookRead } from './notebook'
 import { readFileCached, invalidateFileCache } from '../../utils/file-read-cache'
+import { resolveToolPath, resolveWorkingDirectory } from '../../utils/working-directory'
+import type { ToolCallContext } from '../executor'
 import {
   type McpResult,
   textResult,
@@ -128,9 +130,9 @@ function preserveQuoteStyle(
 
 // ── Read ────────────────────────────────────────────────────────────────
 
-export async function readFile(input: Record<string, unknown>): Promise<McpResult> {
-  const filePath = input.file_path as string
-  if (!filePath) return errorResult('file_path is required')
+export async function readFile(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
+  if (!input.file_path) return errorResult('file_path is required')
+  const filePath = resolveToolPath(input.file_path as string, context?.cwd)
   if (isBlockedDevicePath(filePath)) return errorResult(`Refusing to read blocking device path: ${filePath}`)
 
   try {
@@ -201,10 +203,10 @@ export async function readFile(input: Record<string, unknown>): Promise<McpResul
 
 // ── Write ───────────────────────────────────────────────────────────────
 
-export async function writeFile(input: Record<string, unknown>): Promise<McpResult> {
-  const filePath = input.file_path as string
+export async function writeFile(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const content = input.content as string
-  if (!filePath) return errorResult('file_path is required')
+  if (!input.file_path) return errorResult('file_path is required')
+  const filePath = resolveToolPath(input.file_path as string, context?.cwd)
   if (typeof content !== 'string') return errorResult('content is required')
 
   try {
@@ -237,8 +239,8 @@ function detectLineEnding(content: string): 'CRLF' | 'LF' {
   return crlfCount > lfCount ? 'CRLF' : 'LF'
 }
 
-export async function editFile(input: Record<string, unknown>): Promise<McpResult> {
-  const filePath = input.file_path as string
+export async function editFile(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
+  const filePath = input.file_path ? resolveToolPath(input.file_path as string, context?.cwd) : ''
   const oldString = input.old_string as string
   const newString = input.new_string as string
   const replaceAll = input.replace_all === true
@@ -337,11 +339,13 @@ function isFsRoot(p: string): boolean {
   return /^([a-zA-Z]:[\\/]?|[\\/])$/.test(p.trim())
 }
 
-export async function globSearch(input: Record<string, unknown>): Promise<McpResult> {
+export async function globSearch(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const pattern = input.pattern as string
   if (!pattern) return errorResult('pattern is required')
 
-  const basePath = (input.path as string) || process.cwd()
+  const basePath = input.path
+    ? resolveToolPath(input.path as string, context?.cwd)
+    : resolveWorkingDirectory(context?.cwd)
 
   // Refuse an unbounded walk from a filesystem root — `Glob("**", "C:\\")` would
   // enumerate + stat millions of entries (minutes of work, hundreds of MB).
