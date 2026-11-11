@@ -79,14 +79,8 @@ impl Materialized {
     /// ненаследуемых значений родителя (css-cascade-5 §7.3.1): ему годен только тот же
     /// родитель или равный во всём (Blink `MatchedPropertiesCache`: explicit inheritance
     /// сверяет и non-inherited данные родителя).
-    fn fits(&self, parent: &Computed, generation: Inputs, explicit: bool) -> bool {
-        self.generation == generation
-            && (std::ptr::eq(&*self.parent, parent)
-                || if explicit {
-                    *self.parent == *parent
-                } else {
-                    inherited::inherited_eq(&self.parent, parent)
-                })
+    fn fits(&self, parent: &Computed, generation: Inputs, own: &Computed) -> bool {
+        self.generation == generation && inherited::parent_eq(&self.parent, parent, own)
     }
 }
 
@@ -98,14 +92,11 @@ impl ComputedSlot {
 
     /// Материализованный стиль каскадного `own`, годный под родителем `parent`.
     fn get(&self, own: &Computed, parent: &Computed, generation: Inputs) -> Option<Published> {
-        let explicit = !own.reset_cascade.explicit_inherit.is_empty()
-            || !own.reset_cascade.inherit_longhands.is_empty();
         self.0
             .borrow()
             .as_ref()
             .filter(|m| {
-                m.computed.reset_context.cq_size == self.1.get()
-                    && m.fits(parent, generation, explicit)
+                m.computed.reset_context.cq_size == self.1.get() && m.fits(parent, generation, own)
             })
             .map(|m| m.computed.clone())
     }

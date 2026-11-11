@@ -210,3 +210,4 @@ mod tests;
 mod used_color_tests;
 
 mod identity;
+pub(crate) use identity::Storage;
