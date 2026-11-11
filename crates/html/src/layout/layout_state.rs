@@ -20,6 +20,8 @@ pub(crate) struct LayoutState {
     pub(crate) root_left: Cell<Option<f32>>,
     /// Element styles converted in the current build of this document.
     pub(crate) conversions: crate::layout::cx::conversions::StyleConversions,
+    /// Run fonts derived in the current build of this document.
+    pub(crate) run_faces: crate::layout::cx::run_faces::RunFaces,
 }
 
 impl LayoutState {
