@@ -168,8 +168,8 @@ export function isNarrationThinkingEntry(entry: JsonlEntryData): boolean {
 }
 
 /** Render-copy pass: in narration entries, non-empty thinking blocks become
- *  prose `text` blocks so they render like the console instead of a collapsed
- *  "Thinking" teaser, and prose/tool splitting puts them in their own bubble.
+ *  prose `text` blocks so they render like the console (plain speech, no
+ *  lightbulb marker), and prose/tool splitting puts them in their own bubble.
  *
  *  INC-2026-0063: CLI 2.1.x writes such a turn as thinking(empty, signature
  *  only) + thinking(narration) + tool_use under one message.id; after the
@@ -259,9 +259,8 @@ export function isInvisibleAssistantEntry(entry: JsonlEntryData): boolean {
       if (SYNTHETIC_USER_TEXTS.has(trimmed)) continue
       return false
     }
-    // Thinking blocks with actual content — no longer hidden. Collapsed
-    // ThinkingBlock.tsx shows a single-line teaser; full thought expands
-    // on click. Without surfacing these, pure-thinking turns (extended
+    // Thinking blocks with actual content — no longer hidden: ThinkingBlock
+    // draws them as readable text. Without surfacing these, pure-thinking turns (extended
     // thinking mode with no text/tool follow-up yet) were invisible.
     if (b.type === 'thinking' && b.thinking && b.thinking.trim()) return false
   }
@@ -315,7 +314,7 @@ function splitProseFromTools(
   if (!Array.isArray(content)) return null
   const blocks = content as ContentBlock[]
   const hasTool = blocks.some((b) => b.type === 'tool_use')
-  // Non-empty thinking is visible too (collapsed ThinkingBlock); without it in
+  // Non-empty thinking is visible too (ThinkingBlock); without it in
   // the prose half, a "thinking + tool_use" message was swallowed by the group.
   const hasText = blocks.some((b) =>
     (b.type === 'text' && b.text && b.text.trim()) ||
