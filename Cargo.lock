@@ -1769,7 +1769,7 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
 name = "engine-bench"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "encoding_rs",
  "futures",
@@ -3835,25 +3835,25 @@ dependencies = [
 
 [[package]]
 name = "kamin-alloc"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "mimalloc",
 ]
 
 [[package]]
 name = "kamin-crash"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "windows 0.62.2",
 ]
 
 [[package]]
 name = "kamin-font-facts"
-version = "1.0.92"
+version = "1.0.93"
 
 [[package]]
 name = "kamin-html"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "encoding_rs",
  "foldhash 0.2.0",
@@ -3892,11 +3892,11 @@ dependencies = [
 
 [[package]]
 name = "kamin-metrics"
-version = "1.0.92"
+version = "1.0.93"
 
 [[package]]
 name = "kamin-model"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "serde",
  "serde_json",
@@ -3904,7 +3904,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-probe"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "serde",
  "serde_json",
@@ -3912,7 +3912,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-sidecar"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "serde",
  "serde_json",
@@ -3921,7 +3921,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-style"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "encoding_rs",
  "gpui-pre",
@@ -3941,11 +3941,11 @@ dependencies = [
 
 [[package]]
 name = "kamin-theme"
-version = "1.0.92"
+version = "1.0.93"
 
 [[package]]
 name = "kamin-ws"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "serde",
  "serde_json",
@@ -3954,7 +3954,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-gpui"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3996,7 +3996,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-setup"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "anyhow",
  "gpui-pre",
@@ -4009,7 +4009,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-web-helper"
-version = "1.0.92"
+version = "1.0.93"
 dependencies = [
  "cef",
  "kamin-crash",

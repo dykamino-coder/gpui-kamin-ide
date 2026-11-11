@@ -241,7 +241,12 @@ export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readon
   }
 
   // Inject system prompt with working directory info and MCP instructions
-  const systemPrompt = buildSystemPrompt(sessionConfig.cwd, sessionConfig.basePrompt, sessionConfig.transcriptMirrorDir)
+  const systemPrompt = buildSystemPrompt(
+    sessionConfig.cwd,
+    sessionConfig.basePrompt,
+    sessionConfig.transcriptMirrorDir,
+    sessionConfig.host,
+  )
   args.push('--append-system-prompt', systemPrompt)
 
   for (const pluginDir of pluginDirs) args.push('--plugin-dir', pluginDir)

@@ -26,6 +26,7 @@ import type { PtySession, ToolDefinition } from './types'
 import { getSessionWs } from './session-ws'
 import { sendToClient } from './session-io'
 import { MCP_TOOLS } from './mcp-tools-defs'
+import { isUndeclaredBuiltin, mcpToolsFor, undeclaredToolMessage } from './host-declaration'
 import { mcpInstructions } from './mcp-instructions'
 import { matchesResourceTemplate } from './resource-template'
 import { notifyTaskChanged, openToolNotificationStream } from './mcp-tool-notify'
@@ -455,7 +456,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             prompts: {},
             extensions: { [TASK_EXTENSION]: {} },
           },
-          instructions: mcpInstructions(supportsTasks(body.params)),
+          instructions: mcpInstructions(supportsTasks(body.params), session.host),
         }),
       )
     }
@@ -547,7 +548,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             name: 'open-claude-bridge-user-tools',
             version: '4.0.0',
           },
-          instructions: mcpInstructions(supportsTasks(body.params)),
+          instructions: mcpInstructions(supportsTasks(body.params), session.host),
         }),
       )
     }
@@ -583,12 +584,15 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           description: t.description,
           inputSchema: t.inputSchema,
         }))
-      const toolList = [...MCP_TOOLS, ...serverTools, ...externalTools]
+      // Built-in tools are the ones the client host declared it can execute
+      // (INC-2026-0097); a session without a declaration gets the full list.
+      const builtinTools = mcpToolsFor(session.host)
+      const toolList = [...builtinTools, ...serverTools, ...externalTools]
       observeMcpCatalog(session, toolList)
 
       logMcpRequest(session, 'tools/list', 'ok', undefined, Date.now() - reqStart)
       debugLog('tools/list response', {
-        builtinCount: MCP_TOOLS.length,
+        builtinCount: builtinTools.length,
         externalCount: externalTools.length,
         total: toolList.length,
       })
@@ -628,6 +632,14 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           )
           return jsonRpcResponse(body.id, truncateMcpResult(result as unknown as Record<string, unknown>, toolName))
         })
+      }
+
+      // A built-in tool the client host did not declare is never forwarded: the
+      // host has no executor for it, so the call ends here with the reason.
+      if (session.host && isUndeclaredBuiltin(session.host, toolName)) {
+        const message = undeclaredToolMessage(session.host, toolName)
+        logMcpRequest(session, `tools/call:${toolName}`, 'error', message)
+        return jsonResponse(jsonRpcError(body.id, -32602, message), 400)
       }
 
       // Check tool exists in built-in tools OR registered external tools

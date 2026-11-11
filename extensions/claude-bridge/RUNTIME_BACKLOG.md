@@ -1,5 +1,79 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.93 delivery: host tool declaration and client management groups — 2026-11-11
+
+Delivery reconciliation 2026-11-11, source `origin/main`
+`a977a737899d6ad5bdad01a03877a9ec1dbc95d4`:
+[KaminIDE 1.0.93](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.93)
+/ server 6.3.170 is published (tag commit `1fe4cac5`, ancestry checked), with
+the embedding packages `kaminide-bridge-workspace-host-6.3.170.tgz` and
+`kaminide-bridge-browser-client-6.3.170.tgz`. Publication is not acceptance.
+Acceptance run 2026-11-11 on the released image and packages: INC-0097 is
+`done`. Do not reimplement #732.
+
+- [INC-0097](runtime-issues/INC-2026-0097.md): the Bridge server serves the
+  tools and the wording that the client host declares,
+  [#732](https://github.com/dykamino-coder/gpui-kamin-ide/pull/732)
+  (`3c323c2c`). `done`: the gate passed on 2026-11-11 on a server from image
+  6.3.170 for a Linux workspace host of the same release (no PowerShell, "the
+  workspace host (Linux)", an undeclared tool is rejected), for KaminIDE 1.0.93
+  on Windows (PowerShell present, "the user's machine (Windows)") and for a
+  6.3.169 host without a declaration (full list, earlier texts). No next
+  artifact; the table is in the card.
+- The typed `mcp`, `skills`, `agents`, `plugins` and `hooks` groups of
+  `@kaminide/bridge-browser-client`,
+  [#730](https://github.com/dykamino-coder/gpui-kamin-ide/pull/730)
+  (`2c8a0eb5`), ship in the same release. They have no runtime card; the
+  published package was checked for these types and for version 6.3.170.
+  Live check 2026-11-11 from the released client against the 6.3.170 server:
+  a read and a write with rollback passed for `mcp` (`servers`, `addServer`,
+  `testServer`, `removeServer`), `skills` (`list`, `create`, `read`, `remove`),
+  `plugins` (`installed`, `marketplaces`, `addMarketplace`, `browse`,
+  `removeMarketplace`) and `hooks` (`list`, `listAll`, `save`, `remove`);
+  `agents` has only `list`, which passed. The state after the run equals the
+  state before it.
+- [INC-0095](runtime-issues/INC-2026-0095.md) (`done`) and
+  [INC-0096](runtime-issues/INC-2026-0096.md) (`ready/change`): no new change
+  in 1.0.93. Their state was set by the acceptance run on 1.0.92 / 6.3.169 (see
+  the section below). The Windows process-tree stop for INC-0096 is not in this
+  release.
+
+## KaminIDE 1.0.92 delivery: mod sync and interrupt — 2026-11-11
+
+Delivery reconciliation 2026-11-11, source `origin/main`
+`a6c88eaafe7265cac654051a395dd8cb449eb45f`:
+[KaminIDE 1.0.92](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.92)
+/ server 6.3.169 is published (tag commit `b73bc76d`, ancestry checked). It is
+the first release that attaches the embedding packages
+`kaminide-bridge-workspace-host-6.3.169.tgz` and
+`kaminide-bridge-browser-client-6.3.169.tgz`. Publication is not acceptance.
+Acceptance run 2026-11-11 on the released image and packages, reconciled at
+`origin/main` `1fe4cac5`: results per card below. Do not reimplement #724 or
+#727.
+
+- [INC-0095](runtime-issues/INC-2026-0095.md): `done`. Plugins with a hooks
+  module reach the Bridge server's CLI with their file tree,
+  [#724](https://github.com/dykamino-coder/gpui-kamin-ide/pull/724)
+  (`8ea084b0`). Verified 2026-11-11 on the released image 6.3.169 with the
+  released client package: a test mod installed through the client library is
+  synced and its hook fires in a new Bridge session. Mod UI has no client
+  channel and no fix is planned.
+- [INC-0096](runtime-issues/INC-2026-0096.md): `ready/change`. The server fix
+  [#727](https://github.com/dykamino-coder/gpui-kamin-ide/pull/727)
+  (`54fea075`) is verified: gate 1 passed 10 of 10 on a Linux client host
+  (process gone in 16 to 27 ms). Gate 2 failed in KaminIDE 1.0.92 on Windows:
+  the tree that `taskkill /T /F` sees exits in 1.38 to 1.65 seconds, and an
+  MSYS child (`sleep` from Git Bash) survives in 8 of 8 runs. Next artifact: a
+  client Change PR for the Windows tree stop (Job Object is the candidate),
+  then a repeat of gate 2. Owner: next maintainer run. Do not reimplement #727.
+- [INC-0093](runtime-issues/INC-2026-0093.md): stays `verify`. No new change in
+  1.0.92. A stand run on server 6.3.169 (Linux embedding client and KaminIDE
+  1.0.92 on Windows, tool calls around `/clear`, a reconnect and in-session
+  `/resume`) found no `Session destroyed`. The field observation of production
+  sessions by the lead is still not run (see the section below).
+- [INC-0094](runtime-issues/INC-2026-0094.md) stays `reported`: the embedding
+  packages ship with the single-owner state model; research is the next step.
+
 ## Live CLI calls ending in `Session destroyed` — 2026-11-11
 
 [INC-0093](runtime-issues/INC-2026-0093.md): SessionEnd from a running CLI

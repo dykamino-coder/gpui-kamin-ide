@@ -6,6 +6,7 @@ import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
+import type { HostDeclaration } from '../mcp/host-declaration'
 import { JsonlBatcher } from './jsonl-batcher'
 import { backgroundShellSnapshot, disposeBackgroundShells, stopBackgroundShellForOwner } from '../mcp/tools/shell'
 import { cancelMcpCall, type PendingMcpExecution } from './mcp-call-pipeline'
@@ -156,6 +157,12 @@ export class ConnectionManager {
   // Resolves instantly once the initial discovery is done, so only the first
   // session after a cold launch pays the wait.
   static whenExternalToolsReady: (() => Promise<void>) | null = null
+  // What this host can execute (built-in tools, platform, place). Sent with
+  // session:create/resume so the server serves exactly these tools and words
+  // its instructions for this host; unset → the server's legacy full set.
+  static getHostDeclaration: (() => Promise<HostDeclaration | undefined>) | null = null
+  // Last resolved declaration, for the synchronous resume path.
+  static hostDeclaration: HostDeclaration | undefined
   // Notification hooks — fired so main/index.ts can spawn background-toast
   // mini-windows when the user is not looking at the main window.
   static onElicitationRequest:
@@ -509,6 +516,15 @@ export class ConnectionManager {
     } catch {
       /* proceed with whatever connected */
     }
+    // Probed once per process; later sessions reuse it without another tick.
+    if (!ConnectionManager.hostDeclaration && ConnectionManager.getHostDeclaration) {
+      try {
+        ConnectionManager.hostDeclaration = await ConnectionManager.getHostDeclaration()
+      } catch {
+        /* no declaration: the server keeps its legacy full tool set */
+      }
+    }
+    const host = ConnectionManager.hostDeclaration
     const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null
     // A reconnect may have swapped the socket while we waited — never write to a
     // stale or closed pipe (the current socket runs its own startSession).
@@ -537,6 +553,7 @@ export class ConnectionManager {
         ...(basePrompt ? { basePrompt } : {}),
         ...(transcriptMirrorDir ? { transcriptMirrorDir } : {}),
         ...(externalTools.length > 0 ? { externalTools } : {}),
+        ...(host ? { host } : {}),
       })
     } else {
       this.sendRaw({
@@ -550,6 +567,7 @@ export class ConnectionManager {
         ...(basePrompt ? { basePrompt } : {}),
         ...(transcriptMirrorDir ? { transcriptMirrorDir } : {}),
         ...(externalTools.length > 0 ? { externalTools } : {}),
+        ...(host ? { host } : {}),
       })
     }
     this.armEstablishTimer()
@@ -1218,6 +1236,7 @@ export class ConnectionManager {
       protocolVersion: CLIENT_STREAM_PROTOCOL,
       history: { mode: 'paged' },
       ...(basePrompt ? { basePrompt } : {}),
+      ...(ConnectionManager.hostDeclaration ? { host: ConnectionManager.hostDeclaration } : {}),
     })
   }
 

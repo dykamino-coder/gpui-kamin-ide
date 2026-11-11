@@ -245,7 +245,7 @@ async function createAdmittedSession(
 
   // Правила нужны и сессии без выбранной папки; cwd передаётся в динамическом промпте.
   const userCwd = config.cwd
-  writeSessionClaudeMd(settingsDir)
+  writeSessionClaudeMd(settingsDir, config.host)
 
   // Apply per-token synced data (skills, agents, CLAUDE.md, project files)
   if (config.bearerHash) {
@@ -517,6 +517,7 @@ async function createAdmittedSession(
     outputBufferBytes: 0,
     lastResizeAt: Date.now(),
     consoleShrunk: false,
+    host: config.host,
     registeredTools: [],
     registeredResources: [],
     registeredResourceTemplates: [],
@@ -1105,6 +1106,7 @@ export async function restartWithEffort(
     model: preservedModel || undefined,
     reuseSettingsDir: oldSettingsDir,
     bearerHash: session.bearerHash,
+    host: session.host,
   })
 }
 
@@ -1168,6 +1170,7 @@ export async function restartWithModel(
     effort: preservedEffort || undefined,
     reuseSettingsDir: oldSettingsDir,
     bearerHash: session.bearerHash,
+    host: session.host,
   })
 }
 
