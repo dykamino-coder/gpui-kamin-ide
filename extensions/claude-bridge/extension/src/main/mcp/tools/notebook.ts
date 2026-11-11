@@ -1,4 +1,6 @@
 import fsp from 'node:fs/promises'
+import { resolveToolPath } from '../../utils/working-directory'
+import type { ToolCallContext } from '../executor'
 
 export type McpResult = { content: Array<{ type: string; text: string }> }
 
@@ -101,9 +103,9 @@ export async function notebookRead(input: Record<string, unknown>): Promise<McpR
   }
 }
 
-export async function notebookEdit(input: Record<string, unknown>): Promise<McpResult> {
-  const notebookPath = input.notebook_path as string
-  if (!notebookPath) return errorResult('notebook_path is required')
+export async function notebookEdit(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
+  if (!input.notebook_path) return errorResult('notebook_path is required')
+  const notebookPath = resolveToolPath(input.notebook_path as string, context?.cwd)
 
   const newSource = input.new_source as string
   const cellType = (input.cell_type as string) || undefined
