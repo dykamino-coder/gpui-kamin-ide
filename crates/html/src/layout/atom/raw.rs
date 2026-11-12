@@ -40,11 +40,10 @@ pub(super) fn atom_element_raw(
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
     ) && e.style.used().reset_context.inline_display != Some(true);
-    let opts = &*opts.inner(|cx| {
-        if clamp_bfc {
-            cx.clamp.build = cx.clamp.build.bfc();
-        }
+    let atom_opts = opts.inner_if(clamp_bfc, |cx| {
+        cx.clamp.build = cx.clamp.build.bfc();
     });
+    let opts = &*atom_opts;
     let build = &opts.cx.contracts.build;
     // Элементу формы нужен СЛИТЫЙ стиль: в своём у него единицы шрифта ещё не
     // разрешены (`width: 3ch` считался бы по базовому кеглю, а не по своему),
