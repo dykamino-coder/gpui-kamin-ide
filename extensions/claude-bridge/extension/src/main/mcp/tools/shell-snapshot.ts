@@ -42,9 +42,8 @@ const SKIP_VARIABLES = new Set([
 ])
 
 export function buildSnapshotScript(): string {
-  // Sections separated by SEPARATOR lines. PATH additions are computed inside
-  // bash because MSYS converts PATH to POSIX form on start; the base PATH is
-  // passed in OCB_BASE_PATH and converted with cygpath where it exists.
+  // Sections separated by SEPARATOR lines. The login PATH is compared with the
+  // PATH of a plain `bash -c` (see `plainPath`) in the same POSIX form.
   return [
     `printf '%s\\n' '${SEPARATOR}functions'`,
     `for f in $(compgen -A function); do case "$f" in _*) ;; *) declare -f "$f" ;; esac; done 2>/dev/null`,
@@ -53,8 +52,7 @@ export function buildSnapshotScript(): string {
     `printf '%s\\n' '${SEPARATOR}shopt'`,
     'shopt -p 2>/dev/null',
     `printf '%s\\n' '${SEPARATOR}path'`,
-    'base="$OCB_BASE_PATH"; if command -v cygpath >/dev/null 2>&1; then base=$(cygpath -p -u "$OCB_BASE_PATH" 2>/dev/null || printf "%s" "$OCB_BASE_PATH"); fi',
-    'IFS=: read -r -a _ocb_now <<< "$PATH"; for p in "${_ocb_now[@]}"; do case ":$base:" in *":$p:"*) ;; *) printf "%s\\n" "$p" ;; esac; done',
+    'printf "%s\\n" "$PATH"',
     `printf '%s\\n' '${SEPARATOR}env'`,
     'for n in $(compgen -e); do printf "%s\\0%s\\0" "$n" "${!n}"; done',
   ].join('\n')
@@ -66,7 +64,12 @@ function shellQuote(value: string): string {
 
 /** Snapshot file text from the capture output; `baseEnv` is the environment
  *  the capture shell inherited. */
-export function renderSnapshot(output: string, baseEnv: NodeJS.ProcessEnv, platform = process.platform): string {
+export function renderSnapshot(
+  output: string,
+  baseEnv: NodeJS.ProcessEnv,
+  platform = process.platform,
+  plainPath = '',
+): string {
   const sections = new Map<string, string>()
   for (const part of output.split(`${SEPARATOR}`).slice(1)) {
     const newline = part.indexOf('\n')
@@ -76,8 +79,14 @@ export function renderSnapshot(output: string, baseEnv: NodeJS.ProcessEnv, platf
   lines.push(sections.get('functions')?.trimEnd() ?? '')
   lines.push('shopt -s expand_aliases')
   lines.push(sections.get('shopt')?.trimEnd() ?? '')
-  lines.push(sections.get('aliases')?.trimEnd() ?? '')
-  const added = (sections.get('path') ?? '').split('\n').filter(Boolean)
+  // Git for Windows aliases `node`/`python`/... to `winpty <exe>`, which
+  // fails without a console ("stdin is not a tty"); native Claude Code drops
+  // them too.
+  const aliases = (sections.get('aliases') ?? '').split('\n').filter((line) => line && !/\bwinpty\b/.test(line))
+  lines.push(aliases.join('\n'))
+  // PATH entries the profile added: login PATH minus the PATH of a plain shell.
+  const plain = new Set(plainPath.split(':'))
+  const added = [...new Set((sections.get('path') ?? '').trim().split(':'))].filter((p) => p && !plain.has(p))
   if (added.length) lines.push(`export PATH=${shellQuote(added.join(':'))}:"$PATH"`)
   const env = (sections.get('env') ?? '').split('\0')
   const caseInsensitive = platform === 'win32'
@@ -85,7 +94,8 @@ export function renderSnapshot(output: string, baseEnv: NodeJS.ProcessEnv, platf
   for (let i = 0; i + 1 < env.length; i += 2) {
     const name = env[i]!.replace(/^\n+/, '')
     const value = env[i + 1]!
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || SKIP_VARIABLES.has(name) || name.startsWith('ORIGINAL_') || name.startsWith('BASH')) continue
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || SKIP_VARIABLES.has(name) || name.startsWith('ORIGINAL_') ||
+      name.startsWith('OCB_') || name.startsWith('BASH')) continue
     if (base.get(caseInsensitive ? name.toUpperCase() : name) === value) continue
     lines.push(`export ${name}=${shellQuote(value)}`)
   }
@@ -95,16 +105,37 @@ export function renderSnapshot(output: string, baseEnv: NodeJS.ProcessEnv, platf
 /** Capture a snapshot by running an interactive login bash. Returns the
  *  path to the snapshot file, or null on failure. Async — `spawnSync`
  *  previously blocked the main process event loop for up to 10s. */
-function captureSnapshot(bashPath: string): Promise<string | null> {
-  const tmpFile = path.join(os.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`)
+/** PATH as a plain non-login `bash -c` sees it (MSYS converts it to POSIX). */
+function plainShellPath(bashPath: string): Promise<string> {
   return new Promise((resolve) => {
-    const baseEnv = process.env
+    const proc = spawn(bashPath, ['-c', 'printf "%s" "$PATH"'], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
+    const chunks: Buffer[] = []
+    proc.stdout?.on('data', (d: Buffer) => chunks.push(d))
+    proc.on('error', () => resolve(''))
+    proc.on('close', () => resolve(Buffer.concat(chunks).toString('utf8')))
+  })
+}
+
+async function captureSnapshot(bashPath: string): Promise<string | null> {
+  const plain = plainShellPath(bashPath)
+  const captured = await captureLoginShell(bashPath)
+  if (!captured) return null
+  const tmpFile = path.join(os.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`)
+  try {
+    fs.writeFileSync(tmpFile, renderSnapshot(captured, process.env, process.platform, await plain), 'utf-8')
+  } catch {
+    return null
+  }
+  return tmpFile
+}
+
+function captureLoginShell(bashPath: string): Promise<string | null> {
+  return new Promise((resolve) => {
     // `-i -l -c` = interactive login shell — runs `.profile` / `.bashrc` so
     // user customisations populate the environment. Then dump them.
     const proc = spawn(bashPath, ['-ilc', buildSnapshotScript()], {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...baseEnv, OCB_BASE_PATH: baseEnv.PATH ?? '' },
     })
     const chunks: Buffer[] = []
     const timer = setTimeout(() => {
@@ -124,13 +155,7 @@ function captureSnapshot(bashPath: string): Promise<string | null> {
     proc.on('close', (code) => {
       clearTimeout(timer)
       const stdout = Buffer.concat(chunks).toString('utf8')
-      if (code !== 0 || !stdout.includes(SEPARATOR)) return resolve(null)
-      try {
-        fs.writeFileSync(tmpFile, renderSnapshot(stdout, baseEnv), 'utf-8')
-      } catch {
-        return resolve(null)
-      }
-      resolve(tmpFile)
+      resolve(code === 0 && stdout.includes(SEPARATOR) ? stdout : null)
     })
   })
 }
