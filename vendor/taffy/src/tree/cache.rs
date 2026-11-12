@@ -279,6 +279,15 @@ pub struct Cache {
     mode: CacheMode,
 }
 
+/// KaminIDE patch: heap blocks of the cache for the engine bench's memory report.
+impl Cache {
+    /// Address and requested bytes of the measure-entry buffer.
+    pub(crate) fn heap_block(&self) -> (*const u8, usize) {
+        let entries = &self.measure_entries;
+        let bytes = entries.capacity() * core::mem::size_of::<Option<CacheEntry<Measurement>>>();
+        (if bytes > 0 { entries.as_ptr().cast() } else { core::ptr::null() }, bytes)
+    }
+}
 impl Default for Cache {
     fn default() -> Self {
         Self::new()
