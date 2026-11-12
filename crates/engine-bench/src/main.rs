@@ -52,6 +52,12 @@ static ALLOC: allocations::Counted = allocations::Counted;
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
+    // Пробник стеков читает окружение без аллокаций, до первой аллокации стенда.
+    #[cfg(all(windows, feature = "allocation-audit"))]
+    if let Err(error) = allocations::probe::init() {
+        eprintln!("engine_bench: {error}");
+        std::process::exit(1);
+    }
     // Политика арен — как у приложения, до первой аллокации стенда.
     kamin_alloc::configure();
     diagnostics::init();

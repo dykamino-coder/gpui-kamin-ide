@@ -72,6 +72,8 @@ impl State {
                 self.last = now;
                 if let Some(next) = next {
                     self.phase = next as usize;
+                    #[cfg(feature = "allocation-audit")]
+                    super::allocations::probe::phase(self.phase);
                     self.phases[self.phase].observe(now, gpu);
                 }
             }
@@ -86,6 +88,8 @@ pub(super) struct Capture {
 impl Capture {
     pub(super) fn begin(luid: (i32, u32)) -> Result<Self, Box<dyn std::error::Error>> {
         let start = Snapshot::read()?;
+        #[cfg(feature = "allocation-audit")]
+        super::allocations::probe::frame();
         let (gpu, gpu_error) = match Memory::open(luid.0, luid.1) {
             Ok(gpu) => (Some(gpu), None),
             Err(error) => (None, Some(error.to_string())),
@@ -170,6 +174,8 @@ impl Capture {
                 let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 state.observe(None);
                 state.stopped = true;
+                #[cfg(feature = "allocation-audit")]
+                super::allocations::probe::outside();
             }
             worker.thread().unpark();
             let _ = worker.join();
