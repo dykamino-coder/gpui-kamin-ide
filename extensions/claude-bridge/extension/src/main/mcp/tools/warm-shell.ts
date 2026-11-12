@@ -14,7 +14,12 @@ import { windowsJobRunner } from './windows-job-runner'
  *  only briefly: after this idle time it is ended and the next call starts cold. */
 const IDLE_MS = 10 * 60_000
 
-export type WarmKind = 'bash' | 'powershell'
+/** `bash-hook` keeps stdin open after the two start lines: a hook reads its
+ *  JSON input there. */
+export type WarmKind = 'bash' | 'powershell' | 'bash-hook'
+
+/** Hooks of different plugins differ in environment; a few may wait at once. */
+const MAX_WAITING_HOOKS = 4
 
 /** The command a waiting shell runs: read the working folder and the script
  *  path, enter the folder, give the script an empty stdin as with a cold
@@ -22,9 +27,13 @@ export type WarmKind = 'bash' | 'powershell'
  *  it never keeps a project folder busy (Windows refuses to delete a folder
  *  that is a process's current directory). */
 export function acceptorCommand(kind: WarmKind): string {
+  const start = 'IFS= read -r __ocb_d && IFS= read -r REPLY || exit 0; '
+  const enter = '__ocb_o=${OLDPWD-}; cd -- "$__ocb_d" || exit 1; OLDPWD=$__ocb_o; unset __ocb_d __ocb_o; . "$REPLY"'
+  // bash reads a pipe byte by byte for `read`, so the hook input that follows
+  // the two lines is still unread when the script starts.
+  if (kind === 'bash-hook') return start + enter
   return kind === 'bash'
-    ? 'IFS= read -r __ocb_d && IFS= read -r REPLY || exit 0; exec 0</dev/null; __ocb_o=${OLDPWD-}; ' +
-        'cd -- "$__ocb_d" || exit 1; OLDPWD=$__ocb_o; unset __ocb_d __ocb_o; . "$REPLY"'
+    ? start + 'exec 0</dev/null; ' + enter
     : // Encoding setup and a first Invoke-Expression run while waiting: they
       // are the slow first-use part of every PowerShell command script.
       '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false; ' +
@@ -36,6 +45,7 @@ export function acceptorCommand(kind: WarmKind): string {
 
 interface Waiting {
   key: string
+  kind: WarmKind
   child: ChildProcess
   timer: ReturnType<typeof setTimeout>
 }
@@ -88,8 +98,9 @@ export function takeWarmShell(
   let taken: ChildProcess | null = null
   for (const entry of [...waiting.values()]) {
     if (entry.key !== key) {
-      // One waiting shell per kind: a new environment or folder replaces it.
-      if (JSON.parse(entry.key)[0] === shell) discard(entry)
+      // One waiting shell per kind: a new environment replaces it. Hooks keep
+      // a few, since the hooks of different plugins alternate around each call.
+      if (entry.kind === kind && kind !== 'bash-hook') discard(entry)
       continue
     }
     clearTimeout(entry.timer)
@@ -99,7 +110,7 @@ export function takeWarmShell(
     else discard(entry)
   }
   const child = startWaiting(shell, flags, kind, env)
-  const entry: Waiting = { key, child, timer: setTimeout(() => discard(entry), IDLE_MS) }
+  const entry: Waiting = { key, kind, child, timer: setTimeout(() => discard(entry), IDLE_MS) }
   entry.timer.unref?.()
   child.unref()
   ;(child.stdout as unknown as { unref?: () => void })?.unref?.()
@@ -109,14 +120,19 @@ export function takeWarmShell(
     if (waiting.get(key) === entry) discard(entry)
   })
   waiting.set(key, entry)
+  const hooks = [...waiting.values()].filter((e) => e.kind === 'bash-hook')
+  if (hooks.length > MAX_WAITING_HOOKS) discard(hooks[0]!)
   return taken
 }
 
-/** Hands `scriptPath` to a taken shell; it starts running the script now. */
-export function startWarmShell(child: ChildProcess, cwd: string, scriptPath: string): ChildProcess {
+/** Hands `scriptPath` to a taken shell; it starts running the script now.
+ *  With `keepStdin` the caller writes the script's stdin and ends it. */
+export function startWarmShell(child: ChildProcess, cwd: string, scriptPath: string, keepStdin = false): ChildProcess {
   ;(child as unknown as { ref?: () => void }).ref?.()
-  for (const stream of [child.stdout, child.stderr]) (stream as unknown as { ref?: () => void })?.ref?.()
-  child.stdin?.end(`${cwd}\n${scriptPath}\n`)
+  for (const stream of [child.stdout, child.stderr, child.stdin]) (stream as unknown as { ref?: () => void })?.ref?.()
+  const start = `${cwd}\n${scriptPath}\n`
+  if (keepStdin) child.stdin?.write(start)
+  else child.stdin?.end(start)
   return child
 }
 
