@@ -454,6 +454,60 @@ describe('codex chat over the Bridge session WebSocket', () => {
     again.send({ type: 'session:end' })
     again.close()
   }, 30_000)
+
+  it('continues a chat that never ran a turn on a new thread after a restart, with its choice', async () => {
+    // codex 0.160.1 writes a rollout only with the first turn (acceptance
+    // 2026-11-12: such a chat came back as "Conversation not found").
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_ROLLOUT_ON_TURN: '1' }))
+    const { codexTranscriptPath } = await import('./session-codex')
+    const client = await Client.open(port)
+    const created = await createChat(client, { engine: 'codex' })
+    client.send({ type: 'session:change-model', model: 'gpt-fake-mini' })
+    await client.next((f) => f.type === 'session:model-changed' && f.model === 'gpt-fake-mini')
+    client.send({ type: 'session:change-effort', effort: 'low' })
+    await client.next((f) => f.type === 'session:model-changed' && f.effort === 'low')
+    const settingsDir = created.settingsDir as string
+    const choice = fs.readdirSync(settingsDir).find((f) => f.startsWith('codex-choice-'))!
+    const threadId = choice.slice('codex-choice-'.length, -'.json'.length)
+    // The chat's transcript holds only a notice (e.g. a blocked first message).
+    const transcript = codexTranscriptPath(settingsDir, threadId)
+    fs.mkdirSync(path.dirname(transcript), { recursive: true })
+    const notice = { type: 'system', uuid: 'n1', parentUuid: null, timestamp: new Date().toISOString() }
+    fs.writeFileSync(
+      transcript,
+      JSON.stringify({ ...notice, sessionId: threadId, engine: 'codex', content: 'x' }) + '\n',
+    )
+    client.send({ type: 'session:end' })
+    client.close()
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_ROLLOUT_ON_TURN: '1' }))
+
+    const again = await Client.open(port)
+    again.send({
+      type: 'session:resume',
+      noSpawnOnNotFound: true,
+      token: 'tok-a',
+      conversationId: threadId,
+      protocolVersion: 1,
+      cwd: '/work/project',
+    })
+    const resumed = await again.next(
+      (f) => f.type === 'session:created' || f.type === 'session:resume-not-found' || f.type === 'session:error',
+    )
+    expect(resumed).toMatchObject({ type: 'session:created', engine: 'codex', model: 'gpt-fake-mini', effort: 'low' })
+    expect(resumed.resumeNotFound).toBeUndefined()
+    // Nothing to replay; the new thread's id reaches the client with its transcript.
+    await again.next((f) => f.type === 'jsonl:status' && f.replayComplete === true)
+    await say(again, 'first turn', 'k1')
+    await again.entry((e) => text(e) === 'echo: first turn [model=gpt-fake-mini effort=low]')
+    const next = (await again.next((f) => f.type === 'session:conversation-id')).conversationId
+    expect(next).not.toBe(threadId)
+    again.send({ type: 'session:end' })
+    again.close()
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime())
+  }, 30_000)
   it('keeps the per-user main agent and serves the GPT model list', async () => {
     const client = await Client.open(port)
     client.send({ type: 'codex:models', token: 'tok-a' })
