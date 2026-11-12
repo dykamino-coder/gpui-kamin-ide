@@ -61,7 +61,7 @@ describe('plugin hook proxy', () => {
       headers: { Authorization: `Bearer $${HOOK_RELAY_TOKEN_ENV}`, 'X-Bridge-Hook-Relay': 'http' },
       allowedEnvVars: [HOOK_RELAY_TOKEN_ENV],
       timeout: 30,
-      if: 'Read(*.env)',
+      if: 'mcp__user-tools__Read',
     })
   })
 
