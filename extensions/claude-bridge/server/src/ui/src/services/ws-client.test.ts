@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { wsClient } from './ws-client'
-import { isConnected, terminalSessions } from '../signals/server'
+import { cachedAccount, codexAccountEventAt, isConnected, terminalSessions } from '../signals/server'
 
 // Server CI installs only server dependencies, not the dashboard.
 // This transport fixture needs mutable values, not Preact rendering.
@@ -14,6 +14,7 @@ vi.mock('../signals/server', () => ({
   cachedAccount: { value: null },
   accountCheckedAt: { value: null },
   cachedUsage: { value: null },
+  codexAccountEventAt: { value: 0 },
 }))
 vi.mock('../signals/auth', () => ({ getSessionToken: () => 'synthetic-token' }))
 vi.mock('../signals/commands', () => ({ commandSnapshots: { value: [] }, commandOutput: { value: null } }))
@@ -140,5 +141,32 @@ describe('dashboard socket lifecycle (INC-2026-0014)', () => {
     expect(Socket.instances).toHaveLength(0)
     wsClient.connect('ws://synthetic/second')
     expect(Socket.instances).toHaveLength(1)
+  })
+
+  it('routes codex account:updated to the ChatGPT card without replacing the Claude account', () => {
+    const claude = { email: 'synthetic@example.test', subscriptionType: 'max' }
+    cachedAccount.value = claude as never
+    codexAccountEventAt.value = 0
+    wsClient.connect('ws://synthetic/first')
+    latest().onopen?.()
+    const push = (data: unknown) => latest().onmessage?.({ data: JSON.stringify({ type: 'account:updated', data }) })
+    push({ engine: 'codex', loggedIn: true })
+    expect(cachedAccount.value).toBe(claude)
+    expect(codexAccountEventAt.value).toBeGreaterThan(0)
+    push({ email: 'other@example.test' })
+    expect(cachedAccount.value).toEqual({ email: 'other@example.test' })
+  })
+
+  it('refreshes the ChatGPT card on the dedicated codex event', () => {
+    const claude = { email: 'synthetic@example.test' }
+    cachedAccount.value = claude as never
+    codexAccountEventAt.value = 0
+    wsClient.connect('ws://synthetic/first')
+    latest().onopen?.()
+    latest().onmessage?.({
+      data: JSON.stringify({ type: 'codex:account-updated', data: { engine: 'codex', loggedIn: false } }),
+    })
+    expect(codexAccountEventAt.value).toBeGreaterThan(0)
+    expect(cachedAccount.value).toBe(claude)
   })
 })

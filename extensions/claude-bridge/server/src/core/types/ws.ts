@@ -245,8 +245,11 @@ export type ClientToServerMsg =
 
 /** Per-user "main agent": the engine new chats open with. Needs an authenticated socket.
  *  The server answers, and also pushes after every session:created, with
- *  `{ type: 'agent:preferences', defaultEngine }`; clients send that engine
- *  explicitly in session:create. */
+ *  `{ type: 'agent:preferences', defaultEngine, auth }`; clients send that engine
+ *  explicitly in session:create. `auth` says which engines the server is signed
+ *  in to (`{ claude: { loggedIn, reason }, codex: {...} }`, loggedIn null =
+ *  unknown); it is pushed again on every sign-in or sign-out. A signed-out
+ *  engine is refused as the main agent (`error` + the unchanged default). */
 export interface WsMsgAgentSetDefaultEngine {
   type: 'agent:set-default-engine'
   engine: 'claude' | 'codex'
@@ -269,6 +272,8 @@ export interface WsMsgSessionCreated {
   resumeNotFound?: boolean
   /** Engine running this chat; absent from older servers = Claude. */
   engine?: 'claude' | 'codex'
+  /** The requested engine is signed out: why this chat runs the other one. */
+  engineNotice?: string
 }
 
 export interface WsMsgSessionOutput {

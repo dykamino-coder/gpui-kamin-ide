@@ -26,6 +26,56 @@ export interface SessionUsage {
   limitsObservedAt?: string | null
 }
 
+/** The agent behind a chat: Claude Code or ChatGPT through Codex CLI. */
+export type AgentEngine = 'claude' | 'codex'
+
+export function isAgentEngine(value: unknown): value is AgentEngine {
+  return value === 'claude' || value === 'codex'
+}
+
+/** A GPT model from the server's codex `model/list`. */
+export interface CodexModelInfo {
+  id: string
+  model: string
+  displayName: string
+  description: string
+  isDefault: boolean
+  defaultReasoningEffort: string | null
+  reasoningEfforts: string[]
+}
+
+/** The server's shared ChatGPT account, as the chat may show it (no tokens). */
+export interface CodexAccountInfo {
+  loggedIn: boolean
+  email?: string | null
+  planType?: string | null
+  error?: { kind: string; message: string; detail?: string } | null
+}
+
+export interface CodexModelsPayload {
+  models: CodexModelInfo[]
+  /** This server cannot run codex (not installed / does not start): the reason. */
+  unavailable?: string | null
+  account?: CodexAccountInfo
+  error?: { kind: string; message: string; detail?: string }
+}
+
+/** Whether this Bridge server can run chats on an engine: signed in, signed
+ *  out (with the reason) or not known yet (null — nothing is disabled). */
+export interface EngineAuth {
+  loggedIn: boolean | null
+  reason: string | null
+}
+
+export type EngineAuthState = Record<AgentEngine, EngineAuth>
+
+/** agent:preferences: the user's main agent and the engines' sign-in state. */
+export interface AgentPreferencesPayload {
+  defaultEngine?: AgentEngine
+  auth?: EngineAuthState
+  error?: string
+}
+
 export interface ConnectionConfig {
   serverUrl: string
   token: string
@@ -33,6 +83,10 @@ export interface ConnectionConfig {
   whisperUrl?: string
   whisperToken?: string
   whisperModel?: string
+  /** Engine of a NEW chat in this tab (absent → Claude). */
+  engine?: AgentEngine
+  /** Model the new chat should start on (a GPT id for a codex chat). */
+  model?: string
 }
 
 export interface ConnectionState {
@@ -79,6 +133,8 @@ export interface TabInfo {
   retryAttempt?: number
   effort?: string // current effort level (high, low, medium, default)
   model?: string // current model (opus, sonnet, haiku)
+  /** The chat's agent (absent from older hosts → Claude). */
+  engine?: AgentEngine
   sessionTitle?: string // auto-generated topic ("Fix auth bug")
   conversationId?: string // CLI conversation UUID (for resume dedup)
   sessionId?: string // server-side PTY session ID
@@ -716,6 +772,9 @@ export interface KaminBridgeApi {
         effort?: string
         model?: string
         inPlace?: boolean
+        engine?: AgentEngine
+        /** The requested engine is signed out; this chat runs the other one. */
+        engineNotice?: string
       },
     ) => void,
   ): () => void
@@ -726,6 +785,14 @@ export interface KaminBridgeApi {
 
   // ─── Model ────────────────────────────────────────
   changeModel(tabId: string, model: string): void
+
+  // ─── Agent engine (Claude / ChatGPT via codex) ─────
+  requestCodexModels(tabId: string): void
+  setDefaultEngine(tabId: string, engine: AgentEngine): void
+  newAgentSession(engine: AgentEngine, model?: string): void
+  onAgentPreferences(callback: (tabId: string, data: AgentPreferencesPayload) => void): () => void
+  onCodexModels(callback: (tabId: string, data: CodexModelsPayload) => void): () => void
+  onCodexAuth(callback: (tabId: string, data: CodexAccountInfo) => void): () => void
 
   // ─── Model ────────────────────────────────────────
   getTabModel(tabId: string): Promise<string | null>

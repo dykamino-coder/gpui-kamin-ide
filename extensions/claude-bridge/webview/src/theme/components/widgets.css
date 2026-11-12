@@ -215,6 +215,8 @@
 }
 .perm-option:last-child { border-bottom: none; }
 .perm-option:hover { background: var(--bg-surface); }
+.perm-option-disabled { cursor: default; opacity: 0.5; }
+.perm-option-disabled:hover { background: transparent; }
 .perm-option-icon { width: 20px; text-align: center; color: var(--text-muted); padding-top: 2px; font-size: var(--fs-md); }
 .perm-option-info { flex: 1; }
 .perm-option-name { font-size: var(--fs-base); color: var(--text-primary); font-weight: 500; }

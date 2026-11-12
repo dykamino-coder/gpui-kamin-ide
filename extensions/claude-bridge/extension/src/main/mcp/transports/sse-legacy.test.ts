@@ -34,9 +34,10 @@ it('observes pending SSE replies while final shutdown aborts a POST awaiting hea
   const call = sseJsonRpcRequest(context, 'fixture', { id: 1, method: 'tools/call' })
   const rejected = expect(call).rejects.toThrow()
   await started
-  // The manager aborts transport I/O and rejects its pending JSON-RPC replies.
+  // The manager aborts transport I/O and rejects its pending JSON-RPC replies;
+  // the abort itself already settled this request.
   shutdown.abort()
-  pendingRequests.get(1)!.reject(new Error('Server disconnected'))
+  pendingRequests.get(1)?.reject(new Error('Server disconnected'))
   await rejected
   expect(aborted).toBe(true)
   expect(pendingRequests.size).toBe(0)
