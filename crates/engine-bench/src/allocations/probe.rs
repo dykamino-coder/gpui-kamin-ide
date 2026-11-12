@@ -7,8 +7,12 @@
 //! отчёта, `outside` (вне кадров замера; кадр 0 — старт процесса) или `*`;
 //! кадры — порядковые номера кадров замера процесса с 1.
 //! `ENGINE_BENCH_ALLOC_STACKS_OUT=<файл>` — куда писать строки
-//! `<a|z|r> <кадр> <фаза> <байты> <адреса возврата, hex>`. Адреса переводит в
-//! имена `scripts/alloc_stacks.py` по PDB той же сборки.
+//! `<a|z|r> <кадр> <фаза> <байты> <указатель> <адреса возврата>` и для
+//! освобождений `f <кадр> <фаза> <байты> <указатель>` (числа адресов — hex).
+//! Освобождение пишется до возврата блока аллокатору, поэтому строка `f`
+//! всегда стоит раньше строки повторного выделения того же адреса; по ним
+//! `scripts/alloc_stacks.py --live` считает блоки, живые в конце окна фильтра.
+//! Адреса переводит в имена `scripts/alloc_stacks.py` по PDB той же сборки.
 
 use kamin_html::work::Phase;
 use std::{
@@ -126,7 +130,7 @@ pub(crate) fn init() -> Result<(), String> {
     let base = unsafe { GetModuleHandleW(std::ptr::null()) } as usize;
     writeln!(
         file,
-        "# engine_bench alloc stacks v1 base={base:x} filter={spec}"
+        "# engine_bench alloc stacks v2 base={base:x} filter={spec}"
     )
     .map_err(open)?;
     drop(file);
@@ -161,11 +165,18 @@ pub(crate) fn outside() {
     phase(OUTSIDE);
 }
 
-/// Вызов из аллокатора: при выключенном пробнике — одно чтение флага.
+/// Выделение из аллокатора: при выключенном пробнике — одно чтение флага.
 #[inline]
-pub(super) fn record(kind: u8, bytes: usize) {
+pub(super) fn record(kind: u8, bytes: usize, pointer: *const u8) {
     if ARMED.load(Relaxed) {
-        write(kind, bytes);
+        write(kind, bytes, pointer);
+    }
+}
+/// Освобождение `pointer`: зовётся до того, как блок вернётся аллокатору.
+#[inline]
+pub(super) fn release(bytes: usize, pointer: *const u8) {
+    if ARMED.load(Relaxed) {
+        write_release(bytes, pointer);
     }
 }
 
@@ -186,15 +197,8 @@ impl std::fmt::Write for Line {
     }
 }
 
-#[cold]
-#[inline(never)]
-fn write(kind: u8, bytes: usize) {
-    let Some(probe) = PROBE.get() else { return };
-    let mut stack = [std::ptr::null_mut::<c_void>(); FRAMES];
-    // SAFETY: буфер вмещает FRAMES адресов; хеш не запрошен.
-    let depth = unsafe {
-        RtlCaptureStackBackTrace(0, FRAMES as u32, stack.as_mut_ptr(), std::ptr::null_mut())
-    } as usize;
+/// Начало строки: вид, кадр, фаза, байты и указатель.
+fn head(kind: u8, bytes: usize, pointer: *const u8) -> (Line, std::fmt::Result) {
     let phase = PHASE.load(Relaxed);
     let name = Phase::NAMES.get(phase).copied().unwrap_or("outside");
     let mut line = Line {
@@ -202,13 +206,39 @@ fn write(kind: u8, bytes: usize) {
         length: 0,
     };
     let frame = FRAME.load(Relaxed);
-    let mut text = write!(line, "{} {frame} {name} {bytes}", kind as char);
-    for address in &stack[..depth.min(FRAMES)] {
-        text = text.and_then(|()| write!(line, " {:x}", *address as usize));
-    }
+    let pointer = pointer as usize;
+    let text = write!(line, "{} {frame} {name} {bytes} {pointer:x}", kind as char);
+    (line, text)
+}
+
+fn emit(probe: &Probe, mut line: Line, text: std::fmt::Result) {
     if text.and_then(|()| line.write_str("\n")).is_ok() {
         let _ = (&probe.file).write_all(&line.bytes[..line.length]);
     }
+}
+
+#[cold]
+#[inline(never)]
+fn write(kind: u8, bytes: usize, pointer: *const u8) {
+    let Some(probe) = PROBE.get() else { return };
+    let mut stack = [std::ptr::null_mut::<c_void>(); FRAMES];
+    // SAFETY: буфер вмещает FRAMES адресов; хеш не запрошен.
+    let depth = unsafe {
+        RtlCaptureStackBackTrace(0, FRAMES as u32, stack.as_mut_ptr(), std::ptr::null_mut())
+    } as usize;
+    let (mut line, mut text) = head(kind, bytes, pointer);
+    for address in &stack[..depth.min(FRAMES)] {
+        text = text.and_then(|()| write!(line, " {:x}", *address as usize));
+    }
+    emit(probe, line, text);
+}
+
+#[cold]
+#[inline(never)]
+fn write_release(bytes: usize, pointer: *const u8) {
+    let Some(probe) = PROBE.get() else { return };
+    let (line, text) = head(b'f', bytes, pointer);
+    emit(probe, line, text);
 }
 
 #[cfg(test)]
