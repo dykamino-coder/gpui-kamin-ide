@@ -91,6 +91,29 @@ fn balance_036_037_count_the_recorded_float_margin_box_once(cx: &mut gpui::TestA
 
 #[gpui::test]
 fn float_balance_trials_keep_the_source_and_repeated_layout_stable(cx: &mut gpui::TestAppContext) {
+    use crate::style::box_input::BoxStyleInput;
+
+    // Равенство Computed не учитывает счётчики CloneAudit, в отличие от Debug.
+    let snapshot = |input: BoxStyleInput| {
+        let BoxStyleInput {
+            style,
+            paint,
+            context,
+            canvas_background,
+            background_paint,
+            inline_decoration,
+            try_source,
+        } = input;
+        assert!(try_source.is_none(), "fixture has no position-try source");
+        (
+            style,
+            paint,
+            context,
+            canvas_background,
+            background_paint,
+            inline_decoration,
+        )
+    };
     let cx = cx.add_empty_window();
     for (style, content) in [
         (
@@ -113,7 +136,7 @@ fn float_balance_trials_keep_the_source_and_repeated_layout_stable(cx: &mut gpui
             opts.cx.values.viewport = opts.viewport;
             crate::style::cascade::materialize::materialize(&tree, opts.root_style().style_rc(), opts.cx.vcx());
             let host = super::tests::section(&tree);
-            let before = format!("{:?}", host.style.used());
+            let before = snapshot(host.style.used());
             let merged = crate::style::cascade::materialize::box_style(&opts.root_style(), &host.style, opts.cx.vcx());
             let recipe = Recipe::new(host, &merged, &opts, 2, None, StackAxis::Horizontal, None).expect("recorded float recipe");
             let mut stack = ColumnStack::new(Vec::new(), 2, 0., None, None, None, None, Default::default());
@@ -127,7 +150,7 @@ fn float_balance_trials_keep_the_source_and_repeated_layout_stable(cx: &mut gpui
             }
             assert_eq!(heights[0], 100.);
             assert_eq!(heights[0], heights[2]);
-            assert_eq!(format!("{:?}", host.style.used()), before);
+            assert_eq!(snapshot(host.style.used()), before);
             gpui::div()
         });
     }
