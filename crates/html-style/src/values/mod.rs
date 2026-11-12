@@ -13,6 +13,7 @@ mod arena;
 mod budget;
 mod diagnostics;
 mod font_facts;
+pub use font_facts::UsedFace;
 pub use font_facts::UsedFontKey;
 pub mod image_values;
 pub mod property_registry;
