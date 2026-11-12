@@ -4008,8 +4008,13 @@ ${stderr}`);
     }, timeout);
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
+    const liveStdout = new import_node_string_decoder.StringDecoder("utf8");
+    const liveStderr = new import_node_string_decoder.StringDecoder("utf8");
     child.stdout?.on("data", (chunk) => {
-      onOutput?.(chunk.toString("utf8"));
+      if (onOutput) {
+        const text = liveStdout.write(chunk);
+        if (text) onOutput(text);
+      }
       if (truncated) return;
       totalBytes += chunk.length;
       if (totalBytes > MAX_OUTPUT_BYTES) {
@@ -4023,7 +4028,10 @@ ${stderr}`);
       }
     });
     child.stderr?.on("data", (chunk) => {
-      onOutput?.(chunk.toString("utf8"));
+      if (onOutput) {
+        const text = liveStderr.write(chunk);
+        if (text) onOutput(text);
+      }
       if (stderrBytes >= MAX_OUTPUT_BYTES) return;
       const remaining = MAX_OUTPUT_BYTES - stderrBytes;
       stderrChunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
@@ -4033,11 +4041,12 @@ ${stderr}`);
     child.on("close", (code) => finish(code));
   });
 }
-var import_node_child_process2, MAX_OUTPUT_BYTES, TERMINATION_GRACE_MS, textResult, errorResult;
+var import_node_child_process2, import_node_string_decoder, MAX_OUTPUT_BYTES, TERMINATION_GRACE_MS, textResult, errorResult;
 var init_shell_foreground = __esm({
   "src/main/mcp/tools/shell-foreground.ts"() {
     "use strict";
     import_node_child_process2 = require("node:child_process");
+    import_node_string_decoder = require("node:string_decoder");
     init_windows_job_runner();
     MAX_OUTPUT_BYTES = 100 * 1024;
     TERMINATION_GRACE_MS = 1e3;
@@ -12212,20 +12221,16 @@ async function bashExecute(input, context) {
     script.file.dispose();
   }
 }
-function appendBounded(chunks, lengthRef, chunk) {
-  lengthRef.size += chunk.length;
-  chunks.push(chunk);
-  while (lengthRef.size > BG_OUTPUT_CAP && chunks.length > 0) {
-    const head = chunks[0];
-    if (lengthRef.size - head.length >= BG_OUTPUT_CAP) {
-      lengthRef.size -= head.length;
-      chunks.shift();
-    } else {
-      const keep = BG_OUTPUT_CAP - (lengthRef.size - head.length);
-      chunks[0] = head.subarray(head.length - keep);
-      lengthRef.size = BG_OUTPUT_CAP;
-    }
-  }
+function appendTail(window9, chunk, cap = BG_OUTPUT_CAP) {
+  const text = window9 + chunk;
+  if (text.length <= cap) return { text, dropped: 0 };
+  let cut = text.length - cap;
+  const first = text.charCodeAt(cut);
+  if (first >= 56320 && first <= 57343) cut++;
+  return { text: text.slice(cut), dropped: cut };
+}
+function unread(text, dropped, cursor) {
+  return { fresh: text.slice(Math.max(0, cursor - dropped)), lost: Math.max(0, dropped - cursor) };
 }
 function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"], env4 = process.env, context, tool = "Bash", displayCommand = command, onExit = () => {
 }) {
@@ -12267,13 +12272,11 @@ function spawnBackground(shell2, argv, tool, env4, context) {
 function registerBackground(child, bgId, description, context, tool, displayCommand) {
   if (child.pid) {
     backgroundProcesses.set(bgId, child);
-    const stdoutChunks = [];
-    const stderrChunks = [];
-    const stdoutLen = { size: 0 };
-    const stderrLen = { size: 0 };
     const output = {
       stdout: "",
       stderr: "",
+      stdoutDropped: 0,
+      stderrDropped: 0,
       exitCode: null,
       running: true,
       stdoutCursor: 0,
@@ -12286,13 +12289,17 @@ function registerBackground(child, bgId, description, context, tool, displayComm
       tool
     };
     backgroundOutput.set(bgId, output);
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", (chunk) => {
-      appendBounded(stdoutChunks, stdoutLen, chunk);
-      output.stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const next = appendTail(output.stdout, chunk);
+      output.stdout = next.text;
+      output.stdoutDropped += next.dropped;
     });
     child.stderr?.on("data", (chunk) => {
-      appendBounded(stderrChunks, stderrLen, chunk);
-      output.stderr = Buffer.concat(stderrChunks).toString("utf8");
+      const next = appendTail(output.stderr, chunk);
+      output.stderr = next.text;
+      output.stderrDropped += next.dropped;
     });
     child.on("exit", (code) => {
       output.exitCode = code;
@@ -12314,10 +12321,12 @@ async function readBackgroundOutput(input) {
   if (!Number.isFinite(bgId)) return errorResult2("bash_id is required (the numeric id from run_in_background)");
   const out = backgroundOutput.get(bgId);
   if (!out) return errorResult2(`No background shell with bash_id ${bgId} (it may have been evicted).`);
-  let newStdout = out.stdout.slice(out.stdoutCursor);
-  const newStderr = out.stderr.slice(out.stderrCursor);
-  out.stdoutCursor = out.stdout.length;
-  out.stderrCursor = out.stderr.length;
+  const stdoutPart = unread(out.stdout, out.stdoutDropped, out.stdoutCursor);
+  const stderrPart = unread(out.stderr, out.stderrDropped, out.stderrCursor);
+  let newStdout = stdoutPart.fresh;
+  const newStderr = stderrPart.fresh;
+  out.stdoutCursor = out.stdoutDropped + out.stdout.length;
+  out.stderrCursor = out.stderrDropped + out.stderr.length;
   const filter = typeof input.filter === "string" ? input.filter : null;
   if (filter && newStdout) {
     try {
@@ -12328,6 +12337,10 @@ async function readBackgroundOutput(input) {
   }
   const status = out.running ? "running" : `exited (code ${out.exitCode ?? "unknown"})`;
   const parts = [`Status: ${status}`];
+  const lostNote = (stream, lost) => `
+[${lost} characters of ${stream} were dropped before this read: only the last ${BG_OUTPUT_CAP} are kept]`;
+  if (stdoutPart.lost) parts.push(lostNote("stdout", stdoutPart.lost));
+  if (stderrPart.lost) parts.push(lostNote("stderr", stderrPart.lost));
   if (newStdout) parts.push(`
 <stdout>
 ${newStdout}
@@ -12673,13 +12686,15 @@ function spawnMonitor(inst) {
     inst.process = proc;
     inst.status = "running";
     appendLine(inst, "meta", `[monitor] spawned pid=${proc.pid ?? "n/a"}: ${inst.command}`);
+    proc.stdout?.setEncoding("utf8");
+    proc.stderr?.setEncoding("utf8");
     let stdoutBuf = "";
     proc.stdout?.on("data", (chunk) => {
-      stdoutBuf = consumeMonitorOutput(stdoutBuf, chunk.toString(), (line) => appendLine(inst, "stdout", line));
+      stdoutBuf = consumeMonitorOutput(stdoutBuf, chunk, (line) => appendLine(inst, "stdout", line));
     });
     let stderrBuf = "";
     proc.stderr?.on("data", (chunk) => {
-      stderrBuf = consumeMonitorOutput(stderrBuf, chunk.toString(), (line) => appendLine(inst, "stderr", line));
+      stderrBuf = consumeMonitorOutput(stderrBuf, chunk, (line) => appendLine(inst, "stderr", line));
     });
     proc.on("error", (err) => {
       appendLine(inst, "meta", `[monitor] spawn error: ${err.message}`);
@@ -12977,10 +12992,23 @@ var init_plugin_monitors = __esm({
 // src/main/hooks/executor.ts
 var executor_exports = {};
 __export(executor_exports, {
+  HOOK_OUTPUT_CAP: () => HOOK_OUTPUT_CAP,
   executeHook: () => executeHook,
   localizeHookPayload: () => localizeHookPayload,
   resolveHookCwd: () => resolveHookCwd
 });
+function boundedText() {
+  const state = {
+    text: "",
+    dropped: 0,
+    add(chunk) {
+      const room = HOOK_OUTPUT_CAP - state.text.length;
+      if (room > 0) state.text += chunk.slice(0, room);
+      state.dropped += Math.max(0, chunk.length - Math.max(0, room));
+    }
+  };
+  return state;
+}
 function portableBasename(value) {
   return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value;
 }
@@ -13151,17 +13179,22 @@ async function executeHook(req, fallbackCwd) {
       proc.once("exit", dispose);
       proc.once("error", dispose);
     }
-    let stdout = "";
-    let stderr = "";
-    const maxOutput = 1024 * 1024;
-    proc.stdout?.on("data", (d) => {
-      if (stdout.length < maxOutput) stdout += d.toString().slice(0, maxOutput - stdout.length);
-    });
-    proc.stderr?.on("data", (d) => {
-      if (stderr.length < maxOutput) stderr += d.toString().slice(0, maxOutput - stderr.length);
+    const stdoutCap = boundedText();
+    const stderrCap = boundedText();
+    proc.stdout?.setEncoding("utf8");
+    proc.stderr?.setEncoding("utf8");
+    proc.stdout?.on("data", (d) => stdoutCap.add(d));
+    proc.stderr?.on("data", (d) => stderrCap.add(d));
+    const streams = () => ({
+      stdout: stdoutCap.text,
+      // A cut stdout is reported, never passed on as the hook's whole output.
+      stderr: stderrCap.text + (stdoutCap.dropped ? `
+[hook stdout exceeded ${HOOK_OUTPUT_CAP} characters; ${stdoutCap.dropped} were dropped]` : "") + (stderrCap.dropped ? `
+[hook stderr exceeded ${HOOK_OUTPUT_CAP} characters; ${stderrCap.dropped} were dropped]` : "")
     });
     const killer = setTimeout(() => {
       void killProcessTree(proc);
+      const { stdout, stderr } = streams();
       finish({
         stdout,
         stderr: stderr + `
@@ -13173,8 +13206,9 @@ async function executeHook(req, fallbackCwd) {
     }, timeoutMs);
     proc.on("exit", (code) => {
       clearTimeout(killer);
+      const { stdout, stderr } = streams();
       let jsonOutput;
-      if (code === 0) {
+      if (code === 0 && !stdoutCap.dropped) {
         try {
           const trimmed = stdout.trim();
           if (trimmed.startsWith("{")) jsonOutput = JSON.parse(trimmed);
@@ -13192,6 +13226,7 @@ async function executeHook(req, fallbackCwd) {
     });
     proc.on("error", (err) => {
       clearTimeout(killer);
+      const { stdout, stderr } = streams();
       finish({
         stdout,
         stderr: stderr + `
@@ -13210,7 +13245,7 @@ spawn error: ${err.message}`,
     }
   });
 }
-var import_node_child_process5, import_node_os4, import_node_fs6, import_node_path7, DEFAULT_TIMEOUT_MS;
+var import_node_child_process5, import_node_os4, import_node_fs6, import_node_path7, DEFAULT_TIMEOUT_MS, HOOK_OUTPUT_CAP;
 var init_executor = __esm({
   "src/main/hooks/executor.ts"() {
     "use strict";
@@ -13223,6 +13258,7 @@ var init_executor = __esm({
     init_working_directory();
     init_script_file();
     DEFAULT_TIMEOUT_MS = 10 * 60 * 1e3;
+    HOOK_OUTPUT_CAP = 1024 * 1024;
   }
 });
 
@@ -50971,6 +51007,8 @@ async function connectStdio(ctx, id) {
     });
     state.process = proc;
     state.inputBuffer = "";
+    proc.stdout?.setEncoding("utf8");
+    proc.stderr?.setEncoding("utf8");
     ctx.appendLog(id, "info", `[stdio] spawned pid=${proc.pid ?? "n/a"}`);
     let stderrBuf = "";
     const STDERR_BURST_LIMIT = 20;
@@ -50999,7 +51037,7 @@ async function connectStdio(ctx, id) {
     };
     proc.stderr?.on("data", (data) => {
       if (circuitTripped) return;
-      const text = data.toString();
+      const text = data;
       stderrBuf += text;
       let idx;
       while ((idx = stderrBuf.indexOf("\n")) !== -1) {
@@ -51035,7 +51073,7 @@ async function connectStdio(ctx, id) {
       }
     });
     proc.stdout?.on("data", (data) => {
-      state.inputBuffer += data.toString();
+      state.inputBuffer += data;
       let newlineIdx;
       while ((newlineIdx = state.inputBuffer.indexOf("\n")) !== -1) {
         const line = state.inputBuffer.slice(0, newlineIdx).trim();

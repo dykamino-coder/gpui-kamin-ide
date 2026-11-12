@@ -210,14 +210,17 @@ function spawnMonitor(inst: MonitorInstance): void {
     inst.status = 'running'
     appendLine(inst, 'meta', `[monitor] spawned pid=${proc.pid ?? 'n/a'}: ${inst.command}`)
 
+    // Decode across chunk boundaries so a split multi-byte character stays intact.
+    proc.stdout?.setEncoding('utf8')
+    proc.stderr?.setEncoding('utf8')
     let stdoutBuf = ''
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      stdoutBuf = consumeMonitorOutput(stdoutBuf, chunk.toString(), line => appendLine(inst, 'stdout', line))
+    proc.stdout?.on('data', (chunk: string) => {
+      stdoutBuf = consumeMonitorOutput(stdoutBuf, chunk, line => appendLine(inst, 'stdout', line))
     })
 
     let stderrBuf = ''
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      stderrBuf = consumeMonitorOutput(stderrBuf, chunk.toString(), line => appendLine(inst, 'stderr', line))
+    proc.stderr?.on('data', (chunk: string) => {
+      stderrBuf = consumeMonitorOutput(stderrBuf, chunk, line => appendLine(inst, 'stderr', line))
     })
 
     proc.on('error', (err) => {
