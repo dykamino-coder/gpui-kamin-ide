@@ -338,7 +338,9 @@ describe('codex chat over the Bridge session WebSocket', () => {
     client.send({ type: 'session:change-effort', effort: 'max' })
     await client.next((f) => f.type === 'session:model-changed' && f.effort === 'max')
     await say(client, 'after switch', 's1')
-    await client.entry((e) => text(e) === 'echo: after switch [model=gpt-fake-mini effort=xhigh]')
+    const switched = await client.entry((e) => text(e) === 'echo: after switch [model=gpt-fake-mini effort=xhigh]')
+    // The reply is labelled with the model that produced it, not the chat's first one.
+    expect(switched.message.model).toBe('gpt-fake-mini')
 
     // A Claude id cannot move a codex chat to another engine.
     const before = client.frames.length
