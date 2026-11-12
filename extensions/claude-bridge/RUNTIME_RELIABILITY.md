@@ -1235,6 +1235,18 @@ unavailable refresh and last-known row retention passed in the same harness.
 
 ### BR-21 — Define and reconcile dashboard analytics semantics
 
+**Metric-contract decision — 2026-11-13:** [`metrics-v1`](server/DASHBOARD_METRICS.md)
+fixes turn, human-message, session/subagent, token-UUID identity, engine
+(Claude + Codex), local-calendar range/timezone, token measures, cost catalog
+and revision freshness, and answers the open product questions below (local
+calendar ranges; favorite model by new-token flow; subagent prompts are
+delegated, not user messages; the `All` heatmap shows the last 53 local weeks
+with its own label). Baseline `5624a330a` already deduplicates turns in
+`jsonl_accounting_events`; the remaining defects map to BR-21A–E in its §9.
+No code changes and no child is claimed done; each child keeps the fixtures and
+isolated dashboard gate below. Status of the umbrella stays investigation until
+the children are accepted.
+
 **Close-out audit 2026-09-06:** Утверждённого metric-contract decision artifact нет.
 Наличие stats database/dashboard не закрывает parent attribution, turn identity,
 range/timezone и freshness. Первый результат — decision PR, затем отдельные BR-21A–E;
