@@ -91,6 +91,47 @@ for (const f of shipFiles) {
   const src = join(release, f)
   if (existsSync(src)) { cpSync(src, join(dist, f)); copied++ }
 }
+// ripgrep для инструмента Grep (Bridge): на Windows его почти никогда нет в
+// PATH, и без него Grep шёл JS-фолбэком — в ~40 раз медленнее на большом
+// репозитории и без glob/type/.gitignore. Версия и SHA256 закреплены; архив
+// кэшируется в target/, чтобы повторная сборка не ходила в сеть.
+{
+  const rg = {
+    url: "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-pc-windows-msvc.zip",
+    dir: "ripgrep-14.1.1-x86_64-pc-windows-msvc",
+    sha256: "d0f534024c42afd6cb4d38907c25cd2b249b79bbe6cc1dbee8e3e37c2b6e25a1",
+  }
+  const { createHash } = await import("node:crypto")
+  const cacheDir = join(root, "target", "ripgrep")
+  const zip = join(cacheDir, `${rg.dir}.zip`)
+  const digest = (buf) => createHash("sha256").update(buf).digest("hex")
+  mkdirSync(cacheDir, { recursive: true })
+  if (!existsSync(zip) || digest(readFileSync(zip)) !== rg.sha256) {
+    const res = await fetch(rg.url)
+    if (!res.ok) {
+      console.error(`ripgrep: загрузка ${rg.url} не удалась (${res.status})`)
+      process.exit(1)
+    }
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (digest(buf) !== rg.sha256) {
+      console.error(`ripgrep: SHA256 архива ${digest(buf)} не совпадает с закреплённым ${rg.sha256}`)
+      process.exit(1)
+    }
+    writeFileSync(zip, buf)
+  }
+  const unpacked = join(cacheDir, rg.dir)
+  rmSync(unpacked, { recursive: true, force: true })
+  // bsdtar из Windows 10+ читает zip.
+  const untar = spawnSync("tar", ["-xf", zip, "-C", cacheDir], { stdio: "inherit" })
+  if (untar.status !== 0 || !existsSync(join(unpacked, "rg.exe"))) {
+    console.error("ripgrep: не удалось распаковать rg.exe")
+    process.exit(1)
+  }
+  // Рядом с kamin-jobrun.exe: расширение ищет `<install>\rg.exe`.
+  cpSync(join(unpacked, "rg.exe"), join(dist, "rg.exe"))
+  cpSync(join(unpacked, "LICENSE-MIT"), join(dist, "ripgrep-LICENSE-MIT.txt"))
+  console.log("[installer] ripgrep 14.1.1: rg.exe")
+}
 for (const d of ["locales", "Resources"]) {
   const src = join(release, d)
   if (existsSync(src)) cpSync(src, join(dist, d), { recursive: true })

@@ -516,26 +516,26 @@ var require_permessage_deflate = __commonJS({
             value = value[0];
             if (key2 === "client_max_window_bits") {
               if (value !== true) {
-                const num = +value;
-                if (!Number.isInteger(num) || num < 8 || num > 15) {
+                const num2 = +value;
+                if (!Number.isInteger(num2) || num2 < 8 || num2 > 15) {
                   throw new TypeError(
                     `Invalid value for parameter "${key2}": ${value}`
                   );
                 }
-                value = num;
+                value = num2;
               } else if (!this._isServer) {
                 throw new TypeError(
                   `Invalid value for parameter "${key2}": ${value}`
                 );
               }
             } else if (key2 === "server_max_window_bits") {
-              const num = +value;
-              if (!Number.isInteger(num) || num < 8 || num > 15) {
+              const num2 = +value;
+              if (!Number.isInteger(num2) || num2 < 8 || num2 > 15) {
                 throw new TypeError(
                   `Invalid value for parameter "${key2}": ${value}`
                 );
               }
-              value = num;
+              value = num2;
             } else if (key2 === "client_no_context_takeover" || key2 === "server_no_context_takeover") {
               if (value !== true) {
                 throw new TypeError(
@@ -1249,8 +1249,8 @@ var require_receiver = __commonJS({
           return;
         }
         const buf = this.consume(8);
-        const num = buf.readUInt32BE(0);
-        if (num > Math.pow(2, 53 - 32) - 1) {
+        const num2 = buf.readUInt32BE(0);
+        if (num2 > Math.pow(2, 53 - 32) - 1) {
           const error = this.createError(
             RangeError,
             "Unsupported WebSocket frame: payload length > 2^53 - 1",
@@ -1261,7 +1261,7 @@ var require_receiver = __commonJS({
           cb(error);
           return;
         }
-        this._payloadLength = num * Math.pow(2, 32) + buf.readUInt32BE(4);
+        this._payloadLength = num2 * Math.pow(2, 32) + buf.readUInt32BE(4);
         this.haveLength(cb);
       }
       /**
@@ -4107,20 +4107,57 @@ var init_shell_foreground = __esm({
 // src/main/mcp/tools/shell-snapshot.ts
 function buildSnapshotScript() {
   return [
-    "# open-claude-bridge shell snapshot (auto-generated)",
-    "declare -p 2>/dev/null || true",
-    "declare -fp 2>/dev/null || true",
-    "alias -p 2>/dev/null || true"
+    `printf '%s\\n' '${SEPARATOR}functions'`,
+    `for f in $(compgen -A function); do case "$f" in _*) ;; *) declare -f "$f" ;; esac; done 2>/dev/null`,
+    `printf '%s\\n' '${SEPARATOR}aliases'`,
+    "alias -p 2>/dev/null",
+    `printf '%s\\n' '${SEPARATOR}shopt'`,
+    "shopt -p 2>/dev/null",
+    `printf '%s\\n' '${SEPARATOR}path'`,
+    'base="$OCB_BASE_PATH"; if command -v cygpath >/dev/null 2>&1; then base=$(cygpath -p -u "$OCB_BASE_PATH" 2>/dev/null || printf "%s" "$OCB_BASE_PATH"); fi',
+    'IFS=: read -r -a _ocb_now <<< "$PATH"; for p in "${_ocb_now[@]}"; do case ":$base:" in *":$p:"*) ;; *) printf "%s\\n" "$p" ;; esac; done',
+    `printf '%s\\n' '${SEPARATOR}env'`,
+    'for n in $(compgen -e); do printf "%s\\0%s\\0" "$n" "${!n}"; done'
   ].join("\n");
+}
+function shellQuote(value) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+function renderSnapshot(output, baseEnv, platform = process.platform) {
+  const sections = /* @__PURE__ */ new Map();
+  for (const part of output.split(`${SEPARATOR}`).slice(1)) {
+    const newline = part.indexOf("\n");
+    sections.set(part.slice(0, newline), part.slice(newline + 1));
+  }
+  const lines = ["# open-claude-bridge shell snapshot (auto-generated)"];
+  lines.push(sections.get("functions")?.trimEnd() ?? "");
+  lines.push("shopt -s expand_aliases");
+  lines.push(sections.get("shopt")?.trimEnd() ?? "");
+  lines.push(sections.get("aliases")?.trimEnd() ?? "");
+  const added = (sections.get("path") ?? "").split("\n").filter(Boolean);
+  if (added.length) lines.push(`export PATH=${shellQuote(added.join(":"))}:"$PATH"`);
+  const env4 = (sections.get("env") ?? "").split("\0");
+  const caseInsensitive = platform === "win32";
+  const base = new Map(Object.entries(baseEnv).map(([k, v]) => [caseInsensitive ? k.toUpperCase() : k, v]));
+  for (let i = 0; i + 1 < env4.length; i += 2) {
+    const name = env4[i].replace(/^\n+/, "");
+    const value = env4[i + 1];
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || SKIP_VARIABLES.has(name) || name.startsWith("ORIGINAL_") || name.startsWith("BASH")) continue;
+    if (base.get(caseInsensitive ? name.toUpperCase() : name) === value) continue;
+    lines.push(`export ${name}=${shellQuote(value)}`);
+  }
+  return lines.filter(Boolean).join("\n") + "\n";
 }
 function captureSnapshot(bashPath) {
   const tmpFile = import_path.default.join(import_os.default.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`);
   return new Promise((resolve) => {
+    const baseEnv = process.env;
     const proc = (0, import_child_process.spawn)(bashPath, ["-ilc", buildSnapshotScript()], {
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...baseEnv, OCB_BASE_PATH: baseEnv.PATH ?? "" }
     });
-    let stdout = "";
+    const chunks = [];
     const timer = setTimeout(() => {
       try {
         proc.kill("SIGKILL");
@@ -4128,9 +4165,7 @@ function captureSnapshot(bashPath) {
       }
       resolve(null);
     }, 1e4);
-    proc.stdout?.on("data", (d) => {
-      stdout += d.toString("utf-8");
-    });
+    proc.stdout?.on("data", (d) => chunks.push(d));
     proc.stderr?.on("data", () => {
     });
     proc.on("error", () => {
@@ -4139,9 +4174,10 @@ function captureSnapshot(bashPath) {
     });
     proc.on("close", (code) => {
       clearTimeout(timer);
-      if (code !== 0 || !stdout) return resolve(null);
+      const stdout = Buffer.concat(chunks).toString("utf8");
+      if (code !== 0 || !stdout.includes(SEPARATOR)) return resolve(null);
       try {
-        import_fs.default.writeFileSync(tmpFile, stdout, "utf-8");
+        import_fs.default.writeFileSync(tmpFile, renderSnapshot(stdout, baseEnv), "utf-8");
       } catch {
         return resolve(null);
       }
@@ -4162,13 +4198,14 @@ async function getOrCreateSnapshot(bashPath) {
 }
 function wrapCommandWithSnapshot(command, snapshotFile) {
   if (!snapshotFile) return command;
-  return `source '${snapshotFile.replace(/'/g, "'\\''")}' 2>/dev/null || true
+  const file = process.platform === "win32" ? snapshotFile.replace(/\\/g, "/") : snapshotFile;
+  return `source '${file.replace(/'/g, "'\\''")}' 2>/dev/null || true
 ${command}`;
 }
 function shouldUseLoginShell(snapshotFile) {
   return !snapshotFile;
 }
-var import_fs, import_os, import_path, import_child_process, snapshotPath, snapshotAttempted, snapshotAvailable, snapshotPromise;
+var import_fs, import_os, import_path, import_child_process, snapshotPath, snapshotAttempted, snapshotAvailable, snapshotPromise, SEPARATOR, SKIP_VARIABLES;
 var init_shell_snapshot = __esm({
   "src/main/mcp/tools/shell-snapshot.ts"() {
     "use strict";
@@ -4180,6 +4217,51 @@ var init_shell_snapshot = __esm({
     snapshotAttempted = false;
     snapshotAvailable = false;
     snapshotPromise = null;
+    SEPARATOR = "OCB-SNAPSHOT";
+    SKIP_VARIABLES = /* @__PURE__ */ new Set([
+      "PATH",
+      "PWD",
+      "OLDPWD",
+      "SHLVL",
+      "_",
+      "HOME",
+      "TMP",
+      "TEMP",
+      "TMPDIR",
+      "SHELL",
+      "TERM",
+      "PS1",
+      "PS2",
+      "PS4",
+      "PROMPT_COMMAND",
+      "COLUMNS",
+      "LINES",
+      "HOSTNAME",
+      "HOSTTYPE",
+      "MACHTYPE",
+      "OSTYPE",
+      "SSH_AGENT_PID",
+      "SSH_AUTH_SOCK",
+      "EXECIGNORE",
+      "MSYSTEM",
+      "MSYSTEM_CARCH",
+      "MSYSTEM_CHOST",
+      "MSYSTEM_PREFIX",
+      "MINGW_CHOST",
+      "MINGW_PACKAGE_PREFIX",
+      "MINGW_PREFIX",
+      "CONFIG_SITE",
+      "ACLOCAL_PATH",
+      "MANPATH",
+      "INFOPATH",
+      "PKG_CONFIG_PATH",
+      "PKG_CONFIG_SYSTEM_INCLUDE_PATH",
+      "PKG_CONFIG_SYSTEM_LIBRARY_PATH",
+      "SHELLOPTS",
+      "BASHOPTS",
+      "GIT_EDITOR",
+      "CLAUDECODE"
+    ]);
   }
 });
 
@@ -6528,9 +6610,9 @@ var require_stringifyNumber = __commonJS({
     function stringifyNumber({ format, minFractionDigits, tag, value }) {
       if (typeof value === "bigint")
         return String(value);
-      const num = typeof value === "number" ? value : Number(value);
-      if (!isFinite(num))
-        return isNaN(num) ? ".nan" : num < 0 ? "-.inf" : ".inf";
+      const num2 = typeof value === "number" ? value : Number(value);
+      if (!isFinite(num2))
+        return isNaN(num2) ? ".nan" : num2 < 0 ? "-.inf" : ".inf";
       let n = Object.is(value, -0) ? "-0" : JSON.stringify(value);
       if (!format && minFractionDigits && (!tag || tag === "tag:yaml.org,2002:float") && /^-?\d/.test(n) && !n.includes("e")) {
         let i = n.indexOf(".");
@@ -6570,8 +6652,8 @@ var require_float = __commonJS({
       test: /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$/,
       resolve: (str) => parseFloat(str),
       stringify(node) {
-        const num = Number(node.value);
-        return isFinite(num) ? num.toExponential() : stringifyNumber.stringifyNumber(node);
+        const num2 = Number(node.value);
+        return isFinite(num2) ? num2.toExponential() : stringifyNumber.stringifyNumber(node);
       }
     };
     var float = {
@@ -7010,8 +7092,8 @@ var require_float2 = __commonJS({
       test: /^[-+]?(?:[0-9][0-9_]*)?(?:\.[0-9_]*)?[eE][-+]?[0-9]+$/,
       resolve: (str) => parseFloat(str.replace(/_/g, "")),
       stringify(node) {
-        const num = Number(node.value);
-        return isFinite(num) ? num.toExponential() : stringifyNumber.stringifyNumber(node);
+        const num2 = Number(node.value);
+        return isFinite(num2) ? num2.toExponential() : stringifyNumber.stringifyNumber(node);
       }
     };
     var float = {
@@ -7213,23 +7295,23 @@ var require_timestamp = __commonJS({
     function parseSexagesimal(str, asBigInt) {
       const sign = str[0];
       const parts = sign === "-" || sign === "+" ? str.substring(1) : str;
-      const num = (n) => asBigInt ? BigInt(n) : Number(n);
-      const res = parts.replace(/_/g, "").split(":").reduce((res2, p) => res2 * num(60) + num(p), num(0));
-      return sign === "-" ? num(-1) * res : res;
+      const num2 = (n) => asBigInt ? BigInt(n) : Number(n);
+      const res = parts.replace(/_/g, "").split(":").reduce((res2, p) => res2 * num2(60) + num2(p), num2(0));
+      return sign === "-" ? num2(-1) * res : res;
     }
     function stringifySexagesimal(node) {
       let { value } = node;
-      let num = (n) => n;
+      let num2 = (n) => n;
       if (typeof value === "bigint")
-        num = (n) => BigInt(n);
+        num2 = (n) => BigInt(n);
       else if (isNaN(value) || !isFinite(value))
         return stringifyNumber.stringifyNumber(node);
       let sign = "";
       if (value < 0) {
         sign = "-";
-        value *= num(-1);
+        value *= num2(-1);
       }
-      const _60 = num(60);
+      const _60 = num2(60);
       const parts = [value % _60];
       if (value < 60) {
         parts.unshift(0);
@@ -11536,11 +11618,11 @@ async function loadEnabledPluginsMap() {
   return out;
 }
 function parseFmObject(fm) {
-  const cached2 = fmCache.get(fm);
-  if (cached2) {
+  const cached3 = fmCache.get(fm);
+  if (cached3) {
     fmCache.delete(fm);
-    fmCache.set(fm, cached2);
-    return cached2;
+    fmCache.set(fm, cached3);
+    return cached3;
   }
   let parsed;
   try {
@@ -11804,14 +11886,31 @@ async function listEnabledInstalledPlugins() {
   return winners;
 }
 async function listEnabledPluginBinDirs() {
+  const key2 = pluginStateKey();
+  if (binDirsCache && binDirsCache.key === key2) return binDirsCache.dirs;
   const plugins = await listEnabledInstalledPlugins();
-  return plugins.map((plugin) => import_path2.default.join(plugin.installPath, "bin")).filter((binDir) => {
+  const dirs = plugins.map((plugin) => import_path2.default.join(plugin.installPath, "bin")).filter((binDir) => {
     try {
       return import_fs2.default.statSync(binDir).isDirectory();
     } catch {
       return false;
     }
   }).sort();
+  binDirsCache = { key: key2, dirs };
+  return dirs;
+}
+function pluginStateKey() {
+  return [
+    import_path2.default.join(import_os2.default.homedir(), ".claude", "settings.json"),
+    import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "installed_plugins.json")
+  ].map((file) => {
+    try {
+      const s = import_fs2.default.statSync(file);
+      return `${s.mtimeMs}:${s.size}`;
+    } catch {
+      return "-";
+    }
+  }).join("|");
 }
 function loadPluginOptions(pluginId) {
   const out = {};
@@ -11882,7 +11981,7 @@ async function loadInstalledPluginsMap() {
   }
   return out;
 }
-var import_fs2, import_path2, import_os2, import_yaml, FM_CACHE_CAP, fmCache;
+var import_fs2, import_path2, import_os2, import_yaml, FM_CACHE_CAP, fmCache, binDirsCache;
 var init_plugin_helpers = __esm({
   "src/main/plugin-helpers.ts"() {
     "use strict";
@@ -11892,6 +11991,7 @@ var init_plugin_helpers = __esm({
     import_yaml = __toESM(require_dist(), 1);
     FM_CACHE_CAP = 200;
     fmCache = /* @__PURE__ */ new Map();
+    binDirsCache = null;
   }
 });
 
@@ -11936,7 +12036,20 @@ function lookupOptions(options) {
     which: options.which ?? ((command) => whichExecutable(command, platform))
   };
 }
-async function findBashExecutable(options = {}) {
+function cachedLookup(key2, options, find) {
+  if (Object.keys(options).length > 0) return find();
+  let found = defaultLookups.get(key2);
+  if (!found) {
+    found = find();
+    defaultLookups.set(key2, found);
+    found.catch(() => defaultLookups.delete(key2));
+  }
+  return found;
+}
+function findBashExecutable(options = {}) {
+  return cachedLookup("bash", options, () => lookupBash(options));
+}
+async function lookupBash(options) {
   const { platform, env: env4, exists, which } = lookupOptions(options);
   if (platform !== "win32") {
     const bash = await which("bash");
@@ -11961,7 +12074,10 @@ async function findBashExecutable(options = {}) {
   }
   throw new Error("Git Bash was not found. Install Git for Windows or set CLAUDE_CODE_GIT_BASH_PATH; the Windows System32 bash.exe WSL launcher is not supported.");
 }
-async function findPowerShellExecutable(options = {}) {
+function findPowerShellExecutable(options = {}) {
+  return cachedLookup("pwsh", options, () => lookupPowerShell(options));
+}
+async function lookupPowerShell(options) {
   const { platform, env: env4, exists, which } = lookupOptions(options);
   const pwsh = await which("pwsh");
   if (pwsh) return pwsh;
@@ -12035,13 +12151,14 @@ function shellSingleQuote(value) {
 function powerShellSingleQuote(value) {
   return `'${value.replace(/'/g, "''")}'`;
 }
-var import_node_child_process3, import_node_fs3, import_node_path3;
+var import_node_child_process3, import_node_fs3, import_node_path3, defaultLookups;
 var init_command_runtime = __esm({
   "src/main/utils/command-runtime.ts"() {
     "use strict";
     import_node_child_process3 = require("node:child_process");
     import_node_fs3 = __toESM(require("node:fs"), 1);
     import_node_path3 = __toESM(require("node:path"), 1);
+    defaultLookups = /* @__PURE__ */ new Map();
   }
 });
 
@@ -12901,7 +13018,7 @@ async function startMonitorsForTab(tabId, projectCwd, notifyClaude) {
   tabLoadTokens.set(tabId, loadToken);
   tabContexts.set(tabId, { projectCwd, notifyClaude });
   const plugins = await listEnabledInstalledPlugins();
-  const started = [];
+  const started2 = [];
   for (const plugin of plugins) {
     if (tabLoadTokens.get(tabId) !== loadToken) break;
     const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace);
@@ -12964,7 +13081,7 @@ async function startMonitorsForTab(tabId, projectCwd, notifyClaude) {
       monitors.set(id, inst);
       if (!tabOwners.has(tabId)) tabOwners.set(tabId, /* @__PURE__ */ new Set());
       tabOwners.get(tabId).add(id);
-      started.push(id);
+      started2.push(id);
       spawnMonitor(inst);
       broadcast("monitor:started", {
         id,
@@ -12977,7 +13094,7 @@ async function startMonitorsForTab(tabId, projectCwd, notifyClaude) {
       });
     }
   }
-  return started;
+  return started2;
 }
 function stopMonitorsForTab(tabId) {
   const owned = tabOwners.get(tabId);
@@ -13721,12 +13838,12 @@ var require_glob_parent = __commonJS({
 var require_utils = __commonJS({
   "node_modules/braces/lib/utils.js"(exports2) {
     "use strict";
-    exports2.isInteger = (num) => {
-      if (typeof num === "number") {
-        return Number.isInteger(num);
+    exports2.isInteger = (num2) => {
+      if (typeof num2 === "number") {
+        return Number.isInteger(num2);
       }
-      if (typeof num === "string" && num.trim() !== "") {
-        return Number.isInteger(Number(num));
+      if (typeof num2 === "string" && num2.trim() !== "") {
+        return Number.isInteger(Number(num2));
       }
       return false;
     };
@@ -13834,12 +13951,12 @@ var require_stringify2 = __commonJS({
 var require_is_number = __commonJS({
   "node_modules/is-number/index.js"(exports2, module2) {
     "use strict";
-    module2.exports = function(num) {
-      if (typeof num === "number") {
-        return num - num === 0;
+    module2.exports = function(num2) {
+      if (typeof num2 === "number") {
+        return num2 - num2 === 0;
       }
-      if (typeof num === "string" && num.trim() !== "") {
-        return Number.isFinite ? Number.isFinite(+num) : isFinite(+num);
+      if (typeof num2 === "string" && num2.trim() !== "") {
+        return Number.isFinite ? Number.isFinite(+num2) : isFinite(+num2);
       }
       return false;
     };
@@ -14070,7 +14187,7 @@ var require_fill_range = __commonJS({
     var isValidValue = (value) => {
       return typeof value === "number" || typeof value === "string" && value !== "";
     };
-    var isNumber = (num) => Number.isInteger(+num);
+    var isNumber = (num2) => Number.isInteger(+num2);
     var zeros = (input) => {
       let value = `${input}`;
       let index = -1;
@@ -14180,7 +14297,7 @@ var require_fill_range = __commonJS({
         return toRange(toMaxLen(start, maxLen), toMaxLen(end, maxLen), true, options);
       }
       let parts = { negatives: [], positives: [] };
-      let push = (num) => parts[num < 0 ? "negatives" : "positives"].push(Math.abs(num));
+      let push = (num2) => parts[num2 < 0 ? "negatives" : "positives"].push(Math.abs(num2));
       let range = [];
       let index = 0;
       while (descending ? a >= b : a <= b) {
@@ -15698,9 +15815,9 @@ var require_parse2 = __commonJS({
       const peek = state.peek = (n = 1) => input[state.index + n];
       const advance = state.advance = () => input[++state.index] || "";
       const remaining = () => input.slice(state.index + 1);
-      const consume = (value2 = "", num = 0) => {
+      const consume = (value2 = "", num2 = 0) => {
         state.consumed += value2;
-        state.index += num;
+        state.index += num2;
       };
       const append = (token) => {
         state.output += token.output != null ? token.output : token.value;
@@ -19332,6 +19449,52 @@ var init_notebook = __esm({
   }
 });
 
+// src/main/mcp/tools/text-codec.ts
+function detectEncoding(bytes) {
+  if (bytes.length >= 3 && bytes[0] === 239 && bytes[1] === 187 && bytes[2] === 191) return "utf8bom";
+  if (bytes.length >= 2 && bytes[0] === 255 && bytes[1] === 254) return "utf16le";
+  if (bytes.length >= 2 && bytes[0] === 254 && bytes[1] === 255) return "utf16be";
+  return "utf8";
+}
+function looksBinary(bytes, encoding) {
+  if (encoding === "utf16le" || encoding === "utf16be") return false;
+  return bytes.subarray(0, 8192).includes(0);
+}
+function swap16(bytes) {
+  const out = Buffer.from(bytes.subarray(0, bytes.length - bytes.length % 2));
+  return out.swap16();
+}
+function decodeText(bytes) {
+  const encoding = detectEncoding(bytes);
+  switch (encoding) {
+    case "utf8bom":
+      return { text: bytes.subarray(3).toString("utf8"), encoding };
+    case "utf16le":
+      return { text: bytes.subarray(2).toString("utf16le"), encoding };
+    case "utf16be":
+      return { text: swap16(bytes.subarray(2)).toString("utf16le"), encoding };
+    default:
+      return { text: bytes.toString("utf8"), encoding };
+  }
+}
+function encodeText(text, encoding) {
+  switch (encoding) {
+    case "utf8bom":
+      return Buffer.concat([Buffer.from([239, 187, 191]), Buffer.from(text, "utf8")]);
+    case "utf16le":
+      return Buffer.concat([Buffer.from([255, 254]), Buffer.from(text, "utf16le")]);
+    case "utf16be":
+      return Buffer.concat([Buffer.from([254, 255]), Buffer.from(text, "utf16le").swap16()]);
+    default:
+      return Buffer.from(text, "utf8");
+  }
+}
+var init_text_codec = __esm({
+  "src/main/mcp/tools/text-codec.ts"() {
+    "use strict";
+  }
+});
+
 // src/main/utils/file-read-cache.ts
 function evictOldest() {
   const oldest = cache.keys().next().value;
@@ -19340,33 +19503,34 @@ function evictOldest() {
   if (e) cacheBytes -= e.bytes;
   cache.delete(oldest);
 }
-async function readFileCached(filePath) {
-  const stat = await import_promises2.default.stat(filePath);
+async function readTextCached(filePath, stat) {
+  stat ??= await import_promises2.default.stat(filePath);
   if (!stat.isFile()) throw new Error(`Not a file: ${filePath}`);
-  const cached2 = cache.get(filePath);
-  if (cached2 && cached2.mtimeMs === stat.mtimeMs) {
+  const cached3 = cache.get(filePath);
+  if (cached3 && cached3.mtimeMs === stat.mtimeMs && cached3.size === stat.size) {
     cache.delete(filePath);
-    cache.set(filePath, cached2);
-    return cached2.content;
+    cache.set(filePath, cached3);
+    return cached3;
   }
-  const content = await import_promises2.default.readFile(filePath, "utf8");
-  const bytes = content.length * 2;
-  if (bytes > MAX_CACHEABLE_FILE_BYTES) {
-    invalidateFileCache(filePath);
-    return content;
-  }
-  const entry = { content, mtimeMs: stat.mtimeMs, bytes };
-  const prev = cache.get(filePath);
-  if (prev) {
-    cacheBytes -= prev.bytes;
-    cache.delete(filePath);
-  }
-  while (cache.size >= CACHE_CAP || cache.size > 0 && cacheBytes + bytes > CACHE_BYTES_BUDGET) {
+  const raw = await import_promises2.default.readFile(filePath);
+  const binary = looksBinary(raw, detectEncoding(raw));
+  const decoded = binary ? { text: "", encoding: "utf8" } : decodeText(raw);
+  const entry = {
+    content: decoded.text,
+    encoding: decoded.encoding,
+    binary,
+    mtimeMs: stat.mtimeMs,
+    size: stat.size,
+    bytes: decoded.text.length * 2
+  };
+  invalidateFileCache(filePath);
+  if (entry.bytes > MAX_CACHEABLE_FILE_BYTES) return entry;
+  while (cache.size >= CACHE_CAP || cache.size > 0 && cacheBytes + entry.bytes > CACHE_BYTES_BUDGET) {
     evictOldest();
   }
   cache.set(filePath, entry);
-  cacheBytes += bytes;
-  return content;
+  cacheBytes += entry.bytes;
+  return entry;
 }
 function invalidateFileCache(filePath) {
   const e = cache.get(filePath);
@@ -19378,6 +19542,7 @@ var init_file_read_cache = __esm({
   "src/main/utils/file-read-cache.ts"() {
     "use strict";
     import_promises2 = __toESM(require("node:fs/promises"), 1);
+    init_text_codec();
     CACHE_CAP = 1024;
     CACHE_BYTES_BUDGET = 16 * 1024 * 1024;
     MAX_CACHEABLE_FILE_BYTES = 2 * 1024 * 1024;
@@ -19392,6 +19557,7 @@ function textResult4(text) {
 }
 function errorResult4(message) {
   return {
+    isError: true,
     content: [
       {
         type: "text",
@@ -19431,22 +19597,63 @@ var init_fs_shared = __esm({
   }
 });
 
+// src/main/mcp/tools/ripgrep-path.ts
+async function findRipgrep(probe) {
+  const exe = probe.platform === "win32" ? "rg.exe" : "rg";
+  const configured = probe.env.KAMIN_RG_PATH;
+  if (configured && probe.exists(configured)) return configured;
+  const hostDir = (0, import_node_path8.dirname)(probe.execPath);
+  for (const candidate of [(0, import_node_path8.join)(hostDir, "..", exe), (0, import_node_path8.join)(hostDir, exe)]) {
+    if (probe.exists(candidate)) return candidate;
+  }
+  return probe.which("rg");
+}
+function ripgrepPath() {
+  cached2 ??= findRipgrep({
+    platform: process.platform,
+    env: process.env,
+    execPath: process.execPath,
+    exists: import_node_fs7.existsSync,
+    which: (command) => whichExecutable(command)
+  });
+  return cached2;
+}
+var import_node_fs7, import_node_path8, cached2;
+var init_ripgrep_path = __esm({
+  "src/main/mcp/tools/ripgrep-path.ts"() {
+    "use strict";
+    import_node_fs7 = require("node:fs");
+    import_node_path8 = require("node:path");
+    init_command_runtime();
+  }
+});
+
 // src/main/mcp/tools/grep-tool.ts
+async function rgBinary() {
+  const rg = await ripgrepPath();
+  if (!rg) throw Object.assign(new Error("ripgrep not found"), { code: "ENOENT" });
+  return rg;
+}
 async function ripgrepStream(args, target, signal, onLines) {
+  const rg = await rgBinary();
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Error("aborted"));
-    const child = (0, import_node_child_process7.spawn)("rg", [...args, target], {
+    const child = (0, import_node_child_process7.spawn)(rg, [...args, target], {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       signal
     });
     const stripCR = (l) => l.endsWith("\r") ? l.slice(0, -1) : l;
-    let remainder = "";
+    let remainder = Buffer.alloc(0);
     child.stdout.on("data", (chunk) => {
-      const data = remainder + chunk.toString("utf8");
-      const lines = data.split("\n");
-      remainder = lines.pop() ?? "";
-      if (lines.length) onLines(lines.map(stripCR));
+      const data = remainder.length ? Buffer.concat([remainder, chunk]) : chunk;
+      const end = data.lastIndexOf(10);
+      if (end === -1) {
+        remainder = data;
+        return;
+      }
+      remainder = data.subarray(end + 1);
+      onLines(data.subarray(0, end).toString("utf8").split("\n").map(stripCR));
     });
     let settled = false;
     child.on("close", (code) => {
@@ -19454,7 +19661,7 @@ async function ripgrepStream(args, target, signal, onLines) {
       if (signal.aborted) return;
       settled = true;
       if (code === 0 || code === 1) {
-        if (remainder) onLines([stripCR(remainder)]);
+        if (remainder.length) onLines([stripCR(remainder.toString("utf8"))]);
         resolve();
       } else {
         reject(new Error(`rg exited with code ${code}`));
@@ -19468,9 +19675,10 @@ async function ripgrepStream(args, target, signal, onLines) {
   });
 }
 async function spawnRipgrep(args, timeoutMs, singleThread = false) {
+  const rg = await rgBinary();
   return new Promise((resolve, reject) => {
     const extraArgs = singleThread ? ["-j", "1"] : [];
-    const child = (0, import_node_child_process7.spawn)("rg", [...extraArgs, ...args], {
+    const child = (0, import_node_child_process7.spawn)(rg, [...extraArgs, ...args], {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
     });
@@ -19479,7 +19687,6 @@ async function spawnRipgrep(args, timeoutMs, singleThread = false) {
     let totalBytes = 0;
     let truncated = false;
     let timedOut = false;
-    let spawnFailed = false;
     let killTimer;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -19514,7 +19721,6 @@ async function spawnRipgrep(args, timeoutMs, singleThread = false) {
       settled = true;
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
-      spawnFailed = true;
       reject(err);
     });
     child.on("close", (code) => {
@@ -19522,7 +19728,6 @@ async function spawnRipgrep(args, timeoutMs, singleThread = false) {
       settled = true;
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
-      if (spawnFailed) return;
       resolve({
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
@@ -19536,42 +19741,86 @@ async function spawnRipgrep(args, timeoutMs, singleThread = false) {
 function isEagainError(stderr) {
   return stderr.includes("os error 11") || stderr.includes("Resource temporarily unavailable");
 }
-async function grepSearch(input, context) {
+function splitGlobs(glob) {
+  const out = [];
+  for (const part of glob.split(/\s+/).filter(Boolean)) {
+    if (part.includes("{") && part.includes("}")) out.push(part);
+    else out.push(...part.split(",").filter(Boolean));
+  }
+  return out;
+}
+function num(value) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : void 0;
+}
+function grepOptions(input, cwd) {
   const pattern = input.pattern;
-  if (!pattern) return errorResult4("pattern is required");
-  const searchPath = input.path ? resolveToolPath(input.path, context?.cwd) : resolveWorkingDirectory(context?.cwd);
-  const outputMode = input.output_mode || "files_with_matches";
-  const glob = input.glob;
-  const fileType = input.type;
-  const caseInsensitive = input["-i"] === true;
-  const showLineNumbers = input["-n"] !== false;
-  const multiline = input.multiline === true;
-  const headLimit = typeof input.head_limit === "number" ? input.head_limit : 0;
-  const offset = typeof input.offset === "number" ? input.offset : 0;
-  const afterContext = typeof input["-A"] === "number" ? input["-A"] : void 0;
-  const beforeContext = typeof input["-B"] === "number" ? input["-B"] : void 0;
-  const contextLines = typeof input["-C"] === "number" ? input["-C"] : typeof input.context === "number" ? input.context : void 0;
-  const args = [];
-  if (outputMode === "files_with_matches") args.push("--files-with-matches");
-  else if (outputMode === "count") args.push("--count");
-  if (caseInsensitive) args.push("-i");
-  if (showLineNumbers && outputMode === "content") args.push("-n");
-  if (multiline) args.push("-U", "--multiline-dotall");
-  if (outputMode === "content") {
-    if (contextLines !== void 0) args.push("-C", String(contextLines));
+  if (typeof pattern !== "string" || !pattern) return "pattern is required";
+  const mode = input.output_mode || "files_with_matches";
+  if (mode !== "content" && mode !== "files_with_matches" && mode !== "count") {
+    return `output_mode must be one of content, files_with_matches, count (got "${mode}")`;
+  }
+  return {
+    pattern,
+    searchPath: input.path ? resolveToolPath(input.path, cwd) : resolveWorkingDirectory(cwd),
+    outputMode: mode,
+    globs: typeof input.glob === "string" ? splitGlobs(input.glob) : [],
+    fileType: typeof input.type === "string" && input.type ? input.type : void 0,
+    caseInsensitive: input["-i"] === true,
+    showLineNumbers: input["-n"] !== false,
+    multiline: input.multiline === true,
+    headLimit: num(input.head_limit) ?? 0,
+    offset: num(input.offset) ?? 0,
+    afterContext: num(input["-A"]),
+    beforeContext: num(input["-B"]),
+    contextLines: num(input["-C"]) ?? num(input.context)
+  };
+}
+function ripgrepArgs(o) {
+  const args = ["--hidden", "--max-columns", String(MAX_COLUMNS)];
+  for (const dir of VCS_DIRECTORIES) args.push("--glob", `!${dir}`);
+  if (o.outputMode === "files_with_matches") args.push("--files-with-matches");
+  else if (o.outputMode === "count") args.push("--count");
+  if (o.caseInsensitive) args.push("-i");
+  if (o.outputMode === "content" && o.showLineNumbers) args.push("-n");
+  if (o.multiline) args.push("-U", "--multiline-dotall");
+  if (o.outputMode === "content") {
+    if (o.contextLines !== void 0) args.push("-C", String(o.contextLines));
     else {
-      if (afterContext !== void 0) args.push("-A", String(afterContext));
-      if (beforeContext !== void 0) args.push("-B", String(beforeContext));
+      if (o.afterContext !== void 0) args.push("-A", String(o.afterContext));
+      if (o.beforeContext !== void 0) args.push("-B", String(o.beforeContext));
     }
   }
-  if (glob) args.push("--glob", glob);
-  if (fileType) args.push("--type", fileType);
-  args.push("--", pattern, searchPath);
+  for (const glob of o.globs) args.push("--glob", glob);
+  if (o.fileType) args.push("--type", o.fileType);
+  args.push("-e", o.pattern, "--", o.searchPath);
+  return args;
+}
+async function sortByMtime(files) {
+  const times = /* @__PURE__ */ new Map();
+  for (let i = 0; i < files.length; i += STAT_CONCURRENCY) {
+    await Promise.all(
+      files.slice(i, i + STAT_CONCURRENCY).map(async (f) => {
+        try {
+          times.set(f, (await import_promises3.default.stat(f)).mtimeMs);
+        } catch {
+          times.set(f, 0);
+        }
+      })
+    );
+  }
+  return [...files].sort((a, b) => times.get(b) - times.get(a) || a.localeCompare(b));
+}
+function paginate(lines, offset, headLimit) {
+  const from = lines.slice(offset);
+  return headLimit > 0 ? from.slice(0, headLimit) : from;
+}
+async function grepSearch(input, context) {
+  const options = grepOptions(input, context?.cwd);
+  if (typeof options === "string") return errorResult4(options);
+  if (!await ripgrepPath()) return grepFallback(options);
+  const args = ripgrepArgs(options);
   try {
-    const RIPGREP_TIMEOUT_MS = 54e4;
-    if (headLimit > 0 && offset === 0) {
-      const streamArgs = args.slice(0, -1);
-      const target = args[args.length - 1];
+    if (options.outputMode === "content" && options.headLimit > 0 && options.offset === 0) {
       const collected = [];
       const controller = new AbortController();
       let timedOut = false;
@@ -19581,10 +19830,10 @@ async function grepSearch(input, context) {
       }, RIPGREP_TIMEOUT_MS);
       let streamErr;
       try {
-        await ripgrepStream(streamArgs, target, controller.signal, (lines) => {
-          for (const line of lines) {
+        await ripgrepStream(args.slice(0, -1), args[args.length - 1], controller.signal, (lines2) => {
+          for (const line of lines2) {
             collected.push(line);
-            if (collected.length >= headLimit) {
+            if (collected.length >= options.headLimit) {
               controller.abort();
               return;
             }
@@ -19596,159 +19845,177 @@ async function grepSearch(input, context) {
         clearTimeout(timeoutId);
       }
       if (!streamErr) {
-        const result2 = collected.slice(0, headLimit).map((l) => l.replace(/\r$/, "")).join("\n");
-        if (timedOut && (!result2 || result2.trim().length === 0)) {
-          const seconds = Math.round(RIPGREP_TIMEOUT_MS / 1e3);
-          return errorResult4(
-            `Ripgrep search timed out after ${seconds}s with no matches captured. Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`
-          );
-        }
+        const result2 = collected.slice(0, options.headLimit).join("\n");
+        if (timedOut && !result2.trim()) return timeoutError();
         const suffix2 = timedOut ? `
-[Search timed out after ${Math.round(RIPGREP_TIMEOUT_MS / 1e3)}s \u2014 partial results above]` : "";
+[Search timed out after ${RIPGREP_TIMEOUT_MS / 1e3}s \u2014 partial results above]` : "";
         return textResult4((result2 || "No matches found.") + suffix2);
       }
     }
     let res = await spawnRipgrep(args, RIPGREP_TIMEOUT_MS);
-    if (res.code !== null && res.code !== 0 && res.code !== 1 && isEagainError(res.stderr)) {
+    if (res.code !== null && res.code > 1 && isEagainError(res.stderr)) {
       res = await spawnRipgrep(args, RIPGREP_TIMEOUT_MS, true);
     }
-    if (res.code !== null && res.code !== 0 && res.code !== 1 && !res.truncated && !res.timedOut) {
-      return grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset);
+    if (res.code !== null && res.code > 1 && !res.truncated && !res.timedOut && !res.stdout.trim()) {
+      return errorResult4(`ripgrep failed (exit ${res.code}): ${res.stderr.trim().slice(0, 2e3) || "no error text"}`);
     }
-    let result = res.stdout.replace(/\r$/gm, "");
-    if (res.truncated || res.timedOut) {
-      const lines = result.split("\n");
-      if (lines.length > 1) result = lines.slice(0, -1).join("\n");
-    }
-    if (offset > 0) result = result.split("\n").slice(offset).join("\n");
-    if (headLimit > 0) result = result.split("\n").slice(0, headLimit).join("\n");
-    if (res.timedOut && (!result || result.trim().length === 0)) {
-      const seconds = Math.round(RIPGREP_TIMEOUT_MS / 1e3);
-      return errorResult4(
-        `Ripgrep search timed out after ${seconds}s with no matches captured. The search may have partially matched files but did not complete in time. Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`
-      );
-    }
+    let lines = res.stdout.replace(/\r$/gm, "").split("\n");
+    if (lines[lines.length - 1] === "") lines.pop();
+    if ((res.truncated || res.timedOut) && lines.length > 1) lines.pop();
+    if (options.outputMode === "files_with_matches") lines = await sortByMtime(lines);
+    const result = paginate(lines, options.offset, options.headLimit).join("\n");
+    if (res.timedOut && !result.trim()) return timeoutError();
     const suffix = [
       res.truncated ? `
 [Output truncated at ${MAX_GREP_BYTES / 1024 / 1024} MB \u2014 narrow the path/pattern for full results]` : "",
       res.timedOut ? `
-[Search timed out after ${Math.round(RIPGREP_TIMEOUT_MS / 1e3)}s \u2014 partial results above; try a narrower path or pattern]` : ""
+[Search timed out after ${RIPGREP_TIMEOUT_MS / 1e3}s \u2014 partial results above; try a narrower path or pattern]` : "",
+      res.code !== null && res.code > 1 ? `
+[ripgrep reported errors: ${res.stderr.trim().split("\n")[0]?.slice(0, 300)}]` : ""
     ].join("");
     return textResult4((result || "No matches found.") + suffix);
   } catch {
-    return grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset);
+    return grepFallback(options);
   }
+}
+function timeoutError() {
+  return errorResult4(
+    `Ripgrep search timed out after ${RIPGREP_TIMEOUT_MS / 1e3}s with no matches captured. Try narrowing the path or pattern, or pass type/glob to scope the file set.`
+  );
 }
 function hasNestedQuantifier(p) {
   return /\([^()]*[+*][^()]*\)\s*[+*{]/.test(p);
 }
-async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset) {
-  if (hasNestedQuantifier(pattern)) {
+function unsupportedByFallback(o) {
+  const out = [];
+  if (o.fileType) out.push("type");
+  if (o.multiline) out.push("multiline");
+  if (o.outputMode === "content" && (o.contextLines || o.afterContext || o.beforeContext)) out.push("-A/-B/-C");
+  return out;
+}
+async function grepFallback(o) {
+  const unsupported = unsupportedByFallback(o);
+  if (unsupported.length) {
     return errorResult4(
-      `Pattern "${pattern}" has a nested quantifier that can hang the JS search engine, and ripgrep isn't available on this machine to run it safely. Simplify the pattern (avoid nested quantifiers like (a+)+ / (.*x){n}) or install ripgrep on PATH.`
+      `ripgrep is not installed on this machine, and the built-in fallback search does not support ${unsupported.join(", ")}. Retry without ${unsupported.length > 1 ? "these arguments" : "this argument"} (use glob instead of type), or install ripgrep on PATH.`
     );
   }
-  const flags = caseInsensitive ? "gi" : "g";
+  if (hasNestedQuantifier(o.pattern)) {
+    return errorResult4(
+      `Pattern "${o.pattern}" has a nested quantifier that can hang the JS search engine, and ripgrep isn't available on this machine to run it safely. Simplify the pattern (avoid nested quantifiers like (a+)+ / (.*x){n}) or install ripgrep on PATH.`
+    );
+  }
   let regex;
   try {
-    regex = new RegExp(pattern, flags);
+    regex = new RegExp(o.pattern, o.caseInsensitive ? "gi" : "g");
   } catch (e) {
     return errorResult4(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`);
   }
+  let isFile = false;
   try {
-    const stat = await import_promises3.default.stat(searchPath);
-    if (stat.isFile()) {
-      const results2 = [];
-      const content = await import_promises3.default.readFile(searchPath, "utf8");
-      const lines = content.split("\n");
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] ?? "";
-        if (regex.test(line) && outputMode === "content") results2.push(`${i + 1}:${line}`);
-        regex.lastIndex = 0;
-      }
-      if (results2.length > 0 && outputMode === "files_with_matches") return textResult4(searchPath);
-      if (outputMode === "count") return textResult4(`${searchPath}:${results2.length}`);
-      return fallbackResult(results2, offset, headLimit, false, FALLBACK_TIMEOUT_MS);
-    }
+    isFile = (await import_promises3.default.stat(o.searchPath)).isFile();
   } catch {
+    return errorResult4(`Path does not exist: ${o.searchPath}`);
   }
-  const { results, timedOut } = await walkFallback(regex, searchPath, outputMode, headLimit, FALLBACK_TIMEOUT_MS);
-  return fallbackResult(results, offset, headLimit, timedOut, FALLBACK_TIMEOUT_MS);
+  if (isFile) {
+    const matches = await matchFile(regex, o.searchPath, o.outputMode, o.showLineNumbers, false);
+    const results2 = matches === null ? [] : o.outputMode === "content" ? matches : [matches[0]];
+    return fallbackResult(results2, o.offset, o.headLimit, false, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE);
+  }
+  const walk = await walkFallback(regex, o.searchPath, o.outputMode, o.headLimit + o.offset, FALLBACK_TIMEOUT_MS, o.globs, o.showLineNumbers);
+  const results = o.outputMode === "files_with_matches" ? await sortByMtime(walk.results) : walk.results;
+  return fallbackResult(results, o.offset, o.headLimit, walk.timedOut, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE);
 }
-async function walkFallback(regex, searchPath, outputMode, headLimit, timeoutMs) {
+async function matchFile(regex, file, outputMode, lineNumbers, withPath) {
+  try {
+    const stat = await import_promises3.default.stat(file);
+    if (stat.size > MAX_READ_BYTES) return null;
+    const buffer = await import_promises3.default.readFile(file);
+    if (buffer.subarray(0, 8192).includes(0)) return null;
+    const lines = buffer.toString("utf8").split("\n");
+    const out = [];
+    let count = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = (lines[i] ?? "").replace(/\r$/, "");
+      regex.lastIndex = 0;
+      if (!regex.test(line)) continue;
+      count++;
+      if (outputMode === "content") {
+        const text = line.length > MAX_COLUMNS ? "[Omitted long matching line]" : line;
+        out.push(`${withPath ? `${file}:` : ""}${lineNumbers ? `${i + 1}:` : ""}${text}`);
+      }
+    }
+    if (count === 0) return null;
+    if (outputMode === "files_with_matches") return [file];
+    if (outputMode === "count") return [withPath ? `${file}:${count}` : String(count)];
+    return out;
+  } catch {
+    return null;
+  }
+}
+function fastGlobPattern(glob) {
+  return glob.includes("/") ? glob.replace(/^\//, "") : `**/${glob}`;
+}
+async function walkFallback(regex, searchPath, outputMode, limit, timeoutMs, globs = [], lineNumbers = true) {
   const results = [];
   const deadline = Date.now() + timeoutMs;
   let timedOut = false;
-  async function searchDir(dir) {
-    if (timedOut) return;
-    let entries2;
-    try {
-      entries2 = await import_promises3.default.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries2) {
-      if (headLimit > 0 && results.length >= headLimit) return;
+  const include = globs.filter((g) => !g.startsWith("!")).map(fastGlobPattern);
+  const exclude = globs.filter((g) => g.startsWith("!")).map((g) => fastGlobPattern(g.slice(1)));
+  const stream = import_fast_glob.default.stream(include.length ? include : ["**/*"], {
+    cwd: searchPath,
+    absolute: true,
+    dot: true,
+    onlyFiles: true,
+    followSymbolicLinks: false,
+    suppressErrors: true,
+    ignore: [...VCS_DIRECTORIES.map((d) => `**/${d}/**`), "**/node_modules/**", ...exclude]
+  });
+  try {
+    for await (const entry of stream) {
+      if (limit > 0 && results.length >= limit) break;
       if (Date.now() > deadline) {
         timedOut = true;
-        return;
+        break;
       }
-      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-      const fullPath = import_node_path8.default.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await searchDir(fullPath);
-      } else if (entry.isFile()) {
-        try {
-          const stat = await import_promises3.default.stat(fullPath);
-          if (stat.size > MAX_READ_BYTES) continue;
-          const content = await import_promises3.default.readFile(fullPath, "utf8");
-          const lines = content.split("\n");
-          const matchingLines = [];
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i] ?? "";
-            if (regex.test(line)) {
-              matchingLines.push(outputMode === "content" ? `${i + 1}:${line}` : line);
-            }
-            regex.lastIndex = 0;
-          }
-          if (matchingLines.length > 0) {
-            if (outputMode === "files_with_matches") results.push(fullPath);
-            else if (outputMode === "count") results.push(`${fullPath}:${matchingLines.length}`);
-            else results.push(`${fullPath}:
-${matchingLines.join("\n")}`);
-          }
-        } catch {
-        }
-      }
+      const file = import_node_path9.default.normalize(entry);
+      const matches = await matchFile(regex, file, outputMode, lineNumbers, true);
+      if (matches) results.push(...matches);
     }
+  } finally {
+    ;
+    stream.destroy?.();
   }
-  await searchDir(searchPath);
   return { results, timedOut };
 }
-function fallbackResult(results, offset, headLimit, timedOut, timeoutMs) {
-  let output = results.join("\n");
-  if (offset > 0) output = output.split("\n").slice(offset).join("\n");
-  if (headLimit > 0) output = output.split("\n").slice(0, headLimit).join("\n");
+function fallbackResult(results, offset, headLimit, timedOut, timeoutMs, notice = "") {
+  const output = paginate(results, offset, headLimit).join("\n");
   const seconds = Math.round(timeoutMs / 1e3);
   if (timedOut && !output.trim()) {
     return errorResult4(
-      `Search timed out after ${seconds}s with no matches captured; not every file was searched. Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`
+      `Search timed out after ${seconds}s with no matches captured; not every file was searched. Try narrowing the path or pattern, or pass glob to scope the file set.`
     );
   }
   const suffix = timedOut ? `
 [Search timed out after ${seconds}s \u2014 partial results above; try a narrower path or pattern]` : "";
-  return textResult4((output || "No matches found.") + suffix);
+  return textResult4((output || "No matches found.") + suffix + notice);
 }
-var import_promises3, import_node_path8, import_node_child_process7, FALLBACK_TIMEOUT_MS;
+var import_promises3, import_node_path9, import_node_child_process7, import_fast_glob, VCS_DIRECTORIES, MAX_COLUMNS, RIPGREP_TIMEOUT_MS, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
     import_promises3 = __toESM(require("node:fs/promises"), 1);
-    import_node_path8 = __toESM(require("node:path"), 1);
+    import_node_path9 = __toESM(require("node:path"), 1);
     import_node_child_process7 = require("node:child_process");
+    import_fast_glob = __toESM(require_out4(), 1);
     init_working_directory();
     init_fs_shared();
+    init_ripgrep_path();
+    VCS_DIRECTORIES = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
+    MAX_COLUMNS = 500;
+    RIPGREP_TIMEOUT_MS = 54e4;
     FALLBACK_TIMEOUT_MS = 54e4;
+    FALLBACK_NOTICE = "\n[ripgrep is not installed: searched with the built-in fallback. .gitignore rules are not applied; node_modules and VCS directories are skipped.]";
   }
 });
 
@@ -19816,10 +20083,10 @@ async function readFile(input, context) {
   const filePath = resolveToolPath(input.file_path, context?.cwd);
   if (isBlockedDevicePath(filePath)) return errorResult4(`Refusing to read blocking device path: ${filePath}`);
   try {
-    const ext = import_node_path9.default.extname(filePath).toLowerCase();
+    const ext = import_node_path10.default.extname(filePath).toLowerCase();
     if (ext === ".pdf") {
-      return textResult4(
-        "PDF reading requires the pdf-parse package. Use `Bash` tool with `pdftotext` or similar to extract PDF text."
+      return errorResult4(
+        "PDF reading is not supported by this Read tool. Use the Bash tool with `pdftotext` or similar to extract PDF text."
       );
     }
     if (ext === ".ipynb") {
@@ -19838,31 +20105,67 @@ async function readFile(input, context) {
       const mimeType = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : `image/${ext.slice(1)}`;
       return { content: [{ type: "image", data: base64, mimeType }] };
     }
-    const raw = await readFileCached(filePath);
+    const file = await readTextCached(filePath, stat);
+    if (file.binary) {
+      return errorResult4(
+        `This tool cannot read binary files. ${filePath} appears to be binary (it contains NUL bytes). Use Bash (for example \`xxd | head\` or \`file\`) to inspect it.`
+      );
+    }
+    const raw = file.content;
     if (raw.length === 0 || raw.trim().length === 0) {
       return textResult4("<system-reminder>Warning: File exists but has empty contents.</system-reminder>");
     }
     const allLines = raw.split("\n");
-    const offset = typeof input.offset === "number" ? Math.max(0, input.offset - 1) : 0;
-    const limit = typeof input.limit === "number" ? input.limit : Math.min(allLines.length, 2e3);
+    if (allLines.length > 1 && allLines[allLines.length - 1] === "") allLines.pop();
+    const offset = typeof input.offset === "number" ? Math.max(0, Math.floor(input.offset) - 1) : 0;
+    const limit = typeof input.limit === "number" && input.limit > 0 ? Math.floor(input.limit) : 2e3;
+    if (offset >= allLines.length) {
+      return textResult4(
+        `<system-reminder>Warning: the file exists but is shorter than the provided offset (${offset + 1}). The file has ${allLines.length} lines.</system-reminder>`
+      );
+    }
     const slice = allLines.slice(offset, offset + limit);
-    const MAX_LINE_LENGTH = 2e3;
     const formatted = slice.map((line, i) => {
-      const lineNum = offset + i + 1;
-      const truncated = line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) + "... [truncated]" : line;
-      return `${String(lineNum).padStart(6, " ")}	${truncated}`;
+      const text = line.endsWith("\r") ? line.slice(0, -1) : line;
+      const shown = text.length > MAX_LINE_LENGTH ? text.slice(0, MAX_LINE_LENGTH) + "... [truncated]" : text;
+      return `${String(offset + i + 1).padStart(6, " ")}	${shown}`;
     }).join("\n");
     let suffix = "";
-    if (stat.size > WARN_READ_BYTES && input.offset === void 0 && input.limit === void 0) {
+    const end = offset + slice.length;
+    if (input.limit === void 0 && end < allLines.length) {
+      suffix = `
+
+<system-reminder>Showing lines ${offset + 1}-${end} of ${allLines.length}. Use offset/limit to read the rest.</system-reminder>`;
+    } else if (stat.size > WARN_READ_BYTES && input.offset === void 0 && input.limit === void 0) {
       suffix = `
 
 <system-reminder>File is ${Math.round(stat.size / 1024)} KB (${allLines.length} lines). Consider using offset/limit for targeted reads.</system-reminder>`;
     }
     return textResult4(formatted + suffix);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("ENOENT")) return errorResult4(`File not found: ${filePath}`);
-    return errorResult4(msg);
+    return fsError(err, filePath);
+  }
+}
+function fsError(err, filePath) {
+  const code = err?.code;
+  if (code === "ENOENT") return errorResult4(`File does not exist: ${filePath}`);
+  if (code === "EISDIR") return errorResult4(`Path is a directory, not a file: ${filePath}`);
+  if (code === "EACCES" || code === "EPERM") return errorResult4(`Permission denied: ${filePath}`);
+  if (code === "EBUSY") return errorResult4(`File is locked by another process: ${filePath}`);
+  return errorResult4(err instanceof Error ? err.message : String(err));
+}
+async function existingEncoding(filePath) {
+  try {
+    const handle = await import_promises4.default.open(filePath, "r");
+    try {
+      const head = Buffer.alloc(3);
+      const { bytesRead } = await handle.read(head, 0, 3, 0);
+      return detectEncoding(head.subarray(0, bytesRead));
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return "utf8";
   }
 }
 async function writeFile(input, context) {
@@ -19871,27 +20174,40 @@ async function writeFile(input, context) {
   const filePath = resolveToolPath(input.file_path, context?.cwd);
   if (typeof content !== "string") return errorResult4("content is required");
   try {
-    const dir = import_node_path9.default.dirname(filePath);
-    await import_promises4.default.mkdir(dir, { recursive: true });
-    await import_promises4.default.writeFile(filePath, content, "utf8");
+    await import_promises4.default.mkdir(import_node_path10.default.dirname(filePath), { recursive: true });
+    const bytes = encodeText(content, await existingEncoding(filePath));
+    await import_promises4.default.writeFile(filePath, bytes);
     invalidateFileCache(filePath);
-    return textResult4(`Successfully wrote ${Buffer.byteLength(content, "utf8")} bytes to ${filePath}`);
+    return textResult4(`Successfully wrote ${bytes.length} bytes to ${filePath}`);
   } catch (err) {
-    return errorResult4(err instanceof Error ? err.message : String(err));
+    return fsError(err, filePath);
   }
 }
-function detectLineEnding(content) {
-  let crlfCount = 0;
-  let lfCount = 0;
-  let idx = 0;
-  while (idx < content.length) {
-    const next = content.indexOf("\n", idx);
-    if (next === -1) break;
-    if (next > 0 && content.charCodeAt(next - 1) === 13) crlfCount++;
-    else lfCount++;
-    idx = next + 1;
+function isCrlfFile(content) {
+  let crlf = 0;
+  let lf = 0;
+  for (let idx = content.indexOf("\n"); idx !== -1; idx = content.indexOf("\n", idx + 1)) {
+    if (idx > 0 && content.charCodeAt(idx - 1) === 13) crlf++;
+    else lf++;
   }
-  return crlfCount > lfCount ? "CRLF" : "LF";
+  return crlf > lf;
+}
+function countOccurrences(content, needle) {
+  let count = 0;
+  for (let idx = content.indexOf(needle); idx !== -1; idx = content.indexOf(needle, idx + needle.length)) count++;
+  return count;
+}
+function locate(content, oldString, crlf) {
+  const lf = oldString.replaceAll("\r\n", "\n");
+  const variants = crlf ? [[lf.replaceAll("\n", "\r\n"), "\r\n"], [oldString, "\r\n"], [lf, "\n"]] : [[oldString, "\n"], [lf, "\n"], [lf.replaceAll("\n", "\r\n"), "\r\n"]];
+  for (const [candidate, eol] of variants) {
+    if (content.includes(candidate)) return { old: candidate, eol };
+  }
+  for (const [candidate, eol] of variants) {
+    const actual = findActualString(content, candidate);
+    if (actual !== null) return { old: actual, eol };
+  }
+  return null;
 }
 async function editFile(input, context) {
   const filePath = input.file_path ? resolveToolPath(input.file_path, context?.cwd) : "";
@@ -19901,47 +20217,62 @@ async function editFile(input, context) {
   if (!filePath) return errorResult4("file_path is required");
   if (typeof oldString !== "string") return errorResult4("old_string is required");
   if (typeof newString !== "string") return errorResult4("new_string is required");
-  if (oldString === newString) return errorResult4("Original and edited file match exactly. Failed to apply edit.");
+  if (oldString === newString) {
+    return errorResult4("No changes to make: old_string and new_string are exactly the same.");
+  }
   try {
-    const stat = await import_promises4.default.stat(filePath);
+    let stat;
+    try {
+      stat = await import_promises4.default.stat(filePath);
+    } catch (err) {
+      if (err?.code === "ENOENT" && oldString === "") {
+        await import_promises4.default.mkdir(import_node_path10.default.dirname(filePath), { recursive: true });
+        await import_promises4.default.writeFile(filePath, newString, "utf8");
+        invalidateFileCache(filePath);
+        return textResult4(`The file ${filePath} has been created successfully.`);
+      }
+      throw err;
+    }
     if (stat.size > MAX_READ_BYTES) {
       return errorResult4(
         `File too large to edit (${Math.round(stat.size / 1024 / 1024)} MB > ${MAX_READ_BYTES / 1024 / 1024} MB limit)`
       );
     }
-    const rawContent = await readFileCached(filePath);
-    const lineEnding = detectLineEnding(rawContent);
-    const content = rawContent.replaceAll("\r\n", "\n");
-    const normalizedOld = oldString.replaceAll("\r\n", "\n");
-    const normalizedNew = newString.replaceAll("\r\n", "\n");
-    let effectiveOld = normalizedOld;
-    if (normalizedNew === "" && !normalizedOld.endsWith("\n") && content.includes(normalizedOld + "\n")) {
-      effectiveOld = normalizedOld + "\n";
-    }
-    if (!content.includes(effectiveOld)) {
-      const actual = findActualString(content, effectiveOld);
-      if (actual !== null) effectiveOld = actual;
-    }
-    const effectiveNew = preserveQuoteStyle(normalizedOld, effectiveOld, normalizedNew);
+    const file = await readTextCached(filePath, stat);
+    if (file.binary) return errorResult4(`Cannot edit a binary file: ${filePath}`);
+    const content = file.content;
     let result;
-    if (replaceAll) {
-      result = content.replaceAll(effectiveOld, () => effectiveNew);
+    if (oldString === "") {
+      if (content.trim() !== "") return errorResult4("Cannot create new file - file already exists.");
+      result = newString;
     } else {
-      result = content.replace(effectiveOld, () => effectiveNew);
+      const crlf = isCrlfFile(content);
+      const found = locate(content, oldString, crlf);
+      if (!found) return errorResult4(`String to replace not found in file.
+String: ${oldString}`);
+      let { old } = found;
+      const toEol = (s) => {
+        const lf = s.replaceAll("\r\n", "\n");
+        return found.eol === "\r\n" ? lf.replaceAll("\n", "\r\n") : lf;
+      };
+      if (newString === "" && !old.endsWith("\n") && content.includes(old + found.eol)) {
+        if (countOccurrences(content, old) === countOccurrences(content, old + found.eol)) old += found.eol;
+      }
+      const matches = countOccurrences(content, old);
+      if (matches > 1 && !replaceAll) {
+        return errorResult4(
+          `Found ${matches} matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_all to true. To replace only one occurrence, please provide more context to uniquely identify the instance.
+String: ${oldString}`
+        );
+      }
+      const replacement = preserveQuoteStyle(toEol(oldString), old, toEol(newString));
+      result = replaceAll ? content.replaceAll(old, () => replacement) : content.replace(old, () => replacement);
     }
-    if (result === content) {
-      return errorResult4("String not found in file. Failed to apply edit.");
-    }
-    if (lineEnding === "CRLF") {
-      result = result.replaceAll("\n", "\r\n");
-    }
-    await import_promises4.default.writeFile(filePath, result, "utf8");
+    await import_promises4.default.writeFile(filePath, encodeText(result, file.encoding));
     invalidateFileCache(filePath);
     return textResult4(`The file ${filePath} has been updated successfully.`);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("ENOENT")) return errorResult4(`File not found: ${filePath}`);
-    return errorResult4(msg);
+    return fsError(err, filePath);
   }
 }
 async function batchedStat(files) {
@@ -19975,7 +20306,7 @@ async function globSearch(input, context) {
   try {
     const files = [];
     let capped = false;
-    const stream = import_fast_glob.default.stream(pattern, {
+    const stream = import_fast_glob2.default.stream(pattern, {
       cwd: basePath,
       absolute: true,
       dot: true,
@@ -19992,24 +20323,26 @@ async function globSearch(input, context) {
     }
     if (capped) stream.destroy?.();
     const withStats = await batchedStat(files);
-    withStats.sort((a, b) => b.mtime - a.mtime);
-    const result = withStats.map((s) => s.file).join("\n");
-    const suffix = capped ? `
-[Showing first ${MAX_GLOB_RESULTS} matches \u2014 narrow the pattern/path for the rest]` : "";
-    return textResult4((result || "No files matched the pattern.") + suffix);
+    withStats.sort((a, b) => b.mtime - a.mtime || a.file.localeCompare(b.file));
+    const shown = withStats.slice(0, GLOB_SHOWN).map((s) => s.file);
+    const total = capped ? `more than ${MAX_GLOB_RESULTS}` : String(withStats.length);
+    const suffix = withStats.length > GLOB_SHOWN ? `
+(Showing the ${GLOB_SHOWN} most recently modified of ${total} matching files. Use a more specific pattern or path for the rest.)` : "";
+    return textResult4((shown.join("\n") || "No files matched the pattern.") + suffix);
   } catch (err) {
     return errorResult4(err instanceof Error ? err.message : String(err));
   }
 }
-var import_promises4, import_node_path9, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
+var import_promises4, import_node_path10, import_fast_glob2, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_LINE_LENGTH, MAX_GLOB_RESULTS, GLOB_SHOWN;
 var init_file_system = __esm({
   "src/main/mcp/tools/file-system.ts"() {
     "use strict";
     import_promises4 = __toESM(require("node:fs/promises"), 1);
-    import_node_path9 = __toESM(require("node:path"), 1);
-    import_fast_glob = __toESM(require_out4(), 1);
+    import_node_path10 = __toESM(require("node:path"), 1);
+    import_fast_glob2 = __toESM(require_out4(), 1);
     init_notebook();
     init_file_read_cache();
+    init_text_codec();
     init_working_directory();
     init_fs_shared();
     init_grep_tool();
@@ -20017,7 +20350,9 @@ var init_file_system = __esm({
     RIGHT_SINGLE_CURLY_QUOTE = "\u2019";
     LEFT_DOUBLE_CURLY_QUOTE = "\u201C";
     RIGHT_DOUBLE_CURLY_QUOTE = "\u201D";
+    MAX_LINE_LENGTH = 2e3;
     MAX_GLOB_RESULTS = 1e4;
+    GLOB_SHOWN = 100;
   }
 });
 
@@ -22156,8 +22491,8 @@ var require_select = __commonJS({
       regex = regex.replace(name, val.source || val);
       return new RegExp(regex);
     };
-    var truncateUrl = function(url, num) {
-      return url.replace(/^(?:\w+:\/\/|\/+)/, "").replace(/(?:\/+|\/*#.*?)$/, "").split("/", num).join("/");
+    var truncateUrl = function(url, num2) {
+      return url.replace(/^(?:\w+:\/\/|\/+)/, "").replace(/(?:\/+|\/*#.*?)$/, "").split("/", num2).join("/");
     };
     var parseNth = function(param_, test) {
       var param = param_.replace(/\s+/g, ""), cap;
@@ -37292,7 +37627,7 @@ var require_turndown_cjs = __commonJS({
         } else if (node.nodeType === 1) {
           replacement = replacementForNode.call(self, node);
         }
-        join4(output, replacement);
+        join5(output, replacement);
         return output;
       }, []);
     }
@@ -37300,7 +37635,7 @@ var require_turndown_cjs = __commonJS({
       var self = this;
       this.rules.forEach(function(rule) {
         if (typeof rule.append === "function") {
-          join4(output, rule.append(self.options));
+          join5(output, rule.append(self.options));
         }
       });
       return output.join("").replace(/^[\t\r\n]+/, "").replace(/[\t\r\n\s]+$/, "");
@@ -37312,7 +37647,7 @@ var require_turndown_cjs = __commonJS({
       if (whitespace.leading || whitespace.trailing) content = content.trim();
       return whitespace.leading + rule.replacement(content, node, this.options) + whitespace.trailing;
     }
-    function join4(output, replacement) {
+    function join5(output, replacement) {
       var tail = output.pop() || "";
       var s1 = trimTrailingNewlines(tail);
       var s2 = trimLeadingNewlines(replacement);
@@ -37618,14 +37953,14 @@ async function getGitRoot(cwd) {
 async function exitWorktree(input, context) {
   if (!input.path) return errorResult6("path is required");
   const worktreePath = resolveToolPath(input.path, context?.cwd);
-  const worktreeName = import_node_path10.default.basename(worktreePath);
+  const worktreeName = import_node_path11.default.basename(worktreePath);
   if (!/^[a-zA-Z0-9_-]+$/.test(worktreeName)) {
     return errorResult6("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
   }
   try {
     const gitRoot = await getGitRoot(context?.cwd);
     if (!gitRoot) return errorResult6("Not inside a git repository.");
-    if (!import_node_fs7.default.existsSync(worktreePath)) {
+    if (!import_node_fs8.default.existsSync(worktreePath)) {
       return errorResult6(`Worktree path does not exist: ${worktreePath}`);
     }
     await runGitLocal(["worktree", "remove", worktreePath, "--force"], { cwd: gitRoot, timeoutMs: 3e4 });
@@ -37645,15 +37980,15 @@ async function enterWorktree(input, context) {
     if (!gitRoot) {
       return errorResult6("Not inside a git repository. Cannot create worktree.");
     }
-    const worktreesDir = import_node_path10.default.join(gitRoot, ".claude", "worktrees");
-    import_node_fs7.default.mkdirSync(worktreesDir, { recursive: true });
-    const worktreePath = import_node_path10.default.join(worktreesDir, name);
-    if (import_node_fs7.default.existsSync(worktreePath)) {
+    const worktreesDir = import_node_path11.default.join(gitRoot, ".claude", "worktrees");
+    import_node_fs8.default.mkdirSync(worktreesDir, { recursive: true });
+    const worktreePath = import_node_path11.default.join(worktreesDir, name);
+    if (import_node_fs8.default.existsSync(worktreePath)) {
       return errorResult6(`Worktree already exists at ${worktreePath}`);
     }
     const branchName = `worktree/${name}`;
     await runGitLocal(["worktree", "add", "-b", branchName, worktreePath, "HEAD"], { cwd: gitRoot, timeoutMs: 3e4 });
-    if (!import_node_fs7.default.existsSync(worktreePath)) {
+    if (!import_node_fs8.default.existsSync(worktreePath)) {
       return errorResult6("Worktree creation command succeeded but directory was not found");
     }
     return textResult6(
@@ -37666,13 +38001,13 @@ Based on: HEAD`
     return errorResult6(`Failed to create worktree: ${msg}`);
   }
 }
-var import_node_child_process8, import_node_path10, import_node_fs7, import_node_crypto2;
+var import_node_child_process8, import_node_path11, import_node_fs8, import_node_crypto2;
 var init_git = __esm({
   "src/main/mcp/tools/git.ts"() {
     "use strict";
     import_node_child_process8 = require("node:child_process");
-    import_node_path10 = __toESM(require("node:path"), 1);
-    import_node_fs7 = __toESM(require("node:fs"), 1);
+    import_node_path11 = __toESM(require("node:path"), 1);
+    import_node_fs8 = __toESM(require("node:fs"), 1);
     import_node_crypto2 = __toESM(require("node:crypto"), 1);
     init_working_directory();
   }
@@ -38085,12 +38420,12 @@ function setPluginLspProjectResolver(resolver) {
   resolveProject = resolver;
 }
 function isInside(root, candidate) {
-  const rel = import_node_path11.default.relative(import_node_path11.default.resolve(root), import_node_path11.default.resolve(candidate));
-  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path11.default.sep) && !import_node_path11.default.isAbsolute(rel);
+  const rel = import_node_path12.default.relative(import_node_path12.default.resolve(root), import_node_path12.default.resolve(candidate));
+  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path12.default.sep) && !import_node_path12.default.isAbsolute(rel);
 }
 function readJson(filePath) {
   try {
-    return JSON.parse(import_node_fs8.default.readFileSync(filePath, "utf-8"));
+    return JSON.parse(import_node_fs9.default.readFileSync(filePath, "utf-8"));
   } catch {
     return null;
   }
@@ -38106,12 +38441,12 @@ async function discoverPluginLspConfigs() {
   for (const plugin of await listEnabledInstalledPlugins()) {
     const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace);
     const rawMap = {};
-    collectConfigMap(rawMap, readJson(import_node_path11.default.join(plugin.installPath, ".lsp.json")));
+    collectConfigMap(rawMap, readJson(import_node_path12.default.join(plugin.installPath, ".lsp.json")));
     const declared = manifest.lspServers;
     const declarations = Array.isArray(declared) ? declared : declared === void 0 ? [] : [declared];
     for (const item of declarations) {
       if (typeof item === "string") {
-        const resolved = import_node_path11.default.resolve(plugin.installPath, item);
+        const resolved = import_node_path12.default.resolve(plugin.installPath, item);
         if (isInside(plugin.installPath, resolved)) collectConfigMap(rawMap, readJson(resolved));
       } else {
         collectConfigMap(rawMap, item);
@@ -38122,7 +38457,7 @@ async function discoverPluginLspConfigs() {
       const config = raw;
       if (typeof config.command !== "string" || !config.command.trim()) continue;
       if (!config.extensionToLanguage || typeof config.extensionToLanguage !== "object" || Array.isArray(config.extensionToLanguage)) continue;
-      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path11.default.join(import_node_os6.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
+      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path12.default.join(import_node_os6.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
       const env4 = {};
       for (const [key2, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key2] = subst(value);
       for (const [key2, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
@@ -38150,7 +38485,7 @@ async function discoverPluginLspConfigs() {
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 function fileUri(filePath) {
-  return (0, import_node_url.pathToFileURL)(import_node_path11.default.resolve(filePath)).href;
+  return (0, import_node_url.pathToFileURL)(import_node_path12.default.resolve(filePath)).href;
 }
 function matchLspLanguage(extensionToLanguage, file) {
   const lower = file.toLowerCase();
@@ -38161,14 +38496,14 @@ function matchLspLanguage(extensionToLanguage, file) {
   }
   return null;
 }
-var import_node_child_process9, import_node_fs8, import_node_os6, import_node_path11, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
+var import_node_child_process9, import_node_fs9, import_node_os6, import_node_path12, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
 var init_plugin_lsp = __esm({
   "src/main/plugin-lsp.ts"() {
     "use strict";
     import_node_child_process9 = require("node:child_process");
-    import_node_fs8 = __toESM(require("node:fs"), 1);
+    import_node_fs9 = __toESM(require("node:fs"), 1);
     import_node_os6 = __toESM(require("node:os"), 1);
-    import_node_path11 = __toESM(require("node:path"), 1);
+    import_node_path12 = __toESM(require("node:path"), 1);
     import_node_url = require("node:url");
     init_plugin_helpers();
     LSP_MAX_HEADER_BYTES = 16 * 1024;
@@ -38219,7 +38554,7 @@ var init_plugin_lsp = __esm({
         }
       }
     };
-    resolveProject = (_tabId, file) => import_node_path11.default.dirname(file);
+    resolveProject = (_tabId, file) => import_node_path12.default.dirname(file);
     LspProcess = class {
       constructor(config, projectRoot) {
         this.config = config;
@@ -38277,21 +38612,21 @@ var init_plugin_lsp = __esm({
           }
           this.child = null;
         }
-        const dataDir = import_node_path11.default.join(import_node_os6.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
-        import_node_fs8.default.mkdirSync(dataDir, { recursive: true });
+        const dataDir = import_node_path12.default.join(import_node_os6.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+        import_node_fs9.default.mkdirSync(dataDir, { recursive: true });
         let cwd = this.projectRoot;
         if (this.config.workspaceFolder) {
-          const requested = import_node_path11.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
+          const requested = import_node_path12.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
           if (isInside(this.projectRoot, requested)) cwd = requested;
         }
-        const pluginBin = import_node_path11.default.join(this.config.pluginRoot, "bin");
+        const pluginBin = import_node_path12.default.join(this.config.pluginRoot, "bin");
         const env4 = {
           ...process.env,
           ...Object.fromEntries(Object.entries(this.config.env).map(([k, v]) => [k, this.substitute(v)])),
           CLAUDE_PLUGIN_ROOT: this.config.pluginRoot,
           CLAUDE_PLUGIN_DATA: dataDir,
           CLAUDE_PROJECT_DIR: this.projectRoot,
-          PATH: [import_node_fs8.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path11.default.delimiter)
+          PATH: [import_node_fs9.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path12.default.delimiter)
         };
         this.child = (0, import_node_child_process9.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
           cwd,
@@ -38326,7 +38661,7 @@ var init_plugin_lsp = __esm({
         await this.request("initialize", {
           processId: process.pid,
           rootUri,
-          workspaceFolders: [{ uri: rootUri, name: import_node_path11.default.basename(this.projectRoot) }],
+          workspaceFolders: [{ uri: rootUri, name: import_node_path12.default.basename(this.projectRoot) }],
           capabilities: {
             workspace: { workspaceFolders: true, configuration: true },
             textDocument: {
@@ -38416,7 +38751,7 @@ var init_plugin_lsp = __esm({
             result = items.map(() => this.config.settings ?? null);
           } else if (message.method === "workspace/workspaceFolders") {
             const uri = fileUri(this.projectRoot);
-            result = [{ uri, name: import_node_path11.default.basename(this.projectRoot) }];
+            result = [{ uri, name: import_node_path12.default.basename(this.projectRoot) }];
           } else if (message.method === "workspace/applyEdit") {
             result = { applied: false, failureReason: "Plugin LSP edits are not applied automatically by the bridge" };
           }
@@ -38428,7 +38763,7 @@ var init_plugin_lsp = __esm({
       }
       async syncDocument(file, languageId) {
         const uri = fileUri(file);
-        const content = await import_node_fs8.default.promises.readFile(file, "utf-8");
+        const content = await import_node_fs9.default.promises.readFile(file, "utf-8");
         const previous = this.documents.get(uri);
         if (!previous) {
           this.documents.set(uri, { content, version: 1, languageId });
@@ -38515,11 +38850,11 @@ var init_plugin_lsp = __esm({
       }
       async matching(file, tabId) {
         if (this.definitions.length === 0) await this.refresh();
-        const projectRoot = resolveProject(tabId, file) ?? import_node_path11.default.dirname(file);
+        const projectRoot = resolveProject(tabId, file) ?? import_node_path12.default.dirname(file);
         for (const config of this.definitions) {
           const languageId = matchLspLanguage(config.extensionToLanguage, file);
           if (!languageId) continue;
-          const instanceKey = `${config.id}::${import_node_path11.default.resolve(projectRoot)}`;
+          const instanceKey = `${config.id}::${import_node_path12.default.resolve(projectRoot)}`;
           let process2 = this.instances.get(instanceKey);
           if (!process2) {
             process2 = new LspProcess(config, projectRoot);
@@ -38904,6 +39239,34 @@ var init_executor2 = __esm({
   }
 });
 
+// src/main/mcp/tools/shell-prewarm.ts
+var shell_prewarm_exports = {};
+__export(shell_prewarm_exports, {
+  prewarmShellTools: () => prewarmShellTools
+});
+function prewarmShellTools() {
+  started ??= (async () => {
+    await Promise.allSettled([
+      findBashExecutable().then((bash) => getOrCreateSnapshot(bash)),
+      process.platform === "win32" ? findPowerShellExecutable() : Promise.resolve(),
+      ripgrepPath(),
+      listEnabledPluginBinDirs()
+    ]);
+  })();
+  return started;
+}
+var started;
+var init_shell_prewarm = __esm({
+  "src/main/mcp/tools/shell-prewarm.ts"() {
+    "use strict";
+    init_shell_snapshot();
+    init_ripgrep_path();
+    init_plugin_helpers();
+    init_command_runtime();
+    started = null;
+  }
+});
+
 // node_modules/semver/internal/constants.js
 var require_constants5 = __commonJS({
   "node_modules/semver/internal/constants.js"(exports2, module2) {
@@ -39170,9 +39533,9 @@ var require_semver = __commonJS({
         } else {
           this.prerelease = m[4].split(".").map((id) => {
             if (/^[0-9]+$/.test(id)) {
-              const num = +id;
-              if (num >= 0 && num < MAX_SAFE_INTEGER) {
-                return num;
+              const num2 = +id;
+              if (num2 >= 0 && num2 < MAX_SAFE_INTEGER) {
+                return num2;
               }
             }
             return id;
@@ -40120,9 +40483,9 @@ var require_range = __commonJS({
         range = range.replace(BUILDSTRIPRE, "");
         const memoOpts = (this.options.includePrerelease && FLAG_INCLUDE_PRERELEASE) | (this.options.loose && FLAG_LOOSE);
         const memoKey = memoOpts + ":" + range;
-        const cached2 = cache2.get(memoKey);
-        if (cached2) {
-          return cached2;
+        const cached3 = cache2.get(memoKey);
+        if (cached3) {
+          return cached3;
         }
         const loose = this.options.loose;
         const hr = loose ? re[t.HYPHENRANGELOOSE] : re[t.HYPHENRANGE];
@@ -41468,7 +41831,7 @@ var import_path36 = __toESM(require("path"), 1);
 
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
-var import_node_path14 = __toESM(require("node:path"), 1);
+var import_node_path15 = __toESM(require("node:path"), 1);
 
 // src/resync-tracker.ts
 var ResyncTracker = class {
@@ -42571,37 +42934,37 @@ function toRendererConnectionState(state, authority, authorityGeneration, author
 
 // src/incident-diagnostics.ts
 var import_node_crypto4 = require("node:crypto");
-var import_node_fs10 = require("node:fs");
-var import_node_path12 = require("node:path");
+var import_node_fs11 = require("node:fs");
+var import_node_path13 = require("node:path");
 
 // ../../../src/kamin-host/rolling-log.ts
-var import_node_fs9 = require("node:fs");
+var import_node_fs10 = require("node:fs");
 function removeIfPresent(path50) {
   try {
-    if ((0, import_node_fs9.existsSync)(path50)) (0, import_node_fs9.unlinkSync)(path50);
+    if ((0, import_node_fs10.existsSync)(path50)) (0, import_node_fs10.unlinkSync)(path50);
   } catch {
   }
 }
 function rotateLogFiles(path50, backups) {
   if (backups <= 0) {
     removeIfPresent(path50);
-    return !(0, import_node_fs9.existsSync)(path50);
+    return !(0, import_node_fs10.existsSync)(path50);
   }
   removeIfPresent(`${path50}.${String(backups)}`);
   for (let i = backups - 1; i >= 1; i -= 1) {
     const from = `${path50}.${String(i)}`;
-    if (!(0, import_node_fs9.existsSync)(from)) continue;
+    if (!(0, import_node_fs10.existsSync)(from)) continue;
     const to = `${path50}.${String(i + 1)}`;
     removeIfPresent(to);
     try {
-      (0, import_node_fs9.renameSync)(from, to);
+      (0, import_node_fs10.renameSync)(from, to);
     } catch {
     }
   }
-  if ((0, import_node_fs9.existsSync)(path50)) {
+  if ((0, import_node_fs10.existsSync)(path50)) {
     removeIfPresent(`${path50}.1`);
     try {
-      (0, import_node_fs9.renameSync)(path50, `${path50}.1`);
+      (0, import_node_fs10.renameSync)(path50, `${path50}.1`);
     } catch {
       return false;
     }
@@ -42618,7 +42981,7 @@ var RollingLogWriter = class {
     if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
       throw new Error("rolling log backups must be a non-negative safe integer");
     }
-    if (options.rotateOnOpen && (0, import_node_fs9.existsSync)(path50) && (0, import_node_fs9.statSync)(path50).size > 0) {
+    if (options.rotateOnOpen && (0, import_node_fs10.existsSync)(path50) && (0, import_node_fs10.statSync)(path50).size > 0) {
       rotateLogFiles(path50, options.backups);
     }
     this.open();
@@ -42652,7 +43015,7 @@ var RollingLogWriter = class {
     let offset = 0;
     while (offset < data.length) {
       try {
-        const written = (0, import_node_fs9.writeSync)(fd, data, offset, data.length - offset);
+        const written = (0, import_node_fs10.writeSync)(fd, data, offset, data.length - offset);
         if (written <= 0) return false;
         this.bytes += written;
         offset += written;
@@ -42675,7 +43038,7 @@ var RollingLogWriter = class {
       try {
         if (this.fd === null) this.open();
         if (this.fd === null) return;
-        const written = (0, import_node_fs9.writeSync)(this.fd, data, offset, size);
+        const written = (0, import_node_fs10.writeSync)(this.fd, data, offset, size);
         if (written <= 0) return;
         this.bytes += written;
         offset += written;
@@ -42695,7 +43058,7 @@ var RollingLogWriter = class {
   closeDescriptor() {
     if (this.fd === null) return;
     try {
-      (0, import_node_fs9.closeSync)(this.fd);
+      (0, import_node_fs10.closeSync)(this.fd);
     } catch {
     }
     this.fd = null;
@@ -42703,9 +43066,9 @@ var RollingLogWriter = class {
   open() {
     if (this.permanentlyClosed) return;
     try {
-      this.fd = (0, import_node_fs9.openSync)(this.path, "a");
+      this.fd = (0, import_node_fs10.openSync)(this.path, "a");
       try {
-        this.bytes = (0, import_node_fs9.statSync)(this.path).size;
+        this.bytes = (0, import_node_fs10.statSync)(this.path).size;
       } catch {
         this.closeDescriptor();
         this.bytes = 0;
@@ -42722,8 +43085,8 @@ var RollingLogWriter = class {
     const rotated = rotateLogFiles(this.path, this.options.backups);
     this.bytes = 0;
     try {
-      this.fd = (0, import_node_fs9.openSync)(this.path, rotated ? "a" : "w");
-      this.bytes = (0, import_node_fs9.statSync)(this.path).size;
+      this.fd = (0, import_node_fs10.openSync)(this.path, rotated ? "a" : "w");
+      this.bytes = (0, import_node_fs10.statSync)(this.path).size;
     } catch {
       this.closeDescriptor();
       this.bytes = 0;
@@ -42909,8 +43272,8 @@ function installIncidentDiagnostics(logDir, subscribe) {
   installed = true;
   dropMarked = false;
   try {
-    (0, import_node_fs10.mkdirSync)(logDir, { recursive: true });
-    incidentLog = new RollingLogWriter((0, import_node_path12.join)(logDir, "incident.log"), {
+    (0, import_node_fs11.mkdirSync)(logDir, { recursive: true });
+    incidentLog = new RollingLogWriter((0, import_node_path13.join)(logDir, "incident.log"), {
       maxBytes: INCIDENT_LOG_MAX_BYTES,
       backups: INCIDENT_LOG_BACKUPS,
       rotateOnOpen: true
@@ -43039,15 +43402,15 @@ function newestInFileOrder(entries2, count) {
 // src/main/ws/handle-server-message.ts
 var JSONL_CACHE_MAX = 2e4;
 var JSONL_CACHE_SLACK = 1e3;
-function trimJsonlCache(cached2) {
-  const over = cached2.length - JSONL_CACHE_MAX;
+function trimJsonlCache(cached3) {
+  const over = cached3.length - JSONL_CACHE_MAX;
   if (over < JSONL_CACHE_SLACK) return;
-  const drop = new Uint8Array(cached2.length);
-  const order = cacheFileOrder(cached2);
+  const drop = new Uint8Array(cached3.length);
+  const order = cacheFileOrder(cached3);
   for (let i = 0; i < over; i++) drop[order[i]] = 1;
-  const kept = cached2.filter((_, i) => drop[i] === 0);
-  cached2.length = kept.length;
-  for (let i = 0; i < kept.length; i++) cached2[i] = kept[i];
+  const kept = cached3.filter((_, i) => drop[i] === 0);
+  cached3.length = kept.length;
+  for (let i = 0; i < kept.length; i++) cached3[i] = kept[i];
 }
 function handleServerMessage(msg, ctx) {
   switch (msg.type) {
@@ -43655,6 +44018,8 @@ var ConnectionManager = class _ConnectionManager {
       }
       const sock = this.ws;
       if (sock) void this.startSession(sock);
+      void Promise.resolve().then(() => (init_shell_prewarm(), shell_prewarm_exports)).then((m) => m.prewarmShellTools()).catch(() => {
+      });
     });
     this.ws.on("message", (raw) => {
       this.lastHeartbeatAt = Date.now();
@@ -48426,16 +48791,16 @@ function registerMcpIPC(ctx) {
       let clientId = server.oauth.clientId;
       let clientSecret = server.oauth.clientSecret;
       if ((!clientId || clientId.trim() === "") && server.url) {
-        const cached2 = findClaudeCodeEntryByServerUrl2(server.url);
-        if (cached2?.clientId) {
-          clientId = cached2.clientId;
-          clientSecret = cached2.clientSecret;
+        const cached3 = findClaudeCodeEntryByServerUrl2(server.url);
+        if (cached3?.clientId) {
+          clientId = cached3.clientId;
+          clientSecret = cached3.clientSecret;
           mcpServerManager.setOAuthClientCredentials(id, clientId, clientSecret);
-          if (cached2.accessToken) {
+          if (cached3.accessToken) {
             mcpServerManager.saveOAuthTokens(id, {
-              access_token: cached2.accessToken,
-              refresh_token: cached2.refreshToken,
-              expires_at: typeof cached2.expiresAt === "number" ? cached2.expiresAt : void 0,
+              access_token: cached3.accessToken,
+              refresh_token: cached3.refreshToken,
+              expires_at: typeof cached3.expiresAt === "number" ? cached3.expiresAt : void 0,
               authServerUrl: server.oauth.authServerUrl,
               lastRefreshAt: Date.now()
             });
@@ -52212,9 +52577,9 @@ var McpServerManager = class _McpServerManager {
       }
     }
     for (const state of this.servers.values()) {
-      const cached2 = this.lazyCachedSchemasFor(state);
-      if (!cached2) continue;
-      for (const t of cached2) {
+      const cached3 = this.lazyCachedSchemasFor(state);
+      if (!cached3) continue;
+      for (const t of cached3) {
         const exposedName = exposedToolName(state, t.name);
         if (seen.has(exposedName)) continue;
         seen.add(exposedName);
@@ -52492,8 +52857,8 @@ var McpServerManager = class _McpServerManager {
     if (LAZY_STDIO_MCP) {
       for (const state of this.servers.values()) {
         if (!state.config.enabled || !isStdio(state.config)) continue;
-        const cached2 = this.lazySchemaCache[mcpConnectionFingerprint(state.config)];
-        if (cached2?.some((t) => exposedToolName(state, t.name) === toolName)) return true;
+        const cached3 = this.lazySchemaCache[mcpConnectionFingerprint(state.config)];
+        if (cached3?.some((t) => exposedToolName(state, t.name) === toolName)) return true;
       }
     }
     return false;
@@ -52512,8 +52877,8 @@ var McpServerManager = class _McpServerManager {
     if (!hasLive && LAZY_STDIO_MCP) {
       for (const [id, state] of this.servers) {
         if (!state.config.enabled || !isStdio(state.config) || state.status === "connected") continue;
-        const cached2 = this.lazySchemaCache[mcpConnectionFingerprint(state.config)];
-        if (cached2?.some((t) => exposedToolName(state, t.name) === toolName)) {
+        const cached3 = this.lazySchemaCache[mcpConnectionFingerprint(state.config)];
+        if (cached3?.some((t) => exposedToolName(state, t.name) === toolName)) {
           console.log(`[MCP] lazy start "${state.config.name}" for tool "${toolName}"`);
           await this.connectServer(id).catch((err) => {
             console.error(`[MCP] lazy connect "${state.config.name}" failed:`, err instanceof Error ? err.message : err);
@@ -52936,15 +53301,15 @@ var import_path35 = __toESM(require("path"), 1);
 // src/attachments.ts
 var import_promises7 = __toESM(require("node:fs/promises"), 1);
 var import_node_os7 = __toESM(require("node:os"), 1);
-var import_node_path13 = __toESM(require("node:path"), 1);
+var import_node_path14 = __toESM(require("node:path"), 1);
 async function saveAttachment(base64, name, root = import_node_os7.default.tmpdir()) {
   if (typeof base64 !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
     throw new Error("Invalid attachment encoding");
   }
   const safe = String(name || "attachment").replace(/[/\\\x00-\x1f<>:"|?*]/g, "_").slice(-120);
   await import_promises7.default.mkdir(root, { recursive: true });
-  const directory = await import_promises7.default.mkdtemp(import_node_path13.default.join(root, "bridge-upload-"));
-  const file = import_node_path13.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
+  const directory = await import_promises7.default.mkdtemp(import_node_path14.default.join(root, "bridge-upload-"));
+  const file = import_node_path14.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
   await import_promises7.default.writeFile(file, Buffer.from(base64, "base64"), { flag: "wx", mode: 384 });
   return file;
 }
@@ -53417,8 +53782,8 @@ var InvokeDiagnostics = class {
     const state = this.state(view);
     const documentRef = ref("document", generation);
     state.documentRef = documentRef;
-    const started = Date.now();
-    const record = (stage) => this.record(state, documentRef, channel, id, stage, Date.now() - started);
+    const started2 = Date.now();
+    const record = (stage) => this.record(state, documentRef, channel, id, stage, Date.now() - started2);
     record("host-received");
     return {
       handler: (outcome) => record(`handler-${outcome}`),
@@ -53569,8 +53934,8 @@ var BridgeHost = class {
     setPluginLspProjectResolver((tabId, file) => {
       const direct = tabId ? this.tabManager.getTab(tabId)?.config.cwd : void 0;
       if (direct) return direct;
-      const resolvedFile = import_node_path14.default.resolve(file);
-      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path14.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path14.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const resolvedFile = import_node_path15.default.resolve(file);
+      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path15.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path15.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
     });
     const getUserCwd = () => vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
     const ctx = {
