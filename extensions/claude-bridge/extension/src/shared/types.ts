@@ -246,6 +246,9 @@ export interface ExternalMcpServerConfig {
   env?: Record<string, string>
   /** Working directory for stdio spawn (mirrors CLI's `workingDirectory`). */
   workingDirectory?: string
+  /** Root of the project whose `.mcp.json` declares this server. A stdio
+   *  server without `workingDirectory` starts there, as under the CLI. */
+  projectRoot?: string
   enabled: boolean
   /** True if this server was auto-discovered from local Claude settings */
   autoDiscovered?: boolean

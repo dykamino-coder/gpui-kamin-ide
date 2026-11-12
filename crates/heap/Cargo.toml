@@ -1,0 +1,12 @@
+[package]
+name = "kamin-heap"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+# Отчёт о памяти по владельцам (docs/memprof.md): каждый владелец меряет свои
+# блоки кучи по запросу. Без зависимостей; движок подключает его только с
+# фичей `heap-report`, обычная сборка его не видит.
+
+[lints]
+workspace = true

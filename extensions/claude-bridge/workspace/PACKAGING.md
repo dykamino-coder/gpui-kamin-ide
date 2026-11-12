@@ -15,10 +15,21 @@ podman build --format docker --ignorefile extensions/claude-bridge/workspace/con
   -t localhost/bridgeweb-acc-workspace:local .
 ```
 
-The image contains Node 22, Bash, PowerShell, ripgrep, Git, Python 3 and tini,
+The image pins Node 22.23.5 by its multi-platform image digest and installs
+ripgrep 15.2.0 from upstream amd64/arm64 archives with pinned SHA256 checksums.
+It also contains Bash, PowerShell, Git, Python 3 and tini,
 running as UID/GID 10001. `/workspace` and `/home/workspace` are persistent mount
 locations. No Claude CLI/login is installed in the client. The image's listener
 uses `0.0.0.0` inside the container; published host ports default to loopback.
+
+Check the built image's tools (including PCRE2, Unicode and empty-pattern-file
+search behavior) without starting the workspace or connecting to a server:
+
+```sh
+podman run --rm --entrypoint node -e WORKSPACE_CONTAINER_SMOKE=1 \
+  -v "$PWD/extensions/claude-bridge/workspace/acceptance/container-tools.test.mjs:/tmp/container-tools.test.mjs:ro" \
+  localhost/bridgeweb-acc-workspace:local --test /tmp/container-tools.test.mjs
+```
 
 ## Existing server
 

@@ -6,9 +6,11 @@ publish = false
 
 [features]
 engine-bench = ["timing-only", "work-counters"]
-allocation-audit = ["engine-bench"]
+allocation-audit = ["engine-bench", "heap-report"]
 # Пробник кучи (стеки, выборка) без счётчиков аудита; см. docs/memprof.md.
-heap-profile = ["engine-bench"]
+heap-profile = ["engine-bench", "heap-report"]
+# Отчёт памяти по владельцам (ENGINE_BENCH_MEMORY_REPORT=1) в сборках пробника.
+heap-report = ["kamin-html/heap-report", "dep:kamin-heap"]
 timing-only = ["dep:kamin-html"]
 work-counters = ["kamin-html/work-counters"]
 
@@ -23,6 +25,7 @@ gpui.workspace = true
 gpui-platform.workspace = true
 mimalloc.workspace = true
 kamin-alloc.workspace = true
+kamin-heap = { path = "../heap", optional = true }
 futures = "0.3"
 log = "0.4"
 encoding_rs = "0.8.35"
