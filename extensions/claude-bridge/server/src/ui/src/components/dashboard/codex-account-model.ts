@@ -130,6 +130,14 @@ export function codexCardView(status: CodexAccountStatus | null, ui: CodexCardUi
   }
 }
 
+/** Runs a card action (sign in, cancel, sign out), then hands its result to
+ *  `after`. Written out because `after?.(await action())` never calls the
+ *  action when there is no `after`: optional call skips its arguments. */
+export async function runCardAction<T>(action: () => Promise<T>, after?: (result: T) => void): Promise<void> {
+  const result = await action()
+  after?.(result)
+}
+
 /** Poll while a device login is waiting for the admin; stop once it resolves. */
 export function shouldPollCodexAccount(status: CodexAccountStatus | null): boolean {
   return !!status && !status.loggedIn && status.pendingLogin !== null
