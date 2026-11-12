@@ -8,6 +8,7 @@ import type { PtySession, PendingMcpCall } from './types'
 import { eventBus } from '../events/bus'
 import { debugLog, warnLog } from '../logging'
 import { sendToClient, WS_SEND_MAX_BUFFER } from './session-io'
+import { INTERACTIVE_TOOLS } from './interactive-tools'
 
 /** Default MCP call timeout — most tools finish well under this. Heavy
  *  fs/shell tools (Grep/Glob/Bash/Read/etc.) hit HEAVY_TOOL_TIMEOUT_MS
@@ -37,7 +38,6 @@ const HEAVY_TOOLS = new Set([
   'LspDefinition',
   'LspReferences',
 ])
-const INTERACTIVE_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode'])
 
 /** Pending MCP calls waiting for a client response. Key = requestId,
  *  shared across all sessions. */
