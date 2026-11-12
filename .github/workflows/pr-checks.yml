@@ -173,6 +173,20 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+      # The tool list a codex chat offers the model is a merge gate for the
+      # codex version the image pins. The npm package ships the native binary
+      # from the npm registry and the gate mocks the model API locally, so this
+      # needs no network access to OpenAI.
+      - name: Codex tool gate on the image-pinned codex
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^ARG CODEX_VERSION=//p' Dockerfile)"
+          test -n "$version"
+          npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/codex" "@openai/codex@$version"
+          export BRIDGE_CODEX_BIN="$RUNNER_TEMP/codex/node_modules/@openai/codex/bin/codex.js"
+          node "$BRIDGE_CODEX_BIN" --version | grep -F "$version"
+          BRIDGE_CODEX_GATE=1 npx vitest run src/core/codex/tool-gate.codex.test.ts
       - name: Check formatting of changed Bridge server files
         env:
           BASE_SHA: ${{ needs.scope.outputs.base_sha }}

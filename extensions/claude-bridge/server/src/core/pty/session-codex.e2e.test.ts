@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AddressInfo } from 'node:net'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
 
 const state = vi.hoisted(() => {
@@ -141,9 +141,15 @@ let server: import('node:http').Server
 let runtimeMod: typeof import('../codex/codex-runtime')
 let configMod: typeof import('../config')
 let app: import('hono').Hono
+// Scripted `claude auth status`: tests here never spawn the real Claude CLI.
+let claudeMonitor: import('../engine/engine-auth').ClaudeAuthMonitor
 
-function newRuntime(extraEnv: Record<string, string> = {}) {
+function newRuntime(
+  extraEnv: Record<string, string> = {},
+  restartPolicy?: import('../codex/codex-host').RestartPolicy,
+) {
   return new runtimeMod.CodexRuntime({
+    restartPolicy,
     home: path.join(state.home, 'codex-home'),
     command: { command: process.execPath, args: [FAKE_CODEX] },
     env: { PATH: process.env.PATH ?? '', SystemRoot: process.env.SystemRoot ?? '' },
@@ -167,6 +173,14 @@ beforeAll(async () => {
   configMod = await import('../config')
   runtimeMod = await import('../codex/codex-runtime')
   runtimeMod.setCodexRuntimeForTests(newRuntime())
+  const engineAuthMod = await import('../engine/engine-auth')
+  const { eventBus } = await import('../events/bus')
+  claudeMonitor = new engineAuthMod.ClaudeAuthMonitor({
+    probe: async () => ({ loggedIn: false }),
+    onChange: (loggedIn) => eventBus.emit('claude:account-updated', { engine: 'claude', loggedIn }),
+  })
+  claudeMonitor.record({ loggedIn: false })
+  engineAuthMod.setClaudeAuthForTests(claudeMonitor)
   const { Hono } = await import('hono')
   const { serve } = await import('@hono/node-server')
   const { handleMcpRequest, handleMcpGet, handleMcpDelete } = await import('./mcp-http-handler')
@@ -400,5 +414,216 @@ describe('codex chat over the Bridge session WebSocket', () => {
     expect(await later.next((f) => f.type === 'agent:preferences')).toMatchObject({ defaultEngine: 'codex' })
     later.send({ type: 'session:end' })
     later.close()
+  }, 30_000)
+
+  it('without a codex binary marks ChatGPT unavailable and refuses the chat with the reason', async () => {
+    const working = runtimeMod.codexRuntime()
+    runtimeMod.setCodexRuntimeForTests(
+      new runtimeMod.CodexRuntime({
+        home: path.join(state.home, 'codex-home-missing'),
+        command: { command: path.join(state.home, 'no-such-codex'), args: [] },
+        env: { PATH: process.env.PATH ?? '' },
+      }),
+    )
+    try {
+      const client = await Client.open(port)
+      client.send({ type: 'codex:models', token: 'tok-a' })
+      expect(await client.next((f) => f.type === 'codex:models')).toMatchObject({
+        models: [],
+        unavailable: 'codex is not installed on this Bridge server',
+      })
+      expect(await createChat(client, { engine: 'codex' })).toMatchObject({
+        type: 'session:error',
+        error: expect.stringContaining('ChatGPT is unavailable: codex is not installed on this Bridge server'),
+      })
+      client.close()
+    } finally {
+      runtimeMod.setCodexRuntimeForTests(working)
+    }
+  }, 30_000)
+
+  it('reports the codex version Bridge runs and the image pin on the status page', async () => {
+    const runtime = runtimeMod.codexRuntime()
+    expect(await runtimeMod.codexStatus(() => runtime, { BRIDGE_CODEX_VERSION: '0.160.1' })).toEqual({
+      available: true,
+      version: '0.160.1-fake',
+      reason: null,
+      pinned: '0.160.1',
+    })
+  }, 30_000)
+})
+
+// The selector disables an engine the server is not signed in to; sign-in and
+// sign-out reach open sockets live.
+describe('engine sign-in in the model selector', () => {
+  const prefs = (client: Client, pred: (f: Frame) => boolean, from: number) =>
+    client.next((f) => f.type === 'agent:preferences' && pred(f), 10_000, from)
+
+  it('opens the chat on the signed-in engine, refuses a signed-out main agent and pushes sign-in changes', async () => {
+    // Earlier cases swap the runtime; the dashboard routes announce sign-ins
+    // of the runtime they were registered with (one per server in production).
+    const { Hono } = await import('hono')
+    const { registerCodexAccountRoutes } = await import('../dashboard/controllers/codex-account')
+    const dashboard = new Hono()
+    registerCodexAccountRoutes(dashboard, () => runtimeMod.codexRuntime())
+    claudeMonitor.record({ loggedIn: false })
+    const client = await Client.open(port)
+    // Main agent Claude, Claude signed out, ChatGPT signed in → a ChatGPT chat, with the reason.
+    const created = await createChat(client, { engine: 'claude', token: 'tok-b' })
+    expect(created).toMatchObject({ type: 'session:created', engine: 'codex' })
+    expect(created.engineNotice).toContain(
+      'Claude is not signed in on this Bridge server. This chat runs ChatGPT instead',
+    )
+    expect(await prefs(client, () => true, 0)).toMatchObject({
+      defaultEngine: 'claude',
+      auth: { claude: { loggedIn: false, reason: 'Claude is not signed in on this Bridge server.' } },
+    })
+
+    let from = client.frames.length
+    client.send({ type: 'agent:set-default-engine', engine: 'codex' })
+    expect(await prefs(client, (f) => f.defaultEngine === 'codex', from)).not.toHaveProperty('error')
+    from = client.frames.length
+    client.send({ type: 'agent:set-default-engine', engine: 'claude' })
+    expect(await prefs(client, (f) => 'error' in f, from)).toMatchObject({
+      error: 'Claude is not signed in on this Bridge server.',
+      defaultEngine: 'codex',
+    })
+
+    // `claude login` on the server: the selector learns it without a reconnect.
+    from = client.frames.length
+    claudeMonitor.record({ loggedIn: true })
+    expect(await prefs(client, (f) => f.auth?.claude?.loggedIn === true, from)).toMatchObject({
+      auth: { claude: { loggedIn: true, reason: null }, codex: { loggedIn: true } },
+    })
+
+    // ChatGPT sign-out from the dashboard, then nothing signed in at all.
+    from = client.frames.length
+    await dashboard.request('/api/dashboard/codex/logout', { method: 'POST' })
+    expect(await prefs(client, (f) => f.auth?.codex?.loggedIn === false, from)).toMatchObject({
+      auth: { claude: { loggedIn: true }, codex: { reason: 'ChatGPT is not signed in on this Bridge server.' } },
+    })
+    from = client.frames.length
+    claudeMonitor.record({ loggedIn: false })
+    expect(await prefs(client, (f) => f.auth?.claude?.loggedIn === false, from)).toMatchObject({
+      auth: { claude: { loggedIn: false }, codex: { loggedIn: false } },
+    })
+
+    // The administrator signs ChatGPT in again: pushed as well.
+    from = client.frames.length
+    await dashboard.request('/api/dashboard/codex/login', { method: 'POST' })
+    expect(await prefs(client, (f) => f.auth?.codex?.loggedIn === true, from)).toMatchObject({
+      auth: { claude: { loggedIn: false }, codex: { loggedIn: true, reason: null } },
+    })
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+})
+
+// Field lessons of the Codex agent driver (same app-server protocol), end to end.
+describe('codex chat survives the app-server and reports a stalled turn', () => {
+  const notice = (needle: string) => (e: Record<string, any>) =>
+    e.type === 'system' && typeof e.content === 'string' && e.content.includes(needle)
+
+  // Each case gets a fresh crash history; the storm case keeps the defaults.
+  async function freshRuntime(policy?: import('../codex/codex-host').RestartPolicy) {
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime({}, policy))
+  }
+  beforeEach(() => freshRuntime({ stormCrashes: 10, maxCrashes: 10 }))
+
+  it('keeps the app-server after a completed turn, and resumes the thread on a restarted one after a crash', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    const runtime = runtimeMod.codexRuntime()
+    const host = await runtime.host()
+    await say(client, 'first', 'c1')
+    await client.entry((e) => text(e).startsWith('echo: first'))
+    // A finished turn is not a finished process: nothing restarts.
+    await new Promise((r) => setTimeout(r, 100))
+    expect(await runtime.host()).toBe(host)
+    expect(host.alive).toBe(true)
+
+    await say(client, '/fake-crash', 'c2')
+    await client.entry(notice('Restarting it and resuming this conversation'))
+    await client.entry(notice('Resumed the conversation on a restarted ChatGPT app-server'))
+    const restarted = await runtime.host()
+    expect(restarted).not.toBe(host)
+    expect(host.crashed).toBe(true)
+
+    // Same Bridge session, same thread, new app-server.
+    expect(await say(client, 'after crash', 'c3')).toMatchObject({ state: 'read' })
+    await client.entry((e) => text(e).startsWith('echo: after crash'))
+    expect(client.frames.some((f) => f.type === 'session:exit')).toBe(false)
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
+  it('queues a message sent during the restart and delivers it to the resumed thread', async () => {
+    // Every app-server start takes 800 ms, so the restart is still running below.
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_START_DELAY_MS: '800' }, { stormCrashes: 10 }))
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, '/fake-crash', 'q1')
+    await client.entry(notice('Restarting it and resuming this conversation'))
+    // Sent during the restart: waits for the resume instead of failing.
+    client.send({ type: 'session:submitText', data: 'queued', submissionId: 'q2' })
+    expect(await client.next((f) => f.type === 'session:submission' && f.id === 'q2', 15_000)).toMatchObject({
+      state: 'read',
+    })
+    await client.entry((e) => text(e).startsWith('echo: queued'))
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
+  it('reports a turn that goes silent and clears the report when it ends', async () => {
+    process.env.BRIDGE_CODEX_STALL_MS = '200'
+    try {
+      const client = await Client.open(port)
+      await createChat(client, { engine: 'codex' })
+      await say(client, '/fake-hang', 'h1')
+      const stalled = await client.entry(notice('No response from ChatGPT'))
+      expect(stalled.level).toBe('warning')
+      client.send({ type: 'session:interrupt' })
+      await client.entry((e) => e.type === 'system' && e.interruptedByUser === true)
+      // A normal turn afterwards is not reported.
+      const before = client.entries().filter(notice('No response from ChatGPT')).length
+      await say(client, 'quick', 'h2')
+      await client.entry((e) => text(e).startsWith('echo: quick'))
+      await new Promise((r) => setTimeout(r, 400))
+      expect(client.entries().filter(notice('No response from ChatGPT')).length).toBe(before)
+      client.send({ type: 'session:end' })
+      client.close()
+    } finally {
+      delete process.env.BRIDGE_CODEX_STALL_MS
+    }
+  }, 30_000)
+
+  it('stops restarting after a crash storm and ends the chat with the reason', async () => {
+    await freshRuntime() // default policy: two crashes right after start = storm
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, '/fake-crash', 's1')
+    await client.entry(notice('Resumed the conversation'))
+    await say(client, '/fake-crash', 's2')
+    const failed = await client.entry(notice('ChatGPT could not be restarted'))
+    expect(failed.content).toContain('restarts are paused')
+    expect(await client.next((f) => f.type === 'session:exit')).toBeTruthy()
+    client.close()
+  }, 30_000)
+
+  it('refuses a second session on a thread that is already open', async () => {
+    const a = await Client.open(port)
+    await createChat(a, { engine: 'codex' })
+    await say(a, 'owner', 'd1')
+    await a.entry((e) => text(e).startsWith('echo: owner'))
+    const conv = (await a.next((f) => f.type === 'session:conversation-id')).conversationId
+    const runtime = runtimeMod.codexRuntime()
+    const { CodexAgentSession } = await import('../codex/codex-session')
+    await expect(
+      CodexAgentSession.start({ host: await runtime.host(), cwd: state.home, resumeThreadId: conv }),
+    ).rejects.toThrow('already open in another Bridge session')
+    a.send({ type: 'session:end' })
+    a.close()
   }, 30_000)
 })
