@@ -40,7 +40,9 @@ export async function rescanCodexTranscriptsOnce(files: readonly string[]): Prom
       ])
       await db.run('COMMIT')
     } catch (err) {
-      await db.run('ROLLBACK').catch((error) => warnLog('stats: Codex rescan rollback failed', { error: String(error) }))
+      await db
+        .run('ROLLBACK')
+        .catch((error) => warnLog('stats: Codex rescan rollback failed', { error: String(error) }))
       throw err
     }
   })

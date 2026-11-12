@@ -406,8 +406,8 @@ export async function closeDb(): Promise<void> {
   try {
     instance?.closeSync?.()
   } catch (error) {
-      warnLog('stats: pool instance close failed', { error: String(error) })
-    }
+    warnLog('stats: pool instance close failed', { error: String(error) })
+  }
   instance = null
   initPromise = null
   nextConn = 0

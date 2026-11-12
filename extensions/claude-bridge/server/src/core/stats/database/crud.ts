@@ -111,23 +111,74 @@ export async function updateRequest(id: string, updates: Partial<RequestLogEntry
   const sets: string[] = []
   const values: unknown[] = []
 
-  if (updates.durationMs !== undefined) { sets.push('duration_ms = ?'); values.push(updates.durationMs) }
-  if (updates.inputTokens !== undefined) { sets.push('input_tokens = ?'); values.push(updates.inputTokens) }
-  if (updates.outputTokens !== undefined) { sets.push('output_tokens = ?'); values.push(updates.outputTokens) }
-  if (updates.cacheReadTokens !== undefined) { sets.push('cache_read_tokens = ?'); values.push(updates.cacheReadTokens) }
-  if (updates.cacheWriteTokens !== undefined) { sets.push('cache_write_tokens = ?'); values.push(updates.cacheWriteTokens) }
-  if (updates.toolsUsed !== undefined) { sets.push('tools_used = ?'); values.push(JSON.stringify(updates.toolsUsed)) }
-  if (updates.status !== undefined) { sets.push('status = ?'); values.push(updates.status) }
-  if (updates.statusCode !== undefined) { sets.push('status_code = ?'); values.push(updates.statusCode) }
-  if (updates.error !== undefined) { sets.push('error = ?'); values.push(updates.error) }
-  if (updates.model !== undefined) { sets.push('model = ?'); values.push(updates.model) }
-  if (updates.requestBody !== undefined) { sets.push('request_body = ?'); values.push(JSON.stringify(updates.requestBody)) }
-  if (updates.responseText !== undefined) { sets.push('response_text = ?'); values.push(updates.responseText) }
-  if (updates.isUserRequest !== undefined) { sets.push('is_user_request = ?'); values.push(updates.isUserRequest ? 1 : 0) }
-  if (updates.userMessage !== undefined) { sets.push('user_message = ?'); values.push(updates.userMessage) }
-  if (updates.sessionKey !== undefined) { sets.push('session_key = ?'); values.push(updates.sessionKey) }
-  if (updates.clientTaskId !== undefined) { sets.push('client_task_id = ?'); values.push(updates.clientTaskId) }
-  if (updates.rawHeaders !== undefined) { sets.push('raw_headers = ?'); values.push(JSON.stringify(updates.rawHeaders)) }
+  if (updates.durationMs !== undefined) {
+    sets.push('duration_ms = ?')
+    values.push(updates.durationMs)
+  }
+  if (updates.inputTokens !== undefined) {
+    sets.push('input_tokens = ?')
+    values.push(updates.inputTokens)
+  }
+  if (updates.outputTokens !== undefined) {
+    sets.push('output_tokens = ?')
+    values.push(updates.outputTokens)
+  }
+  if (updates.cacheReadTokens !== undefined) {
+    sets.push('cache_read_tokens = ?')
+    values.push(updates.cacheReadTokens)
+  }
+  if (updates.cacheWriteTokens !== undefined) {
+    sets.push('cache_write_tokens = ?')
+    values.push(updates.cacheWriteTokens)
+  }
+  if (updates.toolsUsed !== undefined) {
+    sets.push('tools_used = ?')
+    values.push(JSON.stringify(updates.toolsUsed))
+  }
+  if (updates.status !== undefined) {
+    sets.push('status = ?')
+    values.push(updates.status)
+  }
+  if (updates.statusCode !== undefined) {
+    sets.push('status_code = ?')
+    values.push(updates.statusCode)
+  }
+  if (updates.error !== undefined) {
+    sets.push('error = ?')
+    values.push(updates.error)
+  }
+  if (updates.model !== undefined) {
+    sets.push('model = ?')
+    values.push(updates.model)
+  }
+  if (updates.requestBody !== undefined) {
+    sets.push('request_body = ?')
+    values.push(JSON.stringify(updates.requestBody))
+  }
+  if (updates.responseText !== undefined) {
+    sets.push('response_text = ?')
+    values.push(updates.responseText)
+  }
+  if (updates.isUserRequest !== undefined) {
+    sets.push('is_user_request = ?')
+    values.push(updates.isUserRequest ? 1 : 0)
+  }
+  if (updates.userMessage !== undefined) {
+    sets.push('user_message = ?')
+    values.push(updates.userMessage)
+  }
+  if (updates.sessionKey !== undefined) {
+    sets.push('session_key = ?')
+    values.push(updates.sessionKey)
+  }
+  if (updates.clientTaskId !== undefined) {
+    sets.push('client_task_id = ?')
+    values.push(updates.clientTaskId)
+  }
+  if (updates.rawHeaders !== undefined) {
+    sets.push('raw_headers = ?')
+    values.push(JSON.stringify(updates.rawHeaders))
+  }
 
   if (sets.length === 0) return
 
@@ -151,20 +202,37 @@ export async function getRequests(filter: RequestFilter = {}, limit = 50, offset
   const wheres: string[] = []
   const values: unknown[] = []
 
-  if (filter.endpoint) { wheres.push('endpoint = ?'); values.push(filter.endpoint) }
-  if (filter.pluginId) { wheres.push('plugin_id = ?'); values.push(filter.pluginId) }
-  if (filter.userName) { wheres.push('user_name = ?'); values.push(filter.userName) }
-  if (filter.status) { wheres.push('status = ?'); values.push(filter.status) }
-  if (filter.isUserRequest !== undefined) { wheres.push('is_user_request = ?'); values.push(filter.isUserRequest ? 1 : 0) }
-  if (filter.sessionKey) { wheres.push('session_key = ?'); values.push(filter.sessionKey) }
+  if (filter.endpoint) {
+    wheres.push('endpoint = ?')
+    values.push(filter.endpoint)
+  }
+  if (filter.pluginId) {
+    wheres.push('plugin_id = ?')
+    values.push(filter.pluginId)
+  }
+  if (filter.userName) {
+    wheres.push('user_name = ?')
+    values.push(filter.userName)
+  }
+  if (filter.status) {
+    wheres.push('status = ?')
+    values.push(filter.status)
+  }
+  if (filter.isUserRequest !== undefined) {
+    wheres.push('is_user_request = ?')
+    values.push(filter.isUserRequest ? 1 : 0)
+  }
+  if (filter.sessionKey) {
+    wheres.push('session_key = ?')
+    values.push(filter.sessionKey)
+  }
 
   const where = wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : ''
   values.push(limit, offset)
 
-  const rows = (await d.runAndReadAll(
-    `SELECT * FROM requests ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
-    values as any[],
-  )).getRowObjects()
+  const rows = (
+    await d.runAndReadAll(`SELECT * FROM requests ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`, values as any[])
+  ).getRowObjects()
   return rows.map(rowToEntry)
 }
 
@@ -216,7 +284,9 @@ export async function setCounter(key: string, value: string): Promise<void> {
 export async function deleteRequest(id: string): Promise<boolean> {
   const d = await getDb()
   // DuckDB doesn't return a `changes` count from .run(); use COUNT before/after.
-  const before = (await d.runAndReadAll('SELECT COUNT(*) AS n FROM requests WHERE id = ?', [id])).getRowObjects()[0] as any
+  const before = (
+    await d.runAndReadAll('SELECT COUNT(*) AS n FROM requests WHERE id = ?', [id])
+  ).getRowObjects()[0] as any
   if (Number(before?.n ?? 0) === 0) return false
   await d.run('DELETE FROM requests WHERE id = ?', [id])
   return true
@@ -225,7 +295,9 @@ export async function deleteRequest(id: string): Promise<boolean> {
 /** Delete requests older than a given date (full removal from DB). */
 export async function deleteRequestsBefore(before: string): Promise<number> {
   const d = await getDb()
-  const beforeRow = (await d.runAndReadAll('SELECT COUNT(*) AS n FROM requests WHERE timestamp < ?', [before])).getRowObjects()[0] as any
+  const beforeRow = (
+    await d.runAndReadAll('SELECT COUNT(*) AS n FROM requests WHERE timestamp < ?', [before])
+  ).getRowObjects()[0] as any
   const cnt = Number(beforeRow?.n ?? 0)
   if (cnt === 0) return 0
   await d.run('DELETE FROM requests WHERE timestamp < ?', [before])
@@ -297,9 +369,11 @@ export async function pruneOldRequests(): Promise<number> {
   }
 
   // Phase 2: if still over limit, strip oldest remaining
-  const captureCountRow = (await d.runAndReadAll(
-    'SELECT COUNT(*) as cnt FROM requests WHERE request_body IS NOT NULL OR response_text IS NOT NULL',
-  )).getRowObjects()[0] as any
+  const captureCountRow = (
+    await d.runAndReadAll(
+      'SELECT COUNT(*) as cnt FROM requests WHERE request_body IS NOT NULL OR response_text IS NOT NULL',
+    )
+  ).getRowObjects()[0] as any
   const captureCount = Number(captureCountRow?.cnt ?? 0)
   if (captureCount > maxReqs) {
     const toStrip = captureCount - maxReqs
@@ -326,17 +400,37 @@ export async function deleteRequestsByFilter(filter: RequestFilter): Promise<num
   const wheres: string[] = []
   const values: unknown[] = []
 
-  if (filter.endpoint) { wheres.push('endpoint = ?'); values.push(filter.endpoint) }
-  if (filter.pluginId) { wheres.push('plugin_id = ?'); values.push(filter.pluginId) }
-  if (filter.userName) { wheres.push('user_name = ?'); values.push(filter.userName) }
-  if (filter.status) { wheres.push('status = ?'); values.push(filter.status) }
-  if (filter.isUserRequest !== undefined) { wheres.push('is_user_request = ?'); values.push(filter.isUserRequest ? 1 : 0) }
-  if (filter.sessionKey) { wheres.push('session_key = ?'); values.push(filter.sessionKey) }
+  if (filter.endpoint) {
+    wheres.push('endpoint = ?')
+    values.push(filter.endpoint)
+  }
+  if (filter.pluginId) {
+    wheres.push('plugin_id = ?')
+    values.push(filter.pluginId)
+  }
+  if (filter.userName) {
+    wheres.push('user_name = ?')
+    values.push(filter.userName)
+  }
+  if (filter.status) {
+    wheres.push('status = ?')
+    values.push(filter.status)
+  }
+  if (filter.isUserRequest !== undefined) {
+    wheres.push('is_user_request = ?')
+    values.push(filter.isUserRequest ? 1 : 0)
+  }
+  if (filter.sessionKey) {
+    wheres.push('session_key = ?')
+    values.push(filter.sessionKey)
+  }
 
   if (wheres.length === 0) return 0 // Safety: refuse to delete everything without a filter
 
   const whereClause = wheres.join(' AND ')
-  const cntRow = (await d.runAndReadAll(`SELECT COUNT(*) AS n FROM requests WHERE ${whereClause}`, values as any[])).getRowObjects()[0] as any
+  const cntRow = (
+    await d.runAndReadAll(`SELECT COUNT(*) AS n FROM requests WHERE ${whereClause}`, values as any[])
+  ).getRowObjects()[0] as any
   const cnt = Number(cntRow?.n ?? 0)
   if (cnt === 0) return 0
   await d.run(`DELETE FROM requests WHERE ${whereClause}`, values as any[])

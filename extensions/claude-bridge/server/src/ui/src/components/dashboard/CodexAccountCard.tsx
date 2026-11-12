@@ -19,7 +19,13 @@ function actionError(error: unknown): CodexErrorInfo {
 }
 
 /** The Bridge server's shared ChatGPT account (codex engine), signed in with the device-code flow. */
-export function CodexAccountCard({ version, activeSessions = 0 }: { version?: string | null; activeSessions?: number }) {
+export function CodexAccountCard({
+  version,
+  activeSessions = 0,
+}: {
+  version?: string | null
+  activeSessions?: number
+}) {
   const [status, setStatus] = useState<CodexAccountStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -128,7 +134,11 @@ export function CodexAccountCard({ version, activeSessions = 0 }: { version?: st
       iconColor="var(--accent-green)"
       title="ChatGPT (Codex)"
       status={view.status}
-      items={[...view.items, { label: 'Version', value: version || '—' }, { label: 'Active Sessions', value: String(activeSessions) }]}
+      items={[
+        ...view.items,
+        { label: 'Version', value: version || '—' },
+        { label: 'Active Sessions', value: String(activeSessions) },
+      ]}
       action={{
         icon: 'fa-solid fa-rotate',
         label: 'Refresh ChatGPT account',

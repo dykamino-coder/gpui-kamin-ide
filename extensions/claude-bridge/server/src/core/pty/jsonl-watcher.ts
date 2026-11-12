@@ -1404,7 +1404,11 @@ export class JsonlWatcher {
       // (a single longer record is still read whole). A client that was frozen
       // while the CLI wrote tens of MiB no longer costs one giant Buffer, one
       // giant string and one giant frame.
-      const { entries, spans, endPos, truncated } = await this.readEntriesFromOffset(filePath, this.lastOffset, stat.size)
+      const { entries, spans, endPos, truncated } = await this.readEntriesFromOffset(
+        filePath,
+        this.lastOffset,
+        stat.size,
+      )
       if (!live()) return
       const currentStat = await fsp.stat(filePath)
       if (!live()) return
