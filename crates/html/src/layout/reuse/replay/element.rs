@@ -57,7 +57,7 @@ impl Wrap for ReplayRecorder {
     }
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let sink = self.pending.sink.clone();
+        let sink = (&self.pending.sink.0, self.pending.sink.1);
         let callbacks = window.next_frame_callback_count();
         // Строки блока рисуются в конце кадра стопки (`paint::coordinator`).
         let ((_, paint), lines) = window.with_ink_sink(sink, |window| {

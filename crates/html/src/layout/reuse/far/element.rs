@@ -52,7 +52,8 @@ impl FarRecorder {
         };
         let pending = self.reuse.pending.borrow();
         let record = pending.get(skip.0.at());
-        !self.reuse.store.unrecorded(id) && record.is_some_and(|record| record.holds_wider_flows())
+        !self.reuse.store.unrecorded(id)
+            && record.is_some_and(|record| record.holds_wider_flows(&self.reuse.ink))
     }
 
     /// The recording failed: the block is near (`Store::far_near`).

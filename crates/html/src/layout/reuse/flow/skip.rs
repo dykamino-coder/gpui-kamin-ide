@@ -2,7 +2,7 @@
 //! корневого потока.
 
 use super::super::Record;
-use super::super::recorder::{Making, Recorder};
+use super::super::recorder::{Making, Pending, Recorder};
 use super::{Counters, FlowCx, Mark};
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -33,20 +33,21 @@ impl FlowCx {
         let unpainted = child
             .downcast_mut::<crate::hooks::Hooked<crate::layout::table::StartWrapper>>()
             .is_some();
-        // The one allocation of a block being recorded: its record.
-        let pending = std::rc::Rc::new(Record::new(
+        // The one allocation of a block being recorded: its record. What the
+        // frame measures of it goes with the build's list (`Pending`).
+        let record = std::rc::Rc::new(Record::new(
             self.reuse.shells.source(e),
             self.key.clone(),
             (mark.start, end),
-            Making::new(
-                width,
-                self.settled,
-                unpainted,
-                super::super::width::tracks_flow(e),
-            ),
         ));
+        let making = Making::new(
+            width,
+            self.settled,
+            (unpainted, super::super::width::tracks_flow(e)),
+            self.reuse.ink.open(),
+        );
         let at = self.reuse.pending.borrow().len();
-        super::super::push(&self.reuse.pending, pending);
+        super::super::push(&self.reuse.pending, Pending { record, making });
         out.push(Recorder::new(child, (self.reuse.clone(), at)).hooked());
         true
     }

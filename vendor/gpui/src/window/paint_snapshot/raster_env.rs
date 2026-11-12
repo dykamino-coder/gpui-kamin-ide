@@ -101,7 +101,7 @@ impl RasterEnv {
             && b.image_cache_stack.len() == window.image_cache_stack.len()
             && b.image_cache_stack.iter().zip(&window.image_cache_stack).all(|(a, b)| a.same(b))
             && b.ink.len() == window.next_frame.scene.ink.len()
-            && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| std::ptr::addr_eq(Rc::as_ptr(a), Rc::as_ptr(b)))
+            && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| Rc::ptr_eq(&a.0, &b.0) && a.1 == b.1)
             && b.ink_scope == super::capture_scope(window)
             && self.contexts == window.raster_frame.contexts
     }

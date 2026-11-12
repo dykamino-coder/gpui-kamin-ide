@@ -36,9 +36,6 @@ pub(crate) struct Record {
     /// The last rebase kept the record (`Store::rebase`): its source was
     /// released before the rebuild built the new tree (`release_sources`).
     pub(super) kept: Cell<bool>,
-    /// What the frame that makes the record measures (`recorder::Making`),
-    /// inline: a block being recorded is one allocation, the record itself.
-    pub(super) making: recorder::Making,
 }
 
 impl Record {
@@ -63,7 +60,6 @@ impl Record {
             }),
             repaint: Cell::new(self.repaint.get() || repaint),
             kept: Cell::new(false),
-            making: self.making.sealed(),
         }
     }
 

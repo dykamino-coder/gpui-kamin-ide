@@ -166,25 +166,63 @@ pub struct InkSink {
     late: std::cell::Cell<u32>,
 }
 
-/// KaminIDE patch: a value that holds an ink sink inline. A host that records
-/// thousands of blocks a frame opens the record of each as its sink
-/// (`Window::with_ink_sink`) instead of allocating a sink beside it.
-pub trait InkTarget {
-    /// The sink the paint under this target is measured into.
-    fn ink_sink(&self) -> &InkSink;
-}
+/// KaminIDE patch: the ink sinks of one host's frame, opened by number
+/// (`Window::with_ink_sink`). A host that records thousands of blocks a frame
+/// keeps their sinks in one list it releases when the frame's records are
+/// sealed, instead of a sink inside each kept record: the measure belongs to
+/// the frame, the record keeps only its result (Blink accumulates the bounds
+/// of a paint chunk in the paint controller's chunk list, not in the client).
+/// A sink is added while no paint measures into the list (a build), so a
+/// paint never finds the list borrowed.
+#[derive(Default)]
+pub struct InkSinkList(std::cell::RefCell<Vec<InkSink>>);
 
-impl InkTarget for InkSink {
-    fn ink_sink(&self) -> &InkSink {
-        self
+impl InkSinkList {
+    /// A new, empty sink; its number in the list.
+    pub fn open(&self) -> u32 {
+        let mut sinks = self.0.borrow_mut();
+        sinks.push(InkSink::new());
+        (sinks.len() - 1) as u32
+    }
+
+    /// `f` of sink `at`; `None` once the list was released.
+    pub fn with<R>(&self, at: u32, f: impl FnOnce(&InkSink) -> R) -> Option<R> {
+        self.0.borrow().get(at as usize).map(f)
+    }
+
+    /// Drop every sink and the list's storage: the frame's measures are read.
+    pub fn release(&self) {
+        drop(self.0.take());
+    }
+
+    fn add_in(&self, at: u32, scope: u32, bounds: Bounds<ScaledPixels>) {
+        self.with(at, |sink| sink.add_in(scope, bounds));
+    }
+
+    fn taint_in(&self, at: u32, scope: u32) {
+        self.with(at, |sink| sink.taint_in(scope));
     }
 }
 
 /// The ink sinks open at a point of paint: rarely more than one, and copied
 /// into every deferred paint environment, so one sink stays inline. One
-/// inline (wide) pointer keeps the list as small as a `Vec` (24 bytes with
+/// pointer and a number keep the list as small as a `Vec` (24 bytes with
 /// smallvec's `union`): the scene and every paint snapshot keep their size.
-pub(crate) type InkSinks = smallvec::SmallVec<[Rc<dyn InkTarget>; 1]>;
+pub(crate) type InkSinks = smallvec::SmallVec<[(Rc<InkSinkList>, u32); 1]>;
+
+/// Offer `bounds` painted under scope `scope` to the open sinks `sinks`.
+pub(crate) fn ink_add(sinks: &InkSinks, scope: u32, bounds: Bounds<ScaledPixels>) {
+    for (list, at) in sinks {
+        list.add_in(*at, scope, bounds);
+    }
+}
+
+/// Taint the open sinks `sinks` in scope `scope`.
+pub(crate) fn ink_taint(sinks: &InkSinks, scope: u32) {
+    for (list, at) in sinks {
+        list.taint_in(*at, scope);
+    }
+}
 const INK_TAINTED: u32 = 1;
 const INK_PAINTED: u32 = 2;
 const INK_LATE_ALL: u32 = 4;
@@ -341,9 +379,7 @@ impl InkProbe {
             && self.callbacks == window.next_frame_callback_count();
         if !quiet {
             let scope = window.next_frame.scene.ink_scope;
-            for sink in &window.next_frame.scene.ink {
-                sink.ink_sink().taint_in(scope);
-            }
+            ink_taint(&window.next_frame.scene.ink, scope);
             scoped_ink(scope, |sink| sink.taint_in(scope));
         }
     }
@@ -443,10 +479,14 @@ impl Window {
         crate::text_system::with_layouts_released(|| f(self))
     }
 
-    /// Paint `f` with `sink` measuring its ink (see [`InkSink`]). The sink
-    /// may live inside a value the caller already holds ([`InkTarget`]).
-    pub fn with_ink_sink<R>(&mut self, sink: Rc<dyn InkTarget>, f: impl FnOnce(&mut Self) -> R) -> R {
-        self.next_frame.scene.ink.push(sink);
+    /// Paint `f` with sink `at` of `list` measuring its ink (see [`InkSink`],
+    /// [`InkSinkList`]).
+    pub fn with_ink_sink<R>(
+        &mut self,
+        (list, at): (&Rc<InkSinkList>, u32),
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.next_frame.scene.ink.push((list.clone(), at));
         let probe = InkProbe::open(self);
         let result = f(self);
         if let Some(probe) = probe {
@@ -466,9 +506,7 @@ impl Window {
         }
         let scaled = bounds.scale(self.scale_factor());
         let scene = &self.next_frame.scene;
-        for sink in &scene.ink {
-            sink.ink_sink().add_in(scene.ink_scope, scaled);
-        }
+        ink_add(&scene.ink, scene.ink_scope, scaled);
         scoped_ink(scene.ink_scope, |sink| sink.add_in(scene.ink_scope, scaled));
     }
 
@@ -519,9 +557,7 @@ impl Window {
             scene.ink_allowed.1 +=
                 (end.accessed_element_states_index - start.accessed_element_states_index) as u32;
         } else {
-            for sink in &scene.ink {
-                sink.ink_sink().taint_in(scene.ink_scope);
-            }
+            ink_taint(&scene.ink, scene.ink_scope);
             scoped_ink(scene.ink_scope, |sink| sink.taint_in(scene.ink_scope));
         }
         result

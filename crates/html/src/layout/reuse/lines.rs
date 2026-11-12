@@ -2,7 +2,7 @@
 //! которого каждый абзац уложился в одну строку, раскладывается так же в
 //! любом потоке, где эти строки не короче места (`width::Width::Stretch`).
 
-use super::Record;
+use super::FlowReuse;
 use gpui::Window;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -59,20 +59,28 @@ impl LineSink {
     }
 }
 
-/// Выполнить prepaint `f` со строками абзацев, собранными в запись `record`
-/// и, когда он закончен, во внешнюю открытую запись. Открытая запись — сама
-/// запись блока в контексте окна: открытие ничего не выделяет.
+/// Выполнить prepaint `f` со строками абзацев, собранными в запись `at`
+/// сборки `reuse` и, когда он закончен, во внешнюю открытую запись.
+/// Открытая запись — сборка в контексте окна и номер записи в ней: открытие
+/// ничего не выделяет.
 pub(super) fn with_record<R>(
-    record: &Rc<Record>,
+    reuse: &Rc<FlowReuse>,
+    at: usize,
     window: &mut Window,
     f: impl FnOnce(&mut Window) -> R,
 ) -> R {
     let outer = window
-        .render_context::<Record>()
-        .filter(|outer| !Rc::ptr_eq(outer, record));
-    let result = window.with_render_context(Some(record.clone()), f);
-    if let Some(outer) = outer {
-        outer.making.lines().absorb(record.making.lines());
+        .render_context::<FlowReuse>()
+        .and_then(|outer| Some((outer.open.get()?, outer)))
+        .filter(|(i, outer)| !(Rc::ptr_eq(outer, reuse) && *i == at));
+    let saved = reuse.open.replace(Some(at));
+    let result = window.with_render_context(Some(reuse.clone()), f);
+    reuse.open.set(saved);
+    if let Some((i, outer)) = outer {
+        let (all, inner) = (outer.pending.borrow(), reuse.pending.borrow());
+        if let (Some(o), Some(n)) = (all.get(i), inner.get(at)) {
+            o.making.lines.absorb(&n.making.lines);
+        }
     }
     result
 }
@@ -84,13 +92,16 @@ pub(crate) fn report(
     vertical: bool,
     mut lines: impl ExactSizeIterator<Item = f32>,
 ) {
-    let Some(open) = window.render_context::<Record>() else {
+    let Some(reuse) = window.render_context::<FlowReuse>() else {
         return;
     };
+    let Some(at) = reuse.open.get() else { return };
     let one = (lines.len() == 1 && !vertical)
         .then(|| lines.next())
         .flatten();
-    open.making.lines().note(width, one);
+    if let Some(open) = reuse.pending.borrow().get(at) {
+        open.making.lines.note(width, one);
+    }
 }
 #[cfg(test)]
 mod tests {

@@ -386,9 +386,7 @@ impl Scene {
         let mut primitive = primitive.into();
         let placed_bounds = placed_bounds(&primitive);
         // KaminIDE patch: ink of open retained subtrees, culled or not.
-        for sink in &self.ink {
-            sink.ink_sink().add_in(self.ink_scope, placed_bounds);
-        }
+        crate::window::ink_add(&self.ink, self.ink_scope, placed_bounds);
         crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
         let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
 
@@ -691,9 +689,7 @@ impl Scene {
             self.paint_operations.push(operation);
         }
         if let Some(ink) = ink {
-            for sink in &self.ink {
-                sink.ink_sink().add_in(self.ink_scope, ink);
-            }
+            crate::window::ink_add(&self.ink, self.ink_scope, ink);
             crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, ink));
         }
         let index = match graft {

@@ -116,9 +116,10 @@ impl FlowReuse {
         // Each record is sealed in place and kept as it is: nothing is
         // allocated per block here, and the map grows once.
         next.reserve(pending.len());
-        for record in pending {
-            let node = record.source.id();
-            let (sealed, narrow) = record.seal(screen, mask, epoch);
+        for pending in pending {
+            let node = pending.record.source.id();
+            let (sealed, narrow) = pending.seal(&self.ink, screen, mask, epoch);
+            let record = pending.record;
             if let Some(narrow) = narrow {
                 self.narrowed.add(narrow);
             }
@@ -134,6 +135,8 @@ impl FlowReuse {
         self.learn_wraps();
         self.finish_replays(screen);
         self.finish_far();
+        // The frame's ink measures are read: the sinks go with the frame.
+        self.ink.release();
         // Кадр без записей и пропусков под тем же ключом оставляет прежние:
         // они подойдут следующему кадру, а их сброс стоил бы этому.
         if recorded > 0 || skipped > 0 {

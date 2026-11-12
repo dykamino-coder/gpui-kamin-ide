@@ -76,10 +76,16 @@ pub(crate) struct FlowReuse {
     resized: Cell<bool>,
     /// Wraps of this build's blocks (`narrow`).
     narrowed: narrow::Wraps,
-    /// The records this build's wrapped blocks are making (`recorder`): the
-    /// wrap of a block knows its record by number here, and `finish` seals
-    /// each in place and keeps it, so a recorded block is one allocation.
-    pending: RefCell<Vec<Rc<Record>>>,
+    /// The records this build's wrapped blocks are making, with what the frame
+    /// measures of each (`recorder::Pending`): the wrap of a block knows its
+    /// record by number here, and `finish` seals each in place and keeps it,
+    /// so a recorded block is one allocation after the frame.
+    pending: RefCell<Vec<recorder::Pending>>,
+    /// The ink sinks of this build's records and replays, by number
+    /// (`gpui::InkSinkList`); released when `finish` has read them.
+    ink: Rc<gpui::InkSinkList>,
+    /// The record whose prepaint is running (`lines::with_record`).
+    open: Cell<Option<usize>>,
     /// Shells the sources of this build share (`source`).
     shells: Shells,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
@@ -161,6 +167,8 @@ impl FlowReuse {
             resized: Cell::new(false),
             narrowed: Default::default(),
             pending: Default::default(),
+            ink: Default::default(),
+            open: Cell::new(None),
             shells: Shells::default(),
             placeholders: Default::default(),
             next_replays: Default::default(),
