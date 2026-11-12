@@ -134,13 +134,37 @@ export function loadCodexChoice(settingsDir: string, threadId: string): CodexCho
 export function saveCodexChoice(session: PtySession, change: CodexChoice): void {
   const threadId = codexBindings.get(session)?.agent.conversationId()
   if (!threadId) return
-  const next = { ...loadCodexChoice(session.settingsDir, threadId), ...change }
+  writeCodexChoice(session.settingsDir, threadId, { ...loadCodexChoice(session.settingsDir, threadId), ...change })
+}
+
+function writeCodexChoice(settingsDir: string, threadId: string, choice: CodexChoice): void {
   try {
-    fs.mkdirSync(session.settingsDir, { recursive: true })
-    fs.writeFileSync(choiceFile(session.settingsDir, threadId), JSON.stringify(next), { mode: 0o600 })
+    fs.mkdirSync(settingsDir, { recursive: true })
+    fs.writeFileSync(choiceFile(settingsDir, threadId), JSON.stringify(choice), { mode: 0o600 })
   } catch (error) {
-    warnLog('codex choice not saved', { sessionId: session.id, error: String(error) })
+    warnLog('codex choice not saved', { threadId, error: String(error) })
   }
+}
+
+/** Whether a codex chat's Bridge transcript holds a user or assistant entry,
+ *  i.e. whether codex ever ran a turn (and wrote a rollout) for it. */
+export function transcriptHasTurns(file: string): boolean {
+  let text: string
+  try {
+    text = fs.readFileSync(file, 'utf8')
+  } catch {
+    return false
+  }
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      const type = (JSON.parse(line) as { type?: unknown }).type
+      if (type === 'user' || type === 'assistant') return true
+    } catch {
+      return true // unreadable content: never treat it as an empty chat
+    }
+  }
+  return false
 }
 
 /** Claude model ids from the shared selector never reach codex. */
@@ -269,6 +293,7 @@ export async function createCodexSession(
   }
   const releaseEndpoint = holdMcpEndpoint(session)
   let agent: CodexAgentSession
+  let freshThread = false
   try {
     try {
       agent = await CodexAgentSession.start({ ...startOptions, resumeThreadId: placement.resumeThreadId })
@@ -277,10 +302,21 @@ export async function createCodexSession(
       if (!placement.resumeThreadId || !(error instanceof JsonRpcError)) {
         throw new Error(describeCodexError(classifyCodexError((error as Error).message)), { cause: error })
       }
-      if (config.noSpawnOnNotFound) throw new ResumeNotFoundError()
-      warnLog('codex resume: thread not found — starting a fresh thread', { threadId: placement.resumeThreadId })
-      resumeNotFound = true
+      // A chat that never ran a turn has no rollout (codex writes it with the
+      // first turn): nothing is lost, so it continues on a fresh thread with
+      // the model and effort chosen in it, instead of "Conversation not found".
+      const empty = !transcriptHasTurns(codexTranscriptPath(settingsDir, placement.resumeThreadId, projectsDir(deps)))
+      if (config.noSpawnOnNotFound && !empty) throw new ResumeNotFoundError()
+      warnLog('codex resume: thread not found — starting a fresh thread', {
+        threadId: placement.resumeThreadId,
+        emptyChat: empty,
+      })
+      if (empty) freshThread = true
+      else resumeNotFound = true
       agent = await CodexAgentSession.start(startOptions)
+      // The choice moves with the chat to its new thread.
+      const fresh = agent.conversationId()
+      if (saved && fresh) writeCodexChoice(settingsDir, fresh, saved)
     }
     if (signal?.aborted) {
       await agent.stop('startup_aborted')
@@ -292,10 +328,11 @@ export async function createCodexSession(
   }
   const threadId = agent.conversationId()!
   const transcript = codexTranscriptPath(settingsDir, threadId, projectsDir(deps))
-  const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound
+  const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound && !freshThread
   session.model = agent.model
   session.cliConversationId = resumed ? threadId : null
   session.resumeNotFound = resumeNotFound
+  if (freshThread) session.resumedOnFreshThread = true
   binding = new CodexSessionBinding(session, agent, deps.runtime, transcript, config.cwd, {
     // Same thread, same MCP endpoint and Bearer, on whichever app-server the
     // runtime has now (a crashed one is restarted within its restart limits).
