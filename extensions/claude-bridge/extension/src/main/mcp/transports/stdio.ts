@@ -11,6 +11,16 @@ import { collectMcpList } from '../pagination'
 import type { McpServerState, TransportContext } from './context'
 import { awaitMcpReply, withProgressToken } from './request-deadline'
 import { assertCmdLineFits } from '../../utils/script-file'
+import { resolveWorkingDirectory } from '../../utils/working-directory'
+import type { ExternalMcpServerConfig } from '../../../shared/types'
+
+/** Directory a stdio server starts in: its configured directory, otherwise the
+ *  root of the project that declares it, otherwise the user's home. Without an
+ *  explicit `cwd` the child inherits the extension host's directory, which for
+ *  the installed app is the application directory (INC-2026-0108). */
+export function stdioWorkingDirectory(config: Pick<ExternalMcpServerConfig, 'workingDirectory' | 'projectRoot'>): string {
+  return resolveWorkingDirectory(config.workingDirectory, config.projectRoot)
+}
 
 export async function connectStdio(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
@@ -58,7 +68,7 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
       // Console Window Host process per MCP server (so 6 stdio MCPs = 6
       // conhosts cluttering the process tree).
       windowsHide: true,
-      ...(state.config.workingDirectory ? { cwd: state.config.workingDirectory } : {}),
+      cwd: stdioWorkingDirectory(state.config),
     })
 
     state.process = proc

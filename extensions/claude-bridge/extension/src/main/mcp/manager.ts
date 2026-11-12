@@ -46,7 +46,7 @@ import {
   getTestLog as getTestLogShared,
   type McpTestLogEntry,
 } from './test-log'
-import { connectStdio, callStdioTool, stdioJsonRpc } from './transports/stdio'
+import { connectStdio, callStdioTool, stdioJsonRpc, stdioWorkingDirectory } from './transports/stdio'
 import { connectHttp, callHttpTool, httpJsonRpcAuth } from './transports/http'
 import { connectSseLegacy, sseJsonRpcRequest } from './transports/sse-legacy'
 import { connectWs, callWsTool, wsJsonRpc } from './transports/ws'
@@ -80,8 +80,11 @@ const MAX_RECONNECT_ATTEMPTS = 10
  *  reconnect budget) from "the user edited it" (fresh budget, retry). Excludes
  *  cosmetic/source fields (name, sourcePath, enabled) that don't change wiring. */
 function mcpConnectionFingerprint(c: ExternalMcpServerConfig): string {
+  // The project root is appended only when present, so fingerprints (and the
+  // lazy schema cache keyed by them) of every other server stay unchanged.
   return JSON.stringify([c.type, c.command ?? null, c.args ?? null, c.url ?? null,
-    c.env ?? null, c.workingDirectory ?? null, c.headers ?? null])
+    c.env ?? null, c.workingDirectory ?? null, c.headers ?? null,
+    ...(c.projectRoot ? [c.projectRoot] : [])])
 }
 
 /** Ленивые stdio-серверы (экономия RAM): каждый stdio-MCP — child-процесс
@@ -933,9 +936,7 @@ export class McpServerManager {
       if (state.config.env && Object.keys(state.config.env).length > 0) {
         this.appendLog(id, 'info', `[connect] env keys: ${Object.keys(state.config.env).join(', ')}`)
       }
-      if (state.config.workingDirectory) {
-        this.appendLog(id, 'info', `[connect] cwd: ${state.config.workingDirectory}`)
-      }
+      this.appendLog(id, 'info', `[connect] cwd: ${stdioWorkingDirectory(state.config)}`)
     } else if (state.config.url) {
       this.appendLog(id, 'info', `[connect] url: ${state.config.url}`)
     }

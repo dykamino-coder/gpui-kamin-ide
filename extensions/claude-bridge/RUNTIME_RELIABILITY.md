@@ -1666,6 +1666,8 @@ the required Windows gate. This PR is not field attribution or closure.
 pass после BR-31, без forced repaint, pointer, resize или повторного toggle; сохранить R6
 и остальные исходные scenarios как evidence. BR-31 пока не реализован.
 
+**Completion run 2026-11-13 (1.0.94, see BR-31):** the reveal-after-reap case was run 23 times without repaint, pointer, resize or toggle. Finished teammates are listed under `Completed` (2), not `RUNNING`. The BR-31 rows threshold failed in 5 of 23 runs, and the hide/show and tab-switch cases were not run. Completion stays waiting on the BR-31 residual.
+
 **Status:** baseline done (INC-2026-0002); completion gate waiting.
 **Dependency:** BR-31; BR-27 и BR-26 уже merged. **Acceptance:** instrumented
 Windows Agent Teams runtime gate; новый fix PR создаётся только если симптом
@@ -2028,6 +2030,29 @@ source defect (INC-2026-0002). **Dependency:** none; BR-25 completion завис
 от R6. **Acceptance:** automated test на wake без кадра + Windows CEF runtime
 gate (reveal без pointer).
 **Windows runtime merge gate:** required.
+
+**Verification 2026-11-13 (batch `RC-2026-11-13-KAMIN-BRIDGE`): failed on the rows
+threshold, starvation not reproduced.** Candidate: installed KaminIDE 1.0.94
+(`kaminide-v1.0.94`, contains #147), a copy of a working profile, server container
+from `main` `584b5616`. Driven only through kamin-probe: no pointer, keyboard, resize
+or forced repaint. 23 runs of R6: a two-teammate team finishes, Agents is hidden by
+another container in the same slot until its renderer is reaped (21–22 s), then it
+is revealed.
+- Without any input, rows (`Completed 2`) appeared in 23 of 23 runs, and every
+  invoke reply took 18–659 ms.
+- Rows were present 1 s after load in 18 of 23 runs. In the other 5 the
+  placeholder was still shown at 1.2–1.4 s; rows came by 3.5–4.3 s in four runs
+  and by about 23 s in one.
+- The slow runs are the ones where the view became live late (240–380 ms after
+  reveal instead of ~105 ms).
+
+Evidence:
+[private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/e13d43464824d7c0ead8df6dfbf8b0af0d6a2c51/incidents/INC-2026-0002/evidence/2026-11-13-br31-r6-1.0.94).
+Status stays `verify`. Next artifact: research, owner maintainer. Trace for a late-live
+reveal when the resync frames enter the outbox, when the page first calls
+`__kaminPull()` and when the rows render. Only then decide whether a bounded fix
+is needed; no forced repaint or timer. BR-24 and BR-25 completion keep this as
+their prerequisite.
 
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
