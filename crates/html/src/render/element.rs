@@ -65,7 +65,9 @@ async fn element_inner<const QUERY: bool>(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
-    let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
+    let viewport_opts = opts.inner_if(opts.cx.values.viewport != opts.viewport, |cx| {
+        cx.values.viewport = opts.viewport
+    });
     let opts = &*viewport_opts;
     let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     let sized = crate::layout::replaced::media::sized(e, inherited, opts, vcx);

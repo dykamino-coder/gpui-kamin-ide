@@ -127,7 +127,7 @@ pub(crate) async fn generic_children(
     } else {
         crate::text::clamp::clamp_context(&opts.cx)
     };
-    let child_opts = opts.inner(|cx| {
+    let child_opts = opts.inner_if(is_clamp || makes_bfc, |cx| {
         if is_clamp {
             cx.clamp.atom_depth = 0;
             cx.clamp.build = cx.clamp.build.container(e.node_id);
@@ -135,7 +135,7 @@ pub(crate) async fn generic_children(
             cx.clamp.build = cx.clamp.build.bfc();
         }
     });
-    let opts = &child_opts;
+    let opts = &*child_opts;
     // Проба элемента сетки/гибкого контейнера: пишет свои разложенные
     // границы в буфер родителя. Ставится ДО clamp-пробы, чтобы её
     // ранний `return` не съел запись. Абсолютные дети дорожек не

@@ -37,8 +37,9 @@ pub(crate) fn paragraph_probed(
         },
         _ => None,
     };
-    let paragraph_opts = opts.inner(|cx| {
-        cx.clamp.paragraph = ctx.zip(seq).map(|((key, _), s)| (key, s));
+    let tag = ctx.zip(seq).map(|((key, _), s)| (key, s));
+    let paragraph_opts = opts.inner_if(opts.cx.clamp.paragraph != tag, |cx| {
+        cx.clamp.paragraph = tag;
     });
     let para = opts
         .cx

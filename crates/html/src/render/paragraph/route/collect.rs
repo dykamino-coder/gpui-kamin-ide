@@ -38,10 +38,10 @@ pub(crate) fn paragraph_pieces_routed<const QUERY: bool>(
             .filter(|(s, _)| *s == seq)
             .map(|(_, k)| k)
     });
-    let child_opts = opts.inner(|cx| {
+    let child_opts = opts.inner_if(clamp_tag.is_some(), |cx| {
         cx.clamp.paragraph = None;
     });
-    let opts = &child_opts;
+    let opts = &*child_opts;
     // Проверено: брать поперечное выравнивание ряда с самих кусков, когда
     // абзац своего не задал (`vertical-align: bottom` у картинки), ничего не
     // меняет — ни это, ни `align-self` на самой картинке высоту строки не
