@@ -97,6 +97,13 @@ mod tests {
     use crate::style::values::value::Len;
     use std::rc::Rc;
 
+    fn entries(styles: &EdgeStyles) -> usize {
+        let made = styles.0.take();
+        let len = made.len();
+        styles.0.set(made);
+        len
+    }
+
     /// Two cells of one computed style, as in a document.
     fn cells() -> [Element; 2] {
         let parsed = crate::document::parsed::parse(
@@ -136,7 +143,7 @@ mod tests {
         assert_eq!(a.reset_background.bg_border_insets, Some([0.5; 4]));
         assert_eq!(b.reset_box_layout.padding, pad(1.5));
         assert_eq!(b.reset_border.border_visible, [None; 4]);
-        assert_eq!(styles.0.borrow().len(), 1);
+        assert_eq!(entries(&styles), 1);
     }
 
     #[test]
@@ -151,6 +158,6 @@ mod tests {
         assert_eq!(wide.style.used().reset_box_layout.padding, pad(2.0));
         assert_eq!(a.style.used().reset_box_layout.padding, pad(1.5));
         assert_eq!(a.style.used().reset_box_layout.width, None);
-        assert_eq!(styles.0.borrow().len(), 2);
+        assert_eq!(entries(&styles), 2);
     }
 }
