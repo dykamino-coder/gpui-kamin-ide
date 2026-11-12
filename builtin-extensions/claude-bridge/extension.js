@@ -12086,7 +12086,10 @@ var init_script_file = __esm({
 
 // src/main/mcp/tools/warm-shell.ts
 function acceptorCommand(kind) {
-  return kind === "bash" ? 'IFS= read -r __ocb_d && IFS= read -r REPLY || exit 0; exec 0</dev/null; __ocb_o=${OLDPWD-}; cd -- "$__ocb_d" || exit 1; OLDPWD=$__ocb_o; unset __ocb_d __ocb_o; . "$REPLY"' : (
+  const start = "IFS= read -r __ocb_d && IFS= read -r REPLY || exit 0; ";
+  const enter = '__ocb_o=${OLDPWD-}; cd -- "$__ocb_d" || exit 1; OLDPWD=$__ocb_o; unset __ocb_d __ocb_o; . "$REPLY"';
+  if (kind === "bash-hook") return start + enter;
+  return kind === "bash" ? start + "exec 0</dev/null; " + enter : (
     // Encoding setup and a first Invoke-Expression run while waiting: they
     // are the slow first-use part of every PowerShell command script.
     "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false; Invoke-Expression '$null = Get-Location'; $__ocb_d = [Console]::In.ReadLine(); if ($null -eq $__ocb_d) { exit 0 }; Set-Location -LiteralPath $__ocb_d; [System.IO.Directory]::SetCurrentDirectory($__ocb_d); Remove-Variable __ocb_d; Invoke-Expression ([System.IO.File]::ReadAllText([Console]::In.ReadLine()))"
@@ -12124,7 +12127,7 @@ function takeWarmShell(key2, shell2, flags, kind, env4) {
   let taken = null;
   for (const entry2 of [...waiting.values()]) {
     if (entry2.key !== key2) {
-      if (JSON.parse(entry2.key)[0] === shell2) discard(entry2);
+      if (entry2.kind === kind && kind !== "bash-hook") discard(entry2);
       continue;
     }
     clearTimeout(entry2.timer);
@@ -12134,7 +12137,7 @@ function takeWarmShell(key2, shell2, flags, kind, env4) {
     else discard(entry2);
   }
   const child = startWaiting(shell2, flags, kind, env4);
-  const entry = { key: key2, child, timer: setTimeout(() => discard(entry), IDLE_MS) };
+  const entry = { key: key2, kind, child, timer: setTimeout(() => discard(entry), IDLE_MS) };
   entry.timer.unref?.();
   child.unref();
   child.stdout?.unref?.();
@@ -12144,18 +12147,22 @@ function takeWarmShell(key2, shell2, flags, kind, env4) {
     if (waiting.get(key2) === entry) discard(entry);
   });
   waiting.set(key2, entry);
+  const hooks = [...waiting.values()].filter((e) => e.kind === "bash-hook");
+  if (hooks.length > MAX_WAITING_HOOKS) discard(hooks[0]);
   return taken;
 }
-function startWarmShell(child, cwd, scriptPath) {
+function startWarmShell(child, cwd, scriptPath, keepStdin = false) {
   ;
   child.ref?.();
-  for (const stream of [child.stdout, child.stderr]) stream?.ref?.();
-  child.stdin?.end(`${cwd}
+  for (const stream of [child.stdout, child.stderr, child.stdin]) stream?.ref?.();
+  const start = `${cwd}
 ${scriptPath}
-`);
+`;
+  if (keepStdin) child.stdin?.write(start);
+  else child.stdin?.end(start);
   return child;
 }
-var import_node_child_process4, import_node_os3, IDLE_MS, waiting;
+var import_node_child_process4, import_node_os3, IDLE_MS, MAX_WAITING_HOOKS, waiting;
 var init_warm_shell = __esm({
   "src/main/mcp/tools/warm-shell.ts"() {
     "use strict";
@@ -12163,6 +12170,7 @@ var init_warm_shell = __esm({
     import_node_os3 = __toESM(require("node:os"), 1);
     init_windows_job_runner();
     IDLE_MS = 10 * 6e4;
+    MAX_WAITING_HOOKS = 4;
     waiting = /* @__PURE__ */ new Map();
   }
 });
@@ -13167,6 +13175,11 @@ async function killProcessTree(proc) {
     }
   }
 }
+function warmHookShell(shell2, scriptPath, cwd, env4) {
+  if (shell2.kind !== "bash" || process.env.KAMIN_WARM_SHELL === "0") return null;
+  const child = takeWarmShell(warmKey(shell2.bin, shell2.args, env4), shell2.bin, shell2.args, "bash-hook", env4);
+  return child && startWarmShell(child, toPosixShellPath(cwd), toPosixShellPath(scriptPath), true);
+}
 async function executeHook(req, fallbackCwd) {
   const start = Date.now();
   const timeoutMs = req.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -13258,7 +13271,7 @@ async function executeHook(req, fallbackCwd) {
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
         detached: process.platform !== "win32"
-      }) : (0, import_node_child_process6.spawn)(shell2.bin, script.args, {
+      }) : warmHookShell(shell2, script.file.path, cwd, { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" }) ?? (0, import_node_child_process6.spawn)(shell2.bin, script.args, {
         cwd,
         env: { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" },
         windowsHide: true,
@@ -13359,6 +13372,7 @@ var init_executor = __esm({
     init_command_runtime();
     init_working_directory();
     init_script_file();
+    init_warm_shell();
     DEFAULT_TIMEOUT_MS = 10 * 60 * 1e3;
     HOOK_OUTPUT_CAP = 1024 * 1024;
   }

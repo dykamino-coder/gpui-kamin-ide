@@ -3,7 +3,7 @@
 // PATH, env, IDE binaries, npm-installed tools, etc. Returns stdout/stderr/
 // exitCode back to bridge — which forwards as a CLI-compatible hook response.
 
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -17,6 +17,7 @@ import {
 } from '../utils/command-runtime'
 import { resolveWorkingDirectory } from '../utils/working-directory'
 import { scriptInvocation, type ScriptInvocation } from '../utils/script-file'
+import { startWarmShell, takeWarmShell, warmKey } from '../mcp/tools/warm-shell'
 
 export interface HookExecuteRequest {
   type: 'hook:execute'
@@ -142,6 +143,16 @@ async function killProcessTree(proc: import('node:child_process').ChildProcess):
   }
 }
 
+/** A Bash hook runs in a shell started after the previous run of the same
+ *  hook environment, like the Bash tool's warm shell: the hook fires around
+ *  every tool call, and a cold Git Bash costs ~100 ms on Windows each time.
+ *  The script still starts fresh in its own process; stdin carries the input. */
+function warmHookShell(shell: ResolvedShell, scriptPath: string, cwd: string, env: NodeJS.ProcessEnv): ChildProcess | null {
+  if (shell.kind !== 'bash' || process.env.KAMIN_WARM_SHELL === '0') return null
+  const child = takeWarmShell(warmKey(shell.bin, shell.args, env), shell.bin, shell.args, 'bash-hook', env)
+  return child && startWarmShell(child, toPosixShellPath(cwd), toPosixShellPath(scriptPath), true)
+}
+
 export async function executeHook(
   req: HookExecuteRequest,
   fallbackCwd?: string,
@@ -244,13 +255,14 @@ export async function executeHook(
           stdio: ['pipe', 'pipe', 'pipe'],
           detached: process.platform !== 'win32',
         })
-        : spawn(shell!.bin, script!.args, {
-          cwd,
-          env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
-          windowsHide: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          detached: process.platform !== 'win32',
-        })
+        : warmHookShell(shell!, script!.file.path, cwd, { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' }) ??
+          spawn(shell!.bin, script!.args, {
+            cwd,
+            env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+            detached: process.platform !== 'win32',
+          })
     } catch (err) {
       script?.file.dispose()
       finish({
