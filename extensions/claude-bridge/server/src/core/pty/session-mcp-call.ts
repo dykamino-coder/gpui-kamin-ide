@@ -38,6 +38,20 @@ const HEAVY_TOOLS = new Set([
   'LspDefinition',
   'LspReferences',
 ])
+/** Tools of the user's own MCP servers (registered by the client host) may
+ *  wait for a person — a picker or an elicitation dialog open for 10 minutes.
+ *  The client host bounds such a call itself (idle deadline restarted by
+ *  progress, 30-minute total cap in extension `request-deadline.ts`); this
+ *  backstop is slightly longer so the host's specific error reaches the CLI. */
+const EXTERNAL_TOOL_TIMEOUT_MS = 31 * 60_000
+
+/** Bridge-side deadline of one forwarded tool call; `null` waits for the user. */
+export function mcpCallTimeoutMs(session: Pick<PtySession, 'registeredTools'>, toolName: string): number | null {
+  if (INTERACTIVE_TOOLS.has(toolName)) return null
+  if (HEAVY_TOOLS.has(toolName)) return HEAVY_TOOL_TIMEOUT_MS
+  if (session.registeredTools?.some((tool) => tool.name === toolName)) return EXTERNAL_TOOL_TIMEOUT_MS
+  return MCP_CALL_TIMEOUT_MS
+}
 
 /** Pending MCP calls waiting for a client response. Key = requestId,
  *  shared across all sessions. */
@@ -102,17 +116,18 @@ export function sendMcpCall(
     }
     // Interactive tools (AskUserQuestion, ExitPlanMode) wait indefinitely —
     // user may think forever. Heavy fs/shell tools get 30 min because on
-    // big repos they legitimately can run that long. Everything else: 2 min.
-    const isInteractive = INTERACTIVE_TOOLS.has(toolName)
-    const timeoutMs = HEAVY_TOOLS.has(toolName) ? HEAVY_TOOL_TIMEOUT_MS : MCP_CALL_TIMEOUT_MS
-    const timer = isInteractive
-      ? null
-      : setTimeout(() => {
-          const pending = pendingMcpCalls.get(requestId)
-          if (pending?.retryTimer) clearInterval(pending.retryTimer)
-          pendingMcpCalls.delete(requestId)
-          reject(new Error(`MCP call timeout (${timeoutMs}ms): ${toolName}`))
-        }, timeoutMs)
+    // big repos they legitimately can run that long; external MCP tools may
+    // wait for a person. Everything else: 2 min.
+    const timeoutMs = mcpCallTimeoutMs(session, toolName)
+    const timer =
+      timeoutMs === null
+        ? null
+        : setTimeout(() => {
+            const pending = pendingMcpCalls.get(requestId)
+            if (pending?.retryTimer) clearInterval(pending.retryTimer)
+            pendingMcpCalls.delete(requestId)
+            reject(new Error(`MCP call timeout (${timeoutMs}ms): ${toolName}`))
+          }, timeoutMs)
 
     // `delivered` — это «кадр ПРИНЯТ транспортом», а не «сокет был открыт».
     // Раньше признак считался по `readyState` ДО отправки и результат
