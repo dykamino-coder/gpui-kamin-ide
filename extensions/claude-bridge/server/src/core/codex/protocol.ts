@@ -42,7 +42,7 @@ export type UserInput = { type: 'text'; text: string; text_elements: TextElement
 
 export type AskForApproval = 'untrusted' | 'on-request' | 'never'
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
-/** Open string in 0.160.1: the catalog decides which efforts a model accepts. */
+/** Open string: the catalog decides which efforts a model accepts. */
 export type ReasoningEffort = string
 
 export interface DynamicToolSpec {
