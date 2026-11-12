@@ -10,6 +10,7 @@ import type { McpResult } from '../tool-registry'
 import { collectMcpList } from '../pagination'
 import type { McpServerState, TransportContext } from './context'
 import { awaitMcpReply, withProgressToken } from './request-deadline'
+import { assertCmdLineFits } from '../../utils/script-file'
 
 export async function connectStdio(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
@@ -17,6 +18,12 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
   if (!command) throw new Error('stdio server command is required')
 
   const args = state.config.args ?? []
+  try {
+    assertCmdLineFits(command, args)
+  } catch (err) {
+    ctx.appendLog(id, 'error', `[stdio] ${(err as Error).message}`)
+    throw err
+  }
 
   // Замерено на машине с защитным ПО/прокси: `npx -y <pkg>@latest`
   // отвечает на initialize через ~29 СЕКУНД (резолв реестра до старта
@@ -56,6 +63,11 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
 
     state.process = proc
     state.inputBuffer = ''
+    // Decode across chunk boundaries: a multi-byte UTF-8 character split
+    // between two reads would otherwise turn into two U+FFFD in the JSON-RPC
+    // frame (Cyrillic tool results arrived corrupted).
+    proc.stdout?.setEncoding('utf8')
+    proc.stderr?.setEncoding('utf8')
     ctx.appendLog(id, 'info', `[stdio] spawned pid=${proc.pid ?? 'n/a'}`)
 
     let stderrBuf = ''
@@ -89,9 +101,9 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
       // 30s timeout — reject immediately as a connect failure.
       finish(false, new Error('Circuit breaker: too many stderr errors'))
     }
-    proc.stderr?.on('data', (data: Buffer) => {
+    proc.stderr?.on('data', (data: string) => {
       if (circuitTripped) return
-      const text = data.toString()
+      const text = data
       stderrBuf += text
       let idx: number
       while ((idx = stderrBuf.indexOf('\n')) !== -1) {
@@ -130,8 +142,8 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
       }
     })
 
-    proc.stdout?.on('data', (data: Buffer) => {
-      state.inputBuffer += data.toString()
+    proc.stdout?.on('data', (data: string) => {
+      state.inputBuffer += data
 
       // Try to parse complete JSON-RPC messages (newline-delimited)
       let newlineIdx: number

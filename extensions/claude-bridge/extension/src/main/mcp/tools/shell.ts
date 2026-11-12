@@ -5,6 +5,7 @@ import type { ToolCallContext } from '../executor'
 import { getOrCreateSnapshot, wrapCommandWithSnapshot, shouldUseLoginShell } from './shell-snapshot'
 import { listEnabledPluginBinDirs } from '../../plugin-helpers'
 import { findBashExecutable, findPowerShellExecutable } from '../../utils/command-runtime'
+import { scriptInvocation, type ScriptInvocation } from '../../utils/script-file'
 
 async function shellEnv(): Promise<NodeJS.ProcessEnv> {
   const binDirs = await listEnabledPluginBinDirs()
@@ -50,12 +51,16 @@ nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-inte
     : ''
 
 /** Track background processes so BashOutput can poll them and KillShell can
- *  terminate them. `stdoutCursor`/`stderrCursor` mark how much each stream the
- *  model has already read, so BashOutput returns only NEW output (native-CLI
- *  parity). `command` is kept for the status header. */
+ *  terminate them. `stdout`/`stderr` keep the last BG_OUTPUT_CAP characters;
+ *  `*Dropped` counts the characters that fell out of that window before it.
+ *  `*Cursor` is the absolute character position the model has read up to, so
+ *  BashOutput returns only NEW output (native-CLI parity) and reports output
+ *  that was dropped before it was read. `command` is kept for the status header. */
 interface BackgroundOutput {
   stdout: string
   stderr: string
+  stdoutDropped: number
+  stderrDropped: number
   exitCode: number | null
   running: boolean
   stdoutCursor: number
@@ -139,17 +144,24 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
   } catch (err) {
     return errorResult(err instanceof Error ? err.message : String(err))
   }
-  const flags = ['-NoLogo', '-NonInteractive', '-Command']
   const env = await shellEnv()
+  if (context?.signal?.aborted) return errorResult('Command cancelled')
   // Both Windows PowerShell 5.1 and pwsh must write UTF-8 to our pipes.
   // Console encoding also controls native programs (cmd/git); $OutputEncoding
   // controls PowerShell pipelines into them. Keep the user's command last and
   // in the same scope so exit, $LASTEXITCODE and error handling retain their meaning.
   const wrapped =
     '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n' + command
+  let script: ScriptInvocation
+  try {
+    script = scriptInvocation('powershell', ['-NoLogo', '-NonInteractive', '-Command'], wrapped)
+  } catch (err) {
+    return errorResult(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  const flags = script.args.slice(0, -1)
   if (input.run_in_background === true && context?.taskDeadlineMs === undefined) {
     return runBackgroundCommand(
-      wrapped,
+      script.loader,
       pwshPath,
       String(input.description ?? ''),
       flags,
@@ -157,9 +169,23 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
       context,
       'PowerShell',
       command,
+      script.file.dispose,
     )
   }
-  return runForegroundCommand(wrapped, pwshPath, timeout, flags, env, context?.signal, context?.onOutput, context?.cwd)
+  try {
+    return await runForegroundCommand(
+      script.loader,
+      pwshPath,
+      timeout,
+      flags,
+      env,
+      context?.signal,
+      context?.onOutput,
+      context?.cwd,
+    )
+  } finally {
+    script.file.dispose()
+  }
 }
 
 export async function bashExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
@@ -190,39 +216,61 @@ export async function bashExecute(input: Record<string, unknown>, context?: Tool
   const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + command, snapshot)
   const shellFlags = shouldUseLoginShell(snapshot) ? ['-lc'] : ['-c']
   const env = await shellEnv()
-
-  if (runInBackground) {
-    return runBackgroundCommand(wrapped, shell, description, shellFlags, env, context, 'Bash', command)
+  if (context?.signal?.aborted) return errorResult('Command cancelled')
+  let script: ScriptInvocation
+  try {
+    script = scriptInvocation('bash', shellFlags, wrapped)
+  } catch (err) {
+    return errorResult(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  return runForegroundCommand(
-    wrapped,
-    shell,
-    timeout,
-    shellFlags,
-    env,
-    context?.signal,
-    context?.onOutput,
-    context?.cwd,
-  )
+  if (runInBackground) {
+    return runBackgroundCommand(
+      script.loader,
+      shell,
+      description,
+      shellFlags,
+      env,
+      context,
+      'Bash',
+      command,
+      script.file.dispose,
+    )
+  }
+
+  try {
+    return await runForegroundCommand(
+      script.loader,
+      shell,
+      timeout,
+      shellFlags,
+      env,
+      context?.signal,
+      context?.onOutput,
+      context?.cwd,
+    )
+  } finally {
+    script.file.dispose()
+  }
 }
 
 const BG_OUTPUT_CAP = 100 * 1024
 
-function appendBounded(chunks: Buffer[], lengthRef: { size: number }, chunk: Buffer): void {
-  lengthRef.size += chunk.length
-  chunks.push(chunk)
-  while (lengthRef.size > BG_OUTPUT_CAP && chunks.length > 0) {
-    const head = chunks[0]!
-    if (lengthRef.size - head.length >= BG_OUTPUT_CAP) {
-      lengthRef.size -= head.length
-      chunks.shift()
-    } else {
-      const keep = BG_OUTPUT_CAP - (lengthRef.size - head.length)
-      chunks[0] = head.subarray(head.length - keep)
-      lengthRef.size = BG_OUTPUT_CAP
-    }
-  }
+/** Appends decoded text to a stream's tail window and returns the new window
+ *  and how many leading characters fell out of it. Never starts the window
+ *  inside a surrogate pair. */
+export function appendTail(window: string, chunk: string, cap = BG_OUTPUT_CAP): { text: string; dropped: number } {
+  const text = window + chunk
+  if (text.length <= cap) return { text, dropped: 0 }
+  let cut = text.length - cap
+  const first = text.charCodeAt(cut)
+  if (first >= 0xdc00 && first <= 0xdfff) cut++
+  return { text: text.slice(cut), dropped: cut }
+}
+
+/** Output written after `cursor`, and how much of it was dropped unread. */
+function unread(text: string, dropped: number, cursor: number): { fresh: string; lost: number } {
+  return { fresh: text.slice(Math.max(0, cursor - dropped)), lost: Math.max(0, dropped - cursor) }
 }
 
 function runBackgroundCommand(
@@ -234,13 +282,37 @@ function runBackgroundCommand(
   context?: ToolCallContext,
   tool = 'Bash',
   displayCommand = command,
+  onExit: () => void = () => {},
 ): McpResult {
   // Async shell/plugin initialization can complete after terminal shutdown.
-  if (context?.signal?.aborted) return errorResult('Command cancelled')
+  if (context?.signal?.aborted) {
+    onExit()
+    return errorResult('Command cancelled')
+  }
   evictOldBackgroundOutput()
   const bgId = nextBgId++
 
-  const child = spawn(shell, [...shellFlags, command], {
+  let child: ChildProcess
+  try {
+    child = spawnBackground(shell, [...shellFlags, command], tool, env, context)
+  } catch (err) {
+    onExit()
+    return errorResult(`Failed to execute command: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  child.once('error', onExit)
+  child.once('exit', onExit)
+  if (!child.pid) onExit()
+  return registerBackground(child, bgId, description, context, tool, displayCommand)
+}
+
+function spawnBackground(
+  shell: string,
+  argv: string[],
+  tool: string,
+  env: NodeJS.ProcessEnv,
+  context?: ToolCallContext,
+): ChildProcess {
+  return spawn(shell, argv, {
     stdio: ['ignore', 'pipe', 'pipe'],
     // Windows PowerShell exits without executing -Command when started with
     // DETACHED_PROCESS. Keep its console hidden without detaching it.
@@ -255,16 +327,23 @@ function runBackgroundCommand(
     env,
     cwd: context?.cwd,
   })
+}
 
+function registerBackground(
+  child: ChildProcess,
+  bgId: number,
+  description: string,
+  context: ToolCallContext | undefined,
+  tool: string,
+  displayCommand: string,
+): McpResult {
   if (child.pid) {
     backgroundProcesses.set(bgId, child)
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
-    const stdoutLen = { size: 0 }
-    const stderrLen = { size: 0 }
     const output: BackgroundOutput = {
       stdout: '',
       stderr: '',
+      stdoutDropped: 0,
+      stderrDropped: 0,
       exitCode: null,
       running: true,
       stdoutCursor: 0,
@@ -278,14 +357,20 @@ function runBackgroundCommand(
     }
     backgroundOutput.set(bgId, output)
 
-    child.stdout?.on('data', (chunk: Buffer) => {
-      appendBounded(stdoutChunks, stdoutLen, chunk)
-      output.stdout = Buffer.concat(stdoutChunks).toString('utf8')
+    // Decoded across chunk boundaries, so a split multi-byte character and
+    // the cut at the window start never produce U+FFFD.
+    child.stdout?.setEncoding('utf8')
+    child.stderr?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk: string) => {
+      const next = appendTail(output.stdout, chunk)
+      output.stdout = next.text
+      output.stdoutDropped += next.dropped
     })
 
-    child.stderr?.on('data', (chunk: Buffer) => {
-      appendBounded(stderrChunks, stderrLen, chunk)
-      output.stderr = Buffer.concat(stderrChunks).toString('utf8')
+    child.stderr?.on('data', (chunk: string) => {
+      const next = appendTail(output.stderr, chunk)
+      output.stderr = next.text
+      output.stderrDropped += next.dropped
     })
 
     child.on('exit', (code) => {
@@ -316,10 +401,14 @@ export async function readBackgroundOutput(input: Record<string, unknown>): Prom
   const out = backgroundOutput.get(bgId)
   if (!out) return errorResult(`No background shell with bash_id ${bgId} (it may have been evicted).`)
 
-  let newStdout = out.stdout.slice(out.stdoutCursor)
-  const newStderr = out.stderr.slice(out.stderrCursor)
-  out.stdoutCursor = out.stdout.length
-  out.stderrCursor = out.stderr.length
+  // Cursors are absolute: the window shifts once output passes the cap, and a
+  // window-relative cursor then hid every later line from the model.
+  const stdoutPart = unread(out.stdout, out.stdoutDropped, out.stdoutCursor)
+  const stderrPart = unread(out.stderr, out.stderrDropped, out.stderrCursor)
+  let newStdout = stdoutPart.fresh
+  const newStderr = stderrPart.fresh
+  out.stdoutCursor = out.stdoutDropped + out.stdout.length
+  out.stderrCursor = out.stderrDropped + out.stderr.length
 
   const filter = typeof input.filter === 'string' ? input.filter : null
   if (filter && newStdout) {
@@ -336,6 +425,10 @@ export async function readBackgroundOutput(input: Record<string, unknown>): Prom
 
   const status = out.running ? 'running' : `exited (code ${out.exitCode ?? 'unknown'})`
   const parts = [`Status: ${status}`]
+  const lostNote = (stream: string, lost: number): string =>
+    `\n[${lost} characters of ${stream} were dropped before this read: only the last ${BG_OUTPUT_CAP} are kept]`
+  if (stdoutPart.lost) parts.push(lostNote('stdout', stdoutPart.lost))
+  if (stderrPart.lost) parts.push(lostNote('stderr', stderrPart.lost))
   if (newStdout) parts.push(`\n<stdout>\n${newStdout}\n</stdout>`)
   if (newStderr) parts.push(`\n<stderr>\n${newStderr}\n</stderr>`)
   if (!newStdout && !newStderr) parts.push(out.running ? '\n(no new output yet)' : '\n(no more output)')
