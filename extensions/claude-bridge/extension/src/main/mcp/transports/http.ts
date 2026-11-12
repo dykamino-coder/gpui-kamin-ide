@@ -10,6 +10,8 @@
 import type { McpResult } from '../tool-registry'
 import { collectMcpList } from '../pagination'
 import type { TransportContext } from './context'
+import { fetchDeadline, fetchDispatcher } from './fetch-deadline'
+import { mcpRequestDeadline, withProgressToken } from './request-deadline'
 
 export async function connectHttp(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
@@ -67,11 +69,12 @@ export async function callHttpTool(
 ): Promise<McpResult> {
   const state = ctx.servers.get(id)!
 
+  const reqId = state.nextRequestId++
   const result = await httpJsonRpcAuth(ctx, id, {
     jsonrpc: '2.0',
-    id: state.nextRequestId++,
+    id: reqId,
     method: 'tools/call',
-    params: { name: toolName, arguments: input },
+    params: withProgressToken('tools/call', reqId, { name: toolName, arguments: input }),
   })
 
   if (result.error) {
@@ -98,8 +101,15 @@ export async function httpJsonRpcAuth(
   const state = ctx.servers.get(id)!
   const url = state.config.url!
 
+  const method = String(body.method)
+  const deadline = fetchDeadline(method)
+  const dispatcher = await fetchDispatcher(deadline)
+  // The header deadline already equals the total cap for a JSON reply; an SSE
+  // reply that keeps streaming progress is bounded by the same total here.
+  const total = AbortSignal.timeout(mcpRequestDeadline(method).maxMs)
+  const signal = ctx.shutdownSignal ? AbortSignal.any([ctx.shutdownSignal, total]) : total
   let headers = await ctx.buildHttpHeaders(id)
-  let res = await httpFetch(url, headers, body, ctx.shutdownSignal)
+  let res = await httpFetch(url, headers, body, signal, dispatcher)
 
   if (res.status === 401) {
     // RFC 9728: server may advertise its authorization server via the
@@ -118,7 +128,7 @@ export async function httpJsonRpcAuth(
       throw new Error('OAuth authorization required — please reconnect this server')
     }
     headers = await ctx.buildHttpHeaders(id)
-    res = await httpFetch(url, headers, body, ctx.shutdownSignal)
+    res = await httpFetch(url, headers, body, signal, dispatcher)
     if (res.status === 401) {
       throw new Error('OAuth authorization expired — please reconnect this server')
     }
@@ -202,7 +212,13 @@ async function tryDiscoverOAuthFrom401(
   }
 }
 
-async function httpFetch(url: string, headers: Record<string, string>, body: Record<string, unknown>, signal?: AbortSignal) {
+async function httpFetch(
+  url: string,
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+  signal: AbortSignal | undefined,
+  dispatcher: unknown,
+) {
   try {
     return await fetch(url, {
       method: 'POST',
@@ -213,7 +229,9 @@ async function httpFetch(url: string, headers: Record<string, string>, body: Rec
       },
       body: JSON.stringify(body),
       signal,
-    })
+      // Node's fetch option (undici); see fetch-deadline.ts.
+      ...(dispatcher ? { dispatcher } : {}),
+    } as RequestInit)
   } catch (err: any) {
     // Node's undici throws a bare `TypeError: fetch failed` with the real
     // cause buried on `.cause`. Unwrap it so the user sees what actually

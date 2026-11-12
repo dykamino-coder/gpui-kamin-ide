@@ -9,6 +9,7 @@ import { spawn } from 'child_process'
 import type { McpResult } from '../tool-registry'
 import { collectMcpList } from '../pagination'
 import type { McpServerState, TransportContext } from './context'
+import { awaitMcpReply, withProgressToken } from './request-deadline'
 
 export async function connectStdio(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
@@ -253,26 +254,7 @@ export async function callStdioTool(
     return { content: [{ type: 'text', text: `Error: Server "${state.config.name}" process not running` }] }
   }
 
-  const reqId = state.nextRequestId++
-  const promise = new Promise<any>((resolve, reject) => {
-    const entry = { resolve, reject, timer: undefined as ReturnType<typeof setTimeout> | undefined }
-    state.pendingRequests.set(reqId, entry)
-    entry.timer = setTimeout(() => {
-      if (state.pendingRequests.has(reqId)) {
-        state.pendingRequests.delete(reqId)
-        reject(new Error('Tool call timeout (120s)'))
-      }
-    }, 120000)
-  })
-
-  stdioSend(state, {
-    jsonrpc: '2.0',
-    id: reqId,
-    method: 'tools/call',
-    params: { name: toolName, arguments: input },
-  })
-
-  const result = await promise
+  const result = await stdioRequest(ctx, state, 'tools/call', { name: toolName, arguments: input })
 
   if (result.error) {
     return { content: [{ type: 'text', text: `MCP Error: ${result.error.message}` }] }
@@ -300,19 +282,29 @@ export async function stdioJsonRpc(
 ): Promise<unknown> {
   const state = ctx.servers.get(id)
   if (!state?.process) throw new Error('stdio server not running')
-  const reqId = state.nextRequestId++
-  const promise = new Promise<any>((resolve, reject) => {
-    const entry = { resolve, reject, timer: undefined as ReturnType<typeof setTimeout> | undefined }
-    state.pendingRequests.set(reqId, entry)
-    entry.timer = setTimeout(() => {
-      if (state.pendingRequests.has(reqId)) {
-        state.pendingRequests.delete(reqId)
-        reject(new Error(`${method} timeout (120s)`))
-      }
-    }, 120000)
-  })
-  stdioSend(state, { jsonrpc: '2.0', id: reqId, method, params })
-  const msg = await promise
+  const msg = await stdioRequest(ctx, state, method, params)
   if (msg.error) throw new Error(msg.error.message)
   return msg.result
+}
+
+/** Sends one request and resolves with the raw reply frame. Interrupt or
+ *  deadline settles it at once and tells the server via `notifications/cancelled`. */
+function stdioRequest(
+  ctx: TransportContext,
+  state: McpServerState,
+  method: string,
+  params: Record<string, unknown>,
+): Promise<any> {
+  const reqId = state.nextRequestId++
+  const reply = awaitMcpReply<any>(state, reqId, {
+    method,
+    signal: ctx.shutdownSignal,
+    cancel: (requestId, reason) => stdioSend(state, {
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId, reason },
+    }),
+  })
+  stdioSend(state, { jsonrpc: '2.0', id: reqId, method, params: withProgressToken(method, reqId, params) })
+  return reply
 }
