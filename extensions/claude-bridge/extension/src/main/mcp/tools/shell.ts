@@ -51,12 +51,16 @@ nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-inte
     : ''
 
 /** Track background processes so BashOutput can poll them and KillShell can
- *  terminate them. `stdoutCursor`/`stderrCursor` mark how much each stream the
- *  model has already read, so BashOutput returns only NEW output (native-CLI
- *  parity). `command` is kept for the status header. */
+ *  terminate them. `stdout`/`stderr` keep the last BG_OUTPUT_CAP characters;
+ *  `*Dropped` counts the characters that fell out of that window before it.
+ *  `*Cursor` is the absolute character position the model has read up to, so
+ *  BashOutput returns only NEW output (native-CLI parity) and reports output
+ *  that was dropped before it was read. `command` is kept for the status header. */
 interface BackgroundOutput {
   stdout: string
   stderr: string
+  stdoutDropped: number
+  stderrDropped: number
   exitCode: number | null
   running: boolean
   stdoutCursor: number
@@ -252,20 +256,21 @@ export async function bashExecute(input: Record<string, unknown>, context?: Tool
 
 const BG_OUTPUT_CAP = 100 * 1024
 
-function appendBounded(chunks: Buffer[], lengthRef: { size: number }, chunk: Buffer): void {
-  lengthRef.size += chunk.length
-  chunks.push(chunk)
-  while (lengthRef.size > BG_OUTPUT_CAP && chunks.length > 0) {
-    const head = chunks[0]!
-    if (lengthRef.size - head.length >= BG_OUTPUT_CAP) {
-      lengthRef.size -= head.length
-      chunks.shift()
-    } else {
-      const keep = BG_OUTPUT_CAP - (lengthRef.size - head.length)
-      chunks[0] = head.subarray(head.length - keep)
-      lengthRef.size = BG_OUTPUT_CAP
-    }
-  }
+/** Appends decoded text to a stream's tail window and returns the new window
+ *  and how many leading characters fell out of it. Never starts the window
+ *  inside a surrogate pair. */
+export function appendTail(window: string, chunk: string, cap = BG_OUTPUT_CAP): { text: string; dropped: number } {
+  const text = window + chunk
+  if (text.length <= cap) return { text, dropped: 0 }
+  let cut = text.length - cap
+  const first = text.charCodeAt(cut)
+  if (first >= 0xdc00 && first <= 0xdfff) cut++
+  return { text: text.slice(cut), dropped: cut }
+}
+
+/** Output written after `cursor`, and how much of it was dropped unread. */
+function unread(text: string, dropped: number, cursor: number): { fresh: string; lost: number } {
+  return { fresh: text.slice(Math.max(0, cursor - dropped)), lost: Math.max(0, dropped - cursor) }
 }
 
 function runBackgroundCommand(
@@ -334,13 +339,11 @@ function registerBackground(
 ): McpResult {
   if (child.pid) {
     backgroundProcesses.set(bgId, child)
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
-    const stdoutLen = { size: 0 }
-    const stderrLen = { size: 0 }
     const output: BackgroundOutput = {
       stdout: '',
       stderr: '',
+      stdoutDropped: 0,
+      stderrDropped: 0,
       exitCode: null,
       running: true,
       stdoutCursor: 0,
@@ -354,14 +357,20 @@ function registerBackground(
     }
     backgroundOutput.set(bgId, output)
 
-    child.stdout?.on('data', (chunk: Buffer) => {
-      appendBounded(stdoutChunks, stdoutLen, chunk)
-      output.stdout = Buffer.concat(stdoutChunks).toString('utf8')
+    // Decoded across chunk boundaries, so a split multi-byte character and
+    // the cut at the window start never produce U+FFFD.
+    child.stdout?.setEncoding('utf8')
+    child.stderr?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk: string) => {
+      const next = appendTail(output.stdout, chunk)
+      output.stdout = next.text
+      output.stdoutDropped += next.dropped
     })
 
-    child.stderr?.on('data', (chunk: Buffer) => {
-      appendBounded(stderrChunks, stderrLen, chunk)
-      output.stderr = Buffer.concat(stderrChunks).toString('utf8')
+    child.stderr?.on('data', (chunk: string) => {
+      const next = appendTail(output.stderr, chunk)
+      output.stderr = next.text
+      output.stderrDropped += next.dropped
     })
 
     child.on('exit', (code) => {
@@ -392,10 +401,14 @@ export async function readBackgroundOutput(input: Record<string, unknown>): Prom
   const out = backgroundOutput.get(bgId)
   if (!out) return errorResult(`No background shell with bash_id ${bgId} (it may have been evicted).`)
 
-  let newStdout = out.stdout.slice(out.stdoutCursor)
-  const newStderr = out.stderr.slice(out.stderrCursor)
-  out.stdoutCursor = out.stdout.length
-  out.stderrCursor = out.stderr.length
+  // Cursors are absolute: the window shifts once output passes the cap, and a
+  // window-relative cursor then hid every later line from the model.
+  const stdoutPart = unread(out.stdout, out.stdoutDropped, out.stdoutCursor)
+  const stderrPart = unread(out.stderr, out.stderrDropped, out.stderrCursor)
+  let newStdout = stdoutPart.fresh
+  const newStderr = stderrPart.fresh
+  out.stdoutCursor = out.stdoutDropped + out.stdout.length
+  out.stderrCursor = out.stderrDropped + out.stderr.length
 
   const filter = typeof input.filter === 'string' ? input.filter : null
   if (filter && newStdout) {
@@ -412,6 +425,10 @@ export async function readBackgroundOutput(input: Record<string, unknown>): Prom
 
   const status = out.running ? 'running' : `exited (code ${out.exitCode ?? 'unknown'})`
   const parts = [`Status: ${status}`]
+  const lostNote = (stream: string, lost: number): string =>
+    `\n[${lost} characters of ${stream} were dropped before this read: only the last ${BG_OUTPUT_CAP} are kept]`
+  if (stdoutPart.lost) parts.push(lostNote('stdout', stdoutPart.lost))
+  if (stderrPart.lost) parts.push(lostNote('stderr', stderrPart.lost))
   if (newStdout) parts.push(`\n<stdout>\n${newStdout}\n</stdout>`)
   if (newStderr) parts.push(`\n<stderr>\n${newStderr}\n</stderr>`)
   if (!newStdout && !newStderr) parts.push(out.running ? '\n(no new output yet)' : '\n(no more output)')
