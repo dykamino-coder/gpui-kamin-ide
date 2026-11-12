@@ -5,6 +5,7 @@ use crate::interactive::sticky::sticky_wrap;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::writing_mode::vertical_hug;
+use crate::render::blocks::flow::leaf::{self, Leaf};
 use crate::render::blocks::inset_holder_box;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
@@ -77,12 +78,14 @@ pub(super) async fn build(
     let built = if let Some(block_axis) = holder_axis {
         inset_holder_box(e, block_axis, inherited, opts, &kw_len)
     } else {
-        crate::paint::effects::grouped::block_group(
-            animated(stk, e, inherited, opts).await,
-            e,
-            inherited,
-            built_frame,
-        )
+        // Текстовый лист строится одним проходом (`flow::leaf`); остальные —
+        // общим путём, со слитым стилем листа, если он уже посчитан.
+        let inner = match leaf::try_build(e, inherited, opts) {
+            None => animated(stk, e, inherited, opts).await,
+            Some(Leaf::Built(el)) => el,
+            Some(Leaf::Generic(merged)) => leaf::generic(stk, e, merged, inherited, opts).await,
+        };
+        crate::paint::effects::grouped::block_group(inner, e, inherited, built_frame)
     };
     let built = match root_box {
         Some(area)
