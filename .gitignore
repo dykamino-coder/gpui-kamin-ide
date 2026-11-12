@@ -48,6 +48,8 @@ extensions/claude-bridge/server/installer/
 *.heapsnapshot
 *.cpuprofile
 *.jsonl
+# Sanitized codex app-server protocol traces used as test fixtures.
+!extensions/claude-bridge/server/src/core/codex/fixtures/*.jsonl
 
 # ── Parity-аудит: отчёты .md нужны, скриншоты и логи — нет ──
 /parity/**/*.png

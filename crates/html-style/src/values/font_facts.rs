@@ -26,6 +26,7 @@ pub struct DocumentFonts {
     /// документа, щупов и платформенного контекста шрифтов.
     inputs_generation: Cell<u64>,
     used: used_memo::UsedFonts,
+    faces: face_memo::UsedFaces,
 }
 
 impl DocumentFonts {
@@ -40,6 +41,7 @@ impl DocumentFonts {
             installed: Default::default(),
             inputs_generation: Default::default(),
             used: Default::default(),
+            faces: Default::default(),
         }
     }
 }
@@ -133,6 +135,9 @@ pub use faces::FontFaces;
 
 mod used_memo;
 pub use used_memo::UsedFontKey;
+
+mod face_memo;
+pub use face_memo::UsedFace;
 
 mod detached;
 pub use detached::Detached;
