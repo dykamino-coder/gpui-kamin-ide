@@ -128,6 +128,17 @@ function shellTimeout(input: Record<string, unknown>, context?: ToolCallContext)
     : 1_500_000
 }
 
+/** Flags of native Claude Code's PowerShell tool (2.1.177): no profile, no
+ *  prompts, and the execution policy bypassed unless the user opts out with
+ *  CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY. Loading the profile cost
+ *  ~100 ms per call and made results depend on the user's profile. */
+export function powerShellFlags(env: NodeJS.ProcessEnv): string[] {
+  const flags = ['-NoLogo', '-NoProfile', '-NonInteractive']
+  const respect = env.CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY
+  if (!respect || ['0', 'false', 'no', 'off'].includes(respect.toLowerCase())) flags.push('-ExecutionPolicy', 'Bypass')
+  return [...flags, '-Command']
+}
+
 export async function powerShellExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const command = input.command as string
   if (!command) return errorResult('command is required')
@@ -154,7 +165,7 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
     '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n' + command
   let script: ScriptInvocation
   try {
-    script = scriptInvocation('powershell', ['-NoLogo', '-NonInteractive', '-Command'], wrapped)
+    script = scriptInvocation('powershell', powerShellFlags(process.env), wrapped)
   } catch (err) {
     return errorResult(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`)
   }

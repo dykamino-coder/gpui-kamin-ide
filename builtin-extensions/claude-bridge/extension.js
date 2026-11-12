@@ -12122,6 +12122,12 @@ function shellTimeout(input, context) {
   }
   return typeof input.timeout === "number" && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 18e5)) : 15e5;
 }
+function powerShellFlags(env4) {
+  const flags = ["-NoLogo", "-NoProfile", "-NonInteractive"];
+  const respect = env4.CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY;
+  if (!respect || ["0", "false", "no", "off"].includes(respect.toLowerCase())) flags.push("-ExecutionPolicy", "Bypass");
+  return [...flags, "-Command"];
+}
 async function powerShellExecute(input, context) {
   const command = input.command;
   if (!command) return errorResult2("command is required");
@@ -12137,7 +12143,7 @@ async function powerShellExecute(input, context) {
   const wrapped = "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n" + command;
   let script;
   try {
-    script = scriptInvocation("powershell", ["-NoLogo", "-NonInteractive", "-Command"], wrapped);
+    script = scriptInvocation("powershell", powerShellFlags(process.env), wrapped);
   } catch (err) {
     return errorResult2(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -37286,7 +37292,10 @@ async function blockReason(parsed) {
 }
 async function readCapped(resp, maxBytes) {
   const reader = resp.body?.getReader();
-  if (!reader) return (await resp.text()).slice(0, maxBytes);
+  if (!reader) {
+    const text2 = await resp.text();
+    return { text: text2.slice(0, maxBytes), truncated: text2.length > maxBytes };
+  }
   const chunks = [];
   let total = 0;
   for (; ; ) {
@@ -37305,7 +37314,8 @@ async function readCapped(resp, maxBytes) {
     }
   }
   const buf = Buffer.concat(chunks, total);
-  return new TextDecoder("utf-8", { fatal: false }).decode(buf.subarray(0, maxBytes));
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(buf.subarray(0, maxBytes), { stream: total > maxBytes });
+  return { text, truncated: total >= maxBytes };
 }
 async function fetchGuarded(start, headers, signal) {
   let current = start;
@@ -37360,7 +37370,7 @@ async function webFetch(input) {
       return errorResult5(`Response too large (${Math.round(declaredLen / 1024 / 1024)} MB) for ${url} \u2014 fetch a more specific URL.`);
     }
     const contentType = response.headers.get("content-type") || "";
-    const body = await readCapped(response, MAX_RAW_HTML_BYTES);
+    const { text: body, truncated: bodyTruncated } = await readCapped(response, MAX_RAW_HTML_BYTES);
     let content;
     if (contentType.includes("text/html") || contentType.includes("application/xhtml")) {
       content = convertHtml(extractMainContent(body));
@@ -37371,6 +37381,10 @@ async function webFetch(input) {
       content = content.slice(0, MAX_CONTENT_BYTES) + `
 
 [Content truncated at ${Math.round(MAX_CONTENT_BYTES / 1024)}KB]`;
+    } else if (bodyTruncated) {
+      content += `
+
+[Response body truncated at ${MAX_RAW_HTML_BYTES / 1024 / 1024} MB before extraction; the rest of the page is missing]`;
     }
     return textResult5(
       `URL: ${parsedUrl.toString()}

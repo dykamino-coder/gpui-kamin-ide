@@ -43,7 +43,10 @@ describe('background task execution policy', () => {
       await powerShellExecute({ command: 'Start-Sleep -Seconds 180', run_in_background: true })
       expect(mock.spawn.mock.lastCall?.[1]).toEqual([
         '-NoLogo',
+        '-NoProfile',
         '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
         '-Command',
         expect.stringMatching(/^Invoke-Expression \(\[System\.IO\.File\]::ReadAllText\('.+\.ps1'\)\)$/),
       ])
