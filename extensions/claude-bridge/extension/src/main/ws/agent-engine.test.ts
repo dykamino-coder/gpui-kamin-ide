@@ -78,6 +78,20 @@ describe('agent engine on the client connection', () => {
     internal.dispatchMessage({ type: 'session:created', sessionId: 's2', model: 'claude-opus-5-5', engine: 'claude' })
     expect(frames.filter((f) => f.type === 'session:change-model')).toHaveLength(1)
   })
+
+  it('drops the picked model when the server opened the chat on the other engine', () => {
+    // A GPT chat whose ChatGPT side is signed out runs Claude (engine fallback):
+    // the GPT model id must not be sent to the Claude session, nor the reverse.
+    const gpt = manager({ engine: 'codex', model: 'gpt-6-luna' })
+    gpt.internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: 'claude-opus-5-5', engine: 'claude' })
+    expect(gpt.m.getEngine()).toBe('claude')
+    expect(gpt.frames.some((f) => f.type === 'session:change-model')).toBe(false)
+
+    const claude = manager({ engine: 'claude', model: 'claude-sonnet-5-5' })
+    claude.internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: 'gpt-6-luna', engine: 'codex' })
+    expect(claude.frames.some((f) => f.type === 'session:change-model')).toBe(false)
+  })
+
   it('does not send a model change when codex already started on the picked model', () => {
     const { internal, frames } = manager({ engine: 'codex', model: 'gpt-5.5' })
     internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: 'gpt-5.5', engine: 'codex' })
