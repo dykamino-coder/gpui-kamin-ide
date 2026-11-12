@@ -197,6 +197,7 @@ pub(crate) async fn table_stack(
         cols_pct,
         zero_cols,
         win_edges,
+        edge_styles: Default::default(),
         outer_win,
         table_is_vertical,
         bw: [0.0; 4],
