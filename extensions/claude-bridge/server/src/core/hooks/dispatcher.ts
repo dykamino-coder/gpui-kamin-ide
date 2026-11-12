@@ -111,6 +111,17 @@ export async function dispatchHook(
   } catch (err) {
     result = errorResult(err instanceof Error ? err.message : String(err), start)
   }
+  // Where a hook's time goes: `hostMs` is what the executing host measured
+  // (the client host for local hooks), the rest of `totalMs` is the server and
+  // the WebSocket. The CLI's relay start-up lies outside both.
+  debugLog('Hook dispatched', {
+    sessionId,
+    event: reg.event,
+    host: reg.effectiveHost,
+    outcome: result.outcome,
+    totalMs: Date.now() - start,
+    hostMs: result.durationMs,
+  })
 
   // Audit-log every dispatched hook (success/error/timeout/cancel) so the
   // UI Log tab and downstream compliance tooling can see what happened.

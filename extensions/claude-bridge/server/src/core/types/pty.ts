@@ -37,6 +37,8 @@ export interface McpLogEntry {
   status: 'ok' | 'error'
   error?: string
   durationMs?: number
+  /** Where a forwarded tool call spent its time (mcp-trace). */
+  phases?: import('../pty/mcp-trace').McpPhases
 }
 
 export interface SessionTeardown {

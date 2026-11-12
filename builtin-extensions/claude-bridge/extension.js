@@ -41704,8 +41704,13 @@ async function handleHookExecute(ctx, msg) {
     });
   }
 }
+function callTiming(receivedAt, toolStartedAt, toolEndedAt, sentAt) {
+  const ms = (n) => Math.max(0, Math.round(n * 10) / 10);
+  return { queuedMs: ms(toolStartedAt - receivedAt), toolMs: ms(toolEndedAt - toolStartedAt), totalMs: ms(sentAt - receivedAt) };
+}
 async function handleMcpCall(ctx, msg) {
   if (ctx.pendingMcpCalls.has(msg.requestId)) return;
+  const receivedAt = performance.now();
   const correlation = { requestId: msg.requestId, toolName: msg.toolName };
   mcpDiagnostic("request-received", correlation);
   const controller = new AbortController();
@@ -41729,6 +41734,7 @@ async function handleMcpCall(ctx, msg) {
     return;
   }
   const start = Date.now();
+  const toolStartedAt = performance.now();
   mcpDiagnostic("execution-started", correlation);
   let result;
   try {
@@ -41747,6 +41753,7 @@ async function handleMcpCall(ctx, msg) {
   } catch (err) {
     result = `Error: ${err instanceof Error ? err.message : String(err)}`;
   }
+  const toolEndedAt = performance.now();
   mcpDiagnostic("execution-finished", {
     ...correlation,
     durationMs: Date.now() - start
@@ -41757,7 +41764,8 @@ async function handleMcpCall(ctx, msg) {
       type: "mcp:response",
       requestId: msg.requestId,
       result,
-      taskOwner: msg.taskOwner
+      taskOwner: msg.taskOwner,
+      timing: callTiming(receivedAt, toolStartedAt, toolEndedAt, performance.now())
     });
     result = void 0;
     const delivered = await delivery;

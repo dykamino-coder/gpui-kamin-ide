@@ -11,6 +11,7 @@ import {
   rememberCommandResult,
 } from './commands'
 import { settleMcpTask } from './mcp-tasks'
+import { traceAnswered } from './mcp-trace'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
 import type { Server as HttpServer } from 'http'
@@ -416,6 +417,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         case 'mcp:response':
         case 'mcp:denied': {
           if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
+          if (msg.type === 'mcp:response') traceAnswered(msg.requestId, msg.timing)
           let accepted: boolean
           try {
             const session = getSession(authenticatedSessionId)
