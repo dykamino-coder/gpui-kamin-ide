@@ -93,12 +93,13 @@ class Folding(unittest.TestCase):
             "r 2 paint 64 30 1 4",  # realloc of a block from before the window: its free is unknown
             "f 2 layout 100 10",
             "a 2 layout 8 10 1 2",  # same address again after its free
-            "# end frame=2 after=build_elements",
+            "# end frame=2 after=build_elements live=72",
             "# dropped 0",
         ])
         totals = {key[0]: value for key, value in run.groups.items()}
         self.assertEqual(totals, {"style": [1.0, 64.0], "layout": [1.0, 8.0]})
-        self.assertEqual(run.end, "end frame=2 after=build_elements")
+        self.assertEqual(run.end, "end frame=2 after=build_elements live=72")
+        self.assertEqual(run.meta()["audit_live_bytes_at_end"], 72)
         self.assertEqual(run.meta()["bytes"], 72)
 
     def test_allocated_mode_counts_every_allocation(self):

@@ -19,8 +19,13 @@
 //! всегда стоит раньше строки повторного выделения того же адреса.
 //! Сворачивает файл `scripts/memprof.py` по PDB той же сборки.
 
+mod line;
 mod sample;
 mod sink;
+mod window;
+
+use line::{emit, head};
+use window::{Filter, Until};
 
 use kamin_html::work::Phase;
 use std::{
@@ -59,62 +64,6 @@ unsafe extern "system" {
         trace: *mut *mut c_void,
         hash: *mut u32,
     ) -> u16;
-}
-
-/// Какие аллокации записывать: фаза (`None` — любая) и кадры замера.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Filter {
-    phase: Option<usize>,
-    first: u64,
-    last: u64,
-}
-impl Filter {
-    fn parse(spec: &str, names: &[&str]) -> Option<Self> {
-        let (phase, frames) = match spec.split_once('@') {
-            Some((phase, frames)) => (phase, Some(frames)),
-            None => (spec, None),
-        };
-        let phase = match phase {
-            "*" => None,
-            "outside" => Some(OUTSIDE),
-            name => Some(names.iter().position(|known| *known == name)?),
-        };
-        let (first, last) = match frames.map(|frames| frames.split_once('-').ok_or(frames)) {
-            None => (0, u64::MAX),
-            Some(Ok((first, last))) => (first.parse().ok()?, last.parse().ok()?),
-            Some(Err(one)) => {
-                let one = one.parse().ok()?;
-                (one, one)
-            }
-        };
-        (first <= last).then_some(Self { phase, first, last })
-    }
-    fn matches(self, phase: usize, frame: u64) -> bool {
-        self.phase.is_none_or(|wanted| wanted == phase) && (self.first..=self.last).contains(&frame)
-    }
-}
-
-/// Конец окна: выход последнего кадра из фазы `phase`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Until {
-    #[default]
-    Open,
-    /// Ещё не вошли в фазу.
-    Before,
-    /// Последний кадр сейчас в фазе.
-    Inside,
-    /// Окно закрыто навсегда.
-    Closed,
-}
-impl Until {
-    /// Следующее состояние при входе в `phase` кадра `frame`.
-    fn step(self, until: usize, last: u64, phase: usize, frame: u64) -> Self {
-        match self {
-            Self::Before if frame == last && phase == until => Self::Inside,
-            Self::Inside if phase != until => Self::Closed,
-            other => other,
-        }
-    }
 }
 
 struct Probe {
@@ -204,7 +153,14 @@ fn rearm() {
             *window = next;
             drop(window);
             let name = Phase::NAMES[until];
-            sink::trailer(&format!("# end frame={frame} after={name}\n"));
+            // Счётчик аудита в тот же момент: отчёт сверяет с ним, сколько кучи увидел.
+            let live = super::Snapshot::read().live;
+            let counter = if cfg!(feature = "allocation-audit") {
+                format!(" live={live}")
+            } else {
+                String::new()
+            };
+            sink::trailer(&format!("# end frame={frame} after={name}{counter}\n"));
             return;
         }
         *window = next;
@@ -251,43 +207,6 @@ pub(super) fn record(kind: u8, bytes: usize, pointer: *const u8) {
 pub(super) fn release(bytes: usize, pointer: *const u8) {
     if ARMED.load(Relaxed) && sample::forget(pointer) {
         write_release(bytes, pointer);
-    }
-}
-
-/// Строка в буфере на стеке: запись из аллокатора не может выделять память.
-struct Line {
-    bytes: [u8; 1024],
-    length: usize,
-}
-impl std::fmt::Write for Line {
-    fn write_str(&mut self, text: &str) -> std::fmt::Result {
-        let end = self.length + text.len();
-        self.bytes
-            .get_mut(self.length..end)
-            .ok_or(std::fmt::Error)?
-            .copy_from_slice(text.as_bytes());
-        self.length = end;
-        Ok(())
-    }
-}
-
-/// Начало строки: вид, кадр, фаза, байты и указатель.
-fn head(kind: u8, bytes: usize, pointer: *const u8) -> (Line, std::fmt::Result) {
-    let phase = PHASE.load(Relaxed);
-    let name = Phase::NAMES.get(phase).copied().unwrap_or("outside");
-    let mut line = Line {
-        bytes: [0; 1024],
-        length: 0,
-    };
-    let frame = FRAME.load(Relaxed);
-    let pointer = pointer as usize;
-    let text = write!(line, "{} {frame} {name} {bytes} {pointer:x}", kind as char);
-    (line, text)
-}
-
-fn emit(mut line: Line, text: std::fmt::Result) {
-    if text.and_then(|()| line.write_str("\n")).is_ok() {
-        sink::write(&line.bytes[..line.length]);
     }
 }
 

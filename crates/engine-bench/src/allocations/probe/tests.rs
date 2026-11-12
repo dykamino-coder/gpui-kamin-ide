@@ -1,5 +1,6 @@
 //! Фильтр и конец окна пробника, отсутствие следа в счётчиках, граница строки.
 
+use super::line::Line;
 use super::*;
 
 const NAMES: [&str; 3] = ["layout", "paint", "raster_gpu_readback"];
