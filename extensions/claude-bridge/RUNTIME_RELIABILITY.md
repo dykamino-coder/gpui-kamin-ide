@@ -1123,7 +1123,7 @@ teardown fix.
 **Acceptance:** automated + Windows runtime merge gate.
 **Windows runtime merge gate:** required.
 
-**Acceptance probe candidate (2026-11-13):** a separate Change PR adds
+**Acceptance probe candidate (2026-11-13):** Change PR [#830](https://github.com/dykamino-coder/gpui-kamin-ide/pull/830) adds
 `{"cmd":"hostDisconnect"}` to close only the shell's current host WebSocket.
 The existing disconnect callback cancels pending RPCs and reconnects normally;
 the shell and host processes remain running. `ok: true` acknowledges the close
