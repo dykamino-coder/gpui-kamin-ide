@@ -1,5 +1,5 @@
 // Owns bounded foreground shell output and process deadline settlement.
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 import type { McpResult } from './shell'
 import { windowsJobRunner } from './windows-job-runner'
@@ -23,6 +23,9 @@ export function runForegroundCommand(
   signal?: AbortSignal,
   onOutput?: (chunk: string) => void,
   cwd?: string,
+  /** A shell started ahead of time (warm-shell.ts); it already carries the
+   *  same runner, flags, environment and folder as the spawn below. */
+  prestarted?: () => ChildProcess | null,
 ): Promise<McpResult> {
   if (signal?.aborted)
     return Promise.resolve({
@@ -75,7 +78,7 @@ export function runForegroundCommand(
     // installed: ending the runner then ends every process of the command.
     const runner = windowsJobRunner()
     const argv = [...shellFlags, command]
-    const child = spawn(runner ?? shell, runner ? [shell, ...argv] : argv, {
+    const child = prestarted?.() ?? spawn(runner ?? shell, runner ? [shell, ...argv] : argv, {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: process.platform !== 'win32',

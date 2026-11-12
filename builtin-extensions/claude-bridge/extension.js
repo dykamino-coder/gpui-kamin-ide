@@ -3891,7 +3891,7 @@ var init_windows_job_runner = __esm({
 });
 
 // src/main/mcp/tools/shell-foreground.ts
-function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env, signal, onOutput, cwd) {
+function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env, signal, onOutput, cwd, prestarted) {
   if (signal?.aborted)
     return Promise.resolve({
       ...errorResult("Command cancelled"),
@@ -3944,7 +3944,7 @@ ${stderr}`);
     };
     const runner = windowsJobRunner();
     const argv = [...shellFlags, command];
-    const child = (0, import_node_child_process2.spawn)(runner ?? shell2, runner ? [shell2, ...argv] : argv, {
+    const child = prestarted?.() ?? (0, import_node_child_process2.spawn)(runner ?? shell2, runner ? [shell2, ...argv] : argv, {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       detached: process.platform !== "win32",
@@ -12084,6 +12084,89 @@ var init_script_file = __esm({
   }
 });
 
+// src/main/mcp/tools/warm-shell.ts
+function acceptorCommand(kind) {
+  return kind === "bash" ? 'IFS= read -r __ocb_d && IFS= read -r REPLY || exit 0; exec 0</dev/null; __ocb_o=${OLDPWD-}; cd -- "$__ocb_d" || exit 1; OLDPWD=$__ocb_o; unset __ocb_d __ocb_o; . "$REPLY"' : (
+    // Encoding setup and a first Invoke-Expression run while waiting: they
+    // are the slow first-use part of every PowerShell command script.
+    "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false; Invoke-Expression '$null = Get-Location'; $__ocb_d = [Console]::In.ReadLine(); if ($null -eq $__ocb_d) { exit 0 }; Set-Location -LiteralPath $__ocb_d; [System.IO.Directory]::SetCurrentDirectory($__ocb_d); Remove-Variable __ocb_d; Invoke-Expression ([System.IO.File]::ReadAllText([Console]::In.ReadLine()))"
+  );
+}
+function warmKey(shell2, flags, env4) {
+  return JSON.stringify([shell2, flags, Object.entries(env4).sort(([a], [b]) => a < b ? -1 : 1)]);
+}
+function startWaiting(shell2, flags, kind, env4) {
+  const runner = windowsJobRunner();
+  const argv = [...flags, acceptorCommand(kind)];
+  const child = (0, import_node_child_process4.spawn)(runner ?? shell2, runner ? [shell2, ...argv] : argv, {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+    detached: process.platform !== "win32",
+    env: env4,
+    cwd: import_node_os3.default.tmpdir()
+  });
+  child.on("error", () => {
+  });
+  child.stdin?.on("error", () => {
+  });
+  return child;
+}
+function discard(entry) {
+  clearTimeout(entry.timer);
+  if (waiting.get(entry.key) === entry) waiting.delete(entry.key);
+  entry.child.stdin?.destroy();
+  try {
+    entry.child.kill();
+  } catch {
+  }
+}
+function takeWarmShell(key2, shell2, flags, kind, env4) {
+  let taken = null;
+  for (const entry2 of [...waiting.values()]) {
+    if (entry2.key !== key2) {
+      if (JSON.parse(entry2.key)[0] === shell2) discard(entry2);
+      continue;
+    }
+    clearTimeout(entry2.timer);
+    waiting.delete(key2);
+    const alive = entry2.child.exitCode === null && entry2.child.signalCode === null && entry2.child.pid !== void 0;
+    if (alive && entry2.child.stdin?.writable) taken = entry2.child;
+    else discard(entry2);
+  }
+  const child = startWaiting(shell2, flags, kind, env4);
+  const entry = { key: key2, child, timer: setTimeout(() => discard(entry), IDLE_MS) };
+  entry.timer.unref?.();
+  child.unref();
+  child.stdout?.unref?.();
+  child.stderr?.unref?.();
+  child.stdin?.unref?.();
+  child.once("exit", () => {
+    if (waiting.get(key2) === entry) discard(entry);
+  });
+  waiting.set(key2, entry);
+  return taken;
+}
+function startWarmShell(child, cwd, scriptPath) {
+  ;
+  child.ref?.();
+  for (const stream of [child.stdout, child.stderr]) stream?.ref?.();
+  child.stdin?.end(`${cwd}
+${scriptPath}
+`);
+  return child;
+}
+var import_node_child_process4, import_node_os3, IDLE_MS, waiting;
+var init_warm_shell = __esm({
+  "src/main/mcp/tools/warm-shell.ts"() {
+    "use strict";
+    import_node_child_process4 = require("node:child_process");
+    import_node_os3 = __toESM(require("node:os"), 1);
+    init_windows_job_runner();
+    IDLE_MS = 10 * 6e4;
+    waiting = /* @__PURE__ */ new Map();
+  }
+});
+
 // src/main/mcp/tools/shell.ts
 async function shellEnv() {
   const binDirs = await listEnabledPluginBinDirs();
@@ -12121,6 +12204,15 @@ function shellTimeout(input, context) {
     return Math.max(1, Math.min(context.taskDeadlineMs - Date.now(), 864e5));
   }
   return typeof input.timeout === "number" && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 18e5)) : 15e5;
+}
+function warmShell(kind, shell2, flags, env4, cwd, scriptPath) {
+  return () => {
+    if (process.env.KAMIN_WARM_SHELL === "0") return null;
+    const child = takeWarmShell(warmKey(shell2, flags, env4), shell2, flags, kind, env4);
+    if (!child) return null;
+    const folder = cwd ?? process.cwd();
+    return kind === "bash" ? startWarmShell(child, toPosixShellPath(folder), toPosixShellPath(scriptPath)) : startWarmShell(child, folder, scriptPath);
+  };
 }
 function powerShellFlags(env4) {
   const flags = ["-NoLogo", "-NoProfile", "-NonInteractive"];
@@ -12170,7 +12262,8 @@ async function powerShellExecute(input, context) {
       env4,
       context?.signal,
       context?.onOutput,
-      context?.cwd
+      context?.cwd,
+      warmShell("powershell", pwshPath, flags, env4, context?.cwd, script.file.path)
     );
   } finally {
     script.file.dispose();
@@ -12221,7 +12314,8 @@ async function bashExecute(input, context) {
       env4,
       context?.signal,
       context?.onOutput,
-      context?.cwd
+      context?.cwd,
+      warmShell("bash", shell2, shellFlags, env4, context?.cwd, script.file.path)
     );
   } finally {
     script.file.dispose();
@@ -12259,7 +12353,7 @@ function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"],
   return registerBackground(child, bgId, description, context, tool, displayCommand);
 }
 function spawnBackground(shell2, argv, tool, env4, context) {
-  return (0, import_node_child_process4.spawn)(shell2, argv, {
+  return (0, import_node_child_process5.spawn)(shell2, argv, {
     stdio: ["ignore", "pipe", "pipe"],
     // Windows PowerShell exits without executing -Command when started with
     // DETACHED_PROCESS. Keep its console hidden without detaching it.
@@ -12432,7 +12526,7 @@ function disposeBackgroundShells(tabId) {
     if (!child?.pid) continue;
     out.stopped = true;
     if (process.platform === "win32") {
-      const killer = (0, import_node_child_process4.spawn)("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+      const killer = (0, import_node_child_process5.spawn)("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
         windowsHide: true,
         stdio: "ignore"
       });
@@ -12454,17 +12548,19 @@ async function stopBackgroundShellForOwner(tabId, owner, id) {
   if (out?.tabId !== tabId || out.owner !== owner) return;
   await stopLocalBackgroundShell(tabId, id);
 }
-var import_node_child_process4, import_node_path5, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
+var import_node_child_process5, import_node_path5, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
 var init_shell = __esm({
   "src/main/mcp/tools/shell.ts"() {
     "use strict";
-    import_node_child_process4 = require("node:child_process");
+    import_node_child_process5 = require("node:child_process");
     init_shell_foreground();
     import_node_path5 = __toESM(require("node:path"), 1);
     init_shell_snapshot();
     init_plugin_helpers();
     init_command_runtime();
     init_script_file();
+    init_command_runtime();
+    init_warm_shell();
     WINDOWS_MODAL_SHIM = process.platform === "win32" ? `nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-interactive shells \u2014 use fnm, volta, or a direct Node installer" >&2; return 127; }
 ` : "";
     backgroundProcesses = /* @__PURE__ */ new Map();
@@ -12491,18 +12587,18 @@ function resolveWorkingDirectory(...candidates) {
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim() && isDirectory(candidate)) return candidate;
   }
-  return import_node_os3.default.homedir();
+  return import_node_os4.default.homedir();
 }
 function resolveToolPath(target, workingDirectory) {
   if (import_node_path6.default.isAbsolute(target)) return target;
   return import_node_path6.default.resolve(resolveWorkingDirectory(workingDirectory), target);
 }
-var import_node_fs5, import_node_os3, import_node_path6;
+var import_node_fs5, import_node_os4, import_node_path6;
 var init_working_directory = __esm({
   "src/main/utils/working-directory.ts"() {
     "use strict";
     import_node_fs5 = __toESM(require("node:fs"), 1);
-    import_node_os3 = __toESM(require("node:os"), 1);
+    import_node_os4 = __toESM(require("node:os"), 1);
     import_node_path6 = __toESM(require("node:path"), 1);
   }
 });
@@ -13053,7 +13149,7 @@ async function killProcessTree(proc) {
   if (!proc.pid) return;
   if (process.platform === "win32") {
     await new Promise((resolve) => {
-      const killer = (0, import_node_child_process5.spawn)("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
+      const killer = (0, import_node_child_process6.spawn)("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
         windowsHide: true,
         stdio: "ignore"
       });
@@ -13112,7 +13208,7 @@ async function executeHook(req, fallbackCwd) {
       };
     }
     const options = loadPluginOptions(req.pluginId);
-    const dataDir = import_node_path7.default.join(import_node_os4.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+    const dataDir = import_node_path7.default.join(import_node_os5.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
     try {
       import_node_fs6.default.mkdirSync(dataDir, { recursive: true });
     } catch {
@@ -13156,13 +13252,13 @@ async function executeHook(req, fallbackCwd) {
     };
     try {
       if (!execForm) script = scriptInvocation(shell2.kind, shell2.args, command);
-      proc = execForm ? (0, import_node_child_process5.spawn)(command, args ?? [], {
+      proc = execForm ? (0, import_node_child_process6.spawn)(command, args ?? [], {
         cwd,
         env: { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" },
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
         detached: process.platform !== "win32"
-      }) : (0, import_node_child_process5.spawn)(shell2.bin, script.args, {
+      }) : (0, import_node_child_process6.spawn)(shell2.bin, script.args, {
         cwd,
         env: { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" },
         windowsHide: true,
@@ -13251,12 +13347,12 @@ spawn error: ${err.message}`,
     }
   });
 }
-var import_node_child_process5, import_node_os4, import_node_fs6, import_node_path7, DEFAULT_TIMEOUT_MS, HOOK_OUTPUT_CAP;
+var import_node_child_process6, import_node_os5, import_node_fs6, import_node_path7, DEFAULT_TIMEOUT_MS, HOOK_OUTPUT_CAP;
 var init_executor = __esm({
   "src/main/hooks/executor.ts"() {
     "use strict";
-    import_node_child_process5 = require("node:child_process");
-    import_node_os4 = __toESM(require("node:os"), 1);
+    import_node_child_process6 = require("node:child_process");
+    import_node_os5 = __toESM(require("node:os"), 1);
     import_node_fs6 = __toESM(require("node:fs"), 1);
     import_node_path7 = __toESM(require("node:path"), 1);
     init_plugin_helpers();
@@ -13339,9 +13435,9 @@ var require_path = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.convertPosixPathToPattern = exports2.convertWindowsPathToPattern = exports2.convertPathToPattern = exports2.escapePosixPath = exports2.escapeWindowsPath = exports2.escape = exports2.removeLeadingDotSegment = exports2.makeAbsolute = exports2.unixify = void 0;
-    var os34 = require("os");
+    var os35 = require("os");
     var path50 = require("path");
-    var IS_WINDOWS_PLATFORM = os34.platform() === "win32";
+    var IS_WINDOWS_PLATFORM = os35.platform() === "win32";
     var LEADING_DOT_SEGMENT_CHARACTERS_COUNT = 2;
     var POSIX_UNESCAPED_GLOB_SYMBOLS_RE = /(\\?)([()*?[\]{|}]|^!|[!+@](?=\()|\\(?![!()*+?@[\]{|}]))/g;
     var WINDOWS_UNESCAPED_GLOB_SYMBOLS_RE = /(\\?)([()[\]{}]|^!|[!+@](?=\())/g;
@@ -18859,8 +18955,8 @@ var require_settings4 = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.DEFAULT_FILE_SYSTEM_ADAPTER = void 0;
     var fs45 = require("fs");
-    var os34 = require("os");
-    var CPU_COUNT = Math.max(os34.cpus().length, 1);
+    var os35 = require("os");
+    var CPU_COUNT = Math.max(os35.cpus().length, 1);
     exports2.DEFAULT_FILE_SYSTEM_ADAPTER = {
       lstat: fs45.lstat,
       lstatSync: fs45.lstatSync,
@@ -19281,7 +19377,7 @@ var init_fs_shared = __esm({
 async function ripgrepStream(args, target, signal, onLines) {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Error("aborted"));
-    const child = (0, import_node_child_process6.spawn)("rg", [...args, target], {
+    const child = (0, import_node_child_process7.spawn)("rg", [...args, target], {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       signal
@@ -19316,7 +19412,7 @@ async function ripgrepStream(args, target, signal, onLines) {
 async function spawnRipgrep(args, timeoutMs, singleThread = false) {
   return new Promise((resolve, reject) => {
     const extraArgs = singleThread ? ["-j", "1"] : [];
-    const child = (0, import_node_child_process6.spawn)("rg", [...extraArgs, ...args], {
+    const child = (0, import_node_child_process7.spawn)("rg", [...extraArgs, ...args], {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
     });
@@ -19585,13 +19681,13 @@ function fallbackResult(results, offset, headLimit, timedOut, timeoutMs) {
 [Search timed out after ${seconds}s \u2014 partial results above; try a narrower path or pattern]` : "";
   return textResult4((output || "No matches found.") + suffix);
 }
-var import_promises3, import_node_path8, import_node_child_process6, FALLBACK_TIMEOUT_MS;
+var import_promises3, import_node_path8, import_node_child_process7, FALLBACK_TIMEOUT_MS;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
     import_promises3 = __toESM(require("node:fs/promises"), 1);
     import_node_path8 = __toESM(require("node:path"), 1);
-    import_node_child_process6 = require("node:child_process");
+    import_node_child_process7 = require("node:child_process");
     init_working_directory();
     init_fs_shared();
     FALLBACK_TIMEOUT_MS = 54e4;
@@ -37423,7 +37519,7 @@ function errorResult6(message) {
 }
 function runGitLocal(args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const proc = (0, import_node_child_process7.spawn)("git", args, { cwd: opts.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const proc = (0, import_node_child_process8.spawn)("git", args, { cwd: opts.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";
     const timer = opts.timeoutMs ? setTimeout(() => {
       try {
@@ -37508,11 +37604,11 @@ Based on: HEAD`
     return errorResult6(`Failed to create worktree: ${msg}`);
   }
 }
-var import_node_child_process7, import_node_path10, import_node_fs7, import_node_crypto2;
+var import_node_child_process8, import_node_path10, import_node_fs7, import_node_crypto2;
 var init_git = __esm({
   "src/main/mcp/tools/git.ts"() {
     "use strict";
-    import_node_child_process7 = require("node:child_process");
+    import_node_child_process8 = require("node:child_process");
     import_node_path10 = __toESM(require("node:path"), 1);
     import_node_fs7 = __toESM(require("node:fs"), 1);
     import_node_crypto2 = __toESM(require("node:crypto"), 1);
@@ -37964,7 +38060,7 @@ async function discoverPluginLspConfigs() {
       const config = raw;
       if (typeof config.command !== "string" || !config.command.trim()) continue;
       if (!config.extensionToLanguage || typeof config.extensionToLanguage !== "object" || Array.isArray(config.extensionToLanguage)) continue;
-      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path11.default.join(import_node_os5.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
+      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path11.default.join(import_node_os6.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
       const env4 = {};
       for (const [key2, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key2] = subst(value);
       for (const [key2, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
@@ -38003,13 +38099,13 @@ function matchLspLanguage(extensionToLanguage, file) {
   }
   return null;
 }
-var import_node_child_process8, import_node_fs8, import_node_os5, import_node_path11, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
+var import_node_child_process9, import_node_fs8, import_node_os6, import_node_path11, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
 var init_plugin_lsp = __esm({
   "src/main/plugin-lsp.ts"() {
     "use strict";
-    import_node_child_process8 = require("node:child_process");
+    import_node_child_process9 = require("node:child_process");
     import_node_fs8 = __toESM(require("node:fs"), 1);
-    import_node_os5 = __toESM(require("node:os"), 1);
+    import_node_os6 = __toESM(require("node:os"), 1);
     import_node_path11 = __toESM(require("node:path"), 1);
     import_node_url = require("node:url");
     init_plugin_helpers();
@@ -38119,7 +38215,7 @@ var init_plugin_lsp = __esm({
           }
           this.child = null;
         }
-        const dataDir = import_node_path11.default.join(import_node_os5.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+        const dataDir = import_node_path11.default.join(import_node_os6.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
         import_node_fs8.default.mkdirSync(dataDir, { recursive: true });
         let cwd = this.projectRoot;
         if (this.config.workspaceFolder) {
@@ -38135,7 +38231,7 @@ var init_plugin_lsp = __esm({
           CLAUDE_PROJECT_DIR: this.projectRoot,
           PATH: [import_node_fs8.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path11.default.delimiter)
         };
-        this.child = (0, import_node_child_process8.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
+        this.child = (0, import_node_child_process9.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
           cwd,
           env: env4,
           stdio: ["pipe", "pipe", "pipe"],
@@ -52546,9 +52642,9 @@ var import_path35 = __toESM(require("path"), 1);
 
 // src/attachments.ts
 var import_promises7 = __toESM(require("node:fs/promises"), 1);
-var import_node_os6 = __toESM(require("node:os"), 1);
+var import_node_os7 = __toESM(require("node:os"), 1);
 var import_node_path13 = __toESM(require("node:path"), 1);
-async function saveAttachment(base64, name, root = import_node_os6.default.tmpdir()) {
+async function saveAttachment(base64, name, root = import_node_os7.default.tmpdir()) {
   if (typeof base64 !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
     throw new Error("Invalid attachment encoding");
   }
