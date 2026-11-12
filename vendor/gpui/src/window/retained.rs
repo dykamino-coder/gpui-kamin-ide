@@ -181,8 +181,10 @@ impl InkTarget for InkSink {
 }
 
 /// The ink sinks open at a point of paint: rarely more than one, and copied
-/// into every deferred paint environment, so the usual depth stays inline.
-pub(crate) type InkSinks = smallvec::SmallVec<[Rc<dyn InkTarget>; 2]>;
+/// into every deferred paint environment, so one sink stays inline. One
+/// inline (wide) pointer keeps the list as small as a `Vec` (24 bytes with
+/// smallvec's `union`): the scene and every paint snapshot keep their size.
+pub(crate) type InkSinks = smallvec::SmallVec<[Rc<dyn InkTarget>; 1]>;
 const INK_TAINTED: u32 = 1;
 const INK_PAINTED: u32 = 2;
 const INK_LATE_ALL: u32 = 4;

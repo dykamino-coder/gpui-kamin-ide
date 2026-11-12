@@ -22444,7 +22444,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..f2658b23918746942993f57c15dd7205e74b8760
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..c33adb6efd8f4ca3a3ba37596f8d13cc37741cce
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -24368,7 +24368,18 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..f2658b23918746942993f57c15dd7205
 +        drop(scope.exit(&outer));
 +        outer.borrow_mut().clear();
 +    }
-@@ -8036,0 +9474,56 @@
+@@ -8036,0 +9474,67 @@
++    /// KaminIDE patch: the open ink sinks, copied into every paint snapshot,
++    /// take the room of the list of sinks they replaced.
++    #[test]
++    fn open_ink_sinks_take_the_room_of_a_vec() {
++        use std::mem::size_of;
++        assert_eq!(
++            size_of::<crate::InkSinks>(),
++            size_of::<Vec<std::rc::Rc<crate::InkSink>>>()
++        );
++    }
++
 +    /// KaminIDE patch: a wrapper that opts out of the dispatch tree
 +    /// (`Element::dispatch_node`) takes no node of it; its child still does.
 +    #[test]
@@ -27467,10 +27478,10 @@ index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6bdc47b65bf0d75f9e49a8a5f6200d3d22be18a8
+index 0000000000000000000000000000000000000000..ce4e25d8be36f673487dcbdacccfce3aa13b2ca0
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,633 @@
+@@ -0,0 +1,635 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -27654,8 +27665,10 @@ index 0000000000000000000000000000000000000000..6bdc47b65bf0d75f9e49a8a5f6200d3d
 +}
 +
 +/// The ink sinks open at a point of paint: rarely more than one, and copied
-+/// into every deferred paint environment, so the usual depth stays inline.
-+pub(crate) type InkSinks = smallvec::SmallVec<[Rc<dyn InkTarget>; 2]>;
++/// into every deferred paint environment, so one sink stays inline. One
++/// inline (wide) pointer keeps the list as small as a `Vec` (24 bytes with
++/// smallvec's `union`): the scene and every paint snapshot keep their size.
++pub(crate) type InkSinks = smallvec::SmallVec<[Rc<dyn InkTarget>; 1]>;
 +const INK_TAINTED: u32 = 1;
 +const INK_PAINTED: u32 = 2;
 +const INK_LATE_ALL: u32 = 4;

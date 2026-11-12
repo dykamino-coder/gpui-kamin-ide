@@ -9471,6 +9471,17 @@ mod tests {
         }
     }
 
+    /// KaminIDE patch: the open ink sinks, copied into every paint snapshot,
+    /// take the room of the list of sinks they replaced.
+    #[test]
+    fn open_ink_sinks_take_the_room_of_a_vec() {
+        use std::mem::size_of;
+        assert_eq!(
+            size_of::<crate::InkSinks>(),
+            size_of::<Vec<std::rc::Rc<crate::InkSink>>>()
+        );
+    }
+
     /// KaminIDE patch: a wrapper that opts out of the dispatch tree
     /// (`Element::dispatch_node`) takes no node of it; its child still does.
     #[test]
