@@ -32,6 +32,8 @@ export type ClientMessage =
       sessionId?: string
       requestId: string
       result: unknown
+      /** Durations on this host, read by the server's per-call trace. */
+      timing?: { queuedMs: number; toolMs: number; totalMs: number }
     }
   | {
       type: 'mcp:denied'

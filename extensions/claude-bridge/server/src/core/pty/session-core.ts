@@ -1413,10 +1413,11 @@ export function sendMcpCall(
   toolName: string,
   input: Record<string, unknown>,
   signal?: AbortSignal,
+  requestId?: string,
 ): Promise<unknown> {
   const session = sessions.get(sessionId)
   if (!session) return Promise.reject(new Error(`Session ${sessionId} not found`))
-  return sendMcpCallToSession(session, toolName, input, signal)
+  return sendMcpCallToSession(session, toolName, input, signal, requestId)
 }
 
 // ---------------------------------------------------------------------------
