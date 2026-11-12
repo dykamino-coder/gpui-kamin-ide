@@ -21,6 +21,7 @@ import { getUserTimeSeries } from '../../stats/database/aggregates'
 import { clearAll, deleteRequestsByFilter } from '../../stats/database/crud'
 import { getAllSessions } from '../../pty/session-manager'
 import { denyApiToken, denyForeignUser, denyForeignSubject } from '../authz'
+import { engineClause, nullableEngineClause, parseEngineFilter } from '../../stats/engine-filter'
 
 /** Resolve the owning user_name for a sessionId (session_tokens is the
  *  authoritative owner map). Returns undefined if unknown. */
@@ -244,11 +245,12 @@ export function registerStatsRoutes(api: Hono): void {
     sweepThrottled(sweepAll)
     const period = (c.req.query('period') || 'day') as 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year'
     const days = parseInt(c.req.query('days') || '0', 10)
-    const cacheKey = `${period}|${days}`
+    const engine = parseEngineFilter(c.req.query('engine'))
+    const cacheKey = `${period}|${days}|${engine ?? ''}`
     const cached = timeseriesCache.get(cacheKey)
     const now = Date.now()
     if (cached && now - cached.at < 30_000) return c.json(cached.data)
-    const data = await getUserTimeSeries(period, days)
+    const data = await getUserTimeSeries(period, days, engine)
     timeseriesCache.set(cacheKey, { at: now, data })
     return c.json(data)
   })
@@ -292,7 +294,9 @@ export function registerStatsRoutes(api: Hono): void {
     // "today" means for streaks.
     const sinceIso = sinceDays ? new Date(Date.now() - sinceDays * 86_400_000).toISOString() : null
 
-    const cacheKey = `${range}|${tokenId ?? ''}|${compact ? 'hm' : 'v1'}|${tzOffsetMin}`
+    // Per transcript line, so a chat that ran on both engines splits exactly.
+    const engine = parseEngineFilter(c.req.query('engine'))
+    const cacheKey = `${range}|${tokenId ?? ''}|${compact ? 'hm' : 'v1'}|${tzOffsetMin}|${engine ?? ''}`
     const cachedOverview = overviewCache.get(cacheKey)
     if (cachedOverview && Date.now() - cachedOverview.at < OVERVIEW_CACHE_TTL_MS) {
       return c.json(cachedOverview.data)
@@ -306,7 +310,7 @@ export function registerStatsRoutes(api: Hono): void {
     const filters: string[] = ["(e.model IS NULL OR e.model != '<synthetic>')"]
     if (sinceIso) filters.push(`e.timestamp >= '${sinceIso}'`)
     if (tokenId) filters.push(`st.user_name = '${tokenId.replace(/'/g, "''")}'`)
-    const where = `WHERE ${filters.join(' AND ')}`
+    const where = `WHERE ${filters.join(' AND ')}${engineClause('e.engine', engine)}`
 
     const TOKEN_SUM = `(COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0))`
 
@@ -340,7 +344,7 @@ export function registerStatsRoutes(api: Hono): void {
         INNER JOIN session_tokens st
           ON st.session_id = e.session_id AND st.deleted = 0
         WHERE e.type = 'assistant' AND COALESCE(e.is_subagent,0) = 0 AND (e.model IS NULL OR e.model != '<synthetic>')
-          ${tokenId ? `AND st.user_name = '${tokenId.replace(/'/g, "''")}'` : ''}
+          ${tokenId ? `AND st.user_name = '${tokenId.replace(/'/g, "''")}'` : ''}${engineClause('e.engine', engine)}
         GROUP BY e.session_id
       )
     `)
@@ -350,26 +354,60 @@ export function registerStatsRoutes(api: Hono): void {
     // Per-model totals — order matters for "favorite", but no time bucketing.
     const modelTotalsRaw = (
       await db.runAndReadAll(`
-      SELECT e.model as model,
+      SELECT e.model as model, e.engine as engine,
         SUM(${TOKEN_SUM}) as in_tokens,
         SUM(COALESCE(e.output_tokens,0)) as out_tokens
       ${joinClause} ${where} AND e.type = 'assistant' AND e.model IS NOT NULL AND e.model != '' AND e.model != '<synthetic>'
-      GROUP BY e.model
+      GROUP BY e.model, e.engine
       ORDER BY (in_tokens + out_tokens) DESC
     `)
-    ).getRowObjects() as Array<{ model: string; in_tokens: bigint | number; out_tokens: bigint | number }>
+    ).getRowObjects() as Array<{
+      model: string
+      engine: string
+      in_tokens: bigint | number
+      out_tokens: bigint | number
+    }>
     const modelTotals = modelTotalsRaw.map((r) => ({
       model: r.model,
+      engine: r.engine,
       in_tokens: Number(r.in_tokens ?? 0),
       out_tokens: Number(r.out_tokens ?? 0),
     }))
     const modelsTotalAll = modelTotals.reduce((s, r) => s + r.in_tokens + r.out_tokens, 0)
     const models = modelTotals.map((r) => ({
       name: r.model,
+      engine: r.engine,
       in: r.in_tokens,
       out: r.out_tokens,
       pct: modelsTotalAll > 0 ? ((r.in_tokens + r.out_tokens) / modelsTotalAll) * 100 : 0,
     }))
+
+    // The same counters split by engine (one scan), for the Claude / ChatGPT
+    // breakdown. Sessions are counted per engine: a mixed chat is in both.
+    const engineRows = (
+      await db.runAndReadAll(`
+      SELECT e.engine as engine,
+        COUNT(DISTINCT e.session_id) as sessions,
+        SUM(CASE WHEN e.type = 'user' THEN 1 ELSE 0 END) as user_messages,
+        SUM(CASE WHEN e.type = 'assistant' THEN 1 ELSE 0 END) as assistant_messages,
+        SUM(CASE WHEN e.type = 'assistant' THEN ${TOKEN_SUM} ELSE 0 END) as in_tokens,
+        SUM(CASE WHEN e.type = 'assistant' THEN COALESCE(e.output_tokens,0) ELSE 0 END) as out_tokens
+      ${joinClause} ${where}
+      GROUP BY e.engine
+    `)
+    ).getRowObjects() as Array<Record<string, string | bigint | number | null>>
+    const engines = Object.fromEntries(
+      engineRows.map((r) => [
+        String(r.engine),
+        {
+          sessions: Number(r.sessions ?? 0),
+          userMessages: Number(r.user_messages ?? 0),
+          assistantMessages: Number(r.assistant_messages ?? 0),
+          inTokens: Number(r.in_tokens ?? 0),
+          outTokens: Number(r.out_tokens ?? 0),
+        },
+      ]),
+    )
     const favoriteModel = models[0]?.name ?? null
 
     // Hourly buckets — UTC ISO hour key like '2026-04-25T19'. Client
@@ -422,6 +460,8 @@ export function registerStatsRoutes(api: Hono): void {
 
     const payload = {
       range,
+      engine: engine ?? 'all',
+      engines,
       sessions: Number(counters?.sessions ?? 0),
       userMessages: Number(counters?.user_messages ?? 0),
       assistantMessages: Number(counters?.assistant_messages ?? 0),
@@ -464,6 +504,7 @@ export function registerStatsRoutes(api: Hono): void {
     // Live PTY sessions hold the real cwd in memory — use them as a
     // fallback for historical session_tokens rows that pre-date the
     // `cwd` column migration.
+    const engine = parseEngineFilter(c.req.query('engine'))
     const liveCwdByConvId = new Map<string, string>()
     for (const ps of getAllSessions()) {
       if (ps.cliConversationId && ps.cwd) liveCwdByConvId.set(ps.cliConversationId, ps.cwd)
@@ -481,6 +522,8 @@ export function registerStatsRoutes(api: Hono): void {
         st.pre_boundary_snapshots as session_pre_boundary_snapshots,
         MIN(e.timestamp) as started_at,
         MAX(e.timestamp) as last_activity_at,
+        -- Engines the chat ran on ('claude', 'codex' or both).
+        string_agg(DISTINCT e.engine, ',') as engines,
         SUM(CASE WHEN e.type = 'user' THEN 1 ELSE 0 END) as user_messages,
         -- One assistant TURN can be split across multiple JSONL rows that
         -- share message.id (e.g. one row for the thinking block and another
@@ -499,13 +542,13 @@ export function registerStatsRoutes(api: Hono): void {
         (
           SELECT COALESCE(a.input_tokens,0) + COALESCE(a.cache_read_tokens,0) + COALESCE(a.cache_write_tokens,0)
           FROM jsonl_accounting_events a
-          WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0
+          WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0${engineClause('a.engine', engine)}
           ORDER BY a.timestamp DESC LIMIT 1
         ) as last_context,
         (
           SELECT a.model FROM jsonl_accounting_events a
           WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0
-            AND a.model IS NOT NULL AND a.model != ''
+            AND a.model IS NOT NULL AND a.model != ''${engineClause('a.engine', engine)}
           ORDER BY a.timestamp DESC LIMIT 1
         ) as model,
         (
@@ -514,7 +557,7 @@ export function registerStatsRoutes(api: Hono): void {
       FROM jsonl_accounting_events e
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
-      WHERE st.user_name = ?
+      WHERE st.user_name = ?${engineClause('e.engine', engine)}
       GROUP BY e.session_id, st.cwd, st.title, st.last_context,
                st.compact_boundaries, st.context_tokens, st.pre_boundary_snapshots
       ORDER BY last_activity_at DESC
@@ -551,6 +594,10 @@ export function registerStatsRoutes(api: Hono): void {
       folder: r.session_cwd || liveCwdByConvId.get(r.session_id) || folderFromPath(r.file_path),
       startedAt: r.started_at,
       lastActivityAt: r.last_activity_at,
+      engines: String(r.engines ?? 'claude')
+        .split(',')
+        .filter(Boolean)
+        .sort(),
       userMessages: Number(r.user_messages ?? 0),
       assistantMessages: Number(r.assistant_messages ?? 0),
       compactCount: Number(r.session_compact_boundaries ?? 0),
@@ -672,13 +719,15 @@ export function registerStatsRoutes(api: Hono): void {
     const { getDb } = await import('../../stats/database/lifecycle')
     const db = await getDb()
     const since = new Date(Date.now() - 86_400_000).toISOString()
+    const engine = parseEngineFilter(c.req.query('engine'))
     const row = (
       await db.runAndReadAll(
         `SELECT
          COUNT(*) AS total,
          SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS last24h,
-         MAX(timestamp) AS last_at
-       FROM api_errors`,
+         MAX(timestamp) AS last_at,
+         SUM(CASE WHEN COALESCE(engine, 'claude') = 'codex' THEN 1 ELSE 0 END) AS codex
+       FROM api_errors WHERE TRUE${nullableEngineClause('engine', engine)}`,
         [since],
       )
     ).getRowObjects()[0] as any
@@ -686,6 +735,7 @@ export function registerStatsRoutes(api: Hono): void {
       total: Number(row?.total ?? 0),
       last24h: Number(row?.last24h ?? 0),
       lastAt: row?.last_at ?? null,
+      byEngine: { claude: Number(row?.total ?? 0) - Number(row?.codex ?? 0), codex: Number(row?.codex ?? 0) },
     })
   })
 
@@ -701,6 +751,7 @@ export function registerStatsRoutes(api: Hono): void {
     const period = (c.req.query('period') || 'day') as 'hour' | 'day'
     const days = parseInt(c.req.query('days') || '7', 10)
     const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString()
+    const engine = parseEngineFilter(c.req.query('engine'))
     const groupCol =
       period === 'hour'
         ? `strftime(timestamp::TIMESTAMP, '%Y-%m-%d') || ' ' || strftime(timestamp::TIMESTAMP, '%H')`
@@ -712,7 +763,7 @@ export function registerStatsRoutes(api: Hono): void {
         SUM(CASE WHEN error_type LIKE '%timeout%' OR error_type LIKE '%Timeout%' THEN 1 ELSE 0 END) AS timeouts,
         SUM(CASE WHEN error_type IN ('429') OR error_type LIKE '%rate%' THEN 1 ELSE 0 END) AS rate_limited
        FROM api_errors
-       WHERE timestamp >= ?
+       WHERE timestamp >= ?${nullableEngineClause('engine', engine)}
        GROUP BY period
        ORDER BY period ASC`,
         [sinceIso],
@@ -736,10 +787,12 @@ export function registerStatsRoutes(api: Hono): void {
     const { getDb } = await import('../../stats/database/lifecycle')
     const db = await getDb()
     const limit = Math.min(500, parseInt(c.req.query('limit') || '50', 10))
+    const engine = parseEngineFilter(c.req.query('engine'))
     const rows = (
       await db.runAndReadAll(
-        `SELECT timestamp, session_id, user_name, error_type, url, attempt, max_attempts, retry_ms, raw
-       FROM api_errors
+        `SELECT timestamp, session_id, user_name, error_type, url, attempt, max_attempts, retry_ms, raw,
+         COALESCE(engine, 'claude') AS engine
+       FROM api_errors WHERE TRUE${nullableEngineClause('engine', engine)}
        ORDER BY timestamp DESC LIMIT ?`,
         [limit],
       )
@@ -749,6 +802,7 @@ export function registerStatsRoutes(api: Hono): void {
         timestamp: String(r.timestamp),
         sessionId: r.session_id,
         userName: r.user_name,
+        engine: r.engine,
         errorType: r.error_type,
         url: r.url,
         attempt: Number(r.attempt ?? 0),

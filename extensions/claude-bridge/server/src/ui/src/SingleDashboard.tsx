@@ -25,6 +25,7 @@ import { codexStatusRow, type CodexStatus } from './components/dashboard/codex-a
 import { UsageChart } from './components/dashboard/UsageChart'
 import { ApiErrorsCard } from './components/dashboard/ApiErrorsCard'
 import { McpUsageReport } from './components/dashboard/McpUsageReport'
+import { EngineBadge, asEngine } from './components/dashboard/engine'
 
 import { navigateToConsole } from './router'
 import styles from './SingleDashboard.module.css'
@@ -560,10 +561,18 @@ export function SingleDashboard() {
                         {titleText}
                       </div>
                       <div
-                        style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}
+                        style={{
+                          fontSize: '10px',
+                          color: 'var(--text-muted)',
+                          fontFamily: 'var(--font-mono)',
+                          display: 'flex',
+                          gap: 6,
+                          alignItems: 'center',
+                        }}
                         title={s.id}
                       >
                         {s.id.slice(0, 8)}
+                        <EngineBadge engine={asEngine(s.engine)} />
                       </div>
                     </td>
                     <td style={{ padding: '8px 12px', color: 'var(--text-primary)' }}>{s.userName || '—'}</td>

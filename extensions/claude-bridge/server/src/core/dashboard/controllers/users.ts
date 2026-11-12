@@ -6,6 +6,8 @@ import type { Hono } from 'hono'
 import { getDb } from '../../stats/database/lifecycle'
 import { getAllSessions } from '../../pty/session-manager'
 import { denyApiToken, denyForeignUser } from '../authz'
+import { engineClause, parseEngineFilter } from '../../stats/engine-filter'
+import { OPENAI_LONG_CONTEXT_TOKENS, OPENAI_PRICES_AS_OF, openAiCost } from '../../../shared/openai-pricing'
 
 // Anthropic published base rates per 1M tokens. Keep aligned with the
 // KaminIDE webview's session-cost helper so dashboard cost ≈ client.
@@ -49,6 +51,56 @@ export function tierForModel(model: string | null | undefined): CostTier {
   return TIER_3_15
 }
 
+interface CodexCostAcc {
+  usd: number
+  unpricedTokens: number
+  unpricedModels: Set<string>
+}
+
+interface CostRow {
+  user_name: string
+  model: string
+  input_tokens: bigint | number
+  output_tokens: bigint | number
+  cache_read_tokens: bigint | number
+  cache_write_tokens: bigint | number
+  long_context: boolean
+}
+
+/** Adds one (user, model, rate tier) group of codex tokens at the OpenAI list
+ *  price; a model without a published price adds its tokens, never a guess. */
+export function addCodexCost(acc: Map<string, CodexCostAcc>, r: CostRow): void {
+  const entry = acc.get(r.user_name) ?? { usd: 0, unpricedTokens: 0, unpricedModels: new Set<string>() }
+  acc.set(r.user_name, entry)
+  const tokens = {
+    input: Number(r.input_tokens ?? 0),
+    cacheRead: Number(r.cache_read_tokens ?? 0),
+    cacheWrite: Number(r.cache_write_tokens ?? 0),
+    output: Number(r.output_tokens ?? 0),
+  }
+  const usd = openAiCost(r.model, tokens, Boolean(r.long_context))
+  if (usd !== null) {
+    entry.usd += usd
+    return
+  }
+  entry.unpricedTokens += tokens.input + tokens.cacheRead + tokens.cacheWrite + tokens.output
+  entry.unpricedModels.add(r.model)
+}
+
+export function codexSummary(acc: CodexCostAcc | undefined): {
+  apiEquivalentUsd: number
+  unpricedTokens: number
+  unpricedModels: string[]
+  pricesAsOf: string
+} {
+  return {
+    apiEquivalentUsd: acc?.usd ?? 0,
+    unpricedTokens: acc?.unpricedTokens ?? 0,
+    unpricedModels: [...(acc?.unpricedModels ?? [])].sort(),
+    pricesAsOf: OPENAI_PRICES_AS_OF,
+  }
+}
+
 export function registerUserRoutes(api: Hono): void {
   // GET /api/dashboard/users — aggregated per-user summary.
   //
@@ -61,6 +113,8 @@ export function registerUserRoutes(api: Hono): void {
     const denied = denyApiToken(c)
     if (denied) return denied
     const db = await getDb()
+    const engine = parseEngineFilter(c.req.query('engine'))
+    const onEngine = engineClause('e.engine', engine)
 
     // Per-user totals (no model split needed for these sums).
     const aggRowsRaw = (
@@ -83,7 +137,7 @@ export function registerUserRoutes(api: Hono): void {
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
       WHERE st.user_name IS NOT NULL AND st.user_name != ''
-        AND (e.model IS NULL OR e.model != '<synthetic>')
+        AND (e.model IS NULL OR e.model != '<synthetic>')${onEngine}
       GROUP BY st.user_name
     `)
     ).getRowObjects() as Array<{
@@ -111,6 +165,44 @@ export function registerUserRoutes(api: Hono): void {
 
     const aggMap = new Map(aggRows.map((r) => [r.user_name, r]))
 
+    // The same per-user totals split by engine (per transcript line, so a
+    // chat that ran on both engines lands in both).
+    const engineRows = (
+      await db.runAndReadAll(`
+      SELECT st.user_name as user_name, e.engine as engine,
+        COUNT(DISTINCT e.session_id) as sessions,
+        SUM(CASE WHEN e.type = 'user' THEN 1 ELSE 0 END) as user_inputs,
+        SUM(CASE WHEN e.type = 'assistant' THEN 1 ELSE 0 END) as responses,
+        SUM(CASE WHEN e.type = 'assistant' THEN COALESCE(e.input_tokens,0) ELSE 0 END) as input_uncached,
+        SUM(CASE WHEN e.type = 'assistant' THEN COALESCE(e.output_tokens,0) ELSE 0 END) as output_tokens,
+        SUM(CASE WHEN e.type = 'assistant' THEN COALESCE(e.cache_read_tokens,0) ELSE 0 END) as cache_read,
+        SUM(CASE WHEN e.type = 'assistant' THEN COALESCE(e.cache_write_tokens,0) ELSE 0 END) as cache_creation
+      FROM jsonl_accounting_events e
+      INNER JOIN session_tokens st
+        ON st.session_id = e.session_id AND st.deleted = 0
+      WHERE st.user_name IS NOT NULL AND st.user_name != ''
+        AND (e.model IS NULL OR e.model != '<synthetic>')${onEngine}
+      GROUP BY st.user_name, e.engine
+    `)
+    ).getRowObjects() as Array<Record<string, string | bigint | number | null>>
+    const enginesByUser = new Map<string, Record<string, unknown>>()
+    for (const r of engineRows) {
+      const user = String(r.user_name)
+      const byEngine = enginesByUser.get(user) ?? {}
+      byEngine[String(r.engine)] = {
+        sessions: Number(r.sessions ?? 0),
+        totalInputs: Number(r.user_inputs ?? 0),
+        responses: Number(r.responses ?? 0),
+        tokens: {
+          input: Number(r.input_uncached ?? 0),
+          output: Number(r.output_tokens ?? 0),
+          cacheRead: Number(r.cache_read ?? 0),
+          cacheCreation: Number(r.cache_creation ?? 0),
+        },
+      }
+      enginesByUser.set(user, byEngine)
+    }
+
     // Per-(user, model) breakdown for cost computation — every model
     // family has its own per-1M-token rates.
     const costRows = (
@@ -118,31 +210,40 @@ export function registerUserRoutes(api: Hono): void {
       SELECT
         st.user_name as user_name,
         e.model as model,
+        e.engine as engine,
         SUM(COALESCE(e.input_tokens,0)) as input_tokens,
         SUM(COALESCE(e.output_tokens,0)) as output_tokens,
         SUM(COALESCE(e.cache_read_tokens,0)) as cache_read_tokens,
         SUM(COALESCE(e.cache_write_tokens,0)) as cache_write_tokens,
         SUM(COALESCE(e.cache_write_1h_tokens,0)) as cache_write_1h_tokens,
-        (COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0) > 100000) as long_prompt
+        (COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0) > 100000) as long_prompt,
+        (COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0) > ${OPENAI_LONG_CONTEXT_TOKENS}) as long_context
       FROM jsonl_accounting_events e
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
       WHERE st.user_name IS NOT NULL AND st.user_name != ''
-        AND e.type = 'assistant' AND e.model IS NOT NULL AND e.model != '' AND e.model != '<synthetic>'
-      GROUP BY st.user_name, e.model, long_prompt
+        AND e.type = 'assistant' AND e.model IS NOT NULL AND e.model != '' AND e.model != '<synthetic>'${onEngine}
+      GROUP BY st.user_name, e.model, e.engine, long_prompt, long_context
     `)
     ).getRowObjects() as Array<{
       user_name: string
       model: string
+      engine: string
       input_tokens: bigint | number
       output_tokens: bigint | number
       cache_read_tokens: bigint | number
       cache_write_tokens: bigint | number
       cache_write_1h_tokens: bigint | number
       long_prompt: boolean
+      long_context: boolean
     }>
     const costByUser = new Map<string, number>()
+    const codexCost = new Map<string, { usd: number; unpricedTokens: number; unpricedModels: Set<string> }>()
     for (const r of costRows) {
+      if (r.engine === 'codex') {
+        addCodexCost(codexCost, r)
+        continue
+      }
       const base = tierForModel(r.model)
       const multiplier = r.model.includes('haiku-5') && r.long_prompt ? 5 : 1
       const tier = {
@@ -173,10 +274,10 @@ export function registerUserRoutes(api: Hono): void {
             SELECT COALESCE(a.input_tokens,0) + COALESCE(a.cache_read_tokens,0) + COALESCE(a.cache_write_tokens,0)
             FROM jsonl_accounting_events a
             WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0
-              AND (a.model IS NULL OR a.model != '<synthetic>')
+              AND (a.model IS NULL OR a.model != '<synthetic>')${engineClause('a.engine', engine)}
             ORDER BY a.timestamp DESC LIMIT 1
           ) as last_ctx
-        FROM (SELECT DISTINCT session_id FROM jsonl_accounting_events) e
+        FROM (SELECT DISTINCT session_id FROM jsonl_accounting_events e WHERE TRUE${onEngine}) e
       ) sessCtx
       INNER JOIN session_tokens st ON st.session_id = sessCtx.session_id AND st.deleted = 0
       WHERE st.user_name IS NOT NULL AND st.user_name != ''
@@ -210,8 +311,12 @@ export function registerUserRoutes(api: Hono): void {
           },
           // Sum of per-session real-text Context (matches Sessions modal).
           contextTokens: ctxByUser.get(userName) ?? 0,
-          // USD cost summed across model tiers.
+          // Claude: USD summed across model tiers.
           cost: costByUser.get(userName) ?? 0,
+          // ChatGPT (codex): billed by the ChatGPT plan; the API list price of
+          // the same tokens, and the tokens of models with no published price.
+          codex: codexSummary(codexCost.get(userName)),
+          engines: enginesByUser.get(userName) ?? {},
           firstSeen: r?.first_seen ?? null,
           lastSeen: r?.last_seen ?? null,
         }

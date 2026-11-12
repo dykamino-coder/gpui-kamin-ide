@@ -22,6 +22,7 @@ import { codexLockdownConfig, toConfigOverrides } from './config-toml'
 import { buildPatchedCatalog, type ModelCatalog } from './model-catalog'
 import { probeCodexNetwork } from './network-probe'
 import { currentModels } from './model-list-filter'
+import { parseCodexRateLimits, type CodexRateLimits } from '../../shared/codex-rate-limits'
 
 export interface CodexAccountStatus {
   loggedIn: boolean
@@ -126,6 +127,7 @@ export class CodexRuntime {
   private readonly registry: CodexHostRegistry
   private catalog: Promise<ModelCatalog> | undefined
   private account: { value: CodexAccountStatus; at: number } | undefined
+  private limits: CodexRateLimits | undefined
   private pending: CodexDeviceLogin | null = null
   private lastError: CodexErrorInfo | null = null
   private readonly listening = new WeakSet<CodexHost>()
@@ -287,6 +289,15 @@ export class CodexRuntime {
     }
   }
 
+  /** ChatGPT plan windows of the signed-in account (cached for the account TTL). */
+  async rateLimits(options: { fresh?: boolean } = {}): Promise<CodexRateLimits> {
+    const ttl = this.options.accountTtlMs ?? ACCOUNT_TTL_MS
+    if (!options.fresh && this.limits && Date.now() - this.limits.readAt < ttl) return this.limits
+    const host = await this.host()
+    this.limits = parseCodexRateLimits(await host.rpc.request('account/rateLimits/read'))
+    return this.limits
+  }
+
   /** codex names no cause for a blocked connection ("workspace routing
    *  discovery failed"); ask the network the way codex would. */
   private async explainReadFailure(info: CodexErrorInfo): Promise<CodexErrorInfo> {
@@ -338,6 +349,7 @@ export class CodexRuntime {
     }
     this.pending = null
     this.lastError = null
+    this.limits = undefined
   }
 
   // ── Models ─────────────────────────────────────────────────────────────

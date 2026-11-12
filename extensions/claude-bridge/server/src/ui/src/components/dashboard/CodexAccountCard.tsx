@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/compat'
 import { StatusCard } from './StatusCard'
-import { api, CodexApiError } from '../../services/api-client'
+import { api, CodexApiError, type CodexRateLimits } from '../../services/api-client'
+import { CodexLimitBars } from './CodexLimitBars'
 import { codexAccountEventAt } from '../../signals/server'
 import {
   CODEX_POLL_INTERVAL_MS,
@@ -27,6 +28,8 @@ export function CodexAccountCard() {
   const [actionErr, setActionErr] = useState<CodexErrorInfo | null>(null)
   const [copied, setCopied] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
+  // ChatGPT plan windows; read only while signed in (server returns null otherwise).
+  const [limits, setLimits] = useState<CodexRateLimits | null>(null)
   // Drops responses that arrive after a newer request started.
   const seq = useRef(0)
 
@@ -39,6 +42,12 @@ export function CodexAccountCard() {
         if (id !== seq.current) return
         setStatus(next)
         setFetchError(null)
+        if (!next.loggedIn) return setLimits(null)
+        // A failed limits read keeps the card usable; the bars just stay away.
+        return api
+          .getCodexLimits(force)
+          .then((r) => id === seq.current && setLimits(r.limits))
+          .catch(() => id === seq.current && setLimits(null))
       })
       .catch((error: Error) => {
         if (id === seq.current) setFetchError(error.message)
@@ -176,6 +185,8 @@ export function CodexAccountCard() {
           </button>
         </div>
       )}
+
+      {view.mode === 'signed-in' && limits && <CodexLimitBars limits={limits} />}
 
       {view.mode === 'signed-in' && (
         <div class={styles.center}>

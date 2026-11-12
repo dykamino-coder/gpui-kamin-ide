@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/compat'
 import { Card, Modal } from '../shared'
+import { EngineBadge, asEngine } from './engine'
 
 interface ErrorPoint {
   period: string
@@ -13,6 +14,8 @@ interface ErrorRow {
   timestamp: string
   sessionId: string | null
   userName: string | null
+  /** 'claude' | 'codex' (absent from older servers = claude). */
+  engine?: string
   errorType: string
   url: string
   attempt: number
@@ -126,11 +129,12 @@ function ErrorsChartAndList() {
           : (
             <div style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {recent.map((r, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr auto', gap: 10, padding: '6px 10px', background: 'var(--bg-tertiary)', borderRadius: 4, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: 'auto auto auto 1fr auto', gap: 10, padding: '6px 10px', background: 'var(--bg-tertiary)', borderRadius: 4, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
                   <span style={{ color: 'var(--text-muted)' }}>{new Date(r.timestamp).toLocaleString()}</span>
+                  <EngineBadge engine={asEngine(r.engine)} />
                   <span style={{ color: 'var(--accent-red)', fontWeight: 600 }}>{r.errorType}</span>
-                  <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.url}>{r.url}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>attempt {r.attempt}/{r.maxAttempts} · retry {r.retryMs}ms</span>
+                  <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.url || r.raw}>{r.url || r.raw}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{r.maxAttempts > 0 ? `attempt ${r.attempt}/${r.maxAttempts} · retry ${r.retryMs}ms` : 'turn failed'}</span>
                 </div>
               ))}
             </div>

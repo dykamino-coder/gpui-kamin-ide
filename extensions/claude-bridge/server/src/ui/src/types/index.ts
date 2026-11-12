@@ -20,7 +20,7 @@ export interface RequestLogEntry {
   isUserRequest?: boolean; userMessage?: string;
   sessionKey?: string;
 }
-export interface UserTimeSeriesEntry { userName: string; period: string; requests: number; inputTokens: number; outputTokens: number }
+export interface UserTimeSeriesEntry { userName: string; engine?: 'claude' | 'codex'; period: string; requests: number; inputTokens: number; outputTokens: number }
 export interface HealthCheck {
   sessions: number; account: { email?: string; organization?: string; subscriptionType?: string } | null;
   apiPing: number | null; testResponse?: string; error?: string; model?: string;

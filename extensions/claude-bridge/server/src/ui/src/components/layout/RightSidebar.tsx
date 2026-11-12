@@ -6,6 +6,8 @@ import { userColor } from '../../utils/user-colors'
 import { api } from '../../services/api-client'
 import type { UserSummary } from '../../services/api-client'
 import styles from './RightSidebar.module.css'
+import { engineFilter } from '../dashboard/engine'
+import { codexCostLine, engineTokensTooltip } from './user-engine-lines'
 
 const users = signal<UserSummary[]>([])
 
@@ -27,7 +29,7 @@ function timeAgo(iso: string | null): string {
 
 async function fetchUsers() {
   try {
-    users.value = await api.getUsers()
+    users.value = await api.getUsers(engineFilter.peek())
   } catch {}
 }
 
@@ -36,7 +38,7 @@ export function RightSidebar() {
     fetchUsers()
     const id = setInterval(fetchUsers, 15000)
     return () => clearInterval(id)
-  }, [])
+  }, [engineFilter.value])
 
   const data = users.value
 
@@ -47,9 +49,12 @@ export function RightSidebar() {
   const handleDelete = (e: MouseEvent, name: string) => {
     e.stopPropagation()
     if (!confirm(`Delete all requests from "${name}"?`)) return
-    api.deleteByFilter({ userName: name }).then(() => {
-      fetchUsers()
-    }).catch(() => {})
+    api
+      .deleteByFilter({ userName: name })
+      .then(() => {
+        fetchUsers()
+      })
+      .catch(() => {})
   }
 
   return (
@@ -72,7 +77,7 @@ export function RightSidebar() {
         </div>
       ) : (
         <div class={styles.list}>
-          {data.map(u => {
+          {data.map((u) => {
             const totalTokens = u.tokens.input + u.tokens.output + u.tokens.cacheRead + u.tokens.cacheCreation
             return (
               <button
@@ -99,28 +104,41 @@ export function RightSidebar() {
                       {u.totalInputs}
                     </span>
                     {totalTokens > 0 && (
-                      <span class={styles.userMetaItem} title={`Total tokens: ${totalTokens.toLocaleString()}`}>
+                      <span class={styles.userMetaItem} title={engineTokensTooltip(u, totalTokens)}>
                         <i class="fa-solid fa-coins" />
                         {formatTokens(totalTokens)}
                       </span>
                     )}
                     {u.contextTokens > 0 && (
-                      <span class={styles.userMetaItem} title={`Real conversation context: ${u.contextTokens.toLocaleString()}`} style={{ color: 'var(--accent-purple)' }}>
+                      <span
+                        class={styles.userMetaItem}
+                        title={`Real conversation context: ${u.contextTokens.toLocaleString()}`}
+                        style={{ color: 'var(--accent-purple)' }}
+                      >
                         <i class="fa-solid fa-layer-group" />
                         {formatTokens(u.contextTokens)}
                       </span>
                     )}
                     {u.cost > 0 && (
-                      <span class={styles.userMetaItem} title={`Estimated USD cost`} style={{ color: 'var(--accent-green)' }}>
+                      <span
+                        class={styles.userMetaItem}
+                        title="Claude: estimated USD cost at Anthropic API rates"
+                        style={{ color: 'var(--accent-green)' }}
+                      >
                         {formatCost(u.cost)}
                       </span>
                     )}
+                    {codexCostLine(u) && (
+                      <span
+                        class={styles.userMetaItem}
+                        title={codexCostLine(u)!.tooltip}
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
+                        {codexCostLine(u)!.text}
+                      </span>
+                    )}
                   </div>
-                  {u.lastSeen && (
-                    <div class={styles.userTime}>
-                      {timeAgo(u.lastSeen)}
-                    </div>
-                  )}
+                  {u.lastSeen && <div class={styles.userTime}>{timeAgo(u.lastSeen)}</div>}
                 </div>
                 <button
                   class={styles.deleteBtn}

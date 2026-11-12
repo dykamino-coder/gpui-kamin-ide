@@ -13,6 +13,8 @@ export interface PtySessionInfo {
   mcpInitialized?: boolean
   mcpLastError?: string | null
   sessionTitle?: string | null
+  /** 'claude' | 'codex' (absent from older servers = claude). */
+  engine?: string
   cliConversationId?: string | null
   // Live aggregates derived from jsonl_events (filled when broadcast).
   userMessages?: number

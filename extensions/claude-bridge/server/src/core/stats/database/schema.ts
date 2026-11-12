@@ -141,6 +141,9 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   await tryExec(db, 'ALTER TABLE jsonl_events DROP COLUMN hour')
 
   await tryExec(db, 'ALTER TABLE jsonl_events ADD COLUMN cache_write_1h_tokens INTEGER DEFAULT 0')
+  // Engine of the transcript LINE ('claude' | 'codex'; NULL = legacy Claude).
+  // Per line, not per session: one conversation can run on both engines.
+  await tryExec(db, 'ALTER TABLE jsonl_events ADD COLUMN engine TEXT')
   await initAccountingSchema(db)
 
   // ── session_tokens: bridge-managed conversation index, soft-delete,
@@ -213,6 +216,8 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   await db.run(`CREATE INDEX IF NOT EXISTS idx_api_errors_timestamp ON api_errors(timestamp)`)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_api_errors_user_name ON api_errors(user_name)`)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_api_errors_error_type ON api_errors(error_type)`)
+  // NULL = a Claude CLI error (the only kind recorded before codex).
+  await tryExec(db, 'ALTER TABLE api_errors ADD COLUMN engine TEXT')
 
   // ── jsonl_offsets: incremental scan offsets per file.
   await db.run(`
