@@ -140,6 +140,30 @@ BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа �
 0087–0092 и строка INC-0042 в обзоре отстают от уже смерженных PR; их приводит в
 соответствие reconciliation PR kmaint без нового fix.
 
+### Смена исполнителей 2026-11-13
+
+Таблицы выше сохраняют исходное распределение. Для снижения нагрузки на машину
+лид сократил параллельных исполнителей. Состав пачки и gates не меняются.
+
+- Активны:
+  - Claude: kmaint (verify, реестр, merge, release) и duckspeed;
+  - Codex через драйвер: cxstats (учёт Codex в админке и таблица PTY-сессий,
+    вместо codexstats), cxinc (INC-0108, INC-0107, INC-0042) и cxdeps
+    ([#814](https://github.com/dykamino-coder/gpui-kamin-ide/pull/814):
+    Codex CLI 0.167.2 и npm minor);
+  - relayout10 работает на движке, вне пачки.
+- Остановлены: kfix, kresearch, khooks, kchat, kses, knative, kdeps, toolspeed.
+  Их незакоммиченные черновики остаются в своих seats.
+- Неназначенные ID ждут свободного Codex-слота, очередь ведёт kmaint. Это
+  остатки kfix/kresearch/khooks/kchat/kses/knative из таблиц выше.
+  - Уже приняты: BR-21 decision
+    ([#810](https://github.com/dykamino-coder/gpui-kamin-ide/pull/810)) и
+    INC-0064 design
+    ([#812](https://github.com/dykamino-coder/gpui-kamin-ide/pull/812)).
+  - INC-0094 research — в
+    [#813](https://github.com/dykamino-coder/gpui-kamin-ide/pull/813).
+  - #797 и #804 ведёт лид.
+
 ### Вне пачки (backlog следующего запуска)
 
 - INC-0085 — owner engine (см. выше).

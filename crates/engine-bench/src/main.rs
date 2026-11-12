@@ -21,6 +21,8 @@ mod frames;
 mod fresh_check;
 #[cfg(windows)]
 mod gpu;
+#[cfg(all(windows, feature = "heap-report"))]
+mod holders;
 #[cfg(windows)]
 mod host;
 #[cfg(windows)]
