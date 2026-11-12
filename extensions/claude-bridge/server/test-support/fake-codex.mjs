@@ -15,9 +15,12 @@
 //   /fake-slow                    stream until interrupted
 //   /fake-fail <message>          fail the turn with <message>
 //   /fake-reroute <model>         emit model/rerouted, then echo
+//   /fake-crash                   start the turn, then the app-server process dies
+//   /fake-hang                    start the turn, then stay silent until interrupted
 //
 // Knobs: FAKE_CODEX_LOGGED_IN=1 (start signed in), FAKE_CODEX_LOGIN_DELAY_MS,
-// FAKE_CODEX_LOGIN_FAIL=<error>, FAKE_CODEX_INIT_FAIL=<error> (stderr + exit 2).
+// FAKE_CODEX_LOGIN_FAIL=<error>, FAKE_CODEX_INIT_FAIL=<error> (stderr + exit 2),
+// FAKE_CODEX_START_DELAY_MS (app-server answers nothing for that long).
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -189,8 +192,11 @@ const handlers = {
     return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
   },
   'thread/resume': (p) => {
-    const t = threads.get(p?.threadId) ?? loadThread(p?.threadId)
+    const loaded = threads.get(p?.threadId)
+    const t = loaded ?? loadThread(p?.threadId)
     if (!t) throw new RpcError(-32600, `thread not found: ${p?.threadId}`)
+    // A turn of a previous (dead) process is gone with it.
+    if (!loaded) t.active = null
     // The Bearer is per Bridge session: a resume brings a new one.
     t.mcp = mcpFromConfig(p?.config) ?? t.mcp
     if (p?.model) t.model = p.model
@@ -312,6 +318,13 @@ async function runTurn(t, turnId, text) {
         await new Promise((r) => setTimeout(r, 20))
       }
       status = 'interrupted'
+    } else if (text === '/fake-crash') {
+      agentMessage(t, turnId, 'about to crash')
+      setTimeout(() => process.exit(9), 20)
+      return
+    } else if (text === '/fake-hang') {
+      while (!t.active?.interrupted) await new Promise((r) => setTimeout(r, 20))
+      status = 'interrupted'
     } else if (text.startsWith('/fake-fail')) {
       status = 'failed'
       error = {
@@ -356,6 +369,9 @@ async function runTurn(t, turnId, text) {
   })
 }
 
+// A slow app-server start (requests wait in the stdin buffer meanwhile).
+const startDelay = Number(process.env.FAKE_CODEX_START_DELAY_MS ?? 0)
+if (startDelay > 0) await new Promise((r) => setTimeout(r, startDelay))
 const rl = readline.createInterface({ input: process.stdin })
 rl.on('line', (line) => {
   if (!line.trim()) return

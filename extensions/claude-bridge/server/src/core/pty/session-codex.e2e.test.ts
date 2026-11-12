@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AddressInfo } from 'node:net'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
 
 const state = vi.hoisted(() => {
@@ -142,8 +142,12 @@ let runtimeMod: typeof import('../codex/codex-runtime')
 let configMod: typeof import('../config')
 let app: import('hono').Hono
 
-function newRuntime(extraEnv: Record<string, string> = {}) {
+function newRuntime(
+  extraEnv: Record<string, string> = {},
+  restartPolicy?: import('../codex/codex-host').RestartPolicy,
+) {
   return new runtimeMod.CodexRuntime({
+    restartPolicy,
     home: path.join(state.home, 'codex-home'),
     command: { command: process.execPath, args: [FAKE_CODEX] },
     env: { PATH: process.env.PATH ?? '', SystemRoot: process.env.SystemRoot ?? '' },
@@ -436,5 +440,114 @@ describe('codex chat over the Bridge session WebSocket', () => {
       reason: null,
       pinned: '0.160.1',
     })
+  }, 30_000)
+})
+
+// Field lessons of the Codex agent driver (same app-server protocol), end to end.
+describe('codex chat survives the app-server and reports a stalled turn', () => {
+  const notice = (needle: string) => (e: Record<string, any>) =>
+    e.type === 'system' && typeof e.content === 'string' && e.content.includes(needle)
+
+  // Each case gets a fresh crash history; the storm case keeps the defaults.
+  async function freshRuntime(policy?: import('../codex/codex-host').RestartPolicy) {
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime({}, policy))
+  }
+  beforeEach(() => freshRuntime({ stormCrashes: 10, maxCrashes: 10 }))
+
+  it('keeps the app-server after a completed turn, and resumes the thread on a restarted one after a crash', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    const runtime = runtimeMod.codexRuntime()
+    const host = await runtime.host()
+    await say(client, 'first', 'c1')
+    await client.entry((e) => text(e).startsWith('echo: first'))
+    // A finished turn is not a finished process: nothing restarts.
+    await new Promise((r) => setTimeout(r, 100))
+    expect(await runtime.host()).toBe(host)
+    expect(host.alive).toBe(true)
+
+    await say(client, '/fake-crash', 'c2')
+    await client.entry(notice('Restarting it and resuming this conversation'))
+    await client.entry(notice('Resumed the conversation on a restarted ChatGPT app-server'))
+    const restarted = await runtime.host()
+    expect(restarted).not.toBe(host)
+    expect(host.crashed).toBe(true)
+
+    // Same Bridge session, same thread, new app-server.
+    expect(await say(client, 'after crash', 'c3')).toMatchObject({ state: 'read' })
+    await client.entry((e) => text(e).startsWith('echo: after crash'))
+    expect(client.frames.some((f) => f.type === 'session:exit')).toBe(false)
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
+  it('queues a message sent during the restart and delivers it to the resumed thread', async () => {
+    // Every app-server start takes 800 ms, so the restart is still running below.
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_START_DELAY_MS: '800' }, { stormCrashes: 10 }))
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, '/fake-crash', 'q1')
+    await client.entry(notice('Restarting it and resuming this conversation'))
+    // Sent during the restart: waits for the resume instead of failing.
+    client.send({ type: 'session:submitText', data: 'queued', submissionId: 'q2' })
+    expect(await client.next((f) => f.type === 'session:submission' && f.id === 'q2', 15_000)).toMatchObject({
+      state: 'read',
+    })
+    await client.entry((e) => text(e).startsWith('echo: queued'))
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
+  it('reports a turn that goes silent and clears the report when it ends', async () => {
+    process.env.BRIDGE_CODEX_STALL_MS = '200'
+    try {
+      const client = await Client.open(port)
+      await createChat(client, { engine: 'codex' })
+      await say(client, '/fake-hang', 'h1')
+      const stalled = await client.entry(notice('No response from ChatGPT'))
+      expect(stalled.level).toBe('warning')
+      client.send({ type: 'session:interrupt' })
+      await client.entry((e) => e.type === 'system' && e.interruptedByUser === true)
+      // A normal turn afterwards is not reported.
+      const before = client.entries().filter(notice('No response from ChatGPT')).length
+      await say(client, 'quick', 'h2')
+      await client.entry((e) => text(e).startsWith('echo: quick'))
+      await new Promise((r) => setTimeout(r, 400))
+      expect(client.entries().filter(notice('No response from ChatGPT')).length).toBe(before)
+      client.send({ type: 'session:end' })
+      client.close()
+    } finally {
+      delete process.env.BRIDGE_CODEX_STALL_MS
+    }
+  }, 30_000)
+
+  it('stops restarting after a crash storm and ends the chat with the reason', async () => {
+    await freshRuntime() // default policy: two crashes right after start = storm
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, '/fake-crash', 's1')
+    await client.entry(notice('Resumed the conversation'))
+    await say(client, '/fake-crash', 's2')
+    const failed = await client.entry(notice('ChatGPT could not be restarted'))
+    expect(failed.content).toContain('restarts are paused')
+    expect(await client.next((f) => f.type === 'session:exit')).toBeTruthy()
+    client.close()
+  }, 30_000)
+
+  it('refuses a second session on a thread that is already open', async () => {
+    const a = await Client.open(port)
+    await createChat(a, { engine: 'codex' })
+    await say(a, 'owner', 'd1')
+    await a.entry((e) => text(e).startsWith('echo: owner'))
+    const conv = (await a.next((f) => f.type === 'session:conversation-id')).conversationId
+    const runtime = runtimeMod.codexRuntime()
+    const { CodexAgentSession } = await import('../codex/codex-session')
+    await expect(
+      CodexAgentSession.start({ host: await runtime.host(), cwd: state.home, resumeThreadId: conv }),
+    ).rejects.toThrow('already open in another Bridge session')
+    a.send({ type: 'session:end' })
+    a.close()
   }, 30_000)
 })

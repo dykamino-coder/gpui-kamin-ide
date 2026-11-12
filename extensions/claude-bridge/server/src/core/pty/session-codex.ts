@@ -48,6 +48,20 @@ export interface CodexSessionDeps {
   recordCompactLink(oldId: string, newId: string): void
   /** Where Claude-compatible transcripts live (tests point it at a temp dir). */
   projectsDir?: string
+  /** A running turn with no codex event (and no tool running) for this long is
+   *  reported as stalled. Default BRIDGE_CODEX_STALL_MS or 5 min. */
+  stallMs?: number
+}
+
+const DEFAULT_STALL_MS = 5 * 60_000
+const DEAD_NOTICE_GRACE_MS = 1_500
+
+export interface CodexBindingHooks {
+  /** Resume the thread on the runtime's current app-server. */
+  reopen(threadId: string, model: string | null): Promise<CodexAgentSession>
+  /** The thread cannot continue: end the Bridge session with this code. */
+  onDead(code: number): void
+  stallMs?: number
 }
 
 export interface CodexPlacement {
@@ -167,11 +181,14 @@ export async function createCodexSession(
   const transcript = codexTranscriptPath(settingsDir, threadId, projectsDir(deps))
   const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound
 
+  // The binding is created below; the virtual PTY always drives its current
+  // agent, which changes when the thread is resumed on a restarted app-server.
+  let binding: CodexSessionBinding
   const vpty = new VirtualPty(
     {
-      interrupt: () => void agent.interrupt().catch(() => undefined),
+      interrupt: () => void binding.agent.interrupt().catch(() => undefined),
       stop: async () => {
-        await agent.stop('session destroyed')
+        await binding.stop('session destroyed')
         return 0
       },
     },
@@ -224,7 +241,20 @@ export async function createCodexSession(
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,
   }
-  const binding = new CodexSessionBinding(session, agent, deps.runtime, transcript, config.cwd)
+  binding = new CodexSessionBinding(session, agent, deps.runtime, transcript, config.cwd, {
+    // Same thread, same MCP endpoint and Bearer, on whichever app-server the
+    // runtime has now (a crashed one is restarted within its restart limits).
+    reopen: async (threadId, model) =>
+      CodexAgentSession.start({
+        ...startOptions,
+        host: await deps.runtime.host(),
+        resumeThreadId: threadId,
+        model: model ?? undefined,
+        effort: codexEffort(session.effort),
+      }),
+    onDead: (code) => vpty.markExited(code),
+    stallMs: deps.stallMs,
+  })
   session.agentInput = binding
   codexBindings.set(session, binding)
 
@@ -243,12 +273,6 @@ export async function createCodexSession(
     binding.dispose()
     sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
     deps.finalizeExit(sessionId, exitCode)
-  })
-  agent.events.subscribe((event) => {
-    if (event.kind === 'session.exited' && event.reason !== 'session destroyed') {
-      // The shared app-server died under the thread.
-      vpty.markExited(event.code ?? 1)
-    }
   })
 
   eventBus.emit('session:created', {
@@ -285,25 +309,156 @@ export function codexBinding(session: PtySession): CodexSessionBinding | undefin
 /** Event stream of one codex session → transcript file, live stream and status frames. */
 export class CodexSessionBinding {
   private readonly projector: CodexTranscriptProjector
-  private readonly offEvents: () => void
+  private offEvents: () => void
+  private current: CodexAgentSession
   private stream: { id: string; text: string; sentAt: number; timer?: NodeJS.Timeout } | undefined
   private disposed = false
+  private stopping = false
+  /** Set while the thread is being resumed on a restarted app-server;
+   *  submissions wait for it instead of failing. */
+  private recovering: Promise<void> | undefined
+  // Stall detector: a running turn that emits nothing while no tool runs.
+  private turnOpen = false
+  private readonly openTools = new Set<string>()
+  private stallTimer: NodeJS.Timeout | undefined
+  private stalled = false
+  private readonly stallMs: number
 
   constructor(
     private readonly session: PtySession,
-    readonly agent: CodexAgentSession,
+    agent: CodexAgentSession,
     private readonly runtime: CodexRuntime,
     readonly transcriptPath: string,
     cwd?: string,
+    private readonly hooks?: CodexBindingHooks,
   ) {
+    this.current = agent
+    this.stallMs = hooks?.stallMs ?? (Number(process.env.BRIDGE_CODEX_STALL_MS) || DEFAULT_STALL_MS)
     this.projector = new CodexTranscriptProjector(cwd || undefined, lastUuid(transcriptPath))
     this.offEvents = agent.events.subscribe((event) => this.onEvent(event))
+  }
+
+  /** The thread's live agent (replaced after an app-server restart). */
+  get agent(): CodexAgentSession {
+    return this.current
   }
 
   dispose(): void {
     this.disposed = true
     clearTimeout(this.stream?.timer)
+    this.disarmStall()
     this.offEvents()
+  }
+
+  /** Ends the thread for good (session teardown). */
+  async stop(reason: string): Promise<void> {
+    this.stopping = true
+    await this.recovering?.catch(() => undefined)
+    await this.current.stop(reason)
+  }
+
+  // ── App-server restart ─────────────────────────────────────────────────
+  // Field lesson: only a real process exit restarts anything — a completed
+  // turn (or a final report) leaves the app-server and the thread as they are.
+
+  private recover(code: number | null): void {
+    if (this.recovering || this.stopping || this.disposed || !this.hooks) {
+      if (!this.hooks && !this.stopping) this.markDead(code)
+      return
+    }
+    const threadId = this.current.conversationId()
+    if (!threadId) return this.markDead(code)
+    this.turnOpen = false
+    this.openTools.clear()
+    this.disarmStall()
+    this.flushStream()
+    this.activity(false)
+    this.appendSystem('The ChatGPT app-server stopped. Restarting it and resuming this conversation…', 'warning')
+    lifecycleLog('codex_recover_start', { sessionId: this.session.id, threadId, code })
+    this.recovering = (async () => {
+      try {
+        const next = await this.hooks!.reopen(threadId, this.current.model)
+        if (this.stopping || this.disposed) {
+          await next.stop('session destroyed')
+          return
+        }
+        this.offEvents()
+        this.current = next
+        this.offEvents = next.events.subscribe((event) => this.onEvent(event))
+        this.appendSystem(
+          'Resumed the conversation on a restarted ChatGPT app-server. A reply that was in progress was cut off; send the message again if it is missing.',
+          'warning',
+        )
+        lifecycleLog('codex_recover_done', { sessionId: this.session.id, threadId })
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        this.appendSystem(`ChatGPT could not be restarted: ${reason}`, 'error')
+        lifecycleLog('codex_recover_failed', { sessionId: this.session.id, threadId, reason })
+        // Let the transcript watcher deliver the reason before the session ends.
+        await new Promise((resolve) => setTimeout(resolve, DEAD_NOTICE_GRACE_MS))
+        this.markDead(code)
+      } finally {
+        this.recovering = undefined
+      }
+    })()
+  }
+
+  private markDead(code: number | null): void {
+    this.hooks?.onDead(code ?? 1)
+  }
+
+  // ── Stall detector ─────────────────────────────────────────────────────
+
+  private armStall(): void {
+    clearTimeout(this.stallTimer)
+    this.stallTimer = undefined
+    if (!this.turnOpen || this.openTools.size > 0 || this.disposed) return
+    this.stallTimer = setTimeout(() => this.onStall(), this.stallMs)
+    this.stallTimer.unref?.()
+  }
+
+  private disarmStall(): void {
+    clearTimeout(this.stallTimer)
+    this.stallTimer = undefined
+    this.stalled = false
+  }
+
+  private onStall(): void {
+    this.stallTimer = undefined
+    if (!this.turnOpen || this.stalled) return
+    this.stalled = true
+    const minutes = Math.max(1, Math.round(this.stallMs / 60_000))
+    this.appendSystem(
+      `No response from ChatGPT for ${minutes} min; the reply is still running. Press Stop to interrupt it and send the message again.`,
+      'warning',
+    )
+    lifecycleLog('codex_turn_stalled', { sessionId: this.session.id, stallMs: this.stallMs })
+  }
+
+  private trackStall(event: AgentEvent): void {
+    switch (event.kind) {
+      case 'turn.started':
+        this.turnOpen = true
+        this.openTools.clear()
+        break
+      case 'turn.completed':
+      case 'session.exited':
+        this.turnOpen = false
+        this.openTools.clear()
+        this.disarmStall()
+        return
+      case 'tool.started':
+        this.openTools.add(event.id)
+        break
+      case 'tool.completed':
+        this.openTools.delete(event.id)
+        break
+    }
+    if (this.stalled) {
+      this.stalled = false
+      this.appendSystem('ChatGPT is responding again.', 'warning')
+    }
+    this.armStall()
   }
 
   // ── Input ──────────────────────────────────────────────────────────────
@@ -320,6 +475,8 @@ export class CodexSessionBinding {
   }
 
   private async deliver(text: string, submissionId?: string): Promise<void> {
+    // Queued behind an app-server restart, then sent to the resumed thread.
+    if (this.recovering) await this.recovering
     const account = await this.runtime.accountStatus()
     if (!account.loggedIn) {
       const info = account.error && account.error.kind !== 'other' ? account.error : loginRequired()
@@ -355,6 +512,13 @@ export class CodexSessionBinding {
 
   private onEvent(raw: AgentEvent): void {
     if (this.disposed) return
+    if (raw.kind === 'session.exited') {
+      this.trackStall(raw)
+      // Our own stop ends the thread; anything else is the app-server dying.
+      if (raw.reason === 'codex app-server exited') this.recover(raw.code)
+      return
+    }
+    this.trackStall(raw)
     const event = this.explain(raw)
     switch (event.kind) {
       case 'turn.started':

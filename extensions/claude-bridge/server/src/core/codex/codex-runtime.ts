@@ -14,7 +14,8 @@ import os from 'node:os'
 import { injectProxyEnv } from '../config/settings'
 import { debugLog, infoLog, warnLog } from '../logging'
 import { resolveCodexCommand, type CodexCommand } from './binary'
-import { CodexHost, CodexHostRegistry } from './codex-host'
+import { CodexHost, CodexHostRegistry, type RestartPolicy } from './codex-host'
+import { acquireCodexHomeLock } from './codex-home-lock'
 import { assertBridgeOwnedHome, buildCodexEnv, defaultCodexHome, prepareCodexHome } from './codex-home'
 import { classifyCodexError, type CodexErrorInfo } from './codex-errors'
 import { codexLockdownConfig, toConfigOverrides } from './config-toml'
@@ -89,6 +90,8 @@ export interface CodexRuntimeOptions {
   /** Replaces the real app-server start (tests). */
   startHost?: (home: string) => Promise<CodexHost>
   idleCloseMs?: number
+  /** Crash-restart limits of the shared app-server (tests shorten them). */
+  restartPolicy?: RestartPolicy
   /** Replaces the `codex --version` probe (tests). */
   probeVersion?: () => Promise<string>
   accountTtlMs?: number
@@ -125,7 +128,10 @@ export class CodexRuntime {
   constructor(private readonly options: CodexRuntimeOptions = {}) {
     this.env = options.env ?? process.env
     this.home = options.home ?? defaultCodexHome(this.env)
-    this.registry = new CodexHostRegistry((home) => (options.startHost ?? ((h) => this.startHost(h)))(home))
+    this.registry = new CodexHostRegistry(
+      (home) => (options.startHost ?? ((h) => this.startHost(h)))(home),
+      options.restartPolicy,
+    )
   }
 
   /** The shared app-server, started on first use and after it exits. */
@@ -148,17 +154,29 @@ export class CodexRuntime {
       throw error
     })
     const prepared = prepareCodexHome(home, await this.catalog)
+    // Never two app-servers on one thread store, even from two Bridge processes.
+    const lock = acquireCodexHomeLock(home)
     infoLog('codex app-server starting', { home })
-    return CodexHost.start(
-      {
-        command,
-        env,
-        cwd: home,
-        configOverrides: toConfigOverrides(codexLockdownConfig({ catalogPath: prepared.catalogPath })),
-        onProtocolError: (error) => warnLog('codex protocol error', { error: error.message }),
-      },
-      { idleCloseMs: this.options.idleCloseMs },
-    )
+    try {
+      const host = await CodexHost.start(
+        {
+          command,
+          env,
+          cwd: home,
+          configOverrides: toConfigOverrides(codexLockdownConfig({ catalogPath: prepared.catalogPath })),
+          onProtocolError: (error) => warnLog('codex protocol error', { error: error.message }),
+        },
+        { idleCloseMs: this.options.idleCloseMs },
+      )
+      host.onClose(() => {
+        if (host.crashed) warnLog('codex app-server exited unexpectedly', { home, exit: host.process.exited })
+        lock.release()
+      })
+      return host
+    } catch (error) {
+      lock.release()
+      throw error
+    }
   }
 
   // ── Availability ───────────────────────────────────────────────────────
