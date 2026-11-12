@@ -51,7 +51,8 @@ export const BRIDGE_MCP_SERVER = 'bridge'
 export const BRIDGE_INTERACTIVE_MCP_SERVER = 'bridge_interactive'
 /**
  * Codex's MCP deadline (default 300 s) is per server, not per tool. Bridge
- * enforces its own per-tool deadlines (2 min, heavy tools 30 min), so the
+ * enforces its own per-tool deadlines (2 min, heavy tools 30 min, the user's
+ * MCP server tools 31 min — see `mcpCallTimeoutMs`), so the
  * codex one is only a backstop: one hour for ordinary tools.
  */
 export const BRIDGE_MCP_TOOL_TIMEOUT_SEC = 3_600
