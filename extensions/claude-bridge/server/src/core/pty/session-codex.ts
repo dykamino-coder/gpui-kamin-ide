@@ -25,6 +25,7 @@ import { classifyCodexError, describeCodexError, loginRequired } from '../codex/
 import { codexUnavailableReason, type CodexRuntime } from '../codex/codex-runtime'
 import { bridgeMcpThreadConfig } from '../codex/config-toml'
 import { JsonRpcError } from '../codex/jsonrpc'
+import { CodexConsoleRenderer, consoleBanner, consoleNotice } from '../codex/console-render'
 import { CodexTranscriptProjector, type CodexTranscriptEntry } from '../codex/transcript'
 import { VirtualPty } from '../codex/virtual-pty'
 import { eventBus } from '../events/bus'
@@ -34,7 +35,7 @@ import { bridgeClaudeMd } from './bridge-default-claude-md'
 import { computeProjectSlug } from './jsonl-watcher'
 import { holdMcpEndpoint, mcpIdentity } from './mcp-tasks'
 import { ResumeNotFoundError } from './session-resume-not-found'
-import { sendToClient } from './session-io'
+import { attachOutputDebounce, sendToClient } from './session-io'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import { buildSystemPrompt } from './system-prompt'
 import type { PtySession, SessionConfig } from './types'
@@ -61,6 +62,8 @@ export interface CodexBindingHooks {
   reopen(threadId: string, model: string | null): Promise<CodexAgentSession>
   /** The thread cannot continue: end the Bridge session with this code. */
   onDead(code: number): void
+  /** Bridge Console text (the virtual PTY's output). */
+  console?(data: string): void
   stallMs?: number
 }
 
@@ -263,6 +266,7 @@ export async function createCodexSession(
         effort: codexEffort(session.effort),
       }),
     onDead: (code) => vpty.markExited(code),
+    console: (data) => vpty.emit(data),
     stallMs: deps.stallMs,
   })
   session.agentInput = binding
@@ -270,6 +274,10 @@ export async function createCodexSession(
 
   deps.register(session)
   releaseEndpoint()
+  // Bridge Console: the thread's live log through the virtual PTY, buffered
+  // for reattach like CLI output. The banner is the console's first frame.
+  attachOutputDebounce(session)
+  vpty.emit(consoleBanner({ threadId, model: session.model, resumed, cwd: config.cwd || undefined }))
 
   // A resumed transcript exists already (epoch 0 finds it); a fresh one
   // appears with the first projected entry.
@@ -334,6 +342,7 @@ export class CodexSessionBinding {
   private stallTimer: NodeJS.Timeout | undefined
   private stalled = false
   private readonly stallMs: number
+  private readonly console = new CodexConsoleRenderer()
 
   constructor(
     private readonly session: PtySession,
@@ -523,6 +532,7 @@ export class CodexSessionBinding {
 
   private onEvent(raw: AgentEvent): void {
     if (this.disposed) return
+    this.hooks?.console?.(this.console.render(this.explain(raw)))
     if (raw.kind === 'session.exited') {
       this.trackStall(raw)
       // Our own stop ends the thread; anything else is the app-server dying.
@@ -584,6 +594,7 @@ export class CodexSessionBinding {
   }
 
   private appendSystem(text: string, level: 'warning' | 'error'): void {
+    this.hooks?.console?.(consoleNotice(level, text))
     const threadId = this.agent.conversationId()
     if (!threadId) return
     this.append(this.projector.project({ kind: 'notice', threadId, at: Date.now(), level, message: text }))
