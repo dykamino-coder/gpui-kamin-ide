@@ -257,6 +257,31 @@ respawn уже отправляется; полноценного shell recovery
 providers/state нет. BR-05 connection recovery не закрывает этот более широкий контракт.
 Нужен отдельный implementation PR и Windows gate; в этой ревизии код не дописывается.
 
+**Verification 2026-11-13 (batch `RC-2026-11-13-KAMIN-BRIDGE`): failed.**
+
+Setup:
+- Candidate: installed KaminIDE 1.0.94 (contains #148 and #152).
+- A copy of a working profile, server container from `main` `584b5616`.
+- The extension-host child was killed by PID twice; the views were read only through kamin-probe.
+
+Results:
+- The child respawned in 0.83–0.88 s. Chat, Console, Agents and Customize stayed live, and their pages were not reloaded.
+- The new child reported the same five tabs under new tab ids, and none of them was active.
+- Chat stayed bound to the old tab id, and its composer did not become ready.
+- A manual tab switch to the new id restored the composer, but the switch call took more than 10 s to reply.
+- The Agents panel lost the finished team rows (`Completed 2` → empty placeholder) and did not get them back, even after the manual switch.
+
+Not checked: documents, the active editor and LSP reseeding.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/a1401f427d98227c5a1a787cb5a7f617326eddd8/incidents/BR-04/evidence/2026-11-13-br04-1.0.94).
+
+The acceptance requirement "Chat, Console and the neighbouring view return and show the selected session" is not met. Next artifact: change.
+- After a respawn the client keeps the selected tab bound across the new tab ids.
+- The Agents state of the bound tab is replayed.
+- Then the same live gate is repeated.
+
+Owner: the executor the maintainer assigns. The status stays `verify` until that gate passes.
+
 **Status:** implementation PR #148 и дополнительный PR #152 merged;
 Windows runtime acceptance ещё не подтверждена. CI job на Windows не запускает
 живой интерфейс. **Dependency:** none.
