@@ -642,7 +642,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // was started. Nothing hits the JSONL until the first message, so
               // without this the client sits in "Loading conversation…" until
               // its 20s watchdog. Declare the (empty) replay complete right away.
-              if (session.resumeNotFound) {
+              if (session.resumeNotFound || session.resumedOnFreshThread) {
                 ws.send(
                   JSON.stringify({
                     type: 'jsonl:status',

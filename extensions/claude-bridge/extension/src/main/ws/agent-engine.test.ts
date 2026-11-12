@@ -92,6 +92,26 @@ describe('agent engine on the client connection', () => {
     expect(claude.frames.some((f) => f.type === 'session:change-model')).toBe(false)
   })
 
+  it.each([
+    ['claude', 'claude-opus-5-5', 'claude-sonnet-5-5'],
+    ['codex', 'gpt-6.1-sol', 'gpt-6-luna'],
+  ] as const)('keeps the model chosen in an empty %s chat across a server restart', async (engine, initial, chosen) => {
+    const { m, internal, frames, socket } = manager({ engine })
+    internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: initial, engine })
+    m.changeModel(chosen)
+    // Server restart: the chat has no conversation yet, so the reconnect creates
+    // a fresh session, which the server starts on its default model.
+    await internal.startSession(socket)
+    expect(frames.filter((f) => f.type === 'session:create')).toHaveLength(1)
+    internal.dispatchMessage({ type: 'session:created', sessionId: 's2', model: initial, engine })
+    expect(frames.filter((f) => f.type === 'session:change-model').map((f) => f.model)).toEqual([chosen, chosen])
+
+    // Already on the chosen model: nothing to re-apply.
+    await internal.startSession(socket)
+    internal.dispatchMessage({ type: 'session:created', sessionId: 's3', model: chosen, engine })
+    expect(frames.filter((f) => f.type === 'session:change-model')).toHaveLength(2)
+  })
+
   it('does not send a model change when codex already started on the picked model', () => {
     const { internal, frames } = manager({ engine: 'codex', model: 'gpt-5.5' })
     internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: 'gpt-5.5', engine: 'codex' })
