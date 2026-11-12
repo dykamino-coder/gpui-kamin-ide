@@ -66,6 +66,8 @@ export interface HandlerCtx {
   notifySessionInfo: (effort?: string, model?: string) => void
   /** session:created's engine (absent from older servers → Claude) and model. */
   noteSessionEngine?: (engine: AgentEngine | undefined, model: string | undefined) => void
+  /** An engine switch was reported: done, or refused (the tab's request is undone). */
+  settleEngineSwitch?: (ok: boolean) => void
   /** The user's main agent arrived (agent:preferences). */
   notifyAgentPreferences?: (engine: AgentEngine) => void
   notifyTreeUpdate: (tree: any[]) => void
@@ -478,16 +480,32 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       ctx.notifySessionInfo((msg as any).effort, (msg as any).model)
       break
 
-    case 'session:restarted':
+    case 'session:restarted': {
       ctx.resetReconnectAttempt()
       ctx.clearJsonlCache()
-      ctx.setState({ status: 'authenticated', sessionId: (msg as any).sessionId })
+      ctx.setState({ status: 'authenticated', sessionId: msg.sessionId })
+      // An engine switch keeps the chat: the tab now runs the other engine.
+      const engine = isAgentEngine(msg.engine) ? msg.engine : undefined
       ctx.window.webContents.send('session-restarted', ctx.tabId, {
-        sessionId: (msg as any).sessionId,
-        effort: (msg as any).effort,
-        model: (msg as any).model,
+        sessionId: msg.sessionId,
+        effort: msg.effort,
+        model: msg.model,
+        ...(engine ? { engine } : {}),
       })
-      ctx.notifySessionInfo((msg as any).effort, (msg as any).model)
+      if (engine) ctx.noteSessionEngine?.(engine, msg.model)
+      if (msg.engineSwitch) ctx.settleEngineSwitch?.(true)
+      ctx.notifySessionInfo(msg.effort, msg.model)
+      break
+    }
+
+    case 'session:engine-switch-failed':
+      // Nothing restarted: the tab stays on its engine and model, and the
+      // reason reaches the user (the chat panel shows engineNotice as a toast).
+      ctx.settleEngineSwitch?.(false)
+      ctx.window.webContents.send('session-restarted', ctx.tabId, {
+        inPlace: true,
+        engineNotice: `Could not switch the agent: ${msg.error}`,
+      })
       break
   }
 }

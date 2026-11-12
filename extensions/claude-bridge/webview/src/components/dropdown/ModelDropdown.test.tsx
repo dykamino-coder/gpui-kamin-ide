@@ -82,26 +82,30 @@ describe('model selector with Claude and GPT groups', () => {
     expect(codexCatalogLoading.value).toBe(true)
   })
 
-  it('in a Claude chat a GPT model opens a new ChatGPT chat, a Claude model changes in place', () => {
+  it('in a Claude chat a GPT model continues the chat on ChatGPT, a Claude model changes in place', () => {
     tab('claude', 'claude-opus-5-5')
     const opts = options(render())
     expect(opts.find(o => o.name === 'Opus 5.5')?.selected).toBe(true)
-    opts.find(o => o.name === 'GPT-5.5')!.onClick()
-    expect(f.bridge.newAgentSession).toHaveBeenCalledWith('codex', 'gpt-5.5')
-    expect(f.bridge.changeModel).not.toHaveBeenCalled()
+    const gptOption = opts.find(o => o.name === 'GPT-5.5')!
+    expect(gptOption.description).toBe('Continues this chat on ChatGPT')
+    gptOption.onClick()
+    expect(f.bridge.changeModel).toHaveBeenCalledWith('t1', 'gpt-5.5')
+    expect(f.bridge.newAgentSession).not.toHaveBeenCalled()
     options(render()).find(o => o.name === 'Sonnet 5.5')!.onClick()
     expect(f.bridge.changeModel).toHaveBeenCalledWith('t1', 'claude-sonnet-5-5')
   })
 
-  it('in a GPT chat the trigger shows the GPT model and a Claude pick opens a Claude chat', () => {
+  it('in a GPT chat the trigger shows the GPT model and a Claude pick continues the chat on Claude', () => {
     tab('codex', 'gpt-5.5')
     const node = render()
     expect(node.props.trigger.props.label).toBe('GPT-5.5')
     const opts = options(node)
     expect(opts.find(o => o.name === 'GPT-5.5')?.selected).toBe(true)
     expect(opts.find(o => o.name === 'Opus 5.5')?.selected).toBe(false)
+    expect(opts.find(o => o.name === 'Opus 5.5')?.description).toBe('Continues this chat on Claude')
     opts.find(o => o.name === 'Opus 5.5')!.onClick()
-    expect(f.bridge.newAgentSession).toHaveBeenCalledWith('claude', 'claude-opus-5-5')
+    expect(f.bridge.changeModel).toHaveBeenCalledWith('t1', 'claude-opus-5-5')
+    expect(f.bridge.newAgentSession).not.toHaveBeenCalled()
   })
 
   it('sets the main agent for new chats', () => {

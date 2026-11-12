@@ -355,7 +355,28 @@ export function submitCoordinatedText(session: PtySession, text: string): void {
 export function setSessionPromptReady(session: PtySession, promptReady: boolean): void {
   const state = inputState(session)
   state.promptReady = promptReady
+  if (promptReady) for (const ready of readyWaiters.get(session)?.splice(0) ?? []) ready()
   schedulePendingMaintenance(session, state, 'prompt-ready')
+}
+
+const readyWaiters = new WeakMap<PtySession, Array<() => void>>()
+
+/** Resolves once the CLI shows its prompt (SessionStart/Stop hook, CLI mod),
+ *  or after `timeoutMs`. Input typed into a CLI that has not started yet can
+ *  lose its bracketed-paste markers, and a multi-line message then arrives as
+ *  one submission per line. */
+export function whenPromptReady(session: PtySession, timeoutMs: number): Promise<void> {
+  if (inputState(session).promptReady) return Promise.resolve()
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs)
+    timer.unref?.()
+    let waiters = readyWaiters.get(session)
+    if (!waiters) readyWaiters.set(session, (waiters = []))
+    waiters.push(() => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
 }
 
 export function notifySessionAttachmentChanged(session: PtySession): void {

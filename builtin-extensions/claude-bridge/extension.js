@@ -41199,6 +41199,16 @@ function appendStreamingText(entry, delta) {
   return true;
 }
 
+// src/shared/types.ts
+function isAgentEngine(value) {
+  return value === "claude" || value === "codex";
+}
+var CLAUDE_ALIASES = /* @__PURE__ */ new Set(["default", "opus", "sonnet", "haiku", "fable", "opusplan"]);
+function engineOfModelId(model) {
+  const id = model.trim().toLowerCase();
+  return id.startsWith("claude") || CLAUDE_ALIASES.has(id.replace(/\[.*\]$/, "")) ? "claude" : "codex";
+}
+
 // src/main/mcp/permission-manager.ts
 var import_node_fs = __toESM(require("node:fs"), 1);
 var import_node_path = __toESM(require("node:path"), 1);
@@ -42641,11 +42651,6 @@ function newestInFileOrder(entries2, count) {
   return order.slice(Math.max(0, order.length - count)).map((i) => entries2[i]);
 }
 
-// src/shared/types.ts
-function isAgentEngine(value) {
-  return value === "claude" || value === "codex";
-}
-
 // src/main/ws/handle-server-message.ts
 var JSONL_CACHE_MAX = 2e4;
 var JSONL_CACHE_SLACK = 1e3;
@@ -42923,16 +42928,28 @@ function handleServerMessage(msg, ctx) {
       });
       ctx.notifySessionInfo(msg.effort, msg.model);
       break;
-    case "session:restarted":
+    case "session:restarted": {
       ctx.resetReconnectAttempt();
       ctx.clearJsonlCache();
       ctx.setState({ status: "authenticated", sessionId: msg.sessionId });
+      const engine = isAgentEngine(msg.engine) ? msg.engine : void 0;
       ctx.window.webContents.send("session-restarted", ctx.tabId, {
         sessionId: msg.sessionId,
         effort: msg.effort,
-        model: msg.model
+        model: msg.model,
+        ...engine ? { engine } : {}
       });
+      if (engine) ctx.noteSessionEngine?.(engine, msg.model);
+      if (msg.engineSwitch) ctx.settleEngineSwitch?.(true);
       ctx.notifySessionInfo(msg.effort, msg.model);
+      break;
+    }
+    case "session:engine-switch-failed":
+      ctx.settleEngineSwitch?.(false);
+      ctx.window.webContents.send("session-restarted", ctx.tabId, {
+        inPlace: true,
+        engineNotice: `Could not switch the agent: ${msg.error}`
+      });
       break;
   }
 }
@@ -43835,10 +43852,35 @@ var ConnectionManager = class _ConnectionManager {
   changeEffort(effort) {
     this.send({ type: "session:change-effort", effort });
   }
-  /** Request model change (triggers PTY restart on server). */
+  /** Request model change (triggers PTY restart on server). A model of the
+   *  other engine continues this chat on that engine (same tab, same
+   *  conversation): the server stops this engine and starts the other one
+   *  with the conversation so far. */
   changeModel(model) {
+    const engine = engineOfModelId(model);
+    if (engine !== this.getEngine()) {
+      this.switchEngine(engine, model);
+      return;
+    }
     this.chosenModel = model;
     this.send({ type: "session:change-model", model });
+  }
+  /** Continue the chat on `engine`; session:restarted reports the result. */
+  switchEngine(engine, model) {
+    this.switchUndo ??= { engine: this.config.engine, chosenModel: this.chosenModel };
+    this.chosenModel = model;
+    this.config = { ...this.config, engine };
+    this.send({ type: "session:switch-engine", engine, model });
+  }
+  /** What a pending engine switch changed in the tab; a refusal restores it. */
+  switchUndo = null;
+  /** The server reported the switch: done, or refused (the chat stays on its engine). */
+  settleEngineSwitch(ok) {
+    const undo = this.switchUndo;
+    this.switchUndo = null;
+    if (ok || !undo) return;
+    this.config = { ...this.config, engine: undo.engine };
+    this.chosenModel = undo.chosenModel;
   }
   /** The chat's agent: the tab's request until the server reports the real one. */
   getEngine() {
@@ -44188,6 +44230,7 @@ var ConnectionManager = class _ConnectionManager {
       notifySessionTitle: (t) => _ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => _ConnectionManager.onConversationId?.(this.tabId, id),
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
+      settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),
       notifyAgentPreferences: (engine) => _ConnectionManager.onAgentPreferences?.(this.tabId, engine),
       notifySessionInfo: (effort, model) => {
         if (effort) this.lastEffort = effort;
