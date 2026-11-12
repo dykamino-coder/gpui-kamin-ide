@@ -526,7 +526,18 @@ export function attachOutputDebounce(session: PtySession): void {
     // (a `cat` of a large file, a base64 blob) into call args throws
     // `RangeError: Maximum call stack size exceeded` past ~100k args, which would
     // escape the pty.onData callback to uncaughtException.
-    for (const line of lines) {
+    // A codex console log arrives in arbitrary chunks (a reply streams
+    // mid-line), and the reattach replay joins entries with '\n': its first
+    // piece continues the previous entry, so the replay equals the stream.
+    // CLI sessions keep their chunk-per-entry buffer unchanged.
+    let first = 0
+    if (session.engine === 'codex' && session.outputBuffer.length > 0) {
+      session.outputBuffer[session.outputBuffer.length - 1] += lines[0]!
+      session.outputBufferBytes += lines[0]!.length
+      first = 1
+    }
+    for (let i = first; i < lines.length; i++) {
+      const line = lines[i]!
       session.outputBuffer.push(line)
       session.outputBufferBytes += line.length
     }
