@@ -12,12 +12,14 @@ import { getAllSessions } from '../../pty/session-manager'
 import { getDb } from '../../stats/database/lifecycle'
 import { getSystemStats, startSystemStatsSampler } from '../system-stats'
 import { denyApiToken } from '../authz'
+import { codexRuntime, codexStatus, type CodexRuntime } from '../../codex/codex-runtime'
 
-export function registerStatusRoutes(api: Hono): void {
+export function registerStatusRoutes(api: Hono, runtime: () => CodexRuntime = codexRuntime): void {
   // GET /api/dashboard/status -- server status
   api.get('/api/dashboard/status', async (c) => {
     startSystemStatsSampler() // lazy-start the CPU/RAM background sampler
     const sessions = getAllSessions()
+    const codex = await codexStatus(runtime)
 
     // DB info — DuckDB file + schema version. Size is the on-disk file
     // bytes (which approximates total persistent storage).
@@ -28,11 +30,15 @@ export function registerStatusRoutes(api: Hono): void {
       const db = await getDb()
       const v = (await db.runAndReadAll(`SELECT version() AS v`)).getRowObjects()[0] as any
       dbVersion = String(v?.v ?? '')
-    } catch { /* DB unavailable — leave nulls */ }
+    } catch {
+      /* DB unavailable — leave nulls */
+    }
     try {
       const dbPath = path.join(process.cwd(), 'data', 'proxy.duckdb')
       if (fs.existsSync(dbPath)) dbSizeBytes = fs.statSync(dbPath).size
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     return c.json({
       service: 'open-claude-bridge',
@@ -44,10 +50,11 @@ export function registerStatusRoutes(api: Hono): void {
       verbose: config.verbose,
       sessions: {
         total: sessions.length,
-        active: sessions.filter(s => s.state === 'running').length,
+        active: sessions.filter((s) => s.state === 'running').length,
       },
       os: `${os.type() === 'Windows_NT' ? 'Windows' : os.type() === 'Darwin' ? 'macOS' : os.type()} ${os.release()} (${os.arch()})`,
       nodeVersion: process.version,
+      codex,
       db: { type: dbType, version: dbVersion, sizeBytes: dbSizeBytes },
       // Live host CPU/RAM load shown next to the OS line.
       system: getSystemStats(),
@@ -76,7 +83,8 @@ export function registerStatusRoutes(api: Hono): void {
   // work briefly; refuses to run concurrently with itself. Manual override of
   // the automatic threshold trigger.
   api.post('/api/dashboard/db/compact', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     const { compactDatabase } = await import('../../stats/database/maintenance')
     const result = await compactDatabase()
     return c.json(result, result.ok ? 200 : 409)
@@ -85,7 +93,8 @@ export function registerStatusRoutes(api: Hono): void {
   // POST /api/dashboard/db/retention -- run the retention pass (age-out +
   // CHECKPOINT) now.
   api.post('/api/dashboard/db/retention', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     const { runRetention } = await import('../../stats/database/maintenance')
     return c.json(await runRetention())
   })

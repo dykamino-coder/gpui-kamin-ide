@@ -13,7 +13,7 @@ import type { AgentCapabilities, AgentSession, SetModelOutcome } from '../engine
 import { EventStream } from '../engine/event-stream'
 import type { CodexExit } from './app-server'
 import type { TomlTable } from './config-toml'
-import type { CodexHost, ThreadSink } from './codex-host'
+import { CodexThreadBusyError, type CodexHost, type ThreadSink } from './codex-host'
 import { JsonRpcError } from './jsonrpc'
 import { CodexEventNormalizer } from './normalize'
 import type {
@@ -52,14 +52,21 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
   /** Turns already completed, so a late turn/start response cannot revive one. */
   private readonly completed = new Set<string>()
   private nextModel: string | undefined
+  private currentModel: string | null = null
+  private effort: string | undefined
   private readonly idleWaiters = new Set<() => void>()
   private detach: (() => void) | undefined
   private stopped = false
+  /** Submissions go out one at a time: a second message sent while the first
+   *  turn/start is in flight must steer that turn, not race a second turn. */
+  private sending: Promise<void> = Promise.resolve()
 
   private constructor(
     readonly id: string,
     private readonly options: CodexSessionOptions,
-  ) {}
+  ) {
+    this.effort = options.effort
+  }
 
   static async start(options: CodexSessionOptions): Promise<CodexAgentSession> {
     const session = new CodexAgentSession(options.id ?? randomUUID(), options)
@@ -77,6 +84,8 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       ...(o.threadConfig ? { config: o.threadConfig } : {}),
       ...(o.developerInstructions ? { developerInstructions: o.developerInstructions } : {}),
     }
+    // One writer per thread: refuse before codex is asked to resume it twice.
+    if (o.resumeThreadId && o.host.isAttached(o.resumeThreadId)) throw new CodexThreadBusyError(o.resumeThreadId)
     const response = o.resumeThreadId
       ? await o.host.rpc.request<ThreadStartResponse>('thread/resume', {
           threadId: o.resumeThreadId,
@@ -85,6 +94,7 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
         })
       : await o.host.rpc.request<ThreadStartResponse>('thread/start', common)
     this.threadId = response.thread.id
+    this.currentModel = response.model ?? response.thread.model ?? null
     this.detach = o.host.attach(this.threadId, this)
     this.events.emit({
       kind: 'session.started',
@@ -141,15 +151,23 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
     return this.threadId
   }
 
-  async send(text: string, submissionId?: string): Promise<void> {
-    if (this.activeTurnId) return this.steer(text, submissionId)
+  /** A running turn is steered; otherwise a new turn starts. Calls are
+   *  serialized, so quick successive messages become one turn plus steers. */
+  send(text: string, submissionId?: string): Promise<void> {
+    const next = this.sending.then(() => this.deliver(text, submissionId))
+    this.sending = next.catch(() => undefined)
+    return next
+  }
+
+  private async deliver(text: string, submissionId?: string): Promise<void> {
+    if (this.activeTurnId) return this.steerNow(text, submissionId)
     const threadId = this.requireThread()
     const response = await this.options.host.rpc.request<TurnStartResponse>('turn/start', {
       threadId,
       input: textInput(text),
       ...(submissionId ? { clientUserMessageId: submissionId } : {}),
       ...(this.nextModel ? { model: this.nextModel } : {}),
-      ...(this.options.effort ? { effort: this.options.effort } : {}),
+      ...(this.effort ? { effort: this.effort } : {}),
     })
     this.nextModel = undefined
     const turn = response.turn
@@ -159,8 +177,12 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
   }
 
   async steer(text: string, submissionId?: string): Promise<void> {
+    return this.send(text, submissionId)
+  }
+
+  private async steerNow(text: string, submissionId?: string): Promise<void> {
     const turnId = this.activeTurnId
-    if (!turnId) return this.send(text, submissionId)
+    if (!turnId) return this.deliver(text, submissionId)
     const threadId = this.requireThread()
     try {
       await this.options.host.rpc.request<TurnSteerResponse>('turn/steer', {
@@ -171,7 +193,7 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       })
     } catch (error) {
       // The turn ended between our check and codex's: the text starts a new one.
-      if (error instanceof JsonRpcError && this.activeTurnId !== turnId) return this.send(text, submissionId)
+      if (error instanceof JsonRpcError && this.activeTurnId !== turnId) return this.deliver(text, submissionId)
       throw error
     }
   }
@@ -186,7 +208,18 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
   async setModel(model: string): Promise<SetModelOutcome> {
     if (!model) throw new Error('model required')
     this.nextModel = model
+    this.currentModel = model
     return 'next-turn'
+  }
+
+  /** Reasoning effort for the next and later turns (turn/start.effort). */
+  setEffort(effort: string | undefined): void {
+    this.effort = effort
+  }
+
+  /** Model of the thread, or the one requested for the next turn. */
+  get model(): string | null {
+    return this.currentModel
   }
 
   /** Resolves once no turn is running (immediately when idle). */

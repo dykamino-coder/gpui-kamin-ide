@@ -32,14 +32,15 @@ pub(super) fn fractions(
     // его как Segoe UI, и `1ch` выходил 0.56 кегля при наборе Times New Roman
     // с нулём в 0.5 (`white-space-wrap-after-nowrap-001`: «12345 67890»
     // влезало в `width: 10ch`). Та же развилка, что у `normal_fraction`.
-    let doc;
+    // Семейство документа и подмены читаются из одного снимка реестра: снимок
+    // сменяется вместе с семейством документа, а чтение из него не копирует строку.
+    let snapshot = vcx.doc.font_snapshot();
     let family = if family.is_empty() {
-        doc = vcx.doc.doc_family();
-        if doc.is_empty() { family } else { doc.as_str() }
+        snapshot.default_family()
     } else {
         family
     };
-    let real = crate::text::fonts::alias(family, vcx);
+    let real = snapshot.alias(family);
     let family = real.as_deref().unwrap_or(family);
     if let Some(hit) = fonts.metrics.cache.borrow().get(family).copied() {
         return hit;

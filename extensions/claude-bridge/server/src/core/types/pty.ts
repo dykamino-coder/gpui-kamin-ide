@@ -4,6 +4,16 @@
 
 import type { WebSocket as WS } from 'ws'
 import type { PendingElicitation } from './elicitation'
+import type { AgentEngineId } from '../../shared/agent-events'
+
+/** Input side of a session driven by a non-PTY engine (codex app-server).
+ *  session-io delegates to it instead of writing a terminal. */
+export interface SessionAgentInput {
+  /** A whole user message; the engine sends receipts itself. */
+  submit(text: string, submissionId?: string): void
+  /** Raw terminal input. Only Ctrl+C (interrupt) has a meaning; false = ignored. */
+  input(data: string): boolean
+}
 
 // ---------------------------------------------------------------------------
 // Session
@@ -37,6 +47,10 @@ export interface SessionTeardown {
 
 export interface PtySession {
   id: string
+  /** Agent engine; absent = 'claude' (the PTY-hosted Claude CLI). */
+  engine?: AgentEngineId
+  /** Present when the engine is not a PTY CLI (see SessionAgentInput). */
+  agentInput?: SessionAgentInput
   pty: ReturnType<typeof import('node-pty').spawn>
   ws: WS
   /** Token-based user identity */
@@ -238,6 +252,9 @@ export interface SessionConfig {
   transcriptMirrorDir?: string
   /** Normalized host declaration (tools, platform, place); absent → legacy full set. */
   host?: HostDeclaration
+  /** Agent engine requested by the client; absent → Claude. A chat keeps its
+   *  engine for life: resume detects it from the transcript. */
+  engine?: AgentEngineId
 }
 
 // ---------------------------------------------------------------------------

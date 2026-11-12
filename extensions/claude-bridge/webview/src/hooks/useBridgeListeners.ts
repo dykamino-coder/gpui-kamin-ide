@@ -1,6 +1,7 @@
 import { receiveSubmission, noteSubmissionRows, forgetSubmissions } from '../signals/submissions'
 import { forgetCompaction, noteCompactionRows } from '../signals/compaction'
 import { setTabUsage } from '../signals/session-usage'
+import { receiveAgentPreferences, receiveCodexAuth, receiveCodexModels } from '../signals/agent'
 import { useEffect, useRef } from 'preact/hooks'
 
 import type { KaminBridgeApi } from '../../shared/types'
@@ -320,15 +321,24 @@ export function useBridgeListeners(
       // прокрутку консоли ни за что (INC-2026-0053). Отсутствие признака —
       // отправитель старого образца, то есть настоящий перезапуск.
       if (entry && data?.inPlace !== true) entry.needsClear = true
-      if (data && (data.effort || data.model)) {
+      // The main agent is signed out: this chat opened on the other engine.
+      // Every panel hears this; only the chat panel tells the user once.
+      if (data?.engineNotice && role === 'chat') showToast({ type: 'info', title: 'Agent', message: data.engineNotice })
+      if (data && (data.effort || data.model || data.engine)) {
         const cur = tabs.value.find(t => t.id === tabId)
         const nextEffort = data.effort ?? cur?.effort
         const nextModel = data.model ?? cur?.model
-        if (cur && (cur.effort !== nextEffort || cur.model !== nextModel)) {
-          tabs.value = tabs.value.map(t => t.id === tabId ? { ...t, effort: nextEffort, model: nextModel } : t)
+        const nextEngine = data.engine ?? cur?.engine
+        if (cur && (cur.effort !== nextEffort || cur.model !== nextModel || cur.engine !== nextEngine)) {
+          tabs.value = tabs.value.map(t => t.id === tabId ? { ...t, effort: nextEffort, model: nextModel, engine: nextEngine } : t)
         }
       }
     })
+
+    // Agent engine: main agent, GPT list + ChatGPT state, sign-in gate.
+    const unsubAgentPreferences = bridge.onAgentPreferences?.((_tabId: string, data) => receiveAgentPreferences(data)) ?? (() => {})
+    const unsubCodexModels = bridge.onCodexModels?.((_tabId: string, data) => receiveCodexModels(data)) ?? (() => {})
+    const unsubCodexAuth = bridge.onCodexAuth?.((_tabId: string, data) => receiveCodexAuth(data)) ?? (() => {})
 
     // Manual Reconnect — the server ended the old session and `--resume`s a
     // fresh PTY, so the console must drop the dead session's screen (deferred
@@ -813,6 +823,9 @@ export function useBridgeListeners(
       unsubOutput()
       unsubExit()
       unsubSessionRestarted()
+      unsubAgentPreferences()
+      unsubCodexModels()
+      unsubCodexAuth()
       unsubConsoleReset()
       unsubJsonlEntries()
       unsubStreamingEntry?.()

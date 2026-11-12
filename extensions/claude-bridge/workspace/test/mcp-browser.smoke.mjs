@@ -11,6 +11,13 @@ import { mcpBrowserEvidence } from '../acceptance/mcp-browser-evidence.mjs'
 import { browserMcp } from './fixtures/browser-mcp.mjs'
 import { previewFixture } from './fixtures/preview-fixture.mjs'
 
+/** Tool calls the MCP peer journaled. The host adds its own `_meta`
+ *  (progressToken, validated by the fixture); the model's call is name + arguments. */
+async function journaledCalls(file) {
+  return (await readFile(file, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+}
+const modelCall = ({ _meta, ...call }) => call
+
 test('shared browser MCP APIs, two-page events and zero-page external execution', { timeout: 90000 }, async t => {
   const fixture = await previewFixture(t, { conversations: true })
   await writeFile(path.join(fixture.root, 'mcp-resource.txt'), 'independently seeded MCP resource')
@@ -126,14 +133,17 @@ test('shared browser MCP APIs, two-page events and zero-page external execution'
     const nonce = randomUUID()
     const result = await fixture.tool('fixture_record', { nonce })
     assert.deepEqual(result.result.content, [{ type: 'text', text: `first:${nonce}` }])
+    const calls = await journaledCalls(first.journal)
+    assert.deepEqual(calls.map(modelCall), [{ name: 'fixture_record', arguments: { nonce } }])
+    // The token the host requested comes back to both pages unchanged.
+    const progressToken = calls[0]._meta.progressToken
     await eventually(async () => {
-      for (const page of [a, b]) assert.deepEqual((await page.evaluate(() => window.__mcpProof.progress)).filter(value => value.progressToken === nonce), [{
-        serverId: server.id, serverName: 'browser_fixture', progressToken: nonce,
+      for (const page of [a, b]) assert.deepEqual((await page.evaluate(() => window.__mcpProof.progress))
+        .filter(value => value.serverId === server.id && value.progressToken === progressToken), [{
+        serverId: server.id, serverName: 'browser_fixture', progressToken,
         progress: 1, total: 1, message: 'Synthetic tool complete',
       }])
     })
-    assert.deepEqual((await readFile(first.journal, 'utf8')).trim().split('\n').map(line => JSON.parse(line)),
-      [{ name: 'fixture_record', arguments: { nonce } }])
   })
   await proof.prove('update', async () => {
     const updated = await api('updateMcpServer', server.id, { name: 'renamed_fixture', url: second.url })
@@ -164,7 +174,7 @@ test('shared browser MCP APIs, two-page events and zero-page external execution'
     const nonce = randomUUID()
     const result = await fixture.tool('fixture_second', { nonce })
     assert.deepEqual(result.result.content, [{ type: 'text', text: `second:${nonce}` }])
-    assert.deepEqual((await readFile(second.journal, 'utf8')).trim().split('\n').map(line => JSON.parse(line)),
+    assert.deepEqual((await journaledCalls(second.journal)).map(modelCall),
       [{ name: 'fixture_second', arguments: { nonce } }])
     // Use the exact catalog sent by the host, not a locally reconstructed URI.
     await fixture.wait(frame => frame.type === 'mcp:register-external-content' && frame.resources?.some(item => item.rawUri === second.resources[1].uri))

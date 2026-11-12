@@ -548,6 +548,7 @@ export class TabManager {
       retryAttempt: connection.retryAttempt,
       effort: tab.effort,
       model: tab.model,
+      engine: tab.connection.getEngine(),
       sessionTitle: tab.sessionTitle,
       conversationId: tab.conversationId,
       sessionId: connection.sessionId,
