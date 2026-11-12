@@ -261,6 +261,38 @@ describe('codex chat over the Bridge session WebSocket', () => {
     client.close()
   }, 30_000)
 
+  it('feeds Bridge Console a live log of the thread and replays it to a reattached client', async () => {
+    const consoleText = (c: Client) =>
+      c.frames
+        .filter((f) => f.type === 'session:output')
+        .map((f) => String(f.data))
+        .join('')
+    const client = await Client.open(port)
+    expect(await createChat(client, { engine: 'codex' })).toMatchObject({ engine: 'codex' })
+    // First frame: without any session:output the console stays on "Connecting to session…".
+    await client.next((f) => f.type === 'session:output' && String(f.data).includes('ChatGPT (codex)'))
+    expect(consoleText(client)).toContain('model gpt-fake')
+
+    await say(client, 'hello console', 'sub-console')
+    await client.entry((e) => e.type === 'assistant' && text(e).startsWith('echo: hello console'))
+    await vi.waitFor(() => expect(consoleText(client)).toContain('turn completed'), { timeout: 5_000 })
+    const log = consoleText(client)
+    expect(log).toContain('hello console')
+    expect(log).toContain('echo: hello console')
+    expect(log).not.toMatch(/[^\r]\n/)
+
+    // A second window on the same live chat gets the console back at once.
+    const conv = await client.next((f) => f.type === 'session:conversation-id')
+    const again = await Client.open(port)
+    again.send({ type: 'session:resume', token: 'tok-a', protocolVersion: 1, conversationId: conv.conversationId })
+    const replay = await again.next((f) => f.type === 'session:output')
+    // Byte-exact: the reply streamed mid-line, and the replay must not split it.
+    expect(replay.data).toBe(consoleText(client))
+    again.send({ type: 'session:end' })
+    again.close()
+    client.close()
+  }, 30_000)
+
   it('runs Bridge MCP tools through the real handler, per-session Bearer and host round trip', async () => {
     const a = await Client.open(port)
     const b = await Client.open(port)
