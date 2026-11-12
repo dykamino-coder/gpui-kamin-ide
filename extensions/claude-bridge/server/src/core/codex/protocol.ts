@@ -2,14 +2,14 @@
 // Codex app-server protocol — the subset Bridge speaks.
 //
 // Hand-copied from `codex app-server generate-ts --experimental` of
-// codex-cli 0.160.1 (the version the Bridge image pins). Only the shapes Bridge
+// codex-cli 0.167.2 (the version the Bridge image pins). Only the shapes Bridge
 // reads or sends are mirrored; unknown fields are tolerated everywhere because
 // the API is experimental and grows between releases. When the pinned version
 // changes, regenerate the types and re-check these definitions and the
 // recorded fixtures under ./fixtures.
 // ============================================================================
 
-export const CODEX_PROTOCOL_VERSION = '0.160.1'
+export const CODEX_PROTOCOL_VERSION = '0.167.2'
 
 export type RequestId = string | number
 
