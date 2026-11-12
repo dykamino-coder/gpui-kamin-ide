@@ -1,3 +1,4 @@
+import { warnLog } from '../../logging'
 // ============================================================================
 // Database CRUD — insert, update, delete, query operations
 // ============================================================================
@@ -236,7 +237,8 @@ function getMaxRequests(): number {
   try {
     const { getSettingInt } = require('../../config/settings')
     return getSettingInt('maxRequests', 1000)
-  } catch {
+  } catch (error) {
+    warnLog('stats: request limit setting unavailable', { error: String(error) })
     return parseInt(process.env.CLAUDE_PROXY_MAX_REQUESTS || '1000', 10)
   }
 }

@@ -7,121 +7,8 @@ import { commandSnapshot, commandOutput, stopCommand } from '../pty/commands'
 import { eventBus } from '../events/bus'
 import { getTerminalSessionCount } from './terminal'
 import { getAllSessions } from '../pty/session-manager'
-import { getDb } from '../stats/database/lifecycle'
-
-/** Per-session live aggregates from jsonl_events — counts ONLY entries
- *  produced after each PTY session's `createdAt`. That way "Active PTY
- *  Sessions" table reflects what the user did THIS session (not the
- *  full conversation history of a /resume'd chat). Context column is
- *  still the absolute last-turn pressure (it's a snapshot, not a delta).
- */
-async function getPtyAggregates(sessions: Array<{ id: string; conversationId: string; createdAt: string }>): Promise<
-  Map<
-    string,
-    {
-      userMessages: number
-      assistantMessages: number
-      totalTokens: number
-      contextTokens: number
-      model: string | null
-    }
-  >
-> {
-  const out = new Map<
-    string,
-    {
-      userMessages: number
-      assistantMessages: number
-      totalTokens: number
-      contextTokens: number
-      model: string | null
-    }
-  >()
-  if (sessions.length === 0) return out
-  const db = await getDb()
-  // Context = PEAK effective input (input + cache_read + cache_write)
-  // across all assistant turns in this session — same metric as the
-  // client's SessionStats.tsx progress bar. Skips <synthetic> rows.
-  // Note: doesn't slice by compact_boundary (system entries aren't
-  // stored in jsonl_events) — peak is across the whole session.
-  // Context query walks the resume chain via session_tokens.parent_session_id.
-  // After a session is resumed (`--resume`), CLI writes to a NEW jsonl
-  // file, so a direct MAX over `jsonl_events WHERE session_id = current`
-  // returns 0 until the user actually types something — the dashboard
-  // would then show "Context 0" for any idle resumed session.
-  // Walking the parent chain via session_tokens.context_tokens (which
-  // sweeper persists per-session) lets us surface the LAST known
-  // context from the previous segment until a fresh assistant turn
-  // overwrites it. Falls back to a direct jsonl_events MAX so brand-
-  // new sessions still report their live peak before sweeper has run.
-  const sql = `
-    SELECT
-      SUM(CASE WHEN type = 'user' AND timestamp >= ? THEN 1 ELSE 0 END) as user_messages,
-      SUM(CASE WHEN type = 'assistant' AND timestamp >= ? THEN 1 ELSE 0 END) as assistant_messages,
-      SUM(CASE WHEN timestamp >= ? THEN COALESCE(input_tokens,0) + COALESCE(cache_read_tokens,0) + COALESCE(cache_write_tokens,0) + COALESCE(output_tokens,0) ELSE 0 END) as total_tokens,
-      GREATEST(
-        COALESCE((
-          SELECT MAX(COALESCE(a.input_tokens,0) + COALESCE(a.cache_read_tokens,0) + COALESCE(a.cache_write_tokens,0))
-          FROM jsonl_events a
-          WHERE a.session_id = ? AND a.type = 'assistant'
-            AND (a.model IS NULL OR a.model != '<synthetic>')
-        ), 0),
-        COALESCE((
-          WITH RECURSIVE chain AS (
-            SELECT session_id, parent_session_id, context_tokens
-            FROM session_tokens WHERE session_id = ?
-            UNION ALL
-            SELECT st.session_id, st.parent_session_id, st.context_tokens
-            FROM session_tokens st
-            JOIN chain c ON c.parent_session_id = st.session_id
-          )
-          SELECT MAX(context_tokens) FROM chain
-        ), 0)
-      ) as context_tokens,
-      (
-        SELECT a.model FROM jsonl_events a
-        WHERE a.session_id = ? AND a.type = 'assistant'
-          AND a.model IS NOT NULL AND a.model != ''
-        ORDER BY a.timestamp DESC LIMIT 1
-      ) as model
-    FROM jsonl_events
-    WHERE session_id = ?
-  `
-  for (const s of sessions) {
-    try {
-      const rows = (
-        await db.runAndReadAll(sql, [
-          s.createdAt,
-          s.createdAt,
-          s.createdAt,
-          s.conversationId,
-          s.conversationId,
-          s.conversationId,
-          s.conversationId,
-        ])
-      ).getRowObjects() as Array<{
-        user_messages: bigint | number | null
-        assistant_messages: bigint | number | null
-        total_tokens: bigint | number | null
-        context_tokens: bigint | number | null
-        model: string | null
-      }>
-      const r = rows[0]
-      if (r) {
-        out.set(s.conversationId, {
-          userMessages: Number(r.user_messages ?? 0),
-          assistantMessages: Number(r.assistant_messages ?? 0),
-          totalTokens: Number(r.total_tokens ?? 0),
-          contextTokens: Number(r.context_tokens ?? 0),
-          model: r.model,
-        })
-      }
-    } catch {
-      /* skip session on error */
-    }
-  }
-  return out
-}
+import { persistedContextTokens, ptySessionCounters } from '../dashboard/pty-session-counters'
+import { warnLog } from '../logging'
 
 // Server boot timestamp — populated once on module load. Surfaced to the
 // dashboard as `stats.startedAt` so the Server status card can show
@@ -205,19 +92,13 @@ export function attachWebSocket(_server: HttpServer): void {
   registerWsRoute('/ws/dashboard', wss)
 
   wss.on('connection', (ws: WS) => {
-    // Pull live aggregates (msgs/tokens/model) from jsonl_events for any
-    // active PTY session whose conversation_id is already known so the
-    // dashboard's Active PTY Sessions table matches the per-token list.
-    // DuckDB queries are async, so wrap the init send in a self-invoking
-    // async IIFE — first message goes out as soon as the aggregates resolve.
+    // The Active PTY Sessions counters are the sessions' live counters, the
+    // same the polled REST list returns (dashboard/pty-session-counters.ts).
+    // The persisted-context lookup is async, so the init send waits for it.
     const allSessions = getAllSessions()
     void (async () => {
       try {
-        const aggregates = await getPtyAggregates(
-          allSessions
-            .filter((s) => !!s.cliConversationId)
-            .map((s) => ({ id: s.id, conversationId: s.cliConversationId!, createdAt: s.createdAt.toISOString() })),
-        )
+        const persisted = await persistedContextTokens(allSessions)
 
         const initData = {
           stats: {
@@ -230,7 +111,6 @@ export function attachWebSocket(_server: HttpServer): void {
           usage: lastUsage,
           terminalSessions: getTerminalSessionCount(),
           ptySessions: allSessions.map((s) => {
-            const agg = s.cliConversationId ? aggregates.get(s.cliConversationId) : undefined
             return {
               id: s.id,
               userName: s.userName,
@@ -245,19 +125,17 @@ export function attachWebSocket(_server: HttpServer): void {
               mcpLastError: s.mcpLastError,
               sessionTitle: s.sessionTitle ?? null,
               cliConversationId: s.cliConversationId ?? null,
-              userMessages: agg?.userMessages ?? 0,
-              assistantMessages: agg?.assistantMessages ?? 0,
-              totalTokens: agg?.totalTokens ?? 0,
-              contextTokens: agg?.contextTokens ?? 0,
-              model: agg?.model ?? null,
+              ...ptySessionCounters(s, persisted),
+              model: s.model ?? null,
             }
           }),
         }
         if (ws.readyState === WS.OPEN) {
           ws.send(JSON.stringify({ type: 'init', data: initData, timestamp: Date.now() }))
         }
-      } catch {
-        /* best-effort init payload — client survives without it */
+      } catch (err) {
+        // Best effort: the client survives without the init payload.
+        warnLog('dashboard ws: init payload failed', { error: String(err) })
       }
     })()
 

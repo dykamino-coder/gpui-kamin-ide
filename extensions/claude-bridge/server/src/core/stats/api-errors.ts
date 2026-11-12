@@ -1,3 +1,4 @@
+import { warnLog } from '../logging'
 // Provider errors of an agent turn → `api_errors` (dashboard Errors card).
 // Claude CLI errors are parsed from its terminal output (session-io.ts); a
 // codex turn reports them as events, recorded here with engine 'codex'.
@@ -42,7 +43,7 @@ export async function recordApiError(row: ApiErrorRow): Promise<void> {
         [new Date().toISOString(), row.sessionId, row.userName, row.errorType, row.raw.slice(0, 2000), row.engine],
       ),
     )
-  } catch {
-    /* best-effort */
+  } catch (error) {
+    warnLog('stats: API error insert failed', { error: String(error) })
   }
 }

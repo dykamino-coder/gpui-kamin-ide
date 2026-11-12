@@ -12,7 +12,7 @@
 import { getDb } from './database/lifecycle'
 import { withStatsWrite } from './database/write-lock'
 import { transcriptEngine } from '../pty/transcript-engine'
-import { infoLog } from '../logging'
+import { infoLog, warnLog } from '../logging'
 
 export const CODEX_RESCAN_FLAG = 'codex_engine_v1_rescanned'
 
@@ -40,7 +40,7 @@ export async function rescanCodexTranscriptsOnce(files: readonly string[]): Prom
       ])
       await db.run('COMMIT')
     } catch (err) {
-      await db.run('ROLLBACK').catch(() => undefined)
+      await db.run('ROLLBACK').catch((error) => warnLog('stats: Codex rescan rollback failed', { error: String(error) }))
       throw err
     }
   })

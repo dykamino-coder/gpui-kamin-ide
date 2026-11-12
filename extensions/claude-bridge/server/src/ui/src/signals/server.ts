@@ -1,4 +1,5 @@
 import { signal, computed } from '@preact/signals'
+import type { CodexStatus } from '../components/dashboard/codex-account-model'
 import type { HealthCheck, ExtendedStats } from '../types'
 
 export interface PtySessionInfo {
@@ -16,7 +17,7 @@ export interface PtySessionInfo {
   /** 'claude' | 'codex' (absent from older servers = claude). */
   engine?: string
   cliConversationId?: string | null
-  // Live aggregates derived from jsonl_events (filled when broadcast).
+  // Live transcript counters, refreshed alongside CPU/RSS every 5s.
   userMessages?: number
   assistantMessages?: number
   compactCount?: number
@@ -39,7 +40,7 @@ export const serverStats = signal<ExtendedStats | null>(null)
 export const isConnected = signal(false)
 export const terminalSessions = signal(0)
 export const ptySessions = signal<PtySessionInfo[]>([])
-export const serverStatus = signal<{ os?: string; nodeVersion?: string; startedAt?: string } | null>(null)
+export const serverStatus = signal<{ os?: string; nodeVersion?: string; startedAt?: string; codex?: CodexStatus } | null>(null)
 export const cachedAccount = signal<{ email?: string; organization?: string; subscriptionType?: string } | null>(null)
 export const accountCheckedAt = signal<Date | null>(null)
 /** Bumped on every codex `account:updated` push; the ChatGPT card refetches on change. */

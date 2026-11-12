@@ -104,7 +104,7 @@ export async function dedupeReplayedRequests(
         )
         await conn.run('COMMIT')
       } catch (e) {
-        await conn.run('ROLLBACK').catch(() => {})
+        await conn.run('ROLLBACK').catch((error) => warnLog('stats: request dedupe rollback failed', { error: String(error) }))
         throw e
       }
       const deleted = before - (await count())

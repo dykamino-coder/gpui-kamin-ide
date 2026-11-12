@@ -19,7 +19,7 @@ function actionError(error: unknown): CodexErrorInfo {
 }
 
 /** The Bridge server's shared ChatGPT account (codex engine), signed in with the device-code flow. */
-export function CodexAccountCard() {
+export function CodexAccountCard({ version, activeSessions = 0 }: { version?: string | null; activeSessions?: number }) {
   const [status, setStatus] = useState<CodexAccountStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -72,10 +72,10 @@ export function CodexAccountCard() {
   // Fallback while the admin completes the login (e.g. the dashboard socket is down).
   const polling = shouldPollCodexAccount(status)
   useEffect(() => {
-    if (!polling) return
-    const timer = setInterval(() => void refresh(), CODEX_POLL_INTERVAL_MS)
+    if (!polling && !status?.loggedIn) return
+    const timer = setInterval(() => void refresh(), polling ? CODEX_POLL_INTERVAL_MS : 60_000)
     return () => clearInterval(timer)
-  }, [polling])
+  }, [polling, status?.loggedIn])
 
   const run = async (action: () => Promise<unknown>, after?: (result: unknown) => void) => {
     setBusy(true)
@@ -128,7 +128,7 @@ export function CodexAccountCard() {
       iconColor="var(--accent-green)"
       title="ChatGPT (Codex)"
       status={view.status}
-      items={view.items}
+      items={[...view.items, { label: 'Version', value: version || '—' }, { label: 'Active Sessions', value: String(activeSessions) }]}
       action={{
         icon: 'fa-solid fa-rotate',
         label: 'Refresh ChatGPT account',
