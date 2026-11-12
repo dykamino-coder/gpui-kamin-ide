@@ -12122,6 +12122,12 @@ function shellTimeout(input, context) {
   }
   return typeof input.timeout === "number" && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 18e5)) : 15e5;
 }
+function powerShellFlags(env4) {
+  const flags = ["-NoLogo", "-NoProfile", "-NonInteractive"];
+  const respect = env4.CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY;
+  if (!respect || ["0", "false", "no", "off"].includes(respect.toLowerCase())) flags.push("-ExecutionPolicy", "Bypass");
+  return [...flags, "-Command"];
+}
 async function powerShellExecute(input, context) {
   const command = input.command;
   if (!command) return errorResult2("command is required");
@@ -12137,7 +12143,7 @@ async function powerShellExecute(input, context) {
   const wrapped = "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n" + command;
   let script;
   try {
-    script = scriptInvocation("powershell", ["-NoLogo", "-NonInteractive", "-Command"], wrapped);
+    script = scriptInvocation("powershell", powerShellFlags(process.env), wrapped);
   } catch (err) {
     return errorResult2(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`);
   }
