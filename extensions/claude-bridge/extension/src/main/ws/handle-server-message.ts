@@ -9,6 +9,7 @@ import type { ServerMessage } from '../../shared/mcp-protocol'
 import type { JsonlBatcher } from './jsonl-batcher'
 import { cacheFileOrder } from '../../shared/jsonl-cache-order'
 import type { ExtendedConnectionState } from './connection-manager'
+import { isAgentEngine, type AgentEngine } from '../../shared/types'
 
 export interface HandlerCtx {
   window: BrowserWindow
@@ -63,6 +64,10 @@ export interface HandlerCtx {
   notifySessionTitle: (title: string) => void
   notifyConversationId: (id: string) => void
   notifySessionInfo: (effort?: string, model?: string) => void
+  /** session:created's engine (absent from older servers → Claude) and model. */
+  noteSessionEngine?: (engine: AgentEngine | undefined, model: string | undefined) => void
+  /** The user's main agent arrived (agent:preferences). */
+  notifyAgentPreferences?: (engine: AgentEngine) => void
   notifyTreeUpdate: (tree: any[]) => void
   trackActivityForIdle: (rawTitle: string | undefined, isWorking: boolean, hookDriven: boolean) => void
   /** Реплей закрыт — снять settle-окно idle-трекера (C17). */
@@ -119,13 +124,19 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       ctx.setState({ status: 'authenticated', sessionId: msg.sessionId })
       const settingsDir = (msg as any).settingsDir
       if (settingsDir) ctx.setSettingsDir(settingsDir)
-      if (msg.effort || msg.model) {
+      const engine = isAgentEngine(msg.engine) ? msg.engine : undefined
+      const engineNotice = typeof msg.engineNotice === 'string' && msg.engineNotice ? msg.engineNotice : undefined
+      if (msg.effort || msg.model || engine || engineNotice) {
         ctx.window.webContents.send('session-restarted', ctx.tabId, {
           sessionId: msg.sessionId,
           effort: msg.effort,
           model: msg.model,
+          ...(engine ? { engine } : {}),
+          ...(engineNotice ? { engineNotice } : {}),
         })
       }
+      // Engine first: the tab list pushed by notifySessionInfo carries it.
+      ctx.noteSessionEngine?.(engine, msg.model)
       ctx.notifySessionInfo(msg.effort, msg.model)
       ctx.notifyAuthenticated()
       break
@@ -134,6 +145,27 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
     case 'session:output':
       ctx.window.webContents.send('pty-output', ctx.tabId, msg.data)
       break
+
+    // Engine-level replies (not bound to the transcript): the user's main
+    // agent, the GPT model list and the ChatGPT sign-in gate of a codex chat.
+    case 'agent:preferences': {
+      const { type: _type, ...data } = msg
+      if (isAgentEngine(data.defaultEngine)) ctx.notifyAgentPreferences?.(data.defaultEngine)
+      ctx.window.webContents.send('agent-preferences', ctx.tabId, data)
+      break
+    }
+
+    case 'codex:models': {
+      const { type: _type, ...data } = msg
+      ctx.window.webContents.send('codex-models', ctx.tabId, { ...data, models: Array.isArray(data.models) ? data.models : [] })
+      break
+    }
+
+    case 'codex:auth': {
+      const { type: _type, sessionId: _sessionId, ...data } = msg
+      ctx.window.webContents.send('codex-auth', ctx.tabId, data)
+      break
+    }
 
     case 'session:exit':
       ctx.window.webContents.send('pty-exit', ctx.tabId, msg.code)

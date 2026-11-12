@@ -10,8 +10,10 @@ import {
   cachedAccount,
   accountCheckedAt,
   cachedUsage,
+  codexAccountEventAt,
   type PtySessionInfo,
 } from '../signals/server'
+import { isCodexAccountEvent } from '../components/dashboard/codex-account-model'
 import { addRequest, updateRequest, addError, seedErrors } from '../signals/requests'
 import type { BridgeEvent, InitData, ExtendedStats, HealthCheck, RequestLogEntry } from '../types'
 
@@ -136,7 +138,16 @@ class DashboardWSClient {
         serverHealth.value = msg.data as HealthCheck
         healthCheckedAt.value = new Date()
         break
+      case 'codex:account-updated':
+        codexAccountEventAt.value = Date.now()
+        break
       case 'account:updated':
+        // The ChatGPT (codex) account shares the event name; it must not
+        // replace the cached Claude account.
+        if (isCodexAccountEvent(msg.data)) {
+          codexAccountEventAt.value = Date.now()
+          break
+        }
         cachedAccount.value = msg.data as any
         accountCheckedAt.value = new Date()
         break

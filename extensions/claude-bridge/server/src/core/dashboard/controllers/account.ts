@@ -5,6 +5,7 @@
 import { claudeInvocation } from '../../pty/dev-cli'
 import type { Hono } from 'hono'
 import { eventBus } from '../../events/bus'
+import { claudeAuth } from '../../engine/engine-auth'
 import { readClaudeLocalInfo } from '../helpers/system-info'
 import { TtlCache } from '../../utils/ttl-cache'
 
@@ -113,6 +114,8 @@ export function registerAccountRoutes(api: Hono): void {
         apiProvider: parsed.apiProvider || undefined,
       }
       authCache.set(status)
+      // Model selectors in open chats follow the dashboard's sign-in check.
+      claudeAuth().record(status)
       return c.json(status)
     } catch (err) {
       const fallback = { loggedIn: false, error: err instanceof Error ? err.message : 'Auth check failed' }

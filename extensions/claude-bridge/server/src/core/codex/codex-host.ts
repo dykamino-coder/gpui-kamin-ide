@@ -74,6 +74,7 @@ export class CodexHost {
   private readonly hostListeners = new Set<(method: string, params: unknown) => void>()
   private idleTimer: NodeJS.Timeout | undefined
   private closed = false
+  private exitedUnexpectedly = false
   private readonly closeListeners = new Set<() => void>()
 
   constructor(
@@ -83,6 +84,8 @@ export class CodexHost {
     process.rpc.setServerRequestHandler((method) => answerServerRequest(method))
     process.rpc.onNotification((method, params, frame) => this.route(method, params, frame.emittedAtMs))
     process.onExit((exit) => {
+      // Exit without close(): the app-server died under its threads.
+      if (!this.closed) this.exitedUnexpectedly = true
       this.closed = true
       clearTimeout(this.idleTimer)
       for (const sink of [...this.sinks.values()]) sink.onExit(exit)
@@ -106,6 +109,16 @@ export class CodexHost {
 
   get threadCount(): number {
     return this.sinks.size
+  }
+
+  /** The process exited without being closed (crash, kill) — not an idle close. */
+  get crashed(): boolean {
+    return this.exitedUnexpectedly
+  }
+
+  /** A Bridge session already owns this thread on this app-server. */
+  isAttached(threadId: string): boolean {
+    return this.sinks.has(threadId)
   }
 
   /** Account-level notifications (rate limits, login, account) without a thread. */
@@ -146,6 +159,10 @@ export class CodexHost {
   /** Routes the thread's notifications to `sink`, replaying any that arrived first. */
   attach(threadId: string, sink: ThreadSink): () => void {
     if (!this.alive) throw new Error('codex host is closed')
+    // One writer per thread: a second session on a live thread would interleave
+    // turns on the same rollout (field lesson: a duplicate broke the thread).
+    const owner = this.sinks.get(threadId)
+    if (owner && owner !== sink) throw new CodexThreadBusyError(threadId)
     clearTimeout(this.idleTimer)
     this.idleTimer = undefined
     this.retired.delete(threadId)
@@ -174,18 +191,78 @@ export class CodexHost {
   }
 }
 
-/** One host per CODEX_HOME; concurrent acquirers share the same start. */
+export class CodexThreadBusyError extends Error {
+  constructor(readonly threadId: string) {
+    super('this ChatGPT conversation is already open in another Bridge session')
+    this.name = 'CodexThreadBusyError'
+  }
+}
+
+export class CodexRestartPausedError extends Error {
+  constructor(
+    readonly crashes: number,
+    readonly until: number,
+  ) {
+    super(
+      `the codex app-server crashed ${crashes} times in a row; restarts are paused until ${new Date(until).toISOString().slice(11, 16)} UTC`,
+    )
+    this.name = 'CodexRestartPausedError'
+  }
+}
+
+/** When a crashed app-server may be started again. Defaults follow the agent
+ *  driver's field data: a crash within 2 min of its start twice in a row is a
+ *  crash storm (84 empty restarts in one night), and so is any 5 crashes in
+ *  10 min; both pause restarts for 5 min instead of looping. */
+export interface RestartPolicy {
+  now?: () => number
+  stormMs?: number
+  stormCrashes?: number
+  windowMs?: number
+  maxCrashes?: number
+  cooldownMs?: number
+}
+
+/** One host per CODEX_HOME; concurrent acquirers share the same start. Dead
+ *  hosts are restarted on the next acquire, within the restart policy. */
 export class CodexHostRegistry {
   private readonly hosts = new Map<string, Promise<CodexHost>>()
+  private readonly history = new Map<
+    string,
+    { startedAt: number; crashes: number[]; quick: number; pausedUntil: number }
+  >()
 
-  constructor(private readonly startHost: (home: string) => Promise<CodexHost>) {}
+  constructor(
+    private readonly startHost: (home: string) => Promise<CodexHost>,
+    private readonly policy: RestartPolicy = {},
+  ) {}
 
   acquire(home: string): Promise<CodexHost> {
     const existing = this.hosts.get(home)
     if (existing) {
       return existing.then((host) => (host.alive ? host : this.restart(home, existing)))
     }
+    const paused = this.pausedUntil(home)
+    if (paused) return Promise.reject(new CodexRestartPausedError(this.history.get(home)!.crashes.length, paused))
     return this.launch(home)
+  }
+
+  private pausedUntil(home: string): number | null {
+    const h = this.history.get(home)
+    const now = (this.policy.now ?? Date.now)()
+    return h && h.pausedUntil > now ? h.pausedUntil : null
+  }
+
+  private noteCrash(home: string): void {
+    const now = (this.policy.now ?? Date.now)()
+    const h = this.history.get(home)
+    if (!h) return
+    const windowMs = this.policy.windowMs ?? 10 * 60_000
+    h.crashes = [...h.crashes.filter((at) => now - at < windowMs), now]
+    h.quick = now - h.startedAt < (this.policy.stormMs ?? 2 * 60_000) ? h.quick + 1 : 0
+    if (h.quick >= (this.policy.stormCrashes ?? 2) || h.crashes.length >= (this.policy.maxCrashes ?? 5)) {
+      h.pausedUntil = now + (this.policy.cooldownMs ?? 5 * 60_000)
+    }
   }
 
   private restart(home: string, stale: Promise<CodexHost>): Promise<CodexHost> {
@@ -194,8 +271,17 @@ export class CodexHostRegistry {
   }
 
   private launch(home: string): Promise<CodexHost> {
+    const now = (this.policy.now ?? Date.now)()
+    const prior = this.history.get(home)
+    this.history.set(home, {
+      startedAt: now,
+      crashes: prior?.crashes ?? [],
+      quick: prior?.quick ?? 0,
+      pausedUntil: 0,
+    })
     const started = this.startHost(home).then((host) => {
       host.onClose(() => {
+        if (host.crashed) this.noteCrash(home)
         if (this.hosts.get(home) === started) this.hosts.delete(home)
       })
       return host

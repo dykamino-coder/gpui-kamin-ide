@@ -3,7 +3,7 @@ import * as vscode from 'vscode'
 import { randomUUID } from 'node:crypto'
 import { appendStreamingText } from '../../shared/streaming-delta'
 import type { BrowserWindow } from '@kaminide/host-compat'
-import type { ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
+import type { AgentEngine, ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
 import type { HostDeclaration } from '../mcp/host-declaration'
@@ -124,6 +124,8 @@ export class ConnectionManager {
   static enrichTree: ((tree: any[]) => void) | null = null
   // Optional callback when session info (effort/model) arrives from server
   static onSessionInfo: ((tabId: string, effort?: string, model?: string) => void) | null = null
+  // The server told this tab the user's main agent (agent:preferences).
+  static onAgentPreferences: ((tabId: string, engine: AgentEngine) => void) | null = null
   // Optional callback when session title arrives from server
   static onSessionTitle: ((tabId: string, title: string) => void) | null = null
   // Optional callback when conversationId is discovered (for session saving)
@@ -315,6 +317,8 @@ export class ConnectionManager {
 
   constructor(config: ConnectionConfig, window: BrowserWindow, tabId: string, conversationId?: string) {
     this.config = config
+    this.engine = config.engine
+    this.pendingModel = config.model ?? null
     this.window = window
     this.tabId = tabId
     this.commands = new ClientCommands(tabId, (event, value) => window.webContents.send(event, tabId, value))
@@ -325,6 +329,11 @@ export class ConnectionManager {
       ConnectionManager.onSessionIdle?.(this.tabId, rawTitle)
     })
   }
+
+  /** Requested engine of a new chat, replaced by the server's answer. */
+  private engine: AgentEngine | undefined
+  /** Model the tab asked for, applied once after the first session:created. */
+  private pendingModel: string | null = null
 
   // Background (warm-pool) tab: live transcript/streaming forwarding to the
   // webview is off until the tab is first shown (see JsonlBatcher.muted).
@@ -554,6 +563,8 @@ export class ConnectionManager {
         ...(transcriptMirrorDir ? { transcriptMirrorDir } : {}),
         ...(externalTools.length > 0 ? { externalTools } : {}),
         ...(host ? { host } : {}),
+        // Hint only: the server resumes a chat on the engine of its transcript.
+        ...(this.engine ? { engine: this.engine } : {}),
       })
     } else {
       this.sendRaw({
@@ -568,6 +579,7 @@ export class ConnectionManager {
         ...(transcriptMirrorDir ? { transcriptMirrorDir } : {}),
         ...(externalTools.length > 0 ? { externalTools } : {}),
         ...(host ? { host } : {}),
+        ...(this.engine ? { engine: this.engine } : {}),
       })
     }
     this.armEstablishTimer()
@@ -1222,6 +1234,31 @@ export class ConnectionManager {
     this.send({ type: 'session:change-model', model })
   }
 
+  /** The chat's agent: the tab's request until the server reports the real one. */
+  getEngine(): AgentEngine {
+    return this.engine ?? 'claude'
+  }
+
+  /** GPT model list + ChatGPT account state for the selector (reply: codex:models). */
+  requestCodexModels(): void {
+    this.send({ type: 'codex:models' })
+  }
+
+  /** The user's main agent for new chats; the server stores it per token. */
+  setDefaultEngine(engine: AgentEngine): void {
+    this.send({ type: 'agent:set-default-engine', engine })
+  }
+
+  /** session:created reports the chat's engine. A new chat asked for a model the
+   *  server did not start on (the create message carries no model) gets it now,
+   *  once: codex applies a model change from the next turn without a restart. */
+  private noteSessionEngine(engine: AgentEngine | undefined, model: string | undefined): void {
+    if (engine) this.engine = engine
+    const wanted = this.pendingModel
+    this.pendingModel = null
+    if (wanted && engine === 'codex' && model !== wanted) this.changeModel(wanted)
+  }
+
   /** Resume a previous session by conversationId. */
   resume(conversationId: string): void {
     const basePrompt = ConnectionManager.getBasePrompt?.(this.config.cwd) ?? ''
@@ -1607,6 +1644,8 @@ export class ConnectionManager {
       notifyElicitationRequest: (p) => ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => ConnectionManager.onConversationId?.(this.tabId, id),
+      noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
+      notifyAgentPreferences: (engine) => ConnectionManager.onAgentPreferences?.(this.tabId, engine),
       notifySessionInfo: (effort, model) => {
         // Снимок для claude-bridge.getSessionInfo (тест-команды).
         if (effort) this.lastEffort = effort

@@ -1,0 +1,128 @@
+.center {
+  padding: 12px 0 4px;
+  text-align: center;
+}
+
+.loginBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent-green);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.loginBtn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  box-shadow: var(--shadow-sm);
+}
+.loginBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secondaryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.secondaryBtn:hover:not(:disabled) {
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+.secondaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pending {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.link {
+  font-size: 12px;
+  color: var(--accent-blue);
+  word-break: break-all;
+  text-decoration: none;
+}
+.link:hover {
+  text-decoration: underline;
+}
+.codeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.code {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: 4px 10px;
+  user-select: all;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.waiting {
+  font-size: 11px;
+  color: var(--accent-yellow);
+}
+
+.error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent-red);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+.errorMessage {
+  color: var(--accent-red);
+  font-weight: 600;
+}
+.detailToggle {
+  margin-top: 4px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.errorDetail {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

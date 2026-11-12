@@ -1,0 +1,32 @@
+/* Group headings and status lines between the model options (Claude / ChatGPT / main agent). */
+.groupLabel {
+  padding: 6px 12px 2px;
+  font-size: var(--fs-10);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-top: 1px solid var(--bg-mantle);
+}
+
+.groupLabel:first-child {
+  border-top: none;
+}
+
+.notice {
+  padding: 4px 12px 8px;
+  font-size: var(--fs-10);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Inline link to the Bridge dashboard when no engine is signed in. */
+.noticeLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--accent-blue);
+  text-decoration: underline;
+  cursor: pointer;
+}
