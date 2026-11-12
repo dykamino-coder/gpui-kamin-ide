@@ -69,6 +69,15 @@ describe('agent engine on the client connection', () => {
     expect(frames.filter((f) => f.type === 'session:change-model')).toHaveLength(1)
   })
 
+  it('applies a Claude model picked in a GPT chat to the new Claude chat once', () => {
+    const { internal, frames } = manager({ engine: 'claude', model: 'claude-sonnet-5-5' })
+    internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: 'claude-opus-5-5', engine: 'claude' })
+    expect(frames.filter((f) => f.type === 'session:change-model')).toEqual([
+      { type: 'session:change-model', model: 'claude-sonnet-5-5' },
+    ])
+    internal.dispatchMessage({ type: 'session:created', sessionId: 's2', model: 'claude-opus-5-5', engine: 'claude' })
+    expect(frames.filter((f) => f.type === 'session:change-model')).toHaveLength(1)
+  })
   it('does not send a model change when codex already started on the picked model', () => {
     const { internal, frames } = manager({ engine: 'codex', model: 'gpt-5.5' })
     internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: 'gpt-5.5', engine: 'codex' })
