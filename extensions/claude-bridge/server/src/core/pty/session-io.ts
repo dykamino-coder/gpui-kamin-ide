@@ -6,9 +6,17 @@ import type { WebSocket as WS } from 'ws'
 import type { PtySession } from './types'
 import { eventBus } from '../events/bus'
 import { debugLog } from '../logging'
-import { setSessionPromptReady, submitCoordinatedText, writeCoordinatedInput } from './session-input-coordinator'
+import {
+  getSessionInputSnapshot,
+  setSessionPromptReady,
+  submitCoordinatedText,
+  whenPromptReady,
+  writeCoordinatedInput,
+} from './session-input-coordinator'
 import type { SendOutcome } from './jsonl-replay'
 import { sessionCliControl } from './session-cli-control'
+import { takeTurnContext } from '../conversation/conversation'
+import { withContextBlock } from '../engine/handoff'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -216,6 +224,36 @@ export function submitTextToSession(session: PtySession, text: string, submissio
     return
   }
   session.lastActivityAt = new Date()
+  // Messages sent while the first turn waits for the CLI keep their order.
+  const gate = firstTurnGates.get(session)
+  if (gate) {
+    void gate.then(() => submitTextToSession(session, text, submissionId))
+    return
+  }
+  // The first turn of an engine that joined the conversation carries the
+  // history as a hidden block (conversation/conversation.ts, handoff.ts).
+  const context = session.conversation ? takeTurnContext(session.conversation) : null
+  if (context) {
+    text = withContextBlock(text, context)
+    // A multi-line paste needs the CLI's prompt up (see whenPromptReady).
+    if (!session.agentInput && !getSessionInputSnapshot(session).promptReady) {
+      const ready = whenPromptReady(session, FIRST_TURN_PROMPT_WAIT_MS).then(() => {
+        firstTurnGates.delete(session)
+        deliverText(session, text, submissionId)
+      })
+      firstTurnGates.set(session, ready)
+      return
+    }
+  }
+  deliverText(session, text, submissionId)
+}
+
+/** A joining Claude session's first turn waits at most this long for the prompt. */
+const FIRST_TURN_PROMPT_WAIT_MS = 10_000
+const firstTurnGates = new WeakMap<PtySession, Promise<void>>()
+
+function deliverText(session: PtySession, text: string, submissionId?: string): void {
+  if (session.state !== 'running') return submitTextToSession(session, text, submissionId)
   if (session.agentInput) return session.agentInput.submit(text, submissionId)
   if (sessionCliControl(session)?.submit(text, submissionId)) return
   if (submissionId)

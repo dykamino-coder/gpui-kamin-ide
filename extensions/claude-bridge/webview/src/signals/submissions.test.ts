@@ -1,11 +1,20 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { jsonlEntriesByTab } from './jsonl'
-import { noteSubmissionRows, pendingSubmissionRows, receiveSubmission, submissions } from './submissions'
+import { forgetModCapability, modCapabilities, noteSubmissionRows, pendingSubmissionRows, receiveSubmission, submissions } from './submissions'
 import type { JsonlEntryData } from '../types/jsonl'
 import { clearLocalQueue, localQueue, reconcileQueueWithEntries, sweepStaleQueue } from './queue'
 
-beforeEach(() => { clearLocalQueue('tab'); submissions.value = new Map(); jsonlEntriesByTab.value = new Map() })
+beforeEach(() => { clearLocalQueue('tab'); submissions.value = new Map(); jsonlEntriesByTab.value = new Map(); modCapabilities.value = new Map() })
 describe('submission transcript identity', () => {
+  it('adds no row for a codex read receipt after the chat moved from Claude to ChatGPT', () => {
+    receiveSubmission('tab', { id: '', capable: true })
+    receiveSubmission('tab', { id: 'claude', text: 'on claude', state: 'queued' })
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toHaveLength(1)
+    forgetModCapability('tab') // engine switch
+    receiveSubmission('tab', { id: 'gpt', text: 'on gpt', state: 'queued' })
+    receiveSubmission('tab', { id: 'gpt', state: 'read' })
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!).map(row => row.submissionId)).toEqual(['claude'])
+  })
   it('clears a composer warning when a later receipt no longer carries it', () => {
     receiveSubmission('tab', { id: 'id', text: 'sent', state: 'queued', warning: 'Draft exists' })
     receiveSubmission('tab', { id: 'id', state: 'native' })

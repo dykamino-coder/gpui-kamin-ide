@@ -290,6 +290,7 @@ export async function createCodexSession(
     bearerHash: config.bearerHash,
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,
+    ...(config.conversation ? { conversation: config.conversation } : {}),
   }
   const releaseEndpoint = holdMcpEndpoint(session)
   let agent: CodexAgentSession
@@ -369,7 +370,8 @@ export async function createCodexSession(
     lifecycleLog('pty_exit', { sessionId, exitCode, suppressed: false })
     session.state = 'exited'
     binding.dispose()
-    sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
+    // An engine switch ends this engine on purpose; the chat goes on.
+    if (!session.isRestarting) sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
     deps.finalizeExit(sessionId, exitCode)
   })
 

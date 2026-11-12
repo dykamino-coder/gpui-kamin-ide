@@ -9,6 +9,7 @@ import { dropRenderModelCache } from '../components/jsonl-viewer/derived-cache'
 import { trimHeavyToolResults } from './heavy-tool-result'
 import { appendStreamingText } from '../../../extension/src/shared/streaming-delta'
 import { CHAT_STORED_ENTRY_TYPES, isChatStoredEntry } from '../../../extension/src/shared/chat-stored-entries'
+import { stripBridgeContext } from '../utils/bridge-context'
 
 // Global per-tab JSONL entries store — single source of truth.
 // Updated by useBridgeListeners (onJsonlEntries handler).
@@ -523,6 +524,8 @@ function ingestEntries(tabId: string, entries: JsonlEntryData[], ofShownWindow: 
   // derived model.
   entries = entries.filter(isStoredEntry)
   if (entries.length === 0) return false
+  // The history an engine got with its first turn is not the user's text.
+  for (const e of entries) stripBridgeContext(e)
   // Viewing an archived compact segment: live entries belong to the CURRENT
   // segment, not this snapshot — dropping them here keeps the archived view
   // intact (they persist server-side and return when the user goes back to

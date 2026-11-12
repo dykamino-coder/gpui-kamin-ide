@@ -57,6 +57,12 @@ const screen = (text) =>
 const settings = fs.existsSync('.claude/settings.json')
   ? JSON.parse(fs.readFileSync('.claude/settings.json', 'utf8'))
   : {}
+// Bridge passes its hooks (status relay included) in a --settings file.
+const settingsArg = args.indexOf('--settings')
+if (settingsArg >= 0 && fs.existsSync(args[settingsArg + 1] ?? '')) {
+  const extra = JSON.parse(fs.readFileSync(args[settingsArg + 1], 'utf8'))
+  settings.hooks = { ...(settings.hooks ?? {}), ...(extra.hooks ?? {}) }
+}
 const mcp = fs.existsSync('.mcp.json')
   ? JSON.parse(fs.readFileSync('.mcp.json', 'utf8')).mcpServers['user-tools']
   : undefined
@@ -146,6 +152,8 @@ async function agents(count = 800, team) {
   fs.appendFileSync(childFile, rows.map((row) => JSON.stringify(row) + '\n').join(''))
   await hook('SubagentStart', { agent_id: agentId, agent_type: agentName })
 }
+/** Messages this process received (in memory only, for /fake-recall). */
+const received = []
 async function execute(command) {
   if (command === '/exit') {
     await hook('SessionEnd')
@@ -160,6 +168,7 @@ async function execute(command) {
   await hook('UserPromptSubmit', { prompt: command })
   // Input content itself is synthetic control, never user prompt capture.
   emit(rec.user('Synthetic harness command'))
+  received.push(command)
   const [action, parameter] = command.split(/\s+/)
   switch (action) {
     case '/fake-agents':
@@ -197,6 +206,30 @@ async function execute(command) {
       )
       await hook('SessionStart', { source: 'compact' })
       break
+    case '/fake-note':
+      // A synthetic fact the answer carries (user input itself is never captured).
+      emit(rec.assistant([{ type: 'text', text: `noted: ${parameter ?? ''}` }]))
+      break
+    case '/fake-recall': {
+      // Lines of the appended system prompt holding the word (engine-switch handoff).
+      // What this session knows: its system prompt, the messages it received
+      // (a hidden context block included) and its own transcript.
+      const prompt = args.includes('--append-system-prompt') ? args[args.indexOf('--append-system-prompt') + 1] : ''
+      const own = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
+      const said = own
+        .split('\n')
+        .filter(Boolean)
+        .flatMap((line) => (JSON.parse(line).message?.content ?? []).map?.((b) => b.text ?? '') ?? [])
+        .filter((text) => !text.startsWith('recall:'))
+      // The current message counts without its own command line.
+      const inputs = received.map((text, i) =>
+        i === received.length - 1 ? text.split('\n').slice(1).join('\n') : text,
+      )
+      const known = [prompt ?? '', ...inputs, ...said].join('\n')
+      const hits = known.split('\n').filter((line) => parameter && line.includes(parameter))
+      emit(rec.assistant([{ type: 'text', text: `recall: ${hits.join(' | ')}` }]))
+      break
+    }
     case '/fake-next-usage':
       emit(rec.assistant([{ type: 'text', text: 'Synthetic post-compact usage' }], 17000))
       break
@@ -262,6 +295,8 @@ async function execute(command) {
 }
 let buffer = ''
 let escape = ''
+// Inside a bracketed paste a newline belongs to the message (one submission).
+let pasting = false
 let queue = Promise.resolve()
 process.stdin.setEncoding('utf8')
 if (process.stdin.isTTY) process.stdin.setRawMode(true)
@@ -272,7 +307,11 @@ process.stdin.on('data', (chunk) => {
     if (escape) {
       escape += ch
       if (escape === '\x1b[') continue
-      if (!escape.startsWith('\x1b[') || /[@-~]/.test(ch)) escape = ''
+      if (!escape.startsWith('\x1b[') || /[@-~]/.test(ch)) {
+        if (escape === '\x1b[200~') pasting = true
+        if (escape === '\x1b[201~') pasting = false
+        escape = ''
+      }
       continue
     }
     if (ch === '\x1b') {
@@ -286,6 +325,10 @@ process.stdin.on('data', (chunk) => {
 
     if (ch === '\x03') {
       process.exit(130)
+    }
+    if (pasting && (ch === '\r' || ch === '\n')) {
+      buffer += '\n'
+      continue
     }
     if (ch === '\r' || ch === '\n') {
       const line = buffer
