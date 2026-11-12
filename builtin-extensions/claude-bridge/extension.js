@@ -45422,6 +45422,13 @@ function clearDisplayedTab() {
 }
 
 // src/main/ipc/sessions.ts
+function tabConfigProblem(config) {
+  if (!config || typeof config !== "object") return "a connection config is required";
+  const { serverUrl, token } = config;
+  if (typeof serverUrl !== "string" || !serverUrl.trim()) return "serverUrl is required";
+  if (typeof token !== "string" || !token.trim()) return "token is required";
+  return null;
+}
 function registerSessionsIPC(ctx) {
   const tm = () => ctx.getTabManager();
   ipcMain.on(
@@ -45431,6 +45438,8 @@ function registerSessionsIPC(ctx) {
     }
   );
   ipcMain.handle("tab:create", (_event, config) => {
+    const problem = tabConfigProblem(config);
+    if (problem) throw new Error(`tab:create: ${problem}`);
     const userCwd = ctx.getUserCwd();
     if (!("cwd" in config) && userCwd) {
       config.cwd = userCwd;
