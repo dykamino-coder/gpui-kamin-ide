@@ -6,6 +6,8 @@ use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::ParentElement;
 mod columns;
+mod shared;
+pub(super) use shared::EdgeStyles;
 mod rows;
 pub(super) use columns::collapsed_col_edges;
 pub(super) use columns::collapsed_colgroup_edges;
@@ -17,6 +19,7 @@ pub(super) fn collapsed_cell_edge(
     cell: &mut Element,
     cm: &Computed,
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
+    shared: &EdgeStyles,
     px_of: &impl Fn(Option<Len>) -> f32,
 ) -> Option<(
     [f32; 4],
@@ -76,7 +79,6 @@ pub(super) fn collapsed_cell_edge(
     // кромок стоит по паддинг-боксу, и рамкой линия уехала бы
     // внутрь.
     let win = win_edges.get(&cell.node_id).copied().unwrap_or(widths);
-    cell.style.used_mut().reset_background.bg_border_insets = Some(win.map(|width| width / 2.0));
     // Авторский отступ в кегельных единицах — из СЛИТОГО стиля
     // (`em` там разрешён кеглем ячейки, как у `box_style`): сырой
     // `Em` падал в ноль, и ячейка сросшейся модели с `padding:
@@ -92,31 +94,15 @@ pub(super) fn collapsed_cell_edge(
         };
         Some(Len::Px(base + win[i] / 2.0))
     };
-    cell.style.used_mut().reset_box_layout.padding = crate::style::computed::Sides {
-        top: half(
-            0,
-            cell.style.used().reset_box_layout.padding.top,
-            merged_pad.top,
-        ),
-        right: half(
-            1,
-            cell.style.used().reset_box_layout.padding.right,
-            merged_pad.right,
-        ),
-        bottom: half(
-            2,
-            cell.style.used().reset_box_layout.padding.bottom,
-            merged_pad.bottom,
-        ),
-        left: half(
-            3,
-            cell.style.used().reset_box_layout.padding.left,
-            merged_pad.left,
-        ),
+    let own_pad = cell.style.used().reset_box_layout.padding;
+    let padding = crate::style::computed::Sides {
+        top: half(0, own_pad.top, merged_pad.top),
+        right: half(1, own_pad.right, merged_pad.right),
+        bottom: half(2, own_pad.bottom, merged_pad.bottom),
+        left: half(3, own_pad.left, merged_pad.left),
     };
-
-    cell.style.used_mut().reset_border.border_width = Default::default();
-    cell.style.used_mut().reset_border.border_visible = [None; 4];
+    // The cell's own border goes to the edge layer with these writes.
+    shared.apply(cell, win.map(|width| width / 2.0), padding);
     (widths.iter().any(|w| *w > 0.0) || styles.contains(&1)).then_some((
         widths,
         colors,

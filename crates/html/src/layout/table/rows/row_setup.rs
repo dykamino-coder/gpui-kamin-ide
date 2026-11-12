@@ -225,12 +225,13 @@ pub(super) fn hides_empty_cell(
     cell: &Element,
     vcx: ValueCx<'_>,
 ) -> bool {
-    box_style(row_style, &cell.style, vcx)
-        .inh
-        .table_list
-        .empty_cells_hide
-        == Some(true)
-        && e.style.cascaded().inh.table_list.border_collapse != Some(true)
+    // The table's own model first: it costs no style of the cell.
+    e.style.cascaded().inh.table_list.border_collapse != Some(true)
+        && box_style(row_style, &cell.style, vcx)
+            .inh
+            .table_list
+            .empty_cells_hide
+            == Some(true)
         && {
             let mut текст = String::new();
             gather_text(&cell.children, &mut текст);
