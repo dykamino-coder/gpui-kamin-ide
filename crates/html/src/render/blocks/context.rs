@@ -42,7 +42,7 @@ pub(super) fn child_options(
     sizes: &BoxDimensions,
     opts: &RenderOpts,
     fresh: bool,
-) -> Box<RenderOpts> {
+) -> RenderOpts {
     let outer = &opts.cx.constraints;
     // A child inherits the outer widths by copy; reading them here would
     // record a read of an outside width (`BoxConstraints::track_widths`).
@@ -59,7 +59,7 @@ pub(super) fn child_options(
             opts.viewport.1,
         )
     });
-    opts.inner(|cx| {
+    opts.inner_value(|cx| {
         if fresh {
             cx.contracts.lengths = Default::default();
             if !cx.contracts.in_render {

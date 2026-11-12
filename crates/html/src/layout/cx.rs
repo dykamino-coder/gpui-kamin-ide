@@ -176,4 +176,13 @@ impl RenderOpts {
         f(&mut opts.cx);
         opts
     }
+
+    /// [`inner`](Self::inner) by value, for the build steps that run on the
+    /// builder's stack (`reblessive`): their state is already on the heap, so
+    /// the options need no box of their own.
+    pub(crate) fn inner_value(&self, f: impl FnOnce(&mut LayoutCx)) -> RenderOpts {
+        let mut opts = self.clone();
+        f(&mut opts.cx);
+        opts
+    }
 }
