@@ -2,7 +2,7 @@
 //!
 //! A cell keeps half of its winning edges inside its box as padding and gives
 //! its own border to the edge layer (CSS 2.1 §17.6.2). Cells whose computed
-//! style shares its background, box and border groups get the same written
+//! style has equal background, box and border groups get the same written
 //! groups when their winning edges are the same, so the table build writes
 //! them once and the cells share them, as they share the computed ones. The
 //! cells of one style differ only by the identity of their box, which is not
@@ -17,8 +17,9 @@ use std::cell::RefCell;
 const CAPACITY: usize = 32;
 
 /// The groups this table build wrote, most recent `CAPACITY`. An entry keeps
-/// the groups it was written over, so a match is the same groups, not equal
-/// addresses.
+/// the groups it was written over: a match is the same groups or groups of
+/// equal values, as the cascade does not always share the storage of equal
+/// cells.
 #[derive(Default)]
 pub(in crate::layout::table) struct EdgeStyles(RefCell<Vec<Entry>>, std::cell::Cell<usize>);
 
@@ -47,7 +48,7 @@ fn groups(style: &Computed) -> Groups {
 }
 
 fn same(a: &Groups, b: &Groups) -> bool {
-    a.0.ptr_eq(&b.0) && a.1.ptr_eq(&b.1) && a.2.ptr_eq(&b.2)
+    a == b
 }
 
 impl EdgeStyles {
