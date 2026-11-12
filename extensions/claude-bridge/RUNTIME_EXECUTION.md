@@ -46,6 +46,82 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 - `observation` — только заранее определённая полевая проверка;
 - `none` — новых PR по задаче сейчас не требуется.
 
+## Текущая пачка `RC-2026-11-13-KAMIN-BRIDGE`
+
+**Status:** in progress. **Snapshot:** public `origin/main`
+`5624a330a3cf1976d24431b2caf649feae74d5c9` (2026-11-13), последний immutable
+release `kaminide-v1.0.94` / server 6.3.171; private evidence: открыт только
+#141 (engine geometry, вне пачки).
+
+**Поручение владельца 2026-11-13:** «надо все добить по камину и бриджу задачи» —
+общий запуск по [maintainer flow](../../docs/MAINTAINER_PR_FLOW.md#general-backlog-run)
+только для KaminIDE/Bridge. Разрешены commit/push/PR/merge и один batch release.
+Работа движка (`crates/html`, бенчи) и hardening/security не входят. Роль автора
+этой записи — maintainer `kmaint`, единственный writer общего реестра.
+
+**Completion target:** каждый ID пачки получает принятый outcome в `main`
+(`done` с evidence, `verify` с конкретным непроведённым gate или `blocked` с
+owner/условием); один проверенный release 1.0.95 после последнего
+release-relevant PR; close-out реестра, обзора и INC-карточек.
+
+### Исполнители и scope
+
+| Исполнитель | ID / PR | Result | Gate |
+| --- | --- | --- | --- |
+| kfix | [INC-0108](runtime-issues/INC-2026-0108.md) | change | automated stdio transport test |
+| kfix | [INC-0107](runtime-issues/INC-2026-0107.md) | research → change | automated + live Windows gate |
+| kfix | [INC-0109](runtime-issues/INC-2026-0109.md) | research | repeated-frame harness / tolerance decision |
+| kfix | [#697](https://github.com/dykamino-coder/gpui-kamin-ide/pull/697) (`783c7d02`) | change, accept | его CI и browser lifecycle proofs |
+| kresearch | BR-11 → (BR-07 позже) | research | versioned CLI blocker inventory |
+| kresearch | BR-21 | research | metric-contract decision; BR-21A–E только после merge |
+| kresearch | BR-22 → BR-16 | research → change | classification; BR-16 с CEF displacement gate |
+| kresearch | BR-23 | change | fake-clock + Windows native toast gate |
+| kresearch | BR-24 | change | ждёт BR-31 R6 ниже |
+| kresearch | BR-02 | research | Windows envelope artifact; BR-03 deferred до решения |
+| kdeps | Codex CLI 0.160.1 → 0.167.2, Claude Code CLI pin (2.1.322), npm/base image/CEF/toolchain | change | CI + применимые smoke |
+| duckspeed | ускорение страницы статистики пользователей админки (DuckDB ~5 ГБ; на production timeout у большинства из 34 карточек) | change | CI + замер на копии данных; **обязательная часть 1.0.95** |
+| kmaint | BR-31 R6 (+ [INC-0002](runtime-issues/INC-2026-0002.md), BR-25 completion) | verify | Windows CEF reveal без pointer, rows и invoke ≤ 1 с |
+| kmaint | BR-06, BR-19, BR-04, BR-29, BR-10 | verify | живой Windows gate каждой карточки |
+| kmaint | BR-05, BR-09, BR-18A | verify | Windows + isolated authenticated Linux server (Podman) |
+| kmaint | BR-17, BR-08 | observation | локальный стенд как дополнение; production — deployment owner |
+
+### Порядок и зависимости
+
+1. Этот coordination PR (snapshot) — до merge любых результатов пачки.
+2. kmaint verify track последовательно: BR-31 R6 → BR-25 completion / INC-0002 →
+   BR-06 → BR-19 → BR-04 → BR-29 → BR-10 → BR-05 → BR-09 → BR-18A → BR-17/08.
+   Каждый ID — отдельный Diagnostic PR с exact candidate и evidence.
+3. BR-24 change ждёт принятого BR-31 R6; BR-16 ждёт BR-22; BR-07 ждёт BR-11;
+   BR-15 ждёт BR-09 live gate и BR-25 completion; BR-03 ждёт BR-02.
+4. Fix PR kfix/kresearch/kdeps принимаются по одному через общую merge-очередь,
+   с fetch, base/head SHA и зелёными required checks; живой gate — по карточке.
+5. До release лид подтверждает merge или исключение #797, #804 и PR учёта Codex
+   в админке (codexstats); kdeps PR — тоже до release либо явное исключение.
+   PR duckspeed обязателен: release 1.0.95 без него не выпускается.
+6. Reconciliation PR → один release 1.0.95 → проверка GitHub Release, Docker
+   image и ancestry → close-out.
+
+### BR-12/13: что нужно от владельца deployment
+
+BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа к production deployment.
+
+- BR-12: снять inventory новой сессии на действующем deployment — имена skills и источник каждого (deployment, CLI builtin, user, project, plugin), без содержимого.
+- BR-12: сообщить image tag/digest и версию Claude Code этого deployment.
+- BR-12: перечислить skills roots и mounts с владельцем (uid/gid), только пути и ownership.
+- BR-13: для каждого deployment сделать backup legacy volume `bridge-sync`.
+- BR-13: подтвердить migration marker и count/hash в `/app/data/bridge-sync`.
+- BR-13: выполнить два restart после миграции и один rollback probe, сообщить результат.
+- BR-13: подтвердить, что legacy mount больше не читается, и разрешить cleanup PR.
+
+### Вне пачки (backlog следующего запуска)
+
+- Открытые INC без назначения в этом поручении: 0001, 0015, 0016, 0019, 0020,
+  0023, 0025, 0028, 0029, 0031–0034, 0037–0044, 0046–0051, 0053–0055,
+  0062–0064, 0069–0074, 0077–0081, 0084, 0085, 0087–0094, 0098–0102. Их карточки
+  и handoff в [обзоре](RUNTIME_BACKLOG.md) не меняются этой пачкой.
+- Engine PR (#712, #773, #791, #794, #798–#800, #807) и private #141 — работа движка.
+- #797 и #804 ведёт лид; в пачку входят только как release prerequisite (шаг 5).
+
 ## Выборочная сверка после 1.0.80 — 2026-10-25
 
 Scope: только INC-2026-0075/0076; source `origin/main`
