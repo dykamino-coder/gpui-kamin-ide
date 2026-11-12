@@ -155,7 +155,7 @@ export class BridgeHost {
     a.conn.sendInput('\x03')
     return true
   }
-  cmdGetSessionInfo(): { tabId: string; status: string; model: string | null; effort: string | null } | null {
+  cmdGetSessionInfo(): { tabId: string; status: string; model: string | null; effort: string | null; engine: string } | null {
     const a = this.activeConn()
     if (!a?.conn) return null
     return {
@@ -163,6 +163,7 @@ export class BridgeHost {
       status: a.conn.getExtendedState().status,
       model: a.conn.lastModel,
       effort: a.conn.lastEffort,
+      engine: a.conn.getEngine(),
     }
   }
   cmdSetPermissionMode(mode: string): boolean {

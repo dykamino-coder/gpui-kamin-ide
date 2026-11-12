@@ -3,7 +3,7 @@
 
 use crate::dom::Element;
 use crate::layout::positioned::relative::relative_shift;
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::{BgSize, BoxStyle, Computed, Sides};
 use crate::style::values::value::Len;
 use gpui::{ParentElement, Styled, px};
 
@@ -26,75 +26,56 @@ pub(super) fn cell_box_div(
     // (`table-height-algorithm-008a/b/c`). Берутся только те слоты,
     // где это безопасно: ширину и её минимум решает дорожка, и их
     // подмена уже мерилась отдельно.
+    //
+    // A value is written only where the merged one differs: the cell's style
+    // stays the shared one when all its lengths are resolved already.
     let box_style = {
+        let own = cell.style.used();
         let mut c = cell.style.clone();
         let fixup = |own: Option<Len>, merged: Option<Len>| match own {
             Some(Len::Px(_)) | None => own,
             _ => merged,
         };
-        c.used_mut().reset_box_layout.padding = crate::style::computed::Sides {
-            top: fixup(
-                c.used().reset_box_layout.padding.top,
-                cm.reset_box_layout.padding.top,
-            ),
-            right: fixup(
-                c.used().reset_box_layout.padding.right,
-                cm.reset_box_layout.padding.right,
-            ),
-            bottom: fixup(
-                c.used().reset_box_layout.padding.bottom,
-                cm.reset_box_layout.padding.bottom,
-            ),
-            left: fixup(
-                c.used().reset_box_layout.padding.left,
-                cm.reset_box_layout.padding.left,
-            ),
+        let sides = |own: Sides, merged: Sides| Sides {
+            top: fixup(own.top, merged.top),
+            right: fixup(own.right, merged.right),
+            bottom: fixup(own.bottom, merged.bottom),
+            left: fixup(own.left, merged.left),
         };
-        c.used_mut().reset_box_layout.height =
-            fixup(c.used().reset_box_layout.height, cm.reset_box_layout.height);
+        let padding = sides(own.reset_box_layout.padding, cm.reset_box_layout.padding);
+        let height = fixup(own.reset_box_layout.height, cm.reset_box_layout.height);
+        if (padding, height) != (own.reset_box_layout.padding, own.reset_box_layout.height) {
+            let layout = &mut c.used_mut().reset_box_layout;
+            layout.padding = padding;
+            layout.height = height;
+        }
         // Толщина рамки — тем же правилом: `border: 1em solid` у
         // ячейки доезжало сюда неразрешённым `Em`, а раскладка кладёт
         // только `Px` (`paint/apply/`: прочие длины молча отбрасываются),
         // и рамка пропадала целиком (`table-height-algorithm-008b/c`
         // против зелёной `-008a`, где то же самое написано отступом).
-        c.used_mut().reset_border.border_width = crate::style::computed::Sides {
-            top: fixup(
-                c.used().reset_border.border_width.top,
-                cm.reset_border.border_width.top,
-            ),
-            right: fixup(
-                c.used().reset_border.border_width.right,
-                cm.reset_border.border_width.right,
-            ),
-            bottom: fixup(
-                c.used().reset_border.border_width.bottom,
-                cm.reset_border.border_width.bottom,
-            ),
-            left: fixup(
-                c.used().reset_border.border_width.left,
-                cm.reset_border.border_width.left,
-            ),
-        };
+        let border = sides(own.reset_border.border_width, cm.reset_border.border_width);
+        if border != own.reset_border.border_width {
+            c.used_mut().reset_border.border_width = border;
+        }
         // Background size and position in font units — the same rule: the
         // painter sees no font size on the raw style and used 16px
         // (`table-cell-align-002`: `.5em` at 20px drew at 8px).
-        c.used_mut().reset_background.bg_pos.x = fixup(
-            c.used().reset_background.bg_pos.x,
-            cm.reset_background.bg_pos.x,
+        let (own_bg, merged_bg) = (&own.reset_background, &cm.reset_background);
+        let pos = (
+            fixup(own_bg.bg_pos.x, merged_bg.bg_pos.x),
+            fixup(own_bg.bg_pos.y, merged_bg.bg_pos.y),
         );
-        c.used_mut().reset_background.bg_pos.y = fixup(
-            c.used().reset_background.bg_pos.y,
-            cm.reset_background.bg_pos.y,
-        );
-        if let (
-            crate::style::computed::BgSize::Fixed(w, h),
-            crate::style::computed::BgSize::Fixed(mw, mh),
-        ) = (
-            c.used().reset_background.bg_size,
-            cm.reset_background.bg_size,
-        ) {
-            c.used_mut().reset_background.bg_size =
-                crate::style::computed::BgSize::Fixed(fixup(w, mw), fixup(h, mh));
+        let size = match (own_bg.bg_size, merged_bg.bg_size) {
+            (BgSize::Fixed(w, h), BgSize::Fixed(mw, mh)) => {
+                BgSize::Fixed(fixup(w, mw), fixup(h, mh))
+            }
+            (own, _) => own,
+        };
+        if (pos, size) != ((own_bg.bg_pos.x, own_bg.bg_pos.y), own_bg.bg_size) {
+            let background = &mut c.used_mut().reset_background;
+            (background.bg_pos.x, background.bg_pos.y) = pos;
+            background.bg_size = size;
         }
         c
     };
@@ -120,7 +101,7 @@ pub(super) fn cell_box_div(
         && box_style.used().reset_effects.filter.is_none();
     let mut box_style = box_style;
     let own_bg = box_style.used().reset_background.background;
-    if bg_layered {
+    if bg_layered && own_bg.is_some() {
         box_style.used_mut().reset_background.background = None;
     }
     let mut d = cx

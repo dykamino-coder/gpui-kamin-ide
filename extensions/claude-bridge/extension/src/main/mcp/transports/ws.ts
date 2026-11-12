@@ -10,6 +10,7 @@ import { loadTokens } from '../oauth-store'
 import type { McpResult } from '../tool-registry'
 import { collectMcpList } from '../pagination'
 import type { TransportContext } from './context'
+import { awaitMcpReply, withProgressToken } from './request-deadline'
 
 export async function connectWs(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
@@ -120,23 +121,21 @@ export function wsJsonRpc(ctx: TransportContext, id: string, body: Record<string
     state.ws.send(JSON.stringify(body))
     return Promise.resolve(undefined)
   }
-  const promise = new Promise((resolve, reject) => {
-    const entry = {
-      resolve: (msg: any) => {
-        if (msg?.error) reject(new Error(msg.error.message))
-        else resolve(msg?.result)
-      },
-      reject,
-      timer: undefined as ReturnType<typeof setTimeout> | undefined,
-    }
-    state.pendingRequests.set(reqId, entry)
-    entry.timer = setTimeout(() => {
-      if (state.pendingRequests.has(reqId)) {
-        state.pendingRequests.delete(reqId)
-        reject(new Error('WS request timeout (120s)'))
-      }
-    }, 120_000)
+  const ws = state.ws
+  const method = String(body.method)
+  const reply = awaitMcpReply<any>(state, reqId, {
+    method,
+    signal: ctx.shutdownSignal,
+    cancel: (requestId, reason) => {
+      try {
+        ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId, reason } }))
+      } catch { /* closed */ }
+    },
   })
-  state.ws.send(JSON.stringify(body))
-  return promise
+  const params = (body.params ?? {}) as Record<string, unknown>
+  ws.send(JSON.stringify({ ...body, params: withProgressToken(method, reqId, params) }))
+  return reply.then((msg) => {
+    if (msg?.error) throw new Error(msg.error.message)
+    return msg?.result
+  })
 }

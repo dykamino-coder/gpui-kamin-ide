@@ -8,6 +8,7 @@ import type { BrowserWindow, IpcMainEvent } from '@kaminide/host-compat'
 import type { McpResourceInfo, McpResourceTemplateInfo, McpPromptInfo } from '../../shared/types'
 import type { McpServerState } from './transports/context'
 import { collectMcpList } from './pagination'
+import { MCP_ELICITATION_TIMEOUT_MS, noteMcpActivity, noteMcpProgress } from './transports/request-deadline'
 
 export interface MessageHandlerCtx {
   servers: Map<string, McpServerState>
@@ -81,9 +82,13 @@ async function handleServerRequest(ctx: MessageHandlerCtx, serverId: string, msg
       const responseChannel = `mcp-elicitation-response:${requestId}`
       let settled = false
       let timer: ReturnType<typeof setTimeout> | null = null
+      // A running tool call is waiting on this dialog; its idle clock must
+      // cover the whole dialog and restart once the person answers.
+      noteMcpActivity(state)
       const settle = (value: any): void => {
         if (settled) return
         settled = true
+        noteMcpActivity(state)
         try { ipcMain.removeListener(responseChannel, listener) } catch { /* noop */ }
         if (timer) { clearTimeout(timer); timer = null }
         try { ctx.window.webContents.send('mcp-elicitation-resolved', requestId) } catch { /* view may be gone */ }
@@ -105,7 +110,7 @@ async function handleServerRequest(ctx: MessageHandlerCtx, serverId: string, msg
       }
       // Auto-dismiss after 10 minutes. Guarded by `settled` so a prompt user
       // answer cancels the timeout and prevents a second resolve / leak.
-      timer = setTimeout(() => settle({ action: 'dismiss' }), 10 * 60 * 1000)
+      timer = setTimeout(() => settle({ action: 'dismiss' }), MCP_ELICITATION_TIMEOUT_MS)
     })
   }
 
@@ -131,6 +136,8 @@ function handleServerNotification(ctx: MessageHandlerCtx, serverId: string, msg:
   const state = ctx.servers.get(serverId)!
 
   if (method === 'notifications/progress') {
+    // A tool that reports progress is alive: restart its idle deadline.
+    noteMcpProgress(state, msg.params?.progressToken)
     // Forward to renderer; UI may show a progress bar for long-running tools.
     try {
       ctx.window.webContents.send('mcp-progress', {

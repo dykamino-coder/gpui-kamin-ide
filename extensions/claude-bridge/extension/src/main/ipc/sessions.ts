@@ -7,13 +7,22 @@ import { ConnectionManager } from '../ws/connection-manager'
 import { updateUiToolsActiveTab } from '../mcp/tools/ui-tools'
 import { activateSessionForTab } from '../../session-activation'
 import { reportDisplayedTab, forgetDisplayedTab } from '../../displayed-tab'
-import type { ConnectionConfig, PermissionDecision } from '../../shared/types'
+import { isAgentEngine, type ConnectionConfig, type PermissionDecision } from '../../shared/types'
 
 export interface SessionsIpcContext {
   configStore: ConfigStore
   getTabManager: () => TabManager | null
   getMainWindow: () => BrowserWindow | null
   getUserCwd: () => string | null
+}
+
+/** Why `config` cannot open a tab (and become the global config), or null. */
+export function tabConfigProblem(config: unknown): string | null {
+  if (!config || typeof config !== 'object') return 'a connection config is required'
+  const { serverUrl, token } = config as Partial<ConnectionConfig>
+  if (typeof serverUrl !== 'string' || !serverUrl.trim()) return 'serverUrl is required'
+  if (typeof token !== 'string' || !token.trim()) return 'token is required'
+  return null
 }
 
 export function registerSessionsIPC(ctx: SessionsIpcContext): void {
@@ -28,10 +37,18 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
 
   // ─── Tabs ──────────────────────────────────────────
   ipcMain.handle('tab:create', (_event: IpcMainInvokeEvent, config: ConnectionConfig) => {
+    // The server URL and token of a new tab also become the global config.
+    // A partial config used to be written as is: `createTab({})` erased the
+    // stored token, and every later new chat failed silently (acceptance
+    // 2026-11-12). It is now an error for the caller, and nothing changes.
+    const problem = tabConfigProblem(config)
+    if (problem) throw new Error(`tab:create: ${problem}`)
     const userCwd = ctx.getUserCwd()
     if (!('cwd' in config) && userCwd) {
       config.cwd = userCwd
     }
+    // A new chat opens on the user's main agent unless the caller chose one.
+    if (!isAgentEngine(config.engine)) config.engine = ctx.configStore.getDefaultEngine()
     ctx.configStore.set({
       ...ctx.configStore.get(),
       serverUrl: config.serverUrl,
@@ -84,6 +101,8 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     if (!('cwd' in config) && userCwd) {
       config.cwd = userCwd
     }
+    // A new chat opens on the user's main agent unless the caller chose one.
+    if (!isAgentEngine(config.engine)) config.engine = ctx.configStore.getDefaultEngine()
     ctx.configStore.set({
       ...ctx.configStore.get(),
       serverUrl: config.serverUrl,
@@ -192,6 +211,25 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   ipcMain.on('change-model', (_event: IpcMainEvent, tabId: string, model: string) => {
     const conn = tm()?.getConnection(tabId)
     if (conn) conn.changeModel(model)
+  })
+
+  // ─── Agent engine (Claude / ChatGPT via codex) ─────
+  // The server owns the main agent; the store keeps the last answer so the
+  // first new chat after a restart opens on it before any socket replies.
+  const prevAgentPreferences = ConnectionManager.onAgentPreferences
+  ConnectionManager.onAgentPreferences = (tabId, engine) => {
+    prevAgentPreferences?.(tabId, engine)
+    ctx.configStore.setDefaultEngine(engine)
+  }
+
+  ipcMain.on('codex:models', (_event: IpcMainEvent, tabId: string) => {
+    tm()?.getConnection(tabId)?.requestCodexModels()
+  })
+
+  ipcMain.on('agent:set-default-engine', (_event: IpcMainEvent, tabId: string, engine: unknown) => {
+    if (!isAgentEngine(engine)) return
+    ctx.configStore.setDefaultEngine(engine)
+    tm()?.getConnection(tabId)?.setDefaultEngine(engine)
   })
 
   ipcMain.handle('get-tab-model', (_event: IpcMainInvokeEvent, tabId: string) => {

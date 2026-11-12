@@ -29,7 +29,7 @@ pub(super) fn parse_document(
     crate::text::fonts::load_faces_sheets(&sheets, base, &state.text, vcx)?;
     crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx)?;
     #[cfg(feature = "engine-bench")]
-    let style_started = std::time::Instant::now();
+    let style_started = crate::work::Clock::now();
     let styled = {
         crate::work::phase!(_phase, Style);
         crate::dom::convert_restyling(input, theme_css, media, &state.values, invalidation)?

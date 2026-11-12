@@ -36,6 +36,9 @@ export interface WsMsgSessionCreate {
    *  tools and words its instructions from it; absent (older clients) → full
    *  tool list and the legacy texts. */
   host?: { tools: string[]; platform?: string; place?: string }
+  /** Agent engine for a NEW chat (absent → Claude). Ignored on a live reattach;
+   *  a cold resume trusts the transcript's own engine over this hint. */
+  engine?: 'claude' | 'codex'
 }
 
 export interface WsMsgSessionInput {
@@ -119,6 +122,9 @@ export interface WsMsgSessionResume {
   transcriptMirrorDir?: string
   /** See WsMsgSessionCreate. */
   host?: { tools: string[]; platform?: string; place?: string }
+  /** Agent engine for a NEW chat (absent → Claude). Ignored on a live reattach;
+   *  a cold resume trusts the transcript's own engine over this hint. */
+  engine?: 'claude' | 'codex'
 }
 
 /** Client requests effort level change (live `/effort`; PTY restart only as fallback) */
@@ -234,6 +240,27 @@ export type ClientToServerMsg =
   | WsMsgJsonlSegmentRequest
   | { type: 'jsonl:subagent-select'; agentId: string | null }
   | WsMsgHookResponse
+  | WsMsgAgentSetDefaultEngine
+  | WsMsgCodexModelsRequest
+
+/** Per-user "main agent": the engine new chats open with. Needs an authenticated socket.
+ *  The server answers, and also pushes after every session:created, with
+ *  `{ type: 'agent:preferences', defaultEngine, auth }`; clients send that engine
+ *  explicitly in session:create. `auth` says which engines the server is signed
+ *  in to (`{ claude: { loggedIn, reason }, codex: {...} }`, loggedIn null =
+ *  unknown); it is pushed again on every sign-in or sign-out. A signed-out
+ *  engine is refused as the main agent (`error` + the unchanged default). */
+export interface WsMsgAgentSetDefaultEngine {
+  type: 'agent:set-default-engine'
+  engine: 'claude' | 'codex'
+}
+
+/** GPT models for the selector, from the shared codex app-server (model/list). */
+export interface WsMsgCodexModelsRequest {
+  type: 'codex:models'
+  /** Bridge token; lets the selector ask before any session exists. */
+  token?: string
+}
 
 // -- Server → client host --
 
@@ -243,6 +270,10 @@ export interface WsMsgSessionCreated {
   sessionId: string
   /** Resume target conversation was not found — a fresh session started instead. */
   resumeNotFound?: boolean
+  /** Engine running this chat; absent from older servers = Claude. */
+  engine?: 'claude' | 'codex'
+  /** The requested engine is signed out: why this chat runs the other one. */
+  engineNotice?: string
 }
 
 export interface WsMsgSessionOutput {

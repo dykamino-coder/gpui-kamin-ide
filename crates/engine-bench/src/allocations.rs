@@ -4,6 +4,9 @@
 #[cfg(feature = "allocation-audit")]
 pub(super) use counted::Counted;
 
+#[cfg(all(windows, feature = "allocation-audit"))]
+pub(super) mod probe;
+
 #[cfg(feature = "allocation-audit")]
 mod counted {
     use super::Snapshot;
@@ -23,6 +26,14 @@ mod counted {
         let live = LIVE.fetch_add(bytes as u64, Relaxed) + bytes as u64;
         PEAK.fetch_max(live, Relaxed);
     }
+    // Пробник стеков выключен по умолчанию: тогда это одно чтение флага.
+    #[inline]
+    fn stack(kind: u8, bytes: usize) {
+        #[cfg(windows)]
+        super::probe::record(kind, bytes);
+        #[cfg(not(windows))]
+        let _ = (kind, bytes);
+    }
     fn freed(bytes: usize) {
         FREED.fetch_add(bytes as u64, Relaxed);
         LIVE.fetch_sub(bytes as u64, Relaxed);
@@ -35,6 +46,7 @@ mod counted {
             let pointer = unsafe { mimalloc::MiMalloc.alloc(layout) };
             if !pointer.is_null() {
                 allocated(layout.size());
+                stack(b'a', layout.size());
             }
             pointer
         }
@@ -42,6 +54,7 @@ mod counted {
             let pointer = unsafe { mimalloc::MiMalloc.alloc_zeroed(layout) };
             if !pointer.is_null() {
                 allocated(layout.size());
+                stack(b'z', layout.size());
             }
             pointer
         }
@@ -55,6 +68,7 @@ mod counted {
                 // Р Р°Р·РјРµСЂС‹ realloc СѓС‡РёС‚С‹РІР°СЋС‚СЃСЏ РїРѕР»РЅРѕСЃС‚СЊСЋ; failed realloc РѕСЃС‚Р°РІР»СЏРµС‚ СЃС‚Р°СЂС‹Р№ Р±Р»РѕРє.
                 freed(layout.size());
                 allocated(size);
+                stack(b'r', size);
             }
             next
         }

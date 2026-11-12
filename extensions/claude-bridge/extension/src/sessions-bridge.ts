@@ -10,8 +10,8 @@ import { ipcMain } from "@kaminide/host-compat"
 import { ConnectionManager } from "./main/ws/connection-manager"
 import { setSessionActivateHandler } from "./session-activation"
 import { getDisplayedTab, onDisplayedTabChange } from "./displayed-tab"
-
-interface BridgeMeta { conversationId?: string | null; cwd?: string | null }
+import { agentForNewChat, bridgeMetaFor, readBridgeMeta, type AgentChoice, type BridgeMeta } from "./agent-session"
+import { isAgentEngine } from "./shared/types"
 
 // Warm pool: how long after install/config the OTHER open sessions are resumed
 // in the background, and how many at most. The delay keeps the boot bandwidth
@@ -47,8 +47,9 @@ export class SessionsBridge {
       prevConv?.(tabId, conversationId)
       const kid = this.tabToKamin.get(tabId)
       if (!kid) return
-      const cwd = this.host.getTabManager().getTab(tabId)?.config.cwd ?? null
-      const meta: BridgeMeta = { conversationId, cwd }
+      const tm = this.host.getTabManager()
+      const cwd = tm.getTab(tabId)?.config.cwd ?? null
+      const meta = bridgeMetaFor(conversationId, cwd, tm.getConnection(tabId)?.getEngine())
       void kaminide.sessions.updateSession(kid, { metadata: { bridge: meta }, ...(conversationId === null ? { name: 'New conversation' } : {}) })
     }
     const prevTitle = ConnectionManager.onSessionTitle
@@ -111,6 +112,10 @@ export class SessionsBridge {
     // The active-session event may not fire for the already-active session at
     // boot — bind it explicitly. Re-bind once a token is configured (the gate
     // lives in the chat panel, so the first activation before config is a no-op).
+    // A model from the other agent's group opens a new chat on that agent.
+    ipcMain.on("agent:new-session", (_event: unknown, engine: unknown, model: unknown) => {
+      void this.openAgentChat(engine, model).catch(() => { this.pendingChoice = null })
+    })
     ipcMain.on("set-config", () => {
       if (this.host.getConfigStore().get().token) {
         this.onActive(kaminide.sessions.active)
@@ -152,13 +157,14 @@ export class SessionsBridge {
       .slice(0, WARM_POOL_MAX)
     // Создание фоновых табов дёшево (без connect) — все сразу.
     for (const s of candidates) {
-      const meta = s.metadata?.bridge as BridgeMeta
+      const meta = readBridgeMeta(s.metadata)!
       const tabId = tm.resumeSession({
         serverUrl: cfg.serverUrl,
         token: cfg.token,
         cwd: this.projectFolder(s),
         conversationId: meta.conversationId!,
         sessionLabel: s.name,
+        ...(meta.engine ? { engine: meta.engine } : {}),
       }, { background: true })
       if (tabId) {
         this.kaminToTab.set(s.id, tabId)
@@ -291,15 +297,41 @@ export class SessionsBridge {
     if (!cfg.token) { this.openChat(); return }
 
     const cwd = this.projectFolder(s)
-    const meta = (s.metadata?.bridge ?? null) as BridgeMeta | null
-    const tabId = meta?.conversationId
-      ? tm.resumeSession({ serverUrl: cfg.serverUrl, token: cfg.token, cwd, conversationId: meta.conversationId, sessionLabel: s.name })
-      : tm.createTab({ serverUrl: cfg.serverUrl, token: cfg.token, cwd })
+    const meta = readBridgeMeta(s.metadata)
+    let tabId: string | null
+    if (meta?.conversationId) {
+      tabId = tm.resumeSession({
+        serverUrl: cfg.serverUrl, token: cfg.token, cwd, conversationId: meta.conversationId, sessionLabel: s.name,
+        ...(meta.engine ? { engine: meta.engine } : {}),
+      })
+    } else {
+      const choice = agentForNewChat(meta, this.pendingChoice, this.host.getConfigStore().getDefaultEngine())
+      if (!meta?.engine) this.pendingChoice = null
+      tabId = tm.createTab({ serverUrl: cfg.serverUrl, token: cfg.token, cwd, ...choice })
+    }
     if (tabId) {
       this.kaminToTab.set(s.id, tabId)
       this.tabToKamin.set(tabId, s.id)
     }
     this.openChat()
+  }
+
+  /** "Open a GPT chat" (or back to Claude) from the model selector: a new
+   *  KaminIDE session in the active project whose chat starts on that engine.
+   *  The choice is also held in memory because the host may activate the new
+   *  session before its metadata is written. */
+  private pendingChoice: AgentChoice | null = null
+
+  async openAgentChat(engine: unknown, model: unknown): Promise<void> {
+    if (!isAgentEngine(engine)) return
+    const choice: AgentChoice = { engine, ...(typeof model === "string" && model ? { model } : {}) }
+    this.pendingChoice = choice
+    const projectId = kaminide.sessions.active?.projectId
+    const session = await kaminide.sessions.createSession(projectId ? { projectId } : {})
+    const meta: BridgeMeta = { conversationId: null, cwd: null, ...choice }
+    await kaminide.sessions.updateSession(session.id, { metadata: { bridge: meta } })
+    kaminide.sessions.setActiveSession(session.id)
+    this.pendingChoice = null
   }
 
   dispose(): void {

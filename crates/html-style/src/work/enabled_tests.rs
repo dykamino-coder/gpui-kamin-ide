@@ -70,3 +70,36 @@ fn aborted_capture_restores_collector() {
         1
     );
 }
+#[test]
+fn phase_windows_exclude_the_boundary_observer() {
+    let pause = std::time::Duration::from_millis(30);
+    let session = Session::begin_observed(Some(Arc::new(move |_| std::thread::sleep(pause))));
+    let window = crate::work::Clock::now();
+    let wall = std::time::Instant::now();
+    {
+        let _layout = enter(Phase::Layout);
+    }
+    let measured = window.elapsed();
+    let wall = wall.elapsed();
+    session.finish();
+    assert!(wall >= pause * 2, "two boundaries slept: {wall:?}");
+    assert!(
+        measured < pause,
+        "observer time stays out of the window: {measured:?}"
+    );
+}
+#[test]
+fn phase_windows_without_an_observer_are_wall_time() {
+    let session = Session::begin();
+    let before = crate::work::Clock::now();
+    {
+        let _layout = enter(Phase::Layout);
+    }
+    let after = crate::work::Clock::now();
+    session.finish();
+    assert_eq!(before.observed, after.observed);
+    assert_eq!(
+        after.duration_since(before),
+        after.wall.duration_since(before.wall)
+    );
+}

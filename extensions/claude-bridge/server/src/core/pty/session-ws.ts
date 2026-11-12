@@ -21,8 +21,18 @@ import path from 'path'
 import { subagentTranscriptPath } from './subagent-transcript-path'
 import { ResumeNotFoundError } from './session-resume-not-found'
 import { SessionAdmissionError } from './session-admission'
-import { rememberModelSelection } from './model-selection'
-import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId, modelCommand } from './live-switch'
+import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId } from './live-switch'
+import { interruptClaudeTurn, switchClaudeModelInPlace } from './claude-turn'
+import {
+  codexBinding,
+  codexEffort as codexReasoningEffort,
+  codexModel as toCodexModel,
+  saveCodexChoice,
+} from './session-codex'
+import { isAgentEngineId } from '../engine/engines'
+import { broadcastAgentPreferences, handleAgentWsMessage, sendAgentPreferences } from './session-ws-agent'
+import { chooseEngineForNewChat } from '../engine/engine-auth'
+import { codexRuntime } from '../codex/codex-runtime'
 import { streamFileChunks, waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
@@ -53,7 +63,6 @@ import {
 import { settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
 import { sessionCliControl } from './session-cli-control'
-import { interruptSessionToolCalls } from './mcp-foreground-calls'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 import { notifyToolListChanged, replaceRegisteredTools } from './mcp-tool-notify'
@@ -87,6 +96,16 @@ const tokenWsMap = new Map<string, Set<WS>>()
 const resumeLocks = new Map<string, Promise<void>>()
 // Страховка от повисшего лока, если владелец упал вне внутреннего try.
 const RESUME_LOCK_SAFETY_MS = 30_000
+
+// Model selectors follow sign-in and sign-out of either engine live.
+let agentAuthBroadcast: Promise<void> = Promise.resolve()
+const pushAgentAuth = (): void => {
+  agentAuthBroadcast = agentAuthBroadcast
+    .then(() => broadcastAgentPreferences(tokenWsMap))
+    .catch((error) => debugLog('agent auth broadcast failed', { error: (error as Error).message }))
+}
+eventBus.on('claude:account-updated', pushAgentAuth)
+eventBus.on('codex:account-updated', pushAgentAuth)
 
 /**
  * Get the WS client for a session (used by mcp-http-handler).
@@ -224,8 +243,16 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
             // Admission reservations in createSession cover pending startups too.
             try {
+              // A new chat on a signed-out engine opens on the signed-in one,
+              // with a notice. Older clients send no engine and keep Claude.
+              const engineChoice = isAgentEngineId(msg.engine)
+                ? await chooseEngineForNewChat(msg.engine, { runtime: codexRuntime() })
+                : null
+              if (!ownsStartup(operation)) return
               const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
               const session = await createSession(ws, resolved.userName, resolved.tokenId, {
+                // Explicit per chat: clients send the user's main agent (agent:preferences).
+                ...(engineChoice ? { engine: engineChoice.engine } : {}),
                 cwd: msg.cwd,
                 cols: msg.cols,
                 rows: msg.rows,
@@ -269,8 +296,11 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   effort: session.effort,
                   model: session.model,
                   settingsDir: session.settingsDir,
+                  engine: session.engine ?? 'claude',
+                  ...(engineChoice?.notice ? { engineNotice: engineChoice.notice } : {}),
                 }),
               )
+              void sendAgentPreferences(ws, resolved.tokenId)
 
               // Send initial tree to this client
               broadcastTree(resolved.tokenId)
@@ -299,6 +329,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           break
         }
 
+        case 'agent:set-default-engine':
+        case 'codex:models': {
+          await handleAgentWsMessage(ws, msg, authenticatedTokenId)
+          break
+        }
+
         case 'session:end': {
           cancelStartup('ended')
           retireBinding('explicit_end')
@@ -321,18 +357,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Abort the in-flight upstream request directly so the stream stops NOW,
           // then SIGINT the CLI to end the turn.
           if (!authenticatedSessionId) return
-          const interruptSession = getSession(authenticatedSessionId)
-          if (!(interruptSession && sessionCliControl(interruptSession)?.interrupt())) {
-            try {
-              getSession(authenticatedSessionId)?.streamingProxy?.interrupt()
-            } catch {
-              /* no proxy this session */
-            }
-            writeInput(authenticatedSessionId, '\x03')
-          }
-          // Ending the turn does not reach the client host: stop the tool calls
-          // the CLI was waiting on, after the CLI was told (INC-2026-0096).
-          if (interruptSession) interruptSessionToolCalls(interruptSession)
+          interruptClaudeTurn(authenticatedSessionId, getSession, writeInput)
           break
         }
 
@@ -526,6 +551,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   model: live.model,
                   settingsDir: live.settingsDir,
                   reattached: true,
+                  engine: live.engine ?? 'claude',
                 }),
               )
               if (live.cliConversationId) {
@@ -564,6 +590,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 rows: msg.rows,
                 resumeConversationId: msg.conversationId,
                 noSpawnOnNotFound: msg.noSpawnOnNotFound === true,
+                ...(isAgentEngineId(msg.engine) ? { engine: msg.engine } : {}),
                 // A resumed session respawns the CLI, so it must carry the
                 // prompt too — otherwise the instructions only ever applied to
                 // brand-new sessions.
@@ -607,6 +634,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   model: session.model,
                   settingsDir: session.settingsDir,
                   resumeNotFound: session.resumeNotFound || undefined,
+                  engine: session.engine ?? 'claude',
                 }),
               )
 
@@ -614,7 +642,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // was started. Nothing hits the JSONL until the first message, so
               // without this the client sits in "Loading conversation…" until
               // its 20s watchdog. Declare the (empty) replay complete right away.
-              if (session.resumeNotFound) {
+              if (session.resumeNotFound || session.resumedOnFreshThread) {
                 ws.send(
                   JSON.stringify({
                     type: 'jsonl:status',
@@ -684,6 +712,23 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           }
           if (!isEffortLevel(msg.effort)) {
             sendError(ws, `Unsupported effort level: ${String(msg.effort).slice(0, 32)}`)
+            return
+          }
+          const codexEffort = codexBinding(session)
+          if (codexEffort) {
+            // codex takes the effort per turn: it applies from the next turn, no restart.
+            codexEffort.agent.setEffort(codexReasoningEffort(msg.effort))
+            session.effort = msg.effort
+            saveCodexChoice(session, { effort: msg.effort })
+            ws.send(
+              JSON.stringify({
+                type: 'session:model-changed',
+                sessionId: authenticatedSessionId,
+                model: session.model,
+                effort: msg.effort,
+                inPlace: true,
+              }),
+            )
             return
           }
           // Live path: `/effort <level>` in the running CLI keeps the PTY, the
@@ -803,31 +848,43 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sendError(ws, 'Unsupported model id')
             return
           }
-          if (session.cliConversationId && !session.isRestarting) {
-            // Успех объявляется ТОЛЬКО если команда действительно легла в
-            // stdin. На неживом PTY запись молча терялась, а плашка уже
-            // показывала новую модель (INC-2026-0053) — теперь такой случай
-            // уходит на честный перезапуск ниже.
-            if (writeInput(authenticatedSessionId, modelCommand(msg.model))) {
-              // The Bridge-owned PreModelSwitch `allow` hook (session-settings.ts)
-              // skips the CLI's cache-warning dialog; the responder is a safety net.
-              armSwitchConfirm(session, 'model', undefined)
-              session.model = msg.model
-              // Выбор до первого ответа в JSONL не записан нигде: без него
-              // респаун вернул бы прежнюю модель.
-              rememberModelSelection(session.cliConversationId, msg.model)
-              ws.send(
-                JSON.stringify({
-                  type: 'session:model-changed',
-                  sessionId: authenticatedSessionId,
-                  model: msg.model,
-                  effort: session.effort,
-                  // Горячая смена PTY не перезапускает — консоль чистить нечего.
-                  inPlace: true,
-                }),
-              )
-              return
+          // Успех объявляется ТОЛЬКО если команда действительно легла в stdin.
+          // На неживом PTY запись молча терялась, а плашка уже показывала новую
+          // модель (INC-2026-0053) — такой случай уходит на честный перезапуск ниже.
+          const codexModel = codexBinding(session)
+          if (codexModel) {
+            // Same thread, next turn: codex applies turn/start.model itself. A chat
+            // keeps its engine, so a Claude id here leaves the model unchanged.
+            const next = toCodexModel(msg.model)
+            if (next) {
+              await codexModel.agent.setModel(next)
+              codexModel.modelChanged(next)
+              session.model = next
+              saveCodexChoice(session, { model: next })
             }
+            ws.send(
+              JSON.stringify({
+                type: 'session:model-changed',
+                sessionId: authenticatedSessionId,
+                model: session.model,
+                effort: session.effort,
+                inPlace: true,
+              }),
+            )
+            return
+          }
+          if (switchClaudeModelInPlace(session, authenticatedSessionId, msg.model, writeInput)) {
+            ws.send(
+              JSON.stringify({
+                type: 'session:model-changed',
+                sessionId: authenticatedSessionId,
+                model: msg.model,
+                effort: session.effort,
+                // Горячая смена PTY не перезапускает — консоль чистить нечего.
+                inPlace: true,
+              }),
+            )
+            return
           }
           const operation = beginStartup('model_restart')
           try {

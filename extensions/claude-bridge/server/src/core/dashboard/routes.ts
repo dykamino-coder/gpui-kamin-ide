@@ -8,6 +8,7 @@ import { registerAuthRoutes } from './controllers/auth'
 import { registerStatusRoutes } from './controllers/status'
 import { registerStatsRoutes } from './controllers/stats'
 import { registerAccountRoutes } from './controllers/account'
+import { registerCodexAccountRoutes } from './controllers/codex-account'
 import { registerHealthCheckRoutes } from './controllers/health-check'
 import { registerSettingsRoutes } from './controllers/settings'
 import { registerUserChatRoutes } from './controllers/user-chat'
@@ -30,6 +31,7 @@ export function createDashboardRoutes(): Hono {
   registerStatusRoutes(api)
   registerStatsRoutes(api)
   registerAccountRoutes(api)
+  registerCodexAccountRoutes(api)
   registerHealthCheckRoutes(api)
   registerSettingsRoutes(api)
   registerUserChatRoutes(api)
