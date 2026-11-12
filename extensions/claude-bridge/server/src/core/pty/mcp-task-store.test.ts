@@ -218,3 +218,18 @@ it('preserves descriptions and full commands, and persists clearing without dest
   expect((await store.get('owner', done.taskId))?.result?.content).toEqual([{ type: 'text', text: 'output' }])
   expect(taskView((await store.get('owner', done.taskId))!)).not.toHaveProperty('hiddenFromCommands')
 })
+
+describe('settlement wake-up', () => {
+  it('wakes a waiter when the task is saved settled, not on intermediate updates', async () => {
+    const task = await store.create('owner', 'Bash', { command: 'echo hi' })
+    const wake = vi.fn()
+    const unsubscribe = store.onSettled(task.taskId, wake)
+    await store.update('owner', task.taskId, (t) => {
+      t.delivered = true
+    })
+    expect(wake).not.toHaveBeenCalled()
+    await store.settle('owner', task.taskId, { content: [{ type: 'text', text: 'hi' }] })
+    expect(wake).toHaveBeenCalledTimes(1)
+    unsubscribe()
+  })
+})
