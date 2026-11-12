@@ -1,6 +1,6 @@
 //! Неизменяемый снимок входов matching документа. Здесь нет загрузчика или glyph fallback.
 
-use super::{FontEnvironmentId, FontRequest, matching};
+use super::{FontEnvironmentId, FontRequest, key, matching};
 use std::collections::{HashMap, HashSet};
 use std::{rc::Rc, sync::Arc};
 
@@ -41,9 +41,7 @@ impl FontRegistrySnapshot {
     }
 
     pub fn installed(&self, family: &str) -> bool {
-        self.registry
-            .installed
-            .contains(&family.to_ascii_lowercase())
+        key::with(family, |family| self.registry.installed.contains(family))
     }
 
     pub fn fonts_known(&self) -> bool {
@@ -51,20 +49,16 @@ impl FontRegistrySnapshot {
     }
 
     pub fn alias(&self, family: &str) -> Option<String> {
-        self.registry
-            .aliases
-            .get(&family.to_ascii_lowercase())
-            .cloned()
+        key::with(family, |family| self.registry.aliases.get(family).cloned())
     }
 
     /// U+0020 проверяется по unicode-range, без запроса наличия глифа в backend.
     /// Сохраняется прежнее объединение диапазонов на уровне семейства (M).
     pub fn covers_space(&self, family: &str) -> bool {
-        self.registry
-            .has_space
-            .get(&family.to_ascii_lowercase())
-            .copied()
-            .unwrap_or(true)
+        key::with(family, |family| {
+            self.registry.has_space.get(family).copied()
+        })
+        .unwrap_or(true)
     }
 
     pub fn first_available_named<'a>(
@@ -91,10 +85,8 @@ impl FontRegistrySnapshot {
     }
 
     pub fn matching_face(&self, family: &str, request: FontRequest<'_>) -> Option<matching::Face> {
-        matching::select(
-            self.registry.faces.get(&family.to_ascii_lowercase())?,
-            &request,
-        )
+        let faces = key::with(family, |family| self.registry.faces.get(family))?;
+        matching::select(faces, &request)
     }
 
     pub fn alias_for(&self, family: &str, request: FontRequest<'_>) -> Option<String> {
@@ -107,10 +99,7 @@ impl FontRegistrySnapshot {
         self.matching_face(family, request)
             .map(|face| matching::features(face, &request))
             .unwrap_or_else(|| {
-                self.registry
-                    .features
-                    .get(&family.to_ascii_lowercase())
-                    .cloned()
+                key::with(family, |family| self.registry.features.get(family).cloned())
                     .unwrap_or_default()
             })
     }
