@@ -23,6 +23,7 @@ import os from 'os'
 import path from 'path'
 import { spawn, type ChildProcess } from 'child_process'
 import { resolveWorkingDirectory } from './utils/working-directory'
+import { assertCmdLineFits } from './utils/script-file'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import {
   listEnabledInstalledPlugins,
@@ -196,6 +197,7 @@ function spawnMonitor(inst: MonitorInstance): void {
     // `shell: true` mirrors how CLI runs monitors — the `command` field is a
     // shell string (pipes, redirects, &&). On Windows this launches cmd.exe,
     // on POSIX /bin/sh. `windowsHide` prevents flash-of-console windows.
+    assertCmdLineFits(inst.command)
     const proc = spawn(inst.command, {
       shell: true,
       cwd: inst.cwd,

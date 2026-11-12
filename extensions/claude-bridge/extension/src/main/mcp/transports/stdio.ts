@@ -10,6 +10,7 @@ import type { McpResult } from '../tool-registry'
 import { collectMcpList } from '../pagination'
 import type { McpServerState, TransportContext } from './context'
 import { awaitMcpReply, withProgressToken } from './request-deadline'
+import { assertCmdLineFits } from '../../utils/script-file'
 
 export async function connectStdio(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
@@ -17,6 +18,12 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
   if (!command) throw new Error('stdio server command is required')
 
   const args = state.config.args ?? []
+  try {
+    assertCmdLineFits(command, args)
+  } catch (err) {
+    ctx.appendLog(id, 'error', `[stdio] ${(err as Error).message}`)
+    throw err
+  }
 
   // Замерено на машине с защитным ПО/прокси: `npx -y <pkg>@latest`
   // отвечает на initialize через ~29 СЕКУНД (резолв реестра до старта

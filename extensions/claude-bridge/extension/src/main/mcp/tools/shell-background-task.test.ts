@@ -23,7 +23,8 @@ vi.mock('./shell-snapshot', () => ({
 vi.mock('../../plugin-helpers', () => ({
   listEnabledPluginBinDirs: async () => [],
 }))
-vi.mock('../../utils/command-runtime', () => ({
+vi.mock('../../utils/command-runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../utils/command-runtime')>()),
   findBashExecutable: async () => 'bash',
   findPowerShellExecutable: async () => 'pwsh',
 }))
@@ -44,10 +45,9 @@ describe('background task execution policy', () => {
         '-NoLogo',
         '-NonInteractive',
         '-Command',
-        expect.stringContaining(
-          '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\nStart-Sleep -Seconds 180',
-        ),
+        expect.stringMatching(/^Invoke-Expression \(\[System\.IO\.File\]::ReadAllText\('.+\.ps1'\)\)$/),
       ])
+      expect(mock.spawn.mock.lastCall?.[1].join(' ')).not.toContain('Start-Sleep')
       expect(mock.spawn.mock.lastCall?.[2]).toMatchObject({ detached: false, windowsHide: true })
     } finally {
       vi.unstubAllGlobals()
@@ -68,10 +68,8 @@ describe('background task execution policy', () => {
       )
       expect(mock.foreground.mock.lastCall?.[2]).toBeGreaterThan(22 * 3600_000)
       expect(mock.foreground.mock.lastCall?.slice(5)).toEqual([signal, onOutput, '/session project'])
-      if (execute === powerShellExecute) {
-        expect(mock.foreground.mock.lastCall?.[0]).toContain('[Console]::OutputEncoding = $OutputEncoding =')
-        expect(mock.foreground.mock.lastCall?.[0]).toMatch(/\nsynthetic$/)
-      }
+      // The command reaches the shell through a script file, never as argv.
+      expect(mock.foreground.mock.lastCall?.[0]).not.toContain('synthetic')
       expect(result.content[0]?.text).toBe('complete output')
       await execute({ command: 'foreground', timeout: 99_000_000 })
       expect(mock.foreground.mock.lastCall?.[2]).toBe(1_800_000)
