@@ -48,12 +48,15 @@ mod work;
 #[cfg(feature = "allocation-audit")]
 static ALLOC: allocations::Counted = allocations::Counted;
 #[global_allocator]
-#[cfg(not(feature = "allocation-audit"))]
+#[cfg(all(feature = "heap-profile", not(feature = "allocation-audit")))]
+static ALLOC: allocations::Sampled = allocations::Sampled;
+#[global_allocator]
+#[cfg(not(any(feature = "allocation-audit", feature = "heap-profile")))]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
     // Пробник стеков читает окружение без аллокаций, до первой аллокации стенда.
-    #[cfg(all(windows, feature = "allocation-audit"))]
+    #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
     if let Err(error) = allocations::probe::init() {
         eprintln!("engine_bench: {error}");
         std::process::exit(1);
@@ -61,7 +64,10 @@ fn main() {
     // Политика арен — как у приложения, до первой аллокации стенда.
     kamin_alloc::configure();
     diagnostics::init();
-    if let Err(error) = entry() {
+    let result = entry();
+    #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
+    allocations::probe::finish();
+    if let Err(error) = result {
         eprintln!("engine_bench: {error}");
         std::process::exit(1);
     }
