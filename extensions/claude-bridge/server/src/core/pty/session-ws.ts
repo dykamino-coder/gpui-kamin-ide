@@ -23,7 +23,12 @@ import { ResumeNotFoundError } from './session-resume-not-found'
 import { SessionAdmissionError } from './session-admission'
 import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId } from './live-switch'
 import { interruptClaudeTurn, switchClaudeModelInPlace } from './claude-turn'
-import { codexBinding, codexEffort as codexReasoningEffort, codexModel as toCodexModel } from './session-codex'
+import {
+  codexBinding,
+  codexEffort as codexReasoningEffort,
+  codexModel as toCodexModel,
+  saveCodexChoice,
+} from './session-codex'
 import { isAgentEngineId } from '../engine/engines'
 import { broadcastAgentPreferences, handleAgentWsMessage, sendAgentPreferences } from './session-ws-agent'
 import { chooseEngineForNewChat } from '../engine/engine-auth'
@@ -714,6 +719,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             // codex takes the effort per turn: it applies from the next turn, no restart.
             codexEffort.agent.setEffort(codexReasoningEffort(msg.effort))
             session.effort = msg.effort
+            saveCodexChoice(session, { effort: msg.effort })
             ws.send(
               JSON.stringify({
                 type: 'session:model-changed',
@@ -854,6 +860,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               await codexModel.agent.setModel(next)
               codexModel.modelChanged(next)
               session.model = next
+              saveCodexChoice(session, { model: next })
             }
             ws.send(
               JSON.stringify({
