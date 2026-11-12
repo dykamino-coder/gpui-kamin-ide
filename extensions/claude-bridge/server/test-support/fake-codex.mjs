@@ -188,7 +188,9 @@ const handlers = {
     const t = { id: randomUUID(), model: p?.model ?? 'gpt-fake', cwd: p?.cwd, mcp: mcpFromConfig(p?.config), turns: 0 }
     await initializeMcp(t.mcp)
     threads.set(t.id, t)
-    saveThread(t)
+    // codex 0.160.1 writes a thread's rollout with its first turn: a thread
+    // that never ran one cannot be resumed by a later app-server.
+    if (!process.env.FAKE_CODEX_ROLLOUT_ON_TURN) saveThread(t)
     queueMicrotask(() => notify('thread/started', { thread: { id: t.id } }))
     return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
   },

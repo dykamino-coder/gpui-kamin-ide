@@ -138,6 +138,10 @@ export interface PtySession {
    *  (jsonl:status replayComplete + warning) so the chat doesn't sit in
    *  "Loading conversation…" until the first JSONL write. */
   resumeNotFound?: boolean
+  /** A resumed codex chat that never ran a turn continues on a new thread
+   *  (codex had no rollout to resume): not an error for the client, but there
+   *  is nothing to replay, and the new thread id reaches it with its transcript. */
+  resumedOnFreshThread?: boolean
   /** Whether this session is a sub-agent (shorter idle timeout) */
   isSubAgent: boolean
   /** Parent session ID (for agent tree) */

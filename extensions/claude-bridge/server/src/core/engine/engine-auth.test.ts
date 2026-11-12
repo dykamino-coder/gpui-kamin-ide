@@ -9,6 +9,7 @@ import {
   codexEngineAuth,
   engineAuthState,
   mainAgentRefusal,
+  runClaudeAuthStatus,
   type ClaudeAuthResult,
 } from './engine-auth'
 
@@ -179,5 +180,37 @@ describe('ChatGPT unreachable (proxy 407, untrusted CA)', () => {
 
   it('keeps a new GPT chat on ChatGPT instead of moving it to Claude', async () => {
     expect(await chooseEngineForNewChat('codex', unreachable())).toEqual({ engine: 'codex', notice: null })
+  })
+})
+
+describe('claude auth status CLI', () => {
+  const answer = (loggedIn: boolean) => JSON.stringify({ loggedIn, authMethod: loggedIn ? 'claude.ai' : 'none' })
+
+  it('reads a signed-out answer although the CLI exits 1', async () => {
+    const run = async () => {
+      throw Object.assign(new Error('Command failed: claude auth status'), {
+        code: 1,
+        stdout: answer(false),
+        stderr: '',
+      })
+    }
+    expect(await runClaudeAuthStatus(run)).toMatchObject({ loggedIn: false, authMethod: 'none' })
+  })
+
+  it('reads a signed-in answer', async () => {
+    expect(await runClaudeAuthStatus(async () => ({ stdout: answer(true), stderr: '' }))).toMatchObject({
+      loggedIn: true,
+    })
+  })
+
+  it('still treats a CLI that does not answer as unknown', async () => {
+    const timedOut = async () => {
+      throw Object.assign(new Error('timed out'), { killed: true, stdout: '', stderr: '' })
+    }
+    await expect(runClaudeAuthStatus(timedOut)).rejects.toThrow('timed out')
+    const silent = async () => {
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    }
+    await expect(runClaudeAuthStatus(silent)).rejects.toThrow('ENOENT')
   })
 })

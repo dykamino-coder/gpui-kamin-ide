@@ -16,6 +16,15 @@ export interface SessionsIpcContext {
   getUserCwd: () => string | null
 }
 
+/** Why `config` cannot open a tab (and become the global config), or null. */
+export function tabConfigProblem(config: unknown): string | null {
+  if (!config || typeof config !== 'object') return 'a connection config is required'
+  const { serverUrl, token } = config as Partial<ConnectionConfig>
+  if (typeof serverUrl !== 'string' || !serverUrl.trim()) return 'serverUrl is required'
+  if (typeof token !== 'string' || !token.trim()) return 'token is required'
+  return null
+}
+
 export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   const tm = () => ctx.getTabManager()
 
@@ -28,6 +37,12 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
 
   // ─── Tabs ──────────────────────────────────────────
   ipcMain.handle('tab:create', (_event: IpcMainInvokeEvent, config: ConnectionConfig) => {
+    // The server URL and token of a new tab also become the global config.
+    // A partial config used to be written as is: `createTab({})` erased the
+    // stored token, and every later new chat failed silently (acceptance
+    // 2026-11-12). It is now an error for the caller, and nothing changes.
+    const problem = tabConfigProblem(config)
+    if (problem) throw new Error(`tab:create: ${problem}`)
     const userCwd = ctx.getUserCwd()
     if (!('cwd' in config) && userCwd) {
       config.cwd = userCwd
