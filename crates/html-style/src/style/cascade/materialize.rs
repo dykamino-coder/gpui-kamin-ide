@@ -220,3 +220,28 @@ mod zoom_tests;
 
 #[cfg(test)]
 mod publication_tests;
+
+#[cfg(feature = "heap-report")]
+impl kamin_heap::HeapSize for ComputedSlot {
+    fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
+        let Ok(slot) = self.0.try_borrow() else {
+            return 0;
+        };
+        let inputs = ops.at("style/materialized", |ops| ops.shallow(Rc::as_ptr(&self.1)));
+        let Some(materialized) = slot.as_ref() else {
+            return inputs;
+        };
+        let block = ops.at("style/materialized", |ops| {
+            ops.shallow(Rc::as_ptr(materialized))
+        });
+        if block == 0 {
+            return inputs;
+        }
+        let computed = &materialized.computed;
+        inputs
+            + block
+            + materialized.parent.heap_size(ops)
+            + computed.handle.heap_size(ops)
+            + computed.legacy.heap_size(ops)
+    }
+}
