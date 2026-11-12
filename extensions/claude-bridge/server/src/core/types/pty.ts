@@ -154,7 +154,9 @@ export interface PtySession {
    *  conversation's unified log, the engine runs one segment of it. */
   conversation?: ConversationBinding
   /** Copies this segment's native transcript into the unified log. */
-  segmentPump?: { stop(): void }
+  segmentPump?: { flush(): void; stop(): void }
+  /** Engine switch: attaches the transcript once the switch commits. */
+  attachTranscript?: () => void
   /** Whether this session is a sub-agent (shorter idle timeout) */
   isSubAgent: boolean
   /** Parent session ID (for agent tree) */
@@ -274,8 +276,11 @@ export interface SessionConfig {
   engine?: AgentEngineId
   /** Start (or resume) this segment of a multi-engine conversation. Server-set. */
   conversation?: ConversationBinding
-  /** History section the engine starts with; set by the server, never by clients. */
-  handoff?: string
+  /** Engine switch (server-set): a new segment's session, in its own settings
+   *  directory; the conversation moves to it only after it started. */
+  segmentStart?: { settingsDir: string }
+  /** Engine switch (server-set): attach the transcript later (attachTranscript). */
+  deferTranscript?: boolean
 }
 
 // ---------------------------------------------------------------------------

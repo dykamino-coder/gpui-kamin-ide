@@ -7,6 +7,7 @@ import { LOST_RECEIPT_WARNING, lostAfterSnapshot, matchReceiptsToTranscript, mer
 import type { JsonlEntryData } from '../types/jsonl'
 import { enqueueLocal, reconcileQueueWithEntries, removeLocalQueueItem } from './queue'
 import { jsonlEntriesByTab } from './jsonl'
+import { withoutBridgeContext } from '../utils/bridge-context'
 
 export interface Submission extends SubmissionUpdate {
   text: string
@@ -26,6 +27,8 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   }
   if (Array.isArray(data.known)) { applyKnownSnapshot(tabId, new Set(data.known)); return }
   if (!data.id) return
+  // The receipt echoes what reached the engine, hidden history included.
+  if (typeof data.text === 'string') data = { ...data, text: withoutBridgeContext(data.text) }
   const current = submissions.value.get(tabId) ?? []
   const existing = current.find(item => item.id === data.id)
   const item: Submission = { text: '', timestamp: new Date().toISOString(), ...existing, ...data, warning: data.warning,

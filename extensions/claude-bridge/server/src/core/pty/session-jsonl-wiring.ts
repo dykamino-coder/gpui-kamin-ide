@@ -6,7 +6,7 @@ import type { AgentEngineId } from '../../shared/agent-events'
 import { debugLog, warnLog } from '../logging'
 import { lifecycleLog } from '../logging/lifecycle'
 import { JsonlWatcher } from './jsonl-watcher'
-import { startSegmentPump } from '../conversation/conversation'
+import { segmentSubagentsDir, startSegmentPump } from '../conversation/conversation'
 import { leanEntries } from './jsonl-projection'
 import { sendToClient, socketWritable, trySendToClient } from './session-io'
 import { handleJsonlUserEntry } from './session-stats-recorder'
@@ -22,6 +22,24 @@ export interface JsonlWiringHooks {
 }
 
 export function attachSessionJsonlWatcher(
+  session: PtySession,
+  config: SessionConfig,
+  startTime: number,
+  hooks: JsonlWiringHooks,
+): void {
+  // An engine switch starts the joining engine before the conversation moves
+  // to it: its transcript is attached once the switch commits (session-core).
+  if (config.deferTranscript) {
+    session.attachTranscript = () => {
+      session.attachTranscript = undefined
+      startJsonlWatcher(session, config, startTime, hooks)
+    }
+    return
+  }
+  startJsonlWatcher(session, config, startTime, hooks)
+}
+
+function startJsonlWatcher(
   session: PtySession,
   config: SessionConfig,
   startTime: number,
@@ -134,6 +152,8 @@ export function attachSessionJsonlWatcher(
     () => socketWritable(session.ws),
     config.history,
   )
+  // Sub-agents of the running engine live under its native session.
+  if (conversation) jsonlWatcher.subagentsDirOf = () => segmentSubagentsDir(conversation)
   session.jsonlWatcher = jsonlWatcher
   jsonlWatcher.start()
   return jsonlWatcher

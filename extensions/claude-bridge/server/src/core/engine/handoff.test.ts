@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { JsonlEntry } from '../../shared/jsonl-types'
-import { buildHandoff, HANDOFF_BUDGET_CHARS, HANDOFF_TOOL_PREVIEW_CHARS, transcriptTurns } from './handoff'
+import {
+  buildHandoff,
+  HANDOFF_BUDGET_BYTES,
+  HANDOFF_TOOL_PREVIEW_CHARS,
+  transcriptTurns,
+  withContextBlock,
+  withoutContextBlocks,
+} from './handoff'
 
 const user = (content: unknown) => ({ type: 'user', message: { role: 'user', content } }) as unknown as JsonlEntry
 const assistant = (content: unknown) =>
@@ -39,6 +46,20 @@ describe('transcriptTurns', () => {
     ])
     expect(turns).toEqual([{ role: 'user', text: 'real question' }])
   })
+
+  it('leaves out the hidden context Bridge added to a user turn', () => {
+    const block = buildHandoff([user('old fact'), assistant('ok')], source)!.text
+    const sent = withContextBlock('what was the fact?', block)
+    expect(withoutContextBlocks(sent)).toBe('what was the fact?')
+    expect(transcriptTurns([user(sent), assistant('old fact')])).toEqual([
+      { role: 'user', text: 'what was the fact?' },
+      { role: 'assistant', text: 'old fact' },
+    ])
+    // Codex input items and Claude content blocks alike.
+    expect(transcriptTurns([user([{ type: 'text', text: sent }])])).toEqual([
+      { role: 'user', text: 'what was the fact?' },
+    ])
+  })
 })
 
 describe('buildHandoff', () => {
@@ -52,20 +73,21 @@ describe('buildHandoff', () => {
       engines: ['claude', 'codex'],
     })
     expect(handoff).toMatchObject({ turns: 2, shortened: false })
-    expect(handoff!.text).toContain('## Conversation so far')
-    expect(handoff!.text).toContain('with Claude and ChatGPT; until now Claude (sonnet) answered')
+    expect(handoff!.text.startsWith('<bridge-context>')).toBe(true)
+    expect(handoff!.text.endsWith('</bridge-context>')).toBe(true)
+    expect(handoff!.text).toContain('not written by the user')
+    expect(handoff!.text).toContain('with\nClaude and ChatGPT; until now Claude (sonnet) answered')
     expect(handoff!.text).toContain('User: Remember 4217.\n\nAssistant: Remembered.')
   })
 
   it('keeps the newest turns verbatim and lists the earlier requests when over budget', () => {
     const entries: JsonlEntry[] = [user('The launch code is 4217.'), assistant('OK.')]
     for (let i = 0; i < 40; i++) entries.push(user(`question ${i} ${'q'.repeat(80)}`), assistant(`answer ${i}`))
-    const handoff = buildHandoff(entries, source, { budgetChars: 2_000 })
+    const handoff = buildHandoff(entries, source, { budgetBytes: 3_000 })
     expect(handoff!.shortened).toBe(true)
     expect(handoff!.text).toContain('the user asked:\n- The launch code is 4217.')
     expect(handoff!.text).toContain('answer 39')
-    // Budget for the history; the fixed header and the request list floor add ~1.5k.
-    expect(handoff!.text.length).toBeLessThan(2_000 + 1_500)
+    expect(Buffer.byteLength(handoff!.text)).toBeLessThanOrEqual(3_000)
   })
 
   it('keeps the end of a newest turn that alone exceeds the budget', () => {
@@ -73,9 +95,30 @@ describe('buildHandoff', () => {
       [user('first fact 4217'), assistant('ok'), user(`${'L'.repeat(200_000)} TAIL`)],
       source,
     )
-    expect(handoff!.text).toContain(' characters cut …]')
+    expect(handoff!.text).toContain(' bytes cut …]')
     expect(handoff!.text).toContain('LLLL TAIL\n</conversation-history>')
-    expect(handoff!.text.length).toBeLessThan(HANDOFF_BUDGET_CHARS + 1_000)
+    expect(Buffer.byteLength(handoff!.text)).toBeLessThanOrEqual(HANDOFF_BUDGET_BYTES)
+  })
+
+  it('bounds the block in UTF-8 bytes for Cyrillic text (2 bytes a character)', () => {
+    const entries: JsonlEntry[] = []
+    for (let i = 0; i < 400; i++)
+      entries.push(user(`вопрос ${i} ${'ж'.repeat(300)}`), assistant(`ответ ${i} ${'щ'.repeat(300)}`))
+    const handoff = buildHandoff(entries, source)!
+    expect(handoff.shortened).toBe(true)
+    expect(Buffer.byteLength(handoff.text)).toBeLessThanOrEqual(HANDOFF_BUDGET_BYTES)
+    // Far below the 128 KiB a single command-line argument may take, and it is
+    // not one anyway: it travels in the first user turn.
+    expect(Buffer.byteLength(handoff.text)).toBeLessThan(128 * 1024)
+    expect(handoff.text).toContain('ответ 399')
+    expect(handoff.text).not.toContain('�')
+  })
+
+  it('a huge single message keeps its end within the byte budget', () => {
+    const handoff = buildHandoff([user('факт 4217'), assistant('ок'), user(`${'я'.repeat(150_000)} КОНЕЦ`)], source)!
+    expect(Buffer.byteLength(handoff.text)).toBeLessThanOrEqual(HANDOFF_BUDGET_BYTES)
+    expect(handoff.text).toContain('яяя КОНЕЦ\n</conversation-history>')
+    expect(handoff.text).not.toContain('�')
   })
 
   it('needs no model and is fast on a long conversation', () => {

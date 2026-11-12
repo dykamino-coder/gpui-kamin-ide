@@ -42890,10 +42890,12 @@ function handleServerMessage(msg, ctx) {
         ...engine ? { engine } : {}
       });
       if (engine) ctx.noteSessionEngine?.(engine, msg.model);
+      if (msg.engineSwitch) ctx.settleEngineSwitch?.(true);
       ctx.notifySessionInfo(msg.effort, msg.model);
       break;
     }
     case "session:engine-switch-failed":
+      ctx.settleEngineSwitch?.(false);
       ctx.window.webContents.send("session-restarted", ctx.tabId, {
         inPlace: true,
         engineNotice: `Could not switch the agent: ${msg.error}`
@@ -43815,9 +43817,20 @@ var ConnectionManager = class _ConnectionManager {
   }
   /** Continue the chat on `engine`; session:restarted reports the result. */
   switchEngine(engine, model) {
+    this.switchUndo ??= { engine: this.config.engine, chosenModel: this.chosenModel };
     this.chosenModel = model;
     this.config = { ...this.config, engine };
     this.send({ type: "session:switch-engine", engine, model });
+  }
+  /** What a pending engine switch changed in the tab; a refusal restores it. */
+  switchUndo = null;
+  /** The server reported the switch: done, or refused (the chat stays on its engine). */
+  settleEngineSwitch(ok) {
+    const undo = this.switchUndo;
+    this.switchUndo = null;
+    if (ok || !undo) return;
+    this.config = { ...this.config, engine: undo.engine };
+    this.chosenModel = undo.chosenModel;
   }
   /** The chat's agent: the tab's request until the server reports the real one. */
   getEngine() {
@@ -44167,6 +44180,7 @@ var ConnectionManager = class _ConnectionManager {
       notifySessionTitle: (t) => _ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => _ConnectionManager.onConversationId?.(this.tabId, id),
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
+      settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),
       notifyAgentPreferences: (engine) => _ConnectionManager.onAgentPreferences?.(this.tabId, engine),
       notifySessionInfo: (effort, model) => {
         if (effort) this.lastEffort = effort;

@@ -16,7 +16,7 @@
 // resend it to whichever model answers next. Bridge's engines are agent CLIs
 // with their own session stores, so the neutral list is Bridge's own normalized
 // transcript (JsonlEntry, one shape for both engines); a new segment starts
-// with that history in its session context (handoff.ts).
+// with that history as a hidden block in its first user turn (handoff.ts).
 //
 // The manifest lives next to the conversation's own settings directory
 // (`conversation.json`), on the same persistent volume as the sessions.
@@ -36,11 +36,17 @@ export interface ConversationSegment {
   settingsDir: string
   model: string | null
   startedAt: string
-  /** History the segment's native session started with (stable across its
-   *  resumes, so the provider's prompt cache stays valid). */
-  handoff: string | null
   /** Copy position in the native transcript (segment-pump.ts). */
   pump: { file: string | null; pos: number }
+  /** Byte offset in the unified log where the segment begins (its switch
+   *  marker; 0 for the chat's first segment). */
+  logStart?: number
+  /** The conversation so far, as a hidden block for the segment's first user
+   *  turn (handoff.ts); null once sent. Kept here so a server restart before
+   *  that turn does not lose it. */
+  pendingContext?: string | null
+  /** Size of the history the segment started with (UTF-8 bytes). */
+  contextBytes?: number
 }
 
 export interface ConversationManifest {
@@ -99,6 +105,11 @@ export function loadManifest(dir: string): ConversationManifest | null {
 export function saveManifest(manifest: ConversationManifest): void {
   loaded.set(path.resolve(manifest.dir), manifest)
   writeManifest(manifest)
+}
+
+/** The conversation was deleted: drop its in-memory manifest. */
+export function forgetManifest(dir: string): void {
+  loaded.delete(path.resolve(dir))
 }
 
 /** Tests: forget cached manifests. */

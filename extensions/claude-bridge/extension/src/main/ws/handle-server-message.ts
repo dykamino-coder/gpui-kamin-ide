@@ -66,6 +66,8 @@ export interface HandlerCtx {
   notifySessionInfo: (effort?: string, model?: string) => void
   /** session:created's engine (absent from older servers → Claude) and model. */
   noteSessionEngine?: (engine: AgentEngine | undefined, model: string | undefined) => void
+  /** An engine switch was reported: done, or refused (the tab's request is undone). */
+  settleEngineSwitch?: (ok: boolean) => void
   /** The user's main agent arrived (agent:preferences). */
   notifyAgentPreferences?: (engine: AgentEngine) => void
   notifyTreeUpdate: (tree: any[]) => void
@@ -491,13 +493,15 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
         ...(engine ? { engine } : {}),
       })
       if (engine) ctx.noteSessionEngine?.(engine, msg.model)
+      if (msg.engineSwitch) ctx.settleEngineSwitch?.(true)
       ctx.notifySessionInfo(msg.effort, msg.model)
       break
     }
 
     case 'session:engine-switch-failed':
-      // Nothing restarted: only the reason reaches the user (the chat panel
-      // shows engineNotice as a toast).
+      // Nothing restarted: the tab stays on its engine and model, and the
+      // reason reaches the user (the chat panel shows engineNotice as a toast).
+      ctx.settleEngineSwitch?.(false)
       ctx.window.webContents.send('session-restarted', ctx.tabId, {
         inPlace: true,
         engineNotice: `Could not switch the agent: ${msg.error}`,

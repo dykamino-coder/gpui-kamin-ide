@@ -19,8 +19,15 @@ import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import { codexTranscriptPath, createCodexSession, transcriptEngine } from './session-codex'
 import { codexRuntime } from '../codex/codex-runtime'
-import { activeSegment, loadManifest } from '../conversation/manifest'
-import { addSegment, beginConversation } from '../conversation/conversation'
+import { activeSegment, loadManifest, saveManifest } from '../conversation/manifest'
+import {
+  archiveConversation,
+  commitSwitch,
+  deleteConversationFiles,
+  ensureSegmentTranscript,
+  planSwitch,
+  restartSegmentFresh,
+} from '../conversation/conversation'
 import type { AgentEngineId } from '../../shared/agent-events'
 import {
   sendToClient,
@@ -225,19 +232,33 @@ async function createAdmittedSession(
   // A conversation that spans engines (conversation/manifest.ts): the client
   // holds the logical id, whose settings directory has the manifest. The
   // engine runs the active segment, in that segment's own directory.
-  const manifest = config.conversation
-    ? loadManifest(config.conversation.dir)
-    : config.resumeConversationId
-      ? loadManifest(settingsDir)
-      : null
+  // An engine switch starts the new segment's session before the
+  // conversation moves to it: its own fresh directory, no manifest lookup.
+  const manifest = config.segmentStart
+    ? null
+    : config.conversation
+      ? loadManifest(config.conversation.dir)
+      : config.resumeConversationId
+        ? loadManifest(settingsDir)
+        : null
+  if (config.segmentStart) {
+    settingsDir = config.segmentStart.settingsDir
+    fs.mkdirSync(settingsDir, { recursive: true })
+    config.resumeConversationId = undefined
+    resumeNotFound = false
+    settingsDirSource = 'fresh'
+  }
   if (manifest) {
-    const segment = activeSegment(manifest)
+    let segment = activeSegment(manifest)
     config.conversation = { id: manifest.id, dir: manifest.dir }
+    // A swept Claude transcript comes back from the archive; without one the
+    // segment continues in a new session that gets the whole conversation.
+    if (segment.nativeId && segment.engine === 'claude' && !(await ensureSegmentTranscript(segment)))
+      segment = restartSegmentFresh(manifest)
     settingsDir = segment.settingsDir
     fs.mkdirSync(settingsDir, { recursive: true })
     config.resumeConversationId = segment.nativeId ?? undefined
     config.engine = segment.engine
-    config.handoff = segment.handoff ?? undefined
     if (!segment.nativeId && !config.model && segment.model) config.model = segment.model
     if (segment.nativeId && segment.engine === 'claude') await repairTranscriptForResume(settingsDir, segment.nativeId)
     resumeNotFound = false
@@ -253,7 +274,10 @@ async function createAdmittedSession(
     config.engine ??
     'claude'
   if (engine === 'codex') {
-    return createCodexSession(
+    // A conversation's codex segment never ends in "not found": its history
+    // is in the unified log, so a lost thread continues in a new one.
+    if (manifest) config.noSpawnOnNotFound = false
+    const codex = await createCodexSession(
       ws,
       userName,
       tokenId,
@@ -271,6 +295,14 @@ async function createAdmittedSession(
       },
       signal,
     )
+    if (manifest && (codex.resumedOnFreshThread || codex.resumeNotFound)) {
+      // The new thread has none of the segment's context: it gets the whole
+      // conversation with its first turn, and the client keeps the chat.
+      restartSegmentFresh(manifest)
+      codex.resumeNotFound = false
+      codex.resumedOnFreshThread = false
+    }
+    return codex
   }
 
   // --model wins over the model saved in a Claude Code transcript. Preserve a
@@ -1001,7 +1033,9 @@ function finalizeTeardownFor(
   // Снимок расшифровки на выходе: беседу, которую больше не открывали, путь
   // резюма не скопировал бы никогда, и уборка CLI унесла бы её вместе с
   // возможностью резюма (INC-2026-0054).
-  if (session.cliConversationId) {
+  if (session.conversation) {
+    void archiveConversation(session.conversation).catch(() => {})
+  } else if (session.cliConversationId) {
     void archiveTranscriptForSession(session.settingsDir, session.cliConversationId)
   }
   cancelSessionLocalExecs(sessionId)
@@ -1137,6 +1171,12 @@ export async function restartWithModel(
   closeToolNotificationStream(sessionId)
   // Remove from sessions map (without broadcasting exit events)
   sessions.delete(sessionId)
+  // The segment runs the new model from now on (resume and later switches).
+  const manifest = session.conversation ? loadManifest(session.conversation.dir) : null
+  if (manifest) {
+    activeSegment(manifest).model = model
+    saveManifest(manifest)
+  }
 
   // Create new session with resume + model, reusing settingsDir so CLI finds JSONL
   return createSession(ws, userName, tokenId, {
@@ -1156,16 +1196,36 @@ export async function restartWithModel(
 
 export interface EngineSwitchResult {
   session: PtySession
-  /** Milliseconds: stopping the leaving engine, preparing the conversation
-   *  (files only, no model call), starting the joining engine. */
-  timings: { stopMs: number; prepareMs: number; startMs: number }
+  /** Milliseconds: preparing the conversation (files only, no model call),
+   *  starting the joining engine, and stopping the leaving one (in parallel
+   *  with the next turn, after the switch is reported). */
+  timings: { prepareMs: number; startMs: number }
+  /** History the joining engine gets with its first turn (UTF-8 bytes). */
+  contextBytes: number
+}
+
+/** Stop a session the engine switch replaced. Its transcript is copied up to
+ *  the end first; what the dying CLI still writes reaches the unified log
+ *  through the pump's last copy (the log skips entries it already has). */
+async function retireSwitchedSession(old: PtySession): Promise<void> {
+  const t0 = performance.now()
+  try {
+    await killPtyAndWait(old)
+  } finally {
+    old.segmentPump?.stop()
+    if (old.conversation) void archiveConversation(old.conversation).catch(() => {})
+    else if (old.cliConversationId) void archiveTranscriptForSession(old.settingsDir, old.cliConversationId)
+    debugLog('Switched-away engine stopped', { sessionId: old.id, ms: Math.round(performance.now() - t0) })
+  }
 }
 
 /**
  * Continue the chat's conversation on the other engine, in the same chat
- * (conversation/manifest.ts). The leaving engine is stopped after flushing its
- * transcript; the joining one starts a new native session whose context holds
- * the conversation so far. An empty chat simply restarts on the other engine.
+ * (conversation/manifest.ts). The joining engine starts first, beside the
+ * leaving one; only once it runs does the conversation move to it (marker,
+ * manifest, client reset) and the leaving engine stop. A start that fails
+ * changes nothing: the leaving engine keeps the chat. An empty chat simply
+ * restarts on the other engine.
  */
 export async function switchSessionEngine(
   sessionId: string,
@@ -1179,52 +1239,25 @@ export async function switchSessionEngine(
   const t0 = performance.now()
   const fromEngine = old.engine ?? 'claude'
   const known = old.conversation ? loadManifest(old.conversation.dir) : null
-  const nativeId = known ? activeSegment(known).nativeId : old.cliConversationId
   debugLog('Switching engine', { sessionId, from: fromEngine, to: target.engine, model: target.model })
 
-  // Same teardown as a model restart: no session:exit, transcript flushed.
-  old.isRestarting = true
-  old.outputDebounce?.dispose()
-  old.jsonlWatcher?.stop()
-  old.statusLineWatcher?.stop()
-  if (old.streamingProxy) {
-    void old.streamingProxy.stop().catch(() => {})
-    old.streamingProxy = undefined
-  }
-  await killPtyAndWait(old)
-  old.segmentPump?.stop()
-  rejectPendingForSession(sessionId, 'Engine switch')
-  closeToolNotificationStream(sessionId)
-  sessions.delete(sessionId)
-  lifecycleLog('session_destroy', { sessionId, reason: 'engine_switch', ageMs: Date.now() - old.createdAt.getTime() })
-  const t1 = performance.now()
-
+  // Everything the leaving engine wrote so far is in the log before the
+  // history for the joining one is read.
+  old.segmentPump?.flush()
   const folderSuffix = old.cwd ? '-' + sanitizeDirName(old.cwd) : ''
   const sessionsDir = path.join(SESSIONS_BASE, tokenId + folderSuffix)
-  let conversation: { id: string; dir: string } | undefined
-  if (known || nativeId) {
-    const manifest =
-      known ??
-      beginConversation({
-        sessionsDir,
-        engine: fromEngine,
-        nativeId: nativeId!,
-        settingsDir: old.settingsDir,
-        model: old.model ?? null,
-      })
-    // Clients and dashboards that still hold the chat's first id land here.
-    if (!known && nativeId) recordCompactLink(nativeId, manifest.id)
-    addSegment(manifest, {
-      engine: target.engine,
-      model: target.model,
-      settingsDir: path.join(sessionsDir, randomUUID()),
-    })
-    conversation = { id: manifest.id, dir: manifest.dir }
-    // The client drops its copy of the old transcript; the new session
-    // replays the conversation's unified log in its place.
-    sendToClient(ws, { type: 'jsonl:status', status: 'watching', compacted: true })
-  }
-  const t2 = performance.now()
+  const plan = planSwitch({
+    manifest: known,
+    sessionsDir,
+    from: {
+      engine: fromEngine,
+      nativeId: known ? activeSegment(known).nativeId : old.cliConversationId,
+      settingsDir: old.settingsDir,
+      model: old.model ?? null,
+    },
+    target,
+  })
+  const t1 = performance.now()
 
   const session = await createSession(ws, userName, tokenId, {
     cwd: old.cwd,
@@ -1233,25 +1266,60 @@ export async function switchSessionEngine(
     engine: target.engine,
     ...(target.model ? { model: target.model } : {}),
     // Effort levels differ per engine: the joining one starts on its own default.
-    ...(conversation ? { conversation } : {}),
+    ...(plan
+      ? { conversation: plan.ref, segmentStart: { settingsDir: plan.segment.settingsDir }, deferTranscript: true }
+      : {}),
     bearerHash: old.bearerHash,
     protocolVersion: old.streamProtocol ?? 0,
     host: old.host,
   })
-  const timings = {
-    stopMs: Math.round(t1 - t0),
-    prepareMs: Math.round(t2 - t1),
-    startMs: Math.round(performance.now() - t2),
+  const t2 = performance.now()
+
+  // Commit: the conversation moves to the new segment; should that fail, the
+  // new session goes and the leaving engine keeps the chat.
+  old.segmentPump?.flush()
+  let committed: ReturnType<typeof commitSwitch> | null
+  try {
+    committed = plan ? commitSwitch(plan) : null
+  } catch (err) {
+    destroySession(session.id, 'engine_switch')
+    throw err
   }
+  // The leaving engine stops talking to the client; the client replays the
+  // unified log.
+  old.isRestarting = true
+  old.outputDebounce?.dispose()
+  old.jsonlWatcher?.stop()
+  old.statusLineWatcher?.stop()
+  if (old.streamingProxy) {
+    void old.streamingProxy.stop().catch(() => {})
+    old.streamingProxy = undefined
+  }
+  rejectPendingForSession(sessionId, 'Engine switch')
+  closeToolNotificationStream(sessionId)
+  sessions.delete(sessionId)
+  lifecycleLog('session_destroy', { sessionId, reason: 'engine_switch', ageMs: Date.now() - old.createdAt.getTime() })
+  if (plan && committed) {
+    // Clients and dashboards that still hold the chat's first id land here.
+    if (!plan.existing && plan.from.nativeId) recordCompactLink(plan.from.nativeId, committed.id)
+    sendToClient(ws, { type: 'jsonl:status', status: 'watching', compacted: true })
+  }
+  session.attachTranscript?.()
+  void retireSwitchedSession(old).catch((err) =>
+    warnLog('Switched-away engine did not stop cleanly', { sessionId, error: String(err) }),
+  )
+
+  const timings = { prepareMs: Math.round(t1 - t0), startMs: Math.round(t2 - t1) }
+  const contextBytes = plan?.segment.contextBytes ?? 0
   infoLog('Engine switched', {
     from: fromEngine,
     to: target.engine,
-    conversation: conversation?.id ?? null,
+    conversation: plan?.ref.id ?? null,
+    contextBytes,
     ...timings,
   })
-  return { session, timings }
+  return { session, timings, contextBytes }
 }
-
 /**
  * Get a session by ID (for MCP routing).
  */
@@ -1544,7 +1612,19 @@ export async function deleteSessionByConversationId(
       throw new Error('Cannot delete an active session — close it first')
     }
   }
+  for (const session of sessions.values()) {
+    if (session.tokenId === tokenId && session.conversation?.id === conversationId) {
+      throw new Error('Cannot delete an active session — close it first')
+    }
+  }
   debugLog('Deleting session data', { conversationId, settingsDir: target.settingsDir, user })
+  // A multi-engine conversation: every segment's directory, native transcript
+  // and archive go too (only directories under this token's session root).
+  const tokenRoots = tokenPaths.map((p) => path.resolve(p) + path.sep)
+  deleteConversationFiles(target.settingsDir, (dir) => {
+    const resolved = path.resolve(dir)
+    return tokenRoots.some((root) => resolved.startsWith(root)) && isPlainDirectory(resolved)
+  })
   dropArchivedTranscript(conversationId)
   forgetModelSelection(conversationId)
   fs.rmSync(target.settingsDir, { recursive: true, force: true })

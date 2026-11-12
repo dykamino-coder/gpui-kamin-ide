@@ -82,10 +82,6 @@ describe('buildSystemPrompt', () => {
 
   it('keeps the user instructions LAST, after the history section', () => {
     const out = buildSystemPrompt(CWD, 'MY RULE', 'C:/mirror/transcripts')
-    expect(buildSystemPrompt(CWD, 'MY RULE', undefined, undefined, '## Conversation so far\nUser: hi')).toMatch(
-      /## User Instructions\n\nMY RULE\n\n## Conversation so far\nUser: hi$/,
-    )
-    expect(buildSystemPrompt(CWD, undefined, undefined, undefined, '  ')).not.toContain('Conversation so far')
     expect(out.indexOf('MY RULE')).toBeGreaterThan(out.indexOf('## Conversation History'))
   })
 })

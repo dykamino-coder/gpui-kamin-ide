@@ -184,8 +184,6 @@ function developerInstructions(config: SessionConfig): string {
   const text = [
     buildSystemPrompt(config.cwd, config.basePrompt, config.transcriptMirrorDir, config.host),
     bridgeClaudeMd(config.host),
-    // Engine switch: the conversation this chat continues, last (handoff.ts).
-    ...(config.handoff?.trim() ? [config.handoff.trim()] : []),
   ].join('\n\n')
   return text.replaceAll('mcp__user-tools__', 'mcp__bridge__')
 }

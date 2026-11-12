@@ -192,6 +192,8 @@ beforeAll(async () => {
   app.get('/mcp/:sessionId', handleMcpGet)
   app.delete('/mcp/:sessionId', handleMcpDelete)
   registerCodexAccountRoutes(app, () => runtimeMod.codexRuntime())
+  // CLI lifecycle hooks (prompt readiness of the fake Claude), as in production.
+  app.route('/', (await import('../hooks/routes')).createHooksRoutes())
   server = await new Promise((resolve) => {
     const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s as never))
   })
@@ -891,4 +893,143 @@ describe('engine switch inside one chat', () => {
     client.send({ type: 'session:end' })
     client.close()
   }, 30_000)
+
+  it('keeps the chat on the leaving engine when the joining one fails to start (B1)', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'claude' })
+    await say(client, '/fake-note 4217', 'f1')
+    await client.entry((e) => e.type === 'assistant' && text(e) === 'noted: 4217', 15_000)
+    const first = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+    const working = runtimeMod.codexRuntime()
+    runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_THREAD_START_FAIL: 'thread start refused' }))
+    try {
+      const failed = await switchTo(client, 'codex', 'gpt-fake')
+      expect(failed.restarted).toMatchObject({ type: 'session:engine-switch-failed' })
+      expect(failed.restarted.error).toContain('thread start refused')
+      expect(client.frames.slice(failed.from).some((f) => f.type === 'session:restarted')).toBe(false)
+    } finally {
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(working)
+    }
+    // The Claude session still runs the chat, with its conversation as it was.
+    const mark = client.frames.length
+    await say(client, '/fake-recall 4217', 'f2')
+    expect(text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))).toContain(
+      'noted: 4217',
+    )
+    expect(
+      client.frames.filter((f) => f.type === 'session:conversation-id').every((f) => f.conversationId === first),
+    ).toBe(true)
+    const { SESSIONS_BASE, sanitizeDirName } = await import('./session-settings')
+    const sessionsDir = path.join(SESSIONS_BASE, 'tid-a-' + sanitizeDirName('/work/project'))
+    const { readManifest } = await import('../conversation/manifest')
+    // No conversation was made of this chat: the failed switch committed nothing.
+    const made = fs
+      .readdirSync(sessionsDir)
+      .map((d) => readManifest(path.join(sessionsDir, d)))
+      .filter((m) => m?.segments[0]?.nativeId === first)
+    expect(made).toHaveLength(0)
+    // And a later switch works.
+    expect((await switchTo(client, 'codex', 'gpt-fake')).restarted).toMatchObject({ type: 'session:restarted' })
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 60_000)
+
+  it('a second switch sent during the first waits and is refused; one conversation id (S3)', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'claude' })
+    await say(client, '/fake-note 31', 'd1')
+    await client.entry((e) => e.type === 'assistant' && text(e) === 'noted: 31', 15_000)
+    const from = client.frames.length
+    client.send({ type: 'session:switch-engine', engine: 'codex', model: 'gpt-fake' })
+    client.send({ type: 'session:switch-engine', engine: 'codex', model: 'gpt-fake' })
+    // A prompt sent in the same window reaches the joining engine.
+    client.send({ type: 'session:submitText', data: '/fake-recall 31', submissionId: 'd2' })
+    expect(await client.next((f) => f.type === 'session:restarted', 15_000, from)).toMatchObject({ engine: 'codex' })
+    expect(await client.next((f) => f.type === 'session:engine-switch-failed', 15_000, from)).toMatchObject({
+      error: 'This chat already runs on that engine',
+    })
+    const recall = await after(client, from)((e) => e.type === 'assistant' && text(e).startsWith('recall:'))
+    expect(text(recall)).toContain('noted: 31')
+    expect(client.frames.slice(from).filter((f) => f.type === 'session:restarted')).toHaveLength(1)
+    await new Promise((r) => setTimeout(r, 300))
+    const ids = new Set(
+      client.frames
+        .slice(from)
+        .filter((f) => f.type === 'session:conversation-id')
+        .map((f) => f.conversationId),
+    )
+    expect(ids.size).toBe(1)
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
+  it('carries a history far over 128 KiB in the first turn, within the byte budget (B2)', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    for (let i = 0; i < 3; i++) {
+      const mark = client.frames.length
+      await say(client, `bulk ${i} ${'ж'.repeat(30_000)}`, `b${i}`)
+      await after(client, mark)((e) => text(e).startsWith(`echo: bulk ${i}`))
+    }
+    let mark = client.frames.length
+    await say(client, 'the newest fact is OKAPI-3', 'b9')
+    await after(client, mark)((e) => text(e).startsWith('echo: the newest fact is OKAPI-3'))
+
+    const toClaude = await switchTo(client, 'claude', 'claude-sonnet-5-5')
+    expect(toClaude.restarted).toMatchObject({ type: 'session:restarted', engine: 'claude' })
+    const { HANDOFF_BUDGET_BYTES } = await import('../engine/handoff')
+    // The bulk turns do not fit: the newest turn verbatim, the earlier requests listed.
+    expect(toClaude.restarted.engineSwitch.contextBytes).toBeGreaterThan(1_000)
+    expect(toClaude.restarted.engineSwitch.contextBytes).toBeLessThanOrEqual(HANDOFF_BUDGET_BYTES)
+    const id = (await client.next((f) => f.type === 'session:conversation-id', 15_000, toClaude.from)).conversationId
+    const { SESSIONS_BASE, sanitizeDirName } = await import('./session-settings')
+    const { unifiedLogPath } = await import('../conversation/conversation')
+    const dir = path.join(SESSIONS_BASE, 'tid-a-' + sanitizeDirName('/work/project'), id)
+    expect(fs.statSync(unifiedLogPath({ id, dir })).size).toBeGreaterThan(128 * 1024)
+
+    mark = client.frames.length
+    await say(client, '/fake-recall OKAPI-3', 'b10')
+    expect(text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))).toContain(
+      'OKAPI-3',
+    )
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 90_000)
+
+  it('a segment whose codex thread is gone continues on a new one with the whole conversation (S6)', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'claude' })
+    await say(client, '/fake-note 9001', 'l1')
+    await client.entry((e) => e.type === 'assistant' && text(e) === 'noted: 9001', 15_000)
+    const first = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+    const toGpt = await switchTo(client, 'codex', 'gpt-fake')
+    const id = (
+      await client.next((f) => f.type === 'session:conversation-id' && f.conversationId !== first, 15_000, toGpt.from)
+    ).conversationId
+    let mark = client.frames.length
+    await say(client, 'hello codex', 'l2') // takes the first-turn history
+    await after(client, mark)((e) => text(e).startsWith('echo: hello codex'))
+    client.send({ type: 'session:end' })
+    client.close()
+
+    // The app-server goes and its threads with it.
+    await runtimeMod.codexRuntime().close()
+    fs.rmSync(path.join(state.home, 'codex-home', 'fake-state', 'threads'), { recursive: true, force: true })
+    runtimeMod.setCodexRuntimeForTests(newRuntime())
+
+    const again = await Client.open(port)
+    again.send({ type: 'session:resume', token: 'tok-a', conversationId: id, protocolVersion: 1, cwd: '/work/project' })
+    expect(await again.next((f) => f.type === 'session:created' || f.type === 'session:error', 15_000)).toMatchObject({
+      type: 'session:created',
+      engine: 'codex',
+    })
+    mark = again.frames.length
+    await say(again, '/fake-recall 9001', 'l3')
+    expect(text(await after(again, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))).toContain(
+      'noted: 9001',
+    )
+    again.send({ type: 'session:end' })
+    again.close()
+  }, 60_000)
 })

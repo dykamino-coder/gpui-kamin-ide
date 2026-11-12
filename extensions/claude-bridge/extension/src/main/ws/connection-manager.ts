@@ -1253,11 +1253,24 @@ export class ConnectionManager {
 
   /** Continue the chat on `engine`; session:restarted reports the result. */
   switchEngine(engine: AgentEngine, model: string): void {
+    this.switchUndo ??= { engine: this.config.engine, chosenModel: this.chosenModel }
     this.chosenModel = model
     // A reconnect before the conversation is known creates the chat again:
     // on the engine it runs now.
     this.config = { ...this.config, engine }
     this.send({ type: 'session:switch-engine', engine, model })
+  }
+
+  /** What a pending engine switch changed in the tab; a refusal restores it. */
+  private switchUndo: { engine: AgentEngine | undefined; chosenModel: string | null } | null = null
+
+  /** The server reported the switch: done, or refused (the chat stays on its engine). */
+  private settleEngineSwitch(ok: boolean): void {
+    const undo = this.switchUndo
+    this.switchUndo = null
+    if (ok || !undo) return
+    this.config = { ...this.config, engine: undo.engine }
+    this.chosenModel = undo.chosenModel
   }
 
   /** The chat's agent: the tab's request until the server reports the real one. */
@@ -1677,6 +1690,7 @@ export class ConnectionManager {
       notifySessionTitle: (t) => ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => ConnectionManager.onConversationId?.(this.tabId, id),
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
+      settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),
       notifyAgentPreferences: (engine) => ConnectionManager.onAgentPreferences?.(this.tabId, engine),
       notifySessionInfo: (effort, model) => {
         // Снимок для claude-bridge.getSessionInfo (тест-команды).

@@ -68,6 +68,7 @@ import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 import { notifyToolListChanged, replaceRegisteredTools } from './mcp-tool-notify'
 import { normalizeHostDeclaration, sameHostDeclaration } from './host-declaration'
+import { noteSegmentModel } from '../conversation/conversation'
 
 /**
  * Map: sessionId → WS client.
@@ -856,19 +857,27 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             refuse('This chat already runs on that engine')
             return
           }
-          const refusal = await mainAgentRefusal(msg.engine, { runtime: codexRuntime() })
-          if (refusal) {
-            refuse(refusal)
-            return
-          }
-          const operation = beginStartup('engine_switch')
+          // The gate goes up before the first await: a prompt sent meanwhile
+          // waits for the joining engine instead of reaching the leaving one,
+          // and a second switch waits, then finds the chat already moved.
           let switched!: () => void
           engineSwitch = new Promise<void>((resolve) => (switched = resolve))
+          const oldSessionId = authenticatedSessionId
+          let operation: ReturnType<typeof beginStartup> | undefined
           try {
-            const oldSessionId = authenticatedSessionId
+            const refusal = await mainAgentRefusal(msg.engine, { runtime: codexRuntime() })
+            if (refusal) {
+              refuse(refusal)
+              return
+            }
+            operation = beginStartup('engine_switch')
             sessionWsMap.delete(oldSessionId)
             authenticatedSessionId = null
-            const { session: next, timings } = await switchSessionEngine(
+            const {
+              session: next,
+              timings,
+              contextBytes,
+            } = await switchSessionEngine(
               oldSessionId,
               { engine: msg.engine, model },
               ws,
@@ -889,18 +898,24 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 effort: next.effort,
                 model: next.model || model,
                 engine: next.engine ?? 'claude',
-                engineSwitch: timings,
+                engineSwitch: { ...timings, contextBytes },
               }),
             )
             void sendAgentPreferences(ws, session.tokenId)
             broadcastTree(session.tokenId)
           } catch (err) {
-            if (!ownsStartup(operation)) return
+            if (!operation || !ownsStartup(operation)) return
             const errMsg = err instanceof Error ? err.message : String(err)
             errorLog('Failed to switch engine', { error: errMsg })
-            sendError(ws, `Failed to switch engine: ${errMsg}`)
+            // The switch commits only once the joining engine runs: on a
+            // failure the leaving one is still there and the tab stays on it.
+            if (getSession(oldSessionId)) {
+              authenticatedSessionId = oldSessionId
+              sessionWsMap.set(oldSessionId, ws)
+            }
+            refuse(`Failed to switch engine: ${errMsg}`)
           } finally {
-            if (startup === operation) startup = undefined
+            if (operation && startup === operation) startup = undefined
             engineSwitch = null
             switched()
           }
@@ -943,6 +958,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               codexModel.modelChanged(next)
               session.model = next
               saveCodexChoice(session, { model: next })
+              if (session.conversation) noteSegmentModel(session.conversation, next)
             }
             ws.send(
               JSON.stringify({
@@ -956,6 +972,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             return
           }
           if (switchClaudeModelInPlace(session, authenticatedSessionId, msg.model, writeInput)) {
+            if (session.conversation) noteSegmentModel(session.conversation, msg.model)
             ws.send(
               JSON.stringify({
                 type: 'session:model-changed',

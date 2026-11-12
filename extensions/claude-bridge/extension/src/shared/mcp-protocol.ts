@@ -188,7 +188,7 @@ export type ServerMessage =
       model?: string
       /** Set when the chat moved to another engine (session:switch-engine). */
       engine?: 'claude' | 'codex'
-      engineSwitch?: { stopMs: number; prepareMs: number; startMs: number }
+      engineSwitch?: { prepareMs: number; startMs: number; contextBytes?: number }
     }
   /** The engine switch was refused; the chat keeps running as it was. */
   | { type: 'session:engine-switch-failed'; error: string }

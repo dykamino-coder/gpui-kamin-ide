@@ -46,7 +46,6 @@ describe('manifest', () => {
         settingsDir: dir,
         model: null,
         startedAt: '',
-        handoff: null,
         pump: { file: null, pos: 0 },
       },
     ],
@@ -109,6 +108,53 @@ describe('unified log', () => {
     expect(lastUuidIn(file)).toBe('b3')
   })
 
+  it('does not append an entry it already holds (a pump position saved late before a crash)', () => {
+    const dir = tmp()
+    const file = path.join(dir, 'L.jsonl')
+    new UnifiedLog(file).append([entry('a1', null), entry('a2', 'a1')])
+    // A restarted server copies the same lines again.
+    const again = new UnifiedLog(file)
+    again.append([entry('a1', null), entry('a2', 'a1'), entry('a3', 'a2')])
+    expect(lines(file).map((e) => e.uuid)).toEqual(['a1', 'a2', 'a3'])
+    expect(lines(file)[2]).toMatchObject({ parentUuid: 'a2' })
+  })
+
+  it('cuts a torn last line before appending instead of gluing onto it', () => {
+    const dir = tmp()
+    const file = path.join(dir, 'L.jsonl')
+    fs.writeFileSync(file, JSON.stringify(entry('a1', null)) + '\n' + '{"uuid":"a2","parentUu')
+    const log = new UnifiedLog(file)
+    log.append([entry('a2', 'a1'), entry('a3', 'a2')])
+    expect(lines(file).map((e) => e.uuid)).toEqual(['a1', 'a2', 'a3'])
+  })
+
+  it('cuts a torn line without any newline before it', () => {
+    const dir = tmp()
+    const file = path.join(dir, 'L.jsonl')
+    fs.writeFileSync(file, '{"uuid":"a1","par')
+    new UnifiedLog(file).append([entry('a1', null)])
+    expect(lines(file).map((e) => e.uuid)).toEqual(['a1'])
+  })
+
+  it('takes the last main-chain entry, not a sub-agent side chain', () => {
+    const dir = tmp()
+    const file = path.join(dir, 'L.jsonl')
+    fs.writeFileSync(
+      file,
+      [entry('a1', null), entry('side', 'x', { isSidechain: true })].map((e) => JSON.stringify(e)).join('\n') + '\n',
+    )
+    expect(lastUuidIn(file)).toBe('a1')
+    new UnifiedLog(file).append([entry('b1', null)])
+    expect(lines(file)[2]).toMatchObject({ uuid: 'b1', parentUuid: 'a1' })
+  })
+
+  it('shares one writer per file', () => {
+    const dir = tmp()
+    const file = path.join(dir, 'L.jsonl')
+    expect(UnifiedLog.of(file)).toBe(UnifiedLog.of(path.join(dir, '.', 'L.jsonl')))
+    UnifiedLog.resetForTests()
+  })
+
   it('keeps the parent of a compact boundary', () => {
     const dir = tmp()
     const file = path.join(dir, 'L.jsonl')
@@ -148,8 +194,12 @@ describe('segment pump', () => {
     expect(lines(file)).toHaveLength(2)
 
     // Compaction moved the session into a newer file.
+    // The successor repeats the history it continues; only b1 is new.
     const b = path.join(native, 'B.jsonl')
-    fs.writeFileSync(b, JSON.stringify(entry('b1', 'a2')) + '\n')
+    fs.writeFileSync(
+      b,
+      [entry('a1', null), entry('a2', 'a1'), entry('b1', 'a2')].map((e) => JSON.stringify(e)).join('\n') + '\n',
+    )
     const later = new Date(Date.now() + 5_000)
     fs.utimesSync(b, later, later)
     again.flush()

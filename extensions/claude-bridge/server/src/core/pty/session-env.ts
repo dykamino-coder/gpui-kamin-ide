@@ -237,7 +237,6 @@ export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readon
     sessionConfig.basePrompt,
     sessionConfig.transcriptMirrorDir,
     sessionConfig.host,
-    sessionConfig.handoff,
   )
   args.push('--append-system-prompt', systemPrompt)
 

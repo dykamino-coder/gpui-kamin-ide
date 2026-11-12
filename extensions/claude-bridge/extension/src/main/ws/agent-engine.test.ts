@@ -124,7 +124,7 @@ describe('agent engine on the client connection', () => {
 
     internal.dispatchMessage({
       type: 'session:restarted', sessionId: 's2', model: 'gpt-6.1-sol', engine: 'codex',
-      engineSwitch: { stopMs: 10, prepareMs: 2, startMs: 90 },
+      engineSwitch: { prepareMs: 2, startMs: 90, contextBytes: 1200 },
     })
     expect(m.getEngine()).toBe('codex')
     expect(sent.filter((e) => e.channel === 'session-restarted').at(-1)?.args[1]).toEqual({
@@ -135,6 +135,20 @@ describe('agent engine on the client connection', () => {
     expect(frames.at(-1)).toEqual({ type: 'session:switch-engine', engine: 'claude', model: 'claude-opus-5-5' })
     await internal.startSession(socket)
     expect(frames.at(-1)).toMatchObject({ type: 'session:resume', conversationId: '00000000-0000-4000-8000-000000000001' })
+  })
+
+  it('undoes the tab request when the server refuses the switch', async () => {
+    const { m, internal, frames, socket } = manager({ engine: 'claude' })
+    internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: 'claude-opus-5-5', engine: 'claude' })
+    m.changeModel('gpt-6.1-sol')
+    internal.dispatchMessage({ type: 'session:engine-switch-failed', error: 'Failed to switch engine: boom' })
+    expect(m.getEngine()).toBe('claude')
+    // A reconnect of the still-empty chat creates it on Claude again, without
+    // the GPT pick.
+    await internal.startSession(socket)
+    expect(frames.filter((f) => f.type === 'session:create').at(-1)).toMatchObject({ engine: 'claude' })
+    internal.dispatchMessage({ type: 'session:created', sessionId: 's2', model: 'claude-opus-5-5', engine: 'claude' })
+    expect(frames.some((f) => f.type === 'session:change-model' && f.model === 'gpt-6.1-sol')).toBe(false)
   })
 
   it('tells the user why an engine switch was refused, without a restart', () => {
