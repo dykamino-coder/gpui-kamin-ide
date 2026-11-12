@@ -23,9 +23,16 @@ import { ResumeNotFoundError } from './session-resume-not-found'
 import { SessionAdmissionError } from './session-admission'
 import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId } from './live-switch'
 import { interruptClaudeTurn, switchClaudeModelInPlace } from './claude-turn'
-import { codexBinding, codexEffort as codexReasoningEffort, codexModel as toCodexModel } from './session-codex'
+import {
+  codexBinding,
+  codexEffort as codexReasoningEffort,
+  codexModel as toCodexModel,
+  saveCodexChoice,
+} from './session-codex'
 import { isAgentEngineId } from '../engine/engines'
-import { handleAgentWsMessage, sendAgentPreferences } from './session-ws-agent'
+import { broadcastAgentPreferences, handleAgentWsMessage, sendAgentPreferences } from './session-ws-agent'
+import { chooseEngineForNewChat } from '../engine/engine-auth'
+import { codexRuntime } from '../codex/codex-runtime'
 import { streamFileChunks, waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
@@ -89,6 +96,16 @@ const tokenWsMap = new Map<string, Set<WS>>()
 const resumeLocks = new Map<string, Promise<void>>()
 // Страховка от повисшего лока, если владелец упал вне внутреннего try.
 const RESUME_LOCK_SAFETY_MS = 30_000
+
+// Model selectors follow sign-in and sign-out of either engine live.
+let agentAuthBroadcast: Promise<void> = Promise.resolve()
+const pushAgentAuth = (): void => {
+  agentAuthBroadcast = agentAuthBroadcast
+    .then(() => broadcastAgentPreferences(tokenWsMap))
+    .catch((error) => debugLog('agent auth broadcast failed', { error: (error as Error).message }))
+}
+eventBus.on('claude:account-updated', pushAgentAuth)
+eventBus.on('codex:account-updated', pushAgentAuth)
 
 /**
  * Get the WS client for a session (used by mcp-http-handler).
@@ -226,11 +243,16 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
             // Admission reservations in createSession cover pending startups too.
             try {
+              // A new chat on a signed-out engine opens on the signed-in one,
+              // with a notice. Older clients send no engine and keep Claude.
+              const engineChoice = isAgentEngineId(msg.engine)
+                ? await chooseEngineForNewChat(msg.engine, { runtime: codexRuntime() })
+                : null
+              if (!ownsStartup(operation)) return
               const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
               const session = await createSession(ws, resolved.userName, resolved.tokenId, {
-                // Explicit per chat: clients send the user's main agent (agent:preferences);
-                // older clients send nothing and keep Claude.
-                ...(isAgentEngineId(msg.engine) ? { engine: msg.engine } : {}),
+                // Explicit per chat: clients send the user's main agent (agent:preferences).
+                ...(engineChoice ? { engine: engineChoice.engine } : {}),
                 cwd: msg.cwd,
                 cols: msg.cols,
                 rows: msg.rows,
@@ -275,9 +297,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   model: session.model,
                   settingsDir: session.settingsDir,
                   engine: session.engine ?? 'claude',
+                  ...(engineChoice?.notice ? { engineNotice: engineChoice.notice } : {}),
                 }),
               )
-              sendAgentPreferences(ws, resolved.tokenId)
+              void sendAgentPreferences(ws, resolved.tokenId)
 
               // Send initial tree to this client
               broadcastTree(resolved.tokenId)
@@ -619,7 +642,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // was started. Nothing hits the JSONL until the first message, so
               // without this the client sits in "Loading conversation…" until
               // its 20s watchdog. Declare the (empty) replay complete right away.
-              if (session.resumeNotFound) {
+              if (session.resumeNotFound || session.resumedOnFreshThread) {
                 ws.send(
                   JSON.stringify({
                     type: 'jsonl:status',
@@ -696,6 +719,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             // codex takes the effort per turn: it applies from the next turn, no restart.
             codexEffort.agent.setEffort(codexReasoningEffort(msg.effort))
             session.effort = msg.effort
+            saveCodexChoice(session, { effort: msg.effort })
             ws.send(
               JSON.stringify({
                 type: 'session:model-changed',
@@ -834,7 +858,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             const next = toCodexModel(msg.model)
             if (next) {
               await codexModel.agent.setModel(next)
+              codexModel.modelChanged(next)
               session.model = next
+              saveCodexChoice(session, { model: next })
             }
             ws.send(
               JSON.stringify({

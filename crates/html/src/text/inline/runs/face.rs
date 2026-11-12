@@ -27,13 +27,12 @@ fn derive(style: &Computed, mut font: gpui::Font, base_px: f32, vcx: ValueCx<'_>
     let font_style = &style.inh.font;
     font.fallbacks = crate::text::fonts::fallbacks::fallbacks(style, font.fallbacks, vcx);
     // Названное семейство сильнее родового; пустое имя сохраняет базовый шрифт.
-    if let Some(family) = font_style.font_family.as_ref().filter(|f| !f.is_empty()) {
+    let face = vcx.doc.used_face(style);
+    if let Some(family) = face.family {
         // Имя из разметки может быть придуманным (`@font-face`) — система
         // шрифтов знает файл под его собственным именем. Лиц у имени бывает
         // несколько, и нужное выбирает ширина начертания (§font-matching).
-        font.family = crate::text::fonts::alias_for(family, style, vcx)
-            .unwrap_or_else(|| family.clone())
-            .into();
+        font.family = family.into();
     } else if font_style.monospace == Some(true) {
         font.family =
             crate::text::metrics::mono_family_for(style.inh.text_flow.lang.as_deref(), vcx).into();
@@ -51,9 +50,8 @@ fn derive(style: &Computed, mut font: gpui::Font, base_px: f32, vcx: ValueCx<'_>
     if let Some(pct) = font_style.font_stretch {
         font.stretch = gpui::FontStretch::from_percent(pct);
     }
-    let features = style.used_features(vcx);
-    if !features.is_empty() {
-        font.features = gpui::FontFeatures(std::sync::Arc::new(features));
+    if !face.features.is_empty() {
+        font.features = gpui::FontFeatures(face.features);
     }
     // Кегль куска: без него разный размер в строке собрать в один блок было
     // нельзя (см. `single_block`).

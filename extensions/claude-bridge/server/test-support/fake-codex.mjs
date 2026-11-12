@@ -15,15 +15,23 @@
 //   /fake-slow                    stream until interrupted
 //   /fake-fail <message>          fail the turn with <message>
 //   /fake-reroute <model>         emit model/rerouted, then echo
+//   /fake-crash                   start the turn, then the app-server process dies
+//   /fake-hang                    start the turn, then stay silent until interrupted
 //
 // Knobs: FAKE_CODEX_LOGGED_IN=1 (start signed in), FAKE_CODEX_LOGIN_DELAY_MS,
-// FAKE_CODEX_LOGIN_FAIL=<error>, FAKE_CODEX_INIT_FAIL=<error> (stderr + exit 2).
+// FAKE_CODEX_LOGIN_FAIL=<error>, FAKE_CODEX_INIT_FAIL=<error> (stderr + exit 2),
+// FAKE_CODEX_START_DELAY_MS (app-server answers nothing for that long).
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { randomUUID } from 'node:crypto'
 
 const args = process.argv.slice(2)
+// `codex --version` (the server's availability probe) needs no CODEX_HOME.
+if (args[0] === '--version') {
+  process.stdout.write('codex-cli 0.160.1-fake\n')
+  process.exit(0)
+}
 const home = process.env.CODEX_HOME
 if (!home) {
   process.stderr.write('fake-codex: CODEX_HOME is required\n')
@@ -176,18 +184,25 @@ const handlers = {
     })),
     nextCursor: null,
   }),
-  'thread/start': (p) => {
+  'thread/start': async (p) => {
     const t = { id: randomUUID(), model: p?.model ?? 'gpt-fake', cwd: p?.cwd, mcp: mcpFromConfig(p?.config), turns: 0 }
+    await initializeMcp(t.mcp)
     threads.set(t.id, t)
-    saveThread(t)
+    // codex 0.160.1 writes a thread's rollout with its first turn: a thread
+    // that never ran one cannot be resumed by a later app-server.
+    if (!process.env.FAKE_CODEX_ROLLOUT_ON_TURN) saveThread(t)
     queueMicrotask(() => notify('thread/started', { thread: { id: t.id } }))
     return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
   },
-  'thread/resume': (p) => {
-    const t = threads.get(p?.threadId) ?? loadThread(p?.threadId)
+  'thread/resume': async (p) => {
+    const loaded = threads.get(p?.threadId)
+    const t = loaded ?? loadThread(p?.threadId)
     if (!t) throw new RpcError(-32600, `thread not found: ${p?.threadId}`)
+    // A turn of a previous (dead) process is gone with it.
+    if (!loaded) t.active = null
     // The Bearer is per Bridge session: a resume brings a new one.
     t.mcp = mcpFromConfig(p?.config) ?? t.mcp
+    await initializeMcp(t.mcp)
     if (p?.model) t.model = p.model
     threads.set(t.id, t)
     saveThread(t)
@@ -244,6 +259,33 @@ function agentMessage(t, turnId, text) {
     notify('item/agentMessage/delta', { threadId: t.id, turnId, itemId: id, delta: chunk })
   }
   notify('item/completed', { threadId: t.id, turnId, item: { type: 'agentMessage', id, text } })
+}
+
+// Like codex: a thread starts only after its required MCP servers answer
+// `initialize`, so the Bridge endpoint must exist before the thread does.
+async function initializeMcp(mcp) {
+  if (!mcp) return
+  const res = await fetch(mcp.url, {
+    method: 'POST',
+    headers: { ...mcp.headers, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 0,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'fake-codex', version: '0.160.1' },
+      },
+    }),
+  })
+  const body = await res.text()
+  if (!res.ok) {
+    throw new RpcError(
+      -32603,
+      `Fatal error: Failed to initialize session: required MCP servers failed to initialize: bridge: handshaking with MCP server failed: HTTP ${res.status}: ${body.slice(0, 200)}`,
+    )
+  }
 }
 
 async function callMcp(t, tool, argsJson) {
@@ -307,6 +349,13 @@ async function runTurn(t, turnId, text) {
         await new Promise((r) => setTimeout(r, 20))
       }
       status = 'interrupted'
+    } else if (text === '/fake-crash') {
+      agentMessage(t, turnId, 'about to crash')
+      setTimeout(() => process.exit(9), 20)
+      return
+    } else if (text === '/fake-hang') {
+      while (!t.active?.interrupted) await new Promise((r) => setTimeout(r, 20))
+      status = 'interrupted'
     } else if (text.startsWith('/fake-fail')) {
       status = 'failed'
       error = {
@@ -351,6 +400,9 @@ async function runTurn(t, turnId, text) {
   })
 }
 
+// A slow app-server start (requests wait in the stdin buffer meanwhile).
+const startDelay = Number(process.env.FAKE_CODEX_START_DELAY_MS ?? 0)
+if (startDelay > 0) await new Promise((r) => setTimeout(r, startDelay))
 const rl = readline.createInterface({ input: process.stdin })
 rl.on('line', (line) => {
   if (!line.trim()) return
@@ -367,10 +419,11 @@ rl.on('line', (line) => {
     send({ id: msg.id, error: { code: -32601, message: `fake-codex: ${msg.method} not implemented` } })
     return
   }
-  try {
-    send({ id: msg.id, result: handler(msg.params) })
-  } catch (e) {
-    send({ id: msg.id, error: { code: e.code ?? -32603, message: e.message } })
-  }
+  Promise.resolve()
+    .then(() => handler(msg.params))
+    .then(
+      (result) => send({ id: msg.id, result }),
+      (e) => send({ id: msg.id, error: { code: e.code ?? -32603, message: e.message } }),
+    )
 })
 rl.on('close', () => process.exit(0))

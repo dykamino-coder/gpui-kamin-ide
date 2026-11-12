@@ -1,11 +1,27 @@
-.dashboard { display: flex; flex-direction: column; gap: 20px; }
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
 
-.statusRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.statusRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
 
-.statsRow { display: flex; gap: 12px; align-items: stretch; }
-.statsRow > :first-child { flex: 1; }
-.statsRow > :last-child { width: 280px; flex-shrink: 0; }
-
+.statsRow {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+.statsRow > :first-child {
+  flex: 1;
+}
+.statsRow > :last-child {
+  width: 280px;
+  flex-shrink: 0;
+}
 
 .loginBtn {
   display: inline-flex;
@@ -26,8 +42,20 @@
   box-shadow: var(--shadow-sm);
 }
 
+@media (max-width: 1400px) {
+  .statusRow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 900px) {
-  .statusRow { grid-template-columns: 1fr; }
-  .statsRow { flex-direction: column; }
-  .statsRow > :last-child { width: 100%; }
+  .statusRow {
+    grid-template-columns: 1fr;
+  }
+  .statsRow {
+    flex-direction: column;
+  }
+  .statsRow > :last-child {
+    width: 100%;
+  }
 }

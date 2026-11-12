@@ -1,6 +1,6 @@
 //! Высота ячейки: ch/em/px-высоты с письмом ряда, вертикальные ячейки, снятие max-height.
 
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -161,20 +161,7 @@ pub(super) fn resolve_cell_heights(
         // раздача css-tables-3 §height-distribution). Однопроходное
         // приближение: якорь — собственный min-height ребёнка,
         // прокрутка держит содержимое внутри него.
-        for child in cell.children.iter_mut() {
-            if let Node::Element(el) = child
-                && let Some(Len::Pct(k)) = el.style.used().reset_box_layout.height
-                && el
-                    .style
-                    .used()
-                    .reset_box_layout
-                    .overflow_y
-                    .is_some_and(|o| o != crate::style::computed::Overflow::Visible)
-                && let Some(Len::Px(m)) = el.style.used().reset_box_layout.min_height
-            {
-                el.style.used_mut().reset_box_layout.height = Some(Len::Px(m * k));
-            }
-        }
+        anchor_child_shares(cell);
     }
     // Не чинить §17.5.2.1 (ячейка обязана влезть в свою дорожку при
     // фиксированной раскладке) ни `border_box` с нулевым `min_width`, ни
@@ -196,48 +183,8 @@ pub(super) fn resolve_cell_heights(
     }
 }
 
-/// Доли прямых детей ячейки с заданной высотой `h`.
-fn resolve_child_percents(cell: &mut Element, h: f32) {
-    // Процентная высота ПРЯМОГО ребёнка заранее решается от ЗАДАННОЙ
-    // высоты ячейки только у замещаемого и у прокручиваемого ребёнка
-    // (Blink `length_utils.cc`: replaced descendants of a fixed-height
-    // cell; css-tables-3 §row-layout: scrollable percentage children of a
-    // restricted cell). Остальные доли в замере ряда — auto («percentages
-    // being considered 0px», css-tables-3 §computing-the-table-height) и
-    // решаются от итоговой высоты ячейки при раскладке: заранее решённые
-    // 200% растили ряд вдвое (`table-cell-expansion-002`).
-    for child in cell.children.iter_mut() {
-        if let Node::Element(el) = child
-            && let Some(Len::Pct(k)) = el.style.used().reset_box_layout.height
-            && (scrollable(el) || crate::layout::box_kind::replaced_tag(el))
-        {
-            el.style.used_mut().reset_box_layout.height = Some(Len::Px(h * k));
-        }
-        // Пороги той же долей — от той же заданной высоты ячейки
-        // (CSS 2.1 §10.7: доля `max-height`/`min-height` считается
-        // как у `height`). Нерешённая доля у нас отбрасывается, и
-        // заменяемый ребёнок шёл природным размером: `<canvas
-        // 200×200 max-height: 100%>` в ячейке высотой 100 давал
-        // 200×200 вместо 100×100
-        // (`percent-height-replaced-in-percent-cell-002`).
-        if let Node::Element(el) = child
-            && let Some(Len::Pct(k)) = el.style.used().reset_box_layout.max_height
-        {
-            el.style.used_mut().reset_box_layout.max_height = Some(Len::Px(h * k));
-        }
-        if let Node::Element(el) = child
-            && let Some(Len::Pct(k)) = el.style.used().reset_box_layout.min_height
-        {
-            el.style.used_mut().reset_box_layout.min_height = Some(Len::Px(h * k));
-        }
-    }
-}
-
-/// Прокручиваемый ребёнок: `overflow-y: auto | scroll` (Blink
-/// `SetIsRestrictedBlockSizeTableCellChild`; `hidden`/`clip` не в счёт).
-fn scrollable(el: &Element) -> bool {
-    el.style.used().reset_box_layout.overflow_y == Some(crate::style::computed::Overflow::Scroll)
-}
+mod children;
+use children::{anchor_child_shares, resolve_child_percents};
 
 #[cfg(test)]
 mod tests;

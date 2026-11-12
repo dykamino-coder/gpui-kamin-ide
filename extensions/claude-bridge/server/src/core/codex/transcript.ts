@@ -49,6 +49,11 @@ export class CodexTranscriptProjector {
     this.parent = parentUuid
   }
 
+  /** The model the next turn runs on (a model change in the chat). */
+  setModel(model: string | null): void {
+    this.model = model ?? undefined
+  }
+
   /** Entries to append for one event, in order. */
   project(event: AgentEvent): CodexTranscriptEntry[] {
     switch (event.kind) {

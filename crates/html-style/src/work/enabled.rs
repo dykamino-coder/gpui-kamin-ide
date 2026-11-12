@@ -126,6 +126,8 @@ struct Totals {
     phase: AtomicUsize,
     counts: [[AtomicU64; Counter::COUNT]; Phase::COUNT],
     observer: Option<Arc<dyn Fn(Phase) + Send + Sync>>,
+    /// Наносекунды внутри observer ([observed]).
+    observed_ns: AtomicU64,
     allocations: Option<fn() -> (u64, u64)>,
 }
 struct Collector(Arc<Totals>);
@@ -170,6 +172,7 @@ impl Session {
             phase: AtomicUsize::new(Phase::PipelineOther as usize),
             counts: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             observer,
+            observed_ns: AtomicU64::new(0),
             allocations,
         });
         let dispatch = Dispatch::new(Collector(totals.clone()));
@@ -206,9 +209,23 @@ pub fn set_phase(phase: Phase) {
 }
 fn change_phase(totals: &Totals, phase: Phase) -> usize {
     if let Some(observer) = &totals.observer {
+        let started = std::time::Instant::now();
         observer(phase);
+        let spent = started.elapsed().as_nanos();
+        totals
+            .observed_ns
+            .fetch_add(u64::try_from(spent).unwrap_or(u64::MAX), Relaxed);
     }
     totals.phase.swap(phase as usize, Relaxed)
+}
+
+/// Сколько сессия замера этого потока провела в наблюдателе границ фаз
+/// стенда. Окна фаз ([`super::Clock`]) вычитают его: снимок памяти и CPU на
+/// границе — это стоимость замера, а не работа фазы, в которой он случился.
+/// Без сессии — ноль.
+pub fn observed() -> std::time::Duration {
+    current(|totals| std::time::Duration::from_nanos(totals.observed_ns.load(Relaxed)))
+        .unwrap_or_default()
 }
 impl Drop for PhaseGuard {
     fn drop(&mut self) {

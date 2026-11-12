@@ -17,7 +17,7 @@ export function registerCodexAccountRoutes(api: Hono, runtime: () => CodexRuntim
   const fail = (error: unknown) => ({ error: classifyCodexError((error as Error).message) })
   // Live dashboard refresh when the admin finishes (or fails) the device login.
   runtime().onAccountChange((status) =>
-    eventBus.emit('account:updated', { engine: 'codex', loggedIn: status.loggedIn }),
+    eventBus.emit('codex:account-updated', { engine: 'codex', loggedIn: status.loggedIn }),
   )
 
   api.get('/api/dashboard/codex/account', async (c) => {
@@ -28,7 +28,7 @@ export function registerCodexAccountRoutes(api: Hono, runtime: () => CodexRuntim
   api.post('/api/dashboard/codex/login', async (c) => {
     try {
       const login = await runtime().startDeviceLogin()
-      eventBus.emit('account:updated', { engine: 'codex', pendingLogin: true })
+      eventBus.emit('codex:account-updated', { engine: 'codex', pendingLogin: true })
       return c.json(login)
     } catch (error) {
       return c.json(fail(error), 502)
@@ -43,7 +43,7 @@ export function registerCodexAccountRoutes(api: Hono, runtime: () => CodexRuntim
   api.post('/api/dashboard/codex/logout', async (c) => {
     try {
       await runtime().logout()
-      eventBus.emit('account:updated', { engine: 'codex', loggedIn: false })
+      eventBus.emit('codex:account-updated', { engine: 'codex', loggedIn: false })
       return c.json({ ok: true })
     } catch (error) {
       return c.json(fail(error), 502)

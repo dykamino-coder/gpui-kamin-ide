@@ -44,7 +44,10 @@ export interface CodexAppServerOptions {
 
 export const BRIDGE_CLIENT_INFO: ClientInfo = { name: 'kamin_bridge', title: 'KaminIDE Bridge', version: '1' }
 
-function defaultKillTree(child: ChildProcessWithoutNullStreams): void {
+/** Kills the app-server and everything it started (the npm launcher, the native
+ *  binary and its children). Field lesson: terminating only the launcher left
+ *  the native app-server holding the thread store. */
+export function killProcessTree(child: ChildProcessWithoutNullStreams): void {
   if (child.pid === undefined) return
   if (process.platform === 'win32') {
     // TerminateProcess on the Node launcher would orphan the native codex.
@@ -172,7 +175,7 @@ export class CodexAppServer {
         if (!this.exit) this.child.stdin.end()
         const graceful = await this.waitExit(graceMs)
         if (graceful) return graceful
-        ;(this.options.killTree ?? defaultKillTree)(this.child)
+        ;(this.options.killTree ?? killProcessTree)(this.child)
         return (await this.waitExit(5_000)) ?? { code: null, signal: 'SIGKILL' }
       })()
     }

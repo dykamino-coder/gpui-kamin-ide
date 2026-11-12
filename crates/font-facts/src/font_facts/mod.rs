@@ -9,6 +9,7 @@ use std::rc::Rc;
 pub const CSS_WEIGHT_TAG: (&str, u32) = ("cssw", 1);
 
 mod descriptors;
+mod key;
 pub mod matching;
 mod registry;
 mod request;
