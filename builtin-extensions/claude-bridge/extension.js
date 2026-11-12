@@ -50424,6 +50424,36 @@ async function sseSendNotification(ctx, id, body) {
   });
 }
 
+// src/main/mcp/transports/fetch-deadline.ts
+var GLOBAL_DISPATCHER = /* @__PURE__ */ Symbol.for("undici.globalDispatcher.1");
+function globalDispatcher() {
+  const value = globalThis[GLOBAL_DISPATCHER];
+  return typeof value?.compose === "function" ? value : void 0;
+}
+function fetchDeadline(method) {
+  const { idleMs, maxMs } = mcpRequestDeadline(method);
+  return { headersMs: maxMs, bodyMs: idleMs };
+}
+var composed = /* @__PURE__ */ new WeakMap();
+async function fetchDispatcher(deadline) {
+  let base = globalDispatcher();
+  if (!base) {
+    await fetch("data:,").catch(() => {
+    });
+    base = globalDispatcher();
+  }
+  if (!base) return void 0;
+  const key2 = `${deadline.headersMs}:${deadline.bodyMs}`;
+  let byDeadline = composed.get(base);
+  if (!byDeadline) composed.set(base, byDeadline = /* @__PURE__ */ new Map());
+  let dispatcher = byDeadline.get(key2);
+  if (!dispatcher) {
+    dispatcher = base.compose((dispatch) => (options, handler2) => dispatch({ ...options, headersTimeout: deadline.headersMs, bodyTimeout: deadline.bodyMs }, handler2));
+    byDeadline.set(key2, dispatcher);
+  }
+  return dispatcher;
+}
+
 // src/main/mcp/transports/http.ts
 async function connectHttp(ctx, id) {
   const state = ctx.servers.get(id);
@@ -50471,11 +50501,12 @@ async function connectHttp(ctx, id) {
 }
 async function callHttpTool(ctx, id, toolName, input) {
   const state = ctx.servers.get(id);
+  const reqId = state.nextRequestId++;
   const result = await httpJsonRpcAuth(ctx, id, {
     jsonrpc: "2.0",
-    id: state.nextRequestId++,
+    id: reqId,
     method: "tools/call",
-    params: { name: toolName, arguments: input }
+    params: withProgressToken("tools/call", reqId, { name: toolName, arguments: input })
   });
   if (result.error) {
     return { content: [{ type: "text", text: `MCP Error: ${result.error.message}` }] };
@@ -50488,8 +50519,13 @@ async function callHttpTool(ctx, id, toolName, input) {
 async function httpJsonRpcAuth(ctx, id, body) {
   const state = ctx.servers.get(id);
   const url = state.config.url;
+  const method = String(body.method);
+  const deadline = fetchDeadline(method);
+  const dispatcher = await fetchDispatcher(deadline);
+  const total = AbortSignal.timeout(mcpRequestDeadline(method).maxMs);
+  const signal = ctx.shutdownSignal ? AbortSignal.any([ctx.shutdownSignal, total]) : total;
   let headers = await ctx.buildHttpHeaders(id);
-  let res = await httpFetch(url, headers, body, ctx.shutdownSignal);
+  let res = await httpFetch(url, headers, body, signal, dispatcher);
   if (res.status === 401) {
     if (!state.config.oauth) {
       const discovered = await tryDiscoverOAuthFrom401(ctx, id, res);
@@ -50503,7 +50539,7 @@ async function httpJsonRpcAuth(ctx, id, body) {
       throw new Error("OAuth authorization required \u2014 please reconnect this server");
     }
     headers = await ctx.buildHttpHeaders(id);
-    res = await httpFetch(url, headers, body, ctx.shutdownSignal);
+    res = await httpFetch(url, headers, body, signal, dispatcher);
     if (res.status === 401) {
       throw new Error("OAuth authorization expired \u2014 please reconnect this server");
     }
@@ -50567,7 +50603,7 @@ async function tryDiscoverOAuthFrom401(ctx, id, res) {
     return null;
   }
 }
-async function httpFetch(url, headers, body, signal) {
+async function httpFetch(url, headers, body, signal, dispatcher) {
   try {
     return await fetch(url, {
       method: "POST",
@@ -50577,7 +50613,9 @@ async function httpFetch(url, headers, body, signal) {
         ...headers
       },
       body: JSON.stringify(body),
-      signal
+      signal,
+      // Node's fetch option (undici); see fetch-deadline.ts.
+      ...dispatcher ? { dispatcher } : {}
     });
   } catch (err) {
     const cause = err?.cause;
