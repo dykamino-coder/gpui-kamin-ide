@@ -20,6 +20,7 @@ import { assertBridgeOwnedHome, buildCodexEnv, defaultCodexHome, prepareCodexHom
 import { classifyCodexError, type CodexErrorInfo } from './codex-errors'
 import { codexLockdownConfig, toConfigOverrides } from './config-toml'
 import { buildPatchedCatalog, type ModelCatalog } from './model-catalog'
+import { currentModels } from './model-list-filter'
 
 export interface CodexAccountStatus {
   loggedIn: boolean
@@ -327,7 +328,9 @@ export class CodexRuntime {
 
   async models(): Promise<CodexModelOption[]> {
     const host = await this.host()
-    const out: CodexModelOption[] = []
+    const out: Array<
+      CodexModelOption & { hidden: boolean; upgrade: string | null; upgradeInfo: { model?: string | null } | null }
+    > = []
     let cursor: string | null = null
     for (let page = 0; page < 20; page++) {
       const res = (await host.rpc.request('model/list', { cursor, includeHidden: false })) as {
@@ -337,6 +340,8 @@ export class CodexRuntime {
           displayName: string
           description: string
           hidden: boolean
+          upgrade?: string | null
+          upgradeInfo?: { model?: string | null } | null
           isDefault: boolean
           defaultReasoningEffort?: string | null
           supportedReasoningEfforts?: Array<{ reasoningEffort?: string } | string>
@@ -344,8 +349,10 @@ export class CodexRuntime {
         nextCursor: string | null
       }
       for (const m of res.data) {
-        if (m.hidden) continue
         out.push({
+          hidden: m.hidden,
+          upgrade: m.upgrade ?? null,
+          upgradeInfo: m.upgradeInfo ?? null,
           id: m.id,
           model: m.model,
           displayName: m.displayName,
@@ -360,7 +367,9 @@ export class CodexRuntime {
       cursor = res.nextCursor
       if (!cursor) break
     }
-    return out
+    // Current generation only (model-list-filter); the selector and model
+    // changes all read this list.
+    return currentModels(out).map(({ hidden: _hidden, upgrade: _upgrade, upgradeInfo: _info, ...option }) => option)
   }
 
   async close(): Promise<void> {
