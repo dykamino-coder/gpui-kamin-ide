@@ -25,6 +25,7 @@ import math
 import os
 import pathlib
 import re
+import shlex
 import subprocess
 import sys
 
@@ -228,6 +229,7 @@ class Run:
                 raise SystemExit(f"{stacks}: live heap needs a v2+ file (pointers and frees)")
             self.symbols = symbols or Symbols(exe, int(header.group(2), 16))
             self.end = None
+            self.counter = None
             self.dropped = 0
             self.lines = 0
             self.groups = self._fold(handle, live, frames)
@@ -250,6 +252,8 @@ class Run:
             if line.startswith("#"):
                 if line.startswith("# end"):
                     self.end = line[2:].strip()
+                    counter = re.search(r"\blive=(\d+)", line)
+                    self.counter = int(counter.group(1)) if counter else None
                 elif line.startswith("# dropped"):
                     self.dropped = int(line.split()[2])
                 continue
@@ -288,6 +292,7 @@ class Run:
             "exe": self.exe, "stacks": self.path, "version": self.version, "filter": self.filter,
             "until": self.until, "sample_mean_bytes": self.sample, "window_end": self.end,
             "dropped_samples": self.dropped, "records": self.lines,
+            "audit_live_bytes_at_end": self.counter,
             "blocks": round(sum(v[0] for v in self.groups.values())),
             "bytes": round(sum(v[1] for v in self.groups.values())),
         }
@@ -348,12 +353,17 @@ def render(report, out=sys.stdout):
     sampling = f"sampled, mean {c['sample_mean_bytes']} B (estimates)" if c["sample_mean_bytes"] else "exact"
     print(f"memprof {report['mode']} heap, {window}, {sampling}", file=out)
     for name, run in runs.items():
-        print(f"  {name}: {run['bytes'] / 1e6:.3f} MB in {run['blocks']} blocks"
+        counter = run.get("audit_live_bytes_at_end")
+        check = f", audit counter {counter / 1e6:.3f} MB ({run['bytes'] / counter:.2%} seen)" if counter else ""
+        print(f"  {name}: {run['bytes'] / 1e6:.3f} MB in {run['blocks']} blocks{check}"
               f"{', dropped samples ' + str(run['dropped_samples']) if run['dropped_samples'] else ''}"
               f"  ({run['exe']})", file=out)
     if diff:
         b = runs["base"]
         print(f"  delta: {mb(c['bytes'] - b['bytes'])} MB, {c['blocks'] - b['blocks']:+d} blocks", file=out)
+        counters = c.get("audit_live_bytes_at_end"), b.get("audit_live_bytes_at_end")
+        if all(counters):
+            print(f"  audit counter delta: {mb(counters[0] - counters[1])} MB", file=out)
     key = "delta_bytes" if diff else "cand_bytes"
     print("\nby subsystem (MB):", file=out)
     print(f"  {'delta' if diff else 'bytes':>10} {'blocks':>9}  {'cand':>9} {'base':>9}  subsystem" if diff
@@ -445,7 +455,8 @@ def run_command(args):
             env["ENGINE_BENCH_ALLOC_STACKS_SAMPLE"] = str(args.sample)
         else:
             env.pop("ENGINE_BENCH_ALLOC_STACKS_SAMPLE", None)
-        command = [*args.launcher.split(), exe, *bench] if args.launcher else [exe, *bench]
+        prefix = [part.strip('"') for part in shlex.split(args.launcher, posix=False)] if args.launcher else []
+        command = [*prefix, exe, *bench]
         with open(out / f"{name}.json", "wb") as stdout, open(out / f"{name}.err", "wb") as stderr:
             code = subprocess.run(command, env=env, stdout=stdout, stderr=stderr,
                                   stdin=subprocess.DEVNULL, timeout=args.timeout).returncode
@@ -460,28 +471,6 @@ def run_command(args):
     with open(out / "report.txt", "w", encoding="utf-8") as text:
         report = report_command(args)
         render(report, text)
-    for name, exe in sides:
-        counter = counter_live(out / f"{name}.json", phase, int(frame))
-        if counter is not None:
-            probe = report["runs"][name]["bytes"]
-            print(f"{name}: audit live_requested_bytes at the window end {counter}, probe {probe}"
-                  f" ({probe / counter:.4f} of it)" if counter else "", file=sys.stderr)
-
-
-def counter_live(path, phase, frame):
-    """live_requested_bytes of `phase` in measured frame `frame` (allocation-audit JSON), if it can be found."""
-    try:
-        report = json.loads(pathlib.Path(path).read_text(encoding="utf-8", errors="replace"))
-    except (OSError, ValueError):
-        return None
-    samples = []
-    for mode in (report.get("modes") or {}).values():
-        resources = (mode or {}).get("process_resources") or {}
-        samples.extend(resources.get("samples") or [])
-    if not 1 <= frame <= len(samples):
-        return None
-    end = (((samples[frame - 1].get("phases") or {}).get(phase) or {}).get("end") or {})
-    return (end.get("rust_allocations") or {}).get("live_requested_bytes")
 
 
 def main(argv=None):
