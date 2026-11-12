@@ -22,7 +22,7 @@ import type { AgentEvent } from '../../shared/agent-events'
 import { config as bridgeConfig } from '../config'
 import { CodexAgentSession } from '../codex/codex-session'
 import { classifyCodexError, describeCodexError, loginRequired } from '../codex/codex-errors'
-import type { CodexRuntime } from '../codex/codex-runtime'
+import { codexUnavailableReason, type CodexRuntime } from '../codex/codex-runtime'
 import { bridgeMcpThreadConfig } from '../codex/config-toml'
 import { JsonRpcError } from '../codex/jsonrpc'
 import { CodexTranscriptProjector, type CodexTranscriptEntry } from '../codex/transcript'
@@ -125,7 +125,13 @@ export async function createCodexSession(
   const mcpEndpoint = await mcpIdentity(tokenId, settingsDir)
   signal?.throwIfAborted()
 
-  const host = await deps.runtime.host()
+  // A server without a working codex refuses the chat with the reason instead
+  // of a raw spawn error (the selector already shows the group as unavailable).
+  const availability = await deps.runtime.availability()
+  if (!availability.available) throw new Error(`ChatGPT is unavailable: ${availability.reason}`)
+  const host = await deps.runtime.host().catch((error: unknown) => {
+    throw new Error(`ChatGPT is unavailable: ${codexUnavailableReason(error)}`, { cause: error })
+  })
   signal?.throwIfAborted()
   const threadConfig = bridgeMcpThreadConfig({
     url: `http://127.0.0.1:${bridgeConfig.port}/mcp/${mcpEndpoint.id}`,

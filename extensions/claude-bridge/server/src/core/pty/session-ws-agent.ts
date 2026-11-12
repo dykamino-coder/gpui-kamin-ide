@@ -47,6 +47,12 @@ export async function handleAgentWsMessage(
     return
   }
   const runtime = (deps.runtime ?? codexRuntime)()
+  // No codex on this server: the client shows the ChatGPT group as unavailable.
+  const availability = await runtime.availability()
+  if (!availability.available) {
+    sendToClient(ws, { type: 'codex:models', models: [], unavailable: availability.reason })
+    return
+  }
   try {
     const [models, account] = await Promise.all([runtime.models(), runtime.accountStatus()])
     sendToClient(ws, { type: 'codex:models', models, account })

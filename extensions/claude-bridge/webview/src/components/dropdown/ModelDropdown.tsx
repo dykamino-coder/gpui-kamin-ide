@@ -7,7 +7,7 @@ import styles from './ModelDropdown.module.css'
 import { currentModel, DEFAULT_MODEL_ID } from '../../signals/ui'
 import { useBridge } from '../../hooks/useBridge'
 import { activeTabId, tabs } from '../../signals/tabs'
-import { codexCatalog, codexCatalogLoading, codexNotice, defaultEngine } from '../../signals/agent'
+import { codexCatalog, codexCatalogLoading, codexNotice, codexUnavailable, defaultEngine } from '../../signals/agent'
 import {
   MODEL_OPTIONS,
   gptModelOptions,
@@ -27,6 +27,8 @@ export function ModelDropdown(): JSX.Element {
   const tabEngine: ModelEngine | null = activeTab ? (activeTab.engine ?? 'claude') : null
   const gpt = gptModelOptions(codexCatalog.value?.models ?? [])
   const notice = codexNotice(codexCatalog.value)
+  // No working codex on the server: the group stays visible but inert.
+  const gptOff = codexUnavailable(codexCatalog.value)
 
   // Per-tab model wins — the session's own history (JSONL → lastModel →
   // tab.model) is authoritative. For fresh sessions with no prior model, the
@@ -115,6 +117,7 @@ export function ModelDropdown(): JSX.Element {
           name={opt.name}
           description={tabEngine === 'codex' ? opt.description : 'Opens a new ChatGPT chat'}
           selected={tabEngine === 'codex' && isSelected(opt.value)}
+          disabled={gptOff}
           onClick={() => handleSelect(opt.value)}
         />
       ))}
@@ -124,8 +127,9 @@ export function ModelDropdown(): JSX.Element {
           key={engine}
           icon={engine === 'claude' ? 'fa-gem' : 'fa-robot'}
           name={ENGINE_LABEL[engine]}
-          description={engine === 'claude' ? 'New chats run Claude Code' : 'New chats run ChatGPT through Codex'}
+          description={engine === 'claude' ? 'New chats run Claude Code' : gptOff ? 'Unavailable on this server' : 'New chats run ChatGPT through Codex'}
           selected={defaultEngine.value === engine}
+          disabled={engine === 'codex' && gptOff && defaultEngine.value !== 'codex'}
           onClick={() => handleMainAgent(engine)}
         />
       ))}

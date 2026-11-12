@@ -26,9 +26,15 @@ export function receiveAgentPreferences(data: { defaultEngine?: AgentEngine }): 
   if (data.defaultEngine === 'claude' || data.defaultEngine === 'codex') defaultEngine.value = data.defaultEngine
 }
 
+/** The server has no working codex: GPT chats cannot be opened at all. */
+export function codexUnavailable(catalog: CodexModelsPayload | null): boolean {
+  return Boolean(catalog?.unavailable)
+}
+
 /** One line telling the user why GPT chats cannot answer, or null when they can. */
 export function codexNotice(catalog: CodexModelsPayload | null): string | null {
   if (!catalog) return null
+  if (catalog.unavailable) return `ChatGPT is unavailable: ${catalog.unavailable}`
   if (catalog.error) return catalog.error.message
   const account = catalog.account
   if (account && !account.loggedIn) {

@@ -401,4 +401,40 @@ describe('codex chat over the Bridge session WebSocket', () => {
     later.send({ type: 'session:end' })
     later.close()
   }, 30_000)
+
+  it('without a codex binary marks ChatGPT unavailable and refuses the chat with the reason', async () => {
+    const working = runtimeMod.codexRuntime()
+    runtimeMod.setCodexRuntimeForTests(
+      new runtimeMod.CodexRuntime({
+        home: path.join(state.home, 'codex-home-missing'),
+        command: { command: path.join(state.home, 'no-such-codex'), args: [] },
+        env: { PATH: process.env.PATH ?? '' },
+      }),
+    )
+    try {
+      const client = await Client.open(port)
+      client.send({ type: 'codex:models', token: 'tok-a' })
+      expect(await client.next((f) => f.type === 'codex:models')).toMatchObject({
+        models: [],
+        unavailable: 'codex is not installed on this Bridge server',
+      })
+      expect(await createChat(client, { engine: 'codex' })).toMatchObject({
+        type: 'session:error',
+        error: expect.stringContaining('ChatGPT is unavailable: codex is not installed on this Bridge server'),
+      })
+      client.close()
+    } finally {
+      runtimeMod.setCodexRuntimeForTests(working)
+    }
+  }, 30_000)
+
+  it('reports the codex version Bridge runs and the image pin on the status page', async () => {
+    const runtime = runtimeMod.codexRuntime()
+    expect(await runtimeMod.codexStatus(() => runtime, { BRIDGE_CODEX_VERSION: '0.160.1' })).toEqual({
+      available: true,
+      version: '0.160.1-fake',
+      reason: null,
+      pinned: '0.160.1',
+    })
+  }, 30_000)
 })

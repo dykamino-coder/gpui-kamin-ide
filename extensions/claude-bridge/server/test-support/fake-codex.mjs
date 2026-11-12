@@ -24,6 +24,11 @@ import readline from 'node:readline'
 import { randomUUID } from 'node:crypto'
 
 const args = process.argv.slice(2)
+// `codex --version` (the server's availability probe) needs no CODEX_HOME.
+if (args[0] === '--version') {
+  process.stdout.write('codex-cli 0.160.1-fake\n')
+  process.exit(0)
+}
 const home = process.env.CODEX_HOME
 if (!home) {
   process.stderr.write('fake-codex: CODEX_HOME is required\n')

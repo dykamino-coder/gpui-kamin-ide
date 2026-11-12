@@ -3,6 +3,7 @@ import {
   codexCatalog,
   codexCatalogLoading,
   codexNotice,
+  codexUnavailable,
   defaultEngine,
   receiveAgentPreferences,
   receiveCodexAuth,
@@ -44,5 +45,13 @@ describe('agent engine signals', () => {
     receiveAgentPreferences({ defaultEngine: 'gemini' as never })
     receiveAgentPreferences({})
     expect(defaultEngine.value).toBe('codex')
+  })
+
+  it('marks the server without codex as unavailable with its reason', () => {
+    receiveCodexModels({ models: [], unavailable: 'codex is not installed on this Bridge server' })
+    expect(codexUnavailable(codexCatalog.value)).toBe(true)
+    expect(codexNotice(codexCatalog.value)).toBe('ChatGPT is unavailable: codex is not installed on this Bridge server')
+    receiveCodexModels({ models: [gpt] })
+    expect(codexUnavailable(codexCatalog.value)).toBe(false)
   })
 })

@@ -114,4 +114,14 @@ describe('model selector with Claude and GPT groups', () => {
     codexCatalog.value = { models: [gpt], account: { loggedIn: false } }
     expect(text(render())).toMatch(/not signed in/)
   })
+
+  it('shows ChatGPT as unavailable without letting it be chosen when the server has no codex', () => {
+    tab('claude', 'claude-opus-5-5')
+    codexCatalog.value = { models: [], unavailable: 'codex is not installed on this Bridge server' }
+    const node = render()
+    expect(text(node)).toContain('ChatGPT is unavailable: codex is not installed on this Bridge server')
+    const main = options(node).find(o => o.name === 'ChatGPT')!
+    expect(main).toMatchObject({ disabled: true, description: 'Unavailable on this server' })
+    expect(options(node).some(o => o.name === 'GPT-5.5')).toBe(false)
+  })
 })

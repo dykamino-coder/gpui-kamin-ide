@@ -21,6 +21,7 @@ import { wsClient } from './services/ws-client'
 import type { UsageData, AccountInfo } from './services/api-client'
 import { UsageBars } from './components/dashboard/UsageBars'
 import { CodexAccountCard } from './components/dashboard/CodexAccountCard'
+import { codexStatusRow, type CodexStatus } from './components/dashboard/codex-account-model'
 import { UsageChart } from './components/dashboard/UsageChart'
 import { ApiErrorsCard } from './components/dashboard/ApiErrorsCard'
 import { McpUsageReport } from './components/dashboard/McpUsageReport'
@@ -410,6 +411,10 @@ export function SingleDashboard() {
                 })(),
               },
               { label: 'Node', value: status?.nodeVersion || '—' },
+              (() => {
+                const row = codexStatusRow(status?.codex as CodexStatus | undefined)
+                return { label: 'Codex', value: row.text, color: row.ok ? undefined : 'var(--accent-red)' }
+              })(),
             ]
           })()}
         />

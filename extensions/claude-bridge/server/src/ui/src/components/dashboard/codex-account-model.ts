@@ -150,3 +150,23 @@ export function toCodexError(body: unknown, fallback: string): CodexErrorInfo {
   }
   return { kind: 'other', message: 'The request failed.', detail: fallback }
 }
+
+/** `codex` block of /api/dashboard/status. */
+export interface CodexStatus {
+  available: boolean
+  version: string | null
+  reason: string | null
+  /** Version the image pins (BRIDGE_CODEX_VERSION), if any. */
+  pinned: string | null
+}
+
+/** Status-page row: the codex version Bridge runs, or why it cannot. */
+export function codexStatusRow(status: CodexStatus | undefined): { text: string; ok: boolean } {
+  if (!status) return { text: '—', ok: true }
+  if (!status.available) return { text: `unavailable — ${status.reason ?? 'unknown reason'}`, ok: false }
+  const version = status.version ?? 'unknown version'
+  if (status.pinned && status.version && status.pinned !== status.version) {
+    return { text: `${version} (image pins ${status.pinned})`, ok: false }
+  }
+  return { text: version, ok: true }
+}

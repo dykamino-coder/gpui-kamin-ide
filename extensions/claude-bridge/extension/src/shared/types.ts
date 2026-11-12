@@ -51,6 +51,8 @@ export interface CodexAccountInfo {
 
 export interface CodexModelsPayload {
   models: CodexModelInfo[]
+  /** This server cannot run codex (not installed / does not start): the reason. */
+  unavailable?: string | null
   account?: CodexAccountInfo
   error?: { kind: string; message: string; detail?: string }
 }
