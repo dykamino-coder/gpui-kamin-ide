@@ -21,8 +21,8 @@ import path from 'path'
 import { subagentTranscriptPath } from './subagent-transcript-path'
 import { ResumeNotFoundError } from './session-resume-not-found'
 import { SessionAdmissionError } from './session-admission'
-import { rememberModelSelection } from './model-selection'
-import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId, modelCommand } from './live-switch'
+import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId } from './live-switch'
+import { interruptClaudeTurn, switchClaudeModelInPlace } from './claude-turn'
 import { streamFileChunks, waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
@@ -53,7 +53,6 @@ import {
 import { settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
 import { sessionCliControl } from './session-cli-control'
-import { interruptSessionToolCalls } from './mcp-foreground-calls'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 import { notifyToolListChanged, replaceRegisteredTools } from './mcp-tool-notify'
@@ -321,18 +320,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Abort the in-flight upstream request directly so the stream stops NOW,
           // then SIGINT the CLI to end the turn.
           if (!authenticatedSessionId) return
-          const interruptSession = getSession(authenticatedSessionId)
-          if (!(interruptSession && sessionCliControl(interruptSession)?.interrupt())) {
-            try {
-              getSession(authenticatedSessionId)?.streamingProxy?.interrupt()
-            } catch {
-              /* no proxy this session */
-            }
-            writeInput(authenticatedSessionId, '\x03')
-          }
-          // Ending the turn does not reach the client host: stop the tool calls
-          // the CLI was waiting on, after the CLI was told (INC-2026-0096).
-          if (interruptSession) interruptSessionToolCalls(interruptSession)
+          interruptClaudeTurn(authenticatedSessionId, getSession, writeInput)
           break
         }
 
@@ -803,31 +791,21 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sendError(ws, 'Unsupported model id')
             return
           }
-          if (session.cliConversationId && !session.isRestarting) {
-            // Успех объявляется ТОЛЬКО если команда действительно легла в
-            // stdin. На неживом PTY запись молча терялась, а плашка уже
-            // показывала новую модель (INC-2026-0053) — теперь такой случай
-            // уходит на честный перезапуск ниже.
-            if (writeInput(authenticatedSessionId, modelCommand(msg.model))) {
-              // The Bridge-owned PreModelSwitch `allow` hook (session-settings.ts)
-              // skips the CLI's cache-warning dialog; the responder is a safety net.
-              armSwitchConfirm(session, 'model', undefined)
-              session.model = msg.model
-              // Выбор до первого ответа в JSONL не записан нигде: без него
-              // респаун вернул бы прежнюю модель.
-              rememberModelSelection(session.cliConversationId, msg.model)
-              ws.send(
-                JSON.stringify({
-                  type: 'session:model-changed',
-                  sessionId: authenticatedSessionId,
-                  model: msg.model,
-                  effort: session.effort,
-                  // Горячая смена PTY не перезапускает — консоль чистить нечего.
-                  inPlace: true,
-                }),
-              )
-              return
-            }
+          // Успех объявляется ТОЛЬКО если команда действительно легла в stdin.
+          // На неживом PTY запись молча терялась, а плашка уже показывала новую
+          // модель (INC-2026-0053) — такой случай уходит на честный перезапуск ниже.
+          if (switchClaudeModelInPlace(session, authenticatedSessionId, msg.model, writeInput)) {
+            ws.send(
+              JSON.stringify({
+                type: 'session:model-changed',
+                sessionId: authenticatedSessionId,
+                model: msg.model,
+                effort: session.effort,
+                // Горячая смена PTY не перезапускает — консоль чистить нечего.
+                inPlace: true,
+              }),
+            )
+            return
           }
           const operation = beginStartup('model_restart')
           try {
