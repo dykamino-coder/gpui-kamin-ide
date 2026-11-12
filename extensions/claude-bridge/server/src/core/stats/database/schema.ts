@@ -163,6 +163,19 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   await tryExec(db, 'ALTER TABLE session_tokens ADD COLUMN pre_boundary_snapshots TEXT')
   await tryExec(db, 'ALTER TABLE session_tokens ADD COLUMN leaf_uuids TEXT')
   await tryExec(db, 'ALTER TABLE session_tokens ADD COLUMN context_tokens INTEGER DEFAULT 0')
+  // Agent engine of the conversation ('claude' | 'codex'); NULL = legacy Claude.
+  await tryExec(db, 'ALTER TABLE session_tokens ADD COLUMN engine TEXT')
+
+  // ── user_agent_settings: per-token "main agent" (engine new chats open with).
+  //    Separate from user_token_settings, whose row defaults would switch the
+  //    MITM streaming feature on for a user who only picked an engine.
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS user_agent_settings (
+      token_id TEXT PRIMARY KEY,
+      default_engine TEXT,
+      updated_at TEXT
+    )
+  `)
 
   // ── user_token_settings: per-token bridge preferences. Keyed by tokenId
   //    (one row per dashboard token). Used by the MITM streaming feature

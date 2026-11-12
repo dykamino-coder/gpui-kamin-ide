@@ -49,12 +49,12 @@ pub(crate) async fn paint_element(
     // CSS2 Appendix E: descendants paint within their nearest stacking context.
     let layer_ok = !opts.cx.deferred.depth.inside();
     let geometry_layer_ok = !opts.cx.deferred.depth.deferred();
-    let opts = &*opts.inner(|cx| {
-        cx.deferred.depth = cx.deferred.depth.enter(
-            defers(&e.style.used(), inherited, under_tf),
-            stacking_context(&e.style.used()),
-        );
+    let defers = defers(&e.style.used(), inherited, under_tf);
+    let stacking = stacking_context(&e.style.used());
+    let entered = opts.inner_if(defers || stacking, |cx| {
+        cx.deferred.depth = cx.deferred.depth.enter(defers, stacking);
     });
+    let opts = &*entered;
     if let Some(el) = scrollable(e, inherited, opts) {
         // CSS Transforms 1: transform the viewport and its bars together;
         // preserve the parent 3D context, backface and plane as for other boxes.

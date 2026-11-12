@@ -17,6 +17,7 @@ pub(crate) mod deferred;
 mod fragmentation;
 mod frame;
 mod inline;
+mod inner;
 mod position;
 mod ruby;
 pub(crate) mod run_faces;

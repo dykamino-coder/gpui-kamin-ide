@@ -16,12 +16,11 @@ import { DEFAULT_SESSION_MODEL } from '../config'
 import { eventBus } from '../events/bus'
 import { debugLog, warnLog, infoLog } from '../logging'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
-import { JsonlWatcher } from './jsonl-watcher'
-import { leanEntries } from './jsonl-projection'
+import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
+import { codexTranscriptPath, createCodexSession, transcriptEngine } from './session-codex'
+import { codexRuntime } from '../codex/codex-runtime'
 import {
   sendToClient,
-  trySendToClient,
-  socketWritable,
   writeInputToSession,
   submitTextToSession,
   resizeSessionTerminal,
@@ -50,8 +49,6 @@ import {
   resolveNewestInChain,
   lastModelEntryForResume,
 } from './session-resume-helpers'
-import { handleJsonlUserEntry } from './session-stats-recorder'
-import { resetJsonlStats, accumulateJsonlStats } from './session-jsonl-stats'
 import {
   pendingMcpCalls,
   sendMcpCall as sendMcpCallToSession,
@@ -220,6 +217,33 @@ async function createAdmittedSession(
       config.resumeConversationId = newest
       await repairTranscriptForResume(settingsDir, newest) // ремонт по ФИНАЛЬНОМУ id
     }
+  }
+
+  // A chat keeps its engine for life: an existing transcript decides, the
+  // client's hint only applies to a conversation this server does not have.
+  const engine =
+    (config.resumeConversationId ? resumedEngine(settingsDir, config.resumeConversationId) : null) ??
+    config.engine ??
+    'claude'
+  if (engine === 'codex') {
+    return createCodexSession(
+      ws,
+      userName,
+      tokenId,
+      config,
+      { settingsDir, resumeThreadId: config.resumeConversationId, resumeNotFound },
+      {
+        runtime: codexRuntime(),
+        register: (session) => {
+          sessions.set(session.id, session)
+          startMcpTaskDelivery(() => [...sessions.values()])
+          registered(session)
+        },
+        finalizeExit: (id, exitCode) => finalizeSessionTeardown(id, 'pty-exit', exitCode),
+        recordCompactLink,
+      },
+      signal,
+    )
   }
 
   // --model wins over the model saved in a Claude Code transcript. Preserve a
@@ -555,98 +579,10 @@ async function createAdmittedSession(
   // not in the entire ~/.claude/projects/ (which would pick up unrelated conversations)
   // When resuming, use epoch 0 so watcher finds the existing JSONL file (its mtime is in the past)
   const watcherStartTime = config.resumeConversationId ? 0 : Date.now()
-  // All watcher callbacks send via session.ws (not the captured ws) so a
-  // reattached client keeps receiving entries.
-  const jsonlWatcher = new JsonlWatcher(
-    watcherStartTime,
-    // `replay: true` — батч истории/превью вне файла-порядка: клиент не должен
-    // двигать по нему курсор зеркала (прод-дыра «сообщение не отрисовалось»).
-    (entries, replay) =>
-      trySendToClient(session.ws, {
-        type: 'jsonl:entries',
-        entries: leanEntries(entries),
-        ...(replay ? { replay: true } : {}),
-      }),
-    (status) => sendToClient(session.ws, { type: 'jsonl:status', ...status }),
-    (entry) => handleJsonlUserEntry(session, entry),
-    settingsDir,
-    (conversationId) => {
-      // Смена id (авто-compact → новый файл): помнить ПРЕЖНИЕ id — клиент,
-      // перезапустившийся со старым id из metadata, обязан находить эту живую
-      // сессию (finder ниже матчит и по alias'ам); плюс персист линка
-      // old→new, чтобы холодный резюм после смерти PTY дошёл до свежего
-      // файла, а не воскрешал скомпакченный (инцидент «откат чата»).
-      const prev = session.cliConversationId
-      if (prev && prev !== conversationId) {
-        ;(session.conversationAliases ??= []).push(prev)
-        recordCompactLink(prev, conversationId)
-      }
-      session.cliConversationId = conversationId
-      usageRecorder.bind(conversationId)
-      // INC-2026-0070: every identity the client is told to adopt, old→new.
-      // `discovered` with previousRef equal to conversationRef confirms the
-      // resumed id; a fresh session's first discovery has no previousRef.
-      lifecycleLog('conversation_id', {
-        sessionId,
-        conversationId,
-        previousConversationId: prev ?? undefined,
-        idSource: prev && prev !== conversationId ? 'changed' : 'discovered',
-      })
-      debugLog('JSONL conversationId discovered', { sessionId, conversationId })
-      sendToClient(session.ws, { type: 'session:conversation-id', sessionId, conversationId })
-      // Map JSONL session → PTY token so the JSONL sweeper can attribute
-      // jsonl_events rows to the right API token (Stats panel + per-token
-      // session list rely on this). DuckDB is async — wrap in a fire-and-
-      // forget IIFE so we don't change the JsonlWatcher callback signature.
-      void (async () => {
-        try {
-          const { getDb } = await import('../stats/database/lifecycle')
-          const { withStatsWrite } = await import('../stats/database/write-lock')
-          const db = await getDb()
-          const realCwd = config.cwd || null
-          const titleAtInsert = session.sessionTitle || null
-          // Serialised with the JSONL sweeper, which inserts the same
-          // session_tokens row on first sight of the file: two writers on
-          // one key would fail a COMMIT, and DuckDB turns that into a
-          // process-killing FatalException (stats/database/write-lock.ts).
-          await withStatsWrite(async () => {
-            await db.run(
-              `INSERT INTO session_tokens (session_id, token_id, user_name, cwd, title, created_at, deleted)
-               VALUES (?, ?, ?, ?, ?, ?, 0)
-               ON CONFLICT (session_id) DO NOTHING`,
-              [conversationId, tokenId, userName, realCwd, titleAtInsert, new Date().toISOString()],
-            )
-            await db.run(
-              `UPDATE session_tokens
-               SET token_id = ?,
-                   user_name = ?,
-                   cwd = COALESCE(NULLIF(cwd, ''), ?),
-                   title = COALESCE(NULLIF(title, ''), ?)
-               WHERE session_id = ? AND (token_id IS NULL OR token_id = '')`,
-              [tokenId, userName, realCwd, titleAtInsert, conversationId],
-            )
-          })
-        } catch (err) {
-          warnLog('session_tokens insert failed', { conversationId, error: String(err) })
-        }
-      })()
-    },
-    (agentName, entries, agentId) =>
-      trySendToClient(session.ws, {
-        type: 'jsonl:subagent-entries',
-        agentName,
-        agentId,
-        entries: leanEntries(entries),
-      }),
-    () => resetJsonlStats(session),
-    (entry) => accumulateJsonlStats(session, entry),
-    // Bulk replay only goes out while the CURRENT socket (reattach swaps it)
-    // is open and under the replay high-water mark.
-    () => socketWritable(session.ws),
-    config.history,
-  )
-  session.jsonlWatcher = jsonlWatcher
-  jsonlWatcher.start()
+  attachSessionJsonlWatcher(session, config, watcherStartTime, {
+    recordCompactLink,
+    onConversationId: (conversationId) => usageRecorder.bind(conversationId),
+  })
 
   // Live subscription limits + context fill pushed to the chat (statusLine).
   session.statusLineWatcher = watchSessionStatusLine(session, path.join(settingsDir, '.claude'))
@@ -696,6 +632,14 @@ async function createAdmittedSession(
   debugLog('PTY session created', { sessionId, pid: pty.pid })
 
   return session
+}
+
+function resumedEngine(settingsDir: string, conversationId: string): 'claude' | 'codex' | null {
+  try {
+    return transcriptEngine(codexTranscriptPath(settingsDir, conversationId))
+  } catch {
+    return null
+  }
 }
 
 // How long a session survives after its client WS drops without an explicit

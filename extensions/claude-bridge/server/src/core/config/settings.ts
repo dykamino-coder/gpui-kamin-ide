@@ -14,6 +14,7 @@
 import path from 'path'
 import fs from 'fs'
 import { getDb } from '../stats/database'
+import { mergeLoopbackNoProxy } from './no-proxy'
 
 // All setting keys
 export type SettingKey =
@@ -280,19 +281,5 @@ export function injectProxyEnv(env: Record<string, string>): void {
   }
 
   // Ensure localhost/loopback traffic always bypasses proxy — MCP server runs on 127.0.0.1
-  if (httpProxy || httpsProxy) {
-    const loopback = '127.0.0.1,localhost,::1'
-    const parts = [noProxy, env.NO_PROXY, env.no_proxy, loopback].filter(Boolean)
-    const merged = [
-      ...new Set(
-        parts
-          .join(',')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean),
-      ),
-    ].join(',')
-    env.NO_PROXY = merged
-    env.no_proxy = merged
-  }
+  if (httpProxy || httpsProxy) mergeLoopbackNoProxy(env, noProxy)
 }
