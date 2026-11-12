@@ -13,7 +13,10 @@ export type ClientMessage =
       cols?: number
       rows?: number
       protocolVersion?: number
+      engine?: import('./types').AgentEngine
     }
+  | { type: 'agent:set-default-engine'; engine: import('./types').AgentEngine }
+  | { type: 'codex:models' }
   | { type: 'session:input'; data: string }
   | { type: 'session:interrupt' }
   | { type: 'session:submitText'; data: string; submissionId?: string }
@@ -53,6 +56,7 @@ export type ClientMessage =
       rows?: number
       protocolVersion?: number
       history?: { mode: 'paged' }
+      engine?: import('./types').AgentEngine
     }
   | { type: 'session:change-effort'; effort: string }
   | { type: 'session:change-model'; model: string }
@@ -121,7 +125,11 @@ export type ServerMessage =
       effort?: string
       model?: string
       settingsDir?: string
+      engine?: import('./types').AgentEngine
     }
+  | { type: 'agent:preferences'; defaultEngine?: import('./types').AgentEngine; error?: string }
+  | ({ type: 'codex:models' } & import('./types').CodexModelsPayload)
+  | ({ type: 'codex:auth'; sessionId?: string } & import('./types').CodexAccountInfo)
   | { type: 'session:output'; data: string }
   | { type: 'session:exit'; code: number; sessionId: string }
   | { type: 'session:error'; error: string; fatal?: boolean }

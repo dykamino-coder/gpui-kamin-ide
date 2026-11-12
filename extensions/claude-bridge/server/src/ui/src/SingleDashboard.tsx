@@ -20,6 +20,7 @@ import { api } from './services/api-client'
 import { wsClient } from './services/ws-client'
 import type { UsageData, AccountInfo } from './services/api-client'
 import { UsageBars } from './components/dashboard/UsageBars'
+import { CodexAccountCard } from './components/dashboard/CodexAccountCard'
 import { UsageChart } from './components/dashboard/UsageChart'
 import { ApiErrorsCard } from './components/dashboard/ApiErrorsCard'
 import { McpUsageReport } from './components/dashboard/McpUsageReport'
@@ -372,6 +373,7 @@ export function SingleDashboard() {
             </div>
           )}
         </StatusCard>
+        <CodexAccountCard />
         <StatusCard
           icon="fa-solid fa-server"
           iconColor="var(--accent-green)"

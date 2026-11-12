@@ -2,6 +2,12 @@ import type { RequestLogEntry, ServerConfig, ExtendedStats, UserTimeSeriesEntry 
 import { getSessionToken, isAuthenticated } from '../signals/auth'
 import type { PlanUsageData as UsageData } from '../../../shared/plan-usage'
 import type { McpUsageReport } from '../../../shared/mcp-report'
+import {
+  toCodexError,
+  type CodexAccountStatus,
+  type CodexDeviceLogin,
+  type CodexErrorInfo,
+} from '../components/dashboard/codex-account-model'
 
 function authHeaders(): Record<string, string> {
   const token = getSessionToken()
@@ -27,6 +33,23 @@ async function postJson<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: 'POST', headers: authHeaders() })
   handle401(res)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+/** Thrown by codex account calls; carries the server's plain-language `{ error }`. */
+export class CodexApiError extends Error {
+  constructor(public readonly info: CodexErrorInfo) {
+    super(info.message)
+  }
+}
+
+async function codexPost<T>(path: string): Promise<T> {
+  const res = await fetch(path, { method: 'POST', headers: authHeaders() })
+  handle401(res)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new CodexApiError(toCodexError(body, `HTTP ${res.status}`))
+  }
   return res.json()
 }
 
@@ -85,6 +108,12 @@ export const api = {
     fetchJson<{ loggedIn: boolean; authMethod?: string; apiProvider?: string; error?: string }>(
       `/api/dashboard/auth-status${force ? '?force=true' : ''}`,
     ),
+  // Shared ChatGPT (codex) account of this Bridge server.
+  getCodexAccount: (force = false) =>
+    fetchJson<CodexAccountStatus>(`/api/dashboard/codex/account${force ? '?force=true' : ''}`),
+  startCodexLogin: () => codexPost<CodexDeviceLogin>('/api/dashboard/codex/login'),
+  cancelCodexLogin: () => codexPost<{ ok: true }>('/api/dashboard/codex/login/cancel'),
+  logoutCodex: () => codexPost<{ ok: true }>('/api/dashboard/codex/logout'),
   clearHistory: () => deleteJson<{ ok: boolean }>('/api/dashboard/requests'),
   deleteByFilter: (filter: { endpoint?: string; userName?: string; status?: string }) => {
     const params = new URLSearchParams()

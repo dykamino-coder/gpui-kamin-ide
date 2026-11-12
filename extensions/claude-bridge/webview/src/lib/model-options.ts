@@ -30,3 +30,59 @@ export function selectedModelOption(modelId: string | null | undefined): ModelOp
     description: 'Current session model; select another model to change it',
   }
 }
+
+// ─── GPT (ChatGPT through Codex CLI) ─────────────────────────────────────────
+// A chat keeps its agent for life: picking a model of the same agent changes
+// the model in place; a model of the other agent opens a new chat on it.
+
+export type ModelEngine = 'claude' | 'codex'
+
+/** Same shape as the server's codex `model/list` entry (subset used here). */
+export interface GptModel {
+  model: string
+  displayName: string
+  description: string
+  isDefault: boolean
+}
+
+export const GPT_ICON = 'fa-robot'
+
+export function gptModelOptions(models: readonly GptModel[]): ModelOption[] {
+  return models
+    .filter(m => typeof m.model === 'string' && m.model)
+    .map(m => ({
+      value: m.model,
+      icon: GPT_ICON,
+      name: m.displayName || m.model,
+      description: m.description || (m.isDefault ? 'Default ChatGPT model' : 'ChatGPT model'),
+    }))
+}
+
+/** A Claude model id is the only thing that marks a model as Claude's. */
+export function engineOfModel(modelId: string): ModelEngine {
+  return /^claude/i.test(modelId) ? 'claude' : 'codex'
+}
+
+export type ModelSelection =
+  | { kind: 'change'; model: string }
+  | { kind: 'new-chat'; engine: ModelEngine; model: string }
+  | { kind: 'remember'; model: string }
+
+/** What picking `model` does in a tab running `tabEngine` (no tab → remember
+ *  the Claude pick for the next chat; a GPT pick still opens a GPT chat). */
+export function planModelSelection(tabEngine: ModelEngine | null, model: string): ModelSelection {
+  const engine = engineOfModel(model)
+  if (tabEngine === null) return engine === 'claude' ? { kind: 'remember', model } : { kind: 'new-chat', engine, model }
+  return engine === tabEngine ? { kind: 'change', model } : { kind: 'new-chat', engine, model }
+}
+
+/** The selected entry of a codex chat: its GPT model, or the id as-is. */
+export function selectedGptOption(modelId: string | null | undefined, gpt: readonly ModelOption[]): ModelOption {
+  const found = modelId ? gpt.find(option => option.value === modelId) : undefined
+  return found ?? {
+    value: modelId || '',
+    icon: GPT_ICON,
+    name: modelId || 'ChatGPT',
+    description: modelId ? 'Current GPT model' : 'ChatGPT default model',
+  }
+}

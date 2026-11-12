@@ -8,7 +8,7 @@
 import fs from "fs"
 import path from "path"
 import crypto from "crypto"
-import type { ConnectionConfig, SavedSession } from "../../shared/types"
+import { isAgentEngine, type AgentEngine, type ConnectionConfig, type SavedSession } from "../../shared/types"
 
 const defaults: ConnectionConfig = { serverUrl: "ws://localhost:3456", token: "" }
 
@@ -39,6 +39,10 @@ interface StoreData {
    *  tokens must not carry someone else's prompt along. Sent with every
    *  session:create/resume and APPENDED to the technical system prompt. */
   basePromptByToken: Record<string, string>
+  /** Last main agent the server reported for each token (agent:preferences).
+   *  The server owns the setting; this copy lets the first new chat after a
+   *  restart open on it before any socket has answered. */
+  defaultEngineByToken?: Record<string, AgentEngine>
   layout: LayoutState
   notifications: NotificationsConfig
   terminal: TerminalPrefs
@@ -149,6 +153,18 @@ export class ConfigStore {
     if (trimmed) map[this.currentKey()] = trimmed
     else delete map[this.currentKey()] // empty = no prompt, don't keep a blank
     this.data.basePromptByToken = map
+    this.persist()
+  }
+
+  /** The user's main agent for new chats under the current token. */
+  getDefaultEngine(): AgentEngine {
+    const value = (this.data.defaultEngineByToken ?? {})[this.currentKey()]
+    return isAgentEngine(value) ? value : 'claude'
+  }
+
+  setDefaultEngine(engine: AgentEngine): void {
+    if (this.getDefaultEngine() === engine) return
+    this.data.defaultEngineByToken = { ...(this.data.defaultEngineByToken ?? {}), [this.currentKey()]: engine }
     this.persist()
   }
 

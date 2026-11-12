@@ -1,6 +1,6 @@
 .dashboard { display: flex; flex-direction: column; gap: 20px; }
 
-.statusRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.statusRow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 
 .statsRow { display: flex; gap: 12px; align-items: stretch; }
 .statsRow > :first-child { flex: 1; }
@@ -24,6 +24,10 @@
 .loginBtn:hover {
   filter: brightness(1.1);
   box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 1400px) {
+  .statusRow { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 900px) {

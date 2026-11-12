@@ -5,6 +5,7 @@
 export type BridgeEventType =
   | 'health:updated'
   | 'account:updated'
+  | 'codex:account-updated'
   | 'terminal:sessions'
   | 'usage:updated'
   | 'session:created'

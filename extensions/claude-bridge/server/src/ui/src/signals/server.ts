@@ -40,6 +40,8 @@ export const ptySessions = signal<PtySessionInfo[]>([])
 export const serverStatus = signal<{ os?: string; nodeVersion?: string; startedAt?: string } | null>(null)
 export const cachedAccount = signal<{ email?: string; organization?: string; subscriptionType?: string } | null>(null)
 export const accountCheckedAt = signal<Date | null>(null)
+/** Bumped on every codex `account:updated` push; the ChatGPT card refetches on change. */
+export const codexAccountEventAt = signal(0)
 export const cachedUsage = signal<unknown>(null)
 
 export const uptime = computed(() => {
