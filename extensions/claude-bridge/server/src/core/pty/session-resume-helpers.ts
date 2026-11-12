@@ -12,6 +12,7 @@ import { debugLog, warnLog } from '../logging'
 import { SESSIONS_BASE } from './session-settings'
 import { archiveTranscript, restoreArchivedTranscript } from './transcript-archive'
 import { NO_REPAIR, repairJsonlTail, type JsonlRepairStats } from './jsonl-repair'
+import { transcriptEngine } from './transcript-engine'
 import { readJsonlLines, readRange } from './jsonl-lines'
 
 export type { JsonlRepairStats } from './jsonl-repair'
@@ -186,6 +187,10 @@ export function reverseSlugToPath(slug: string, tokenId?: string): string | null
  * corruption model and why the whole file is never read here.
  */
 export async function repairJsonl(jsonlPath: string): Promise<JsonlRepairStats> {
+  // A codex chat's transcript is Bridge's own projection: its assistant ids are
+  // codex item ids and it has no stop_reason, which the Claude repair would read
+  // as synthetic/broken entries and cut. codex resumes from its rollout anyway.
+  if (transcriptEngine(jsonlPath) === 'codex') return NO_REPAIR
   return repairJsonlTail(jsonlPath)
 }
 

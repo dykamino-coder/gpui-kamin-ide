@@ -82,8 +82,14 @@ export function connectHot(require: RemoteRequire, url: URL,
   if (!hot || !require.h) return () => {}
   let socket: WebSocket | undefined, reconnect: ReturnType<typeof setTimeout> | undefined
   let disposed = false, checking = false, hash = '', ready = false
+  // A dev server with several compilers (MultiCompiler, one per remote) sends
+  // the MultiStats hash: the child compilation hashes concatenated
+  // (webpack and rspack `MultiStats.hash`/`toJson().hash`). This remote is
+  // current when its own hash is part of it; a change in another remote must
+  // not trigger a check that finds nothing and remounts the workspace.
+  const current = () => { const own = require.h!(); return !!own && hash.includes(own) }
   async function update() {
-    if (disposed || checking || !ready || !hash || hot!.status() !== 'idle' || require.h!() === hash) return
+    if (disposed || checking || !ready || !hash || hot!.status() !== 'idle' || current()) return
     checking = true
     const target = hash
     try {

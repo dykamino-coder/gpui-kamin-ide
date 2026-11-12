@@ -16,6 +16,18 @@ import type {
 } from '../../../shared/types'
 import type { McpTestLogEntry } from '../test-log'
 
+/** One of our JSON-RPC requests awaiting the server's reply. */
+export interface McpPendingRequest {
+  resolve: (v: unknown) => void
+  reject: (e: Error) => void
+  /** Tracked so disconnect can cancel pending timeouts without leaking writes
+   *  into a cleared pendingRequests map. */
+  timer?: ReturnType<typeof setTimeout>
+  /** `_meta.progressToken` this request sent; its progress restarts the idle deadline. */
+  progressToken?: number
+  onProgress?: () => void
+}
+
 /** The full per-server runtime state kept by the manager. Transports mutate
  *  this (tool lists, pending requests, transport handles) inline. */
 export interface McpServerState {
@@ -38,13 +50,7 @@ export interface McpServerState {
   sseMessageEndpoint?: string
   /** AbortController for the long-lived GET /sse stream — closed on disconnect. */
   sseAbort?: AbortController
-  pendingRequests: Map<number, {
-    resolve: (v: unknown) => void
-    reject: (e: Error) => void
-    /** Tracked so disconnect can cancel pending timeouts without leaking writes
-     *  into a cleared pendingRequests map. */
-    timer?: ReturnType<typeof setTimeout>
-  }>
+  pendingRequests: Map<number, McpPendingRequest>
   nextRequestId: number
   inputBuffer: string
   /** Ring buffer of recent connect/test events. */
