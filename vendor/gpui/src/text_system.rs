@@ -1662,6 +1662,14 @@ pub fn font_name_with_fallbacks_shared<'a>(
     }
 }
 
+impl WindowTextSystem {
+    /// KaminIDE patch: the shaped line caches for the engine bench's memory report
+    /// (`crate::heap_report`).
+    pub(crate) fn heap_report(&self, sink: &mut crate::heap_report::HeapSink) {
+        self.line_layout_cache.heap_report(sink);
+    }
+}
+
 #[cfg(test)]
 mod missing_glyph_tests {
     use super::*;

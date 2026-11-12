@@ -1363,6 +1363,49 @@ pub(crate) fn track_glyphs(
     shift
 }
 
+impl LineLayoutCache {
+    /// KaminIDE patch: both frames' shaped lines for the engine bench's memory report
+    /// (`crate::heap_report`); a layout shared by several keys counts once. Key contents
+    /// are not walked.
+    pub(crate) fn heap_report(&self, sink: &mut crate::heap_report::HeapSink) {
+        use crate::heap_report::{counted, table, vec};
+        let path = "text/line-layouts";
+        let mut seen = std::collections::HashSet::new();
+        let mut line = |sink: &mut crate::heap_report::HeapSink, layout: &Arc<LineLayout>| {
+            if seen.insert(Arc::as_ptr(layout)) {
+                counted(sink, path, Arc::as_ptr(layout));
+                vec(sink, path, &layout.runs);
+                for run in &layout.runs {
+                    vec(sink, path, &run.glyphs);
+                }
+            }
+        };
+        let previous = self.previous_frame.lock();
+        let current = self.current_frame.read();
+        for frame in [&*previous, &*current] {
+            table::<(Arc<CacheKey>, Arc<LineLayout>)>(sink, path, frame.lines.capacity());
+            table::<(Arc<CacheKey>, Arc<WrappedLineLayout>)>(sink, path, frame.wrapped_lines.capacity());
+            table::<(Arc<HashedCacheKey>, Arc<LineLayout>)>(sink, path, frame.lines_by_hash.capacity());
+            table::<(Arc<HashedCacheKey>, Arc<WrappedLineLayout>)>(
+                sink,
+                path,
+                frame.wrapped_lines_by_hash.capacity(),
+            );
+            vec(sink, path, &frame.used_lines);
+            vec(sink, path, &frame.used_wrapped_lines);
+            vec(sink, path, &frame.used_lines_by_hash);
+            vec(sink, path, &frame.used_wrapped_lines_by_hash);
+            for layout in frame.lines.values().chain(frame.lines_by_hash.values()) {
+                line(sink, layout);
+            }
+            for wrapped in frame.wrapped_lines.values().chain(frame.wrapped_lines_by_hash.values()) {
+                counted(sink, path, Arc::as_ptr(wrapped));
+                line(sink, &wrapped.unwrapped_layout);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod reuse_tests;
 
