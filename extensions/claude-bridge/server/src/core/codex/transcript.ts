@@ -38,10 +38,16 @@ function resultContent(output: AgentToolOutput[], error?: string): string | Cont
 }
 
 export class CodexTranscriptProjector {
-  private parent: string | null = null
+  private parent: string | null
   private model: string | undefined
 
-  constructor(private readonly cwd?: string) {}
+  /** `parentUuid` continues an existing transcript (resume). */
+  constructor(
+    private readonly cwd?: string,
+    parentUuid: string | null = null,
+  ) {
+    this.parent = parentUuid
+  }
 
   /** Entries to append for one event, in order. */
   project(event: AgentEvent): CodexTranscriptEntry[] {
