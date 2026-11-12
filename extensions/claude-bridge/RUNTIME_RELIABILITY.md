@@ -1123,6 +1123,24 @@ teardown fix.
 **Acceptance:** automated + Windows runtime merge gate.
 **Windows runtime merge gate:** required.
 
+**Acceptance probe candidate (2026-11-13):** a separate Change PR adds
+`{"cmd":"hostDisconnect"}` to close only the shell's current host WebSocket.
+The existing disconnect callback cancels pending RPCs and reconnects normally;
+the shell and host processes remain running. `ok: true` acknowledges the close
+request, not completed reconnection. A disconnected client reports an error.
+The same candidate adds `{"cmd":"keystroke","key":"enter"}` (also `f2`,
+`ctrl-a`, and GPUI keystroke syntax) for this gate and BR-29. It dispatches to
+the main GPUI window on its UI executor without OS input or foreground-window
+changes. The response acknowledges dispatch with `handled: true|false`; malformed
+keys, unavailable windows and dispatch timeouts return errors. Expired queued
+keys are discarded. This command targets GPUI keyboard handling, not a separate
+CEF DOM keyboard injection API. Both controls require the existing `probe`
+feature. Unit tests cover a real loopback WebSocket close/pending cancellation/
+owner reconnect and queued Enter/F2 delivery to a focused GPUI test element.
+These controls enable kmaint's exact-candidate Windows gate; they do not mark
+BR-19 or BR-29 accepted. Next owner: kmaint, running the scenarios below and
+the BR-29 rename keyboard gate on the candidate.
+
 **Реализовано:** типизированная отмена `RpcPeerDisconnectedError` с кодом
 `rpc/peer-disconnected` в кадре ответа (`protocol.ts`), `failAll` отклоняет
 именно ею, код переносится через границу процесса в обе стороны
