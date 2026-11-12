@@ -132,3 +132,6 @@ impl fmt::Debug for Text {
         }
     }
 }
+
+#[cfg(feature = "heap-report")]
+kamin_heap::heap_fields!(Text { text });

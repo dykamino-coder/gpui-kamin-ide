@@ -17,6 +17,26 @@ impl<V> Default for FrameCache<V> {
     }
 }
 
+#[cfg(feature = "heap-report")]
+impl<V> FrameCache<V> {
+    /// Таблицы обоих поколений и то, что держат значения (`value`), для
+    /// отчёта памяти по владельцам (docs/memprof.md).
+    pub(super) fn heap_size(
+        &self,
+        ops: &mut kamin_heap::Ops,
+        mut value: impl FnMut(&V, &mut kamin_heap::Ops) -> usize,
+    ) -> usize {
+        let mut total = 0;
+        for map in [&self.current, &self.previous] {
+            total += ops.table::<(u64, V)>(map.capacity());
+            for item in map.values() {
+                total += value(item, ops);
+            }
+        }
+        total
+    }
+}
+
 impl<V> FrameCache<V> {
     pub(super) fn begin_frame(&mut self) {
         self.previous = std::mem::take(&mut self.current);
