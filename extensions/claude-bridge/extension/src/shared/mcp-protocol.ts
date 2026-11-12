@@ -60,6 +60,7 @@ export type ClientMessage =
     }
   | { type: 'session:change-effort'; effort: string }
   | { type: 'session:change-model'; model: string }
+  | { type: 'session:switch-engine'; engine: 'claude' | 'codex'; model: string }
   | { type: 'session:delete-data'; conversationId: string }
   | {
       type: 'hook:response'
@@ -185,7 +186,12 @@ export type ServerMessage =
       sessionId: string
       effort?: string
       model?: string
+      /** Set when the chat moved to another engine (session:switch-engine). */
+      engine?: 'claude' | 'codex'
+      engineSwitch?: { prepareMs: number; startMs: number; contextBytes?: number }
     }
+  /** The engine switch was refused; the chat keeps running as it was. */
+  | { type: 'session:engine-switch-failed'; error: string }
   // Горячая смена модели (/model в живой PTY) — sessionId прежний, без реплея.
   | {
       type: 'session:model-changed'

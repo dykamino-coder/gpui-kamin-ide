@@ -60,9 +60,9 @@ describe('GPT models in the picker', () => {
 
   it('changes the model inside the same agent and opens a new chat across agents', () => {
     expect(planModelSelection('claude', 'claude-sonnet-5-5')).toEqual({ kind: 'change', model: 'claude-sonnet-5-5' })
-    expect(planModelSelection('claude', 'gpt-5.5')).toEqual({ kind: 'new-chat', engine: 'codex', model: 'gpt-5.5' })
+    expect(planModelSelection('claude', 'gpt-5.5')).toEqual({ kind: 'switch', engine: 'codex', model: 'gpt-5.5' })
     expect(planModelSelection('codex', 'gpt-5.4-mini')).toEqual({ kind: 'change', model: 'gpt-5.4-mini' })
-    expect(planModelSelection('codex', 'claude-opus-5-5')).toEqual({ kind: 'new-chat', engine: 'claude', model: 'claude-opus-5-5' })
+    expect(planModelSelection('codex', 'claude-opus-5-5')).toEqual({ kind: 'switch', engine: 'claude', model: 'claude-opus-5-5' })
   })
 
   it('without a tab remembers a Claude pick and still opens a GPT chat', () => {

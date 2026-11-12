@@ -30,6 +30,15 @@ export function isAgentEngine(value: unknown): value is AgentEngine {
   return value === 'claude' || value === 'codex'
 }
 
+const CLAUDE_ALIASES = new Set(['default', 'opus', 'sonnet', 'haiku', 'fable', 'opusplan'])
+
+/** The engine a model id belongs to: a Claude id (or Claude CLI alias) runs on
+ *  Claude, any other id is a model of the server's codex catalog (the selector
+ *  reads ids the same way, webview lib/model-options.ts engineOfModel). */
+export function engineOfModelId(model: string): AgentEngine {
+  const id = model.trim().toLowerCase()
+  return id.startsWith('claude') || CLAUDE_ALIASES.has(id.replace(/\[.*\]$/, '')) ? 'claude' : 'codex'
+}
 /** A GPT model from the server's codex `model/list`. */
 export interface CodexModelInfo {
   id: string
@@ -687,7 +696,8 @@ export interface KaminBridgeApi {
     callback: (
       tabId: string,
       data: {
-        sessionId: string
+        /** Absent when nothing restarted (a refused engine switch). */
+        sessionId?: string
         effort?: string
         model?: string
         inPlace?: boolean

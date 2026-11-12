@@ -13,6 +13,7 @@ import { SESSIONS_BASE } from './session-settings'
 import { archiveTranscript, restoreArchivedTranscript } from './transcript-archive'
 import { NO_REPAIR, repairJsonlTail, type JsonlRepairStats } from './jsonl-repair'
 import { transcriptEngine } from './transcript-engine'
+import { MANIFEST_FILE } from '../conversation/manifest'
 import { readJsonlLines, readRange } from './jsonl-lines'
 
 export type { JsonlRepairStats } from './jsonl-repair'
@@ -64,20 +65,25 @@ async function locateSettingsDir(
       const jsonlPath = path.join(projectsDir, slugDir.name, jsonlFilename)
       if (!fs.existsSync(jsonlPath)) continue
 
+      const slug = slugDir.name
+      const existing = scanForSettingsDirBySlug(slug)
+      // A multi-engine conversation's log is Bridge's own (conversation/
+      // unified-log.ts): no CLI resumes it, and the Claude repair would read
+      // its codex segments as broken entries and cut them.
+      const unified = existing !== null && fs.existsSync(path.join(existing, MANIFEST_FILE))
       // Repair before CLI reads it — without this CLI will pick a
       // synthetic <synthetic> UUID as previous_message_id → 400 forever,
       // or choke on a torn line / broken parentUuid chain left by a
       // mid-write kill (network drop → instant reconnect).
-      try {
-        await repairJsonl(jsonlPath)
-      } catch (e) {
-        warnLog('repairJsonl failed', { jsonlPath, error: String(e) })
+      if (!unified) {
+        try {
+          await repairJsonl(jsonlPath)
+        } catch (e) {
+          warnLog('repairJsonl failed', { jsonlPath, error: String(e) })
+        }
       }
       // Archive AFTER the repair, so the durable copy is the resumable one.
       await archiveTranscript(jsonlPath, conversationId)
-
-      const slug = slugDir.name
-      const existing = scanForSettingsDirBySlug(slug)
       if (existing) return existing
 
       // Not found — reverse the slug back to a path and recreate.

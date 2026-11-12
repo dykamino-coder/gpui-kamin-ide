@@ -4,6 +4,8 @@ import type { JsonlEntryData } from '../../types/jsonl'
 import { hasCliXmlTags } from './utils'
 import { CliXmlContent } from './CliXmlContent'
 import { JsonlTimestamp } from './JsonlTimestamp'
+import { codexCatalog } from '../../signals/agent'
+import { MODEL_OPTIONS, gptModelOptions } from '../../lib/model-options'
 
 function formatNumber(n: number | undefined): string {
   if (n === undefined || n === null) return '—'
@@ -44,6 +46,33 @@ function CompactBoundary({ entry }: { entry: JsonlEntryData }): JSX.Element {
           {parts.map((p, i) => <span key={i} style="color:var(--text-muted)">{p}</span>)}
         </span>
       )}
+      {entry.timestamp && (
+        <span style="font-size:10px;color:var(--text-disabled)"><JsonlTimestamp timestamp={entry.timestamp} /></span>
+      )}
+      <div style="flex:1;height:1px;background:linear-gradient(to left, transparent, var(--bg-overlay) 30%, var(--bg-overlay) 70%, transparent)" />
+    </div>
+  )
+}
+
+/** Where the chat moved to the other agent (server: conversation/unified-log.ts
+ *  writes `→ <model>`). The model's selector name when known. */
+function EngineSwitch({ entry }: { entry: JsonlEntryData }): JSX.Element {
+  const model = (entry as { model?: unknown }).model
+  const engine = (entry as { engine?: unknown }).engine
+  const known = typeof model === 'string'
+    ? [...MODEL_OPTIONS, ...gptModelOptions(codexCatalog.value?.models ?? [])].find(o => o.value === model)
+    : undefined
+  const fallback = typeof entry.content === 'string' ? entry.content.replace(/^→\s*/, '') : ''
+  const label = known?.name ?? (fallback || (engine === 'codex' ? 'ChatGPT' : 'Claude'))
+  return (
+    <div
+      class="jsonl-entry"
+      data-engine-switch={typeof engine === 'string' ? engine : undefined}
+      style="background:transparent;border:none;border-radius:0;box-shadow:none;padding:6px 12px;margin:6px 40px 6px 40px;display:flex;align-items:center;gap:10px;color:var(--text-muted);font-size:11px"
+    >
+      <div style="flex:1;height:1px;background:linear-gradient(to right, transparent, var(--bg-overlay) 30%, var(--bg-overlay) 70%, transparent)" />
+      <i class={engine === 'codex' ? 'fas fa-robot' : 'fas fa-gem'} style="font-size:10px;color:var(--text-secondary)" />
+      <span style="color:var(--text-secondary);font-weight:600">→ {label}</span>
       {entry.timestamp && (
         <span style="font-size:10px;color:var(--text-disabled)"><JsonlTimestamp timestamp={entry.timestamp} /></span>
       )}
@@ -130,6 +159,7 @@ export function SystemEntry({ entry }: { entry: JsonlEntryData }): JSX.Element |
   // row this rejects, and JsonlEntry does not mount it at all.
   if (!systemEntryDraws(entry)) return null
   if (entry.subtype === 'compact_boundary') return <CompactBoundary entry={entry} />
+  if (entry.subtype === 'engine_switch') return <EngineSwitch entry={entry} />
   if (entry.subtype === 'api_error') return <ApiErrorBlock entry={entry} />
   if (entry.subtype === 'away_summary') return <AwaySummaryBlock entry={entry} />
   if (entry.subtype === 'model_fallback') return <ModelFallbackBlock entry={entry} />
