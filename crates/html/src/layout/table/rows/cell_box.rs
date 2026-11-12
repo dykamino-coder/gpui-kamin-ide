@@ -50,7 +50,7 @@ pub(super) fn prepare_cell_box(
     // (см. paint::table::EdgePainter): кромка соседей ОДНА, рисуется
     // поверх фонов, и «шире побеждает» решается наложением.
     let cell_edge = if geom.collapse_cells {
-        collapsed_cell_edge(cell, cm, &geom.win_edges, &px_of)
+        collapsed_cell_edge(cell, cm, &geom.win_edges, &geom.edge_styles, &px_of)
     } else {
         None
     };
@@ -66,14 +66,15 @@ pub(super) fn prepare_cell_box(
     {
         cell.style.used_mut().inh.ui.hidden = Some(true);
     }
-    table_spanning_size::preserve(
-        cell.style.used_mut(),
+    if let Some(minimum) = table_spanning_size::minimum(
         cm,
         spans.span_cols,
         geom.e.style.used().reset_context.table_fixed == Some(true),
         geom.table_is_vertical,
         spans.spans_collapsed,
-    );
+    ) {
+        cell.style.used_mut().reset_box_layout.min_width = Some(minimum);
+    }
     let orthogonal_inline = cell.style.used().wm().vertical()
         && !geom.e.style.used().wm().vertical()
         && cell.style.used().reset_box_layout.width_from_inline;

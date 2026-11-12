@@ -8,7 +8,8 @@ lie next to the executable (cargo leaves it in <target>/release/engine_bench.pdb
   alloc_stacks.py EXE STACKS                         calls and bytes per stack
   alloc_stacks.py EXE STACKS BASE_EXE BASE_STACKS    only the stacks whose totals differ
 
-Options: --depth N (frames kept per stack, default 12), --frames A-B (frame numbers kept).
+Options: --depth N (frames kept per stack, default 12), --frames A-B (frame numbers kept),
+--live (v2 files: only blocks allocated in the window and not freed by its end, e.g. live heap at start).
 """
 
 import argparse
@@ -64,26 +65,44 @@ class Symbols:
         return self.names[address]
 
 
-def fold(exe, stacks, depth, frames):
-    """{stack: [calls, bytes]} for one run."""
+def fold(exe, stacks, depth, frames, live=False):
+    """{stack: [calls, bytes]} for one run; with live, only blocks not freed by the end of the file (v2)."""
     lines = pathlib.Path(stacks).read_text(encoding="utf-8").splitlines()
-    header = re.match(r"# engine_bench alloc stacks v1 base=([0-9a-f]+)", lines[0] if lines else "")
+    header = re.match(r"# engine_bench alloc stacks v([12]) base=([0-9a-f]+)", lines[0] if lines else "")
     if not header:
         raise SystemExit(f"{stacks}: not an engine_bench allocation stack file")
-    symbols = Symbols(exe, int(header.group(1), 16))
+    version = int(header.group(1))
+    if live and version < 2:
+        raise SystemExit(f"{stacks}: --live needs a v2 file (with pointers and frees)")
+    symbols = Symbols(exe, int(header.group(2), 16))
     totals = collections.defaultdict(lambda: [0, 0])
+    blocks = {}  # pointer -> (key, size) of the blocks allocated in the window and not yet freed
     for line in lines[1:]:
-        kind, frame, phase, size, *addresses = line.split()
+        kind, frame, phase, size, *rest = line.split()
         if frames and not frames[0] <= int(frame) <= frames[1]:
             continue
-        names = [symbols.name(int(address, 16)) for address in addresses]
+        pointer = None
+        if version >= 2:
+            pointer, *rest = rest
+        if kind == "f":
+            # A block allocated before the window is not ours to subtract.
+            if live:
+                blocks.pop(pointer, None)
+            continue
+        names = [symbols.name(int(address, 16)) for address in rest]
         own = [i for i, name in enumerate(names[:12]) if ALLOCATOR.search(name)]
         names = names[own[-1] + 1 if own else 0 :][:depth]
-        total = totals[(phase, kind, " < ".join(names))]
+        key = (phase, kind, " < ".join(names))
+        if live:
+            blocks[pointer] = (key, int(size))
+            continue
+        total = totals[key]
         total[0] += 1
         total[1] += int(size)
+    for key, size in blocks.values():
+        totals[key][0] += 1
+        totals[key][1] += size
     return totals
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
@@ -92,6 +111,7 @@ def main():
     parser.add_argument("base", nargs="*", help="BASE_EXE BASE_STACKS")
     parser.add_argument("--depth", type=int, default=12)
     parser.add_argument("--frames")
+    parser.add_argument("--live", action="store_true", help="only blocks still live at the end of the window")
     args = parser.parse_args()
     if len(args.base) not in (0, 2):
         parser.error("the base needs both BASE_EXE and BASE_STACKS")
@@ -99,9 +119,9 @@ def main():
     if args.frames:
         first, _, last = args.frames.partition("-")
         frames = (int(first), int(last or first))
-    rows = fold(args.exe, args.stacks, args.depth, frames)
+    rows = fold(args.exe, args.stacks, args.depth, frames, args.live)
     if args.base:
-        base = fold(args.base[0], args.base[1], args.depth, frames)
+        base = fold(args.base[0], args.base[1], args.depth, frames, args.live)
         keys = set(rows) | set(base)
         rows = {
             key: [rows.get(key, [0, 0])[i] - base.get(key, [0, 0])[i] for i in (0, 1)]

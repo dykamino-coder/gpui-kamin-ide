@@ -9,6 +9,7 @@
 
 import type { TransportContext } from './context'
 import { collectMcpList } from '../pagination'
+import { awaitMcpReply, withProgressToken } from './request-deadline'
 
 export async function connectSseLegacy(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
@@ -129,21 +130,24 @@ export async function sseJsonRpcRequest(
   const headers = await ctx.buildHttpHeaders(id)
   headers['Content-Type'] = 'application/json'
   ctx.shutdownSignal?.throwIfAborted()
-  const responsePromise = new Promise<unknown>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      state.pendingRequests.delete(reqId)
-      reject(new Error(`SSE request timed out (60s): ${body.method}`))
-    }, 60_000)
-    state.pendingRequests.set(reqId, { resolve, reject, timer })
-  })
+  const method = String(body.method)
   // A call may be cancelled after POST has returned 202, while its response
-  // is still pending on the shared stream. Do not close that stream or peers.
-  const abort = () => state.pendingRequests.get(reqId)?.reject(new Error('MCP request cancelled'))
-  ctx.shutdownSignal?.addEventListener('abort', abort, { once: true })
+  // is still pending on the shared stream. Cancellation settles only this
+  // request; the stream and other calls on it stay open.
+  const responsePromise = awaitMcpReply<unknown>(state, reqId, {
+    method,
+    signal: ctx.shutdownSignal,
+    cancel: (requestId, reason) => {
+      void sseSendNotification(ctx, id, {
+        jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId, reason },
+      }).catch(() => {})
+    },
+  })
+  const params = (body.params ?? {}) as Record<string, unknown>
   // Observe the response promise immediately: disposal rejects it even while
   // the POST itself is still waiting for headers.
   const posted = fetch(state.sseMessageEndpoint, {
-    method: 'POST', headers, body: JSON.stringify(body), signal: ctx.shutdownSignal,
+    method: 'POST', headers, body: JSON.stringify({ ...body, params: withProgressToken(method, reqId, params) }), signal: ctx.shutdownSignal,
   }).then(async res => {
     if (!res.ok && res.status !== 202) throw new Error(`SSE POST ${res.status}: ${await res.text().catch(() => '')}`)
   })
@@ -151,10 +155,7 @@ export async function sseJsonRpcRequest(
     const [result] = await Promise.all([responsePromise, posted])
     return result
   } finally {
-    ctx.shutdownSignal?.removeEventListener('abort', abort)
-    const pending = state.pendingRequests.get(reqId)
-    if (pending?.timer) clearTimeout(pending.timer)
-    state.pendingRequests.delete(reqId)
+    state.pendingRequests.get(reqId)?.reject(new Error('MCP request abandoned'))
   }
 }
 

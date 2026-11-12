@@ -42435,6 +42435,11 @@ function newestInFileOrder(entries2, count) {
   return order.slice(Math.max(0, order.length - count)).map((i) => entries2[i]);
 }
 
+// src/shared/types.ts
+function isAgentEngine(value) {
+  return value === "claude" || value === "codex";
+}
+
 // src/main/ws/handle-server-message.ts
 var JSONL_CACHE_MAX = 2e4;
 var JSONL_CACHE_SLACK = 1e3;
@@ -42458,13 +42463,18 @@ function handleServerMessage(msg, ctx) {
       ctx.setState({ status: "authenticated", sessionId: msg.sessionId });
       const settingsDir = msg.settingsDir;
       if (settingsDir) ctx.setSettingsDir(settingsDir);
-      if (msg.effort || msg.model) {
+      const engine = isAgentEngine(msg.engine) ? msg.engine : void 0;
+      const engineNotice = typeof msg.engineNotice === "string" && msg.engineNotice ? msg.engineNotice : void 0;
+      if (msg.effort || msg.model || engine || engineNotice) {
         ctx.window.webContents.send("session-restarted", ctx.tabId, {
           sessionId: msg.sessionId,
           effort: msg.effort,
-          model: msg.model
+          model: msg.model,
+          ...engine ? { engine } : {},
+          ...engineNotice ? { engineNotice } : {}
         });
       }
+      ctx.noteSessionEngine?.(engine, msg.model);
       ctx.notifySessionInfo(msg.effort, msg.model);
       ctx.notifyAuthenticated();
       break;
@@ -42472,6 +42482,24 @@ function handleServerMessage(msg, ctx) {
     case "session:output":
       ctx.window.webContents.send("pty-output", ctx.tabId, msg.data);
       break;
+    // Engine-level replies (not bound to the transcript): the user's main
+    // agent, the GPT model list and the ChatGPT sign-in gate of a codex chat.
+    case "agent:preferences": {
+      const { type: _type, ...data } = msg;
+      if (isAgentEngine(data.defaultEngine)) ctx.notifyAgentPreferences?.(data.defaultEngine);
+      ctx.window.webContents.send("agent-preferences", ctx.tabId, data);
+      break;
+    }
+    case "codex:models": {
+      const { type: _type, ...data } = msg;
+      ctx.window.webContents.send("codex-models", ctx.tabId, { ...data, models: Array.isArray(data.models) ? data.models : [] });
+      break;
+    }
+    case "codex:auth": {
+      const { type: _type, sessionId: _sessionId, ...data } = msg;
+      ctx.window.webContents.send("codex-auth", ctx.tabId, data);
+      break;
+    }
     case "session:exit":
       ctx.window.webContents.send("pty-exit", ctx.tabId, msg.code);
       ctx.setState({ status: "disconnected" });
@@ -42747,6 +42775,8 @@ var ConnectionManager = class _ConnectionManager {
   static enrichTree = null;
   // Optional callback when session info (effort/model) arrives from server
   static onSessionInfo = null;
+  // The server told this tab the user's main agent (agent:preferences).
+  static onAgentPreferences = null;
   // Optional callback when session title arrives from server
   static onSessionTitle = null;
   // Optional callback when conversationId is discovered (for session saving)
@@ -42915,6 +42945,8 @@ var ConnectionManager = class _ConnectionManager {
   mirrorHead = null;
   constructor(config, window9, tabId, conversationId) {
     this.config = config;
+    this.engine = config.engine;
+    this.pendingModel = config.model ?? null;
     this.window = window9;
     this.tabId = tabId;
     this.commands = new ClientCommands(tabId, (event, value) => window9.webContents.send(event, tabId, value));
@@ -42925,6 +42957,15 @@ var ConnectionManager = class _ConnectionManager {
       _ConnectionManager.onSessionIdle?.(this.tabId, rawTitle);
     });
   }
+  /** Requested engine of a new chat, replaced by the server's answer. */
+  engine;
+  /** Model the tab asked for, applied once after the first session:created. */
+  pendingModel = null;
+  /** Last model chosen in this chat. A chat without a conversation yet has
+   *  nothing on the server that remembers it: after a server restart the next
+   *  session:create came back on the default model (Sonnet picked, Opus back).
+   *  It is re-applied to every fresh session:create of this tab. */
+  chosenModel = null;
   // Background (warm-pool) tab: live transcript/streaming forwarding to the
   // webview is off until the tab is first shown (see JsonlBatcher.muted).
   rendererMuted = false;
@@ -43078,9 +43119,12 @@ var ConnectionManager = class _ConnectionManager {
         ...basePrompt ? { basePrompt } : {},
         ...transcriptMirrorDir ? { transcriptMirrorDir } : {},
         ...externalTools.length > 0 ? { externalTools } : {},
-        ...host ? { host } : {}
+        ...host ? { host } : {},
+        // Hint only: the server resumes a chat on the engine of its transcript.
+        ...this.engine ? { engine: this.engine } : {}
       });
     } else {
+      if (this.chosenModel) this.pendingModel = this.chosenModel;
       this.sendRaw({
         type: "session:create",
         token: this.config.token,
@@ -43092,7 +43136,8 @@ var ConnectionManager = class _ConnectionManager {
         ...basePrompt ? { basePrompt } : {},
         ...transcriptMirrorDir ? { transcriptMirrorDir } : {},
         ...externalTools.length > 0 ? { externalTools } : {},
-        ...host ? { host } : {}
+        ...host ? { host } : {},
+        ...this.engine ? { engine: this.engine } : {}
       });
     }
     this.armEstablishTimer();
@@ -43586,7 +43631,35 @@ var ConnectionManager = class _ConnectionManager {
   }
   /** Request model change (triggers PTY restart on server). */
   changeModel(model) {
+    this.chosenModel = model;
     this.send({ type: "session:change-model", model });
+  }
+  /** The chat's agent: the tab's request until the server reports the real one. */
+  getEngine() {
+    return this.engine ?? "claude";
+  }
+  /** GPT model list + ChatGPT account state for the selector (reply: codex:models). */
+  requestCodexModels() {
+    this.send({ type: "codex:models" });
+  }
+  /** The user's main agent for new chats; the server stores it per token. */
+  setDefaultEngine(engine) {
+    this.send({ type: "agent:set-default-engine", engine });
+  }
+  /** session:created reports the chat's engine. A new chat asked for a model the
+   *  server did not start on (the create message carries no model) gets it now,
+   *  once, on either engine: codex applies it from the next turn, Claude through
+   *  the usual in-place model switch (a Claude model picked in a GPT chat).
+   *  When the server opened the chat on the other engine (the requested one is
+   *  signed out), the pick belongs to the requested engine and is dropped: a
+   *  GPT model id must never reach a Claude session, nor the reverse. */
+  noteSessionEngine(engine, model) {
+    if (engine) this.engine = engine;
+    const wanted = this.pendingModel;
+    this.pendingModel = null;
+    const requested = this.config.engine;
+    const sameEngine = !engine || !requested || engine === requested;
+    if (wanted && sameEngine && model !== wanted) this.changeModel(wanted);
   }
   /** Resume a previous session by conversationId. */
   resume(conversationId) {
@@ -43908,6 +43981,8 @@ var ConnectionManager = class _ConnectionManager {
       notifyElicitationRequest: (p) => _ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => _ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => _ConnectionManager.onConversationId?.(this.tabId, id),
+      noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
+      notifyAgentPreferences: (engine) => _ConnectionManager.onAgentPreferences?.(this.tabId, engine),
       notifySessionInfo: (effort, model) => {
         if (effort) this.lastEffort = effort;
         if (model) this.lastModel = model;
@@ -45120,6 +45195,7 @@ var TabManager = class {
       retryAttempt: connection.retryAttempt,
       effort: tab.effort,
       model: tab.model,
+      engine: tab.connection.getEngine(),
       sessionTitle: tab.sessionTitle,
       conversationId: tab.conversationId,
       sessionId: connection.sessionId,
@@ -45227,6 +45303,16 @@ var ConfigStore = class {
     if (trimmed) map[this.currentKey()] = trimmed;
     else delete map[this.currentKey()];
     this.data.basePromptByToken = map;
+    this.persist();
+  }
+  /** The user's main agent for new chats under the current token. */
+  getDefaultEngine() {
+    const value = (this.data.defaultEngineByToken ?? {})[this.currentKey()];
+    return isAgentEngine(value) ? value : "claude";
+  }
+  setDefaultEngine(engine) {
+    if (this.getDefaultEngine() === engine) return;
+    this.data.defaultEngineByToken = { ...this.data.defaultEngineByToken ?? {}, [this.currentKey()]: engine };
     this.persist();
   }
   getSavedSessions() {
@@ -45343,6 +45429,13 @@ function clearDisplayedTab() {
 }
 
 // src/main/ipc/sessions.ts
+function tabConfigProblem(config) {
+  if (!config || typeof config !== "object") return "a connection config is required";
+  const { serverUrl, token } = config;
+  if (typeof serverUrl !== "string" || !serverUrl.trim()) return "serverUrl is required";
+  if (typeof token !== "string" || !token.trim()) return "token is required";
+  return null;
+}
 function registerSessionsIPC(ctx) {
   const tm = () => ctx.getTabManager();
   ipcMain.on(
@@ -45352,10 +45445,13 @@ function registerSessionsIPC(ctx) {
     }
   );
   ipcMain.handle("tab:create", (_event, config) => {
+    const problem = tabConfigProblem(config);
+    if (problem) throw new Error(`tab:create: ${problem}`);
     const userCwd = ctx.getUserCwd();
     if (!("cwd" in config) && userCwd) {
       config.cwd = userCwd;
     }
+    if (!isAgentEngine(config.engine)) config.engine = ctx.configStore.getDefaultEngine();
     ctx.configStore.set({
       ...ctx.configStore.get(),
       serverUrl: config.serverUrl,
@@ -45389,6 +45485,7 @@ function registerSessionsIPC(ctx) {
     if (!("cwd" in config) && userCwd) {
       config.cwd = userCwd;
     }
+    if (!isAgentEngine(config.engine)) config.engine = ctx.configStore.getDefaultEngine();
     ctx.configStore.set({
       ...ctx.configStore.get(),
       serverUrl: config.serverUrl,
@@ -45474,6 +45571,19 @@ function registerSessionsIPC(ctx) {
   ipcMain.on("change-model", (_event, tabId, model) => {
     const conn = tm()?.getConnection(tabId);
     if (conn) conn.changeModel(model);
+  });
+  const prevAgentPreferences = ConnectionManager.onAgentPreferences;
+  ConnectionManager.onAgentPreferences = (tabId, engine) => {
+    prevAgentPreferences?.(tabId, engine);
+    ctx.configStore.setDefaultEngine(engine);
+  };
+  ipcMain.on("codex:models", (_event, tabId) => {
+    tm()?.getConnection(tabId)?.requestCodexModels();
+  });
+  ipcMain.on("agent:set-default-engine", (_event, tabId, engine) => {
+    if (!isAgentEngine(engine)) return;
+    ctx.configStore.setDefaultEngine(engine);
+    tm()?.getConnection(tabId)?.setDefaultEngine(engine);
   });
   ipcMain.handle("get-tab-model", (_event, tabId) => {
     const conn = tm()?.getConnection(tabId);
@@ -50072,6 +50182,77 @@ async function collectMcpList(request, method, itemKey, options = {}) {
   throw new Error(`${method} exceeded the ${maxPages}-page pagination limit`);
 }
 
+// src/main/mcp/transports/request-deadline.ts
+var MCP_ELICITATION_TIMEOUT_MS = 10 * 6e4;
+var MCP_REQUEST_TIMEOUT_MS = 12e4;
+var MCP_TOOL_CALL_IDLE_TIMEOUT_MS = 15 * 6e4;
+var MCP_TOOL_CALL_MAX_TIMEOUT_MS = 30 * 6e4;
+function mcpRequestDeadline(method) {
+  return method === "tools/call" ? { idleMs: MCP_TOOL_CALL_IDLE_TIMEOUT_MS, maxMs: MCP_TOOL_CALL_MAX_TIMEOUT_MS } : { idleMs: MCP_REQUEST_TIMEOUT_MS, maxMs: MCP_REQUEST_TIMEOUT_MS };
+}
+function withProgressToken(method, requestId, params) {
+  const { idleMs, maxMs } = mcpRequestDeadline(method);
+  if (idleMs >= maxMs) return params;
+  const meta = params._meta && typeof params._meta === "object" ? params._meta : {};
+  return { ...params, _meta: { ...meta, progressToken: requestId } };
+}
+function duration(ms) {
+  return ms % 6e4 === 0 ? `${ms / 6e4} min` : `${ms / 1e3}s`;
+}
+function awaitMcpReply(state, requestId, options) {
+  const { method, signal, cancel } = options;
+  const { idleMs, maxMs } = mcpRequestDeadline(method);
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("MCP request cancelled"));
+      return;
+    }
+    const startedAt = Date.now();
+    let done = false;
+    const settle = () => {
+      if (done) return false;
+      done = true;
+      if (state.pendingRequests.get(requestId) === entry) state.pendingRequests.delete(requestId);
+      if (entry.timer) clearTimeout(entry.timer);
+      signal?.removeEventListener("abort", onAbort);
+      return true;
+    };
+    const abandon = (reason) => {
+      if (!settle()) return;
+      reject(new Error(reason));
+      cancel?.(requestId, reason);
+    };
+    const arm = () => {
+      if (entry.timer) clearTimeout(entry.timer);
+      const remaining = maxMs - (Date.now() - startedAt);
+      const capped = remaining <= idleMs;
+      entry.timer = setTimeout(() => abandon(capped ? `${method} timeout (${duration(maxMs)} total)` : `${method} timeout (no reply or progress for ${duration(idleMs)})`), Math.max(0, Math.min(idleMs, remaining)));
+    };
+    const onAbort = () => abandon("MCP request cancelled");
+    const entry = {
+      resolve: (value) => {
+        if (settle()) resolve(value);
+      },
+      reject: (error) => {
+        if (settle()) reject(error);
+      },
+      progressToken: idleMs < maxMs ? requestId : void 0,
+      onProgress: idleMs < maxMs ? arm : void 0
+    };
+    state.pendingRequests.set(requestId, entry);
+    arm();
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+function noteMcpActivity(state) {
+  for (const pending of [...state.pendingRequests.values()]) pending.onProgress?.();
+}
+function noteMcpProgress(state, progressToken) {
+  if (typeof progressToken !== "number") return;
+  const pending = state.pendingRequests.get(progressToken);
+  if (pending?.progressToken === progressToken) pending.onProgress?.();
+}
+
 // src/main/mcp/transports/ws.ts
 async function connectWs(ctx, id) {
   const state = ctx.servers.get(id);
@@ -50179,25 +50360,24 @@ function wsJsonRpc(ctx, id, body) {
     state.ws.send(JSON.stringify(body));
     return Promise.resolve(void 0);
   }
-  const promise = new Promise((resolve, reject) => {
-    const entry = {
-      resolve: (msg) => {
-        if (msg?.error) reject(new Error(msg.error.message));
-        else resolve(msg?.result);
-      },
-      reject,
-      timer: void 0
-    };
-    state.pendingRequests.set(reqId, entry);
-    entry.timer = setTimeout(() => {
-      if (state.pendingRequests.has(reqId)) {
-        state.pendingRequests.delete(reqId);
-        reject(new Error("WS request timeout (120s)"));
+  const ws = state.ws;
+  const method = String(body.method);
+  const reply = awaitMcpReply(state, reqId, {
+    method,
+    signal: ctx.shutdownSignal,
+    cancel: (requestId, reason) => {
+      try {
+        ws.send(JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId, reason } }));
+      } catch {
       }
-    }, 12e4);
+    }
   });
-  state.ws.send(JSON.stringify(body));
-  return promise;
+  const params = body.params ?? {};
+  ws.send(JSON.stringify({ ...body, params: withProgressToken(method, reqId, params) }));
+  return reply.then((msg) => {
+    if (msg?.error) throw new Error(msg.error.message);
+    return msg?.result;
+  });
 }
 
 // src/main/mcp/transports/sse-legacy.ts
@@ -50311,19 +50491,24 @@ async function sseJsonRpcRequest(ctx, id, body) {
   const headers = await ctx.buildHttpHeaders(id);
   headers["Content-Type"] = "application/json";
   ctx.shutdownSignal?.throwIfAborted();
-  const responsePromise = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      state.pendingRequests.delete(reqId);
-      reject(new Error(`SSE request timed out (60s): ${body.method}`));
-    }, 6e4);
-    state.pendingRequests.set(reqId, { resolve, reject, timer });
+  const method = String(body.method);
+  const responsePromise = awaitMcpReply(state, reqId, {
+    method,
+    signal: ctx.shutdownSignal,
+    cancel: (requestId, reason) => {
+      void sseSendNotification(ctx, id, {
+        jsonrpc: "2.0",
+        method: "notifications/cancelled",
+        params: { requestId, reason }
+      }).catch(() => {
+      });
+    }
   });
-  const abort = () => state.pendingRequests.get(reqId)?.reject(new Error("MCP request cancelled"));
-  ctx.shutdownSignal?.addEventListener("abort", abort, { once: true });
+  const params = body.params ?? {};
   const posted = fetch(state.sseMessageEndpoint, {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, params: withProgressToken(method, reqId, params) }),
     signal: ctx.shutdownSignal
   }).then(async (res) => {
     if (!res.ok && res.status !== 202) throw new Error(`SSE POST ${res.status}: ${await res.text().catch(() => "")}`);
@@ -50332,10 +50517,7 @@ async function sseJsonRpcRequest(ctx, id, body) {
     const [result] = await Promise.all([responsePromise, posted]);
     return result;
   } finally {
-    ctx.shutdownSignal?.removeEventListener("abort", abort);
-    const pending = state.pendingRequests.get(reqId);
-    if (pending?.timer) clearTimeout(pending.timer);
-    state.pendingRequests.delete(reqId);
+    state.pendingRequests.get(reqId)?.reject(new Error("MCP request abandoned"));
   }
 }
 async function sseSendNotification(ctx, id, body) {
@@ -50350,6 +50532,36 @@ async function sseSendNotification(ctx, id, body) {
     signal: ctx.shutdownSignal
   }).catch(() => {
   });
+}
+
+// src/main/mcp/transports/fetch-deadline.ts
+var GLOBAL_DISPATCHER = /* @__PURE__ */ Symbol.for("undici.globalDispatcher.1");
+function globalDispatcher() {
+  const value = globalThis[GLOBAL_DISPATCHER];
+  return typeof value?.compose === "function" ? value : void 0;
+}
+function fetchDeadline(method) {
+  const { idleMs, maxMs } = mcpRequestDeadline(method);
+  return { headersMs: maxMs, bodyMs: idleMs };
+}
+var composed = /* @__PURE__ */ new WeakMap();
+async function fetchDispatcher(deadline) {
+  let base = globalDispatcher();
+  if (!base) {
+    await fetch("data:,").catch(() => {
+    });
+    base = globalDispatcher();
+  }
+  if (!base) return void 0;
+  const key2 = `${deadline.headersMs}:${deadline.bodyMs}`;
+  let byDeadline = composed.get(base);
+  if (!byDeadline) composed.set(base, byDeadline = /* @__PURE__ */ new Map());
+  let dispatcher = byDeadline.get(key2);
+  if (!dispatcher) {
+    dispatcher = base.compose((dispatch) => (options, handler2) => dispatch({ ...options, headersTimeout: deadline.headersMs, bodyTimeout: deadline.bodyMs }, handler2));
+    byDeadline.set(key2, dispatcher);
+  }
+  return dispatcher;
 }
 
 // src/main/mcp/transports/http.ts
@@ -50399,11 +50611,12 @@ async function connectHttp(ctx, id) {
 }
 async function callHttpTool(ctx, id, toolName, input) {
   const state = ctx.servers.get(id);
+  const reqId = state.nextRequestId++;
   const result = await httpJsonRpcAuth(ctx, id, {
     jsonrpc: "2.0",
-    id: state.nextRequestId++,
+    id: reqId,
     method: "tools/call",
-    params: { name: toolName, arguments: input }
+    params: withProgressToken("tools/call", reqId, { name: toolName, arguments: input })
   });
   if (result.error) {
     return { content: [{ type: "text", text: `MCP Error: ${result.error.message}` }] };
@@ -50416,8 +50629,13 @@ async function callHttpTool(ctx, id, toolName, input) {
 async function httpJsonRpcAuth(ctx, id, body) {
   const state = ctx.servers.get(id);
   const url = state.config.url;
+  const method = String(body.method);
+  const deadline = fetchDeadline(method);
+  const dispatcher = await fetchDispatcher(deadline);
+  const total = AbortSignal.timeout(mcpRequestDeadline(method).maxMs);
+  const signal = ctx.shutdownSignal ? AbortSignal.any([ctx.shutdownSignal, total]) : total;
   let headers = await ctx.buildHttpHeaders(id);
-  let res = await httpFetch(url, headers, body, ctx.shutdownSignal);
+  let res = await httpFetch(url, headers, body, signal, dispatcher);
   if (res.status === 401) {
     if (!state.config.oauth) {
       const discovered = await tryDiscoverOAuthFrom401(ctx, id, res);
@@ -50431,7 +50649,7 @@ async function httpJsonRpcAuth(ctx, id, body) {
       throw new Error("OAuth authorization required \u2014 please reconnect this server");
     }
     headers = await ctx.buildHttpHeaders(id);
-    res = await httpFetch(url, headers, body, ctx.shutdownSignal);
+    res = await httpFetch(url, headers, body, signal, dispatcher);
     if (res.status === 401) {
       throw new Error("OAuth authorization expired \u2014 please reconnect this server");
     }
@@ -50495,7 +50713,7 @@ async function tryDiscoverOAuthFrom401(ctx, id, res) {
     return null;
   }
 }
-async function httpFetch(url, headers, body, signal) {
+async function httpFetch(url, headers, body, signal, dispatcher) {
   try {
     return await fetch(url, {
       method: "POST",
@@ -50505,7 +50723,9 @@ async function httpFetch(url, headers, body, signal) {
         ...headers
       },
       body: JSON.stringify(body),
-      signal
+      signal,
+      // Node's fetch option (undici); see fetch-deadline.ts.
+      ...dispatcher ? { dispatcher } : {}
     });
   } catch (err) {
     const cause = err?.cause;
@@ -50742,24 +50962,7 @@ async function callStdioTool(ctx, id, toolName, input) {
   if (!state.process) {
     return { content: [{ type: "text", text: `Error: Server "${state.config.name}" process not running` }] };
   }
-  const reqId = state.nextRequestId++;
-  const promise = new Promise((resolve, reject) => {
-    const entry = { resolve, reject, timer: void 0 };
-    state.pendingRequests.set(reqId, entry);
-    entry.timer = setTimeout(() => {
-      if (state.pendingRequests.has(reqId)) {
-        state.pendingRequests.delete(reqId);
-        reject(new Error("Tool call timeout (120s)"));
-      }
-    }, 12e4);
-  });
-  stdioSend(state, {
-    jsonrpc: "2.0",
-    id: reqId,
-    method: "tools/call",
-    params: { name: toolName, arguments: input }
-  });
-  const result = await promise;
+  const result = await stdioRequest(ctx, state, "tools/call", { name: toolName, arguments: input });
   if (result.error) {
     return { content: [{ type: "text", text: `MCP Error: ${result.error.message}` }] };
   }
@@ -50776,21 +50979,23 @@ function stdioSend(state, msg) {
 async function stdioJsonRpc(ctx, id, method, params) {
   const state = ctx.servers.get(id);
   if (!state?.process) throw new Error("stdio server not running");
-  const reqId = state.nextRequestId++;
-  const promise = new Promise((resolve, reject) => {
-    const entry = { resolve, reject, timer: void 0 };
-    state.pendingRequests.set(reqId, entry);
-    entry.timer = setTimeout(() => {
-      if (state.pendingRequests.has(reqId)) {
-        state.pendingRequests.delete(reqId);
-        reject(new Error(`${method} timeout (120s)`));
-      }
-    }, 12e4);
-  });
-  stdioSend(state, { jsonrpc: "2.0", id: reqId, method, params });
-  const msg = await promise;
+  const msg = await stdioRequest(ctx, state, method, params);
   if (msg.error) throw new Error(msg.error.message);
   return msg.result;
+}
+function stdioRequest(ctx, state, method, params) {
+  const reqId = state.nextRequestId++;
+  const reply = awaitMcpReply(state, reqId, {
+    method,
+    signal: ctx.shutdownSignal,
+    cancel: (requestId, reason) => stdioSend(state, {
+      jsonrpc: "2.0",
+      method: "notifications/cancelled",
+      params: { requestId, reason }
+    })
+  });
+  stdioSend(state, { jsonrpc: "2.0", id: reqId, method, params: withProgressToken(method, reqId, params) });
+  return reply;
 }
 
 // src/main/mcp/connection-lifecycle.ts
@@ -50879,9 +51084,11 @@ async function handleServerRequest(ctx, serverId, msg) {
       const responseChannel = `mcp-elicitation-response:${requestId}`;
       let settled = false;
       let timer = null;
+      noteMcpActivity(state);
       const settle = (value) => {
         if (settled) return;
         settled = true;
+        noteMcpActivity(state);
         try {
           ipcMain2.removeListener(responseChannel, listener);
         } catch {
@@ -50910,7 +51117,7 @@ async function handleServerRequest(ctx, serverId, msg) {
         settle({ action: "dismiss" });
         return;
       }
-      timer = setTimeout(() => settle({ action: "dismiss" }), 10 * 60 * 1e3);
+      timer = setTimeout(() => settle({ action: "dismiss" }), MCP_ELICITATION_TIMEOUT_MS);
     });
   }
   if (method === "sampling/createMessage") {
@@ -50925,6 +51132,7 @@ function handleServerNotification(ctx, serverId, msg) {
   const method = msg.method;
   const state = ctx.servers.get(serverId);
   if (method === "notifications/progress") {
+    noteMcpProgress(state, msg.params?.progressToken);
     try {
       ctx.window.webContents.send("mcp-progress", {
         serverId,
@@ -52676,7 +52884,8 @@ var BridgeHost = class {
       tabId: a.id,
       status: a.conn.getExtendedState().status,
       model: a.conn.lastModel,
-      effort: a.conn.lastEffort
+      effort: a.conn.lastEffort,
+      engine: a.conn.getEngine()
     };
   }
   cmdSetPermissionMode(mode) {
@@ -53139,6 +53348,29 @@ function installMcpStatusBar(mgr) {
 var kaminide = __toESM(require("kaminide"), 1);
 init_host_compat();
 init_session_activation();
+
+// src/agent-session.ts
+function readBridgeMeta(metadata) {
+  const raw = metadata?.bridge;
+  if (!raw || typeof raw !== "object") return null;
+  const meta = raw;
+  return {
+    conversationId: typeof meta.conversationId === "string" ? meta.conversationId : null,
+    cwd: typeof meta.cwd === "string" ? meta.cwd : null,
+    ...isAgentEngine(meta.engine) ? { engine: meta.engine } : {},
+    ...typeof meta.model === "string" && meta.model ? { model: meta.model } : {}
+  };
+}
+function agentForNewChat(meta, pending, defaultEngine) {
+  if (meta?.engine) return { engine: meta.engine, ...meta.model ? { model: meta.model } : {} };
+  if (pending) return pending;
+  return { engine: defaultEngine };
+}
+function bridgeMetaFor(conversationId, cwd, engine) {
+  return { conversationId, cwd, ...engine ? { engine } : {} };
+}
+
+// src/sessions-bridge.ts
 var WARM_RESTORE_DELAY_MS = 4e3;
 var WARM_POOL_MAX = 4;
 var PREFILL_START_MS = 8e3;
@@ -53165,8 +53397,9 @@ var SessionsBridge = class {
       prevConv?.(tabId, conversationId);
       const kid = this.tabToKamin.get(tabId);
       if (!kid) return;
-      const cwd = this.host.getTabManager().getTab(tabId)?.config.cwd ?? null;
-      const meta = { conversationId, cwd };
+      const tm = this.host.getTabManager();
+      const cwd = tm.getTab(tabId)?.config.cwd ?? null;
+      const meta = bridgeMetaFor(conversationId, cwd, tm.getConnection(tabId)?.getEngine());
       void kaminide.sessions.updateSession(kid, { metadata: { bridge: meta }, ...conversationId === null ? { name: "New conversation" } : {} });
     };
     const prevTitle = ConnectionManager.onSessionTitle;
@@ -53201,6 +53434,11 @@ var SessionsBridge = class {
       this.publishDisplayGap();
     }));
     this.subs.push(kaminide.sessions.onDidChangeSessions((e) => this.onSessionsChanged(e)));
+    ipcMain.on("agent:new-session", (_event, engine, model) => {
+      void this.openAgentChat(engine, model).catch(() => {
+        this.pendingChoice = null;
+      });
+    });
     ipcMain.on("set-config", () => {
       if (this.host.getConfigStore().get().token) {
         this.onActive(kaminide.sessions.active);
@@ -53237,13 +53475,14 @@ var SessionsBridge = class {
       return !(t && tm.getTab(t));
     }).filter((s) => !!s.metadata?.bridge?.conversationId).sort((a, b) => b.lastOpened - a.lastOpened).slice(0, WARM_POOL_MAX);
     for (const s of candidates) {
-      const meta = s.metadata?.bridge;
+      const meta = readBridgeMeta(s.metadata);
       const tabId = tm.resumeSession({
         serverUrl: cfg.serverUrl,
         token: cfg.token,
         cwd: this.projectFolder(s),
         conversationId: meta.conversationId,
-        sessionLabel: s.name
+        sessionLabel: s.name,
+        ...meta.engine ? { engine: meta.engine } : {}
       }, { background: true });
       if (tabId) {
         this.kaminToTab.set(s.id, tabId);
@@ -53369,13 +53608,43 @@ var SessionsBridge = class {
       return;
     }
     const cwd = this.projectFolder(s);
-    const meta = s.metadata?.bridge ?? null;
-    const tabId = meta?.conversationId ? tm.resumeSession({ serverUrl: cfg.serverUrl, token: cfg.token, cwd, conversationId: meta.conversationId, sessionLabel: s.name }) : tm.createTab({ serverUrl: cfg.serverUrl, token: cfg.token, cwd });
+    const meta = readBridgeMeta(s.metadata);
+    let tabId;
+    if (meta?.conversationId) {
+      tabId = tm.resumeSession({
+        serverUrl: cfg.serverUrl,
+        token: cfg.token,
+        cwd,
+        conversationId: meta.conversationId,
+        sessionLabel: s.name,
+        ...meta.engine ? { engine: meta.engine } : {}
+      });
+    } else {
+      const choice = agentForNewChat(meta, this.pendingChoice, this.host.getConfigStore().getDefaultEngine());
+      if (!meta?.engine) this.pendingChoice = null;
+      tabId = tm.createTab({ serverUrl: cfg.serverUrl, token: cfg.token, cwd, ...choice });
+    }
     if (tabId) {
       this.kaminToTab.set(s.id, tabId);
       this.tabToKamin.set(tabId, s.id);
     }
     this.openChat();
+  }
+  /** "Open a GPT chat" (or back to Claude) from the model selector: a new
+   *  KaminIDE session in the active project whose chat starts on that engine.
+   *  The choice is also held in memory because the host may activate the new
+   *  session before its metadata is written. */
+  pendingChoice = null;
+  async openAgentChat(engine, model) {
+    if (!isAgentEngine(engine)) return;
+    const choice = { engine, ...typeof model === "string" && model ? { model } : {} };
+    this.pendingChoice = choice;
+    const projectId = kaminide.sessions.active?.projectId;
+    const session = await kaminide.sessions.createSession(projectId ? { projectId } : {});
+    const meta = { conversationId: null, cwd: null, ...choice };
+    await kaminide.sessions.updateSession(session.id, { metadata: { bridge: meta } });
+    kaminide.sessions.setActiveSession(session.id);
+    this.pendingChoice = null;
   }
   dispose() {
     if (this.warmTimer) {

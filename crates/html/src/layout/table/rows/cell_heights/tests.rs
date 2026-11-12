@@ -37,3 +37,12 @@ fn replaced_and_scrollable_children_resolve_against_the_specified_height() {
     assert_eq!(height(&cell.children[0]), Some(Len::Px(100.0)));
     assert_eq!(height(&cell.children[1]), Some(Len::Px(50.0)));
 }
+
+#[test]
+fn a_cell_without_share_children_keeps_the_document_child_list() {
+    let cell = anon_element("td", vec![Node::Text("a".into()), kid("div", Len::Px(5.0))]);
+    let mut copy = cell.clone();
+    super::anchor_child_shares(&mut copy);
+    resolve_child_percents(&mut copy, 50.0);
+    assert_eq!(copy.children.identity(), cell.children.identity());
+}

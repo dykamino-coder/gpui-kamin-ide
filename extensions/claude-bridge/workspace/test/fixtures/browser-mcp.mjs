@@ -42,12 +42,16 @@ export async function browserMcp(t, root, label) {
       } else if (message.method === 'tools/call') {
         assert.ok(tools.some(tool => tool.name === message.params.name))
         assert.equal(typeof message.params.arguments.nonce, 'string')
+        // The host asks for progress (MCP `_meta.progressToken`, string or
+        // number); like a real server, progress is reported under that token.
+        const progressToken = message.params._meta?.progressToken
+        assert.ok(['string', 'number'].includes(typeof progressToken), 'tools/call must request progress')
         await appendFile(journal, JSON.stringify(message.params) + '\n')
         result = { content: [{ type: 'text', text: `${label}:${message.params.arguments.nonce}` }] }
         // Progress travels through the real shared HTTP transport's SSE parser.
         res.writeHead(200, { 'Content-Type': 'text/event-stream' })
         res.end(`data: ${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/progress', params: {
-          progressToken: message.params.arguments.nonce, progress: 1, total: 1, message: 'Synthetic tool complete',
+          progressToken, progress: 1, total: 1, message: 'Synthetic tool complete',
         } })}\n\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: message.id, result })}\n\n`)
         return
       } else throw new Error('Unexpected synthetic MCP method')

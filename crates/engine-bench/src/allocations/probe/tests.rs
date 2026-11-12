@@ -48,7 +48,8 @@ fn filter_rejects_unknown_phases_and_malformed_ranges() {
 #[test]
 fn disarmed_probe_leaves_the_allocation_counters_alone() {
     let before = super::super::Snapshot::read();
-    record(b'a', 64);
+    record(b'a', 64, std::ptr::null());
+    release(64, std::ptr::null());
     let after = super::super::Snapshot::read();
     assert_eq!((before.calls, before.bytes), (after.calls, after.bytes));
 }
@@ -62,4 +63,19 @@ fn line_refuses_text_past_its_stack_buffer() {
     assert!(line.write_str("abcd").is_ok());
     assert!(line.write_str("e").is_err());
     assert_eq!(line.length, 1024);
+}
+
+#[test]
+fn lines_carry_the_pointer_after_the_size() {
+    let (line, text) = head(b'f', 16, 0xbeef0 as *const u8);
+    assert!(text.is_ok());
+    let line = std::str::from_utf8(&line.bytes[..line.length]).unwrap();
+    // Кадр и фаза общие для процесса: другие тесты стенда могут их двигать.
+    let fields: Vec<_> = line.split(' ').collect();
+    assert_eq!(
+        (fields[0], fields[3], fields[4]),
+        ("f", "16", "beef0"),
+        "{line}"
+    );
+    assert_eq!(fields.len(), 5, "a free has no stack: {line}");
 }

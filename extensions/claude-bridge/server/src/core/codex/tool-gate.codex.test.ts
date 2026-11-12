@@ -11,8 +11,9 @@
 //     Bridge's loopback endpoint does not.
 //
 // Needs the real codex binary, so it runs only with BRIDGE_CODEX_GATE=1
-// (optionally BRIDGE_CODEX_BIN). CI has no codex binary; protocol behaviour is
-// covered there by recorded fixtures (normalize/session/host tests).
+// (optionally BRIDGE_CODEX_BIN). The Bridge server CI job installs the npm
+// package at the Dockerfile's ARG CODEX_VERSION and runs it as a merge gate;
+// the plain suite keeps protocol behaviour covered by recorded fixtures.
 // Fully offline: the Responses API and MCP peers are local mocks.
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'

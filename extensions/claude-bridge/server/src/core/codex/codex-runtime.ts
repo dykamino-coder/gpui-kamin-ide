@@ -14,11 +14,14 @@ import os from 'node:os'
 import { injectProxyEnv } from '../config/settings'
 import { debugLog, infoLog, warnLog } from '../logging'
 import { resolveCodexCommand, type CodexCommand } from './binary'
-import { CodexHost, CodexHostRegistry } from './codex-host'
+import { CodexHost, CodexHostRegistry, type RestartPolicy } from './codex-host'
+import { acquireCodexHomeLock } from './codex-home-lock'
 import { assertBridgeOwnedHome, buildCodexEnv, defaultCodexHome, prepareCodexHome } from './codex-home'
 import { classifyCodexError, type CodexErrorInfo } from './codex-errors'
 import { codexLockdownConfig, toConfigOverrides } from './config-toml'
 import { buildPatchedCatalog, type ModelCatalog } from './model-catalog'
+import { probeCodexNetwork } from './network-probe'
+import { currentModels } from './model-list-filter'
 
 export interface CodexAccountStatus {
   loggedIn: boolean
@@ -30,6 +33,9 @@ export interface CodexAccountStatus {
   pendingLogin: CodexDeviceLogin | null
   /** Last failed login or account probe, already in plain language. */
   error: CodexErrorInfo | null
+  /** The account read itself failed (proxy, TLS, network): `loggedIn` is then
+   *  unknown, not a sign-out, and `error` says why. */
+  checkFailed?: boolean
 }
 
 export interface CodexDeviceLogin {
@@ -37,6 +43,37 @@ export interface CodexDeviceLogin {
   verificationUrl: string
   userCode: string
   startedAt: number
+}
+
+/** Whether this server can run codex at all (the image ships a pinned binary). */
+export interface CodexAvailability {
+  available: boolean
+  /** `codex --version` of the binary Bridge launches, e.g. `0.160.1`. */
+  version: string | null
+  /** Plain-language reason when unavailable. */
+  reason: string | null
+}
+
+const AVAILABILITY_RETRY_MS = 30_000
+
+/** `codex-cli 0.160.1` → `0.160.1` (the raw first line if it has no version). */
+export function parseCodexVersion(output: string): string | null {
+  const line = output
+    .split(/\r?\n/)
+    .find((l) => l.trim() && !l.startsWith('WARNING'))
+    ?.trim()
+  if (!line) return null
+  return /(\d+\.\d+\.\d+(?:[-+.][\w.]+)?)/.exec(line)?.[1] ?? line
+}
+
+/** Why codex could not be launched, for the selector, chat and dashboard. */
+export function codexUnavailableReason(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error)
+  const code = (error as NodeJS.ErrnoException | undefined)?.code
+  if (code === 'ENOENT' || /\bENOENT\b/.test(text)) return 'codex is not installed on this Bridge server'
+  if (code === 'EACCES' || /\bEACCES\b/.test(text)) return 'codex on this Bridge server is not executable'
+  const first = text.split(/\r?\n/).find((l) => l.trim()) ?? 'unknown error'
+  return `codex does not start on this Bridge server: ${first.slice(0, 200)}`
 }
 
 export interface CodexModelOption {
@@ -58,7 +95,13 @@ export interface CodexRuntimeOptions {
   /** Replaces the real app-server start (tests). */
   startHost?: (home: string) => Promise<CodexHost>
   idleCloseMs?: number
+  /** Crash-restart limits of the shared app-server (tests shorten them). */
+  restartPolicy?: RestartPolicy
+  /** Replaces the `codex --version` probe (tests). */
+  probeVersion?: () => Promise<string>
   accountTtlMs?: number
+  /** Replaces the proxy/TLS probe behind a failed account read (tests). */
+  probeNetwork?: (env: NodeJS.ProcessEnv) => Promise<CodexErrorInfo | null>
 }
 
 const ACCOUNT_TTL_MS = 60_000
@@ -87,11 +130,15 @@ export class CodexRuntime {
   private lastError: CodexErrorInfo | null = null
   private readonly listening = new WeakSet<CodexHost>()
   private readonly accountListeners = new Set<(status: CodexAccountStatus) => void>()
+  private probe: { value: Promise<CodexAvailability>; at: number; ok: boolean } | undefined
 
   constructor(private readonly options: CodexRuntimeOptions = {}) {
     this.env = options.env ?? process.env
     this.home = options.home ?? defaultCodexHome(this.env)
-    this.registry = new CodexHostRegistry((home) => (options.startHost ?? ((h) => this.startHost(h)))(home))
+    this.registry = new CodexHostRegistry(
+      (home) => (options.startHost ?? ((h) => this.startHost(h)))(home),
+      options.restartPolicy,
+    )
   }
 
   /** The shared app-server, started on first use and after it exits. */
@@ -114,17 +161,66 @@ export class CodexRuntime {
       throw error
     })
     const prepared = prepareCodexHome(home, await this.catalog)
+    // Never two app-servers on one thread store, even from two Bridge processes.
+    const lock = acquireCodexHomeLock(home)
     infoLog('codex app-server starting', { home })
-    return CodexHost.start(
-      {
-        command,
-        env,
-        cwd: home,
-        configOverrides: toConfigOverrides(codexLockdownConfig({ catalogPath: prepared.catalogPath })),
-        onProtocolError: (error) => warnLog('codex protocol error', { error: error.message }),
-      },
-      { idleCloseMs: this.options.idleCloseMs },
-    )
+    try {
+      const host = await CodexHost.start(
+        {
+          command,
+          env,
+          cwd: home,
+          configOverrides: toConfigOverrides(codexLockdownConfig({ catalogPath: prepared.catalogPath })),
+          onProtocolError: (error) => warnLog('codex protocol error', { error: error.message }),
+        },
+        { idleCloseMs: this.options.idleCloseMs },
+      )
+      host.onClose(() => {
+        if (host.crashed) warnLog('codex app-server exited unexpectedly', { home, exit: host.process.exited })
+        lock.release()
+      })
+      return host
+    } catch (error) {
+      lock.release()
+      throw error
+    }
+  }
+
+  // ── Availability ───────────────────────────────────────────────────────
+
+  /** Runs `codex --version` once; a failure is re-probed after 30 s so a
+   *  fixed installation is picked up without a server restart. */
+  availability(options: { fresh?: boolean } = {}): Promise<CodexAvailability> {
+    const cached = this.probe
+    // A known-good answer is kept; a failure (or one in flight) expires.
+    if (!options.fresh && cached && (cached.ok || Date.now() - cached.at < AVAILABILITY_RETRY_MS)) return cached.value
+    const entry: { value: Promise<CodexAvailability>; at: number; ok: boolean } = {
+      value: this.runProbe(),
+      at: Date.now(),
+      ok: false,
+    }
+    void entry.value.then((a) => {
+      entry.ok = a.available
+    })
+    this.probe = entry
+    return entry.value
+  }
+
+  private async runProbe(): Promise<CodexAvailability> {
+    const probe = this.options.probeVersion
+    // A test runtime with an injected app-server and no binary is available.
+    if (!probe && this.options.startHost && !this.options.command)
+      return { available: true, version: null, reason: null }
+    try {
+      const output = probe
+        ? await probe()
+        : await run(this.options.command ?? resolveCodexCommand({ env: this.env }), ['--version'], this.env)
+      return { available: true, version: parseCodexVersion(output), reason: null }
+    } catch (error) {
+      const reason = codexUnavailableReason(error)
+      warnLog('codex unavailable', { reason })
+      return { available: false, version: null, reason }
+    }
   }
 
   // ── Account ────────────────────────────────────────────────────────────
@@ -151,6 +247,12 @@ export class CodexRuntime {
       .catch(() => undefined)
   }
 
+  /** Last account state read from the app-server, without starting one; null
+   *  until the first read (a Claude-only server never starts codex for it). */
+  knownAccount(): CodexAccountStatus | null {
+    return this.account ? { ...this.account.value, pendingLogin: this.pending, error: this.lastError } : null
+  }
+
   async accountStatus(options: { fresh?: boolean } = {}): Promise<CodexAccountStatus> {
     const ttl = this.options.accountTtlMs ?? ACCOUNT_TTL_MS
     if (!options.fresh && this.account && Date.now() - this.account.at < ttl) {
@@ -173,16 +275,26 @@ export class CodexRuntime {
       this.account = { value, at: Date.now() }
       return value
     } catch (error) {
-      const info = classifyCodexError((error as Error).message)
       return {
         loggedIn: false,
         email: null,
         planType: null,
         accountType: null,
         pendingLogin: this.pending,
-        error: info,
+        error: await this.explainReadFailure(classifyCodexError((error as Error).message)),
+        checkFailed: true,
       }
     }
+  }
+
+  /** codex names no cause for a blocked connection ("workspace routing
+   *  discovery failed"); ask the network the way codex would. */
+  private async explainReadFailure(info: CodexErrorInfo): Promise<CodexErrorInfo> {
+    if (info.kind !== 'other' && info.kind !== 'network') return info
+    const env = buildCodexEnv({ home: this.home, base: this.env, injectProxy: injectProxyEnv })
+    const cause = await (this.options.probeNetwork ?? probeCodexNetwork)(env).catch(() => null)
+    if (!cause) return info
+    return { kind: cause.kind, message: cause.message, detail: `${info.detail}; ${cause.detail}` }
   }
 
   /** Starts the ChatGPT device-code login; the admin opens the URL and enters the code. */
@@ -220,7 +332,10 @@ export class CodexRuntime {
   async logout(): Promise<void> {
     const host = await this.host()
     await host.rpc.request('account/logout')
-    this.account = undefined
+    this.account = {
+      value: { loggedIn: false, email: null, planType: null, accountType: null, pendingLogin: null, error: null },
+      at: Date.now(),
+    }
     this.pending = null
     this.lastError = null
   }
@@ -229,7 +344,9 @@ export class CodexRuntime {
 
   async models(): Promise<CodexModelOption[]> {
     const host = await this.host()
-    const out: CodexModelOption[] = []
+    const out: Array<
+      CodexModelOption & { hidden: boolean; upgrade: string | null; upgradeInfo: { model?: string | null } | null }
+    > = []
     let cursor: string | null = null
     for (let page = 0; page < 20; page++) {
       const res = (await host.rpc.request('model/list', { cursor, includeHidden: false })) as {
@@ -239,6 +356,8 @@ export class CodexRuntime {
           displayName: string
           description: string
           hidden: boolean
+          upgrade?: string | null
+          upgradeInfo?: { model?: string | null } | null
           isDefault: boolean
           defaultReasoningEffort?: string | null
           supportedReasoningEfforts?: Array<{ reasoningEffort?: string } | string>
@@ -246,8 +365,10 @@ export class CodexRuntime {
         nextCursor: string | null
       }
       for (const m of res.data) {
-        if (m.hidden) continue
         out.push({
+          hidden: m.hidden,
+          upgrade: m.upgrade ?? null,
+          upgradeInfo: m.upgradeInfo ?? null,
           id: m.id,
           model: m.model,
           displayName: m.displayName,
@@ -262,7 +383,9 @@ export class CodexRuntime {
       cursor = res.nextCursor
       if (!cursor) break
     }
-    return out
+    // Current generation only (model-list-filter); the selector and model
+    // changes all read this list.
+    return currentModels(out).map(({ hidden: _hidden, upgrade: _upgrade, upgradeInfo: _info, ...option }) => option)
   }
 
   async close(): Promise<void> {
@@ -285,4 +408,24 @@ export function setCodexRuntimeForTests(runtime: CodexRuntime | undefined): void
 export async function shutdownCodexRuntime(): Promise<void> {
   const runtime = shared
   if (runtime) await runtime.close().catch(() => undefined)
+}
+
+/** codex in this image: the version Bridge launches and the image pin. Never
+ *  blocks the status page for long — a slow first probe reports as pending. */
+export async function codexStatus(
+  runtime: () => CodexRuntime = codexRuntime,
+  env: NodeJS.ProcessEnv = process.env,
+  waitMs = 3_000,
+): Promise<CodexAvailability & { pinned: string | null }> {
+  const pinned = env.BRIDGE_CODEX_VERSION || null
+  const pending: CodexAvailability = { available: false, version: null, reason: 'checking codex…' }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<CodexAvailability>((resolve) => {
+    timer = setTimeout(() => resolve(pending), waitMs)
+  })
+  try {
+    return { ...(await Promise.race([runtime().availability(), timeout])), pinned }
+  } finally {
+    clearTimeout(timer)
+  }
 }
