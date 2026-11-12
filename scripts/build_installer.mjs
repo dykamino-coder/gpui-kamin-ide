@@ -22,7 +22,7 @@ import { spawnSync } from "node:child_process"
 import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { zstdDecompressSync } from "node:zlib"
+import { crc32, inflateRawSync, zstdDecompressSync } from "node:zlib"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const kaminIde = process.env.KAMIN_DEV_REPO ?? root
@@ -119,18 +119,53 @@ for (const f of shipFiles) {
     }
     writeFileSync(zip, buf)
   }
-  const unpacked = join(cacheDir, rg.dir)
-  rmSync(unpacked, { recursive: true, force: true })
-  // bsdtar из Windows 10+ читает zip.
-  const untar = spawnSync("tar", ["-xf", zip, "-C", cacheDir], { stdio: "inherit" })
-  if (untar.status !== 0 || !existsSync(join(unpacked, "rg.exe"))) {
-    console.error("ripgrep: не удалось распаковать rg.exe")
+  // Распаковка средствами node: внешний `tar` зависит от PATH (GNU tar из
+  // Git принимает `D:\...` за удалённый хост), а архив уже проверен по SHA256.
+  const files = unzipEntries(readFileSync(zip), {
+    [`${rg.dir}/rg.exe`]: "rg.exe",
+    [`${rg.dir}/LICENSE-MIT`]: "ripgrep-LICENSE-MIT.txt",
+  })
+  // Рядом с kamin-jobrun.exe: расширение ищет `<install>\rg.exe`.
+  for (const [name, data] of Object.entries(files)) writeFileSync(join(dist, name), data)
+  console.log("[installer] ripgrep 14.1.1: rg.exe")
+}
+
+/** Извлекает из zip перечисленные записи (stored или deflate) по central
+ *  directory. Возвращает { целевое имя: Buffer }; без всех записей — выход. */
+function unzipEntries(buf, wanted) {
+  const fail = (why) => {
+    console.error(`ripgrep: не удалось распаковать архив: ${why}`)
     process.exit(1)
   }
-  // Рядом с kamin-jobrun.exe: расширение ищет `<install>\rg.exe`.
-  cpSync(join(unpacked, "rg.exe"), join(dist, "rg.exe"))
-  cpSync(join(unpacked, "LICENSE-MIT"), join(dist, "ripgrep-LICENSE-MIT.txt"))
-  console.log("[installer] ripgrep 14.1.1: rg.exe")
+  let eocd = buf.length - 22
+  while (eocd >= 0 && buf.readUInt32LE(eocd) !== 0x06054b50) eocd--
+  if (eocd < 0) fail("нет конца central directory")
+  const count = buf.readUInt16LE(eocd + 10)
+  let at = buf.readUInt32LE(eocd + 16)
+  const out = {}
+  for (let i = 0; i < count; i++) {
+    if (buf.readUInt32LE(at) !== 0x02014b50) fail("повреждена central directory")
+    const method = buf.readUInt16LE(at + 10)
+    const crc = buf.readUInt32LE(at + 16)
+    const packed = buf.readUInt32LE(at + 20)
+    const size = buf.readUInt32LE(at + 24)
+    const nameLen = buf.readUInt16LE(at + 28)
+    const extraLen = buf.readUInt16LE(at + 30)
+    const commentLen = buf.readUInt16LE(at + 32)
+    const local = buf.readUInt32LE(at + 42)
+    const name = buf.toString("utf8", at + 46, at + 46 + nameLen)
+    at += 46 + nameLen + extraLen + commentLen
+    const target = wanted[name]
+    if (!target) continue
+    if (buf.readUInt32LE(local) !== 0x04034b50) fail(`нет локального заголовка ${name}`)
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28)
+    const raw = buf.subarray(start, start + packed)
+    const data = method === 0 ? Buffer.from(raw) : method === 8 ? inflateRawSync(raw) : fail(`метод ${method} в ${name}`)
+    if (data.length !== size || crc32(data) !== crc) fail(`контрольная сумма ${name}`)
+    out[target] = data
+  }
+  for (const [name, target] of Object.entries(wanted)) if (!out[target]) fail(`нет ${name}`)
+  return out
 }
 for (const d of ["locales", "Resources"]) {
   const src = join(release, d)
