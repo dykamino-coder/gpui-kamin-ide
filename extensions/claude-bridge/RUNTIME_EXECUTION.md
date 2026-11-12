@@ -79,6 +79,7 @@ release-relevant PR; close-out реестра, обзора и INC-карточ�
 | kresearch | BR-24 | change | ждёт BR-31 R6 ниже |
 | kresearch | BR-02 | research | Windows envelope artifact; BR-03 deferred до решения |
 | kdeps | Codex CLI 0.160.1 → 0.167.2, Claude Code CLI pin (2.1.322), npm/base image/CEF/toolchain | change | CI + применимые smoke |
+| duckspeed | ускорение страницы статистики пользователей админки (DuckDB ~5 ГБ; на production timeout у большинства из 34 карточек) | change | CI + замер на копии данных; **обязательная часть 1.0.95** |
 | kmaint | BR-31 R6 (+ [INC-0002](runtime-issues/INC-2026-0002.md), BR-25 completion) | verify | Windows CEF reveal без pointer, rows и invoke ≤ 1 с |
 | kmaint | BR-06, BR-19, BR-04, BR-29, BR-10 | verify | живой Windows gate каждой карточки |
 | kmaint | BR-05, BR-09, BR-18A | verify | Windows + isolated authenticated Linux server (Podman) |
@@ -96,6 +97,7 @@ release-relevant PR; close-out реестра, обзора и INC-карточ�
    с fetch, base/head SHA и зелёными required checks; живой gate — по карточке.
 5. До release лид подтверждает merge или исключение #797, #804 и PR учёта Codex
    в админке (codexstats); kdeps PR — тоже до release либо явное исключение.
+   PR duckspeed обязателен: release 1.0.95 без него не выпускается.
 6. Reconciliation PR → один release 1.0.95 → проверка GitHub Release, Docker
    image и ancestry → close-out.
 
