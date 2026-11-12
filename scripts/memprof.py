@@ -162,6 +162,24 @@ def subsystem(names, start):
     return "other"
 
 
+# Holders the reporters cannot reach (captures of type-erased listeners), inferred from the stack of
+# an unreported live block: (frame substring, owner path). Shown apart from measured owners.
+HELD_BY = (
+    ("kamin_html::text::paragraph::paint::selection::", "gpui/listeners/selection-captures"),
+    ("kamin_html::interactive::selection::track", "gpui/listeners/selection-captures"),
+    # track_selection inlined: the paragraph clone is attributed to the paint of the element.
+    ("kamin_html::text::paragraph::element::impl$0::paint", "gpui/listeners/selection-captures"),
+)
+
+
+def held_by(site, stack):
+    for frame in (site, *stack):
+        for pattern, holder in HELD_BY:
+            if frame.startswith(pattern):
+                return holder
+    return None
+
+
 def classify(names):
     """(site, subsystem, owned type, stack from the site) of one allocation stack."""
     kept, owned = strip_allocator(names)
@@ -238,6 +256,7 @@ class Run:
             self.dropped = 0
             self.lines = 0
             self.owners = None
+            self.estimates = []
             self.groups = self._fold(handle, live, frames)
 
     def weight(self, size):
@@ -265,6 +284,8 @@ class Run:
                 paths[path] += int(size)
                 if int(pointer, 16):
                     measured[pointer] = (path, int(size))
+                else:
+                    self.estimates.append(int(size))
                 continue
             if line.startswith("#"):
                 if line.startswith("# end"):
@@ -310,11 +331,15 @@ class Run:
         """Owner paths against the live heap at the start of the owner report.
 
         A measured block matches a live block by address; `estimated` bytes are measured without an
-        address (hash tables, slot maps), `unmatched` ones name an address that is no live block
-        (a reporter's size or address is wrong). Live blocks nobody reported are kept by site."""
+        address (hash tables) and each claims one otherwise unreported live block of the same size;
+        `unmatched` ones name an address that is no live block (a reporter's size or address is
+        wrong). Live blocks nobody reported are kept by site."""
         unreported = collections.defaultdict(lambda: [0.0, 0.0])
-        live = matched = 0.0
+        live = matched = by_size = 0.0
         mismatched = 0
+        # An estimate (hash table, no address) claims one unreported live block of exactly its size.
+        estimates = collections.Counter(self.estimates)
+        inferred = collections.defaultdict(float)
         for pointer, (key, size) in snapshot.items():
             count, total = self.weight(size)
             live += total
@@ -323,12 +348,20 @@ class Run:
                 matched += total
                 mismatched += hit[1] != size
                 continue
+            if estimates[size] > 0:
+                estimates[size] -= 1
+                by_size += total
+                continue
+            holder = held_by(key[1], key[3])
+            if holder:
+                inferred[holder] += total
             group = unreported[key]
             group[0] += count
             group[1] += total
         reported = sum(paths.values())
         return {"paths": dict(paths), "reported_bytes": reported, "live_bytes": round(live),
-                "matched_bytes": round(matched),
+                "matched_bytes": round(matched), "matched_by_size_bytes": round(by_size),
+                "inferred": {path: round(size) for path, size in inferred.items()},
                 "estimated_bytes": reported - sum(size for _, size in owned.values()),
                 "unmatched_bytes": sum(size for pointer, (_, size) in owned.items() if pointer not in snapshot),
                 "size_mismatches": mismatched, "unreported": unreported}
@@ -372,7 +405,7 @@ def build_report(cand, base, live, depth, top):
     report = {"schema": SCHEMA, "mode": "live" if live else "allocated", "depth": depth,
               "runs": {"cand": cand.meta(), **({"base": base.meta()} if base else {})}}
     if cand.owners:
-        report.update(owner_sections(cand.owners, base.owners if base else None, top))
+        report.update(owner_sections(cand.owners, base.owners if base else None, top, depth))
     names = {"subsystems": ("subsystem",), "sites": ("subsystem", "site", "type"),
              "stacks": ("subsystem", "site", "type", "stack")}
     for section, fields in names.items():
@@ -389,7 +422,7 @@ def build_report(cand, base, live, depth, top):
     return report
 
 
-def owner_sections(cand, base, top):
+def owner_sections(cand, base, top, depth=8):
     """Owner paths, their reconciliation with the live heap and unreported live blocks by site."""
     def summary(owners):
         return {k: v for k, v in owners.items() if k not in ("paths", "unreported")}
@@ -412,7 +445,15 @@ def owner_sections(cand, base, top):
         if base:
             row.update(base_blocks=bb, base_bytes=bs, delta_blocks=cb - bb, delta_bytes=cs - bs)
         sites.append(row)
-    out.update(owners=rows, unreported_sites=sites)
+    stacks = []
+    one = rollup(cand["unreported"], depth)["stacks"]
+    two = rollup(base["unreported"], depth)["stacks"] if base else {}
+    for key, cb, cs, bb, bs in table(one, two, top):
+        row = dict(zip(("subsystem", "site", "type"), key[:3]), stack=list(key[3]), cand_blocks=cb, cand_bytes=cs)
+        if base:
+            row.update(base_blocks=bb, base_bytes=bs, delta_blocks=cb - bb, delta_bytes=cs - bs)
+        stacks.append(row)
+    out.update(owners=rows, unreported_sites=sites, unreported_stacks=stacks)
     return out
 
 
@@ -423,12 +464,17 @@ def render_owners(report, out):
         live = s["live_bytes"] or 1
         print(f"  {name}: live {s['live_bytes'] / 1e6:.3f}, reported {s['reported_bytes'] / 1e6:.3f}"
               f" ({s['reported_bytes'] / live:.1%}), matched by address {s['matched_bytes'] / 1e6:.3f},"
+              f" estimates matched by size {s.get('matched_by_size_bytes', 0) / 1e6:.3f},"
               f" estimated {s['estimated_bytes'] / 1e6:.3f}, unmatched {s['unmatched_bytes'] / 1e6:.3f}"
               f" (size mismatches {s['size_mismatches']}), unreported live"
-              f" {(s['live_bytes'] - s['matched_bytes']) / 1e6:.3f}", file=out)
+              f" {(s['live_bytes'] - s['matched_bytes'] - s.get('matched_by_size_bytes', 0)) / 1e6:.3f}",
+              file=out)
     for row in report["owners"]:
         tail = f" {row['base_bytes'] / 1e6:9.3f} {mb(row['delta_bytes']):>10}" if diff else ""
         print(f"  {row['cand_bytes'] / 1e6:10.3f}{tail}  {row['owner']}", file=out)
+    for name, s in report["owners_summary"].items():
+        for path, size in sorted(s.get("inferred", {}).items(), key=lambda item: -item[1]):
+            print(f"  {size / 1e6:10.3f}  {path} ({name}, inferred from stacks, not measured)", file=out)
     print("\nunreported live blocks by site:", file=out)
     for row in report["unreported_sites"]:
         size = row["delta_bytes"] if diff else row["cand_bytes"]

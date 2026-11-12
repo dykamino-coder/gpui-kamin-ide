@@ -29,8 +29,12 @@ fn report(doc: &kamin_html::Document, window: &gpui::Window, cx: &App) -> Value 
     };
     let mut ops = Ops::with_sink(&mut sink);
     doc.heap_report(&mut ops);
+    // Блок, который документ уже назвал (раскладка строки в его замерах), не
+    // считается второй раз.
     window.heap_report(cx, &mut |path, pointer, bytes| {
-        ops.at(path, |ops| ops.block(pointer, bytes));
+        if pointer.is_null() || ops.once(pointer) {
+            ops.at(path, |ops| ops.block(pointer, bytes));
+        }
     });
     let owners = ops.report();
     drop(ops);

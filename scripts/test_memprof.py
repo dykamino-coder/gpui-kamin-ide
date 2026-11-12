@@ -134,20 +134,20 @@ class Folding(unittest.TestCase):
             "o dom/nodes 10 100",
             "a 2 outside 999 50 1 4",  # allocated during the walk: after the snapshot
             "o layout/taffy 20 24",  # a wrong size is reported, the block still matches
-            "o layout/taffy 0 16",  # no address: an estimate
+            "o layout/taffy 0 50",  # no address: an estimate claims the live block of its size
             "o style/computed 30 7",  # freed before the report: unmatched
         ], header=header)
         owners = run.owners
-        self.assertEqual(owners["paths"], {"dom/nodes": 100, "layout/taffy": 40, "style/computed": 7})
+        self.assertEqual(owners["paths"], {"dom/nodes": 100, "layout/taffy": 74, "style/computed": 7})
         self.assertEqual(owners["live_bytes"], 180)
         self.assertEqual(owners["matched_bytes"], 130)
-        self.assertEqual(owners["estimated_bytes"], 16)
+        self.assertEqual(owners["matched_by_size_bytes"], 50)
+        self.assertEqual(owners["estimated_bytes"], 50)
         self.assertEqual(owners["unmatched_bytes"], 7)
         self.assertEqual(owners["size_mismatches"], 1)
         report = memprof.build_report(run, None, True, 8, 10)
         self.assertEqual([r["owner"] for r in report["owners"]], ["dom/nodes", "layout/taffy", "style/computed"])
-        (site,) = report["unreported_sites"]
-        self.assertEqual((site["subsystem"], site["cand_bytes"]), ("style", 50))
+        self.assertEqual(report["unreported_sites"], [])
         json.dumps(report)
 
 

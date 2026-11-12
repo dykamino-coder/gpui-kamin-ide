@@ -15,6 +15,9 @@ impl Document {
             });
         }
         ops.at("style/computed", |ops| self.root.heap_size(ops));
+        ops.at("text/paragraph-measures", |ops| {
+            self.state.paragraph.paragraphs.heap_size(ops)
+        });
         ops.at("document/other", |ops| self.theme_css.heap_size(ops));
     }
 }
