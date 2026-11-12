@@ -156,3 +156,21 @@ impl Drop for Children {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "heap-report")]
+impl kamin_heap::HeapSize for Children {
+    fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
+        let snapshot = &self.0;
+        // Блок снимка и буфер узлов — DOM; кэш intrinsic — layout.
+        let block = ops.at("dom/nodes", |ops| ops.shallow(Rc::as_ptr(snapshot)));
+        if block == 0 {
+            return 0;
+        }
+        let nodes = &snapshot.nodes;
+        let buffer = ops.at("dom/nodes", |ops| {
+            ops.buffer(nodes.as_ptr(), nodes.capacity())
+        });
+        let cache = ops.at("layout/intrinsic", |ops| snapshot.intrinsic.heap_size(ops));
+        block + buffer + cache + nodes.as_slice().heap_size(ops)
+    }
+}

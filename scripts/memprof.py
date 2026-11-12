@@ -7,6 +7,11 @@ One command per question (docs/memprof.md):
       probe armed from process start to the end of phase build_elements of measured frame 2, then reports.
   memprof.py report CAND.exe CAND.stacks [BASE.exe BASE.stacks] [--json OUT]
       folds probe files: live heap at the end of the window (default) or every allocation (--allocated).
+  memprof.py run --exe CAND.exe [--base-exe BASE.exe] --owners --out DIR -- PAGE.html --mode relayout --runs 1
+      who holds the memory: the bench measures the heap its document and window hold by owner path
+      (DOM, style, layout, display list, text, gpui) after the last frame of each mode
+      (ENGINE_BENCH_MEMORY_REPORT=1, crates/engine-bench/src/holders.rs); the probe records the whole
+      run, and the report lists owners, the live heap at that moment and its unreported blocks by site.
   memprof.py diff A.json B.json
       compares two saved reports without symbols.
 
@@ -232,6 +237,7 @@ class Run:
             self.counter = None
             self.dropped = 0
             self.lines = 0
+            self.owners = None
             self.groups = self._fold(handle, live, frames)
 
     def weight(self, size):
@@ -248,7 +254,18 @@ class Run:
         groups = collections.defaultdict(lambda: [0.0, 0.0])
         blocks = {}  # pointer -> (key, size)
         pointer_field = self.version >= 2
+        snapshot = None  # live blocks when the owner report started
+        measured = {}  # pointer -> (path, bytes) of measured blocks
+        paths = collections.defaultdict(int)
         for line in handle:
+            if line.startswith("o "):
+                _, path, pointer, size = line.split()
+                if snapshot is None:
+                    snapshot = dict(blocks)
+                paths[path] += int(size)
+                if int(pointer, 16):
+                    measured[pointer] = (path, int(size))
+                continue
             if line.startswith("#"):
                 if line.startswith("# end"):
                     self.end = line[2:].strip()
@@ -285,7 +302,36 @@ class Run:
             group = groups[key]
             group[0] += count
             group[1] += total
+        if snapshot is not None:
+            self.owners = self._owners(snapshot, measured, paths)
         return groups
+
+    def _owners(self, snapshot, owned, paths):
+        """Owner paths against the live heap at the start of the owner report.
+
+        A measured block matches a live block by address; `estimated` bytes are measured without an
+        address (hash tables, slot maps), `unmatched` ones name an address that is no live block
+        (a reporter's size or address is wrong). Live blocks nobody reported are kept by site."""
+        unreported = collections.defaultdict(lambda: [0.0, 0.0])
+        live = matched = 0.0
+        mismatched = 0
+        for pointer, (key, size) in snapshot.items():
+            count, total = self.weight(size)
+            live += total
+            hit = owned.get(pointer)
+            if hit:
+                matched += total
+                mismatched += hit[1] != size
+                continue
+            group = unreported[key]
+            group[0] += count
+            group[1] += total
+        reported = sum(paths.values())
+        return {"paths": dict(paths), "reported_bytes": reported, "live_bytes": round(live),
+                "matched_bytes": round(matched),
+                "estimated_bytes": reported - sum(size for _, size in owned.values()),
+                "unmatched_bytes": sum(size for pointer, (_, size) in owned.items() if pointer not in snapshot),
+                "size_mismatches": mismatched, "unreported": unreported}
 
     def meta(self):
         return {
@@ -325,6 +371,8 @@ def build_report(cand, base, live, depth, top):
     two = rollup(base.groups, depth) if base else {k: {} for k in one}
     report = {"schema": SCHEMA, "mode": "live" if live else "allocated", "depth": depth,
               "runs": {"cand": cand.meta(), **({"base": base.meta()} if base else {})}}
+    if cand.owners:
+        report.update(owner_sections(cand.owners, base.owners if base else None, top))
     names = {"subsystems": ("subsystem",), "sites": ("subsystem", "site", "type"),
              "stacks": ("subsystem", "site", "type", "stack")}
     for section, fields in names.items():
@@ -339,6 +387,55 @@ def build_report(cand, base, live, depth, top):
             rows.append(row)
         report[section] = rows
     return report
+
+
+def owner_sections(cand, base, top):
+    """Owner paths, their reconciliation with the live heap and unreported live blocks by site."""
+    def summary(owners):
+        return {k: v for k, v in owners.items() if k not in ("paths", "unreported")}
+
+    out = {"owners_summary": {"cand": summary(cand), **({"base": summary(base)} if base else {})}}
+    paths = {(p,): [0, b] for p, b in cand["paths"].items()}
+    bases = {(p,): [0, b] for p, b in base["paths"].items()} if base else {}
+    rows = []
+    for key, _, cs, _, bs in table(paths, bases, 0):
+        row = {"owner": key[0], "cand_bytes": cs}
+        if base:
+            row.update(base_bytes=bs, delta_bytes=cs - bs)
+        rows.append(row)
+    rows.sort(key=lambda r: (-abs(r.get("delta_bytes", r["cand_bytes"])), r["owner"]))
+    unreported = rollup(cand["unreported"], 1)["sites"]
+    other = rollup(base["unreported"], 1)["sites"] if base else {}
+    sites = []
+    for key, cb, cs, bb, bs in table(unreported, other, top):
+        row = dict(zip(("subsystem", "site", "type"), key), cand_blocks=cb, cand_bytes=cs)
+        if base:
+            row.update(base_blocks=bb, base_bytes=bs, delta_blocks=cb - bb, delta_bytes=cs - bs)
+        sites.append(row)
+    out.update(owners=rows, unreported_sites=sites)
+    return out
+
+
+def render_owners(report, out):
+    diff = "base" in report["owners_summary"]
+    print("\nwho holds the heap (owner report after the last frame, MB):", file=out)
+    for name, s in report["owners_summary"].items():
+        live = s["live_bytes"] or 1
+        print(f"  {name}: live {s['live_bytes'] / 1e6:.3f}, reported {s['reported_bytes'] / 1e6:.3f}"
+              f" ({s['reported_bytes'] / live:.1%}), matched by address {s['matched_bytes'] / 1e6:.3f},"
+              f" estimated {s['estimated_bytes'] / 1e6:.3f}, unmatched {s['unmatched_bytes'] / 1e6:.3f}"
+              f" (size mismatches {s['size_mismatches']}), unreported live"
+              f" {(s['live_bytes'] - s['matched_bytes']) / 1e6:.3f}", file=out)
+    for row in report["owners"]:
+        tail = f" {row['base_bytes'] / 1e6:9.3f} {mb(row['delta_bytes']):>10}" if diff else ""
+        print(f"  {row['cand_bytes'] / 1e6:10.3f}{tail}  {row['owner']}", file=out)
+    print("\nunreported live blocks by site:", file=out)
+    for row in report["unreported_sites"]:
+        size = row["delta_bytes"] if diff else row["cand_bytes"]
+        blocks = row["delta_blocks"] if diff else row["cand_blocks"]
+        label = row["site"] + (f" [{row['type']}]" if row["type"] else "")
+        text = mb(size) if diff else f"{size / 1e6:.3f}"
+        print(f"  {text:>10} {blocks:+9d}  {row['subsystem']:<16} {label}", file=out)
 
 
 def mb(value):
@@ -364,6 +461,8 @@ def render(report, out=sys.stdout):
         counters = c.get("audit_live_bytes_at_end"), b.get("audit_live_bytes_at_end")
         if all(counters):
             print(f"  audit counter delta: {mb(counters[0] - counters[1])} MB", file=out)
+    if report.get("owners"):
+        render_owners(report, out)
     key = "delta_bytes" if diff else "cand_bytes"
     print("\nby subsystem (MB):", file=out)
     print(f"  {'delta' if diff else 'bytes':>10} {'blocks':>9}  {'cand':>9} {'base':>9}  subsystem" if diff
@@ -438,10 +537,16 @@ def diff_command(args):
 def run_command(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    phase, _, frame = args.at.partition("@")
-    if not frame:
-        raise SystemExit("--at needs <phase>@<frame>, e.g. build_elements@2")
-    spec = f"*@{args.start}-{frame}"
+    if args.owners:
+        # The owner report follows the last frame of a mode: the probe records the whole run.
+        phase, spec = None, "*"
+    else:
+        if not args.at:
+            raise SystemExit("run needs --at <phase>@<frame> or --owners")
+        phase, _, frame = args.at.partition("@")
+        if not frame:
+            raise SystemExit("--at needs <phase>@<frame>, e.g. build_elements@2")
+        spec = f"*@{args.start}-{frame}"
     sides = [("cand", args.exe)] + ([("base", args.base_exe)] if args.base_exe else [])
     bench = list(args.bench)
     if bench and bench[0] == "--":
@@ -449,8 +554,13 @@ def run_command(args):
     if "--json" not in bench:
         bench.append("--json")
     for name, exe in sides:
-        env = dict(os.environ, ENGINE_BENCH_ALLOC_STACKS=spec, ENGINE_BENCH_ALLOC_STACKS_UNTIL=phase,
-                   ENGINE_BENCH_ALLOC_STACKS_OUT=str(out / f"{name}.stacks"))
+        env = dict(os.environ, ENGINE_BENCH_ALLOC_STACKS=spec, ENGINE_BENCH_ALLOC_STACKS_OUT=str(out / f"{name}.stacks"))
+        for key in ("ENGINE_BENCH_ALLOC_STACKS_UNTIL", "ENGINE_BENCH_MEMORY_REPORT"):
+            env.pop(key, None)
+        if phase:
+            env["ENGINE_BENCH_ALLOC_STACKS_UNTIL"] = phase
+        if args.owners:
+            env["ENGINE_BENCH_MEMORY_REPORT"] = "1"
         if args.sample:
             env["ENGINE_BENCH_ALLOC_STACKS_SAMPLE"] = str(args.sample)
         else:
@@ -484,7 +594,9 @@ def main(argv=None):
     run = sub.add_parser("run", parents=[common], help="run engine_bench with the probe, then report")
     run.add_argument("--exe", required=True, help="candidate engine_bench.exe (PDB beside it)")
     run.add_argument("--base-exe", help="base engine_bench.exe")
-    run.add_argument("--at", required=True, help="<phase>@<frame>: live heap when this phase of this frame ends")
+    run.add_argument("--at", help="<phase>@<frame>: live heap when this phase of this frame ends")
+    run.add_argument("--owners", action="store_true",
+                     help="who holds the heap: owner report after the last frame against the live heap")
     run.add_argument("--start", type=int, default=0, help="first recorded frame (0 = process start, default)")
     run.add_argument("--sample", type=int, default=0, help="mean sampling interval in bytes (0 = exact)")
     run.add_argument("--out", required=True, help="directory for stacks, bench JSON and reports")

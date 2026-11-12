@@ -25,6 +25,8 @@ mod diagnostics;
 mod diagnostics_tests;
 #[cfg(test)]
 mod early_tests;
+#[cfg(feature = "heap-report")]
+mod heap;
 #[cfg(test)]
 mod resource_diagnostics_tests;
 #[cfg(feature = "engine-bench")]

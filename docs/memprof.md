@@ -110,7 +110,44 @@ then `<a|z|r> <frame> <phase> <bytes> <pointer> <return addresses>` per allocati
   Extend the table when a new module appears in `other`.
 - Attribution is by allocation site, not by the current holder: a block allocated by layout and
   later moved into a retained cache is reported under the site that allocated it, with its full
-  stack. Holder-based reporters (MallocSizeOf / about:memory style) are not part of this tool.
+  stack. The question «who holds it now» is answered by `--owners` below.
+
+## Who holds the memory (`--owners`)
+
+```sh
+python scripts/memprof.py run --exe CAND.exe [--base-exe BASE.exe] --owners --out DIR \
+  -- PAGE.html --viewport 800x600 --mode relayout --runs 1
+```
+
+After the last frame of each mode the bench (`ENGINE_BENCH_MEMORY_REPORT=1`,
+`crates/engine-bench/src/holders.rs`) walks what the document and the GPUI window hold and writes
+`memory_owners` into that mode of the bench JSON: bytes per owner path, their sum, the audit
+counter read just before the walk and the difference (`unclassified_bytes`). With the probe each
+measured block is also written as `o <path> <pointer> <bytes>`; the report then shows the live heap
+at the moment the walk started, how much of it the owners matched by address, what they only
+estimated (hash tables and slot maps without an exposed address), what they named wrongly
+(`unmatched`, a reporter bug), and the live blocks nobody reported, by allocation site: the list of
+reporters still to write. `--owners` records the whole run exactly (several GB on wide-16000; the
+helper scripts delete the `.stacks` file after folding).
+
+Owner paths, about:memory style: `dom/nodes`, `dom/text`, `dom/attributes`, `dom/source-tree` (the
+parse tree a revision keeps), `style/computed`, `style/groups`, `style/inherited`,
+`style/materialized`, `style/layout-facts`, `layout/intrinsic`, `layout/taffy-nodes`,
+`layout/taffy-cache`, `layout/taffy-styles`, `gpui/layout-engine`, `gpui/element-arena`,
+`gpui/frame`, `gpui/hitboxes`, `gpui/listeners`, `gpui/element-states`, `display-list/scene`,
+`text/line-layouts`, `document/other`.
+
+The mechanism is Servo's `MallocSizeOf` and Gecko's memory reporters, with our own trait:
+`kamin_heap::HeapSize` (`crates/heap`) sizes a value's heap blocks through `Ops`, which keeps the
+current owner path, counts each `Rc`/`Arc` block once and forwards every block to an optional sink
+(the DMD-style cross check). Sizes are requested bytes, like the audit counter, so a report can be
+compared byte for byte. Vendor crates (taffy, gpui, rcdom) expose plain `heap_report`/`heap_blocks`
+methods with a sink instead of depending on the trait. Nothing is counted in hot structures:
+reporters walk existing fields on request, and the walk is compiled only with the
+`heap-report` feature (`kamin-html`, `kamin-style`; on in the `allocation-audit` and `heap-profile`
+bench builds). Not walked yet: values inside the element arena, captures of listeners and element
+states (their boxes are counted), tendril text, retained reuse records, paragraph caches, the
+platform text system; they stay in the unreported list.
 
 ## Limits
 

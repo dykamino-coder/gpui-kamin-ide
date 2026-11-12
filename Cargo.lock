@@ -1778,6 +1778,7 @@ dependencies = [
  "gpui-pre-windows",
  "html5ever 0.40.1",
  "kamin-alloc",
+ "kamin-heap",
  "kamin-html",
  "log",
  "markup5ever_rcdom 0.39.0+unofficial",
@@ -3852,6 +3853,10 @@ name = "kamin-font-facts"
 version = "1.0.94"
 
 [[package]]
+name = "kamin-heap"
+version = "1.0.94"
+
+[[package]]
 name = "kamin-html"
 version = "1.0.94"
 dependencies = [
@@ -3865,6 +3870,7 @@ dependencies = [
  "hypher",
  "image",
  "kamin-font-facts",
+ "kamin-heap",
  "kamin-style",
  "kurbo 0.13.1",
  "markup5ever_rcdom 0.39.0+unofficial",
@@ -3935,6 +3941,7 @@ dependencies = [
  "html5ever 0.40.1",
  "image",
  "kamin-font-facts",
+ "kamin-heap",
  "markup5ever_rcdom 0.39.0+unofficial",
  "resvg 0.48.1",
  "roxmltree 0.21.1",
