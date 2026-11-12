@@ -5,6 +5,7 @@ import type { ToolCallContext } from '../executor'
 import { getOrCreateSnapshot, wrapCommandWithSnapshot, shouldUseLoginShell } from './shell-snapshot'
 import { listEnabledPluginBinDirs } from '../../plugin-helpers'
 import { findBashExecutable, findPowerShellExecutable } from '../../utils/command-runtime'
+import { scriptInvocation, type ScriptInvocation } from '../../utils/script-file'
 
 async function shellEnv(): Promise<NodeJS.ProcessEnv> {
   const binDirs = await listEnabledPluginBinDirs()
@@ -139,17 +140,24 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
   } catch (err) {
     return errorResult(err instanceof Error ? err.message : String(err))
   }
-  const flags = ['-NoLogo', '-NonInteractive', '-Command']
   const env = await shellEnv()
+  if (context?.signal?.aborted) return errorResult('Command cancelled')
   // Both Windows PowerShell 5.1 and pwsh must write UTF-8 to our pipes.
   // Console encoding also controls native programs (cmd/git); $OutputEncoding
   // controls PowerShell pipelines into them. Keep the user's command last and
   // in the same scope so exit, $LASTEXITCODE and error handling retain their meaning.
   const wrapped =
     '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n' + command
+  let script: ScriptInvocation
+  try {
+    script = scriptInvocation('powershell', ['-NoLogo', '-NonInteractive', '-Command'], wrapped)
+  } catch (err) {
+    return errorResult(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  const flags = script.args.slice(0, -1)
   if (input.run_in_background === true && context?.taskDeadlineMs === undefined) {
     return runBackgroundCommand(
-      wrapped,
+      script.loader,
       pwshPath,
       String(input.description ?? ''),
       flags,
@@ -157,9 +165,23 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
       context,
       'PowerShell',
       command,
+      script.file.dispose,
     )
   }
-  return runForegroundCommand(wrapped, pwshPath, timeout, flags, env, context?.signal, context?.onOutput, context?.cwd)
+  try {
+    return await runForegroundCommand(
+      script.loader,
+      pwshPath,
+      timeout,
+      flags,
+      env,
+      context?.signal,
+      context?.onOutput,
+      context?.cwd,
+    )
+  } finally {
+    script.file.dispose()
+  }
 }
 
 export async function bashExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
@@ -190,21 +212,42 @@ export async function bashExecute(input: Record<string, unknown>, context?: Tool
   const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + command, snapshot)
   const shellFlags = shouldUseLoginShell(snapshot) ? ['-lc'] : ['-c']
   const env = await shellEnv()
-
-  if (runInBackground) {
-    return runBackgroundCommand(wrapped, shell, description, shellFlags, env, context, 'Bash', command)
+  if (context?.signal?.aborted) return errorResult('Command cancelled')
+  let script: ScriptInvocation
+  try {
+    script = scriptInvocation('bash', shellFlags, wrapped)
+  } catch (err) {
+    return errorResult(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  return runForegroundCommand(
-    wrapped,
-    shell,
-    timeout,
-    shellFlags,
-    env,
-    context?.signal,
-    context?.onOutput,
-    context?.cwd,
-  )
+  if (runInBackground) {
+    return runBackgroundCommand(
+      script.loader,
+      shell,
+      description,
+      shellFlags,
+      env,
+      context,
+      'Bash',
+      command,
+      script.file.dispose,
+    )
+  }
+
+  try {
+    return await runForegroundCommand(
+      script.loader,
+      shell,
+      timeout,
+      shellFlags,
+      env,
+      context?.signal,
+      context?.onOutput,
+      context?.cwd,
+    )
+  } finally {
+    script.file.dispose()
+  }
 }
 
 const BG_OUTPUT_CAP = 100 * 1024
@@ -234,13 +277,37 @@ function runBackgroundCommand(
   context?: ToolCallContext,
   tool = 'Bash',
   displayCommand = command,
+  onExit: () => void = () => {},
 ): McpResult {
   // Async shell/plugin initialization can complete after terminal shutdown.
-  if (context?.signal?.aborted) return errorResult('Command cancelled')
+  if (context?.signal?.aborted) {
+    onExit()
+    return errorResult('Command cancelled')
+  }
   evictOldBackgroundOutput()
   const bgId = nextBgId++
 
-  const child = spawn(shell, [...shellFlags, command], {
+  let child: ChildProcess
+  try {
+    child = spawnBackground(shell, [...shellFlags, command], tool, env, context)
+  } catch (err) {
+    onExit()
+    return errorResult(`Failed to execute command: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  child.once('error', onExit)
+  child.once('exit', onExit)
+  if (!child.pid) onExit()
+  return registerBackground(child, bgId, description, context, tool, displayCommand)
+}
+
+function spawnBackground(
+  shell: string,
+  argv: string[],
+  tool: string,
+  env: NodeJS.ProcessEnv,
+  context?: ToolCallContext,
+): ChildProcess {
+  return spawn(shell, argv, {
     stdio: ['ignore', 'pipe', 'pipe'],
     // Windows PowerShell exits without executing -Command when started with
     // DETACHED_PROCESS. Keep its console hidden without detaching it.
@@ -255,7 +322,16 @@ function runBackgroundCommand(
     env,
     cwd: context?.cwd,
   })
+}
 
+function registerBackground(
+  child: ChildProcess,
+  bgId: number,
+  description: string,
+  context: ToolCallContext | undefined,
+  tool: string,
+  displayCommand: string,
+): McpResult {
   if (child.pid) {
     backgroundProcesses.set(bgId, child)
     const stdoutChunks: Buffer[] = []

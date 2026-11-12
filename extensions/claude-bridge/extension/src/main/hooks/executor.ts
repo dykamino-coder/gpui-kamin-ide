@@ -16,6 +16,7 @@ import {
   type ResolvedShell,
 } from '../utils/command-runtime'
 import { resolveWorkingDirectory } from '../utils/working-directory'
+import { scriptInvocation, type ScriptInvocation } from '../utils/script-file'
 
 export interface HookExecuteRequest {
   type: 'hook:execute'
@@ -209,12 +210,16 @@ export async function executeHook(
   return new Promise((resolve) => {
     let proc: import('node:child_process').ChildProcess
     let settled = false
+    let script: ScriptInvocation | undefined
     const finish = (result: HookExecuteResponse['result']): void => {
       if (settled) return
       settled = true
       resolve(result)
     }
     try {
+      // A shell-form command of any length runs from a file: Git Bash cuts
+      // long command-line arguments without an error.
+      if (!execForm) script = scriptInvocation(shell!.kind, shell!.args, command)
       proc = execForm
         ? spawn(command, args ?? [], {
           cwd,
@@ -223,7 +228,7 @@ export async function executeHook(
           stdio: ['pipe', 'pipe', 'pipe'],
           detached: process.platform !== 'win32',
         })
-        : spawn(shell!.bin, [...shell!.args, command], {
+        : spawn(shell!.bin, script!.args, {
           cwd,
           env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
           windowsHide: true,
@@ -231,11 +236,17 @@ export async function executeHook(
           detached: process.platform !== 'win32',
         })
     } catch (err) {
+      script?.file.dispose()
       finish({
         stdout: '', stderr: `spawn failed: ${err instanceof Error ? err.message : String(err)}`,
         exitCode: 127, outcome: 'error', durationMs: Date.now() - start,
       })
       return
+    }
+    if (script) {
+      const dispose = script.file.dispose
+      proc.once('exit', dispose)
+      proc.once('error', dispose)
     }
 
     let stdout = ''

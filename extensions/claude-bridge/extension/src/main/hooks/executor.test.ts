@@ -51,6 +51,20 @@ describe('client hook executor', () => {
     expect(result.stdout.trim()).toBe(process.execPath)
   })
 
+  it('runs a shell-form hook longer than any argv limit completely, with its stdin payload', async () => {
+    const body = 'Ж'.repeat(70_000)
+    const result = await executeHook(
+      request({
+        command: `: '${body}'\nread -r payload; echo "$payload" | grep -c PreToolUse; echo TAIL_ХВОСТ; exit 5`,
+        args: undefined,
+        shell: 'bash',
+      }),
+    )
+    expect(result.stdout).toContain('1\n')
+    expect(result.stdout).toContain('TAIL_ХВОСТ')
+    expect(result.exitCode).toBe(5)
+  }, 60_000)
+
   it('does not parse stdout JSON when the hook exits with code 2', async () => {
     const result = await executeHook(
       request({
