@@ -32,7 +32,7 @@ import { debugLog, warnLog } from '../logging'
 import { lifecycleLog } from '../logging/lifecycle'
 import { bridgeClaudeMd } from './bridge-default-claude-md'
 import { computeProjectSlug } from './jsonl-watcher'
-import { mcpIdentity } from './mcp-tasks'
+import { holdMcpEndpoint, mcpIdentity } from './mcp-tasks'
 import { ResumeNotFoundError } from './session-resume-not-found'
 import { sendToClient } from './session-io'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
@@ -160,27 +160,6 @@ export async function createCodexSession(
     threadConfig,
     developerInstructions: developerInstructions(config),
   }
-  let agent: CodexAgentSession
-  try {
-    agent = await CodexAgentSession.start({ ...startOptions, resumeThreadId: placement.resumeThreadId })
-  } catch (error) {
-    // The transcript survived but codex no longer has the thread's rollout.
-    if (!placement.resumeThreadId || !(error instanceof JsonRpcError)) {
-      throw new Error(describeCodexError(classifyCodexError((error as Error).message)), { cause: error })
-    }
-    if (config.noSpawnOnNotFound) throw new ResumeNotFoundError()
-    warnLog('codex resume: thread not found — starting a fresh thread', { threadId: placement.resumeThreadId })
-    resumeNotFound = true
-    agent = await CodexAgentSession.start(startOptions)
-  }
-  if (signal?.aborted) {
-    await agent.stop('startup_aborted')
-    signal.throwIfAborted()
-  }
-  const threadId = agent.conversationId()!
-  const transcript = codexTranscriptPath(settingsDir, threadId, projectsDir(deps))
-  const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound
-
   // The binding is created below; the virtual PTY always drives its current
   // agent, which changes when the thread is resumed on a restarted app-server.
   let binding: CodexSessionBinding
@@ -196,6 +175,8 @@ export async function createCodexSession(
     config.rows ?? 40,
   )
 
+  // Built before the thread: codex initializes the Bridge MCP server while it
+  // creates the thread, so the endpoint must already answer (holdMcpEndpoint).
   const session: PtySession = {
     id: sessionId,
     engine: 'codex',
@@ -228,7 +209,7 @@ export async function createCodexSession(
     registeredResources: [],
     registeredResourceTemplates: [],
     registeredPrompts: [],
-    cliConversationId: resumed ? threadId : null,
+    cliConversationId: null,
     isSubAgent: config.isSubAgent || false,
     parentSessionId: config.parentSessionId || null,
     childSessions: [],
@@ -236,11 +217,40 @@ export async function createCodexSession(
     sessionTitle: null,
     isRestarting: false,
     effort: config.effort || null,
-    model: agent.model,
+    model: codexModel(config.model) ?? null,
     bearerHash: config.bearerHash,
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,
   }
+  const releaseEndpoint = holdMcpEndpoint(session)
+  let agent: CodexAgentSession
+  try {
+    try {
+      agent = await CodexAgentSession.start({ ...startOptions, resumeThreadId: placement.resumeThreadId })
+    } catch (error) {
+      // The transcript survived but codex no longer has the thread's rollout.
+      if (!placement.resumeThreadId || !(error instanceof JsonRpcError)) {
+        throw new Error(describeCodexError(classifyCodexError((error as Error).message)), { cause: error })
+      }
+      if (config.noSpawnOnNotFound) throw new ResumeNotFoundError()
+      warnLog('codex resume: thread not found — starting a fresh thread', { threadId: placement.resumeThreadId })
+      resumeNotFound = true
+      agent = await CodexAgentSession.start(startOptions)
+    }
+    if (signal?.aborted) {
+      await agent.stop('startup_aborted')
+      signal.throwIfAborted()
+    }
+  } catch (error) {
+    releaseEndpoint()
+    throw error
+  }
+  const threadId = agent.conversationId()!
+  const transcript = codexTranscriptPath(settingsDir, threadId, projectsDir(deps))
+  const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound
+  session.model = agent.model
+  session.cliConversationId = resumed ? threadId : null
+  session.resumeNotFound = resumeNotFound
   binding = new CodexSessionBinding(session, agent, deps.runtime, transcript, config.cwd, {
     // Same thread, same MCP endpoint and Bearer, on whichever app-server the
     // runtime has now (a crashed one is restarted within its restart limits).
@@ -259,6 +269,7 @@ export async function createCodexSession(
   codexBindings.set(session, binding)
 
   deps.register(session)
+  releaseEndpoint()
 
   // A resumed transcript exists already (epoch 0 finds it); a fresh one
   // appears with the first projected entry.
