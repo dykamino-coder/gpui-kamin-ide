@@ -24,11 +24,12 @@ use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
-pub(crate) use context::blocks_stack;
+pub(crate) use context::{blocks, blocks_stack, blocks_stack_with_dimensions};
 use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
 pub(super) mod positioned;
+mod text_only;
 use flow::blocks_flow;
 pub(crate) use positioned::inset_holder_box;
 
@@ -38,17 +39,22 @@ pub(crate) use positioned::inset_holder_box;
 // (`text-emphasis-line-height-004a..d`, `text-emphasis-punctuation-1/2`).
 // Вернуть можно только вместе с настоящей надстрочной аннотацией (сдвиг
 // базовой линии без атома).
-pub(crate) async fn blocks_stack_with_dimensions(
+async fn stack(
     stk: &mut reblessive::Stk,
     nodes: &[Node],
     inherited: &BoxStyle,
     sizes: BoxDimensions,
     opts: &RenderOpts,
+    fresh: bool,
 ) -> Vec<AnyElement> {
     let vcx = opts.cx.vcx();
     let cell_bfc = opts.cx.constraints.cell_bfc;
-    let inner_opts = context::child_options(inherited, &sizes, opts);
+    let inner_opts = context::child_options(inherited, &sizes, opts, fresh);
     let opts = &inner_opts;
+    let (ordered, under_tf) = prepare_children::container_flags(inherited);
+    if text_only::applies(nodes, inherited, ordered) {
+        return text_only::flow(stk, nodes, inherited, opts, under_tf).await;
+    }
     // `content-visibility: hidden`: содержимое пропускается целиком
     // (css-contain-2 §4) — коробка остаётся, детей нет.
     let (collapsed, ordered_context, under_tf) =
@@ -216,16 +222,4 @@ pub(crate) async fn blocks_stack_with_dimensions(
         below_zs,
     )
     .await
-}
-
-pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> Vec<AnyElement> {
-    let opts = &*opts.inner(|cx| {
-        cx.contracts.lengths = Default::default();
-        if !cx.contracts.in_render {
-            cx.contracts.subtrees = Default::default();
-        }
-    });
-    reblessive::Stack::new()
-        .enter(|stk| blocks_stack(stk, nodes, inherited, opts))
-        .finish()
 }

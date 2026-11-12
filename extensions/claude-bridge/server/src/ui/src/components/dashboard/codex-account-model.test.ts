@@ -3,6 +3,7 @@ import {
   codexCardView,
   formatPlan,
   isCodexAccountEvent,
+  runCardAction,
   shouldPollCodexAccount,
   toCodexError,
   type CodexAccountStatus,
@@ -117,5 +118,37 @@ describe('helpers', () => {
       message: 'The request failed.',
       detail: 'HTTP 502',
     })
+  })
+})
+
+describe('runCardAction', () => {
+  it('runs an action that has no follow-up (cancel, sign out)', async () => {
+    let calls = 0
+    await runCardAction(async () => {
+      calls++
+    })
+    expect(calls).toBe(1)
+  })
+
+  it('hands the action result to the follow-up', async () => {
+    const seen: string[] = []
+    await runCardAction(
+      async () => 'code',
+      (result) => seen.push(result),
+    )
+    expect(seen).toEqual(['code'])
+  })
+
+  it('rejects with the action error and skips the follow-up', async () => {
+    const seen: unknown[] = []
+    await expect(
+      runCardAction(
+        async () => {
+          throw new Error('502')
+        },
+        (result) => seen.push(result),
+      ),
+    ).rejects.toThrow('502')
+    expect(seen).toEqual([])
   })
 })

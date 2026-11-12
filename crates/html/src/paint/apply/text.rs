@@ -36,21 +36,21 @@ pub fn apply_text(
     }
     // Возможности шрифта: капитель, старостильные цифры, ширина начертания —
     // всё это таблицы OpenType, и GPUI умеет их включать.
-    if let Some(family) = c.inh.font.font_family.as_ref().filter(|f| !f.is_empty()) {
+    // Семейство и возможности — общие у коробок с теми же унаследованными группами
+    // (`DocumentValues::used_face`): коробка берёт готовое, а не выводит заново.
+    let face = vcx.doc.used_face(c);
+    if let Some(family) = face.family {
         // Имя из разметки — придуманное (`@font-face`): в набор обязано уйти
         // имя, под которым файл знает система шрифтов. Без подмены весь
         // текст, идущий гpui-раскладкой (не резчиком), набирался подменным
         // системным шрифтом.
-        d = d.font_family(
-            crate::text::fonts::alias_for(family, c, vcx).unwrap_or_else(|| family.clone()),
-        );
+        d = d.font_family(family);
     }
     if let Some(pct) = c.inh.font.font_stretch {
         d.style().text.font_stretch = Some(gpui::FontStretch::from_percent(pct));
     }
-    let features = c.used_features(vcx);
-    if !features.is_empty() {
-        d.style().text.font_features = Some(gpui::FontFeatures(std::sync::Arc::new(features)));
+    if !face.features.is_empty() {
+        d.style().text.font_features = Some(gpui::FontFeatures(face.features));
     }
     if let Some(col) = ink {
         d = d.text_color(col.to_hsla());

@@ -5,6 +5,7 @@ import { codexAccountEventAt } from '../../signals/server'
 import {
   CODEX_POLL_INTERVAL_MS,
   codexCardView,
+  runCardAction,
   shouldPollCodexAccount,
   toCodexError,
   type CodexAccountStatus,
@@ -72,7 +73,7 @@ export function CodexAccountCard() {
     setActionErr(null)
     setShowDetail(false)
     try {
-      after?.(await action())
+      await runCardAction(action, after)
     } catch (error) {
       setActionErr(actionError(error))
     } finally {
