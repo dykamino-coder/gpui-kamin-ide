@@ -57,22 +57,7 @@ pub(crate) fn prepare_children(
     // `fixed_cb_box` — расхождение он прямо запрещает.
     // Обещанное свойство, дающее блок для `fixed` (css-will-change-1 §2.1), —
     // тот же барьер, что `transform` самого родителя (`will-change-fixpos-cb-*`).
-    let under_tf = inherited.reset_transforms.transform_ancestor
-        || inherited.reset_transforms.transform.is_some()
-        || inherited.reset_context.contain_layout == Some(true)
-        || inherited.reset_context.contain_paint == Some(true)
-        || crate::style::computed::filter_contains_fixed(inherited)
-        || inherited.reset_effects.will_change & crate::style::computed::wc::CB_FIXED != 0;
-    let ordered_context = matches!(
-        inherited.reset_box_layout.display,
-        Some(Display::Flex)
-            | Some(Display::InlineFlex)
-            | Some(Display::Grid)
-            | Some(Display::InlineGrid)
-            // Поток лунок — сеточный контекст: схлопывания отступов нет
-            // (css-grid-3), и `order` действует.
-            | Some(Display::GridLanes)
-    );
+    let (ordered_context, under_tf) = container_flags(inherited);
     // Схлопывание вертикальных отступов есть ТОЛЬКО в обычном потоке: в
     // гибком контейнере и сетке CSS его запрещает, а мы схлопывали везде —
     // элементы ряда съезжали друг к другу против браузера.
@@ -225,4 +210,26 @@ pub(crate) fn prepare_children(
         out
     };
     (collapsed, ordered_context, under_tf)
+}
+
+/// Свойства самого контейнера, от детей не зависящие: упорядоченный контекст
+/// (гибкий контейнер, сетка) и барьер `fixed` (правила — в `prepare_children`).
+pub(super) fn container_flags(inherited: &BoxStyle) -> (bool, bool) {
+    let under_tf = inherited.reset_transforms.transform_ancestor
+        || inherited.reset_transforms.transform.is_some()
+        || inherited.reset_context.contain_layout == Some(true)
+        || inherited.reset_context.contain_paint == Some(true)
+        || crate::style::computed::filter_contains_fixed(inherited)
+        || inherited.reset_effects.will_change & crate::style::computed::wc::CB_FIXED != 0;
+    let ordered_context = matches!(
+        inherited.reset_box_layout.display,
+        Some(Display::Flex)
+            | Some(Display::InlineFlex)
+            | Some(Display::Grid)
+            | Some(Display::InlineGrid)
+            // Поток лунок — сеточный контекст: схлопывания отступов нет
+            // (css-grid-3), и `order` действует.
+            | Some(Display::GridLanes)
+    );
+    (ordered_context, under_tf)
 }

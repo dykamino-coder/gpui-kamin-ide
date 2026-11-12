@@ -51,8 +51,23 @@ export function startMcpTaskDelivery(sessions: () => PtySession[]): void {
   }, 1000)
   timer.unref?.()
 }
+// Sessions whose agent is still starting. codex connects to the Bridge MCP
+// server while it creates the thread, before the session is registered.
+const startingEndpoints = new Map<string, PtySession>()
+/** Answers the session's MCP endpoint until it is registered; returns the release. */
+export function holdMcpEndpoint(session: PtySession): () => void {
+  const id = session.mcpEndpoint?.id
+  if (!id) return () => undefined
+  startingEndpoints.set(id, session)
+  return () => {
+    if (startingEndpoints.get(id) === session) startingEndpoints.delete(id)
+  }
+}
 export function resolveMcpEndpoint(id: string): PtySession | undefined {
-  return liveSessions().find((session) => session.mcpEndpoint?.id === id && !session.teardown)
+  const live = liveSessions().find((session) => session.mcpEndpoint?.id === id && !session.teardown)
+  if (live) return live
+  const starting = startingEndpoints.get(id)
+  return starting && !starting.teardown ? starting : undefined
 }
 async function dispatch(task: TaskRecord, session: PtySession): Promise<void> {
   if (task.cancelRequested) {

@@ -13,20 +13,35 @@ pub(crate) async fn blocks_stack(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Vec<AnyElement> {
-    super::blocks_stack_with_dimensions(
-        stk,
-        nodes,
-        inherited,
-        BoxDimensions::from_computed(inherited),
-        opts,
-    )
-    .await
+    let sizes = BoxDimensions::from_computed(inherited);
+    super::stack(stk, nodes, inherited, sizes, opts, false).await
+}
+
+pub(crate) async fn blocks_stack_with_dimensions(
+    stk: &mut reblessive::Stk,
+    nodes: &[Node],
+    inherited: &BoxStyle,
+    sizes: BoxDimensions,
+    opts: &RenderOpts,
+) -> Vec<AnyElement> {
+    super::stack(stk, nodes, inherited, sizes, opts, false).await
+}
+
+/// Дети блока вне общего стека сборки: свой стек и свои факты длин (а вне
+/// рендера — и поддеревьев). Сброс фактов едет в той же копии опций, что и
+/// размеры детей.
+pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> Vec<AnyElement> {
+    let sizes = BoxDimensions::from_computed(inherited);
+    reblessive::Stack::new()
+        .enter(|stk| super::stack(stk, nodes, inherited, sizes, opts, true))
+        .finish()
 }
 
 pub(super) fn child_options(
     inherited: &BoxStyle,
     sizes: &BoxDimensions,
     opts: &RenderOpts,
+    fresh: bool,
 ) -> Box<RenderOpts> {
     let outer = &opts.cx.constraints;
     // A child inherits the outer widths by copy; reading them here would
@@ -45,6 +60,12 @@ pub(super) fn child_options(
         )
     });
     opts.inner(|cx| {
+        if fresh {
+            cx.contracts.lengths = Default::default();
+            if !cx.contracts.in_render {
+                cx.contracts.subtrees = Default::default();
+            }
+        }
         if cb_width.is_some() {
             cx.constraints.set_cb_width(cb_width);
         }
