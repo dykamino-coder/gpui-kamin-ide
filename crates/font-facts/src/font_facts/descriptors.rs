@@ -1,6 +1,6 @@
 //! Замороженные дескрипторы метрик; прежнее разрешение равных наклонов без backend.
 
-use super::FontRegistrySnapshot;
+use super::{FontRegistrySnapshot, key};
 use std::collections::HashMap;
 
 pub type MetricFaces = HashMap<String, Vec<(u8, [Option<f32>; 3])>>;
@@ -23,17 +23,13 @@ pub fn uniform_slope<T: Copy + PartialEq>(faces: &[(u8, T)], want: u8) -> Option
 
 impl FontRegistrySnapshot {
     pub fn size_adjust(&self, family: &str, slope: u8) -> f32 {
-        self.registry
-            .size_adjust
-            .get(&family.to_ascii_lowercase())
+        key::with(family, |family| self.registry.size_adjust.get(family))
             .and_then(|faces| uniform_slope(faces, slope))
             .unwrap_or(1.0)
     }
 
     pub fn metric_overrides(&self, family: &str, slope: u8) -> [Option<f32>; 3] {
-        self.registry
-            .metric_overrides
-            .get(&family.to_ascii_lowercase())
+        key::with(family, |family| self.registry.metric_overrides.get(family))
             .and_then(|faces| uniform_slope(faces, slope))
             .unwrap_or([None; 3])
     }
