@@ -301,6 +301,12 @@ async function shutdown(): Promise<void> {
   // Kill all PTY sessions and reject pending MCP calls
   shutdownAll()
 
+  // The shared codex app-server (one per server) goes with its sessions.
+  try {
+    const { shutdownCodexRuntime } = await import('./core/codex/codex-runtime')
+    await shutdownCodexRuntime()
+  } catch {}
+
   // Clean up standalone terminal
   cleanupTerminal()
 
