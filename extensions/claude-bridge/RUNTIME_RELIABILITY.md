@@ -257,6 +257,31 @@ respawn уже отправляется; полноценного shell recovery
 providers/state нет. BR-05 connection recovery не закрывает этот более широкий контракт.
 Нужен отдельный implementation PR и Windows gate; в этой ревизии код не дописывается.
 
+**Verification 2026-11-13 (batch `RC-2026-11-13-KAMIN-BRIDGE`): failed.**
+
+Setup:
+- Candidate: installed KaminIDE 1.0.94 (contains #148 and #152).
+- A copy of a working profile, server container from `main` `584b5616`.
+- The extension-host child was killed by PID twice; the views were read only through kamin-probe.
+
+Results:
+- The child respawned in 0.83–0.88 s. Chat, Console, Agents and Customize stayed live, and their pages were not reloaded.
+- The new child reported the same five tabs under new tab ids, and none of them was active.
+- Chat stayed bound to the old tab id, and its composer did not become ready.
+- A manual tab switch to the new id restored the composer, but the switch call took more than 10 s to reply.
+- The Agents panel lost the finished team rows (`Completed 2` → empty placeholder) and did not get them back, even after the manual switch.
+
+Not checked: documents, the active editor and LSP reseeding.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/a1401f427d98227c5a1a787cb5a7f617326eddd8/incidents/BR-04/evidence/2026-11-13-br04-1.0.94).
+
+The acceptance requirement "Chat, Console and the neighbouring view return and show the selected session" is not met. Next artifact: change.
+- After a respawn the client keeps the selected tab bound across the new tab ids.
+- The Agents state of the bound tab is replayed.
+- Then the same live gate is repeated.
+
+Owner: the executor the maintainer assigns. The status stays `verify` until that gate passes.
+
 **Status:** implementation PR #148 и дополнительный PR #152 merged;
 Windows runtime acceptance ещё не подтверждена. CI job на Windows не запускает
 живой интерфейс. **Dependency:** none.
@@ -323,6 +348,23 @@ starvation path. После его merge повторить оба исходн�
 ниже сценарий Plugins, сопоставив outbox/pump/replay trace; Agents R6 сам по себе их не покрывает.
 При исчезновении всех проверяемых симптомов закрыть verification с evidence, при
 остатке завести bounded child. Отдельный speculative repaint fix не нужен.
+
+**Verification 2026-11-13 (batch `RC-2026-11-13-KAMIN-BRIDGE`): both Chat cases passed,
+Plugins failure/no-change path passed.**
+- Candidate: installed KaminIDE 1.0.94 (contains #147).
+- Setup: a copy of a working profile and the server container from `main` `584b5616`, driven only through kamin-probe. There was no pointer, focus change or resize.
+- Session switch, 4 runs: tab #1 ran a 45 s Bash turn, then the chat switched to tab #2. That tab showed its history within 0.01–0.06 s. After switching back, tab #1 showed its entries and `working` at once and became ready when the turn ended.
+- Disconnect → reconnect, 4 runs: ready within 0.52–0.58 s. No sample showed `Loading conversations`.
+- Plugins → Update, 3 runs: the card was from a marketplace whose refresh fails in this profile. It stayed busy for 2.6–3.2 s, then the card and the button settled by themselves with the version unchanged.
+- Not run:
+  - a successful Update to a newer version: it would change the real plugin cache of the test machine;
+  - MCP Test/connect;
+  - rapid repeated operations.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/b88f88c65bd6f770b84103a488411e7807da2376/incidents/INC-2026-0044/evidence/2026-11-13-br06-1.0.94).
+Outcome: the two original Chat symptoms do not reproduce on 1.0.94. Remaining gate:
+a successful plugin Update with a disposable local marketplace plugin whose version
+is bumped. Owner: maintainer. No new fix is proposed.
 
 **Status:** waiting для повторной verification; зависимость СНЯТА.
 **Dependency:** BR-31 реализован и влит ([#147](https://github.com/dykamino-coder/gpui-kamin-ide/pull/147)),
