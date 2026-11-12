@@ -48,7 +48,9 @@ export const uptime = computed(() => {
   const stats = serverStats.value
   if (!stats?.startedAt) return '---'
   const diff = Date.now() - new Date(stats.startedAt).getTime()
-  const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000), s = Math.floor((diff % 60000) / 1000)
+  const h = Math.floor(diff / 3600000),
+    m = Math.floor((diff % 3600000) / 60000),
+    s = Math.floor((diff % 60000) / 1000)
   if (h > 0) return `${h}h ${m}m`
   if (m > 0) return `${m}m ${s}s`
   return `${s}s`
