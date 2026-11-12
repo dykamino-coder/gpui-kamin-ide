@@ -12,7 +12,7 @@ use crate::dom::Element;
 use crate::style::computed::{
     Computed, ResetBackground, ResetBorder, ResetBoxLayout, Sides, StyleGroup,
 };
-use std::cell::RefCell;
+use std::cell::Cell;
 
 const CAPACITY: usize = 32;
 
@@ -21,7 +21,7 @@ const CAPACITY: usize = 32;
 /// equal values, as the cascade does not always share the storage of equal
 /// cells.
 #[derive(Default)]
-pub(in crate::layout::table) struct EdgeStyles(RefCell<Vec<Entry>>, std::cell::Cell<usize>);
+pub(in crate::layout::table) struct EdgeStyles(Cell<Vec<Entry>>, Cell<usize>);
 
 /// The three groups the write touches.
 type Groups = (
@@ -55,7 +55,7 @@ impl EdgeStyles {
     /// Lay the half edges `insets` and the padding `padding` (the author's
     /// plus the half edges) over the style of `cell` and drop its own border.
     pub(super) fn apply(&self, cell: &mut Element, insets: [f32; 4], padding: Sides) {
-        let mut made = self.0.borrow_mut();
+        let mut made = self.0.take();
         let over = groups(&cell.style.used());
         let hit = made.iter().find(|entry| {
             entry.insets == insets && entry.padding == padding && same(&entry.over, &over)
@@ -67,6 +67,7 @@ impl EdgeStyles {
                 style.reset_box_layout,
                 style.reset_border,
             ) = entry.written.clone();
+            self.0.set(made);
             return;
         }
         style.reset_background.bg_border_insets = Some(insets);
@@ -85,6 +86,7 @@ impl EdgeStyles {
             made[self.1.get()] = entry;
             self.1.set((self.1.get() + 1) % CAPACITY);
         }
+        self.0.set(made);
     }
 }
 
