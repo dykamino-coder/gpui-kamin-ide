@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cancelMcpCall, handleMcpCall, type McpCallCtx } from './mcp-call-pipeline'
+import { callTiming, cancelMcpCall, handleMcpCall, type McpCallCtx } from './mcp-call-pipeline'
 import { McpResultOutbox } from './mcp-result-outbox'
 
 const execute = vi.hoisted(() => vi.fn())
@@ -111,6 +111,7 @@ describe('task execution cancellation', () => {
       requestId: 'task',
       taskOwner: 'owner',
       result: 'cancelled',
+      timing: { queuedMs: expect.any(Number), toolMs: expect.any(Number), totalMs: expect.any(Number) },
     })
     expect(ctx.pendingMcpCalls.size).toBe(0)
   })
@@ -132,5 +133,12 @@ describe('session shell directory', () => {
     } as unknown as McpCallCtx
     await handleMcpCall(ctx, { requestId: 'cwd', toolName: 'Bash', input: { command: 'pwd', cwd: '/untrusted' } })
     expect(execute.mock.lastCall?.[2].cwd).toBe('/session project')
+  })
+})
+
+describe('call timing for the server trace', () => {
+  it('reports queue, tool and total durations on this host', () => {
+    expect(callTiming(100, 103.44, 153.46, 155)).toEqual({ queuedMs: 3.4, toolMs: 50, totalMs: 55 })
+    expect(callTiming(10, 9, 9, 9)).toEqual({ queuedMs: 0, toolMs: 0, totalMs: 0 })
   })
 })

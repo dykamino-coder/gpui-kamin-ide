@@ -6,6 +6,7 @@ import { createHash, createHmac, randomBytes } from 'node:crypto'
 import type { PtySession } from './types'
 import { notifyTaskChanged } from './mcp-tool-notify'
 import { sendToClient } from './session-io'
+import { traceSent } from './mcp-trace'
 import { McpTaskStore, taskDeadline, taskView, type TaskRecord } from './mcp-task-store'
 
 const root = path.join(os.homedir(), '.claude', 'bridge-mcp')
@@ -92,7 +93,7 @@ async function dispatch(task: TaskRecord, session: PtySession): Promise<void> {
       await mcpTasks.update(task.owner, task.taskId, (record) => {
         record.delivered = false
       })
-    }
+    } else traceSent(task.taskId)
   }
 }
 let drainRequested = false
