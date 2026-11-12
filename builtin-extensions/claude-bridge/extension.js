@@ -50437,6 +50437,7 @@ async function discoverProjectConfigs(projectRoots) {
     const configs = parseMcpJson(parsed, mcpJson);
     for (const config of configs) {
       config.sourceType = "project";
+      config.projectRoot = root;
       config.description = `From ${import_path33.default.basename(root)}/.mcp.json`;
     }
     return configs;
@@ -51137,6 +51138,10 @@ function suggestFetchHint(cause, host) {
 // src/main/mcp/transports/stdio.ts
 var import_child_process4 = require("child_process");
 init_script_file();
+init_working_directory();
+function stdioWorkingDirectory(config) {
+  return resolveWorkingDirectory(config.workingDirectory, config.projectRoot);
+}
 async function connectStdio(ctx, id) {
   const state = ctx.servers.get(id);
   const command = state.config.command;
@@ -51178,7 +51183,7 @@ async function connectStdio(ctx, id) {
       // Console Window Host process per MCP server (so 6 stdio MCPs = 6
       // conhosts cluttering the process tree).
       windowsHide: true,
-      ...state.config.workingDirectory ? { cwd: state.config.workingDirectory } : {}
+      cwd: stdioWorkingDirectory(state.config)
     });
     state.process = proc;
     state.inputBuffer = "";
@@ -51628,7 +51633,8 @@ function mcpConnectionFingerprint(c) {
     c.url ?? null,
     c.env ?? null,
     c.workingDirectory ?? null,
-    c.headers ?? null
+    c.headers ?? null,
+    ...c.projectRoot ? [c.projectRoot] : []
   ]);
 }
 var LAZY_STDIO_MCP = process.env.KAMIN_EAGER_EXTERNAL_MCP !== "1";
@@ -52318,9 +52324,7 @@ var McpServerManager = class _McpServerManager {
       if (state.config.env && Object.keys(state.config.env).length > 0) {
         this.appendLog(id, "info", `[connect] env keys: ${Object.keys(state.config.env).join(", ")}`);
       }
-      if (state.config.workingDirectory) {
-        this.appendLog(id, "info", `[connect] cwd: ${state.config.workingDirectory}`);
-      }
+      this.appendLog(id, "info", `[connect] cwd: ${stdioWorkingDirectory(state.config)}`);
     } else if (state.config.url) {
       this.appendLog(id, "info", `[connect] url: ${state.config.url}`);
     }
