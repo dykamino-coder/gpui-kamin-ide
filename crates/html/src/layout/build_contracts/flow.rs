@@ -10,13 +10,12 @@ use crate::text::clamp::ClampSpan;
 use gpui::AnyElement;
 
 type BuildNodes = fn(&[Node], &BoxStyle, &RenderOpts) -> Vec<AnyElement>;
-type BuildStackNodes =
-    for<'a> fn(
-        &'a mut reblessive::Stk,
-        &'a [Node],
-        &'a BoxStyle,
-        &'a RenderOpts,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<AnyElement>> + 'a>>;
+type BuildStackNodes = for<'a> fn(
+    &'a mut reblessive::Stk,
+    &'a [Node],
+    &'a BoxStyle,
+    &'a RenderOpts,
+) -> reblessive::stack::ErasedStkFuture<'a, Vec<AnyElement>>;
 
 type BuildParagraph = fn(&[Node], &BoxStyle, &RenderOpts) -> AnyElement;
 type BuildProbes =
@@ -66,8 +65,7 @@ impl FlowBuild {
         inherited: &BoxStyle,
         opts: &RenderOpts,
     ) -> Vec<AnyElement> {
-        stk.run(|stk| (self.blocks_stack)(stk, nodes, inherited, opts))
-            .await
+        (self.blocks_stack)(stk, nodes, inherited, opts).await
     }
 
     pub(super) fn paragraph(

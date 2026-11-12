@@ -11,6 +11,7 @@ exclude = [
   "vendor/html5ever",
   "vendor/tendril",
   "vendor/xml-rs",
+  "vendor/reblessive",
   "vendor/markup5ever_rcdom",
   "vendor/resvg",
   "vendor/usvg",
@@ -123,6 +124,9 @@ codegen-units = 16
 # Существующий узел зависимостей: fallible storage сохраняет leases до drop.
 tendril = { path = "vendor/tendril" }
 xml-rs = { path = "vendor/xml-rs" }
+# reblessive 0.4.3 + Stk::run_erased: a stack future that names only its output,
+# so the build contracts start nested futures without boxing them.
+reblessive = { path = "vendor/reblessive" }
 # Vendored gpui (gpui-pre 0.3.8 + патчи KaminIDE: рендер CSS, текст, раскладка,
 # захват кадра). Windows-платформа в 0.3.8 — отдельный крейт, тоже с патчами
 # (DirectX-рендерер, DirectWrite, dcomp/blit по окну).

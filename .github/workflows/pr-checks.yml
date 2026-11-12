@@ -106,7 +106,7 @@ jobs:
           set_scope bridge_webview '^(extensions/claude-bridge/(webview|browser-client)/|extensions/claude-bridge/server/src/ui/src/lib/terminal-console/|builtin-extensions/claude-bridge/(chat|tools|customize)\.html$)'
           set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/(check_(event_routing|conventions|engine_test_support)|fetch_main_baseline|test_fetch_main_baseline|ci/(build_main_baseline|test_build_main_baseline))\.py$|(clippy|rustfmt)\.toml$)'
           set_scope vendor '^(vendor/|rust-toolchain\.toml$)'
-          set_scope vendor_taffy '^(vendor/taffy/|vendor/taffy-kaminide\.patch$|rust-toolchain\.toml$)'
+          set_scope vendor_taffy '^(vendor/(taffy|reblessive)/|vendor/(taffy|reblessive)-kaminide\.patch$|rust-toolchain\.toml$)'
           set_scope vendor_gpui '^(vendor/(gpui|gpui-windows|gpui-base|gpui-component|taffy|resvg|usvg|tendril|xml-rs)/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|scripts/check_vendor_gpui\.py$)'
           set_scope release_pipeline '^(\.github/workflows/docker\.yml$|scripts/release/|extensions/claude-bridge/server/)'
 
@@ -725,6 +725,8 @@ jobs:
           rustup toolchain install "$channel" --profile minimal --component clippy --no-self-update
           cargo clippy --manifest-path vendor/taffy/Cargo.toml --locked --all-targets -j 6 -- -D warnings
           cargo test --manifest-path vendor/taffy/Cargo.toml --locked -j 6
+          # reblessive is excluded as well; its tests cover Stk::run_erased.
+          cargo test --manifest-path vendor/reblessive/Cargo.toml --locked --lib -j 6
 
   vendor-gpui:
     name: vendor GPUI forks standalone targets
