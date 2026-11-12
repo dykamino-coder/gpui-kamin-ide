@@ -4,7 +4,7 @@ use gpui::{
     AnyElement, App, Bounds, Context, Element, ElementId, GlobalElementId, InspectorElementId,
     IntoElement, LayoutId, Pixels, Render, Window, px, rgb,
 };
-use kamin_html::{Document, RenderOpts};
+use kamin_html::{Document, RenderOpts, work::Clock};
 use std::{
     cell::RefCell,
     rc::Rc,
@@ -22,7 +22,7 @@ pub(super) struct Phases {
     pub(super) observer_setup: Duration,
     requested: Option<Instant>,
     pub(super) request_to_render: Option<Duration>,
-    request_finished: Option<Instant>,
+    request_finished: Option<Clock>,
 }
 
 impl Phases {
@@ -44,11 +44,12 @@ pub(super) struct View {
 impl Render for View {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         kamin_html::work::phase!(_work, BuildElements);
-        let started = Instant::now();
+        let started = Clock::now();
         let mut phases = self.phases.borrow_mut();
+        let rendered = Instant::now();
         phases.request_to_render = phases
             .requested
-            .map(|request| started.duration_since(request));
+            .map(|request| rendered.duration_since(request));
         drop(phases);
         let mut text = window.text_style();
         text.color = rgb(0).into();
@@ -112,12 +113,12 @@ impl Element for Timed {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let started = Instant::now();
+        let started = Clock::now();
         kamin_html::work::switch!(LayoutRequest);
         let id = self.root.request_layout(window, cx);
         let mut phases = self.phases.borrow_mut();
         phases.request_layout += started.elapsed();
-        phases.request_finished = Some(Instant::now());
+        phases.request_finished = Some(Clock::now());
         kamin_html::work::switch!(Layout);
         (id, ())
     }
@@ -131,7 +132,7 @@ impl Element for Timed {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let started = Instant::now();
+        let started = Clock::now();
         {
             let mut phases = self.phases.borrow_mut();
             // Между callback выполняются root layout и обвязка GPUI; вложенные
@@ -157,7 +158,7 @@ impl Element for Timed {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let started = Instant::now();
+        let started = Clock::now();
         kamin_html::work::switch!(Paint);
         self.root.paint(window, cx);
         kamin_html::work::switch!(RasterGpuReadback);

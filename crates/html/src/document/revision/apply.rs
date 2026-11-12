@@ -40,7 +40,7 @@ impl Document {
         theme_css: &str,
     ) -> Result<BuildReport, ApplyError> {
         #[cfg(feature = "engine-bench")]
-        let started = std::time::Instant::now();
+        let started = crate::work::Clock::now();
         let root = self.source_dom();
         let batch = Batch::new(records).ok_or(ApplyError::Foreign)?;
         let attached = batch.texts.iter().map(|t| &t.node);

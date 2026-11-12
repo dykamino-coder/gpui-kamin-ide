@@ -206,9 +206,25 @@ pub fn set_phase(phase: Phase) {
 }
 fn change_phase(totals: &Totals, phase: Phase) -> usize {
     if let Some(observer) = &totals.observer {
+        let started = std::time::Instant::now();
         observer(phase);
+        let spent = started.elapsed();
+        OBSERVED.with(|observed| observed.set(observed.get() + spent));
     }
     totals.phase.swap(phase as usize, Relaxed)
+}
+
+std::thread_local! {
+    /// Время этого потока внутри наблюдателя границ фаз ([`observed`]).
+    static OBSERVED: std::cell::Cell<std::time::Duration> =
+        const { std::cell::Cell::new(std::time::Duration::ZERO) };
+}
+
+/// Сколько всего этот поток провёл в наблюдателе границ фаз стенда. Окна
+/// фаз ([`super::Clock`]) вычитают его: снимок памяти и CPU на границе — это
+/// стоимость замера, а не работа фазы, в которой он случился.
+pub fn observed() -> std::time::Duration {
+    OBSERVED.with(std::cell::Cell::get)
 }
 impl Drop for PhaseGuard {
     fn drop(&mut self) {
