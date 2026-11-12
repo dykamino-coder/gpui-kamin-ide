@@ -1,25 +1,31 @@
-//! Пробник стеков аллокаций: размер и стек каждого запроса к Rust-аллокатору
-//! в заданной фазе и диапазоне кадров замера. Выключен по умолчанию; тогда
-//! аллокатор делает одно чтение флага, а сам пробник не выделяет память даже
-//! при чтении окружения — счётчики аудита остаются теми же.
+//! Пробник стеков аллокаций: размер, указатель и стек запросов к Rust-аллокатору
+//! в заданной фазе и диапазоне кадров замера, плюс освобождения. Выключен по
+//! умолчанию; тогда аллокатор делает одно чтение флага, а сам пробник не
+//! выделяет память даже при чтении окружения — счётчики аудита те же.
 //!
 //! `ENGINE_BENCH_ALLOC_STACKS=<фаза>[@<кадр>[-<кадр>]]`, где фаза — имя фазы
 //! отчёта, `outside` (вне кадров замера; кадр 0 — старт процесса) или `*`;
 //! кадры — порядковые номера кадров замера процесса с 1.
+//! `ENGINE_BENCH_ALLOC_STACKS_UNTIL=<фаза>` — окно кончается, когда последний
+//! кадр диапазона выходит из этой фазы (первого её вхождения): `*@0-2` с
+//! `build_elements` — вся куча процесса на конец сборки второго кадра.
+//! `ENGINE_BENCH_ALLOC_STACKS_SAMPLE=<байты>` — пуассоновская выборка: блок
+//! пишется с вероятностью `1-exp(-размер/байты)`, освобождение — только у
+//! выбранных блоков; без переменной пишется каждый блок (точный режим).
 //! `ENGINE_BENCH_ALLOC_STACKS_OUT=<файл>` — куда писать строки
 //! `<a|z|r> <кадр> <фаза> <байты> <указатель> <адреса возврата>` и для
 //! освобождений `f <кадр> <фаза> <байты> <указатель>` (числа адресов — hex).
 //! Освобождение пишется до возврата блока аллокатору, поэтому строка `f`
-//! всегда стоит раньше строки повторного выделения того же адреса; по ним
-//! `scripts/alloc_stacks.py --live` считает блоки, живые в конце окна фильтра.
-//! Адреса переводит в имена `scripts/alloc_stacks.py` по PDB той же сборки.
+//! всегда стоит раньше строки повторного выделения того же адреса.
+//! Сворачивает файл `scripts/memprof.py` по PDB той же сборки.
+
+mod sample;
+mod sink;
 
 use kamin_html::work::Phase;
 use std::{
     ffi::c_void,
     fmt::Write as _,
-    fs::File,
-    io::Write as _,
     sync::{
         OnceLock,
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering::Relaxed},
@@ -30,6 +36,8 @@ const OUTSIDE: usize = usize::MAX;
 const FRAMES: usize = 48;
 const NAME: [u16; 26] = wide(b"ENGINE_BENCH_ALLOC_STACKS\0");
 const OUT: &str = "ENGINE_BENCH_ALLOC_STACKS_OUT";
+const UNTIL: &str = "ENGINE_BENCH_ALLOC_STACKS_UNTIL";
+const SAMPLE: &str = "ENGINE_BENCH_ALLOC_STACKS_SAMPLE";
 
 const fn wide<const N: usize>(ascii: &[u8; N]) -> [u16; N] {
     let mut out = [0; N];
@@ -86,67 +94,126 @@ impl Filter {
     }
 }
 
+/// Конец окна: выход последнего кадра из фазы `phase`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Until {
+    #[default]
+    Open,
+    /// Ещё не вошли в фазу.
+    Before,
+    /// Последний кадр сейчас в фазе.
+    Inside,
+    /// Окно закрыто навсегда.
+    Closed,
+}
+impl Until {
+    /// Следующее состояние при входе в `phase` кадра `frame`.
+    fn step(self, until: usize, last: u64, phase: usize, frame: u64) -> Self {
+        match self {
+            Self::Before if frame == last && phase == until => Self::Inside,
+            Self::Inside if phase != until => Self::Closed,
+            other => other,
+        }
+    }
+}
+
 struct Probe {
     filter: Filter,
-    file: File,
+    until: Option<usize>,
 }
 static PROBE: OnceLock<Probe> = OnceLock::new();
 static ARMED: AtomicBool = AtomicBool::new(false);
 static PHASE: AtomicUsize = AtomicUsize::new(OUTSIDE);
 static FRAME: AtomicU64 = AtomicU64::new(0);
+static WINDOW: std::sync::Mutex<Until> = std::sync::Mutex::new(Until::Open);
 
-/// Читает окружение до первой аллокации стенда. Без переменной не выделяет память.
-pub(crate) fn init() -> Result<(), String> {
+fn spec() -> Result<Option<String>, String> {
     let mut value = [0u16; 96];
     // SAFETY: имя завершено нулём, буфер и его длина принадлежат этому кадру стека.
     let length =
         unsafe { GetEnvironmentVariableW(NAME.as_ptr(), value.as_mut_ptr(), value.len() as u32) }
             as usize;
     if length == 0 {
-        return Ok(());
+        return Ok(None);
     }
-    let mut ascii = [0u8; 96];
-    let spec = value
+    value
         .get(..length)
-        .filter(|units| units.iter().all(|unit| *unit < 128))
-        .map(|units| {
-            for (byte, unit) in ascii.iter_mut().zip(units) {
-                *byte = *unit as u8;
-            }
-            &ascii[..length]
-        })
-        .and_then(|bytes| std::str::from_utf8(bytes).ok())
-        .ok_or("ENGINE_BENCH_ALLOC_STACKS: expected <phase>[@<frame>[-<frame>]]")?;
-    let filter = Filter::parse(spec, &Phase::NAMES).ok_or_else(|| {
+        .and_then(|units| String::from_utf16(units).ok())
+        .map(Some)
+        .ok_or_else(|| "ENGINE_BENCH_ALLOC_STACKS: expected <phase>[@<frame>[-<frame>]]".into())
+}
+
+fn phase_index(name: &str) -> Option<usize> {
+    Phase::NAMES.iter().position(|known| *known == name)
+}
+
+/// Читает окружение до первой аллокации стенда. Без переменной не выделяет память.
+pub(crate) fn init() -> Result<(), String> {
+    let Some(spec) = spec()? else { return Ok(()) };
+    let filter = Filter::parse(&spec, &Phase::NAMES).ok_or_else(|| {
         format!(
             "ENGINE_BENCH_ALLOC_STACKS={spec}: expected <phase>[@<frame>[-<frame>]], phase is * | outside | {}",
             Phase::NAMES.join(" | ")
         )
     })?;
+    let until = match std::env::var(UNTIL) {
+        Ok(name) => {
+            Some(phase_index(&name).ok_or_else(|| format!("{UNTIL}={name}: unknown phase"))?)
+        }
+        Err(_) => None,
+    };
+    if until.is_some() && filter.last == u64::MAX {
+        return Err(format!(
+            "{UNTIL} needs a last frame in ENGINE_BENCH_ALLOC_STACKS"
+        ));
+    }
+    let mean = match std::env::var(SAMPLE) {
+        Ok(bytes) => bytes
+            .parse::<u64>()
+            .ok()
+            .filter(|bytes| *bytes > 0)
+            .ok_or_else(|| format!("{SAMPLE}={bytes}: expected a positive byte count"))?,
+        Err(_) => 0,
+    };
     let path = std::env::var_os(OUT).ok_or_else(|| format!("{OUT} is required with {spec}"))?;
-    let open = |error: std::io::Error| format!("{}: {error}", path.to_string_lossy());
-    let mut file = File::create(&path).map_err(open)?;
     // SAFETY: нулевое имя означает модуль процесса; вызов ничего не захватывает.
     let base = unsafe { GetModuleHandleW(std::ptr::null()) } as usize;
-    writeln!(
-        file,
-        "# engine_bench alloc stacks v2 base={base:x} filter={spec}"
-    )
-    .map_err(open)?;
-    drop(file);
-    // Дозапись: строки потоков не перемешиваются и не затирают друг друга.
-    let file = File::options().append(true).open(&path).map_err(open)?;
-    let _ = PROBE.set(Probe { filter, file });
+    let until_name = until.map_or("-", |index| Phase::NAMES[index]);
+    sink::open(
+        &path,
+        &format!(
+            "# engine_bench alloc stacks v3 base={base:x} filter={spec} until={until_name} sample={mean}\n"
+        ),
+    )?;
+    sample::configure(mean);
+    *WINDOW.lock().unwrap_or_else(|e| e.into_inner()) =
+        until.map_or(Until::Open, |_| Until::Before);
+    let _ = PROBE.set(Probe { filter, until });
     rearm();
     Ok(())
 }
 
 fn rearm() {
-    if let Some(probe) = PROBE.get() {
-        let on = probe
-            .filter
-            .matches(PHASE.load(Relaxed), FRAME.load(Relaxed));
-        ARMED.store(on, Relaxed);
+    let Some(probe) = PROBE.get() else { return };
+    let (phase, frame) = (PHASE.load(Relaxed), FRAME.load(Relaxed));
+    let mut window = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(until) = probe.until {
+        let next = window.step(until, probe.filter.last, phase, frame);
+        if next == Until::Closed && *window != Until::Closed {
+            ARMED.store(false, Relaxed);
+            *window = next;
+            drop(window);
+            let name = Phase::NAMES[until];
+            sink::trailer(&format!("# end frame={frame} after={name}\n"));
+            return;
+        }
+        *window = next;
+    }
+    let on = *window != Until::Closed && probe.filter.matches(phase, frame);
+    ARMED.store(on, Relaxed);
+    drop(window);
+    if !on {
+        sink::flush();
     }
 }
 
@@ -164,18 +231,25 @@ pub(crate) fn phase(next: usize) {
 pub(crate) fn outside() {
     phase(OUTSIDE);
 }
+/// Конец процесса: остаток буфера и число потерянных выборок — в файл.
+pub(crate) fn finish() {
+    if PROBE.get().is_some() {
+        ARMED.store(false, Relaxed);
+        sink::trailer(&format!("# dropped {}\n", sample::dropped()));
+    }
+}
 
 /// Выделение из аллокатора: при выключенном пробнике — одно чтение флага.
 #[inline]
 pub(super) fn record(kind: u8, bytes: usize, pointer: *const u8) {
-    if ARMED.load(Relaxed) {
+    if ARMED.load(Relaxed) && sample::take(bytes, pointer) {
         write(kind, bytes, pointer);
     }
 }
 /// Освобождение `pointer`: зовётся до того, как блок вернётся аллокатору.
 #[inline]
 pub(super) fn release(bytes: usize, pointer: *const u8) {
-    if ARMED.load(Relaxed) {
+    if ARMED.load(Relaxed) && sample::forget(pointer) {
         write_release(bytes, pointer);
     }
 }
@@ -211,16 +285,15 @@ fn head(kind: u8, bytes: usize, pointer: *const u8) -> (Line, std::fmt::Result) 
     (line, text)
 }
 
-fn emit(probe: &Probe, mut line: Line, text: std::fmt::Result) {
+fn emit(mut line: Line, text: std::fmt::Result) {
     if text.and_then(|()| line.write_str("\n")).is_ok() {
-        let _ = (&probe.file).write_all(&line.bytes[..line.length]);
+        sink::write(&line.bytes[..line.length]);
     }
 }
 
 #[cold]
 #[inline(never)]
 fn write(kind: u8, bytes: usize, pointer: *const u8) {
-    let Some(probe) = PROBE.get() else { return };
     let mut stack = [std::ptr::null_mut::<c_void>(); FRAMES];
     // SAFETY: буфер вмещает FRAMES адресов; хеш не запрошен.
     let depth = unsafe {
@@ -230,15 +303,14 @@ fn write(kind: u8, bytes: usize, pointer: *const u8) {
     for address in &stack[..depth.min(FRAMES)] {
         text = text.and_then(|()| write!(line, " {:x}", *address as usize));
     }
-    emit(probe, line, text);
+    emit(line, text);
 }
 
 #[cold]
 #[inline(never)]
 fn write_release(bytes: usize, pointer: *const u8) {
-    let Some(probe) = PROBE.get() else { return };
     let (line, text) = head(b'f', bytes, pointer);
-    emit(probe, line, text);
+    emit(line, text);
 }
 
 #[cfg(test)]

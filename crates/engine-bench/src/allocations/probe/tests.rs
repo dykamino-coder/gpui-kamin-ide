@@ -1,4 +1,4 @@
-//! Фильтр пробника, отсутствие следа в счётчиках и граница строки записи.
+//! Фильтр и конец окна пробника, отсутствие следа в счётчиках, граница строки.
 
 use super::*;
 
@@ -43,6 +43,30 @@ fn filter_rejects_unknown_phases_and_malformed_ranges() {
     ] {
         assert_eq!(Filter::parse(spec, &NAMES), None, "{spec}");
     }
+}
+
+#[test]
+fn window_ends_when_the_last_frame_leaves_the_until_phase() {
+    let (build, layout, other) = (4, 5, 10);
+    let mut window = Until::Before;
+    for (phase, frame) in [(other, 1), (build, 1), (layout, 1), (other, 2)] {
+        window = window.step(build, 2, phase, frame);
+        assert_eq!(
+            window,
+            Until::Before,
+            "earlier frames leave the window open"
+        );
+    }
+    window = window.step(build, 2, build, 2);
+    assert_eq!(window, Until::Inside);
+    window = window.step(build, 2, layout, 2);
+    assert_eq!(window, Until::Closed);
+    assert_eq!(
+        window.step(build, 2, build, 2),
+        Until::Closed,
+        "closed for good"
+    );
+    assert_eq!(Until::Open.step(build, 2, layout, 2), Until::Open);
 }
 
 #[test]
