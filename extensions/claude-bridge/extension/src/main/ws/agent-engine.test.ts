@@ -112,6 +112,39 @@ describe('agent engine on the client connection', () => {
     expect(frames.filter((f) => f.type === 'session:change-model')).toHaveLength(2)
   })
 
+  it('continues the chat on the other engine when a model of that engine is picked', async () => {
+    const { m, internal, frames, sent, socket } = manager({ engine: 'claude' }, '00000000-0000-4000-8000-000000000001')
+    internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: 'claude-opus-5-5', engine: 'claude' })
+    m.changeModel('gpt-6.1-sol')
+    m.changeModel('claude-sonnet-5-5') // still Claude until the server says otherwise
+    expect(frames.filter((f) => f.type !== 'session:resume')).toEqual([
+      { type: 'session:switch-engine', engine: 'codex', model: 'gpt-6.1-sol' },
+      { type: 'session:change-model', model: 'claude-sonnet-5-5' },
+    ])
+
+    internal.dispatchMessage({
+      type: 'session:restarted', sessionId: 's2', model: 'gpt-6.1-sol', engine: 'codex',
+      engineSwitch: { stopMs: 10, prepareMs: 2, startMs: 90 },
+    })
+    expect(m.getEngine()).toBe('codex')
+    expect(sent.filter((e) => e.channel === 'session-restarted').at(-1)?.args[1]).toEqual({
+      sessionId: 's2', model: 'gpt-6.1-sol', effort: undefined, engine: 'codex',
+    })
+    // Back to Claude is the same route; a reconnect keeps the conversation.
+    m.changeModel('claude-opus-5-5')
+    expect(frames.at(-1)).toEqual({ type: 'session:switch-engine', engine: 'claude', model: 'claude-opus-5-5' })
+    await internal.startSession(socket)
+    expect(frames.at(-1)).toMatchObject({ type: 'session:resume', conversationId: '00000000-0000-4000-8000-000000000001' })
+  })
+
+  it('tells the user why an engine switch was refused, without a restart', () => {
+    const { internal, sent } = manager({ engine: 'claude' })
+    internal.dispatchMessage({ type: 'session:engine-switch-failed', error: 'ChatGPT is not signed in on this Bridge server.' })
+    expect(sent.find((e) => e.channel === 'session-restarted')?.args[1]).toEqual({
+      inPlace: true,
+      engineNotice: 'Could not switch the agent: ChatGPT is not signed in on this Bridge server.',
+    })
+  })
   it('does not send a model change when codex already started on the picked model', () => {
     const { internal, frames } = manager({ engine: 'codex', model: 'gpt-5.5' })
     internal.dispatchMessage({ type: 'session:created', sessionId: 's1', model: 'gpt-5.5', engine: 'codex' })

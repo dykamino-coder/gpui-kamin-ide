@@ -31,6 +31,9 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   const item: Submission = { text: '', timestamp: new Date().toISOString(), ...existing, ...data, warning: data.warning,
     afterOrd: existing?.afterOrd ?? queueWatermark(jsonlEntriesByTab.peek().get(tabId) ?? []) }
   if (existing?.committed) item.committed = true
+  // An engine without a CLI mod (codex) reports 'read' without the stored UUID;
+  // its transcript row is the message itself, so the receipt adds no row.
+  if (item.state === 'read' && !item.uuid && modCapabilities.peek().get(tabId) !== true) item.committed = true
   item.fallbackQueue = mergeFallbackQueue(existing?.fallbackQueue, data.fallbackQueue)
   if (item.state === 'fallback') {
     if (item.fallbackQueue?.consumed || item.fallbackQueue?.dismissed) removeLocalQueueItem(tabId, item.id)
@@ -101,6 +104,13 @@ function applyKnownSnapshot(tabId: string, known: ReadonlySet<string>): void {
 
 export function forgetSubmissions(tabId: string): void {
   const next = new Map(submissions.peek()); next.delete(tabId); submissions.value = next
+  const capabilities = new Map(modCapabilities.peek()); capabilities.delete(tabId); modCapabilities.value = capabilities
+}
+
+/** The tab now runs another engine: only that engine's session says whether it
+ *  confirms submissions (a Claude CLI mod does, codex does not). */
+export function forgetModCapability(tabId: string): void {
+  if (!modCapabilities.peek().has(tabId)) return
   const capabilities = new Map(modCapabilities.peek()); capabilities.delete(tabId); modCapabilities.value = capabilities
 }
 

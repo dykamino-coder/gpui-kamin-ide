@@ -79,3 +79,15 @@ describe('Claude CLI model selection', () => {
     }
   })
 })
+
+describe('Claude CLI session context after an engine switch', () => {
+  it('appends the carried-over conversation to the session system prompt', () => {
+    const handoff = '## Conversation so far\n\n<conversation-history>\nUser: my code is 4217\n</conversation-history>'
+    const args = buildClaudeArgs({ ...session(), handoff })
+    const prompt = args[args.indexOf('--append-system-prompt') + 1]!
+    expect(prompt.startsWith('# Open Claude Bridge')).toBe(true)
+    expect(prompt.endsWith(handoff)).toBe(true)
+    const plain = buildClaudeArgs(session())
+    expect(plain[plain.indexOf('--append-system-prompt') + 1]).not.toContain('Conversation so far')
+  })
+})

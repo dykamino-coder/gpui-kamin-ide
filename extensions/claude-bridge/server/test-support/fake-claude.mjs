@@ -197,6 +197,17 @@ async function execute(command) {
       )
       await hook('SessionStart', { source: 'compact' })
       break
+    case '/fake-note':
+      // A synthetic fact the answer carries (user input itself is never captured).
+      emit(rec.assistant([{ type: 'text', text: `noted: ${parameter ?? ''}` }]))
+      break
+    case '/fake-recall': {
+      // Lines of the appended system prompt holding the word (engine-switch handoff).
+      const prompt = args.includes('--append-system-prompt') ? args[args.indexOf('--append-system-prompt') + 1] : ''
+      const hits = (prompt ?? '').split('\n').filter((line) => parameter && line.includes(parameter))
+      emit(rec.assistant([{ type: 'text', text: `recall: ${hits.join(' | ')}` }]))
+      break
+    }
     case '/fake-next-usage':
       emit(rec.assistant([{ type: 'text', text: 'Synthetic post-compact usage' }], 17000))
       break

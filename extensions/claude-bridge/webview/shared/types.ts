@@ -768,7 +768,8 @@ export interface KaminBridgeApi {
     callback: (
       tabId: string,
       data: {
-        sessionId: string
+        /** Absent when nothing restarted (a refused engine switch). */
+        sessionId?: string
         effort?: string
         model?: string
         inPlace?: boolean

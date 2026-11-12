@@ -6,6 +6,7 @@ import type { AgentEngineId } from '../../shared/agent-events'
 import { debugLog, warnLog } from '../logging'
 import { lifecycleLog } from '../logging/lifecycle'
 import { JsonlWatcher } from './jsonl-watcher'
+import { startSegmentPump } from '../conversation/conversation'
 import { leanEntries } from './jsonl-projection'
 import { sendToClient, socketWritable, trySendToClient } from './session-io'
 import { handleJsonlUserEntry } from './session-stats-recorder'
@@ -27,7 +28,16 @@ export function attachSessionJsonlWatcher(
   hooks: JsonlWiringHooks,
 ): JsonlWatcher {
   const sessionId = session.id
-  const { tokenId, userName, settingsDir } = session
+  const { tokenId, userName } = session
+  // A multi-engine conversation shows the client its unified log (in the
+  // conversation's own directory, already on disk); the engine's native
+  // transcript is copied into it by the segment pump.
+  const conversation = session.conversation
+  const settingsDir = conversation?.dir ?? session.settingsDir
+  if (conversation) {
+    startTime = 0
+    session.segmentPump = startSegmentPump(conversation) ?? undefined
+  }
   // All watcher callbacks send via session.ws (not the captured ws) so a
   // reattached client keeps receiving entries.
   const jsonlWatcher = new JsonlWatcher(

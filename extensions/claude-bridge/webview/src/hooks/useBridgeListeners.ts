@@ -1,4 +1,4 @@
-import { receiveSubmission, noteSubmissionRows, forgetSubmissions } from '../signals/submissions'
+import { receiveSubmission, noteSubmissionRows, forgetSubmissions, forgetModCapability } from '../signals/submissions'
 import { forgetCompaction, noteCompactionRows } from '../signals/compaction'
 import { setTabUsage } from '../signals/session-usage'
 import { receiveAgentPreferences, receiveCodexAuth, receiveCodexModels } from '../signals/agent'
@@ -329,6 +329,8 @@ export function useBridgeListeners(
         const nextEffort = data.effort ?? cur?.effort
         const nextModel = data.model ?? cur?.model
         const nextEngine = data.engine ?? cur?.engine
+        // An engine switch: receipts follow the new engine's own announcement.
+        if (cur && data.engine && (cur.engine ?? 'claude') !== data.engine) forgetModCapability(tabId)
         if (cur && (cur.effort !== nextEffort || cur.model !== nextModel || cur.engine !== nextEngine)) {
           tabs.value = tabs.value.map(t => t.id === tabId ? { ...t, effort: nextEffort, model: nextModel, engine: nextEngine } : t)
         }

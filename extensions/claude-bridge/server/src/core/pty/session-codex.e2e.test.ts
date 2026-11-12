@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AddressInfo } from 'node:net'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
 
 const state = vi.hoisted(() => {
@@ -206,7 +206,13 @@ afterAll(async () => {
   shutdownAll()
   await runtimeMod.shutdownCodexRuntime()
   await new Promise((r) => server.close(r))
-  fs.rmSync(state.home, { recursive: true, force: true })
+  // Windows: a just-stopped CLI (fake Claude under ConPTY, the app-server) can
+  // hold its directory past the retries; a leftover temp dir is not a failure.
+  try {
+    fs.rmSync(state.home, { recursive: true, force: true, maxRetries: 50, retryDelay: 100 })
+  } catch (err) {
+    if (process.platform !== 'win32') throw err
+  }
 }, 30_000)
 
 describe('codex chat over the Bridge session WebSocket', () => {
@@ -747,5 +753,142 @@ describe('codex chat survives the app-server and reports a stalled turn', () => 
     ).rejects.toThrow('already open in another Bridge session')
     a.send({ type: 'session:end' })
     a.close()
+  }, 30_000)
+})
+
+// One chat, one conversation across engines (conversation/manifest.ts): the
+// tab keeps its conversation id, the joining engine starts with the history.
+describe('engine switch inside one chat', () => {
+  beforeEach(() => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('BRIDGE_DEV_FAKE_CLI', '1')
+    vi.stubEnv('BRIDGE_FAKE_CLI_HOME', state.home)
+    claudeMonitor.record({ loggedIn: true })
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    claudeMonitor.record({ loggedIn: false })
+  })
+
+  async function switchTo(client: Client, engine: string, model: string) {
+    const from = client.frames.length
+    const t0 = performance.now()
+    client.send({ type: 'session:switch-engine', engine, model })
+    const restarted = await client.next(
+      (f) => f.type === 'session:restarted' || f.type === 'session:engine-switch-failed',
+      15_000,
+      from,
+    )
+    return { restarted, from, ms: performance.now() - t0 }
+  }
+  const after = (client: Client, from: number) => (pred: (e: Record<string, any>) => boolean) =>
+    client.entry(
+      (e) => pred(e) && client.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= from,
+      15_000,
+    )
+
+  it('carries the conversation Claude → ChatGPT → Claude in the same chat and resumes it', async () => {
+    const client = await Client.open(port)
+    expect(await createChat(client, { engine: 'claude' })).toMatchObject({ type: 'session:created', engine: 'claude' })
+    await say(client, '/fake-note 4217', 'n1')
+    await client.entry((e) => e.type === 'assistant' && text(e) === 'noted: 4217', 15_000)
+    const first = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+
+    // Claude → ChatGPT: same socket, same chat; the conversation gets its own id.
+    const toGpt = await switchTo(client, 'codex', 'gpt-fake')
+    expect(toGpt.restarted).toMatchObject({ type: 'session:restarted', engine: 'codex', model: 'gpt-fake' })
+    expect(toGpt.restarted.engineSwitch.prepareMs).toBeLessThan(200)
+    expect(client.frames.slice(toGpt.from).some((f) => f.type === 'jsonl:status' && f.compacted)).toBe(true)
+    const id = (
+      await client.next((f) => f.type === 'session:conversation-id' && f.conversationId !== first, 15_000, toGpt.from)
+    ).conversationId
+    const since = after(client, toGpt.from)
+    await since((e) => e.type === 'assistant' && text(e) === 'noted: 4217') // history replayed into the chat
+    await since((e) => e.subtype === 'engine_switch' && e.content === '→ gpt-fake')
+    let mark = client.frames.length
+    await say(client, '/fake-recall 4217', 'g1')
+    const gptRecall = await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:'))
+    expect(text(gptRecall)).toContain('noted: 4217')
+    mark = client.frames.length
+    await say(client, 'my dog is called Sharik', 'g2')
+    await after(client, mark)((e) => text(e).startsWith('echo: my dog is called Sharik'))
+
+    // ChatGPT → Claude: the new Claude session knows both segments.
+    const toClaude = await switchTo(client, 'claude', 'claude-sonnet-5-5')
+    expect(toClaude.restarted).toMatchObject({ engine: 'claude', model: 'claude-sonnet-5-5' })
+    const back = after(client, toClaude.from)
+    await back((e) => e.subtype === 'engine_switch' && e.content === '→ claude-sonnet-5-5')
+    expect((await client.next((f) => f.type === 'session:conversation-id', 15_000, toClaude.from)).conversationId).toBe(
+      id,
+    )
+    mark = client.frames.length
+    await say(client, '/fake-recall Sharik', 'c2')
+    const claudeRecall = await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:'))
+    expect(text(claudeRecall)).toContain('my dog is called Sharik')
+    mark = client.frames.length
+    await say(client, '/fake-recall 4217', 'c3')
+    expect(text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))).toContain(
+      'noted: 4217',
+    )
+    console.info('engine switch timings', {
+      toGpt: toGpt.restarted.engineSwitch,
+      toGptMs: Math.round(toGpt.ms),
+      toClaude: toClaude.restarted.engineSwitch,
+      toClaudeMs: Math.round(toClaude.ms),
+    })
+
+    // One transcript: every segment on one parent chain, two switch markers.
+    const { SESSIONS_BASE } = await import('./session-settings')
+    const { unifiedLogPath } = await import('../conversation/conversation')
+    const dir = path.join(
+      SESSIONS_BASE,
+      'tid-a-' + (await import('./session-settings')).sanitizeDirName('/work/project'),
+      id,
+    )
+    const log = fs
+      .readFileSync(unifiedLogPath({ id, dir }), 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l))
+    expect(log.filter((e) => e.subtype === 'engine_switch')).toHaveLength(2)
+    const byUuid = new Map(log.map((e) => [e.uuid, e]))
+    const chain: any[] = []
+    for (let e = log.filter((x) => !x.isSidechain).at(-1); e; e = byUuid.get(e.parentUuid)) chain.push(e)
+    const chained = chain.map(text)
+    for (const needle of ['noted: 4217', 'echo: my dog is called Sharik [model=gpt-fake effort=default]'])
+      expect(chained).toContain(needle)
+    expect(chain.at(-1)).toMatchObject({ sessionId: first }) // back into the chat's first segment
+
+    client.send({ type: 'session:end' })
+    client.close()
+
+    // Reopening the chat resumes the conversation on its current engine.
+    const again = await Client.open(port)
+    again.send({ type: 'session:resume', token: 'tok-a', conversationId: id, protocolVersion: 1, cwd: '/work/project' })
+    expect(await again.next((f) => f.type === 'session:created' || f.type === 'session:error', 15_000)).toMatchObject({
+      type: 'session:created',
+      engine: 'claude',
+    })
+    await again.entry((e) => e.type === 'assistant' && text(e) === 'noted: 4217', 15_000)
+    await again.entry((e) => text(e).startsWith('echo: my dog is called Sharik'), 15_000)
+    again.send({ type: 'session:end' })
+    again.close()
+  }, 60_000)
+
+  it('restarts an empty chat on the other engine, holds a prompt sent meanwhile and refuses the same engine', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    expect((await switchTo(client, 'codex', 'gpt-fake-mini')).restarted).toMatchObject({
+      type: 'session:engine-switch-failed',
+    })
+    // A prompt sent right after the pick waits for the new engine.
+    const from = client.frames.length
+    client.send({ type: 'session:switch-engine', engine: 'claude', model: 'claude-sonnet-5-5' })
+    await say(client, '/fake-note 77', 'e1')
+    expect(await client.next((f) => f.type === 'session:restarted', 15_000, from)).toMatchObject({ engine: 'claude' })
+    await after(client, from)((e) => e.type === 'assistant' && text(e) === 'noted: 77')
+    expect(client.frames.slice(from).some((f) => f.type === 'session:error')).toBe(false)
+    client.send({ type: 'session:end' })
+    client.close()
   }, 30_000)
 })

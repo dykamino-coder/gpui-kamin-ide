@@ -184,6 +184,8 @@ function developerInstructions(config: SessionConfig): string {
   const text = [
     buildSystemPrompt(config.cwd, config.basePrompt, config.transcriptMirrorDir, config.host),
     bridgeClaudeMd(config.host),
+    // Engine switch: the conversation this chat continues, last (handoff.ts).
+    ...(config.handoff?.trim() ? [config.handoff.trim()] : []),
   ].join('\n\n')
   return text.replaceAll('mcp__user-tools__', 'mcp__bridge__')
 }
@@ -290,6 +292,7 @@ export async function createCodexSession(
     bearerHash: config.bearerHash,
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,
+    ...(config.conversation ? { conversation: config.conversation } : {}),
   }
   const releaseEndpoint = holdMcpEndpoint(session)
   let agent: CodexAgentSession
@@ -369,7 +372,8 @@ export async function createCodexSession(
     lifecycleLog('pty_exit', { sessionId, exitCode, suppressed: false })
     session.state = 'exited'
     binding.dispose()
-    sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
+    // An engine switch ends this engine on purpose; the chat goes on.
+    if (!session.isRestarting) sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
     deps.finalizeExit(sessionId, exitCode)
   })
 

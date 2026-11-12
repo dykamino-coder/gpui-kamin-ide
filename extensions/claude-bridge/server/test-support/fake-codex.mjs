@@ -17,6 +17,8 @@
 //   /fake-reroute <model>         emit model/rerouted, then echo
 //   /fake-crash                   start the turn, then the app-server process dies
 //   /fake-hang                    start the turn, then stay silent until interrupted
+//   /fake-recall <word>           answer with the developer-instructions lines naming <word>
+//                                 (how a model 'remembers' what its session context told it)
 //
 // Knobs: FAKE_CODEX_LOGGED_IN=1 (start signed in), FAKE_CODEX_LOGIN_DELAY_MS,
 // FAKE_CODEX_LOGIN_FAIL=<error>, FAKE_CODEX_INIT_FAIL=<error> (stderr + exit 2),
@@ -185,7 +187,14 @@ const handlers = {
     nextCursor: null,
   }),
   'thread/start': async (p) => {
-    const t = { id: randomUUID(), model: p?.model ?? 'gpt-fake', cwd: p?.cwd, mcp: mcpFromConfig(p?.config), turns: 0 }
+    const t = {
+      id: randomUUID(),
+      model: p?.model ?? 'gpt-fake',
+      cwd: p?.cwd,
+      mcp: mcpFromConfig(p?.config),
+      instructions: p?.developerInstructions ?? '',
+      turns: 0,
+    }
     await initializeMcp(t.mcp)
     threads.set(t.id, t)
     // codex 0.160.1 writes a thread's rollout with its first turn: a thread
@@ -204,6 +213,7 @@ const handlers = {
     t.mcp = mcpFromConfig(p?.config) ?? t.mcp
     await initializeMcp(t.mcp)
     if (p?.model) t.model = p.model
+    if (typeof p?.developerInstructions === 'string') t.instructions = p.developerInstructions
     threads.set(t.id, t)
     saveThread(t)
     return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
@@ -364,6 +374,10 @@ async function runTurn(t, turnId, text) {
         additionalDetails: null,
       }
       notify('error', { threadId: t.id, turnId, error, willRetry: false })
+    } else if (text.startsWith('/fake-recall ')) {
+      const word = text.slice('/fake-recall '.length).trim()
+      const lines = (t.instructions ?? '').split('\n').filter((l) => word && l.includes(word))
+      agentMessage(t, turnId, lines.length ? `recall: ${lines.join(' | ')}` : `recall: nothing about ${word}`)
     } else {
       if (text.startsWith('/fake-reroute ')) {
         const to = text.split(' ')[1]

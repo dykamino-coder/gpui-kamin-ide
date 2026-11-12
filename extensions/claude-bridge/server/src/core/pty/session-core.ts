@@ -19,6 +19,9 @@ import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import { codexTranscriptPath, createCodexSession, transcriptEngine } from './session-codex'
 import { codexRuntime } from '../codex/codex-runtime'
+import { activeSegment, loadManifest } from '../conversation/manifest'
+import { addSegment, beginConversation } from '../conversation/conversation'
+import type { AgentEngineId } from '../../shared/agent-events'
 import {
   sendToClient,
   writeInputToSession,
@@ -219,9 +222,33 @@ async function createAdmittedSession(
     }
   }
 
+  // A conversation that spans engines (conversation/manifest.ts): the client
+  // holds the logical id, whose settings directory has the manifest. The
+  // engine runs the active segment, in that segment's own directory.
+  const manifest = config.conversation
+    ? loadManifest(config.conversation.dir)
+    : config.resumeConversationId
+      ? loadManifest(settingsDir)
+      : null
+  if (manifest) {
+    const segment = activeSegment(manifest)
+    config.conversation = { id: manifest.id, dir: manifest.dir }
+    settingsDir = segment.settingsDir
+    fs.mkdirSync(settingsDir, { recursive: true })
+    config.resumeConversationId = segment.nativeId ?? undefined
+    config.engine = segment.engine
+    config.handoff = segment.handoff ?? undefined
+    if (!segment.nativeId && !config.model && segment.model) config.model = segment.model
+    if (segment.nativeId && segment.engine === 'claude') await repairTranscriptForResume(settingsDir, segment.nativeId)
+    resumeNotFound = false
+    settingsDirSource = 'reuse'
+  }
+
   // A chat keeps its engine for life: an existing transcript decides, the
   // client's hint only applies to a conversation this server does not have.
+  // A multi-engine conversation runs the engine of its active segment.
   const engine =
+    (manifest ? activeSegment(manifest).engine : null) ??
     (config.resumeConversationId ? resumedEngine(settingsDir, config.resumeConversationId) : null) ??
     config.engine ??
     'claude'
@@ -559,6 +586,7 @@ async function createAdmittedSession(
     bearerHash: config.bearerHash,
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,
+    ...(config.conversation ? { conversation: config.conversation } : {}),
   }
 
   sessions.set(sessionId, session)
@@ -1028,6 +1056,8 @@ export async function restartWithEffort(
   // while the old one is still flushing used to interleave two writers on
   // the same conversation JSONL (chain forks / torn lines).
   await killPtyAndWait(session)
+  // The CLI flushed its transcript on the way out: copy the rest (conversations).
+  session.segmentPump?.stop()
 
   // Reject the OLD session's in-flight MCP calls before we drop it — the restart
   // path skips cleanupSession() (isRestarting suppresses onExit), so without this
@@ -1049,6 +1079,8 @@ export async function restartWithEffort(
     effort,
     model: preservedModel || undefined,
     reuseSettingsDir: oldSettingsDir,
+    // A conversation's segment restarts as itself (resolved from the manifest).
+    ...(session.conversation ? { conversation: session.conversation } : {}),
     bearerHash: session.bearerHash,
     host: session.host,
   })
@@ -1093,6 +1125,8 @@ export async function restartWithModel(
   // Kill current PTY and WAIT for it to exit — same double-writer guard as
   // restartWithEffort.
   await killPtyAndWait(session)
+  // The CLI flushed its transcript on the way out: copy the rest (conversations).
+  session.segmentPump?.stop()
 
   // Reject the OLD session's in-flight MCP calls before we drop it — the restart
   // path skips cleanupSession() (isRestarting suppresses onExit), so without this
@@ -1113,9 +1147,109 @@ export async function restartWithModel(
     model,
     effort: preservedEffort || undefined,
     reuseSettingsDir: oldSettingsDir,
+    // A conversation's segment restarts as itself (resolved from the manifest).
+    ...(session.conversation ? { conversation: session.conversation } : {}),
     bearerHash: session.bearerHash,
     host: session.host,
   })
+}
+
+export interface EngineSwitchResult {
+  session: PtySession
+  /** Milliseconds: stopping the leaving engine, preparing the conversation
+   *  (files only, no model call), starting the joining engine. */
+  timings: { stopMs: number; prepareMs: number; startMs: number }
+}
+
+/**
+ * Continue the chat's conversation on the other engine, in the same chat
+ * (conversation/manifest.ts). The leaving engine is stopped after flushing its
+ * transcript; the joining one starts a new native session whose context holds
+ * the conversation so far. An empty chat simply restarts on the other engine.
+ */
+export async function switchSessionEngine(
+  sessionId: string,
+  target: { engine: AgentEngineId; model: string | null },
+  ws: WS,
+  userName: string,
+  tokenId: string,
+): Promise<EngineSwitchResult> {
+  const old = sessions.get(sessionId)
+  if (!old) throw new Error('Session not found')
+  const t0 = performance.now()
+  const fromEngine = old.engine ?? 'claude'
+  const known = old.conversation ? loadManifest(old.conversation.dir) : null
+  const nativeId = known ? activeSegment(known).nativeId : old.cliConversationId
+  debugLog('Switching engine', { sessionId, from: fromEngine, to: target.engine, model: target.model })
+
+  // Same teardown as a model restart: no session:exit, transcript flushed.
+  old.isRestarting = true
+  old.outputDebounce?.dispose()
+  old.jsonlWatcher?.stop()
+  old.statusLineWatcher?.stop()
+  if (old.streamingProxy) {
+    void old.streamingProxy.stop().catch(() => {})
+    old.streamingProxy = undefined
+  }
+  await killPtyAndWait(old)
+  old.segmentPump?.stop()
+  rejectPendingForSession(sessionId, 'Engine switch')
+  closeToolNotificationStream(sessionId)
+  sessions.delete(sessionId)
+  lifecycleLog('session_destroy', { sessionId, reason: 'engine_switch', ageMs: Date.now() - old.createdAt.getTime() })
+  const t1 = performance.now()
+
+  const folderSuffix = old.cwd ? '-' + sanitizeDirName(old.cwd) : ''
+  const sessionsDir = path.join(SESSIONS_BASE, tokenId + folderSuffix)
+  let conversation: { id: string; dir: string } | undefined
+  if (known || nativeId) {
+    const manifest =
+      known ??
+      beginConversation({
+        sessionsDir,
+        engine: fromEngine,
+        nativeId: nativeId!,
+        settingsDir: old.settingsDir,
+        model: old.model ?? null,
+      })
+    // Clients and dashboards that still hold the chat's first id land here.
+    if (!known && nativeId) recordCompactLink(nativeId, manifest.id)
+    addSegment(manifest, {
+      engine: target.engine,
+      model: target.model,
+      settingsDir: path.join(sessionsDir, randomUUID()),
+    })
+    conversation = { id: manifest.id, dir: manifest.dir }
+    // The client drops its copy of the old transcript; the new session
+    // replays the conversation's unified log in its place.
+    sendToClient(ws, { type: 'jsonl:status', status: 'watching', compacted: true })
+  }
+  const t2 = performance.now()
+
+  const session = await createSession(ws, userName, tokenId, {
+    cwd: old.cwd,
+    cols: 120,
+    rows: 40,
+    engine: target.engine,
+    ...(target.model ? { model: target.model } : {}),
+    // Effort levels differ per engine: the joining one starts on its own default.
+    ...(conversation ? { conversation } : {}),
+    bearerHash: old.bearerHash,
+    protocolVersion: old.streamProtocol ?? 0,
+    host: old.host,
+  })
+  const timings = {
+    stopMs: Math.round(t1 - t0),
+    prepareMs: Math.round(t2 - t1),
+    startMs: Math.round(performance.now() - t2),
+  }
+  infoLog('Engine switched', {
+    from: fromEngine,
+    to: target.engine,
+    conversation: conversation?.id ?? null,
+    ...timings,
+  })
+  return { session, timings }
 }
 
 /**
@@ -1227,6 +1361,7 @@ function cleanupSession(sessionId: string): void {
 
   session.outputDebounce?.dispose()
   session.jsonlWatcher?.stop()
+  session.segmentPump?.stop()
   session.statusLineWatcher?.stop()
   // Reject this session's in-flight MCP calls so their promises + any
   // long-lived SSE stream/heartbeat (interactive tools never time out) don't

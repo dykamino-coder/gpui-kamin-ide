@@ -55,6 +55,7 @@ const REASONS = new Set([
   'replace_resume',
   'effort_restart',
   'model_restart',
+  'engine_switch',
   'startup_failed',
   'detach_not_running',
   'detach_grace',
@@ -74,6 +75,7 @@ export type DestroyReason =
   | 'replace_resume'
   | 'effort_restart'
   | 'model_restart'
+  | 'engine_switch'
   | 'startup_failed'
   | 'detach_not_running'
   | 'detach_grace'

@@ -12,6 +12,7 @@ export function buildSystemPrompt(
   basePrompt?: string,
   transcriptMirrorDir?: string,
   host?: HostDeclaration,
+  handoff?: string,
 ): string {
   const lines: string[] = []
 
@@ -59,6 +60,14 @@ export function buildSystemPrompt(
     lines.push('## User Instructions')
     lines.push('')
     lines.push(trimmed)
+  }
+
+  // An engine switch: the conversation this chat continues (engine/handoff.ts).
+  // Last, so the history never sits between the session rules and the user's.
+  const history = handoff?.trim()
+  if (history) {
+    lines.push('')
+    lines.push(history)
   }
 
   return lines.join('\n')
