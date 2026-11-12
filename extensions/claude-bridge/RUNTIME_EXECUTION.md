@@ -97,7 +97,9 @@ release-relevant PR; close-out реестра, обзора и INC-карточ�
    с fetch, base/head SHA и зелёными required checks; живой gate — по карточке.
 5. До release лид подтверждает merge или исключение #797, #804 и PR учёта Codex
    в админке (codexstats); kdeps PR — тоже до release либо явное исключение.
-   PR duckspeed обязателен: release 1.0.95 без него не выпускается.
+   Обязательны и без них release 1.0.95 не выпускается: PR duckspeed и второй
+   PR codexstats (таблица активных PTY-сессий: живые счётчики User/Asst/Context/Total,
+   группировка сессий по пользователю).
 6. Reconciliation PR → один release 1.0.95 → проверка GitHub Release, Docker
    image и ancestry → close-out.
 
@@ -113,12 +115,34 @@ BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа �
 - BR-13: выполнить два restart после миграции и один rollback probe, сообщить результат.
 - BR-13: подтвердить, что legacy mount больше не читается, и разрешить cleanup PR.
 
+### Дополнение snapshot 2026-11-13: все открытые INC
+
+Владелец уточнил «добить всё» по KaminIDE/Bridge, поэтому открытые INC из
+исходного snapshot включены в пачку. Это дополнение того же snapshot
+`5624a330`; входящие после него карточки остаются следующему запуску. Триаж —
+по fresh `main` и GitHub-состоянию указанных PR. Класс не меняет статус
+карточки: `done`/`resolved` ставится только после принятого результата.
+
+| Класс | INC | Owner | Следующий artifact |
+| --- | --- | --- | --- |
+| fix merged, Windows live verify | 0002, 0023, 0025, 0051, 0053, 0055 | kmaint | Diagnostic PR с exact candidate и сценарием карточки |
+| fix merged, Podman/Linux verify | 0015, 0019, 0062 | kmaint | isolated server/dashboard run; 0019 также Windows save/progress |
+| fix merged, сверка по существующему evidence | 0016, 0078, 0079, 0084, 0088, 0089, 0090 | kmaint | reconciliation PR; повторять только непокрытые случаи |
+| fix merged, только deployment observation | 0001, 0041, 0044, 0054, 0063, 0069, 0070, 0071, 0072, 0073, 0074, 0080, 0081, 0091, 0092, 0093 | владелец/лид (0001 — @ToToshka45) | наблюдение после выкладки 1.0.95; maintainer не выполняет |
+| нужен fix: hooks/MCP, marketplace, Agent Teams | 0042 (change), 0077 (change), 0037, 0039, 0040, 0048 (research) | khooks | research → bounded Fix PR |
+| нужен fix: webview/чат | 0031 + 0101 (общий механизм очереди), 0033, 0046, 0100 (research) | kchat | research → bounded Fix PR |
+| нужен fix: sessions/resume | 0028, 0043, 0047, 0099, 0102 (research) | kses | research → bounded Fix PR |
+| нужен fix: native sidebar, CEF/render, browser workspace | 0029, 0032, 0034, 0038, 0020, 0050, 0087, 0094 (research/change); 0064 только design | knative | research → bounded Fix PR; реализация 0064 после WPT по решению владельца |
+| blocked: решение владельца | 0049 (receiving consumer), 0098 (render-only или CLI display mode) | лид спрашивает владельца | продолжение после решения |
+| вне пачки: движок | 0085 (глубина стека float) | engine | не входит в Kamin/Bridge scope |
+
+Дубликатов или неактуальных карточек триаж не нашёл. Карточки 0079, 0081, 0084,
+0087–0092 и строка INC-0042 в обзоре отстают от уже смерженных PR; их приводит в
+соответствие reconciliation PR kmaint без нового fix.
+
 ### Вне пачки (backlog следующего запуска)
 
-- Открытые INC без назначения в этом поручении: 0001, 0015, 0016, 0019, 0020,
-  0023, 0025, 0028, 0029, 0031–0034, 0037–0044, 0046–0051, 0053–0055,
-  0062–0064, 0069–0074, 0077–0081, 0084, 0085, 0087–0094, 0098–0102. Их карточки
-  и handoff в [обзоре](RUNTIME_BACKLOG.md) не меняются этой пачкой.
+- INC-0085 — owner engine (см. выше).
 - Engine PR (#712, #773, #791, #794, #798–#800, #807) и private #141 — работа движка.
 - #797 и #804 ведёт лид; в пачку входят только как release prerequisite (шаг 5).
 
