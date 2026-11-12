@@ -74,3 +74,37 @@ describe('codex availability', () => {
     expect(codexStatusRow(undefined)).toEqual({ text: '—', ok: true })
   })
 })
+
+describe('codex account read that fails on the network', () => {
+  const blocked = () => Promise.reject(new Error('workspace routing discovery failed'))
+
+  it('names the proxy or TLS cause found by the probe and marks the state unknown', async () => {
+    const probeNetwork = vi.fn(async () => ({
+      kind: 'proxy-auth' as const,
+      message: 'The corporate proxy requires authentication (HTTP 407).',
+      detail: 'Proxy response (407) !== 200 when HTTP Tunneling',
+    }))
+    const runtime = new CodexRuntime({ home: '/tmp/bridge-codex-test', env: {}, startHost: blocked, probeNetwork })
+    const status = await runtime.accountStatus()
+    expect(status.loggedIn).toBe(false)
+    expect(status.checkFailed).toBe(true)
+    expect(status.error).toEqual({
+      kind: 'proxy-auth',
+      message: 'The corporate proxy requires authentication (HTTP 407).',
+      detail: 'workspace routing discovery failed; Proxy response (407) !== 200 when HTTP Tunneling',
+    })
+    expect(probeNetwork).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps codex's own words when the probe finds nothing", async () => {
+    const runtime = new CodexRuntime({
+      home: '/tmp/bridge-codex-test',
+      env: {},
+      startHost: blocked,
+      probeNetwork: async () => null,
+    })
+    const status = await runtime.accountStatus()
+    expect(status.checkFailed).toBe(true)
+    expect(status.error?.detail).toBe('workspace routing discovery failed')
+  })
+})
