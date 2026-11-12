@@ -36,16 +36,37 @@ export const CLAUDE_SIGNED_OUT = 'Claude is not signed in on this Bridge server.
 export const CODEX_SIGNED_OUT = 'ChatGPT is not signed in on this Bridge server.'
 const ENGINE_NAME: Record<AgentEngineId, string> = { claude: 'Claude', codex: 'ChatGPT' }
 
-/** Runs `claude auth status`. Throws when the CLI does not answer: that is an
- *  unknown state, not a sign-out. */
-export async function runClaudeAuthStatus(): Promise<ClaudeAuthResult> {
+type CliOutput = { stdout: string; stderr: string }
+
+async function execClaudeAuthStatus(): Promise<CliOutput> {
   const { execFile } = await import('child_process')
   const { promisify } = await import('util')
   const cli = claudeInvocation(['--dangerously-skip-permissions', 'auth', 'status'])
-  const { stdout, stderr } = await promisify(execFile)(cli.command, cli.args, {
+  return promisify(execFile)(cli.command, cli.args, {
     timeout: 10_000,
     env: { ...process.env, HOME: process.env.HOME || '/home/bridge' },
   })
+}
+
+/** Runs `claude auth status`. Throws when the CLI does not answer: that is an
+ *  unknown state, not a sign-out.
+ *  Field lesson (acceptance 2026-11-12): a signed-out CLI prints its JSON
+ *  (`"loggedIn": false`) and exits 1, so a non-zero exit with that answer on
+ *  stdout is a sign-out — before, it was taken for "no answer" and Claude
+ *  never showed as signed out. */
+export async function runClaudeAuthStatus(
+  run: () => Promise<CliOutput> = execClaudeAuthStatus,
+): Promise<ClaudeAuthResult> {
+  let stdout: string
+  let stderr: string
+  try {
+    ;({ stdout, stderr } = await run())
+  } catch (error) {
+    const out = error as Partial<CliOutput> & { killed?: boolean }
+    if (out.killed || !out.stdout?.trim()) throw error
+    stdout = out.stdout
+    stderr = out.stderr ?? ''
+  }
   const trimmed = stdout.trim()
   if (!trimmed) throw new Error(`Empty stdout from \`claude auth status\`. stderr: ${(stderr || '').slice(0, 200)}`)
   let parsed: Record<string, unknown>
@@ -202,6 +223,9 @@ export async function codexEngineAuth(runtime: CodexRuntime, probe: boolean): Pr
   const account = probe ? await runtime.accountStatus() : runtime.knownAccount()
   if (!account) return { loggedIn: null, reason: null }
   if (account.loggedIn) return { loggedIn: true, reason: null }
+  // A blocked proxy or an untrusted CA is not a sign-out: a new GPT chat stays
+  // on ChatGPT and shows that reason instead of moving to Claude.
+  if (account.checkFailed) return { loggedIn: null, reason: account.error?.message ?? null }
   return { loggedIn: false, reason: account.error?.message ?? CODEX_SIGNED_OUT }
 }
 

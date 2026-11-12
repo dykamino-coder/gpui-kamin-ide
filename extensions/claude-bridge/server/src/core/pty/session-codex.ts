@@ -546,10 +546,15 @@ export class CodexSessionBinding {
     if (this.recovering) await this.recovering
     const account = await this.runtime.accountStatus()
     if (!account.loggedIn) {
-      const info = account.error && account.error.kind !== 'other' ? account.error : loginRequired()
-      this.receipt(text, submissionId, 'uncertain', info.message)
+      // A failed account read (proxy 407, untrusted CA, no route) is shown as
+      // such — never as "not signed in".
+      const message =
+        account.checkFailed && account.error
+          ? describeCodexError(account.error)
+          : (account.error && account.error.kind !== 'other' ? account.error : loginRequired()).message
+      this.receipt(text, submissionId, 'uncertain', message)
       sendToClient(this.session.ws, { type: 'codex:auth', sessionId: this.session.id, ...account })
-      this.appendSystem(info.message, 'error')
+      this.appendSystem(message, 'error')
       return
     }
     try {
