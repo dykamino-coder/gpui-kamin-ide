@@ -49,6 +49,22 @@ export interface HookExecuteResponse {
 
 // Match Claude Code's DEFAULT_HTTP_HOOK_TIMEOUT_MS = 10 minutes.
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
+/** Characters kept per hook stream; a runaway hook must not grow them unbounded. */
+export const HOOK_OUTPUT_CAP = 1024 * 1024
+
+/** Keeps the first HOOK_OUTPUT_CAP characters and counts what it dropped. */
+function boundedText(): { text: string; dropped: number; add(chunk: string): void } {
+  const state = {
+    text: '',
+    dropped: 0,
+    add(chunk: string): void {
+      const room = HOOK_OUTPUT_CAP - state.text.length
+      if (room > 0) state.text += chunk.slice(0, room)
+      state.dropped += Math.max(0, chunk.length - Math.max(0, room))
+    },
+  }
+  return state
+}
 
 function portableBasename(value: string): string {
   return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value
@@ -249,14 +265,25 @@ export async function executeHook(
       proc.once('error', dispose)
     }
 
-    let stdout = ''
-    let stderr = ''
-    const maxOutput = 1024 * 1024
-    proc.stdout?.on('data', d => { if (stdout.length < maxOutput) stdout += d.toString().slice(0, maxOutput - stdout.length) })
-    proc.stderr?.on('data', d => { if (stderr.length < maxOutput) stderr += d.toString().slice(0, maxOutput - stderr.length) })
+    const stdoutCap = boundedText()
+    const stderrCap = boundedText()
+    // setEncoding decodes across chunk boundaries; per-chunk toString split
+    // multi-byte characters into U+FFFD.
+    proc.stdout?.setEncoding('utf8')
+    proc.stderr?.setEncoding('utf8')
+    proc.stdout?.on('data', (d: string) => stdoutCap.add(d))
+    proc.stderr?.on('data', (d: string) => stderrCap.add(d))
+    const streams = (): { stdout: string; stderr: string } => ({
+      stdout: stdoutCap.text,
+      // A cut stdout is reported, never passed on as the hook's whole output.
+      stderr: stderrCap.text +
+        (stdoutCap.dropped ? `\n[hook stdout exceeded ${HOOK_OUTPUT_CAP} characters; ${stdoutCap.dropped} were dropped]` : '') +
+        (stderrCap.dropped ? `\n[hook stderr exceeded ${HOOK_OUTPUT_CAP} characters; ${stderrCap.dropped} were dropped]` : ''),
+    })
 
     const killer = setTimeout(() => {
       void killProcessTree(proc)
+      const { stdout, stderr } = streams()
       finish({
         stdout, stderr: stderr + `\n[hook killed after ${timeoutMs}ms]`,
         exitCode: 124, outcome: 'timeout', durationMs: Date.now() - start,
@@ -265,8 +292,9 @@ export async function executeHook(
 
     proc.on('exit', (code) => {
       clearTimeout(killer)
+      const { stdout, stderr } = streams()
       let jsonOutput: Record<string, unknown> | undefined
-      if (code === 0) {
+      if (code === 0 && !stdoutCap.dropped) {
         try {
           const trimmed = stdout.trim()
           if (trimmed.startsWith('{')) jsonOutput = JSON.parse(trimmed)
@@ -283,6 +311,7 @@ export async function executeHook(
 
     proc.on('error', (err) => {
       clearTimeout(killer)
+      const { stdout, stderr } = streams()
       finish({
         stdout, stderr: stderr + `\nspawn error: ${err.message}`,
         exitCode: 127, outcome: 'error', durationMs: Date.now() - start,
