@@ -60,6 +60,22 @@ export interface CodexModelsPayload {
   error?: { kind: string; message: string; detail?: string }
 }
 
+/** Whether this Bridge server can run chats on an engine: signed in, signed
+ *  out (with the reason) or not known yet (null — nothing is disabled). */
+export interface EngineAuth {
+  loggedIn: boolean | null
+  reason: string | null
+}
+
+export type EngineAuthState = Record<AgentEngine, EngineAuth>
+
+/** agent:preferences: the user's main agent and the engines' sign-in state. */
+export interface AgentPreferencesPayload {
+  defaultEngine?: AgentEngine
+  auth?: EngineAuthState
+  error?: string
+}
+
 export interface ConnectionConfig {
   serverUrl: string
   token: string
@@ -757,6 +773,8 @@ export interface KaminBridgeApi {
         model?: string
         inPlace?: boolean
         engine?: AgentEngine
+        /** The requested engine is signed out; this chat runs the other one. */
+        engineNotice?: string
       },
     ) => void,
   ): () => void
@@ -772,7 +790,7 @@ export interface KaminBridgeApi {
   requestCodexModels(tabId: string): void
   setDefaultEngine(tabId: string, engine: AgentEngine): void
   newAgentSession(engine: AgentEngine, model?: string): void
-  onAgentPreferences(callback: (tabId: string, data: { defaultEngine?: AgentEngine; error?: string }) => void): () => void
+  onAgentPreferences(callback: (tabId: string, data: AgentPreferencesPayload) => void): () => void
   onCodexModels(callback: (tabId: string, data: CodexModelsPayload) => void): () => void
   onCodexAuth(callback: (tabId: string, data: CodexAccountInfo) => void): () => void
 

@@ -42464,12 +42464,14 @@ function handleServerMessage(msg, ctx) {
       const settingsDir = msg.settingsDir;
       if (settingsDir) ctx.setSettingsDir(settingsDir);
       const engine = isAgentEngine(msg.engine) ? msg.engine : void 0;
-      if (msg.effort || msg.model || engine) {
+      const engineNotice = typeof msg.engineNotice === "string" && msg.engineNotice ? msg.engineNotice : void 0;
+      if (msg.effort || msg.model || engine || engineNotice) {
         ctx.window.webContents.send("session-restarted", ctx.tabId, {
           sessionId: msg.sessionId,
           effort: msg.effort,
           model: msg.model,
-          ...engine ? { engine } : {}
+          ...engine ? { engine } : {},
+          ...engineNotice ? { engineNotice } : {}
         });
       }
       ctx.noteSessionEngine?.(engine, msg.model);

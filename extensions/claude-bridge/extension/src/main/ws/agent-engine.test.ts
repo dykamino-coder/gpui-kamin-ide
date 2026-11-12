@@ -126,4 +126,29 @@ describe('engine replies relayed to the webview', () => {
     handleServerMessage({ type: 'codex:auth', sessionId: 's1', loggedIn: false, email: null }, c)
     expect(sent).toEqual([{ channel: 'codex-auth', args: ['tab-1', { loggedIn: false, email: null }] }])
   })
+
+  it('forwards the engines sign-in state with the main agent', () => {
+    const { ctx: c, sent } = ctx()
+    const notified: string[] = []
+    c.notifyAgentPreferences = (engine) => notified.push(engine)
+    const auth = { claude: { loggedIn: false, reason: 'Claude is not signed in on this Bridge server.' }, codex: { loggedIn: true, reason: null } }
+    handleServerMessage({ type: 'agent:preferences', defaultEngine: 'claude', auth }, c)
+    expect(sent).toEqual([{ channel: 'agent-preferences', args: ['tab-1', { defaultEngine: 'claude', auth }] }])
+    expect(notified).toEqual(['claude'])
+  })
+
+  it('tells the webview why a new chat runs on the other engine', () => {
+    const { ctx: c, sent } = ctx()
+    const noop = () => undefined
+    Object.assign(c, {
+      resetReconnectAttempt: noop, noteSessionCreated: noop, noteIdentityConfirmed: noop, setState: noop,
+      setSettingsDir: noop, notifySessionInfo: noop, notifyAuthenticated: noop,
+    })
+    const engineNotice = 'Claude is not signed in on this Bridge server. This chat runs ChatGPT instead; sign Claude in from the Bridge dashboard.'
+    handleServerMessage({ type: 'session:created', sessionId: 's1', engine: 'codex', engineNotice }, c)
+    expect(sent.find((e) => e.channel === 'session-restarted')?.args).toEqual([
+      'tab-1',
+      { sessionId: 's1', effort: undefined, model: undefined, engine: 'codex', engineNotice },
+    ])
+  })
 })

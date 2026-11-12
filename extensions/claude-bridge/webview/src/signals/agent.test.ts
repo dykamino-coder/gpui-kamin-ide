@@ -4,7 +4,10 @@ import {
   codexCatalogLoading,
   codexNotice,
   codexUnavailable,
+  dashboardUrl,
   defaultEngine,
+  engineAuth,
+  engineBlock,
   receiveAgentPreferences,
   receiveCodexAuth,
   receiveCodexModels,
@@ -53,5 +56,31 @@ describe('agent engine signals', () => {
     expect(codexNotice(codexCatalog.value)).toBe('ChatGPT is unavailable: codex is not installed on this Bridge server')
     receiveCodexModels({ models: [gpt] })
     expect(codexUnavailable(codexCatalog.value)).toBe(false)
+  })
+})
+describe('engine sign-in state', () => {
+  const out = { loggedIn: false, reason: 'X is signed out.' }
+  const on = { loggedIn: true, reason: null }
+  const unknown = { loggedIn: null, reason: null }
+
+  it('keeps the pushed state and blocks only a signed-out engine', () => {
+    engineAuth.value = null
+    receiveAgentPreferences({ auth: { claude: out, codex: on } })
+    expect(engineAuth.value).toEqual({ claude: out, codex: on })
+    expect(engineBlock('claude', engineAuth.value, null)).toBe('X is signed out.')
+    expect(engineBlock('codex', engineAuth.value, null)).toBeNull()
+  })
+
+  it('never blocks on an unknown state, and the live push beats an older GPT list reply', () => {
+    const stale = { models: [gpt], account: { loggedIn: false } }
+    expect(engineBlock('claude', { claude: unknown, codex: unknown }, null)).toBeNull()
+    expect(engineBlock('codex', { claude: unknown, codex: unknown }, stale)).toMatch(/not signed in/)
+    expect(engineBlock('codex', { claude: on, codex: on }, stale)).toBeNull()
+    expect(engineBlock('codex', { claude: on, codex: on }, { models: [], unavailable: 'no codex' })).toBe('ChatGPT is unavailable: no codex')
+  })
+
+  it('points at the dashboard of the connected server', () => {
+    expect(dashboardUrl('ws://localhost:3456/ws/session')).toBe('http://localhost:3456/ui')
+    expect(dashboardUrl('wss://bridge.example.test')).toBe('https://bridge.example.test/ui')
   })
 })

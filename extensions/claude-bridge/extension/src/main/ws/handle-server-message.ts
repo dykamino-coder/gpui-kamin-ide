@@ -125,12 +125,14 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       const settingsDir = (msg as any).settingsDir
       if (settingsDir) ctx.setSettingsDir(settingsDir)
       const engine = isAgentEngine(msg.engine) ? msg.engine : undefined
-      if (msg.effort || msg.model || engine) {
+      const engineNotice = typeof msg.engineNotice === 'string' && msg.engineNotice ? msg.engineNotice : undefined
+      if (msg.effort || msg.model || engine || engineNotice) {
         ctx.window.webContents.send('session-restarted', ctx.tabId, {
           sessionId: msg.sessionId,
           effort: msg.effort,
           model: msg.model,
           ...(engine ? { engine } : {}),
+          ...(engineNotice ? { engineNotice } : {}),
         })
       }
       // Engine first: the tab list pushed by notifySessionInfo carries it.

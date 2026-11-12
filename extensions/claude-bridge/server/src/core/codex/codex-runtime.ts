@@ -240,6 +240,12 @@ export class CodexRuntime {
       .catch(() => undefined)
   }
 
+  /** Last account state read from the app-server, without starting one; null
+   *  until the first read (a Claude-only server never starts codex for it). */
+  knownAccount(): CodexAccountStatus | null {
+    return this.account ? { ...this.account.value, pendingLogin: this.pending, error: this.lastError } : null
+  }
+
   async accountStatus(options: { fresh?: boolean } = {}): Promise<CodexAccountStatus> {
     const ttl = this.options.accountTtlMs ?? ACCOUNT_TTL_MS
     if (!options.fresh && this.account && Date.now() - this.account.at < ttl) {
@@ -309,7 +315,10 @@ export class CodexRuntime {
   async logout(): Promise<void> {
     const host = await this.host()
     await host.rpc.request('account/logout')
-    this.account = undefined
+    this.account = {
+      value: { loggedIn: false, email: null, planType: null, accountType: null, pendingLogin: null, error: null },
+      at: Date.now(),
+    }
     this.pending = null
     this.lastError = null
   }

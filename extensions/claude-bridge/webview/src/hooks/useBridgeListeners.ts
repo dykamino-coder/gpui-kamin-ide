@@ -321,6 +321,9 @@ export function useBridgeListeners(
       // прокрутку консоли ни за что (INC-2026-0053). Отсутствие признака —
       // отправитель старого образца, то есть настоящий перезапуск.
       if (entry && data?.inPlace !== true) entry.needsClear = true
+      // The main agent is signed out: this chat opened on the other engine.
+      // Every panel hears this; only the chat panel tells the user once.
+      if (data?.engineNotice && role === 'chat') showToast({ type: 'info', title: 'Agent', message: data.engineNotice })
       if (data && (data.effort || data.model || data.engine)) {
         const cur = tabs.value.find(t => t.id === tabId)
         const nextEffort = data.effort ?? cur?.effort

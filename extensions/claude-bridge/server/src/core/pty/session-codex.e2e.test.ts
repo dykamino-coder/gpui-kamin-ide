@@ -141,6 +141,8 @@ let server: import('node:http').Server
 let runtimeMod: typeof import('../codex/codex-runtime')
 let configMod: typeof import('../config')
 let app: import('hono').Hono
+// Scripted `claude auth status`: tests here never spawn the real Claude CLI.
+let claudeMonitor: import('../engine/engine-auth').ClaudeAuthMonitor
 
 function newRuntime(
   extraEnv: Record<string, string> = {},
@@ -171,6 +173,14 @@ beforeAll(async () => {
   configMod = await import('../config')
   runtimeMod = await import('../codex/codex-runtime')
   runtimeMod.setCodexRuntimeForTests(newRuntime())
+  const engineAuthMod = await import('../engine/engine-auth')
+  const { eventBus } = await import('../events/bus')
+  claudeMonitor = new engineAuthMod.ClaudeAuthMonitor({
+    probe: async () => ({ loggedIn: false }),
+    onChange: (loggedIn) => eventBus.emit('claude:account-updated', { engine: 'claude', loggedIn }),
+  })
+  claudeMonitor.record({ loggedIn: false })
+  engineAuthMod.setClaudeAuthForTests(claudeMonitor)
   const { Hono } = await import('hono')
   const { serve } = await import('@hono/node-server')
   const { handleMcpRequest, handleMcpGet, handleMcpDelete } = await import('./mcp-http-handler')
@@ -440,6 +450,72 @@ describe('codex chat over the Bridge session WebSocket', () => {
       reason: null,
       pinned: '0.160.1',
     })
+  }, 30_000)
+})
+
+// The selector disables an engine the server is not signed in to; sign-in and
+// sign-out reach open sockets live.
+describe('engine sign-in in the model selector', () => {
+  const prefs = (client: Client, pred: (f: Frame) => boolean, from: number) =>
+    client.next((f) => f.type === 'agent:preferences' && pred(f), 10_000, from)
+
+  it('opens the chat on the signed-in engine, refuses a signed-out main agent and pushes sign-in changes', async () => {
+    // Earlier cases swap the runtime; the dashboard routes announce sign-ins
+    // of the runtime they were registered with (one per server in production).
+    const { Hono } = await import('hono')
+    const { registerCodexAccountRoutes } = await import('../dashboard/controllers/codex-account')
+    const dashboard = new Hono()
+    registerCodexAccountRoutes(dashboard, () => runtimeMod.codexRuntime())
+    claudeMonitor.record({ loggedIn: false })
+    const client = await Client.open(port)
+    // Main agent Claude, Claude signed out, ChatGPT signed in → a ChatGPT chat, with the reason.
+    const created = await createChat(client, { engine: 'claude', token: 'tok-b' })
+    expect(created).toMatchObject({ type: 'session:created', engine: 'codex' })
+    expect(created.engineNotice).toContain(
+      'Claude is not signed in on this Bridge server. This chat runs ChatGPT instead',
+    )
+    expect(await prefs(client, () => true, 0)).toMatchObject({
+      defaultEngine: 'claude',
+      auth: { claude: { loggedIn: false, reason: 'Claude is not signed in on this Bridge server.' } },
+    })
+
+    let from = client.frames.length
+    client.send({ type: 'agent:set-default-engine', engine: 'codex' })
+    expect(await prefs(client, (f) => f.defaultEngine === 'codex', from)).not.toHaveProperty('error')
+    from = client.frames.length
+    client.send({ type: 'agent:set-default-engine', engine: 'claude' })
+    expect(await prefs(client, (f) => 'error' in f, from)).toMatchObject({
+      error: 'Claude is not signed in on this Bridge server.',
+      defaultEngine: 'codex',
+    })
+
+    // `claude login` on the server: the selector learns it without a reconnect.
+    from = client.frames.length
+    claudeMonitor.record({ loggedIn: true })
+    expect(await prefs(client, (f) => f.auth?.claude?.loggedIn === true, from)).toMatchObject({
+      auth: { claude: { loggedIn: true, reason: null }, codex: { loggedIn: true } },
+    })
+
+    // ChatGPT sign-out from the dashboard, then nothing signed in at all.
+    from = client.frames.length
+    await dashboard.request('/api/dashboard/codex/logout', { method: 'POST' })
+    expect(await prefs(client, (f) => f.auth?.codex?.loggedIn === false, from)).toMatchObject({
+      auth: { claude: { loggedIn: true }, codex: { reason: 'ChatGPT is not signed in on this Bridge server.' } },
+    })
+    from = client.frames.length
+    claudeMonitor.record({ loggedIn: false })
+    expect(await prefs(client, (f) => f.auth?.claude?.loggedIn === false, from)).toMatchObject({
+      auth: { claude: { loggedIn: false }, codex: { loggedIn: false } },
+    })
+
+    // The administrator signs ChatGPT in again: pushed as well.
+    from = client.frames.length
+    await dashboard.request('/api/dashboard/codex/login', { method: 'POST' })
+    expect(await prefs(client, (f) => f.auth?.codex?.loggedIn === true, from)).toMatchObject({
+      auth: { claude: { loggedIn: false }, codex: { loggedIn: true, reason: null } },
+    })
+    client.send({ type: 'session:end' })
+    client.close()
   }, 30_000)
 })
 

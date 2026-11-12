@@ -126,8 +126,10 @@ export type ServerMessage =
       model?: string
       settingsDir?: string
       engine?: import('./types').AgentEngine
+      /** The requested engine is signed out; this chat runs the other one. */
+      engineNotice?: string
     }
-  | { type: 'agent:preferences'; defaultEngine?: import('./types').AgentEngine; error?: string }
+  | ({ type: 'agent:preferences' } & import('./types').AgentPreferencesPayload)
   | ({ type: 'codex:models' } & import('./types').CodexModelsPayload)
   | ({ type: 'codex:auth'; sessionId?: string } & import('./types').CodexAccountInfo)
   | { type: 'session:output'; data: string }
