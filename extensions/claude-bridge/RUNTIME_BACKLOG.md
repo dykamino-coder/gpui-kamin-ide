@@ -467,7 +467,7 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | [BR-23](RUNTIME_RELIABILITY.md#br-23--make-session-complete-notifications-transient-and-turn-scoped) | `change` | #161/#164 merged; bounded transient host toast contract и tests. | Current manual-dismiss toast недостаточен; fake-clock + exact Windows native toast acceptance. |
 | [BR-24](RUNTIME_RELIABILITY.md#br-24--bound-and-reconcile-lost-webview-invoke-replies) | `waiting` | Behavioral fix ждёт classified production observation + BR-31 R6; #201 diagnostics merged. | Source/synthetic timeout/late-ack countercheck доступен сейчас отдельно; он не снимает prerequisites fix. |
 | [BR-25](RUNTIME_RELIABILITY.md#br-25--verify-agents-view-delivery-and-rehydration-after-reveal) | `waiting` | Baseline done, #147 merged; completion без repaint workaround после BR-31 R6. | Windows Agents delivery/reveal completion artifact. |
-| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | `verify` | #37 merged: actual typing/F2/flyout/double-click/Enter/Esc/blur/hitbox. | Windows focus/keyboard gate; geometric probe сам по себе недостаточен. |
+| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | `verify` | #37 merged; 2026-11-13 on 1.0.94 passed fly-out, focus/typing, double-click, Esc, blur commit. | Enter/F2 (needs a screen-free probe keystroke), scroll/session change during transition, BR-28 bounds. |
 | [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | `verify` | #147 merged; тот же R6, что INC-0002, затем BR-25/06. | Reveal no-pointer: rows + invoke ≤ 1 с; два separate fixes не нужны. |
 
 ## Принятые результаты: не реализовывать повторно
