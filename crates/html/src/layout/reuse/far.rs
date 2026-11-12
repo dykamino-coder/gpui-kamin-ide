@@ -25,10 +25,12 @@
 
 mod candidate;
 mod element;
+mod stand_in;
 mod state;
 
 pub(super) use candidate::far_replayable;
-pub(super) use element::{Far, FarRecorder};
+pub(super) use element::FarRecorder;
+pub(super) use stand_in::Far;
 pub(crate) use state::FrameFar;
 
 use super::{Counters, FlowReuse, Source, scaled};

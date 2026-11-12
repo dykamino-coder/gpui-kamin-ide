@@ -2,33 +2,31 @@
 //! корневого потока.
 
 use super::super::Record;
-use super::super::recorder::{Making, Pending, Recorder};
+use super::super::recorder::{Making, Pending};
 use super::{Counters, FlowCx, Mark};
 use crate::dom::Element;
-use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use gpui::AnyElement;
 
 impl FlowCx {
-    /// Обернуть собранный элемент инертного ребёнка `e` записью пропуска,
-    /// если её раскладка годна при ключе потока этой сборки; `true` — обёрнут.
+    /// Начать запись пропуска собранного элемента инертного ребёнка `e`,
+    /// если её раскладка годна при ключе потока этой сборки: номер записи
+    /// среди записей сборки. Обёртку ставит `record_far` — одну на блок.
     pub(super) fn record_skip(
         &self,
         e: &Element,
         mark: &Mark,
         end: Counters,
         opts: &RenderOpts,
-        out: &mut Vec<AnyElement>,
-    ) -> bool {
+        out: &mut [AnyElement],
+    ) -> Option<usize> {
         // Запись при другой ширине потока годна лишь независимому от неё блоку.
         let width = super::super::width::independent(e, opts.cx.vcx());
         let flow = self.key.flow_width();
         if !self.settled && !self.reuse.width_recordable(e, width, flow) {
-            return false;
+            return None;
         }
-        let Some(mut child) = out.pop() else {
-            return false;
-        };
+        let child = out.last_mut()?;
         // Обёртка таблицы у начального края: лист снимается сквозь неё.
         let unpainted = child
             .downcast_mut::<crate::hooks::Hooked<crate::layout::table::StartWrapper>>()
@@ -48,7 +46,6 @@ impl FlowCx {
         );
         let at = self.reuse.pending.borrow().len();
         super::super::push(&self.reuse.pending, Pending { record, making });
-        out.push(Recorder::new(child, (self.reuse.clone(), at)).hooked());
-        true
+        Some(at)
     }
 }

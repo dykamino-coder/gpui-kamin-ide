@@ -16,7 +16,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 mod wrap;
-pub(super) use wrap::Recorder;
+pub(super) use wrap::{Recorder, Skip};
 
 /// A record in the making with what its frame measures. The build's list of
 /// them (`FlowReuse::pending`) goes when the frame seals its records
