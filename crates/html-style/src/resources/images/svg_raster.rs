@@ -41,6 +41,7 @@ pub fn rasterize(
     load: &(dyn Fn(&str) -> Option<Arc<Vec<u8>>> + Send + Sync),
     allow_data: bool,
 ) -> Option<Arc<CpuRaster>> {
+    let options = svg_options(fonts, load, allow_data);
     let (w, h) = (request.width, request.height);
     if w > 4096 || h > 4096 || request.pad > 4096 {
         return None;
@@ -57,7 +58,7 @@ pub fn rasterize(
     let tree = {
         crate::work::add!(SvgParseCalls, 1);
         crate::work::time!(_svg_time, SvgParseNs);
-        parse_tree(markup, fonts, load, allow_data, ())?
+        usvg::Tree::from_str(markup, &options).ok()?
     };
     let size = tree.size();
     {
@@ -109,7 +110,16 @@ pub(crate) fn parse_tree(
     allow_data: bool,
     trace: impl usvg::GeometryTrace,
 ) -> Option<usvg::Tree> {
-    let options = usvg::Options {
+    let options = svg_options(fonts, load, allow_data);
+    usvg::Tree::from_str_with_geometry(markup, &options, trace).ok()
+}
+
+fn svg_options(
+    fonts: Arc<usvg::fontdb::Database>,
+    load: &(dyn Fn(&str) -> Option<Arc<Vec<u8>>> + Send + Sync),
+    allow_data: bool,
+) -> usvg::Options<'_> {
+    usvg::Options {
         fontdb: fonts,
         use_href_resolver: Some(usvg::UseHrefResolver(Box::new(load))),
         image_href_resolver: usvg::ImageHrefResolver {
@@ -124,8 +134,7 @@ pub(crate) fn parse_tree(
             }),
         },
         ..usvg::Options::default()
-    };
-    usvg::Tree::from_str_with_geometry(markup, &options, trace).ok()
+    }
 }
 
 #[cfg(test)]
