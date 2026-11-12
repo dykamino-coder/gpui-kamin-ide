@@ -42961,6 +42961,11 @@ var ConnectionManager = class _ConnectionManager {
   engine;
   /** Model the tab asked for, applied once after the first session:created. */
   pendingModel = null;
+  /** Last model chosen in this chat. A chat without a conversation yet has
+   *  nothing on the server that remembers it: after a server restart the next
+   *  session:create came back on the default model (Sonnet picked, Opus back).
+   *  It is re-applied to every fresh session:create of this tab. */
+  chosenModel = null;
   // Background (warm-pool) tab: live transcript/streaming forwarding to the
   // webview is off until the tab is first shown (see JsonlBatcher.muted).
   rendererMuted = false;
@@ -43119,6 +43124,7 @@ var ConnectionManager = class _ConnectionManager {
         ...this.engine ? { engine: this.engine } : {}
       });
     } else {
+      if (this.chosenModel) this.pendingModel = this.chosenModel;
       this.sendRaw({
         type: "session:create",
         token: this.config.token,
@@ -43625,6 +43631,7 @@ var ConnectionManager = class _ConnectionManager {
   }
   /** Request model change (triggers PTY restart on server). */
   changeModel(model) {
+    this.chosenModel = model;
     this.send({ type: "session:change-model", model });
   }
   /** The chat's agent: the tab's request until the server reports the real one. */
