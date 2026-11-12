@@ -441,13 +441,39 @@ export async function listEnabledInstalledPlugins(): Promise<InstalledPlugin[]> 
  * order. Claude Code prepends these to Bash PATH; the bridge shell runs on the
  * client host, so it must reproduce that part of the plugin harness there. */
 export async function listEnabledPluginBinDirs(): Promise<string[]> {
+  // Every Bash/PowerShell call needs this list; recomputing it read two JSON
+  // files, plugin manifests and one stat per plugin (~17 ms on Windows). Both
+  // files that decide it change on every plugin install/enable/disable, so
+  // their stat is the cache key.
+  const key = pluginStateKey()
+  if (binDirsCache && binDirsCache.key === key) return binDirsCache.dirs
   const plugins = await listEnabledInstalledPlugins()
-  return plugins
+  const dirs = plugins
     .map(plugin => path.join(plugin.installPath, 'bin'))
     .filter(binDir => {
       try { return fs.statSync(binDir).isDirectory() } catch { return false }
     })
     .sort()
+  binDirsCache = { key, dirs }
+  return dirs
+}
+
+let binDirsCache: { key: string; dirs: string[] } | null = null
+
+function pluginStateKey(): string {
+  return [
+    path.join(os.homedir(), '.claude', 'settings.json'),
+    path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'),
+  ]
+    .map(file => {
+      try {
+        const s = fs.statSync(file)
+        return `${s.mtimeMs}:${s.size}`
+      } catch {
+        return '-'
+      }
+    })
+    .join('|')
 }
 
 /** Load saved user-configurable option values for a plugin — merges

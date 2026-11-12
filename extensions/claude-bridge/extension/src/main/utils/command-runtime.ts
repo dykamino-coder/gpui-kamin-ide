@@ -60,7 +60,24 @@ function lookupOptions(options: RuntimeLookupOptions): Required<Pick<RuntimeLook
 
 /** Resolve Git for Windows Bash without ever accepting System32\\bash.exe,
  * which is the WSL launcher and fails on machines without a WSL distro. */
-export async function findBashExecutable(options: RuntimeLookupOptions = {}): Promise<string> {
+/** The host's own lookups are cached: the install does not change under a running host. */
+const defaultLookups = new Map<string, Promise<string>>()
+function cachedLookup(key: string, options: RuntimeLookupOptions, find: () => Promise<string>): Promise<string> {
+  if (Object.keys(options).length > 0) return find()
+  let found = defaultLookups.get(key)
+  if (!found) {
+    found = find()
+    defaultLookups.set(key, found)
+    found.catch(() => defaultLookups.delete(key))
+  }
+  return found
+}
+
+export function findBashExecutable(options: RuntimeLookupOptions = {}): Promise<string> {
+  return cachedLookup('bash', options, () => lookupBash(options))
+}
+
+async function lookupBash(options: RuntimeLookupOptions): Promise<string> {
   const { platform, env, exists, which } = lookupOptions(options)
   if (platform !== 'win32') {
     const bash = await which('bash')
@@ -90,7 +107,11 @@ export async function findBashExecutable(options: RuntimeLookupOptions = {}): Pr
   throw new Error('Git Bash was not found. Install Git for Windows or set CLAUDE_CODE_GIT_BASH_PATH; ' + 'the Windows System32 bash.exe WSL launcher is not supported.')
 }
 
-export async function findPowerShellExecutable(options: RuntimeLookupOptions = {}): Promise<string> {
+export function findPowerShellExecutable(options: RuntimeLookupOptions = {}): Promise<string> {
+  return cachedLookup('pwsh', options, () => lookupPowerShell(options))
+}
+
+async function lookupPowerShell(options: RuntimeLookupOptions): Promise<string> {
   const { platform, env, exists, which } = lookupOptions(options)
   const pwsh = await which('pwsh')
   if (pwsh) return pwsh

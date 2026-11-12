@@ -1,13 +1,12 @@
-// Bounded LRU file-content cache keyed by mtime.
+// Bounded LRU file-content cache keyed by mtime and size.
 //
 // The Read MCP tool is the single hottest tool in a long chat — model
 // re-reads the same skill / agent / source file 5–10× per session as it
-// browses around. Each call hits the disk: stat + readFile + utf-8 decode
-// (≤256KB warm-path file ≈ ~3ms on SSD, but adds up over 50+ Read calls).
+// browses around. Each call hits the disk: stat + readFile + decode.
 //
-// Mtime is the cache key on top of path: when a tool just rewrote the
-// file (Edit / Write / Bash) the mtime bumps and we re-read. No explicit
-// invalidation required — the OS gives us free correctness via the stat.
+// Mtime + size is the cache key on top of path: when a tool just rewrote the
+// file (Edit / Write / Bash) the stat changes and we re-read. Write/Edit also
+// invalidate explicitly because mtime resolution can be coarse.
 //
 // Mirrors CLI's `utils/fileReadCache.ts` — И его баг: до 2.1.208 CLI пиннил
 // до 1000 ПОЛНЫХ файлов без байтового лимита и чинил это «bounding the cache
@@ -15,6 +14,8 @@
 // extension host): теперь суммарный байтовый бюджет + порог на файл.
 
 import fs from 'node:fs/promises'
+import type { Stats } from 'node:fs'
+import { decodeText, detectEncoding, looksBinary, type TextEncoding } from '../mcp/tools/text-codec'
 
 const CACHE_CAP = 1024
 // Суммарный бюджет — как у CLI 2.1.208.
@@ -23,9 +24,17 @@ const CACHE_BYTES_BUDGET = 16 * 1024 * 1024
 // а перечитывание больших файлов редкое.
 const MAX_CACHEABLE_FILE_BYTES = 2 * 1024 * 1024
 
-interface CachedFile {
+/** File text without its BOM, plus what is needed to write it back unchanged. */
+export interface CachedText {
+  /** Decoded text; empty for a binary file. */
   content: string
+  encoding: TextEncoding
+  binary: boolean
+}
+
+interface CachedFile extends CachedText {
   mtimeMs: number
+  size: number
   /** UTF-16 длина строки ×2 ≈ байты в куче — дешёвая оценка без Buffer. */
   bytes: number
 }
@@ -41,42 +50,46 @@ function evictOldest(): void {
   cache.delete(oldest)
 }
 
-/** Read a UTF-8 text file, returning a cached copy if the path's mtime
- *  hasn't changed since the previous read. Bypasses the cache for binary /
- *  encoding-sensitive callers — they should `fs.readFile` directly. */
-export async function readFileCached(filePath: string): Promise<string> {
-  const stat = await fs.stat(filePath)
+/** Read a text file in its own encoding, returning a cached copy if the path's
+ *  mtime and size haven't changed since the previous read. `stat` saves a
+ *  second stat when the caller already has one. */
+export async function readTextCached(filePath: string, stat?: Stats): Promise<CachedText> {
+  stat ??= await fs.stat(filePath)
   if (!stat.isFile()) throw new Error(`Not a file: ${filePath}`)
 
   const cached = cache.get(filePath)
-  if (cached && cached.mtimeMs === stat.mtimeMs) {
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
     // LRU touch — re-insert moves to the end of the iteration order.
     cache.delete(filePath)
     cache.set(filePath, cached)
-    return cached.content
+    return cached
   }
 
-  const content = await fs.readFile(filePath, 'utf8')
-  const bytes = content.length * 2
-  if (bytes > MAX_CACHEABLE_FILE_BYTES) {
-    // Крупный файл мимо кэша (и выкинуть возможную старую версию).
-    invalidateFileCache(filePath)
-    return content
+  const raw = await fs.readFile(filePath)
+  const binary = looksBinary(raw, detectEncoding(raw))
+  const decoded = binary ? { text: '', encoding: 'utf8' as const } : decodeText(raw)
+  const entry: CachedFile = {
+    content: decoded.text,
+    encoding: decoded.encoding,
+    binary,
+    mtimeMs: stat.mtimeMs,
+    size: stat.size,
+    bytes: decoded.text.length * 2,
   }
-  const entry: CachedFile = { content, mtimeMs: stat.mtimeMs, bytes }
-
-  const prev = cache.get(filePath)
-  if (prev) {
-    cacheBytes -= prev.bytes
-    cache.delete(filePath)
-  }
+  invalidateFileCache(filePath)
+  if (entry.bytes > MAX_CACHEABLE_FILE_BYTES) return entry
   // Evict до влезания: по числу записей И по байтовому бюджету.
-  while (cache.size >= CACHE_CAP || (cache.size > 0 && cacheBytes + bytes > CACHE_BYTES_BUDGET)) {
+  while (cache.size >= CACHE_CAP || (cache.size > 0 && cacheBytes + entry.bytes > CACHE_BYTES_BUDGET)) {
     evictOldest()
   }
   cache.set(filePath, entry)
-  cacheBytes += bytes
-  return content
+  cacheBytes += entry.bytes
+  return entry
+}
+
+/** UTF-8/UTF-16 text of a file (BOM removed). */
+export async function readFileCached(filePath: string): Promise<string> {
+  return (await readTextCached(filePath)).content
 }
 
 /** Drop an entry — call after Write/Edit so the next Read re-fetches even

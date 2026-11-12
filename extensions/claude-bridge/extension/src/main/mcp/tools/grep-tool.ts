@@ -1,33 +1,38 @@
-// Grep MCP tool — wraps `rg` (ripgrep) with stream + buffer modes, head-limit
-// fast-path, EAGAIN single-thread retry, and a JS-only fallback when rg is
-// missing. Extracted from `file-system.ts` (Sprint 2 / Stage C, C6) — the
-// grep family was 377 LOC and dwarfed the rest of the file.
+// Grep MCP tool — wraps ripgrep with the arguments of Claude Code's native Grep
+// (hidden files searched, VCS directories excluded, long lines capped), a
+// head-limit streaming fast path, an EAGAIN single-thread retry, and an
+// in-process fallback when no ripgrep binary exists. The fallback either keeps
+// ripgrep's meaning for an argument or refuses it explicitly; it never ignores
+// an argument silently.
 
-import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import fg from 'fast-glob'
 import { resolveToolPath, resolveWorkingDirectory } from '../../utils/working-directory'
 import type { ToolCallContext } from '../executor'
-import {
-  type McpResult,
-  textResult,
-  errorResult,
-  MAX_GREP_BYTES,
-  MAX_READ_BYTES,
-} from './fs-shared'
+import { type McpResult, textResult, errorResult, MAX_GREP_BYTES, MAX_READ_BYTES, STAT_CONCURRENCY } from './fs-shared'
+import { ripgrepPath } from './ripgrep-path'
+
+/** Directories of version control systems never searched (native Grep parity). */
+const VCS_DIRECTORIES = ['.git', '.svn', '.hg', '.bzr', '.jj', '.sl']
+/** Lines longer than this are replaced by ripgrep's omission notice. */
+const MAX_COLUMNS = 500
+
+async function rgBinary(): Promise<string> {
+  const rg = await ripgrepPath()
+  if (!rg) throw Object.assign(new Error('ripgrep not found'), { code: 'ENOENT' })
+  return rg
+}
 
 /** Spawn `rg --files` and count matching files (used by Glob's `-l` mode).
  *  Counts lines via byte scan rather than chunk.toString().split — saves on
  *  hot paths where multi-GB repos produce millions of paths. */
-export async function ripgrepFileCount(
-  args: string[],
-  target: string,
-  signal: AbortSignal,
-): Promise<number> {
+export async function ripgrepFileCount(args: string[], target: string, signal: AbortSignal): Promise<number> {
+  const rg = await rgBinary()
   return new Promise<number>((resolve, reject) => {
     if (signal.aborted) return reject(new Error('aborted'))
-    const child = spawn('rg', [...args, target], {
+    const child = spawn(rg, [...args, target], {
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true,
       signal,
@@ -35,8 +40,6 @@ export async function ripgrepFileCount(
 
     let lines = 0
     child.stdout.on('data', (chunk: Buffer) => {
-      // Faster than chunk.toString().split('\n').length — counts bytes
-      // directly, no intermediate strings or arrays.
       for (let i = 0; i < chunk.length; i++) if (chunk[i] === 0x0a) lines++
     })
 
@@ -58,9 +61,9 @@ export async function ripgrepFileCount(
 /**
  * Stream `rg` matches as soon as each stdout chunk arrives. `onLines` fires
  * per chunk with the lines that are complete in that chunk; partial trailing
- * fragments are carried across chunk boundaries. Caller can stop early by
- * aborting the signal. Mirrors CLI's `ripGrepStream` (utils/ripgrep.ts) —
- * fast first paint on big repos because we don't wait for full traversal.
+ * fragments are carried across chunk boundaries as bytes, so a multi-byte
+ * character split by the pipe is decoded whole. Caller can stop early by
+ * aborting the signal.
  */
 export async function ripgrepStream(
   args: string[],
@@ -68,21 +71,26 @@ export async function ripgrepStream(
   signal: AbortSignal,
   onLines: (lines: string[]) => void,
 ): Promise<void> {
+  const rg = await rgBinary()
   return new Promise<void>((resolve, reject) => {
     if (signal.aborted) return reject(new Error('aborted'))
-    const child = spawn('rg', [...args, target], {
+    const child = spawn(rg, [...args, target], {
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true,
       signal,
     })
 
     const stripCR = (l: string): string => (l.endsWith('\r') ? l.slice(0, -1) : l)
-    let remainder = ''
+    let remainder: Buffer = Buffer.alloc(0)
     child.stdout.on('data', (chunk: Buffer) => {
-      const data = remainder + chunk.toString('utf8')
-      const lines = data.split('\n')
-      remainder = lines.pop() ?? ''
-      if (lines.length) onLines(lines.map(stripCR))
+      const data = remainder.length ? Buffer.concat([remainder, chunk]) : chunk
+      const end = data.lastIndexOf(0x0a)
+      if (end === -1) {
+        remainder = data
+        return
+      }
+      remainder = data.subarray(end + 1)
+      onLines(data.subarray(0, end).toString('utf8').split('\n').map(stripCR))
     })
 
     let settled = false
@@ -93,7 +101,7 @@ export async function ripgrepStream(
       if (signal.aborted) return
       settled = true
       if (code === 0 || code === 1) {
-        if (remainder) onLines([stripCR(remainder)])
+        if (remainder.length) onLines([stripCR(remainder.toString('utf8'))])
         resolve()
       } else {
         reject(new Error(`rg exited with code ${code}`))
@@ -112,11 +120,10 @@ async function spawnRipgrep(
   timeoutMs: number,
   singleThread = false,
 ): Promise<{ stdout: string; stderr: string; truncated: boolean; timedOut: boolean; code: number | null }> {
+  const rg = await rgBinary()
   return new Promise((resolve, reject) => {
     const extraArgs = singleThread ? ['-j', '1'] : []
-    // Use bare 'rg' name (not a resolved path) so OS does PATH resolution
-    // with NoDefaultCurrentDirectoryInExePath protection (prevents hijacking).
-    const child = spawn('rg', [...extraArgs, ...args], {
+    const child = spawn(rg, [...extraArgs, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })
@@ -126,7 +133,6 @@ async function spawnRipgrep(
     let totalBytes = 0
     let truncated = false
     let timedOut = false
-    let spawnFailed = false
     let killTimer: NodeJS.Timeout | undefined
 
     const timer = setTimeout(() => {
@@ -135,7 +141,9 @@ async function spawnRipgrep(
         child.kill()
       } else {
         child.kill('SIGTERM')
-        killTimer = setTimeout(() => { if (!child.killed) child.kill('SIGKILL') }, 5000)
+        killTimer = setTimeout(() => {
+          if (!child.killed) child.kill('SIGKILL')
+        }, 5000)
       }
     }, timeoutMs)
 
@@ -163,7 +171,6 @@ async function spawnRipgrep(
       settled = true
       clearTimeout(timer)
       if (killTimer) clearTimeout(killTimer)
-      spawnFailed = true
       reject(err)
     })
 
@@ -172,7 +179,6 @@ async function spawnRipgrep(
       settled = true
       clearTimeout(timer)
       if (killTimer) clearTimeout(killTimer)
-      if (spawnFailed) return
       resolve({
         stdout: Buffer.concat(stdoutChunks).toString('utf8'),
         stderr: Buffer.concat(stderrChunks).toString('utf8'),
@@ -188,143 +194,186 @@ function isEagainError(stderr: string): boolean {
   return stderr.includes('os error 11') || stderr.includes('Resource temporarily unavailable')
 }
 
-export async function grepSearch(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
-  const pattern = input.pattern as string
-  if (!pattern) return errorResult('pattern is required')
+/** `glob` may hold several patterns separated by whitespace or commas, except
+ *  commas inside a brace alternation (`*.{ts,tsx}`) — native Grep parity. */
+export function splitGlobs(glob: string): string[] {
+  const out: string[] = []
+  for (const part of glob.split(/\s+/).filter(Boolean)) {
+    if (part.includes('{') && part.includes('}')) out.push(part)
+    else out.push(...part.split(',').filter(Boolean))
+  }
+  return out
+}
 
-  const searchPath = input.path
-    ? resolveToolPath(input.path as string, context?.cwd)
-    : resolveWorkingDirectory(context?.cwd)
-  const outputMode = (input.output_mode as string) || 'files_with_matches'
-  const glob = input.glob as string | undefined
-  const fileType = input.type as string | undefined
-  const caseInsensitive = input['-i'] === true
-  const showLineNumbers = input['-n'] !== false
-  const multiline = input.multiline === true
-  const headLimit = typeof input.head_limit === 'number' ? input.head_limit : 0
-  const offset = typeof input.offset === 'number' ? input.offset : 0
-  const afterContext = typeof input['-A'] === 'number' ? input['-A'] : undefined
-  const beforeContext = typeof input['-B'] === 'number' ? input['-B'] : undefined
-  const contextLines = typeof input['-C'] === 'number' ? input['-C'] : (typeof input.context === 'number' ? input.context : undefined)
+export interface GrepOptions {
+  pattern: string
+  searchPath: string
+  outputMode: 'content' | 'files_with_matches' | 'count'
+  globs: string[]
+  fileType?: string
+  caseInsensitive: boolean
+  showLineNumbers: boolean
+  multiline: boolean
+  headLimit: number
+  offset: number
+  afterContext?: number
+  beforeContext?: number
+  contextLines?: number
+}
 
-  const args: string[] = []
-  if (outputMode === 'files_with_matches') args.push('--files-with-matches')
-  else if (outputMode === 'count') args.push('--count')
-  if (caseInsensitive) args.push('-i')
-  if (showLineNumbers && outputMode === 'content') args.push('-n')
-  if (multiline) args.push('-U', '--multiline-dotall')
-  if (outputMode === 'content') {
-    if (contextLines !== undefined) args.push('-C', String(contextLines))
+function num(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : undefined
+}
+
+export function grepOptions(input: Record<string, unknown>, cwd?: string): GrepOptions | string {
+  const pattern = input.pattern
+  if (typeof pattern !== 'string' || !pattern) return 'pattern is required'
+  const mode = (input.output_mode as string) || 'files_with_matches'
+  if (mode !== 'content' && mode !== 'files_with_matches' && mode !== 'count') {
+    return `output_mode must be one of content, files_with_matches, count (got "${mode}")`
+  }
+  return {
+    pattern,
+    searchPath: input.path ? resolveToolPath(input.path as string, cwd) : resolveWorkingDirectory(cwd),
+    outputMode: mode,
+    globs: typeof input.glob === 'string' ? splitGlobs(input.glob) : [],
+    fileType: typeof input.type === 'string' && input.type ? input.type : undefined,
+    caseInsensitive: input['-i'] === true,
+    showLineNumbers: input['-n'] !== false,
+    multiline: input.multiline === true,
+    headLimit: num(input.head_limit) ?? 0,
+    offset: num(input.offset) ?? 0,
+    afterContext: num(input['-A']),
+    beforeContext: num(input['-B']),
+    contextLines: num(input['-C']) ?? num(input.context),
+  }
+}
+
+/** ripgrep arguments of one Grep call; the search path is the last one. */
+export function ripgrepArgs(o: GrepOptions): string[] {
+  const args = ['--hidden', '--max-columns', String(MAX_COLUMNS)]
+  for (const dir of VCS_DIRECTORIES) args.push('--glob', `!${dir}`)
+  if (o.outputMode === 'files_with_matches') args.push('--files-with-matches')
+  else if (o.outputMode === 'count') args.push('--count')
+  if (o.caseInsensitive) args.push('-i')
+  if (o.outputMode === 'content' && o.showLineNumbers) args.push('-n')
+  if (o.multiline) args.push('-U', '--multiline-dotall')
+  if (o.outputMode === 'content') {
+    if (o.contextLines !== undefined) args.push('-C', String(o.contextLines))
     else {
-      if (afterContext !== undefined) args.push('-A', String(afterContext))
-      if (beforeContext !== undefined) args.push('-B', String(beforeContext))
+      if (o.afterContext !== undefined) args.push('-A', String(o.afterContext))
+      if (o.beforeContext !== undefined) args.push('-B', String(o.beforeContext))
     }
   }
-  if (glob) args.push('--glob', glob)
-  if (fileType) args.push('--type', fileType)
-  args.push('--', pattern, searchPath)
+  for (const glob of o.globs) args.push('--glob', glob)
+  if (o.fileType) args.push('--type', o.fileType)
+  // `-e` keeps a pattern that starts with `-` a pattern.
+  args.push('-e', o.pattern, '--', o.searchPath)
+  return args
+}
+
+/** Newest first, like native Grep's files_with_matches. Unstattable paths last. */
+async function sortByMtime(files: string[]): Promise<string[]> {
+  const times = new Map<string, number>()
+  for (let i = 0; i < files.length; i += STAT_CONCURRENCY) {
+    await Promise.all(
+      files.slice(i, i + STAT_CONCURRENCY).map(async (f) => {
+        try {
+          times.set(f, (await fsp.stat(f)).mtimeMs)
+        } catch {
+          times.set(f, 0)
+        }
+      }),
+    )
+  }
+  return [...files].sort((a, b) => times.get(b)! - times.get(a)! || a.localeCompare(b))
+}
+
+function paginate(lines: string[], offset: number, headLimit: number): string[] {
+  const from = lines.slice(offset)
+  return headLimit > 0 ? from.slice(0, headLimit) : from
+}
+
+// 9 min for rg — leaves 1-min headroom under the bridge's 10-min MCP cap.
+const RIPGREP_TIMEOUT_MS = 540_000
+
+export async function grepSearch(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
+  const options = grepOptions(input, context?.cwd)
+  if (typeof options === 'string') return errorResult(options)
+  if (!(await ripgrepPath())) return grepFallback(options)
+  const args = ripgrepArgs(options)
 
   try {
-    // 9 min for rg — leaves 1-min headroom under the bridge's 10-min MCP
-    // cap (HEAVY_TOOL_TIMEOUT_MS in session-manager.ts). Big repos + glob
-    // filters legitimately chew up minutes on the first cold run.
-    const RIPGREP_TIMEOUT_MS = 540_000
-
-    // Fast path: head_limit + no offset → stream and abort once we have N
-    // lines. Saves walking the rest of a multi-GB repo just to slice off
-    // 50 results. The buffered variant below only kicks in when the caller
-    // wants the full output (sort, count, etc.) or when offset/headLimit
-    // require a global view. ripgrepStream signature is (args, target):
-    // our `args` ends with `['--', pattern, searchPath]`, so target =
-    // searchPath, streamed args = everything before it.
-    if (headLimit > 0 && offset === 0) {
-      const streamArgs = args.slice(0, -1)
-      const target = args[args.length - 1]!
+    // Fast path: content + head_limit without offset → stream and stop after N
+    // lines instead of walking the rest of a big repo. files_with_matches keeps
+    // the full list because its order (newest first) needs every match.
+    if (options.outputMode === 'content' && options.headLimit > 0 && options.offset === 0) {
       const collected: string[] = []
       const controller = new AbortController()
       let timedOut = false
-      const timeoutId = setTimeout(() => { timedOut = true; controller.abort() }, RIPGREP_TIMEOUT_MS)
+      const timeoutId = setTimeout(() => {
+        timedOut = true
+        controller.abort()
+      }, RIPGREP_TIMEOUT_MS)
       let streamErr: unknown
       try {
-        await ripgrepStream(streamArgs, target, controller.signal, lines => {
+        await ripgrepStream(args.slice(0, -1), args[args.length - 1]!, controller.signal, (lines) => {
           for (const line of lines) {
             collected.push(line)
-            if (collected.length >= headLimit) { controller.abort(); return }
+            if (collected.length >= options.headLimit) {
+              controller.abort()
+              return
+            }
           }
         })
       } catch (err) {
-        // AbortError is expected when we hit the cap or timeout; the
-        // `timedOut` flag tells us which one. Anything else falls back
-        // to the buffered path.
         if ((err as Error)?.name !== 'AbortError') streamErr = err
       } finally {
         clearTimeout(timeoutId)
       }
       if (!streamErr) {
-        const result = collected.slice(0, headLimit).map(l => l.replace(/\r$/, '')).join('\n')
-        if (timedOut && (!result || result.trim().length === 0)) {
-          const seconds = Math.round(RIPGREP_TIMEOUT_MS / 1000)
-          return errorResult(
-            `Ripgrep search timed out after ${seconds}s with no matches captured. ` +
-            `Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`,
-          )
-        }
-        const suffix = timedOut
-          ? `\n[Search timed out after ${Math.round(RIPGREP_TIMEOUT_MS / 1000)}s — partial results above]`
-          : ''
+        const result = collected.slice(0, options.headLimit).join('\n')
+        if (timedOut && !result.trim()) return timeoutError()
+        const suffix = timedOut ? `\n[Search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s — partial results above]` : ''
         return textResult((result || 'No matches found.') + suffix)
       }
-      // Stream path errored — fall through to the buffered path which has
-      // EAGAIN retry + grepFallback.
     }
 
     let res = await spawnRipgrep(args, RIPGREP_TIMEOUT_MS)
-
-    // Retry with single-thread mode on EAGAIN (resource exhaustion in containers/CI)
-    if (res.code !== null && res.code !== 0 && res.code !== 1 && isEagainError(res.stderr)) {
+    if (res.code !== null && res.code > 1 && isEagainError(res.stderr)) {
       res = await spawnRipgrep(args, RIPGREP_TIMEOUT_MS, true)
     }
-
-    // rg exits 0 = matches, 1 = no matches (both success); other codes = error
-    if (res.code !== null && res.code !== 0 && res.code !== 1 && !res.truncated && !res.timedOut) {
-      return grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset)
+    // rg exits 0 = matches, 1 = no matches; 2 = an error such as a bad regex or
+    // a missing path. Report it instead of re-running the search another way.
+    if (res.code !== null && res.code > 1 && !res.truncated && !res.timedOut && !res.stdout.trim()) {
+      return errorResult(`ripgrep failed (exit ${res.code}): ${res.stderr.trim().slice(0, 2000) || 'no error text'}`)
     }
 
-    // Strip Windows CR remnants
-    let result = res.stdout.replace(/\r$/gm, '')
-
+    let lines = res.stdout.replace(/\r$/gm, '').split('\n')
+    if (lines[lines.length - 1] === '') lines.pop()
     // Drop the final line when output was cut off — rg may have been killed
-    // mid-line (truncate cap or kill signal), so the trailing fragment is
-    // unreliable. Same logic CLI applies in `ripgrep.ts:handleResult`.
-    if (res.truncated || res.timedOut) {
-      const lines = result.split('\n')
-      if (lines.length > 1) result = lines.slice(0, -1).join('\n')
-    }
+    // mid-line, so the trailing fragment is unreliable.
+    if ((res.truncated || res.timedOut) && lines.length > 1) lines.pop()
+    if (options.outputMode === 'files_with_matches') lines = await sortByMtime(lines)
+    const result = paginate(lines, options.offset, options.headLimit).join('\n')
 
-    if (offset > 0) result = result.split('\n').slice(offset).join('\n')
-    if (headLimit > 0) result = result.split('\n').slice(0, headLimit).join('\n')
-
-    // Empty + timeout → distinguishable error so the model knows the search
-    // didn't complete (vs. genuinely "no matches"). Without this we silently
-    // return "No matches found." and the model concludes the term is absent.
-    if (res.timedOut && (!result || result.trim().length === 0)) {
-      const seconds = Math.round(RIPGREP_TIMEOUT_MS / 1000)
-      return errorResult(
-        `Ripgrep search timed out after ${seconds}s with no matches captured. ` +
-        `The search may have partially matched files but did not complete in time. ` +
-        `Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`,
-      )
-    }
-
+    if (res.timedOut && !result.trim()) return timeoutError()
     const suffix = [
       res.truncated ? `\n[Output truncated at ${MAX_GREP_BYTES / 1024 / 1024} MB — narrow the path/pattern for full results]` : '',
-      res.timedOut ? `\n[Search timed out after ${Math.round(RIPGREP_TIMEOUT_MS / 1000)}s — partial results above; try a narrower path or pattern]` : '',
+      res.timedOut ? `\n[Search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s — partial results above; try a narrower path or pattern]` : '',
+      res.code !== null && res.code > 1 ? `\n[ripgrep reported errors: ${res.stderr.trim().split('\n')[0]?.slice(0, 300)}]` : '',
     ].join('')
-
     return textResult((result || 'No matches found.') + suffix)
   } catch {
-    return grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset)
+    return grepFallback(options)
   }
+}
+
+function timeoutError(): McpResult {
+  return errorResult(
+    `Ripgrep search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s with no matches captured. ` +
+      `Try narrowing the path or pattern, or pass type/glob to scope the file set.`,
+  )
 }
 
 /** Reject patterns prone to catastrophic backtracking BEFORE compiling. The JS
@@ -340,116 +389,156 @@ function hasNestedQuantifier(p: string): boolean {
 
 /** Wall-clock budget of the in-process fallback, matching ripgrep's 9 min. */
 const FALLBACK_TIMEOUT_MS = 540_000
+const FALLBACK_NOTICE =
+  '\n[ripgrep is not installed: searched with the built-in fallback. .gitignore rules are not applied; node_modules and VCS directories are skipped.]'
 
-// Async fallback when ripgrep isn't available (streaming readdir). Like the rg
-// paths, a search cut off by its deadline says so: an incomplete walk must never
-// read as "No matches found." or as a complete list.
-async function grepFallback(
-  pattern: string, searchPath: string, outputMode: string,
-  caseInsensitive: boolean, headLimit: number, offset: number,
-): Promise<McpResult> {
-  if (hasNestedQuantifier(pattern)) {
-    return errorResult(
-      `Pattern "${pattern}" has a nested quantifier that can hang the JS search engine, ` +
-      `and ripgrep isn't available on this machine to run it safely. Simplify the pattern ` +
-      `(avoid nested quantifiers like (a+)+ / (.*x){n}) or install ripgrep on PATH.`,
-    )
-  }
-  const flags = caseInsensitive ? 'gi' : 'g'
-  let regex: RegExp
-  try { regex = new RegExp(pattern, flags) }
-  catch (e) { return errorResult(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`) }
-
-  try {
-    const stat = await fsp.stat(searchPath)
-    if (stat.isFile()) {
-      const results: string[] = []
-      const content = await fsp.readFile(searchPath, 'utf8')
-      const lines = content.split('\n')
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] ?? ''
-        if (regex.test(line) && outputMode === 'content') results.push(`${i + 1}:${line}`)
-        regex.lastIndex = 0
-      }
-      if (results.length > 0 && outputMode === 'files_with_matches') return textResult(searchPath)
-      if (outputMode === 'count') return textResult(`${searchPath}:${results.length}`)
-      return fallbackResult(results, offset, headLimit, false, FALLBACK_TIMEOUT_MS)
-    }
-  } catch {
-    // Not stat-able: walk it as a directory below (readdir failure yields nothing).
-  }
-  const { results, timedOut } = await walkFallback(regex, searchPath, outputMode, headLimit, FALLBACK_TIMEOUT_MS)
-  return fallbackResult(results, offset, headLimit, timedOut, FALLBACK_TIMEOUT_MS)
+/** Arguments the fallback cannot honour with ripgrep's meaning. */
+function unsupportedByFallback(o: GrepOptions): string[] {
+  const out: string[] = []
+  if (o.fileType) out.push('type')
+  if (o.multiline) out.push('multiline')
+  if (o.outputMode === 'content' && (o.contextLines || o.afterContext || o.beforeContext)) out.push('-A/-B/-C')
+  return out
 }
 
-/** Directory walk of the fallback, bounded by `timeoutMs` of wall clock. */
+async function grepFallback(o: GrepOptions): Promise<McpResult> {
+  const unsupported = unsupportedByFallback(o)
+  if (unsupported.length) {
+    return errorResult(
+      `ripgrep is not installed on this machine, and the built-in fallback search does not support ${unsupported.join(', ')}. ` +
+        `Retry without ${unsupported.length > 1 ? 'these arguments' : 'this argument'} (use glob instead of type), or install ripgrep on PATH.`,
+    )
+  }
+  if (hasNestedQuantifier(o.pattern)) {
+    return errorResult(
+      `Pattern "${o.pattern}" has a nested quantifier that can hang the JS search engine, ` +
+        `and ripgrep isn't available on this machine to run it safely. Simplify the pattern ` +
+        `(avoid nested quantifiers like (a+)+ / (.*x){n}) or install ripgrep on PATH.`,
+    )
+  }
+  let regex: RegExp
+  try {
+    regex = new RegExp(o.pattern, o.caseInsensitive ? 'gi' : 'g')
+  } catch (e) {
+    return errorResult(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  let isFile = false
+  try {
+    isFile = (await fsp.stat(o.searchPath)).isFile()
+  } catch {
+    return errorResult(`Path does not exist: ${o.searchPath}`)
+  }
+  if (isFile) {
+    const matches = await matchFile(regex, o.searchPath, o.outputMode, o.showLineNumbers, false)
+    const results = matches === null ? [] : o.outputMode === 'content' ? matches : [matches[0]!]
+    return fallbackResult(results, o.offset, o.headLimit, false, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE)
+  }
+  const walk = await walkFallback(regex, o.searchPath, o.outputMode, o.headLimit + o.offset, FALLBACK_TIMEOUT_MS, o.globs, o.showLineNumbers)
+  const results = o.outputMode === 'files_with_matches' ? await sortByMtime(walk.results) : walk.results
+  return fallbackResult(results, o.offset, o.headLimit, walk.timedOut, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE)
+}
+
+/** Matches of one file in ripgrep's non-tty format; null when none or unreadable. */
+async function matchFile(
+  regex: RegExp,
+  file: string,
+  outputMode: string,
+  lineNumbers: boolean,
+  withPath: boolean,
+): Promise<string[] | null> {
+  try {
+    const stat = await fsp.stat(file)
+    if (stat.size > MAX_READ_BYTES) return null
+    const buffer = await fsp.readFile(file)
+    // ripgrep skips binary files (NUL byte in the first block).
+    if (buffer.subarray(0, 8192).includes(0)) return null
+    const lines = buffer.toString('utf8').split('\n')
+    const out: string[] = []
+    let count = 0
+    for (let i = 0; i < lines.length; i++) {
+      const line = (lines[i] ?? '').replace(/\r$/, '')
+      regex.lastIndex = 0
+      if (!regex.test(line)) continue
+      count++
+      if (outputMode === 'content') {
+        const text = line.length > MAX_COLUMNS ? '[Omitted long matching line]' : line
+        out.push(`${withPath ? `${file}:` : ''}${lineNumbers ? `${i + 1}:` : ''}${text}`)
+      }
+    }
+    if (count === 0) return null
+    if (outputMode === 'files_with_matches') return [file]
+    if (outputMode === 'count') return [withPath ? `${file}:${count}` : String(count)]
+    return out
+  } catch {
+    return null
+  }
+}
+
+/** ripgrep matches a glob without `/` against the file name at any depth. */
+function fastGlobPattern(glob: string): string {
+  return glob.includes('/') ? glob.replace(/^\//, '') : `**/${glob}`
+}
+
+/** Directory walk of the fallback, bounded by `timeoutMs` of wall clock and,
+ *  when `limit` > 0, by the number of result entries. */
 export async function walkFallback(
-  regex: RegExp, searchPath: string, outputMode: string, headLimit: number, timeoutMs: number,
+  regex: RegExp,
+  searchPath: string,
+  outputMode: string,
+  limit: number,
+  timeoutMs: number,
+  globs: string[] = [],
+  lineNumbers = true,
 ): Promise<{ results: string[]; timedOut: boolean }> {
   const results: string[] = []
   const deadline = Date.now() + timeoutMs
   let timedOut = false
-
-  async function searchDir(dir: string): Promise<void> {
-    if (timedOut) return
-    let entries: fs.Dirent[]
-    try {
-      entries = await fsp.readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const entry of entries) {
-      if (headLimit > 0 && results.length >= headLimit) return
-      if (Date.now() > deadline) { timedOut = true; return }
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
-      const fullPath = path.join(dir, entry.name)
-      if (entry.isDirectory()) {
-        await searchDir(fullPath)
-      } else if (entry.isFile()) {
-        try {
-          const stat = await fsp.stat(fullPath)
-          if (stat.size > MAX_READ_BYTES) continue
-          const content = await fsp.readFile(fullPath, 'utf8')
-          const lines = content.split('\n')
-          const matchingLines: string[] = []
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i] ?? ''
-            if (regex.test(line)) {
-              matchingLines.push(outputMode === 'content' ? `${i + 1}:${line}` : line)
-            }
-            regex.lastIndex = 0
-          }
-          if (matchingLines.length > 0) {
-            if (outputMode === 'files_with_matches') results.push(fullPath)
-            else if (outputMode === 'count') results.push(`${fullPath}:${matchingLines.length}`)
-            else results.push(`${fullPath}:\n${matchingLines.join('\n')}`)
-          }
-        } catch {
-          // skip unreadable
-        }
+  const include = globs.filter((g) => !g.startsWith('!')).map(fastGlobPattern)
+  const exclude = globs.filter((g) => g.startsWith('!')).map((g) => fastGlobPattern(g.slice(1)))
+  const stream = fg.stream(include.length ? include : ['**/*'], {
+    cwd: searchPath,
+    absolute: true,
+    dot: true,
+    onlyFiles: true,
+    followSymbolicLinks: false,
+    suppressErrors: true,
+    ignore: [...VCS_DIRECTORIES.map((d) => `**/${d}/**`), '**/node_modules/**', ...exclude],
+  })
+  try {
+    for await (const entry of stream) {
+      if (limit > 0 && results.length >= limit) break
+      if (Date.now() > deadline) {
+        timedOut = true
+        break
       }
+      const file = path.normalize(entry as string)
+      const matches = await matchFile(regex, file, outputMode, lineNumbers, true)
+      if (matches) results.push(...matches)
     }
+  } finally {
+    ;(stream as unknown as { destroy?: () => void }).destroy?.()
   }
-
-  await searchDir(searchPath)
   return { results, timedOut }
 }
 
 /** Final fallback text; a deadline-cut walk is reported, never passed off as complete. */
 export function fallbackResult(
-  results: string[], offset: number, headLimit: number, timedOut: boolean, timeoutMs: number,
+  results: string[],
+  offset: number,
+  headLimit: number,
+  timedOut: boolean,
+  timeoutMs: number,
+  notice = '',
 ): McpResult {
-  let output = results.join('\n')
-  if (offset > 0) output = output.split('\n').slice(offset).join('\n')
-  if (headLimit > 0) output = output.split('\n').slice(0, headLimit).join('\n')
-
+  const output = paginate(results, offset, headLimit).join('\n')
   const seconds = Math.round(timeoutMs / 1000)
   if (timedOut && !output.trim()) {
     return errorResult(
       `Search timed out after ${seconds}s with no matches captured; not every file was searched. ` +
-      `Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`,
+        `Try narrowing the path or pattern, or pass glob to scope the file set.`,
     )
   }
   const suffix = timedOut ? `\n[Search timed out after ${seconds}s — partial results above; try a narrower path or pattern]` : ''
-  return textResult((output || 'No matches found.') + suffix)
+  return textResult((output || 'No matches found.') + suffix + notice)
 }
