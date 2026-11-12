@@ -474,6 +474,9 @@ export class ConnectionManager {
       // so this never actually waits except on the first cold-launch session.
       const sock = this.ws
       if (sock) void this.startSession(sock)
+      // The session's first Bash/Grep call should not pay for the shell
+      // snapshot and binary lookups; start them now, once per host.
+      void import('../mcp/tools/shell-prewarm').then((m) => m.prewarmShellTools()).catch(() => {})
     })
 
     this.ws.on('message', (raw) => {
