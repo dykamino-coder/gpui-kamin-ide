@@ -74,6 +74,8 @@ export interface WsMsgMcpResponse {
   sessionId?: string
   requestId: string
   result: unknown
+  /** Client host durations (mcp-trace `ClientTiming`); validated on use. */
+  timing?: unknown
 }
 
 export interface WsMsgMcpDenied {

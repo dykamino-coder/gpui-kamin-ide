@@ -21,6 +21,7 @@ import { TASK_LIMITS, taskView } from './mcp-task-store'
 import { TaskAdmissionError, TaskPersistenceQueueError, isTaskRetentionPressure } from './mcp-task-admission'
 import { debugLog, warnLog, errorLog } from '../logging'
 import { getSession, sendMcpCall } from './session-manager'
+import { traceEnd, traceStart, type McpPhases } from './mcp-trace'
 import { eventBus } from '../events/bus'
 import type { PtySession, ToolDefinition } from './types'
 import { getSessionWs } from './session-ws'
@@ -109,8 +110,10 @@ function logMcpRequest(
   error?: string,
   durationMs?: number,
   stickyError = true,
+  phases?: McpPhases,
 ): void {
-  session.mcpLog.push({ ts: Date.now(), method, status, error, durationMs })
+  session.mcpLog.push({ ts: Date.now(), method, status, error, durationMs, ...(phases ? { phases } : {}) })
+  if (phases) debugLog('MCP tool call phases', { sessionId: session.id, method, durationMs, ...phases })
   if (session.mcpLog.length > MCP_LOG_MAX) {
     session.mcpLog = session.mcpLog.slice(-MCP_LOG_MAX)
   }
@@ -689,6 +692,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         }
         if (handle) {
           if (toolInput.run_in_background === true) return jsonResponse(jsonRpcResponse(body.id, handle))
+          traceStart(String(handle.taskId), reqStart)
           // The task keeps the run durable, but a command that finishes within the
           // grace window answers inline: returning a handle for every short command
           // makes the CLI background it and the agent wait on a notification.
@@ -711,8 +715,17 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
                 requestSignal ? AbortSignal.any([requestSignal, interrupted.signal]) : interrupted.signal,
               )
               if (task?.status === 'completed' && task.result) {
-                logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, Date.now() - reqStart, false)
-                return jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+                const response = jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+                logMcpRequest(
+                  session,
+                  `tools/call:${toolName}`,
+                  'ok',
+                  undefined,
+                  Date.now() - reqStart,
+                  false,
+                  traceEnd(taskId),
+                )
+                return response
               }
               if (task?.status === 'failed' && task.error)
                 return jsonRpcError(body.id, task.error.code, task.error.message)
@@ -731,6 +744,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
                 })
               return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
             } finally {
+              traceEnd(taskId)
               release()
             }
           })
@@ -748,15 +762,18 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         // on the client host; without it the command ran on (INC-2026-0096).
         const interrupted = new AbortController()
         const release = trackForegroundCall(session.id, body.id, () => interrupted.abort(new McpCallInterrupted()))
+        const traceId = crypto.randomUUID()
+        traceStart(traceId, reqStart)
         try {
           const result = await sendMcpCall(
             sessionId,
             toolName,
             toolInput,
             requestSignal ? AbortSignal.any([requestSignal, interrupted.signal]) : interrupted.signal,
+            traceId,
           )
           const dur = Date.now() - reqStart
-          logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, dur)
+          logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, dur, true, traceEnd(traceId))
 
           // If the client host returned a properly-formatted MCP result (with content array),
           // pass it through directly. This preserves image content blocks and other types.
@@ -792,7 +809,15 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             toolName,
             error: errMsg,
           })
-          logMcpRequest(session, `tools/call:${toolName}`, 'error', errMsg, Date.now() - reqStart)
+          logMcpRequest(
+            session,
+            `tools/call:${toolName}`,
+            'error',
+            errMsg,
+            Date.now() - reqStart,
+            true,
+            traceEnd(traceId),
+          )
 
           // Return error as tool result (not JSON-RPC error) so Claude can see it
           return jsonRpcResponse(body.id, {
