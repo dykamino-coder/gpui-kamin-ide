@@ -852,6 +852,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             const next = toCodexModel(msg.model)
             if (next) {
               await codexModel.agent.setModel(next)
+              codexModel.modelChanged(next)
               session.model = next
             }
             ws.send(
