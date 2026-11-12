@@ -1,9 +1,10 @@
 // Take user's HookSettings → produce CLI-bound HookSettings where every
-// local command hook is replaced by an exec-form Node relay pointing at our
-// /api/hooks/<session>/<event>/<id> endpoint. The relay reproduces the local
-// command's stdout, stderr, and exit code inside the Linux CLI process. This
-// lets Claude Code apply its native, event-specific command-hook semantics
-// (including exit 2) instead of trying to translate them through HTTP hooks.
+// local command hook points at our /api/hooks/<session>/<event>/<id>
+// endpoint. Most events get an exec-form Node relay that reproduces the local
+// command's stdout, stderr, and exit code inside the Linux CLI process, so
+// Claude Code applies its own event-specific command-hook semantics (including
+// exit 2). The per-tool events in HTTP_HOOK_EVENTS get a native http hook
+// instead, answered with the body that has the same effect (http-hook-answer).
 // Server-side command hooks are kept as-is. Prompt/agent/http hooks pass
 // through unchanged — CLI handles them natively.
 
@@ -11,6 +12,7 @@ import { config } from '../config'
 import type { HookHandler, HookMatcher, HookSettings, HookSource } from './types'
 import { registerSessionHooks } from './registry'
 import { matcherForCli } from './tool-names'
+import { HTTP_HOOK_EVENTS, HTTP_HOOK_RELAY } from './http-hook-answer'
 
 /** Env var the CLI process carries for us. The relay credential travels in
  *  the session's own process environment, never in the command text: the
@@ -61,6 +63,15 @@ export function buildHookCommandRelay(
   ].join('')
 }
 
+/** Whether a relayed command hook goes to the CLI as a native http hook.
+ *  Async hooks stay on the command relay: an http hook has no `asyncRewake`.
+ *  `KAMIN_HOOK_HTTP=0` keeps every hook on the relay. */
+function useHttpHook(event: string, h: HookHandler): boolean {
+  if (process.env.KAMIN_HOOK_HTTP === '0') return false
+  if (h.type !== 'command' || h.async || h.asyncRewake) return false
+  return HTTP_HOOK_EVENTS.has(event)
+}
+
 /**
  * Rewrite the user's hooks for a session and return the JSON shape that
  * goes into the CLI's settings.json:hooks. Side-effect: registers each
@@ -91,6 +102,27 @@ export function rewriteHooksForCli(
         if (reg.effectiveHost === 'server') return h
 
         const proxyUrl = `${proxyOrigin}/api/hooks/${sessionId}/${encodeURIComponent(event)}/${reg.id}`
+
+        // Per-tool events go out as native http hooks: the CLI sends them
+        // in-process instead of starting a Node relay on every tool call. The
+        // header names the credential's env var, so its value is substituted
+        // only in the request and never appears in the declaration.
+        if (useHttpHook(event, h)) {
+          const http: HookHandler = {
+            type: 'http',
+            url: proxyUrl,
+            headers: {
+              Authorization: `Bearer $${HOOK_RELAY_TOKEN_ENV}`,
+              'X-Bridge-Hook-Relay': HTTP_HOOK_RELAY,
+            },
+            allowedEnvVars: [HOOK_RELAY_TOKEN_ENV],
+          }
+          if (h.timeout !== undefined) http.timeout = h.timeout
+          if (h.if !== undefined) http.if = h.if
+          if (h.statusMessage !== undefined) http.statusMessage = h.statusMessage
+          if (h.once !== undefined) http.once = h.once
+          return http
+        }
 
         // Keep command-hook semantics on both sides of the bridge. Exec-form
         // avoids quoting/token expansion in the container and works for sync,

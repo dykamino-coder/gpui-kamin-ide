@@ -104,19 +104,20 @@ function launchHooks(call: (typeof h.spawn.mock.calls)[number]) {
     at < 0
       ? JSON.parse(fs.readFileSync(path.join(h.root, 'conversation', '.claude', 'settings.json'), 'utf8'))
       : JSON.parse(fs.readFileSync(args[at + 1]!, 'utf8'))
-  return settings.hooks as Record<string, Array<{ hooks: Array<{ args: string[] }> }>>
+  return settings.hooks as Record<string, Array<{ hooks: Array<{ args: string[]; url?: string }> }>>
 }
 
 async function hookStatus(call: (typeof h.spawn.mock.calls)[number], event: string, token?: string) {
-  const relay = launchHooks(call)[event]![0]!.hooks[0]!.args[1]!
-  const url = relay.match(/request\(("[^" ]+")/)![1]!
+  // Per-tool events reach the CLI as native http hooks, the rest as a relay.
+  const hook = launchHooks(call)[event]![0]!.hooks[0]!
+  const url = hook.url ?? JSON.parse(hook.args[1]!.match(/request\(("[^" ]+")/)![1]!)
   return (
     await app.request(
-      new Request(JSON.parse(url), {
+      new Request(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Bridge-Hook-Relay': 'command',
+          'X-Bridge-Hook-Relay': hook.url ? 'http' : 'command',
           Authorization: `Bearer ${token ?? call[2].env.CLAUDE_BRIDGE_HOOK_TOKEN}`,
         },
         body: JSON.stringify({ hook_event_name: event, tool_name: 'mcp__user-tools__Grep' }),
