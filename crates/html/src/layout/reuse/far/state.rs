@@ -152,6 +152,17 @@ impl FlowReuse {
     }
 }
 
+#[cfg(test)]
+impl crate::layout::reuse::Store {
+    /// Far records the document keeps for its next build, for tests.
+    pub(crate) fn far_records(&self) -> usize {
+        let far = self.far.take();
+        let records = far.as_ref().map_or(0, |far| far.records.len());
+        self.far.set(far);
+        records
+    }
+}
+
 impl Drop for FlowReuse {
     /// A build dropped unfinished (refused and built again) leaves the
     /// document's records as they were.

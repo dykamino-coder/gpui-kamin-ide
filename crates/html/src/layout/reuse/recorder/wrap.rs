@@ -3,6 +3,7 @@
 
 use super::{Output, far};
 use crate::hooks::Wrap;
+use crate::layout::reuse::width::reusable_range;
 use crate::layout::reuse::{FlowReuse, Record, lines::with_record, scaled};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, ScaledPixels, Window, point, px, size};
 use std::rc::Rc;
@@ -26,6 +27,28 @@ impl Recorder {
     /// The record being made; `None` once the frame finished it.
     fn record(&self) -> Option<Rc<Record>> {
         self.reuse.pending.borrow().get(self.at).cloned()
+    }
+}
+
+impl Record {
+    /// The record in the making already stands for its block at every wider
+    /// flow: the block prepainted and painted inertly, and its layout holds
+    /// there (`width::reusable_range`: a fixed width, or text on one line).
+    /// Asked after the block's paint by its far recorder (`far::FarRecorder`).
+    pub(in crate::layout::reuse) fn holds_wider_flows(&self) -> bool {
+        let m = &self.making;
+        let range = || {
+            reusable_range(
+                m.width,
+                m.border.get(),
+                self.key.flow_width(),
+                m.lines.slack(),
+            )
+        };
+        m.quiet.get()
+            && m.painted.get()
+            && !m.sink.tainted()
+            && range().is_some_and(|(_, hi)| hi == f32::INFINITY)
     }
 }
 

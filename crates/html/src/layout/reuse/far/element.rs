@@ -17,6 +17,8 @@ pub(in crate::layout::reuse) struct FarRecorder {
     reuse: Rc<FlowReuse>,
     pending: PendingFar,
     source: Option<Source>,
+    /// The block's skip record of this frame, by number (`FlowReuse::pending`).
+    skip: Option<usize>,
 }
 
 impl FarRecorder {
@@ -24,14 +26,26 @@ impl FarRecorder {
         child: AnyElement,
         reuse: Rc<FlowReuse>,
         pending: PendingFar,
-        source: Source,
+        (source, skip): (Source, Option<usize>),
     ) -> Self {
         Self {
             child,
             reuse,
             pending,
             source: Some(source),
+            skip,
         }
+    }
+
+    /// The block's skip record of this frame stands at every wider flow
+    /// (`Record::holds_wider_flows`): its placeholder takes the block there,
+    /// and a far record would only keep the block's measure functions for a
+    /// claim that never comes (Blink keeps one cached result per object, and
+    /// a hit on the size needs nothing else).
+    fn skipped_at_other_widths(&self) -> bool {
+        let pending = self.reuse.pending.borrow();
+        let record = self.skip.and_then(|at| pending.get(at));
+        record.is_some_and(|record| record.holds_wider_flows())
     }
 
     /// The recording failed: the block is near (`Store::far_near`).
@@ -133,6 +147,10 @@ impl Wrap for FarRecorder {
         let excess: Excess = ink_beyond(boxes, ink);
         if !clear_of(boxes, excess, screen) {
             self.near();
+            return;
+        }
+        if self.skipped_at_other_widths() {
+            self.source = None;
             return;
         }
         // Kept for the next pass as their requests made them: the recording
