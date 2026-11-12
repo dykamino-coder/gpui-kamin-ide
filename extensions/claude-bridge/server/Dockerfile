@@ -6,7 +6,7 @@
 # =============================================================================
 
 # ---------- Stage 1: builder ------------------------------------------------
-FROM node:22-bookworm-slim AS builder
+FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ git ca-certificates \
@@ -31,7 +31,7 @@ RUN rm -rf src/ui/node_modules
 RUN npm prune --omit=dev --no-audit --no-fund
 
 # ---------- Stage 2: runtime -----------------------------------------------
-FROM node:22-bookworm-slim AS runtime
+FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runtime
 
 # Explicit system roots are assembled by outbound-tls.ts in verified mode.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
