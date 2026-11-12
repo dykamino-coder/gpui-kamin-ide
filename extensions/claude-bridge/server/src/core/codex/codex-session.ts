@@ -52,6 +52,8 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
   /** Turns already completed, so a late turn/start response cannot revive one. */
   private readonly completed = new Set<string>()
   private nextModel: string | undefined
+  private currentModel: string | null = null
+  private effort: string | undefined
   private readonly idleWaiters = new Set<() => void>()
   private detach: (() => void) | undefined
   private stopped = false
@@ -59,7 +61,9 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
   private constructor(
     readonly id: string,
     private readonly options: CodexSessionOptions,
-  ) {}
+  ) {
+    this.effort = options.effort
+  }
 
   static async start(options: CodexSessionOptions): Promise<CodexAgentSession> {
     const session = new CodexAgentSession(options.id ?? randomUUID(), options)
@@ -85,6 +89,7 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
         })
       : await o.host.rpc.request<ThreadStartResponse>('thread/start', common)
     this.threadId = response.thread.id
+    this.currentModel = response.model ?? response.thread.model ?? null
     this.detach = o.host.attach(this.threadId, this)
     this.events.emit({
       kind: 'session.started',
@@ -149,7 +154,7 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       input: textInput(text),
       ...(submissionId ? { clientUserMessageId: submissionId } : {}),
       ...(this.nextModel ? { model: this.nextModel } : {}),
-      ...(this.options.effort ? { effort: this.options.effort } : {}),
+      ...(this.effort ? { effort: this.effort } : {}),
     })
     this.nextModel = undefined
     const turn = response.turn
@@ -186,7 +191,18 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
   async setModel(model: string): Promise<SetModelOutcome> {
     if (!model) throw new Error('model required')
     this.nextModel = model
+    this.currentModel = model
     return 'next-turn'
+  }
+
+  /** Reasoning effort for the next and later turns (turn/start.effort). */
+  setEffort(effort: string | undefined): void {
+    this.effort = effort
+  }
+
+  /** Model of the thread, or the one requested for the next turn. */
+  get model(): string | null {
+    return this.currentModel
   }
 
   /** Resolves once no turn is running (immediately when idle). */

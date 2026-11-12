@@ -146,6 +146,8 @@ export function writeInputToSession(session: PtySession, data: string): boolean 
   // не получил (INC-2026-0053).
   if (session.state !== 'running') return false
   session.lastActivityAt = new Date()
+  // Non-PTY engines (codex app-server) own their input; see SessionAgentInput.
+  if (session.agentInput) return session.agentInput.input(data)
   if (data === '\x03' && sessionCliControl(session)?.interrupt()) return true
   sessionCliControl(session)?.rawInput(data)
   writeCoordinatedInput(session, data)
@@ -214,6 +216,7 @@ export function submitTextToSession(session: PtySession, text: string, submissio
     return
   }
   session.lastActivityAt = new Date()
+  if (session.agentInput) return session.agentInput.submit(text, submissionId)
   if (sessionCliControl(session)?.submit(text, submissionId)) return
   if (submissionId)
     sendToClient(session.ws, {
