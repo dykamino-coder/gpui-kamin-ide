@@ -48,6 +48,11 @@ impl Host {
         })
     }
 
+    /// Окна платформы рисуют в текстуру message-only окна (без DWM) либо, для сверки, в презентуемое окно.
+    pub(super) fn set_offscreen_windows(&self, offscreen: bool) {
+        self.platform.set_offscreen_windows(offscreen);
+    }
+
     pub(super) fn application(&self) -> gpui::Application {
         gpui::Application::with_platform(self.platform.clone())
     }
