@@ -4,7 +4,8 @@
 // shrink) talks to `session.pty`. This object gives it the same surface:
 // kill() ends the engine and reports the exit through onExit exactly once,
 // write() forwards Ctrl+C as an interrupt, and the screen-size calls are kept
-// as plain state. There is no console output: the chat is the transcript.
+// as plain state. Console output is what the session prints through emit()
+// (a live log of the thread); the chat stays the transcript.
 import type { IDisposable, IPty } from 'node-pty'
 
 export interface VirtualPtyHandlers {
@@ -23,6 +24,7 @@ export class VirtualPty {
   private exitCode: number | undefined
   private stopping = false
   private readonly exitListeners = new Set<(e: { exitCode: number; signal?: number }) => void>()
+  private readonly dataListeners = new Set<(data: string) => void>()
 
   constructor(
     private readonly handlers: VirtualPtyHandlers,
@@ -47,8 +49,15 @@ export class VirtualPty {
     this.rows = rows
   }
 
-  onData(_listener: (data: string) => void): IDisposable {
-    return { dispose: () => {} }
+  onData(listener: (data: string) => void): IDisposable {
+    this.dataListeners.add(listener)
+    return { dispose: () => this.dataListeners.delete(listener) }
+  }
+
+  /** Console output, delivered like PTY data (Bridge Console, reattach replay). */
+  emit(data: string): void {
+    if (!data || this.exited) return
+    for (const listener of [...this.dataListeners]) listener(data)
   }
 
   onExit(listener: (e: { exitCode: number; signal?: number }) => void): IDisposable {
