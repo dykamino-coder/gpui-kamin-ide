@@ -2,6 +2,7 @@ import type { PtySessionInfo } from '../../signals/server'
 
 export type SessionSort = 'activity' | 'count'
 export interface PtyGroup {
+  key: string
   name: string
   sessions: PtySessionInfo[]
   lastActivity: number
@@ -14,14 +15,19 @@ export interface PtyGroup {
   memBytes: number | null
 }
 
+export const ptyUserKey = (s: PtySessionInfo): string =>
+  s.tokenId ? `token:${s.tokenId}` : `name:${s.userName || 'Unknown user'}`
+
 /** One pass over the live snapshot; no per-row requests or history queries. */
 export function groupPtySessions(sessions: readonly PtySessionInfo[], sort: SessionSort): PtyGroup[] {
   const groups = new Map<string, PtyGroup>()
   for (const s of sessions) {
     const name = s.userName || 'Unknown user'
-    let group = groups.get(name)
+    const key = ptyUserKey(s)
+    let group = groups.get(key)
     if (!group) {
       group = {
+        key,
         name,
         sessions: [],
         lastActivity: 0,
@@ -33,10 +39,12 @@ export function groupPtySessions(sessions: readonly PtySessionInfo[], sort: Sess
         cpuPercent: null,
         memBytes: null,
       }
-      groups.set(name, group)
+      groups.set(key, group)
     }
     group.sessions.push(s)
-    group.lastActivity = Math.max(group.lastActivity, Date.parse(s.lastActivityAt) || 0)
+    const activity = Date.parse(s.lastActivityAt) || 0
+    if (activity >= group.lastActivity) group.name = name
+    group.lastActivity = Math.max(group.lastActivity, activity)
     group.userMessages += s.userMessages ?? 0
     group.assistantMessages += s.assistantMessages ?? 0
     group.mcpCallCount += s.mcpCallCount ?? 0
@@ -52,13 +60,13 @@ export function groupPtySessions(sessions: readonly PtySessionInfo[], sort: Sess
     (a, b) =>
       (sort === 'count' ? b.sessions.length - a.sessions.length : 0) ||
       b.lastActivity - a.lastActivity ||
-      a.name.localeCompare(b.name),
+      a.name.localeCompare(b.name) ||
+      a.key.localeCompare(b.key),
   )
 }
 
 export function engineBreakdown(sessions: readonly PtySessionInfo[], users = false): string {
-  const count = (list: readonly PtySessionInfo[]) =>
-    users ? new Set(list.map((s) => s.userName).filter(Boolean)).size : list.length
+  const count = (list: readonly PtySessionInfo[]) => (users ? new Set(list.map(ptyUserKey)).size : list.length)
   const claude = count(sessions.filter((s) => s.engine !== 'codex'))
   const codex = count(sessions.filter((s) => s.engine === 'codex'))
   return `${count(sessions)} (Claude ${claude} · Codex ${codex})`

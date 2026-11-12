@@ -48,3 +48,15 @@ it('keeps unavailable resources distinct from measured zero', () => {
   expect(unknown.memBytes).toBeNull()
   expect(groupPtySessions([{ ...sessions[0], cpuPercent: 0 }], 'activity')[0].cpuPercent).toBe(0)
 })
+
+it('groups by token UUID across renames and separates equal display names', () => {
+  const renamed = [
+    { ...sessions[0], tokenId: 'a', userName: 'Same name', engine: 'claude' },
+    { ...sessions[1], tokenId: 'b', userName: 'Same name', engine: 'codex' },
+    { ...sessions[2], tokenId: 'a', userName: 'Renamed', engine: 'codex' },
+  ]
+  const groups = groupPtySessions(renamed, 'activity')
+  expect(groups).toHaveLength(2)
+  expect(groups.find((g) => g.sessions.length === 2)?.name).toBe('Renamed')
+  expect(engineBreakdown(renamed, true)).toBe('2 (Claude 1 · Codex 2)')
+})

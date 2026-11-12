@@ -382,6 +382,7 @@ export async function createCodexSession(
 
   eventBus.emit('session:created', {
     sessionId,
+    engine: 'codex',
     tokenId,
     userName,
     cwd: config.cwd || '',

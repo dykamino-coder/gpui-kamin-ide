@@ -26,7 +26,7 @@ import { UsageChart } from './components/dashboard/UsageChart'
 import { ApiErrorsCard } from './components/dashboard/ApiErrorsCard'
 import { McpUsageReport } from './components/dashboard/McpUsageReport'
 import { ActivePtySessions } from './components/dashboard/ActivePtySessions'
-import { engineBreakdown } from './components/dashboard/pty-groups'
+import { engineBreakdown, ptyUserKey } from './components/dashboard/pty-groups'
 
 import { navigateToConsole } from './router'
 import styles from './SingleDashboard.module.css'
@@ -164,6 +164,11 @@ export function SingleDashboard() {
         .then((data) => {
           type LiveStat = {
             id: string
+            tokenId?: string
+            engine?: string
+            userName?: string
+            lastActivityAt?: string
+            mcpCallCount?: number
             cpuPercent?: number | null
             memBytes?: number | null
             attached?: boolean
@@ -181,6 +186,11 @@ export function SingleDashboard() {
             return st
               ? {
                   ...p,
+                  tokenId: st.tokenId ?? p.tokenId,
+                  engine: st.engine ?? p.engine,
+                  userName: st.userName ?? p.userName,
+                  lastActivityAt: st.lastActivityAt ?? p.lastActivityAt,
+                  mcpCallCount: st.mcpCallCount ?? p.mcpCallCount,
                   cpuPercent: st.cpuPercent ?? null,
                   memBytes: st.memBytes ?? null,
                   attached: st.attached,
@@ -268,7 +278,7 @@ export function SingleDashboard() {
   const sessionsStatus = sessions.length > 0 ? 'ok' : 'warning'
   // Derive a few useful breakdowns from the live PTY session list so the
   // status card carries weight even when a single tab is open.
-  const distinctUsers = new Set(sessions.map((s) => s.userName).filter(Boolean)).size
+  const distinctUsers = new Set(sessions.map(ptyUserKey)).size
   const totalInputs = sessions.reduce((acc, s) => acc + (s.userMessages || 0), 0)
   const totalMcpCalls = sessions.reduce((acc, s) => acc + (s.mcpCallCount || 0), 0)
   const lastActivityAt = sessions.reduce<number>((acc, s) => {

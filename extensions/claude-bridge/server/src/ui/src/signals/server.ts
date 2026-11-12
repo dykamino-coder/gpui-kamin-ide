@@ -5,6 +5,8 @@ import type { HealthCheck, ExtendedStats } from '../types'
 export interface PtySessionInfo {
   id: string
   userName: string
+  /** Stable user identity; older servers may only send the display name. */
+  tokenId?: string
   cwd: string
   state: string
   createdAt: string

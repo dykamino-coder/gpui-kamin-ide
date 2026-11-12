@@ -24,6 +24,7 @@ export function registerSessionRoutes(api: Hono): void {
       return {
         id: s.id,
         userName: s.userName,
+        tokenId: s.tokenId,
         engine: s.engine ?? 'claude',
         cwd: s.cwd,
         state: s.state,

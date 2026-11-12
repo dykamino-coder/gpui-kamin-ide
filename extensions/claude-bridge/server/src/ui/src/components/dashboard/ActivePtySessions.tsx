@@ -7,7 +7,7 @@ import { EngineBadge, asEngine } from './engine'
 import { groupPtySessions, type SessionSort } from './pty-groups'
 import styles from './ActivePtySessions.module.css'
 
-const STORAGE_KEY = 'bridge.pty-groups.v1'
+const STORAGE_KEY = 'bridge.pty-groups.v2'
 function readPreferences(): { expanded: string[]; sort: SessionSort } {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
@@ -108,16 +108,16 @@ export function ActivePtySessions({ sessions }: { sessions: PtySessionInfo[] }) 
             </thead>
             <tbody>
               {groups.map((g) => (
-                <Fragment key={g.name}>
+                <Fragment key={g.key}>
                   <tr class={styles.group} data-user={g.name}>
                     <td colSpan={3}>
                       <button
                         type="button"
                         class={styles.toggle}
-                        aria-expanded={prefs.expanded.includes(g.name)}
-                        onClick={() => toggle(g.name)}
+                        aria-expanded={prefs.expanded.includes(g.key)}
+                        onClick={() => toggle(g.key)}
                       >
-                        <span aria-hidden="true">{prefs.expanded.includes(g.name) ? '▾' : '▸'}</span> {g.name}{' '}
+                        <span aria-hidden="true">{prefs.expanded.includes(g.key) ? '▾' : '▸'}</span> {g.name}{' '}
                         <span class={styles.badge}>{g.sessions.length}</span>
                       </button>
                     </td>
@@ -132,7 +132,7 @@ export function ActivePtySessions({ sessions }: { sessions: PtySessionInfo[] }) 
                     <td>{elapsed(g.lastActivity)}</td>
                     <td />
                   </tr>
-                  {prefs.expanded.includes(g.name) &&
+                  {prefs.expanded.includes(g.key) &&
                     g.sessions.map((s) => (
                       <tr key={s.id} data-session={s.id}>
                         <td class={styles.title} title={s.sessionTitle || s.id}>
