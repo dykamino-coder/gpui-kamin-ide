@@ -16,7 +16,7 @@ use markup5ever_rcdom::NodeData;
 use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn enter<'a>(
+pub(super) fn enter<'a, const QUERY: bool>(
     visit: Visit<'a>,
     tree: &TreeIndex,
     sharing: &ElementSharing,
@@ -35,7 +35,7 @@ pub(super) fn enter<'a>(
     let vars = &visit.vars;
     let vcx = visit.vcx;
     let tag = local_name(&name.local);
-    if DROP_TAGS.contains(&tag.as_str()) {
+    if !QUERY && DROP_TAGS.contains(&tag.as_str()) {
         return None;
     }
     let attrs = element_attrs(&attrs.borrow());
@@ -156,7 +156,7 @@ pub(super) fn enter<'a>(
         )
     };
     let hidden = style.reset_box_layout.display == Some(Display::None);
-    if hidden && tag == "html" {
+    if !QUERY && hidden && tag == "html" {
         out.push(Node::Element(Element {
             marks: Default::default(),
             tag,
@@ -173,7 +173,7 @@ pub(super) fn enter<'a>(
         }));
         return None;
     }
-    if hidden && style.reset_context.col_role.is_none() {
+    if !QUERY && hidden && style.reset_context.col_role.is_none() {
         return None;
     }
     let box_level = style.reset_box_layout.display != Some(Display::Contents);

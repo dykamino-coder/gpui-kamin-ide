@@ -58,12 +58,19 @@ pub fn convert(
     convert_restyling(input, extra_css, media, doc, None)
 }
 
-/// [`convert`] of a rebuild for a batch of attribute mutations: the walk
-/// collects in `invalidation` the elements the batch restyles. Like Blink's
-/// pending invalidations, which live for one style recalc and not with the
-/// document, it is the caller's for this one build: a document pays nothing
-/// for it.
+/// Обычная пересборка собирает инвалидации только для текущего обхода.
 pub fn convert_restyling(
+    input: &Admitted,
+    extra_css: &str,
+    media: Media,
+    doc: &Rc<crate::values::DocumentValues>,
+    invalidation: Option<&mut super::invalidation::Invalidation>,
+) -> Result<Vec<Node>, DocumentFailure> {
+    convert_for::<false>(input, extra_css, media, doc, invalidation)
+}
+
+/// Запрос сохраняет стили элементов без коробок; инвалидации принадлежат вызывающему.
+pub fn convert_for<const QUERY: bool>(
     input: &Admitted,
     extra_css: &str,
     mut media: Media,
@@ -88,6 +95,16 @@ pub fn convert_restyling(
     // Каскадные слои у всех таблиц документа общие (css-cascade-5 §6.4.3).
     let mut layers = LayerRegistry::default();
     let mut rules = parse_document_sheet(user_agent_css(), media, &mut layers, vcx)?;
+    // Обычный обход удаляет эти узлы до каскада. Запрос сохраняет их стили;
+    // умолчание UA остаётся переопределяемым авторским display.
+    if QUERY {
+        rules.extend(parse_document_sheet(
+            "script, style, noscript { display: none }",
+            media,
+            &mut layers,
+            vcx,
+        )?);
+    }
     let base = rules.len();
     for (i, r) in parse_document_sheet(extra_css, media, &mut layers, vcx)?
         .into_iter()
@@ -205,7 +222,7 @@ pub fn convert_restyling(
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
     let mut counters = crate::style::generated::counters::Counters::default();
-    walk_children(
+    walk_children::<QUERY>(
         &dom.document,
         &tree,
         &doc,

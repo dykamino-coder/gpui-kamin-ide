@@ -70,19 +70,19 @@ pub(crate) fn with_copy_area(
     window.with_render_context(Some(Rc::new(CopyArea(area))), paint)
 }
 
-pub(crate) fn slot(id: Option<u64>, child: AnyElement) -> AnyElement {
+pub(crate) fn slot<const QUERY: bool>(id: Option<u64>, child: AnyElement) -> AnyElement {
     match id {
-        Some(id) => Slot { id, child }.hooked(),
+        Some(id) => Slot::<QUERY> { id, child }.hooked(),
         None => child,
     }
 }
 
-struct Slot {
+struct Slot<const QUERY: bool> {
     id: u64,
     child: AnyElement,
 }
 
-impl Wrap for Slot {
+impl<const QUERY: bool> Wrap for Slot<QUERY> {
     fn paint_boundary(&self) -> bool {
         false
     }
@@ -119,7 +119,13 @@ impl Wrap for Slot {
             rotation_scale: [[0., 0.], [0., 0.]],
             translation: [0., 0.],
         };
-        window.with_hitbox_transform(hidden, |window| self.child.prepaint(window, cx));
+        if QUERY {
+            crate::layout::geometry::Collector::without_records(window, |window| {
+                window.with_hitbox_transform(hidden, |window| self.child.prepaint(window, cx));
+            });
+        } else {
+            window.with_hitbox_transform(hidden, |window| self.child.prepaint(window, cx));
+        }
     }
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {

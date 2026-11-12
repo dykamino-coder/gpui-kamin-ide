@@ -16,6 +16,8 @@ pub mod probes;
 
 mod context;
 mod finish;
+mod query;
+mod query_projection;
 mod table_border_widths;
 mod table_clipped_content;
 mod table_roles;

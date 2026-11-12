@@ -15,7 +15,7 @@ enum Run {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn resolve_root_page(
+pub(super) fn resolve_root_page<const KEEP_BOXES: bool>(
     none: &mut bool,
     canvas: &mut Option<gpui::Hsla>,
     canvas_img: &mut Option<Computed>,
@@ -64,7 +64,7 @@ pub(super) fn resolve_root_page(
                 | Some(Display::InlineFlex)
                 | Some(Display::GridLanes)
         );
-        if framed || boxy {
+        if framed || boxy || KEEP_BOXES {
             if let Some(c) = e
                 .style
                 .used()

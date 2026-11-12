@@ -23,13 +23,13 @@ use crate::text::inline::collect::overlays::shift_overlays;
 use crate::text::inline::*;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) async fn collect_element(
+pub(super) async fn collect_element<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     e: &Element,
     inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
-    cx: &mut CollectCx,
+    cx: &mut CollectCx<QUERY>,
     out: &mut Vec<Piece>,
     gap_at: &mut Option<usize>,
     from: usize,
@@ -218,7 +218,7 @@ pub(super) async fn collect_element(
         kids
     };
     let anchors = &cx.layout.layout().anchors;
-    let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, anchors);
+    let kids = crate::text::inline::inline_box::mark_inline_box::<QUERY>(kids, e, &merged, anchors);
     out.extend(shift_overlays(kids, &st, merged.wm().turned()));
     if let Some(mark) = close {
         out.push(piece(mark.to_string(), control()));

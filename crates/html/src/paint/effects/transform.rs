@@ -9,65 +9,7 @@ use crate::layout::cx::FrameCx;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 
-/// css-transforms-2 §grouping-property-values: «групповые» свойства делают
-/// из элемента группу, и ИСПОЛЬЗУЕМОЕ значение `transform-style` у него —
-/// `flat`, чем бы ни было записано. Без гейта зелёные
-/// `preserve3d-and-filter-no-perspective` (filter),
-/// `transform3d-preserve3d-009` (overflow),
-/// `mix-blend-mode-with-transform-and-preserve-3D` (blend),
-/// `clip-not-absolute-positioned-003`, `corner-shape-bevel-overflow-composite`
-/// и `view-transition-name-is-grouping` уходят в красное.
-fn flattens_3d(c: &Computed) -> bool {
-    use crate::style::computed::Overflow;
-    let clipped = |o: Option<Overflow>| matches!(o, Some(o) if o != Overflow::Visible);
-    c.reset_effects.opacity.is_some_and(|o| o < 1.0)
-        || c.reset_effects.filter.is_some()
-        || c.reset_effects.filter_ref.is_some()
-        || c.reset_effects.backdrop_blur.is_some()
-        || clipped(c.reset_box_layout.overflow_x)
-        || clipped(c.reset_box_layout.overflow_y)
-        || c.reset_mask.mask_image.is_some()
-        || c.reset_mask.clip_ref.is_some()
-        || c.reset_effects.blend.is_some_and(|b| b != 0)
-        || c.reset_effects.isolate == Some(true)
-        || c.reset_context.contain_paint == Some(true)
-        || c.reset_context.contain_layout == Some(true)
-}
-
-pub(crate) fn transformed(
-    el: AnyElement,
-    c: &Computed,
-    parent: &Computed,
-    frame: FrameCx<'_>,
-) -> AnyElement {
-    transformed_with(el, c, parent, None, frame)
-}
-
-/// `transformed` of DOM node `node`: a continued root presented per fragment
-/// paints untransformed inside its native source.
-pub(crate) fn transformed_node(
-    el: AnyElement,
-    c: &Computed,
-    parent: &Computed,
-    node: u64,
-    frame: FrameCx<'_>,
-) -> AnyElement {
-    transformed_inner(el, c, parent, None, Some(node), frame)
-}
-
-/// `transformed` with a shared reference box (`transformed_element::Transformed::ref_box`):
-/// a table row or row group transform spread over its cells.
-pub(crate) fn transformed_with(
-    el: AnyElement,
-    c: &Computed,
-    parent: &Computed,
-    ref_box: Option<crate::layout::build_contracts::RefBox>,
-    frame: FrameCx<'_>,
-) -> AnyElement {
-    transformed_inner(el, c, parent, ref_box, None, frame)
-}
-
-fn transformed_inner(
+pub(crate) fn transformed_inner<const QUERY: bool>(
     el: AnyElement,
     c: &Computed,
     parent: &Computed,
@@ -123,7 +65,7 @@ fn transformed_inner(
     // КАЖДОМУ его прямому ребёнку, даже без собственного `transform`:
     // изнанка решается по НАКОПЛЕННОЙ матрице (`backface-visibility-hidden-004`
     // — у `.card.front` своего преобразования нет вовсе).
-    let keeps_3d = c.reset_transforms.preserve_3d == Some(true) && !flattens_3d(c);
+    let keeps_3d = c.reset_transforms.preserve_3d == Some(true) && !c.flattens_3d();
     // Вынесенный блок-в-строчном (`Computed::hoisted_block`): по DOM он
     // внук, и плоский строчный хозяин — лист контекста: ни ячейка объёма, ни
     // перспектива деда ему не достаются (css-transforms-2
@@ -135,7 +77,8 @@ fn transformed_inner(
     } else {
         parent.reset_transforms.frame_3d.clone()
     };
-    if c.reset_transforms.transform.is_none()
+    if !QUERY
+        && c.reset_transforms.transform.is_none()
         && c.reset_transforms.perspective.is_none()
         && !keeps_3d
         && under_3d.is_none()
@@ -183,7 +126,7 @@ fn transformed_inner(
     wrapper.backface_hidden = c.reset_transforms.backface_hidden == Some(true);
     wrapper.fragment_clip_ancestor = c.reset_context.fragment_clip_ancestor;
     let Some(t) = c.reset_transforms.transform else {
-        return wrapper.hooked();
+        return finish::<QUERY>(wrapper);
     };
     // Отдельные `rotate`/`scale` — ПЕРЕД списком `transform` (css-transforms-2
     // §ctm п.4-5 и п.7; Blink `ComputedStyle::ApplyTransform`,
@@ -225,5 +168,13 @@ fn transformed_inner(
     }
     wrapper.origin_px = c.reset_transforms.transform_origin_px;
     wrapper.origin_z = c.reset_transforms.transform_origin_z;
-    wrapper.hooked()
+    finish::<QUERY>(wrapper)
+}
+
+fn finish<const QUERY: bool>(wrapper: super::transformed_element::Transformed) -> AnyElement {
+    if QUERY {
+        super::transformed_element::query::QueryTransformed(wrapper).hooked()
+    } else {
+        wrapper.hooked()
+    }
 }

@@ -2,7 +2,7 @@
 
 use crate::dom::Node;
 use crate::layout::options::RenderOpts;
-use crate::render::paragraph::paragraph;
+use crate::render::paragraph::paragraph_for;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
@@ -38,12 +38,12 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn upright_paragraph(
+pub(crate) fn upright_paragraph<const QUERY: bool>(
     nodes: &[Node],
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
-    if let Some(stack) = super::upright_central::upright_central(nodes, inherited, opts) {
+    if let Some(stack) = super::upright_central::upright_central::<QUERY>(nodes, inherited, opts) {
         return stack;
     }
     let mut stack = inherited.clone();
@@ -79,7 +79,7 @@ pub(crate) fn upright_paragraph(
     // (`line-box-height-vlr-011`: `border-left: 1.5em` у `<span>`
     // вставлял пустую строку между «2» и «3»).
     let nodes: Vec<Node> = nodes.iter().map(drop_block_axis_sides).collect();
-    let inner = paragraph(&nodes, &stack, opts);
+    let inner = paragraph_for::<QUERY>(&nodes, &stack, opts);
     div()
         .w(px(lane.max(em)))
         .flex_shrink_0()

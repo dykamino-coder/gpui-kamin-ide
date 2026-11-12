@@ -21,6 +21,10 @@ mod base_url;
 mod budget_tests;
 mod builder;
 mod diagnostics;
+mod geometry;
+pub use crate::layout::geometry::{
+    ElementGeometry, GeometryError, GeometryLayout, LineHeight, Rect,
+};
 #[cfg(test)]
 mod diagnostics_tests;
 #[cfg(test)]

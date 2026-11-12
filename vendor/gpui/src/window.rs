@@ -93,6 +93,7 @@ mod line_baselines;
 mod text_rendering;
 mod plane3d;
 mod render_context;
+mod geometry_query;
 mod box_edges;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;

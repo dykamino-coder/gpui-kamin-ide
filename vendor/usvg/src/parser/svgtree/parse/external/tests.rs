@@ -118,7 +118,7 @@ mod session_limits {
         let file = File::new("import", SVG);
         let text = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><use href="{}#a"/></svg>"#, file.url());
         let xml = roxmltree::Document::parse(&text).unwrap();
-        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20).unwrap();
+        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20, &mut ()).unwrap();
         let mut session = Session::default();
         session.load(file.url(), 1).unwrap();
         session.budget.nodes_left = 0;
@@ -132,7 +132,7 @@ mod session_limits {
         let file = File::new("copy-bytes", SVG);
         let text = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><use href="{}#a"/></svg>"#, file.url());
         let xml = roxmltree::Document::parse(&text).unwrap();
-        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20).unwrap();
+        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20, &mut ()).unwrap();
         let mut session = Session::default();
         session.load(file.url(), 1).unwrap();
         session.budget.bytes_left = 0;
@@ -152,7 +152,7 @@ mod session_limits {
         session.budget.bytes_left = Budget::default().bytes_left - probe.budget.bytes_left;
         assert!(session.load(parent.url(), 1).is_some());
         let xml = roxmltree::Document::parse(&parent_text).unwrap();
-        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20).unwrap();
+        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20, &mut ()).unwrap();
         session.expand(&mut doc, Some(&parent.url()), 0);
         assert_eq!(session.budget.bytes_left, 0);
         assert_eq!(session.cache.values().filter(|v| v.is_some()).count(), 1);
@@ -166,7 +166,7 @@ mod session_limits {
         std::fs::write(&file.0, text).unwrap();
         let text = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><use href="{}#a"/></svg>"#, file.url());
         let xml = roxmltree::Document::parse(&text).unwrap();
-        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20).unwrap();
+        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20, &mut ()).unwrap();
         let instance = doc.descendants().find(|n| n.tag_name() == Some(EId::Use)).unwrap().id;
         let mut session = Session::default();
         session.expand(&mut doc, None, 0);

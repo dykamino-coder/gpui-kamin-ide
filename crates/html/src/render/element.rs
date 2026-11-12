@@ -18,12 +18,12 @@ mod merged;
 pub(crate) use merged::merged_style;
 
 use crate::dom::Element;
+use crate::layout::build_contracts::Effect;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
-use crate::paint::effects::transform::transformed;
 use gpui::AnyElement;
 
 /// Блочный элемент.
-pub(crate) async fn element_stack(
+pub(crate) async fn element_stack_for<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     e: &Element,
     inherited: &BoxStyle,
@@ -48,7 +48,7 @@ pub(crate) async fn element_stack(
     });
     let built = crate::layout::fragment::paginate::watch::wrap(
         e.node_id,
-        element_inner(stk, e, inherited, nested.as_deref().unwrap_or(opts)).await,
+        element_inner::<QUERY>(stk, e, inherited, nested.as_deref().unwrap_or(opts)).await,
         opts,
     );
     crate::layout::depth::wrap(built, opts)
@@ -57,7 +57,7 @@ pub(crate) async fn element_stack(
 #[cfg(test)]
 mod lines_tests;
 
-async fn element_inner(
+async fn element_inner<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     e: &Element,
     inherited: &BoxStyle,
@@ -98,12 +98,16 @@ async fn element_inner(
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::paint::controls::element(e, &merged, opts) {
-        let el = transformed(el, &merged, inherited, frame);
+        let el = opts
+            .cx
+            .contracts
+            .build
+            .effects(el, Effect::transform(&merged, inherited, frame));
         let el = match geometry {
             Some(geometry) => geometry.wrap(el),
             None => el,
         };
-        let el = crate::paint::continuation::slot(slot, el);
+        let el = crate::paint::continuation::slot::<QUERY>(slot, el);
         return crate::interactive::scroll_extent::project(el, scroll_projection);
     }
     // Рамка строится ОДИН раз до match: прежний `is_some() => unwrap()`
@@ -124,9 +128,10 @@ async fn element_inner(
     } else {
         None
     };
-    let built = dispatch_element(stk, e, merged, inherited, opts, outer_space, built_iframe).await;
+    let built =
+        dispatch_element::<QUERY>(stk, e, merged, inherited, opts, outer_space, built_iframe).await;
     crate::interactive::scroll_extent::project(
-        crate::paint::continuation::slot(
+        crate::paint::continuation::slot::<QUERY>(
             slot,
             match geometry {
                 Some(geometry) => geometry.wrap(built),
@@ -137,7 +142,11 @@ async fn element_inner(
     )
 }
 
-pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn element_for<const QUERY: bool>(
+    e: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     let opts = &*opts.inner(|cx| {
         cx.contracts.lengths = Default::default();
         if !cx.contracts.in_render {
@@ -145,6 +154,10 @@ pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> A
         }
     });
     reblessive::Stack::new()
-        .enter(|stk| element_stack(stk, e, inherited, opts))
+        .enter(|stk| element_stack_for::<QUERY>(stk, e, inherited, opts))
         .finish()
+}
+
+pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+    element_for::<false>(e, inherited, opts)
 }

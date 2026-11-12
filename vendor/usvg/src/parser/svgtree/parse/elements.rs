@@ -7,6 +7,7 @@ pub(crate) fn parse_svg_element<'input>(
     style_sheet: &simplecss::StyleSheet,
     ignore_ids: bool,
     doc: &mut Document<'input>,
+    trace: &mut impl crate::GeometryTrace,
 ) -> Result<NodeId, Error> {
     // KaminIDE patch: reject before copying attributes or allocating a typed node.
     doc.check_node_budget()?;
@@ -211,6 +212,9 @@ pub(crate) fn parse_svg_element<'input>(
         },
     );
 
+    if !ignore_ids {
+        trace.parsed(node_id.get_usize(), parent_id.get_usize(), xml_node.range().start);
+    }
     Ok(node_id)
 }
 

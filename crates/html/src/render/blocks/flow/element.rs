@@ -58,11 +58,13 @@ pub(crate) async fn paint_element(
     if let Some(el) = scrollable(e, inherited, opts) {
         // CSS Transforms 1: transform the viewport and its bars together;
         // preserve the parent 3D context, backface and plane as for other boxes.
-        let el = crate::paint::effects::transform::transformed(
+        let el = opts.cx.contracts.build.effects(
             el,
-            &e.style.used(),
-            inherited,
-            opts.cx.frame(),
+            crate::layout::build_contracts::Effect::transform(
+                &e.style.used(),
+                inherited,
+                opts.cx.frame(),
+            ),
         );
         out.push(layered(el, &e.style.used(), inherited, layer_ok, under_tf));
         return;

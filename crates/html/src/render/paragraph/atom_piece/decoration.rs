@@ -5,7 +5,7 @@ use crate::layout::box_kind::replaced_tag;
 use crate::layout::cx::FrameCx;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::paint::effects::grouped::grouped;
-use crate::paint::effects::transform::transformed;
+use crate::paint::effects::transform::transformed_inner;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;
@@ -13,7 +13,7 @@ use gpui::AnyElement;
 use gpui::{IntoElement, ParentElement, Styled, div};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn decorate_atom(
+pub(crate) fn decorate_atom<const QUERY: bool>(
     el: AnyElement,
     e: &Element,
     inherited: &Computed,
@@ -61,7 +61,7 @@ pub(crate) fn decorate_atom(
     ) {
         el
     } else {
-        transformed(el, &e.style.used(), inherited, frame)
+        transformed_inner::<QUERY>(el, &e.style.used(), inherited, None, None, frame)
     };
     // `vertical-align` НА САМОМ куске (`img { vertical-align: top }`):
     // ряд строит базовую линию, а кускам с top/middle/bottom нужен

@@ -16,19 +16,42 @@ mod prepaint_piece;
 mod replay;
 
 impl ColumnStack {
+    pub(super) fn prepaint_for<const QUERY: bool>(
+        &mut self,
+        state: LayoutId,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Bounds<Pixels> {
+        let bounds = Bounds {
+            origin: window.layout_origin_unrounded(state),
+            size: window.layout_size_unrounded(state),
+        };
+        if self.axis.is_vertical() {
+            self.prepaint_axis::<QUERY>(bounds, window, cx);
+            return bounds;
+        }
+        self.prepaint_columns::<QUERY>(bounds, window, cx);
+        bounds
+    }
+
     /// Горизонтальная укладка в колонки. Кадры, живые во время вложенных
     /// раскладок и prepaint копий (`prepare`, `column_breaks`,
     /// `prepaint_frags`), держатся малыми: копия может сама нести
     /// многоколоночник, и его prepaint идёт внутри этого.
     #[inline(never)]
-    fn prepaint_columns(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    fn prepaint_columns<const QUERY: bool>(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
         self.measure_columns(col_w, window, cx);
         let planned = self.plan_columns(bounds, col_w);
         let step = col_w + self.gap;
-        self.prepaint_frags(window, cx, bounds, col_w, &planned.0, step);
-        self.finish_prepaint(bounds, col_w, planned, window, cx);
+        self.prepaint_frags::<QUERY>(window, cx, bounds, col_w, &planned.0, step);
+        self.finish_prepaint::<QUERY>(bounds, col_w, planned, window, cx);
     }
 
     /// Меры детей по реальной ширине колонки (отложенная стопка и точки разрыва).
@@ -42,7 +65,7 @@ impl ColumnStack {
 
     /// Native OOF, спаннеры и линейки — после prepaint копий.
     #[inline(never)]
-    fn finish_prepaint(
+    fn finish_prepaint<const QUERY: bool>(
         &mut self,
         bounds: Bounds<Pixels>,
         col_w: f32,
@@ -51,7 +74,10 @@ impl ColumnStack {
         cx: &mut App,
     ) {
         let (mut plan, spans) = planned;
-        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
+        if self
+            .prepaint_native::<QUERY>(bounds, &plan, window, cx)
+            .is_err()
+        {
             plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
             plan.incomplete();
         }
@@ -74,16 +100,7 @@ impl Hooks for ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::Prepaint {
-        let bounds = Bounds {
-            origin: window.layout_origin_unrounded(*state),
-            size: window.layout_size_unrounded(*state),
-        };
-        if self.axis.is_vertical() {
-            self.prepaint_axis(bounds, window, cx);
-            return bounds;
-        }
-        self.prepaint_columns(bounds, window, cx);
-        bounds
+        self.prepaint_for::<false>(*state, window, cx)
     }
 
     fn paint(

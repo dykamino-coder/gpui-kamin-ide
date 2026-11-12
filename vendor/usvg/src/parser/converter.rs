@@ -43,7 +43,8 @@ pub struct State<'a> {
 }
 
 #[derive(Clone)]
-pub struct Cache {
+pub struct Cache<T: crate::GeometryTrace = ()> {
+    pub(crate) geometry: T,
     /// This fontdb is initialized from [`Options::fontdb`] and then populated
     /// over the course of conversion.
     #[cfg(feature = "text")]
@@ -93,9 +94,10 @@ macro_rules! font_lookup {
     };
 }
 
-impl Cache {
-    pub(crate) fn new(#[cfg(feature = "text")] fontdb: Arc<Database>) -> Self {
+impl<T: crate::GeometryTrace> Cache<T> {
+    pub(crate) fn new(#[cfg(feature = "text")] fontdb: Arc<Database>, geometry: T) -> Self {
         Self {
+            geometry,
             #[cfg(feature = "text")]
             fontdb,
 
@@ -395,7 +397,7 @@ impl SvgColorExt for svgtypes::Color {
 ///
 /// - If `Document` doesn't have an SVG node - returns an empty tree.
 /// - If `Document` doesn't have a valid size - returns `Error::InvalidSize`.
-pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<Tree, Error> {
+pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options, geometry: impl crate::GeometryTrace) -> Result<Tree, Error> {
     let svg = svg_doc.root_element();
     let (size, restore_viewbox) = resolve_svg_size(&svg, opt);
     let size = size?;
@@ -444,6 +446,7 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
     let mut cache = Cache::new(
         #[cfg(feature = "text")]
         opt.fontdb.clone(),
+        geometry,
     );
 
     for node in svg_doc.descendants() {
@@ -633,7 +636,7 @@ fn calculate_svg_bbox(tree: &mut Tree) {
 pub(crate) fn convert_children(
     parent_node: SvgNode,
     state: &State,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
     for node in parent_node.children() {
@@ -642,7 +645,7 @@ pub(crate) fn convert_children(
 }
 
 #[inline(never)]
-pub(crate) fn convert_element(node: SvgNode, state: &State, cache: &mut Cache, parent: &mut Group) {
+pub(crate) fn convert_element(node: SvgNode, state: &State, cache: &mut Cache<impl crate::GeometryTrace>, parent: &mut Group) {
     let tag_name = match node.tag_name() {
         Some(v) => v,
         None => return,
@@ -716,7 +719,7 @@ fn convert_element_impl(
     tag_name: EId,
     node: SvgNode,
     state: &State,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
     match tag_name {
@@ -761,7 +764,7 @@ fn convert_element_impl(
 pub(crate) fn convert_clip_path_elements(
     clip_node: SvgNode,
     state: &State,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
     for node in clip_node.children() {
@@ -796,7 +799,7 @@ fn convert_clip_path_elements_impl(
     tag_name: EId,
     node: SvgNode,
     state: &State,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
     match tag_name {
@@ -840,13 +843,13 @@ impl<'a, 'input: 'a> FromValue<'a, 'input> for Isolation {
 }
 
 // TODO: explain
-pub(crate) fn convert_group(
+pub(crate) fn convert_group<T: crate::GeometryTrace>(
     node: SvgNode,
     state: &State,
     force: bool,
-    cache: &mut Cache,
+    cache: &mut Cache<T>,
     parent: &mut Group,
-    collect_children: &dyn Fn(&mut Cache, &mut Group),
+    collect_children: &dyn Fn(&mut Cache<T>, &mut Group),
 ) -> Option<Group> {
     // A `clipPath` child cannot have an opacity.
     let opacity = if state.parent_clip_path.is_none() {
@@ -896,11 +899,23 @@ pub(crate) fn convert_group(
         abs_layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
         children: Vec::new(),
     };
+    let geometry_group = state.parent_clip_path.is_none() && state.parent_markers.is_empty();
+    if geometry_group {
+        cache.geometry.group_start(node.geometry_id(), g.abs_transform, g.transform);
+    }
     collect_children(cache, &mut g);
 
     // We need to know group's bounding box before converting
     // clipPaths, masks and filters.
     let object_bbox = g.calculate_object_bbox();
+    if geometry_group {
+        if node.tag_name() == Some(EId::Image) {
+            if let Some(bbox) = object_bbox {
+                cache.geometry.object(node.geometry_id(), bbox.to_rect(), g.abs_transform);
+            }
+        }
+        cache.geometry.group_end();
+    }
 
     // `mask` and `filter` cannot be set on `clipPath` children.
     // But `clip-path` can.
@@ -981,7 +996,7 @@ fn convert_path(
     node: SvgNode,
     tiny_skia_path: Arc<tiny_skia_path::Path>,
     state: &State,
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
     debug_assert!(tiny_skia_path.len() >= 2);
@@ -1105,6 +1120,10 @@ fn convert_path(
         Some(v) => v,
         None => return,
     };
+
+    if state.parent_clip_path.is_none() && state.parent_markers.is_empty() {
+        cache.geometry.object(node.geometry_id(), path.bounding_box(), parent.abs_transform);
+    }
 
     match (raw_paint_order.order, marker) {
         ([PaintOrderKind::Markers, _, _], Some(markers_node)) => {

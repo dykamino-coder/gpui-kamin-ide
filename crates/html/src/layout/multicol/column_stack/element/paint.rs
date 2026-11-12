@@ -136,7 +136,7 @@ impl ColumnStack {
                 }
             }
             let geometry = (bounds, col_w, step);
-            if self.replays(f.kid, &plan_all)
+            if self.replays::<false>(f.kid, &plan_all)
                 && self.paint_piece_replayed(&f, &plan_all, geometry, &mut replayed, window, cx)
             {
                 continue;

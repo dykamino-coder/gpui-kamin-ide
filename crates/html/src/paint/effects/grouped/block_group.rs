@@ -55,7 +55,7 @@ pub(crate) fn block_group(
 /// border box with its descendants: the same chain as a block in the flow
 /// (`position_element`): the folded shift and opacity on the container,
 /// then its transform, then the grouped effects.
-pub(crate) fn paint_group(
+pub(crate) fn paint_group<const QUERY: bool>(
     container: gpui::Div,
     e: &Element,
     inherited: &BoxStyle,
@@ -64,10 +64,12 @@ pub(crate) fn paint_group(
     let vcx = frame.values;
     let el = crate::paint::apply::static_shift(container, &e.style.used());
     let el = crate::paint::apply::apply_opacity(el, &BoxStyle::shared(e.style.used()), vcx);
-    let el = crate::paint::effects::transform::transformed(
+    let el = crate::paint::effects::transform::transformed_inner::<QUERY>(
         gpui::IntoElement::into_any_element(el),
         &e.style.used(),
         inherited,
+        None,
+        None,
         frame,
     );
     block_group(el, e, inherited, frame)

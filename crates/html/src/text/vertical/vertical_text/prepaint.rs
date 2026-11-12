@@ -10,7 +10,7 @@ use crate::text::vertical::TurnFrame;
 use gpui::{App, Bounds, Pixels, Window, px};
 
 impl VerticalText {
-    pub(crate) fn prepaint_impl(
+    pub(crate) fn prepaint_impl_for<const QUERY: bool>(
         &mut self,
         bounds: Bounds<Pixels>,
         window: &mut Window,
@@ -25,6 +25,18 @@ impl VerticalText {
         // родитель своей не задал (как велит CSS для ортогональных потоков):
         // `available-size-020/021` это не чинит, а `slr-alongside-vlr-floats`
         // ломает — предел приходит из другого места.
+        let bounds = if QUERY {
+            self.layout_id
+                .map(|id| {
+                    Bounds::new(
+                        window.layout_origin_unrounded(id),
+                        window.layout_size_unrounded(id),
+                    )
+                })
+                .unwrap_or(bounds)
+        } else {
+            bounds
+        };
         let along = bounds.size.height;
         let child = &mut self.child;
         if along > gpui::px(0.) {
@@ -55,7 +67,11 @@ impl VerticalText {
         // Щупу статической позиции нужна и СТОРОНА поворота: отображение
         // до-поворотной точки в экранную у `sideways-lr` зеркально (см.
         // `VerticalPaint::map`).
-        let (frame, phase) = self.turn_frame(bounds, window);
+        let (frame, phase) = if QUERY {
+            (bounds, Pixels::ZERO)
+        } else {
+            self.turn_frame(bounds, window)
+        };
         let previous = self.paint_context.replace(Some(TurnFrame {
             bounds: frame,
             ccw: self.ccw,

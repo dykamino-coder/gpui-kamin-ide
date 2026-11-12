@@ -28,7 +28,7 @@ pub(crate) fn styled_div_with(
     style: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
-    styled_div_with_dimensions(e, style, cx, None)
+    cx.contracts.build.styled_box(e, style, cx)
 }
 
 pub(crate) fn styled_div_with_dimensions(

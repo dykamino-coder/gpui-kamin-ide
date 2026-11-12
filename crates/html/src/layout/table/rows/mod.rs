@@ -21,7 +21,7 @@ use cell::table_cell;
 use super::context::{RowCursor, RowState, RowsOut, TableGeom, TableLayers};
 use crate::style::cascade::materialize::box_style;
 
-pub(super) async fn table_rows(
+pub(super) async fn table_rows<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     rows: &[super::anon::TableRow<'_>],
     geom: &TableGeom<'_>,
@@ -37,6 +37,9 @@ pub(super) async fn table_rows(
         let carry = record.carry;
         cursor.row_ix += 1;
         let row_ref: crate::layout::build_contracts::RefBox = Default::default();
+        if QUERY {
+            out.group_refs.insert(row.node_id, row_ref.clone());
+        }
         let RowBands {
             row_rects,
             grp_band,
@@ -105,5 +108,5 @@ pub(super) async fn table_rows(
     // Порядок слоёв сетки: полосы дорожек/рядов → фоны ячеек → сросшиеся
     // кромки → коробки ячеек с содержимым (см. `under`, `cell_bgs`). Прежде
     // слой кромок шёл ПОСЛЕДНИМ и накрывал всё содержимое ячеек.
-    table_finish(stk, geom, layers, out, opts).await
+    table_finish::<QUERY>(stk, geom, layers, out, opts).await
 }

@@ -43,7 +43,7 @@ static FEATURES: &[&str] = &[
 pub(crate) fn convert(
     node: SvgNode,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) -> Option<()> {
     let child = node

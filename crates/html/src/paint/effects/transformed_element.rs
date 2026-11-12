@@ -6,6 +6,7 @@
 
 mod lifecycle;
 mod painting;
+pub(super) mod query;
 
 use crate::layout::build_contracts::RefBox;
 use gpui::{AnyElement, Pixels};

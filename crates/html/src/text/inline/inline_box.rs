@@ -43,10 +43,32 @@ fn px4(t: Option<Len>, r: Option<Len>, b: Option<Len>, l: Option<Len>) -> [f32; 
     [t, r, b, l].map(px_lossy_zero)
 }
 
+/// Метрики содержимого inline-коробки, общие для якорей и CSSOM View.
+pub(crate) fn font_metrics(
+    style: &crate::style::computed::Computed,
+    base: &gpui::TextStyle,
+    fallback: f32,
+    vcx: crate::values::ValueCx<'_>,
+    window: &gpui::Window,
+) -> (f32, f32) {
+    let font = super::strut_font(style, base, vcx, None);
+    let size = gpui::px(style.used_font(fallback, vcx).size_px);
+    let ts = window.text_system();
+    let id = ts.resolve_font(&font);
+    crate::text::fonts::metric_overrides::extents(
+        &font,
+        f32::from(size),
+        (
+            f32::from(ts.ascent(id, size)),
+            f32::from(ts.descent(id, size)).abs(),
+        ),
+    )
+}
+
 /// Обернуть куски содержимого строчной коробки `e` метками краёв, если она
 /// именованный якорь или содержащий блок абсолютных потомков (тогда — только
 /// при внепоточных кусках внутри: иначе рамка никому не нужна).
-pub(super) fn mark_inline_box(
+pub(super) fn mark_inline_box<const QUERY: bool>(
     pieces: Vec<Piece>,
     e: &Element,
     merged: &BoxStyle,
@@ -66,7 +88,7 @@ pub(super) fn mark_inline_box(
         && pieces.iter().any(|p| {
             matches!(p, Piece::Overlay(_, h) if h.cb_marker.is_none() && h.box_marker.is_none() && h.inline_box.is_none())
         });
-    if names.is_empty() && !cb {
+    if !QUERY && names.is_empty() && !cb {
         return pieces;
     }
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
@@ -79,8 +101,17 @@ pub(super) fn mark_inline_box(
         cb,
         own_cb: merged.cb_node,
         seq: crate::layout::positioned::anchor::next_seq(anchors),
-        pad: px4(p.top, p.right, p.bottom, p.left),
-        border: px4(b.top, b.right, b.bottom, b.left),
+        // BR is a text break, not a decorated inline box.
+        pad: if QUERY && e.tag == "br" {
+            [0.; 4]
+        } else {
+            px4(p.top, p.right, p.bottom, p.left)
+        },
+        border: if QUERY && e.tag == "br" {
+            [0.; 4]
+        } else {
+            px4(b.top, b.right, b.bottom, b.left)
+        },
         hidden: merged.inh.ui.hidden == Some(true),
         font_style: (**merged).clone(),
     });

@@ -148,6 +148,15 @@ impl TraversalState {
 }
 
 impl DocumentValues {
+    /// Временный читатель геометрии не расходует work ledger действующей ревизии.
+    pub fn query_input(&self, revision: crate::budget::RevisionBudget) -> Option<Admitted> {
+        self.traversal
+            .source
+            .borrow()
+            .as_ref()
+            .map(|s| s.for_query(revision))
+    }
+
     pub fn input_context(&self) -> Option<crate::dom::input::Context> {
         self.traversal
             .source

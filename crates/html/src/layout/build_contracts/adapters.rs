@@ -2,12 +2,42 @@
 
 use super::{ChildBuild, GridPlacement};
 use crate::dom::Element;
+use crate::layout::cx::LayoutCx;
 use crate::style::computed::{Align, BoxStyle};
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
 use gpui::AnyElement;
 
 impl ChildBuild {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn for_geometry(
+        mut self,
+        paragraph: fn(&[crate::dom::Node], &BoxStyle, &crate::RenderOpts) -> AnyElement,
+        styled_box: fn(
+            &Element,
+            &BoxStyle,
+            &LayoutCx,
+            Option<crate::layout::block::sizing::BoxDimensions>,
+        ) -> gpui::Div,
+        element: super::BuildElement,
+        element_stack: super::BuildStackElement,
+        svg: fn(&Element, &crate::RenderOpts) -> Option<AnyElement>,
+        effects: fn(AnyElement, super::Effect<'_>) -> AnyElement,
+        paint_group: fn(
+            gpui::Div,
+            &Element,
+            &BoxStyle,
+            crate::layout::cx::FrameCx<'_>,
+        ) -> AnyElement,
+    ) -> Self {
+        self.flow = self.flow.with_paragraph(paragraph);
+        self.boxes = self.boxes.with_styled_box(styled_box);
+        self.element = element;
+        self.element_stack = element_stack;
+        self.svg = svg;
+        self.effects = self.effects.with_effect(effects, paint_group);
+        self
+    }
     /// Native form control with its merged style; `None` for other tags.
     pub(crate) fn control(
         &self,

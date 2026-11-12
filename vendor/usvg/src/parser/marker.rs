@@ -42,7 +42,7 @@ pub(crate) fn convert(
     node: SvgNode,
     path: &tiny_skia_path::Path,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
     let list = [
@@ -91,7 +91,7 @@ fn resolve(
     marker_node: SvgNode,
     marker_kind: MarkerKind,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) -> Option<()> {
     if marker_node.viewbox_disables_rendering() {

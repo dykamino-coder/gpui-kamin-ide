@@ -34,6 +34,10 @@ pub(crate) struct FlowBuild {
 }
 
 impl FlowBuild {
+    pub(super) fn with_paragraph(mut self, paragraph: BuildParagraph) -> Self {
+        self.paragraph = paragraph;
+        self
+    }
     pub(crate) const fn new(
         blocks: BuildNodes,
         blocks_stack: BuildStackNodes,

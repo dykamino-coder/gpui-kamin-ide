@@ -13,7 +13,7 @@ use gpui::{AnyElement, IntoElement, Styled, div, px};
 use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn build(
+pub(super) fn build<const QUERY: bool>(
     host: &Element,
     style: BoxStyle,
     inherited: &Computed,
@@ -31,7 +31,7 @@ pub(super) fn build(
     if let Some(Len::Px(h)) = dimensions.preferred[1] {
         d = d.h(px(h));
     }
-    match settled(
+    match settled::<QUERY>(
         d,
         host,
         style,

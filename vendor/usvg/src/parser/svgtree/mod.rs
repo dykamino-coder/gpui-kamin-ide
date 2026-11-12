@@ -398,6 +398,12 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
         }
     }
 
+    /// Opaque identity used only by an explicitly requested geometry trace.
+    #[inline]
+    pub(super) fn geometry_id(&self) -> usize {
+        self.id.get_usize()
+    }
+
     /// Returns node's text data.
     ///
     /// For text nodes returns its content. For elements returns the first child node text.

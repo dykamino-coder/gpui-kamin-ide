@@ -9,16 +9,15 @@ mod upright;
 mod upright_central;
 pub(super) use upright::upright_paragraph;
 
-use super::{paragraph, paragraph_routed};
+use super::{paragraph_for, paragraph_routed};
 use crate::dom::Node;
-use crate::hooks::IntoHooked;
 use crate::layout::writing_mode::native_vertical;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn vertical_paragraph(
+pub(crate) fn vertical_paragraph<const QUERY: bool>(
     nodes: &[Node],
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -42,7 +41,7 @@ pub(crate) fn vertical_paragraph(
     let upright = (inherited.wm().upright() || kids_upright)
         && !upright::only_mixed_text(nodes, inherited, vcx);
     if upright && !inherited.wm().sideways() {
-        return upright_paragraph(nodes, inherited, opts);
+        return upright_paragraph::<QUERY>(nodes, inherited, opts);
     }
     let mut horizontal = inherited.clone();
     horizontal.inline_format = Some(crate::style::computed::InlineFormat::Turned);
@@ -78,7 +77,7 @@ pub(crate) fn vertical_paragraph(
         // inline size gets its line length from the parent's layout, which the
         // turned paragraph cannot query; both keep the physical row.
         let atom_opts = opts.inner(|cx| cx.inline.pure_atom_paragraph = true);
-        let para = paragraph(nodes, &horizontal, &atom_opts);
+        let para = paragraph_for::<QUERY>(nodes, &horizontal, &atom_opts);
         // The row sits at the box's inline-start, which is the BOTTOM for
         // `sideways-lr` and for `direction: rtl` (§6.4 Abstract-Physical
         // Mapping: `wm-propagation-body-035`, `overconstrained-rel-pos-rtl-*`).
@@ -111,7 +110,7 @@ pub(crate) fn vertical_paragraph(
         built: &built,
     };
     // Build atoms with legacy style; apply native flow only to a text Paragraph.
-    let inner = paragraph_routed(nodes, &horizontal, opts, Some(&request));
+    let inner = paragraph_routed::<QUERY>(nodes, &horizontal, opts, Some(&request));
     if built.get() {
         return inner;
     }
@@ -230,7 +229,7 @@ pub(crate) fn vertical_paragraph(
     } else {
         vt
     };
-    vt.hooked()
+    vt.into_element_for::<QUERY>()
 }
 
 mod atom_line;

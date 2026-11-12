@@ -35,6 +35,7 @@ FIXES = {
     "tendril": ["Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped."],
     "xml-rs": ["Admission: canonical reader storage and leased events grow fallibly before mutation; a typed terminal driver releases partial state and stops reads, entity expansion and callbacks immediately.", "XML namespace constraints: reject duplicate declarations and duplicate expanded attribute names; recursive entity references remain syntax errors independently of work limits."],
     "gpui": [
+        "Synchronous geometry queries: isolate a transient layout/prepaint pass and restore caller paint/frame state on unwind; expose completed box edges and fragment placement through opt-in observers, including singular forward transforms, without retaining query storage in ordinary frames.",
         "Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.",
         "Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.",
         "Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.",
@@ -157,6 +158,7 @@ FIXES = {
         "Keep rendering compatible with the paired usvg parser/tree changes; apply usvg first (docs/VENDORING.md).",
     ],
     "usvg": [
+        "Synchronous geometry queries: an opt-in typed source/layout trace observes object bounds and shaped glyph cells before paint effects; the ordinary converter uses a zero-sized no-op trace and retains no query metadata.",
         "Typed path-tree construction: resolve bounds, ordered luminance masks, clipping and linearRGB blur through the existing renderer without XML serialization.",
         "Resource cycles: traverse the cross-resource graph, use chains and gradient href chains; discard closing edges instead of recursing indefinitely.",
         "CSS drop-shadow(): expand the region for the offset and blur support instead of clipping to the default SVG filter region.",

@@ -13,7 +13,7 @@ use gpui::{AnyElement, Styled, px};
 mod tests;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn stack_box(
+pub(super) fn stack_box<const QUERY: bool>(
     mut d: gpui::Div,
     e: &Element,
     merged: BoxStyle,
@@ -60,7 +60,7 @@ pub(super) fn stack_box(
     );
     if let Some(kids) = stackable.filter(|k| !k.is_empty()) {
         let d = super::ClampScope::close(scope, d, e, &merged);
-        return Err(multicol_column_stack(
+        return Err(multicol_column_stack::<QUERY>(
             d,
             e,
             inherited,

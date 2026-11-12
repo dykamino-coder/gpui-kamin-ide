@@ -4,6 +4,7 @@ mod inline_anchor;
 mod layout;
 mod painting;
 mod prepaint;
+mod query;
 
 use crate::text::paragraph::*;
 use gpui::{

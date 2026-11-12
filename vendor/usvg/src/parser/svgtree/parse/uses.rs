@@ -31,6 +31,7 @@ pub(super) fn parse_svg_use_element<'input>(
     depth: u32,
     doc: &mut Document<'input>,
     id_map: &HashMap<&str, roxmltree::Node<'_, 'input>>,
+    trace: &mut impl crate::GeometryTrace,
 ) -> Result<(), Error> {
     let link = match resolve_href(node, id_map) {
         Some(v) => v,
@@ -91,6 +92,7 @@ pub(super) fn parse_svg_use_element<'input>(
         depth + 1,
         doc,
         id_map,
+        trace,
     )
 }
 

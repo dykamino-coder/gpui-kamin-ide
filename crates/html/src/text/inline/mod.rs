@@ -168,7 +168,7 @@ pub struct InlineCb {
 /// Собрать инлайн-куски из детей узла.
 /// `cx` — контекст раскладки блока абзаца: его доступная ширина — база
 /// долей полей и отступов строчных коробок.
-pub fn collect(
+pub(crate) fn collect<const QUERY: bool>(
     children: &[Node],
     inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
@@ -179,7 +179,7 @@ pub fn collect(
         inherited,
         atom,
         empty_inline::has_text(children),
-        &mut collect::CollectCx {
+        &mut collect::CollectCx::<QUERY> {
             case: text_case::Context::default(),
             layout: cx.clone(),
             inline_parents: Vec::new(),

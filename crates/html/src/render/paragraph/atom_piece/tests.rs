@@ -20,7 +20,7 @@ fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
         frag: Default::default(),
     };
     for (offered, turned) in [(false, false), (true, false), (false, true), (true, true)] {
-        let piece = atom_piece_in(
+        let piece = atom_piece_in::<false>(
             &element,
             &BoxStyle::from(
                 (Computed {

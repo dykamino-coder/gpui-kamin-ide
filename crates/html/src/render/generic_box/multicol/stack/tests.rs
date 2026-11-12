@@ -17,7 +17,7 @@ fn empty_multicol_keeps_the_original_box_without_column_tracks() {
     for children in [vec![], vec![Node::Text(" \n\t".into())]] {
         let e = Element::synthetic("div", Computed::default(), Default::default(), children);
         for cols in [1, 3] {
-            let result = stack_box(
+            let result = stack_box::<false>(
                 gpui::div().w(px(32.)),
                 &e,
                 BoxStyle::from(Computed::default()),

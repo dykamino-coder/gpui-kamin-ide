@@ -27,10 +27,10 @@ const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 const XML_NAMESPACE_NS: &str = "http://www.w3.org/XML/1998/namespace";
 
 impl<'input> Document<'input> {
-    /// Parses a [`Document`] from a [`roxmltree::Document`].
-    pub fn parse_tree(
+    pub(crate) fn parse_tree_with_geometry(
         xml: &roxmltree::Document<'input>,
         injected_stylesheet: Option<&'input str>,
+        trace: &mut impl crate::GeometryTrace,
     ) -> Result<Document<'input>, Error> {
         // KaminIDE patch: count the original XML arena as part of the same session.
         if xml.input_text().len() > super::SOURCE_BYTE_LIMIT {
@@ -38,7 +38,7 @@ impl<'input> Document<'input> {
         }
         let remaining = super::NODE_LIMIT.checked_sub(xml.descendants().count())
             .ok_or(Error::NodesLimitReached)?;
-        parse_with_limit(xml, injected_stylesheet, false, remaining)
+        parse_with_limit(xml, injected_stylesheet, false, remaining, trace)
     }
 }
 
@@ -48,6 +48,7 @@ fn parse_with_limit<'input>(
     injected_stylesheet: Option<&'input str>,
     resource: bool,
     node_limit: usize,
+    trace: &mut impl crate::GeometryTrace,
 ) -> Result<Document<'input>, Error> {
     if node_limit == 0 {
         return Err(Error::NodesLimitReached);
@@ -94,6 +95,7 @@ fn parse_with_limit<'input>(
                 0,
                 &mut doc,
                 &id_map,
+                trace,
             )?;
         }
     } else {
@@ -106,6 +108,7 @@ fn parse_with_limit<'input>(
             0,
             &mut doc,
             &id_map,
+            trace,
         )?;
     }
 
@@ -158,6 +161,7 @@ fn parse_xml_node_children<'input>(
     depth: u32,
     doc: &mut Document<'input>,
     id_map: &HashMap<&str, roxmltree::Node<'_, 'input>>,
+    trace: &mut impl crate::GeometryTrace,
 ) -> Result<(), Error> {
     for node in parent.children() {
         parse_xml_node(
@@ -169,6 +173,7 @@ fn parse_xml_node_children<'input>(
             depth,
             doc,
             id_map,
+            trace,
         )?;
     }
 
@@ -184,6 +189,7 @@ fn parse_xml_node<'input>(
     depth: u32,
     doc: &mut Document<'input>,
     id_map: &HashMap<&str, roxmltree::Node<'_, 'input>>,
+    trace: &mut impl crate::GeometryTrace,
 ) -> Result<(), Error> {
     if depth > 1024 {
         return Err(Error::NodesLimitReached);
@@ -204,11 +210,11 @@ fn parse_xml_node<'input>(
         tag_name = EId::G;
     }
 
-    let node_id = parse_svg_element(node, parent_id, tag_name, style_sheet, ignore_ids, doc)?;
+    let node_id = parse_svg_element(node, parent_id, tag_name, style_sheet, ignore_ids, doc, trace)?;
     if tag_name == EId::Text {
-        super::text::parse_svg_text_element(node, node_id, style_sheet, doc)?;
+        super::text::parse_svg_text_element(node, node_id, style_sheet, doc, ignore_ids, trace)?;
     } else if tag_name == EId::Use {
-        parse_svg_use_element(node, origin, node_id, style_sheet, depth + 1, doc, id_map)?;
+        parse_svg_use_element(node, origin, node_id, style_sheet, depth + 1, doc, id_map, trace)?;
     } else {
         parse_xml_node_children(
             node,
@@ -219,6 +225,7 @@ fn parse_xml_node<'input>(
             depth + 1,
             doc,
             id_map,
+            trace,
         )?;
     }
 

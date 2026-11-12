@@ -39,7 +39,7 @@ mod tests {
             ..Default::default()
         };
         let mut seen_atom = false;
-        let pieces = inline::collect(
+        let pieces = inline::collect::<false>(
             &parsed.nodes,
             &BoxStyle::default(),
             &mut |e, atom| {
@@ -83,7 +83,7 @@ mod tests {
                 Node::Text(_) => None,
             })
         }
-        let pieces = inline::collect(
+        let pieces = inline::collect::<false>(
             &div(&parsed.nodes).expect("div").children,
             &BoxStyle::default(),
             &mut |e, _| (e.tag == "ruby").then(|| Piece::Atom(gpui::Empty.into_any_element())),
@@ -117,7 +117,7 @@ use crate::text::inline::*;
 /// the text-transform word state (CSS Text 3 §2.1) and the layout context of
 /// the paragraph block (`LayoutCx`; its available width is the containing
 /// block of inline-box percentages).
-pub(crate) struct CollectCx {
+pub(crate) struct CollectCx<const QUERY: bool = false> {
     pub(super) case: text_case::Context,
     pub(super) layout: crate::layout::cx::LayoutCx,
     /// BoxStyle styles of the open inline ancestors (`atom_parent`): an atom
@@ -132,7 +132,7 @@ pub(crate) struct CollectCx {
     pub(super) ruby_space: bool,
 }
 
-impl CollectCx {
+impl<const QUERY: bool> CollectCx<QUERY> {
     /// What an atom built at the current point learns from the collection.
     pub(super) fn atom_cx(&self) -> crate::text::inline::atom_parent::AtomCx {
         crate::text::inline::atom_parent::AtomCx {
@@ -142,12 +142,12 @@ impl CollectCx {
     }
 }
 
-pub(super) fn collect_with_empty_metrics(
+pub(super) fn collect_with_empty_metrics<const QUERY: bool>(
     children: &[Node],
     inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
-    cx: &mut CollectCx,
+    cx: &mut CollectCx<QUERY>,
 ) -> Vec<Piece> {
     reblessive::Stack::new()
         .enter(|stk| collect_stack(stk, children, inherited, atom, has_text, cx))
@@ -155,13 +155,13 @@ pub(super) fn collect_with_empty_metrics(
 }
 
 // Продолжения строчных предков хранятся в heap, как у блочного построителя.
-async fn collect_stack(
+async fn collect_stack<const QUERY: bool>(
     stk: &mut reblessive::Stk,
     children: &[Node],
     inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
-    cx: &mut CollectCx,
+    cx: &mut CollectCx<QUERY>,
 ) -> Vec<Piece> {
     let mut out = vec![];
     // Место последней распорки зазора за коробкой (см. ниже).

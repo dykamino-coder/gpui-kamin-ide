@@ -17,6 +17,7 @@ pub(crate) mod blocks;
 mod child_builder;
 pub(super) mod element;
 pub(super) mod generic_box;
+pub(crate) mod geometry;
 pub(crate) mod paragraph;
 pub use crate::layout::options::RenderOpts;
 

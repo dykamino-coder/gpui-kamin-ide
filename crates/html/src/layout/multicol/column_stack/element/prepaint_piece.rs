@@ -15,7 +15,7 @@ pub(super) struct Prepared {
 
 impl ColumnStack {
     #[inline(never)]
-    pub(super) fn prepare_prepaint_frag(
+    pub(super) fn prepare_prepaint_frag<const QUERY: bool>(
         &mut self,
         f: &Frag,
         plan: &[Frag],
@@ -25,8 +25,8 @@ impl ColumnStack {
     ) -> Option<Prepared> {
         let spill = Self::spill(bounds, window);
         // Ребёнок, чьи куски рисует запись главной копии, раскладывает только её.
-        let replay = if self.replays(f.kid, plan) {
-            self.replay_routes(
+        let replay = if self.replays::<QUERY>(f.kid, plan) {
+            self.replay_routes::<QUERY>(
                 f.kid,
                 plan,
                 bounds,

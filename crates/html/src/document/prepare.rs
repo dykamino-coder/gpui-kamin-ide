@@ -20,6 +20,30 @@ pub(super) fn parse_document(
     invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
     #[cfg(feature = "engine-bench")] timings: &mut super::BuildTimings,
 ) -> Result<(Rc<DocState>, Vec<Node>, crate::style::computed::Computed), super::DocumentFailure> {
+    parse_document_for::<false>(
+        input,
+        theme_css,
+        base,
+        state,
+        fonts,
+        revision,
+        invalidation,
+        #[cfg(feature = "engine-bench")]
+        timings,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn parse_document_for<const QUERY: bool>(
+    input: &crate::dom::input::Admitted,
+    theme_css: &str,
+    base: Option<&url::Url>,
+    state: Rc<DocState>,
+    fonts: &crate::text::metrics::FontContext,
+    revision: crate::budget::RevisionBudget,
+    invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
+    #[cfg(feature = "engine-bench")] timings: &mut super::BuildTimings,
+) -> Result<(Rc<DocState>, Vec<Node>, crate::style::computed::Computed), super::DocumentFailure> {
     let media = state.media();
     let admission = crate::budget::admission::Admission::new(revision.clone());
     state.values.admit_revision(revision, base);
@@ -32,13 +56,13 @@ pub(super) fn parse_document(
     let style_started = std::time::Instant::now();
     let styled = {
         crate::work::phase!(_phase, Style);
-        crate::dom::convert_restyling(input, theme_css, media, &state.values, invalidation)?
+        crate::dom::convert_for::<QUERY>(input, theme_css, media, &state.values, invalidation)?
     };
     #[cfg(feature = "engine-bench")]
     {
         timings.style = style_started.elapsed();
     }
-    let (mut nodes, root) = viewport::prepare(styled, vcx);
+    let (mut nodes, root) = viewport::prepare::<QUERY>(styled, vcx);
     if let Some(base) = base {
         base_url::resolve(&mut nodes, base, false, &admission)?;
     }

@@ -18,10 +18,9 @@ impl Paragraph {
         bounds: Bounds<Pixels>,
         window: &mut Window,
     ) {
-        let Some((values, layout)) = &self.anchor_values else {
+        let Some((_, layout)) = &self.anchor_values else {
             return;
         };
-        let vcx = values.vcx();
         let anchors = &layout.anchors;
         let s = (at as isize + b.start).max(0) as usize;
         let e = (at as isize + b.end).max(0) as usize;
@@ -41,26 +40,7 @@ impl Paragraph {
         }
         if !info.names.is_empty() {
             let edges: [f32; 4] = std::array::from_fn(|k| info.pad[k] + info.border[k]);
-            let mut base = gpui::TextStyle::default();
-            if let Some((font, _)) = &self.strut_run {
-                base.font_family = font.family.clone();
-                base.font_fallbacks = font.fallbacks.clone();
-            }
-            let font = crate::text::inline::strut_font(&info.font_style, &base, vcx, None);
-            let size = px(info
-                .font_style
-                .used_font(f32::from(self.font_size), vcx)
-                .size_px);
-            let ts = window.text_system();
-            let id = ts.resolve_font(&font);
-            let metrics = crate::text::fonts::metric_overrides::extents(
-                &font,
-                f32::from(size),
-                (
-                    f32::from(ts.ascent(id, size)),
-                    f32::from(ts.descent(id, size)).abs(),
-                ),
-            );
+            let metrics = self.inline_font_metrics(info, window);
             if let Some(r) = self.inline_box_rect(segs, s..e, edges, metrics, bounds) {
                 crate::layout::positioned::anchor::register_inline_anchor(
                     &info.names,
@@ -76,5 +56,29 @@ impl Paragraph {
                 );
             }
         }
+    }
+    pub(super) fn inline_font_metrics(
+        &self,
+        info: &crate::text::inline::inline_box::InlineBoxInfo,
+        window: &Window,
+    ) -> (f32, f32) {
+        let vcx = self
+            .anchor_values
+            .as_ref()
+            .expect("inline marker values")
+            .0
+            .vcx();
+        let mut base = gpui::TextStyle::default();
+        if let Some((font, _)) = &self.strut_run {
+            base.font_family = font.family.clone();
+            base.font_fallbacks = font.fallbacks.clone();
+        }
+        crate::text::inline::inline_box::font_metrics(
+            &info.font_style,
+            &base,
+            f32::from(self.font_size),
+            vcx,
+            window,
+        )
     }
 }

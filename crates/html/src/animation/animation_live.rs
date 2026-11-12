@@ -10,8 +10,8 @@
 use crate::animation::animation_frame;
 use crate::animation::frames::{bake_frozen, sample_at};
 use crate::dom::Element;
+use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
-use crate::paint::effects::transform::transformed_node;
 use crate::style::computed::{AnimSpec, BoxStyle, Computed};
 use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement};
@@ -31,12 +31,13 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
 }
 
 fn painted(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
-    transformed_node(
+    opts.cx.contracts.build.effects(
         opts.cx.contracts.build.element(e, inherited, opts),
-        &e.style.used(),
-        inherited,
-        e.node_id,
-        opts.cx.frame(),
+        Effect::ElementTransform {
+            element: e,
+            parent: inherited,
+            frame: opts.cx.frame(),
+        },
     )
 }
 
@@ -46,16 +47,20 @@ async fn painted_stack(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
-    transformed_node(
-        opts.cx
-            .contracts
-            .build
-            .element_stack(stk, e, inherited, opts)
-            .await,
-        &e.style.used(),
-        inherited,
-        e.node_id,
-        opts.cx.frame(),
+    // Evaluate the receiver after await so it adds no saved pointer to the future.
+    let child = opts
+        .cx
+        .contracts
+        .build
+        .element_stack(stk, e, inherited, opts)
+        .await;
+    opts.cx.contracts.build.effects(
+        child,
+        Effect::ElementTransform {
+            element: e,
+            parent: inherited,
+            frame: opts.cx.frame(),
+        },
     )
 }
 

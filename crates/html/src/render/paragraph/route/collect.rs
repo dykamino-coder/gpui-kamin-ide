@@ -18,7 +18,7 @@ use crate::text::inline;
 use crate::text::ruby::ruby_role;
 use gpui::{AnyElement, IntoElement, div};
 
-pub(crate) fn paragraph_pieces_routed(
+pub(crate) fn paragraph_pieces_routed<const QUERY: bool>(
     nodes: &[Node],
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -63,7 +63,7 @@ pub(crate) fn paragraph_pieces_routed(
                 atom_cx: &inline::atom_parent::AtomCx,
                 ruby: &AtomRuby|
      -> Option<inline::Piece> {
-        atom_piece(e, inherited, opts, flow_text, atom_cx, ruby)
+        atom_piece::<QUERY>(e, inherited, opts, flow_text, atom_cx, ruby)
     };
     // Каждому атому — признак, можно ли поставить его В СТРОКУ абзаца
     // (`atom_line_align`): порядок записей совпадает с порядком `Piece::Atom`.
@@ -108,7 +108,7 @@ pub(crate) fn paragraph_pieces_routed(
             }
             piece
         };
-    let mut pieces = inline::collect(nodes, inherited, &mut atom_noted, &opts.cx);
+    let mut pieces = inline::collect::<QUERY>(nodes, inherited, &mut atom_noted, &opts.cx);
     if pieces.is_empty() {
         return div().into_any_element();
     }
@@ -234,7 +234,7 @@ pub(crate) fn paragraph_pieces_routed(
         }
         pieces = out;
     }
-    route_pieces(
+    route_pieces::<QUERY>(
         pieces,
         inherited,
         opts,

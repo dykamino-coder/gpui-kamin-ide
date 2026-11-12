@@ -32,7 +32,7 @@ impl Default for ChildBuild {
             ),
             element,
             |stk, e, inherited, opts| {
-                Box::pin(crate::render::element::element_stack(
+                Box::pin(crate::render::element::element_stack_for::<false>(
                     stk, e, inherited, opts,
                 ))
             },
@@ -49,7 +49,7 @@ impl Default for ChildBuild {
             crate::svg::element_with_html,
             EffectBuild::new(
                 effects,
-                crate::paint::effects::grouped::paint_group,
+                crate::paint::effects::grouped::paint_group::<false>,
                 crate::paint::effects::mask::collect_mask_defs,
                 |owner, window, cx, body| outline_phase::flow(Some(owner), window, cx, body),
             ),
@@ -83,7 +83,7 @@ fn content_sized(
     content_wrapper::content_sized(el, style, item_style, placement, cx.vcx())
 }
 
-fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
+pub(super) fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
     match effect {
         Effect::OutlineScope(owner) => outline_phase::scope(child, Some(owner)),
         Effect::OutlineFlow(owner) => outline_phase::flow_phase(child, Some(owner)),
@@ -92,11 +92,24 @@ fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
             grouped::grouped_replaced(child, &BoxStyle::shared(style), frame)
         }
         Effect::Transform {
+            node,
             style,
             parent,
             ref_box,
             frame,
-        } => transform::transformed_with(child, style, parent, ref_box, frame),
+        } => transform::transformed_inner::<false>(child, style, parent, ref_box, node, frame),
+        Effect::ElementTransform {
+            element,
+            parent,
+            frame,
+        } => transform::transformed_inner::<false>(
+            child,
+            &element.style.used(),
+            parent,
+            None,
+            Some(element.node_id),
+            frame,
+        ),
         Effect::Underlay => Underlay::new(child).hooked(),
         Effect::PaintLast(key) => stacking::paint_last(child, key),
     }

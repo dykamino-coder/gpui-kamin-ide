@@ -35,7 +35,7 @@ fn resolve_rendering_mode(text: &Text) -> ShapeRendering {
 /// that wasn't set explicitly. This matches browser behavior
 /// (CSS font-optical-sizing: auto).
 fn effective_variations(
-    cache: &mut Cache,
+    cache: &mut Cache<impl crate::GeometryTrace>,
     span: &layout::Span,
     glyph: &layout::PositionedGlyph,
 ) -> Vec<FontVariation> {
@@ -74,7 +74,7 @@ fn push_outline_paths(
     }
 }
 
-pub(crate) fn flatten(text: &mut Text, cache: &mut Cache) -> Option<(Group, NonZeroRect)> {
+pub(crate) fn flatten(text: &mut Text, cache: &mut Cache<impl crate::GeometryTrace>) -> Option<(Group, NonZeroRect)> {
     let mut new_children = vec![];
 
     let abs_transform = text.abs_transform;

@@ -9,6 +9,7 @@ pub(crate) mod cx;
 pub(crate) mod depth;
 pub(crate) mod float;
 pub(crate) mod fragment;
+pub mod geometry;
 pub(crate) mod grid;
 pub(crate) mod intrinsic_wrap;
 pub(crate) mod layout_state;

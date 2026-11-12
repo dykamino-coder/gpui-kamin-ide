@@ -26,7 +26,7 @@ mod fixed_height;
 use fixed_height::fixed_column_height;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn multicol_column_stack(
+pub(crate) fn multicol_column_stack<const QUERY: bool>(
     d: gpui::Div,
     e: &Element,
     inherited: &Computed,
@@ -139,7 +139,7 @@ pub(crate) fn multicol_column_stack(
                     .build
                     .layer(Layer::gap_rules(b, s, &opts.cx))
             }));
-            let mut d = column_stack_div(
+            let mut d = column_stack_div::<QUERY>(
                 d,
                 e,
                 inherited,

@@ -41,22 +41,7 @@ pub fn rasterize(
     load: &(dyn Fn(&str) -> Option<Arc<Vec<u8>>> + Send + Sync),
     allow_data: bool,
 ) -> Option<Arc<CpuRaster>> {
-    let options = usvg::Options {
-        fontdb: fonts,
-        use_href_resolver: Some(usvg::UseHrefResolver(Box::new(load))),
-        image_href_resolver: usvg::ImageHrefResolver {
-            resolve_data: Box::new(move |mime, bytes, opts| {
-                allow_data
-                    .then(|| usvg::ImageHrefResolver::default_data_resolver()(mime, bytes, opts))
-                    .flatten()
-            }),
-            resolve_string: Box::new(move |href, opts| {
-                let bytes = load(href)?;
-                usvg::ImageHrefResolver::default_data_resolver()("text/plain", bytes, opts)
-            }),
-        },
-        ..usvg::Options::default()
-    };
+    let options = svg_options(fonts, load, allow_data);
     let (w, h) = (request.width, request.height);
     if w > 4096 || h > 4096 || request.pad > 4096 {
         return None;
@@ -115,6 +100,41 @@ pub fn rasterize(
         bytes: bytes.into(),
         retention: Default::default(),
     }))
+}
+
+/// Разбор без растра и кэша с теми же ресурсами и шрифтами документа.
+pub(crate) fn parse_tree(
+    markup: &str,
+    fonts: Arc<usvg::fontdb::Database>,
+    load: &(dyn Fn(&str) -> Option<Arc<Vec<u8>>> + Send + Sync),
+    allow_data: bool,
+    trace: impl usvg::GeometryTrace,
+) -> Option<usvg::Tree> {
+    let options = svg_options(fonts, load, allow_data);
+    usvg::Tree::from_str_with_geometry(markup, &options, trace).ok()
+}
+
+fn svg_options(
+    fonts: Arc<usvg::fontdb::Database>,
+    load: &(dyn Fn(&str) -> Option<Arc<Vec<u8>>> + Send + Sync),
+    allow_data: bool,
+) -> usvg::Options<'_> {
+    usvg::Options {
+        fontdb: fonts,
+        use_href_resolver: Some(usvg::UseHrefResolver(Box::new(load))),
+        image_href_resolver: usvg::ImageHrefResolver {
+            resolve_data: Box::new(move |mime, bytes, opts| {
+                allow_data
+                    .then(|| usvg::ImageHrefResolver::default_data_resolver()(mime, bytes, opts))
+                    .flatten()
+            }),
+            resolve_string: Box::new(move |href, opts| {
+                let bytes = load(href)?;
+                usvg::ImageHrefResolver::default_data_resolver()("text/plain", bytes, opts)
+            }),
+        },
+        ..usvg::Options::default()
+    }
 }
 
 #[cfg(test)]

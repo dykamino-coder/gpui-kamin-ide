@@ -4,6 +4,8 @@
 
 mod clippath;
 mod converter;
+mod geometry;
+pub use geometry::GeometryTrace;
 mod filter;
 mod image;
 mod marker;
@@ -170,6 +172,11 @@ impl crate::Tree {
 
     /// Parses `Tree` from an SVG string.
     pub fn from_str(text: &str, opt: &Options) -> Result<Self, Error> {
+        Self::from_str_with_geometry(text, opt, ())
+    }
+
+    /// Parses with an on-demand source and geometry observer.
+    pub fn from_str_with_geometry(text: &str, opt: &Options, trace: impl GeometryTrace) -> Result<Self, Error> {
         // KaminIDE patch: reject the primary source before allocating its XML arena.
         if text.len() > svgtree::SOURCE_BYTE_LIMIT {
             return Err(Error::ElementsLimitReached);
@@ -183,16 +190,20 @@ impl crate::Tree {
         let doc =
             roxmltree::Document::parse_with_options(text, xml_opt).map_err(Error::ParsingFailed)?;
 
-        Self::from_xmltree(&doc, opt)
+        Self::from_xmltree_with_geometry(&doc, opt, trace)
     }
 
     /// Parses `Tree` from `roxmltree::Document`.
     pub fn from_xmltree(doc: &roxmltree::Document, opt: &Options) -> Result<Self, Error> {
+        Self::from_xmltree_with_geometry(doc, opt, ())
+    }
+
+    fn from_xmltree_with_geometry(doc: &roxmltree::Document, opt: &Options, mut trace: impl GeometryTrace) -> Result<Self, Error> {
         let source_bytes = doc.input_text().len();
         let source_nodes = doc.descendants().count();
-        let mut doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
+        let mut doc = svgtree::Document::parse_tree_with_geometry(doc, opt.style_sheet.as_deref(), &mut trace)?;
         doc.import_external(opt, source_bytes, source_nodes);
-        self::converter::convert_doc(&doc, opt)
+        self::converter::convert_doc(&doc, opt, trace)
     }
 }
 

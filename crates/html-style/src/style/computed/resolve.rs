@@ -27,6 +27,24 @@ pub use logical_sharing::LogicalSharing;
 mod mask_tests;
 
 impl Computed {
+    /// Групповые свойства задают плоский контекст: css-transforms-2 §grouping-property-values.
+    #[inline]
+    pub fn flattens_3d(&self) -> bool {
+        let clipped = |o: Option<Overflow>| matches!(o, Some(o) if o != Overflow::Visible);
+        self.reset_effects.opacity.is_some_and(|o| o < 1.0)
+            || self.reset_effects.filter.is_some()
+            || self.reset_effects.filter_ref.is_some()
+            || self.reset_effects.backdrop_blur.is_some()
+            || clipped(self.reset_box_layout.overflow_x)
+            || clipped(self.reset_box_layout.overflow_y)
+            || self.reset_mask.mask_image.is_some()
+            || self.reset_mask.clip_ref.is_some()
+            || self.reset_effects.blend.is_some_and(|b| b != 0)
+            || self.reset_effects.isolate == Some(true)
+            || self.reset_context.contain_paint == Some(true)
+            || self.reset_context.contain_layout == Some(true)
+    }
+
     /// Сдвиг из `transform`, который раскладка берёт на себя как
     /// относительное смещение — тем же путём, что и свойство `translate`
     /// (`apply::apply_box`). Чистый сдвиг — это смена начала координат

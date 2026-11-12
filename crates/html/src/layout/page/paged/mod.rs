@@ -30,25 +30,10 @@ const PAGE_COPIES: usize = 12;
 mod build;
 pub(crate) use build::PagedBuild;
 
-/// Постраничная отрисовка (css-page-3): блоки верхнего уровня документа —
-/// дети стопки страниц, page area каждой страницы — фрагментаинер.
-///
-/// Обёртки `html`/`body` снимаются здесь (сборщик оставляет их при
-/// собственной коробке, `doc.rs::has_box_style`): их фон — канвас документа
-/// (§painting, слой 2), боковые поля/рамки/отступы — сдвиг содержимого на
-/// КАЖДОЙ странице, верхнее — только на первой: коробка тела режется по
-/// страницам вместе с содержимым, а её `page` — умолчание имени для детей.
-pub fn render_paged(
-    nodes: &[Node],
-    opts: &RenderOpts,
-    geom_for: crate::layout::page::page_stack::PageGeomFn,
-    margin_decls: Option<PageMarginDeclsFn>,
-) -> AnyElement {
-    render_paged_select(nodes, opts, geom_for, margin_decls, None)
-}
+mod api;
+pub use api::{render_paged, render_paged_select};
 
-/// `render_paged`, показывающий только листы `select` (номера с нуля).
-pub fn render_paged_select(
+pub(crate) fn render_paged_for<const QUERY: bool>(
     nodes: &[Node],
     opts: &RenderOpts,
     geom_for: crate::layout::page::page_stack::PageGeomFn,
@@ -77,7 +62,7 @@ pub fn render_paged_select(
         crate::layout::fragment::flow::page_percentages(nodes, &root, opts);
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();
-    resolve_root_page(
+    resolve_root_page::<QUERY>(
         &mut none,
         &mut canvas,
         &mut canvas_img,
@@ -92,7 +77,7 @@ pub fn render_paged_select(
     fill_used_page(&mut nodes, &root_page);
     // Обёртка в ином режиме письма — ортогональный поток, монолит (css-break-3
     // §4.1): снимать её нельзя, и у вертикального корня обёртки не снимаются.
-    if !root.wm().vertical() {
+    if !QUERY && !root.wm().vertical() {
         hoist_named_wrappers(&mut nodes, vcx);
     }
     // Вычисленные стили элементов — до сборки листов (как у `render::render`).
@@ -229,7 +214,7 @@ pub fn render_paged_select(
     // (css-page-3 §page-properties; Blink `StyleForPage` от documentElement).
     let margin_for =
         margin_decls.map(|f| page_boxes::builder(f, root.clone(), opts.clone(), document_counters));
-    crate::layout::page::page_stack::PageStack::new(
+    let stack = crate::layout::page::page_stack::PageStack::new(
         kids,
         geom_for,
         icb_copies,
@@ -243,6 +228,10 @@ pub fn render_paged_select(
         canvas_img
             .filter(|_| !none)
             .map(|l| crate::layout::page::page_stack::canvas_builder(l, root, opts.clone())),
-    )
-    .hooked()
+    );
+    if QUERY {
+        crate::layout::page::page_stack::GeometryPages(stack).hooked()
+    } else {
+        stack.hooked()
+    }
 }

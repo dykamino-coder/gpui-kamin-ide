@@ -12,6 +12,8 @@ mod axis;
 mod contents;
 mod continuation;
 mod element;
+mod geometry;
+pub(crate) use geometry::GeometryPages;
 mod kids;
 mod measure;
 mod native;

@@ -7,6 +7,8 @@ use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
 use gpui::{AnyElement, ElementId};
 mod lifecycle;
+mod query;
+pub(crate) use query::query_states;
 use std::rc::Rc;
 
 type ScrollBuilder =

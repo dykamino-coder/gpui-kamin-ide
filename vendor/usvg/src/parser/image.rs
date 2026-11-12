@@ -132,7 +132,7 @@ enum ImageFormat {
 pub(crate) fn convert(
     node: SvgNode,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) -> Option<()> {
     let href = node
@@ -211,7 +211,7 @@ pub(crate) fn convert_inner(
     aspect: AspectRatio,
     actual_size: Size,
     rect: NonZeroRect,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) -> Option<()> {
     let aligned_size = fit_view_box(actual_size, rect, aspect);

@@ -44,6 +44,8 @@ use std::{
 
 use super::ImageCacheProvider;
 
+mod observers;
+
 #[cfg(feature = "stacker")]
 type StackSafe<T> = stacksafe::StackSafe<T>;
 #[cfg(not(feature = "stacker"))]

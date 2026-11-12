@@ -215,8 +215,8 @@ impl std::fmt::Debug for FontResolver<'_> {
 ///    is not based on the outlines of a glyph, but instead the glyph metrics as well
 ///    as decoration spans).
 /// 2. We convert all of the positioned glyphs into outlines.
-pub(crate) fn convert(text: &mut Text, resolver: &FontResolver, cache: &mut Cache) -> Option<()> {
-    let (text_fragments, bbox) = layout::layout_text(text, resolver, &mut cache.fontdb)?;
+pub(crate) fn convert(text: &mut Text, resolver: &FontResolver, cache: &mut Cache<impl crate::GeometryTrace>) -> Option<()> {
+    let (text_fragments, bbox) = layout::layout_text(text, resolver, &mut cache.fontdb, &mut cache.geometry)?;
     text.layouted = text_fragments;
     text.bounding_box = bbox.to_rect();
     text.abs_bounding_box = bbox.transform(text.abs_transform)?.to_rect();

@@ -100,9 +100,10 @@ struct CharacterPosition {
 pub(crate) fn convert(
     text_node: SvgNode,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     parent: &mut Group,
 ) {
+    cache.geometry.text_start(text_node.geometry_id(), parent.abs_transform);
     let pos_list = resolve_positions_list(text_node, state);
     let rotate_list = resolve_rotate_list(text_node);
     let writing_mode = convert_writing_mode(text_node);
@@ -141,9 +142,11 @@ pub(crate) fn convert(
     };
 
     if text::convert(&mut text, &state.opt.font_resolver, cache).is_none() {
+        cache.geometry.text_end();
         return;
     }
 
+    cache.geometry.text_end();
     parent.children.push(Node::Text(Box::new(text)));
 }
 
@@ -159,7 +162,7 @@ fn collect_text_chunks(
     text_node: SvgNode,
     pos_list: &[CharacterPosition],
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> Vec<TextChunk> {
     let mut iter_state = IterState {
         chars_count: 0,
@@ -178,7 +181,7 @@ fn collect_text_chunks_impl(
     parent: SvgNode,
     pos_list: &[CharacterPosition],
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
     iter_state: &mut IterState,
 ) {
     for child in parent.children() {
@@ -355,6 +358,7 @@ fn collect_text_chunks_impl(
                 }
             }
 
+            cache.geometry.text_char(parent.geometry_id(), iter_state.chunks.len() - 1, iter_state.chunk_bytes_count);
             is_new_span = false;
             iter_state.chars_count += 1;
             iter_state.chunk_bytes_count += char_len;
@@ -777,7 +781,7 @@ fn resolve_rotate_list(text_node: SvgNode) -> Vec<f32> {
 fn resolve_decoration(
     tspan: SvgNode,
     state: &converter::State,
-    cache: &mut converter::Cache,
+    cache: &mut converter::Cache<impl crate::GeometryTrace>,
 ) -> TextDecoration {
     // Checks if a decoration is present in a single node.
     fn find_decoration(node: SvgNode, value: &str) -> bool {

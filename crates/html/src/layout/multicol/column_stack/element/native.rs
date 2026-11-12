@@ -18,7 +18,7 @@ impl ColumnStack {
             .map(|_| self.oof.records.borrow().1.clone())
     }
 
-    pub(crate) fn prepaint_native(
+    pub(crate) fn prepaint_native<const QUERY: bool>(
         &mut self,
         bounds: Bounds<Pixels>,
         plan: &[Frag],
@@ -41,7 +41,7 @@ impl ColumnStack {
         let sources = self.oof.sources.borrow();
         let viewport = window.viewport_size();
         let spill = f32::from(viewport.width.max(viewport.height).max(bounds.size.width));
-        let scale = window.scale_factor();
+        let scale = if QUERY { 0. } else { window.scale_factor() };
         let mut admission = Admission::new(self.axis.is_vertical()).snapping(scale);
         for f in oof.iter() {
             let id = *sources
@@ -75,7 +75,11 @@ impl ColumnStack {
                 geometry::slice(self.axis, actual.rect, inline.into(), inline_size, f.y, f.h)
                     .origin;
             let exact = destination;
-            let destination = source + snapped(destination - source, scale);
+            let destination = if QUERY {
+                destination
+            } else {
+                source + snapped(destination - source, scale)
+            };
             // Unbroken edges keep their ink overflow; a break edge cuts it.
             let siblings = || oof.iter().filter(|g| g.kid == f.kid);
             let first = !siblings().any(|g| (g.col, g.from) < (f.col, f.from));
@@ -108,6 +112,12 @@ impl ColumnStack {
             );
             // The plan placed normal geometry; relative positioning of the box and its
             // ancestors is a paint displacement on top (CSS 2.1 §9.4.3).
+            let reference = geometry::slice(self.axis, laid, 0., inline_size, f.from, f.h);
+            let (clip, decoration) = if QUERY {
+                (reference, reference)
+            } else {
+                (clip, decoration)
+            };
             let shift = snapshot.relative.get(&flow.id).copied().unwrap_or_default();
             let copied = self.owner_copy(flow.owner, f.col, plan);
             admission.insert(Placement {
@@ -121,7 +131,7 @@ impl ColumnStack {
                 decoration,
                 copied,
                 transform: flow.transform,
-                reference: geometry::slice(self.axis, laid, 0., inline_size, f.from, f.h),
+                reference,
                 start: geometry::slice(self.axis, actual.rect, inline.into(), inline_size, 0., 0.)
                     .origin
                     - (destination + shift - source),
@@ -137,7 +147,7 @@ impl ColumnStack {
             window,
         );
         self.oof.slot_scopes.clear();
-        window.with_prepaint_segment_hit_scopes(scopes, |window| {
+        crate::layout::geometry::fragments::with_hit_scopes::<QUERY, _>(scopes, window, |window| {
             native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)
         })
     }
