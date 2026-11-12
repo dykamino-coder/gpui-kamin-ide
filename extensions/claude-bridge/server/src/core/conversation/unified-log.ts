@@ -18,7 +18,13 @@ type Entry = JsonlEntry & { uuid?: string; parentUuid?: string | null; subtype?:
 
 export const ENGINE_SWITCH_SUBTYPE = 'engine_switch'
 
-/** Last main-chain uuid in a transcript file (sub-agent side chains skipped). */
+/** Rows that hang on the chain but never parent the next entry: sub-agent side
+ *  chains and usage records (codex `system/api_usage`). */
+function offChain(e: { isSidechain?: unknown; type?: unknown; subtype?: unknown }): boolean {
+  return Boolean(e.isSidechain) || (e.type === 'system' && e.subtype === 'api_usage')
+}
+
+/** Last main-chain uuid in a transcript file (side chains and usage rows skipped). */
 export function lastUuidIn(file: string): string | null {
   let raw: string
   try {
@@ -29,8 +35,8 @@ export function lastUuidIn(file: string): string | null {
   const lines = raw.trimEnd().split('\n')
   for (let i = lines.length - 1; i >= 0; i--) {
     try {
-      const e = JSON.parse(lines[i]!) as { uuid?: unknown; isSidechain?: unknown }
-      if (typeof e.uuid === 'string' && e.uuid && !e.isSidechain) return e.uuid
+      const e = JSON.parse(lines[i]!) as { uuid?: unknown; isSidechain?: unknown; type?: unknown; subtype?: unknown }
+      if (typeof e.uuid === 'string' && e.uuid && !offChain(e)) return e.uuid
     } catch {
       /* torn line */
     }
@@ -134,7 +140,7 @@ export class UnifiedLog {
           e.subtype === 'compact_boundary' || (typeof e.parentUuid === 'string' && this.segment.has(e.parentUuid))
         if (!keepsParent && !e.isSidechain) e.parentUuid = this.last
         this.segment.add(e.uuid)
-        if (!e.isSidechain) this.last = e.uuid
+        if (!offChain(e)) this.last = e.uuid
       }
       lines.push(JSON.stringify(e))
     }

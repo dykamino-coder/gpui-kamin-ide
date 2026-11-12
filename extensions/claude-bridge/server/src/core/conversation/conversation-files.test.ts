@@ -148,6 +148,22 @@ describe('unified log', () => {
     expect(lines(file)[2]).toMatchObject({ uuid: 'b1', parentUuid: 'a1' })
   })
 
+  it('hangs codex usage rows on the chain without making them the parent of the next entry', () => {
+    const dir = tmp()
+    const file = path.join(dir, 'L.jsonl')
+    const log = new UnifiedLog(file)
+    log.append([
+      entry('a1', null),
+      { type: 'system', subtype: 'api_usage', uuid: 'usage:t1:10', parentUuid: 'a1' } as unknown as JsonlEntry,
+      entry('a2', 'a1'),
+    ])
+    expect(lines(file)[2]).toMatchObject({ uuid: 'a2', parentUuid: 'a1' })
+    log.append([
+      { type: 'system', subtype: 'api_usage', uuid: 'usage:t2:20', parentUuid: 'a2' } as unknown as JsonlEntry,
+    ])
+    expect(lastUuidIn(file)).toBe('a2')
+  })
+
   it('shares one writer per file', () => {
     const dir = tmp()
     const file = path.join(dir, 'L.jsonl')
