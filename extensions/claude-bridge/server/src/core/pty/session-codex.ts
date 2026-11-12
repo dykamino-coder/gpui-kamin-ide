@@ -104,6 +104,45 @@ function lastUuid(file: string): string | null {
   return null
 }
 
+/** The model and effort chosen in a codex chat. codex records them in its
+ *  rollout only with the next turn, so a choice made without a turn would be
+ *  lost when the app-server or Bridge restarts; Bridge keeps it next to the
+ *  session settings, per thread, and resumes the thread with it. */
+export interface CodexChoice {
+  model?: string
+  /** Bridge effort level (the selector's value). */
+  effort?: string
+}
+
+function choiceFile(settingsDir: string, threadId: string): string {
+  return path.join(settingsDir, `codex-choice-${threadId.replace(/[^\w.-]/g, '_')}.json`)
+}
+
+export function loadCodexChoice(settingsDir: string, threadId: string): CodexChoice | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(choiceFile(settingsDir, threadId), 'utf8')) as Record<string, unknown>
+    return {
+      ...(typeof raw.model === 'string' && raw.model ? { model: raw.model } : {}),
+      ...(typeof raw.effort === 'string' && raw.effort ? { effort: raw.effort } : {}),
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Records a model or effort change of a codex chat (merged with earlier ones). */
+export function saveCodexChoice(session: PtySession, change: CodexChoice): void {
+  const threadId = codexBindings.get(session)?.agent.conversationId()
+  if (!threadId) return
+  const next = { ...loadCodexChoice(session.settingsDir, threadId), ...change }
+  try {
+    fs.mkdirSync(session.settingsDir, { recursive: true })
+    fs.writeFileSync(choiceFile(session.settingsDir, threadId), JSON.stringify(next), { mode: 0o600 })
+  } catch (error) {
+    warnLog('codex choice not saved', { sessionId: session.id, error: String(error) })
+  }
+}
+
 /** Claude model ids from the shared selector never reach codex. */
 export function codexModel(model: string | null | undefined): string | undefined {
   return model && !/^claude/i.test(model) ? model : undefined
@@ -154,12 +193,15 @@ export async function createCodexSession(
     url: `http://127.0.0.1:${bridgeConfig.port}/mcp/${mcpEndpoint.id}`,
     token: mcpEndpoint.token,
   })
+  // A resumed thread continues on the model and effort last chosen in it.
+  const saved = placement.resumeThreadId ? loadCodexChoice(settingsDir, placement.resumeThreadId) : null
+  const effort = saved?.effort ?? config.effort
   const startOptions = {
     host,
     id: sessionId,
     cwd: settingsDir,
-    model: codexModel(config.model),
-    effort: codexEffort(config.effort),
+    model: codexModel(saved?.model) ?? codexModel(config.model),
+    effort: codexEffort(effort),
     threadConfig,
     developerInstructions: developerInstructions(config),
   }
@@ -219,8 +261,8 @@ export async function createCodexSession(
     pendingElicitations: new Map(),
     sessionTitle: null,
     isRestarting: false,
-    effort: config.effort || null,
-    model: codexModel(config.model) ?? null,
+    effort: effort || null,
+    model: startOptions.model ?? null,
     bearerHash: config.bearerHash,
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,

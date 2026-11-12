@@ -43641,12 +43641,13 @@ var ConnectionManager = class _ConnectionManager {
   }
   /** session:created reports the chat's engine. A new chat asked for a model the
    *  server did not start on (the create message carries no model) gets it now,
-   *  once: codex applies a model change from the next turn without a restart. */
+   *  once, on either engine: codex applies it from the next turn, Claude through
+   *  the usual in-place model switch (a Claude model picked in a GPT chat). */
   noteSessionEngine(engine, model) {
     if (engine) this.engine = engine;
     const wanted = this.pendingModel;
     this.pendingModel = null;
-    if (wanted && engine === "codex" && model !== wanted) this.changeModel(wanted);
+    if (wanted && model !== wanted) this.changeModel(wanted);
   }
   /** Resume a previous session by conversationId. */
   resume(conversationId) {
