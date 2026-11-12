@@ -222,7 +222,9 @@ async function execute(command) {
         .flatMap((line) => (JSON.parse(line).message?.content ?? []).map?.((b) => b.text ?? '') ?? [])
         .filter((text) => !text.startsWith('recall:'))
       // The current message counts without its own command line.
-      const inputs = received.map((text, i) => (i === received.length - 1 ? text.split('\n').slice(1).join('\n') : text))
+      const inputs = received.map((text, i) =>
+        i === received.length - 1 ? text.split('\n').slice(1).join('\n') : text,
+      )
       const known = [prompt ?? '', ...inputs, ...said].join('\n')
       const hits = known.split('\n').filter((line) => parameter && line.includes(parameter))
       emit(rec.assistant([{ type: 'text', text: `recall: ${hits.join(' | ')}` }]))

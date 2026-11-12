@@ -979,8 +979,9 @@ describe('engine switch inside one chat', () => {
     const toClaude = await switchTo(client, 'claude', 'claude-sonnet-5-5')
     expect(toClaude.restarted).toMatchObject({ type: 'session:restarted', engine: 'claude' })
     const { HANDOFF_BUDGET_BYTES } = await import('../engine/handoff')
-    // The bulk turns do not fit: the newest turn verbatim, the earlier requests listed.
-    expect(toClaude.restarted.engineSwitch.contextBytes).toBeGreaterThan(1_000)
+    // The bulk turns do not fit whole: the newest turns verbatim, the end of the
+    // last bulk turn, the earlier requests listed.
+    expect(toClaude.restarted.engineSwitch.contextBytes).toBeGreaterThan(30_000)
     expect(toClaude.restarted.engineSwitch.contextBytes).toBeLessThanOrEqual(HANDOFF_BUDGET_BYTES)
     const id = (await client.next((f) => f.type === 'session:conversation-id', 15_000, toClaude.from)).conversationId
     const { SESSIONS_BASE, sanitizeDirName } = await import('./session-settings')

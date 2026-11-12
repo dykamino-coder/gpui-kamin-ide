@@ -121,6 +121,24 @@ describe('buildHandoff', () => {
     expect(handoff.text).not.toContain('�')
   })
 
+  it('keeps the end of a long paste followed by short turns', () => {
+    const log = Array.from({ length: 5_000 }, (_, i) => `log line ${i} heartbeat ok`).join('\n')
+    const handoff = buildHandoff(
+      [
+        user('my fish is Nemo'),
+        assistant('noted'),
+        user(`Here is a log, reply ok:\n${log}\nFINAL LINE codename MARBLE-FOX-17`),
+        assistant('ok'),
+        user('what is the codename?'),
+      ],
+      source,
+    )!
+    expect(Buffer.byteLength(handoff.text)).toBeLessThanOrEqual(HANDOFF_BUDGET_BYTES)
+    expect(handoff.text).toContain('FINAL LINE codename MARBLE-FOX-17\n\nAssistant: ok\n\nUser: what is the codename?')
+    expect(handoff.text).toMatch(/User: \[… first \d+ bytes cut …\]/)
+    expect(handoff.text).toContain('the user asked:\n- my fish is Nemo')
+  })
+
   it('needs no model and is fast on a long conversation', () => {
     const entries: JsonlEntry[] = []
     for (let i = 0; i < 5_000; i++) entries.push(user(`step ${i} ${'s'.repeat(300)}`), assistant(`done ${i}`))

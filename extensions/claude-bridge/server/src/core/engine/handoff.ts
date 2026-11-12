@@ -200,8 +200,20 @@ export function buildHandoff(
   if (bytes(full) > budget) {
     shortened = true
     const recentBudget = Math.floor(budget * RECENT_SHARE)
-    const start = newestWithin(turns, recentBudget)
+    let start = newestWithin(turns, recentBudget)
     let recent = renderTurns(turns.slice(start))
+    // The turn before them did not fit whole (a pasted log, a long answer):
+    // its end goes in with the room left — the end of a paste is usually what
+    // the conversation went on about.
+    const left = recentBudget - bytes(recent) - 2
+    if (start > 0 && left > 1_000) {
+      const prev = turns[start - 1]!
+      const label = prev.role === 'user' ? 'User' : 'Assistant'
+      const keep = left - 80
+      const cut = bytes(prev.text) - keep
+      recent = `${label}: [… first ${cut} bytes cut …]${tailBytes(prev.text, keep)}${recent ? `\n\n${recent}` : ''}`
+      start--
+    }
     // One newest turn can exceed the share alone (a pasted log): keep its end.
     if (bytes(recent) > recentBudget) {
       const cut = bytes(recent) - recentBudget
