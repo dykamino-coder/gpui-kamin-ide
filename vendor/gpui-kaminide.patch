@@ -11584,7 +11584,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e7008a392de
+index 160587a4ad924f80c2dd01b90a8300febbc13105..a823e32a9758ed1cce920dc25e59edf21b29969f
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,7 @@
@@ -11907,18 +11907,16 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -89,3 +387,7 @@
+@@ -89,3 +387,5 @@
 -        let clipped_bounds = primitive
 -            .bounds()
 -            .intersect(&primitive.content_mask().bounds);
 +        let placed_bounds = placed_bounds(&primitive);
 +        // KaminIDE patch: ink of open retained subtrees, culled or not.
-+        for sink in &self.ink {
-+            sink.ink_sink().add_in(self.ink_scope, placed_bounds);
-+        }
++        crate::window::ink_add(&self.ink, self.ink_scope, placed_bounds);
 +        crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
 +        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -97,5 +399,10 @@
+@@ -97,5 +397,10 @@
 -        let order = self
 -            .layer_stack
 -            .last()
@@ -11934,7 +11932,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +            Some(o) => o,
 +            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
 +        };
-@@ -136,0 +444,16 @@
+@@ -136,0 +442,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
 +            let (kind, index) = match &primitive {
 +                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
@@ -11951,7 +11949,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -139,2 +462,40 @@
+@@ -139,2 +460,40 @@
 -    }
 -
 +        if let Some(capture) = self.segment_capture.as_mut() {
@@ -11994,7 +11992,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +503,76 @@
+@@ -142 +501,76 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let operations = &prev_scene.paint_operations[range.clone()];
 +        // A block whose borrowed tree died with its record is packed again.
@@ -12072,7 +12070,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +580,203 @@
+@@ -144,4 +578,201 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -12191,9 +12189,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +            self.paint_operations.push(operation);
 +        }
 +        if let Some(ink) = ink {
-+            for sink in &self.ink {
-+                sink.ink_sink().add_in(self.ink_scope, ink);
-+            }
++            crate::window::ink_add(&self.ink, self.ink_scope, ink);
 +            crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, ink));
 +        }
 +        let index = match graft {
@@ -12280,7 +12276,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -193,0 +829,92 @@
+@@ -193,0 +825,92 @@
 +/// KaminIDE patch: bounds of a primitive at its place on screen (after its
 +/// transformation), before the content mask.
 +fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
@@ -12373,20 +12369,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +        }
 +}
 +
-@@ -213,0 +941 @@
+@@ -213,0 +937 @@
 +#[derive(Clone)]
-@@ -216 +944,4 @@
+@@ -216 +940,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +949,4 @@
+@@ -217,0 +945,4 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
-@@ -259,0 +995,55 @@
+@@ -259,0 +991,55 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -12442,7 +12438,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -543,0 +1334,10 @@
+@@ -543,0 +1330,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -12453,19 +12449,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +1381,5 @@
+@@ -580,0 +1377,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1408,5 @@
+@@ -602,0 +1404,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1460,12 @@
+@@ -649,0 +1456,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -12478,10 +12474,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1573 @@
+@@ -751 +1569 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1580,54 @@
+@@ -757,0 +1576,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -12536,7 +12532,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1650,23 @@
+@@ -773,0 +1646,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -12560,12 +12556,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..66b6029770481e245e062326747b5e70
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1695,2 @@
+@@ -795,0 +1691,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1717 @@
+@@ -815,0 +1713 @@
 +            color_mapping: None,
-@@ -835,0 +1738,6 @@
+@@ -835,0 +1734,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
@@ -22451,7 +22447,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..c33adb6efd8f4ca3a3ba37596f8d13cc37741cce
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..2a4a6ae6bb5ae38d9c1c3de1171c9705d2791101
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -22468,9 +22464,9 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..c33adb6efd8f4ca3a3ba37596f8d13cc
 +mod paint_record;
 +/// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 +mod retained;
-+pub(crate) use retained::{reset_ink_scopes, scoped_ink};
++pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
 +pub(crate) use retained::InkSinks;
-+pub use retained::{InkScope, InkSink, InkTarget, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
++pub use retained::{InkScope, InkSink, InkSinkList, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
 +mod hit_transform;
 +pub use hit_transform::PaintHitScope;
 +pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
@@ -26471,7 +26467,7 @@ index 0000000000000000000000000000000000000000..3f28bd5677fd04d6d51a75bc58c9c8af
 +}
 diff --git a/vendor/gpui/src/window/paint_snapshot/raster_env.rs b/vendor/gpui/src/window/paint_snapshot/raster_env.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0c34e173b07129c71ce180e185e270d8dc82b2e5
+index 0000000000000000000000000000000000000000..844097e46d43fb9286088af19e8c5f778ae8cfb6
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_snapshot/raster_env.rs
 @@ -0,0 +1,239 @@
@@ -26578,7 +26574,7 @@ index 0000000000000000000000000000000000000000..0c34e173b07129c71ce180e185e270d8
 +            && b.image_cache_stack.len() == window.image_cache_stack.len()
 +            && b.image_cache_stack.iter().zip(&window.image_cache_stack).all(|(a, b)| a.same(b))
 +            && b.ink.len() == window.next_frame.scene.ink.len()
-+            && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| std::ptr::addr_eq(Rc::as_ptr(a), Rc::as_ptr(b)))
++            && b.ink.iter().zip(&window.next_frame.scene.ink).all(|(a, b)| Rc::ptr_eq(&a.0, &b.0) && a.1 == b.1)
 +            && b.ink_scope == super::capture_scope(window)
 +            && self.contexts == window.raster_frame.contexts
 +    }
@@ -27485,10 +27481,10 @@ index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3a2213a85603346018c2e486aad762066e729b93
+index 0000000000000000000000000000000000000000..c67fb2a4f889ca9b52263640e499bad2529de662
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,635 @@
+@@ -0,0 +1,671 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -27657,25 +27653,63 @@ index 0000000000000000000000000000000000000000..3a2213a85603346018c2e486aad76206
 +    late: std::cell::Cell<u32>,
 +}
 +
-+/// KaminIDE patch: a value that holds an ink sink inline. A host that records
-+/// thousands of blocks a frame opens the record of each as its sink
-+/// (`Window::with_ink_sink`) instead of allocating a sink beside it.
-+pub trait InkTarget {
-+    /// The sink the paint under this target is measured into.
-+    fn ink_sink(&self) -> &InkSink;
-+}
++/// KaminIDE patch: the ink sinks of one host's frame, opened by number
++/// (`Window::with_ink_sink`). A host that records thousands of blocks a frame
++/// keeps their sinks in one list it releases when the frame's records are
++/// sealed, instead of a sink inside each kept record: the measure belongs to
++/// the frame, the record keeps only its result (Blink accumulates the bounds
++/// of a paint chunk in the paint controller's chunk list, not in the client).
++/// A sink is added while no paint measures into the list (a build), so a
++/// paint never finds the list borrowed.
++#[derive(Default)]
++pub struct InkSinkList(std::cell::RefCell<Vec<InkSink>>);
 +
-+impl InkTarget for InkSink {
-+    fn ink_sink(&self) -> &InkSink {
-+        self
++impl InkSinkList {
++    /// A new, empty sink; its number in the list.
++    pub fn open(&self) -> u32 {
++        let mut sinks = self.0.borrow_mut();
++        sinks.push(InkSink::new());
++        (sinks.len() - 1) as u32
++    }
++
++    /// `f` of sink `at`; `None` once the list was released.
++    pub fn with<R>(&self, at: u32, f: impl FnOnce(&InkSink) -> R) -> Option<R> {
++        self.0.borrow().get(at as usize).map(f)
++    }
++
++    /// Drop every sink and the list's storage: the frame's measures are read.
++    pub fn release(&self) {
++        drop(self.0.take());
++    }
++
++    fn add_in(&self, at: u32, scope: u32, bounds: Bounds<ScaledPixels>) {
++        self.with(at, |sink| sink.add_in(scope, bounds));
++    }
++
++    fn taint_in(&self, at: u32, scope: u32) {
++        self.with(at, |sink| sink.taint_in(scope));
 +    }
 +}
 +
 +/// The ink sinks open at a point of paint: rarely more than one, and copied
 +/// into every deferred paint environment, so one sink stays inline. One
-+/// inline (wide) pointer keeps the list as small as a `Vec` (24 bytes with
++/// pointer and a number keep the list as small as a `Vec` (24 bytes with
 +/// smallvec's `union`): the scene and every paint snapshot keep their size.
-+pub(crate) type InkSinks = smallvec::SmallVec<[Rc<dyn InkTarget>; 1]>;
++pub(crate) type InkSinks = smallvec::SmallVec<[(Rc<InkSinkList>, u32); 1]>;
++
++/// Offer `bounds` painted under scope `scope` to the open sinks `sinks`.
++pub(crate) fn ink_add(sinks: &InkSinks, scope: u32, bounds: Bounds<ScaledPixels>) {
++    for (list, at) in sinks {
++        list.add_in(*at, scope, bounds);
++    }
++}
++
++/// Taint the open sinks `sinks` in scope `scope`.
++pub(crate) fn ink_taint(sinks: &InkSinks, scope: u32) {
++    for (list, at) in sinks {
++        list.taint_in(*at, scope);
++    }
++}
 +const INK_TAINTED: u32 = 1;
 +const INK_PAINTED: u32 = 2;
 +const INK_LATE_ALL: u32 = 4;
@@ -27832,9 +27866,7 @@ index 0000000000000000000000000000000000000000..3a2213a85603346018c2e486aad76206
 +            && self.callbacks == window.next_frame_callback_count();
 +        if !quiet {
 +            let scope = window.next_frame.scene.ink_scope;
-+            for sink in &window.next_frame.scene.ink {
-+                sink.ink_sink().taint_in(scope);
-+            }
++            ink_taint(&window.next_frame.scene.ink, scope);
 +            scoped_ink(scope, |sink| sink.taint_in(scope));
 +        }
 +    }
@@ -27934,10 +27966,14 @@ index 0000000000000000000000000000000000000000..3a2213a85603346018c2e486aad76206
 +        crate::text_system::with_layouts_released(|| f(self))
 +    }
 +
-+    /// Paint `f` with `sink` measuring its ink (see [`InkSink`]). The sink
-+    /// may live inside a value the caller already holds ([`InkTarget`]).
-+    pub fn with_ink_sink<R>(&mut self, sink: Rc<dyn InkTarget>, f: impl FnOnce(&mut Self) -> R) -> R {
-+        self.next_frame.scene.ink.push(sink);
++    /// Paint `f` with sink `at` of `list` measuring its ink (see [`InkSink`],
++    /// [`InkSinkList`]).
++    pub fn with_ink_sink<R>(
++        &mut self,
++        (list, at): (&Rc<InkSinkList>, u32),
++        f: impl FnOnce(&mut Self) -> R,
++    ) -> R {
++        self.next_frame.scene.ink.push((list.clone(), at));
 +        let probe = InkProbe::open(self);
 +        let result = f(self);
 +        if let Some(probe) = probe {
@@ -27957,9 +27993,7 @@ index 0000000000000000000000000000000000000000..3a2213a85603346018c2e486aad76206
 +        }
 +        let scaled = bounds.scale(self.scale_factor());
 +        let scene = &self.next_frame.scene;
-+        for sink in &scene.ink {
-+            sink.ink_sink().add_in(scene.ink_scope, scaled);
-+        }
++        ink_add(&scene.ink, scene.ink_scope, scaled);
 +        scoped_ink(scene.ink_scope, |sink| sink.add_in(scene.ink_scope, scaled));
 +    }
 +
@@ -28010,9 +28044,7 @@ index 0000000000000000000000000000000000000000..3a2213a85603346018c2e486aad76206
 +            scene.ink_allowed.1 +=
 +                (end.accessed_element_states_index - start.accessed_element_states_index) as u32;
 +        } else {
-+            for sink in &scene.ink {
-+                sink.ink_sink().taint_in(scene.ink_scope);
-+            }
++            ink_taint(&scene.ink, scene.ink_scope);
 +            scoped_ink(scene.ink_scope, |sink| sink.taint_in(scene.ink_scope));
 +        }
 +        result

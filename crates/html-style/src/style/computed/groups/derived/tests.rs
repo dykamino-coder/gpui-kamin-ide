@@ -1,3 +1,5 @@
+//! Tests of the document's derived groups and shared values.
+
 use super::*;
 
 struct Push;
@@ -36,7 +38,10 @@ fn one_edit_of_one_shared_value_is_shared_and_may_derive_groups() {
         v.1 = 1;
     };
     let first = cache.derive_shared::<Push, _>(&base, 2, edit);
-    let second = cache.derive_shared::<Push, _>(&base.clone(), 2, edit);
+    // Another owner handle of the same value hits the same entry.
+    let alias = base.clone();
+    let second = cache.derive_shared::<Push, _>(&alias, 2, edit);
+    drop(alias);
     assert!(Rc::ptr_eq(&first, &second));
     assert_eq!((&first.0[..], first.1), (&[1, 2][..], 1));
     assert_eq!(cache.len(), 2, "the value and the group it derived");
