@@ -420,6 +420,40 @@ describe('codex chat over the Bridge session WebSocket', () => {
     again.close()
   }, 30_000)
 
+  it('resumes a codex chat on the model and effort chosen after its last turn', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, 'first turn', 'k1')
+    await client.entry((e) => text(e).startsWith('echo: first turn [model=gpt-fake effort=default]'))
+    const conv = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+    // Chosen in the chat, no turn afterwards: codex's rollout does not know it yet.
+    client.send({ type: 'session:change-model', model: 'gpt-fake-mini' })
+    await client.next((f) => f.type === 'session:model-changed' && f.model === 'gpt-fake-mini')
+    client.send({ type: 'session:change-effort', effort: 'low' })
+    await client.next((f) => f.type === 'session:model-changed' && f.effort === 'low')
+    client.send({ type: 'session:end' })
+    client.close()
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime())
+
+    const again = await Client.open(port)
+    again.send({
+      type: 'session:resume',
+      token: 'tok-a',
+      conversationId: conv,
+      protocolVersion: 1,
+      cwd: '/work/project',
+    })
+    expect(await again.next((f) => f.type === 'session:created')).toMatchObject({
+      engine: 'codex',
+      model: 'gpt-fake-mini',
+      effort: 'low',
+    })
+    await say(again, 'after restart', 'k2')
+    await again.entry((e) => text(e) === 'echo: after restart [model=gpt-fake-mini effort=low]')
+    again.send({ type: 'session:end' })
+    again.close()
+  }, 30_000)
   it('keeps the per-user main agent and serves the GPT model list', async () => {
     const client = await Client.open(port)
     client.send({ type: 'codex:models', token: 'tok-a' })
