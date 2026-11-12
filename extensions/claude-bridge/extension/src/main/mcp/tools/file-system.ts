@@ -1,10 +1,10 @@
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import fg from 'fast-glob'
 import { notebookRead } from './notebook'
 import { readTextCached, invalidateFileCache } from '../../utils/file-read-cache'
 import { detectEncoding, encodeText, type TextEncoding } from './text-codec'
+import { globQuery, listGlob, MAX_GLOB_LISTED, newestFirst } from './glob-tool'
 import { resolveToolPath, resolveWorkingDirectory } from '../../utils/working-directory'
 import type { ToolCallContext } from '../executor'
 import {
@@ -13,7 +13,6 @@ import {
   errorResult,
   MAX_READ_BYTES,
   WARN_READ_BYTES,
-  STAT_CONCURRENCY,
   IMAGE_EXTENSIONS,
   isBlockedDevicePath,
 } from './fs-shared'
@@ -23,13 +22,6 @@ export type { McpResult } from './fs-shared'
 // from `./file-system` historically; keep that surface stable.
 export { grepSearch, ripgrepStream, ripgrepFileCount } from './grep-tool'
 
-// `fast-glob` is imported statically so Vite's main-process bundler inlines
-// it. The previous lazy `require('fast-glob')` saved ~30ms on cold start in
-// dev, but `@electron-forge/plugin-vite` drops node_modules from the staged
-// app entirely (see `electron/forge.config.ts` afterCopy comment), so the
-// dynamic require silently failed in packaged builds with "Cannot find
-// module 'fast-glob'" — and the model fell back to listing files via Bash.
-// Bundling at the cost of 30ms cold start is the right trade.
 
 // Curly-quote normalization for fuzzy string matching in Edit
 const LEFT_SINGLE_CURLY_QUOTE = '\u2018'
@@ -381,26 +373,6 @@ export async function editFile(input: Record<string, unknown>, context?: ToolCal
 
 // ── Glob ────────────────────────────────────────────────────────────────
 
-async function batchedStat(files: string[]): Promise<Array<{ file: string; mtime: number }>> {
-  const out: Array<{ file: string; mtime: number }> = []
-  for (let i = 0; i < files.length; i += STAT_CONCURRENCY) {
-    const batch = files.slice(i, i + STAT_CONCURRENCY)
-    const stats = await Promise.all(
-      batch.map(async (f) => {
-        try {
-          const s = await fsp.stat(f)
-          return { file: f, mtime: s.mtimeMs }
-        } catch {
-          return { file: f, mtime: 0 }
-        }
-      }),
-    )
-    out.push(...stats)
-  }
-  return out
-}
-
-const MAX_GLOB_RESULTS = 10_000
 const GLOB_SHOWN = 100
 
 /** A filesystem root (`/`, `C:\`, `C:/`) — an unbounded glob from here walks the
@@ -416,44 +388,33 @@ export async function globSearch(input: Record<string, unknown>, context?: ToolC
   const basePath = input.path
     ? resolveToolPath(input.path as string, context?.cwd)
     : resolveWorkingDirectory(context?.cwd)
+  const query = globQuery(pattern, basePath)
 
   // Refuse an unbounded walk from a filesystem root — `Glob("**", "C:\\")` would
   // enumerate + stat millions of entries (minutes of work, hundreds of MB).
-  if (isFsRoot(basePath) && /^\*\*?(\/\*+)?$/.test(pattern.trim())) {
+  if (isFsRoot(query.base) && /^\/?(\*\*?\/?)+\*?$/.test(query.pattern.trim())) {
     return errorResult('Refusing an unbounded glob from a filesystem root — scope `path` to a project or narrow the pattern.')
+  }
+  try {
+    if (!(await fsp.stat(query.base)).isDirectory()) return errorResult(`Path is not a directory: ${query.base}`)
+  } catch (err) {
+    return fsError(err, query.base)
   }
 
   try {
-    // Stream + cap so a broad pattern can't materialise a multi-million-entry
-    // array in memory; we stop at MAX_GLOB_RESULTS and tell the model to narrow.
-    const files: string[] = []
-    let capped = false
-    const stream = fg.stream(pattern, {
-      cwd: basePath,
-      absolute: true,
-      dot: true,
-      onlyFiles: true,
-      followSymbolicLinks: true,
-      ignore: ['**/.git/**', '**/node_modules/**', '**/.next/**', '**/dist/**', '**/build/**', '**/.vite/**'],
-    })
-    for await (const entry of stream) {
-      files.push(entry as string)
-      if (files.length >= MAX_GLOB_RESULTS) { capped = true; break }
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (capped) (stream as any).destroy?.()
-
-    const withStats = await batchedStat(files)
-    withStats.sort((a, b) => b.mtime - a.mtime || a.file.localeCompare(b.file))
+    const { files, capped } = await listGlob(query, MAX_GLOB_LISTED, context?.signal)
+    const sorted = await newestFirst(files)
 
     // Like native Glob, return at most GLOB_SHOWN paths, but newest first and
     // with the number of the rest, so a broad pattern costs ~100 lines of
     // context instead of thousands.
-    const shown = withStats.slice(0, GLOB_SHOWN).map((s) => s.file)
-    const total = capped ? `more than ${MAX_GLOB_RESULTS}` : String(withStats.length)
+    const shown = sorted.slice(0, GLOB_SHOWN)
+    const total = capped ? `more than ${MAX_GLOB_LISTED}` : String(sorted.length)
     const suffix =
-      withStats.length > GLOB_SHOWN
-        ? `\n(Showing the ${GLOB_SHOWN} most recently modified of ${total} matching files. Use a more specific pattern or path for the rest.)`
+      sorted.length > GLOB_SHOWN
+        ? capped
+          ? `\n(Showing the ${GLOB_SHOWN} most recently modified of the first ${MAX_GLOB_LISTED} matching files listed; more exist. Use a more specific pattern or path.)`
+          : `\n(Showing the ${GLOB_SHOWN} most recently modified of ${total} matching files. Use a more specific pattern or path for the rest.)`
         : ''
     return textResult((shown.join('\n') || 'No files matched the pattern.') + suffix)
   } catch (err: unknown) {
