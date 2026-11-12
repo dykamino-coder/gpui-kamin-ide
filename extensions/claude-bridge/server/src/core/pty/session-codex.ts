@@ -358,6 +358,11 @@ export class CodexSessionBinding {
     this.offEvents = agent.events.subscribe((event) => this.onEvent(event))
   }
 
+  /** A model change: the next turn's entries carry the new model. */
+  modelChanged(model: string): void {
+    this.projector.setModel(model)
+  }
+
   /** The thread's live agent (replaced after an app-server restart). */
   get agent(): CodexAgentSession {
     return this.current
