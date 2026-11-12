@@ -97,9 +97,9 @@ for (const f of shipFiles) {
 // кэшируется в target/, чтобы повторная сборка не ходила в сеть.
 {
   const rg = {
-    url: "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-pc-windows-msvc.zip",
-    dir: "ripgrep-14.1.1-x86_64-pc-windows-msvc",
-    sha256: "d0f534024c42afd6cb4d38907c25cd2b249b79bbe6cc1dbee8e3e37c2b6e25a1",
+    url: "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-pc-windows-msvc.zip",
+    dir: "ripgrep-15.2.0-x86_64-pc-windows-msvc",
+    sha256: "71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5",
   }
   const { createHash } = await import("node:crypto")
   const cacheDir = join(root, "target", "ripgrep")
@@ -127,7 +127,7 @@ for (const f of shipFiles) {
   })
   // Рядом с kamin-jobrun.exe: расширение ищет `<install>\rg.exe`.
   for (const [name, data] of Object.entries(files)) writeFileSync(join(dist, name), data)
-  console.log("[installer] ripgrep 14.1.1: rg.exe")
+  console.log("[installer] ripgrep 15.2.0: rg.exe")
 }
 
 /** Извлекает из zip перечисленные записи (stored или deflate) по central
