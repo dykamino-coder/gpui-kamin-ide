@@ -9,6 +9,7 @@ import {
   handleMcpResponse,
   interruptPendingForSession,
   settleMcpResult,
+  mcpCallTimeoutMs,
 } from './session-mcp-call.js'
 import type { PtySession } from './types.js'
 
@@ -234,5 +235,39 @@ describe('INC-2026-0096: interrupt of the calls a session still waits on', () =>
 
     expect(onlyPending(target.id).delivered).toBe(true)
     expect(live.frames).toHaveLength(1)
+  })
+})
+
+describe('Bridge-side deadline of a forwarded tool call', () => {
+  const tools = {
+    registeredTools: [{ name: 'picker__choose_icon', description: '', inputSchema: {} }],
+  } as unknown as PtySession
+
+  it('lets a user MCP server tool outlast the 10-minute human window and the host cap', () => {
+    expect(mcpCallTimeoutMs(tools, 'picker__choose_icon')).toBe(31 * 60_000)
+  })
+
+  it('keeps the existing limits of built-in, heavy and interactive tools', () => {
+    expect(mcpCallTimeoutMs(tools, 'WidgetShow')).toBe(120_000)
+    expect(mcpCallTimeoutMs(tools, 'Bash')).toBe(30 * 60_000)
+    expect(mcpCallTimeoutMs(tools, 'AskUserQuestion')).toBeNull()
+  })
+
+  it('times a forwarded external tool call out only after the external deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      const live = socket()
+      const target = { ...session(live.ws), ...tools } as PtySession
+      const outcome = sendMcpCall(target, 'picker__choose_icon', {})
+      const settled = vi.fn()
+      outcome.then(settled, settled)
+      await vi.advanceTimersByTimeAsync(31 * 60_000 - 1)
+      expect(settled).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      await expect(outcome).rejects.toThrow('MCP call timeout (1860000ms): picker__choose_icon')
+    } finally {
+      rejectAllPending('test cleanup')
+      vi.useRealTimers()
+    }
   })
 })
