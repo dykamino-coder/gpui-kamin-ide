@@ -39,9 +39,13 @@ fn one_edit_of_one_shared_value_is_shared_and_may_derive_groups() {
     };
     let first = cache.derive_shared::<Push, _>(&base, 2, edit);
     // Another owner handle of the same value hits the same entry.
-    let alias = base.clone();
+    let alias = Rc::clone(&base);
     let second = cache.derive_shared::<Push, _>(&alias, 2, edit);
-    drop(alias);
+    assert_eq!(
+        Rc::strong_count(&alias),
+        3,
+        "base, alias and the cache entry"
+    );
     assert!(Rc::ptr_eq(&first, &second));
     assert_eq!((&first.0[..], first.1), (&[1, 2][..], 1));
     assert_eq!(cache.len(), 2, "the value and the group it derived");

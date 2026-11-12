@@ -27216,10 +27216,10 @@ index 0000000000000000000000000000000000000000..bc58113f146f236fc2ec37947d0ece68
 +}
 diff --git a/vendor/gpui/src/window/render_context.rs b/vendor/gpui/src/window/render_context.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f12ad244d
+index 0000000000000000000000000000000000000000..9d92561b810c8a95400783f1054dbeedf8b6023e
 --- /dev/null
 +++ b/vendor/gpui/src/window/render_context.rs
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,277 @@
 +//! Window-owned typed traversal scopes and snapshots for deferred drawing.
 +// KaminIDE patch: pass host paint/prepaint context through GPUI without thread-local state.
 +
@@ -27281,8 +27281,11 @@ index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f
 +pub(super) struct RenderContexts(Rc<RefCell<Values>>);
 +
 +impl RenderContexts {
++    /// KaminIDE patch: a copy sized to the values, not to the live map. The live map keeps the
++    /// capacity of its deepest scope after the scopes end (an empty map of eight buckets);
++    /// a clone would copy those buckets into every paint snapshot, an empty one included.
 +    pub(super) fn snapshot(&self) -> Snapshot {
-+        Snapshot(self.0.borrow().clone())
++        Snapshot(self.0.borrow().iter().map(|(id, value)| (*id, value.clone())).collect())
 +    }
 +
 +    pub(super) fn enter_snapshot(&self, snapshot: Snapshot) -> SnapshotScope {
@@ -27464,6 +27467,21 @@ index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f
 +        }
 +        assert_eq!(*contexts.get::<u32>().unwrap(), 23);
 +        assert_eq!(&*contexts.get::<String>().unwrap(), "caller");
++    }
++
++    #[test]
++    fn a_snapshot_takes_the_room_of_its_values_not_of_the_live_map() {
++        let contexts = RenderContexts::default();
++        {
++            let _a = contexts.enter(Some(Rc::new(1u8)));
++            let _b = contexts.enter(Some(Rc::new(2u16)));
++            let _c = contexts.enter(Some(Rc::new(3u32)));
++            let _d = contexts.enter(Some(Rc::new(4u64)));
++        }
++        assert!(contexts.0.borrow().is_empty() && contexts.0.borrow().capacity() >= 4);
++        assert_eq!(contexts.snapshot().0.capacity(), 0, "an empty snapshot allocates nothing");
++        let _one = contexts.enter(Some(Rc::new(5u32)));
++        assert!(contexts.snapshot().0.capacity() < 4);
 +    }
 +
 +    #[test]
