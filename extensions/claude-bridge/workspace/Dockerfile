@@ -1,5 +1,5 @@
 # Build from the repository root, using workspace/containerignore (see README).
-FROM node:22-bookworm-slim AS build
+FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS build
 WORKDIR /opt/bridge
 COPY package.json package-lock.json ./
 COPY builtin-extensions/claude-bridge/package.json builtin-extensions/claude-bridge/package.json
@@ -20,9 +20,9 @@ RUN npm --prefix extensions/claude-bridge/workspace run build \
     && npm --prefix extensions/claude-bridge/webview run build:browser \
     && npm --prefix extensions/claude-bridge/workspace prune --omit=dev --no-audit --no-fund
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      bash ca-certificates curl git jq python3 ripgrep tini \
+      bash ca-certificates curl git jq python3 tini \
     && curl --fail --silent --show-error --location \
       https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -o /tmp/microsoft.deb \
     && dpkg -i /tmp/microsoft.deb && rm /tmp/microsoft.deb \
@@ -32,6 +32,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd --uid 10001 --gid workspace --create-home --shell /bin/bash workspace \
     && mkdir -p /workspace /home/workspace/.local/state/bridge \
     && chown workspace:workspace /workspace /home/workspace/.local/state/bridge
+COPY extensions/claude-bridge/workspace/install-ripgrep.sh /tmp/install-ripgrep.sh
+RUN sh /tmp/install-ripgrep.sh && rm /tmp/install-ripgrep.sh
 WORKDIR /opt/bridge/extensions/claude-bridge/workspace
 COPY --from=build /opt/bridge/node_modules /opt/bridge/node_modules
 COPY --from=build /opt/bridge/extensions/claude-bridge/workspace/node_modules ./node_modules
