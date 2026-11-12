@@ -202,6 +202,9 @@ export async function codexEngineAuth(runtime: CodexRuntime, probe: boolean): Pr
   const account = probe ? await runtime.accountStatus() : runtime.knownAccount()
   if (!account) return { loggedIn: null, reason: null }
   if (account.loggedIn) return { loggedIn: true, reason: null }
+  // A blocked proxy or an untrusted CA is not a sign-out: a new GPT chat stays
+  // on ChatGPT and shows that reason instead of moving to Claude.
+  if (account.checkFailed) return { loggedIn: null, reason: account.error?.message ?? null }
   return { loggedIn: false, reason: account.error?.message ?? CODEX_SIGNED_OUT }
 }
 

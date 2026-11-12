@@ -20,6 +20,7 @@ import { assertBridgeOwnedHome, buildCodexEnv, defaultCodexHome, prepareCodexHom
 import { classifyCodexError, type CodexErrorInfo } from './codex-errors'
 import { codexLockdownConfig, toConfigOverrides } from './config-toml'
 import { buildPatchedCatalog, type ModelCatalog } from './model-catalog'
+import { probeCodexNetwork } from './network-probe'
 import { currentModels } from './model-list-filter'
 
 export interface CodexAccountStatus {
@@ -32,6 +33,9 @@ export interface CodexAccountStatus {
   pendingLogin: CodexDeviceLogin | null
   /** Last failed login or account probe, already in plain language. */
   error: CodexErrorInfo | null
+  /** The account read itself failed (proxy, TLS, network): `loggedIn` is then
+   *  unknown, not a sign-out, and `error` says why. */
+  checkFailed?: boolean
 }
 
 export interface CodexDeviceLogin {
@@ -96,6 +100,8 @@ export interface CodexRuntimeOptions {
   /** Replaces the `codex --version` probe (tests). */
   probeVersion?: () => Promise<string>
   accountTtlMs?: number
+  /** Replaces the proxy/TLS probe behind a failed account read (tests). */
+  probeNetwork?: (env: NodeJS.ProcessEnv) => Promise<CodexErrorInfo | null>
 }
 
 const ACCOUNT_TTL_MS = 60_000
@@ -269,16 +275,26 @@ export class CodexRuntime {
       this.account = { value, at: Date.now() }
       return value
     } catch (error) {
-      const info = classifyCodexError((error as Error).message)
       return {
         loggedIn: false,
         email: null,
         planType: null,
         accountType: null,
         pendingLogin: this.pending,
-        error: info,
+        error: await this.explainReadFailure(classifyCodexError((error as Error).message)),
+        checkFailed: true,
       }
     }
+  }
+
+  /** codex names no cause for a blocked connection ("workspace routing
+   *  discovery failed"); ask the network the way codex would. */
+  private async explainReadFailure(info: CodexErrorInfo): Promise<CodexErrorInfo> {
+    if (info.kind !== 'other' && info.kind !== 'network') return info
+    const env = buildCodexEnv({ home: this.home, base: this.env, injectProxy: injectProxyEnv })
+    const cause = await (this.options.probeNetwork ?? probeCodexNetwork)(env).catch(() => null)
+    if (!cause) return info
+    return { kind: cause.kind, message: cause.message, detail: `${info.detail}; ${cause.detail}` }
   }
 
   /** Starts the ChatGPT device-code login; the admin opens the URL and enters the code. */

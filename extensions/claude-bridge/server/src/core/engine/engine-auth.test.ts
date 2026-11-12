@@ -151,3 +151,33 @@ describe.each([
     expect(refusal === null).toBe(signedIn)
   })
 })
+
+describe('ChatGPT unreachable (proxy 407, untrusted CA)', () => {
+  const unreachable = () => {
+    const runtime = codex({ loggedIn: false })
+    const status = {
+      loggedIn: false,
+      email: null,
+      planType: null,
+      accountType: null,
+      pendingLogin: null,
+      error: { kind: 'proxy-auth', message: 'The corporate proxy requires authentication (HTTP 407).', detail: '407' },
+      checkFailed: true,
+    }
+    runtime.accountStatus.mockResolvedValue(status)
+    const { monitor } = claude(true)
+    monitor.record({ loggedIn: true })
+    return { claude: monitor, runtime }
+  }
+
+  it('reports the sign-in as unknown with the reason, not as signed out', async () => {
+    expect(await codexEngineAuth(unreachable().runtime, true)).toEqual({
+      loggedIn: null,
+      reason: 'The corporate proxy requires authentication (HTTP 407).',
+    })
+  })
+
+  it('keeps a new GPT chat on ChatGPT instead of moving it to Claude', async () => {
+    expect(await chooseEngineForNewChat('codex', unreachable())).toEqual({ engine: 'codex', notice: null })
+  })
+})
