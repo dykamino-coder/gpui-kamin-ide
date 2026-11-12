@@ -17,10 +17,10 @@ local tokens, and local analytics are never shown as quota.
 
 ## 1. Sources and engine
 
-| Engine | Source rows | Usage record |
-| --- | --- | --- |
-| `claude` | Claude Code JSONL under `~/.claude/projects/**`, plus `proxy_usage` side calls that never reach JSONL | `type:'assistant'` rows with `message.usage` |
-| `codex` | Bridge projection of a Codex thread into the same projects tree; every row carries `engine:'codex'` | one `{type:'system', subtype:'api_usage', engine:'codex'}` row per model response (`thread/tokenUsage/updated` `last`) |
+| Engine   | Source rows                                                                                           | Usage record                                                                                                           |
+| -------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `claude` | Claude Code JSONL under `~/.claude/projects/**`, plus `proxy_usage` side calls that never reach JSONL | `type:'assistant'` rows with `message.usage`                                                                           |
+| `codex`  | Bridge projection of a Codex thread into the same projects tree; every row carries `engine:'codex'`   | one `{type:'system', subtype:'api_usage', engine:'codex'}` row per model response (`thread/tokenUsage/updated` `last`) |
 
 - `engine` is a **row** attribute (`jsonl_events.engine`, `NULL` = `claude`),
   not a session attribute: a chat that switches engine splits exactly.
@@ -108,35 +108,35 @@ hourly distinct counts is wrong.
 
 All measures are per turn (§2.1) and summed over the window.
 
-| Measure | Definition |
-| --- | --- |
-| `input` | uncached input tokens (Codex: inputTokens − cached − cacheWrite) |
-| `cacheWrite` | cache creation tokens (Claude 5m + 1h; Codex cache write) |
-| `cacheRead` | cache read tokens, always reported separately |
-| `output` | output tokens; Codex `reasoning_output_tokens` are already inside `output` and shown only as a sub-measure |
-| **new-token flow** | `input + cacheWrite + output` — the Usage chart and "tokens" without qualifier |
-| **API throughput** | `input + cacheWrite + cacheRead + output` — only where labelled "incl. cache reads" |
-| **context snapshot** | `input + cacheRead + cacheWrite` of one turn |
+| Measure              | Definition                                                                                                 |
+| -------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `input`              | uncached input tokens (Codex: inputTokens − cached − cacheWrite)                                           |
+| `cacheWrite`         | cache creation tokens (Claude 5m + 1h; Codex cache write)                                                  |
+| `cacheRead`          | cache read tokens, always reported separately                                                              |
+| `output`             | output tokens; Codex `reasoning_output_tokens` are already inside `output` and shown only as a sub-measure |
+| **new-token flow**   | `input + cacheWrite + output` — the Usage chart and "tokens" without qualifier                             |
+| **API throughput**   | `input + cacheWrite + cacheRead + output` — only where labelled "incl. cache reads"                        |
+| **context snapshot** | `input + cacheRead + cacheWrite` of one turn                                                               |
 
 ## 5. Surface definitions
 
-| Surface | Definition | Tie / empty |
-| --- | --- | --- |
-| Sessions | distinct `session_key` with ≥1 turn or human user message in the window | 0 |
-| User msg | count of human user messages (§2.2) | 0 |
-| Assistant msg | count of turns (§2.1), subagents included | 0 |
-| Session tokens → label **Context in use** | sum over sessions of the context snapshot of the session's **last top-level turn inside the window** | sessions without a top-level turn add 0 |
-| Usage chart | new-token flow per local day (or hour) per canonical model | — |
-| Models `in` / `out` / share | `in` = `input + cacheWrite`, `out` = `output`, share of new-token flow; cache reads shown as a separate column | — |
-| Favorite model | canonical model with the greatest new-token flow | more turns, then lexicographic id; none when no turns |
-| Active days | local days with ≥1 human user message | — |
-| Longest streak | longest run of consecutive active local days inside the window | 0 |
-| Current streak | run ending today, or yesterday when today has no activity yet | 0 |
-| Peak hour | local hour of day (0–23) with most human user messages | earliest hour |
-| Heatmap | human user messages per local day over the selected window; for `all` the grid shows the last 53 local weeks and is labelled so, while counters stay all-time | — |
-| Top Sessions / Users | resident server PTY sessions and distinct token UUIDs among them; detached sessions count during grace (live state, not analytics) | — |
-| Top `MCP Calls` | initiated relay attempts in resident PTYs, including failures/timeouts; label "attempts" | resets with the PTY |
-| Errors | API error turns per engine (`api_errors.engine`) | — |
+| Surface                                   | Definition                                                                                                                                                    | Tie / empty                                           |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Sessions                                  | distinct `session_key` with ≥1 turn or human user message in the window                                                                                       | 0                                                     |
+| User msg                                  | count of human user messages (§2.2)                                                                                                                           | 0                                                     |
+| Assistant msg                             | count of turns (§2.1), subagents included                                                                                                                     | 0                                                     |
+| Session tokens → label **Context in use** | sum over sessions of the context snapshot of the session's **last top-level turn inside the window**                                                          | sessions without a top-level turn add 0               |
+| Usage chart                               | new-token flow per local day (or hour) per canonical model                                                                                                    | —                                                     |
+| Models `in` / `out` / share               | `in` = `input + cacheWrite`, `out` = `output`, share of new-token flow; cache reads shown as a separate column                                                | —                                                     |
+| Favorite model                            | canonical model with the greatest new-token flow                                                                                                              | more turns, then lexicographic id; none when no turns |
+| Active days                               | local days with ≥1 human user message                                                                                                                         | —                                                     |
+| Longest streak                            | longest run of consecutive active local days inside the window                                                                                                | 0                                                     |
+| Current streak                            | run ending today, or yesterday when today has no activity yet                                                                                                 | 0                                                     |
+| Peak hour                                 | local hour of day (0–23) with most human user messages                                                                                                        | earliest hour                                         |
+| Heatmap                                   | human user messages per local day over the selected window; for `all` the grid shows the last 53 local weeks and is labelled so, while counters stay all-time | —                                                     |
+| Top Sessions / Users                      | resident server PTY sessions and distinct token UUIDs among them; detached sessions count during grace (live state, not analytics)                            | —                                                     |
+| Top `MCP Calls`                           | initiated relay attempts in resident PTYs, including failures/timeouts; label "attempts"                                                                      | resets with the PTY                                   |
+| Errors                                    | API error turns per engine (`api_errors.engine`)                                                                                                              | —                                                     |
 
 Top live counters (`userMessages`, MCP fields) are patched by
 `session:updated` for every field the card shows, so a newly created session
@@ -175,18 +175,18 @@ removed or return only fields computed by this contract (BR-21C).
 
 Status on `5624a330a`, source reading only; each row is owned by a child.
 
-| # (BR-21 card) | Baseline | Owner |
-| --- | --- | --- |
-| 2 turn dedup | done in `jsonl_accounting_events` (max per `message_id`, proxy merge) | keep; regression fixtures in BR-21A |
-| 1 subagent attribution | overview joins `st.session_id = e.session_id`; subagent rows have no own `session_tokens` row | BR-21A |
-| 7 identity | slices filter `st.user_name` | BR-21A |
-| 3 Session tokens range | last-context query has no window filter | BR-21B |
-| 8 timezone / DST | UTC hourly buckets, client re-buckets; streak math by fixed ms | BR-21B |
-| 6 compact payload | server supports `agg=hm` + `dailySessions`; client consumption unverified | BR-21B |
-| 4/5 freshness, live counters | 30 s TTL cache, no revision | BR-21C |
-| 11 legacy route | unchanged | BR-21C |
-| 9/10 aliases, prices | raw model ids; Codex catalog in progress (`feat/codex-stats-engine`) | BR-21D |
-| labels | "Session tokens", "tokens", MCP calls unlabeled | BR-21E |
+| # (BR-21 card)               | Baseline                                                                                      | Owner                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------- |
+| 2 turn dedup                 | done in `jsonl_accounting_events` (max per `message_id`, proxy merge)                         | keep; regression fixtures in BR-21A |
+| 1 subagent attribution       | overview joins `st.session_id = e.session_id`; subagent rows have no own `session_tokens` row | BR-21A                              |
+| 7 identity                   | slices filter `st.user_name`                                                                  | BR-21A                              |
+| 3 Session tokens range       | last-context query has no window filter                                                       | BR-21B                              |
+| 8 timezone / DST             | UTC hourly buckets, client re-buckets; streak math by fixed ms                                | BR-21B                              |
+| 6 compact payload            | server supports `agg=hm` + `dailySessions`; client consumption unverified                     | BR-21B                              |
+| 4/5 freshness, live counters | 30 s TTL cache, no revision                                                                   | BR-21C                              |
+| 11 legacy route              | unchanged                                                                                     | BR-21C                              |
+| 9/10 aliases, prices         | raw model ids; Codex catalog in progress (`feat/codex-stats-engine`)                          | BR-21D                              |
+| labels                       | "Session tokens", "tokens", MCP calls unlabeled                                               | BR-21E                              |
 
 ## 10. Acceptance fixtures (every child)
 
