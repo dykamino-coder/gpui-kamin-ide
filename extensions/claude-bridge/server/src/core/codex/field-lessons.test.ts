@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { killProcessTree } from './app-server'
-import { acquireCodexHomeLock, CODEX_HOME_LOCK_FILE, CodexHomeBusyError } from './codex-home-lock'
+import { acquireCodexHomeLock, CODEX_HOME_LOCK_FILE, CodexHomeBusyError, LOCK_STALE_MS } from './codex-home-lock'
 import {
   CodexHost,
   CodexHostRegistry,
@@ -72,35 +72,61 @@ describe('(1) one writer per codex thread', () => {
       expect(fs.existsSync(lockFile())).toBe(false)
     })
 
-    it('a replaced container takes the lock at once (another host cannot prove its owner alive)', () => {
-      acquireCodexHomeLock(home, { ...hostA(101), host: 'old-container' })
-      const lock = acquireCodexHomeLock(home, { ...hostA(202), host: 'new-container' })
+    it('another host keeps the lock while its heartbeat is fresh and loses it 15 s after it stops', () => {
+      const t0 = Date.now()
+      const oldOwner = acquireCodexHomeLock(home, { ...hostA(101), host: 'old-container' })
+      // Two live containers on one volume: the second must not start codex.
+      expect(() =>
+        acquireCodexHomeLock(home, { ...hostA(202), host: 'new-container', now: () => t0 + LOCK_STALE_MS - 1_000 }),
+      ).toThrow(CodexHomeBusyError)
+      // The old container was replaced: its heartbeat stopped at t0.
+      fs.utimesSync(lockFile(), new Date(t0), new Date(t0))
+      const lock = acquireCodexHomeLock(home, {
+        ...hostA(202),
+        host: 'new-container',
+        now: () => t0 + LOCK_STALE_MS + 1_000,
+      })
       expect(owner()).toMatchObject({ host: 'new-container', pid: 202 })
+      oldOwner.release() // not the owner any more: leaves the lock alone
+      expect(fs.existsSync(lockFile())).toBe(true)
       lock.release()
     })
 
-    it('a dead pid, a reused pid or another boot is taken over at once', () => {
+    it('the owner refreshes its heartbeat', async () => {
+      const lock = acquireCodexHomeLock(home, { ...hostA(101), heartbeatMs: 20 })
+      const past = new Date(Date.now() - 60_000)
+      fs.utimesSync(lockFile(), past, past)
+      await vi.waitFor(() => expect(Date.now() - fs.statSync(lockFile()).mtimeMs).toBeLessThan(10_000))
+      lock.release()
+    })
+
+    it('on the same host a dead or reused pid is taken over at once, a reboot by the heartbeat', () => {
       const old = acquireCodexHomeLock(home, hostA(101))
-      // Dead owner.
+      // Dead owner: no wait for the heartbeat.
       running.delete(101)
       const dead = acquireCodexHomeLock(home, hostA(202))
       expect(owner()).toMatchObject({ pid: 202 })
-      old.release() // not the owner any more: leaves the lock alone
-      expect(fs.existsSync(lockFile())).toBe(true)
+      old.release()
       // pid 202 now belongs to another process (different start time).
       running.set(202, 's202-reused')
       const reused = acquireCodexHomeLock(home, hostA(303, { procStart: (p: number) => running.get(p) ?? 's303' }))
       expect(owner()).toMatchObject({ pid: 303 })
       dead.release()
-      // Same host name after a reboot: the boot id differs.
+      // Same host name, another boot: only a silent heartbeat frees it.
       running.set(303, 's303')
-      acquireCodexHomeLock(home, hostA(404, { bootId: () => 'boot-2', procStart: () => 's404' }))
-      expect(owner()).toMatchObject({ pid: 404, bootId: 'boot-2' })
+      const t0 = Date.now()
+      fs.utimesSync(lockFile(), new Date(t0), new Date(t0))
+      const rebooted = { bootId: () => 'boot-2', procStart: () => 's404' }
+      expect(() => acquireCodexHomeLock(home, hostA(404, { ...rebooted, now: () => t0 }))).toThrow(CodexHomeBusyError)
+      acquireCodexHomeLock(home, hostA(404, { ...rebooted, now: () => t0 + LOCK_STALE_MS + 1_000 })).release()
       reused.release()
     })
-
     it('an unreadable lock or one from an older Bridge without identity is handled', () => {
+      // Unreadable (a crash mid-write): no identity, freed once its heartbeat is silent.
       fs.writeFileSync(lockFile(), '{half')
+      expect(() => acquireCodexHomeLock(home, hostA(101))).toThrow(CodexHomeBusyError)
+      const silent = new Date(Date.now() - LOCK_STALE_MS - 1_000)
+      fs.utimesSync(lockFile(), silent, silent)
       acquireCodexHomeLock(home, hostA(101)).release()
       // Older format, live pid on this host: still respected.
       fs.writeFileSync(lockFile(), JSON.stringify({ pid: 101, host: 'bridge-a' }))

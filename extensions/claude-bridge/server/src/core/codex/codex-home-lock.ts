@@ -7,14 +7,18 @@
 // CodexHostRegistry already keeps a single app-server per home; this lock also
 // stops a second Bridge process on the same host from starting its own.
 //
-// The lock names its owner: host name, boot id, pid and the process start
-// time. Only an owner proven alive keeps it: same host, same boot, the pid
-// running, and that pid still the process that wrote the lock (not a reused
-// pid). Anything else — another host (a replaced container: it has a new
-// host name and its processes are gone), a reboot, a dead or reused pid — is
-// taken over at once. Field lesson (acceptance 2026-11-12): the old rule
-// waited 90 s for a silent heartbeat, so every server update left ChatGPT
-// unavailable for that long ("another Bridge server already runs codex").
+// The lock names its owner (host name, boot id, pid, process start time) and
+// the owner refreshes the file's mtime every 5 s. Who may take it over:
+//   - same host and boot: decided at once — the owner keeps it only while its
+//     pid runs and is still the process that wrote the lock (not a reused pid);
+//   - another host or another boot (a replaced container has a new host name):
+//     its processes cannot be checked, so only a heartbeat older than three
+//     intervals (15 s) frees the lock. Two live containers on one volume never
+//     share CODEX_HOME; a replaced one is gone within 15 s.
+// Field lesson (acceptance 2026-11-12): with a 30 s heartbeat and a 90 s
+// limit, every server update left ChatGPT unavailable for 90 s ("another
+// Bridge server already runs codex"): npx as PID 1 exits on SIGTERM before
+// Bridge's graceful shutdown can release the lock.
 // ============================================================================
 
 import fs from 'node:fs'
@@ -22,6 +26,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 export const CODEX_HOME_LOCK_FILE = 'bridge-app-server.lock'
+export const LOCK_HEARTBEAT_MS = 5_000
+export const LOCK_STALE_MS = 3 * LOCK_HEARTBEAT_MS
 
 export interface CodexHomeLockOwner {
   pid?: number
@@ -55,6 +61,8 @@ export interface LockOptions {
   /** Start time of a running process, null when it does not run or is unknown. */
   procStart?: (pid: number) => string | null
   isAlive?: (pid: number) => boolean
+  heartbeatMs?: number
+  staleMs?: number
 }
 
 function pidAlive(pid: number): boolean {
@@ -84,17 +92,20 @@ function readProcStart(pid: number): string | null {
   }
 }
 
-/** Whether the lock's owner is proven to be a live process (then it wins). */
-export function ownerAlive(
-  owner: CodexHomeLockOwner,
-  me: Required<Pick<LockOptions, 'host' | 'isAlive'>> & {
-    bootId: string | null
-    procStart: (pid: number) => string | null
-  },
-): boolean {
-  if (owner.host !== me.host || typeof owner.pid !== 'number') return false
-  if (owner.bootId && me.bootId && owner.bootId !== me.bootId) return false
-  if (!me.isAlive(owner.pid)) return false
+interface Viewer {
+  host: string
+  bootId: string | null
+  isAlive: (pid: number) => boolean
+  procStart: (pid: number) => string | null
+  now: number
+  staleMs: number
+}
+
+/** Whether the lock's owner may still be running (then it keeps the lock). */
+export function ownerMayRun(owner: CodexHomeLockOwner, heartbeatAt: number, me: Viewer): boolean {
+  const sameMachine = owner.host === me.host && !(owner.bootId && me.bootId && owner.bootId !== me.bootId)
+  if (!sameMachine) return me.now - heartbeatAt <= me.staleMs
+  if (typeof owner.pid !== 'number' || !me.isAlive(owner.pid)) return false
   // A recorded start time must match the running process; without one (a lock
   // from an older Bridge, or no /proc) a live pid on this host is trusted.
   if (owner.procStart) {
@@ -103,18 +114,19 @@ export function ownerAlive(
   }
   return true
 }
-
 export function acquireCodexHomeLock(home: string, options: LockOptions = {}): CodexHomeLock {
   const file = path.join(home, CODEX_HOME_LOCK_FILE)
   const pid = options.pid ?? process.pid
   const host = options.host ?? os.hostname()
   const now = options.now ?? Date.now
   const procStart = options.procStart ?? readProcStart
-  const me = {
+  const me: Viewer = {
     host,
     isAlive: options.isAlive ?? pidAlive,
     bootId: (options.bootId ?? readBootId)(),
     procStart,
+    now: now(),
+    staleMs: options.staleMs ?? LOCK_STALE_MS,
   }
   fs.mkdirSync(home, { recursive: true })
   const owner: CodexHomeLockOwner = {
@@ -129,29 +141,41 @@ export function acquireCodexHomeLock(home: string, options: LockOptions = {}): C
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       fs.writeFileSync(file, body, { flag: 'wx', mode: 0o600 })
-      return heldLock(file, pid, host)
+      return heldLock(file, pid, host, options.heartbeatMs ?? LOCK_HEARTBEAT_MS)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
     let current: CodexHomeLockOwner = {}
+    let heartbeatAt = 0
     try {
+      heartbeatAt = fs.statSync(file).mtimeMs
       current = JSON.parse(fs.readFileSync(file, 'utf8')) as CodexHomeLockOwner
     } catch {
-      // Unreadable / half-written: nobody can prove ownership.
+      // Unreadable / half-written: no identity, so only the heartbeat decides.
     }
     const ours = current.host === host && current.pid === pid
-    if (!ours && ownerAlive(current, me)) throw new CodexHomeBusyError(current)
+    if (!ours && ownerMayRun(current, heartbeatAt, me)) throw new CodexHomeBusyError(current)
     fs.rmSync(file, { force: true })
   }
   throw new CodexHomeBusyError({})
 }
 
-function heldLock(file: string, pid: number, host: string): CodexHomeLock {
+function heldLock(file: string, pid: number, host: string, heartbeatMs: number): CodexHomeLock {
+  const beat = setInterval(() => {
+    try {
+      const t = new Date()
+      fs.utimesSync(file, t, t)
+    } catch {
+      // A removed lock is re-taken by the next start; nothing to do here.
+    }
+  }, heartbeatMs)
+  beat.unref?.()
   let released = false
   return {
     release() {
       if (released) return
       released = true
+      clearInterval(beat)
       try {
         const owner = JSON.parse(fs.readFileSync(file, 'utf8')) as CodexHomeLockOwner
         if (owner.pid === pid && owner.host === host) fs.rmSync(file, { force: true })
