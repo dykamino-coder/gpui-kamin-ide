@@ -81,7 +81,7 @@ impl Document {
             && let Some(batch) = mutation::Batch::new(&shape.records())
         {
             #[cfg(feature = "engine-bench")]
-            let started = std::time::Instant::now();
+            let started = crate::work::Clock::now();
             same_shape = true;
             invalidation = self.invalidation(&batch, theme_css);
             if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
