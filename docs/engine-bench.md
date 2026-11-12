@@ -27,6 +27,9 @@ target/bench/release/engine_bench.exe C:/pages/heavy.html --runs 100 --json --sn
 target/bench/release/engine_bench.exe C:/pages/heavy.html --runs 100 --json --frame-diff-dir C:/results/frame-diffs
 ```
 
+Where the heap goes (live heap by subsystem and stack, candidate against base) is
+answered by the memory profiler, [memprof](memprof.md).
+
 Use the release executable directly for repeated measurements. Debug builds
 refuse to measure. Defaults: 800x600 CSS pixels, device scale factor 1, 30 samples
 per mode, both modes. `--mode cold|warm|both` selects the samples. `--snapshot`

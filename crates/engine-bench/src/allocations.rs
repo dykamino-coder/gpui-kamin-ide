@@ -4,8 +4,13 @@
 #[cfg(feature = "allocation-audit")]
 pub(super) use counted::Counted;
 
-#[cfg(all(windows, feature = "allocation-audit"))]
+#[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
 pub(super) mod probe;
+
+#[cfg(all(feature = "heap-profile", not(feature = "allocation-audit")))]
+mod sampled;
+#[cfg(all(feature = "heap-profile", not(feature = "allocation-audit")))]
+pub(super) use sampled::Sampled;
 
 #[cfg(feature = "allocation-audit")]
 mod counted {
