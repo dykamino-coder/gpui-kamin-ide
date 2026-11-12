@@ -315,6 +315,11 @@ impl<NodeContext> TaffyTree<NodeContext> {
             });
             sink("layout/taffy-nodes", start, (map.capacity() + 1) * slot);
         }
+        fn list<T>(sink: &mut dyn FnMut(&'static str, *const u8, usize), items: &Vec<T>) {
+            if items.capacity() > 0 && size_of::<T>() > 0 {
+                sink("layout/taffy-nodes", items.as_ptr().cast(), items.capacity() * size_of::<T>());
+            }
+        }
         slots(sink, &self.nodes);
         slots(sink, &self.children);
         slots(sink, &self.parents);
@@ -343,6 +348,23 @@ impl<NodeContext> TaffyTree<NodeContext> {
             }
             let (pointer, bytes) = node.cache.heap_block();
             sink("layout/taffy-cache", pointer, bytes);
+            match &node.detailed_layout_info {
+                #[cfg(feature = "flexbox")]
+                DetailedLayoutInfo::Flex(info) => {
+                    let block: *const crate::tree::DetailedFlexInfo = &**info;
+                    sink("layout/taffy-nodes", block.cast(), size_of::<crate::tree::DetailedFlexInfo>());
+                    list(sink, &info.lines);
+                    for line in &info.lines {
+                        list(sink, &line.items);
+                    }
+                }
+                #[cfg(feature = "grid")]
+                DetailedLayoutInfo::Grid(info) => {
+                    let block: *const DetailedGridInfo = &**info;
+                    sink("layout/taffy-nodes", block.cast(), size_of::<DetailedGridInfo>());
+                }
+                _ => {}
+            }
             if let Some(fragmentation) = &node.fragmentation {
                 let block: *const NodeFragmentation = &**fragmentation;
                 sink("layout/taffy-nodes", block.cast(), size_of::<NodeFragmentation>());

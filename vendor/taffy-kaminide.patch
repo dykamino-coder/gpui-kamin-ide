@@ -25673,7 +25673,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c07279a3bf326
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c53286dd3
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -25825,7 +25825,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +    /// (`kamin_calc`); cleared with the nodes.
 +    #[cfg(feature = "std")]
 +    calc: super::kamin_calc::SharedRegistry,
-@@ -173,0 +297,172 @@
+@@ -173,0 +297,194 @@
 +    }
 +}
 +
@@ -25846,6 +25846,11 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +                (value as *const T).cast::<u8>().wrapping_sub(index * slot)
 +            });
 +            sink("layout/taffy-nodes", start, (map.capacity() + 1) * slot);
++        }
++        fn list<T>(sink: &mut dyn FnMut(&'static str, *const u8, usize), items: &Vec<T>) {
++            if items.capacity() > 0 && size_of::<T>() > 0 {
++                sink("layout/taffy-nodes", items.as_ptr().cast(), items.capacity() * size_of::<T>());
++            }
 +        }
 +        slots(sink, &self.nodes);
 +        slots(sink, &self.children);
@@ -25875,6 +25880,23 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +            }
 +            let (pointer, bytes) = node.cache.heap_block();
 +            sink("layout/taffy-cache", pointer, bytes);
++            match &node.detailed_layout_info {
++                #[cfg(feature = "flexbox")]
++                DetailedLayoutInfo::Flex(info) => {
++                    let block: *const crate::tree::DetailedFlexInfo = &**info;
++                    sink("layout/taffy-nodes", block.cast(), size_of::<crate::tree::DetailedFlexInfo>());
++                    list(sink, &info.lines);
++                    for line in &info.lines {
++                        list(sink, &line.items);
++                    }
++                }
++                #[cfg(feature = "grid")]
++                DetailedLayoutInfo::Grid(info) => {
++                    let block: *const DetailedGridInfo = &**info;
++                    sink("layout/taffy-nodes", block.cast(), size_of::<DetailedGridInfo>());
++                }
++                _ => {}
++            }
 +            if let Some(fragmentation) = &node.fragmentation {
 +                let block: *const NodeFragmentation = &**fragmentation;
 +                sink("layout/taffy-nodes", block.cast(), size_of::<NodeFragmentation>());
@@ -25998,10 +26020,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
-@@ -260 +555 @@
+@@ -260 +577 @@
 -            self.nodes[node_id.into()].final_layout
 +            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
-@@ -283,0 +579,19 @@
+@@ -283,0 +601,19 @@
 +    /// Resolve keyword-based calc-size axes before the final native dispatch.
 +    fn compute_child_layout(
 +        &mut self,
@@ -26021,10 +26043,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +        )
 +    }
 +
-@@ -287 +601 @@
+@@ -287 +623 @@
 -    fn compute_child_layout(
 +    fn compute_child_layout_inner(
-@@ -299,0 +614,13 @@
+@@ -299,0 +636,13 @@
 +        #[cfg(feature = "flexbox")]
 +        if self.taffy.nodes[node_id.into()]
 +            .style
@@ -26038,11 +26060,11 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +            }
 +        }
 +
-@@ -313,2 +640 @@
+@@ -313,2 +662 @@
 -            let mut output = match (display_mode, has_children) {
 -                (Display::None, _) => compute_hidden_layout(tree, node_id),
 +            let output = match (display_mode, has_children) {
-@@ -319,11 +645 @@
+@@ -319,11 +667 @@
 -                #[cfg(feature = "flexbox")]
 -                (Display::Flex, true) => compute_flexbox_layout(tree, node_id, inputs),
 -                #[cfg(feature = "grid")]
@@ -26055,7 +26077,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 -                    (tree.measure_function)(inputs, node_id, node_context, style)
 -                }
 +                _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
-@@ -331,8 +647,28 @@
+@@ -331,8 +669,28 @@
 -
 -            // Lay out any out-of-flow candidates for which this node is the containing block.
 -            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
@@ -26092,7 +26114,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +            #[cfg(feature = "grid")]
 +            (Display::Grid, false) if !self.taffy.nodes[node_id.into()].has_context => {
 +                compute_grid_layout(self, node_id, inputs)
-@@ -340,3 +676,36 @@
+@@ -340,3 +698,36 @@
 -
 -            output
 -        })
@@ -26132,12 +26154,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -401,2 +770,2 @@
+@@ -401,2 +792,2 @@
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -520,0 +890,34 @@
+@@ -520,0 +912,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -26172,7 +26194,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].fragmentation().flex_fragmentation
 +    }
-@@ -546,0 +950,21 @@
+@@ -546,0 +972,21 @@
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
 +        self.taffy.nodes[node_id.into()].subgrid_tracks.as_deref().cloned()
 +    }
@@ -26194,10 +26216,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +        }
 +    }
 +
-@@ -565 +989 @@
+@@ -565 +1011 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +1011,25 @@
+@@ -586,0 +1033,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -26223,7 +26245,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +        })
 +    }
 +
-@@ -606 +1055,18 @@
+@@ -606 +1077,18 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -26243,12 +26265,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +1086,2 @@
+@@ -620,2 +1108,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +1097,6 @@
+@@ -631,2 +1119,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -26257,12 +26279,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +1115,2 @@
+@@ -645,2 +1137,2 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -666,0 +1137,110 @@
+@@ -666,0 +1159,110 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
@@ -26373,7 +26395,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +        for node in orphaned {
 +            let _ = self.mark_dirty(node);
 +        }
-@@ -873,0 +1454,17 @@
+@@ -873,0 +1476,17 @@
 +    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
 +    #[inline]
 +    pub fn node_storage_full(&self) -> bool {
@@ -26391,12 +26413,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +        }
 +    }
 +
-@@ -897,2 +1494,2 @@
+@@ -897,2 +1516,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1506,31 @@
+@@ -908,0 +1528,31 @@
 +    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
 +    #[inline]
 +    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
@@ -26428,10 +26450,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1541 @@
+@@ -913 +1563 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1545,8 @@
+@@ -916,0 +1567,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -26440,7 +26462,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1613,6 @@
+@@ -977 +1635,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -26448,7 +26470,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -984,0 +1626,26 @@
+@@ -984,0 +1648,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -26475,15 +26497,15 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1655 @@
+@@ -988 +1677 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1670,3 @@
+@@ -1003 +1692,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1699,54 @@
+@@ -1029,0 +1721,54 @@
 +    }
 +
 +    #[test]
@@ -26538,7 +26560,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..910a3f6c91ec8580e7020db6754c0727
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2266,81 @@
+@@ -1543 +2288,81 @@
 -}
 +
 +    #[test]

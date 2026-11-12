@@ -125,9 +125,12 @@ After the last frame of each mode the bench (`ENGINE_BENCH_MEMORY_REPORT=1`,
 counter read just before the walk and the difference (`unclassified_bytes`). With the probe each
 measured block is also written as `o <path> <pointer> <bytes>`; the report then shows the live heap
 at the moment the walk started, how much of it the owners matched by address, what they only
-estimated (hash tables and slot maps without an exposed address), what they named wrongly
-(`unmatched`, a reporter bug), and the live blocks nobody reported, by allocation site: the list of
-reporters still to write. `--owners` records the whole run exactly (several GB on wide-16000; the
+estimated (hash tables without an exposed address; each estimate claims one unreported live block
+of exactly its size), what they named wrongly (`unmatched`, a reporter bug), and the live blocks
+nobody reported, by allocation site and stack (`unreported_stacks` in the JSON): the list of
+reporters still to write. Holders no reporter can reach, such as captures of type-erased mouse
+listeners, are inferred from the stacks of unreported blocks by the small `HELD_BY` table in
+`scripts/memprof.py` and printed apart, marked «inferred from stacks, not measured». `--owners` records the whole run exactly (several GB on wide-16000; the
 helper scripts delete the `.stacks` file after folding).
 
 Owner paths, about:memory style: `dom/nodes`, `dom/text`, `dom/attributes`, `dom/source-tree` (the
