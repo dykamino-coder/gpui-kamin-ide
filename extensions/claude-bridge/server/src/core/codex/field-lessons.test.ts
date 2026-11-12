@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { killProcessTree } from './app-server'
 import { acquireCodexHomeLock, CODEX_HOME_LOCK_FILE, CodexHomeBusyError } from './codex-home-lock'
 import {
@@ -41,39 +41,73 @@ describe('(1) one writer per codex thread', () => {
     await expect(CodexAgentSession.start({ host, cwd: '/w', resumeThreadId: 't1' })).resolves.toBeTruthy()
   })
 
-  it('a second Bridge process cannot start an app-server on the same CODEX_HOME', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-codex-lock-'))
-    try {
-      const first = acquireCodexHomeLock(home, { pid: 101, host: 'bridge-a' })
-      expect(() => acquireCodexHomeLock(home, { pid: 202, host: 'bridge-b' })).toThrow(CodexHomeBusyError)
-      // Same host, owner process gone: taken over.
-      const dead = acquireCodexHomeLock(home, { pid: 303, host: 'bridge-a', isAlive: () => false })
-      expect(JSON.parse(fs.readFileSync(path.join(home, CODEX_HOME_LOCK_FILE), 'utf8'))).toMatchObject({ pid: 303 })
-      first.release() // not the owner any more: leaves the lock alone
-      expect(fs.existsSync(path.join(home, CODEX_HOME_LOCK_FILE))).toBe(true)
-      dead.release()
-      expect(fs.existsSync(path.join(home, CODEX_HOME_LOCK_FILE))).toBe(false)
-    } finally {
-      fs.rmSync(home, { recursive: true, force: true })
-    }
-  })
+  describe('CODEX_HOME lock: only a live owner keeps it', () => {
+    let home = ''
+    const lockFile = () => path.join(home, CODEX_HOME_LOCK_FILE)
+    const owner = () => JSON.parse(fs.readFileSync(lockFile(), 'utf8')) as Record<string, unknown>
+    // One host "bridge-a", boot "boot-1"; pids 101/202 run, started at "s101"/"s202".
+    let running = new Map<number, string>()
+    const hostA = (pid: number, extra = {}) => ({
+      pid,
+      host: 'bridge-a',
+      bootId: () => 'boot-1',
+      isAlive: (p: number) => running.has(p),
+      procStart: (p: number) => running.get(p) ?? null,
+      ...extra,
+    })
+    beforeEach(() => {
+      running = new Map([
+        [101, 's101'],
+        [202, 's202'],
+      ])
+      home = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-codex-lock-'))
+    })
+    afterEach(() => fs.rmSync(home, { recursive: true, force: true }))
 
-  it('a lock whose heartbeat stopped (crashed owner on another host) is taken over', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-codex-lock-'))
-    try {
-      acquireCodexHomeLock(home, { pid: 1, host: 'old-container', heartbeatMs: 60_000 })
-      const later = Date.now() + 10 * 60_000
-      const lock = acquireCodexHomeLock(home, { pid: 2, host: 'new-container', now: () => later })
-      expect(JSON.parse(fs.readFileSync(path.join(home, CODEX_HOME_LOCK_FILE), 'utf8'))).toMatchObject({
-        host: 'new-container',
-      })
+    it('a second Bridge process on the same host waits for a live owner', () => {
+      const first = acquireCodexHomeLock(home, hostA(101))
+      expect(owner()).toMatchObject({ pid: 101, host: 'bridge-a', bootId: 'boot-1', procStart: 's101' })
+      expect(() => acquireCodexHomeLock(home, hostA(202))).toThrow(CodexHomeBusyError)
+      first.release()
+      expect(fs.existsSync(lockFile())).toBe(false)
+    })
+
+    it('a replaced container takes the lock at once (another host cannot prove its owner alive)', () => {
+      acquireCodexHomeLock(home, { ...hostA(101), host: 'old-container' })
+      const lock = acquireCodexHomeLock(home, { ...hostA(202), host: 'new-container' })
+      expect(owner()).toMatchObject({ host: 'new-container', pid: 202 })
       lock.release()
-    } finally {
-      fs.rmSync(home, { recursive: true, force: true })
-    }
+    })
+
+    it('a dead pid, a reused pid or another boot is taken over at once', () => {
+      const old = acquireCodexHomeLock(home, hostA(101))
+      // Dead owner.
+      running.delete(101)
+      const dead = acquireCodexHomeLock(home, hostA(202))
+      expect(owner()).toMatchObject({ pid: 202 })
+      old.release() // not the owner any more: leaves the lock alone
+      expect(fs.existsSync(lockFile())).toBe(true)
+      // pid 202 now belongs to another process (different start time).
+      running.set(202, 's202-reused')
+      const reused = acquireCodexHomeLock(home, hostA(303, { procStart: (p: number) => running.get(p) ?? 's303' }))
+      expect(owner()).toMatchObject({ pid: 303 })
+      dead.release()
+      // Same host name after a reboot: the boot id differs.
+      running.set(303, 's303')
+      acquireCodexHomeLock(home, hostA(404, { bootId: () => 'boot-2', procStart: () => 's404' }))
+      expect(owner()).toMatchObject({ pid: 404, bootId: 'boot-2' })
+      reused.release()
+    })
+
+    it('an unreadable lock or one from an older Bridge without identity is handled', () => {
+      fs.writeFileSync(lockFile(), '{half')
+      acquireCodexHomeLock(home, hostA(101)).release()
+      // Older format, live pid on this host: still respected.
+      fs.writeFileSync(lockFile(), JSON.stringify({ pid: 101, host: 'bridge-a' }))
+      expect(() => acquireCodexHomeLock(home, hostA(202))).toThrow(CodexHomeBusyError)
+    })
   })
 })
-
 describe('(2) a finished turn is not a finished process', () => {
   it('turn/completed keeps the app-server and its threads; only a process exit counts as a crash', async () => {
     let turns = 0
