@@ -296,7 +296,7 @@ enum ElementDrawPhase<RequestLayoutState, PrepaintState> {
         request_layout: RequestLayoutState,
     },
     Prepaint {
-        node_id: Option<DispatchNodeId>,
+        node_id: DispatchNodeId,
         global_id: Option<GlobalElementId>,
         inspector_id: Option<InspectorElementId>,
         bounds: Bounds<Pixels>,
@@ -474,10 +474,10 @@ impl<E: Element> Drawable<E> {
                     window,
                 );
 
-                let node_id = self
-                    .element
-                    .dispatch_node()
-                    .then(|| window.next_frame.dispatch_tree.push_node());
+                let node_id = match self.element.dispatch_node() {
+                    true => window.next_frame.dispatch_tree.push_node(),
+                    false => DispatchNodeId::NONE,
+                };
                 let mut prepaint = self.element.prepaint(
                     global_id.as_ref(),
                     inspector_id.as_ref(),
@@ -486,7 +486,7 @@ impl<E: Element> Drawable<E> {
                     window,
                     cx,
                 );
-                if node_id.is_some() {
+                if node_id != DispatchNodeId::NONE {
                     window.next_frame.dispatch_tree.pop_node();
                 }
 
@@ -513,7 +513,7 @@ impl<E: Element> Drawable<E> {
     #[inline(never)]
     fn finish_prepaint(
         &mut self,
-        node_id: Option<DispatchNodeId>,
+        node_id: DispatchNodeId,
         bounds: Bounds<Pixels>,
         prepaint: E::PrepaintState,
     ) {
@@ -560,8 +560,8 @@ impl<E: Element> Drawable<E> {
             } => {
                 Self::push_element_id(&self.element, global_id.as_ref(), window);
 
-                if let Some(node_id) = *node_id {
-                    window.next_frame.dispatch_tree.set_active_node(node_id);
+                if *node_id != DispatchNodeId::NONE {
+                    window.next_frame.dispatch_tree.set_active_node(*node_id);
                 }
                 self.element.paint(
                     global_id.as_ref(),

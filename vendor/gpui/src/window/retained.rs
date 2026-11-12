@@ -388,7 +388,7 @@ impl RetainedPrepaint {
 pub struct RetainedSubtree {
     pub(crate) stamp: u64,
     /// The pass whose request sequence holds the nodes.
-    pub(crate) pass: u64,
+    pub(crate) pass: std::num::NonZeroU64,
     pub(crate) start: u32,
     pub(crate) len: u32,
 }

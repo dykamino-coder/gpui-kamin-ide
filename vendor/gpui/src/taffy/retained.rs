@@ -131,13 +131,15 @@ pub(super) struct Retained {
 }
 
 /// Name of a pass, unique among the passes of every engine of the process:
-/// a range captured in one sequence is never read from another.
-struct Pass(u64);
+/// a range captured in one sequence is never read from another. Never 0, so
+/// an `Option<RetainedSubtree>` takes no more room than the subtree.
+struct Pass(std::num::NonZeroU64);
 
 impl Default for Pass {
     fn default() -> Self {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+        let next = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Self(std::num::NonZeroU64::new(next).unwrap_or(std::num::NonZeroU64::MAX))
     }
 }
 
@@ -155,7 +157,7 @@ impl Retained {
     fn span(&self, subtree: &RetainedSubtree) -> Option<(Sequence, std::ops::Range<usize>)> {
         let sequence = match subtree.pass {
             pass if pass == self.pass.0 => Sequence::This,
-            pass if pass == self.prev_pass => Sequence::Previous,
+            pass if pass.get() == self.prev_pass => Sequence::Previous,
             _ => return None,
         };
         let range = subtree.start as usize..subtree.start as usize + subtree.len as usize;
@@ -389,7 +391,7 @@ impl TaffyLayoutEngine {
             }
         }
         retained.prev = std::mem::take(&mut retained.seq);
-        retained.prev_pass = std::mem::take(&mut retained.pass).0;
+        retained.prev_pass = std::mem::take(&mut retained.pass).0.get();
         retained.cursor = 0;
         retained.astray = false;
         retained.next_key = None;

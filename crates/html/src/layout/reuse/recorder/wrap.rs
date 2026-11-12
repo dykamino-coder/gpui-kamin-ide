@@ -24,6 +24,11 @@ impl Recorder {
         Self { child, reuse, at }
     }
 
+    /// Number of the record among the build's records (`FlowReuse::pending`).
+    pub(in crate::layout::reuse) fn at(&self) -> usize {
+        self.at
+    }
+
     /// The record being made; `None` once the frame finished it.
     fn record(&self) -> Option<Rc<Record>> {
         self.reuse.pending.borrow().get(self.at).cloned()

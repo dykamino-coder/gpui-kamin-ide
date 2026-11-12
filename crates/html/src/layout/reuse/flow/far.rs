@@ -31,15 +31,12 @@ impl FlowCx {
     }
 
     /// Wrap the built element of child `e` for a far record when its subtree
-    /// may be claimed whole at another width (`far::far_replayable`). `skip`
-    /// is its skip record of this build, if its last one was sealed
-    /// (`Store::unrecorded`): the recorder leaves the block to that record
-    /// when it holds at other widths (`FarRecorder::skipped_at_other_widths`).
+    /// may be claimed whole at another width (`far::far_replayable`).
     pub(super) fn record_far(
         &self,
         e: &Element,
         mark: &Mark,
-        (end, skip): (Counters, Option<usize>),
+        end: Counters,
         out: &mut Vec<AnyElement>,
     ) {
         // A build that read an outside width gives no far record. Widths are
@@ -51,8 +48,6 @@ impl FlowCx {
         let pending = PendingFar::new(mark.start, end);
         let source = self.reuse.shells.source(e);
         self.reuse.add_far_recorder();
-        let skip = skip.filter(|_| !self.reuse.store.unrecorded(e.node_id));
-        let recorder = FarRecorder::new(child, self.reuse.clone(), pending, (source, skip));
-        out.push(recorder.hooked());
+        out.push(FarRecorder::new(child, self.reuse.clone(), pending, source).hooked());
     }
 }

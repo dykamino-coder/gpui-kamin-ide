@@ -2,7 +2,8 @@
 //! the stand-in that claims its layout subtree (`super`).
 
 use super::{Excess, FarSlot, PendingFar, clear_of, device, ink_beyond, screen_of};
-use crate::hooks::{Hooks, Wrap};
+use crate::hooks::{Hooked, Hooks, Wrap};
+use crate::layout::reuse::recorder::Recorder;
 use crate::layout::reuse::{FlowReuse, Source};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, point, px};
 use std::rc::Rc;
@@ -17,8 +18,6 @@ pub(in crate::layout::reuse) struct FarRecorder {
     reuse: Rc<FlowReuse>,
     pending: PendingFar,
     source: Option<Source>,
-    /// The block's skip record of this frame, by number (`FlowReuse::pending`).
-    skip: Option<usize>,
 }
 
 impl FarRecorder {
@@ -26,26 +25,34 @@ impl FarRecorder {
         child: AnyElement,
         reuse: Rc<FlowReuse>,
         pending: PendingFar,
-        (source, skip): (Source, Option<usize>),
+        source: Source,
     ) -> Self {
         Self {
             child,
             reuse,
             pending,
             source: Some(source),
-            skip,
         }
     }
 
-    /// The block's skip record of this frame stands at every wider flow
+    /// The block's skip record of this frame, the wrap right inside this one
+    /// (`FlowCx::record_skip`), stands at every wider flow
     /// (`Record::holds_wider_flows`): its placeholder takes the block there,
     /// and a far record would only keep the block's measure functions for a
     /// claim that never comes (Blink keeps one cached result per object, and
-    /// a hit on the size needs nothing else).
-    fn skipped_at_other_widths(&self) -> bool {
+    /// a hit on the size needs nothing else). Only a block whose last skip
+    /// wrap gave a record counts (`Store::unrecorded`). The wrapper keeps no
+    /// number of its own: thousands of them live in the frame's arena.
+    fn skipped_at_other_widths(&mut self) -> bool {
+        let Some(id) = self.source.as_ref().map(Source::id) else {
+            return false;
+        };
+        let Some(skip) = self.child.downcast_mut::<Hooked<Recorder>>() else {
+            return false;
+        };
         let pending = self.reuse.pending.borrow();
-        let record = self.skip.and_then(|at| pending.get(at));
-        record.is_some_and(|record| record.holds_wider_flows())
+        let record = pending.get(skip.0.at());
+        !self.reuse.store.unrecorded(id) && record.is_some_and(|record| record.holds_wider_flows())
     }
 
     /// The recording failed: the block is near (`Store::far_near`).
@@ -134,7 +141,7 @@ impl Wrap for FarRecorder {
         let Some(((boxes, hits), layout)) = self
             .pending
             .placed
-            .zip(self.pending.layout.as_ref())
+            .zip(self.pending.layout)
             .filter(|_| quiet)
         else {
             self.near();
@@ -156,7 +163,7 @@ impl Wrap for FarRecorder {
         // Kept for the next pass as their requests made them: the recording
         // frame allocates nothing for the keep. The first pass that claims
         // the block compacts them after its paint.
-        window.keep_retained_measures(layout, false);
+        window.keep_retained_measures(&layout, false);
         let record = self
             .source
             .take()

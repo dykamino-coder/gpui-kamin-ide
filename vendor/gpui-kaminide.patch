@@ -7300,7 +7300,7 @@ index 0cca543ea5d4b0cf45d4509bbfe05c227f8b9255..3aae58a3858f7c9224211ec6d4bbde71
 +        // KaminIDE patch: overlay geometry is already in device coordinates.
 +        transformation: Default::default(),
 diff --git a/vendor/gpui/src/element.rs b/vendor/gpui/src/element.rs
-index d6556258e15f7cac891e14861a2cd323fa09f6cf..ee32f0feaa9f2e803411c66d8b64fa723d40136f
+index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307022a14db
 --- a/vendor/gpui/src/element.rs
 +++ b/vendor/gpui/src/element.rs
 @@ -61,0 +62,13 @@
@@ -7326,9 +7326,6 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..ee32f0feaa9f2e803411c66d8b64fa72
 @@ -245,0 +263,2 @@
 +
 +    fn root_layout_id(&self) -> Option<LayoutId>;
-@@ -280 +299 @@
--        node_id: DispatchNodeId,
-+        node_id: Option<DispatchNodeId>,
 @@ -345,0 +365,85 @@
 +    // KaminIDE patch: accessibility construction temporaries must not survive child traversal.
 +    #[inline(never)]
@@ -7482,16 +7479,16 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..ee32f0feaa9f2e803411c66d8b64fa72
 +                    window,
 +                );
 +
-+                let node_id = self
-+                    .element
-+                    .dispatch_node()
-+                    .then(|| window.next_frame.dispatch_tree.push_node());
++                let node_id = match self.element.dispatch_node() {
++                    true => window.next_frame.dispatch_tree.push_node(),
++                    false => DispatchNodeId::NONE,
++                };
 @@ -410 +485 @@
 -                    &mut request_layout,
 +                    request_layout,
 @@ -414 +489,3 @@
 -                window.next_frame.dispatch_tree.pop_node();
-+                if node_id.is_some() {
++                if node_id != DispatchNodeId::NONE {
 +                    window.next_frame.dispatch_tree.pop_node();
 +                }
 @@ -417,23 +494,6 @@
@@ -7535,7 +7532,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..ee32f0feaa9f2e803411c66d8b64fa72
 +    #[inline(never)]
 +    fn finish_prepaint(
 +        &mut self,
-+        node_id: Option<DispatchNodeId>,
++        node_id: DispatchNodeId,
 +        bounds: Bounds<Pixels>,
 +        prepaint: E::PrepaintState,
 +    ) {
@@ -7569,8 +7566,8 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..ee32f0feaa9f2e803411c66d8b64fa72
 -                    debug_assert_eq!(&*global_id.as_ref().unwrap().0, &*window.element_id_stack);
 +                Self::push_element_id(&self.element, global_id.as_ref(), window);
 +
-+                if let Some(node_id) = *node_id {
-+                    window.next_frame.dispatch_tree.set_active_node(node_id);
++                if *node_id != DispatchNodeId::NONE {
++                    window.next_frame.dispatch_tree.set_active_node(*node_id);
 @@ -478,2 +565,0 @@
 -
 -                window.next_frame.dispatch_tree.set_active_node(node_id);
@@ -10966,17 +10963,25 @@ index 0000000000000000000000000000000000000000..2041e912d79bc70a27495076b7e4ff40
 +    }
 +}
 diff --git a/vendor/gpui/src/key_dispatch.rs b/vendor/gpui/src/key_dispatch.rs
-index 2f755b1d3dcd1e90fa9b90ac858947c8596d2806..41323b3ac0f90cca4971d07affdfafa1ae8bc205
+index 2f755b1d3dcd1e90fa9b90ac858947c8596d2806..f81b45687b942ae4a6e8b042a5ad140b80d3a3ec
 --- a/vendor/gpui/src/key_dispatch.rs
 +++ b/vendor/gpui/src/key_dispatch.rs
-@@ -84,4 +84,2 @@
+@@ -70,0 +71,7 @@
++impl DispatchNodeId {
++    /// KaminIDE patch: the node of an element that takes none (`Element::dispatch_node`).
++    /// A sentinel rather than an `Option`, so the draw phase of every element keeps its size;
++    /// no tree holds `usize::MAX` nodes.
++    pub(crate) const NONE: Self = Self(usize::MAX);
++}
++
+@@ -84,4 +91,2 @@
 -    pub key_listeners: Vec<KeyListener>,
 -    pub action_listeners: Vec<DispatchActionListener>,
 -    pub modifiers_changed_listeners: Vec<ModifiersChangedListener>,
 -    pub context: Option<KeyContext>,
 +    /// KaminIDE patch: listeners and key context, allocated by the first registration.
 +    rare: Option<Box<DispatchNodeRare>>,
-@@ -90,0 +89,35 @@
+@@ -90,0 +96,35 @@
 +}
 +
 +/// KaminIDE patch: the listener lists and key context of a [`DispatchNode`].
@@ -11012,22 +11017,22 @@ index 2f755b1d3dcd1e90fa9b90ac858947c8596d2806..41323b3ac0f90cca4971d07affdfafa1
 +    fn rare_mut(&mut self) -> &mut DispatchNodeRare {
 +        self.rare.get_or_insert_with(Default::default)
 +    }
-@@ -190 +223 @@
+@@ -190 +230 @@
 -            if let Some(context) = active_node.context.clone() {
 +            if let Some(context) = active_node.context().cloned() {
-@@ -199 +232 @@
+@@ -199 +239 @@
 -                if let Some(context) = node.context.clone() {
 +                if let Some(context) = node.context().cloned() {
-@@ -216 +249 @@
+@@ -216 +256 @@
 -        self.active_node().context = Some(context.clone());
 +        self.active_node().rare_mut().context = Some(context.clone());
-@@ -237 +270 @@
+@@ -237 +277 @@
 -        if node.context.is_some() {
 +        if node.context().is_some() {
-@@ -248 +281 @@
+@@ -248 +288 @@
 -        if let Some(context) = source.context.clone() {
 +        if let Some(context) = source.context().cloned() {
-@@ -258,4 +291,10 @@
+@@ -258,4 +298,10 @@
 -        let target = self.active_node();
 -        target.key_listeners = mem::take(&mut source.key_listeners);
 -        target.action_listeners = mem::take(&mut source.action_listeners);
@@ -11042,23 +11047,23 @@ index 2f755b1d3dcd1e90fa9b90ac858947c8596d2806..41323b3ac0f90cca4971d07affdfafa1
 +            target.action_listeners = mem::take(&mut rare.action_listeners);
 +            target.modifiers_changed_listeners = mem::take(&mut rare.modifiers_changed_listeners);
 +        }
-@@ -324 +363 @@
+@@ -324 +370 @@
 -        self.active_node().key_listeners.push(listener);
 +        self.active_node().rare_mut().key_listeners.push(listener);
-@@ -328,0 +368 @@
+@@ -328,0 +375 @@
 +            .rare_mut()
-@@ -338,0 +379 @@
+@@ -338,0 +386 @@
 +            .rare_mut()
-@@ -367 +408 @@
+@@ -367 +415 @@
 -            for DispatchActionListener { action_type, .. } in &node.action_listeners {
 +            for DispatchActionListener { action_type, .. } in node.action_listeners() {
-@@ -386 +427 @@
+@@ -386 +434 @@
 -                .action_listeners
 +                .action_listeners()
-@@ -455 +496 @@
+@@ -455 +503 @@
 -            .filter_map(|node_id| self.node(*node_id).context.clone())
 +            .filter_map(|node_id| self.node(*node_id).context().cloned())
-@@ -651,0 +693,27 @@
+@@ -651,0 +700,27 @@
 +    }
 +
 +    // KaminIDE patch: a node without listeners or key context has no listener block, and a
@@ -18058,10 +18063,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7659827dce47eaa600008878f1becad6b102cf1e
+index 0000000000000000000000000000000000000000..264b7f306ecdabecd10d474084c3aecd0ab3044d
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,605 @@
+@@ -0,0 +1,607 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -18195,13 +18200,15 @@ index 0000000000000000000000000000000000000000..7659827dce47eaa600008878f1becad6
 +}
 +
 +/// Name of a pass, unique among the passes of every engine of the process:
-+/// a range captured in one sequence is never read from another.
-+struct Pass(u64);
++/// a range captured in one sequence is never read from another. Never 0, so
++/// an `Option<RetainedSubtree>` takes no more room than the subtree.
++struct Pass(std::num::NonZeroU64);
 +
 +impl Default for Pass {
 +    fn default() -> Self {
 +        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
++        let next = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        Self(std::num::NonZeroU64::new(next).unwrap_or(std::num::NonZeroU64::MAX))
 +    }
 +}
 +
@@ -18219,7 +18226,7 @@ index 0000000000000000000000000000000000000000..7659827dce47eaa600008878f1becad6
 +    fn span(&self, subtree: &RetainedSubtree) -> Option<(Sequence, std::ops::Range<usize>)> {
 +        let sequence = match subtree.pass {
 +            pass if pass == self.pass.0 => Sequence::This,
-+            pass if pass == self.prev_pass => Sequence::Previous,
++            pass if pass.get() == self.prev_pass => Sequence::Previous,
 +            _ => return None,
 +        };
 +        let range = subtree.start as usize..subtree.start as usize + subtree.len as usize;
@@ -18453,7 +18460,7 @@ index 0000000000000000000000000000000000000000..7659827dce47eaa600008878f1becad6
 +            }
 +        }
 +        retained.prev = std::mem::take(&mut retained.seq);
-+        retained.prev_pass = std::mem::take(&mut retained.pass).0;
++        retained.prev_pass = std::mem::take(&mut retained.pass).0.get();
 +        retained.cursor = 0;
 +        retained.astray = false;
 +        retained.next_key = None;
@@ -27478,7 +27485,7 @@ index 0000000000000000000000000000000000000000..3f4117c4df68da1503dec23fe864926f
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ce4e25d8be36f673487dcbdacccfce3aa13b2ca0
+index 0000000000000000000000000000000000000000..3a2213a85603346018c2e486aad762066e729b93
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
 @@ -0,0 +1,635 @@
@@ -27872,7 +27879,7 @@ index 0000000000000000000000000000000000000000..ce4e25d8be36f673487dcbdacccfce3a
 +pub struct RetainedSubtree {
 +    pub(crate) stamp: u64,
 +    /// The pass whose request sequence holds the nodes.
-+    pub(crate) pass: u64,
++    pub(crate) pass: std::num::NonZeroU64,
 +    pub(crate) start: u32,
 +    pub(crate) len: u32,
 +}
