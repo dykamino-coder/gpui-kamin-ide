@@ -4114,8 +4114,7 @@ function buildSnapshotScript() {
     `printf '%s\\n' '${SEPARATOR}shopt'`,
     "shopt -p 2>/dev/null",
     `printf '%s\\n' '${SEPARATOR}path'`,
-    'base="$OCB_BASE_PATH"; if command -v cygpath >/dev/null 2>&1; then base=$(cygpath -p -u "$OCB_BASE_PATH" 2>/dev/null || printf "%s" "$OCB_BASE_PATH"); fi',
-    'IFS=: read -r -a _ocb_now <<< "$PATH"; for p in "${_ocb_now[@]}"; do case ":$base:" in *":$p:"*) ;; *) printf "%s\\n" "$p" ;; esac; done',
+    'printf "%s\\n" "$PATH"',
     `printf '%s\\n' '${SEPARATOR}env'`,
     'for n in $(compgen -e); do printf "%s\\0%s\\0" "$n" "${!n}"; done'
   ].join("\n");
@@ -4123,7 +4122,7 @@ function buildSnapshotScript() {
 function shellQuote(value) {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
-function renderSnapshot(output, baseEnv, platform = process.platform) {
+function renderSnapshot(output, baseEnv, platform = process.platform, plainPath = "") {
   const sections = /* @__PURE__ */ new Map();
   for (const part of output.split(`${SEPARATOR}`).slice(1)) {
     const newline = part.indexOf("\n");
@@ -4133,8 +4132,10 @@ function renderSnapshot(output, baseEnv, platform = process.platform) {
   lines.push(sections.get("functions")?.trimEnd() ?? "");
   lines.push("shopt -s expand_aliases");
   lines.push(sections.get("shopt")?.trimEnd() ?? "");
-  lines.push(sections.get("aliases")?.trimEnd() ?? "");
-  const added = (sections.get("path") ?? "").split("\n").filter(Boolean);
+  const aliases = (sections.get("aliases") ?? "").split("\n").filter((line) => line && !/\bwinpty\b/.test(line));
+  lines.push(aliases.join("\n"));
+  const plain = new Set(plainPath.split(":"));
+  const added = [...new Set((sections.get("path") ?? "").trim().split(":"))].filter((p) => p && !plain.has(p));
   if (added.length) lines.push(`export PATH=${shellQuote(added.join(":"))}:"$PATH"`);
   const env4 = (sections.get("env") ?? "").split("\0");
   const caseInsensitive = platform === "win32";
@@ -4142,20 +4143,38 @@ function renderSnapshot(output, baseEnv, platform = process.platform) {
   for (let i = 0; i + 1 < env4.length; i += 2) {
     const name = env4[i].replace(/^\n+/, "");
     const value = env4[i + 1];
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || SKIP_VARIABLES.has(name) || name.startsWith("ORIGINAL_") || name.startsWith("BASH")) continue;
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || SKIP_VARIABLES.has(name) || name.startsWith("ORIGINAL_") || name.startsWith("OCB_") || name.startsWith("BASH")) continue;
     if (base.get(caseInsensitive ? name.toUpperCase() : name) === value) continue;
     lines.push(`export ${name}=${shellQuote(value)}`);
   }
   return lines.filter(Boolean).join("\n") + "\n";
 }
-function captureSnapshot(bashPath) {
-  const tmpFile = import_path.default.join(import_os.default.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`);
+function plainShellPath(bashPath) {
   return new Promise((resolve) => {
-    const baseEnv = process.env;
+    const proc = (0, import_child_process.spawn)(bashPath, ["-c", 'printf "%s" "$PATH"'], { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+    const chunks = [];
+    proc.stdout?.on("data", (d) => chunks.push(d));
+    proc.on("error", () => resolve(""));
+    proc.on("close", () => resolve(Buffer.concat(chunks).toString("utf8")));
+  });
+}
+async function captureSnapshot(bashPath) {
+  const plain = plainShellPath(bashPath);
+  const captured = await captureLoginShell(bashPath);
+  if (!captured) return null;
+  const tmpFile = import_path.default.join(import_os.default.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`);
+  try {
+    import_fs.default.writeFileSync(tmpFile, renderSnapshot(captured, process.env, process.platform, await plain), "utf-8");
+  } catch {
+    return null;
+  }
+  return tmpFile;
+}
+function captureLoginShell(bashPath) {
+  return new Promise((resolve) => {
     const proc = (0, import_child_process.spawn)(bashPath, ["-ilc", buildSnapshotScript()], {
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...baseEnv, OCB_BASE_PATH: baseEnv.PATH ?? "" }
+      stdio: ["ignore", "pipe", "pipe"]
     });
     const chunks = [];
     const timer = setTimeout(() => {
@@ -4175,13 +4194,7 @@ function captureSnapshot(bashPath) {
     proc.on("close", (code) => {
       clearTimeout(timer);
       const stdout = Buffer.concat(chunks).toString("utf8");
-      if (code !== 0 || !stdout.includes(SEPARATOR)) return resolve(null);
-      try {
-        import_fs.default.writeFileSync(tmpFile, renderSnapshot(stdout, baseEnv), "utf-8");
-      } catch {
-        return resolve(null);
-      }
-      resolve(tmpFile);
+      resolve(code === 0 && stdout.includes(SEPARATOR) ? stdout : null);
     });
   });
 }

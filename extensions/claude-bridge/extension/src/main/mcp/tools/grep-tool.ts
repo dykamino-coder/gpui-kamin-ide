@@ -225,7 +225,10 @@ function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : undefined
 }
 
-export function grepOptions(input: Record<string, unknown>, cwd?: string): GrepOptions | string {
+/** Raw Grep tool arguments (not a tool handler itself). */
+type GrepInput = Record<string, unknown>
+
+export function grepOptions(input: GrepInput, cwd?: string): GrepOptions | string {
   const pattern = input.pattern
   if (typeof pattern !== 'string' || !pattern) return 'pattern is required'
   const mode = (input.output_mode as string) || 'files_with_matches'
