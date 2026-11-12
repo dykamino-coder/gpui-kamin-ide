@@ -70,7 +70,8 @@ describe('background task execution policy', () => {
         { signal, taskDeadlineMs: deadline, onOutput, cwd: '/session project' },
       )
       expect(mock.foreground.mock.lastCall?.[2]).toBeGreaterThan(22 * 3600_000)
-      expect(mock.foreground.mock.lastCall?.slice(5)).toEqual([signal, onOutput, '/session project'])
+      expect(mock.foreground.mock.lastCall?.slice(5, 8)).toEqual([signal, onOutput, '/session project'])
+      expect(typeof mock.foreground.mock.lastCall?.[8]).toBe('function')
       // The command reaches the shell through a script file, never as argv.
       expect(mock.foreground.mock.lastCall?.[0]).not.toContain('synthetic')
       expect(result.content[0]?.text).toBe('complete output')

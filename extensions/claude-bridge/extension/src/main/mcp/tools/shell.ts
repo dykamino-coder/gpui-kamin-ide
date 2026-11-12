@@ -6,6 +6,8 @@ import { getOrCreateSnapshot, wrapCommandWithSnapshot, shouldUseLoginShell } fro
 import { listEnabledPluginBinDirs } from '../../plugin-helpers'
 import { findBashExecutable, findPowerShellExecutable } from '../../utils/command-runtime'
 import { scriptInvocation, type ScriptInvocation } from '../../utils/script-file'
+import { toPosixShellPath } from '../../utils/command-runtime'
+import { startWarmShell, takeWarmShell, warmKey, type WarmKind } from './warm-shell'
 
 async function shellEnv(): Promise<NodeJS.ProcessEnv> {
   const binDirs = await listEnabledPluginBinDirs()
@@ -132,6 +134,27 @@ function shellTimeout(input: Record<string, unknown>, context?: ToolCallContext)
  *  prompts, and the execution policy bypassed unless the user opts out with
  *  CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY. Loading the profile cost
  *  ~100 ms per call and made results depend on the user's profile. */
+/** Takes a pre-started shell for this call (null: start cold) and starts the
+ *  one for the next call. `KAMIN_WARM_SHELL=0` turns the pool off. */
+function warmShell(
+  kind: WarmKind,
+  shell: string,
+  flags: string[],
+  env: NodeJS.ProcessEnv,
+  cwd: string | undefined,
+  scriptPath: string,
+): () => ChildProcess | null {
+  return () => {
+    if (process.env.KAMIN_WARM_SHELL === '0') return null
+    const child = takeWarmShell(warmKey(shell, flags, env), shell, flags, kind, env)
+    if (!child) return null
+    const folder = cwd ?? process.cwd()
+    return kind === 'bash'
+      ? startWarmShell(child, toPosixShellPath(folder), toPosixShellPath(scriptPath))
+      : startWarmShell(child, folder, scriptPath)
+  }
+}
+
 export function powerShellFlags(env: NodeJS.ProcessEnv): string[] {
   const flags = ['-NoLogo', '-NoProfile', '-NonInteractive']
   const respect = env.CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY
@@ -193,6 +216,7 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
       context?.signal,
       context?.onOutput,
       context?.cwd,
+      warmShell('powershell', pwshPath, flags, env, context?.cwd, script.file.path),
     )
   } finally {
     script.file.dispose()
@@ -259,6 +283,7 @@ export async function bashExecute(input: Record<string, unknown>, context?: Tool
       context?.signal,
       context?.onOutput,
       context?.cwd,
+      warmShell('bash', shell, shellFlags, env, context?.cwd, script.file.path),
     )
   } finally {
     script.file.dispose()
