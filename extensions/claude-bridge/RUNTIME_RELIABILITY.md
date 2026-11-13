@@ -369,6 +369,9 @@ closing a tab inside the reconnect window fails.**
 - **Next step:** kmaint2: a Fix PR that keeps webview messages that arrive before the view is
   resolved again and hands them over after resolve, with a test that fails on the old code and
   this close-tab scenario as the Windows gate. Then run max-sessions and session-not-found.
+- **2026-11-14:** the close-tab fix merged as #879 (Windows gate passed on its head: the
+  closed tab id was gone by 1 s in 2 of 2 runs). The tab growth is registered as BR-05A.
+  **Next step:** kmaint2: max-sessions and session-not-found.
 
 **Status:** implementation merged в PR #14; reopened for verification.
 **Dependency:** none. **Acceptance:** automated + Windows runtime merge gate;
@@ -388,6 +391,26 @@ Tests: event-before-tab, stale snapshot, terminal error + reconnect, cold app
 restart при живой server session и несколько tabs. Старый пятисекундный error
 timer отсутствует; stale manager generation и `listTabs` не откатывают более
 новую authority/revision, а fatal error не оставляет false-green composer.
+
+### BR-05A — Do not grow the warm pool on an extension-host respawn
+
+**Registered 2026-11-14 (kmaint2) from the BR-05 gate.**
+- Symptom: every extension-host respawn adds up to 4 more chat tabs, about 8 s after the
+  respawn. On the installed 1.0.96 the count went 9 → 13 → 17 → 20 over three respawns. A tab
+  the user closed just before the respawn can come back with a new tab id.
+- Cause (source): after a respawn `NativeRespawnState.restore` brings back the exact previous
+  tab set, including the warm tabs. `SessionsBridge.install` then still schedules the cold-boot
+  warm pool (`warmRestore`, up to `WARM_POOL_MAX` = 4), which opens tabs for open native
+  sessions that have no live tab. Closing a Bridge tab does not close its native session, so the
+  closed session is such a candidate.
+- Contract: a respawn restores the tab set the user had; the warm pool belongs to a cold start.
+- Evidence: [private PR #178](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/178),
+  `incidents/BR-05/evidence/2026-11-14-fix-candidate-03e6513a`.
+
+**Status:** registered. **Dependency:** none. **Acceptance:** automated: a respawn test in
+`sessions-bridge-respawn.test.ts` that fails on the old code (tab count and the closed session).
+**Windows runtime merge gate:** not required.
+**Next step:** kmaint2: Fix PR that skips the warm pool when the respawn journal was restored.
 
 ### BR-06 — Webview update stalls until pointer activity
 
