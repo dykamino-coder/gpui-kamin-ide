@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '../../shared/agent-events'
 import { GATE_TRACE, loadTrace, notifications, threadByPrompt } from './fixtures/load'
 import { CodexEventNormalizer } from './normalize'
+import { CODEX_PROTOCOL_VERSION } from './protocol'
 
 const trace = loadTrace(GATE_TRACE)
 const threads = threadByPrompt(trace)
@@ -21,7 +22,22 @@ const item = (completed: boolean, item: Record<string, unknown>) =>
     { threadId: 't', turnId: 'u', item, [completed ? 'completedAtMs' : 'startedAtMs']: 5 },
   ] as const
 
-describe('CodexEventNormalizer on the recorded 0.160.1 gate trace', () => {
+describe(`CodexEventNormalizer on the recorded ${CODEX_PROTOCOL_VERSION} gate trace`, () => {
+  it('replays the root-turn and item lifecycle fields emitted by 0.167.2', () => {
+    const frames = notifications(trace)
+    const turns = frames.filter((f) => f.method === 'turn/started')
+    expect(turns).toHaveLength(3)
+    for (const { params } of turns) expect(params.turn.rootTurnId).toBe(params.turn.id)
+    const completed = frames.filter((f) => f.method === 'item/completed')
+    expect(completed.length).toBeGreaterThan(0)
+    for (const { method, params, emittedAtMs } of completed) {
+      expect(params.item.startedAtMs).toBeTypeOf('number')
+      expect(params.item.completedAtMs).toBe(params.completedAtMs)
+      const events = n().normalize(method, params, emittedAtMs)
+      for (const event of events) expect(event.at).toBe(params.completedAtMs)
+    }
+  })
+
   it('projects a direct-tool turn: refusals stay invisible, MCP call, reasoning, streamed text, usage', () => {
     const events = eventsFor(threads['probe-a']!)
     const kinds = events.map((e) => e.kind)
