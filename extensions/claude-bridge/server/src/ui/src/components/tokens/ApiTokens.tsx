@@ -93,17 +93,6 @@ function copyToClipboard(text: string, id: string) {
   }, 1500)
 }
 
-async function copySetupToken(token: ApiToken) {
-  // Lists are masked. The existing setup issuance/recovery operation returns
-  // the credential only when the administrator explicitly requests a copy.
-  const response = await fetch('/api/dashboard/tokens', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ name: token.name }),
-  })
-  if (response.ok) copyToClipboard(((await response.json()) as ApiToken).token, token.id)
-}
-
 function maskToken(token: string): string {
   if (token.length <= 8) return token
   return token.slice(0, 4) + '•'.repeat(Math.min(token.length - 8, 24)) + token.slice(-4)
@@ -163,7 +152,7 @@ export function ApiTokens() {
                   <td class={styles.cellName}>{t.name}</td>
                   <td class={styles.cellToken}>
                     <code class={styles.tokenCode}>{maskToken(t.token)}</code>
-                    <button class={styles.copyBtn} onClick={() => void copySetupToken(t)} title="Copy token">
+                    <button class={styles.copyBtn} onClick={() => copyToClipboard(t.token, t.id)} title="Copy token">
                       <i class={copiedId.value === t.id ? 'fa-solid fa-check' : 'fa-solid fa-copy'} />
                     </button>
                   </td>

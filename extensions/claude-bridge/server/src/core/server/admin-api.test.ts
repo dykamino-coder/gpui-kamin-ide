@@ -138,6 +138,8 @@ describe('admin API discovery', () => {
         expect(spec.paths[openApiPath(route.path)][route.method.toLowerCase()]).toBeDefined()
       expect(spec.paths['/api/test/ping'] !== undefined).toBe(mode !== 'production')
       expect(spec.paths['/api/dashboard/tokens/{id}'].patch).toBeDefined()
+      expect(spec.paths['/api/dashboard/tokens'].get.security).toEqual([{ adminBearer: [] }, {}])
+      expect(spec.paths['/api/dashboard/tokens/{id}'].patch.security).toEqual([{ adminBearer: [] }, {}])
       const undocumented = createApp()
       undocumented.get('/accidentally-undocumented', (c) => c.json({ ok: true }))
       expect(() => createSpecification(undocumented)).toThrow('GET /accidentally-undocumented')
@@ -205,7 +207,7 @@ describe('admin API discovery', () => {
     expect(Object.keys(cards.cards).length).toBeGreaterThan(0)
   })
 
-  it('validates token writes before mutation and masks all read/rename responses', async () => {
+  it('validates token writes before mutation and masks non-admin read/rename responses', async () => {
     const app = createApp()
     const write = (url: string, method: string, body: unknown) =>
       app.request(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
@@ -234,6 +236,41 @@ describe('admin API discovery', () => {
     })
     expect(synced.status).toBe(200)
     expect((await app.request(`/api/dashboard/tokens/${token.id}`, { method: 'DELETE' })).status).toBe(200)
+  })
+
+  it('preserves administrator token reads and returns the same representation on rename', async () => {
+    fixture.authEnabled = true
+    try {
+      const app = createApp()
+      const created = await app.request('/api/dashboard/tokens', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Admin copy regression' }),
+      })
+      const token = await created.json()
+      for (const authorization of [
+        undefined,
+        'Bearer invalid-session',
+        `Bearer ${token.token}`,
+        'Bearer synthetic-admin',
+      ]) {
+        const headers = authorization ? { authorization } : undefined
+        const listed = await (await app.request('/api/dashboard/tokens', { headers })).json()
+        const entry = listed.find((t: { id: string }) => t.id === token.id)
+        if (authorization === 'Bearer synthetic-admin') expect(entry.token).toBe(token.token)
+        else expect(entry.token).not.toBe(token.token)
+        const renamed = await app.request(`/api/dashboard/tokens/${token.id}`, {
+          method: 'PATCH',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'Admin copy regression renamed' }),
+        })
+        expect(renamed.status).toBe(200)
+        expect((await renamed.json()).token).toBe(entry.token)
+      }
+      expect((await app.request(`/api/dashboard/tokens/${token.id}`, { method: 'DELETE' })).status).toBe(200)
+    } finally {
+      fixture.authEnabled = false
+    }
   })
 
   it('protects documentation with administrator Basic or bearer credentials', async () => {

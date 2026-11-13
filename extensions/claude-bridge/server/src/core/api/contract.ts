@@ -14,7 +14,7 @@ export interface Contract {
   responseMedia?: string
   statuses?: number[]
   /** Undefined = dashboard Basic/session or scoped API bearer; [] = public. */
-  security?: string[]
+  security?: (string | Record<string, string[]>)[]
 }
 
 export function operation(

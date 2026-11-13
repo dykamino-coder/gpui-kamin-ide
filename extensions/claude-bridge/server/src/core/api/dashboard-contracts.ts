@@ -138,19 +138,27 @@ export const dashboardContracts: Contract[] = [
   d('POST', '/codex/login/cancel', 'Cancel Codex device login', s.ok),
   d('POST', '/codex/logout', 'Sign out of Codex', s.ok),
   d('GET', '/codex/models', 'Available Codex models', z.object({ models: z.array(s.object) })),
-  d('GET', '/tokens', 'List token identities with masked values', z.array(s.token), { security: [] }),
+  d('GET', '/tokens', 'List tokens (full values for administrator sessions)', z.array(s.token), {
+    security: [{ adminBearer: [] }, {}],
+    description:
+      'Preserves the existing dashboard contract: administrator session Bearer receives full token values; other callers receive masked values.',
+  }),
   d('POST', '/tokens', 'Create or recover a user token', s.token, {
     body: s.tokenName,
     statuses: [200, 201],
     security: [],
-    description:
-      'Existing first-install contract: idempotent by name, returns the issued credential for client setup. Read/list/rename endpoints return masked values.',
+    description: 'Existing first-install contract: idempotent by name, returns the issued credential for client setup.',
   }),
   d('POST', '/tokens/resolve', 'Resolve a token already held by the caller', s.tokenIdentity, {
     body: z.object({ token: s.str }),
     security: [],
   }),
-  d('PATCH', '/tokens/:id', 'Rename a user token', s.token, { body: s.tokenName, security: [] }),
+  d('PATCH', '/tokens/:id', 'Rename a user token', s.token, {
+    body: s.tokenName,
+    security: [{ adminBearer: [] }, {}],
+    description:
+      'Returns the same token representation as GET /tokens: full for administrator session Bearer, masked otherwise.',
+  }),
   d('DELETE', '/tokens/:id', 'Delete a user token', s.ok, { security: [] }),
   d(
     'GET',

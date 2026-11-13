@@ -14,7 +14,9 @@ export const error = z.looseObject({ error: z.union([str, object]) })
 export const sessionCounts = z.object({ total: num, active: num })
 export const tokenIdentity = z.object({ id: str, name: str, createdAt: str })
 export const token = tokenIdentity.extend({
-  token: str.describe('Masked on reads/rename; issued on create/recover only.'),
+  token: str.describe(
+    'Dashboard list/rename: full value for an admin session bearer, masked otherwise. Creation/recovery and development fixtures return the full value.',
+  ),
 })
 export const tokenName = z.object({ name: str.trim().min(1) })
 export const streaming = z.object({

@@ -2,8 +2,9 @@
 // Dashboard API Token endpoints
 // ============================================================================
 
-import type { Hono } from 'hono'
+import type { Context, Hono } from 'hono'
 import { createToken, deleteToken, findTokenByValue, listTokens, maskToken, updateToken } from '../../auth/tokens'
+import { validateDashboardSession } from '../../auth/dashboard-auth'
 import {
   getStreamingSettings,
   setStreamingSettings,
@@ -13,9 +14,17 @@ import {
 } from '../../proxy/streaming-settings'
 
 export function registerTokenRoutes(api: Hono): void {
-  // Read responses always use the same masked representation as the UI.
+  // Token routes bypass auth middleware, so resolve the admin session directly
+  // from the header to preserve the existing list/copy contract.
+  async function isAdminSession(c: Context): Promise<boolean> {
+    const auth = c.req.header('authorization')
+    if (!auth?.startsWith('Bearer ')) return false
+    return !!(await validateDashboardSession(auth.slice(7)))
+  }
+
   api.get('/api/dashboard/tokens', async (c) => {
     const tokens = await listTokens()
+    if (await isAdminSession(c)) return c.json(tokens)
     return c.json(tokens.map((t) => ({ ...t, token: maskToken(t.token) })))
   })
 
@@ -63,6 +72,7 @@ export function registerTokenRoutes(api: Hono): void {
     if (!name) return c.json({ error: 'name is required' }, 400)
     const token = await updateToken(c.req.param('id'), { name })
     if (!token) return c.json({ error: 'Token not found' }, 404)
+    if (await isAdminSession(c)) return c.json(token)
     return c.json({ ...token, token: maskToken(token.token) })
   })
 

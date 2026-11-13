@@ -12,7 +12,7 @@
 import { Hono } from 'hono'
 import { getAllSessions, getSession, getSessionTree, sendMcpCall } from '../pty/session-manager'
 import { getSessionWs } from '../pty/session-ws'
-import { maskToken, createToken, listTokens } from '../auth/tokens'
+import { createToken, listTokens } from '../auth/tokens'
 
 export function createTestRoutes(): Hono {
   const api = new Hono()
@@ -41,7 +41,7 @@ export function createTestRoutes(): Hono {
 
   // ── List tokens (for debugging) ────────────────────
   api.get('/api/test/tokens', async (c) => {
-    return c.json({ tokens: (await listTokens()).map((t) => ({ ...t, token: maskToken(t.token) })) })
+    return c.json({ tokens: await listTokens() })
   })
 
   // ── List active sessions ──────────────────────────────

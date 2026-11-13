@@ -62,7 +62,9 @@ export function createSpecification(app: Hono) {
       summary: contract.summary,
       tags: [contract.tag],
       description: contract.description,
-      security: (contract.security ?? ['basicAuth', 'adminBearer', 'apiBearer']).map((name) => ({ [name]: [] })),
+      security: (contract.security ?? ['basicAuth', 'adminBearer', 'apiBearer']).map((entry) =>
+        typeof entry === 'string' ? { [entry]: [] } : entry,
+      ),
       parameters,
       responses,
       ...(contract.body
@@ -82,7 +84,7 @@ export function createSpecification(app: Hono) {
       title: 'Bridge API',
       version: VERSION,
       description:
-        'Dashboard and Bridge service API. Basic uses the configured dashboard username/password; adminBearer uses the session issued by /api/dashboard/auth/login. apiBearer is a scoped user token. Interactive PTYs use the WebSocket protocols described in x-websockets. Token creation/login are credential issuance operations; read endpoints mask token values.',
+        'Dashboard and Bridge service API. Basic uses the configured dashboard username/password; adminBearer uses the session issued by /api/dashboard/auth/login. apiBearer is a scoped user token. Interactive PTYs use the WebSocket protocols described in x-websockets. Existing token visibility is preserved: dashboard token list/rename return full values for administrator session Bearer and masked values otherwise.',
     },
     servers: [{ url: '/' }],
     paths,
