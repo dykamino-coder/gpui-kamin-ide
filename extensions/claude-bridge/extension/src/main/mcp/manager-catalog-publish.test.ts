@@ -30,7 +30,7 @@ vi.mock('./discovery', () => ({
   discoverProjectConfigs: vi.fn(async () => []),
   resolveEnvVars: (value: unknown) => value,
 }))
-vi.mock('./transports/stdio', () => ({ connectStdio: vi.fn() }))
+vi.mock('./transports/stdio', () => ({ connectStdio: vi.fn(), stdioWorkingDirectory: () => '/fixture' }))
 
 import { discoverPluginConfigs } from './discovery'
 import { connectStdio } from './transports/stdio'
