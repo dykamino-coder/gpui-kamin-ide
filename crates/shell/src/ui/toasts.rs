@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use gpui::prelude::*;
@@ -25,63 +25,7 @@ pub const TOAST_MS: u32 = 8000;
 /// Длительность slide-in/out; после slide-out `ToastGone` удаляет карту.
 pub const TOAST_OUT_MS: u64 = 180;
 
-/// Живой таймер тоста. Живёт в `RootView::toast_timers` (не в самом Toast —
-/// у Toast 18 мест конструирования). Wall-clock: полоса каунтдауна читает
-/// active_ms() на КАЖДЫЙ кадр (насос — repeat-анимация на полосе), ховер
-/// держит паузу, `closing` запускает slide-out; фоновый поток обработчика
-/// `ShellEvent::Toast` лишь проверяет истечение раз в 100мс.
-pub struct ToastTimer {
-    started: std::time::Instant,
-    /// Сумма мс ЗАВЕРШЁННЫХ ховер-пауз.
-    paused_ms: AtomicU32,
-    /// Начало текущего ховера, мс от started; u32::MAX = ховера нет.
-    hover_since_ms: AtomicU32,
-    pub closing: AtomicBool,
-}
-
-impl Default for ToastTimer {
-    fn default() -> Self {
-        Self {
-            started: std::time::Instant::now(),
-            paused_ms: AtomicU32::new(0),
-            hover_since_ms: AtomicU32::new(u32::MAX),
-            closing: AtomicBool::new(false),
-        }
-    }
-}
-
-impl ToastTimer {
-    /// Прожитые мс БЕЗ ховер-пауз (гладкая, не ступенчатая величина).
-    pub fn active_ms(&self) -> u32 {
-        let now = self.started.elapsed().as_millis() as u32;
-        let hover = self.hover_since_ms.load(Ordering::Relaxed);
-        let current_pause = if hover == u32::MAX {
-            0
-        } else {
-            now.saturating_sub(hover)
-        };
-        now.saturating_sub(self.paused_ms.load(Ordering::Relaxed))
-            .saturating_sub(current_pause)
-    }
-
-    pub fn set_hovered(&self, hovered: bool) {
-        let now = self.started.elapsed().as_millis() as u32;
-        if hovered {
-            let _ = self.hover_since_ms.compare_exchange(
-                u32::MAX,
-                now,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            );
-        } else {
-            let since = self.hover_since_ms.swap(u32::MAX, Ordering::Relaxed);
-            if since != u32::MAX {
-                self.paused_ms
-                    .fetch_add(now.saturating_sub(since), Ordering::Relaxed);
-            }
-        }
-    }
-}
+pub use super::toast_timer::ToastTimer;
 
 const INFO: &str = "\u{ea74}";
 const PASS: &str = "\u{eba4}";
@@ -98,6 +42,17 @@ pub struct Toast {
     pub message: String,
     pub actions: Vec<String>,
     pub sticky: bool,
+    /// Заказанный каунтдаун не-sticky тоста; `None` — `TOAST_MS`. Нужен,
+    /// чтобы transient-уведомление с кнопкой (BR-23) и длительность вебвью
+    /// не терялись по дороге в общий стек.
+    pub duration_ms: Option<u32>,
+}
+
+impl Toast {
+    /// Время жизни не-sticky тоста без ховер-пауз.
+    pub fn life_ms(&self) -> u32 {
+        self.duration_ms.unwrap_or(TOAST_MS)
+    }
 }
 
 fn severity_glyph(sev: &str) -> &'static str {
@@ -247,6 +202,7 @@ fn toast_card(
         // тост жив (ступенчатые 10Гц «подтормаживали» — жалоба юзера).
         if !t.sticky && !closing {
             let tm_bar = tm.clone();
+            let life = t.life_ms();
             // Трек с боковыми инсетами = RADIUS_MD: полоса живёт в прямом
             // участке нижней кромки (content mask не режет скругления).
             card = card.child(
@@ -266,8 +222,8 @@ fn toast_card(
                                 Animation::new(Duration::from_secs(1)).repeat(),
                                 move |d, _| {
                                     crate::web::diag_why::tick("animation/toast-bar");
-                                    let active = tm_bar.active_ms().min(TOAST_MS) as f32;
-                                    d.w(relative(1.0 - active / TOAST_MS as f32))
+                                    let active = tm_bar.active_ms().min(life) as f32;
+                                    d.w(relative(1.0 - active / life as f32))
                                 },
                             ),
                     ),

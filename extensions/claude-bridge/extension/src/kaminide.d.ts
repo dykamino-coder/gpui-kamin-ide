@@ -44,6 +44,21 @@ declare module "kaminide" {
     deleteSession(id: string): void
   }
 
+  /** `kaminide.window` (API 2.1.0+). `showTransientMessage` shows a notice whose
+   *  buttons are a shortcut, not a decision: it counts down and closes itself
+   *  (settling `undefined`), unlike `vscode.window.show*Message` with items,
+   *  which waits for the user. Never use it for approvals or questions. */
+  export interface TransientMessageOptions {
+    severity?: "info" | "warning" | "error"
+    /** Countdown in ms; the shell bounds it. Default 8000. */
+    durationMs?: number
+  }
+  export interface WindowApi {
+    showTransientMessage(message: string, options?: TransientMessageOptions, ...items: string[]): Promise<string | undefined>
+  }
+
   export const version: string
   export const sessions: SessionsApi
+  /** Absent before API 2.1.0 — feature-detect. */
+  export const window: WindowApi | undefined
 }
