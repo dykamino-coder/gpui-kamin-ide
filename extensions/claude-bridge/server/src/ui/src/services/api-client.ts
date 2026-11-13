@@ -128,8 +128,12 @@ export const api = {
     fetchJson<UserTimeSeriesEntry[]>(`/api/dashboard/stats/timeseries?period=${period}&days=${days}`),
   getUsers: (engine: 'all' | 'claude' | 'codex' = 'all') =>
     fetchJson<UserSummary[]>(`/api/dashboard/users${engine === 'all' ? '' : `?engine=${engine}`}`),
-  getUsersWithBuild: async (engine: 'all' | 'claude' | 'codex' = 'all'): Promise<{ list: UserSummary[]; building: number | null }> => {
-    const res = await fetch(`/api/dashboard/users${engine === 'all' ? '' : `?engine=${engine}`}`, { headers: authHeaders() })
+  getUsersWithBuild: async (
+    engine: 'all' | 'claude' | 'codex' = 'all',
+  ): Promise<{ list: UserSummary[]; building: number | null }> => {
+    const res = await fetch(`/api/dashboard/users${engine === 'all' ? '' : `?engine=${engine}`}`, {
+      headers: authHeaders(),
+    })
     handle401(res)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const pct = res.headers.get('X-Stats-Building')
