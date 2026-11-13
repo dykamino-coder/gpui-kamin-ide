@@ -226,6 +226,7 @@ export interface RestartPolicy {
 /** One host per CODEX_HOME; concurrent acquirers share the same start. Dead
  *  hosts are restarted on the next acquire, within the restart policy. */
 export class CodexHostRegistry {
+  private readonly suspended = new Set<string>()
   private readonly hosts = new Map<string, Promise<CodexHost>>()
   private readonly history = new Map<
     string,
@@ -238,6 +239,10 @@ export class CodexHostRegistry {
   ) {}
 
   acquire(home: string): Promise<CodexHost> {
+    if (this.suspended.has(home))
+      return Promise.reject(
+        new Error('Codex terminal is using this account; exit it before starting a chat or changing the account'),
+      )
     const existing = this.hosts.get(home)
     if (existing) {
       return existing.then((host) => (host.alive ? host : this.restart(home, existing)))
@@ -245,6 +250,24 @@ export class CodexHostRegistry {
     const paused = this.pausedUntil(home)
     if (paused) return Promise.reject(new CodexRestartPausedError(this.history.get(home)!.crashes.length, paused))
     return this.launch(home)
+  }
+
+  /** Hand the home to a CLI only after the app-server has fully exited. */
+  async suspend(home: string): Promise<() => void> {
+    if (this.suspended.has(home)) throw new Error('A Codex terminal is already running')
+    this.suspended.add(home)
+    try {
+      const host = await this.hosts.get(home)
+      if (host?.alive && host.threadCount > 0)
+        throw new Error('Exit active Codex chats before opening the Codex terminal')
+      await host?.close()
+      return () => {
+        this.suspended.delete(home)
+      }
+    } catch (error) {
+      this.suspended.delete(home)
+      throw error
+    }
   }
 
   private pausedUntil(home: string): number | null {
