@@ -21,6 +21,7 @@ pub(crate) fn push(view_id: &str, json: String) {
     if let Ok(mut map) = PENDING.lock() {
         map.entry(view_id.to_string()).or_default().push(json);
     }
+    super::diag_outbox::pushed(view_id);
 }
 
 /// Забрать всё накопленное для вью одним массивом. Порядок сохраняется.
@@ -30,6 +31,7 @@ pub(crate) fn take_all(view_id: &str) -> String {
         .ok()
         .and_then(|mut m| m.remove(view_id))
         .unwrap_or_default();
+    super::diag_outbox::taken(view_id);
     // Каждая пачка — уже массив; склеиваем их в один, снимая внешние скобки.
     let inner: Vec<&str> = batches
         .iter()
