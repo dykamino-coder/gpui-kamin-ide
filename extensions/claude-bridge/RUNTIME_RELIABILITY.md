@@ -560,9 +560,9 @@ Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-pri
 
 Not covered: a server built from current `main`.
 
-Next step: close as done, unless a server from `main` is required as a separate gate.
+**Closed 2026-11-13 (lead decision):** done. The server prompt contract has not changed since `584b5616`, and the client side was checked on a `main` build, so no separate gate on a server from `main` is needed.
 
-**Status:** implementation merged в PR #15; reopened for verification.
+**Status:** done (implementation PR #15, verification 2026-11-13).
 Automatic selection остаётся отдельным BR-15. **Dependency:** none.
 **Acceptance:** automated + authenticated Windows runtime merge gate; live
 gate не выполнен.
