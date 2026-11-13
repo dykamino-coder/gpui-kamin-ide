@@ -3,7 +3,7 @@ import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { initSchema } from './schema'
-import { initSessionOwners, writeSessionToken } from './session-owners'
+import { initSessionOwners, readSessionOwners, writeSessionToken } from './session-owners'
 
 const state = vi.hoisted(() => ({ db: undefined as unknown as DuckDBConnection }))
 vi.mock('./lifecycle', () => ({ getDb: async () => state.db }))
@@ -41,6 +41,10 @@ async function checkOracle() {
       UNION ALL (SELECT * FROM expected EXCEPT ALL SELECT * FROM session_owners))`)
   ).getRowObjects()
   expect(diff).toEqual([])
+  const persisted = (
+    await db.runAndReadAll('SELECT user_name, first_seen, last_seen FROM session_owners ORDER BY user_name')
+  ).getRowObjects()
+  expect([...readSessionOwners()].sort((a, b) => a.user_name.localeCompare(b.user_name))).toEqual(persisted)
 }
 
 describe('persistent session owner roster', () => {
@@ -68,6 +72,7 @@ describe('persistent session owner roster', () => {
         { userName: 'alice', firstSeen: '2026-01-01', lastSeen: '2026-02-01', totalInputs: 0 },
       ])
     }
+    expect(reads).not.toHaveBeenCalled()
     expect(reads.mock.calls.some(([sql]) => /FROM session_tokens/i.test(sql))).toBe(false)
     await insert('new', 'new-owner', '2026-04-01')
     expect(await (await app.request('/api/dashboard/users')).json()).toMatchObject([{ userName: 'new-owner' }, {}, {}])
@@ -111,6 +116,25 @@ describe('persistent session owner roster', () => {
     expect((await db.runAndReadAll('SELECT user_name FROM session_owners')).getRowObjects()).toEqual([
       { user_name: 'alice' },
     ])
+  })
+
+  it('publishes only committed owners and reloads the durable snapshot on open', async () => {
+    await insert('a', 'alice', '2026-01-01')
+    const previous = readSessionOwners()
+    const run = db.run.bind(db)
+    const writes = vi.spyOn(db, 'run').mockImplementation(async (sql, ...args) => {
+      if (sql === 'COMMIT') expect(readSessionOwners()).toEqual(previous)
+      return run(sql, ...args)
+    })
+    await writeSessionToken(db, 'a', () => db.run("UPDATE session_tokens SET user_name = 'bob' WHERE session_id = 'a'"))
+    writes.mockRestore()
+    expect(readSessionOwners()).toEqual([{ user_name: 'bob', first_seen: '2026-01-01', last_seen: '2026-01-01' }])
+    // Simulate a durable commit from the previous process before this open.
+    await db.run("UPDATE session_tokens SET created_at = '2026-02-01' WHERE session_id = 'a'")
+    await db.run("UPDATE session_owners SET first_seen = '2026-02-01', last_seen = '2026-02-01'")
+    await initSessionOwners(db)
+    expect(readSessionOwners()).toEqual([{ user_name: 'bob', first_seen: '2026-02-01', last_seen: '2026-02-01' }])
+    await checkOracle()
   })
 
   it('leaves an interrupted backfill retryable without replacing the committed roster', async () => {
