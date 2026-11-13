@@ -151,5 +151,37 @@ class Folding(unittest.TestCase):
         json.dumps(report)
 
 
+@unittest.skipUnless(sys.platform == "win32", "memprof ws reads Windows process memory")
+class WorkingSet(unittest.TestCase):
+    def test_pages_are_classified_by_region_type_and_reservation(self):
+        import memprof_ws as ws
+
+        res = lambda size, guard=False, wc=False: {"size": size, "guard": guard, "wc": wc}  # noqa: E731
+        self.assertEqual(ws.category(ws.MEM_IMAGE, res(1 << 30)), "image")
+        self.assertEqual(ws.category(ws.MEM_MAPPED, res(1 << 30)), "mapped")
+        self.assertEqual(ws.category(ws.MEM_PRIVATE, res(1 << 20, guard=True)), "stack")
+        self.assertEqual(ws.category(ws.MEM_PRIVATE, res(1 << 20, wc=True)), "wc/nocache")
+        self.assertEqual(ws.category(ws.MEM_PRIVATE, res(ws.BIG_RESERVATION)), "big-res")
+        self.assertEqual(ws.category(ws.MEM_PRIVATE, res(ws.BIG_RESERVATION - 1)), "small-res")
+
+    def test_own_process_breakdown_covers_its_working_set(self):
+        import ctypes
+        import os
+        import memprof_ws as ws
+
+        h = ws.k32.OpenProcess(ws.PROCESS_QUERY_INFORMATION | ws.PROCESS_VM_READ, False, os.getpid())
+        try:
+            b = ws.breakdown(h)
+            pmc = ws.PMC()
+            pmc.cb = ctypes.sizeof(pmc)
+            self.assertTrue(ws.psapi.GetProcessMemoryInfo(h, ctypes.byref(pmc), pmc.cb))
+        finally:
+            ws.k32.CloseHandle(h)
+        total = sum(b["categories"].values())
+        self.assertGreater(b["categories"].get("image", 0) + b["categories"].get("image (shared)", 0), 0)
+        # Resident pages and the reported working set are taken moments apart.
+        self.assertLess(abs(total - pmc.WorkingSetSize), pmc.WorkingSetSize // 4)
+
+
 if __name__ == "__main__":
     unittest.main()

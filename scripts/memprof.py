@@ -14,6 +14,9 @@ One command per question (docs/memprof.md):
       run, and the report lists owners, the live heap at that moment and its unreported blocks by site.
   memprof.py diff A.json B.json
       compares two saved reports without symbols.
+  memprof.py ws --exe CAND.exe [--base-exe BASE.exe] --out DIR -- PAGE.html --mode both --runs 5
+      working set by memory region (image, mapped, private by reservation kind) at its peak, any build
+      (timing-only included): what the live-heap reports cannot see (scripts/memprof_ws.py).
 
 The probe (crates/engine-bench/src/allocations/probe.rs) writes one line per allocation with its stack
 and one per free. A sampled file (ENGINE_BENCH_ALLOC_STACKS_SAMPLE=T) holds a block of s bytes with
@@ -661,7 +664,21 @@ def main(argv=None):
     dif.add_argument("cand")
     dif.add_argument("base")
 
+    wsp = sub.add_parser("ws", help="working set by memory region at its peak (any engine_bench build)")
+    wsp.add_argument("--exe", required=True, help="candidate engine_bench.exe")
+    wsp.add_argument("--base-exe", help="base engine_bench.exe")
+    wsp.add_argument("--out", required=True, help="directory for bench JSON and the report")
+    wsp.add_argument("--launcher", help="command prefix that prints 'own child: <pid>' first")
+    wsp.add_argument("--interval-ms", type=int, default=1, help="working-set sampling interval")
+    wsp.add_argument("--step-mb", type=int, default=2, help="new breakdown when the peak grows by this much")
+    wsp.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
+
     args = parser.parse_args(argv)
+    if args.command == "ws":
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import memprof_ws
+        launcher = [p.strip('"') for p in shlex.split(args.launcher, posix=False)] if args.launcher else []
+        return memprof_ws.ws_command(args, launcher)
     {"run": run_command, "report": report_command, "diff": diff_command}[args.command](args)
 
 
