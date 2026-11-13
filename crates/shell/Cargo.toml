@@ -88,6 +88,8 @@ windows = { version = "0.62", features = [
 [dev-dependencies]
 # VisualTestContext/TestAppContext доступны только с test-support
 gpui = { workspace = true, features = ["test-support"] }
+# Хост-заглушка WS-протокола kamin-host (`host/rebind_tests.rs`); та же версия, что у kamin-ws.
+tungstenite = "0.30"
 
 [target.'cfg(windows)'.dev-dependencies]
 # WARP fixtures create real D3D11 devices; production interop borrows GPUI's.
