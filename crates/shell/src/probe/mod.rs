@@ -15,6 +15,8 @@ pub mod emit_ui;
 pub mod emit_view;
 pub mod host;
 pub mod input;
+#[cfg(feature = "probe")]
+pub mod keyboard;
 pub mod keys;
 pub mod registry;
 pub mod shot;
