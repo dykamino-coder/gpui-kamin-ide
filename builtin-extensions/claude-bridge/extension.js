@@ -43455,7 +43455,6 @@ var import_path6 = __toESM(require("path"), 1);
 // src/main/ws/session-idle-tracker.ts
 var DEBOUNCE_MS = 500;
 var OSC_CONFIRM_MS = 4e3;
-var RECENT_WORK_WINDOW_MS = 6e4;
 var SETTLE_MS = 4e3;
 var SETTLE_HARD_CAP_MS = 6e4;
 var POST_REPLAY_GRACE_MS = 1500;
@@ -43465,8 +43464,9 @@ var SessionIdleTracker = class {
   }
   onIdle;
   debounceTimer = null;
-  lastWorkingAt = 0;
   wasWorking = false;
+  idleSeenSinceAttach = false;
+  workStartedAfterIdle = false;
   settleUntil = 0;
   awaitingReplaySince = 0;
   /** Сервер шлёт состояния жизненного цикла (`UserPromptSubmit`/`Stop`).
@@ -43474,9 +43474,11 @@ var SessionIdleTracker = class {
    *  считать, что раз пришёл хоть один хук, то придёт и хук завершения витка,
    *  нельзя — в поле это неверно. */
   hookSeen = false;
-  /** Call on every socket (re)open — starts a window during which an idle
-   *  transition won't fire a toast (covers the attach-replay blip). */
+  /** Call on every socket (re)open — suppresses a cached in-flight spell while
+   *  replay settles. Observing idle followed by new work opens a fresh turn. */
   armSettle() {
+    this.idleSeenSinceAttach = false;
+    this.workStartedAfterIdle = false;
     this.settleUntil = Date.now() + SETTLE_MS;
     this.awaitingReplaySince = Date.now();
   }
@@ -43493,17 +43495,13 @@ var SessionIdleTracker = class {
    *  `hookDriven` — состояние пришло из хука жизненного цикла CLI, а не из
    *  эвристики заголовка OSC.
    *
-   *  BR-23: оба вида состояний шли сюда неразличимо, а трекер не знает границ
-   *  витка. Простой OSC-мигание «работает → простаивает» посреди оркестрации
-   *  Agent Teams снова разрешало тост, и до ЕДИНСТВЕННОГО `Stop` главного витка
-   *  успевало накопиться несколько «Session finished». Поэтому как только
-   *  сервер показал, что умеет хуки, виток закрывает ТОЛЬКО хук: эвристический
-   *  простой по-прежнему отслеживается, но тоста не даёт.
+   *  Hook idle uses the ordinary debounce; OSC idle needs a longer confirmation
+   *  after hooks have been seen, so short orchestration blips do not end a turn.
    */
   track(rawTitle, isWorking, hookDriven = false) {
     if (hookDriven) this.hookSeen = true;
     if (isWorking) {
-      this.lastWorkingAt = Date.now();
+      if (!this.wasWorking) this.workStartedAfterIdle = this.idleSeenSinceAttach;
       this.wasWorking = true;
       if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
@@ -43511,6 +43509,7 @@ var SessionIdleTracker = class {
       }
       return;
     }
+    this.idleSeenSinceAttach = true;
     if (!this.wasWorking) return;
     const wait = this.hookSeen && !hookDriven ? OSC_CONFIRM_MS : DEBOUNCE_MS;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
@@ -43518,8 +43517,7 @@ var SessionIdleTracker = class {
       this.debounceTimer = null;
       if (!this.wasWorking) return;
       this.wasWorking = false;
-      if (this.settleActive()) return;
-      if (Date.now() - this.lastWorkingAt > RECENT_WORK_WINDOW_MS) return;
+      if (this.settleActive() && !this.workStartedAfterIdle) return;
       this.onIdle(rawTitle ?? "");
     }, wait);
   }
@@ -43531,6 +43529,8 @@ var SessionIdleTracker = class {
       this.debounceTimer = null;
     }
     this.wasWorking = false;
+    this.idleSeenSinceAttach = false;
+    this.workStartedAfterIdle = false;
   }
 };
 
