@@ -62,6 +62,10 @@ export class WorkspacePresentation {
       const request = channel === 'mcp-elicitation-request' ? args[0] : args[1]
       if (request && typeof request.requestId === 'string') this.questions.set(request.requestId, frame)
     }
+    if (channel === 'permission-resolved') {
+      const prompt = this.questions.get(args[1]?.requestId)
+      if (prompt?.channel === 'permission-request' && Array.isArray(prompt.args) && prompt.args[0] === args[0]) this.resolve(args[1].requestId)
+    }
     if (channel === 'session:submission' && args[1]?.id) {
       const key = `${args[0]}:${args[1].id}`
       const previous = this.submissions.get(key)?.args as unknown[] | undefined

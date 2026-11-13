@@ -87,7 +87,7 @@ export class ExtensionLoader {
 
   /** The shared `kaminide` module — built once on first `require('kaminide')`. */
   private resolveKaminideApi(): KaminideApi {
-    this.kaminideApi ??= createKaminideApi(this.opts.sessionsApi)
+    this.kaminideApi ??= createKaminideApi(this.opts.sessionsApi, this.opts.showMessage)
     return this.kaminideApi
   }
 

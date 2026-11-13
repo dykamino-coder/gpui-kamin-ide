@@ -9,6 +9,7 @@ import type { Hono } from 'hono'
 import { config, VERSION } from '../../config'
 import { getEditableSettings } from '../../config/settings'
 import { getAllSessions } from '../../pty/session-manager'
+import { warnLog } from '../../logging'
 import { getDb } from '../../stats/database/lifecycle'
 import { getSystemStats, startSystemStatsSampler } from '../system-stats'
 import { denyApiToken } from '../authz'
@@ -36,8 +37,8 @@ export function registerStatusRoutes(api: Hono, runtime: () => CodexRuntime = co
     try {
       const dbPath = path.join(process.cwd(), 'data', 'proxy.duckdb')
       if (fs.existsSync(dbPath)) dbSizeBytes = fs.statSync(dbPath).size
-    } catch {
-      /* ignore */
+    } catch (error) {
+      warnLog('dashboard status: database size read failed', { error: String(error) })
     }
 
     return c.json({

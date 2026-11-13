@@ -16,12 +16,19 @@ import { debugLog, infoLog, warnLog } from '../logging'
 import { resolveCodexCommand, type CodexCommand } from './binary'
 import { CodexHost, CodexHostRegistry, type RestartPolicy } from './codex-host'
 import { acquireCodexHomeLock } from './codex-home-lock'
-import { assertBridgeOwnedHome, buildCodexEnv, defaultCodexHome, prepareCodexHome } from './codex-home'
+import {
+  assertBridgeOwnedHome,
+  buildCodexEnv,
+  defaultCodexHome,
+  migrateLegacyCodexHome,
+  prepareCodexHome,
+} from './codex-home'
 import { classifyCodexError, type CodexErrorInfo } from './codex-errors'
 import { codexLockdownConfig, toConfigOverrides } from './config-toml'
 import { buildPatchedCatalog, type ModelCatalog } from './model-catalog'
 import { probeCodexNetwork } from './network-probe'
 import { currentModels } from './model-list-filter'
+import { parseCodexRateLimits, type CodexRateLimits } from '../../shared/codex-rate-limits'
 
 export interface CodexAccountStatus {
   loggedIn: boolean
@@ -126,6 +133,7 @@ export class CodexRuntime {
   private readonly registry: CodexHostRegistry
   private catalog: Promise<ModelCatalog> | undefined
   private account: { value: CodexAccountStatus; at: number } | undefined
+  private limits: CodexRateLimits | undefined
   private pending: CodexDeviceLogin | null = null
   private lastError: CodexErrorInfo | null = null
   private readonly listening = new WeakSet<CodexHost>()
@@ -152,7 +160,8 @@ export class CodexRuntime {
   }
 
   private async startHost(home: string): Promise<CodexHost> {
-    assertBridgeOwnedHome(home, os.homedir())
+    assertBridgeOwnedHome(home, os.homedir(), this.env)
+    if (!this.options.home) migrateLegacyCodexHome(home)
     const command = this.options.command ?? resolveCodexCommand({ env: this.env })
     // Same proxy / corporate CA point as the Claude CLI (injectProxyEnv).
     const env = buildCodexEnv({ home, base: this.env, injectProxy: injectProxyEnv, extra: this.options.extraEnv })
@@ -287,6 +296,15 @@ export class CodexRuntime {
     }
   }
 
+  /** ChatGPT plan windows of the signed-in account (cached for the account TTL). */
+  async rateLimits(options: { fresh?: boolean } = {}): Promise<CodexRateLimits> {
+    const ttl = this.options.accountTtlMs ?? ACCOUNT_TTL_MS
+    if (!options.fresh && this.limits && Date.now() - this.limits.readAt < ttl) return this.limits
+    const host = await this.host()
+    this.limits = parseCodexRateLimits(await host.rpc.request('account/rateLimits/read'))
+    return this.limits
+  }
+
   /** codex names no cause for a blocked connection ("workspace routing
    *  discovery failed"); ask the network the way codex would. */
   private async explainReadFailure(info: CodexErrorInfo): Promise<CodexErrorInfo> {
@@ -338,6 +356,37 @@ export class CodexRuntime {
     }
     this.pending = null
     this.lastError = null
+    this.limits = undefined
+    await this.accountStatus({ fresh: true })
+  }
+
+  /** The interactive CLI is another auth/store writer. Lease the same lock,
+   *  pause app-server acquisition, and refresh the shared account on exit. */
+  async acquireTerminal(): Promise<() => Promise<void>> {
+    if (this.pending) throw new Error('Finish or cancel Codex login before opening the terminal')
+    // Use the normal home migration/preparation path even before the dashboard
+    // has opened the account card. suspend() then waits for this writer to exit.
+    await this.host()
+    const resume = await this.registry.suspend(this.home)
+    let lock: ReturnType<typeof acquireCodexHomeLock>
+    try {
+      assertBridgeOwnedHome(this.home, os.homedir(), this.env)
+      lock = acquireCodexHomeLock(this.home)
+    } catch (error) {
+      resume()
+      throw error
+    }
+    let released = false
+    return async () => {
+      if (released) return
+      released = true
+      lock.release()
+      resume()
+      this.account = undefined
+      this.limits = undefined
+      const status = await this.accountStatus({ fresh: true })
+      for (const listener of this.accountListeners) listener(status)
+    }
   }
 
   // ── Models ─────────────────────────────────────────────────────────────

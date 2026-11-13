@@ -31,6 +31,14 @@ impl ViewResolution {
     }
 }
 
+/// Tests that drive the process-wide host link (client slot, resolve state) run one at a time.
+#[cfg(test)]
+pub(crate) fn serial_test() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Claim under the lock, then release it before RPC: HTML may arrive during RPC.
 pub(crate) fn request_once(
     state: &Mutex<ViewResolution>,

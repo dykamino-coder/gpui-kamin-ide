@@ -103,6 +103,7 @@ use crate::text::inline::collect::element_nodes::collect_element;
 
 mod boundary_spacing;
 mod overlays;
+pub(crate) mod stacks;
 pub(crate) use overlays::to_rotated_frame;
 mod text_nodes;
 use crate::text::inline::collect::boundary_spacing::set_boundary_spacing;
@@ -149,9 +150,11 @@ pub(super) fn collect_with_empty_metrics(
     has_text: bool,
     cx: &mut CollectCx,
 ) -> Vec<Piece> {
-    reblessive::Stack::new()
-        .enter(|stk| collect_stack(stk, children, inherited, atom, has_text, cx))
-        .finish()
+    stacks::with_stack(|stack| {
+        stack
+            .enter(|stk| collect_stack(stk, children, inherited, atom, has_text, cx))
+            .finish()
+    })
 }
 
 // Продолжения строчных предков хранятся в heap, как у блочного построителя.

@@ -103,6 +103,33 @@
   font-size: 10px;
 }
 
+.engineSwitch {
+  display: flex;
+  gap: 2px;
+  margin-right: 8px;
+}
+.engineSwitch [aria-pressed='true'] {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+.notice {
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  z-index: 6;
+  background: var(--bg-secondary);
+}
+.accountPanel {
+  padding: 12px;
+  overflow: auto;
+  max-height: 55%;
+  z-index: 6;
+  background: var(--bg-secondary);
+}
+.quickBtn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 .terminalWrapper {
   flex: 1;
   min-height: 0;

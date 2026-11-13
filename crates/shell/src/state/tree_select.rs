@@ -85,6 +85,7 @@ impl RootView {
                         title: None,
                         message: err.into(),
                         actions: Vec::new(),
+                        duration_ms: None,
                         sticky: false,
                     }));
                     return;
@@ -121,6 +122,7 @@ impl RootView {
                         title: None,
                         message: err.into(),
                         actions: Vec::new(),
+                        duration_ms: None,
                         sticky: false,
                     }));
                     return;

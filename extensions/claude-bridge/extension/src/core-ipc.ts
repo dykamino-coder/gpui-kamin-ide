@@ -17,7 +17,7 @@ import { ConnectionManager } from "./main/ws/connection-manager"
 import { enrichTreeWithTabs } from "./main/tree-enrichment"
 import type { ServerFetchInit } from "./main/sync/request-auth"
 import { createServerHttp } from './server-http'
-import { spawnToast, closeToastsMatching } from "./main/notifications/toast-window"
+import { spawnToast, closeToastsMatching, showTimedNotice } from "./main/notifications/toast-window"
 import { getDisplayedTab } from "./displayed-tab"
 
 const MIME: Record<string, string> = {
@@ -46,12 +46,12 @@ export function registerCoreIpc(context: vscode.ExtensionContext, configStore: P
 
   // Notifications go to KaminIDE's SHARED notification UI (not a Bridge-owned
   // toast overlay) — the extension shows them via vscode.window.show*Message.
-  ipcMain.on("show-notification", (_e: unknown, severity: string, message: string) => {
+  // The webview's own duration rides along (BR-23: it used to be dropped here).
+  ipcMain.on("show-notification", (_e: unknown, severity: string, message: string, durationMs?: unknown) => {
     const m = String(message ?? "")
     if (!m) return
-    if (severity === "error") void vscode.window.showErrorMessage(m)
-    else if (severity === "warning") void vscode.window.showWarningMessage(m)
-    else void vscode.window.showInformationMessage(m)
+    const sev = severity === "error" ? "error" : severity === "warning" ? "warning" : "info"
+    showTimedNotice(sev, m, typeof durationMs === "number" ? durationMs : undefined)
   })
 
   ipcMain.handle("open-external", async (_e: IpcMainInvokeEvent, url: string) => {

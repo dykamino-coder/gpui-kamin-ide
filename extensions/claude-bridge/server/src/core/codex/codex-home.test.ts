@@ -3,7 +3,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { injectProxyEnv } from '../config/settings'
-import { assertBridgeOwnedHome, buildCodexEnv, CODEX_CA_ENV, defaultCodexHome, prepareCodexHome } from './codex-home'
+import {
+  assertBridgeOwnedHome,
+  buildCodexEnv,
+  CODEX_CA_ENV,
+  defaultCodexHome,
+  migrateLegacyCodexHome,
+  prepareCodexHome,
+} from './codex-home'
+import { acquireCodexHomeLock, CODEX_HOME_LOCK_FILE } from './codex-home-lock'
 import { patchModelCatalog } from './model-catalog'
 
 // Type-only reference keeps the production injector's signature compatible.
@@ -21,16 +29,75 @@ const tmp = () => {
 }
 
 describe('CODEX_HOME', () => {
-  it('defaults to one server-wide home on the Claude account volume, overridable', () => {
-    expect(defaultCodexHome({})).toBe(path.join(os.homedir(), '.claude', 'codex-home'))
+  it('defaults to one server-wide Bridge-owned home outside ~/.claude, overridable', () => {
+    expect(defaultCodexHome({})).toBe(path.join(os.homedir(), '.kamin-bridge', 'codex'))
+    expect(defaultCodexHome({}).startsWith(path.join(os.homedir(), '.claude'))).toBe(false)
     expect(defaultCodexHome({ BRIDGE_CODEX_HOME: '/data/codex' })).toBe('/data/codex')
   })
 
   it('refuses the operator personal ~/.codex', () => {
-    expect(() => assertBridgeOwnedHome('/home/op/.codex', '/home/op')).toThrow('operator ~/.codex')
-    expect(() => assertBridgeOwnedHome('/home/op/.codex/sub', '/home/op')).toThrow('operator ~/.codex')
-    expect(() => assertBridgeOwnedHome('/home/op/.codex-bridge', '/home/op')).not.toThrow()
-    expect(() => assertBridgeOwnedHome('/home/op/.claude/codex-home', '/home/op')).not.toThrow()
+    const env = {}
+    expect(() => assertBridgeOwnedHome('/home/op/.codex', '/home/op', env)).toThrow('operator ~/.codex')
+    expect(() => assertBridgeOwnedHome('/home/op/.codex/sub', '/home/op', env)).toThrow('operator ~/.codex')
+    expect(() => assertBridgeOwnedHome('/home/op/.codex-bridge', '/home/op', env)).not.toThrow()
+    expect(() => assertBridgeOwnedHome('/home/op/.kamin-bridge/codex', '/home/op', env)).not.toThrow()
+  })
+
+  it('allows the Bridge user ~/.codex only inside the container image when named explicitly', () => {
+    const container = { BRIDGE_CONTAINER: '1', BRIDGE_CODEX_HOME: '/home/bridge/.codex' }
+    expect(() => assertBridgeOwnedHome('/home/bridge/.codex', '/home/bridge', container)).not.toThrow()
+    expect(() => assertBridgeOwnedHome('/home/bridge/.codex/sub', '/home/bridge', container)).toThrow(
+      'operator ~/.codex',
+    )
+    expect(() =>
+      assertBridgeOwnedHome('/home/bridge/.codex', '/home/bridge', { BRIDGE_CODEX_HOME: '/home/bridge/.codex' }),
+    ).toThrow('operator ~/.codex')
+    expect(() => assertBridgeOwnedHome('/home/bridge/.codex', '/home/bridge', { BRIDGE_CONTAINER: '1' })).toThrow(
+      'operator ~/.codex',
+    )
+  })
+
+  it('moves a legacy ~/.claude/codex-home into the new home once', () => {
+    const root = tmp()
+    const legacy = path.join(root, '.claude', 'codex-home')
+    const home = path.join(root, '.codex')
+    fs.mkdirSync(path.join(legacy, 'sessions'), { recursive: true })
+    fs.writeFileSync(path.join(legacy, 'auth.json'), '{"synthetic":true}')
+    fs.writeFileSync(path.join(legacy, 'sessions', 'a.jsonl'), 'x')
+    expect(migrateLegacyCodexHome(home, legacy)).toBe(true)
+    expect(fs.readFileSync(path.join(home, 'auth.json'), 'utf8')).toBe('{"synthetic":true}')
+    expect(fs.readFileSync(path.join(home, 'sessions', 'a.jsonl'), 'utf8')).toBe('x')
+    expect(fs.existsSync(legacy)).toBe(false)
+    // Second start: nothing left to move.
+    expect(migrateLegacyCodexHome(home, legacy)).toBe(false)
+  })
+
+  it('leaves the old server app-server lock behind so the new home starts unlocked', () => {
+    const root = tmp()
+    const legacy = path.join(root, '.claude', 'codex-home')
+    const home = path.join(root, '.codex')
+    fs.mkdirSync(legacy, { recursive: true })
+    fs.writeFileSync(path.join(legacy, 'auth.json'), '{"synthetic":true}')
+    fs.writeFileSync(
+      path.join(legacy, CODEX_HOME_LOCK_FILE),
+      JSON.stringify({ pid: 68, host: 'replaced-container', bootId: null, procStart: null }),
+    )
+    expect(migrateLegacyCodexHome(home, legacy)).toBe(true)
+    expect(fs.existsSync(path.join(home, CODEX_HOME_LOCK_FILE))).toBe(false)
+    expect(() => acquireCodexHomeLock(home, { host: 'new-container' }).release()).not.toThrow()
+  })
+
+  it('never overwrites a home that already has an account', () => {
+    const root = tmp()
+    const legacy = path.join(root, '.claude', 'codex-home')
+    const home = path.join(root, '.codex')
+    fs.mkdirSync(legacy, { recursive: true })
+    fs.mkdirSync(home, { recursive: true })
+    fs.writeFileSync(path.join(legacy, 'auth.json'), '{"old":true}')
+    fs.writeFileSync(path.join(home, 'auth.json'), '{"new":true}')
+    expect(migrateLegacyCodexHome(home, legacy)).toBe(false)
+    expect(fs.readFileSync(path.join(home, 'auth.json'), 'utf8')).toBe('{"new":true}')
+    expect(fs.existsSync(path.join(legacy, 'auth.json'))).toBe(true)
   })
 
   it('writes config.toml and catalog.json, and leaves auth.json alone', () => {

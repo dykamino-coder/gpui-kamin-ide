@@ -319,7 +319,9 @@ describe('retention overload through the actual HTTP handler', () => {
       const next = await tasks.mcpTasks.create(owner, 'Bash', {})
       await tasks.mcpTasks.settle(owner, next.taskId, 'later output')
     }
-  })
+    // This fixture durably creates and settles the actual 256-record owner limit.
+    // Match the real-I/O retention tests rather than the 10-second hook default.
+  }, 60_000)
   afterEach(() => {
     Object.assign(TASK_LIMITS, limits)
     vi.restoreAllMocks()

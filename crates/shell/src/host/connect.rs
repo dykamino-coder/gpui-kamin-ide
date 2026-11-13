@@ -3,8 +3,8 @@
 use crate::host::events::CzEvent;
 pub use crate::host::events::ShellEvent;
 use crate::host::paths::{data_dirs, dev_repo};
-use crate::host::status::request_status;
-use crate::host_link::{EVENT_TX, client, client_slot, endpoint_slot, t0, view_resolution};
+use crate::host::{rebind, status::request_status};
+use crate::host_link::{EVENT_TX, client, client_slot, t0, view_resolution};
 use kamin_sidecar::{HostConfig, HostEndpoint, HostMode, HostState};
 use kamin_ws::WsClient;
 use serde_json::Value;
@@ -99,8 +99,8 @@ pub(crate) fn request_view(client: &WsClient, id: &str) {
     });
 }
 
-/// Retry через RETRY_DELAY_MS к последнему endpoint; свежий on_endpoint побеждает.
-fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) {
+/// Retry через RETRY_DELAY_MS только к тому же хосту; новый ведёт on_endpoint.
+pub(crate) fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) {
     std::thread::spawn(move || {
         let on_event_tx = tx.clone();
         let on_event: kamin_ws::EventListener = Arc::new(move |channel: &str, payload: &Value| {
@@ -129,16 +129,6 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
                         .and_then(Value::as_str)
                         .unwrap_or_default()
                         .to_string();
-                    let items: Vec<String> = params
-                        .get(2)
-                        .and_then(Value::as_array)
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(Value::as_str)
-                                .map(String::from)
-                                .collect()
-                        })
-                        .unwrap_or_default();
                     let level: &'static str = match severity {
                         "error" => "error",
                         "warning" => "warning",
@@ -147,21 +137,9 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
                     let _ = req_tx.try_send(ShellEvent::Cz(CzEvent::SystemLog(
                         level,
                         "host".into(),
-                        message.clone(),
-                    )));
-                    let has_items = !items.is_empty();
-                    let toast = crate::ui::toasts::Toast {
-                        id: if has_items {
-                            format!("shellreq-{req_id}")
-                        } else {
-                            format!("shellmsg-{severity}-{message:.32}")
-                        },
-                        severity: severity.to_string(),
-                        title: None,
                         message,
-                        actions: items,
-                        sticky: has_items, // ждём выбора — не авто-скрывать
-                    };
+                    )));
+                    let (toast, has_items) = crate::host::show_message::toast_for(req_id, params);
                     let _ = req_tx.try_send(ShellEvent::Toast(toast));
                     if has_items {
                         kamin_ws::HostReply::Later
@@ -213,13 +191,12 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
             },
         );
 
-        let disc_tx = tx.clone();
-        let disc_state = state.clone();
+        let (disc_tx, disc_state, own) = (tx.clone(), state.clone(), endpoint.clone());
         let on_disconnect = Arc::new(move || {
             let _ = disc_tx.try_send(ShellEvent::WsDisconnected);
             *client_slot().lock().unwrap() = None;
             std::thread::sleep(Duration::from_millis(kamin_ws::RETRY_DELAY_MS));
-            if let Some(next) = disc_state.snapshot() {
+            if let Some(next) = rebind::retry_target(disc_state.snapshot(), &own) {
                 connect_ws(next, disc_tx.clone(), disc_state.clone());
             }
         });
@@ -234,7 +211,7 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
             Ok(client) => {
                 let client = Arc::new(client);
                 *client_slot().lock().unwrap() = Some(client.clone());
-                *endpoint_slot().lock().unwrap() = Some(endpoint.clone());
+                rebind::adopt_endpoint(&endpoint, &tx);
                 let _ = tx.try_send(ShellEvent::WsConnected);
                 // Гидрация: сессии + воркспейс (re-seed на реконнект — тот же путь)
                 if let Ok(snap) = client.request("kamin:sessions:list", vec![]) {
@@ -274,7 +251,7 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
             Err(e) => {
                 eprintln!("ws connect failed: {e}");
                 std::thread::sleep(Duration::from_millis(kamin_ws::RETRY_DELAY_MS));
-                if let Some(next) = state.snapshot() {
+                if let Some(next) = rebind::retry_target(state.snapshot(), &endpoint) {
                     connect_ws(next, tx, state);
                 }
             }

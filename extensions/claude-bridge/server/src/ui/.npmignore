@@ -1,0 +1,4 @@
+# src/ is published by the parent package. Ship the compiled dashboard instead
+# of recursively packaging its separate build dependencies.
+node_modules/
+*.tsbuildinfo

@@ -19,6 +19,7 @@ import { createHash } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { JsonStore } from "../json-store.js"
+import { isDefaultDataDir } from "./default-profile.js"
 import { getWorkspaceFolder } from "./workspace.js"
 
 type Kv = Record<string, unknown>
@@ -34,6 +35,7 @@ interface WebviewPanelsState { byFolder: Record<string, PersistedWebviewPanel[]>
 const HASH_LEN = 16
 
 let dataRoot = ""
+export function isDefaultProfile(): boolean { return !!dataRoot && isDefaultDataDir(dataRoot) }
 let globalStore: JsonStore<ExtStates> | null = null
 let wsStore: JsonStore<WsStates> | null = null
 let secretStore: JsonStore<SecretStates> | null = null

@@ -24,6 +24,7 @@ import { ResumeNotFoundError } from './session-resume-not-found'
 import { SessionAdmissionError } from './session-admission'
 import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId } from './live-switch'
 import { interruptClaudeTurn, switchClaudeModelInPlace } from './claude-turn'
+import { rememberEffortSelection } from './effort-selection'
 import {
   codexBinding,
   codexEffort as codexReasoningEffort,
@@ -347,6 +348,14 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
 
         case 'session:end': {
+          if (msg.handoff && authenticatedSessionId) {
+            const session = getSession(authenticatedSessionId)
+            sendToClient(ws, {
+              type: 'session:handoff',
+              sessionId: authenticatedSessionId,
+              transferable: session ? (sessionCliControl(session)?.handoff() ?? []) : [],
+            })
+          }
           cancelStartup('ended')
           retireBinding('explicit_end')
           break
@@ -754,6 +763,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // tick, so the dialog cannot slip past the responder.
               armSwitchConfirm(session, 'effort', msg.effort)
               session.effort = msg.effort
+              // The live `/effort` reaches only this process; a respawn reads
+              // the choice back from here (INC-2026-0099).
+              rememberEffortSelection(session.cliConversationId, msg.effort)
               ws.send(
                 JSON.stringify({
                   type: 'session:model-changed',

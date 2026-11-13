@@ -280,6 +280,24 @@ The acceptance requirement "Chat, Console and the neighbouring view return and s
 - The Agents state of the bound tab is replayed.
 - Then the same live gate is repeated.
 
+**Verification 2026-11-13, fix #832 (merged as `f39bc7a7`): passed for Chat and Agents.**
+
+The candidate was the release build of the #832 head on a profile copy with isolated `LOCALAPPDATA`/`USERPROFILE`/`HOME` and its own Bridge token. The extension-host child was killed by PID.
+
+| Case | Respawn | Result |
+| --- | --- | --- |
+| Idle, three runs | 0.99 / 1.44 / 1.09 s | Chat stayed on the same tab and ready |
+| After a finished two-teammate team | — | Agents kept `Completed 2` |
+| While two teammates were `RUNNING` | 0.7 s | After 0.32 s Chat was on the same tab and ready and both rows were still `RUNNING`; the team then completed |
+
+Sidebar session switches after a respawn rebound Chat in 0.12–0.16 s; on 1.0.94 they took more than 10 s.
+
+Not checked: documents, the active editor and LSP reseeding.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/944b342faf031ca2c4a787b165e33595080752af/incidents/BR-04/evidence/2026-11-13-gate-832).
+
+Next step: verify again on the installed 1.0.95.
+
 Owner: the executor the maintainer assigns. The status stays `verify` until that gate passes.
 
 **Status:** implementation PR #148 и дополнительный PR #152 merged;
@@ -529,7 +547,22 @@ live gate прямо отмечен NOT executed before merge. Prompt contract �
 Зафиксировать CLI version и фактический `SendMessage` contract; BR-25/26/27 panel runs не
 заменяют эти два случая.
 
-**Status:** implementation merged в PR #15; reopened for verification.
+**Verification 2026-11-13 (Windows client, authenticated stand `kamin-acc-302`, CLI 2.1.322): both cases pass.**
+
+The stand image is `main-584b5616`. The prompt contract file is unchanged on `main` `29238be7`. Clients: installed 1.0.94, and a `main` build with the probe `hostDisconnect`.
+
+The CLI `SendMessage` contract: a teammate calls `SendMessage` to `team-lead`. The lead receives each report as a `<teammate-message>` user turn, and idle notices arrive as `idle_notification` in the same channel.
+
+1. **No lost report.** Two runs with three teammates and unique markers, one per client build. During the runs there was a tab switch, and in the second run also two shell disconnects. 3/3 reports arrived on the first attempt; the lead sent no recovery request and spawned no extra teammate. One late report was confirmed from the teammate's transcript, not by a new request.
+2. **Intentionally missing report.** One teammate went idle without a report. The lead sent exactly one `SendMessage` recovery request, received the marker and finished. No additional teammate was spawned, and a later second idle notice did not trigger another request.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/55f0fd5793ff62beba8dd192e1012c3d347816a2/incidents/BR-09/evidence/2026-11-13-reports).
+
+Not covered: a server built from current `main`.
+
+**Closed 2026-11-13 (lead decision):** done. The server prompt contract has not changed since `584b5616`, and the client side was checked on a `main` build, so no separate gate on a server from `main` is needed.
+
+**Status:** done (implementation PR #15, verification 2026-11-13).
 Automatic selection остаётся отдельным BR-15. **Dependency:** none.
 **Acceptance:** automated + authenticated Windows runtime merge gate; live
 gate не выполнен.
@@ -586,6 +619,46 @@ path в `args`, shell metacharacters, опасный argument, redaction и оч
 matcher. Relay URL/token после proxy rewrite не отображаются. Windows gate:
 plugin update меняет hook hash, modal показывает полную declaration и matcher,
 approve/reject сохраняются.
+
+**Verification 2026-11-13 (KaminIDE 1.0.94, profile copy): partial pass, three defects.**
+
+Setup:
+- Two disposable plugins from a local marketplace; every hook only echoes text.
+- Keys are sent through CEF DevTools `Input.dispatchKeyEvent` to the Chat page, without screen takeover.
+
+Passed:
+- Initial focus goes to the dialog when the modal opens from a live event.
+- Tab and Shift+Tab stay in the dialog and wrap around; a disabled Approve button is skipped.
+- Space toggles a hook, and Enter on Approve or Reject all saves the choice.
+- After a single modal closes, focus returns to the composer.
+- A plugin update re-prompts with the new declaration and matcher, and the changed hook starts unselected.
+- A queued second plugin takes focus when its modal opens.
+- The dangerous-pattern mark is shown, and a long matcher wraps without horizontal overflow.
+- Approvals and rejections are persisted.
+
+Failed:
+1. Later approval requests do not reach Chat. `requestHookApproval` sends `plugin-hooks:awaiting-approval` to one registered webview sink. The event arrived only in the Customize Plugins page that started the install. Chat, which hosts the modal, showed the request only after a reload.
+2. A modal opened from the mount-time pending list (after a Chat reload) leaves focus in the composer. Tab then reaches chat controls behind the `aria-modal` overlay.
+3. After a queue of two modals closes, focus lands on `BODY` instead of the composer.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/57f3d9cc7076686e22c1bd8df007a19f4cb4045c/incidents/BR-10/evidence/2026-11-13-keyboard-1.0.94).
+
+Next artifact: change. The fix should:
+- deliver the request to every live Bridge view (or to Chat explicitly);
+- move focus into the dialog whenever the modal shows, including from the pending list;
+- restore focus to the element that had it before the first queued modal.
+
+Then repeat this gate.
+
+**Fix and repeated gate (2026-11-13, kmaint2):** Fix PR
+[#842](https://github.com/dykamino-coder/gpui-kamin-ide/pull/842) merged as
+`84f9f198`. Windows gate on the exact candidate `0d2863d6` passed all three
+previous failures: with Customize registered before Chat, live requests reach
+Chat without a reload; a mount-time modal takes focus and Tab stays inside it;
+a keyboard-driven queue of two returns focus to the composer. Copy declaration
+was focused but not activated (it writes the desktop clipboard). Evidence:
+[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/fa17a44b19bff3451cd68831ebac6a5b695d4d09/incidents/BR-10/evidence/2026-11-13-pr842-0d2863d6).
+Next step: verify on the installed release that contains `84f9f198`, then close.
 
 ### BR-11 — Inventory native CLI-only blocking states
 
@@ -1145,6 +1218,24 @@ that opens a QuickPick; owner kmaint.
 **Acceptance:** automated + Windows runtime merge gate.
 **Windows runtime merge gate:** required.
 
+**Acceptance probe candidate (2026-11-13):** Change PR [#830](https://github.com/dykamino-coder/gpui-kamin-ide/pull/830) adds
+`{"cmd":"hostDisconnect"}` to close only the shell's current host WebSocket.
+The existing disconnect callback cancels pending RPCs and reconnects normally;
+the shell and host processes remain running. `ok: true` acknowledges the close
+request, not completed reconnection. A disconnected client reports an error.
+The same candidate adds `{"cmd":"keystroke","key":"enter"}` (also `f2`,
+`ctrl-a`, and GPUI keystroke syntax) for this gate and BR-29. It dispatches to
+the main GPUI window on its UI executor without OS input or foreground-window
+changes. The response acknowledges dispatch with `handled: true|false`; malformed
+keys, unavailable windows and dispatch timeouts return errors. Expired queued
+keys are discarded. This command targets GPUI keyboard handling, not a separate
+CEF DOM keyboard injection API. Both controls require the existing `probe`
+feature. Unit tests cover a real loopback WebSocket close/pending cancellation/
+owner reconnect and queued Enter/F2 delivery to a focused GPUI test element.
+These controls enable kmaint's exact-candidate Windows gate; they do not mark
+BR-19 or BR-29 accepted. Next owner: kmaint, running the scenarios below and
+the BR-29 rename keyboard gate on the candidate.
+
 **Реализовано:** типизированная отмена `RpcPeerDisconnectedError` с кодом
 `rpc/peer-disconnected` в кадре ответа (`protocol.ts`), `failAll` отклоняет
 именно ею, код переносится через границу процесса в обе стороны
@@ -1527,6 +1618,23 @@ switch/reconnect и pointer activity, а текущий incident возника�
 
 ### BR-23 — Make session-complete notifications transient and turn-scoped
 
+**Fix and Windows gate (2026-11-13, kmaint2):** Change PR
+[#834](https://github.com/dykamino-coder/gpui-kamin-ide/pull/834) merged as
+`5d95419f` (transient host API, eight-second completion notice with `Open`).
+Gate on the exact candidate `94ebd71c` passed for the notice itself: linear
+countdown and automatic close at about 8 s, hover pause and resume of the
+remaining time, `Open` closes the notice and returns the action. A real turn
+ending in a background session also showed the notice on the candidate: it
+counted down and closed by itself after about 8 s, while `main` without #834
+kept it on screen. (The first report said no notice was shown; that was a
+toast-detector error, corrected on 2026-11-13, and
+[INC-2026-0113](runtime-issues/INC-2026-0113.md) is closed as invalid.)
+Evidence:
+[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/80c464106c2fbe98666a4cf7b92195af5cea9530/incidents/BR-23/evidence/2026-11-13-pr834-94ebd71c),
+[correction](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/b93dacb6445fb1b7aec3298d5da7cc55c48b7fe1/incidents/BR-23/evidence/2026-11-13-correction-toast-shown).
+Next step: verify the live Agent Teams case (one notice per main turn) on a
+release that contains `5d95419f`; then close.
+
 **Owner evidence intake (2026-09-08, TASK-009):** An August 21 screenshot shows at least five `Session finished` notifications with Open/dismiss actions; one tab label appears repeatedly. The owner reports that they do not disappear automatically. This is the existing BR-23 problem, so no duplicate INC task is created.
 
 The still image establishes the stack, not its duration or whether repeated labels belong to one turn. Retain the existing transient/countdown contract, turn identity, suppression and sticky approval/elicitation exceptions. Include the supplied stack as a historical acceptance case alongside timer/hover-pause, Open/dismiss/timeout, repeated-event and multiple-turn scenarios.
@@ -1546,6 +1654,16 @@ Private evidence: [INC-2026-0036](https://github.com/dykamino-coder/gpui-kamin-i
 закрывается. **Dependency:** none. **Acceptance оставшейся части:** явный
 контракт непрерывного тоста с кнопкой + Windows native-toast gate.
 **Windows runtime merge gate:** required for the remaining functional fix.
+
+**Implementation handoff (2026-11-13):** The remaining transient-notification
+contract is prepared for review. `kaminide.window.showTransientMessage` forwards
+an explicit bounded duration to the native toast; completion keeps its `Open`
+action and uses an 8-second countdown. Plain VS Code action notifications remain
+sticky. Webview notification duration is preserved. Automated regression tests
+cover the API, routing, countdown options and hover-paused active time; existing
+turn-deduplication tests remain applicable. **Next owner:** kmaint runs the exact
+candidate Windows gate (countdown, automatic dismissal, Open, hover pause and
+Agent Teams). No live pass or task close-out is claimed by this change.
 
 **Регрессия 1.0.61 и её исправление (2026-09-29, живая проверка):** правило
 «раз сервер показал, что умеет хуки, виток закрывает ТОЛЬКО хук» опиралось на
@@ -1940,6 +2058,18 @@ BR-29 идёт без sibling-layout fix.
 
 ### BR-29 — Make hover-to-rename transition atomic
 
+**Keyboard fix and Windows gate (2026-11-13, kmaint2):** Fix PR
+[#839](https://github.com/dykamino-coder/gpui-kamin-ide/pull/839) merged as
+`a60ef903`. The first live run found that after leaving rename by Enter or
+Escape focus stayed on the removed input, so Tab did nothing until a click; the
+same PR now returns focus to the session row (`modal_focus_return`) with a
+regression test. Gate on the exact candidate `ff6cd87a` passed: Tab 80/80 and
+Shift+Tab move the ring, F2 then typing then Enter commits and persists, Escape
+writes nothing, focus returns to the row. Evidence:
+[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/39340670ce86ec5db37605e7291f3d2433de11e7/incidents/BR-29/evidence/2026-11-13-pr839-ff6cd87a).
+Remaining: scroll/session change during the transition and BR-28 bounds, then
+a check on the installed release that contains `a60ef903`.
+
 **Close-out audit 2026-09-06:** В [PR
 #37](https://github.com/dykamino-coder/gpui-kamin-ide/pull/37) явно указано, что probe не
 измеряет input focus. Helper и id-scoped anchor уже merged, но invariant «input сразу
@@ -1980,6 +2110,17 @@ branch. Next step: change — give `PressEnter` a rename branch that sends
 `CommitRename` (the same as blur), with a keymap-level test that Enter in the
 rename input commits. Owner: the executor the lead assigns. Scroll and session
 change during the transition and the BR-28 bounds remain `verify`.
+
+**Keyboard follow-up 2026-11-13 — source regression reproduced.** The root
+`enter` binding consumes the key before `rename_row` receives `on_key_down`,
+but `PressEnter` had no rename branch. It now queues `CommitRename` after the
+existing overlay branches. Root `Tab`/`Shift+Tab` bindings now call GPUI focus
+traversal; the `webview` context keeps its own keyboard path. GPUI TestPlatform
+tests exercise the startup keymap and actual Root handlers with the rename input
+and focus-ring tab stops: Enter commits once, Escape cancels, and all 80 Tab
+presses move the visible focus ring. Both regressions fail on the old handlers
+and bindings. These tests do not accept the live Windows keyboard/focus gate;
+kmaint must verify the exact fix candidate and the remaining scenarios above.
 
 **Status:** implementation merged в PR #37; reopened for verification.
 Частичный Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал
@@ -2024,6 +2165,36 @@ double-click, F2, контекст-меню, probe) идут через него
 (`ui/sessions/anchor.rs`) стал id-scoped: `PillAnchor { id, bounds }`,
 overlay рисует пилюлю только по `anchor_for(hover_pill)` и никогда для строки
 в rename. `DismissHoverPill` использует тот же teardown.
+
+### BR-29A — Keep the keyboard focus ring visible inside clipped containers
+
+**Child of BR-29 (registered 2026-11-13, kmaint2, lead-directed):** During the #839 gate the
+keyboard focus ring was cut off on session rows and on tab chips. Source:
+`crates/shell/src/ui/focus_ring.rs` draws the ring as an absolute overlay 4 px
+outside the element, and the row list and the tab strip clip their children, so
+the outer part of the ring is not painted. **Status:** confirmed by source and
+live. **Fix PR:** [#853](https://github.com/dykamino-coder/gpui-kamin-ide/pull/853)
+(prepared by the Codex `cxinc` worker). Windows gate on its exact head
+`95ebe50f` passed: full rings on the first and last tab chips and on the first,
+a middle and the last session rows, while 1.0.95 clips or hides them; only ring
+pixels differ. Evidence:
+[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/58f2ce8723fed6be4e49599b29733870bc340ca3/incidents/BR-29/evidence/2026-11-13-pr853-95ebe50f).
+#853 merged as `93dddd3b`. **Next step:** check on the release that contains `93dddd3b`.
+**Acceptance:** a layout/paint test that the ring bounds
+stay inside the clip of a row and a tab chip; then a Windows gate that the ring
+is fully visible on a row, a chip and their first/last items. **Windows runtime
+merge gate:** required; owner `kmaint2`.
+
+**BR-29A candidate (2026-11-13, cxinc):** The focus-ring overlay now sits 2 px
+inside the focused element and reduces its corner radius by that inset. It
+keeps the existing element sizes and keyboard-only modality. Two paint
+regressions render the production session rows and tab chips in tight clipping
+containers, focus their first/middle/last items and check the ring bounds and
+all four painted sides. Both fail on the previous outside overlay; the fixed
+focus suite passes 5/5 and the shell suite passes 194 tests (1 ignored).
+This is automated paint evidence, not the required live Windows gate: `kmaint2`
+still checks the complete ring on actual rows/chips including first/last items
+on the exact published candidate. Status remains **verify** pending that gate.
 
 ### BR-30 — Keep incident-log records atomic across rotation
 

@@ -31,6 +31,8 @@ services:
       - bridge-lifecycle-logs:/app/logs/lifecycle
       - bridge-data:/app/data
       - claude-auth:/home/bridge/.claude
+      # ChatGPT account of the server (codex-home.ts), its own volume.
+      - codex-auth:/home/bridge/.codex
       # Legacy sync volume retained for one-time migration into
       # /app/data/bridge-sync. New snapshots live on bridge-data so every server
       # deployment gets persistence without requiring an extra mount.
@@ -72,6 +74,8 @@ volumes:
   bridge-data:
     driver: local
   claude-auth:
+    driver: local
+  codex-auth:
     driver: local
   bridge-sync:
     driver: local
