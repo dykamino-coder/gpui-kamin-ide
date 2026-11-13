@@ -52,6 +52,13 @@ impl Policy {
         }
     }
 
+    pub(super) fn continuing(&self, budget: RevisionBudget) -> Self {
+        Self {
+            counts: self.counts.clone(),
+            ..Self::new(budget)
+        }
+    }
+
     pub(super) fn name(&self, name: &str) -> Result<(), FailureReason> {
         let mut names = self.names.take();
         let result = names.admit(name, &self.budget);
