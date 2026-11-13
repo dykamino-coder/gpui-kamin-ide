@@ -8,6 +8,7 @@ use super::{
     pixels, report, resources,
     run::{Step, sample},
     view::View,
+    work,
 };
 use gpui::{AsyncApp, WindowHandle};
 use kamin_html::host::capture::CaptureSession;
@@ -23,7 +24,7 @@ pub(super) async fn run(
     args: &Args,
     capture: &CaptureSession,
     luid: (i32, u32),
-) -> Result<Value> {
+) -> Result<(Value, Vec<work::Sample>)> {
     let base = resources::read(&args.path)?;
     let edited = args.edit.markup(&base)?;
     // Вариант 0 — вход, 1 — правка; первый замер идёт после холодного кадра входа.
@@ -32,11 +33,10 @@ pub(super) async fn run(
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
     let mut work = Vec::with_capacity(args.runs);
-    let mut usage = Vec::with_capacity(args.runs);
     let mut last = [None, None];
     for index in 1..=args.runs {
         let variant = index % 2;
-        let (measured, frame, (counts, process)) = sample(
+        let (measured, frame, counts) = sample(
             cx,
             window,
             fonts,
@@ -49,7 +49,6 @@ pub(super) async fn run(
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         work.push(counts);
-        usage.push(process);
         last[variant] = Some(frame.pixels);
     }
     let mut checks = Vec::new();
@@ -113,10 +112,10 @@ pub(super) async fn run(
         }
         checks.push(check);
     }
-    let mut mode = report::measured_mode(&samples, &diagnostics, work, usage);
+    let mut mode = report::measured_mode(&samples, &diagnostics);
     mode["edit"] = json!(format!("{:?}", args.edit).to_lowercase());
     mode["edit_input"] = json!("mutation_records");
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
-    Ok(mode)
+    Ok((mode, work))
 }
