@@ -368,6 +368,9 @@ async function migrateFromSqlite(): Promise<void> {
       debugLog(`migrated table "${t}"`, { rows: Number(n), cols: sharedCols.length })
     }
     await conn.run(`DETACH legacy`)
+    // initSchema seeded the empty target before the legacy rows were copied.
+    // Let the normal reopen backfill owners from those imported sessions.
+    await conn.run("DELETE FROM settings WHERE key = 'session_owners_v1'")
     fs.renameSync(SQLITE_PATH, SQLITE_BACKUP_PATH)
     debugLog('SQLite → DuckDB migration complete; SQLite renamed to .pre-duckdb-backup')
   } catch (err) {

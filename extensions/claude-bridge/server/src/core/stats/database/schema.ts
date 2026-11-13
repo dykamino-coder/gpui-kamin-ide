@@ -13,6 +13,7 @@
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { initAccountingSchema } from './accounting-schema'
 import { initRollupSchema } from './rollup'
+import { initSessionOwners } from './session-owners'
 import { debugLog, warnLog } from '../../logging'
 
 async function tryExec(db: DuckDBConnection, sql: string): Promise<void> {
@@ -307,6 +308,8 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   } catch (error) {
     warnLog('stats session metadata migration failed', { error: String(error) })
   }
+
+  await initSessionOwners(db)
 
   // Dashboard rollup tables (built in the background after boot).
   await initRollupSchema(db)
