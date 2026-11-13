@@ -4,6 +4,8 @@
 
 import type { Hono } from 'hono'
 import { getDb } from '../../stats/database/lifecycle'
+import { userContextTokens, userCostRows, userTotals, type UserTotalsRow } from '../../stats/database/stats-queries'
+import { createRevisionCache } from '../../stats/database/revision-cache'
 import { getAllSessions } from '../../pty/session-manager'
 import { denyApiToken, denyForeignUser } from '../authz'
 
@@ -29,6 +31,66 @@ const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead:
 // dashboard sums tokens per model, not per request, so it uses the base rate
 // (the webview estimate applies the long-prompt rate per request).
 const TIER_HAIKU_5_5: CostTier = { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01 }
+const usersCache = createRevisionCache<{
+  aggRows: UserTotalsRow[]
+  costByUser: Map<string, number>
+  ctxByUser: Map<string, number>
+}>({ max: 1, maxStaleMs: 60_000 })
+
+async function loadUserStats() {
+  const db = await getDb()
+  // Same formulas as the former raw jsonl_events scans.
+  const aggRows = await userTotals(db)
+  // Per-(user, model) breakdown for cost computation — every model
+  // family has its own per-1M-token rates.
+  const costByUser = new Map<string, number>()
+  for (const r of await userCostRows(db)) {
+    const base = tierForModel(r.model)
+    const multiplier = r.model.includes('haiku-5') && r.long_prompt ? 5 : 1
+    const tier = {
+      input: base.input * multiplier,
+      output: base.output * multiplier,
+      cacheRead: base.cacheRead * multiplier,
+      cacheWrite: base.cacheWrite * multiplier,
+    }
+    const usd =
+      (r.input_tokens * tier.input +
+        r.output_tokens * tier.output +
+        r.cache_read_tokens * tier.cacheRead +
+        r.cache_write_tokens * tier.cacheWrite +
+        r.cache_write_1h_tokens * (2 * tier.input - tier.cacheWrite)) /
+      1_000_000
+    costByUser.set(r.user_name, (costByUser.get(r.user_name) ?? 0) + usd)
+  }
+  // Sum of per-session real-text Context (last-assistant effective
+  // input). Matches the per-session Context column in Sessions modal.
+  const ctxByUser = await userContextTokens(db)
+  return { aggRows, costByUser, ctxByUser }
+}
+
+async function loadRoster() {
+  const db = await getDb()
+  const raw = (
+    await db.runAndReadAll(
+      `SELECT user_name, MIN(created_at) AS first_seen, MAX(created_at) AS last_seen FROM session_tokens
+      WHERE deleted = 0 AND user_name IS NOT NULL AND user_name != '' GROUP BY user_name`,
+    )
+  ).getRowObjects() as Array<{ user_name: string; first_seen: string | null; last_seen: string | null }>
+  const aggRows: UserTotalsRow[] = raw.map((r) => ({
+    user_name: r.user_name,
+    user_inputs: 0,
+    input_uncached: 0,
+    output_tokens: 0,
+    cache_read: 0,
+    cache_creation: 0,
+    first_seen: r.first_seen,
+    last_seen: r.last_seen,
+    tokens_7d: 0,
+    tokens_30d: 0,
+  }))
+  return { aggRows, costByUser: new Map<string, number>(), ctxByUser: new Map<string, number>() }
+}
+
 export function tierForModel(model: string | null | undefined): CostTier {
   const m = (model || '').toLowerCase()
   if (m.includes('haiku-5')) return TIER_HAIKU_5_5
@@ -52,139 +114,25 @@ export function tierForModel(model: string | null | undefined): CostTier {
 export function registerUserRoutes(api: Hono): void {
   // GET /api/dashboard/users — aggregated per-user summary.
   //
-  // Source: jsonl_events JOIN session_tokens(deleted=0) — same model as
-  // Stats overview. Active PTY session count is layered in from the live
+  // Source: the stats rollup of live sessions (session_tokens.deleted = 0),
+  // same model as Stats overview. Active PTY session count is layered in from the live
   // session manager. No legacy `requests` / OTel reads — those are
   // unpopulated in PTY mode and were producing inconsistent numbers.
   api.get('/api/dashboard/users', async (c) => {
     // Cross-user roster — admin only; a per-user token can't enumerate everyone.
     const denied = denyApiToken(c)
     if (denied) return denied
-    const db = await getDb()
-
-    // Per-user totals (no model split needed for these sums).
-    const aggRowsRaw = (
-      await db.runAndReadAll(`
-      SELECT
-        st.user_name as user_name,
-        COUNT(DISTINCT e.session_id) as sessions,
-        SUM(CASE WHEN e.type = 'user' THEN 1 ELSE 0 END) as user_inputs,
-        SUM(CASE WHEN e.type = 'assistant'
-              THEN COALESCE(e.input_tokens,0) ELSE 0 END) as input_uncached,
-        SUM(CASE WHEN e.type = 'assistant'
-              THEN COALESCE(e.output_tokens,0) ELSE 0 END) as output_tokens,
-        SUM(CASE WHEN e.type = 'assistant'
-              THEN COALESCE(e.cache_read_tokens,0) ELSE 0 END) as cache_read,
-        SUM(CASE WHEN e.type = 'assistant'
-              THEN COALESCE(e.cache_write_tokens,0) ELSE 0 END) as cache_creation,
-        MIN(e.timestamp) as first_seen,
-        MAX(e.timestamp) as last_seen
-      FROM jsonl_accounting_events e
-      INNER JOIN session_tokens st
-        ON st.session_id = e.session_id AND st.deleted = 0
-      WHERE st.user_name IS NOT NULL AND st.user_name != ''
-        AND (e.model IS NULL OR e.model != '<synthetic>')
-      GROUP BY st.user_name
-    `)
-    ).getRowObjects() as Array<{
-      user_name: string
-      sessions: bigint | number
-      user_inputs: bigint | number
-      input_uncached: bigint | number
-      output_tokens: bigint | number
-      cache_read: bigint | number
-      cache_creation: bigint | number
-      first_seen: string | null
-      last_seen: string | null
-    }>
-    const aggRows = aggRowsRaw.map((r) => ({
-      user_name: r.user_name,
-      sessions: Number(r.sessions ?? 0),
-      user_inputs: Number(r.user_inputs ?? 0),
-      input_uncached: Number(r.input_uncached ?? 0),
-      output_tokens: Number(r.output_tokens ?? 0),
-      cache_read: Number(r.cache_read ?? 0),
-      cache_creation: Number(r.cache_creation ?? 0),
-      first_seen: r.first_seen,
-      last_seen: r.last_seen,
-    }))
-
+    // Rollup read model (stats-queries.ts), served stale-while-revalidate
+    // across rollup revisions; live PTY counts are layered on per request.
+    const { rollupRevision, rollupBuildStatus } = await import('../../stats/database/rollup')
+    // During the one-time rollup build: the roster from the owner map only (no
+    // raw-event scan), counters zero, progress in X-Stats-Building.
+    const build = rollupBuildStatus()
+    if (!build.ready) c.header('X-Stats-Building', String(build.pct))
+    const { aggRows, costByUser, ctxByUser } = build.ready
+      ? (await usersCache.get('users', rollupRevision(), loadUserStats)).data
+      : await loadRoster()
     const aggMap = new Map(aggRows.map((r) => [r.user_name, r]))
-
-    // Per-(user, model) breakdown for cost computation — every model
-    // family has its own per-1M-token rates.
-    const costRows = (
-      await db.runAndReadAll(`
-      SELECT
-        st.user_name as user_name,
-        e.model as model,
-        SUM(COALESCE(e.input_tokens,0)) as input_tokens,
-        SUM(COALESCE(e.output_tokens,0)) as output_tokens,
-        SUM(COALESCE(e.cache_read_tokens,0)) as cache_read_tokens,
-        SUM(COALESCE(e.cache_write_tokens,0)) as cache_write_tokens,
-        SUM(COALESCE(e.cache_write_1h_tokens,0)) as cache_write_1h_tokens,
-        (COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0) > 100000) as long_prompt
-      FROM jsonl_accounting_events e
-      INNER JOIN session_tokens st
-        ON st.session_id = e.session_id AND st.deleted = 0
-      WHERE st.user_name IS NOT NULL AND st.user_name != ''
-        AND e.type = 'assistant' AND e.model IS NOT NULL AND e.model != '' AND e.model != '<synthetic>'
-      GROUP BY st.user_name, e.model, long_prompt
-    `)
-    ).getRowObjects() as Array<{
-      user_name: string
-      model: string
-      input_tokens: bigint | number
-      output_tokens: bigint | number
-      cache_read_tokens: bigint | number
-      cache_write_tokens: bigint | number
-      cache_write_1h_tokens: bigint | number
-      long_prompt: boolean
-    }>
-    const costByUser = new Map<string, number>()
-    for (const r of costRows) {
-      const base = tierForModel(r.model)
-      const multiplier = r.model.includes('haiku-5') && r.long_prompt ? 5 : 1
-      const tier = {
-        input: base.input * multiplier,
-        output: base.output * multiplier,
-        cacheRead: base.cacheRead * multiplier,
-        cacheWrite: base.cacheWrite * multiplier,
-      }
-      const usd =
-        (Number(r.input_tokens ?? 0) * tier.input +
-          Number(r.output_tokens ?? 0) * tier.output +
-          Number(r.cache_read_tokens ?? 0) * tier.cacheRead +
-          Number(r.cache_write_tokens ?? 0) * tier.cacheWrite +
-          Number(r.cache_write_1h_tokens ?? 0) * (2 * tier.input - tier.cacheWrite)) /
-        1_000_000
-      costByUser.set(r.user_name, (costByUser.get(r.user_name) ?? 0) + usd)
-    }
-
-    // Sum of per-session real-text Context (last-assistant effective
-    // input). Matches the per-session Context column in Sessions modal.
-    const ctxRows = (
-      await db.runAndReadAll(`
-      SELECT st.user_name as user_name, SUM(last_ctx) as ctx
-      FROM (
-        SELECT
-          e.session_id,
-          (
-            SELECT COALESCE(a.input_tokens,0) + COALESCE(a.cache_read_tokens,0) + COALESCE(a.cache_write_tokens,0)
-            FROM jsonl_accounting_events a
-            WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0
-              AND (a.model IS NULL OR a.model != '<synthetic>')
-            ORDER BY a.timestamp DESC LIMIT 1
-          ) as last_ctx
-        FROM (SELECT DISTINCT session_id FROM jsonl_accounting_events) e
-      ) sessCtx
-      INNER JOIN session_tokens st ON st.session_id = sessCtx.session_id AND st.deleted = 0
-      WHERE st.user_name IS NOT NULL AND st.user_name != ''
-      GROUP BY st.user_name
-    `)
-    ).getRowObjects() as Array<{ user_name: string; ctx: bigint | number | null }>
-    const ctxByUser = new Map(ctxRows.map((r) => [r.user_name, Number(r.ctx ?? 0)]))
-
     const ptySessions = getAllSessions()
     const activeSessionsByUser = new Map<string, number>()
     for (const s of ptySessions) {
@@ -214,6 +162,8 @@ export function registerUserRoutes(api: Hono): void {
           cost: costByUser.get(userName) ?? 0,
           firstSeen: r?.first_seen ?? null,
           lastSeen: r?.last_seen ?? null,
+          // Token flow (in + out + cache) per rolling window, for sidebar sorting.
+          periodTokens: { d7: r?.tokens_7d ?? 0, d30: r?.tokens_30d ?? 0 },
         }
       })
       .sort((a, b) => {
