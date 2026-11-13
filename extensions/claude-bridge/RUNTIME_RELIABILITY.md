@@ -2062,6 +2062,17 @@ branch. Next step: change — give `PressEnter` a rename branch that sends
 rename input commits. Owner: the executor the lead assigns. Scroll and session
 change during the transition and the BR-28 bounds remain `verify`.
 
+**Keyboard follow-up 2026-11-13 — source regression reproduced.** The root
+`enter` binding consumes the key before `rename_row` receives `on_key_down`,
+but `PressEnter` had no rename branch. It now queues `CommitRename` after the
+existing overlay branches. Root `Tab`/`Shift+Tab` bindings now call GPUI focus
+traversal; the `webview` context keeps its own keyboard path. GPUI TestPlatform
+tests exercise the startup keymap and actual Root handlers with the rename input
+and focus-ring tab stops: Enter commits once, Escape cancels, and all 80 Tab
+presses move the visible focus ring. Both regressions fail on the old handlers
+and bindings. These tests do not accept the live Windows keyboard/focus gate;
+kmaint must verify the exact fix candidate and the remaining scenarios above.
+
 **Status:** implementation merged в PR #37; reopened for verification.
 Частичный Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал
 возможен после PR #40 (зелёный Rust-gate на `main`).
