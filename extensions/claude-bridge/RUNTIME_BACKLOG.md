@@ -143,6 +143,18 @@ running CLI and no client call hanging after a reconnect. Next artifact: a
 verification Diagnostic PR. Do not reimplement #714. Other sections of this
 overview keep their own dates and baselines.
 
+## Browser workspace monitor proof follow-up — 2026-11-10
+
+Fresh main `118beaad`: [INC-0087](runtime-issues/INC-2026-0087.md) remains in
+progress. Lead merged #693/#694/#696 (MCP behavior, owned PTY disposal and LSP
+behavior); #695 authentication/tab persistence is pending lead review. The next
+bounded artifact proves six monitor API/channel pairs using the production
+browser transport and shared manager with independently traced synthetic
+processes, including zero-page forwarding and process cleanup. Claude lead
+reviews/merges implementation. Exhaustive execution receipts and the final
+composed actual-model acceptance remain open; the owner does not run tests.
+Historical evidence and its narrower claims below are retained.
+
 ## Browser restart persistence follow-up — 2026-11-10
 
 [INC-0092](runtime-issues/INC-2026-0092.md): confirmed loss of host open tabs and

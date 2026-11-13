@@ -318,3 +318,11 @@ last-owner cleanup and natural host shutdown. The runner writes sanitized
 checks pass. The fixture builds current sources in the runner image; this
 partial artifact explicitly disclaims candidate-image acceptance and is not a
 completion receipt. Collector integrity tests run in `test:acceptance`.
+
+`test/monitors.smoke.mjs` exercises six monitor API/channel pairs through two
+production browser pages and independently traced project-owned processes. It
+checks output/unsubscribe, retained zero-page logs and model notifications,
+nonzero exit, tab removal and natural host shutdown. The runner emits partial
+`monitor-checks.json` after executed assertions pass. The monitor and upstream
+are synthetic; skill-triggered monitors and exact composed-image/model monitor
+acceptance remain open. Collector integrity runs in `test:acceptance`.
