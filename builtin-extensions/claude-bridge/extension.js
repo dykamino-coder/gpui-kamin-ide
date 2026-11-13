@@ -42071,6 +42071,11 @@ async function handleMcpCall(ctx, msg) {
   let result;
   try {
     const { executeTool: executeTool2 } = await Promise.resolve().then(() => (init_executor2(), executor_exports2));
+    if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return;
+    if (controller.signal.aborted) {
+      ctx.denyMcp(msg.requestId, "Permission request cancelled");
+      return;
+    }
     result = await executeTool2(msg.toolName, msg.input, {
       tabId: ctx.tabId,
       cwd: ctx.workingDirectory?.(),
@@ -47738,8 +47743,9 @@ async function listPendingHookApprovals() {
 async function requestHookApproval(pluginId, pluginRoot) {
   const pending = await getPendingHookApproval(pluginId, pluginRoot);
   if (!pending) return;
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed()) ?? null;
-  if (win) win.webContents.send("plugin-hooks:awaiting-approval", pending);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("plugin-hooks:awaiting-approval", pending);
+  }
 }
 async function requestDependencyHookApprovals(data, dependencyIds) {
   for (const dependencyId of dependencyIds) {

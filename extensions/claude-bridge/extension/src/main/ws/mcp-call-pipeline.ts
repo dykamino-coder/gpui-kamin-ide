@@ -208,6 +208,11 @@ export async function handleMcpCall(
   let result: unknown
   try {
     const { executeTool } = await import('../mcp/executor')
+    if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return
+    if (controller.signal.aborted) {
+      ctx.denyMcp(msg.requestId, 'Permission request cancelled')
+      return
+    }
     result = await executeTool(msg.toolName, msg.input, {
       tabId: ctx.tabId,
       cwd: ctx.workingDirectory?.(),

@@ -131,6 +131,7 @@
   {"id":"api:onOlderPage","status":"supported-in-browser-host","provider":"routes","routes":["event:jsonl:older-page"],"sources":{"webview/shared/types.ts":1}},
   {"id":"api:onOutput","status":"supported-in-browser-host","provider":"routes","routes":["event:pty-output"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:onPermissionRequest","status":"supported-in-browser-host","provider":"routes","routes":["event:permission-request"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
+  {"id":"api:onPermissionResolved","status":"supported-in-browser-host","provider":"routes","routes":["event:permission-resolved"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:onPluginHooksAwaitingApproval","status":"supported-in-browser-host","provider":"routes","routes":["event:plugin-hooks:awaiting-approval"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:onPluginsBrowseProgress","status":"supported-in-browser-host","provider":"routes","routes":["event:plugins:browse-progress"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:onPtyData","status":"supported-in-browser-host","provider":"routes","requires":["host-terminal"],"routes":["event:pty:data"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},

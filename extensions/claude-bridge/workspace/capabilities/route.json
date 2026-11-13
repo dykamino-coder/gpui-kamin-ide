@@ -4,7 +4,6 @@
   {"id":"route:bridge:server-version","status":"supported-in-browser-host","provider":"server","sources":{"workspace/src/browser-server.ts":1}},
   {"id":"route:disconnect","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1,"workspace/src/terminals.ts":1}},
   {"id":"route:permission-request","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/presentation.ts":1}},
-  {"id":"route:permission-resolved","status":"supported-in-browser-host","provider":"presentation","sources":{"webview/src/hooks/useBridgeListeners.ts":1}},
   {"id":"route:pty-submit-text","status":"supported-in-browser-host","provider":"presentation","sources":{"workspace/src/runtime.ts":1}},
   {"id":"route:pty:data","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":2}},
   {"id":"route:pty:exit","status":"supported-in-browser-host","provider":"terminal","requires":["host-terminal"],"sources":{"webview/src/browser/workspace-terminal.ts":1}},

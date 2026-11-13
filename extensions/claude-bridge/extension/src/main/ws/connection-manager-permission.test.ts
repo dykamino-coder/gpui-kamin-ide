@@ -169,6 +169,27 @@ describe('INC-2026-0077 MCP permission provenance and ownership', () => {
     expect(execute).toHaveBeenCalledOnce()
   })
 
+  it.each(['dispose', 'replacement', 'task-cancel'])('does not start an approved tool if %s occurs while its executor loads', async action => {
+    execute.mockResolvedValue('must not execute')
+    const f = fixture()
+    f.call()
+    f.manager.respondPermission('request', 'allow_once')
+    // Permission resumed, but the executor's dynamic import has not resumed.
+    await Promise.resolve()
+    expect(execute).not.toHaveBeenCalled()
+    if (action === 'dispose') f.manager.dispose()
+    else if (action === 'replacement') f.internal.dispatchMessage({ type: 'session:created', sessionId: 'replacement' })
+    else f.internal.dispatchMessage({ type: 'mcp:cancel', requestId: 'request' })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(execute).not.toHaveBeenCalled()
+    if (action === 'task-cancel') {
+      expect(f.frames[0]).toMatchObject({ reason: 'Permission request cancelled' })
+      f.ack()
+      await vi.waitFor(() => expect(f.manager.hasPendingMcp('request')).toBe(false))
+    }
+    expect(f.terminal()).toHaveLength(1)
+  })
+
   it('registers the pending decision before publishing, so an immediate response is retained', async () => {
     execute.mockResolvedValue('immediate')
     const f = fixture()

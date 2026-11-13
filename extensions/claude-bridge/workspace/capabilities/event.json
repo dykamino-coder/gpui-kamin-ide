@@ -42,7 +42,7 @@
   {"id":"event:monitor:status","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/plugin-monitors.ts":3,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:monitor:stopped","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/plugin-monitors.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:permission-request","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ws/mcp-call-pipeline.ts":1,"webview/src/lib/bridge-channels.ts":1}},
-  {"id":"event:permission-resolved","status":"supported-in-browser-host","provider":"presentation","sources":{"extension/src/main/ws/mcp-call-pipeline.ts":1}},
+  {"id":"event:permission-resolved","status":"supported-in-browser-host","provider":"presentation","sources":{"extension/src/main/ws/mcp-call-pipeline.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:plugin-hooks:awaiting-approval","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/plugins/handlers-install.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:plugins:browse-progress","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/plugins/handlers-browse.ts":4,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"event:pty-exit","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ws/handle-server-message.ts":1,"webview/src/lib/bridge-channels.ts":1}},
