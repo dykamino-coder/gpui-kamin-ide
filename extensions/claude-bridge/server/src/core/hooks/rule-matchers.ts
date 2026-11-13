@@ -230,6 +230,10 @@ function powershellGroupEnd(command: string, open: number): number | null {
       }
     } else if (ch === "'" || ch === '"') {
       quote = ch
+    } else if (command.startsWith('<#', i)) {
+      const close = powershellCommentEnd(command, i)
+      if (close === null) return null
+      i = close
     } else if (ch === '#') {
       while (i < command.length && command[i] !== '\n') i++
     } else if (ch === opening) {
@@ -239,6 +243,12 @@ function powershellGroupEnd(command: string, open: number): number | null {
     }
   }
   return null
+}
+
+/** The sampled native matcher ends a block comment at its first terminator. */
+function powershellCommentEnd(command: string, open: number): number | null {
+  const close = command.indexOf('#>', open + 2)
+  return close === -1 ? null : close + 1
 }
 
 // These scalar expressions have no CommandAst children. Other expression
@@ -313,6 +323,20 @@ function powershellCommands(command: string): string[] | null {
     } else if (ch === '`' && i + 1 < command.length) {
       word += command[++i]
       active = true
+    } else if (command.startsWith('<#', i) && !active) {
+      const close = powershellCommentEnd(command, i)
+      if (close === null) return null
+      i = close
+    } else if (command.startsWith('--%', i) && !active && words.length && /\s|^$/.test(command[i + 3] ?? '')) {
+      // Stop-parsing leaves the rest of this line as one literal value,
+      // including quotes and apparent subexpressions or redirections.
+      words.push('--%')
+      const newline = command.indexOf('\n', i + 3)
+      const end = newline === -1 ? command.length : newline
+      const literal = command.slice(i + 3, end).replace(/^[ \t]+/, '')
+      if (literal) words.push(literal)
+      endCommand()
+      i = end
     } else if (ch === '#' && !active) {
       while (i < command.length && command[i] !== '\n') i++
       endCommand()
@@ -375,11 +399,15 @@ export function powershellRuleMatches(rule: string, command: string): boolean {
   const prefix = legacyPrefix(rule)
   return statements.some((candidate) => {
     const [name, ...args] = candidate.split(' ')
-    const base = name!.replaceAll('\\', '/').split('/').at(-1)!
-    return [candidate, [base, ...args].join(' ')].some((c) => {
-      if (prefix !== null)
-        return c.toLowerCase() === prefix.toLowerCase() || c.toLowerCase().startsWith(prefix.toLowerCase() + ' ')
-      return wildcardMatches(rule, c, true, true)
-    })
+    // A module qualifier is omitted by the native matcher, while an absolute
+    // or relative executable path remains part of the command's name.
+    const base = /^[A-Za-z]:|^\\\\|^\.\.?\\/.test(name!) ? name! : name!.split('\\').at(-1)!
+    const normalized = [base, ...args].join(' ')
+    if (prefix !== null)
+      return (
+        normalized.toLowerCase() === prefix.toLowerCase() ||
+        normalized.toLowerCase().startsWith(prefix.toLowerCase() + ' ')
+      )
+    return wildcardMatches(rule, normalized, true, true)
   })
 }
