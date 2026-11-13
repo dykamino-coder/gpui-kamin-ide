@@ -357,6 +357,36 @@ export class CodexRuntime {
     this.pending = null
     this.lastError = null
     this.limits = undefined
+    await this.accountStatus({ fresh: true })
+  }
+
+  /** The interactive CLI is another auth/store writer. Lease the same lock,
+   *  pause app-server acquisition, and refresh the shared account on exit. */
+  async acquireTerminal(): Promise<() => Promise<void>> {
+    if (this.pending) throw new Error('Finish or cancel Codex login before opening the terminal')
+    // Use the normal home migration/preparation path even before the dashboard
+    // has opened the account card. suspend() then waits for this writer to exit.
+    await this.host()
+    const resume = await this.registry.suspend(this.home)
+    let lock: ReturnType<typeof acquireCodexHomeLock>
+    try {
+      assertBridgeOwnedHome(this.home, os.homedir(), this.env)
+      lock = acquireCodexHomeLock(this.home)
+    } catch (error) {
+      resume()
+      throw error
+    }
+    let released = false
+    return async () => {
+      if (released) return
+      released = true
+      lock.release()
+      resume()
+      this.account = undefined
+      this.limits = undefined
+      const status = await this.accountStatus({ fresh: true })
+      for (const listener of this.accountListeners) listener(status)
+    }
   }
 
   // ── Models ─────────────────────────────────────────────────────────────

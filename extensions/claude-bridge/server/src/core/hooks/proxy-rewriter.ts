@@ -5,13 +5,14 @@
 // Claude Code applies its own event-specific command-hook semantics (including
 // exit 2). The per-tool events in HTTP_HOOK_EVENTS get a native http hook
 // instead, answered with the body that has the same effect (http-hook-answer).
-// Server-side command hooks are kept as-is. Prompt/agent/http hooks pass
-// through unchanged — CLI handles them natively.
+// Native argument conditions on command/HTTP hooks are evaluated by the
+// dispatcher. Other handlers stay in the CLI, with bare tool names translated.
 
 import { config } from '../config'
 import type { HookHandler, HookMatcher, HookSettings, HookSource } from './types'
 import { registerSessionHooks } from './registry'
 import { matcherForCli } from './tool-names'
+import { conditionForCli } from './hook-condition'
 import { HTTP_HOOK_EVENTS, HTTP_HOOK_RELAY } from './http-hook-answer'
 
 /** Env var the CLI process carries for us. The relay credential travels in
@@ -94,12 +95,18 @@ export function rewriteHooksForCli(
       const newHandlers: HookHandler[] = m.hooks.map((h) => {
         const reg = annotated.get(h)
         if (!reg) return h
-
-        // Pass-through for non-command types (LLM and HTTP run native).
-        if (h.type !== 'command') return h
-
-        // Server-side command hook — keep as-is, CLI runs it in container.
-        if (reg.effectiveHost === 'server') return h
+        const condition = conditionForCli(event, h.if)
+        const translated = condition.cliIf === h.if ? h : { ...h, if: condition.cliIf }
+        // LLM hooks still execute inside the CLI. Bare names can be mapped;
+        // argument conditions need a CLI-side predicate/LLM continuation.
+        if (h.type !== 'command' && h.type !== 'http') return condition.serverRule ? h : translated
+        if (condition.serverRule) {
+          reg.serverCondition = condition.serverRule
+          if (h.once) reg.serverOnce = { spent: false }
+        }
+        const once = condition.serverRule ? undefined : h.once
+        if (h.type === 'http' && !condition.serverRule) return translated
+        if (h.type === 'command' && reg.effectiveHost === 'server' && !condition.serverRule) return translated
 
         const proxyUrl = `${proxyOrigin}/api/hooks/${sessionId}/${encodeURIComponent(event)}/${reg.id}`
 
@@ -107,7 +114,7 @@ export function rewriteHooksForCli(
         // in-process instead of starting a Node relay on every tool call. The
         // header names the credential's env var, so its value is substituted
         // only in the request and never appears in the declaration.
-        if (useHttpHook(event, h)) {
+        if (h.type === 'http' || useHttpHook(event, h)) {
           const http: HookHandler = {
             type: 'http',
             url: proxyUrl,
@@ -118,9 +125,9 @@ export function rewriteHooksForCli(
             allowedEnvVars: [HOOK_RELAY_TOKEN_ENV],
           }
           if (h.timeout !== undefined) http.timeout = h.timeout
-          if (h.if !== undefined) http.if = h.if
+          if (condition.cliIf !== undefined) http.if = condition.cliIf
           if (h.statusMessage !== undefined) http.statusMessage = h.statusMessage
-          if (h.once !== undefined) http.once = h.once
+          if (once !== undefined) http.once = once
           return http
         }
 
@@ -132,9 +139,9 @@ export function rewriteHooksForCli(
           command: 'node',
           args: ['-e', buildHookCommandRelay(proxyUrl, { event, type: h.type, host: reg.effectiveHost })],
           timeout: h.timeout,
-          if: h.if,
+          if: condition.cliIf,
           statusMessage: h.statusMessage,
-          once: h.once,
+          once,
         }
         if (h.async || h.asyncRewake) {
           relay.async = true
