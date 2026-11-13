@@ -89,6 +89,9 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let platform = Rc::new(gpui_windows::WindowsPlatform::with_gpu_adapter(
         false, preference,
     )?);
+    // Offscreen: текстура message-only окна, DWM не видит ни окна, ни кадров.
+    let offscreen = args.surface == super::args::Surface::Offscreen;
+    platform.set_offscreen_windows(offscreen);
     startup.mark("platform_device_text_and_host_setup");
     let application =
         gpui::Application::with_platform(platform.clone()).with_instrumentation(instrumentation);
@@ -136,9 +139,11 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                 },
             )?;
             startup.mark("window_surface_pipeline");
-            window.update(cx, |_, window, _| park(window))??;
-            startup.size_changed();
-            startup.mark("offscreen_placement");
+            if !offscreen {
+                window.update(cx, |_, window, _| park(window))??;
+                startup.size_changed();
+                startup.mark("offscreen_placement");
+            }
             Ok((window, fonts))
         };
         match setup() {

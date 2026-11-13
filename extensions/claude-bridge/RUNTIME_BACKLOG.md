@@ -143,6 +143,18 @@ running CLI and no client call hanging after a reconnect. Next artifact: a
 verification Diagnostic PR. Do not reimplement #714. Other sections of this
 overview keep their own dates and baselines.
 
+## Browser workspace monitor proof follow-up — 2026-11-10
+
+Fresh main `118beaad`: [INC-0087](runtime-issues/INC-2026-0087.md) remains in
+progress. Lead merged #693/#694/#696 (MCP behavior, owned PTY disposal and LSP
+behavior); #695 authentication/tab persistence is pending lead review. The next
+bounded artifact proves six monitor API/channel pairs using the production
+browser transport and shared manager with independently traced synthetic
+processes, including zero-page forwarding and process cleanup. Claude lead
+reviews/merges implementation. Exhaustive execution receipts and the final
+composed actual-model acceptance remain open; the owner does not run tests.
+Historical evidence and its narrower claims below are retained.
+
 ## Browser restart persistence follow-up — 2026-11-10
 
 [INC-0092](runtime-issues/INC-2026-0092.md): confirmed loss of host open tabs and
@@ -452,8 +464,8 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | `verify` | #147 delivery wake reused: оба Chat no-pointer сценария + Plugins manual Update. | Windows no-pointer outcome; сопоставить BR-31 R6, не добавлять forced repaint. |
 | [BR-07](RUNTIME_RELIABILITY.md#br-07--surface-native-claude-attention-in-chat) | `waiting` | Tab-scoped Console banner после blocker inventory BR-11. | Versioned native attention contract. |
 | [BR-08](RUNTIME_RELIABILITY.md#br-08--explain-unexpected-automatic-reload-skills) | `observation` | #200 telemetry accepted; owner reports diagnostic window after deployment. | Real reload event/source; maintainer не имеет deployment access. |
-| [BR-09](RUNTIME_RELIABILITY.md#br-09--make-agent-teams-report-delivery-explicit) | `verify` | #15 merged: 3/3 reports без recovery и отдельный один bounded recovery. | Current real CLI + isolated authenticated Windows/Linux evidence; отличается от #197 status. |
-| [BR-10](RUNTIME_RELIABILITY.md#br-10--show-the-effective-hook-in-approval-ui) | `verify` | #13 merged: modal focus, Tab/Shift+Tab, approve/reject и соседние controls. | Windows keyboard/focus artifact. |
+| [BR-09](RUNTIME_RELIABILITY.md#br-09--make-agent-teams-report-delivery-explicit) | `verify` | #15 merged; 2026-11-13 both cases passed on the authenticated stand (CLI 2.1.322): 3/3 reports with tab switch and reconnects, one recovery for a lost report. | Close as `done`, or require a server from current `main` as a separate gate. |
+| [BR-10](RUNTIME_RELIABILITY.md#br-10--show-the-effective-hook-in-approval-ui) | `change` | #13 merged; 2026-11-13 on 1.0.94 containment, keyboard approve/reject, re-prompt on hash change passed. | Fix approval event delivery to Chat, focus when shown from the pending list, focus restore after a queue; then repeat the gate. |
 | [BR-11](RUNTIME_RELIABILITY.md#br-11--inventory-native-cli-only-blocking-states) | `research` | Current pinned CLI-only blockers inventory (включая model confirmation). | Versioned trigger/output/actions; старые production transcripts не prerequisite. |
 | [BR-12](RUNTIME_RELIABILITY.md#br-12--establish-the-server-and-builtin-skills-baseline) | `observation` | Owner inventory roots/mounts/ownership действующего deployment, без contents. | Deployment-owner report; нельзя подменить local synthetic inventory. |
 | [BR-13](RUNTIME_RELIABILITY.md#br-13--retire-the-legacy-bridge-sync-mount-safely) | `observation` | Owner confirms every deployment migrated before legacy cleanup. | Migration proof; до него destructive cleanup запрещён. |

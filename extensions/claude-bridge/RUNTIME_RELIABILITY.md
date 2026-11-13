@@ -547,6 +547,21 @@ live gate прямо отмечен NOT executed before merge. Prompt contract �
 Зафиксировать CLI version и фактический `SendMessage` contract; BR-25/26/27 panel runs не
 заменяют эти два случая.
 
+**Verification 2026-11-13 (Windows client, authenticated stand `kamin-acc-302`, CLI 2.1.322): both cases pass.**
+
+The stand image is `main-584b5616`. The prompt contract file is unchanged on `main` `29238be7`. Clients: installed 1.0.94, and a `main` build with the probe `hostDisconnect`.
+
+The CLI `SendMessage` contract: a teammate calls `SendMessage` to `team-lead`. The lead receives each report as a `<teammate-message>` user turn, and idle notices arrive as `idle_notification` in the same channel.
+
+1. **No lost report.** Two runs with three teammates and unique markers, one per client build. During the runs there was a tab switch, and in the second run also two shell disconnects. 3/3 reports arrived on the first attempt; the lead sent no recovery request and spawned no extra teammate. One late report was confirmed from the teammate's transcript, not by a new request.
+2. **Intentionally missing report.** One teammate went idle without a report. The lead sent exactly one `SendMessage` recovery request, received the marker and finished. No additional teammate was spawned, and a later second idle notice did not trigger another request.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/55f0fd5793ff62beba8dd192e1012c3d347816a2/incidents/BR-09/evidence/2026-11-13-reports).
+
+Not covered: a server built from current `main`.
+
+Next step: close as done, unless a server from `main` is required as a separate gate.
+
 **Status:** implementation merged в PR #15; reopened for verification.
 Automatic selection остаётся отдельным BR-15. **Dependency:** none.
 **Acceptance:** automated + authenticated Windows runtime merge gate; live
@@ -604,6 +619,36 @@ path в `args`, shell metacharacters, опасный argument, redaction и оч
 matcher. Relay URL/token после proxy rewrite не отображаются. Windows gate:
 plugin update меняет hook hash, modal показывает полную declaration и matcher,
 approve/reject сохраняются.
+
+**Verification 2026-11-13 (KaminIDE 1.0.94, profile copy): partial pass, three defects.**
+
+Setup:
+- Two disposable plugins from a local marketplace; every hook only echoes text.
+- Keys are sent through CEF DevTools `Input.dispatchKeyEvent` to the Chat page, without screen takeover.
+
+Passed:
+- Initial focus goes to the dialog when the modal opens from a live event.
+- Tab and Shift+Tab stay in the dialog and wrap around; a disabled Approve button is skipped.
+- Space toggles a hook, and Enter on Approve or Reject all saves the choice.
+- After a single modal closes, focus returns to the composer.
+- A plugin update re-prompts with the new declaration and matcher, and the changed hook starts unselected.
+- A queued second plugin takes focus when its modal opens.
+- The dangerous-pattern mark is shown, and a long matcher wraps without horizontal overflow.
+- Approvals and rejections are persisted.
+
+Failed:
+1. Later approval requests do not reach Chat. `requestHookApproval` sends `plugin-hooks:awaiting-approval` to one registered webview sink. The event arrived only in the Customize Plugins page that started the install. Chat, which hosts the modal, showed the request only after a reload.
+2. A modal opened from the mount-time pending list (after a Chat reload) leaves focus in the composer. Tab then reaches chat controls behind the `aria-modal` overlay.
+3. After a queue of two modals closes, focus lands on `BODY` instead of the composer.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/57f3d9cc7076686e22c1bd8df007a19f4cb4045c/incidents/BR-10/evidence/2026-11-13-keyboard-1.0.94).
+
+Next artifact: change. The fix should:
+- deliver the request to every live Bridge view (or to Chat explicitly);
+- move focus into the dialog whenever the modal shows, including from the pending list;
+- restore focus to the element that had it before the first queued modal.
+
+Then repeat this gate.
 
 ### BR-11 — Inventory native CLI-only blocking states
 
