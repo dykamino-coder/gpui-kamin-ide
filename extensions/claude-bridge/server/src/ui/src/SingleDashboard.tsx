@@ -371,7 +371,7 @@ export function SingleDashboard() {
         <StatusCard
           icon="fa-solid fa-user"
           iconColor="var(--accent-purple)"
-          title="Account"
+          title="Claude (Claude Code)"
           status={!isLoggedIn ? 'error' : acct ? 'ok' : 'warning'}
           items={accountItems}
           action={

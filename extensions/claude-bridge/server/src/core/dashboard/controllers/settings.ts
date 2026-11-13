@@ -32,7 +32,7 @@ export function registerSettingsRoutes(api: Hono): void {
     } catch {
       return c.json({ error: 'Invalid JSON body' }, 400)
     }
-    const validKeys: SettingKey[] = ['httpProxy', 'httpsProxy', 'noProxy', 'caCert', 'logLevel']
+    const validKeys: SettingKey[] = ['httpProxy', 'httpsProxy', 'noProxy', 'caCert', 'logLevel', 'maxRequests']
     // Awaited: the answer is the stored state, and a rejected value (an
     // unreadable CA file) is an error for the caller, not an unhandled
     // rejection behind a 200 that still shows the old values.

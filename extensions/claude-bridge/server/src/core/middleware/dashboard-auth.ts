@@ -4,7 +4,7 @@
 
 import type { Context, Next } from 'hono'
 import { consumeJsonlDownload } from '../dashboard/jsonl-download'
-import { isDashboardAuthEnabled, validateDashboardSession } from '../auth/dashboard-auth'
+import { isDashboardAuthEnabled, validateDashboardSession, validateCredentials } from '../auth/dashboard-auth'
 import { resolveTokenSync } from '../auth/tokens'
 
 /** Paths that don't require dashboard authentication */
@@ -31,6 +31,14 @@ export async function dashboardAuthMiddleware(c: Context, next: Next) {
 
   // Check for session token
   const auth = c.req.header('authorization')
+  if (auth?.startsWith('Basic ')) {
+    const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8')
+    const separator = decoded.indexOf(':')
+    if (separator >= 0 && validateCredentials(decoded.slice(0, separator), decoded.slice(separator + 1))) {
+      c.set('authKind', 'admin')
+      return next()
+    }
+  }
   if (!auth?.startsWith('Bearer ')) {
     return c.json({ error: 'Authentication required' }, 401)
   }

@@ -11,6 +11,7 @@ import {
   migrateLegacyCodexHome,
   prepareCodexHome,
 } from './codex-home'
+import { acquireCodexHomeLock, CODEX_HOME_LOCK_FILE } from './codex-home-lock'
 import { patchModelCatalog } from './model-catalog'
 
 // Type-only reference keeps the production injector's signature compatible.
@@ -69,6 +70,21 @@ describe('CODEX_HOME', () => {
     expect(fs.existsSync(legacy)).toBe(false)
     // Second start: nothing left to move.
     expect(migrateLegacyCodexHome(home, legacy)).toBe(false)
+  })
+
+  it('leaves the old server app-server lock behind so the new home starts unlocked', () => {
+    const root = tmp()
+    const legacy = path.join(root, '.claude', 'codex-home')
+    const home = path.join(root, '.codex')
+    fs.mkdirSync(legacy, { recursive: true })
+    fs.writeFileSync(path.join(legacy, 'auth.json'), '{"synthetic":true}')
+    fs.writeFileSync(
+      path.join(legacy, CODEX_HOME_LOCK_FILE),
+      JSON.stringify({ pid: 68, host: 'replaced-container', bootId: null, procStart: null }),
+    )
+    expect(migrateLegacyCodexHome(home, legacy)).toBe(true)
+    expect(fs.existsSync(path.join(home, CODEX_HOME_LOCK_FILE))).toBe(false)
+    expect(() => acquireCodexHomeLock(home, { host: 'new-container' }).release()).not.toThrow()
   })
 
   it('never overwrites a home that already has an account', () => {

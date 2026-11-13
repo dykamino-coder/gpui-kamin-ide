@@ -531,9 +531,11 @@ export function registerStatsRoutes(api: Hono): void {
     ).getRowObjects()[0] as { n: bigint | number } | undefined
     const matched = Number(beforeRow?.n ?? 0)
     if (matched > 0) {
-      const { withStatsWrite } = await import('../../stats/database/write-lock')
+      const { writeSessionToken } = await import('../../stats/database/session-owners')
       // The sweeper may be healing this very row — one writer at a time (write-lock.ts).
-      await withStatsWrite(() => db.run(`UPDATE session_tokens SET deleted = 1 WHERE session_id = ?`, [sessionId]))
+      await writeSessionToken(db, sessionId, () =>
+        db.run(`UPDATE session_tokens SET deleted = 1 WHERE session_id = ?`, [sessionId]),
+      )
       // The rollup carries the live owner: refresh this session at every level now.
       const { markRollupSessionsDirty, drainRollup } = await import('../../stats/database/rollup')
       await markRollupSessionsDirty(db, [sessionId])

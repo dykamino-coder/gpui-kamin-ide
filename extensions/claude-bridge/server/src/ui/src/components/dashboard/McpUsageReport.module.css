@@ -4,8 +4,54 @@
   line-height: 1.5;
 }
 .scroll {
-  max-height: 340px;
+  max-height: 560px;
   overflow: auto;
+}
+.summary {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+.button {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: 5px 10px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.switch {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0;
+}
+.switch button[aria-pressed='true'] {
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+.expand {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.detail {
+  background: var(--bg-secondary);
+}
+.showAll {
+  margin-top: 12px;
 }
 .table {
   width: 100%;

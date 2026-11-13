@@ -62,6 +62,8 @@ mod tests {
 
     #[test]
     fn host_disconnect_is_routed_without_a_connected_client() {
+        // `host::rebind` tests connect a real client to the shared slot.
+        let _serial = crate::host::view_resolution::serial_test();
         let reply = ShellProbe.handle("hostDisconnect", &json!({}));
         assert_eq!(
             reply,

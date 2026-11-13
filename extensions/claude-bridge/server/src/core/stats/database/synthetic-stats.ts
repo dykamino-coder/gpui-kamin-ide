@@ -8,6 +8,7 @@
 // (needed to compare rollup numbers with a raw-event recomputation).
 
 import type { DuckDBConnection } from '@duckdb/node-api'
+import { initSessionOwners } from './session-owners'
 
 export interface SyntheticStatsOptions {
   users: number
@@ -100,4 +101,7 @@ export async function generateSyntheticStats(db: DuckDBConnection, o: SyntheticS
     FROM synth_sessions WHERE synth_r(n, 'px') < 0.05
     ON CONFLICT DO NOTHING`)
   await db.run('DROP TABLE synth_sessions')
+  // Bulk fixtures exercise the same one-time migration as an existing database.
+  await db.run("DELETE FROM settings WHERE key = 'session_owners_v1'")
+  await initSessionOwners(db)
 }

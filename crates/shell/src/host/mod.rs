@@ -25,6 +25,7 @@ pub mod events_tree;
 pub mod migrate_prod;
 pub mod paths;
 pub mod prefs;
+pub(crate) mod rebind;
 pub mod requests_search;
 pub mod requests_tree;
 pub mod show_message;

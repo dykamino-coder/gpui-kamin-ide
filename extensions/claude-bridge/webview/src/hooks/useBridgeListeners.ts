@@ -559,6 +559,12 @@ export function useBridgeListeners(
       }]
     })
 
+    const unsubPermissionResolved = bridge.onPermissionResolved((tabId, data) => {
+      activeWidgets.value = activeWidgets.value.filter(widget =>
+        widget.type !== 'permission' || widget.data.tabId !== tabId || widget.requestId !== data.requestId,
+      )
+    })
+
     const unsubAskUser = bridge.onAskUserQuestion((tabId: string, data) => {
       const filtered = activeWidgets.value.filter(w =>
         w.requestId !== data.requestId &&
@@ -840,6 +846,7 @@ export function useBridgeListeners(
       unsubSubagentEntries()
       unsubElicitation()
       unsubPermission()
+      unsubPermissionResolved()
       unsubAskUser()
       unsubTreeUpdate()
       unsubSessionTitle()

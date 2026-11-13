@@ -18,6 +18,7 @@ import { registerSessionRoutes } from './controllers/sessions'
 import { registerUserRoutes } from './controllers/users'
 import { registerTranscriptExportRoutes } from './controllers/transcripts-export'
 import { registerMcpReportRoutes } from './controllers/mcp-report'
+import { registerTerminalRoutes } from './controllers/terminal'
 
 export function createDashboardRoutes(): Hono {
   const api = new Hono()
@@ -41,6 +42,7 @@ export function createDashboardRoutes(): Hono {
   registerUserRoutes(api)
   registerTranscriptExportRoutes(api)
   registerMcpReportRoutes(api)
+  registerTerminalRoutes(api)
 
   return api
 }

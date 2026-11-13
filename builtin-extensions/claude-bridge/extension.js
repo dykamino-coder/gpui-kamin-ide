@@ -42448,35 +42448,44 @@ function cancelMcpCall(ctx, requestId, taskOwner) {
   const call = ctx.pendingMcpCalls.get(requestId);
   if (!call || call.taskOwner !== taskOwner) return;
   call.controller?.abort();
-  ctx.pendingPermissions.get(requestId)?.("deny");
-  ctx.pendingPermissions.delete(requestId);
+  ctx.pendingPermissions.get(requestId)?.("cancelled");
 }
 function checkToolPermission(ctx, requestId, toolName, input) {
-  if (toolName.startsWith("__bridge_mcp_")) return true;
+  if (toolName.startsWith("__bridge_mcp_")) return { allowed: true };
   const mode = ctx.permissionMode();
-  if (mode === "bypassPermissions") return true;
+  if (mode === "bypassPermissions") return { allowed: true };
   const category = ctx.permissionManager.getToolCategory(toolName);
   if (mode === "acceptEdits") {
-    if (category !== "shell" && category !== "git") return true;
+    if (category !== "shell" && category !== "git") return { allowed: true };
   } else {
     const decision = ctx.permissionManager.checkPermission(toolName, input);
-    if (decision === "allow") return true;
-    if (decision === "deny") return false;
+    if (decision === "allow") return { allowed: true };
+    if (decision === "deny") return { allowed: false, reason: "Permission denied by policy" };
   }
-  ctx.window.webContents.send("permission-request", ctx.tabId, {
-    requestId,
-    toolName,
-    input,
-    category
-  });
   return new Promise((resolve) => {
-    ctx.pendingPermissions.set(requestId, (decision) => {
-      const allowed = decision !== "deny";
+    const settle = (outcome) => {
+      if (ctx.pendingPermissions.get(requestId) !== respond) return false;
+      ctx.pendingPermissions.delete(requestId);
+      resolve(outcome);
+      try {
+        ctx.window.webContents.send("permission-resolved", ctx.tabId, { requestId });
+      } catch {
+      }
+      return true;
+    };
+    const respond = (decision) => {
+      const reason = decision === "deny" ? "User denied permission" : decision === "cancelled" ? "Permission request cancelled" : decision === "disconnected" ? "Permission request cancelled: connection disconnected" : void 0;
+      if (!settle(reason ? { allowed: false, reason } : { allowed: true })) return;
       if (decision === "allow_session" || decision === "always") {
         ctx.permissionManager.setSessionPermission(toolName, "allow");
       }
-      resolve(allowed);
-    });
+    };
+    ctx.pendingPermissions.set(requestId, respond);
+    try {
+      ctx.window.webContents.send("permission-request", ctx.tabId, { requestId, toolName, input, category });
+    } catch (error) {
+      settle({ allowed: false, reason: `Permission request delivery failed: ${error instanceof Error ? error.message : String(error)}` });
+    }
   });
 }
 async function handleHookExecute(ctx, msg) {
@@ -42523,12 +42532,13 @@ async function handleMcpCall(ctx, msg) {
   const correlation = { requestId: msg.requestId, toolName: msg.toolName };
   mcpDiagnostic("request-received", correlation);
   const controller = new AbortController();
-  ctx.pendingMcpCalls.set(msg.requestId, {
+  const call = {
     toolName: msg.toolName,
     input: msg.input,
     taskOwner: msg.taskOwner,
     controller
-  });
+  };
+  ctx.pendingMcpCalls.set(msg.requestId, call);
   ctx.window.webContents.send("mcp-activity", ctx.tabId, {
     requestId: msg.requestId,
     toolName: msg.toolName,
@@ -42536,10 +42546,11 @@ async function handleMcpCall(ctx, msg) {
     timestamp: Date.now(),
     status: "pending"
   });
-  const allowed = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input);
-  mcpDiagnostic(allowed ? "permission-allowed" : "permission-denied", correlation);
-  if (!allowed || controller.signal.aborted) {
-    ctx.denyMcp(msg.requestId, "User denied permission");
+  const permission = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input);
+  if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return;
+  mcpDiagnostic(permission.allowed ? "permission-allowed" : "permission-denied", correlation);
+  if (!permission.allowed || controller.signal.aborted) {
+    ctx.denyMcp(msg.requestId, permission.allowed ? "Permission request cancelled" : permission.reason);
     return;
   }
   const start = Date.now();
@@ -42548,6 +42559,11 @@ async function handleMcpCall(ctx, msg) {
   let result;
   try {
     const { executeTool: executeTool2 } = await Promise.resolve().then(() => (init_executor2(), executor_exports2));
+    if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return;
+    if (controller.signal.aborted) {
+      ctx.denyMcp(msg.requestId, "Permission request cancelled");
+      return;
+    }
     result = await executeTool2(msg.toolName, msg.input, {
       tabId: ctx.tabId,
       cwd: ctx.workingDirectory?.(),
@@ -42555,8 +42571,7 @@ async function handleMcpCall(ctx, msg) {
       taskDeadlineMs: msg.taskOwner ? msg.taskDeadlineMs : void 0,
       shellOwner: ctx.commandOwner?.(),
       onOutput: (chunk) => {
-        const call = ctx.pendingMcpCalls.get(msg.requestId);
-        if (call) call.output = ((call.output ?? "") + chunk).slice(-16384);
+        if (ctx.pendingMcpCalls.get(msg.requestId) === call) call.output = ((call.output ?? "") + chunk).slice(-16384);
       }
     });
   } catch (err) {
@@ -42567,7 +42582,7 @@ async function handleMcpCall(ctx, msg) {
     ...correlation,
     durationMs: Date.now() - start
   });
-  if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
+  if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return;
   try {
     const delivery = ctx.deliverResult({
       type: "mcp:response",
@@ -42579,7 +42594,7 @@ async function handleMcpCall(ctx, msg) {
     result = void 0;
     const delivered = await delivery;
     result = delivered.type === "mcp:response" ? delivered.result : delivered.reason;
-    if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
+    if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return;
     ctx.window.webContents.send("mcp-activity", ctx.tabId, {
       requestId: msg.requestId,
       toolName: msg.toolName,
@@ -42590,7 +42605,7 @@ async function handleMcpCall(ctx, msg) {
       durationMs: Date.now() - start
     });
   } catch (error) {
-    if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
+    if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return;
     ctx.reportDeliveryFailure();
     ctx.window.webContents.send("mcp-activity", ctx.tabId, {
       requestId: msg.requestId,
@@ -42601,7 +42616,7 @@ async function handleMcpCall(ctx, msg) {
       result: `Delivery failed: ${String(error)}`
     });
   } finally {
-    ctx.pendingMcpCalls.delete(msg.requestId);
+    if (ctx.pendingMcpCalls.get(msg.requestId) === call) ctx.pendingMcpCalls.delete(msg.requestId);
   }
 }
 
@@ -42780,6 +42795,93 @@ var ClientCommands = class {
     if (!shell2) return false;
     if (action === "stop") void stopLocalBackgroundShell(this.tabId, id);
     else this.publish("commands:output", { id, output: shell2.output });
+    return true;
+  }
+};
+
+// src/main/ws/submission-handoff.ts
+var SubmissionHandoff = class {
+  constructor(emit2) {
+    this.emit = emit2;
+  }
+  emit;
+  pending = /* @__PURE__ */ new Map();
+  ready = /* @__PURE__ */ new Set();
+  inFlight = /* @__PURE__ */ new Set();
+  remember(id, text) {
+    if (!this.pending.has(id)) this.pending.set(id, { id, text, state: "queued" });
+  }
+  receive(update) {
+    if (!update.id) return;
+    this.inFlight.delete(update.id);
+    if (["read", "cancelled", "fallback"].includes(update.state ?? "")) {
+      this.pending.delete(update.id);
+      this.ready.delete(update.id);
+      return;
+    }
+    const previous = this.pending.get(update.id);
+    if (previous || update.text) this.pending.set(update.id, {
+      ...previous,
+      ...update,
+      text: previous?.text ?? update.text,
+      retryable: false
+    });
+  }
+  end(transferable, confirmed) {
+    const safe = new Set(transferable);
+    for (const item of this.pending.values()) {
+      if (this.ready.has(item.id) || item.retryable) continue;
+      if (safe.has(item.id)) {
+        item.state = "queued";
+        item.cancelable = true;
+        item.warning = "Waiting to reconnect before delivering this message.";
+        this.ready.add(item.id);
+      } else {
+        item.state = "uncertain";
+        item.retryable = true;
+        item.cancelable = true;
+        item.warning = confirmed ? "The previous CLI session ended before delivery was confirmed. Check the transcript, then retry or cancel." : "The previous server did not confirm the handoff. Check the transcript, then retry or cancel.";
+      }
+      this.emit({ ...item });
+    }
+  }
+  /** A snapshot may race the new session's first receipts. */
+  tracked() {
+    return [...this.ready, ...this.inFlight];
+  }
+  replay() {
+    for (const item of this.pending.values()) this.emit({ ...item });
+  }
+  resume(send) {
+    for (const id of this.ready) {
+      this.ready.delete(id);
+      const item = this.pending.get(id);
+      if (!item) continue;
+      this.inFlight.add(id);
+      item.warning = void 0;
+      this.emit({ ...item });
+      send(item.text, id);
+    }
+  }
+  action(id, action, connected, send) {
+    const item = this.pending.get(id);
+    if (!item || !this.ready.has(id) && !item.retryable) return false;
+    if (action === "cancel") {
+      this.ready.delete(id);
+      this.pending.delete(id);
+      this.emit({ ...item, state: "cancelled", retryable: false, cancelable: false, warning: void 0 });
+    } else if (action === "push" && connected) {
+      item.state = "queued";
+      item.retryable = false;
+      item.warning = void 0;
+      this.ready.delete(id);
+      this.inFlight.add(id);
+      this.emit({ ...item });
+      send(item.text, id);
+    } else if (action === "push") {
+      item.warning = "Reconnect this tab before retrying delivery.";
+      this.emit({ ...item });
+    }
     return true;
   }
 };
@@ -43905,6 +44007,9 @@ var CONNECTION_AUTHORITY_GENERATION = Number.isSafeInteger(parsedHostGeneration)
 var lastConnectionAuthoritySequence = 0;
 var ConnectionManager = class _ConnectionManager {
   disposed = false;
+  submissions = new SubmissionHandoff((update) => this.window.webContents.send("session:submission", this.tabId, update));
+  handoffWait;
+  reconnectAfterHandoff = false;
   // Shared cache of the last tree update (all connections share one tree per token)
   static lastTree = null;
   // Optional callback to enrich tree with tab metadata before sending to renderer
@@ -44148,6 +44253,10 @@ var ConnectionManager = class _ConnectionManager {
    * with auth token (or session:resume when we have a previous conversationId).
    */
   connect() {
+    if (this.handoffWait) {
+      this.reconnectAfterHandoff = true;
+      return;
+    }
     if (this.disposed) return;
     if (this.ws) this.disconnect();
     this.intentionalDisconnect = false;
@@ -44513,6 +44622,34 @@ var ConnectionManager = class _ConnectionManager {
    * for its reattach grace window, so a quick reconnect resumes the same
    * process instead of killing + respawning on the same JSONL.
    */
+  disconnectForRebind() {
+    if (this.handoffWait) return;
+    this.intentionalDisconnect = true;
+    this.cancelReconnect();
+    this.stopHeartbeat();
+    if (this.ws?.readyState !== wrapper_default.OPEN) {
+      this.submissions.end([], false);
+      this.disconnect({ endSession: true });
+      return;
+    }
+    const timer = setTimeout(() => finish(), 2e3);
+    const finish = (transferable) => {
+      if (!this.handoffWait) return;
+      clearTimeout(timer);
+      this.handoffWait = void 0;
+      this.submissions.end(transferable ?? [], transferable !== void 0);
+      this.disconnect({ endSession: true });
+      const reconnect = this.reconnectAfterHandoff;
+      this.reconnectAfterHandoff = false;
+      if (reconnect) this.connect();
+    };
+    this.handoffWait = { sessionId: this.state.sessionId, finish };
+    try {
+      this.ws.send(JSON.stringify({ type: "session:end", handoff: true }));
+    } catch {
+      finish();
+    }
+  }
   disconnect(opts = {}) {
     const terminal = opts.endSession || this.disposed;
     this.intentionalDisconnect = true;
@@ -44545,16 +44682,8 @@ var ConnectionManager = class _ConnectionManager {
       this.mcpResults.dispose();
       this.mcpSessionId = null;
       this.recentMcpCalls.clear();
-      for (const call of this.pendingMcpCalls.values()) call.controller?.abort();
-      this.pendingMcpCalls.clear();
+      for (const id of this.pendingMcpCalls.keys()) this.abandonMcpCall(id);
     }
-    for (const resolve of this.pendingPermissions.values()) {
-      try {
-        resolve("deny");
-      } catch {
-      }
-    }
-    this.pendingPermissions.clear();
     if (opts.endSession) this.reconnectAttempt = 0;
     this.setState({ status: "disconnected" });
   }
@@ -44562,6 +44691,7 @@ var ConnectionManager = class _ConnectionManager {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.handoffWait?.finish();
     this.disconnect();
   }
   /** Returns current connection state. Maps ExtendedConnectionState to
@@ -44590,9 +44720,11 @@ var ConnectionManager = class _ConnectionManager {
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
    *  paste+retry dance. */
   submitText(text, submissionId) {
+    if (submissionId) this.submissions.remember(submissionId, text);
     this.send({ type: "session:submitText", data: text, submissionId });
   }
   submissionAction(id, action) {
+    if (this.submissions.action(id, action, this.state.status === "authenticated", (text, id2) => this.submitText(text, id2))) return;
     this.send({ type: "session:submission-action", id, action });
   }
   resize(cols, rows) {
@@ -44619,19 +44751,36 @@ var ConnectionManager = class _ConnectionManager {
   denyMcp(requestId, reason) {
     void this.deliverMcpResult({ type: "mcp:denied", requestId, reason });
   }
+  /** A server session that ended cannot acknowledge its pending calls. */
+  abandonMcpCall(requestId) {
+    const call = this.pendingMcpCalls.get(requestId);
+    if (!call) return;
+    call.controller?.abort();
+    this.pendingPermissions.get(requestId)?.("cancelled");
+    this.pendingMcpCalls.delete(requestId);
+    this.window.webContents.send("mcp-activity", this.tabId, {
+      requestId,
+      toolName: call.toolName,
+      input: call.input,
+      timestamp: Date.now(),
+      status: "denied",
+      result: "MCP call cancelled: session ended"
+    });
+  }
   reportMcpDeliveryFailure() {
     void vscode4.window.showWarningMessage(
       "Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing."
     );
   }
   async deliverMcpResult(outcome) {
-    if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return;
+    const call = this.pendingMcpCalls.get(outcome.requestId);
+    if (!call || !this.mcpSessionId) return;
     try {
       outcome = await this.mcpResults.deliver(this.mcpSessionId, {
         ...outcome,
         taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner
       });
-      if (!this.pendingMcpCalls.has(outcome.requestId)) return;
+      if (this.pendingMcpCalls.get(outcome.requestId) !== call) return;
       this.window.webContents.send("mcp-activity", this.tabId, {
         requestId: outcome.requestId,
         toolName: "",
@@ -44641,7 +44790,7 @@ var ConnectionManager = class _ConnectionManager {
         result: outcome.type === "mcp:response" ? outcome.result : outcome.reason
       });
     } catch (error) {
-      if (!this.pendingMcpCalls.has(outcome.requestId)) return;
+      if (this.pendingMcpCalls.get(outcome.requestId) !== call) return;
       this.reportMcpDeliveryFailure();
       this.window.webContents.send("mcp-activity", this.tabId, {
         requestId: outcome.requestId,
@@ -44652,7 +44801,7 @@ var ConnectionManager = class _ConnectionManager {
         result: `Delivery failed: ${String(error)}`
       });
     } finally {
-      this.pendingMcpCalls.delete(outcome.requestId);
+      if (this.pendingMcpCalls.get(outcome.requestId) === call) this.pendingMcpCalls.delete(outcome.requestId);
     }
   }
   /** Replay all cached JSONL entries/status/subagent data to the renderer.
@@ -44689,6 +44838,7 @@ var ConnectionManager = class _ConnectionManager {
     };
   }
   replayJsonlToRenderer() {
+    this.submissions.replay();
     this.requestedSegment = null;
     this.batcher.flushMain();
     this.batcher.flushSubagent();
@@ -44959,6 +45109,15 @@ var ConnectionManager = class _ConnectionManager {
   }
   dispatchMessage(msg) {
     if (this.disposed) return;
+    if (msg.type === "session:handoff") {
+      if (msg.sessionId === this.handoffWait?.sessionId) this.handoffWait?.finish(msg.transferable);
+      return;
+    }
+    if (msg.type === "session:submission") {
+      this.submissions.receive(msg);
+      msg = { ...msg, retryable: false };
+      if (msg.known) msg = { ...msg, known: [.../* @__PURE__ */ new Set([...msg.known, ...this.submissions.tracked()])] };
+    }
     if (msg.type === "session:resume-not-found" || msg.type === "session:created" && msg.resumeNotFound) {
       if (msg.type === "session:created") this.sendRaw({ type: "session:end" });
       this.pendingNewConversation = false;
@@ -45142,7 +45301,10 @@ var ConnectionManager = class _ConnectionManager {
         this.lastSegmentIndex = index;
       },
       isIntentionallyDisconnected: () => this.intentionalDisconnect,
-      notifyAuthenticated: () => _ConnectionManager.onAuthenticated?.(this),
+      notifyAuthenticated: () => {
+        this.submissions.resume((text, id) => this.submitText(text, id));
+        _ConnectionManager.onAuthenticated?.(this);
+      },
       notifyElicitationRequest: (p) => _ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => _ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => _ConnectionManager.onConversationId?.(this.tabId, id),
@@ -45218,8 +45380,7 @@ var ConnectionManager = class _ConnectionManager {
         if (this.mcpSessionId && this.mcpSessionId !== state.sessionId) {
           for (const [id, call] of this.pendingMcpCalls) {
             if (!call.taskOwner || call.taskOwner !== this.mcpTaskOwner) {
-              call.controller?.abort();
-              this.pendingMcpCalls.delete(id);
+              this.abandonMcpCall(id);
             }
           }
           this.recentMcpCalls.clear();
@@ -45230,6 +45391,7 @@ var ConnectionManager = class _ConnectionManager {
     } else {
       this.mcpResults.detach();
       this.commands.reset();
+      for (const resolve of this.pendingPermissions.values()) resolve("disconnected");
     }
     const rendererState = this.getState();
     this.window.webContents.send("connection-state-changed", this.tabId, rendererState);
@@ -46061,7 +46223,7 @@ var TabManager = class {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
     this.pendingConnect.delete(tabId);
-    tab.connection.disconnect({ endSession: true });
+    tab.connection.disconnectForRebind();
   }
   /**
    * Re-open a disconnected tab's WebSocket session (ConnectionManager.connect

@@ -13,6 +13,7 @@
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { initAccountingSchema } from './accounting-schema'
 import { initRollupSchema } from './rollup'
+import { initSessionOwners } from './session-owners'
 import { debugLog, warnLog } from '../../logging'
 
 async function tryExec(db: DuckDBConnection, sql: string): Promise<void> {
@@ -34,6 +35,9 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
     calls BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (bridge_session_id, tool_name)
   )`)
+  await tryExec(db, 'ALTER TABLE mcp_tool_observations ADD COLUMN source TEXT')
+  await tryExec(db, 'ALTER TABLE mcp_tool_observations ADD COLUMN last_called_at TEXT')
+  await tryExec(db, 'ALTER TABLE mcp_tool_observations ADD COLUMN calls_complete BOOLEAN DEFAULT FALSE')
   await db.run(`
     CREATE TABLE IF NOT EXISTS requests (
       id TEXT PRIMARY KEY,
@@ -304,6 +308,8 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   } catch (error) {
     warnLog('stats session metadata migration failed', { error: String(error) })
   }
+
+  await initSessionOwners(db)
 
   // Dashboard rollup tables (built in the background after boot).
   await initRollupSchema(db)
