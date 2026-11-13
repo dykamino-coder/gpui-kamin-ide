@@ -44,6 +44,7 @@ export interface HttpHookAnswer {
  *   reports as a non-blocking hook error, as it does for these exit codes.
  */
 export function httpHookAnswer(event: string, result: HookExecutionResult, command: string): HttpHookAnswer {
+  if (result.httpStatus !== undefined) return { status: result.httpStatus, body: result.stdout }
   const json = (value: unknown): HttpHookAnswer => ({ status: 200, body: JSON.stringify(value) })
   if (result.outcome !== 'timeout' && result.outcome !== 'cancelled') {
     if (result.exitCode === 0) {
