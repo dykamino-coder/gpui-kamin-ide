@@ -96,6 +96,7 @@ impl RootView {
                                     "VSIX install failed".into()
                                 },
                                 actions: Vec::new(),
+                                duration_ms: None,
                                 sticky: false,
                             }));
                             host_link::request_status(tx.clone());
@@ -148,7 +149,7 @@ impl RootView {
                 self.context_keys = ctx.into_iter().collect();
             }
             ShellEvent::Toast(t) => {
-                // Каунтдаун 8s с паузой на ховере: wall-clock в ToastTimer
+                // Каунтдаун (8s или заказанный) с паузой на ховере: wall-clock в ToastTimer
                 // (полосу 60fps ведёт repeat-анимация в toast_card), фоновый
                 // поток лишь проверяет истечение и шлёт Dismiss (slide-out).
                 let timer = std::sync::Arc::new(crate::ui::toasts::ToastTimer::default());
@@ -156,6 +157,7 @@ impl RootView {
                     let tx = self.tx.clone();
                     let id = t.id.clone();
                     let tm = timer.clone();
+                    let life = t.life_ms();
                     std::thread::spawn(move || {
                         use std::sync::atomic::Ordering;
                         loop {
@@ -163,7 +165,7 @@ impl RootView {
                             if tm.closing.load(Ordering::Relaxed) {
                                 break;
                             }
-                            if tm.active_ms() >= crate::ui::toasts::TOAST_MS {
+                            if tm.active_ms() >= life {
                                 let _ = tx.try_send(ShellEvent::DismissToast(id));
                                 break;
                             }
@@ -297,30 +299,5 @@ fn respond_to_host(req_id: u64, value: serde_json::Value) {
 }
 
 #[cfg(test)]
-mod toast_reply_tests {
-    use super::pending_shell_reply;
-
-    #[test]
-    fn неотвеченный_запрос_получает_ответ_при_снятии() {
-        assert_eq!(pending_shell_reply("shellreq-7", false), Some(7));
-    }
-
-    #[test]
-    fn уже_отвеченный_запрос_второй_раз_не_отвечается() {
-        // Клик по кнопке уже отдал выбранный пункт; ответ `null` поверх него
-        // подменил бы выбор пользователя пустотой.
-        assert_eq!(pending_shell_reply("shellreq-7", true), None);
-    }
-
-    #[test]
-    fn тост_без_ожидающего_запроса_ответа_не_требует() {
-        assert_eq!(pending_shell_reply("shellmsg-info-привет", false), None);
-        assert_eq!(pending_shell_reply("toast-12345", false), None);
-    }
-
-    #[test]
-    fn нечисловой_идентификатор_запроса_отбрасывается() {
-        assert_eq!(pending_shell_reply("shellreq-", false), None);
-        assert_eq!(pending_shell_reply("shellreq-abc", false), None);
-    }
-}
+#[path = "overlays_toast_reply_tests.rs"]
+mod toast_reply_tests;

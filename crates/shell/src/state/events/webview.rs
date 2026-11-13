@@ -87,6 +87,7 @@ impl RootView {
                     title: None,
                     message,
                     actions: vec!["Dismiss".into()],
+                    duration_ms: None,
                     sticky: false,
                 }));
         }
