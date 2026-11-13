@@ -5,7 +5,7 @@ import { persistedContextTokens, ptySessionCounters } from './pty-session-counte
 
 const mocks = vi.hoisted(() => ({ getDb: vi.fn(), warnLog: vi.fn() }))
 vi.mock('../stats/database/lifecycle', () => ({ getDb: mocks.getDb }))
-vi.mock('../logging', () => ({ warnLog: mocks.warnLog }))
+vi.mock('../logging', () => ({ warnLog: mocks.warnLog, debugLog: vi.fn() }))
 let instance: DuckDBInstance
 let db: DuckDBConnection
 const source = (id: string, contextTokens = 0) => ({

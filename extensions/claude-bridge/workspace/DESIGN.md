@@ -686,3 +686,30 @@ that setup failure is not evidence for the product defect. Full candidate
 validation is recorded separately in the linked Change PR.
 
 Implementation: [#694](https://github.com/dykamino-coder/gpui-kamin-ide/pull/694).
+
+## Bounded follow-up: plugin monitor browser execution evidence
+
+Install a synthetic monitor through the canonical plugin declaration in an
+isolated HOME. Exercise the production browser bundle, transport and shared
+monitor manager, without a second implementation. Independently record each
+owned process's PID, cwd and plugin/project environment. Two browser pages must
+receive started/output/status/stopped events; unsubscribing must stop delivery.
+Verify list/log results, stdout/stderr and unterminated exit tails, independent
+project ownership and a nonzero natural exit. With zero pages, output and model
+notification forwarding must continue; reattachment must retain the same
+processes and logs. Tab close and natural zero-page host shutdown must terminate
+only their owned cooperative monitor processes.
+
+Maintain a fixed reviewed mapping for the six API/channel pairs. Earn partial
+PASS evidence only after executed assertions, reject unknown/duplicate/missing
+or failed cases, and cross-check IDs against the independent inventory. The
+upstream and monitor program are synthetic; this proves shared host behavior,
+not exact production-image/model acceptance. It does not cover skill-triggered
+monitors, hostile signal-ignoring descendants or every plugin failure mode.
+Keep the strict full-parity gate and INC-2026-0087 open.
+
+Acceptance: collector integrity tests, workspace typechecks, declared parity,
+workspace tests and the full Linux Podman production-browser fixture suite.
+Registration #638 covers this bounded Change PR; Claude lead reviews/merges it.
+
+Implementation review: [#697](https://github.com/dykamino-coder/gpui-kamin-ide/pull/697).

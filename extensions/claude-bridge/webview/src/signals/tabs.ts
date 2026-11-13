@@ -20,6 +20,7 @@ export const activeSessionTitle = computed<string | undefined>(() => {
 // dropped instead of clobbering activeTabId (the overtake bug: "went back to A,
 // the iframe finished loading B").
 let lastSwitchSeq = -1
+let lastSwitchGeneration = 0
 
 // The tab the user LOCALLY intends to be on (optimistic strip click, close
 // fallback, toast route) — set immediately, before the extension round-trips a
@@ -49,7 +50,13 @@ export function switchTabLocal(tabId: string | null): void {
 
 /** Apply an extension-driven tab switch, rejecting one that a newer switch — or
  *  a FRESH LOCAL intent — has already superseded. Returns whether it was applied. */
-export function applyTabSwitch(tabId: string, seq: number): boolean {
+export function applyTabSwitch(tabId: string, seq: number, generation = 0): boolean {
+  if (generation < lastSwitchGeneration) return false
+  if (generation > lastSwitchGeneration) {
+    lastSwitchGeneration = generation
+    lastSwitchSeq = -1
+    localIntentTab = null // intent belonged to the replaced child
+  }
   if (typeof seq === 'number' && seq <= lastSwitchSeq) return false
   // A pending local intent wins over a stale frame for a DIFFERENT tab (the
   // overtake) — but only until it's confirmed or expires, so it can't wedge.

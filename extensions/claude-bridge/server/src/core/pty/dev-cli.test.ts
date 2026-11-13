@@ -4,7 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { promisify } from 'node:util'
 import { devCli, fakeCliPath, waitForDevCliStartup } from './dev-cli'
 const home = os.homedir()
 const enabled = { NODE_ENV: 'development', BRIDGE_DEV_FAKE_CLI: '1', BRIDGE_FAKE_CLI_HOME: home }
@@ -31,20 +32,28 @@ describe('checkout-only fake CLI selection', () => {
     await expect(waiting).rejects.toThrow()
     expect(() => devCli({ ...enabled, BRIDGE_FAKE_CLI_STARTUP_DELAY_MS: 'NaN' })).toThrow('delay')
   })
-  it('npm release excludes harness even if NODE_ENV is changed after installation', () => {
+  it('npm release excludes harness even if NODE_ENV is changed after installation', async () => {
     // npm pack exercises the actual publish allowlist, rather than mocking it.
     const server = path.resolve(path.dirname(fakeCliPath), '..')
     const npmCli = process.env.npm_execpath
     expect(npmCli).toBeTruthy()
-    const result = execFileSync(process.execPath, [npmCli!, 'pack', '--dry-run', '--json', '--ignore-scripts'], {
-      cwd: server,
-      encoding: 'utf8',
-    })
+    const { stdout: result } = await promisify(execFile)(
+      process.execPath,
+      [npmCli!, 'pack', '--dry-run', '--json', '--ignore-scripts'],
+      {
+        cwd: server,
+        encoding: 'utf8',
+        // Packing the real checkout can take a minute under shared disk load.
+        // Bound the subprocess before the test deadline and keep the worker free.
+        timeout: 90_000,
+        maxBuffer: 10 * 1024 * 1024,
+      },
+    )
     const files = JSON.parse(result)[0].files.map((f: { path: string }) => f.path)
     expect(files).toContain('src/core/pty/dev-cli.ts')
     expect(files.some((f: string) => f.startsWith('test-support/'))).toBe(false)
     expect(() => devCli(enabled, files.includes('test-support/fake-claude.mjs'))).toThrow('release artifacts')
-  })
+  }, 120_000)
 
   it('a release-layout subprocess stays unreachable even with a forced development mode', () => {
     const release = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-release-'))

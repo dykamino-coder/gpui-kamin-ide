@@ -191,10 +191,10 @@ export function useBridgeListeners(
       }
     })
 
-    const unsubTabSwitched = bridge.onTabSwitched((tabId: string, seq?: number) => {
+    const unsubTabSwitched = bridge.onTabSwitched((tabId: string, seq?: number, generation?: number) => {
       // Reject a switch the user has already moved past (see applyTabSwitch).
       // A stale one must not touch recency or trigger an eviction sweep either.
-      if (!applyTabSwitch(tabId, typeof seq === 'number' ? seq : Number.MAX_SAFE_INTEGER)) return
+      if (!applyTabSwitch(tabId, typeof seq === 'number' ? seq : Number.MAX_SAFE_INTEGER, generation)) return
       // A tab becoming ACTIVE while the user sits in Customize pulls them back
       // to the chat — covers renderer paths and OS-level entry points (Explorer
       // "Open Claude Bridge" calls createTab in the main process directly).
@@ -216,6 +216,7 @@ export function useBridgeListeners(
       const pinSet = pinnedTabs.value
       const reconciled = reconcileTabSnapshot(newTabs)
       tabs.value = reconciled.map(t => ({ ...t, pinned: pinSet.has(t.id) }))
+      tabPromptReady.value = reconcilePromptReadiness(tabPromptReady.value, reconciled)
       // Sync model/effort for active tab
       const tid = activeTabId.value
       if (tid) {

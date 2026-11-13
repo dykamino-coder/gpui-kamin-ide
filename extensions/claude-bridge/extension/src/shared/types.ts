@@ -246,6 +246,9 @@ export interface ExternalMcpServerConfig {
   env?: Record<string, string>
   /** Working directory for stdio spawn (mirrors CLI's `workingDirectory`). */
   workingDirectory?: string
+  /** Root of the project whose `.mcp.json` declares this server. A stdio
+   *  server without `workingDirectory` starts there, as under the CLI. */
+  projectRoot?: string
   enabled: boolean
   /** True if this server was auto-discovered from local Claude settings */
   autoDiscovered?: boolean
@@ -365,7 +368,7 @@ export interface KaminBridgeApi {
   getActiveTab(): Promise<string | null>
   onTabCreated(callback: (tab: TabInfo) => void): () => void
   onTabClosed(callback: (tabId: string) => void): () => void
-  onTabSwitched(callback: (tabId: string) => void): () => void
+  onTabSwitched(callback: (tabId: string, sequence?: number, generation?: number) => void): () => void
   onTabListChanged(callback: (tabs: TabInfo[]) => void): () => void
   saveTabsState(tabs: PersistedTabState[]): Promise<{ ok: boolean }>
   restoreTabsState(): Promise<PersistedTabState[]>

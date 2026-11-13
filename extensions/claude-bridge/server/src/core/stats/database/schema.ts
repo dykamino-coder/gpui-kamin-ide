@@ -12,12 +12,14 @@
 
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { initAccountingSchema } from './accounting-schema'
+import { initRollupSchema } from './rollup'
+import { debugLog, warnLog } from '../../logging'
 
 async function tryExec(db: DuckDBConnection, sql: string): Promise<void> {
   try {
     await db.run(sql)
-  } catch {
-    /* idempotent migration — swallow */
+  } catch (error) {
+    debugLog('stats additive migration skipped', { error: String(error) })
   }
 }
 
@@ -299,7 +301,10 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
         [new Date().toISOString()],
       )
     }
-  } catch {
-    /* ignore */
+  } catch (error) {
+    warnLog('stats session metadata migration failed', { error: String(error) })
   }
+
+  // Dashboard rollup tables (built in the background after boot).
+  await initRollupSchema(db)
 }

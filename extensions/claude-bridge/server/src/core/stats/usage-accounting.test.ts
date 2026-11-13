@@ -129,6 +129,8 @@ describe('durable cost accounting across CLI/proxy/subagent paths', () => {
     expect((await summary()).cost).toBeCloseTo(3 * 0.0115764, 10)
     const db = await lc.getDb()
     await db.run('UPDATE session_tokens SET deleted = 1 WHERE session_id = ?', ['child'])
+    // As the soft-delete route does: owners/deletes are resolved at read time.
+    ;(await import('./database/rollup')).touchRollupRevision()
     expect((await summary()).cost).toBeCloseTo(2 * 0.0115764, 10)
   })
 })
