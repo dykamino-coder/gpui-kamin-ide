@@ -71,6 +71,7 @@ pub(super) fn report(instrumentation: &gpui::Instrumentation) {
         super::diag_sink::emit_line(gpu);
     }
     super::diag_views::report(now);
+    super::diag_outbox::report(now);
 }
 
 fn flag(name: &str) -> Option<bool> {
