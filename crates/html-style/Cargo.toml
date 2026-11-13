@@ -14,8 +14,11 @@ edition.workspace = true
 # его dev-dependency, обычный граф зависимостей его не выбирает.
 engine-test-support = []
 work-counters = ["dep:tracing"]
+# Отчёт памяти по владельцам для стенда (docs/memprof.md); обход только по запросу.
+heap-report = ["dep:kamin-heap"]
 
 [dependencies]
+kamin-heap = { path = "../heap", optional = true }
 # Область диагностической сессии; в обычном движке зависимости нет.
 tracing = { version = "0.1", optional = true }
 # Нижний контракт шрифтов.

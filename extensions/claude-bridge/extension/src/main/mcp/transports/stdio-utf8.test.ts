@@ -43,7 +43,7 @@ it('decodes a JSON-RPC frame split inside a multi-byte character', async () => {
   const script = path.join(directory, 'server.cjs')
   fs.writeFileSync(script, SERVER)
   const state = {
-    config: { id: 's', name: 's', type: 'stdio', command: `"${process.execPath}"`, args: [`"${script}"`], enabled: true },
+    config: { id: 's', name: 's', type: 'stdio', command: process.execPath, args: [script], enabled: true },
     status: 'connecting',
     tools: [],
     toolSchemas: new Map(),

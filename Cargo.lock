@@ -1769,7 +1769,7 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
 name = "engine-bench"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "encoding_rs",
  "futures",
@@ -1778,6 +1778,7 @@ dependencies = [
  "gpui-pre-windows",
  "html5ever 0.40.1",
  "kamin-alloc",
+ "kamin-heap",
  "kamin-html",
  "log",
  "markup5ever_rcdom 0.39.0+unofficial",
@@ -3835,25 +3836,29 @@ dependencies = [
 
 [[package]]
 name = "kamin-alloc"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "mimalloc",
 ]
 
 [[package]]
 name = "kamin-crash"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "windows 0.62.2",
 ]
 
 [[package]]
 name = "kamin-font-facts"
-version = "1.0.94"
+version = "1.0.95"
+
+[[package]]
+name = "kamin-heap"
+version = "1.0.95"
 
 [[package]]
 name = "kamin-html"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "encoding_rs",
  "foldhash 0.2.0",
@@ -3865,6 +3870,7 @@ dependencies = [
  "hypher",
  "image",
  "kamin-font-facts",
+ "kamin-heap",
  "kamin-style",
  "kurbo 0.13.1",
  "markup5ever_rcdom 0.39.0+unofficial",
@@ -3892,18 +3898,18 @@ dependencies = [
 
 [[package]]
 name = "kamin-jobrun"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "windows 0.62.2",
 ]
 
 [[package]]
 name = "kamin-metrics"
-version = "1.0.94"
+version = "1.0.95"
 
 [[package]]
 name = "kamin-model"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "serde",
  "serde_json",
@@ -3911,7 +3917,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-probe"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "serde",
  "serde_json",
@@ -3919,7 +3925,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-sidecar"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "serde",
  "serde_json",
@@ -3928,13 +3934,14 @@ dependencies = [
 
 [[package]]
 name = "kamin-style"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "encoding_rs",
  "gpui-pre",
  "html5ever 0.40.1",
  "image",
  "kamin-font-facts",
+ "kamin-heap",
  "markup5ever_rcdom 0.39.0+unofficial",
  "resvg 0.48.1",
  "roxmltree 0.21.1",
@@ -3948,11 +3955,11 @@ dependencies = [
 
 [[package]]
 name = "kamin-theme"
-version = "1.0.94"
+version = "1.0.95"
 
 [[package]]
 name = "kamin-ws"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "serde",
  "serde_json",
@@ -3961,7 +3968,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-gpui"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -4003,7 +4010,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-setup"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "anyhow",
  "gpui-pre",
@@ -4016,7 +4023,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-web-helper"
-version = "1.0.94"
+version = "1.0.95"
 dependencies = [
  "cef",
  "kamin-crash",

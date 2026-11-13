@@ -264,6 +264,19 @@ impl<T: ?Sized> DerefMut for ArenaBox<T> {
     }
 }
 
+impl Arena {
+    /// KaminIDE patch: the arena's chunks and bookkeeping for the engine bench's memory
+    /// report (`crate::heap_report`); the values in it are not walked.
+    pub(crate) fn heap_report(&self, sink: &mut crate::heap_report::HeapSink) {
+        let path = "gpui/element-arena";
+        for chunk in &self.chunks {
+            sink(path, chunk.start, chunk.end.addr() - chunk.start.addr());
+        }
+        crate::heap_report::vec(sink, path, &self.chunks);
+        crate::heap_report::vec(sink, path, &self.elements);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{cell::Cell, rc::Rc};

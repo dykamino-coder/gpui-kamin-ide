@@ -4,19 +4,15 @@
 //! Кого сюда зовут — решает `state/events/dispatch.rs`; связку
 //! «вариант события → модуль» проверяет `scripts/check_event_routing.py`.
 
-use crate::host::events::CzEvent;
-use crate::host::events::EdEvent;
-use crate::host::events::TreeEvent;
+use crate::host::events::{CzEvent, EdEvent, TreeEvent};
 use crate::host_link::{self, ShellEvent};
+use crate::root::RootView;
 use crate::state::fs_ops::fs_paste;
 use gpui::Context;
-
-use crate::root::RootView;
 
 impl RootView {
     /// Дерево файлов: декорации (git-бейджи и цвета), метаданные узлов.
     pub(crate) fn apply_tree_decorations(&mut self, event: ShellEvent, cx: &mut Context<Self>) {
-        let _ = cx;
         match event {
             ShellEvent::Tree(TreeEvent::ShowMoreDir(dir)) => {
                 // Оригинал: childCap += TREE_CHILD_STEP (не «раскрыть всё»)
@@ -138,6 +134,7 @@ impl RootView {
                                                 title: None,
                                                 message: format!("Вставка не удалась: {e}"),
                                                 actions: Vec::new(),
+                                                duration_ms: None,
                                                 sticky: false,
                                             },
                                         ));
@@ -174,6 +171,7 @@ impl RootView {
                                             title: None,
                                             message: format!("Вставка не удалась: {e}"),
                                             actions: Vec::new(),
+                                            duration_ms: None,
                                             sticky: false,
                                         }));
                                 }
@@ -190,6 +188,7 @@ impl RootView {
                             title: None,
                             message: "Clipboard is empty".into(),
                             actions: Vec::new(),
+                            duration_ms: None,
                             sticky: false,
                         }));
                 }
@@ -225,6 +224,7 @@ impl RootView {
                                     title: None,
                                     message: format!("Перемещение не удалось: {e}"),
                                     actions: Vec::new(),
+                                    duration_ms: None,
                                     sticky: false,
                                 }));
                             }

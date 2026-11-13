@@ -4,7 +4,7 @@ use crate::host::events::CzEvent;
 pub use crate::host::events::ShellEvent;
 use crate::host::paths::{data_dirs, dev_repo};
 use crate::host::status::request_status;
-use crate::host_link::{EVENT_TX, client, client_slot, endpoint_slot, resolved_views, t0};
+use crate::host_link::{EVENT_TX, client, client_slot, endpoint_slot, t0, view_resolution};
 use kamin_sidecar::{HostConfig, HostEndpoint, HostMode, HostState};
 use kamin_ws::WsClient;
 use serde_json::Value;
@@ -86,8 +86,16 @@ pub fn resolve_webview(id: String) {
     }
     std::thread::spawn(move || {
         if let Some(client) = client() {
-            let _ = client.request("kamin:webviewView:resolve", vec![serde_json::json!(id)]);
+            request_view(&client, &id);
         }
+    });
+}
+
+pub(crate) fn request_view(client: &WsClient, id: &str) {
+    crate::host::view_resolution::request_once(view_resolution(), id, || {
+        client
+            .request("kamin:webviewView:resolve", vec![serde_json::json!(id)])
+            .map(|_| ())
     });
 }
 
@@ -121,16 +129,6 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
                         .and_then(Value::as_str)
                         .unwrap_or_default()
                         .to_string();
-                    let items: Vec<String> = params
-                        .get(2)
-                        .and_then(Value::as_array)
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(Value::as_str)
-                                .map(String::from)
-                                .collect()
-                        })
-                        .unwrap_or_default();
                     let level: &'static str = match severity {
                         "error" => "error",
                         "warning" => "warning",
@@ -139,21 +137,9 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
                     let _ = req_tx.try_send(ShellEvent::Cz(CzEvent::SystemLog(
                         level,
                         "host".into(),
-                        message.clone(),
-                    )));
-                    let has_items = !items.is_empty();
-                    let toast = crate::ui::toasts::Toast {
-                        id: if has_items {
-                            format!("shellreq-{req_id}")
-                        } else {
-                            format!("shellmsg-{severity}-{message:.32}")
-                        },
-                        severity: severity.to_string(),
-                        title: None,
                         message,
-                        actions: items,
-                        sticky: has_items, // ждём выбора — не авто-скрывать
-                    };
+                    )));
+                    let (toast, has_items) = crate::host::show_message::toast_for(req_id, params);
                     let _ = req_tx.try_send(ShellEvent::Toast(toast));
                     if has_items {
                         kamin_ws::HostReply::Later
@@ -242,25 +228,20 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
                     let _ = tx.try_send(ShellEvent::Workspace(path));
                 }
                 // Contributed-вью: резолвить с РЕТРАЕМ — Bridge-VSIX может
-                // зарегистрировать провайдер позже коннекта (resolveView до
-                // регистрации молча no-op, повторов host не делает).
+                // зарегистрировать провайдер позже коннекта. Ошибка запроса
+                // до регистрации оставляет вью доступным для повтора.
                 eprintln!("[t+{:.1}s] ws connected", t0().elapsed().as_secs_f32());
                 {
                     std::thread::spawn(move || {
                         for _ in 0..30 {
-                            let pending: Vec<&str> = KNOWN_WEBVIEWS
-                                .iter()
-                                .copied()
-                                .filter(|id| !resolved_views().lock().unwrap().contains(*id))
-                                .collect();
-                            if pending.is_empty() {
-                                break;
+                            for id in KNOWN_WEBVIEWS {
+                                request_view(&client, id);
                             }
-                            for id in pending {
-                                let _ = client.request(
-                                    "kamin:webviewView:resolve",
-                                    vec![serde_json::json!(id)],
-                                );
+                            if KNOWN_WEBVIEWS
+                                .iter()
+                                .all(|id| view_resolution().lock().unwrap().is_requested(id))
+                            {
+                                break;
                             }
                             std::thread::sleep(Duration::from_secs(2));
                         }

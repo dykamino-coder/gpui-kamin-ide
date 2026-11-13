@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeContextStats, contextLimitForModel, costForUsage, tierForModel } from './session-cost'
+import { computeContextStats, contextLimitForModel, costDisplay, costForUsage, formatCost, tierForModel } from './session-cost'
 
 describe('cache TTL and side-call accounting', () => {
   it('matches real CLI one-hour writes and prices mixed TTLs independently', () => {
@@ -220,5 +220,43 @@ describe('context meter limit: compact point, then CLI window, then model estima
     }
     expect(contextLimitForModel('claude-opus-4-8[1m]')).toBe(1_000_000)
     expect(contextLimitForModel('claude-sonnet-4-6[1m]')).toBe(1_000_000)
+  })
+})
+describe('ChatGPT (codex) responses in the cost and context chip', () => {
+  const usageLine = (uuid: string, model: string, input: number, cached: number, output: number, window = 258000) => ({
+    type: 'system',
+    subtype: 'api_usage',
+    engine: 'codex',
+    uuid,
+    model,
+    contextWindow: window,
+    usage: { input_tokens: input, cache_read_input_tokens: cached, cache_creation_input_tokens: 0, output_tokens: output },
+  })
+  const item = { type: 'assistant', engine: 'codex', message: { id: 'm', model: 'gpt-5.5', content: [] } }
+
+  it('prices codex at the OpenAI API equivalent apart from Claude and sizes the bar by its window', () => {
+    const claude = turn('c1', 1000, { output: 10 })
+    const stats = computeContextStats(
+      [claude, item, usageLine('usage:t:1', 'gpt-5.5', 1000, 9000, 100), item] as any,
+      true,
+      'gpt-5.5',
+    )!
+    expect(stats.cost).toBeCloseTo(costForUsage(claude.message.usage, tierForModel('claude-opus-5')), 10)
+    expect(stats.codexCost).toBeCloseTo((1000 * 5 + 9000 * 0.5 + 100 * 30) / 1e6, 10)
+    expect(stats.codexUnpricedTokens).toBe(0)
+    expect(stats).toMatchObject({ used: 10000, limit: 258000, limitSource: 'engine', model: 'gpt-5.5' })
+    const shown = costDisplay(stats)
+    expect(shown.text).toMatch(/^\$[\d.]+ \+ ≈\$[\d.]+ API$/)
+    expect(shown.tooltip).toContain('ChatGPT plan')
+  })
+
+  it('shows tokens without a price for a model with no published API price', () => {
+    const stats = computeContextStats([usageLine('usage:t:1', 'codex-future', 1500, 0, 500)] as any, true, null)!
+    expect(stats.cost).toBe(0)
+    expect(stats.codexCost).toBe(0)
+    expect(stats.codexUnpricedTokens).toBe(2000)
+    expect(costDisplay(stats).text).toBe('2.0K tok')
+    // A Claude-only chat keeps the plain cost text.
+    expect(costDisplay({ cost: 0.5, codexCost: null, codexUnpricedTokens: 0 }).text).toBe(formatCost(0.5))
   })
 })

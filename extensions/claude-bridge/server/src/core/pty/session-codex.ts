@@ -29,6 +29,8 @@ import { CodexConsoleRenderer, consoleBanner, consoleNotice } from '../codex/con
 import { CodexTranscriptProjector, type CodexTranscriptEntry } from '../codex/transcript'
 import { VirtualPty } from '../codex/virtual-pty'
 import { eventBus } from '../events/bus'
+import { codexErrorType, recordApiError } from '../stats/api-errors'
+import { isEngineUsageLine } from '../../shared/engine-accounting'
 import { debugLog, warnLog } from '../logging'
 import { lifecycleLog } from '../logging/lifecycle'
 import { bridgeClaudeMd } from './bridge-default-claude-md'
@@ -87,12 +89,15 @@ export function codexTranscriptPath(settingsDir: string, threadId: string, dir =
 
 export { transcriptEngine } from './transcript-engine'
 
+/** Last entry of the transcript's parent chain; usage lines hang off it. */
 function lastUuid(file: string): string | null {
   try {
     const lines = fs.readFileSync(file, 'utf8').trimEnd().split('\n')
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
-        const uuid = (JSON.parse(lines[i]!) as { uuid?: unknown }).uuid
+        const entry = JSON.parse(lines[i]!) as { uuid?: unknown; type?: unknown; subtype?: unknown; engine?: unknown }
+        if (isEngineUsageLine(entry)) continue
+        const uuid = entry.uuid
         if (typeof uuid === 'string') return uuid
       } catch {
         /* torn line */
@@ -377,6 +382,7 @@ export async function createCodexSession(
 
   eventBus.emit('session:created', {
     sessionId,
+    engine: 'codex',
     tokenId,
     userName,
     cwd: config.cwd || '',
@@ -639,6 +645,11 @@ export class CodexSessionBinding {
       case 'turn.completed':
         this.flushStream()
         this.activity(false)
+        if (event.status === 'failed' && event.error) this.recordError(raw.kind, event.error.message)
+        break
+      case 'notice':
+        // A retried error is transient; the final outcome is the turn's.
+        if (event.level === 'error' && !event.willRetry) this.recordError(raw.kind, event.message)
         break
       case 'message.assistant.delta':
         this.streamDelta(event.id, event.delta)
@@ -649,16 +660,26 @@ export class CodexSessionBinding {
       case 'model.rerouted':
         this.session.model = event.to
         break
-      case 'usage':
-        this.session.contextTokens = event.last.inputTokens + event.last.cachedInputTokens
-        this.session.totalTokens = event.total.totalTokens
-        break
+      // `usage` is not counted here: it is projected into the transcript
+      // (`api_usage` entry) and the live counters fold it from there, like a
+      // Claude usage line (session-jsonl-stats.ts).
       case 'tool.started':
         this.session.mcpCallCount++
         break
     }
     const entries = this.projector.project(event)
     if (entries.length) this.append(entries)
+  }
+
+  /** The dashboard Errors card counts codex failures beside Claude's. */
+  private recordError(kind: string, message: string): void {
+    void recordApiError({
+      sessionId: this.agent.conversationId(),
+      userName: this.session.userName,
+      engine: 'codex',
+      errorType: codexErrorType(message),
+      raw: `${kind}: ${message}`,
+    })
   }
 
   /** Transport failures in plain language (TLS, 407, unauthorized). */

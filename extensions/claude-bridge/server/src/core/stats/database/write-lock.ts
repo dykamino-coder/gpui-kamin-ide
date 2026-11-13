@@ -1,3 +1,4 @@
+import { warnLog } from '../../logging'
 // Единственный писатель статистической DuckDB.
 //
 // Зачем. DuckDB роняет ВЕСЬ процесс, если у транзакции не удался COMMIT и
@@ -175,8 +176,8 @@ function ensureWatch(): void {
       head.interrupted = true
       try {
         head.activeConn.interrupt()
-      } catch {
-        /* connection already gone */
+      } catch (error) {
+        warnLog('stats: writer interrupt failed', { error: String(error) })
       }
     }
   }, 1000)

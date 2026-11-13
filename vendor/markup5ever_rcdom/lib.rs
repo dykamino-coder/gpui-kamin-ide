@@ -156,6 +156,44 @@ impl Node {
     }
 }
 
+impl Node {
+    /// KaminIDE patch: heap blocks this node holds besides its own `Rc` block, its children
+    /// and its text: the child and attribute lists and the admission leases (requested
+    /// bytes), for the engine bench's memory report. Walked only on request.
+    pub fn heap_blocks(&self, sink: &mut dyn FnMut(*const u8, usize)) {
+        fn list<T>(sink: &mut dyn FnMut(*const u8, usize), items: &[T], capacity: usize) {
+            if capacity > 0 && mem::size_of::<T>() > 0 {
+                sink(items.as_ptr().cast(), capacity * mem::size_of::<T>());
+            }
+        }
+        fn lease(sink: &mut dyn FnMut(*const u8, usize), lease: &admission::Lease) {
+            if let Some(value) = lease {
+                let value: &(dyn std::any::Any + Send + Sync) = &**value;
+                let align = mem::align_of_val(value).max(mem::align_of::<usize>());
+                let header = (2 * mem::size_of::<usize>()).next_multiple_of(align);
+                let bytes = (header + mem::size_of_val(value)).next_multiple_of(align);
+                let start = (value as *const dyn std::any::Any).cast::<u8>();
+                sink(start.wrapping_sub(header), bytes);
+            }
+        }
+        if let Ok(children) = self.children.try_borrow() {
+            list(sink, &children, children.capacity());
+        }
+        if let NodeData::Element { attrs, .. } = &self.data {
+            if let Ok(attrs) = attrs.try_borrow() {
+                list(sink, &attrs, attrs.capacity());
+            }
+        }
+        for cell in [&self.children_lease, &self.attrs_lease, &self.payload_lease] {
+            if let Ok(held) = cell.try_borrow() {
+                lease(sink, &held);
+            }
+        }
+        lease(sink, &self._logical_node);
+        lease(sink, &self._node_lease);
+    }
+}
+
 impl Drop for Node {
     fn drop(&mut self) {
         // Shared subtrees belong to their remaining owners. Only unique nodes

@@ -40,3 +40,15 @@ pub(super) fn emit(mut line: Line, text: std::fmt::Result) {
         sink::write(&line.bytes[..line.length]);
     }
 }
+
+/// Блок, который измерил отчёт памяти по владельцам: `o <путь> <указатель> <байты>`.
+/// Пишется и вне окна: отчёт сверяет его с живыми блоками окна.
+#[cfg(feature = "heap-report")]
+pub(crate) fn owned(path: &str, pointer: *const u8, bytes: usize) {
+    let mut line = Line {
+        bytes: [0; 1024],
+        length: 0,
+    };
+    let text = write!(line, "o {path} {:x} {bytes}", pointer as usize);
+    emit(line, text);
+}

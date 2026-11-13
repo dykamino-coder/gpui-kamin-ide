@@ -89,3 +89,15 @@ impl IntrinsicCache {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "heap-report")]
+impl kamin_heap::HeapSize for IntrinsicCache {
+    fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
+        let entry = self.0.take();
+        let bytes = entry
+            .as_ref()
+            .map_or(0, |entry| ops.shallow(Rc::as_ptr(entry)));
+        self.0.set(entry);
+        bytes
+    }
+}

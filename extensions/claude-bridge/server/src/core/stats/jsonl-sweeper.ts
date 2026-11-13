@@ -40,8 +40,11 @@ import type { DuckDBConnection } from '@duckdb/node-api'
 import { getDb } from './database/lifecycle'
 import { withStatsWrite } from './database/write-lock'
 import { dedupeByUuid } from './jsonl-batch'
+import { markDirtySql, scheduleRollupDrain } from './database/rollup'
 import { debugLog, warnLog } from '../logging'
 import { readJsonlLines } from '../pty/jsonl-lines'
+import { isEngineUsageLine, isUsagelessItemLine, lineEngine } from '../../shared/engine-accounting'
+import { rescanCodexTranscriptsOnce } from './codex-rescan'
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
 // One write transaction never exceeds this many rows; a checkpoint also
@@ -76,13 +79,27 @@ function isValidIso(tsStr: string): boolean {
 }
 
 const INSERT_CHUNK_ROWS = SWEEP_BATCH_ROWS
+// A conflicting row is rewritten only when it gains data: a 1h cache split, or
+// the engine of a codex line ingested before engines were recorded. Claude
+// rows keep NULL (= claude), so a rescan of them writes nothing.
 const insertEventsSql = (rows: number): string => `
   INSERT INTO jsonl_events
     (uuid, session_id, timestamp, type, model, input_tokens, output_tokens,
-     cache_read_tokens, cache_write_tokens, tool_name, message_id, cache_write_1h_tokens)
-  VALUES ${Array.from({ length: rows }, () => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
-  ON CONFLICT (uuid) DO UPDATE SET cache_write_1h_tokens = excluded.cache_write_1h_tokens
+     cache_read_tokens, cache_write_tokens, tool_name, message_id, cache_write_1h_tokens, engine)
+  VALUES ${Array.from({ length: rows }, () => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
+  ON CONFLICT (uuid) DO UPDATE SET
+    cache_write_1h_tokens = GREATEST(jsonl_events.cache_write_1h_tokens, excluded.cache_write_1h_tokens),
+    engine = COALESCE(jsonl_events.engine, excluded.engine)
   WHERE excluded.cache_write_1h_tokens > jsonl_events.cache_write_1h_tokens
+    OR (jsonl_events.engine IS NULL AND excluded.engine = 'codex')
+`
+
+// Before engines were recorded, every codex item line became a zero-token
+// `assistant` row — a phantom API response. A full scan of a codex transcript
+// removes them (only such rows: usage rows have their own uuids).
+const deletePhantomItemsSql = (rows: number): string => `
+  DELETE FROM jsonl_events WHERE type = 'assistant'
+    AND uuid IN (${Array.from({ length: rows }, () => '?').join(', ')})
 `
 
 const SQL_GET_OFFSET = `
@@ -204,7 +221,8 @@ async function* listJsonlFiles(): AsyncGenerator<JsonlFileInfo> {
     let entries: fs.Dirent[]
     try {
       entries = await fsp.readdir(slugDir, { withFileTypes: true })
-    } catch {
+    } catch (error) {
+      debugLog('jsonl-sweeper directory unavailable', { error: String(error) })
       continue
     }
     for (const e of entries) {
@@ -220,7 +238,8 @@ async function* listJsonlFiles(): AsyncGenerator<JsonlFileInfo> {
         let subFiles: string[]
         try {
           subFiles = await fsp.readdir(subDir)
-        } catch {
+        } catch (error) {
+          debugLog('jsonl-sweeper subagent directory unavailable', { error: String(error) })
           continue
         }
         for (const f of subFiles) {
@@ -259,7 +278,8 @@ async function tokenInfoFromSlug(
       }>
       cachedTokens = rows
       cachedTokensAt = now
-    } catch {
+    } catch (error) {
+      warnLog('jsonl-sweeper owner lookup failed', { error: String(error) })
       cachedTokens = []
     }
   }
@@ -297,7 +317,8 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   let stat: fs.Stats
   try {
     stat = await fsp.stat(filePath)
-  } catch {
+  } catch (error) {
+    debugLog('jsonl-sweeper file unavailable', { error: String(error) })
     return { inserted: 0 }
   }
   const size = stat.size
@@ -309,6 +330,26 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   if (cached?.signature === signature && Date.now() - cached.checkedAt < 60_000) return { inserted: 0 }
   const db = await getDb()
   const write = (sql: string, args: unknown[]) => withStatsWrite(() => db.run(sql, args as any[]))
+  // Statements that rewrite accounting columns (model, attribution, subagent)
+  // mark the session dirty in the same transaction, and only when a row
+  // actually changed — the steady-state no-op UPDATE must not queue a refresh.
+  const rewrite = (sql: string, args: unknown[]) =>
+    withStatsWrite(async () => {
+      await db.run('BEGIN')
+      try {
+        const res = await db.run(sql, args as any[])
+        if (Number(res.rowsChanged) > 0) {
+          const dirty = markDirtySql([path.basename(filePath, '.jsonl')])
+          await db.run(dirty.sql, dirty.params)
+        }
+        await db.run('COMMIT')
+      } catch (err) {
+        await db
+          .run('ROLLBACK')
+          .catch((error) => warnLog('jsonl-sweeper rewrite rollback failed', { error: String(error) }))
+        throw err
+      }
+    })
   const saveOffset = (offset: number) =>
     write(SQL_UPSERT_OFFSET, [filePath, offset, size, new Date().toISOString(), stat.mtimeMs, identity])
   const remember = () => {
@@ -364,7 +405,13 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   // also keeps Sessions cardinality clean.
   if (slugInfo && !info.isSubagent) {
     if (!tokenRow) {
-      await write(SQL_ENSURE_SESSION_TOKEN, [sessionId, slugInfo.tokenId, slugInfo.userName, new Date().toISOString()])
+      // A new owner row changes what the rollup attributes: rewrite() marks it dirty.
+      await rewrite(SQL_ENSURE_SESSION_TOKEN, [
+        sessionId,
+        slugInfo.tokenId,
+        slugInfo.userName,
+        new Date().toISOString(),
+      ])
     } else if (!tokenRow.token_id || tokenRow.token_id.length === 0) {
       // Heal the legacy '' rows that the old backfill produced.
       await write(SQL_REFRESH_SESSION_TOKEN, [slugInfo.tokenId, sessionId])
@@ -376,7 +423,7 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   // A periodic attribution check must not run an UPDATE over every unchanged
   // historical session when the mapping itself has not changed.
   if (cached?.signature !== signature || cached.attribution !== attribution)
-    await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId])
+    await rewrite(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId])
 
   if (startByte >= size) {
     // Only touch jsonl_offsets when the position actually moved — an
@@ -407,10 +454,16 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   // comment for tradeoff. Idempotency wins for the incremental path.)
   async function insertMany(buffered: unknown[][]): Promise<void> {
     const rows = dedupeByUuid(buffered)
-    if (rows.length === 0) return
+    const stale = phantoms
+    phantoms = []
+    if (rows.length === 0 && stale.length === 0) return
     await withStatsWrite(async () => {
       await db.run('BEGIN')
       try {
+        for (let i = 0; i < stale.length; i += INSERT_CHUNK_ROWS) {
+          const chunk = stale.slice(i, i + INSERT_CHUNK_ROWS)
+          await db.run(deletePhantomItemsSql(chunk.length), chunk)
+        }
         // One multi-row statement per chunk instead of one round trip per row:
         // per-row INSERTs held the single write lock ~10 ms per row, i.e.
         // minutes per large transcript, stalling every other writer.
@@ -418,12 +471,15 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
           const chunk = rows.slice(i, i + INSERT_CHUNK_ROWS)
           await db.run(insertEventsSql(chunk.length), chunk.flat() as any[])
         }
+        // Same transaction: the rollup can never miss a committed batch.
+        const dirty = markDirtySql([...rows.map((r) => r[1] as string), ...(stale.length ? [sessionId] : [])])
+        await db.run(dirty.sql, dirty.params)
         await db.run('COMMIT')
       } catch (err) {
         try {
           await db.run('ROLLBACK')
-        } catch {
-          /* ignore */
+        } catch (error) {
+          warnLog('jsonl-sweeper insert rollback failed', { error: String(error) })
         }
         throw err
       }
@@ -440,13 +496,22 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
     compact_boundaries: number | bigint | null
     pre_boundary_snapshots: string | null
   }>
-  const metaRow = rewritten ? undefined : metaRows[0]
+  // A scan from byte 0 (new file, rewrite, or an offset reset by a migration)
+  // derives the metadata afresh: resuming the stored accumulators would count
+  // every compact boundary of the file a second time.
+  const metaRow = rewritten || startByte === 0 ? undefined : metaRows[0]
+  // Full scan of a codex transcript: its item lines may have left phantom rows.
+  const healPhantoms = startByte === 0
+  let phantoms: string[] = []
   let metaTitle: string | null = metaRow?.title ?? null
   let metaCompactBoundaries: number = Number(metaRow?.compact_boundaries ?? 0)
   let metaPreBoundarySnapshots: number[] = (() => {
     try {
       return JSON.parse(metaRow?.pre_boundary_snapshots ?? '[]') as number[]
-    } catch {
+    } catch (error) {
+      warnLog('jsonl-sweeper boundary metadata invalid', {
+        error: error instanceof Error ? error.name : 'parse failed',
+      })
       return []
     }
   })()
@@ -463,7 +528,7 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   let consumed = startByte
   let lastCheckpoint = startByte
   const checkpoint = async (upTo: number): Promise<void> => {
-    if (buffer.length > 0) {
+    if (buffer.length > 0 || phantoms.length > 0) {
       await insertMany(buffer)
       inserted += buffer.length
       buffer = []
@@ -488,7 +553,7 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
     if (consumed - startByte >= maxBytes) break
     // Bounded transactions on EVERY path (the tool_result branch used to
     // `continue` past the size check and grow one transaction without limit).
-    if (buffer.length >= SWEEP_BATCH_ROWS || rawLine.start - lastCheckpoint >= SWEEP_BATCH_BYTES) {
+    if (buffer.length + phantoms.length >= SWEEP_BATCH_ROWS || rawLine.start - lastCheckpoint >= SWEEP_BATCH_BYTES) {
       await checkpoint(consumed)
     }
     const line = rawLine.text
@@ -499,7 +564,10 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
     }
     try {
       e = JSON.parse(line)
-    } catch {
+    } catch (error) {
+      debugLog('jsonl-sweeper JSON line incomplete or invalid', {
+        error: error instanceof Error ? error.name : 'parse failed',
+      })
       if (!rawLine.terminated) break // still being written — retry next sweep
       consumed = rawLine.end
       continue
@@ -527,7 +595,10 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
       metaPeakInSegment = 0
       continue
     }
-    const type = e.type
+    const engine = lineEngine(e)
+    // A codex response's tokens: the one row that bills it (engine-accounting.ts).
+    const usageLine = isEngineUsageLine(e)
+    const type = usageLine ? 'assistant' : e.type
     if (type !== 'user' && type !== 'assistant') continue
     const uuid = e.uuid
     if (typeof uuid !== 'string') continue
@@ -544,7 +615,7 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
         const toolUseId = Array.isArray(c)
           ? (c.find((b: any) => b?.type === 'tool_result') as any)?.tool_use_id
           : undefined
-        buffer.push([uuid, sessionId, tsStr, 'tool_result', null, 0, 0, 0, 0, null, toolUseId ?? null, 0])
+        buffer.push([uuid, sessionId, tsStr, 'tool_result', null, 0, 0, 0, 0, null, toolUseId ?? null, 0, engine])
         continue
       }
       const text =
@@ -573,24 +644,12 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
       }
       // model left NULL — backfilled per-session below from next assistant.
       // hour/day are NULL — clients group by local TZ from `timestamp`.
-      buffer.push([uuid, sessionId, tsStr, 'user', null, 0, 0, 0, 0, null, null, 0])
+      buffer.push([uuid, sessionId, tsStr, 'user', null, 0, 0, 0, 0, null, null, 0, engine])
     } else {
       // assistant — store raw token components separately so SQL doesn't
       // double-count when summing input + cache_read + cache_write.
       const model: string | undefined = e.model ?? e.message?.model
-      const usage: UsageBlock | undefined = e.usage ?? e.message?.usage
-      const messageId: string | undefined = e.message?.id
-      const inT = usage?.input_tokens ?? 0
-      const outT = usage?.output_tokens ?? 0
-      const cacheR = usage?.cache_read_input_tokens ?? 0
-      const cacheW = usage?.cache_creation_input_tokens ?? 0
-      // Track peak effective input (input + cache_read + cache_write)
-      // within the current segment. <synthetic> rows would tank the peak
-      // (zero-token usage stubs) — skip them.
-      if (model !== '<synthetic>') {
-        const eff = inT + cacheR + cacheW
-        if (eff > metaPeakInSegment) metaPeakInSegment = eff
-      }
+      const messageId: string | undefined = usageLine ? uuid : e.message?.id
       const content = e.message?.content
       if (Array.isArray(content)) {
         let toolIdx = 0
@@ -610,9 +669,27 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
               b.name,
               messageId ?? null,
               0,
+              engine,
             ])
           }
         }
+      }
+      // A codex item line is content only: its response is billed by a usage line.
+      if (isUsagelessItemLine(e)) {
+        if (healPhantoms) phantoms.push(uuid)
+        continue
+      }
+      const usage: UsageBlock | undefined = e.usage ?? e.message?.usage
+      const inT = usage?.input_tokens ?? 0
+      const outT = usage?.output_tokens ?? 0
+      const cacheR = usage?.cache_read_input_tokens ?? 0
+      const cacheW = usage?.cache_creation_input_tokens ?? 0
+      // Track peak effective input (input + cache_read + cache_write)
+      // within the current segment. <synthetic> rows would tank the peak
+      // (zero-token usage stubs) — skip them.
+      if (model !== '<synthetic>') {
+        const eff = inT + cacheR + cacheW
+        if (eff > metaPeakInSegment) metaPeakInSegment = eff
       }
       buffer.push([
         uuid,
@@ -627,10 +704,11 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
         null,
         messageId ?? null,
         Math.max(0, Math.min(cacheW, usage?.cache_creation?.ephemeral_1h_input_tokens ?? 0)),
+        engine,
       ])
     }
   }
-  if (buffer.length > 0) {
+  if (buffer.length > 0 || phantoms.length > 0) {
     await insertMany(buffer)
     inserted += buffer.length
     buffer = []
@@ -639,7 +717,7 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   // Backfill once the current snapshot is caught up, rather than repeating
   // the next-assistant lookup over the growing session after every slice.
   try {
-    if (consumed >= size) await write(SQL_FILL_USER_MODELS, [sessionId])
+    if (consumed >= size) await rewrite(SQL_FILL_USER_MODELS, [sessionId])
   } catch (err) {
     warnLog('fillUserModels failed', { sessionId, error: String(err) })
   }
@@ -657,13 +735,14 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
       : (slugInfo?.userName ?? null)
   const tokenIdAfter =
     slugInfo?.tokenId ?? (tokenRowAfter?.token_id && tokenRowAfter.token_id.length > 0 ? tokenRowAfter.token_id : null)
-  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenIdAfter, userNameAfter, subFlag, info.parentSessionId, sessionId])
+  await rewrite(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenIdAfter, userNameAfter, subFlag, info.parentSessionId, sessionId])
 
   // Persist accumulated session metadata (only for non-subagent files —
   // subagents share parent's title etc).
   if (!info.isSubagent) await persistMeta()
 
   await saveOffset(consumed)
+  scheduleRollupDrain()
   if (consumed >= size) remember()
   return { inserted, pending: consumed < size && consumed > startByte }
 }
@@ -685,14 +764,23 @@ export async function sweepAll(): Promise<{ files: number; inserted: number }> {
     // subagent accounting; each file gets one bounded turn per round.
     const collected: JsonlFileInfo[] = []
     for await (const info of listJsonlFiles()) collected.push(info)
+    // Before the first slice, so codex transcripts are read from byte 0.
+    const reset = await rescanCodexTranscriptsOnce(collected.filter((f) => !f.isSubagent).map((f) => f.path)).catch(
+      (err) => {
+        warnLog('codex transcript rescan failed', { error: String(err) })
+        return [] as string[]
+      },
+    )
+    // A reset file is unchanged on disk but must be read again from byte 0.
+    for (const file of reset) unchanged.delete(file)
     const stated: Array<{ info: JsonlFileInfo; mtimeMs: number }> = []
     // Bound filesystem work as well as content buffers: no unbounded stat fanout.
     for (const info of collected) {
       try {
         const mtimeMs = (await fsp.stat(info.path)).mtimeMs
         stated.push({ info, mtimeMs })
-      } catch {
-        /* vanished */
+      } catch (error) {
+        debugLog('jsonl-sweeper queued file unavailable', { error: String(error) })
       }
     }
     stated.sort((a, b) => Number(a.info.isSubagent) - Number(b.info.isSubagent) || b.mtimeMs - a.mtimeMs)

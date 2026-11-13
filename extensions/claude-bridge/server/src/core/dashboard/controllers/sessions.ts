@@ -6,21 +6,26 @@ import type { Hono } from 'hono'
 import { getAllSessions, getSession, getSessionTree, destroySession } from '../../pty/session-manager'
 import { getProcessTreeStats, startSystemStatsSampler } from '../system-stats'
 import { denyApiToken, denyForeignUser, denyForeignSubject } from '../authz'
+import { persistedContextTokens, ptySessionCounters } from '../pty-session-counters'
 
 export function registerSessionRoutes(api: Hono): void {
   // GET /api/dashboard/sessions — list all active PTY sessions (admin: exposes
   // every user's cwd/title/conversationId).
-  api.get('/api/dashboard/sessions', (c) => {
+  api.get('/api/dashboard/sessions', async (c) => {
     const denied = denyApiToken(c)
     if (denied) return denied
     startSystemStatsSampler() // lazy-start the per-process sampler
-    const sessions = getAllSessions().map((s) => {
+    const all = getAllSessions()
+    const persisted = await persistedContextTokens(all)
+    const sessions = all.map((s) => {
       // CPU%/RSS over the session's whole process tree (PTY shell → claude node
       // → MCP children). Null on non-Linux (no /proc) or before the first sample.
       const proc = getProcessTreeStats(s.pty?.pid)
       return {
         id: s.id,
         userName: s.userName,
+        tokenId: s.tokenId,
+        engine: s.engine ?? 'claude',
         cwd: s.cwd,
         state: s.state,
         createdAt: s.createdAt.toISOString(),
@@ -29,10 +34,7 @@ export function registerSessionRoutes(api: Hono): void {
         inputCount: s.inputCount,
         // Live JSONL-derived counters for the sessions table (User/Asst/Context/
         // Total columns) — recomputed on replay, incremented on tail.
-        userMessages: s.userMessages,
-        assistantMessages: s.assistantMessages,
-        contextTokens: s.contextTokens,
-        totalTokens: s.totalTokens,
+        ...ptySessionCounters(s, persisted),
         mcpInitialized: s.mcpInitialized,
         mcpLastError: s.mcpLastError,
         mcpLog: s.mcpLog.slice(-20), // last 20 entries

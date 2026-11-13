@@ -1,6 +1,9 @@
 // Только числовой usage: ни prompts, ни tool inputs в ledger не записываются.
 import type { SynthAssistantEntry } from '../proxy/entry-synthesizer'
 import { getDb } from './database/lifecycle'
+import { withStatsWrite } from './database/write-lock'
+import { scheduleRollupDrain } from './database/rollup'
+import { warnLog } from '../logging'
 
 type UsageEntry = Pick<SynthAssistantEntry, 'timestamp' | 'isSidechain'> & {
   message: Pick<SynthAssistantEntry['message'], 'id' | 'model' | 'usage'>
@@ -52,13 +55,36 @@ export async function recordProxyUsage(
   entry: UsageEntry,
   owner: { sessionId: string; tokenId: string; userName: string },
 ): Promise<void> {
-  const usage = entry.usage ?? entry.message.usage
-  if (!entry.message.id || !usage) return
+  const maybeUsage = entry.usage ?? entry.message.usage
+  if (!entry.message.id || !maybeUsage) return
+  const usage = maybeUsage
   const count = (n: number | undefined): number => (Number.isSafeInteger(n) && n! > 0 ? n! : 0)
   const written = count(usage.cache_creation_input_tokens)
   const db = await getDb()
-  await db.run(
-    `INSERT INTO proxy_usage
+  await withStatsWrite(async () => {
+    await db.run('BEGIN')
+    try {
+      await upsert()
+      // The row feeds the rollup of its own session and of the JSONL twin
+      // that shares the message id (LEFT JOIN in the accounting view).
+      await db.run(
+        `INSERT INTO stats_rollup_dirty (session_id)
+        SELECT session_id FROM proxy_usage WHERE message_id = $1
+        UNION SELECT session_id FROM jsonl_events WHERE message_id = $1
+        ON CONFLICT DO NOTHING`,
+        [entry.message.id],
+      )
+      await db.run('COMMIT')
+    } catch (err) {
+      await db.run('ROLLBACK').catch((error) => warnLog('proxy usage rollback failed', { error: String(error) }))
+      throw err
+    }
+  })
+  scheduleRollupDrain()
+
+  async function upsert(): Promise<void> {
+    await db.run(
+      `INSERT INTO proxy_usage
     (message_id, session_id, timestamp, model, input_tokens, output_tokens,
       cache_read_tokens, cache_write_tokens, cache_write_1h_tokens, token_id, user_name, is_subagent)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -68,19 +94,20 @@ export async function recordProxyUsage(
       cache_read_tokens = GREATEST(proxy_usage.cache_read_tokens, excluded.cache_read_tokens),
       cache_write_tokens = GREATEST(proxy_usage.cache_write_tokens, excluded.cache_write_tokens),
       cache_write_1h_tokens = GREATEST(proxy_usage.cache_write_1h_tokens, excluded.cache_write_1h_tokens)`,
-    [
-      entry.message.id,
-      owner.sessionId,
-      entry.timestamp,
-      entry.message.model,
-      count(usage.input_tokens),
-      count(usage.output_tokens),
-      count(usage.cache_read_input_tokens),
-      written,
-      Math.min(written, count(usage.cache_creation?.ephemeral_1h_input_tokens)),
-      owner.tokenId,
-      owner.userName,
-      entry.isSidechain ? 1 : 0,
-    ],
-  )
+      [
+        entry.message.id,
+        owner.sessionId,
+        entry.timestamp,
+        entry.message.model,
+        count(usage.input_tokens),
+        count(usage.output_tokens),
+        count(usage.cache_read_input_tokens),
+        written,
+        Math.min(written, count(usage.cache_creation?.ephemeral_1h_input_tokens)),
+        owner.tokenId,
+        owner.userName,
+        entry.isSidechain ? 1 : 0,
+      ],
+    )
+  }
 }

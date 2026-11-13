@@ -21,6 +21,8 @@ wpt-harness = []
 # Observational document timers for the standalone phase benchmark.
 engine-bench = []
 work-counters = ["kamin-style/work-counters"]
+# Отчёт памяти по владельцам для стенда (docs/memprof.md); обход только по запросу.
+heap-report = ["dep:kamin-heap", "kamin-style/heap-report"]
 
 [[example]]
 name = "wptrun"
@@ -32,6 +34,7 @@ kamin-font-facts = { path = "../font-facts" }
 # Нижняя фаза: DOM, CSS, каскад, ресурсы и нижние данные документа; реэкспорт
 # корней (`kamin_html::dom`, `css`, `value`…) сохраняет внешние пути.
 kamin-style = { path = "../html-style" }
+kamin-heap = { path = "../heap", optional = true }
 # Продолжения обхода боксов в куче, без роста нативного стека.
 reblessive = "0.4.3"
 url = "2"

@@ -204,7 +204,16 @@ function handle(index: number): DuckDBConnection {
 export async function getDb(): Promise<DuckDBConnection> {
   while (maintenanceGate) await maintenanceGate
   await ensurePool()
-  return handle(nextConn++ % pool.length)
+  // The last slot is reserved for background rollup work (getDbBackground).
+  return handle(nextConn++ % (pool.length - 1))
+}
+
+/** The reserved slot for long background statements (stats rollup build and
+ *  drains): request readers on getDb() never queue behind them. */
+export async function getDbBackground(): Promise<DuckDBConnection> {
+  while (maintenanceGate) await maintenanceGate
+  await ensurePool()
+  return handle(POOL_SIZE - 1)
 }
 
 /** Synchronous accessor — only valid AFTER `await initStatsDb()` has
@@ -365,21 +374,31 @@ async function migrateFromSqlite(): Promise<void> {
     warnLog('SQLite → DuckDB migration FAILED, rolling back', { error: String(err) })
     try {
       conn?.disconnectSync?.()
-    } catch {}
+    } catch (error) {
+      warnLog('stats: migration disconnect failed', { error: String(error) })
+    }
     try {
       inst?.closeSync?.()
-    } catch {}
+    } catch (error) {
+      warnLog('stats: migration instance close failed', { error: String(error) })
+    }
     try {
       fs.rmSync(DUCKDB_PATH, { force: true })
-    } catch {}
+    } catch (error) {
+      warnLog('stats: migration cleanup failed', { error: String(error) })
+    }
     throw err
   } finally {
     try {
       conn?.disconnectSync?.()
-    } catch {}
+    } catch (error) {
+      warnLog('stats: migration final disconnect failed', { error: String(error) })
+    }
     try {
       inst?.closeSync?.()
-    } catch {}
+    } catch (error) {
+      warnLog('stats: migration final close failed', { error: String(error) })
+    }
   }
 }
 
@@ -388,12 +407,16 @@ export async function closeDb(): Promise<void> {
   for (const c of pool) {
     try {
       c.disconnectSync?.()
-    } catch {}
+    } catch (error) {
+      warnLog('stats: pool disconnect failed', { error: String(error) })
+    }
   }
   pool.length = 0
   try {
     instance?.closeSync?.()
-  } catch {}
+  } catch (error) {
+    warnLog('stats: pool instance close failed', { error: String(error) })
+  }
   instance = null
   initPromise = null
   nextConn = 0
