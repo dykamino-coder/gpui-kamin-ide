@@ -2346,6 +2346,33 @@ reveal when the resync frames enter the outbox, when the page first calls
 is needed; no forced repaint or timer. BR-24 and BR-25 completion keep this as
 their prerequisite.
 
+**Research 2026-11-13 on the published 1.0.96 (kmaint2): one outbox stall caught,
+layer not yet named.** 120 R6 reveals were run on the installed 1.0.96 with the
+official `6.3.173` image, driven only through kamin-probe. Each run read the page
+timeline (navigation timing and the `/__pull/<view>` fetches from Resource
+Timing). When rows were missing at 1 s, the run fetched the outbox from the page
+itself.
+- Accelerated, healthy machine: rows by 1.1 s in 74 of 75 reveals. In the other
+  (batch 3, run 21) the page loaded late (`load` 652 ms against about 190 ms).
+  It pulled 6 times up to 895 ms and then not again. At 1412 ms there were no rows,
+  and the outbox held **4 pending messages**. Handing them to the page rendered the
+  rows by 1823 ms, and its pulls resumed. Host messages therefore waited in the
+  shell outbox for at least about 0.5 s with no pull reaching the page. No page
+  fetch started between 896 and 1442 ms, so the page's pull chain was not blocked
+  on a request.
+- Other slow runs were not app defects: a machine-wide stall of about 121 s
+  (the app's diag ticks and the external dwm watcher both skipped), and its
+  aftermath. Software mode (after that stall) had one similar case (3 pulls by
+  0.3 s, then none, no rows at 7 s); there, the outbox was not checked.
+- The native counters `wake/pull-pending` and `pull/dispatched` are global per
+  second. They cannot tell an undispatched pull from a dispatched
+  `execute_java_script` that never ran in the page.
+[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/4d85e6badc887a728cf5a5037c906413ad4c2a81/incidents/INC-2026-0002/evidence/2026-11-13-br31-r6-1.0.96).
+**Next step (bounded, owner kmaint2):** add per-view delivery diagnostics to the
+existing `[views]` line: pending outbox batches and the age of the oldest one,
+the last `mark_pull_pending`, the last `pull/dispatched` and the last
+`take_all` for that view. Then repeat R6 until a stall is caught and fix the
+named layer. No forced repaint or timer.
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
 пробуждением. `deliver()` зовёт её. Polling и таймеры не добавлены: путь
