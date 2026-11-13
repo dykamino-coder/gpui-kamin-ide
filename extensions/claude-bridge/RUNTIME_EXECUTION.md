@@ -499,7 +499,7 @@ production-run требует repository secrets и отдельный след�
 | [BR-29A](RUNTIME_RELIABILITY.md#br-29a--keep-the-keyboard-focus-ring-visible-inside-clipped-containers) | done | none | native sidebar | none | Fix PR #853 merged (`93dddd3b`), Windows gate на `95ebe50f` passed; опубликовано в 1.0.96; 2026-11-13 проверка на установленном 1.0.96 passed (все chips и первая/четвёртая/последняя строка) |
 | [BR-29B](RUNTIME_RELIABILITY.md#br-29b--scroll-the-session-list-to-the-keyboard-focused-row) | ready | change | native sidebar | none | Зарегистрировано 2026-11-13 (kmaint2): Tab-фокус на строке вне видимой части списка сессий не прокручивает список; Fix PR #875 | Merge #875 после зелёных checks; приёмка автоматическая |
 | [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation) | done | none | diagnostics | none | PR #31 + #47; Windows 12/12 на main 686cc92; BR-02 разблокирован |
-| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | ready | verify | CEF/webview delivery | PR #147 merged; R6 на 1.0.96: 74/75 accelerated reveals ≤ 1.1 с, в одном 4 сообщения ждали в outbox без pull | Per-view диагностика outbox/pull в `[views]`, повтор R6 до поимки, fix названного слоя (kmaint2) |
+| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | in progress | change | CEF/webview delivery | PR #147 merged; R6 на 1.0.96: 74/75 ≤ 1.1 с; 2026-11-14 per-view диагностика (#878): stalls = UI thread ждёт в записи diag.log | Вынести запись diag.log с UI thread + повтор R6 (kmaint2) |
 
 ## Зарегистрированные incidents вне BR-реестра
 
