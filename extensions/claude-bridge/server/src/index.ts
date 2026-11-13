@@ -170,6 +170,12 @@ async function startup(): Promise<void> {
     console.warn(`[bridge] jsonl-sweeper unavailable: ${e instanceof Error ? e.message : e}`)
   }
 
+  // Dashboard stats rollup: one-time background build from existing events,
+  // then incremental per-session refresh. Never blocks startup.
+  void import('./core/stats/database/rollup')
+    .then(({ startRollupBuild }) => startRollupBuild())
+    .catch((e) => console.warn(`[bridge] stats rollup build failed: ${e instanceof Error ? e.message : e}`))
+
   // Start automated DB maintenance: daily retention (age out unread otel/error
   // rows + CHECKPOINT) and threshold-triggered compaction (reclaims the file's
   // high-water mark that historic churn left behind).

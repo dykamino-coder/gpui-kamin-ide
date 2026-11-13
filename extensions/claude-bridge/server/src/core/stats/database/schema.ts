@@ -12,6 +12,7 @@
 
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { initAccountingSchema } from './accounting-schema'
+import { initRollupSchema } from './rollup'
 
 async function tryExec(db: DuckDBConnection, sql: string): Promise<void> {
   try {
@@ -297,4 +298,7 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   } catch {
     /* ignore */
   }
+
+  // Dashboard rollup tables (built in the background after boot).
+  await initRollupSchema(db)
 }

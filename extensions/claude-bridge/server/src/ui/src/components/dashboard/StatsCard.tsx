@@ -1,101 +1,19 @@
-// Dashboard Stats card — same layout as the legacy Electron client's StatsPanel but
-// re-implemented for the web dashboard's React/Preact compat tree.
-// Reads /api/dashboard/stats/overview and /api/dashboard/tokens/:id/sessions.
+// Dashboard Stats cards — one card per user plus the all-users card.
+//
+// Data comes from ONE batched request for the whole grid
+// (/api/dashboard/stats/users-overview, served from the incremental stats
+// rollup) through the shared store in signals/users-stats.ts; a card's own
+// All/30d/7d switch fetches just that card. Cards mount lazily when they come
+// near the viewport and are memoized, so a poll that changes one user's
+// numbers re-renders one card, not the grid.
 
-import { useEffect, useMemo, useState } from 'preact/compat'
+import { memo, useEffect, useMemo, useRef, useState } from 'preact/compat'
 import { createJsonlDownloader } from '../../utils/jsonl-download'
-import { Card, SectionHeader } from '../shared'
+import { Card } from '../shared'
+import { cards, cardsError, fetchCard, subscribeUserStats, users } from '../../signals/users-stats'
+import type { CardData, StatsRange } from '../../signals/users-stats'
 
-type Range = 'all' | '30d' | '7d'
-
-interface HourlyBucket {
-  utcHour: string
-  model: string | null
-  userMessages: number
-  tokens: number
-}
-
-interface OverviewRaw {
-  range: Range
-  sessions: number
-  userMessages: number
-  assistantMessages: number
-  totalTokens: number
-  favoriteModel: string | null
-  models: Array<{ name: string; in: number; out: number; pct: number }>
-  hourly: HourlyBucket[]
-}
-
-// Local-time aggregation — heatmap, peakHour, longestStreak, activeDays,
-// modelsTimeseries are derived from raw UTC hourly buckets in the user's
-// browser locale. Server never sees a timezone.
-function fmtLocalDay(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-interface HourlyBucketEx extends HourlyBucket {
-  sessionId?: string
-  assistantMessages?: number
-}
-function aggregateLocal(hourly: HourlyBucketEx[]) {
-  interface DayAcc {
-    date: string
-    userMessages: number
-    assistantMessages: number
-    tokens: number
-    sessionSet: Set<string>
-    models: Record<string, number>
-  }
-  const byDay = new Map<string, DayAcc>()
-  const userByHour = new Array<number>(24).fill(0)
-  for (const b of hourly) {
-    const d = new Date(b.utcHour + ':00:00.000Z')
-    const day = fmtLocalDay(d)
-    const hour = d.getHours()
-    userByHour[hour] += b.userMessages
-    let slot = byDay.get(day)
-    if (!slot) {
-      slot = { date: day, userMessages: 0, assistantMessages: 0, tokens: 0, sessionSet: new Set(), models: {} }
-      byDay.set(day, slot)
-    }
-    slot.userMessages += b.userMessages
-    slot.assistantMessages += b.assistantMessages ?? 0
-    slot.tokens += b.tokens
-    if (b.sessionId) slot.sessionSet.add(b.sessionId)
-    if (b.model && b.tokens > 0) slot.models[b.model] = (slot.models[b.model] ?? 0) + b.tokens
-  }
-  const heatmap = Array.from(byDay.values())
-    .map((d) => ({
-      date: d.date,
-      userMessages: d.userMessages,
-      assistantMessages: d.assistantMessages,
-      tokens: d.tokens,
-      sessions: d.sessionSet.size,
-      models: d.models,
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date))
-  let peakHour: number | null = null,
-    peakCnt = 0
-  for (let h = 0; h < 24; h++)
-    if (userByHour[h]! > peakCnt) {
-      peakCnt = userByHour[h]!
-      peakHour = h
-    }
-  let longest = 0,
-    run = 0
-  let prev: Date | null = null
-  for (const { date } of heatmap) {
-    const d = new Date(date + 'T00:00:00')
-    if (prev && d.getTime() - prev.getTime() === 86_400_000) run++
-    else run = 1
-    if (run > longest) longest = run
-    prev = d
-  }
-  const modelsTimeseries = heatmap.map((d) => ({ date: d.date, series: d.models }))
-  return { heatmap, peakHour, longestStreak: longest, activeDays: heatmap.length, modelsTimeseries }
-}
+type Range = StatsRange
 
 interface SessionRow {
   sessionId: string
@@ -137,69 +55,130 @@ function shortModel(m: string | null): string {
   return m
 }
 
-interface Props {
-  tokenId?: string | null
-  compact?: boolean
+const WEEKS: Record<Range, number> = { all: 26, '30d': 8, '7d': 5 }
+const CELL = 12
+const GAP = 3
+
+interface HeatmapCell {
+  date: string
+  userMessages: number
+  assistantMessages: number
+  tokens: number
+  sessions: number
+  models: Record<string, number>
 }
 
-export function StatsCard({ tokenId, compact }: Props) {
-  const [data, setData] = useState<OverviewRaw | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [range, setRange] = useState<Range>('all')
+function localKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    const url = `/api/dashboard/stats/overview?range=${range}${tokenId ? `&token=${encodeURIComponent(tokenId)}` : ''}`
-    const sessTok = localStorage.getItem('dashboard_session_token')
-    fetch(url, { signal: AbortSignal.timeout(15_000), headers: sessTok ? { Authorization: `Bearer ${sessTok}` } : {} })
-      .then((r) => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
-      .then((d: OverviewRaw) => {
-        if (!cancelled) {
-          setData(d)
-          setLoading(false)
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setError(String(e))
-          setLoading(false)
-        }
-      })
-    return () => {
-      cancelled = true
+function buildWeekGrid(days: CardData['days'], weeks: number) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todayDow = (today.getDay() + 6) % 7
+  const total = weeks * 7
+  const map = new Map(days.map((d) => [d[0], d]))
+  const cells: Array<HeatmapCell | null> = []
+  const start = new Date(today)
+  start.setDate(start.getDate() - (total - 1 - (6 - todayDow)))
+  for (let i = 0; i < total; i++) {
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
+    if (d > today) {
+      cells.push(null)
+      continue
     }
-  }, [range, tokenId])
+    const key = localKey(d)
+    const r = map.get(key)
+    cells.push(
+      r
+        ? { date: key, userMessages: r[1], assistantMessages: r[2], tokens: r[3], sessions: r[4], models: r[5] }
+        : { date: key, userMessages: 0, assistantMessages: 0, tokens: 0, sessions: 0, models: {} },
+    )
+  }
+  return cells
+}
 
-  const local = useMemo(() => (data ? aggregateLocal(data.hourly) : null), [data])
+function intensityClass(count: number, max: number): number {
+  if (count <= 0) return 0
+  const pct = count / Math.max(1, max)
+  if (pct < 0.25) return 1
+  if (pct < 0.5) return 2
+  if (pct < 0.75) return 3
+  return 4
+}
 
-  const cellSize = 12
-  const cellGap = 3
-  const weeks = range === '7d' ? 5 : range === '30d' ? 8 : 26
+const Heatmap = memo(function Heatmap({ days, range }: { days: CardData['days']; range: Range }) {
+  const cells = buildWeekGrid(days, WEEKS[range])
+  const max = Math.max(0, ...cells.map((c) => c?.userMessages ?? 0))
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${WEEKS[range]},${CELL}px)`,
+        gridAutoFlow: 'column',
+        gridTemplateRows: `repeat(7,${CELL}px)`,
+        gap: GAP,
+      }}
+    >
+      {cells.map((cell, i) => {
+        if (!cell) return <div key={i} style={{ width: CELL, height: CELL }} />
+        const lvl = intensityClass(cell.userMessages, max)
+        const bg =
+          lvl === 0
+            ? 'var(--bg-tertiary)'
+            : `color-mix(in srgb, var(--accent-blue) ${[0, 22, 45, 70, 100][lvl]}%, var(--bg-tertiary))`
+        const modelsLine = Object.entries(cell.models)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([m, t]) => `${shortModel(m)}: ${fmtNum(t)}`)
+          .join('\n  ')
+        const tooltip = [
+          cell.date,
+          `Sessions: ${cell.sessions}`,
+          `User msg: ${cell.userMessages}`,
+          `Assistant msg: ${cell.assistantMessages}`,
+          `Tokens: ${fmtNum(cell.tokens)}`,
+          modelsLine ? `Models:\n  ${modelsLine}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n')
+        return (
+          <div
+            key={i}
+            title={tooltip}
+            style={{ width: CELL, height: CELL, background: bg, borderRadius: 2, cursor: 'pointer' }}
+          />
+        )
+      })}
+    </div>
+  )
+})
 
-  const grid = local ? buildWeekGrid(local.heatmap, weeks) : null
-  const max = grid ? Math.max(...grid.cells.map((c) => c?.userMessages ?? 0)) : 0
+interface ViewProps {
+  data: CardData | null
+  range: Range
+  onRange: (r: Range) => void
+  loading: boolean
+  error: string | null
+}
 
+/** Pure card body: re-renders only when its own data/range/state change. */
+const StatsCardView = memo(function StatsCardView({ data, range, onRange, loading, error }: ViewProps) {
   return (
     <Card>
       <div style={{ padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          {compact ? (
-            <span
-              style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
-            >
-              Stats
-            </span>
-          ) : (
-            <SectionHeader title={tokenId ? 'Token Stats' : 'Overall Stats'} icon="fa-solid fa-chart-column" />
-          )}
+          <span
+            style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+          >
+            Stats
+          </span>
           <div style={{ display: 'flex', gap: 6 }}>
             {(['all', '30d', '7d'] as Range[]).map((r) => (
               <button
                 key={r}
-                onClick={() => setRange(r)}
+                onClick={() => onRange(r)}
                 style={{
                   padding: '4px 10px',
                   borderRadius: 4,
@@ -217,11 +196,13 @@ export function StatsCard({ tokenId, compact }: Props) {
           </div>
         </div>
 
-        {loading && <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>}
+        {loading && !data && (
+          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
+        )}
         {error && !loading && <div style={{ padding: 12, color: 'var(--accent-red)', fontSize: 12 }}>{error}</div>}
 
-        {data && local && !loading && (
-          <>
+        {data && (
+          <div style={{ opacity: loading ? 0.6 : 1 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 8 }}>
               <Metric label="Sessions" value={fmtNum(data.sessions)} />
               <Metric label="User msg" value={fmtNum(data.userMessages)} />
@@ -229,56 +210,13 @@ export function StatsCard({ tokenId, compact }: Props) {
               <Metric label="Session tokens" value={fmtNum(data.totalTokens)} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 14 }}>
-              <Metric label="Active days" value={String(local.activeDays)} />
-              <Metric label="Longest streak" value={`${local.longestStreak}d`} />
-              <Metric label="Peak hour" value={fmtHour(local.peakHour)} />
+              <Metric label="Active days" value={String(data.activeDays)} />
+              <Metric label="Longest streak" value={`${data.longestStreak}d`} />
+              <Metric label="Peak hour" value={fmtHour(data.peakHour)} />
               <Metric label="Favorite model" value={shortModel(data.favoriteModel)} />
             </div>
 
-            {grid && (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${grid.cols},${cellSize}px)`,
-                  gridAutoFlow: 'column',
-                  gridTemplateRows: `repeat(7,${cellSize}px)`,
-                  gap: cellGap,
-                }}
-              >
-                {grid.cells.map((cell, i) => {
-                  if (!cell) return <div key={i} style={{ width: cellSize, height: cellSize }} />
-                  const lvl = intensityClass(cell.userMessages, max)
-                  const bg =
-                    lvl === 0
-                      ? 'var(--bg-tertiary)'
-                      : `color-mix(in srgb, var(--accent-blue) ${[0, 22, 45, 70, 100][lvl]}%, var(--bg-tertiary))`
-                  // Build tooltip: full per-day stat. Native `title` attr —
-                  // multi-line via \n, browser renders as a tooltip popup.
-                  const modelsLine = Object.entries(cell.models)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 3)
-                    .map(([m, t]) => `${shortModel(m)}: ${fmtNum(t)}`)
-                    .join('\n  ')
-                  const tooltip = [
-                    cell.date,
-                    `Sessions: ${cell.sessions}`,
-                    `User msg: ${cell.userMessages}`,
-                    `Assistant msg: ${cell.assistantMessages}`,
-                    `Tokens: ${fmtNum(cell.tokens)}`,
-                    modelsLine ? `Models:\n  ${modelsLine}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join('\n')
-                  return (
-                    <div
-                      key={i}
-                      title={tooltip}
-                      style={{ width: cellSize, height: cellSize, background: bg, borderRadius: 2, cursor: 'pointer' }}
-                    />
-                  )
-                })}
-              </div>
-            )}
+            <Heatmap days={data.days} range={range} />
 
             {data.models.length > 0 && (
               <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border-secondary)' }}>
@@ -311,12 +249,12 @@ export function StatsCard({ tokenId, compact }: Props) {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </Card>
   )
-}
+})
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -338,71 +276,119 @@ function Metric({ label, value }: { label: string; value: string }) {
   )
 }
 
-interface HeatmapCell {
-  date: string
-  userMessages: number
-  assistantMessages: number
-  tokens: number
-  sessions: number
-  models: Record<string, number>
-}
-function buildWeekGrid(heatmap: HeatmapCell[], weeks: number) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const todayDow = (today.getDay() + 6) % 7
-  const totalCells = weeks * 7
-  const startDate = new Date(today.getTime() - (totalCells - 1 - (6 - todayDow)) * 86_400_000)
-  const map = new Map(heatmap.map((d) => [d.date, d]))
-  const cells: Array<HeatmapCell | null> = []
-  for (let i = 0; i < totalCells; i++) {
-    const d = new Date(startDate.getTime() + i * 86_400_000)
-    if (d > today) {
-      cells.push(null)
-      continue
-    }
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    cells.push(map.get(key) ?? { date: key, userMessages: 0, assistantMessages: 0, tokens: 0, sessions: 0, models: {} })
-  }
-  return { cells, cols: weeks }
+const EMPTY_CARD: CardData = {
+  sessions: 0,
+  userMessages: 0,
+  assistantMessages: 0,
+  totalTokens: 0,
+  favoriteModel: null,
+  models: [],
+  activeDays: 0,
+  longestStreak: 0,
+  peakHour: null,
+  days: [],
 }
 
-function intensityClass(count: number, max: number): number {
-  if (count <= 0) return 0
-  const pct = count / Math.max(1, max)
-  if (pct < 0.25) return 1
-  if (pct < 0.5) return 2
-  if (pct < 0.75) return 3
-  return 4
-}
-
-// ── Grid of per-user StatsCards (one per known user/token) ──────────
-import { api } from '../../services/api-client'
-import type { UserSummary } from '../../services/api-client'
-
-export function TokensStatsGrid() {
-  const [users, setUsers] = useState<UserSummary[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+/** One card: default range from the shared batch, other ranges on demand. */
+const UserStatsCard = memo(function UserStatsCard({ subject }: { subject: string }) {
+  const [range, setRange] = useState<Range>('all')
+  const [own, setOwn] = useState<{ range: Range; data: CardData | null; error: string | null } | null>(null)
+  // Visible before the page batch arrived: fetch just this card (tens of ms)
+  // so on-screen cards render as each is ready; the batch fills the rest.
+  const [early, setEarly] = useState<CardData | null>(null)
   useEffect(() => {
+    if (cards.peek()) return
     let cancelled = false
-    api
-      .getUsers()
-      .then((list) => {
-        if (!cancelled) setUsers(list)
-      })
-      .catch((e) => {
-        if (!cancelled) setError(String(e))
-      })
+    fetchCard(subject, 'all')
+      .then((data) => !cancelled && !cards.peek() && setEarly(data ?? EMPTY_CARD))
+      .catch(() => {}) // the batch reports errors
     return () => {
       cancelled = true
     }
-  }, [])
-  if (error)
+  }, [subject])
+  // A known user without rollup rows still gets a zero card, as before.
+  const shared = cards.value ? (cards.value[subject] ?? EMPTY_CARD) : early
+  useEffect(() => {
+    if (range === 'all') {
+      setOwn(null)
+      return
+    }
+    let cancelled = false
+    setOwn((o) => ({ range, data: o?.data ?? null, error: null }))
+    fetchCard(subject, range)
+      .then((data) => !cancelled && setOwn({ range, data: data ?? EMPTY_CARD, error: null }))
+      .catch((e) => !cancelled && setOwn({ range, data: null, error: String(e) }))
+    return () => {
+      cancelled = true
+    }
+  }, [range, subject])
+  const data = range === 'all' ? shared : (own?.data ?? null)
+  const loading =
+    range === 'all' ? !shared && !cardsError.value : !own || own.range !== range || (!own.data && !own.error)
+  const error = range === 'all' ? cardsError.value : (own?.error ?? null)
+  return <StatsCardView data={data} range={range} onRange={setRange} loading={loading} error={error} />
+})
+
+/** Mounts its card when it comes within one screen of the viewport, then keeps it. */
+function LazyCard({ subject }: { subject: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [seen, setSeen] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || seen) return
+    if (typeof IntersectionObserver === 'undefined') {
+      setSeen(true)
+      return
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setSeen(true)
+          io.disconnect()
+        }
+      },
+      { rootMargin: '100% 0px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [seen])
+  return (
+    <div ref={ref} style={{ minWidth: 0, contentVisibility: 'auto', containIntrinsicSize: 'auto 420px' } as any}>
+      {seen ? <UserStatsCard subject={subject} /> : <div style={{ height: 420 }} />}
+    </div>
+  )
+}
+
+const headerStyle = {
+  fontSize: 12,
+  color: 'var(--text-secondary)',
+  fontWeight: 700,
+  marginBottom: 4,
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.04em',
+}
+
+// ── Grid of per-user stats cards (one per known user/token) ──────────
+export function TokensStatsGrid() {
+  useEffect(() => subscribeUserStats({ cards: true }), [])
+  const list = users.value
+  // Card order is fixed on first load (new users appended) so the grid
+  // never reshuffles while someone reads it.
+  const order = useRef<string[]>([])
+  const names = useMemo(() => {
+    const present = new Set(list.filter((u) => u.userName && u.userName.trim()).map((u) => u.userName))
+    const kept = order.current.filter((n) => present.has(n))
+    for (const n of present) if (!kept.includes(n)) kept.push(n)
+    order.current = kept
+    return kept
+  }, [list])
+  if (cardsError.value && !cards.value && list.length === 0)
     return (
       <Card>
-        <div style={{ padding: 16, color: 'var(--accent-red)', fontSize: 12 }}>{error}</div>
+        <div style={{ padding: 16, color: 'var(--accent-red)', fontSize: 12 }}>{cardsError.value}</div>
       </Card>
     )
-  if (!users)
+  if (list.length === 0 && !cards.value)
     return (
       <Card>
         <div style={{ padding: 20, color: 'var(--text-muted)' }}>Loading users…</div>
@@ -411,41 +397,21 @@ export function TokensStatsGrid() {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 14 }}>
       <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 12,
-            color: 'var(--text-secondary)',
-            fontWeight: 700,
-            marginBottom: 4,
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-          }}
-        >
+        <div style={headerStyle}>
           <i class="fa-solid fa-globe" style={{ marginRight: 6, opacity: 0.6 }} />
           All tokens
         </div>
-        <StatsCard tokenId={null} compact />
+        <LazyCard subject="*" />
       </div>
-      {users
-        .filter((u) => u.userName && u.userName.trim())
-        .map((u) => (
-          <div key={u.userName} style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                fontWeight: 700,
-                marginBottom: 4,
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-              }}
-            >
-              <i class="fa-solid fa-id-badge" style={{ marginRight: 6, opacity: 0.6 }} />
-              {u.userName}
-            </div>
-            <StatsCard tokenId={u.userName} compact />
+      {names.map((name) => (
+        <div key={name} style={{ minWidth: 0 }}>
+          <div style={headerStyle}>
+            <i class="fa-solid fa-id-badge" style={{ marginRight: 6, opacity: 0.6 }} />
+            {name}
           </div>
-        ))}
+          <LazyCard subject={name} />
+        </div>
+      ))}
     </div>
   )
 }

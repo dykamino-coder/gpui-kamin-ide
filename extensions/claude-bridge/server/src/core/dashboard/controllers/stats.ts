@@ -21,6 +21,8 @@ import { getUserTimeSeries } from '../../stats/database/aggregates'
 import { clearAll, deleteRequestsByFilter } from '../../stats/database/crud'
 import { getAllSessions } from '../../pty/session-manager'
 import { denyApiToken, denyForeignUser, denyForeignSubject } from '../authz'
+import { clearRevisionCaches, createRevisionCache } from '../../stats/database/revision-cache'
+import type { CardData } from '../../stats/database/cards-overview'
 
 /** Resolve the owning user_name for a sessionId (session_tokens is the
  *  authoritative owner map). Returns undefined if unknown. */
@@ -43,6 +45,23 @@ const timeseriesCache: Map<string, { at: number; data: unknown }> = new Map()
 // the panel sat on "Loading…" forever. Key = range|token|agg|tz.
 const overviewCache: Map<string, { at: number; data: unknown }> = new Map()
 const OVERVIEW_CACHE_TTL_MS = 30_000
+const OVERVIEW_CACHE_MAX = 128
+
+/** Bounded insert: keys carry the rollup revision, so old ones go stale. */
+function cachePut(cache: Map<string, { at: number; data: unknown }>, key: string, data: unknown): void {
+  cache.delete(key)
+  cache.set(key, { at: Date.now(), data })
+  while (cache.size > OVERVIEW_CACHE_MAX) cache.delete(cache.keys().next().value!)
+}
+
+// Batched user cards: served stale-while-revalidate across rollup revisions.
+const cardsCache = createRevisionCache<Record<string, CardData>>({ max: OVERVIEW_CACHE_MAX, maxStaleMs: 60_000 })
+
+/** Bench/test hook: drop cached overview answers. */
+export function clearOverviewCache(): void {
+  overviewCache.clear()
+  clearRevisionCaches()
+}
 
 // Request-triggered catch-up sweeps used to run on EVERY stats request.
 // The background sweeper already runs every 5 min — throttle the extra
@@ -287,163 +306,48 @@ export function registerStatsRoutes(api: Hono): void {
     // the real-world range so the interpolated INTERVAL stays a plain int.
     const tzRaw = parseInt(c.req.query('tz') || '0', 10)
     const tzOffsetMin = Math.max(-840, Math.min(840, Number.isFinite(tzRaw) ? tzRaw : 0))
-    const sinceDays = range === '7d' ? 7 : range === '30d' ? 30 : null
-    // Range cutoff is timestamp-based (UTC ms), client decides what
-    // "today" means for streaks.
-    const sinceIso = sinceDays ? new Date(Date.now() - sinceDays * 86_400_000).toISOString() : null
-
-    const cacheKey = `${range}|${tokenId ?? ''}|${compact ? 'hm' : 'v1'}|${tzOffsetMin}`
+    // Keyed by the rollup revision: a refresh of any session invalidates it.
+    const { rollupRevision } = await import('../../stats/database/rollup')
+    const cacheKey = `${rollupRevision()}|${range}|${tokenId ?? ''}|${compact ? 'hm' : 'v1'}|${tzOffsetMin}`
     const cachedOverview = overviewCache.get(cacheKey)
     if (cachedOverview && Date.now() - cachedOverview.at < OVERVIEW_CACHE_TTL_MS) {
       return c.json(cachedOverview.data)
     }
 
-    const joinClause = `
-      FROM jsonl_accounting_events e
-      INNER JOIN session_tokens st
-        ON st.session_id = e.session_id AND st.deleted = 0
-    `
-    const filters: string[] = ["(e.model IS NULL OR e.model != '<synthetic>')"]
-    if (sinceIso) filters.push(`e.timestamp >= '${sinceIso}'`)
-    if (tokenId) filters.push(`st.user_name = '${tokenId.replace(/'/g, "''")}'`)
-    const where = `WHERE ${filters.join(' AND ')}`
-
-    const TOKEN_SUM = `(COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0))`
-
-    // Skalar aggregates — timezone-independent. We split user / assistant
-    // message counts so the UI can show both ("12 user / 47 assistant").
-    const counters = (
-      await db.runAndReadAll(`
-      SELECT
-        COUNT(DISTINCT e.session_id) as sessions,
-        SUM(CASE WHEN e.type = 'user' THEN 1 ELSE 0 END) as user_messages,
-        SUM(CASE WHEN e.type = 'assistant' THEN 1 ELSE 0 END) as assistant_messages
-      ${joinClause} ${where}
-    `)
-    ).getRowObjects()[0] as any
-
-    // "Session tokens" = sum of each session's last-assistant effective
-    // input (matches the per-session Context column in the sessions
-    // modal). Doesn't double-count cache_read flowing through every turn.
-    // arg_max = "value at max(timestamp)" — one scan, instead of the old
-    // correlated ORDER-BY-LIMIT-1 subquery that re-probed jsonl_events
-    // once per session and dominated the endpoint on busy servers.
-    const sessionTokensRow = (
-      await db.runAndReadAll(`
-      SELECT SUM(last_ctx) as total
-      FROM (
-        SELECT arg_max(
-          COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0),
-          e.timestamp
-        ) as last_ctx
-        FROM jsonl_accounting_events e
-        INNER JOIN session_tokens st
-          ON st.session_id = e.session_id AND st.deleted = 0
-        WHERE e.type = 'assistant' AND COALESCE(e.is_subagent,0) = 0 AND (e.model IS NULL OR e.model != '<synthetic>')
-          ${tokenId ? `AND st.user_name = '${tokenId.replace(/'/g, "''")}'` : ''}
-        GROUP BY e.session_id
-      )
-    `)
-    ).getRowObjects()[0] as { total: bigint | number | null } | undefined
-    const sessionTokens = Number(sessionTokensRow?.total ?? 0)
-
-    // Per-model totals — order matters for "favorite", but no time bucketing.
-    const modelTotalsRaw = (
-      await db.runAndReadAll(`
-      SELECT e.model as model,
-        SUM(${TOKEN_SUM}) as in_tokens,
-        SUM(COALESCE(e.output_tokens,0)) as out_tokens
-      ${joinClause} ${where} AND e.type = 'assistant' AND e.model IS NOT NULL AND e.model != '' AND e.model != '<synthetic>'
-      GROUP BY e.model
-      ORDER BY (in_tokens + out_tokens) DESC
-    `)
-    ).getRowObjects() as Array<{ model: string; in_tokens: bigint | number; out_tokens: bigint | number }>
-    const modelTotals = modelTotalsRaw.map((r) => ({
-      model: r.model,
-      in_tokens: Number(r.in_tokens ?? 0),
-      out_tokens: Number(r.out_tokens ?? 0),
-    }))
-    const modelsTotalAll = modelTotals.reduce((s, r) => s + r.in_tokens + r.out_tokens, 0)
-    const models = modelTotals.map((r) => ({
-      name: r.model,
-      in: r.in_tokens,
-      out: r.out_tokens,
-      pct: modelsTotalAll > 0 ? ((r.in_tokens + r.out_tokens) / modelsTotalAll) * 100 : 0,
-    }))
-    const favoriteModel = models[0]?.name ?? null
-
-    // Hourly buckets — UTC ISO hour key like '2026-04-25T19'. Client
-    // re-buckets by local TZ for heatmap, peakHour, streaks, daily
-    // model timeseries. DuckDB strftime takes (timestamp, format) — cast
-    // TEXT timestamp to TIMESTAMP first.
-    //
-    // compact mode groups by (hour, model) only — the per-session split
-    // exists solely so the LEGACY client can count distinct sessions per
-    // local day; compact clients get that from `dailySessions` below.
-    const hourly = (
-      await db.runAndReadAll(`
-      SELECT
-        strftime(e.timestamp::TIMESTAMP, '%Y-%m-%dT%H') as utc_hour,
-        e.model as model,
-        ${compact ? `'' as session_id,` : `e.session_id as session_id,`}
-        SUM(CASE WHEN e.type = 'user' THEN 1 ELSE 0 END) as user_msgs,
-        SUM(CASE WHEN e.type = 'assistant' THEN 1 ELSE 0 END) as assistant_msgs,
-        SUM(CASE WHEN e.type = 'assistant' THEN ${TOKEN_SUM} ELSE 0 END) as model_tokens
-      ${joinClause} ${where}
-      GROUP BY utc_hour, e.model${compact ? '' : ', e.session_id'}
-      ORDER BY utc_hour ASC
-    `)
-    ).getRowObjects() as Array<{
-      utc_hour: string
-      model: string | null
-      session_id: string
-      user_msgs: bigint | number
-      assistant_msgs: bigint | number
-      model_tokens: bigint | number
-    }>
-
-    // compact mode: exact distinct-session count per LOCAL day (tz shift
-    // applied in SQL). ≤ a few hundred tiny rows even for range=all.
-    // getTimezoneOffset() is UTC−local, so local = timestamp − offset.
-    let dailySessions: Array<{ date: string; sessions: number }> | undefined
-    if (compact) {
-      const dailyRows = (
-        await db.runAndReadAll(`
-        SELECT
-          strftime(e.timestamp::TIMESTAMP - INTERVAL '${tzOffsetMin} minutes', '%Y-%m-%d') as local_day,
-          COUNT(DISTINCT e.session_id) as sessions
-        ${joinClause} ${where}
-        GROUP BY local_day
-        ORDER BY local_day ASC
-      `)
-      ).getRowObjects() as Array<{ local_day: string; sessions: bigint | number }>
-      dailySessions = dailyRows.map((r) => ({ date: r.local_day, sessions: Number(r.sessions ?? 0) }))
-    }
-
-    const payload = {
-      range,
-      sessions: Number(counters?.sessions ?? 0),
-      userMessages: Number(counters?.user_messages ?? 0),
-      assistantMessages: Number(counters?.assistant_messages ?? 0),
-      // Renamed: was "totalTokens" (cumulative API throughput), now per-
-      // session Context sum to match the sessions modal column.
-      totalTokens: sessionTokens,
-      favoriteModel,
-      models,
-      // Raw hourly buckets — client groups locally for heatmap (with rich
-      // per-day tooltip), peak hour, streaks, daily models timeseries.
-      hourly: hourly.map((r) => ({
-        utcHour: r.utc_hour,
-        model: r.model,
-        ...(compact ? {} : { sessionId: r.session_id }),
-        userMessages: Number(r.user_msgs ?? 0),
-        assistantMessages: Number(r.assistant_msgs ?? 0),
-        tokens: Number(r.model_tokens ?? 0),
-      })),
-      ...(dailySessions ? { dailySessions } : {}),
-    }
-    overviewCache.set(cacheKey, { at: Date.now(), data: payload })
+    // Read model over the incremental rollup (stats-queries.ts) — same
+    // formulas as the former raw jsonl_events scans.
+    const { legacyOverview } = await import('../../stats/database/stats-queries')
+    const payload = await legacyOverview(db, { range, tokenId, compact, tzOffsetMin })
+    cachePut(overviewCache, cacheKey, payload)
     return c.json(payload)
+  })
+
+  // GET /api/dashboard/stats/users-overview?range=&tz=<IANA>&tzOffset=<min>&subject=<user|*>&rev=
+  //
+  // Every user-stats card of the admin page in ONE request: per-user cards
+  // plus the all-users card ('*'), finished on the server in the viewer's
+  // zone (cards-overview.ts). `subject` limits the answer to one card (a
+  // card's own range switch). `rev` = the revision the client already has:
+  // when nothing changed the answer is `{ unchanged: true }` and the page
+  // keeps its state without re-rendering.
+  api.get('/api/dashboard/stats/users-overview', async (c) => {
+    const apiUser = (c as any).get('apiUserName') as string | undefined
+    const subjectRaw = c.req.query('subject') || null
+    // A per-user token may only see its own card.
+    const subject = apiUser ?? subjectRaw
+    const range = (['all', '30d', '7d'].includes(c.req.query('range') ?? '') ? c.req.query('range') : 'all') as
+      'all' | '30d' | '7d'
+    const tz = c.req.query('tz') || null
+    const tzOffsetMin = parseInt(c.req.query('tzOffset') || '0', 10) || 0
+    const { rollupRevision, rollupReady } = await import('../../stats/database/rollup')
+    const { getDb } = await import('../../stats/database/lifecycle')
+    const { cardsOverview } = await import('../../stats/database/cards-overview')
+    const ready = rollupReady()
+    const hit = await cardsCache.get(`${range}|${tz ?? tzOffsetMin}|${subject ?? ''}`, rollupRevision(), async () =>
+      cardsOverview(await getDb(), { range, tz, tzOffsetMin, subject }),
+    )
+    if (c.req.query('rev') === hit.revision) return c.json({ unchanged: true, revision: hit.revision })
+    return c.json({ revision: hit.revision, ready, range, cards: hit.data })
   })
 
   // ── GET /api/dashboard/tokens/:tokenId/sessions
@@ -643,6 +547,10 @@ export function registerStatsRoutes(api: Hono): void {
       const { withStatsWrite } = await import('../../stats/database/write-lock')
       // The sweeper may be healing this very row — one writer at a time (write-lock.ts).
       await withStatsWrite(() => db.run(`UPDATE session_tokens SET deleted = 1 WHERE session_id = ?`, [sessionId]))
+      // The rollup carries the live owner: refresh this session at every level now.
+      const { markRollupSessionsDirty, drainRollup } = await import('../../stats/database/rollup')
+      await markRollupSessionsDirty(db, [sessionId])
+      await drainRollup()
     }
 
     let fileRemoved = false
