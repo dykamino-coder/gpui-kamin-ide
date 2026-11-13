@@ -547,6 +547,21 @@ live gate прямо отмечен NOT executed before merge. Prompt contract �
 Зафиксировать CLI version и фактический `SendMessage` contract; BR-25/26/27 panel runs не
 заменяют эти два случая.
 
+**Verification 2026-11-13 (Windows client, authenticated stand `kamin-acc-302`, CLI 2.1.322): both cases pass.**
+
+The stand image is `main-584b5616`. The prompt contract file is unchanged on `main` `29238be7`. Clients: installed 1.0.94, and a `main` build with the probe `hostDisconnect`.
+
+The CLI `SendMessage` contract: a teammate calls `SendMessage` to `team-lead`. The lead receives each report as a `<teammate-message>` user turn, and idle notices arrive as `idle_notification` in the same channel.
+
+1. **No lost report.** Two runs with three teammates and unique markers, one per client build. During the runs there was a tab switch, and in the second run also two shell disconnects. 3/3 reports arrived on the first attempt; the lead sent no recovery request and spawned no extra teammate. One late report was confirmed from the teammate's transcript, not by a new request.
+2. **Intentionally missing report.** One teammate went idle without a report. The lead sent exactly one `SendMessage` recovery request, received the marker and finished. No additional teammate was spawned, and a later second idle notice did not trigger another request.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/55f0fd5793ff62beba8dd192e1012c3d347816a2/incidents/BR-09/evidence/2026-11-13-reports).
+
+Not covered: a server built from current `main`.
+
+Next step: close as done, unless a server from `main` is required as a separate gate.
+
 **Status:** implementation merged в PR #15; reopened for verification.
 Automatic selection остаётся отдельным BR-15. **Dependency:** none.
 **Acceptance:** automated + authenticated Windows runtime merge gate; live
