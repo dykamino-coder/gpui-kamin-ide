@@ -11,16 +11,16 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import type { ExternalMcpServerConfig } from '../../shared/types'
+import { bridgeStatePath } from '../bridge-state'
 
 /** Tiny JSON-file store replacing electron-store (KaminIDE VSIX). This is the
  *  LEGACY persistence layer — current code clears it on every save and uses
  *  `~/.claude.json` as the source of truth, so it exists only for one-time
  *  migration of pre-`~/.claude.json` configs. */
 class McpLegacyStore {
-  private readonly file = path.join(os.homedir(), '.claude', 'open-claude-bridge', 'mcp-servers.json')
   private data: { mcpServers: ExternalMcpServerConfig[] }
 
-  constructor() {
+  constructor(readonly file: string) {
     try {
       this.data = JSON.parse(fs.readFileSync(this.file, 'utf8'))
       if (!Array.isArray(this.data.mcpServers)) this.data.mcpServers = []
@@ -43,7 +43,8 @@ class McpLegacyStore {
 let _store: McpLegacyStore | null = null
 
 export function getMcpStore(): McpLegacyStore {
-  if (!_store) _store = new McpLegacyStore()
+  const file = bridgeStatePath('mcp-servers.json')
+  if (_store?.file !== file) _store = new McpLegacyStore(file)
   return _store
 }
 
@@ -94,10 +95,9 @@ export interface CachedToolSchema {
   inputSchema: Record<string, unknown>
 }
 
-const toolSchemaCacheFile = path.join(os.homedir(), '.claude', 'open-claude-bridge', 'mcp-tool-schemas.json')
-
 export function loadToolSchemaCache(): Record<string, CachedToolSchema[]> {
   try {
+    const toolSchemaCacheFile = bridgeStatePath('mcp-tool-schemas.json')
     const parsed: unknown = JSON.parse(fs.readFileSync(toolSchemaCacheFile, 'utf8'))
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       return parsed as Record<string, CachedToolSchema[]>
@@ -108,6 +108,7 @@ export function loadToolSchemaCache(): Record<string, CachedToolSchema[]> {
 
 export function saveToolSchemaCache(cache: Record<string, CachedToolSchema[]>): void {
   try {
+    const toolSchemaCacheFile = bridgeStatePath('mcp-tool-schemas.json')
     fs.mkdirSync(path.dirname(toolSchemaCacheFile), { recursive: true })
     const tmp = `${toolSchemaCacheFile}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(cache, null, 2), 'utf8')
