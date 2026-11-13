@@ -12,6 +12,26 @@ use kamin_metrics as m;
 use kamin_theme::ThemeKind;
 impl RootView {
     pub fn new(tx: smol::channel::Sender<ShellEvent>, cx: &mut Context<Self>) -> Self {
+        let state = Self::initial_state(tx.clone(), cx);
+        // Расширения поднимаются НЕЗАВИСИМО от сессий (как в VS Code:
+        // активация по `onStartupFinished`, а не по открытию чего-либо):
+        // тянем список сразу при старте, загрузчик сам ретраит до ответа.
+        request_extensions(tx.clone());
+        let profiles_tx = tx.clone();
+        crate::term::profiles::start_discovery(move || {
+            let _ = profiles_tx.try_send(ShellEvent::Term(
+                crate::host::events::TermEvent::TermProfilesChanged,
+            ));
+        });
+        crate::updater::check_in_background(tx);
+        state
+    }
+
+    /// Начальное состояние без фоновых сервисов — для клавиатурных fixtures.
+    pub(crate) fn initial_state(
+        tx: smol::channel::Sender<ShellEvent>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         // Активный тул сайдбара — из ТОЙ ЖЕ восстановленной модели, что ниже
         // уходит в поле `activity` (иначе два источника истины, ревью ц.8).
         let restored_sidebar_tool: &'static str = {
@@ -35,16 +55,6 @@ impl RootView {
                 None => "projects",
             }
         };
-        // Расширения поднимаются НЕЗАВИСИМО от сессий (как в VS Code:
-        // активация по `onStartupFinished`, а не по открытию чего-либо):
-        // тянем список сразу при старте, загрузчик сам ретраит до ответа.
-        request_extensions(tx.clone());
-        let profiles_tx = tx.clone();
-        crate::term::profiles::start_discovery(move || {
-            let _ = profiles_tx.try_send(ShellEvent::Term(
-                crate::host::events::TermEvent::TermProfilesChanged,
-            ));
-        });
         let theme_choice: &'static str = match crate::layout_store::load_raw_key("themeChoice")
             .and_then(|v| v.as_str().map(str::to_string))
             .as_deref()
@@ -226,10 +236,7 @@ impl RootView {
             probe_query: None,
             probe_editor_find: false,
             radial_bg: RadialBg::bake(theme.palette()),
-            tx: {
-                crate::updater::check_in_background(tx.clone());
-                tx
-            },
+            tx,
         }
     }
 }
