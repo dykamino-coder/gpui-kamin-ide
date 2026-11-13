@@ -185,6 +185,7 @@ mod respawn_tests {
 
     #[test]
     fn respawn_снимает_отметки_резолва_и_чужой_канал_нет() {
+        let _serial = crate::host::view_resolution::serial_test();
         let (tx, _rx) = smol::channel::unbounded();
 
         view_resolution()
