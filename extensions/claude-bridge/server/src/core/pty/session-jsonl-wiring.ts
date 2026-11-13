@@ -102,7 +102,7 @@ function startJsonlWatcher(
       void (async () => {
         try {
           const { getDb } = await import('../stats/database/lifecycle')
-          const { withStatsWrite } = await import('../stats/database/write-lock')
+          const { writeSessionToken } = await import('../stats/database/session-owners')
           const db = await getDb()
           const realCwd = config.cwd || null
           const titleAtInsert = session.sessionTitle || null
@@ -111,7 +111,7 @@ function startJsonlWatcher(
           // session_tokens row on first sight of the file: two writers on
           // one key would fail a COMMIT, and DuckDB turns that into a
           // process-killing FatalException (stats/database/write-lock.ts).
-          await withStatsWrite(async () => {
+          await writeSessionToken(db, conversationId, async () => {
             await db.run(
               `INSERT INTO session_tokens (session_id, token_id, user_name, cwd, title, created_at, deleted, engine)
                VALUES (?, ?, ?, ?, ?, ?, 0, ?)

@@ -105,10 +105,7 @@ async function loadUserStats(engine: EngineFilter) {
 async function loadRoster() {
   const db = await getDb()
   const raw = (
-    await db.runAndReadAll(
-      `SELECT user_name, MIN(created_at) AS first_seen, MAX(created_at) AS last_seen FROM session_tokens
-      WHERE deleted = 0 AND user_name IS NOT NULL AND user_name != '' GROUP BY user_name`,
-    )
+    await db.runAndReadAll(`SELECT user_name, first_seen, last_seen FROM session_owners`)
   ).getRowObjects() as Array<{ user_name: string; first_seen: string | null; last_seen: string | null }>
   const aggRows: UserTotalsRow[] = raw.map((r) => ({
     user_name: r.user_name,
