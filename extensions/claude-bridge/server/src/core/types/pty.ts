@@ -205,6 +205,8 @@ export interface ToolDefinition {
   name: string
   description: string
   inputSchema: Record<string, unknown>
+  /** Routing metadata from the client MCP manager; not part of tools/list JSON. */
+  serverName?: string
 }
 
 export interface ExternalResourceDefinition {
