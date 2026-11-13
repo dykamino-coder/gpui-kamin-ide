@@ -4,13 +4,13 @@
 //! обобщены по типу элемента, чтобы не зависеть от места в цепочке.
 
 use crate::actions::{
-    CloseOverlay, PressEnter, ToggleFindInFiles, TogglePalette, ToggleQuickOpen,
-    ToggleWorkspaceSymbols,
+    CloseOverlay, ToggleFindInFiles, TogglePalette, ToggleQuickOpen, ToggleWorkspaceSymbols,
 };
-use crate::host::events::EdEvent;
 use crate::host_link::{self, ShellEvent};
 use crate::state::model::RootView;
 use gpui::Context;
+
+mod enter;
 
 impl RootView {
     /// Действия и клавиши окна (палитра, поиск, Enter, Esc, undo).
@@ -108,85 +108,17 @@ impl RootView {
         // элементах OVERLAY-окна и клавиатуру не получают (фокус инпута в
         // main), поэтому действие обрабатываем здесь — по тому же
         // приоритету оверлеев, что и Escape.
-        .on_action(cx.listener(|this, _: &PressEnter, _, cx| {
-            // Confirm-модалка без инпута: у оригинала кнопка Confirm
-            // автофокусится, и Enter её нажимает (`ConfirmModal.tsx:46-56`).
-            // Prompt-вариант ловит Enter сам — в своём инпуте (overlay).
-            if this.modal.as_ref().is_some_and(|m| m.prompt.is_none()) {
-                let _ = this.tx.try_send(ShellEvent::ConfirmModal);
-                cx.notify();
-                return;
-            }
-            if let Some(qp) = this.quick_pick.take() {
-                // Ответ QuickPick — ИНДЕКСЫ выбранных пунктов.
-                // multi → отмеченные, single → первый ОТФИЛЬТРОВАННЫЙ
-                // не-сепаратор (`QuickPickModal.tsx:83-87`); раньше здесь
-                // безусловно уезжал `[0]` — мимо фильтра, мимо чекбоксов
-                // и с риском вернуть сепаратор (ревью ц.25)
-                let query = this
-                    .qp_input
-                    .as_ref()
-                    .map(|inp| inp.read(cx).value().to_string())
-                    .unwrap_or_default();
-                let pick = qp.enter_pick(&query);
-                this.qp_input = None;
-                let _ = this
-                    .tx
-                    .try_send(ShellEvent::QuickPickResolve(qp.req_id, pick));
-                cx.notify();
-                return;
-            }
-            if this.sov.ws_open {
-                if let Some(hit) = this.sov.ws_results.get(this.ws_active_idx()) {
-                    let ev = match hit.line {
-                        Some(l) => ShellEvent::Ed(EdEvent::OpenFileAt(hit.uri.clone(), l)),
-                        None => ShellEvent::Ed(EdEvent::OpenFile(hit.uri.clone())),
-                    };
-                    let _ = this.tx.try_send(ev);
-                    let _ = this
-                        .tx
-                        .try_send(ShellEvent::Ed(EdEvent::SetFileMode("files")));
-                }
-            } else if this.sov.fif_open {
-                if let Some(hit) = this.sov.fif_results.get(this.fif_active_idx()) {
-                    let _ = this.tx.try_send(ShellEvent::Ed(EdEvent::OpenFileAt(
-                        hit.abs.clone(),
-                        hit.line,
-                    )));
-                    let _ = this
-                        .tx
-                        .try_send(ShellEvent::Ed(EdEvent::SetFileMode("files")));
-                }
-            } else if this.sov.quickopen_open {
-                if let Some(hit) = this.sov.quickopen_results.get(this.qo_active_idx()) {
-                    let _ = this
-                        .tx
-                        .try_send(ShellEvent::Ed(EdEvent::OpenFile(hit.abs.clone())));
-                    let _ = this
-                        .tx
-                        .try_send(ShellEvent::Ed(EdEvent::SetFileMode("files")));
-                    let _ = this.tx.try_send(ShellEvent::CloseQuickOpen);
-                }
-            } else if this.palette_open {
-                // Первый пункт отфильтрованного списка — ровно то, что
-                // выполняет Enter у оригинала (`CommandPalette.tsx:47-54`)
-                let q = this
-                    .palette_input
-                    .as_ref()
-                    .map(|inp| inp.read(cx).value().to_string())
-                    .unwrap_or_default();
-                if let Some(first) = crate::ui::command_palette::filter_gated(
-                    &this.commands,
-                    &q,
-                    &this.palette_gate(),
-                )
-                .first()
-                {
-                    let _ = this.tx.try_send(ShellEvent::RunCommand(first.id.clone()));
-                }
-            }
+        .on_action(cx.listener(Self::press_enter))
+        .on_action(cx.listener(|_, _: &crate::actions::FocusNext, window, cx| {
+            window.focus_next(cx);
             cx.notify();
         }))
+        .on_action(
+            cx.listener(|_, _: &crate::actions::FocusPrevious, window, cx| {
+                window.focus_prev(cx);
+                cx.notify();
+            }),
+        )
         .on_action(cx.listener(|this, _: &CloseOverlay, _, cx| {
             if let Some(qp) = this.quick_pick.take() {
                 this.qp_input = None;
