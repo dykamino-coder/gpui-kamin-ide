@@ -14,6 +14,7 @@ import type { HookExecutionResult, HookInputPayload, RegisteredHook } from './ty
 import { debugLog, warnLog } from '../logging'
 import { appendExecution } from './audit-log'
 import { payloadForHook } from './tool-names'
+import { conditionHolds } from './hook-condition'
 
 // Match Claude Code's DEFAULT_HTTP_HOOK_TIMEOUT_MS = 10 * 60 * 1000.
 // Long-running hooks (formatters, test runners) need this room.
@@ -77,6 +78,13 @@ export async function dispatchHook(
     return errorResult(`Unknown hook ${hookId} for session ${sessionId}`)
   }
   const start = Date.now()
+  if (reg.serverCondition) {
+    if (!conditionHolds(reg.serverCondition, payload) || reg.serverOnce?.spent) {
+      return { stdout: '', stderr: '', exitCode: 0, outcome: 'success', durationMs: 0 }
+    }
+    // Reserve synchronously before awaiting execution, including parallel calls.
+    if (reg.serverOnce) reg.serverOnce.spent = true
+  }
   payload = payloadForHook(reg.matcher, payload)
   let result: HookExecutionResult
   let auditNote: string | undefined
@@ -102,8 +110,7 @@ export async function dispatchHook(
     } else if (reg.effectiveHost === 'server') {
       result = await dispatchServer(reg, payload, start)
     } else if (reg.handler.type === 'http') {
-      // http: shouldn't normally land here — the rewriter writes them as
-      // direct CLI-side `http` hooks. Fall back to fetch ourselves.
+      // Original HTTP hooks with native argument conditions are relayed here.
       result = await dispatchHttp(reg, payload, start)
     } else {
       result = errorResult(`Cannot dispatch host ${reg.effectiveHost}`, start)
@@ -246,9 +253,12 @@ async function dispatchServer(
   const command = (reg.handler as { command: string }).command
   const shell = (reg.handler as { shell?: string }).shell ?? 'bash'
   const timeoutMs = (reg.handler.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000
+  const hook = reg.handler
 
   return new Promise<HookExecutionResult>((resolve) => {
-    const proc = spawn(shell === 'powershell' ? 'pwsh' : 'bash', ['-c', command], {
+    const executable = hook.args ? command : shell === 'powershell' ? 'pwsh' : shell
+    const args = hook.args ?? ['-c', command]
+    const proc = spawn(executable, args, {
       env: { ...process.env, CLAUDE_BRIDGE_HOOK: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
@@ -349,7 +359,7 @@ async function dispatchHttp(
   try {
     const response = await fetch(h.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(h.headers ?? {}) },
+      headers: { 'Content-Type': 'application/json', ...expandedHttpHeaders(h.headers, h.allowedEnvVars) },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(timeoutMs),
     })
@@ -360,10 +370,26 @@ async function dispatchHttp(
       exitCode: response.ok ? 0 : 1,
       outcome: response.ok ? 'success' : 'error',
       durationMs: Date.now() - start,
+      httpStatus: response.status,
     }
   } catch (err) {
     return errorResult(err instanceof Error ? err.message : String(err), start)
   }
+}
+
+/** HTTP hooks expand only the variables explicitly allowed in their declaration. */
+export function expandedHttpHeaders(
+  headers: Record<string, string> = {},
+  allowed: string[] = [],
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers).map(([name, value]) => [
+      name,
+      value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, braced: string, plain: string) =>
+        allowed.includes(braced ?? plain) ? (process.env[braced ?? plain] ?? '') : '',
+      ),
+    ]),
+  )
 }
 
 function errorResult(msg: string, start: number = Date.now(), reg?: RegisteredHook): HookExecutionResult {
