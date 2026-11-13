@@ -81,11 +81,9 @@ export async function dispatchHook(
   }
   const start = Date.now()
   if (reg.serverCondition) {
-    if (!conditionHolds(reg.serverCondition, payload, conditionContext) || reg.serverOnce?.spent) {
+    if (!conditionHolds(reg.serverCondition, payload, conditionContext)) {
       return { stdout: '', stderr: '', exitCode: 0, outcome: 'success', durationMs: 0 }
     }
-    // Reserve synchronously before awaiting execution, including parallel calls.
-    if (reg.serverOnce) reg.serverOnce.spent = true
   }
   payload = payloadForHook(reg.matcher, payload)
   let result: HookExecutionResult

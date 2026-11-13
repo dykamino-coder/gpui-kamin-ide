@@ -102,9 +102,11 @@ export function rewriteHooksForCli(
         if (h.type !== 'command' && h.type !== 'http') return condition.serverRule ? h : translated
         if (condition.serverRule) {
           reg.serverCondition = condition.serverRule
-          if (h.once) reg.serverOnce = { spent: false }
         }
-        const once = condition.serverRule ? undefined : h.once
+        // These declarations are emitted into --settings, where the CLI
+        // ignores once. Only skill-frontmatter hooks have once semantics;
+        // filtering settings hooks must not introduce a server-side limit.
+        const once = h.once
         if (h.type === 'http' && !condition.serverRule) return translated
         if (h.type === 'command' && reg.effectiveHost === 'server' && !condition.serverRule) return translated
 

@@ -25,7 +25,7 @@ it.each([
   ['Edit', '/home/client', '/workspace', '/home/client/notes/a.md'],
   ['Write', String.raw`C:\Users\client`, String.raw`D:\workspace`, String.raw`C:\Users\client\notes\a.md`],
 ])(
-  'evaluates %s home rules using the declared client home before consuming once',
+  'evaluates %s home rules using the declared client home on each matching settings call',
   async (tool, home, cwd, filePath) => {
     const ws = Object.assign(new EventEmitter(), {
       readyState: 1,
@@ -91,6 +91,6 @@ it.each([
     expect((await request(filePath)).status).toBe(200)
     expect(ws.send).toHaveBeenCalledTimes(1)
     expect((await request(filePath)).status).toBe(200)
-    expect(ws.send).toHaveBeenCalledTimes(1)
+    expect(ws.send).toHaveBeenCalledTimes(2)
   },
 )
