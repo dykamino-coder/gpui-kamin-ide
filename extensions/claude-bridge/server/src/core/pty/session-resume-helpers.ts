@@ -313,6 +313,43 @@ export function lastModelFromJsonlTail(jsonlPath: string): string | null {
 /** Как `lastModelFromJsonlTail`, но с меткой времени записи: выбор модели,
  *  сделанный ПОЗЖЕ последнего ответа, обязан пережить респаун (INC-2026-0053). */
 export function lastModelEntryFromJsonlTail(jsonlPath: string): { model: string; timestamp: string } | null {
+  const hit = lastAssistantFieldFromJsonlTail(jsonlPath, (entry) => {
+    const model = entry.message?.model ?? entry.model
+    return typeof model === 'string' && model && model !== '<synthetic>' ? model : null
+  })
+  return hit ? { model: hit.value, timestamp: hit.timestamp } : null
+}
+
+/** Effort level of the latest assistant row: Claude Code records the level a
+ *  turn ran with as `effort` on each row (INC-2026-0099). */
+export function lastEffortEntryFromJsonlTail(jsonlPath: string): { effort: string; timestamp: string } | null {
+  const hit = lastAssistantFieldFromJsonlTail(jsonlPath, (entry) =>
+    typeof entry.effort === 'string' && entry.effort ? entry.effort : null,
+  )
+  return hit ? { effort: hit.value, timestamp: hit.timestamp } : null
+}
+
+export function lastEffortEntryForResume(
+  settingsDir: string,
+  conversationId: string,
+): { effort: string; timestamp: string } | null {
+  const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
+  return lastEffortEntryFromJsonlTail(path.join(os.homedir(), '.claude', 'projects', slug, `${conversationId}.jsonl`))
+}
+
+interface TailEntry {
+  type?: string
+  model?: unknown
+  effort?: unknown
+  timestamp?: unknown
+  message?: { model?: unknown }
+}
+
+/** Latest assistant row (bounded 8 MiB tail) for which `pick` yields a value. */
+function lastAssistantFieldFromJsonlTail(
+  jsonlPath: string,
+  pick: (entry: TailEntry) => string | null,
+): { value: string; timestamp: string } | null {
   let fd: number | undefined
   try {
     fd = fs.openSync(jsonlPath, 'r')
@@ -329,17 +366,15 @@ export function lastModelEntryFromJsonlTail(jsonlPath: string): { model: string;
     const text = buffer.subarray(0, read).toString('utf8')
     const lines = text.slice(start === 0 ? 0 : text.indexOf('\n') + 1).split('\n')
     for (let i = lines.length - 1; i >= 0; i--) {
-      let entry: { type?: string; model?: unknown; timestamp?: unknown; message?: { model?: unknown } }
+      let entry: TailEntry
       try {
         entry = JSON.parse(lines[i]!)
       } catch {
         continue
       }
       if (entry.type !== 'assistant') continue
-      const model = entry.message?.model ?? entry.model
-      if (typeof model === 'string' && model && model !== '<synthetic>') {
-        return { model, timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : '' }
-      }
+      const value = pick(entry)
+      if (value) return { value, timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : '' }
     }
   } catch {
     /* missing or unreadable transcript: let Claude Code restore it */

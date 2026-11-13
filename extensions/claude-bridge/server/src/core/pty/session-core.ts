@@ -52,6 +52,7 @@ import {
 } from './session-settings'
 import { archiveTranscriptForSession, dropArchivedTranscript, readArchiveMeta } from './transcript-archive'
 import { forgetModelSelection, modelForResumeWithSelection } from './model-selection'
+import { effortForResume, forgetEffortSelection, rememberEffortSelection } from './effort-selection'
 import {
   findOrRecreateSettingsDir,
   xbasename,
@@ -319,6 +320,11 @@ async function createAdmittedSession(
     if (previousModel) {
       config.model = modelForResume(previousModel)
     }
+  }
+  // INC-2026-0099: `--effort` always outranks the level the CLI would restore,
+  // so a respawn must carry the conversation's level instead of the default.
+  if (config.resumeConversationId && !config.effort) {
+    config.effort = effortForResume(settingsDir, config.resumeConversationId) ?? undefined
   }
 
   // Create session directory + settings (overwrites existing on restart)
@@ -1071,6 +1077,8 @@ export async function restartWithEffort(
   const oldSettingsDir = session.settingsDir
 
   debugLog('Restarting session with new effort', { sessionId, effort, conversationId })
+  // Later respawns would otherwise fall back to the older transcript level.
+  rememberEffortSelection(conversationId, effort)
 
   // Mark as restarting so onExit handler doesn't send session:exit
   session.isRestarting = true
@@ -1628,6 +1636,7 @@ export async function deleteSessionByConversationId(
   })
   dropArchivedTranscript(conversationId)
   forgetModelSelection(conversationId)
+  forgetEffortSelection(conversationId)
   fs.rmSync(target.settingsDir, { recursive: true, force: true })
   // Do not follow a project-directory link even when an archive identified ownership.
   if (isPlainDirectory(path.dirname(target.jsonlPath))) fs.rmSync(target.jsonlPath, { force: true })
