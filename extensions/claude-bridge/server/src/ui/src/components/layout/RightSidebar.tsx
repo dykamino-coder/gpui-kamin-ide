@@ -5,7 +5,7 @@ import { formatTokens, formatCost } from '../../utils/formatters'
 import { userColor } from '../../utils/user-colors'
 import { api } from '../../services/api-client'
 import type { UserSummary } from '../../services/api-client'
-import { refreshUsers, subscribeUserStats, users } from '../../signals/users-stats'
+import { refreshUsers, statsBuilding, subscribeUserStats, users } from '../../signals/users-stats'
 import styles from './RightSidebar.module.css'
 
 // Explicit, labelled sort. The order is frozen between data refreshes so rows
@@ -172,6 +172,18 @@ export function RightSidebar() {
     if (order.length === 0 && data.length > 0) setOrder(fresh)
   }, [data.length])
 
+  // The roster served during the one-time statistics build carries no numbers:
+  // apply the sort again once the real numbers arrive.
+  const building = statsBuilding.value
+  const [sawBuild, setSawBuild] = useState(false)
+  useEffect(() => {
+    if (building != null) setSawBuild(true)
+    else if (sawBuild && data.length > 0) {
+      setSawBuild(false)
+      setOrder(fresh)
+    }
+  }, [building, data])
+
   const pickMode = (next: SortMode) => {
     setMode(next)
     saveSort(next)
@@ -202,7 +214,12 @@ export function RightSidebar() {
               ))}
             </select>
           </label>
-          {stale && (
+          {building != null && (
+            <span class={styles.sortLabel} role="status" title="Statistics are being prepared after an upgrade">
+              Preparing stats… {building}%
+            </span>
+          )}
+          {building == null && stale && (
             <button
               class={styles.resortBtn}
               onClick={() => setOrder(fresh)}

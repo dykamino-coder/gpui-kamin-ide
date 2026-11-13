@@ -68,6 +68,29 @@ async function loadUserStats() {
   return { aggRows, costByUser, ctxByUser }
 }
 
+async function loadRoster() {
+  const db = await getDb()
+  const raw = (
+    await db.runAndReadAll(
+      `SELECT user_name, MIN(created_at) AS first_seen, MAX(created_at) AS last_seen FROM session_tokens
+      WHERE deleted = 0 AND user_name IS NOT NULL AND user_name != '' GROUP BY user_name`,
+    )
+  ).getRowObjects() as Array<{ user_name: string; first_seen: string | null; last_seen: string | null }>
+  const aggRows: UserTotalsRow[] = raw.map((r) => ({
+    user_name: r.user_name,
+    user_inputs: 0,
+    input_uncached: 0,
+    output_tokens: 0,
+    cache_read: 0,
+    cache_creation: 0,
+    first_seen: r.first_seen,
+    last_seen: r.last_seen,
+    tokens_7d: 0,
+    tokens_30d: 0,
+  }))
+  return { aggRows, costByUser: new Map<string, number>(), ctxByUser: new Map<string, number>() }
+}
+
 export function tierForModel(model: string | null | undefined): CostTier {
   const m = (model || '').toLowerCase()
   if (m.includes('haiku-5')) return TIER_HAIKU_5_5
@@ -101,8 +124,14 @@ export function registerUserRoutes(api: Hono): void {
     if (denied) return denied
     // Rollup read model (stats-queries.ts), served stale-while-revalidate
     // across rollup revisions; live PTY counts are layered on per request.
-    const { rollupRevision } = await import('../../stats/database/rollup')
-    const { aggRows, costByUser, ctxByUser } = (await usersCache.get('users', rollupRevision(), loadUserStats)).data
+    const { rollupRevision, rollupBuildStatus } = await import('../../stats/database/rollup')
+    // During the one-time rollup build: the roster from the owner map only (no
+    // raw-event scan), counters zero, progress in X-Stats-Building.
+    const build = rollupBuildStatus()
+    if (!build.ready) c.header('X-Stats-Building', String(build.pct))
+    const { aggRows, costByUser, ctxByUser } = build.ready
+      ? (await usersCache.get('users', rollupRevision(), loadUserStats)).data
+      : await loadRoster()
     const aggMap = new Map(aggRows.map((r) => [r.user_name, r]))
     const ptySessions = getAllSessions()
     const activeSessionsByUser = new Map<string, number>()

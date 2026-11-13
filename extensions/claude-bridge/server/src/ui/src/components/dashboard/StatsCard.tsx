@@ -10,7 +10,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'preact/compat'
 import { createJsonlDownloader } from '../../utils/jsonl-download'
 import { Card } from '../shared'
-import { cards, cardsError, fetchCard, subscribeUserStats, users } from '../../signals/users-stats'
+import { cards, cardsError, fetchCard, statsBuilding, subscribeUserStats, users } from '../../signals/users-stats'
 import type { CardData, StatsRange } from '../../signals/users-stats'
 
 type Range = StatsRange
@@ -161,10 +161,24 @@ interface ViewProps {
   onRange: (r: Range) => void
   loading: boolean
   error: string | null
+  /** Percent of the one-time statistics build, while it runs. */
+  building?: number | null
+}
+
+/** Progress of the one-time statistics build (after an upgrade). */
+export function BuildProgress({ pct }: { pct: number }) {
+  return (
+    <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 12 }} role="status">
+      <div style={{ marginBottom: 8 }}>Preparing statistics… {pct}%</div>
+      <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-quaternary)', overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent-blue)', transition: 'width .3s' }} />
+      </div>
+    </div>
+  )
 }
 
 /** Pure card body: re-renders only when its own data/range/state change. */
-const StatsCardView = memo(function StatsCardView({ data, range, onRange, loading, error }: ViewProps) {
+const StatsCardView = memo(function StatsCardView({ data, range, onRange, loading, error, building }: ViewProps) {
   return (
     <Card>
       <div style={{ padding: 16 }}>
@@ -196,7 +210,8 @@ const StatsCardView = memo(function StatsCardView({ data, range, onRange, loadin
           </div>
         </div>
 
-        {loading && !data && (
+        {building != null && !data && <BuildProgress pct={building} />}
+        {building == null && loading && !data && (
           <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
         )}
         {error && !loading && <div style={{ padding: 12, color: 'var(--accent-red)', fontSize: 12 }}>{error}</div>}
@@ -300,7 +315,8 @@ const UserStatsCard = memo(function UserStatsCard({ subject }: { subject: string
     if (cards.peek()) return
     let cancelled = false
     fetchCard(subject, 'all')
-      .then((data) => !cancelled && !cards.peek() && setEarly(data ?? EMPTY_CARD))
+      // null while statistics are still being built: the card shows progress.
+      .then((data) => !cancelled && !cards.peek() && data && setEarly(data))
       .catch(() => {}) // the batch reports errors
     return () => {
       cancelled = true
@@ -308,6 +324,8 @@ const UserStatsCard = memo(function UserStatsCard({ subject }: { subject: string
   }, [subject])
   // A known user without rollup rows still gets a zero card, as before.
   const shared = cards.value ? (cards.value[subject] ?? EMPTY_CARD) : early
+  // Refetch a card's own range once the one-time build finishes.
+  const statsReady = statsBuilding.value == null
   useEffect(() => {
     if (range === 'all') {
       setOwn(null)
@@ -316,17 +334,26 @@ const UserStatsCard = memo(function UserStatsCard({ subject }: { subject: string
     let cancelled = false
     setOwn((o) => ({ range, data: o?.data ?? null, error: null }))
     fetchCard(subject, range)
-      .then((data) => !cancelled && setOwn({ range, data: data ?? EMPTY_CARD, error: null }))
+      .then((data) => !cancelled && setOwn({ range, data: data ?? (statsReady ? EMPTY_CARD : null), error: null }))
       .catch((e) => !cancelled && setOwn({ range, data: null, error: String(e) }))
     return () => {
       cancelled = true
     }
-  }, [range, subject])
+  }, [range, subject, statsReady])
   const data = range === 'all' ? shared : (own?.data ?? null)
   const loading =
     range === 'all' ? !shared && !cardsError.value : !own || own.range !== range || (!own.data && !own.error)
   const error = range === 'all' ? cardsError.value : (own?.error ?? null)
-  return <StatsCardView data={data} range={range} onRange={setRange} loading={loading} error={error} />
+  return (
+    <StatsCardView
+      data={data}
+      range={range}
+      onRange={setRange}
+      loading={loading}
+      error={error}
+      building={statsBuilding.value}
+    />
+  )
 })
 
 /** Mounts its card when it comes within one screen of the viewport, then keeps it. */
@@ -422,6 +449,8 @@ interface TokenSessionsListProps {
   onCountChange?: (count: number) => void
 }
 
+const SESSIONS_PAGE = 200
+
 export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListProps) {
   const [sessions, setSessions] = useState<SessionRow[] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -434,33 +463,57 @@ export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListP
     return () => downloader.dispose()
   }, [downloader])
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
+  // Newest first, one page at a time; "Show more" follows the server cursor.
+  const [next, setNext] = useState<string | null>(null)
+  const [building, setBuilding] = useState<number | null>(null)
+  const [moreBusy, setMoreBusy] = useState(false)
+  const pageAbort = useRef<AbortController | null>(null)
+  const loadPage = (cursor: string | null) => {
+    pageAbort.current?.abort()
+    const ctl = new AbortController()
+    pageAbort.current = ctl
     const sessTok2 = localStorage.getItem('dashboard_session_token')
-    fetch(`/api/dashboard/tokens/${encodeURIComponent(tokenId)}/sessions`, {
-      signal: AbortSignal.timeout(15_000),
+    const q = `limit=${SESSIONS_PAGE}${cursor ? `&before=${encodeURIComponent(cursor)}` : ''}`
+    return fetch(`/api/dashboard/tokens/${encodeURIComponent(tokenId)}/sessions?${q}`, {
+      signal: AbortSignal.any ? AbortSignal.any([ctl.signal, AbortSignal.timeout(15_000)]) : ctl.signal,
       headers: sessTok2 ? { Authorization: `Bearer ${sessTok2}` } : {},
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
-      .then((d: { sessions: SessionRow[] }) => {
-        if (!cancelled) {
-          setSessions(d.sessions)
-          setLoading(false)
-          onCountChange?.(d.sessions.length)
+      .then((d: { sessions: SessionRow[]; total?: number; next?: string | null; building?: { pct: number } }) => {
+        if (ctl.signal.aborted) return
+        setBuilding(d.building ? d.building.pct : null)
+        if (d.building) {
+          // Statistics are still being prepared: retry shortly.
+          setTimeout(() => {
+            if (!ctl.signal.aborted) loadPage(null).catch((e) => setError(String(e)))
+          }, 3_000)
+          return
         }
+        setSessions((prev) => (cursor && prev ? [...prev, ...d.sessions] : d.sessions))
+        setNext(d.next ?? null)
+        setLoading(false)
+        onCountChange?.(d.total ?? d.sessions.length)
       })
-      .catch((e) => {
-        if (!cancelled) {
-          setError(String(e))
-          setLoading(false)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
+  }
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    setSessions(null)
+    setNext(null)
+    loadPage(null).catch((e) => {
+      if (pageAbort.current?.signal.aborted) return
+      setError(String(e))
+      setLoading(false)
+    })
+    return () => pageAbort.current?.abort()
   }, [tokenId])
+  const showMore = () => {
+    if (!next || moreBusy) return
+    setMoreBusy(true)
+    loadPage(next)
+      .catch((e) => setError(String(e)))
+      .finally(() => setMoreBusy(false))
+  }
 
   async function downloadJsonl(sessionId: string) {
     try {
@@ -509,7 +562,8 @@ export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListP
 
   return (
     <div>
-      {loading && <div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div>}
+      {loading && building != null && <BuildProgress pct={building} />}
+      {loading && building == null && <div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div>}
       {error && !loading && <div style={{ padding: 12, color: 'var(--accent-red)', fontSize: 12 }}>{error}</div>}
       {sorted && !loading && sorted.length === 0 && (
         <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
@@ -701,6 +755,26 @@ export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListP
               ))}
             </tbody>
           </table>
+          {next && (
+            <div style={{ padding: 10, textAlign: 'center' }}>
+              <button
+                type="button"
+                onClick={showMore}
+                disabled={moreBusy}
+                style={{
+                  padding: '4px 14px',
+                  borderRadius: 4,
+                  border: '1px solid var(--border-primary)',
+                  background: 'transparent',
+                  color: 'var(--text-secondary)',
+                  cursor: moreBusy ? 'default' : 'pointer',
+                  fontSize: 12,
+                }}
+              >
+                {moreBusy ? 'Loading…' : 'Show more'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
