@@ -15,6 +15,17 @@ impl RootView {
         let _ = cx;
         match event {
             ShellEvent::Term(TermEvent::TermWakeup) => {} // cx.notify делает насос — грид перерисуется
+            ShellEvent::Term(TermEvent::TermProfilesChanged) => {}
+            ShellEvent::Term(TermEvent::TermEnsureShell) => {
+                self.term.spawn_pending = false;
+                if self.terminal_shown() && self.term.terminals.is_empty() {
+                    let id = self.term.term_default_shell.as_deref().unwrap_or_default();
+                    if let Some(profile) = crate::term::profile_by_id(id) {
+                        let cwd = self.term.pending_cwd.take();
+                        self.spawn_shell_in(profile, cwd);
+                    }
+                }
+            }
             ShellEvent::Term(TermEvent::TermInput(s)) => {
                 if let Some(t) = self.term.terminals.get_mut(self.term.term_active) {
                     t.write(s.as_bytes());
@@ -41,7 +52,9 @@ impl RootView {
             }
             ShellEvent::Term(TermEvent::TermNew(profile_id)) => {
                 self.term.term_menu_open = false;
-                self.spawn_shell(crate::term::profile_by_id(&profile_id));
+                if let Some(profile) = crate::term::profile_by_id(&profile_id) {
+                    self.spawn_shell(profile);
+                }
             }
             ShellEvent::Term(TermEvent::TermScroll(n)) => {
                 if let Some(t) = self.term.terminals.get_mut(self.term.term_active) {

@@ -1944,6 +1944,26 @@ double-click, фактический focus/typing, Enter/Escape/blur и сосе
 из BR-28. Probe-вызов BeginRename и state tests не заменяют keyboard/hitbox path; задача
 возвращена в `verify`.
 
+**Verification 2026-11-13 (KaminIDE 1.0.94, copy profile, kamin-probe) —
+partial pass.** Private evidence: [BR-29 run](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/c147ec55a1d9e328d5cd7bd6bb15d356a8d2f0fa/incidents/BR-29/evidence/2026-11-13-br29-1.0.94).
+Passed on the real pointer/WM_CHAR path:
+
+- hover of the row → fly-out pill over the sidebar edge; hover of the pencil keeps
+  the pill and shows `Rename`;
+- pencil click → the pill disappears, the input replaces the name with the whole
+  name selected; typed text replaces it at once (the input has keyboard focus);
+- Escape → cancel, the old name stays and nothing is saved;
+- click outside (into the chat) → blur commits; the new name is shown and persisted
+  in `sessions.json`;
+- double-click → the row becomes active, the input opens selected and without the
+  pill; blur commits again.
+
+Not covered: Enter commit and F2. kamin-probe sends keys only via `SendInput`
+after `SetForegroundWindow`, which takes over the owner's screen. A screen-free
+gate needs an in-process probe keystroke command (gpui `dispatch_keystroke` into
+the window). Also not covered: scroll and session change during the transition,
+and the paired BR-28 bounds. Status stays `verify` for these steps only.
+
 **Status:** implementation merged в PR #37; reopened for verification.
 Частичный Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал
 возможен после PR #40 (зелёный Rust-gate на `main`).
