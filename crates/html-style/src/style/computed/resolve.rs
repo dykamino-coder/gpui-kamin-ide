@@ -88,6 +88,15 @@ impl Computed {
     /// последний: прежде в gpui уходило `liga 0, …, liga 1`, а
     /// `apply_font_features` дописывал после них ещё `liga 0`
     /// (`font-features-across-space-3`).
+    /// Отключены ли необязательные лигатуры: ненулевой `letter-spacing` (css-text-3 §8.2)
+    /// или растяжка выключки по символам.
+    pub fn optional_ligatures_off(&self) -> bool {
+        matches!(self.inh.text_flow.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0)
+            || (self.inh.text_flow.justify_chars == Some(2)
+                && (self.inh.text_flow.text_align == Some(TextAlign::Justify)
+                    || self.inh.text_flow.text_align_last == Some(Some(TextAlign::Justify))))
+    }
+
     pub fn used_features(&self, vcx: crate::values::ValueCx<'_>) -> Vec<(String, u32)> {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
         let mut all: Vec<(String, u32)> = vcx.doc.font_snapshot().face_features(
@@ -120,11 +129,7 @@ impl Computed {
         // `font-variant-ligatures`, младше `font-feature-settings`
         // (`font-feature-resolution-001/002`: `fvl-1 ls-1` — без лигатуры,
         // `ls-1 ffs-1` — с ней).
-        if matches!(self.inh.text_flow.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0)
-            || (self.inh.text_flow.justify_chars == Some(2)
-                && (self.inh.text_flow.text_align == Some(TextAlign::Justify)
-                    || self.inh.text_flow.text_align_last == Some(Some(TextAlign::Justify))))
-        {
+        if self.optional_ligatures_off() {
             for tag in ["liga", "clig", "dlig", "hlig"] {
                 all.push((tag.to_string(), 0));
             }
