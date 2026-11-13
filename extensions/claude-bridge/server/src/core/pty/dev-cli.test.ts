@@ -51,6 +51,8 @@ describe('checkout-only fake CLI selection', () => {
     )
     const files = JSON.parse(result)[0].files.map((f: { path: string }) => f.path)
     expect(files).toContain('src/core/pty/dev-cli.ts')
+    expect(files).toContain('dist/dashboard/api-docs.html')
+    expect(files.some((f: string) => f.startsWith('src/ui/node_modules/'))).toBe(false)
     expect(files.some((f: string) => f.startsWith('test-support/'))).toBe(false)
     expect(() => devCli(enabled, files.includes('test-support/fake-claude.mjs'))).toThrow('release artifacts')
   }, 120_000)
