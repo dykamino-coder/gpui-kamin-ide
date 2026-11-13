@@ -4,10 +4,7 @@
 //! разъехались по модулям рядом, а здесь остался только выбор адресата —
 //! видно с одного экрана, кто за что отвечает.
 
-use crate::host::events::CzEvent;
-use crate::host::events::EdEvent;
-use crate::host::events::TermEvent;
-use crate::host::events::TreeEvent;
+use crate::host::events::{CzEvent, EdEvent, TermEvent, TreeEvent};
 use gpui::Context;
 
 use crate::host_link::ShellEvent;
@@ -216,6 +213,8 @@ impl RootView {
             | ShellEvent::Cz(CzEvent::CheckForUpdates) => self.apply_extensions_updates(event, cx),
             ShellEvent::Term(TermEvent::TermWakeup)
             | ShellEvent::Term(TermEvent::TermInput { .. })
+            | ShellEvent::Term(TermEvent::TermProfilesChanged)
+            | ShellEvent::Term(TermEvent::TermEnsureShell)
             | ShellEvent::Term(TermEvent::TermTabScroll { .. })
             | ShellEvent::Term(TermEvent::TermSetDefaultShell { .. })
             | ShellEvent::Term(TermEvent::TermNew { .. })

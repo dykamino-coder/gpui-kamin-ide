@@ -16,6 +16,10 @@ pub enum TermEvent {
     RestartForWeb(bool),
     /// Терминал: новые данные в grid (перерисовать).
     TermWakeup,
+    /// Background profile snapshots changed; request a frame even without PTY output.
+    TermProfilesChanged,
+    /// Render requested a visible terminal; create its PTY outside render.
+    TermEnsureShell,
     /// Байты в PTY извне UI (probe-верификация терминала)
     TermInput(String),
     /// Новый шелл по id профиля («+» дропдаун)
