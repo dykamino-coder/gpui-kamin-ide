@@ -2211,7 +2211,7 @@ into view on `focus()`.
 `overflow_y_scrollbar()` and no external scroll handle, and
 `crates/shell/src/ui/focus_ring.rs` only paints the ring; nothing moves the
 scroll offset when the focus changes.
-**Status:** confirmed by source and live; fix not started.
+**Status:** confirmed by source and live. **Fix PR:** [#875](https://github.com/dykamino-coder/gpui-kamin-ide/pull/875): a keyboard focus move records the painted bounds of the focused row, and the session list scrolls by the smallest offset that shows it; the GPUI test fails without the scroll call.
 **Dependency:** none.
 **Acceptance:** a shell test that tabs to a row below and above the visible
 part of a scrolled session list and checks that the row ends up inside the
