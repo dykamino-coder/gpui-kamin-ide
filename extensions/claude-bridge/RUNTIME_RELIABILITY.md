@@ -347,6 +347,29 @@ server из проверяемого `main` должен выполнить эт
 outcomes и sanitized evidence. При stall сверить BR-31; нового fix без воспроизведения не
 делать.
 
+**Verification 2026-11-13 on the installed 1.0.96 (kmaint2): send after recovery passed;
+closing a tab inside the reconnect window fails.**
+- Setup: installed KaminIDE 1.0.96 on a copy of a working profile; isolated authenticated server
+  from the official image `open-claude-bridge:6.3.173`. Driven only through kamin-probe.
+  The reconnect window was made by killing the extension-host child process (`--role=exthost`);
+  the parent respawned it in about 1 s.
+- Send after recovery: passed. Three sends right after the respawn each reached the session once;
+  the composer was ready afterwards.
+- Close tab inside the reconnect window: **fails, 2 of 2**. `closeTab` sent 0.3 s after the kill
+  returned without error, but the tab was still listed 10 s and 15 s later. The same call with no
+  kill removed the tab at once and it stayed removed.
+- Likely mechanism (from source, not yet proven live): the parent forwards
+  `kamin:webview:inbound` to the new child as soon as the child is ready, but the child's
+  `Webviews.deliverMessage` drops messages for a view that is not resolved again yet.
+- Also seen, contract not settled: every extension-host respawn added 4 more tabs from the
+  open sessions (9 → 13 → 17 → 20).
+- Not run yet: max-sessions and session-not-found.
+- Evidence: [private PR #177](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/177),
+  `incidents/BR-05/evidence/2026-11-13-installed-1.0.96`.
+- **Next step:** kmaint2: a Fix PR that keeps webview messages that arrive before the view is
+  resolved again and hands them over after resolve, with a test that fails on the old code and
+  this close-tab scenario as the Windows gate. Then run max-sessions and session-not-found.
+
 **Status:** implementation merged в PR #14; reopened for verification.
 **Dependency:** none. **Acceptance:** automated + Windows runtime merge gate;
 непроверенная часть перечислена в audit выше.
