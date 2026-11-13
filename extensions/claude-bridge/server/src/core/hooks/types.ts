@@ -128,6 +128,10 @@ export interface RegisteredHook {
   handler: HookHandler
   source: HookSource
   effectiveHost: 'local' | 'server' | 'http' // resolved from handler.host + defaults
+  /** Native argument condition, evaluated before executing the relayed hook. */
+  serverCondition?: { tool: string; content: string }
+  /** CLI `once` must not be consumed by calls rejected by serverCondition. */
+  serverOnce?: { spent: boolean }
 }
 
 export type HookSource =
@@ -190,4 +194,6 @@ export interface HookExecutionResult {
    *  `additionalContext`, etc. Bridge passes it through verbatim. */
   jsonOutput?: Record<string, unknown>
   durationMs: number
+  /** Preserve an original HTTP hook's response when it needs server filtering. */
+  httpStatus?: number
 }

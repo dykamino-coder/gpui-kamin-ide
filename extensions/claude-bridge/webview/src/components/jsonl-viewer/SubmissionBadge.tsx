@@ -18,10 +18,12 @@ export function SubmissionBadge({ entry }: { entry: JsonlEntryData }): JSX.Eleme
   const action = (name: 'cancel' | 'push' | 'interrupt') => bridge.submissionAction(tabId, item.id, name)
   return <span class={`submission-status ${styles.status}`} data-submission-id={item.id} data-state={item.state}>
     <span role="status" title={explanation}>{label}</span>
-    {uncertain && <Button class={styles.action} title="Hide the unconfirmed row; this does not cancel CLI delivery" onClick={() => dismissUncertain(tabId, item.id)}>Dismiss</Button>}
+    {uncertain && !item.retryable && <Button class={styles.action} title="Hide the unconfirmed row; this does not cancel CLI delivery" onClick={() => dismissUncertain(tabId, item.id)}>Dismiss</Button>}
+    {uncertain && item.retryable && <Button class={styles.action} title="Check the transcript before retrying in the replacement CLI session" onClick={() => action('push')}>Retry</Button>}
     {item.cancelable && <Button class={styles.action} title="Cancel this message before CLI delivery" onClick={() => action('cancel')}>Cancel</Button>}
     {item.state === 'queued' && <Button class={styles.action} title="Deliver this message when the terminal composer is clear" onClick={() => action('push')}>Send now</Button>}
     {(item.state === 'queued' || item.state === 'native') &&
       <Button class={styles.action} title="Interrupt the current turn and process the queued message" onClick={() => action('interrupt')}>Interrupt and send</Button>}
+    {(item.state === 'queued' || uncertain) && item.warning && <span class={styles.warning} role="status">{item.warning}</span>}
   </span>
 }

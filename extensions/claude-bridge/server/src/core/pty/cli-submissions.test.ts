@@ -5,7 +5,7 @@ import type { PtySession } from './types'
 
 const input = vi.hoisted(() => ({
   rawInputDirty: false,
-  activeKind: null,
+  activeKind: null as 'user' | 'maintenance' | null,
   queuedSubmissions: 0,
   pendingMaintenance: [],
 }))
@@ -20,6 +20,8 @@ vi.mock('./session-io', () => ({ sendToClient: (ws: any, frame: any) => ws.send(
 function fixture(busy = true) {
   vi.useFakeTimers()
   input.rawInputDirty = false
+  input.activeKind = null
+  input.queuedSubmissions = 0
   deliver.mockClear()
   const frames: any[] = [],
     armed: (() => void)[] = []
@@ -116,5 +118,34 @@ describe('hybrid message receipts', () => {
       createdAt: Date.parse('2026-11-10T10:00:00Z'),
     })
     expect(f.queue.ids()).toEqual(['first', 'second'])
+  })
+  it('explains an input wait and Send now retries immediately once it clears', () => {
+    const f = fixture()
+    input.activeKind = 'maintenance'
+    f.queue.submit('waiting', 'send now')
+    expect(f.frames.at(-1)).toMatchObject({ state: 'queued', warning: expect.stringContaining('input transaction') })
+    const count = f.frames.length
+    vi.advanceTimersByTime(500)
+    expect(f.frames).toHaveLength(count) // A waiting item does not flood receipt traffic.
+    input.activeKind = null
+    f.queue.action('waiting', 'push')
+    expect(f.armed).toHaveLength(1)
+    f.armed[0]!()
+    f.queue.action('waiting', 'push')
+    f.queue.submit('waiting', 'send now')
+    expect(deliver).toHaveBeenCalledExactlyOnceWith(expect.anything(), 'send now')
+  })
+  it('explains a missing confirmation instead of leaving later items silently queued', () => {
+    const f = fixture(false)
+    f.queue.submit('first', 'awaiting CLI read')
+    f.queue.submit('second', 'waiting')
+    expect(f.frames.at(-1)).toMatchObject({
+      id: 'second',
+      state: 'queued',
+      warning: expect.stringContaining('earlier message'),
+    })
+    f.mod.onRead('first', 'stored')
+    f.queue.action('second', 'push')
+    expect(f.mod.submit).toHaveBeenCalledTimes(2)
   })
 })

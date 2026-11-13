@@ -8,6 +8,8 @@ export interface SubmissionUpdate {
   state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
   uuid?: string
   cancelable?: boolean
+  /** The old CLI was ended; an explicit retry may now submit to its replacement. */
+  retryable?: boolean
   warning?: string
   capable?: boolean
   /** Server time (ms) the server first accepted this id; same clock as the CLI

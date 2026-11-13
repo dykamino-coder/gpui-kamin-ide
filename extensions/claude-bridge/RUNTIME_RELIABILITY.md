@@ -1624,14 +1624,16 @@ switch/reconnect и pointer activity, а текущий incident возника�
 Gate on the exact candidate `94ebd71c` passed for the notice itself: linear
 countdown and automatic close at about 8 s, hover pause and resume of the
 remaining time, `Open` closes the notice and returns the action. A real turn
-ending in a background session showed no notice on the candidate nor on `main`
-without #834, so the live Agent Teams one-per-turn case could not be shown.
-That trigger defect is registered separately as
-[INC-2026-0113](runtime-issues/INC-2026-0113.md).
+ending in a background session also showed the notice on the candidate: it
+counted down and closed by itself after about 8 s, while `main` without #834
+kept it on screen. (The first report said no notice was shown; that was a
+toast-detector error, corrected on 2026-11-13, and
+[INC-2026-0113](runtime-issues/INC-2026-0113.md) is closed as invalid.)
 Evidence:
-[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/80c464106c2fbe98666a4cf7b92195af5cea9530/incidents/BR-23/evidence/2026-11-13-pr834-94ebd71c).
-Next step: verify the real-completion and Agent Teams cases after INC-2026-0113
-is fixed; then close.
+[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/80c464106c2fbe98666a4cf7b92195af5cea9530/incidents/BR-23/evidence/2026-11-13-pr834-94ebd71c),
+[correction](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/b93dacb6445fb1b7aec3298d5da7cc55c48b7fe1/incidents/BR-23/evidence/2026-11-13-correction-toast-shown).
+Next step: verify the live Agent Teams case (one notice per main turn) on a
+release that contains `5d95419f`; then close.
 
 **Owner evidence intake (2026-09-08, TASK-009):** An August 21 screenshot shows at least five `Session finished` notifications with Open/dismiss actions; one tab label appears repeatedly. The owner reports that they do not disappear automatically. This is the existing BR-23 problem, so no duplicate INC task is created.
 
@@ -2068,19 +2070,6 @@ writes nothing, focus returns to the row. Evidence:
 Remaining: scroll/session change during the transition and BR-28 bounds, then
 a check on the installed release that contains `a60ef903`.
 
-**Child BR-29A — focus ring is clipped in the sidebar and tab strip
-(registered 2026-11-13, kmaint2, lead-directed):** During the #839 gate the
-keyboard focus ring was cut off on session rows and on tab chips. Source:
-`crates/shell/src/ui/focus_ring.rs` draws the ring as an absolute overlay 4 px
-outside the element, and the row list and the tab strip clip their children, so
-the outer part of the ring is not painted. **Status:** confirmed by source and
-live. **Next step:** change, queued with the Codex `cxinc` worker: draw the ring
-inset, or give the clipping containers padding equal to the ring offset (like
-CSS `outline-offset`). **Acceptance:** a layout/paint test that the ring bounds
-stay inside the clip of a row and a tab chip; then a Windows gate that the ring
-is fully visible on a row, a chip and their first/last items. **Windows runtime
-merge gate:** required; owner `kmaint2`.
-
 **Close-out audit 2026-09-06:** В [PR
 #37](https://github.com/dykamino-coder/gpui-kamin-ide/pull/37) явно указано, что probe не
 измеряет input focus. Helper и id-scoped anchor уже merged, но invariant «input сразу
@@ -2176,6 +2165,36 @@ double-click, F2, контекст-меню, probe) идут через него
 (`ui/sessions/anchor.rs`) стал id-scoped: `PillAnchor { id, bounds }`,
 overlay рисует пилюлю только по `anchor_for(hover_pill)` и никогда для строки
 в rename. `DismissHoverPill` использует тот же teardown.
+
+### BR-29A — Keep the keyboard focus ring visible inside clipped containers
+
+**Child of BR-29 (registered 2026-11-13, kmaint2, lead-directed):** During the #839 gate the
+keyboard focus ring was cut off on session rows and on tab chips. Source:
+`crates/shell/src/ui/focus_ring.rs` draws the ring as an absolute overlay 4 px
+outside the element, and the row list and the tab strip clip their children, so
+the outer part of the ring is not painted. **Status:** confirmed by source and
+live. **Fix PR:** [#853](https://github.com/dykamino-coder/gpui-kamin-ide/pull/853)
+(prepared by the Codex `cxinc` worker). Windows gate on its exact head
+`95ebe50f` passed: full rings on the first and last tab chips and on the first,
+a middle and the last session rows, while 1.0.95 clips or hides them; only ring
+pixels differ. Evidence:
+[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/58f2ce8723fed6be4e49599b29733870bc340ca3/incidents/BR-29/evidence/2026-11-13-pr853-95ebe50f).
+#853 merged as `93dddd3b`. **Next step:** check on the release that contains `93dddd3b`.
+**Acceptance:** a layout/paint test that the ring bounds
+stay inside the clip of a row and a tab chip; then a Windows gate that the ring
+is fully visible on a row, a chip and their first/last items. **Windows runtime
+merge gate:** required; owner `kmaint2`.
+
+**BR-29A candidate (2026-11-13, cxinc):** The focus-ring overlay now sits 2 px
+inside the focused element and reduces its corner radius by that inset. It
+keeps the existing element sizes and keyboard-only modality. Two paint
+regressions render the production session rows and tab chips in tight clipping
+containers, focus their first/middle/last items and check the ring bounds and
+all four painted sides. Both fail on the previous outside overlay; the fixed
+focus suite passes 5/5 and the shell suite passes 194 tests (1 ignored).
+This is automated paint evidence, not the required live Windows gate: `kmaint2`
+still checks the complete ring on actual rows/chips including first/last items
+on the exact published candidate. Status remains **verify** pending that gate.
 
 ### BR-30 — Keep incident-log records atomic across rotation
 

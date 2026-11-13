@@ -24,3 +24,8 @@
   text-transform: none;
   letter-spacing: normal;
 }
+
+.status .warning {
+  flex-basis: 100%;
+  white-space: normal;
+}

@@ -54,7 +54,7 @@ ARG CLAUDE_CODE_CACHE_BUST=1
 # (src/core/codex/tool-gate.codex.test.ts; CI installs this exact ARG).
 # The npm package carries the native binary as a per-platform optional
 # dependency — no install script, no download from OpenAI at build time.
-ARG CODEX_VERSION=0.160.1
+ARG CODEX_VERSION=0.167.2
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" tsx@4 \
     && npm cache clean --force \
     && rm -rf /tmp/* /root/.npm

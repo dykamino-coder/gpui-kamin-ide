@@ -35,6 +35,9 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
     calls BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (bridge_session_id, tool_name)
   )`)
+  await tryExec(db, 'ALTER TABLE mcp_tool_observations ADD COLUMN source TEXT')
+  await tryExec(db, 'ALTER TABLE mcp_tool_observations ADD COLUMN last_called_at TEXT')
+  await tryExec(db, 'ALTER TABLE mcp_tool_observations ADD COLUMN calls_complete BOOLEAN DEFAULT FALSE')
   await db.run(`
     CREATE TABLE IF NOT EXISTS requests (
       id TEXT PRIMARY KEY,

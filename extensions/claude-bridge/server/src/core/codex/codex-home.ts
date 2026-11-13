@@ -19,6 +19,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { mergeLoopbackNoProxy } from '../config/no-proxy'
 import { codexUserConfig, renderToml } from './config-toml'
+import { CODEX_HOME_LOCK_FILE } from './codex-home-lock'
 import type { ModelCatalog } from './model-catalog'
 
 export const CODEX_HOME_ENV = 'BRIDGE_CODEX_HOME'
@@ -46,7 +47,17 @@ export function migrateLegacyCodexHome(home: string, legacy: string = legacyCode
   if (!fs.existsSync(legacy)) return false
   if (fs.existsSync(path.join(home, 'auth.json'))) return false
   fs.mkdirSync(home, { recursive: true, mode: 0o700 })
-  fs.cpSync(legacy, home, { recursive: true, force: true })
+  // The old server's app-server lock stays behind: copied, it gets a fresh
+  // mtime and reads as a live owner from another host for LOCK_STALE_MS, so
+  // the first account check after an upgrade failed with "another Bridge
+  // server already runs codex" (acceptance 2026-11-13).
+  const lock = path.resolve(legacy, CODEX_HOME_LOCK_FILE)
+  fs.cpSync(legacy, home, {
+    recursive: true,
+    force: true,
+    preserveTimestamps: true,
+    filter: (src) => path.resolve(src) !== lock,
+  })
   fs.rmSync(legacy, { recursive: true, force: true })
   return true
 }

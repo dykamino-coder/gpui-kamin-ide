@@ -420,6 +420,7 @@ export interface KaminBridgeApi {
 
   // ─── MCP permissions ──────────────────────────────────
   onPermissionRequest(callback: (tabId: string, req: PermissionRequest) => void): () => void
+  onPermissionResolved(callback: (tabId: string, data: { requestId: string }) => void): () => void
   respondPermission(requestId: string, decision: PermissionDecision): void
 
   // ─── MCP activity (per-tab) ───────────────────────────
@@ -1011,6 +1012,7 @@ export interface SubmissionUpdate {
   state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
   uuid?: string
   cancelable?: boolean
+  retryable?: boolean
   warning?: string
   capable?: boolean
   /** Server time (ms) the server first accepted this id. */
