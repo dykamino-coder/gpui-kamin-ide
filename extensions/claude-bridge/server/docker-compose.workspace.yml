@@ -42,6 +42,7 @@ services:
       - server-logs:/app/logs
       - server-home:/home/bridge
       - server-auth:/home/bridge/.claude
+      - server-codex:/home/bridge/.codex
     environment:
       CLAUDE_PROXY_HOST: 0.0.0.0
       CLAUDE_PROXY_PORT: '3456'
@@ -63,4 +64,5 @@ volumes:
   server-data:
   server-logs:
   server-auth:
+  server-codex:
   server-home:
