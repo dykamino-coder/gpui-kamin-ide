@@ -39,6 +39,12 @@ impl RootView {
         // активация по `onStartupFinished`, а не по открытию чего-либо):
         // тянем список сразу при старте, загрузчик сам ретраит до ответа.
         request_extensions(tx.clone());
+        let profiles_tx = tx.clone();
+        crate::term::profiles::start_discovery(move || {
+            let _ = profiles_tx.try_send(ShellEvent::Term(
+                crate::host::events::TermEvent::TermProfilesChanged,
+            ));
+        });
         let theme_choice: &'static str = match crate::layout_store::load_raw_key("themeChoice")
             .and_then(|v| v.as_str().map(str::to_string))
             .as_deref()
