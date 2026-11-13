@@ -167,9 +167,14 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: extensions/claude-bridge/server/package-lock.json
+          cache-dependency-path: |
+            extensions/claude-bridge/server/package-lock.json
+            extensions/claude-bridge/server/src/ui/package-lock.json
 
       - run: npm ci --no-audit --no-fund
+      - name: Install dashboard dependencies for shared polling tests
+        working-directory: extensions/claude-bridge/server/src/ui
+        run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
