@@ -232,6 +232,7 @@ var require_constants = __commonJS({
 var require_buffer_util = __commonJS({
   "node_modules/ws/lib/buffer-util.js"(exports2, module2) {
     "use strict";
+    var { websocketMask, websocketUnmask } = require("http");
     var { EMPTY_BUFFER } = require_constants();
     var FastBuffer = Buffer[Symbol.species];
     function concat(list, totalLength) {
@@ -286,7 +287,16 @@ var require_buffer_util = __commonJS({
       toBuffer,
       unmask: _unmask
     };
-    if (!process.env.WS_NO_BUFFER_UTIL) {
+    if (websocketMask) {
+      module2.exports.mask = function(source, mask, output, offset, length) {
+        if (length < 24) _mask(source, mask, output, offset, length);
+        else websocketMask(source, mask, output, offset, length);
+      };
+      module2.exports.unmask = function(buffer, mask) {
+        if (buffer.length < 24) _unmask(buffer, mask);
+        else websocketUnmask(buffer, mask);
+      };
+    } else if (!process.env.WS_NO_BUFFER_UTIL) {
       try {
         const bufferUtil = require("bufferutil");
         module2.exports.mask = function(source, mask, output, offset, length) {
@@ -1349,6 +1359,7 @@ var require_receiver = __commonJS({
             unmask(data, this._mask);
           }
         }
+        this._mask = void 0;
         if (this._opcode > 7) {
           this.controlMessage(data, cb);
           return;
@@ -1681,12 +1692,15 @@ var require_sender = __commonJS({
           target[2] = target[3] = 0;
           target.writeUIntBE(dataLength, 4, 6);
         }
-        if (!options.mask) return [target, data];
+        if (!options.mask) {
+          return dataLength ? [target, data] : [target];
+        }
         target[1] |= 128;
         target[offset - 4] = mask[0];
         target[offset - 3] = mask[1];
         target[offset - 2] = mask[2];
         target[offset - 1] = mask[3];
+        if (!dataLength) return [target];
         if (skipMasking) return [target, data];
         if (merge) {
           applyMask(data, mask, target, offset, dataLength);
@@ -2443,6 +2457,7 @@ var require_websocket = __commonJS({
     var https = require("https");
     var http = require("http");
     var net2 = require("net");
+    var querystring = require("querystring");
     var tls = require("tls");
     var { randomBytes: randomBytes5, createHash: createHash4 } = require("crypto");
     var { Duplex, Readable } = require("stream");
@@ -2521,12 +2536,17 @@ var require_websocket = __commonJS({
               protocols = [protocols];
             }
           }
-          initAsClient(this, address, protocols, options);
+          options = initAsClient(this, address, protocols, options);
         } else {
-          this._autoPong = options.autoPong;
-          this._closeTimeout = options.closeTimeout;
           this._isServer = true;
         }
+        if (options.autoPong) {
+          this._autoPong = true;
+          this._autoPongComplete = () => autoPongComplete(this);
+          this._pendingAutoPongs = 0;
+          this._maxPendingAutoPongs = options.maxPendingAutoPongs | 0;
+        }
+        this._closeTimeout = options.closeTimeout;
       }
       /**
        * For historical reasons, the custom "nodebuffer" type is used by the default
@@ -2937,6 +2957,7 @@ var require_websocket = __commonJS({
         maxBufferedChunks: 256 * 1024,
         maxFragments: 16 * 1024,
         maxPayload: 100 * 1024 * 1024,
+        maxPendingAutoPongs: 60,
         skipUTF8Validation: false,
         perMessageDeflate: true,
         followRedirects: false,
@@ -2952,8 +2973,6 @@ var require_websocket = __commonJS({
         path: void 0,
         port: void 0
       };
-      websocket._autoPong = opts.autoPong;
-      websocket._closeTimeout = opts.closeTimeout;
       if (!protocolVersions.includes(opts.protocolVersion)) {
         throw new RangeError(
           `Unsupported protocol version: ${opts.protocolVersion} (supported versions: ${protocolVersions.join(", ")})`
@@ -2969,10 +2988,9 @@ var require_websocket = __commonJS({
           throw new SyntaxError(`Invalid URL: ${address}`);
         }
       }
-      if (parsedUrl.protocol === "http:") {
-        parsedUrl.protocol = "ws:";
-      } else if (parsedUrl.protocol === "https:") {
-        parsedUrl.protocol = "wss:";
+      if (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:") {
+        parsedUrl = new URL2(parsedUrl);
+        parsedUrl.protocol = parsedUrl.protocol === "http:" ? "ws:" : "wss:";
       }
       websocket._url = parsedUrl.href;
       const isSecure = parsedUrl.protocol === "wss:";
@@ -3041,12 +3059,19 @@ var require_websocket = __commonJS({
         }
       }
       if (parsedUrl.username || parsedUrl.password) {
-        opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
+        const username = querystring.unescape(parsedUrl.username);
+        const password = querystring.unescape(parsedUrl.password);
+        opts.auth = `${username}:${password}`;
       }
       if (isIpcUrl) {
-        const parts = opts.path.split(":");
-        opts.socketPath = parts[0];
-        opts.path = parts[1];
+        const i = opts.path.indexOf(":");
+        if (i === -1) {
+          opts.socketPath = opts.path;
+          opts.path = "";
+        } else {
+          opts.socketPath = opts.path.slice(0, i);
+          opts.path = opts.path.slice(i + 1);
+        }
       }
       let req;
       if (opts.followRedirects) {
@@ -3190,6 +3215,7 @@ var require_websocket = __commonJS({
       } else {
         req.end();
       }
+      return opts;
     }
     function emitErrorAndClose(websocket, err) {
       websocket._readyState = WebSocket2.CLOSING;
@@ -3241,8 +3267,13 @@ var require_websocket = __commonJS({
     function receiverOnConclude(code, reason) {
       const websocket = this[kWebSocket];
       websocket._closeFrameReceived = true;
-      websocket._closeMessage = reason;
       websocket._closeCode = code;
+      if (reason.length === 0) {
+        websocket._closeMessage = EMPTY_BUFFER;
+      } else {
+        websocket._closeMessage = Buffer.allocUnsafeSlow(reason.length);
+        websocket._closeMessage.set(reason);
+      }
       if (websocket._socket[kWebSocket] === void 0) return;
       websocket._socket.removeListener("data", socketOnData);
       process.nextTick(resume, websocket._socket);
@@ -3273,8 +3304,18 @@ var require_websocket = __commonJS({
     }
     function receiverOnPing(data) {
       const websocket = this[kWebSocket];
-      if (websocket._autoPong) websocket.pong(data, !this._isServer, NOOP);
+      if (websocket._autoPong && websocket.readyState === WebSocket2.OPEN) {
+        if (websocket._maxPendingAutoPongs > 0 && websocket._pendingAutoPongs >= websocket._maxPendingAutoPongs) {
+          websocket.terminate();
+        } else {
+          websocket._pendingAutoPongs++;
+          websocket.pong(data, !this._isServer, websocket._autoPongComplete);
+        }
+      }
       websocket.emit("ping", data);
+    }
+    function autoPongComplete(websocket) {
+      websocket._pendingAutoPongs--;
     }
     function receiverOnPong(data) {
       this[kWebSocket].emit("pong", data);
@@ -3529,6 +3570,8 @@ var require_websocket_server = __commonJS({
        *     fragments
        * @param {Number} [options.maxPayload=104857600] The maximum allowed message
        *     size
+       * @param {Number} [options.maxPendingAutoPongs=60] The maximum number of
+       *     pending automatic pongs
        * @param {Boolean} [options.noServer=false] Enable no server mode
        * @param {String} [options.path] Accept only connections matching this path
        * @param {(Boolean|Object)} [options.perMessageDeflate=false] Enable/disable
@@ -3551,6 +3594,7 @@ var require_websocket_server = __commonJS({
           maxBufferedChunks: 256 * 1024,
           maxFragments: 16 * 1024,
           maxPayload: 100 * 1024 * 1024,
+          maxPendingAutoPongs: 60,
           skipUTF8Validation: false,
           perMessageDeflate: false,
           handleProtocols: null,
@@ -37288,31 +37332,35 @@ var require_turndown_cjs = __commonJS({
         } else if (node.nodeType === 1) {
           replacement = replacementForNode.call(self, node);
         }
-        return join3(output, replacement);
-      }, "");
+        join3(output, replacement);
+        return output;
+      }, []);
     }
     function postProcess(output) {
       var self = this;
       this.rules.forEach(function(rule) {
         if (typeof rule.append === "function") {
-          output = join3(output, rule.append(self.options));
+          join3(output, rule.append(self.options));
         }
       });
-      return output.replace(/^[\t\r\n]+/, "").replace(/[\t\r\n\s]+$/, "");
+      return output.join("").replace(/^[\t\r\n]+/, "").replace(/[\t\r\n\s]+$/, "");
     }
     function replacementForNode(node) {
       var rule = this.rules.forNode(node);
-      var content = process2.call(this, node);
+      var content = process2.call(this, node).join("");
       var whitespace = node.flankingWhitespace;
       if (whitespace.leading || whitespace.trailing) content = content.trim();
       return whitespace.leading + rule.replacement(content, node, this.options) + whitespace.trailing;
     }
     function join3(output, replacement) {
-      var s1 = trimTrailingNewlines(output);
+      var tail = output.pop() || "";
+      var s1 = trimTrailingNewlines(tail);
       var s2 = trimLeadingNewlines(replacement);
-      var nls = Math.max(output.length - s1.length, replacement.length - s2.length);
+      var nls = Math.max(tail.length - s1.length, replacement.length - s2.length);
       var separator = "\n\n".substring(0, nls);
-      return s1 + separator + s2;
+      if (s1) output.push(s1);
+      if (separator) output.push(separator);
+      if (s2) output.push(s2);
     }
     function canConvert(input) {
       return input != null && (typeof input === "string" || input.nodeType && (input.nodeType === 1 || input.nodeType === 9 || input.nodeType === 11));
@@ -38906,6 +38954,33 @@ var require_constants5 = __commonJS({
     9007199254740991;
     var MAX_SAFE_COMPONENT_LENGTH = 16;
     var MAX_SAFE_BUILD_LENGTH = MAX_LENGTH - 6;
+    var WHITESPACE_CHARACTERS = [
+      "	",
+      "\n",
+      "\v",
+      "\f",
+      "\r",
+      " ",
+      "\xA0",
+      "\u1680",
+      "\u2000",
+      "\u2001",
+      "\u2002",
+      "\u2003",
+      "\u2004",
+      "\u2005",
+      "\u2006",
+      "\u2007",
+      "\u2008",
+      "\u2009",
+      "\u200A",
+      "\u2028",
+      "\u2029",
+      "\u202F",
+      "\u205F",
+      "\u3000",
+      "\uFEFF"
+    ];
     var RELEASE_TYPES = [
       "major",
       "premajor",
@@ -38920,6 +38995,7 @@ var require_constants5 = __commonJS({
       MAX_SAFE_COMPONENT_LENGTH,
       MAX_SAFE_BUILD_LENGTH,
       MAX_SAFE_INTEGER,
+      WHITESPACE_CHARACTERS,
       RELEASE_TYPES,
       SEMVER_SPEC_VERSION,
       FLAG_INCLUDE_PRERELEASE: 1,
@@ -39820,6 +39896,197 @@ var require_lrucache = __commonJS({
   }
 });
 
+// node_modules/semver/internal/trim-comparator-whitespace.js
+var require_trim_comparator_whitespace = __commonJS({
+  "node_modules/semver/internal/trim-comparator-whitespace.js"(exports2, module2) {
+    "use strict";
+    var {
+      MAX_LENGTH,
+      MAX_SAFE_BUILD_LENGTH,
+      WHITESPACE_CHARACTERS
+    } = require_constants5();
+    var whitespace = new Uint8Array(65536);
+    for (const char of WHITESPACE_CHARACTERS) {
+      whitespace[char.charCodeAt(0)] = 1;
+    }
+    var isWhitespace = (char) => char !== void 0 && whitespace[char.charCodeAt(0)] === 1;
+    var isVersionPrefix = (char) => char === "v" || char === "=" || isWhitespace(char);
+    var isDigit = (char) => char !== void 0 && char >= "0" && char <= "9";
+    var isLetter = (char) => char !== void 0 && (char >= "a" && char <= "z" || char >= "A" && char <= "Z");
+    var isIdentifierCharacter = (char) => isDigit(char) || isLetter(char) || char === "-";
+    var isVersionStart = (char) => isDigit(char) || char === "x" || char === "X" || char === "*";
+    var findDigitsEndIndex = (range, start, limit, digitRuns) => {
+      if (!isDigit(range[start])) {
+        return start;
+      }
+      if (start >= digitRuns.start && start < digitRuns.end) {
+        return Math.min(start + limit, digitRuns.end);
+      }
+      if (start >= digitRuns.previousStart && start < digitRuns.previousEnd) {
+        return Math.min(start + limit, digitRuns.previousEnd);
+      }
+      let end = start + 1;
+      while (isDigit(range[end])) {
+        end++;
+      }
+      digitRuns.previousStart = digitRuns.start;
+      digitRuns.previousEnd = digitRuns.end;
+      digitRuns.start = start;
+      digitRuns.end = end;
+      return Math.min(start + limit, end);
+    };
+    var findVersionNumberEndIndex = (range, start, loose, digitRuns) => {
+      if (!loose && range[start] === "0") {
+        return start + 1;
+      }
+      return findDigitsEndIndex(range, start, loose ? MAX_LENGTH : MAX_LENGTH + 1, digitRuns);
+    };
+    var findPrereleaseIdentifierEndIndex = (range, start, loose, digitRuns) => {
+      const digitsEnd = findDigitsEndIndex(range, start, MAX_LENGTH, digitRuns);
+      if (isLetter(range[digitsEnd]) || range[digitsEnd] === "-") {
+        let end = digitsEnd + 1;
+        const limit = end + MAX_SAFE_BUILD_LENGTH;
+        while (end < limit && isIdentifierCharacter(range[end])) {
+          end++;
+        }
+        return end;
+      }
+      return findVersionNumberEndIndex(range, start, loose, digitRuns);
+    };
+    var findPrereleaseEndIndex = (range, start, loose, digitRuns) => {
+      const hyphen = range[start] === "-";
+      if (!loose && !hyphen) {
+        return start;
+      }
+      const identifierStart = start + (hyphen ? 1 : 0);
+      let end = findPrereleaseIdentifierEndIndex(range, identifierStart, loose, digitRuns);
+      if (end === identifierStart) {
+        if (!loose || !hyphen) {
+          return start;
+        }
+        end = findPrereleaseIdentifierEndIndex(range, start, loose, digitRuns);
+      }
+      while (range[end] === ".") {
+        const next = findPrereleaseIdentifierEndIndex(range, end + 1, loose, digitRuns);
+        if (next === end + 1) {
+          break;
+        }
+        end = next;
+      }
+      return end;
+    };
+    var findBuildIdentifierEndIndex = (range, start) => {
+      let end = start;
+      while (end - start < MAX_SAFE_BUILD_LENGTH && isIdentifierCharacter(range[end])) {
+        end++;
+      }
+      return end;
+    };
+    var findBuildEndIndex = (range, start) => {
+      if (range[start] !== "+") {
+        return start;
+      }
+      let end = findBuildIdentifierEndIndex(range, start + 1);
+      if (end === start + 1) {
+        return start;
+      }
+      while (range[end] === ".") {
+        const next = findBuildIdentifierEndIndex(range, end + 1);
+        if (next === end + 1) {
+          break;
+        }
+        end = next;
+      }
+      return end;
+    };
+    var findLooseFullVersionEndIndex = (range, start, digitRuns) => {
+      let end = start;
+      for (let component = 0; component < 3; component++) {
+        const next = findVersionNumberEndIndex(range, end, true, digitRuns);
+        if (next === end) {
+          return start;
+        }
+        end = next;
+        if (component < 2) {
+          if (range[end] !== ".") {
+            return start;
+          }
+          end++;
+        }
+      }
+      const prereleaseEnd = findPrereleaseEndIndex(range, end, true, digitRuns);
+      return findBuildEndIndex(range, prereleaseEnd);
+    };
+    var findPartialVersionComponentEndIndex = (range, start, digitRuns) => {
+      if (isDigit(range[start])) {
+        return findVersionNumberEndIndex(range, start, false, digitRuns);
+      }
+      return isVersionStart(range[start]) ? start + 1 : start;
+    };
+    var findPartialVersionEndIndex = (range, start, digitRuns) => {
+      let end = findPartialVersionComponentEndIndex(range, start, digitRuns);
+      for (let component = 0; component < 2; component++) {
+        if (range[end] !== ".") {
+          return end;
+        }
+        const next = findPartialVersionComponentEndIndex(range, end + 1, digitRuns);
+        if (next === end + 1) {
+          return end;
+        }
+        end = next;
+      }
+      const prereleaseEnd = findPrereleaseEndIndex(range, end, false, digitRuns);
+      return findBuildEndIndex(range, prereleaseEnd);
+    };
+    var findVersionEndIndex = (range, start, digitRuns) => {
+      const fullVersionEnd = findLooseFullVersionEndIndex(range, start, digitRuns);
+      return fullVersionEnd !== start ? fullVersionEnd : findPartialVersionEndIndex(range, start, digitRuns);
+    };
+    var findRemovableWhitespaceIndex = (range, matchStart) => {
+      let position = matchStart;
+      if (isWhitespace(range[position])) {
+        position++;
+      }
+      if (range[position] === "<" || range[position] === ">") {
+        position++;
+      }
+      if (range[position] === "=") {
+        position++;
+      }
+      return isWhitespace(range[position]) ? position : -1;
+    };
+    var trimComparatorWhitespace = (range) => {
+      let result = "";
+      let copyFrom = 0;
+      let cursor = 0;
+      const digitRuns = { start: -1, end: -1, previousStart: -1, previousEnd: -1 };
+      while (cursor < range.length) {
+        const matchStart = cursor;
+        if (range[cursor] === "<" || range[cursor] === ">") {
+          cursor++;
+        } else if (!isVersionPrefix(range[cursor]) && !isVersionStart(range[cursor])) {
+          cursor++;
+          continue;
+        }
+        while (cursor < range.length && isVersionPrefix(range[cursor])) {
+          cursor++;
+        }
+        if (!isVersionStart(range[cursor])) {
+          continue;
+        }
+        const whitespacePosition = findRemovableWhitespaceIndex(range, matchStart);
+        if (whitespacePosition !== -1) {
+          result += range.slice(copyFrom, whitespacePosition);
+          copyFrom = whitespacePosition + 1;
+        }
+        cursor = findVersionEndIndex(range, cursor, digitRuns);
+      }
+      return result + range.slice(copyFrom);
+    };
+    module2.exports = trimComparatorWhitespace;
+  }
+});
+
 // node_modules/semver/classes/range.js
 var require_range = __commonJS({
   "node_modules/semver/classes/range.js"(exports2, module2) {
@@ -39901,7 +40168,7 @@ var require_range = __commonJS({
         const hr = loose ? re[t.HYPHENRANGELOOSE] : re[t.HYPHENRANGE];
         range = range.replace(hr, hyphenReplace(this.options.includePrerelease));
         debug("hyphen replace", range);
-        range = range.replace(re[t.COMPARATORTRIM], comparatorTrimReplace);
+        range = trimComparatorWhitespace(range);
         debug("comparator trim", range);
         range = range.replace(re[t.TILDETRIM], tildeTrimReplace);
         debug("tilde trim", range);
@@ -39971,11 +40238,11 @@ var require_range = __commonJS({
     var Comparator = require_comparator();
     var debug = require_debug();
     var SemVer = require_semver();
+    var trimComparatorWhitespace = require_trim_comparator_whitespace();
     var {
       safeRe: re,
       src,
       t,
-      comparatorTrimReplace,
       tildeTrimReplace,
       caretTrimReplace
     } = require_re();
