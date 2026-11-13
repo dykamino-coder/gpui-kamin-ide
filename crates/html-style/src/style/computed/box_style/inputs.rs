@@ -47,6 +47,7 @@ impl From<&BoxStyle> for crate::style::box_input::BoxStyleInput {
     fn from(style: &BoxStyle) -> Self {
         Self {
             try_source: style.try_style.clone(),
+            decor_box: style.decor_box,
             ..Self::new(
                 std::rc::Rc::clone(style.style_rc()),
                 Some(std::rc::Rc::new(style.context.clone())),
@@ -65,6 +66,7 @@ impl From<BoxStyle> for crate::style::box_input::BoxStyleInput {
         let inline_decoration = style.inline_decoration;
         Self {
             try_source: style.try_style,
+            decor_box: style.decor_box,
             ..Self::new(
                 style.style,
                 Some(context),
