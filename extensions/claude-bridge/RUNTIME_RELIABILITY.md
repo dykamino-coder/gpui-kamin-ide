@@ -2396,6 +2396,27 @@ existing `[views]` line: pending outbox batches and the age of the oldest one,
 the last `mark_pull_pending`, the last `pull/dispatched` and the last
 `take_all` for that view. Then repeat R6 until a stall is caught and fix the
 named layer. No forced repaint or timer.
+
+**Research 2026-11-14 with per-view outbox diagnostics (kmaint2, #878 candidate):
+the stalled layer is the UI thread, blocked in the diagnostic log append.**
+- Candidate: the installed 1.0.96 with the shell from #878 (`[outbox]` lines, delivery
+  unchanged). 45 R6 reveals; 23 of 24 valid reveals in the second batch had rows by 1.1 s.
+- Apart from hidden views, every `[outbox]` stall listed all live views at once, with the
+  pull requested (`mark`) after the batches arrived but no `dispatch` since: the pump task
+  did not run.
+- In 28 of 33 stalls the 4 s before it contain a 0.6–11.6 s gap between the `[cef]` and
+  `[why]` lines of one diag report. Both are written by one synchronous call on the UI
+  thread; between their timestamps the only blocking work is appending the `[cef]` line to
+  `diag.log` (three size checks, open, seek, write, close). Process CPU time stays low over
+  such intervals, so the thread waits rather than computes. The installed 1.0.96 shows the
+  same gaps (22 over 200 ms, max 11.8 s).
+- Not established: whether the wait is the disk itself or an on-access scan of the
+  just-closed log file. Either way, file I/O on the UI thread stalls delivery and painting.
+[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/6d72ace4667c2c604219c2e9abe3d3f922d563c3/incidents/INC-2026-0002/evidence/2026-11-14-br31-outbox-candidate).
+**Next step (bounded, owner kmaint2):** move the diag log writes off the UI thread (one
+writer thread fed by a channel; `emit_line` only enqueues), with a test that fails while a
+blocked writer blocks the caller. Then repeat R6 and check that the `[cef]`→`[why]` gaps and
+the `[outbox]` stalls are gone.
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
 пробуждением. `deliver()` зовёт её. Polling и таймеры не добавлены: путь
