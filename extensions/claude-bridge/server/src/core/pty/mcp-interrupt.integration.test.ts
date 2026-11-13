@@ -252,6 +252,13 @@ describe('INC-2026-0096: interrupt stops the running host command', () => {
       expect(await deadWithin(run.pids, KILL_LIMIT_MS)).toBeLessThan(KILL_LIMIT_MS)
       expect(rpcResult(await run.pending).content[0].text).toContain('Interrupted by user')
       survivors.push(...run.pids.filter(alive))
+      // The interrupt response and process exit can precede Node's close event
+      // that removes the host entry. Wait for that asynchronous bookkeeping;
+      // the process-tree termination deadline is still asserted above.
+      await vi.waitFor(() => expect(host.running.has(run.requestId)).toBe(false), {
+        timeout: KILL_LIMIT_MS,
+        interval: 10,
+      })
     }
     expect(survivors).toEqual([])
     expect(host.running.size).toBe(0)
