@@ -100,6 +100,8 @@ export interface ExtensionContextStub {
   // undefined when no workspace folder is open (VS Code parity).
   storageUri: URI | undefined
   globalStorageUri: URI
+  /** Kamin host metadata; absent in other extension hosts. */
+  kaminProfile: { isDefault: boolean }
   // Deprecated string (fsPath) variants — still in the d.ts; extensions
   // targeting VS Code 1.50–1.74 read these. Projections of the Uri forms.
   storagePath: string | undefined
@@ -171,6 +173,7 @@ export function makeContext(extPath: string, subscriptions: Disposable[], extens
     logUri,
     storageUri,
     globalStorageUri,
+    kaminProfile: { isDefault: storage.isDefaultProfile?.() ?? false },
     storagePath: storageUri?.fsPath,
     globalStoragePath: globalStorageUri.fsPath,
     logPath: logUri.fsPath,

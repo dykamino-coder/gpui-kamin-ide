@@ -5,6 +5,7 @@ import { ipcMain, BrowserWindow, type IpcMainInvokeEvent } from '@kaminide/host-
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+import { bridgeStatePath } from '../../bridge-state'
 import { collectPluginHooks, hashPluginHook } from '../../sync/plugin-snapshot'
 import {
   assertUniqueEnabledPluginNames,
@@ -309,7 +310,7 @@ async function collectHookApprovalEntries(pluginId: string, pluginRoot: string):
   }
   let approvedHashes: string[] = []
   try {
-    const approvalFile = path.join(os.homedir(), '.claude', 'open-claude-bridge', 'plugin-hook-approvals.json')
+    const approvalFile = bridgeStatePath('plugin-hook-approvals.json')
     approvedHashes = JSON.parse(fs.readFileSync(approvalFile, 'utf-8'))?.[pluginId] ?? []
   } catch {}
   return { pluginId, hooks: flat, approvedHashes }

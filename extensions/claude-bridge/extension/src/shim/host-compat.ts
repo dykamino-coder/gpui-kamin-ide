@@ -5,8 +5,8 @@
 // required by the ported handlers over the VSIX webview postMessage bridge.
 import { EventEmitter } from "node:events"
 import * as os from "node:os"
-import * as path from "node:path"
 import * as vscode from "vscode"
+import { bridgeStatePath } from "../main/bridge-state"
 
 export interface WebContents {
   send(channel: string, ...args: unknown[]): void
@@ -84,11 +84,10 @@ export const shell = {
   },
 }
 
-// Minimal `app` — the vendored MCP oauth-store only uses getPath('userData')
-// in its LEGACY-migration path, so a home-relative dir is sufficient.
+// Minimal `app` — userData follows the embedding host's profile storage.
 export const app = {
   getPath(name: string): string {
-    if (name === "userData") return path.join(os.homedir(), ".claude", "open-claude-bridge")
+    if (name === "userData") return bridgeStatePath()
     if (name === "home") return os.homedir()
     if (name === "temp") return os.tmpdir()
     return os.homedir()
