@@ -2196,6 +2196,30 @@ This is automated paint evidence, not the required live Windows gate: `kmaint2`
 still checks the complete ring on actual rows/chips including first/last items
 on the exact published candidate. Status remains **verify** pending that gate.
 
+### BR-29B — Scroll the session list to the keyboard-focused row
+
+**Child of BR-29 (registered 2026-11-13, kmaint2, lead-directed).** Found during
+the BR-29A check on the installed KaminIDE 1.0.96 with the official
+`6.3.173` image. Tab moves the keyboard focus (and its ring) to a session
+row that is outside the visible part of the scrolled session list, but the
+list does not scroll. The focused row stays off screen until the list is
+scrolled by hand; the ring was seen only after a manual scroll
+([evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/af5ee6f82f48702cdfaba2b5e386be9c3ec517c3/incidents/BR-29/evidence/2026-11-13-installed-1.0.96), `row-last-side.png`). Browsers scroll a focused element
+into view on `focus()`.
+
+**Source:** `crates/shell/src/ui/sessions_list.rs` builds the list with
+`overflow_y_scrollbar()` and no external scroll handle, and
+`crates/shell/src/ui/focus_ring.rs` only paints the ring; nothing moves the
+scroll offset when the focus changes.
+**Status:** confirmed by source and live; fix not started.
+**Dependency:** none.
+**Acceptance:** a shell test that tabs to a row below and above the visible
+part of a scrolled session list and checks that the row ends up inside the
+list viewport (fails on the current code), plus no scroll change when the
+focus moves by mouse or stays on a visible row. Automated acceptance is
+enough: the behavior is shell layout state that the GPUI test window
+reproduces.
+**Windows runtime merge gate:** not required.
 ### BR-30 — Keep incident-log records atomic across rotation
 
 **Status:** done. Implementation PR #31 и Windows filesystem gate PR #47
