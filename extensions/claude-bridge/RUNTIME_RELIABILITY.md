@@ -560,9 +560,9 @@ Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-pri
 
 Not covered: a server built from current `main`.
 
-Next step: close as done, unless a server from `main` is required as a separate gate.
+**Closed 2026-11-13 (lead decision):** done. The server prompt contract has not changed since `584b5616`, and the client side was checked on a `main` build, so no separate gate on a server from `main` is needed.
 
-**Status:** implementation merged в PR #15; reopened for verification.
+**Status:** done (implementation PR #15, verification 2026-11-13).
 Automatic selection остаётся отдельным BR-15. **Dependency:** none.
 **Acceptance:** automated + authenticated Windows runtime merge gate; live
 gate не выполнен.
@@ -1628,6 +1628,16 @@ Private evidence: [INC-2026-0036](https://github.com/dykamino-coder/gpui-kamin-i
 контракт непрерывного тоста с кнопкой + Windows native-toast gate.
 **Windows runtime merge gate:** required for the remaining functional fix.
 
+**Implementation handoff (2026-11-13):** The remaining transient-notification
+contract is prepared for review. `kaminide.window.showTransientMessage` forwards
+an explicit bounded duration to the native toast; completion keeps its `Open`
+action and uses an 8-second countdown. Plain VS Code action notifications remain
+sticky. Webview notification duration is preserved. Automated regression tests
+cover the API, routing, countdown options and hover-paused active time; existing
+turn-deduplication tests remain applicable. **Next owner:** kmaint runs the exact
+candidate Windows gate (countdown, automatic dismissal, Open, hover pause and
+Agent Teams). No live pass or task close-out is claimed by this change.
+
 **Регрессия 1.0.61 и её исправление (2026-09-29, живая проверка):** правило
 «раз сервер показал, что умеет хуки, виток закрывает ТОЛЬКО хук» опиралось на
 предположение, что вслед за любым состоянием из хука придёт и хук завершения
@@ -2061,6 +2071,17 @@ branch. Next step: change — give `PressEnter` a rename branch that sends
 `CommitRename` (the same as blur), with a keymap-level test that Enter in the
 rename input commits. Owner: the executor the lead assigns. Scroll and session
 change during the transition and the BR-28 bounds remain `verify`.
+
+**Keyboard follow-up 2026-11-13 — source regression reproduced.** The root
+`enter` binding consumes the key before `rename_row` receives `on_key_down`,
+but `PressEnter` had no rename branch. It now queues `CommitRename` after the
+existing overlay branches. Root `Tab`/`Shift+Tab` bindings now call GPUI focus
+traversal; the `webview` context keeps its own keyboard path. GPUI TestPlatform
+tests exercise the startup keymap and actual Root handlers with the rename input
+and focus-ring tab stops: Enter commits once, Escape cancels, and all 80 Tab
+presses move the visible focus ring. Both regressions fail on the old handlers
+and bindings. These tests do not accept the live Windows keyboard/focus gate;
+kmaint must verify the exact fix candidate and the remaining scenarios above.
 
 **Status:** implementation merged в PR #37; reopened for verification.
 Частичный Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал

@@ -93,8 +93,8 @@ function stdioConfig(script: string, extra: Partial<ExternalMcpServerConfig> = {
     id: `s-${states.length}`,
     name: 's',
     type: 'stdio',
-    command: `"${process.execPath}"`,
-    args: [`"${script}"`],
+    command: process.execPath,
+    args: [script],
     enabled: true,
     ...extra,
   }
@@ -110,7 +110,7 @@ it('starts a server declared by a project .mcp.json in the project root', async 
   const project = tempDir('stdio-cwd-project-')
   const script = serverScript()
   fs.writeFileSync(path.join(project, '.mcp.json'), JSON.stringify({
-    mcpServers: { local: { command: `"${process.execPath}"`, args: [`"${script}"`] } },
+    mcpServers: { local: { command: process.execPath, args: [script] } },
   }))
   const [config] = await discoverProjectConfigs([project])
   expect(config?.projectRoot).toBe(project)
