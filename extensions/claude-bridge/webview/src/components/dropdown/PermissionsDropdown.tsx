@@ -26,10 +26,12 @@ function inferTabPermissionMode(tabId: string | null): string | null {
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i]
     if (!e) continue
-    if ((e.type === 'mode' || (e.type as string) === 'permission-mode') && typeof (e as any).mode === 'string') {
+    // Generic `mode` rows can describe conversation state (e.g. `normal`
+    // after /clear). Only supported permission values can override the label.
+    if ((e.type === 'mode' || (e.type as string) === 'permission-mode') && PERM_OPTIONS.some(o => o.value === (e as any).mode)) {
       return (e as any).mode
     }
-    if ((e as any).permissionMode) return (e as any).permissionMode
+    if (PERM_OPTIONS.some(o => o.value === (e as any).permissionMode)) return (e as any).permissionMode
   }
   return null
 }
