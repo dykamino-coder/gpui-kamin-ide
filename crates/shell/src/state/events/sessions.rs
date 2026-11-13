@@ -48,13 +48,7 @@ impl RootView {
                         if self.pending_view_resolve && snap.active_session_id.is_some() {
                             self.pending_view_resolve = false;
                             for view in crate::host_link::KNOWN_WEBVIEWS {
-                                let resolved = crate::host_link::resolved_views()
-                                    .lock()
-                                    .unwrap()
-                                    .contains(*view);
-                                if !resolved {
-                                    crate::host_link::resolve_webview((*view).to_string());
-                                }
+                                crate::host_link::resolve_webview((*view).to_string());
                             }
                         }
                         // Протокол шторки — как chat-switch-cover.ts оригинала:
