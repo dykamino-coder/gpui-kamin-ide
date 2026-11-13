@@ -70,7 +70,7 @@ ENV BRIDGE_CODEX_VERSION=${CODEX_VERSION}
 
 # Non-root user (Claude Code refuses --dangerously-skip-permissions as root).
 RUN groupadd -r bridge && useradd -r -g bridge -m -d /home/bridge -s /bin/bash bridge \
-    && mkdir -p /app/data /app/logs/lifecycle /home/bridge/.claude \
+    && mkdir -p /app/data /app/logs/lifecycle /home/bridge/.claude /home/bridge/.codex \
     && chown -R bridge:bridge /app /home/bridge
 
 WORKDIR /app
@@ -111,7 +111,10 @@ ENV BRIDGE_LIFECYCLE_LOG_DIR=/app/data/logs/lifecycle
 
 EXPOSE 3456
 
-VOLUME ["/app/data", "/home/bridge/.claude", "/app/logs"]
+# The ChatGPT account of this server (codex-home.ts); its own volume, not inside ~/.claude.
+ENV BRIDGE_CONTAINER=1
+ENV BRIDGE_CODEX_HOME=/home/bridge/.codex
+VOLUME ["/app/data", "/home/bridge/.claude", "/home/bridge/.codex", "/app/logs"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["npx", "tsx", "bin/claude-bridge.ts"]

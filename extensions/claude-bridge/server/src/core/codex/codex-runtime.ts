@@ -16,7 +16,13 @@ import { debugLog, infoLog, warnLog } from '../logging'
 import { resolveCodexCommand, type CodexCommand } from './binary'
 import { CodexHost, CodexHostRegistry, type RestartPolicy } from './codex-host'
 import { acquireCodexHomeLock } from './codex-home-lock'
-import { assertBridgeOwnedHome, buildCodexEnv, defaultCodexHome, prepareCodexHome } from './codex-home'
+import {
+  assertBridgeOwnedHome,
+  buildCodexEnv,
+  defaultCodexHome,
+  migrateLegacyCodexHome,
+  prepareCodexHome,
+} from './codex-home'
 import { classifyCodexError, type CodexErrorInfo } from './codex-errors'
 import { codexLockdownConfig, toConfigOverrides } from './config-toml'
 import { buildPatchedCatalog, type ModelCatalog } from './model-catalog'
@@ -154,7 +160,8 @@ export class CodexRuntime {
   }
 
   private async startHost(home: string): Promise<CodexHost> {
-    assertBridgeOwnedHome(home, os.homedir())
+    assertBridgeOwnedHome(home, os.homedir(), this.env)
+    if (!this.options.home) migrateLegacyCodexHome(home)
     const command = this.options.command ?? resolveCodexCommand({ env: this.env })
     // Same proxy / corporate CA point as the Claude CLI (injectProxyEnv).
     const env = buildCodexEnv({ home, base: this.env, injectProxy: injectProxyEnv, extra: this.options.extraEnv })

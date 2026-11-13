@@ -55,6 +55,7 @@ sudo docker run -d --name open-claude-bridge --restart unless-stopped \
   --mount type=bind,source=/etc/ssl/certs/ca-certificates.crt,target=/app/certs/corporate-ca.pem,readonly \
   --mount type=volume,source=open-claude-bridge-data,target=/app/data \
   --mount type=volume,source=open-claude-bridge-claude,target=/home/bridge/.claude \
+  --mount type=volume,source=open-claude-bridge-codex,target=/home/bridge/.codex \
   --mount type=volume,source=open-claude-bridge-lifecycle-logs,target=/app/logs/lifecycle \
   -p 127.0.0.1:3456:3456 "$BRIDGE_IMAGE"
 ```
@@ -83,13 +84,14 @@ Node к upstream API.
 
 ## Что сохранять
 
-| Путь в контейнере           | Данные                                                                                               | Правило                                                                                                                                                                                                    |
-| --------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/app/data`                 | DuckDB (`proxy.duckdb`), настройки, токены и новые sync snapshots (`bridge-sync/`)                   | Сохранять существующий named volume и делать согласованный backup при остановленном Bridge.                                                                                                                |
-| `/home/bridge/.claude`      | Claude credentials/config, JSONL истории в `projects/`, настройки Bridge-сессий в `bridge-sessions/` | Сохранять существующий named volume; считать его и backup секретными.                                                                                                                                      |
-| `/home/bridge/.claude.json` | Claude onboarding/account metadata                                                                   | **Не входит** в два volume выше. Entrypoint создаёт базовый файл заново; перед заменой сохраните его отдельно и проверьте auth после запуска. Полную сохранность этого файла текущая схема не гарантирует. |
-| `/app/logs/lifecycle`       | Allowlisted lifecycle journal, максимум 5 MiB                                                        | Отдельный named volume; не монтировать весь `/app/logs`, содержащий raw payloads.                                                                                                                          |
-| `/home/bridge/bridge-sync`  | Возможные legacy snapshots                                                                           | Если путь смонтирован в действующем контейнере, сохранять mount и backup до подтверждённой миграции по [BR-13](../RUNTIME_RELIABILITY.md).                                                                 |
+| Путь в контейнере           | Данные                                                                                                                                                      | Правило                                                                                                                                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/app/data`                 | DuckDB (`proxy.duckdb`), настройки, токены и новые sync snapshots (`bridge-sync/`)                                                                          | Сохранять существующий named volume и делать согласованный backup при остановленном Bridge.                                                                                                                |
+| `/home/bridge/.claude`      | Claude credentials/config, JSONL истории в `projects/`, настройки Bridge-сессий в `bridge-sessions/`                                                        | Сохранять существующий named volume; считать его и backup секретными.                                                                                                                                      |
+| `/home/bridge/.codex`       | ChatGPT-аккаунт сервера (Codex: auth, сессии, config Bridge). До 1.0.95 лежал в `~/.claude/codex-home` и переносится оттуда автоматически при первом старте | Отдельный named volume `open-claude-bridge-codex`; считать секретным.                                                                                                                                      |
+| `/home/bridge/.claude.json` | Claude onboarding/account metadata                                                                                                                          | **Не входит** в два volume выше. Entrypoint создаёт базовый файл заново; перед заменой сохраните его отдельно и проверьте auth после запуска. Полную сохранность этого файла текущая схема не гарантирует. |
+| `/app/logs/lifecycle`       | Allowlisted lifecycle journal, максимум 5 MiB                                                                                                               | Отдельный named volume; не монтировать весь `/app/logs`, содержащий raw payloads.                                                                                                                          |
+| `/home/bridge/bridge-sync`  | Возможные legacy snapshots                                                                                                                                  | Если путь смонтирован в действующем контейнере, сохранять mount и backup до подтверждённой миграции по [BR-13](../RUNTIME_RELIABILITY.md).                                                                 |
 
 Содержимое `/app/installer` поставляется с versioned image. Не подменяйте его
 старым bind mount из локального compose: это может показать клиенту не тот
@@ -169,6 +171,7 @@ Store резервирует место для результата до зап�
    ```bash
    sudo docker volume create open-claude-bridge-data
    sudo docker volume create open-claude-bridge-claude
+    sudo docker volume create open-claude-bridge-codex
    sudo docker volume create open-claude-bridge-lifecycle-logs
    ```
 
@@ -242,6 +245,7 @@ sudo docker run -d --name open-claude-bridge \
   --env-file "$BRIDGE_ENV_FILE" \
   --mount type=volume,source=open-claude-bridge-data,target=/app/data \
   --mount type=volume,source=open-claude-bridge-claude,target=/home/bridge/.claude \
+  --mount type=volume,source=open-claude-bridge-codex,target=/home/bridge/.codex \
   --mount type=volume,source=open-claude-bridge-lifecycle-logs,target=/app/logs/lifecycle \
   "$BRIDGE_IMAGE"
 ```
