@@ -143,6 +143,94 @@ export async function userContextTokens(
   return all
 }
 
+// ── /api/dashboard/tokens/:user/sessions ────────────────────────────────
+
+export interface UserSessionRow {
+  session_id: string
+  engines: string
+  session_cwd: string | null
+  session_title: string | null
+  session_last_context: unknown
+  session_compact_boundaries: unknown
+  session_context_tokens: unknown
+  started_at: string
+  last_activity_at: string
+  user_messages: number
+  assistant_messages: number
+  in_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  out_tokens: number
+  model: string | null
+  file_path: string | null
+}
+
+/** One page of a user's live sessions, newest first, from stats_session_live
+ *  (its `u` index serves the bare lookup). `before` = `<last_ts>|<session_id>`
+ *  of the previous page's last row; `total` counts every live session. */
+export async function userSessionsPage(
+  db: DuckDBConnection,
+  user: string,
+  o: { limit?: number; before?: string | null; engine?: EngineFilter } = {},
+): Promise<{ rows: UserSessionRow[]; total: number }> {
+  const cut = o.before ? o.before.lastIndexOf('|') : -1
+  const cursor = cut > 0 ? [o.before!.slice(0, cut), o.before!.slice(cut + 1)] : null
+  const raw = await rows<Record<string, unknown>>(
+    db,
+    `WITH s AS MATERIALIZED (SELECT * FROM ${derivedSource('stats_session_live', o.engine)} WHERE u = ?),
+      live AS (
+        SELECT s.*, st.cwd, st.title, st.last_context AS st_last_context, st.compact_boundaries, st.context_tokens
+        FROM s JOIN session_tokens st ON st.session_id = s.session_id AND st.deleted = 0 AND st.user_name = ?
+      ),
+      page AS (
+        SELECT * FROM live
+        ${cursor ? 'WHERE last_ts < ? OR (last_ts = ? AND session_id < ?)' : ''}
+        ORDER BY last_ts DESC, session_id DESC ${o.limit ? `LIMIT ${Math.floor(o.limit)}` : ''}
+      ),
+      files AS (
+        SELECT regexp_extract(file_path, '/([^/]+)\\.jsonl$', 1) AS session_id, MIN(file_path) AS file_path
+        FROM jsonl_offsets WHERE file_path LIKE '%.jsonl' GROUP BY 1
+      )
+    SELECT p.session_id, p.engines, p.cwd AS session_cwd, p.title AS session_title, p.st_last_context AS session_last_context,
+      p.compact_boundaries AS session_compact_boundaries, ${o.engine ? 'p.ctx' : 'p.context_tokens'} AS session_context_tokens,
+      p.first_ts AS started_at, p.last_ts AS last_activity_at, p.user_msgs AS user_messages,
+      p.assistant_msgs AS assistant_messages, p.input_tokens AS in_tokens, p.cache_read_tokens,
+      p.cache_write_tokens, p.output_tokens AS out_tokens, p.model, f.file_path,
+      (SELECT COUNT(*) FROM live) AS total
+    FROM page p LEFT JOIN files f ON f.session_id = p.session_id
+    ORDER BY p.last_ts DESC, p.session_id DESC`,
+    [user, user, ...(cursor ? [cursor[0], cursor[0], cursor[1]] : [])],
+  )
+  // An empty page past the end still reports the full count.
+  const total =
+    raw.length || !cursor
+      ? n(raw[0]?.total)
+      : n(
+          (
+            await rows<{ c: unknown }>(
+              db,
+              `SELECT COUNT(*) AS c FROM ${derivedSource('stats_session_live', o.engine)} s
+              JOIN session_tokens st ON st.session_id = s.session_id AND st.deleted = 0 AND st.user_name = ?
+              WHERE s.u = ?`,
+              [user, user],
+            )
+          )[0]?.c,
+        )
+  return {
+    total,
+    rows: raw.map((r) => ({
+      ...(r as unknown as UserSessionRow),
+      user_messages: n(r.user_messages),
+      assistant_messages: n(r.assistant_messages),
+      in_tokens: n(r.in_tokens),
+      cache_read_tokens: n(r.cache_read_tokens),
+      cache_write_tokens: n(r.cache_write_tokens),
+      out_tokens: n(r.out_tokens),
+      file_path: (r.file_path as string | null) ?? null,
+    })),
+  }
+}
+
 // ── /api/dashboard/stats/overview (single user or all) ──────────────────
 
 export async function legacyOverview(

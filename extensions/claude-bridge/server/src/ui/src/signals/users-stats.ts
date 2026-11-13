@@ -45,6 +45,25 @@ export const usersError = signal<string | null>(null)
 /** Cards for the default range, keyed by user name; '*' = all users. */
 export const cards = signal<Record<string, CardData> | null>(null)
 export const cardsError = signal<string | null>(null)
+/** Percent of the one-time statistics build while it runs; null once ready. */
+export const statsBuilding = signal<number | null>(null)
+
+// While the build runs, poll every few seconds so progress moves and the real
+// numbers appear as soon as it finishes.
+let buildPoll: ReturnType<typeof setTimeout> | null = null
+function noteBuilding(pct: number | null): void {
+  const wasBuilding = statsBuilding.value != null
+  statsBuilding.value = pct
+  if (pct != null && !buildPoll && subscribers > 0) {
+    buildPoll = setTimeout(() => {
+      buildPoll = null
+      void refreshUsers()
+      if (cardsWanted > 0) void refreshCards()
+    }, 3_000)
+  } else if (pct == null && wasBuilding && cardsWanted > 0) {
+    void refreshCards()
+  }
+}
 
 function keepIdentity<T>(prev: T | undefined, next: T): T {
   return prev !== undefined && JSON.stringify(prev) === JSON.stringify(next) ? prev : next
@@ -57,9 +76,10 @@ export function refreshUsers(): Promise<void> {
   const engine = engineFilter.peek()
   const started = generation
   usersInFlight ??= api
-    .getUsers(engine)
-    .then((list) => {
+    .getUsersWithBuild(engine)
+    .then(({ list, building }) => {
       if (started !== generation || engine !== engineFilter.peek()) return
+      noteBuilding(building)
       const prev = new Map(users.value.map((u) => [u.userName, u]))
       const next = list.map((u) => keepIdentity(prev.get(u.userName), u))
       const same = next.length === users.value.length && next.every((u, i) => u === users.value[i])
@@ -98,9 +118,12 @@ function authHeaders(): Record<string, string> {
   return tok ? { Authorization: `Bearer ${tok}` } : {}
 }
 
-async function getCards(
-  query: string,
-): Promise<{ unchanged?: boolean; revision: string; cards?: Record<string, CardData> }> {
+async function getCards(query: string): Promise<{
+  unchanged?: boolean
+  revision: string
+  cards?: Record<string, CardData>
+  building?: { pct: number }
+}> {
   const res = await fetch(
     `/api/dashboard/stats/users-overview?${query}&${zoneParams()}${engineParam(engineFilter.peek())}`,
     {
@@ -122,8 +145,13 @@ export function refreshCards(): Promise<void> {
   cardsInFlight ??= getCards(`range=all&rev=${encodeURIComponent(revision)}`)
     .then((r) => {
       if (started !== generation || engine !== engineFilter.peek()) return
-      revision = r.revision
       cardsError.value = null
+      if (r.building) {
+        noteBuilding(r.building.pct)
+        return
+      }
+      revision = r.revision
+      if (!r.unchanged) noteBuilding(null)
       if (r.unchanged || !r.cards) return
       const prev = cards.value ?? {}
       const next: Record<string, CardData> = {}

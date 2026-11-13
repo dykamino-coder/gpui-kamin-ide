@@ -2,7 +2,7 @@ import 'reflect-metadata'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { OPENAI_LONG_CONTEXT_TOKENS } from '../../../shared/openai-pricing'
 
@@ -48,6 +48,8 @@ beforeAll(async () => {
 }, 120_000)
 
 afterAll(async () => {
+  // A debounced drain must not touch the pool while it closes.
+  await rollup.drainRollup()
   await lc.closeDb()
   vi.restoreAllMocks()
   rmSync(dir, { recursive: true, force: true })
@@ -213,6 +215,52 @@ async function checkCards(range: 'all' | '30d' | '7d', zoneKey: keyof typeof ZON
   expect(got['*']!.activeDays).toBe(allDays.n)
 }
 
+/** The user's sessions list (per-session level, paged) equals the raw per-session formulas. */
+async function checkSessions(user: string): Promise<void> {
+  const raw = num(
+    await all(
+      `SELECT e.session_id, MIN(e.timestamp) AS started_at, MAX(e.timestamp) AS last_activity_at,
+        SUM(CASE WHEN e.type='user' THEN 1 ELSE 0 END) AS user_messages,
+        SUM(CASE WHEN e.type='assistant' THEN 1 ELSE 0 END) AS assistant_messages,
+        SUM(CASE WHEN e.type='assistant' THEN COALESCE(e.input_tokens,0) ELSE 0 END) AS in_tokens,
+        SUM(CASE WHEN e.type='assistant' THEN COALESCE(e.cache_read_tokens,0) ELSE 0 END) AS cache_read_tokens,
+        SUM(CASE WHEN e.type='assistant' THEN COALESCE(e.cache_write_tokens,0) ELSE 0 END) AS cache_write_tokens,
+        SUM(CASE WHEN e.type='assistant' THEN COALESCE(e.output_tokens,0) ELSE 0 END) AS out_tokens,
+        arg_max(e.model, e.timestamp) FILTER (WHERE e.type='assistant' AND COALESCE(e.is_subagent,0)=0
+          AND e.model IS NOT NULL AND e.model != '') AS model
+      ${RAW} AND st.user_name = ? GROUP BY 1 ORDER BY last_activity_at DESC, session_id DESC`,
+      [user],
+    ),
+  )
+  const pick = (r: any) => ({
+    session_id: r.session_id,
+    started_at: r.started_at,
+    last_activity_at: r.last_activity_at,
+    user_messages: r.user_messages,
+    assistant_messages: r.assistant_messages,
+    in_tokens: r.in_tokens,
+    cache_read_tokens: r.cache_read_tokens,
+    cache_write_tokens: r.cache_write_tokens,
+    out_tokens: r.out_tokens,
+    model: r.model,
+  })
+  const whole = await q.userSessionsPage(db, user)
+  expect(whole.total).toBe(raw.length)
+  expect(whole.rows.map(pick)).toEqual(raw)
+  // Pages of 7 by cursor concatenate to the whole list.
+  const paged: unknown[] = []
+  let before: string | null = null
+  for (;;) {
+    const p = await q.userSessionsPage(db, user, { limit: 7, before })
+    expect(p.total).toBe(raw.length)
+    paged.push(...p.rows.map(pick))
+    if (p.rows.length < 7) break
+    const last = p.rows.at(-1)!
+    before = `${last.last_activity_at}|${last.session_id}`
+  }
+  expect(paged).toEqual(raw)
+}
+
 /** Every delta-maintained level equals its recompute from scratch. */
 async function checkDerived(): Promise<void> {
   const l1 = `(${rollup.rollupSelect()})`
@@ -234,15 +282,47 @@ async function checkDerived(): Promise<void> {
 describe('stats rollup equals the raw-event formulas', () => {
   it('inline fallback (before the build) matches the raw oracle', async () => {
     expect(rollup.rollupReady()).toBe(false)
+    expect(rollup.rollupBuildStatus()).toMatchObject({ ready: false, pct: 0 })
     await checkUsers()
     await checkOverview('all', null)
+  }, 60_000)
+
+  it('dashboard endpoints answer with build progress instead of scanning raw events', async () => {
+    // The routes kick a catch-up sweep of ~/.claude/projects: keep it off the test DB.
+    vi.doMock('../jsonl-sweeper', () => ({ sweepAll: async () => ({ files: 0, inserted: 0 }) }))
+    onTestFinished(() => {
+      vi.doUnmock('../jsonl-sweeper')
+    })
+    const { Hono } = await import('hono')
+    const app = new Hono()
+    ;(await import('../../dashboard/controllers/users')).registerUserRoutes(app)
+    ;(await import('../../dashboard/controllers/stats')).registerStatsRoutes(app)
+    const users = await app.request('/api/dashboard/users')
+    expect(users.headers.get('X-Stats-Building')).toBe('0')
+    const roster = (await users.json()) as Array<{ userName: string; totalInputs: number }>
+    const owners = await all(
+      `SELECT DISTINCT user_name FROM session_tokens WHERE deleted = 0 AND user_name != '' ORDER BY 1`,
+    )
+    expect(roster.map((u) => u.userName).sort()).toEqual(owners.map((o) => o.user_name))
+    expect(roster.every((u) => u.totalInputs === 0)).toBe(true)
+    const page = (await (await app.request('/api/dashboard/stats/users-overview?range=all')).json()) as any
+    expect(page.building).toMatchObject({ ready: false, pct: 0 })
+    expect(page.cards).toBeUndefined()
+    const overview = await app.request('/api/dashboard/stats/overview?range=all')
+    expect(overview.status).toBe(503)
+    expect(((await overview.json()) as any).building.pct).toBe(0)
+    const sessions = (await (await app.request('/api/dashboard/tokens/user01/sessions')).json()) as any
+    expect(sessions).toMatchObject({ sessions: [], building: { pct: 0 } })
   }, 60_000)
 
   it('background build is resumable and matches for every range and user', async () => {
     await rollup.startRollupBuild(() => lc.getDb())
     expect(rollup.rollupReady()).toBe(true)
+    expect(rollup.rollupBuildStatus()).toMatchObject({ ready: true, pct: 100 })
     await checkDerived()
     await checkUsers()
+    await checkSessions('user01')
+    await checkSessions('user04')
     for (const range of ['all', '30d', '7d'] as const) {
       await checkOverview(range, null)
       await checkOverview(range, 'user01')
@@ -322,6 +402,8 @@ describe('stats rollup equals the raw-event formulas', () => {
     expect(diff[0]!.n).toBe(0n)
     await checkDerived()
     await checkUsers()
+    await checkSessions('user00')
+    await checkSessions('user03')
     await checkOverview('7d', null)
     for (const range of ['all', '7d'] as const) {
       await checkCards(range)
@@ -340,6 +422,7 @@ describe('stats rollup equals the raw-event formulas', () => {
     await rollup.drainRollup(() => lc.getDb())
     await checkDerived()
     await checkUsers()
+    await checkSessions('user02')
     await checkOverview('all', null)
     await checkCards('all')
     await checkCards('30d', 'kolkata')
