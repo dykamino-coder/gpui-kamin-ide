@@ -89,7 +89,11 @@ export async function runExtHostChild(endpoint: RpcEndpoint): Promise<void> {
     builtinDir: seed.builtinDir,
     userExtDir: seed.userExtDir,
     broadcast,
-    showMessage: (severity, message, items) => requestDismissible(undefined, SHELL_SHOW_MESSAGE, severity, message, items),
+    // Options travel only when set: an older shell reads params 0..2 and
+    // keeps the plain sticky/auto-dismiss rule (BR-23 transient notices).
+    showMessage: (severity, message, items, options) => options
+      ? requestDismissible(undefined, SHELL_SHOW_MESSAGE, severity, message, items, options)
+      : requestDismissible(undefined, SHELL_SHOW_MESSAGE, severity, message, items),
     showInputBox: (opts) => requestDismissible(undefined, SHELL_SHOW_INPUT_BOX, opts),
     showQuickPick: (items, options) => requestDismissible(null, SHELL_SHOW_QUICK_PICK, items, options),
     showOpenDialog: (options) => requestDismissible(null, SHELL_SHOW_OPEN_DIALOG, options),
