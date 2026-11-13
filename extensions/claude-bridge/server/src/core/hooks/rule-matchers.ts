@@ -203,9 +203,40 @@ export function bashRuleMatches(rule: string, command: string): boolean {
   })
 }
 
-/** Models simple PowerShell commands case-insensitively, one candidate per
- *  pipeline element or statement. Nested-AST parity gaps remain in INC-0107. */
-export function powershellRuleMatches(rule: string, command: string): boolean {
+/** Find the closing parenthesis without treating quoted parentheses as syntax. */
+function powershellGroupEnd(command: string, open: number): number | null {
+  let depth = 1
+  let quote = ''
+  for (let i = open + 1; i < command.length; i++) {
+    const ch = command[i]!
+    if (ch === '`' && quote !== "'") {
+      i++
+    } else if (quote) {
+      if (ch === quote) {
+        if (command[i + 1] === quote) i++
+        else quote = ''
+      }
+    } else if (ch === "'" || ch === '"') {
+      quote = ch
+    } else if (ch === '#') {
+      while (i < command.length && command[i] !== '\n') i++
+    } else if (ch === '(') {
+      depth++
+    } else if (ch === ')' && --depth === 0) {
+      return i
+    }
+  }
+  return null
+}
+
+// These scalar expressions have no CommandAst children. Other expression
+// syntax remains outside this sampled matcher rather than becoming a command.
+const POWERSHELL_SCALAR = String.raw`(?:'(?:[^']|'')*'|"(?:[^"\x60$]|\$(?!\()|\x60[\s\S]|"")*"|\$[\w:]+|[-+]?\d+(?:\.\d+)?)`
+const POWERSHELL_SCALAR_LIST = new RegExp(`^${POWERSHELL_SCALAR}(?:\\s*,\\s*${POWERSHELL_SCALAR})*$`)
+
+/** Sampled CommandAst candidates, including commands inside grouped pipelines
+ *  and subexpressions. null keeps the fallback for unsupported syntax. */
+function powershellCommands(command: string): string[] | null {
   const statements: string[] = []
   let words: string[] = [],
     word = '',
@@ -247,10 +278,10 @@ export function powershellRuleMatches(rule: string, command: string): boolean {
           word += command[++i]
           continue
         }
-        if (quote === '"' && command.startsWith('$(', i)) return true
+        if (quote === '"' && command.startsWith('$(', i)) return null
         word += c
       }
-      if (!closed) return true
+      if (!closed) return null
       active = true
     } else if (ch === '`' && (command[i + 1] === '\n' || command.slice(i + 1, i + 3) === '\r\n')) {
       // In an unquoted word the AST keeps the escaped newline in its value.
@@ -279,8 +310,25 @@ export function powershellRuleMatches(rule: string, command: string): boolean {
       endWord()
       while (command[i + 1] === '>') i++
       skipRedirectTarget = true
-    } else if (command.startsWith('$(', i) || command.startsWith('@(', i) || ch === '{' || ch === '}') {
-      return true
+    } else if (command.startsWith('$(', i) || command.startsWith('@(', i) || ch === '(') {
+      if (active) return null
+      const open = ch === '(' ? i : i + 1
+      const close = powershellGroupEnd(command, open)
+      if (close === null) return null
+      const body = command.slice(open + 1, close).trim()
+      let nested: string[] | null = []
+      if (body && !POWERSHELL_SCALAR_LIST.test(body)) nested = powershellCommands(body)
+      if (nested === null) return null
+      statements.push(...nested)
+      if (words.length || skipRedirectTarget) {
+        // Non-string AST arguments retain their original source text.
+        word = command.slice(i, close + 1)
+        active = true
+      }
+      if (close + 1 < command.length && !/[\s;|&>]/.test(command[close + 1]!)) return null
+      i = close
+    } else if (ch === '{' || ch === '}' || ch === ')') {
+      return null
     } else if (';|\n'.includes(ch) || command.startsWith('&&', i)) {
       endCommand()
       if (command[i + 1] === ch) i++
@@ -292,6 +340,14 @@ export function powershellRuleMatches(rule: string, command: string): boolean {
     }
   }
   endCommand()
+  return statements
+}
+
+/** Models sampled PowerShell command ASTs case-insensitively. Unsupported
+ *  nested syntax still has parity gaps recorded in INC-0107. */
+export function powershellRuleMatches(rule: string, command: string): boolean {
+  const statements = powershellCommands(command)
+  if (statements === null) return true
   if (statements.length === 0) return true
   const prefix = legacyPrefix(rule)
   return statements.some((candidate) => {
