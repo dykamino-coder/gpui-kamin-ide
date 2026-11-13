@@ -2179,7 +2179,7 @@ live. **Fix PR:** [#853](https://github.com/dykamino-coder/gpui-kamin-ide/pull/8
 a middle and the last session rows, while 1.0.95 clips or hides them; only ring
 pixels differ. Evidence:
 [private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/58f2ce8723fed6be4e49599b29733870bc340ca3/incidents/BR-29/evidence/2026-11-13-pr853-95ebe50f).
-**Next step:** merge #853, then check on the release that contains it.
+#853 merged as `93dddd3b`. **Next step:** check on the release that contains `93dddd3b`.
 **Acceptance:** a layout/paint test that the ring bounds
 stay inside the clip of a row and a tab chip; then a Windows gate that the ring
 is fully visible on a row, a chip and their first/last items. **Windows runtime
