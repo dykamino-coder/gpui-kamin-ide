@@ -238,6 +238,7 @@ impl SharedStyle {
     }
 }
 
+mod derive;
 mod facts;
 #[cfg(feature = "heap-report")]
 mod heap;
