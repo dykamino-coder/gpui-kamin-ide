@@ -30,11 +30,14 @@ beforeAll(async () => {
       [id, owner.tokenId, owner.userName, timestamp],
     )
   }
+  // The dashboard reads the rollup; until it is built /users serves only the roster.
+  await (await import('./database/rollup')).startRollupBuild(() => lc.getDb())
   app = new Hono()
   ;(await import('../dashboard/controllers/users')).registerUserRoutes(app)
 })
 
 afterAll(async () => {
+  await (await import('./database/rollup')).drainRollup(() => lc.getDb())
   await lc.closeDb()
   vi.restoreAllMocks()
   rmSync(dir, { recursive: true, force: true })
@@ -70,8 +73,11 @@ async function sweepEntries(sessionId: string, entries: unknown[]): Promise<void
 }
 
 async function summary(): Promise<{ tokens: { input: number; output: number; cacheCreation: number }; cost: number }> {
+  // Writers mark sessions dirty; apply the pending deltas as the debounced drain would.
+  await (await import('./database/rollup')).drainRollup(() => lc.getDb())
   const res = await app.request('/api/dashboard/users')
   expect(res.status).toBe(200)
+  expect(res.headers.get('X-Stats-Building')).toBeNull()
   return ((await res.json()) as Array<any>).find((r) => r.userName === 'alice')
 }
 
@@ -129,6 +135,8 @@ describe('durable cost accounting across CLI/proxy/subagent paths', () => {
     expect((await summary()).cost).toBeCloseTo(3 * 0.0115764, 10)
     const db = await lc.getDb()
     await db.run('UPDATE session_tokens SET deleted = 1 WHERE session_id = ?', ['child'])
+    // As the soft-delete route does: mark the session for the rollup drain.
+    await (await import('./database/rollup')).markRollupSessionsDirty(db, ['child'])
     expect((await summary()).cost).toBeCloseTo(2 * 0.0115764, 10)
   })
 })

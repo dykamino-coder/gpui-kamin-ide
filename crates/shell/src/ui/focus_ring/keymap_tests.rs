@@ -7,7 +7,7 @@ use gpui::{Context, Entity, IntoElement, Keystroke, Render, TestAppContext, Visu
 use gpui_component::input::InputState;
 use smol::channel::Receiver;
 
-static SERIAL: Mutex<()> = Mutex::new(());
+pub(super) static SERIAL: Mutex<()> = Mutex::new(());
 const FIRST: &str = "srow:keymap-first";
 const SECOND: &str = "srow:keymap-second";
 

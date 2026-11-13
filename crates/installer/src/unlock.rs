@@ -12,11 +12,13 @@ use std::time::Duration;
 
 /// Образы, которые установщик гасит перед распаковкой — только если их exe
 /// лежит в обновляемом каталоге (`procs`, INC-2026-0075).
-pub const IMAGES: [&str; 4] = [
+pub const IMAGES: [&str; 5] = [
     "kaminide-gpui.exe",
     "kaminhost.exe",
     "kaminide-web.exe",
     "kamin-jobrun.exe",
+    // Grep tool search started by the extension host (ripgrep).
+    "rg.exe",
 ];
 
 /// Ждать (до `secs` секунд), пока процессы установленной копии в `dir` не

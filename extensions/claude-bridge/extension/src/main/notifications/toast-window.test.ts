@@ -55,6 +55,43 @@ describe('shared notification navigation', () => {
     expect(f.route).not.toHaveBeenCalled()
   })
 
+  it('shows finished as a self-closing notice when the host has the transient contract (BR-23)', async () => {
+    const f = await fixture()
+    const transient = vi.fn().mockResolvedValue('Open')
+    f.configureTransientNotice(transient)
+    f.spawnToast(finished)
+    await flush(); await flush()
+    expect(transient).toHaveBeenCalledExactlyOnceWith('Done — Ready', { severity: 'info', durationMs: f.FINISHED_TOAST_MS }, 'Open')
+    expect(show).not.toHaveBeenCalled()
+    expect(f.route).toHaveBeenCalledExactlyOnceWith({ tabId: 'finished-tab' })
+  })
+
+  it('keeps a question waiting for the user even with the transient contract', async () => {
+    const f = await fixture()
+    const transient = vi.fn().mockResolvedValue(undefined)
+    f.configureTransientNotice(transient)
+    f.spawnToast({ ...finished, kind: 'question', requestId: 'q' })
+    await flush()
+    expect(transient).not.toHaveBeenCalled()
+    expect(show).toHaveBeenCalledWith('Done — Ready', 'Open')
+  })
+
+  it.each(['dismiss', 'timeout'])('does not navigate when the transient host resolves %s', async () => {
+    const f = await fixture()
+    f.configureTransientNotice(vi.fn().mockResolvedValue(undefined))
+    f.spawnToast(finished)
+    await flush(); await flush()
+    expect(f.route).not.toHaveBeenCalled()
+  })
+
+  it('keeps a timed webview notice duration on the transient path', async () => {
+    const f = await fixture()
+    const transient = vi.fn().mockResolvedValue(undefined)
+    f.configureTransientNotice(transient)
+    f.showTimedNotice('info', 'Anthropic busy', 6000)
+    expect(transient).toHaveBeenCalledExactlyOnceWith('Anthropic busy', { severity: 'info', durationMs: 6000 })
+  })
+
   it('keeps the existing enabled gate and explicit bypass', async () => {
     const f = await fixture()
     f.configureToastGate({ notificationsEnabled: () => false })

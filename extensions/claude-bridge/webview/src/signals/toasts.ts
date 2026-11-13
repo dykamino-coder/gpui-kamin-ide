@@ -18,11 +18,12 @@ let nextId = 1
 // present; the local `toasts` signal + ToastContainer stay only as the standalone
 // dashboard fallback (unused in KaminIDE — ToastContainer is not mounted there).
 export function showToast(opts: Omit<Toast, 'id'>): string {
-  const bridge = (window as { kaminBridge?: { showNotification?: (severity: string, message: string) => void } }).kaminBridge
+  const bridge = (window as { kaminBridge?: { showNotification?: (severity: string, message: string, durationMs?: number) => void } }).kaminBridge
   if (bridge?.showNotification) {
     const severity = opts.type === 'error' ? 'error' : 'info'
     try {
-      bridge.showNotification(severity, opts.message ? `${opts.title}: ${opts.message}` : opts.title)
+      // The duration rides along so the shared toast keeps it (BR-23).
+      bridge.showNotification(severity, opts.message ? `${opts.title}: ${opts.message}` : opts.title, opts.duration ?? 5000)
       return ''
     } catch { /* disconnected browser: show the existing local toast instead */ }
   }

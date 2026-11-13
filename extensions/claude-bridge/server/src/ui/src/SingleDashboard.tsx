@@ -4,7 +4,7 @@ import { StatusCard } from './components/dashboard/StatusCard'
 import { ErrorLog } from './components/errors/ErrorLog'
 import { TokenSessionsList, TokensStatsGrid } from './components/dashboard/StatsCard'
 import { selectedTokenId, selectTokenId } from './signals/ui'
-import { SectionHeader, Card, Modal } from './components/shared'
+import { Modal } from './components/shared'
 import {
   serverHealth,
   serverStats,
@@ -25,6 +25,8 @@ import { codexStatusRow, type CodexStatus } from './components/dashboard/codex-a
 import { UsageChart } from './components/dashboard/UsageChart'
 import { ApiErrorsCard } from './components/dashboard/ApiErrorsCard'
 import { McpUsageReport } from './components/dashboard/McpUsageReport'
+import { ActivePtySessions } from './components/dashboard/ActivePtySessions'
+import { engineBreakdown, ptyUserKey } from './components/dashboard/pty-groups'
 
 import { navigateToConsole } from './router'
 import styles from './SingleDashboard.module.css'
@@ -154,7 +156,7 @@ export function SingleDashboard() {
           serverStatus.value = data as any
         })
         .catch(() => {})
-    // Merge live CPU%/RSS from the sessions REST endpoint into the WS-driven
+    // Merge live CPU%/RSS and the live message/token counters from the sessions REST endpoint into the WS-driven
     // ptySessions list (which carries the richer title/token fields), keyed by id.
     const refreshSessionStats = () =>
       api
@@ -162,10 +164,19 @@ export function SingleDashboard() {
         .then((data) => {
           type LiveStat = {
             id: string
+            tokenId?: string
+            engine?: string
+            userName?: string
+            lastActivityAt?: string
+            mcpCallCount?: number
             cpuPercent?: number | null
             memBytes?: number | null
             attached?: boolean
             detachedForSec?: number | null
+            userMessages?: number
+            assistantMessages?: number
+            contextTokens?: number
+            totalTokens?: number
           }
           const byId = new Map((data.sessions as LiveStat[]).map((s) => [s.id, s]))
           ptySessions.value = ptySessions.value.map((p) => {
@@ -175,10 +186,20 @@ export function SingleDashboard() {
             return st
               ? {
                   ...p,
+                  tokenId: st.tokenId ?? p.tokenId,
+                  engine: st.engine ?? p.engine,
+                  userName: st.userName ?? p.userName,
+                  lastActivityAt: st.lastActivityAt ?? p.lastActivityAt,
+                  mcpCallCount: st.mcpCallCount ?? p.mcpCallCount,
                   cpuPercent: st.cpuPercent ?? null,
                   memBytes: st.memBytes ?? null,
                   attached: st.attached,
                   detachedForSec: st.detachedForSec ?? null,
+                  // Live counters: the WS init is only a snapshot.
+                  userMessages: st.userMessages ?? p.userMessages,
+                  assistantMessages: st.assistantMessages ?? p.assistantMessages,
+                  contextTokens: st.contextTokens ?? p.contextTokens,
+                  totalTokens: st.totalTokens ?? p.totalTokens,
                 }
               : p
           })
@@ -257,7 +278,7 @@ export function SingleDashboard() {
   const sessionsStatus = sessions.length > 0 ? 'ok' : 'warning'
   // Derive a few useful breakdowns from the live PTY session list so the
   // status card carries weight even when a single tab is open.
-  const distinctUsers = new Set(sessions.map((s) => s.userName).filter(Boolean)).size
+  const distinctUsers = new Set(sessions.map(ptyUserKey)).size
   const totalInputs = sessions.reduce((acc, s) => acc + (s.userMessages || 0), 0)
   const totalMcpCalls = sessions.reduce((acc, s) => acc + (s.mcpCallCount || 0), 0)
   const lastActivityAt = sessions.reduce<number>((acc, s) => {
@@ -277,7 +298,7 @@ export function SingleDashboard() {
   const sessionsItems = [
     {
       label: 'Active Sessions',
-      value: String(sessions.length),
+      value: engineBreakdown(sessions),
       color: sessions.length > 0 ? 'var(--accent-green)' : 'var(--text-muted)',
     },
     ...(isLoggedIn
@@ -285,7 +306,7 @@ export function SingleDashboard() {
       : [{ label: 'Auth', value: 'Not authenticated', color: 'var(--accent-yellow)' }]),
     {
       label: 'Active Users',
-      value: String(distinctUsers),
+      value: engineBreakdown(sessions, true),
       color: distinctUsers > 0 ? 'var(--accent-blue)' : 'var(--text-muted)',
     },
     { label: 'User msg', value: String(totalInputs), color: 'var(--text-secondary)' },
@@ -374,7 +395,6 @@ export function SingleDashboard() {
             </div>
           )}
         </StatusCard>
-        <CodexAccountCard />
         <StatusCard
           icon="fa-solid fa-server"
           iconColor="var(--accent-green)"
@@ -418,310 +438,15 @@ export function SingleDashboard() {
             ]
           })()}
         />
+        {serverStatus.value?.codex?.available && (
+          <CodexAccountCard
+            version={serverStatus.value.codex.version}
+            activeSessions={sessions.filter((s) => s.engine === 'codex').length}
+          />
+        )}
       </div>
 
-      {/* Active PTY Sessions — header lives inside the card, matching the
-          Usage chart layout above. */}
-      <Card>
-        <div style={{ padding: '14px 16px 0' }}>
-          <SectionHeader
-            title="Active PTY Sessions"
-            icon="fa-solid fa-terminal"
-            subtitle={sessions.length > 0 ? `${sessions.length} active` : undefined}
-          />
-        </div>
-        {sessions.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-            No active sessions
-          </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-primary)' }}>
-                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  Title / ID
-                </th>
-                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  User
-                </th>
-                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  Folder
-                </th>
-                <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  State / MCP
-                </th>
-                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  User
-                </th>
-                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  Asst
-                </th>
-                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  MCP
-                </th>
-                <th
-                  style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}
-                  title="Real context window at last turn"
-                >
-                  Context
-                </th>
-                <th
-                  style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}
-                  title="Cumulative API throughput"
-                >
-                  Total
-                </th>
-                <th
-                  style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}
-                  title="Live CPU% over the session's whole process tree (PTY shell → claude → MCP children). Per-core, like top."
-                >
-                  CPU
-                </th>
-                <th
-                  style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}
-                  title="Live resident memory (RSS) over the session's whole process tree"
-                >
-                  Mem
-                </th>
-                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  Duration
-                </th>
-                <th style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  Idle
-                </th>
-                <th
-                  style={{ textAlign: 'right', padding: '8px 12px', color: 'var(--text-muted)', fontWeight: 500 }}
-                ></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((s) => {
-                const folder = s.cwd ? s.cwd.split(/[/\\]/).pop() || s.cwd : '—'
-                // Clamp to 0 — server clock may be ahead of the browser
-                // (e.g. UTC container vs local TZ skew on a laptop with
-                // drifted system clock), which would otherwise produce
-                // negative "Duration / Idle" cells.
-                const durSec = Math.max(0, Math.round((Date.now() - new Date(s.createdAt).getTime()) / 1000))
-                const idleSec = Math.max(0, Math.round((Date.now() - new Date(s.lastActivityAt).getTime()) / 1000))
-                const fmtDur = (sec: number) => {
-                  if (sec < 60) return `${sec}s`
-                  const m = Math.floor(sec / 60),
-                    ss = sec % 60
-                  if (m < 60) return `${m}m ${ss}s`
-                  const h = Math.floor(m / 60)
-                  return `${h}h ${m % 60}m`
-                }
-                const fmtTok = (n: number) => {
-                  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-                  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-                  return String(n || 0)
-                }
-                const fmtMem = (bytes: number) => {
-                  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)}G`
-                  if (bytes >= 1024 * 1024) return `${Math.round(bytes / 1024 / 1024)}M`
-                  return `${Math.round(bytes / 1024)}K`
-                }
-                // Per-core CPU%: colour hot sessions (a pegged core = 100%).
-                const cpuPct = typeof s.cpuPercent === 'number' ? s.cpuPercent : null
-                const cpuColor =
-                  cpuPct === null
-                    ? 'var(--text-muted)'
-                    : cpuPct >= 80
-                      ? 'var(--accent-red)'
-                      : cpuPct >= 30
-                        ? 'var(--accent-yellow)'
-                        : 'var(--text-secondary)'
-                const stateColor =
-                  s.state === 'running'
-                    ? 'var(--accent-green)'
-                    : s.state === 'exiting'
-                      ? 'var(--accent-yellow)'
-                      : 'var(--text-muted)'
-                const mcpOk = s.mcpInitialized === true
-                const mcpErr = s.mcpLastError
-                const mcpColor = mcpOk ? 'var(--accent-green)' : mcpErr ? 'var(--accent-red)' : 'var(--accent-yellow)'
-                const mcpLabel = mcpOk ? 'OK' : mcpErr ? 'Error' : 'Pending'
-                const titleText = s.sessionTitle || s.id.slice(0, 8) + '…'
-                return (
-                  <tr key={s.id} style={{ borderBottom: '1px solid var(--border-secondary)' }}>
-                    <td
-                      style={{ padding: '8px 12px', maxWidth: 240, overflow: 'hidden' }}
-                      title={s.sessionTitle || s.id}
-                    >
-                      <div
-                        style={{
-                          color: 'var(--text-primary)',
-                          fontWeight: s.sessionTitle ? 600 : 400,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {titleText}
-                      </div>
-                      <div
-                        style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}
-                        title={s.id}
-                      >
-                        {s.id.slice(0, 8)}
-                      </div>
-                    </td>
-                    <td style={{ padding: '8px 12px', color: 'var(--text-primary)' }}>{s.userName || '—'}</td>
-                    <td
-                      style={{
-                        padding: '8px 12px',
-                        color: 'var(--accent-blue)',
-                        maxWidth: '200px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                      title={s.cwd}
-                    >
-                      {folder}
-                    </td>
-                    <td style={{ padding: '8px 12px' }} title={mcpErr || ''}>
-                      <div style={{ color: stateColor, fontWeight: 500, fontSize: '12px' }}>{s.state}</div>
-                      <div style={{ color: mcpColor, fontSize: '10px' }}>MCP: {mcpLabel}</div>
-                      {s.attached === false ? (
-                        <div
-                          style={{ color: 'var(--accent-yellow)', fontSize: '10px' }}
-                          title="No client is connected — the session survives a client drop and is waiting out the detach-grace window before the reaper kills it"
-                        >
-                          ⚠ detached{typeof s.detachedForSec === 'number' ? ` · ${fmtDur(s.detachedForSec)}` : ''}
-                        </div>
-                      ) : (
-                        <div
-                          style={{ color: 'var(--accent-green)', fontSize: '10px' }}
-                          title="A client is connected to this session"
-                        >
-                          ● client
-                        </div>
-                      )}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        color: 'var(--accent-blue)',
-                      }}
-                      title="User messages from JSONL"
-                    >
-                      {s.userMessages ?? 0}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        color: 'var(--text-secondary)',
-                      }}
-                      title="Assistant messages from JSONL"
-                    >
-                      {s.assistantMessages ?? 0}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        color: 'var(--text-secondary)',
-                      }}
-                      title="MCP tool calls"
-                    >
-                      {s.mcpCallCount}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        color: 'var(--accent-purple)',
-                      }}
-                      title="Real context window at last assistant turn"
-                    >
-                      {fmtTok(s.contextTokens ?? 0)}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        color: 'var(--text-secondary)',
-                      }}
-                      title="Cumulative API throughput (input + cache + output)"
-                    >
-                      {fmtTok(s.totalTokens ?? 0)}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        color: cpuColor,
-                      }}
-                      title="Live CPU% over the session's process tree (per-core)"
-                    >
-                      {cpuPct === null ? '—' : `${cpuPct}%`}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        color: 'var(--text-secondary)',
-                      }}
-                      title="Live RSS over the session's process tree"
-                    >
-                      {typeof s.memBytes === 'number' ? fmtMem(s.memBytes) : '—'}
-                    </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)' }}>
-                      {fmtDur(durSec)}
-                    </td>
-                    <td
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'right',
-                        color: idleSec > 300 ? 'var(--accent-yellow)' : 'var(--text-muted)',
-                      }}
-                    >
-                      {fmtDur(idleSec)}
-                    </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        title="Terminate this session — kills the claude CLI process on the server"
-                        onClick={() => {
-                          if (
-                            !confirm(`Kill session "${titleText}"?\nThis terminates the claude process on the server.`)
-                          )
-                            return
-                          void api.killSession(s.id).catch(() => {
-                            /* row drops on the WS destroy event; ignore */
-                          })
-                        }}
-                        style={{
-                          padding: '3px 10px',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          color: 'var(--accent-red)',
-                          background: 'transparent',
-                          border: '1px solid var(--accent-red)',
-                          borderRadius: '5px',
-                        }}
-                      >
-                        Kill
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-      </Card>
+      <ActivePtySessions sessions={sessions} />
 
       {/* API Errors — captured from CLI retry log lines via session-io regex. */}
       <ApiErrorsCard />
