@@ -6,7 +6,7 @@
 //!     evaluate_script(window.__kaminDeliver([...]))
 
 use crate::host::events::TermEvent;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 use serde_json::Value;
@@ -57,15 +57,31 @@ pub fn drop_html(view_id: &str) {
     html_store().lock().unwrap().remove(view_id);
 }
 
+/// Вью, чью страницу следующий HTML перезагрузит даже без изменений.
+static RELOAD: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn reload_set() -> &'static Mutex<HashSet<String>> {
+    RELOAD.get_or_init(Default::default)
+}
+
+/// Хост сменился: страницы прежнего расширения перезагрузить с первым HTML
+/// нового (`host/rebind.rs`). Сами страницы до того живут как были.
+pub fn reload_on_next_html() {
+    let ids: Vec<String> = html_store().lock().unwrap().keys().cloned().collect();
+    reload_set().lock().unwrap().extend(ids);
+}
+
 /// Положить HTML вью в стор; вернуть URL для навигации.
 pub fn stage_html(view_id: &str, html: String) -> String {
+    let reload = reload_set().lock().unwrap().remove(view_id);
     {
         let mut store = html_store().lock().unwrap();
         // Тот же HTML — НЕ бампать rev: рост rev перезагружает iframe
         // (`ensure_html_view`), а повторную отдачу того же HTML экстеншен
         // делает на каждый повторный resolve. Живое вью с работающим
         // скриптом перегружать из-за идентичной страницы нельзя.
-        if let Some((old, _)) = store.get(view_id)
+        if !reload
+            && let Some((old, _)) = store.get(view_id)
             && *old == html
         {
             return view_url(view_id);
