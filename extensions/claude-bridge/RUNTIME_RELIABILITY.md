@@ -605,6 +605,36 @@ matcher. Relay URL/token после proxy rewrite не отображаются.
 plugin update меняет hook hash, modal показывает полную declaration и matcher,
 approve/reject сохраняются.
 
+**Verification 2026-11-13 (KaminIDE 1.0.94, profile copy): partial pass, three defects.**
+
+Setup:
+- Two disposable plugins from a local marketplace; every hook only echoes text.
+- Keys are sent through CEF DevTools `Input.dispatchKeyEvent` to the Chat page, without screen takeover.
+
+Passed:
+- Initial focus goes to the dialog when the modal opens from a live event.
+- Tab and Shift+Tab stay in the dialog and wrap around; a disabled Approve button is skipped.
+- Space toggles a hook, and Enter on Approve or Reject all saves the choice.
+- After a single modal closes, focus returns to the composer.
+- A plugin update re-prompts with the new declaration and matcher, and the changed hook starts unselected.
+- A queued second plugin takes focus when its modal opens.
+- The dangerous-pattern mark is shown, and a long matcher wraps without horizontal overflow.
+- Approvals and rejections are persisted.
+
+Failed:
+1. Later approval requests do not reach Chat. `requestHookApproval` sends `plugin-hooks:awaiting-approval` to one registered webview sink. The event arrived only in the Customize Plugins page that started the install. Chat, which hosts the modal, showed the request only after a reload.
+2. A modal opened from the mount-time pending list (after a Chat reload) leaves focus in the composer. Tab then reaches chat controls behind the `aria-modal` overlay.
+3. After a queue of two modals closes, focus lands on `BODY` instead of the composer.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/57f3d9cc7076686e22c1bd8df007a19f4cb4045c/incidents/BR-10/evidence/2026-11-13-keyboard-1.0.94).
+
+Next artifact: change. The fix should:
+- deliver the request to every live Bridge view (or to Chat explicitly);
+- move focus into the dialog whenever the modal shows, including from the pending list;
+- restore focus to the element that had it before the first queued modal.
+
+Then repeat this gate.
+
 ### BR-11 — Inventory native CLI-only blocking states
 
 **Owner-directed test handoff — 2026-10-23:** The
