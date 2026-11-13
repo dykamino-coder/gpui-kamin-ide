@@ -1,5 +1,6 @@
 """Tests of scripts/memprof.py: allocator frames, sites, subsystems, live folding and sampling weights."""
 
+import io
 import json
 import math
 import pathlib
@@ -105,6 +106,38 @@ class Folding(unittest.TestCase):
     def test_allocated_mode_counts_every_allocation(self):
         run = self.run_of(["a 1 layout 100 10 1 2", "f 1 layout 100 10", "a 1 layout 50 10 1 2"], live=False)
         self.assertEqual(list(run.groups.values()), [[2.0, 150.0]])
+
+    def test_frames_keep_the_blocks_allocated_in_them_and_every_free_applies(self):
+        lines = [
+            "a 1 layout 100 10 1 2",  # before the frames
+            "a 2 paint 30 20 1 3",
+            "a 2 style 50 40 1 4",
+            "f 3 style 50 40",  # freed after the frames: not live at the end
+            "a 3 layout 7 50 1 2",  # after the frames
+        ]
+        path = probe_file(lines)
+        self.addCleanup(pathlib.Path(path).unlink)
+        live = memprof.Run("x.exe", path, True, frames=(2, 2), symbols=FakeSymbols(NAMES))
+        self.assertEqual({key[0]: value for key, value in live.groups.items()}, {"paint": [1.0, 30.0]})
+        allocated = memprof.Run("x.exe", path, False, frames=(2, 2), symbols=FakeSymbols(NAMES))
+        self.assertEqual({key[0]: value for key, value in allocated.groups.items()},
+                         {"paint": [1.0, 30.0], "style": [1.0, 50.0]})
+        report = memprof.build_report(live, None, True, 8, 10)
+        self.assertEqual(report["runs"]["cand"]["frames"], [2, 2])
+        out = io.StringIO()
+        memprof.render(report, out)
+        self.assertIn("only blocks allocated in frames 2-2", out.getvalue())
+
+    def test_both_commands_take_frames(self):
+        seen = []
+        for name in ("run_command", "report_command"):
+            original = getattr(memprof, name)
+            self.addCleanup(setattr, memprof, name, original)
+            setattr(memprof, name, lambda args: seen.append((args.command, args.frames)))
+        memprof.main(["run", "--exe", "c.exe", "--out", "o", "--at", "paint@4", "--frames", "2-3", "--", "p.html"])
+        memprof.main(["report", "c.exe", "c.stacks", "--frames", "2"])
+        self.assertEqual(seen, [("run", "2-3"), ("report", "2")])
+        self.assertEqual(memprof.parse_frames("2"), (2, 2))
 
     def test_sampled_records_are_divided_by_their_probability(self):
         header = "# engine_bench alloc stacks v3 base=0 filter=* until=- sample=1000"

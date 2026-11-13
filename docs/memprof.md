@@ -70,7 +70,9 @@ in the bench JSON).
 
 - `memprof.py report CAND.exe CAND.stacks [BASE.exe BASE.stacks] [--allocated] [--json R.json]`:
   fold existing probe files. `--allocated` counts every allocation of the window (churn) instead of
-  the live heap. `--frames A-B` keeps only records of those frames.
+  the live heap. `--frames A-B` (also on `run`) keeps only blocks allocated in those frames; frees
+  count in every frame, so a block freed after them is not live. The header names the frames, and
+  the share of the audit counter is left out, since that counter covers every frame.
 - `memprof.py diff A.json B.json`: compare two saved reports, no symbols needed (e.g. two days).
 - `--depth N` (frames per stack row, default 8) and `--top N` (rows per table, default 25).
 - `scripts/alloc_stacks.py` is kept as an alias of `report` (`--live` = live heap).
