@@ -59,7 +59,7 @@ const SHELL_OPERATORS = ['&&', '||', '|&', ';;', ';', '|', '&', '\n']
 /** The simple commands of a shell command as argv strings, or null when the
  *  command uses a construct this splitter does not model (substitution,
  *  heredoc, subshell, compound keyword). The CLI's matcher then holds. */
-export function simpleShellCommands(command: string): string[] | null {
+export function simpleShellCommands(command: string, home?: string): string[] | null {
   const commands: string[][] = []
   let words: string[] = []
   let word = ''
@@ -97,6 +97,12 @@ export function simpleShellCommands(command: string): string[] | null {
         if (command[j] === '\\' && j + 1 < command.length && '"\\$`\n'.includes(command[j + 1]!)) {
           if (command[j + 1] === '\n') return null
           j++
+        } else if (command[j] === '$' && /^[A-Za-z_]/.test(command[j + 1] ?? '')) {
+          const name = command.slice(j + 1).match(/^[A-Za-z_][A-Za-z0-9_]*/)![0]
+          if (name !== 'HOME' || home === undefined) return null
+          word += home
+          j += name.length
+          continue
         }
         word += command[j]
       }
@@ -134,10 +140,14 @@ export function simpleShellCommands(command: string): string[] | null {
       i = newline - 1
       continue
     }
-    // Effective CLI environment expansion is not modeled yet (INC-2026-0107).
-    // The current approximation omits unquoted simple expansions.
+    // The native matcher knows HOME (os.homedir), rather than expanding every
+    // environment variable. An unknown variable makes the parse conservative,
+    // even when that variable exists in settings.env or the process environment.
     if (ch === '$' && /^[A-Za-z_]/.test(command[i + 1] ?? '')) {
       const name = command.slice(i + 1).match(/^[A-Za-z_][A-Za-z0-9_]*/)![0]
+      if (name !== 'HOME' || !home || /[\s*?\[\]]/.test(home)) return null
+      word += home
+      inWord = true
       i += name.length
       continue
     }
@@ -186,8 +196,8 @@ export function simpleShellCommands(command: string): string[] | null {
 
 /** The CLI's Bash rule: the rule accepts the call when it accepts any simple
  *  command, also behind `xargs`. */
-export function bashRuleMatches(rule: string, command: string): boolean {
-  const commands = simpleShellCommands(command)
+export function bashRuleMatches(rule: string, command: string, home?: string): boolean {
+  const commands = simpleShellCommands(command, home)
   if (commands === null || commands.length === 0) return true
   const prefix = legacyPrefix(rule)
   return commands.some((candidate) => {
@@ -203,8 +213,10 @@ export function bashRuleMatches(rule: string, command: string): boolean {
   })
 }
 
-/** Find the closing parenthesis without treating quoted parentheses as syntax. */
+/** Find a group's end without treating quoted delimiters as syntax. */
 function powershellGroupEnd(command: string, open: number): number | null {
+  const opening = command[open]!
+  const closing = opening === '{' ? '}' : ')'
   let depth = 1
   let quote = ''
   for (let i = open + 1; i < command.length; i++) {
@@ -220,9 +232,9 @@ function powershellGroupEnd(command: string, open: number): number | null {
       quote = ch
     } else if (ch === '#') {
       while (i < command.length && command[i] !== '\n') i++
-    } else if (ch === '(') {
+    } else if (ch === opening) {
       depth++
-    } else if (ch === ')' && --depth === 0) {
+    } else if (ch === closing && --depth === 0) {
       return i
     }
   }
@@ -278,7 +290,18 @@ function powershellCommands(command: string): string[] | null {
           word += command[++i]
           continue
         }
-        if (quote === '"' && command.startsWith('$(', i)) return null
+        if (quote === '"' && command.startsWith('$(', i)) {
+          const close = powershellGroupEnd(command, i + 1)
+          if (close === null) return null
+          const nested = powershellCommands(command.slice(i + 2, close))
+          if (nested === null) return null
+          statements.push(...nested)
+          // ExpandableStringExpressionAst.Value keeps the subexpression's
+          // source, while its CommandAst children are matched independently.
+          word += command.slice(i, close + 1)
+          i = close
+          continue
+        }
         word += c
       }
       if (!closed) return null
@@ -310,9 +333,9 @@ function powershellCommands(command: string): string[] | null {
       endWord()
       while (command[i + 1] === '>') i++
       skipRedirectTarget = true
-    } else if (command.startsWith('$(', i) || command.startsWith('@(', i) || ch === '(') {
+    } else if (command.startsWith('$(', i) || command.startsWith('@(', i) || ch === '(' || ch === '{') {
       if (active) return null
-      const open = ch === '(' ? i : i + 1
+      const open = ch === '(' || ch === '{' ? i : i + 1
       const close = powershellGroupEnd(command, open)
       if (close === null) return null
       const body = command.slice(open + 1, close).trim()
@@ -327,7 +350,7 @@ function powershellCommands(command: string): string[] | null {
       }
       if (close + 1 < command.length && !/[\s;|&>]/.test(command[close + 1]!)) return null
       i = close
-    } else if (ch === '{' || ch === '}' || ch === ')') {
+    } else if (ch === '}' || ch === ')') {
       return null
     } else if (';|\n'.includes(ch) || command.startsWith('&&', i)) {
       endCommand()

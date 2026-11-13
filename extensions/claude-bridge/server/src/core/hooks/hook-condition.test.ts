@@ -97,7 +97,7 @@ describe('native argument rules', () => {
     ['echo *', 'echo fixture | xargs echo', true],
     ['printf $(pwd)', "printf '$(pwd)'", true],
   ] as const)('Bash(%s), %s => %s', (rule, command, expected) => {
-    expect(bashRuleMatches(rule, command)).toBe(expected)
+    expect(bashRuleMatches(rule, command, '/home/cli')).toBe(expected)
   })
   it('handles literal operators in PowerShell quotes and case-insensitive command names', () => {
     expect(powershellRuleMatches('git *', "Write-Output '$(pwd)'")).toBe(false)
