@@ -2,12 +2,14 @@
 // create/resume (INC-2026-0097). The server serves exactly these built-in tools
 // and words its instructions from `platform` and `place`; it knows nothing
 // about the host otherwise.
+import { homedir } from 'node:os'
 import { findBashExecutable, findPowerShellExecutable, whichExecutable, type RuntimeLookupOptions } from '../utils/command-runtime'
 
 export interface HostDeclaration {
   tools: string[]
   platform: string
   place: string
+  home?: string
 }
 
 /** Properties of the embedding host that cannot be probed from this module. */
@@ -52,5 +54,5 @@ export async function probeHostDeclaration(
     ...(git ? [] : GIT_TOOLS),
     ...(traits.preview ? [] : PREVIEW_TOOLS),
   ])
-  return { tools: registered.filter((name) => !missing.has(name)), platform, place: traits.place }
+  return { tools: registered.filter((name) => !missing.has(name)), platform, place: traits.place, home: homedir() }
 }

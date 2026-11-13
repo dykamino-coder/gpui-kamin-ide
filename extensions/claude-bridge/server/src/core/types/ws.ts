@@ -35,7 +35,7 @@ export interface WsMsgSessionCreate {
    *  name of the place where they run. The server serves exactly the declared
    *  tools and words its instructions from it; absent (older clients) → full
    *  tool list and the legacy texts. */
-  host?: { tools: string[]; platform?: string; place?: string }
+  host?: { tools: string[]; platform?: string; place?: string; home?: string }
   /** Agent engine for a NEW chat (absent → Claude). Ignored on a live reattach;
    *  a cold resume trusts the transcript's own engine over this hint. */
   engine?: 'claude' | 'codex'
@@ -124,7 +124,7 @@ export interface WsMsgSessionResume {
   /** See WsMsgSessionCreate. */
   transcriptMirrorDir?: string
   /** See WsMsgSessionCreate. */
-  host?: { tools: string[]; platform?: string; place?: string }
+  host?: { tools: string[]; platform?: string; place?: string; home?: string }
   /** Agent engine for a NEW chat (absent → Claude). Ignored on a live reattach;
    *  a cold resume trusts the transcript's own engine over this hint. */
   engine?: 'claude' | 'codex'

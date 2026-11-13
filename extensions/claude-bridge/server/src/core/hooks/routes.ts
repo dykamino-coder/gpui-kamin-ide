@@ -140,7 +140,9 @@ export function createHooksRoutes(): Hono {
     // client reconnects waits for the new socket. A session that is shutting
     // down has no client to wait for.
     const clientWs = isSessionTearingDown(sessionId) ? (session.ws ?? null) : () => session.ws ?? null
-    const result = await dispatchHook(sessionId, hookId, payload, clientWs, session.tokenId)
+    const result = await dispatchHook(sessionId, hookId, payload, clientWs, session.tokenId, {
+      home: session.host?.home,
+    })
     c.header('X-Bridge-Hook-Exit-Code', String(result.exitCode))
 
     // The SessionEnd this window was held open for has been served, so close it

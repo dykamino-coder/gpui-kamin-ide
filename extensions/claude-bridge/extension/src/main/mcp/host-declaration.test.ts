@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { homedir } from 'node:os'
 import { probeHostDeclaration, USER_MACHINE_TRAITS, type HostTraits } from './host-declaration'
 import type { RuntimeLookupOptions } from '../utils/command-runtime'
 
@@ -24,6 +25,11 @@ function windows(existing: string[], installed: string[] = []): RuntimeLookupOpt
 const absent = (tools: string[], names: string[]) => names.filter((name) => tools.includes(name))
 
 describe('host declaration probe', () => {
+  it('declares the executor home for client-relative hook conditions', async () => {
+    const host = await probeHostDeclaration(REGISTERED, WORKSPACE, posix('linux', ['bash']))
+    expect(host).toHaveProperty('home', homedir())
+  })
+
   it('does not declare PowerShell on a Linux host without pwsh', async () => {
     const host = await probeHostDeclaration(REGISTERED, WORKSPACE, posix('linux', ['bash', 'git']))
     expect(host).toMatchObject({ platform: 'linux', place: 'the workspace host' })
