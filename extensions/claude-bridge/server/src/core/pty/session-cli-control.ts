@@ -156,6 +156,10 @@ export class SessionCliControl {
     this.submissions?.action(id, action)
   }
 
+  handoff(): string[] {
+    return this.submissions?.handoff() ?? []
+  }
+
   submit(text: string, submissionId?: string): boolean {
     const input = getSessionInputSnapshot(this.session)
     // Engine submit intentionally does not expand mentions, pastes or native commands.

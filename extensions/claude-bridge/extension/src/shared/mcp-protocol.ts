@@ -233,6 +233,7 @@ export type ServerMessage =
       type: 'session:submission'
       sessionId: string
     } & import('./types').SubmissionUpdate)
+  | { type: 'session:handoff'; sessionId: string; transferable: string[] }
   | { type: 'jsonl:download-begin'; fileName: string | null; total: number }
   | { type: 'jsonl:download-chunk'; chunk: string; sent: number; total: number }
   | { type: 'jsonl:download-end'; fileName: string | null; total: number }
