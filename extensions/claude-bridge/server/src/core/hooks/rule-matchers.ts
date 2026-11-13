@@ -256,6 +256,59 @@ function powershellCommentEnd(command: string, open: number): number | null {
 const POWERSHELL_SCALAR = String.raw`(?:'(?:[^']|'')*'|"(?:[^"\x60$]|\$(?!\()|\x60[\s\S]|"")*"|\$[\w:]+|[-+]?\d+(?:\.\d+)?)`
 const POWERSHELL_SCALAR_LIST = new RegExp(`^${POWERSHELL_SCALAR}(?:\\s*,\\s*${POWERSHELL_SCALAR})*$`)
 
+/** Hashtable keys are expressions, not command names. Only their values
+ *  contribute command children for the sampled literal-key syntax. */
+function powershellHashtableCommands(body: string): string[] | null {
+  const statements: string[] = []
+  let start = 0,
+    valueStart: number | null = null,
+    quote = ''
+  const endEntry = (end: number): boolean => {
+    if (valueStart === null) return !body.slice(start, end).trim()
+    const value = body.slice(valueStart, end).trim()
+    if (!value) return false
+    // Scalar arithmetic contains no CommandAst, just like scalar literals.
+    if (!POWERSHELL_SCALAR_LIST.test(value) && !/^[-+]?\d+(?:\s*[-+*/%]\s*\d+)+$/.test(value)) {
+      const nested = powershellCommands(value)
+      if (nested === null) return false
+      statements.push(...nested)
+    }
+    return true
+  }
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]!
+    if (ch === '`' && quote !== "'") i++
+    else if (quote) {
+      if (ch === quote) {
+        if (body[i + 1] === quote) i++
+        else quote = ''
+      }
+    } else if (ch === "'" || ch === '"') quote = ch
+    else if (body.startsWith('<#', i)) {
+      const close = powershellCommentEnd(body, i)
+      if (close === null) return null
+      i = close
+    } else if (ch === '#') {
+      while (i < body.length && body[i] !== '\n') i++
+      i--
+    } else if (ch === '(' || ch === '{') {
+      const close = powershellGroupEnd(body, i)
+      if (close === null) return null
+      i = close
+    } else if (ch === '=' && valueStart === null) {
+      const key = body.slice(start, i).trim()
+      if (!/^[A-Za-z_]\w*$/.test(key) && !POWERSHELL_SCALAR_LIST.test(key)) return null
+      valueStart = i + 1
+    } else if (ch === ';' || ch === '\n') {
+      if (!endEntry(i)) return null
+      start = i + 1
+      valueStart = null
+    }
+  }
+  if (quote || !endEntry(body.length)) return null
+  return statements
+}
+
 /** Sampled CommandAst candidates, including commands inside grouped pipelines
  *  and subexpressions. null keeps the fallback for unsupported syntax. */
 function powershellCommands(command: string): string[] | null {
@@ -357,14 +410,28 @@ function powershellCommands(command: string): string[] | null {
       endWord()
       while (command[i + 1] === '>') i++
       skipRedirectTarget = true
-    } else if (command.startsWith('$(', i) || command.startsWith('@(', i) || ch === '(' || ch === '{') {
+    } else if (
+      command.startsWith('$(', i) ||
+      command.startsWith('@(', i) ||
+      command.startsWith('@{', i) ||
+      ch === '(' ||
+      ch === '{'
+    ) {
+      // Assignment syntax is outside a value expression's CommandElements.
+      if (active && /^\$[A-Za-z_]\w*=$/.test(word) && !words.length) {
+        word = ''
+        active = false
+      } else if (words.length === 2 && /^\$[A-Za-z_]\w*$/.test(words[0]!) && words[1] === '=') {
+        words = []
+      }
       if (active) return null
       const open = ch === '(' || ch === '{' ? i : i + 1
       const close = powershellGroupEnd(command, open)
       if (close === null) return null
       const body = command.slice(open + 1, close).trim()
       let nested: string[] | null = []
-      if (body && !POWERSHELL_SCALAR_LIST.test(body)) nested = powershellCommands(body)
+      if (command.startsWith('@{', i)) nested = powershellHashtableCommands(body)
+      else if (body && !POWERSHELL_SCALAR_LIST.test(body)) nested = powershellCommands(body)
       if (nested === null) return null
       statements.push(...nested)
       if (words.length || skipRedirectTarget) {
@@ -393,9 +460,10 @@ function powershellCommands(command: string): string[] | null {
 /** Models sampled PowerShell command ASTs case-insensitively. Unsupported
  *  nested syntax still has parity gaps recorded in INC-0107. */
 export function powershellRuleMatches(rule: string, command: string): boolean {
+  // The native universal rule bypasses command extraction, including empty ASTs.
+  if (rule.trim() === '*') return true
   const statements = powershellCommands(command)
   if (statements === null) return true
-  if (statements.length === 0) return true
   const prefix = legacyPrefix(rule)
   return statements.some((candidate) => {
     const [name, ...args] = candidate.split(' ')
