@@ -14,6 +14,9 @@ use std::sync::{LazyLock, Mutex};
 use gpui::prelude::*;
 use gpui::{App, FocusHandle, Window, div, px};
 
+#[cfg(test)]
+mod keymap_tests;
+
 /// Толщина кольца (`outline: 2px`).
 const RING: f32 = 2.0;
 /// Зазор до элемента (`outline-offset: 2px`).
