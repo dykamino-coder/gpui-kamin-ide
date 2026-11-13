@@ -93,8 +93,18 @@ it('preserves engine in raw, canonical and proxy-only accounting branches, inclu
 it('keeps mixed-engine counts, filtered contexts and per-request Codex cost tiers through build and indexed replacement', async () => {
   for (const built of [false, true]) {
     if (built) await rollup.startRollupBuild(async () => db)
-    const all = await json('/api/dashboard/stats/overview?agg=hm')
-    const codex = await json('/api/dashboard/stats/overview?agg=hm&engine=codex')
+    const all = built
+      ? await json('/api/dashboard/stats/overview?agg=hm')
+      : await queries.legacyOverview(db, { range: 'all', tokenId: null, compact: true, tzOffsetMin: 0 })
+    const codex = built
+      ? await json('/api/dashboard/stats/overview?agg=hm&engine=codex')
+      : await queries.legacyOverview(db, {
+          range: 'all',
+          tokenId: null,
+          compact: true,
+          tzOffsetMin: 0,
+          engine: 'codex',
+        })
     expect(all.sessions).toBe(3)
     expect(all.engines.claude.sessions).toBe(1)
     expect(all.engines.codex.sessions).toBe(3)
@@ -111,6 +121,21 @@ it('keeps mixed-engine counts, filtered contexts and per-request Codex cost tier
       [false, 150000],
       [true, OPENAI_LONG_CONTEXT_TOKENS + 1],
     ])
+    const page = await queries.userSessionsPage(db, 'alice', { limit: 1, engine: 'codex' })
+    expect(page.total).toBe(3)
+    expect(page.rows[0]!.engines).toBe('codex')
+    const next = await queries.userSessionsPage(db, 'alice', {
+      limit: 1,
+      before: `${page.rows[0]!.last_activity_at}|${page.rows[0]!.session_id}`,
+      engine: 'codex',
+    })
+    expect(next.rows[0]!.session_id).not.toBe(page.rows[0]!.session_id)
+    expect(next.rows[0]!.engines).toBe('codex')
+    if (!built) {
+      const pending = await json('/api/dashboard/stats/users-overview?engine=codex')
+      expect(pending.building.ready).toBe(false)
+      continue
+    }
     const users = await json('/api/dashboard/users?engine=codex')
     expect(users[0].cost).toBe(0)
     expect(users[0].codex.apiEquivalentUsd).toBeGreaterThan(0)

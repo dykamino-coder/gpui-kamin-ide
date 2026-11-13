@@ -149,6 +149,11 @@ async function bench(dir: string, runs: number): Promise<void> {
   const app = new Hono()
   ;(await import('../../dashboard/controllers/users')).registerUserRoutes(app)
   ;(await import('../../dashboard/controllers/stats')).registerStatsRoutes(app)
+  if (process.env.BENCH_PAGE === 'during-build') {
+    await duringBuild(app, lc)
+    await lc.closeDb()
+    return
+  }
   if (process.env.BENCH_PAGE === 'endpoints') {
     await endpoints(app, runs, active)
     await writeExplain()
@@ -239,6 +244,10 @@ async function endpoints(
       'users-overview one 30d',
       `/api/dashboard/stats/users-overview?range=30d&tz=Europe/Moscow&subject=${encodeURIComponent(pick[0]!.userName)}`,
     ],
+    // The sessions modal of the right sidebar: first page, and the whole list.
+    ['sessions user(max) page', `/api/dashboard/tokens/${pick[0]!.userName}/sessions?limit=200`],
+    ['sessions user(max) all', `/api/dashboard/tokens/${pick[0]!.userName}/sessions`],
+    ['sessions user(min) all', `/api/dashboard/tokens/${pick[2]!.userName}/sessions`],
   ]
   const timed = async (url: string): Promise<string> => {
     const s = performance.now()
@@ -287,6 +296,59 @@ async function endpoints(
     }
     console.log(`${name.padEnd(24)} cold / warm${touch ? ' / changed' : ''}: ${cells.join(' | ')}`)
   }
+  console.log(`peakRSS ${(process.resourceUsage().maxRSS / 1024).toFixed(0)} MiB`)
+}
+
+// First boot after an upgrade: the one-time build runs in the background while
+// the page is used. Every request must answer promptly (build progress, no raw
+// scan), a plain reader must not queue behind the build, and the event loop
+// must stay responsive.
+async function duringBuild(
+  app: { request(url: string): Response | Promise<Response> },
+  lc: typeof import('./lifecycle'),
+): Promise<void> {
+  const { monitorEventLoopDelay } = await import('perf_hooks')
+  const rollup = await import('./rollup')
+  if (rollup.rollupReady()) await rollup.resetStatsRollup(await lc.getDb())
+  const lag = monitorEventLoopDelay({ resolution: 10 })
+  lag.enable()
+  const b0 = performance.now()
+  let done = false
+  const build = rollup.startRollupBuild().then(() => (done = true))
+  const urls: Array<[string, string]> = [
+    ['users', '/api/dashboard/users'],
+    ['users-overview page', '/api/dashboard/stats/users-overview?range=all&tz=Europe/Moscow'],
+    ['overview hm', '/api/dashboard/stats/overview?range=all&agg=hm&tz=-180&token=user00'],
+    ['sessions', '/api/dashboard/tokens/user00/sessions?limit=200'],
+  ]
+  const ms = new Map<string, number[]>([...urls.map(([n]) => [n, []] as [string, number[]]), ['SELECT 1', []]])
+  const progress: string[] = []
+  while (!done) {
+    for (const [name, url] of urls) {
+      const s = performance.now()
+      const r = await app.request(url)
+      const body = await r.text()
+      ms.get(name)!.push(performance.now() - s)
+      if (name === 'users-overview page') {
+        const pct = (JSON.parse(body) as { building?: { pct: number } }).building?.pct
+        if (pct != null) progress.push(`${((performance.now() - b0) / 1000).toFixed(0)}s:${pct}%`)
+      }
+    }
+    const s = performance.now()
+    await (await lc.getDb()).runAndReadAll('SELECT 1')
+    ms.get('SELECT 1')!.push(performance.now() - s)
+    await Promise.race([build, new Promise((r) => setTimeout(r, 2_000))])
+  }
+  lag.disable()
+  console.log(`build ${(performance.now() - b0).toFixed(0)} ms (background)`)
+  console.log(`progress ${progress.filter((_, i) => i % 5 === 0).join(' ')}`)
+  for (const [name, v] of ms)
+    console.log(
+      `  during build ${name.padEnd(20)} n=${v.length} p50=${pct(v, 50).toFixed(0)} p95=${pct(v, 95).toFixed(0)} max=${Math.max(...v).toFixed(0)} ms`,
+    )
+  console.log(
+    `event loop delay p50=${(lag.percentile(50) / 1e6).toFixed(0)} p99=${(lag.percentile(99) / 1e6).toFixed(0)} max=${(lag.max / 1e6).toFixed(0)} ms`,
+  )
   console.log(`peakRSS ${(process.resourceUsage().maxRSS / 1024).toFixed(0)} MiB`)
 }
 

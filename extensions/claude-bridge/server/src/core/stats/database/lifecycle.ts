@@ -204,7 +204,16 @@ function handle(index: number): DuckDBConnection {
 export async function getDb(): Promise<DuckDBConnection> {
   while (maintenanceGate) await maintenanceGate
   await ensurePool()
-  return handle(nextConn++ % pool.length)
+  // The last slot is reserved for background rollup work (getDbBackground).
+  return handle(nextConn++ % (pool.length - 1))
+}
+
+/** The reserved slot for long background statements (stats rollup build and
+ *  drains): request readers on getDb() never queue behind them. */
+export async function getDbBackground(): Promise<DuckDBConnection> {
+  while (maintenanceGate) await maintenanceGate
+  await ensurePool()
+  return handle(POOL_SIZE - 1)
 }
 
 /** Synchronous accessor — only valid AFTER `await initStatsDb()` has

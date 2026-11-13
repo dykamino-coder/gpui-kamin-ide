@@ -79,6 +79,14 @@ function sweepThrottled(sweepAll: () => Promise<unknown>): void {
   })
 }
 
+/** Build progress while the one-time rollup build runs, else null. Until then
+ *  stats readers answer with this status instead of scanning raw events. */
+async function rollupBuilding() {
+  const { rollupBuildStatus } = await import('../../stats/database/rollup')
+  const s = rollupBuildStatus()
+  return s.ready ? null : s
+}
+
 export function registerStatsRoutes(api: Hono): void {
   // GET /api/dashboard/stats -- OTel-based statistics. Admin-only: returns every
   // user's session cwd (absolute paths) + per-user token/model breakdown.
@@ -297,6 +305,11 @@ export function registerStatsRoutes(api: Hono): void {
     const { getDb } = await import('../../stats/database/lifecycle')
     const { sweepAll } = await import('../../stats/jsonl-sweeper')
     sweepThrottled(sweepAll)
+    const building = await rollupBuilding()
+    if (building) {
+      c.header('Retry-After', '5')
+      return c.json({ error: `Statistics are being prepared (${building.pct}%)`, building }, 503)
+    }
 
     const db = await getDb()
     const range = (c.req.query('range') || 'all') as 'all' | '30d' | '7d'
@@ -348,6 +361,8 @@ export function registerStatsRoutes(api: Hono): void {
     const { cardsOverview } = await import('../../stats/database/cards-overview')
     const engine = parseEngineFilter(c.req.query('engine'))
     const ready = rollupReady()
+    const building = await rollupBuilding()
+    if (building) return c.json({ revision: rollupRevision(), ready, range, building })
     const hit = await cardsCache.get(
       `${range}|${tz ?? tzOffsetMin}|${subject ?? ''}|${engine ?? ''}`,
       rollupRevision(),
@@ -364,14 +379,22 @@ export function registerStatsRoutes(api: Hono): void {
   //    Each row carries enough metadata to render a card: human title
   //    (CLI's `summary` entry, or first user message), counts of user /
   //    assistant / compact (summary) entries, total tokens, model.
+  //    Served from the per-session rollup level (stats_session_live, looked
+  //    up by its `u` index), newest first. `limit` + `before` (the previous
+  //    page's last `lastActivityAt`) page the list; `total` is the full count.
   api.get('/api/dashboard/tokens/:tokenId/sessions', async (c) => {
     const denied = denyForeignSubject(c, c.req.param('tokenId'))
     if (denied) return denied
     const { getDb } = await import('../../stats/database/lifecycle')
     const { sweepAll } = await import('../../stats/jsonl-sweeper')
     sweepThrottled(sweepAll)
-    const db = await getDb()
     const tokenId = c.req.param('tokenId')
+    const building = await rollupBuilding()
+    if (building) return c.json({ tokenId, sessions: [], total: 0, building })
+    const db = await getDb()
+    const limitRaw = parseInt(c.req.query('limit') || '0', 10)
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 5000) : 0
+    const before = c.req.query('before') || null
     // Live PTY sessions hold the real cwd in memory — use them as a
     // fallback for historical session_tokens rows that pre-date the
     // `cwd` column migration.
@@ -380,62 +403,8 @@ export function registerStatsRoutes(api: Hono): void {
     for (const ps of getAllSessions()) {
       if (ps.cliConversationId && ps.cwd) liveCwdByConvId.set(ps.cliConversationId, ps.cwd)
     }
-    const rows = (
-      await db.runAndReadAll(
-        `
-      SELECT
-        e.session_id,
-        st.cwd as session_cwd,
-        st.title as session_title,
-        st.last_context as session_last_context,
-        st.compact_boundaries as session_compact_boundaries,
-        st.context_tokens as session_context_tokens,
-        st.pre_boundary_snapshots as session_pre_boundary_snapshots,
-        MIN(e.timestamp) as started_at,
-        MAX(e.timestamp) as last_activity_at,
-        -- Engines the chat ran on ('claude', 'codex' or both).
-        string_agg(DISTINCT e.engine, ',') as engines,
-        SUM(CASE WHEN e.type = 'user' THEN 1 ELSE 0 END) as user_messages,
-        -- One assistant TURN can be split across multiple JSONL rows that
-        -- share message.id (e.g. one row for the thinking block and another
-        -- for the text). Count distinct message_ids so the dashboard
-        -- counter matches what the chat viewer actually renders (which
-        -- merges these via mergeConsecutiveCliEntries).
-        COUNT(DISTINCT CASE WHEN e.type = 'assistant' THEN e.message_id END) as assistant_messages,
-        -- Token breakdown so the table can split a misleading "total"
-        -- (cumulative input + cache flowing through API) into in / cache / out.
-        SUM(CASE WHEN e.type = 'assistant' THEN COALESCE(e.input_tokens,0) ELSE 0 END) as in_tokens,
-        SUM(CASE WHEN e.type = 'assistant' THEN COALESCE(e.cache_read_tokens,0) ELSE 0 END) as cache_read_tokens,
-        SUM(CASE WHEN e.type = 'assistant' THEN COALESCE(e.cache_write_tokens,0) ELSE 0 END) as cache_write_tokens,
-        SUM(CASE WHEN e.type = 'assistant' THEN COALESCE(e.output_tokens,0) ELSE 0 END) as out_tokens,
-        -- Final context window pressure (matches the per-session progress bar
-        -- in the client). This is a snapshot, NOT cumulative.
-        (
-          SELECT COALESCE(a.input_tokens,0) + COALESCE(a.cache_read_tokens,0) + COALESCE(a.cache_write_tokens,0)
-          FROM jsonl_accounting_events a
-          WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0${engineClause('a.engine', engine)}
-          ORDER BY a.timestamp DESC LIMIT 1
-        ) as last_context,
-        (
-          SELECT a.model FROM jsonl_accounting_events a
-          WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0
-            AND a.model IS NOT NULL AND a.model != ''${engineClause('a.engine', engine)}
-          ORDER BY a.timestamp DESC LIMIT 1
-        ) as model,
-        (
-          SELECT o.file_path FROM jsonl_offsets o WHERE o.file_path LIKE '%/' || e.session_id || '.jsonl' LIMIT 1
-        ) as file_path
-      FROM jsonl_accounting_events e
-      INNER JOIN session_tokens st
-        ON st.session_id = e.session_id AND st.deleted = 0
-      WHERE st.user_name = ?${engineClause('e.engine', engine)}
-      GROUP BY e.session_id, st.cwd, st.title, st.last_context,
-               st.compact_boundaries, st.context_tokens, st.pre_boundary_snapshots
-      ORDER BY last_activity_at DESC
-    `,
-        [tokenId],
-      )
-    ).getRowObjects() as Array<any>
+    const { userSessionsPage } = await import('../../stats/database/stats-queries')
+    const { rows, total } = await userSessionsPage(db, tokenId, { limit, before, engine })
 
     // All metadata (title, compact_boundaries, last_context,
     // pre_boundary_snapshots, context_tokens) is persisted in
@@ -484,7 +453,9 @@ export function registerStatsRoutes(api: Hono): void {
       // endpoint returns 404 — UI will gracefully handle that.
       jsonlAvailable: !!r.file_path,
     }))
-    return c.json({ tokenId, sessions })
+    const last = rows.at(-1)
+    const next = limit && rows.length === limit && last ? `${last.last_activity_at}|${last.session_id}` : null
+    return c.json({ tokenId, sessions, total, next })
   })
 
   // Preserve the authenticated fetch API, now with a bounded byte stream.

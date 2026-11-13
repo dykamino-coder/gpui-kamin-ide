@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { engineFilter } from './engine'
 
 const getUsers = vi.hoisted(() => vi.fn())
-vi.mock('../services/api-client', () => ({ api: { getUsers } }))
+vi.mock('../services/api-client', () => ({ api: { getUsersWithBuild: getUsers } }))
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -20,7 +20,7 @@ afterEach(() => {
 it('discards pending roster/cards responses across engine switches and resets after remount', async () => {
   vi.useFakeTimers()
   engineFilter.value = 'all'
-  const oldUsers = deferred<any[]>()
+  const oldUsers = deferred<any>()
   const oldCards = deferred<Response>()
   const fetchCards = vi
     .fn()
@@ -29,14 +29,16 @@ it('discards pending roster/cards responses across engine switches and resets af
       async () => new Response(JSON.stringify({ revision: 'codex-rev', cards: { '*': { sessions: 2 } } })),
     )
   vi.stubGlobal('fetch', fetchCards)
-  getUsers.mockReturnValueOnce(oldUsers.promise).mockResolvedValue([{ userName: 'codex-user' }])
+  getUsers
+    .mockReturnValueOnce(oldUsers.promise)
+    .mockResolvedValue({ list: [{ userName: 'codex-user' }], building: null })
   const stats = await import('./users-stats')
   let stop = stats.subscribeUserStats({ cards: true })
   engineFilter.value = 'codex'
   await vi.waitFor(() => expect(stats.users.value[0]?.userName).toBe('codex-user'))
   await vi.waitFor(() => expect(stats.cards.value?.['*'].sessions).toBe(2))
   expect(fetchCards.mock.calls[1][0]).toContain('&engine=codex')
-  oldUsers.resolve([{ userName: 'stale-all' }])
+  oldUsers.resolve({ list: [{ userName: 'stale-all' }], building: null })
   oldCards.resolve(new Response(JSON.stringify({ revision: 'all-rev', cards: { '*': { sessions: 99 } } })))
   await vi.waitFor(() => expect(stats.usersLoaded.value).toBe(true))
   await Promise.resolve()
@@ -45,14 +47,14 @@ it('discards pending roster/cards responses across engine switches and resets af
   stop()
 
   engineFilter.value = 'claude'
-  const pendingUsers = deferred<any[]>()
+  const pendingUsers = deferred<any>()
   getUsers.mockReturnValue(pendingUsers.promise)
   stop = stats.subscribeUserStats()
   expect(stats.users.value).toEqual([])
   expect(stats.usersLoaded.value).toBe(false)
   expect(stats.cards.value).toBeNull()
   expect(getUsers).toHaveBeenLastCalledWith('claude')
-  pendingUsers.resolve([])
+  pendingUsers.resolve({ list: [], building: null })
   await Promise.resolve()
   stop()
 })

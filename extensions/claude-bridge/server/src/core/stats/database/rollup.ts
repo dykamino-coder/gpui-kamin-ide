@@ -38,7 +38,7 @@ import { debugLog, infoLog, warnLog } from '../../logging'
 import type { EngineFilter } from '../engine-filter'
 
 /** Bump to rebuild the rollup when its definition changes. */
-export const ROLLUP_VERSION = '4'
+export const ROLLUP_VERSION = '5'
 const BUILD_CHUNKS = 32
 /** Sessions per drain transaction (one write turn; ~5 s for 256 sessions on a 10 GB
  *  database, well under the write-lock head timeout; smaller batches cost more in total). */
@@ -66,6 +66,26 @@ export function touchRollupRevision(): void {
 }
 export function rollupReady(): boolean {
   return built
+}
+
+let buildDone = 0
+export interface RollupBuildStatus {
+  ready: boolean
+  done: number
+  total: number
+  pct: number
+}
+/** Progress of the one-time build. Until it is ready the dashboard answers with
+ *  this status instead of scanning raw events on the request path. */
+export function rollupBuildStatus(): RollupBuildStatus {
+  const done = built ? BUILD_CHUNKS : buildDone
+  return { ready: built, done, total: BUILD_CHUNKS, pct: Math.floor((done * 100) / BUILD_CHUNKS) }
+}
+
+/** Connection for the build and drains: the reserved pool slot, so request
+ *  readers never queue behind a multi-second rollup statement. */
+async function backgroundDb(): Promise<DuckDBConnection> {
+  return (await import('./lifecycle')).getDbBackground()
 }
 
 const ctx = `COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0)`
@@ -110,9 +130,23 @@ const COLUMNS = `session_id, sid, u, session_key, is_subagent, bucket, model, en
 // ── Derived levels: each is a pure function of level-1 rows ─────────────
 // `src` is a relation of level-1 rows; only live sessions (u IS NOT NULL) count.
 
+/** Per-session counters of the user's sessions list; `model` = model of the
+ *  session's last top-level assistant turn. */
+const SESSION_SUMS = [
+  'user_msgs',
+  'assistant_msgs',
+  'input_tokens',
+  'output_tokens',
+  'cache_read_tokens',
+  'cache_write_tokens',
+]
 export function sessionLiveSelect(src: string): string {
   return `SELECT ANY_VALUE(session_id) AS session_id, sid, ANY_VALUE(u) AS u, MIN(first_ts) AS first_ts, MAX(last_ts) AS last_ts,
-      date_trunc('hour', MAX(bucket)) AS last_hour, arg_max(last_ctx, last_ctx_key) AS ctx
+      date_trunc('hour', MAX(bucket)) AS last_hour, arg_max(last_ctx, last_ctx_key) AS ctx,
+      string_agg(DISTINCT engine, ',' ORDER BY engine) AS engines,
+      ${SESSION_SUMS.map((c) => `SUM(${c}) AS ${c}`).join(', ')},
+      -- last_ctx_key = the group's last top-level assistant row (tool rows carry a model too).
+      arg_max(model, last_ctx_key) FILTER (WHERE last_ctx_key IS NOT NULL AND model IS NOT NULL AND model != '') AS model
     FROM ${src} WHERE u IS NOT NULL GROUP BY sid`
 }
 
@@ -239,8 +273,10 @@ export async function initRollupSchema(db: DuckDBConnection): Promise<void> {
   await db.run(`CREATE INDEX IF NOT EXISTS idx_stats_rollup_sid ON stats_rollup(sid)`)
   await db.run(`CREATE TABLE IF NOT EXISTS stats_session_live (
     session_id TEXT NOT NULL, sid UBIGINT NOT NULL, u TEXT NOT NULL, first_ts TEXT NOT NULL, last_ts TEXT NOT NULL,
-    last_hour TIMESTAMP NOT NULL, ctx BIGINT
+    last_hour TIMESTAMP NOT NULL, ctx BIGINT, engines TEXT, ${sums(SESSION_SUMS)}, model TEXT
   )`)
+  // The user's sessions list: a bare `u = ?` point lookup.
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_stats_session_live_u ON stats_session_live(u)`)
   await db.run(`CREATE TABLE IF NOT EXISTS stats_user_model (
     u TEXT NOT NULL, model TEXT NOT NULL, engine TEXT NOT NULL, long_prompt BOOLEAN NOT NULL, long_context BOOLEAN NOT NULL, ${sums(USER_MODEL_SUMS)},
     PRIMARY KEY (u, model, engine, long_prompt, long_context)
@@ -255,6 +291,7 @@ export async function initRollupSchema(db: DuckDBConnection): Promise<void> {
   )`)
   await db.run(`CREATE TABLE IF NOT EXISTS stats_rollup_dirty (session_id TEXT PRIMARY KEY)`)
   built = (await setting(db, 'stats_rollup_built')) === ROLLUP_VERSION
+  buildDone = Number((await setting(db, 'stats_rollup_progress')) ?? 0)
 }
 
 /** SQL + params that record sessions as dirty. Run it inside the caller's
@@ -292,8 +329,13 @@ const quote = (s: string): string => `'${s.replace(/'/g, "''")}'`
 /** Recompute every dirty session. Each batch is one write transaction. */
 export async function drainRollup(getConn?: () => Promise<DuckDBConnection>): Promise<void> {
   if (draining) return draining
+  // A fresh drain loop covers a pending debounced one.
+  if (drainTimer) {
+    clearTimeout(drainTimer)
+    drainTimer = null
+  }
   draining = (async () => {
-    const db = await (getConn ?? (await import('./lifecycle')).getDb)()
+    const db = await (getConn ?? backgroundDb)()
     for (;;) {
       const done = await withStatsWrite(async () => {
         const ids = (
@@ -345,10 +387,14 @@ export function startRollupBuild(getConn?: () => Promise<DuckDBConnection>): Pro
     return Promise.resolve()
   }
   building ??= (async () => {
-    const db = await (getConn ?? (await import('./lifecycle')).getDb)()
+    const db = await (getConn ?? backgroundDb)()
     const started = Date.now()
     let chunk = Number((await setting(db, 'stats_rollup_progress')) ?? 0)
+    buildDone = chunk
     for (; chunk < BUILD_CHUNKS; chunk++) {
+      // Each chunk is one native statement batch off the JS thread; yield between
+      // chunks so queued writers and requests get their turn.
+      await new Promise((r) => setImmediate(r))
       await withStatsWrite(async () => {
         await db.run('BEGIN')
         try {
@@ -367,6 +413,7 @@ export function startRollupBuild(getConn?: () => Promise<DuckDBConnection>): Pro
           throw err
         }
       })
+      buildDone = chunk + 1
       revision++
       debugLog('[stats-rollup] build chunk', { chunk, of: BUILD_CHUNKS })
     }
@@ -388,6 +435,7 @@ export async function resetStatsRollup(db: DuckDBConnection): Promise<void> {
     for (const t of TABLES.filter((t) => t !== 'stats_session_rollup')) await db.run(`DELETE FROM ${t}`)
   })
   built = false
+  buildDone = 0
   revision++
   void startRollupBuild().catch((err) => warnLog('[stats-rollup] rebuild failed', { error: String(err) }))
 }
