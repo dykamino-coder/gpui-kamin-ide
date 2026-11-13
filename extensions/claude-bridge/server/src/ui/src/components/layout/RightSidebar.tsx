@@ -7,6 +7,7 @@ import { api } from '../../services/api-client'
 import type { UserSummary } from '../../services/api-client'
 import { refreshUsers, statsBuilding, subscribeUserStats, users } from '../../signals/users-stats'
 import styles from './RightSidebar.module.css'
+import { codexCostLine, engineTokensTooltip } from './user-engine-lines'
 
 // Explicit, labelled sort. The order is frozen between data refreshes so rows
 // never jump under the pointer; new users are appended, and a "Re-sort" button
@@ -116,7 +117,7 @@ const UserRow = memo(function UserRow({ u, mode }: { u: UserSummary; mode: SortM
             </span>
           ) : (
             total > 0 && (
-              <span class={styles.userMetaItem} title={`Total tokens: ${total.toLocaleString()}`}>
+              <span class={styles.userMetaItem} title={engineTokensTooltip(u, total)}>
                 <i class="fa-solid fa-coins" />
                 {formatTokens(total)}
               </span>
@@ -133,8 +134,21 @@ const UserRow = memo(function UserRow({ u, mode }: { u: UserSummary; mode: SortM
             </span>
           )}
           {u.cost > 0 && (
-            <span class={styles.userMetaItem} title={`Estimated USD cost`} style={{ color: 'var(--accent-green)' }}>
+            <span
+              class={styles.userMetaItem}
+              title="Claude estimated USD cost"
+              style={{ color: 'var(--accent-green)' }}
+            >
               {formatCost(u.cost)}
+            </span>
+          )}
+          {codexCostLine(u) && (
+            <span
+              class={styles.userMetaItem}
+              title={codexCostLine(u)!.tooltip}
+              style={{ color: 'var(--accent-green)' }}
+            >
+              {codexCostLine(u)!.text}
             </span>
           )}
         </div>

@@ -3,6 +3,7 @@ import type { SynthAssistantEntry } from '../proxy/entry-synthesizer'
 import { getDb } from './database/lifecycle'
 import { withStatsWrite } from './database/write-lock'
 import { scheduleRollupDrain } from './database/rollup'
+import { warnLog } from '../logging'
 
 type UsageEntry = Pick<SynthAssistantEntry, 'timestamp' | 'isSidechain'> & {
   message: Pick<SynthAssistantEntry['message'], 'id' | 'model' | 'usage'>
@@ -75,7 +76,7 @@ export async function recordProxyUsage(
       )
       await db.run('COMMIT')
     } catch (err) {
-      await db.run('ROLLBACK').catch(() => {})
+      await db.run('ROLLBACK').catch((error) => warnLog('proxy usage rollback failed', { error: String(error) }))
       throw err
     }
   })

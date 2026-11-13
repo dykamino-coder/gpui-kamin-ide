@@ -69,6 +69,7 @@ export function createRevisionCache<T>(opts: {
         try {
           return await Promise.race([fresh, stale])
         } catch {
+          // `fresh.catch` above logs the refresh error once; serve the bounded stale entry.
           return e
         } finally {
           clearTimeout(timer)

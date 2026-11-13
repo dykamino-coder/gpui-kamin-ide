@@ -172,6 +172,8 @@ class DashboardWSClient {
         const s = msg.data as {
           sessionId: string
           userName: string
+          tokenId?: string
+          engine?: string
           cwd: string
           state: string
           createdAt: string
@@ -184,6 +186,8 @@ class DashboardWSClient {
           {
             id: s.sessionId,
             userName: s.userName,
+            tokenId: s.tokenId,
+            engine: s.engine ?? 'claude',
             cwd: s.cwd || '',
             state: s.state || 'running',
             createdAt: s.createdAt,
@@ -202,6 +206,10 @@ class DashboardWSClient {
           mcpInitialized?: boolean
           mcpLastError?: string | null
           lastActivityAt?: string
+          userMessages?: number
+          assistantMessages?: number
+          contextTokens?: number
+          totalTokens?: number
         }
         ptySessions.value = ptySessions.value.map((p) => {
           if (p.id !== u.sessionId) return p
@@ -211,6 +219,10 @@ class DashboardWSClient {
           if (u.mcpInitialized !== undefined) patch.mcpInitialized = u.mcpInitialized
           if (u.mcpLastError !== undefined) patch.mcpLastError = u.mcpLastError
           if (u.lastActivityAt) patch.lastActivityAt = u.lastActivityAt
+          if (u.userMessages !== undefined) patch.userMessages = u.userMessages
+          if (u.assistantMessages !== undefined) patch.assistantMessages = u.assistantMessages
+          if (u.contextTokens !== undefined) patch.contextTokens = u.contextTokens
+          if (u.totalTokens !== undefined) patch.totalTokens = u.totalTokens
           return { ...p, ...patch }
         })
         break

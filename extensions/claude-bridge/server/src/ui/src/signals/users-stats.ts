@@ -6,9 +6,10 @@
 // Unchanged entries keep their previous object identity, so memoized rows and
 // cards skip re-rendering when a poll brings the same numbers.
 
-import { signal } from '@preact/signals'
+import { effect, signal } from '@preact/signals'
 import { api } from '../services/api-client'
 import type { UserSummary } from '../services/api-client'
+import { engineFilter, engineParam } from './engine'
 
 export type StatsRange = 'all' | '30d' | '7d'
 
@@ -18,7 +19,19 @@ export interface CardData {
   assistantMessages: number
   totalTokens: number
   favoriteModel: string | null
-  models: Array<{ name: string; in: number; out: number; pct: number }>
+  models: Array<{ name: string; engine?: string; in: number; out: number; pct: number }>
+  engines?: Partial<
+    Record<
+      'claude' | 'codex',
+      {
+        sessions: number
+        userMessages: number
+        assistantMessages: number
+        inTokens: number
+        outTokens: number
+      }
+    >
+  >
   activeDays: number
   longestStreak: number
   peakHour: number | null
@@ -57,10 +70,15 @@ function keepIdentity<T>(prev: T | undefined, next: T): T {
 }
 
 let usersInFlight: Promise<void> | null = null
+let generation = 0
 export function refreshUsers(): Promise<void> {
+  syncEngine()
+  const engine = engineFilter.peek()
+  const started = generation
   usersInFlight ??= api
-    .getUsersWithBuild()
+    .getUsersWithBuild(engine)
     .then(({ list, building }) => {
+      if (started !== generation || engine !== engineFilter.peek()) return
       noteBuilding(building)
       const prev = new Map(users.value.map((u) => [u.userName, u]))
       const next = list.map((u) => keepIdentity(prev.get(u.userName), u))
@@ -69,9 +87,11 @@ export function refreshUsers(): Promise<void> {
       usersError.value = null
     })
     .catch((e) => {
+      if (started !== generation || engine !== engineFilter.peek()) return
       usersError.value = String(e)
     })
     .finally(() => {
+      if (started !== generation || engine !== engineFilter.peek()) return
       usersLoaded.value = true
       usersInFlight = null
     })
@@ -104,10 +124,13 @@ async function getCards(query: string): Promise<{
   cards?: Record<string, CardData>
   building?: { pct: number }
 }> {
-  const res = await fetch(`/api/dashboard/stats/users-overview?${query}&${zoneParams()}`, {
-    headers: authHeaders(),
-    signal: AbortSignal.timeout(30_000),
-  })
+  const res = await fetch(
+    `/api/dashboard/stats/users-overview?${query}&${zoneParams()}${engineParam(engineFilter.peek())}`,
+    {
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(30_000),
+    },
+  )
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
 }
@@ -116,8 +139,12 @@ let revision = ''
 let cardsInFlight: Promise<void> | null = null
 /** Default-range cards for everyone; a no-op round trip when nothing changed. */
 export function refreshCards(): Promise<void> {
+  syncEngine()
+  const engine = engineFilter.peek()
+  const started = generation
   cardsInFlight ??= getCards(`range=all&rev=${encodeURIComponent(revision)}`)
     .then((r) => {
+      if (started !== generation || engine !== engineFilter.peek()) return
       cardsError.value = null
       if (r.building) {
         noteBuilding(r.building.pct)
@@ -132,9 +159,11 @@ export function refreshCards(): Promise<void> {
       cards.value = next
     })
     .catch((e) => {
+      if (started !== generation || engine !== engineFilter.peek()) return
       cardsError.value = String(e)
     })
     .finally(() => {
+      if (started !== generation || engine !== engineFilter.peek()) return
       cardsInFlight = null
     })
   return cardsInFlight
@@ -155,11 +184,36 @@ const tick = () => {
   if (cardsWanted > 0) void refreshCards()
 }
 let cardsWanted = 0
+let stopEngineWatch: (() => void) | null = null
+let observedEngine = engineFilter.peek()
+
+function syncEngine(): void {
+  const next = engineFilter.peek()
+  if (next === observedEngine) return
+  observedEngine = next
+  generation++
+  revision = ''
+  usersInFlight = null
+  cardsInFlight = null
+  users.value = []
+  usersLoaded.value = false
+  cards.value = null
+  usersError.value = null
+  cardsError.value = null
+}
 
 /** Subscribe to the shared poll; returns the unsubscribe function. */
 export function subscribeUserStats(opts: { cards?: boolean } = {}): () => void {
   subscribers++
   if (opts.cards) cardsWanted++
+  if (!stopEngineWatch) {
+    stopEngineWatch = effect(() => {
+      engineFilter.value
+      syncEngine()
+      void refreshUsers()
+      if (cardsWanted > 0) void refreshCards()
+    })
+  }
   if (!timer) timer = setInterval(tick, 15_000)
   void refreshUsers()
   if (opts.cards && !cards.value) void refreshCards()
@@ -169,6 +223,8 @@ export function subscribeUserStats(opts: { cards?: boolean } = {}): () => void {
     if (subscribers === 0 && timer) {
       clearInterval(timer)
       timer = null
+      stopEngineWatch?.()
+      stopEngineWatch = null
     }
   }
 }

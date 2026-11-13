@@ -109,6 +109,8 @@ export const api = {
       `/api/dashboard/auth-status${force ? '?force=true' : ''}`,
     ),
   // Shared ChatGPT (codex) account of this Bridge server.
+  getCodexLimits: (force = false) =>
+    fetchJson<{ limits: CodexRateLimits | null }>(`/api/dashboard/codex/limits${force ? '?force=true' : ''}`),
   getCodexAccount: (force = false) =>
     fetchJson<CodexAccountStatus>(`/api/dashboard/codex/account${force ? '?force=true' : ''}`),
   startCodexLogin: () => codexPost<CodexDeviceLogin>('/api/dashboard/codex/login'),
@@ -124,10 +126,14 @@ export const api = {
   },
   getUserTimeSeries: (period: string = 'day', days: number = 30) =>
     fetchJson<UserTimeSeriesEntry[]>(`/api/dashboard/stats/timeseries?period=${period}&days=${days}`),
-  getUsers: () => fetchJson<UserSummary[]>('/api/dashboard/users'),
-  /** Roster plus the stats build progress (null once statistics are ready). */
-  getUsersWithBuild: async (): Promise<{ list: UserSummary[]; building: number | null }> => {
-    const res = await fetch('/api/dashboard/users', { headers: authHeaders() })
+  getUsers: (engine: 'all' | 'claude' | 'codex' = 'all') =>
+    fetchJson<UserSummary[]>(`/api/dashboard/users${engine === 'all' ? '' : `?engine=${engine}`}`),
+  getUsersWithBuild: async (
+    engine: 'all' | 'claude' | 'codex' = 'all',
+  ): Promise<{ list: UserSummary[]; building: number | null }> => {
+    const res = await fetch(`/api/dashboard/users${engine === 'all' ? '' : `?engine=${engine}`}`, {
+      headers: authHeaders(),
+    })
     handle401(res)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const pct = res.headers.get('X-Stats-Building')
@@ -195,13 +201,28 @@ export interface AccountInfo {
   error?: string
 }
 
+export interface UserEngineSummary {
+  sessions: number
+  totalInputs: number
+  responses: number
+  tokens: { input: number; output: number; cacheRead: number; cacheCreation: number }
+}
+
+import type { CodexRateLimits } from '../../../shared/codex-rate-limits'
+export type { CodexRateLimits, CodexLimitBucket, CodexLimitWindow } from '../../../shared/codex-rate-limits'
+
 export interface UserSummary {
   userName: string
   activeSessions: number
   totalInputs: number
   tokens: { input: number; output: number; cacheRead: number; cacheCreation: number }
   contextTokens: number
+  /** Claude responses at Anthropic API rates. */
   cost: number
+  /** ChatGPT (codex): billed by the ChatGPT plan; API-equivalent list price. */
+  codex?: { apiEquivalentUsd: number; unpricedTokens: number; unpricedModels: string[]; pricesAsOf: string }
+  /** The same totals per engine (absent on older servers). */
+  engines?: Partial<Record<'claude' | 'codex', UserEngineSummary>>
   firstSeen: string | null
   lastSeen: string | null
   /** Token flow (in + out + cache) over the last 7 / 30 days. */

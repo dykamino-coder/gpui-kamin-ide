@@ -1,5 +1,6 @@
 // Учёт ответов API отдельно от сырого зеркала JSONL: split-строки одного
 // message.id оплачиваются один раз; proxy-only side-calls сохраняются до JSONL.
+// `engine` — движок строки ('claude' | 'codex'); NULL в старых строках = Claude.
 import type { DuckDBConnection } from '@duckdb/node-api'
 
 /** A short session list resolved through the indexes; `proxyMessageIds` are the
@@ -49,7 +50,7 @@ export function accountingEventsSelect(filter = 'TRUE', indexed?: IndexedFilter)
     )
     SELECT uuid, session_id, timestamp, type, model, input_tokens, output_tokens,
       cache_read_tokens, cache_write_tokens, tool_name, message_id, token_id,
-      is_subagent, parent_session_id, user_name, cache_write_1h_tokens
+      is_subagent, parent_session_id, user_name, cache_write_1h_tokens, COALESCE(engine, 'claude') AS engine
     FROM ${ev} WHERE type != 'assistant' AND ${f}
     UNION ALL
     SELECT c.uuid, c.session_id, c.timestamp, c.type, c.model,
@@ -58,14 +59,15 @@ export function accountingEventsSelect(filter = 'TRUE', indexed?: IndexedFilter)
       GREATEST(u.cache_read_tokens, COALESCE(p.cache_read_tokens, 0)),
       GREATEST(u.cache_write_tokens, COALESCE(p.cache_write_tokens, 0)), c.tool_name, c.message_id, c.token_id,
       c.is_subagent, c.parent_session_id, c.user_name,
-      GREATEST(u.cache_write_1h_tokens, COALESCE(p.cache_write_1h_tokens, 0))
+      GREATEST(u.cache_write_1h_tokens, COALESCE(p.cache_write_1h_tokens, 0)),
+      COALESCE(c.engine, 'claude')
     FROM canonical c JOIN assistant_usage u ON u.session_id = c.session_id
       AND u.usage_id = COALESCE(NULLIF(c.message_id, ''), c.uuid)
     LEFT JOIN proxy_usage p ON p.message_id = c.message_id AND p.token_id = c.token_id
     UNION ALL
     SELECT 'proxy:' || p.message_id, p.session_id, p.timestamp, 'assistant', p.model,
       p.input_tokens, p.output_tokens, p.cache_read_tokens, p.cache_write_tokens,
-      NULL, p.message_id, p.token_id, p.is_subagent, NULL, p.user_name, p.cache_write_1h_tokens
+      NULL, p.message_id, p.token_id, p.is_subagent, NULL, p.user_name, p.cache_write_1h_tokens, 'claude'
     FROM proxy_usage p WHERE (${filter.replace(/\bsession_id\b/g, 'p.session_id')}) AND NOT EXISTS (
       SELECT 1 FROM ${twins} e WHERE e.type = 'assistant'
         AND e.message_id = p.message_id AND e.token_id = p.token_id
