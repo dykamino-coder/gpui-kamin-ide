@@ -27,6 +27,7 @@ pub(super) fn renderer(device: &DirectXDevices) -> DirectXRenderer {
         pipelines: r.pipelines,
         direct_composition: None,
         disable_direct_composition: false,
+        offscreen: false,
         font_info: &FontInfo {
             gamma_ratios: [1.; 4],
             grayscale_enhanced_contrast: 1.,
