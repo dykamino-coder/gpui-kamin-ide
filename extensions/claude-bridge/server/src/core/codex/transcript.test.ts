@@ -19,7 +19,18 @@ function transcriptFor(threadId: string): CodexTranscriptEntry[] {
 
 describe('CodexTranscriptProjector', () => {
   it('writes the recorded turn as a linked Bridge transcript marked engine=codex', () => {
-    const entries = transcriptFor(threads['probe-a']!)
+    const all = transcriptFor(threads['probe-a']!)
+    const entries = all.filter((e) => e.subtype !== 'api_usage')
+    // Usage lines hang off the chain: each points at a chat entry, none is a parent.
+    const usage = all.filter((e) => e.subtype === 'api_usage')
+    expect(usage.length).toBeGreaterThan(0)
+    const uuids = new Set(entries.map((e) => e.uuid))
+    for (const u of usage) {
+      expect(uuids.has(u.parentUuid!)).toBe(true)
+      expect(all.some((e) => e.parentUuid === u.uuid)).toBe(false)
+      expect(u.engine).toBe('codex')
+      expect(u.model).toBe('gpt-5.5')
+    }
     expect(entries.map((e) => [e.type, (e.message?.content as any)?.[0]?.type ?? 'text'])).toEqual([
       ['user', 'text'],
       ['assistant', 'tool_use'],
@@ -103,6 +114,45 @@ describe('CodexTranscriptProjector', () => {
     expect((result!.message!.content as any[])[0]).toMatchObject({
       content: [{ type: 'text', text: 'Error: cancelled' }],
     })
+  })
+
+  it('records a response usage split into Claude usage fields without moving the chain', () => {
+    const tokens = (input: number, cached: number, write: number, output: number, reasoning: number) => ({
+      inputTokens: input,
+      cachedInputTokens: cached,
+      cacheWriteInputTokens: write,
+      outputTokens: output,
+      reasoningOutputTokens: reasoning,
+      totalTokens: input + output,
+    })
+    const p = new CodexTranscriptProjector()
+    p.setModel('gpt-5.5')
+    const [user] = p.project({ ...base, kind: 'message.user', id: 'q', turnId: 'u', text: 'hi' } as AgentEvent)
+    const [usage] = p.project({
+      ...base,
+      kind: 'usage',
+      turnId: 'u',
+      last: tokens(1000, 600, 100, 50, 20),
+      total: tokens(3000, 0, 0, 70, 0),
+      contextWindow: 258000,
+    } as AgentEvent)
+    const [reply] = p.project({ ...base, kind: 'message.assistant', id: 'a', turnId: 'u', text: 'ok' } as AgentEvent)
+    expect(usage).toMatchObject({
+      type: 'system',
+      subtype: 'api_usage',
+      uuid: 'usage:u:3070',
+      parentUuid: user!.uuid,
+      model: 'gpt-5.5',
+      contextWindow: 258000,
+      usage: {
+        input_tokens: 300,
+        cache_read_input_tokens: 600,
+        cache_creation_input_tokens: 100,
+        output_tokens: 50,
+        reasoning_output_tokens: 20,
+      },
+    })
+    expect(reply!.parentUuid).toBe(user!.uuid)
   })
 
   it('skips empty reasoning and transport-only events', () => {

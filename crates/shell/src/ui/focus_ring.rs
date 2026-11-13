@@ -1,6 +1,6 @@
-//! `:focus-visible` (`global.css:34-43`): `outline: 2px solid accent-primary;
-//! outline-offset: 2px` — только для КЛАВИАТУРНОГО фокуса; клик мышью кольцо
-//! не показывает.
+//! `:focus-visible`: кольцо accent-primary толщиной 2px только для
+//! КЛАВИАТУРНОГО фокуса; клик мышью кольцо не показывает. Кольцо отступает
+//! внутрь элемента, чтобы overflow-клипы строк и вкладок не обрезали его.
 //!
 //! Клавиатурную модальность различает вендорный патч gpui
 //! (`Window::focus_visible`). Здесь — реестр фокус-хэндлов по строковому id:
@@ -16,10 +16,12 @@ use gpui::{App, FocusHandle, Window, div, px};
 
 #[cfg(test)]
 mod keymap_tests;
+#[cfg(test)]
+mod paint_tests;
 
 /// Толщина кольца (`outline: 2px`).
 const RING: f32 = 2.0;
-/// Зазор до элемента (`outline-offset: 2px`).
+/// Отступ внутрь элемента: кольцо остаётся внутри его overflow-клипа.
 const OFFSET: f32 = 2.0;
 
 static HANDLES: LazyLock<Mutex<HashMap<String, FocusHandle>>> =
@@ -61,8 +63,8 @@ pub fn flush(cx: &mut App) -> bool {
 }
 
 /// Сделать элемент фокусируемым (tab-стоп) и надеть кольцо, когда фокус
-/// пришёл с клавиатуры. `radius` — скругление самого элемента: кольцо шире на
-/// зазор, поэтому его радиус больше на ту же величину.
+/// пришёл с клавиатуры. `radius` — скругление самого элемента; у внутреннего
+/// кольца радиус уменьшается на величину отступа.
 pub fn focusable<E>(el: E, id: &str, radius: f32, accent: gpui::Rgba) -> E
 where
     E: gpui::InteractiveElement + ParentElement + Styled,
@@ -80,18 +82,18 @@ where
     if !(visible && focused.as_deref() == Some(id)) {
         return el;
     }
-    // `outline` рисуется ВНЕ бокса и не двигает раскладку — у нас это
-    // абсолютный оверлей, вынесенный на `offset + ring` наружу
+    // Внутренний абсолютный оверлей переживает overflow_hidden самого элемента
+    // и его контейнеров, не меняя размер и расположение соседних элементов.
     el.relative().child(
         div()
             .absolute()
-            .top(px(-(OFFSET + RING)))
-            .left(px(-(OFFSET + RING)))
-            .right(px(-(OFFSET + RING)))
-            .bottom(px(-(OFFSET + RING)))
+            .top(px(OFFSET))
+            .left(px(OFFSET))
+            .right(px(OFFSET))
+            .bottom(px(OFFSET))
             .border(px(RING))
             .border_color(accent)
-            .rounded(px(radius + OFFSET + RING)),
+            .rounded(px((radius - OFFSET).max(0.))),
     )
 }
 

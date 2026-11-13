@@ -16,6 +16,7 @@ import { installMcpStatusBar } from "./mcp-status-bar"
 import { SessionsBridge } from "./sessions-bridge"
 import { ipcMain } from "@kaminide/host-compat"
 import { relayToolUsage } from './tool-usage-relay'
+import { configureTransientNotice } from "./main/notifications/toast-window"
 
 const CHAT_VIEW_ID = "claudeBridgeChat"
 // Plan / Todos / Agents / Console are SEPARATE tools (own auxiliarybar container
@@ -34,6 +35,14 @@ const CUSTOMIZE_VIEW_IDS = [
 ]
 
 export function activate(context: vscode.ExtensionContext): void {
+  // Self-closing completion notices need the host's explicit transient
+  // contract; an older host (no `kaminide.window`) keeps the sticky toast.
+  const kWindow = (kaminide as { window?: kaminide.WindowApi }).window
+  if (typeof kWindow?.showTransientMessage === "function") {
+    configureTransientNotice((message, options, ...items) => kWindow.showTransientMessage(message, options, ...items))
+  } else {
+    configureTransientNotice(null)
+  }
   // Reveal the Claude Bridge tool (its activity), creating/resolving the view.
   const openChat = (): void => {
     void vscode.commands.executeCommand(`${CHAT_VIEW_ID}.focus`)

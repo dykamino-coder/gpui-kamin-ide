@@ -25,6 +25,19 @@ export function registerCodexAccountRoutes(api: Hono, runtime: () => CodexRuntim
     return c.json(status)
   })
 
+  // ChatGPT plan windows (percent used, reset). Read only while signed in:
+  // a signed-out account has no limits, and the read would only fail.
+  api.get('/api/dashboard/codex/limits', async (c) => {
+    const fresh = c.req.query('force') === 'true'
+    try {
+      const status = await runtime().accountStatus({ fresh })
+      if (!status.loggedIn) return c.json({ limits: null })
+      return c.json({ limits: await runtime().rateLimits({ fresh }) })
+    } catch (error) {
+      return c.json({ limits: null, ...fail(error) }, 502)
+    }
+  })
+
   api.post('/api/dashboard/codex/login', async (c) => {
     try {
       const login = await runtime().startDeviceLogin()

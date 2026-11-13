@@ -50,6 +50,7 @@ pub(crate) fn handle(on_event_tx: &Sender<ShellEvent>, channel: &str, payload: &
                             .collect()
                     })
                     .unwrap_or_default(),
+                duration_ms: None,
                 sticky: payload
                     .get("sticky")
                     .and_then(Value::as_bool)

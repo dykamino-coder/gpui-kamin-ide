@@ -87,8 +87,8 @@ export async function dbDiag(): Promise<DbDiag> {
   let fileMB = 0
   try {
     fileMB = Math.round(fs.statSync(getDuckDbPath()).size / 1048576)
-  } catch {
-    /* ignore */
+  } catch (error) {
+    warnLog('stats: database size read failed', { error: String(error) })
   }
 
   // PRAGMA database_size exposes block accounting → fragmentation signal.
@@ -101,8 +101,8 @@ export async function dbDiag(): Promise<DbDiag> {
       const free = num(ds.free_blocks)
       if (total > 0) freeBlockRatio = Math.round((free / total) * 100) / 100
     }
-  } catch {
-    /* PRAGMA shape varies by version — non-fatal */
+  } catch (error) {
+    warnLog('stats: database block accounting read failed', { error: String(error) })
   }
 
   return { fileMB, tables: out, sumTextMB: Math.round(sumText), freeBlockRatio }
@@ -167,8 +167,8 @@ function paths() {
 function rmQuiet(p: string): void {
   try {
     fs.rmSync(p, { force: true })
-  } catch {
-    /* ignore */
+  } catch (error) {
+    warnLog('stats: temporary file removal failed', { error: String(error) })
   }
 }
 
@@ -228,7 +228,8 @@ export async function compactDatabase(): Promise<CompactResult> {
   const beforeMB = (() => {
     try {
       return Math.round(fs.statSync(p.main).size / 1048576)
-    } catch {
+    } catch (error) {
+      warnLog('stats: pre-compaction size read failed', { error: String(error) })
       return 0
     }
   })()
@@ -270,7 +271,8 @@ export async function compactDatabase(): Promise<CompactResult> {
       const afterMB = (() => {
         try {
           return Math.round(fs.statSync(p.main).size / 1048576)
-        } catch {
+        } catch (error) {
+          warnLog('stats: post-compaction size read failed', { error: String(error) })
           return 0
         }
       })()
@@ -290,8 +292,8 @@ export async function compactDatabase(): Promise<CompactResult> {
     // Make sure the pool is usable again.
     try {
       await getDbForMaintenance()
-    } catch {
-      /* boot path will retry */
+    } catch (error) {
+      warnLog('stats: database reopen after compaction failure failed', { error: String(error) })
     }
     return { ok: false, beforeMB, afterMB: beforeMB, error: err instanceof Error ? err.message : String(err) }
   } finally {
@@ -319,7 +321,8 @@ async function serverIsIdle(): Promise<boolean> {
   try {
     const { getAllSessions } = await import('../../pty/session-manager')
     return getAllSessions().every((s) => s.state !== 'running')
-  } catch {
+  } catch (error) {
+    warnLog('stats: idle session check failed', { error: String(error) })
     return true
   }
 }

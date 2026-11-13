@@ -5,6 +5,8 @@
 import type { Aggregates } from '../types'
 import { getDb } from './lifecycle'
 import { getCounter, getCounterString } from './crud'
+import type { AccountingEngine } from '../../../shared/engine-accounting'
+import { engineClause, type EngineFilter } from '../engine-filter'
 
 export async function getAggregates(): Promise<Aggregates> {
   const d = await getDb()
@@ -132,6 +134,8 @@ export async function getAggregates(): Promise<Aggregates> {
 
 export interface TimeSeriesPoint {
   userName: string
+  /** 'claude' | 'codex' — one point per user, period and engine. */
+  engine: AccountingEngine
   period: string
   requests: number
   inputTokens: number
@@ -153,6 +157,7 @@ export interface TimeSeriesPoint {
 export async function getUserTimeSeries(
   granularity: 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year' = 'week',
   days = 0,
+  engine: EngineFilter = null,
 ): Promise<TimeSeriesPoint[]> {
   if (days > 36500) days = 36500
   const d = await getDb()
@@ -161,7 +166,7 @@ export async function getUserTimeSeries(
 
   const filters: string[] = ["(e.model IS NULL OR e.model != '<synthetic>')"]
   if (sinceIso) filters.push(`e.timestamp >= '${sinceIso}'`)
-  const where = `WHERE ${filters.join(' AND ')}`
+  const where = `WHERE ${filters.join(' AND ')}${engineClause('e.engine', engine)}`
 
   // Group by UTC day or UTC day+hour using strftime — robust to whatever
   // the legacy day/hour columns hold. UsageChart on /ui then re-buckets
@@ -188,6 +193,7 @@ export async function getUserTimeSeries(
   const sql = `
     SELECT
       user_name,
+      engine,
       day,
       hour,
       COUNT(*) as requests,
@@ -196,6 +202,7 @@ export async function getUserTimeSeries(
     FROM (
       SELECT
         st.user_name as user_name,
+        e.engine as engine,
         ${groupCols} as day,
         ${granularity === 'hour' ? "CAST(strftime(e.timestamp::TIMESTAMP, '%H') AS INTEGER) as hour," : 'NULL as hour,'}
         e.message_id as message_id,
@@ -205,13 +212,14 @@ export async function getUserTimeSeries(
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
       ${where} AND e.type = 'assistant' AND e.message_id IS NOT NULL
-      GROUP BY st.user_name, day${granularity === 'hour' ? ', hour' : ''}, e.message_id
+      GROUP BY st.user_name, e.engine, day${granularity === 'hour' ? ', hour' : ''}, e.message_id
     )
-    GROUP BY user_name, day, hour
+    GROUP BY user_name, engine, day, hour
     ORDER BY day ASC, user_name
   `
   const rows = (await d.runAndReadAll(sql)).getRowObjects() as Array<{
     user_name: string
+    engine: string
     day: string
     hour: number | null
     requests: number | bigint
@@ -241,7 +249,8 @@ export async function getUserTimeSeries(
   for (const r of rows) {
     const hourNum = r.hour === null || r.hour === undefined ? null : Number(r.hour)
     const period = periodOf(String(r.day), hourNum)
-    const key = `${r.user_name}|${period}`
+    const rowEngine: AccountingEngine = r.engine === 'codex' ? 'codex' : 'claude'
+    const key = `${r.user_name}|${rowEngine}|${period}`
     const existing = bucket.get(key)
     const reqN = Number(r.requests ?? 0)
     const inN = Number(r.input_tokens ?? 0)
@@ -253,6 +262,7 @@ export async function getUserTimeSeries(
     } else {
       bucket.set(key, {
         userName: r.user_name,
+        engine: rowEngine,
         period,
         requests: reqN,
         inputTokens: inN,

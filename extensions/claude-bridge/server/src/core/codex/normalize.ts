@@ -20,6 +20,7 @@ function usage(u: TokenUsageBreakdown): AgentTokenUsage {
     totalTokens: u.totalTokens,
     inputTokens: u.inputTokens,
     cachedInputTokens: u.cachedInputTokens,
+    cacheWriteInputTokens: u.cacheWriteInputTokens ?? 0,
     outputTokens: u.outputTokens,
     reasoningOutputTokens: u.reasoningOutputTokens,
   }
