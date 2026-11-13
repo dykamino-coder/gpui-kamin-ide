@@ -89,6 +89,12 @@ pub fn configure(cx: &mut gpui::App) {
         // оверлеев висят на элементах overlay-слоя и не получают
         // клавиатуру — фокус инпута живёт в main (ревью ц.7).
         gpui::KeyBinding::new("enter", actions::PressEnter, Some("Root && !webview")),
+        gpui::KeyBinding::new("tab", actions::FocusNext, Some("Root && !webview")),
+        gpui::KeyBinding::new(
+            "shift-tab",
+            actions::FocusPrevious,
+            Some("Root && !webview"),
+        ),
         gpui::KeyBinding::new("ctrl-s", actions::SaveFile, Some("Root && !webview")),
         gpui::KeyBinding::new(
             "ctrl-b",

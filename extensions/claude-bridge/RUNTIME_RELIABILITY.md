@@ -280,6 +280,24 @@ The acceptance requirement "Chat, Console and the neighbouring view return and s
 - The Agents state of the bound tab is replayed.
 - Then the same live gate is repeated.
 
+**Verification 2026-11-13, fix #832 (merged as `f39bc7a7`): passed for Chat and Agents.**
+
+The candidate was the release build of the #832 head on a profile copy with isolated `LOCALAPPDATA`/`USERPROFILE`/`HOME` and its own Bridge token. The extension-host child was killed by PID.
+
+| Case | Respawn | Result |
+| --- | --- | --- |
+| Idle, three runs | 0.99 / 1.44 / 1.09 s | Chat stayed on the same tab and ready |
+| After a finished two-teammate team | — | Agents kept `Completed 2` |
+| While two teammates were `RUNNING` | 0.7 s | After 0.32 s Chat was on the same tab and ready and both rows were still `RUNNING`; the team then completed |
+
+Sidebar session switches after a respawn rebound Chat in 0.12–0.16 s; on 1.0.94 they took more than 10 s.
+
+Not checked: documents, the active editor and LSP reseeding.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/944b342faf031ca2c4a787b165e33595080752af/incidents/BR-04/evidence/2026-11-13-gate-832).
+
+Next step: verify again on the installed 1.0.95.
+
 Owner: the executor the maintainer assigns. The status stays `verify` until that gate passes.
 
 **Status:** implementation PR #148 и дополнительный PR #152 merged;
@@ -529,7 +547,22 @@ live gate прямо отмечен NOT executed before merge. Prompt contract �
 Зафиксировать CLI version и фактический `SendMessage` contract; BR-25/26/27 panel runs не
 заменяют эти два случая.
 
-**Status:** implementation merged в PR #15; reopened for verification.
+**Verification 2026-11-13 (Windows client, authenticated stand `kamin-acc-302`, CLI 2.1.322): both cases pass.**
+
+The stand image is `main-584b5616`. The prompt contract file is unchanged on `main` `29238be7`. Clients: installed 1.0.94, and a `main` build with the probe `hostDisconnect`.
+
+The CLI `SendMessage` contract: a teammate calls `SendMessage` to `team-lead`. The lead receives each report as a `<teammate-message>` user turn, and idle notices arrive as `idle_notification` in the same channel.
+
+1. **No lost report.** Two runs with three teammates and unique markers, one per client build. During the runs there was a tab switch, and in the second run also two shell disconnects. 3/3 reports arrived on the first attempt; the lead sent no recovery request and spawned no extra teammate. One late report was confirmed from the teammate's transcript, not by a new request.
+2. **Intentionally missing report.** One teammate went idle without a report. The lead sent exactly one `SendMessage` recovery request, received the marker and finished. No additional teammate was spawned, and a later second idle notice did not trigger another request.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/55f0fd5793ff62beba8dd192e1012c3d347816a2/incidents/BR-09/evidence/2026-11-13-reports).
+
+Not covered: a server built from current `main`.
+
+**Closed 2026-11-13 (lead decision):** done. The server prompt contract has not changed since `584b5616`, and the client side was checked on a `main` build, so no separate gate on a server from `main` is needed.
+
+**Status:** done (implementation PR #15, verification 2026-11-13).
 Automatic selection остаётся отдельным BR-15. **Dependency:** none.
 **Acceptance:** automated + authenticated Windows runtime merge gate; live
 gate не выполнен.
@@ -586,6 +619,36 @@ path в `args`, shell metacharacters, опасный argument, redaction и оч
 matcher. Relay URL/token после proxy rewrite не отображаются. Windows gate:
 plugin update меняет hook hash, modal показывает полную declaration и matcher,
 approve/reject сохраняются.
+
+**Verification 2026-11-13 (KaminIDE 1.0.94, profile copy): partial pass, three defects.**
+
+Setup:
+- Two disposable plugins from a local marketplace; every hook only echoes text.
+- Keys are sent through CEF DevTools `Input.dispatchKeyEvent` to the Chat page, without screen takeover.
+
+Passed:
+- Initial focus goes to the dialog when the modal opens from a live event.
+- Tab and Shift+Tab stay in the dialog and wrap around; a disabled Approve button is skipped.
+- Space toggles a hook, and Enter on Approve or Reject all saves the choice.
+- After a single modal closes, focus returns to the composer.
+- A plugin update re-prompts with the new declaration and matcher, and the changed hook starts unselected.
+- A queued second plugin takes focus when its modal opens.
+- The dangerous-pattern mark is shown, and a long matcher wraps without horizontal overflow.
+- Approvals and rejections are persisted.
+
+Failed:
+1. Later approval requests do not reach Chat. `requestHookApproval` sends `plugin-hooks:awaiting-approval` to one registered webview sink. The event arrived only in the Customize Plugins page that started the install. Chat, which hosts the modal, showed the request only after a reload.
+2. A modal opened from the mount-time pending list (after a Chat reload) leaves focus in the composer. Tab then reaches chat controls behind the `aria-modal` overlay.
+3. After a queue of two modals closes, focus lands on `BODY` instead of the composer.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/57f3d9cc7076686e22c1bd8df007a19f4cb4045c/incidents/BR-10/evidence/2026-11-13-keyboard-1.0.94).
+
+Next artifact: change. The fix should:
+- deliver the request to every live Bridge view (or to Chat explicitly);
+- move focus into the dialog whenever the modal shows, including from the pending list;
+- restore focus to the element that had it before the first queued modal.
+
+Then repeat this gate.
 
 ### BR-11 — Inventory native CLI-only blocking states
 
@@ -2008,6 +2071,17 @@ branch. Next step: change — give `PressEnter` a rename branch that sends
 `CommitRename` (the same as blur), with a keymap-level test that Enter in the
 rename input commits. Owner: the executor the lead assigns. Scroll and session
 change during the transition and the BR-28 bounds remain `verify`.
+
+**Keyboard follow-up 2026-11-13 — source regression reproduced.** The root
+`enter` binding consumes the key before `rename_row` receives `on_key_down`,
+but `PressEnter` had no rename branch. It now queues `CommitRename` after the
+existing overlay branches. Root `Tab`/`Shift+Tab` bindings now call GPUI focus
+traversal; the `webview` context keeps its own keyboard path. GPUI TestPlatform
+tests exercise the startup keymap and actual Root handlers with the rename input
+and focus-ring tab stops: Enter commits once, Escape cancels, and all 80 Tab
+presses move the visible focus ring. Both regressions fail on the old handlers
+and bindings. These tests do not accept the live Windows keyboard/focus gate;
+kmaint must verify the exact fix candidate and the remaining scenarios above.
 
 **Status:** implementation merged в PR #37; reopened for verification.
 Частичный Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал

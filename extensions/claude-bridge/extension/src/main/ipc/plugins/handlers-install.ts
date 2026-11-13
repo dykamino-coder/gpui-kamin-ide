@@ -340,8 +340,11 @@ export async function listPendingHookApprovals(): Promise<PendingPluginHookAppro
 export async function requestHookApproval(pluginId: string, pluginRoot: string): Promise<void> {
   const pending = await getPendingHookApproval(pluginId, pluginRoot)
   if (!pending) return
-  const win = BrowserWindow.getAllWindows().find(w => !w.isDestroyed()) ?? null
-  if (win) win.webContents.send('plugin-hooks:awaiting-approval', pending)
+  // Chat and Customize can belong to different BridgeHost sinks. Registration
+  // order must not decide which approval UI receives a new request.
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('plugin-hooks:awaiting-approval', pending)
+  }
 }
 
 async function requestDependencyHookApprovals(data: any, dependencyIds: readonly string[]): Promise<void> {

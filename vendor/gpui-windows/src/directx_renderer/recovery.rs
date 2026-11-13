@@ -17,21 +17,26 @@ impl RecoveryResources {
         height: u32,
         hwnd: HWND,
         disable_direct_composition: bool,
+        offscreen: bool,
     ) -> Result<Self> {
         let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
             .context("Recreating DirectX devices")?;
-        let resources =
+        // KaminIDE patch: an offscreen renderer recovers an offscreen target.
+        let resources = if offscreen {
+            DirectXResources::new_offscreen(&devices, width, height)
+        } else {
             DirectXResources::new(&devices, width, height, hwnd, disable_direct_composition)
-                .context("Creating DirectX resources")?;
+        }
+        .context("Creating DirectX resources")?;
         let globals = DirectXGlobalElements::new(&devices.device)
             .context("Creating DirectXGlobalElements")?;
         let pipelines = DirectXRenderPipelines::new(&devices.device)
             .context("Creating DirectXRenderPipelines")?;
-        let direct_composition = if disable_direct_composition {
+        let direct_composition = if disable_direct_composition || offscreen {
             None
         } else {
             let composition = DirectComposition::new(devices.dxgi_device.as_ref().unwrap(), hwnd)?;
-            composition.set_swap_chain(&resources.swap_chain)?;
+            composition.set_swap_chain(resources.swap_chain()?)?;
             Some(composition)
         };
         Ok(Self {
@@ -49,9 +54,9 @@ impl DirectXRenderer {
         &mut self,
         directx_devices: &DirectXDevices,
     ) -> Result<()> {
-        let (width, height, hwnd) = (self.width, self.height, self.hwnd);
+        let (width, height, hwnd, offscreen) = (self.width, self.height, self.hwnd, self.offscreen);
         self.recover_with(|disabled| {
-            RecoveryResources::new(directx_devices, width, height, hwnd, disabled)
+            RecoveryResources::new(directx_devices, width, height, hwnd, disabled, offscreen)
         })
     }
 

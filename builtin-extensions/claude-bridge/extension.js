@@ -41526,7 +41526,7 @@ var import_path37 = __toESM(require("path"), 1);
 
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
-var import_node_path15 = __toESM(require("node:path"), 1);
+var import_node_path16 = __toESM(require("node:path"), 1);
 
 // src/resync-tracker.ts
 var ResyncTracker = class {
@@ -47737,8 +47737,9 @@ async function listPendingHookApprovals() {
 async function requestHookApproval(pluginId, pluginRoot) {
   const pending = await getPendingHookApproval(pluginId, pluginRoot);
   if (!pending) return;
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed()) ?? null;
-  if (win) win.webContents.send("plugin-hooks:awaiting-approval", pending);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("plugin-hooks:awaiting-approval", pending);
+  }
 }
 async function requestDependencyHookApprovals(data, dependencyIds) {
   for (const dependencyId of dependencyIds) {
@@ -51485,7 +51486,63 @@ function suggestFetchHint(cause, host) {
 
 // src/main/mcp/transports/stdio.ts
 var import_child_process4 = require("child_process");
+
+// src/main/mcp/transports/stdio-launch.ts
+var import_node_fs12 = __toESM(require("node:fs"), 1);
+var import_node_path14 = __toESM(require("node:path"), 1);
 init_script_file();
+function envValue(env4, name) {
+  const key2 = Object.keys(env4).find((key3) => key3.toLowerCase() === name.toLowerCase());
+  return key2 === void 0 ? void 0 : env4[key2];
+}
+function windowsCommand(command, cwd, env4) {
+  const directories = /[\\/]/.test(command) ? [""] : [cwd, ...(envValue(env4, "PATH") ?? "").split(";")];
+  const extensions = import_node_path14.default.win32.extname(command) ? [""] : (envValue(env4, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";");
+  for (const directory of directories) {
+    const base = import_node_path14.default.win32.resolve(cwd, directory.replace(/^"(.*)"$/, "$1"), command);
+    for (const extension2 of extensions) {
+      const file = base + extension2;
+      try {
+        if (import_node_fs12.default.statSync(file).isFile()) return file;
+      } catch {
+      }
+    }
+  }
+  return command;
+}
+function batchArgument(value) {
+  let quoted = '"';
+  let slashes = 0;
+  for (const char of value) {
+    if (char === "\\") {
+      slashes++;
+      continue;
+    }
+    quoted += "\\".repeat(char === '"' ? slashes * 2 + 1 : slashes) + char;
+    slashes = 0;
+  }
+  quoted += "\\".repeat(slashes * 2) + '"';
+  return escapeCmd(escapeCmd(quoted));
+}
+function escapeCmd(value) {
+  return value.replace(/[()[\]%!^"`<>&|;, *?]/g, (char) => `^${char}`);
+}
+function stdioLaunch(command, args, cwd, env4) {
+  if (process.platform !== "win32") return { command, args };
+  const file = windowsCommand(command, cwd, env4);
+  if (!/\.(cmd|bat)$/i.test(file)) return { command: file, args };
+  const shell2 = envValue(env4, "ComSpec") ?? "cmd.exe";
+  const escapedCommand = escapeCmd(file);
+  const escapedArgs = args.map(batchArgument);
+  assertCmdLineFits(escapedCommand, escapedArgs, "win32", shell2);
+  return {
+    command: shell2,
+    args: ["/d", "/s", "/c", `"${[escapedCommand, ...escapedArgs].join(" ")}"`],
+    windowsVerbatimArguments: true
+  };
+}
+
+// src/main/mcp/transports/stdio.ts
 init_working_directory();
 function stdioWorkingDirectory(config) {
   return resolveWorkingDirectory(config.workingDirectory, config.projectRoot);
@@ -51495,8 +51552,11 @@ async function connectStdio(ctx, id) {
   const command = state.config.command;
   if (!command) throw new Error("stdio server command is required");
   const args = state.config.args ?? [];
+  const cwd = stdioWorkingDirectory(state.config);
+  const env4 = { ...process.env, ...state.config.env };
+  let launch;
   try {
-    assertCmdLineFits(command, args);
+    launch = stdioLaunch(command, args, cwd, env4);
   } catch (err) {
     ctx.appendLog(id, "error", `[stdio] ${err.message}`);
     throw err;
@@ -51522,16 +51582,14 @@ async function connectStdio(ctx, id) {
       else reject(err ?? new Error("Unknown error"));
     };
     ctx.appendLog(id, "info", `[stdio] spawning: ${command} ${args.join(" ")}`);
-    const proc = (0, import_child_process4.spawn)(command, args, {
+    const proc = (0, import_child_process4.spawn)(launch.command, launch.args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...state.config.env },
-      shell: true,
-      // windowsHide: true keeps conhost.exe windows out of Task Manager —
-      // every `shell: true` spawn on Windows otherwise creates a visible
-      // Console Window Host process per MCP server (so 6 stdio MCPs = 6
-      // conhosts cluttering the process tree).
+      env: env4,
+      shell: false,
+      windowsVerbatimArguments: launch.windowsVerbatimArguments,
+      // Hide the console when a Windows batch launcher needs cmd.exe.
       windowsHide: true,
-      cwd: stdioWorkingDirectory(state.config)
+      cwd
     });
     state.process = proc;
     state.inputBuffer = "";
@@ -52026,6 +52084,14 @@ var McpServerManager = class _McpServerManager {
   notifyTimer = null;
   notifyLastAt = 0;
   static NOTIFY_MIN_INTERVAL_MS = 200;
+  /** Ключ последнего каталога, отданного через onToolsChanged (INC-2026-0042 b).
+   *  Удаление спящего коннектора, повторный discovery и initAll с тёплым кэшем
+   *  меняют экспортируемый каталог без живого процесса и без exit/connect
+   *  callback — раньше сервер оставался со старым снимком до случайной
+   *  регистрации. Сравнение по содержимому (имена, описания, схемы, ресурсы,
+   *  prompts), а не по длине: одинаковое число тулов с новой схемой — тоже
+   *  изменение. */
+  publishedCatalogKey = JSON.stringify([[], { resources: [], resourceTemplates: [], prompts: [] }]);
   constructor(window10) {
     this.window = window10;
     const legacy = (getMcpStore().get("mcpServers") ?? []).filter((c) => !c.autoDiscovered);
@@ -52054,7 +52120,7 @@ var McpServerManager = class _McpServerManager {
       appendLog: (id, level, msg) => self.appendLog(id, level, msg),
       notifyChanged: () => self.notifyChanged(),
       get onToolsChanged() {
-        return self.onToolsChanged;
+        return self.onToolsChanged ? () => self.publishTools() : null;
       },
       handleServerMessage: (serverId, msg, sendResponse) => self.handleServerMessage(serverId, msg, sendResponse),
       buildHttpHeaders: (id) => self.buildHttpHeaders(id),
@@ -52484,6 +52550,7 @@ var McpServerManager = class _McpServerManager {
       }
     }
     this.notifyChanged();
+    this.publishTools();
   }
   /** Update an existing server's editable config (name / type / url / headers /
    *  command / args / env / oauth). Preserves identity + source metadata,
@@ -52539,7 +52606,7 @@ var McpServerManager = class _McpServerManager {
       this.disconnectServer(id);
     }
     this.notifyChanged();
-    this.onToolsChanged?.();
+    this.publishTools();
   }
   /** Test connection to a server. Clears the previous log so the user gets
    *  a clean trace of THIS attempt (otherwise repeated Tests accumulate and
@@ -52741,7 +52808,26 @@ var McpServerManager = class _McpServerManager {
       else console.error(`[MCP] Failed to connect to "${state.config.name}":`, fullMsg, cause);
     }
     this.notifyChanged();
-    this.onToolsChanged?.();
+    this.publishTools();
+  }
+  /** Явная рассылка каталога (connect/toggle/transport/list_changed). Запоминает
+   *  отданный ключ, чтобы trailing notifyChanged не дублировал её. */
+  publishTools() {
+    if (this.disposed || !this.onToolsChanged) return;
+    this.publishedCatalogKey = this.catalogKey();
+    this.onToolsChanged();
+  }
+  catalogKey() {
+    return JSON.stringify([this.getExternalToolSchemas(), this.getExternalContentCatalog()]);
+  }
+  /** Публикация изменений без собственного callback (remove/discovery/warm
+   *  cache). Пока какой-то сервер в 'connecting', его тулы временно выпадают из
+   *  экспорта (ленивый кэш исключён) — рассылать такой промежуточный каталог
+   *  значит отнять у CLI тул посреди ленивого вызова. Завершение connect само
+   *  вызывает publishTools и доставит накопленные изменения. */
+  publishToolsIfChanged() {
+    for (const state of this.servers.values()) if (state.status === "connecting") return;
+    if (this.catalogKey() !== this.publishedCatalogKey) this.publishTools();
   }
   disconnectServer(id) {
     const state = this.servers.get(id);
@@ -52886,7 +52972,7 @@ var McpServerManager = class _McpServerManager {
       servers: this.servers,
       window: this.window,
       notifyChanged: () => this.notifyChanged(),
-      onToolsChanged: this.onToolsChanged,
+      onToolsChanged: this.onToolsChanged ? () => this.publishTools() : null,
       rpcRequest: (id, method, params) => this.rpcRequest(id, method, params)
     };
   }
@@ -52951,6 +53037,7 @@ var McpServerManager = class _McpServerManager {
       this.harvestSchemaCache();
       if (this.window.isDestroyed()) return;
       this.window.webContents.send("mcp-servers-changed", this.getServers());
+      this.publishToolsIfChanged();
     }, wait);
   }
   // ─── Test log ───────────────────────────────────────
@@ -53017,15 +53104,15 @@ var import_path35 = __toESM(require("path"), 1);
 // src/attachments.ts
 var import_promises7 = __toESM(require("node:fs/promises"), 1);
 var import_node_os8 = __toESM(require("node:os"), 1);
-var import_node_path14 = __toESM(require("node:path"), 1);
+var import_node_path15 = __toESM(require("node:path"), 1);
 async function saveAttachment(base64, name, root = import_node_os8.default.tmpdir()) {
   if (typeof base64 !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
     throw new Error("Invalid attachment encoding");
   }
   const safe = String(name || "attachment").replace(/[/\\\x00-\x1f<>:"|?*]/g, "_").slice(-120);
   await import_promises7.default.mkdir(root, { recursive: true });
-  const directory = await import_promises7.default.mkdtemp(import_node_path14.default.join(root, "bridge-upload-"));
-  const file = import_node_path14.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
+  const directory = await import_promises7.default.mkdtemp(import_node_path15.default.join(root, "bridge-upload-"));
+  const file = import_node_path15.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
   await import_promises7.default.writeFile(file, Buffer.from(base64, "base64"), { flag: "wx", mode: 384 });
   return file;
 }
@@ -53652,8 +53739,8 @@ var BridgeHost = class {
     setPluginLspProjectResolver((tabId, file) => {
       const direct = tabId ? this.tabManager.getTab(tabId)?.config.cwd : void 0;
       if (direct) return direct;
-      const resolvedFile = import_node_path15.default.resolve(file);
-      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path15.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path15.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const resolvedFile = import_node_path16.default.resolve(file);
+      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path16.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path16.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
     });
     const getUserCwd = () => vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
     const ctx = {
