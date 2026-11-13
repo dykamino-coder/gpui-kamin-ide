@@ -124,18 +124,22 @@ export class SessionsBridge {
         this.scheduleWarmRestore()
       }
     })
+    let respawned = false
     if (this.storageDir) {
       const tm = this.host.getTabManager()
       this.recovery = new NativeRespawnState(this.storageDir, tm,
         () => this.host.getConfigStore().get(), this.tabToKamin, this.kaminToTab, () => kaminide.sessions.active)
-      this.recovery.restore(kaminide.sessions.all, kaminide.sessions.active)
+      respawned = this.recovery.restore(kaminide.sessions.all, kaminide.sessions.active)
       this.subs.push({ dispose: tm.onDidChangeTabs(() => this.recovery?.save()) })
     }
     // A restored Bridge selection can differ from the native session sidebar.
     // Only seed from native selection when recovery did not select a live tab.
     if (!this.host.getTabManager().getActiveTabId()) this.onActive(kaminide.sessions.active)
     this.recovery?.save()
-    this.scheduleWarmRestore()
+    // BR-05A: a respawn already restored the user's tab set, warm tabs included.
+    // The warm pool is for a cold start; running it again here added up to
+    // WARM_POOL_MAX more tabs per respawn, including sessions the user closed.
+    if (!respawned) this.scheduleWarmRestore()
   }
 
   // ─── Warm pool ────────────────────────────────────────────────────────────
