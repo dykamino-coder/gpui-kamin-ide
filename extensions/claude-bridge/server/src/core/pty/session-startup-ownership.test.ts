@@ -185,7 +185,11 @@ describe('INC-2026-0013 actual WebSocket startup ownership', () => {
     vi.mocked(sendToClient).mockClear()
     h.destroy.mockImplementationOnce(() => {
       expect(handoff).toHaveBeenCalledOnce()
-      expect(sendToClient).toHaveBeenCalledWith(socket, { type: 'session:handoff', sessionId: 'handoff', transferable: ['one', 'two'] })
+      expect(sendToClient).toHaveBeenCalledWith(socket, {
+        type: 'session:handoff',
+        sessionId: 'handoff',
+        transferable: ['one', 'two'],
+      })
     })
     await socket.message({ type: 'session:end', handoff: true })
     expect(h.destroy).toHaveBeenCalledWith('handoff', 'explicit_end')

@@ -123,15 +123,19 @@ async function fixture(sessionId = 'recovery') {
 
 describe('submission delivery recovery through the real PTY coordinator', () => {
   it('rebinds during a lost arm ack and delivers both pending items exactly once in the new CLI', async () => {
-    const old = await fixture('old'), next = await fixture('new')
+    const old = await fixture('old'),
+      next = await fixture('new')
     const rows: any[] = []
-    const outbox = new SubmissionHandoff(update => rows.push(update))
-    for (const [id, text] of [['one', 'first'], ['two', 'second']]) {
+    const outbox = new SubmissionHandoff((update) => rows.push(update))
+    for (const [id, text] of [
+      ['one', 'first'],
+      ['two', 'second'],
+    ]) {
       outbox.remember(id!, text!)
       old.queue.submit(id!, text!)
     }
     await old.tick() // CLI claimed the arm; its acknowledgement has not arrived.
-    old.frames.forEach(frame => outbox.receive(frame))
+    old.frames.forEach((frame) => outbox.receive(frame))
     const safe = old.queue.handoff()
     expect(safe).toEqual(['one', 'two'])
     outbox.end(safe, true)
@@ -139,22 +143,29 @@ describe('submission delivery recovery through the real PTY coordinator', () => 
     old.finish()
     expect(old.writes).toEqual([])
     outbox.resume((text, id) => next.queue.submit(id, text))
-    outbox.resume(() => { throw new Error('duplicate handoff') })
+    outbox.resume(() => {
+      throw new Error('duplicate handoff')
+    })
     for (let i = 0; i < 2; i++) {
-      await next.tick(); await next.tick()
+      await next.tick()
+      await next.tick()
       next.finish()
       vi.advanceTimersByTime(100)
     }
-    for (const id of safe) { next.queue.action(id, 'push'); next.queue.submit(id, 'duplicate frame') }
+    for (const id of safe) {
+      next.queue.action(id, 'push')
+      next.queue.submit(id, 'duplicate frame')
+    }
     next.finish()
     expect(next.writes).toEqual(['\x15', '\x1b[200~first\x1b[201~', '\r', '\x15', '\x1b[200~second\x1b[201~', '\r'])
-    expect(rows.every(row => row.state === 'queued')).toBe(true)
+    expect(rows.every((row) => row.state === 'queued')).toBe(true)
   })
 
   it('never transfers native or claimed-submit outcomes automatically', async () => {
     const f = await fixture()
     f.queue.submit('native', 'already handed off')
-    await f.tick(); await f.tick()
+    await f.tick()
+    await f.tick()
     expect(f.queue.handoff()).toEqual([])
     const idle = await fixture('idle')
     idle.transport.submit('not polled', () => {}, 'unclaimed')

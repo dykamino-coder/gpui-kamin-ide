@@ -353,7 +353,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sendToClient(ws, {
               type: 'session:handoff',
               sessionId: authenticatedSessionId,
-              transferable: session ? sessionCliControl(session)?.handoff() ?? [] : [],
+              transferable: session ? (sessionCliControl(session)?.handoff() ?? []) : [],
             })
           }
           cancelStartup('ended')
