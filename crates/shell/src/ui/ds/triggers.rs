@@ -186,6 +186,7 @@ pub fn sample_external_toast_triggers(tx: &Sender<ShellEvent>, p: &Palette) -> A
                     } else {
                         Vec::new()
                     },
+                    duration_ms: None,
                     sticky,
                 }));
             },
