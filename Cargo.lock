@@ -4002,6 +4002,7 @@ dependencies = [
  "serde_json",
  "smol",
  "trash",
+ "tungstenite",
  "ureq",
  "usvg 0.48.1",
  "windows 0.62.2",

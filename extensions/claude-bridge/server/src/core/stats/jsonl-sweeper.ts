@@ -39,6 +39,7 @@ import os from 'os'
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { getDb } from './database/lifecycle'
 import { withStatsWrite } from './database/write-lock'
+import { writeSessionToken } from './database/session-owners'
 import { dedupeByUuid } from './jsonl-batch'
 import { markDirtySql, scheduleRollupDrain } from './database/rollup'
 import { debugLog, warnLog } from '../logging'
@@ -405,13 +406,17 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   // also keeps Sessions cardinality clean.
   if (slugInfo && !info.isSubagent) {
     if (!tokenRow) {
-      // A new owner row changes what the rollup attributes: rewrite() marks it dirty.
-      await rewrite(SQL_ENSURE_SESSION_TOKEN, [
-        sessionId,
-        slugInfo.tokenId,
-        slugInfo.userName,
-        new Date().toISOString(),
-      ])
+      // Commit the session, owner roster and rollup invalidation together.
+      await writeSessionToken(db, sessionId, async () => {
+        await db.run(SQL_ENSURE_SESSION_TOKEN, [
+          sessionId,
+          slugInfo.tokenId,
+          slugInfo.userName,
+          new Date().toISOString(),
+        ])
+        const dirty = markDirtySql([sessionId])
+        await db.run(dirty.sql, dirty.params)
+      })
     } else if (!tokenRow.token_id || tokenRow.token_id.length === 0) {
       // Heal the legacy '' rows that the old backfill produced.
       await write(SQL_REFRESH_SESSION_TOKEN, [slugInfo.tokenId, sessionId])
