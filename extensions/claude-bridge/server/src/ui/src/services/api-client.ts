@@ -125,6 +125,14 @@ export const api = {
   getUserTimeSeries: (period: string = 'day', days: number = 30) =>
     fetchJson<UserTimeSeriesEntry[]>(`/api/dashboard/stats/timeseries?period=${period}&days=${days}`),
   getUsers: () => fetchJson<UserSummary[]>('/api/dashboard/users'),
+  /** Roster plus the stats build progress (null once statistics are ready). */
+  getUsersWithBuild: async (): Promise<{ list: UserSummary[]; building: number | null }> => {
+    const res = await fetch('/api/dashboard/users', { headers: authHeaders() })
+    handle401(res)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const pct = res.headers.get('X-Stats-Building')
+    return { list: (await res.json()) as UserSummary[], building: pct == null ? null : Number(pct) }
+  },
   getUserRequests: (userName: string, limit = 50) =>
     fetchJson<RequestLogEntry[]>(`/api/dashboard/users/${encodeURIComponent(userName)}/requests?limit=${limit}`),
 
@@ -196,6 +204,8 @@ export interface UserSummary {
   cost: number
   firstSeen: string | null
   lastSeen: string | null
+  /** Token flow (in + out + cache) over the last 7 / 30 days. */
+  periodTokens?: { d7: number; d30: number }
 }
 
 export type { PlanUsageData as UsageData } from '../../../shared/plan-usage'
