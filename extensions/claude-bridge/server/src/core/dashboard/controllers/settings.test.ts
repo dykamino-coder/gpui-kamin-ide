@@ -53,6 +53,12 @@ const put = (body: unknown) =>
   })
 
 describe('proxy settings routes', () => {
+  it('persists the request-history limit edited in Configuration', async () => {
+    const res = await put({ maxRequests: 2500 })
+    expect(res.status).toBe(200)
+    expect(store.setSetting).toHaveBeenCalledWith('maxRequests', '2500')
+    expect(await res.json()).toMatchObject({ maxRequests: '2500' })
+  })
   it('answers a PUT with the values just stored', async () => {
     const res = await put({ httpsProxy: 'http://new:2' })
     expect(res.status).toBe(200)
