@@ -14,6 +14,9 @@ One command per question (docs/memprof.md):
       run, and the report lists owners, the live heap at that moment and its unreported blocks by site.
   memprof.py diff A.json B.json
       compares two saved reports without symbols.
+  memprof.py ws --exe CAND.exe [--base-exe BASE.exe] --out DIR -- PAGE.html --mode both --runs 5
+      working set by memory region (image, mapped, private by reservation kind) at its peak, any build
+      (timing-only included): what the live-heap reports cannot see (scripts/memprof_ws.py).
 
 The probe (crates/engine-bench/src/allocations/probe.rs) writes one line per allocation with its stack
 and one per free. A sampled file (ENGINE_BENCH_ALLOC_STACKS_SAMPLE=T) holds a block of s bytes with
@@ -257,6 +260,7 @@ class Run:
             self.lines = 0
             self.owners = None
             self.estimates = []
+            self.frames = frames
             self.groups = self._fold(handle, live, frames)
 
     def weight(self, size):
@@ -298,12 +302,15 @@ class Run:
             self.lines += 1
             parts = line.rstrip("\n").split(" ", 5 if pointer_field else 4)
             kind, frame, _phase, size = parts[0], parts[1], parts[2], int(parts[3])
-            if frames and not frames[0] <= int(frame) <= frames[1]:
-                continue
             pointer = parts[4] if pointer_field else None
             if kind == "f":
+                # A free counts in every frame: a block of the chosen frames freed later is not live.
                 if live:
                     blocks.pop(pointer, None)
+                continue
+            if frames and not frames[0] <= int(frame) <= frames[1]:
+                if live and kind == "r":
+                    blocks.pop(pointer, None)  # reallocated outside the frames: no longer theirs
                 continue
             raw = parts[5] if pointer_field and len(parts) > 5 else (parts[4] if not pointer_field and len(parts) > 4 else "")
             key = keys.get(raw)
@@ -369,6 +376,7 @@ class Run:
     def meta(self):
         return {
             "exe": self.exe, "stacks": self.path, "version": self.version, "filter": self.filter,
+            "frames": list(self.frames) if self.frames else None,
             "until": self.until, "sample_mean_bytes": self.sample, "window_end": self.end,
             "dropped_samples": self.dropped, "records": self.lines,
             "audit_live_bytes_at_end": self.counter,
@@ -493,11 +501,16 @@ def render(report, out=sys.stdout):
     diff = "base" in runs
     c = runs["cand"]
     window = f"filter={c['filter']} until={c['until']} end={c['window_end'] or 'end of file'}"
+    if c.get("frames"):
+        first, last = c["frames"]
+        window += f", only blocks allocated in frames {first}-{last}"
     sampling = f"sampled, mean {c['sample_mean_bytes']} B (estimates)" if c["sample_mean_bytes"] else "exact"
     print(f"memprof {report['mode']} heap, {window}, {sampling}", file=out)
     for name, run in runs.items():
         counter = run.get("audit_live_bytes_at_end")
-        check = f", audit counter {counter / 1e6:.3f} MB ({run['bytes'] / counter:.2%} seen)" if counter else ""
+        # The audit counter holds every frame: a share is meaningful only without --frames.
+        seen = "" if run.get("frames") else f" ({run['bytes'] / counter:.2%} seen)"
+        check = f", audit counter {counter / 1e6:.3f} MB{seen}" if counter else ""
         print(f"  {name}: {run['bytes'] / 1e6:.3f} MB in {run['blocks']} blocks{check}"
               f"{', dropped samples ' + str(run['dropped_samples']) if run['dropped_samples'] else ''}"
               f"  ({run['exe']})", file=out)
@@ -622,7 +635,6 @@ def run_command(args):
     args.stacks = out / "cand.stacks"
     args.base = [args.base_exe, out / "base.stacks"] if args.base_exe else None
     args.allocated = False
-    args.frames = None
     args.json = args.json or out / "report.json"
     with open(out / "report.txt", "w", encoding="utf-8") as text:
         report = report_command(args)
@@ -648,6 +660,7 @@ def main(argv=None):
     run.add_argument("--out", required=True, help="directory for stacks, bench JSON and reports")
     run.add_argument("--launcher", help="command prefix, e.g. a hidden-desktop launcher")
     run.add_argument("--timeout", type=int, default=1800)
+    run.add_argument("--frames", help="A-B: report only blocks allocated in these frames")
     run.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
     rep = sub.add_parser("report", parents=[common], help="fold probe files")
@@ -655,13 +668,27 @@ def main(argv=None):
     rep.add_argument("stacks")
     rep.add_argument("base", nargs="*", help="BASE_EXE BASE_STACKS")
     rep.add_argument("--allocated", action="store_true", help="every allocation of the window, not the live heap")
-    rep.add_argument("--frames", help="A-B: only records of these frames")
+    rep.add_argument("--frames", help="A-B: only blocks allocated in these frames (frees count in every frame)")
 
     dif = sub.add_parser("diff", parents=[common], help="compare two saved JSON reports")
     dif.add_argument("cand")
     dif.add_argument("base")
 
+    wsp = sub.add_parser("ws", help="working set by memory region at its peak (any engine_bench build)")
+    wsp.add_argument("--exe", required=True, help="candidate engine_bench.exe")
+    wsp.add_argument("--base-exe", help="base engine_bench.exe")
+    wsp.add_argument("--out", required=True, help="directory for bench JSON and the report")
+    wsp.add_argument("--launcher", help="command prefix that prints 'own child: <pid>' first")
+    wsp.add_argument("--interval-ms", type=int, default=1, help="working-set sampling interval")
+    wsp.add_argument("--step-mb", type=int, default=2, help="new breakdown when the peak grows by this much")
+    wsp.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
+
     args = parser.parse_args(argv)
+    if args.command == "ws":
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import memprof_ws
+        launcher = [p.strip('"') for p in shlex.split(args.launcher, posix=False)] if args.launcher else []
+        return memprof_ws.ws_command(args, launcher)
     {"run": run_command, "report": report_command, "diff": diff_command}[args.command](args)
 
 
