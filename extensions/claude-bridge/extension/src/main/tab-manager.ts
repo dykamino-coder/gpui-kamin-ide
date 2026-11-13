@@ -158,7 +158,7 @@ export class TabManager {
     this.pendingConnect.delete(tabId)
     // Explicit user action — end the server session now (a bare socket close
     // would only detach it for the reattach grace window).
-    tab.connection.disconnect({ endSession: true })
+    tab.connection.disconnectForRebind()
   }
 
   /**

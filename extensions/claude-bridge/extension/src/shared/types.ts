@@ -1012,6 +1012,7 @@ export interface SubmissionUpdate {
   state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
   uuid?: string
   cancelable?: boolean
+  retryable?: boolean
   warning?: string
   capable?: boolean
   /** Server time (ms) the server first accepted this id. */

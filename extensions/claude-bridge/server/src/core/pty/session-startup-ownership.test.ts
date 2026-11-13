@@ -124,6 +124,8 @@ vi.mock('./transcript-archive', () => ({ archiveTranscriptForSession: vi.fn(), d
 import { WebSocket } from 'ws'
 import { SessionAdmissionError } from './session-admission'
 import { attachSessionWebSocket, getSessionWs } from './session-ws'
+import { SessionCliControl } from './session-cli-control'
+import { sendToClient } from './session-io'
 class Socket extends EventEmitter {
   readyState: number = WebSocket.OPEN
   send = vi.fn()
@@ -173,6 +175,22 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('INC-2026-0013 actual WebSocket startup ownership', () => {
+  it('freezes and acknowledges transferable submissions before destroying an explicitly ended session', async () => {
+    const session = makeSession('handoff', socket)
+    h.sessions.set(session.id, session)
+    h.create.mockResolvedValueOnce(session)
+    const control = new SessionCliControl(session as any)
+    const handoff = vi.spyOn(control, 'handoff').mockReturnValue(['one', 'two'])
+    await socket.message({ type: 'session:create', token: 'synthetic' })
+    vi.mocked(sendToClient).mockClear()
+    h.destroy.mockImplementationOnce(() => {
+      expect(handoff).toHaveBeenCalledOnce()
+      expect(sendToClient).toHaveBeenCalledWith(socket, { type: 'session:handoff', sessionId: 'handoff', transferable: ['one', 'two'] })
+    })
+    await socket.message({ type: 'session:end', handoff: true })
+    expect(h.destroy).toHaveBeenCalledWith('handoff', 'explicit_end')
+    expect(getSessionWs('handoff')).toBeUndefined()
+  })
   it('INC-0074 sends a no-session result and accepts an explicit create on the same socket', async () => {
     h.create.mockRejectedValueOnce(new ResumeNotFoundError())
     await socket.message({
