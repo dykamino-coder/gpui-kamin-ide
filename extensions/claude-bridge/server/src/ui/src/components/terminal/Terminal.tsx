@@ -3,6 +3,17 @@ import '@xterm/xterm/css/xterm.css'
 import { CONSOLE_OPTIONS, configureConsole, createOsc52ClipboardProvider } from '../../lib/terminal-console'
 import '../../lib/terminal-console/console.css'
 import styles from './Terminal.module.css'
+import { api } from '../../services/api-client'
+import { codexAccountEventAt } from '../../signals/server'
+import { CodexAccountCard } from '../dashboard/CodexAccountCard'
+import {
+  quickCommands,
+  terminalEngines,
+  codexAccountAction,
+  type TerminalEngine,
+  type QuickCommand,
+  type CodexTerminalCommand,
+} from './quick-commands'
 
 export function Terminal() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -14,7 +25,30 @@ export function Terminal() {
   const [hasOutput, setHasOutput] = useState(false)
   const suppressOutputRef = useRef(false)
   const pendingCmdRef = useRef<string | null>(null)
-  const intentionalCloseRef = useRef(false)
+  const launchRef = useRef<CodexTerminalCommand | null>(null)
+  const [engine, setEngine] = useState<TerminalEngine>('claude')
+  const [codexAvailable, setCodexAvailable] = useState(false)
+  const [showAccount, setShowAccount] = useState(false)
+  const [accountBusy, setAccountBusy] = useState(false)
+  const [accountError, setAccountError] = useState('')
+  const [usageHint, setUsageHint] = useState(false)
+
+  useEffect(() => {
+    let disposed = false
+    const refresh = () =>
+      api
+        .getStatus()
+        .then((status) => {
+          if (!disposed) setCodexAvailable((status.codex as { available?: boolean } | undefined)?.available === true)
+        })
+        .catch(() => undefined)
+    void refresh()
+    const timer = setInterval(() => void refresh(), 30_000)
+    return () => {
+      disposed = true
+      clearInterval(timer)
+    }
+  }, [])
 
   function connect() {
     if (wsRef.current) {
@@ -26,10 +60,13 @@ export function Terminal() {
     setErrorMsg('')
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${proto}//${location.host}/ws/terminal`)
+    const codexCommand = launchRef.current
+    const suffix = codexCommand ? `?engine=codex&command=${codexCommand}` : ''
+    const ws = new WebSocket(`${proto}//${location.host}/ws/terminal${suffix}`)
     wsRef.current = ws
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) return
       setStatus('connected')
       if (termRef.current && fitRef.current) {
         fitRef.current.fit()
@@ -41,6 +78,7 @@ export function Terminal() {
           }),
         )
         // Clear shell banner, then run pending command if any
+        if (codexCommand) return // The server launches Codex directly, without shell input.
         suppressOutputRef.current = true
         setTimeout(() => {
           if (ws.readyState !== WebSocket.OPEN) return
@@ -83,6 +121,7 @@ export function Terminal() {
     }
 
     ws.onmessage = (evt) => {
+      if (wsRef.current !== ws) return
       try {
         const msg = JSON.parse(evt.data)
         if (msg.type === 'output') {
@@ -102,12 +141,12 @@ export function Terminal() {
 
     ws.onclose = () => {
       clearInterval(refreshInterval)
-      if (!intentionalCloseRef.current) setStatus('disconnected')
-      intentionalCloseRef.current = false
+      if (wsRef.current === ws) setStatus((current) => (current === 'error' ? 'error' : 'disconnected'))
     }
 
     ws.onerror = () => {
       clearInterval(refreshInterval)
+      if (wsRef.current !== ws) return
       setStatus('error')
       setErrorMsg('WebSocket connection failed')
     }
@@ -248,8 +287,9 @@ export function Terminal() {
   }
 
   function sendCommand(cmd: string) {
+    launchRef.current = null
+    setUsageHint(false)
     // Always kill old session and start fresh (like Exit + run)
-    intentionalCloseRef.current = true
     wsRef.current?.close()
     wsRef.current = null
     termRef.current?.reset()
@@ -259,49 +299,35 @@ export function Terminal() {
     connect()
   }
 
-  const quickCommands = [
-    {
-      label: 'Claude',
-      icon: 'fa-solid fa-rocket',
-      cmd: 'claude --dangerously-skip-permissions',
-      color: 'var(--accent-blue)',
-    },
-    {
-      label: 'Resume',
-      icon: 'fa-solid fa-rotate-left',
-      cmd: 'claude --dangerously-skip-permissions --resume',
-      color: 'var(--accent-purple)',
-    },
-    {
-      label: 'Auth Status',
-      icon: 'fa-solid fa-circle-check',
-      cmd: 'claude --dangerously-skip-permissions auth status',
-      color: 'var(--accent-green)',
-    },
-    {
-      label: 'Usage',
-      icon: 'fa-solid fa-chart-pie',
-      cmd: 'claude --dangerously-skip-permissions /usage',
-      color: 'var(--accent-yellow)',
-    },
-    {
-      label: 'Login',
-      icon: 'fa-solid fa-right-to-bracket',
-      cmd: 'claude --dangerously-skip-permissions /login',
-      color: 'var(--accent-cyan)',
-    },
-    {
-      label: 'Logout',
-      icon: 'fa-solid fa-right-from-bracket',
-      cmd: 'claude --dangerously-skip-permissions /logout',
-      color: 'var(--accent-red)',
-    },
-  ]
+  async function runQuickCommand(command: QuickCommand) {
+    if ('cmd' in command) {
+      sendCommand(command.cmd)
+      return
+    }
+    if ('account' in command) {
+      setAccountBusy(true)
+      setAccountError('')
+      setShowAccount(true)
+      try {
+        await codexAccountAction(command.account, api)
+      } catch (error) {
+        setAccountError((error as Error).message)
+      } finally {
+        setAccountBusy(false)
+        codexAccountEventAt.value = Date.now()
+      }
+      return
+    }
+    sendExit()
+    launchRef.current = command.codex
+    setUsageHint(command.codex === 'usage')
+    connect()
+  }
 
   function sendExit() {
     // Kill terminal session — close WS which kills PTY on server
-    intentionalCloseRef.current = true
     pendingCmdRef.current = null
+    launchRef.current = null
     suppressOutputRef.current = false
     wsRef.current?.close()
     wsRef.current = null
@@ -350,10 +376,36 @@ export function Terminal() {
         </div>
       </div>
 
-      {(status === 'idle' || status === 'connected') && (
+      {status !== 'connecting' && (
         <div class={styles.quickActions}>
-          {quickCommands.map((qc) => (
-            <button key={qc.label} class={styles.quickBtn} onClick={() => sendCommand(qc.cmd)} title={qc.cmd}>
+          {codexAvailable && (
+            <div role="group" aria-label="Terminal engine" class={styles.engineSwitch}>
+              {terminalEngines(codexAvailable).map((value) => (
+                <button
+                  type="button"
+                  class={styles.quickBtn}
+                  aria-pressed={engine === value}
+                  onClick={() => setEngine(value)}
+                >
+                  {value === 'claude' ? 'Claude' : 'Codex'}
+                </button>
+              ))}
+            </div>
+          )}
+          {quickCommands(codexAvailable ? engine : 'claude').map((qc) => (
+            <button
+              key={qc.label}
+              class={styles.quickBtn}
+              disabled={accountBusy}
+              onClick={() => void runQuickCommand(qc)}
+              title={
+                'cmd' in qc
+                  ? qc.cmd
+                  : 'account' in qc
+                    ? `Codex ${qc.account} via Bridge account API`
+                    : `Codex ${qc.codex}`
+              }
+            >
               <i class={qc.icon} style={{ color: qc.color }} />
               {qc.label}
             </button>
@@ -362,6 +414,21 @@ export function Terminal() {
             <i class="fa-solid fa-xmark" style={{ color: 'var(--text-muted)' }} />
             Exit
           </button>
+        </div>
+      )}
+
+      {usageHint && (
+        <div class={styles.notice}>
+          Type <code>/status</code> in the Codex TUI to see account usage and limits.
+        </div>
+      )}
+      {showAccount && (
+        <div class={styles.accountPanel}>
+          <button type="button" class={styles.quickBtn} onClick={() => setShowAccount(false)}>
+            Close account
+          </button>
+          {accountError && <p role="alert">{accountError}</p>}
+          <CodexAccountCard />
         </div>
       )}
 

@@ -16,6 +16,36 @@ function sink() {
 
 afterEach(() => vi.useRealTimers())
 
+describe('exclusive Codex terminal lease', () => {
+  it('waits for the app-server exit, blocks account/chat acquisition and allows restart on release', async () => {
+    const processes: FakeCodexProcess[] = []
+    const registry = new CodexHostRegistry(async () => {
+      const proc = new FakeCodexProcess()
+      processes.push(proc)
+      return new CodexHost(proc)
+    })
+    const old = await registry.acquire('/bridge-home')
+    const resume = await registry.suspend('/bridge-home')
+    expect(old.alive).toBe(false)
+    await expect(registry.acquire('/bridge-home')).rejects.toThrow('Codex terminal')
+    await expect(registry.suspend('/bridge-home')).rejects.toThrow('already running')
+    resume()
+    expect(await registry.acquire('/bridge-home')).not.toBe(old)
+    await registry.closeAll()
+  })
+  it('refuses to interrupt an active thread and leaves its app-server available', async () => {
+    const host = new CodexHost(new FakeCodexProcess())
+    const registry = new CodexHostRegistry(async () => host)
+    await registry.acquire('/bridge-home')
+    const detach = host.attach('active', sink().s)
+    await expect(registry.suspend('/bridge-home')).rejects.toThrow('Exit active Codex chats')
+    expect(await registry.acquire('/bridge-home')).toBe(host)
+    expect(host.alive).toBe(true)
+    detach()
+    await registry.closeAll()
+  })
+})
+
 describe('CodexHost routing', () => {
   it('routes the interleaved recorded trace to one sink per thread', async () => {
     const proc = new FakeCodexProcess()
