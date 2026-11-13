@@ -420,6 +420,7 @@ export interface KaminBridgeApi {
 
   // ─── MCP permissions ──────────────────────────────────
   onPermissionRequest(callback: (tabId: string, req: PermissionRequest) => void): () => void
+  onPermissionResolved(callback: (tabId: string, data: { requestId: string }) => void): () => void
   respondPermission(requestId: string, decision: PermissionDecision): void
 
   // ─── MCP activity (per-tab) ───────────────────────────
