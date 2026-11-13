@@ -32,13 +32,14 @@ interface Owner {
 }
 
 async function owner(db: DuckDBConnection, sessionId: string): Promise<Owner | undefined> {
-  return (
+  const row = (
     await db.runAndReadAll(
       `SELECT user_name, created_at FROM session_tokens
     WHERE session_id = ? AND deleted = 0 AND user_name IS NOT NULL AND user_name != ''`,
       [sessionId],
     )
-  ).getRowObjects()[0] as Owner | undefined
+  ).getRowObjects()[0]
+  return row ? { user_name: String(row.user_name), created_at: String(row.created_at) } : undefined
 }
 
 async function rollback(db: DuckDBConnection): Promise<void> {
