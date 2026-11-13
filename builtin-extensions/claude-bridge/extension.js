@@ -42,6 +42,46 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/main/bridge-state.ts
+function initBridgeState(storageDir, options = {}) {
+  stateRoot = storageDir;
+  if (!options.isDefaultProfile) return;
+  const marker = import_node_path.default.join(storageDir, migrationMarker);
+  try {
+    if (import_node_fs.default.existsSync(marker)) return;
+    const legacyDir = options.legacyDir ?? import_node_path.default.join(import_node_os.default.homedir(), ".claude", "open-claude-bridge");
+    import_node_fs.default.mkdirSync(storageDir, { recursive: true });
+    for (const name of migratedFiles) {
+      const source = import_node_path.default.join(legacyDir, name);
+      const target = import_node_path.default.join(storageDir, name);
+      if (import_node_fs.default.existsSync(target) || !import_node_fs.default.existsSync(source)) continue;
+      try {
+        import_node_fs.default.copyFileSync(source, target, import_node_fs.default.constants.COPYFILE_EXCL);
+      } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+      }
+    }
+    import_node_fs.default.writeFileSync(marker, "1\n", "utf8");
+  } catch (error) {
+    console.warn("[bridge] Home-state migration deferred:", error);
+  }
+}
+function bridgeStatePath(...parts) {
+  if (!stateRoot) throw new Error("Bridge state directory has not been initialized by the host");
+  return import_node_path.default.join(stateRoot, ...parts);
+}
+var import_node_fs, import_node_os, import_node_path, stateRoot, migratedFiles, migrationMarker;
+var init_bridge_state = __esm({
+  "src/main/bridge-state.ts"() {
+    "use strict";
+    import_node_fs = __toESM(require("node:fs"), 1);
+    import_node_os = __toESM(require("node:os"), 1);
+    import_node_path = __toESM(require("node:path"), 1);
+    migratedFiles = ["tabs-state.json", "plugin-hook-approvals.json", "mcp-servers.json", "mcp-tool-schemas.json"];
+    migrationMarker = ".home-state-migrated-v1";
+  }
+});
+
 // src/shim/host-compat.ts
 var host_compat_exports = {};
 __export(host_compat_exports, {
@@ -61,14 +101,14 @@ function unregisterShimWindow(win) {
   const index = _windows.indexOf(win);
   if (index >= 0) _windows.splice(index, 1);
 }
-var import_node_events, os, path, vscode, _windows, BrowserWindow, IpcMainShim, ipcMain, shell, app, safeStorage, dialog;
+var import_node_events, os2, vscode, _windows, BrowserWindow, IpcMainShim, ipcMain, shell, app, safeStorage, dialog;
 var init_host_compat = __esm({
   "src/shim/host-compat.ts"() {
     "use strict";
     import_node_events = require("node:events");
-    os = __toESM(require("node:os"), 1);
-    path = __toESM(require("node:path"), 1);
+    os2 = __toESM(require("node:os"), 1);
     vscode = __toESM(require("vscode"), 1);
+    init_bridge_state();
     _windows = [];
     BrowserWindow = {
       getAllWindows() {
@@ -123,10 +163,10 @@ var init_host_compat = __esm({
     };
     app = {
       getPath(name) {
-        if (name === "userData") return path.join(os.homedir(), ".claude", "open-claude-bridge");
-        if (name === "home") return os.homedir();
-        if (name === "temp") return os.tmpdir();
-        return os.homedir();
+        if (name === "userData") return bridgeStatePath();
+        if (name === "home") return os2.homedir();
+        if (name === "temp") return os2.tmpdir();
+        return os2.homedir();
       }
     };
     safeStorage = {
@@ -3895,11 +3935,11 @@ var require_websocket_server = __commonJS({
 // src/main/mcp/tools/windows-job-runner.ts
 function findWindowsJobRunner(probe) {
   if (probe.platform !== "win32") return null;
-  const hostDir = (0, import_node_path2.dirname)(probe.execPath);
+  const hostDir = (0, import_node_path3.dirname)(probe.execPath);
   const candidates = [
     probe.env.KAMIN_JOBRUN_EXE,
-    (0, import_node_path2.join)(hostDir, "..", RUNNER),
-    (0, import_node_path2.join)(hostDir, RUNNER)
+    (0, import_node_path3.join)(hostDir, "..", RUNNER),
+    (0, import_node_path3.join)(hostDir, RUNNER)
   ];
   for (const candidate of candidates) {
     if (candidate && probe.exists(candidate)) return probe.works(candidate) ? candidate : null;
@@ -3918,18 +3958,18 @@ function windowsJobRunner() {
     platform: process.platform,
     env: process.env,
     execPath: process.execPath,
-    exists: import_node_fs2.existsSync,
+    exists: import_node_fs3.existsSync,
     works
   });
   return cached;
 }
-var import_node_child_process, import_node_fs2, import_node_path2, RUNNER, cached;
+var import_node_child_process, import_node_fs3, import_node_path3, RUNNER, cached;
 var init_windows_job_runner = __esm({
   "src/main/mcp/tools/windows-job-runner.ts"() {
     "use strict";
     import_node_child_process = require("node:child_process");
-    import_node_fs2 = require("node:fs");
-    import_node_path2 = require("node:path");
+    import_node_fs3 = require("node:fs");
+    import_node_path3 = require("node:path");
     RUNNER = "kamin-jobrun.exe";
   }
 });
@@ -11064,14 +11104,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs46 = this.flowScalar(this.type);
+              const fs47 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs46, sep: [] });
+                map.items.push({ start, key: fs47, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs46);
+                this.stack.push(fs47);
               } else {
-                Object.assign(it, { key: fs46, sep: [] });
+                Object.assign(it, { key: fs47, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -11199,13 +11239,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs46 = this.flowScalar(this.type);
+              const fs47 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs46, sep: [] });
+                fc.items.push({ start: [], key: fs47, sep: [] });
               else if (it.sep)
-                this.stack.push(fs46);
+                this.stack.push(fs47);
               else
-                Object.assign(it, { key: fs46, sep: [] });
+                Object.assign(it, { key: fs47, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -11932,7 +11972,7 @@ function lookupOptions(options) {
   return {
     platform,
     env: options.env ?? process.env,
-    exists: options.exists ?? import_node_fs3.default.existsSync,
+    exists: options.exists ?? import_node_fs4.default.existsSync,
     which: options.which ?? ((command) => whichExecutable(command, platform))
   };
 }
@@ -11948,13 +11988,13 @@ async function findBashExecutable(options = {}) {
   if (configured && exists(configured)) return configured;
   const gitPath = await which("git");
   if (gitPath) {
-    const derived = import_node_path3.default.win32.resolve(import_node_path3.default.win32.dirname(gitPath), "..", "bin", "bash.exe");
+    const derived = import_node_path4.default.win32.resolve(import_node_path4.default.win32.dirname(gitPath), "..", "bin", "bash.exe");
     if (exists(derived)) return derived;
   }
   const candidates = [
-    env4.ProgramFiles && import_node_path3.default.win32.join(env4.ProgramFiles, "Git", "bin", "bash.exe"),
-    env4["ProgramFiles(x86)"] && import_node_path3.default.win32.join(env4["ProgramFiles(x86)"], "Git", "bin", "bash.exe"),
-    env4.LOCALAPPDATA && import_node_path3.default.win32.join(env4.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe")
+    env4.ProgramFiles && import_node_path4.default.win32.join(env4.ProgramFiles, "Git", "bin", "bash.exe"),
+    env4["ProgramFiles(x86)"] && import_node_path4.default.win32.join(env4["ProgramFiles(x86)"], "Git", "bin", "bash.exe"),
+    env4.LOCALAPPDATA && import_node_path4.default.win32.join(env4.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe")
   ].filter((candidate) => Boolean(candidate));
   for (const candidate of candidates) {
     if (exists(candidate)) return candidate;
@@ -11967,8 +12007,8 @@ async function findPowerShellExecutable(options = {}) {
   if (pwsh) return pwsh;
   if (platform === "win32") {
     const candidates = [
-      env4.ProgramFiles && import_node_path3.default.win32.join(env4.ProgramFiles, "PowerShell", "7", "pwsh.exe"),
-      env4.SystemRoot && import_node_path3.default.win32.join(env4.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+      env4.ProgramFiles && import_node_path4.default.win32.join(env4.ProgramFiles, "PowerShell", "7", "pwsh.exe"),
+      env4.SystemRoot && import_node_path4.default.win32.join(env4.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
     ].filter((candidate) => Boolean(candidate));
     for (const candidate of candidates) {
       if (exists(candidate)) return candidate;
@@ -12035,30 +12075,30 @@ function shellSingleQuote(value) {
 function powerShellSingleQuote(value) {
   return `'${value.replace(/'/g, "''")}'`;
 }
-var import_node_child_process3, import_node_fs3, import_node_path3;
+var import_node_child_process3, import_node_fs4, import_node_path4;
 var init_command_runtime = __esm({
   "src/main/utils/command-runtime.ts"() {
     "use strict";
     import_node_child_process3 = require("node:child_process");
-    import_node_fs3 = __toESM(require("node:fs"), 1);
-    import_node_path3 = __toESM(require("node:path"), 1);
+    import_node_fs4 = __toESM(require("node:fs"), 1);
+    import_node_path4 = __toESM(require("node:path"), 1);
   }
 });
 
 // src/main/utils/script-file.ts
 function scriptDirectory() {
-  return import_node_path4.default.join(import_node_os2.default.tmpdir(), "kamin-bridge-scripts");
+  return import_node_path5.default.join(import_node_os3.default.tmpdir(), "kamin-bridge-scripts");
 }
 function sweepStale(directory) {
   if (swept) return;
   swept = true;
   try {
     const now = Date.now();
-    for (const name of import_node_fs4.default.readdirSync(directory)) {
+    for (const name of import_node_fs5.default.readdirSync(directory)) {
       if (!name.startsWith(PREFIX)) continue;
-      const file = import_node_path4.default.join(directory, name);
+      const file = import_node_path5.default.join(directory, name);
       try {
-        if (now - import_node_fs4.default.statSync(file).mtimeMs > STALE_MS) import_node_fs4.default.unlinkSync(file);
+        if (now - import_node_fs5.default.statSync(file).mtimeMs > STALE_MS) import_node_fs5.default.unlinkSync(file);
       } catch {
       }
     }
@@ -12067,7 +12107,7 @@ function sweepStale(directory) {
 }
 function remove(file, retry) {
   try {
-    import_node_fs4.default.unlinkSync(file);
+    import_node_fs5.default.unlinkSync(file);
   } catch (err) {
     const code = err.code;
     if (code === "ENOENT" || !retry) return;
@@ -12076,10 +12116,10 @@ function remove(file, retry) {
 }
 function writeScriptFile(content, extension2) {
   const directory = scriptDirectory();
-  import_node_fs4.default.mkdirSync(directory, { recursive: true, mode: 448 });
+  import_node_fs5.default.mkdirSync(directory, { recursive: true, mode: 448 });
   sweepStale(directory);
-  const file = import_node_path4.default.join(directory, `${PREFIX}${process.pid}-${(0, import_node_crypto.randomBytes)(8).toString("hex")}${extension2}`);
-  import_node_fs4.default.writeFileSync(file, content, { encoding: "utf8", flag: "wx", mode: 384 });
+  const file = import_node_path5.default.join(directory, `${PREFIX}${process.pid}-${(0, import_node_crypto.randomBytes)(8).toString("hex")}${extension2}`);
+  import_node_fs5.default.writeFileSync(file, content, { encoding: "utf8", flag: "wx", mode: 384 });
   let disposed = false;
   return {
     path: file,
@@ -12110,14 +12150,14 @@ function assertCmdLineFits(command, args = [], platform = process.platform, coms
     );
   }
 }
-var import_node_crypto, import_node_fs4, import_node_os2, import_node_path4, PREFIX, STALE_MS, RETRY_MS, swept, POWERSHELL_STATUS_TRAILER, CMD_LINE_LIMIT;
+var import_node_crypto, import_node_fs5, import_node_os3, import_node_path5, PREFIX, STALE_MS, RETRY_MS, swept, POWERSHELL_STATUS_TRAILER, CMD_LINE_LIMIT;
 var init_script_file = __esm({
   "src/main/utils/script-file.ts"() {
     "use strict";
     import_node_crypto = require("node:crypto");
-    import_node_fs4 = __toESM(require("node:fs"), 1);
-    import_node_os2 = __toESM(require("node:os"), 1);
-    import_node_path4 = __toESM(require("node:path"), 1);
+    import_node_fs5 = __toESM(require("node:fs"), 1);
+    import_node_os3 = __toESM(require("node:os"), 1);
+    import_node_path5 = __toESM(require("node:path"), 1);
     init_command_runtime();
     PREFIX = "cmd-";
     STALE_MS = 24 * 36e5;
@@ -12150,7 +12190,7 @@ function startWaiting(shell2, flags, kind, env4) {
     windowsHide: true,
     detached: process.platform !== "win32",
     env: env4,
-    cwd: import_node_os3.default.tmpdir()
+    cwd: import_node_os4.default.tmpdir()
   });
   child.on("error", () => {
   });
@@ -12206,12 +12246,12 @@ ${scriptPath}
   else child.stdin?.end(start);
   return child;
 }
-var import_node_child_process4, import_node_os3, IDLE_MS, MAX_WAITING_HOOKS, waiting;
+var import_node_child_process4, import_node_os4, IDLE_MS, MAX_WAITING_HOOKS, waiting;
 var init_warm_shell = __esm({
   "src/main/mcp/tools/warm-shell.ts"() {
     "use strict";
     import_node_child_process4 = require("node:child_process");
-    import_node_os3 = __toESM(require("node:os"), 1);
+    import_node_os4 = __toESM(require("node:os"), 1);
     init_windows_job_runner();
     IDLE_MS = 10 * 6e4;
     MAX_WAITING_HOOKS = 4;
@@ -12224,7 +12264,7 @@ async function shellEnv() {
   const binDirs = await listEnabledPluginBinDirs();
   return {
     ...process.env,
-    PATH: [...binDirs, process.env.PATH ?? ""].filter(Boolean).join(import_node_path5.default.delimiter),
+    PATH: [...binDirs, process.env.PATH ?? ""].filter(Boolean).join(import_node_path6.default.delimiter),
     GIT_EDITOR: "true",
     CLAUDECODE: "1"
   };
@@ -12373,8 +12413,8 @@ async function bashExecute(input, context) {
     script.file.dispose();
   }
 }
-function appendTail(window9, chunk, cap = BG_OUTPUT_CAP) {
-  const text = window9 + chunk;
+function appendTail(window10, chunk, cap = BG_OUTPUT_CAP) {
+  const text = window10 + chunk;
   if (text.length <= cap) return { text, dropped: 0 };
   let cut = text.length - cap;
   const first = text.charCodeAt(cut);
@@ -12600,13 +12640,13 @@ async function stopBackgroundShellForOwner(tabId, owner, id) {
   if (out?.tabId !== tabId || out.owner !== owner) return;
   await stopLocalBackgroundShell(tabId, id);
 }
-var import_node_child_process5, import_node_path5, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
+var import_node_child_process5, import_node_path6, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
 var init_shell = __esm({
   "src/main/mcp/tools/shell.ts"() {
     "use strict";
     import_node_child_process5 = require("node:child_process");
     init_shell_foreground();
-    import_node_path5 = __toESM(require("node:path"), 1);
+    import_node_path6 = __toESM(require("node:path"), 1);
     init_shell_snapshot();
     init_plugin_helpers();
     init_command_runtime();
@@ -12630,7 +12670,7 @@ var init_shell = __esm({
 // src/main/utils/working-directory.ts
 function isDirectory(candidate) {
   try {
-    return import_node_fs5.default.statSync(candidate).isDirectory();
+    return import_node_fs6.default.statSync(candidate).isDirectory();
   } catch {
     return false;
   }
@@ -12639,19 +12679,19 @@ function resolveWorkingDirectory(...candidates) {
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim() && isDirectory(candidate)) return candidate;
   }
-  return import_node_os4.default.homedir();
+  return import_node_os5.default.homedir();
 }
 function resolveToolPath(target, workingDirectory) {
-  if (import_node_path6.default.isAbsolute(target)) return target;
-  return import_node_path6.default.resolve(resolveWorkingDirectory(workingDirectory), target);
+  if (import_node_path7.default.isAbsolute(target)) return target;
+  return import_node_path7.default.resolve(resolveWorkingDirectory(workingDirectory), target);
 }
-var import_node_fs5, import_node_os4, import_node_path6;
+var import_node_fs6, import_node_os5, import_node_path7;
 var init_working_directory = __esm({
   "src/main/utils/working-directory.ts"() {
     "use strict";
-    import_node_fs5 = __toESM(require("node:fs"), 1);
-    import_node_os4 = __toESM(require("node:os"), 1);
-    import_node_path6 = __toESM(require("node:path"), 1);
+    import_node_fs6 = __toESM(require("node:fs"), 1);
+    import_node_os5 = __toESM(require("node:os"), 1);
+    import_node_path7 = __toESM(require("node:path"), 1);
   }
 });
 
@@ -13172,7 +13212,7 @@ function localizeHookPayload(payload, cacheDir = process.env.KAMIN_CACHE_DIR) {
   for (const key2 of ["transcript_path", "agent_transcript_path"]) {
     const remotePath = localized[key2];
     if (typeof remotePath === "string" && remotePath.length > 0) {
-      localized[key2] = import_node_path7.default.join(cacheDir, "transcripts", portableBasename(remotePath));
+      localized[key2] = import_node_path8.default.join(cacheDir, "transcripts", portableBasename(remotePath));
     }
   }
   return localized;
@@ -13255,7 +13295,7 @@ async function executeHook(req, fallbackCwd) {
   if (req.pluginId) {
     const installed3 = await loadInstalledPluginsMap();
     const pluginRoot = installed3.get(req.pluginId)?.installPath;
-    if (!pluginRoot || !import_node_fs6.default.existsSync(pluginRoot)) {
+    if (!pluginRoot || !import_node_fs7.default.existsSync(pluginRoot)) {
       return {
         stdout: "",
         stderr: `Plugin ${req.pluginId} is not installed on the client host`,
@@ -13265,9 +13305,9 @@ async function executeHook(req, fallbackCwd) {
       };
     }
     const options = loadPluginOptions(req.pluginId);
-    const dataDir = import_node_path7.default.join(import_node_os5.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+    const dataDir = import_node_path8.default.join(import_node_os6.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
     try {
-      import_node_fs6.default.mkdirSync(dataDir, { recursive: true });
+      import_node_fs7.default.mkdirSync(dataDir, { recursive: true });
     } catch {
     }
     if (!execForm && /\$\{user_config\.[^}]+\}/.test(command)) {
@@ -13288,8 +13328,8 @@ async function executeHook(req, fallbackCwd) {
     }
     pluginEnv.CLAUDE_PLUGIN_ROOT = shell2 ? shellPluginEnvValue(pluginRoot, shell2) : pluginRoot;
     pluginEnv.CLAUDE_PLUGIN_DATA = shell2 ? shellPluginEnvValue(dataDir, shell2) : dataDir;
-    const pluginBin = import_node_path7.default.join(pluginRoot, "bin");
-    if (import_node_fs6.default.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${import_node_path7.default.delimiter}${process.env.PATH ?? ""}`;
+    const pluginBin = import_node_path8.default.join(pluginRoot, "bin");
+    if (import_node_fs7.default.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${import_node_path8.default.delimiter}${process.env.PATH ?? ""}`;
   }
   pluginEnv.CLAUDE_PROJECT_DIR = shell2 ? shellPluginEnvValue(cwd, shell2) : cwd;
   if (execForm) command = nativeNodeCommand(command);
@@ -13404,14 +13444,14 @@ spawn error: ${err.message}`,
     }
   });
 }
-var import_node_child_process6, import_node_os5, import_node_fs6, import_node_path7, DEFAULT_TIMEOUT_MS, HOOK_OUTPUT_CAP;
+var import_node_child_process6, import_node_os6, import_node_fs7, import_node_path8, DEFAULT_TIMEOUT_MS, HOOK_OUTPUT_CAP;
 var init_executor = __esm({
   "src/main/hooks/executor.ts"() {
     "use strict";
     import_node_child_process6 = require("node:child_process");
-    import_node_os5 = __toESM(require("node:os"), 1);
-    import_node_fs6 = __toESM(require("node:fs"), 1);
-    import_node_path7 = __toESM(require("node:path"), 1);
+    import_node_os6 = __toESM(require("node:os"), 1);
+    import_node_fs7 = __toESM(require("node:fs"), 1);
+    import_node_path8 = __toESM(require("node:path"), 1);
     init_plugin_helpers();
     init_command_runtime();
     init_working_directory();
@@ -17037,8 +17077,8 @@ var require_utils3 = __commonJS({
     exports2.array = array;
     var errno = require_errno();
     exports2.errno = errno;
-    var fs46 = require_fs();
-    exports2.fs = fs46;
+    var fs47 = require_fs();
+    exports2.fs = fs47;
     var path51 = require_path();
     exports2.path = path51;
     var pattern = require_pattern();
@@ -17222,12 +17262,12 @@ var require_fs2 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createFileSystemAdapter = exports2.FILE_SYSTEM_ADAPTER = void 0;
-    var fs46 = require("fs");
+    var fs47 = require("fs");
     exports2.FILE_SYSTEM_ADAPTER = {
-      lstat: fs46.lstat,
-      stat: fs46.stat,
-      lstatSync: fs46.lstatSync,
-      statSync: fs46.statSync
+      lstat: fs47.lstat,
+      stat: fs47.stat,
+      lstatSync: fs47.lstatSync,
+      statSync: fs47.statSync
     };
     function createFileSystemAdapter(fsMethods) {
       if (fsMethods === void 0) {
@@ -17244,12 +17284,12 @@ var require_settings = __commonJS({
   "node_modules/@nodelib/fs.stat/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var fs46 = require_fs2();
+    var fs47 = require_fs2();
     var Settings = class {
       constructor(_options = {}) {
         this._options = _options;
         this.followSymbolicLink = this._getValue(this._options.followSymbolicLink, true);
-        this.fs = fs46.createFileSystemAdapter(this._options.fs);
+        this.fs = fs47.createFileSystemAdapter(this._options.fs);
         this.markSymbolicLink = this._getValue(this._options.markSymbolicLink, false);
         this.throwErrorOnBrokenSymbolicLink = this._getValue(this._options.throwErrorOnBrokenSymbolicLink, true);
       }
@@ -17404,8 +17444,8 @@ var require_utils4 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.fs = void 0;
-    var fs46 = require_fs3();
-    exports2.fs = fs46;
+    var fs47 = require_fs3();
+    exports2.fs = fs47;
   }
 });
 
@@ -17600,14 +17640,14 @@ var require_fs4 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createFileSystemAdapter = exports2.FILE_SYSTEM_ADAPTER = void 0;
-    var fs46 = require("fs");
+    var fs47 = require("fs");
     exports2.FILE_SYSTEM_ADAPTER = {
-      lstat: fs46.lstat,
-      stat: fs46.stat,
-      lstatSync: fs46.lstatSync,
-      statSync: fs46.statSync,
-      readdir: fs46.readdir,
-      readdirSync: fs46.readdirSync
+      lstat: fs47.lstat,
+      stat: fs47.stat,
+      lstatSync: fs47.lstatSync,
+      statSync: fs47.statSync,
+      readdir: fs47.readdir,
+      readdirSync: fs47.readdirSync
     };
     function createFileSystemAdapter(fsMethods) {
       if (fsMethods === void 0) {
@@ -17626,12 +17666,12 @@ var require_settings2 = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     var path51 = require("path");
     var fsStat = require_out();
-    var fs46 = require_fs4();
+    var fs47 = require_fs4();
     var Settings = class {
       constructor(_options = {}) {
         this._options = _options;
         this.followSymbolicLinks = this._getValue(this._options.followSymbolicLinks, false);
-        this.fs = fs46.createFileSystemAdapter(this._options.fs);
+        this.fs = fs47.createFileSystemAdapter(this._options.fs);
         this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path51.sep);
         this.stats = this._getValue(this._options.stats, false);
         this.throwErrorOnBrokenSymbolicLink = this._getValue(this._options.throwErrorOnBrokenSymbolicLink, true);
@@ -19012,16 +19052,16 @@ var require_settings4 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.DEFAULT_FILE_SYSTEM_ADAPTER = void 0;
-    var fs46 = require("fs");
+    var fs47 = require("fs");
     var os35 = require("os");
     var CPU_COUNT = Math.max(os35.cpus().length, 1);
     exports2.DEFAULT_FILE_SYSTEM_ADAPTER = {
-      lstat: fs46.lstat,
-      lstatSync: fs46.lstatSync,
-      stat: fs46.stat,
-      statSync: fs46.statSync,
-      readdir: fs46.readdir,
-      readdirSync: fs46.readdirSync
+      lstat: fs47.lstat,
+      lstatSync: fs47.lstatSync,
+      stat: fs47.stat,
+      statSync: fs47.statSync,
+      readdir: fs47.readdir,
+      readdirSync: fs47.readdirSync
     };
     var Settings = class {
       constructor(_options = {}) {
@@ -19694,7 +19734,7 @@ async function walkFallback(regex, searchPath, outputMode, headLimit, timeoutMs)
         return;
       }
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-      const fullPath = import_node_path8.default.join(dir, entry.name);
+      const fullPath = import_node_path9.default.join(dir, entry.name);
       if (entry.isDirectory()) {
         await searchDir(fullPath);
       } else if (entry.isFile()) {
@@ -19739,12 +19779,12 @@ function fallbackResult(results, offset, headLimit, timedOut, timeoutMs) {
 [Search timed out after ${seconds}s \u2014 partial results above; try a narrower path or pattern]` : "";
   return textResult4((output || "No matches found.") + suffix);
 }
-var import_promises3, import_node_path8, import_node_child_process7, FALLBACK_TIMEOUT_MS;
+var import_promises3, import_node_path9, import_node_child_process7, FALLBACK_TIMEOUT_MS;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
     import_promises3 = __toESM(require("node:fs/promises"), 1);
-    import_node_path8 = __toESM(require("node:path"), 1);
+    import_node_path9 = __toESM(require("node:path"), 1);
     import_node_child_process7 = require("node:child_process");
     init_working_directory();
     init_fs_shared();
@@ -19816,7 +19856,7 @@ async function readFile(input, context) {
   const filePath = resolveToolPath(input.file_path, context?.cwd);
   if (isBlockedDevicePath(filePath)) return errorResult4(`Refusing to read blocking device path: ${filePath}`);
   try {
-    const ext = import_node_path9.default.extname(filePath).toLowerCase();
+    const ext = import_node_path10.default.extname(filePath).toLowerCase();
     if (ext === ".pdf") {
       return textResult4(
         "PDF reading requires the pdf-parse package. Use `Bash` tool with `pdftotext` or similar to extract PDF text."
@@ -19871,7 +19911,7 @@ async function writeFile(input, context) {
   const filePath = resolveToolPath(input.file_path, context?.cwd);
   if (typeof content !== "string") return errorResult4("content is required");
   try {
-    const dir = import_node_path9.default.dirname(filePath);
+    const dir = import_node_path10.default.dirname(filePath);
     await import_promises4.default.mkdir(dir, { recursive: true });
     await import_promises4.default.writeFile(filePath, content, "utf8");
     invalidateFileCache(filePath);
@@ -20001,12 +20041,12 @@ async function globSearch(input, context) {
     return errorResult4(err instanceof Error ? err.message : String(err));
   }
 }
-var import_promises4, import_node_path9, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
+var import_promises4, import_node_path10, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
 var init_file_system = __esm({
   "src/main/mcp/tools/file-system.ts"() {
     "use strict";
     import_promises4 = __toESM(require("node:fs/promises"), 1);
-    import_node_path9 = __toESM(require("node:path"), 1);
+    import_node_path10 = __toESM(require("node:path"), 1);
     import_fast_glob = __toESM(require_out4(), 1);
     init_notebook();
     init_file_read_cache();
@@ -22055,7 +22095,7 @@ var require_DOMTokenList = __commonJS({
 var require_select = __commonJS({
   "node_modules/@mixmark-io/domino/lib/select.js"(exports2, module2) {
     "use strict";
-    var window9 = Object.create(null, {
+    var window10 = Object.create(null, {
       location: { get: function() {
         throw new Error("window.location is not supported.");
       } }
@@ -22325,7 +22365,7 @@ var require_select = __commonJS({
         return !!el.disabled;
       },
       ":target": function(el) {
-        return el.id === window9.location.hash.substring(1);
+        return el.id === window10.location.hash.substring(1);
       },
       ":focus": function(el) {
         return el === el.ownerDocument.activeElement;
@@ -22346,7 +22386,7 @@ var require_select = __commonJS({
         return selectors[":nth-match"](param, true);
       },
       ":links-here": function(el) {
-        return el + "" === window9.location + "";
+        return el + "" === window10.location + "";
       },
       ":lang": function(param) {
         return function(el) {
@@ -22376,12 +22416,12 @@ var require_select = __commonJS({
       },
       ":local-link": function(el) {
         if (el.nodeName) {
-          return el.href && el.host === window9.location.host;
+          return el.href && el.host === window10.location.host;
         }
         var param = +el + 1;
         return function(el2) {
           if (!el2.href) return;
-          var url = window9.location + "", href = el2 + "";
+          var url = window10.location + "", href = el2 + "";
           return truncateUrl(url, param) === truncateUrl(href, param);
         };
       },
@@ -36429,8 +36469,8 @@ var require_Location = __commonJS({
     var URL2 = require_URL();
     var URLUtils = require_URLUtils();
     module2.exports = Location;
-    function Location(window9, href) {
-      this._window = window9;
+    function Location(window10, href) {
+      this._window = window10;
       this._href = href;
     }
     Location.prototype = Object.create(URLUtils.prototype, {
@@ -37292,7 +37332,7 @@ var require_turndown_cjs = __commonJS({
         } else if (node.nodeType === 1) {
           replacement = replacementForNode.call(self, node);
         }
-        join4(output, replacement);
+        join3(output, replacement);
         return output;
       }, []);
     }
@@ -37300,7 +37340,7 @@ var require_turndown_cjs = __commonJS({
       var self = this;
       this.rules.forEach(function(rule) {
         if (typeof rule.append === "function") {
-          join4(output, rule.append(self.options));
+          join3(output, rule.append(self.options));
         }
       });
       return output.join("").replace(/^[\t\r\n]+/, "").replace(/[\t\r\n\s]+$/, "");
@@ -37312,7 +37352,7 @@ var require_turndown_cjs = __commonJS({
       if (whitespace.leading || whitespace.trailing) content = content.trim();
       return whitespace.leading + rule.replacement(content, node, this.options) + whitespace.trailing;
     }
-    function join4(output, replacement) {
+    function join3(output, replacement) {
       var tail = output.pop() || "";
       var s1 = trimTrailingNewlines(tail);
       var s2 = trimLeadingNewlines(replacement);
@@ -37618,14 +37658,14 @@ async function getGitRoot(cwd) {
 async function exitWorktree(input, context) {
   if (!input.path) return errorResult6("path is required");
   const worktreePath = resolveToolPath(input.path, context?.cwd);
-  const worktreeName = import_node_path10.default.basename(worktreePath);
+  const worktreeName = import_node_path11.default.basename(worktreePath);
   if (!/^[a-zA-Z0-9_-]+$/.test(worktreeName)) {
     return errorResult6("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
   }
   try {
     const gitRoot = await getGitRoot(context?.cwd);
     if (!gitRoot) return errorResult6("Not inside a git repository.");
-    if (!import_node_fs7.default.existsSync(worktreePath)) {
+    if (!import_node_fs8.default.existsSync(worktreePath)) {
       return errorResult6(`Worktree path does not exist: ${worktreePath}`);
     }
     await runGitLocal(["worktree", "remove", worktreePath, "--force"], { cwd: gitRoot, timeoutMs: 3e4 });
@@ -37645,15 +37685,15 @@ async function enterWorktree(input, context) {
     if (!gitRoot) {
       return errorResult6("Not inside a git repository. Cannot create worktree.");
     }
-    const worktreesDir = import_node_path10.default.join(gitRoot, ".claude", "worktrees");
-    import_node_fs7.default.mkdirSync(worktreesDir, { recursive: true });
-    const worktreePath = import_node_path10.default.join(worktreesDir, name);
-    if (import_node_fs7.default.existsSync(worktreePath)) {
+    const worktreesDir = import_node_path11.default.join(gitRoot, ".claude", "worktrees");
+    import_node_fs8.default.mkdirSync(worktreesDir, { recursive: true });
+    const worktreePath = import_node_path11.default.join(worktreesDir, name);
+    if (import_node_fs8.default.existsSync(worktreePath)) {
       return errorResult6(`Worktree already exists at ${worktreePath}`);
     }
     const branchName = `worktree/${name}`;
     await runGitLocal(["worktree", "add", "-b", branchName, worktreePath, "HEAD"], { cwd: gitRoot, timeoutMs: 3e4 });
-    if (!import_node_fs7.default.existsSync(worktreePath)) {
+    if (!import_node_fs8.default.existsSync(worktreePath)) {
       return errorResult6("Worktree creation command succeeded but directory was not found");
     }
     return textResult6(
@@ -37666,13 +37706,13 @@ Based on: HEAD`
     return errorResult6(`Failed to create worktree: ${msg}`);
   }
 }
-var import_node_child_process8, import_node_path10, import_node_fs7, import_node_crypto2;
+var import_node_child_process8, import_node_path11, import_node_fs8, import_node_crypto2;
 var init_git = __esm({
   "src/main/mcp/tools/git.ts"() {
     "use strict";
     import_node_child_process8 = require("node:child_process");
-    import_node_path10 = __toESM(require("node:path"), 1);
-    import_node_fs7 = __toESM(require("node:fs"), 1);
+    import_node_path11 = __toESM(require("node:path"), 1);
+    import_node_fs8 = __toESM(require("node:fs"), 1);
     import_node_crypto2 = __toESM(require("node:crypto"), 1);
     init_working_directory();
   }
@@ -37930,6 +37970,21 @@ var init_session_activation = __esm({
 function setToastRouteHandler(handler2) {
   routeHandler = handler2;
 }
+function configureTransientNotice(fn) {
+  transientNotice = fn;
+}
+function showPlain(severity, text, ...items) {
+  if (severity === "error") return vscode2.window.showErrorMessage(text, ...items);
+  if (severity === "warning") return vscode2.window.showWarningMessage(text, ...items);
+  return vscode2.window.showInformationMessage(text, ...items);
+}
+function showTimedNotice(severity, text, durationMs) {
+  if (transientNotice && typeof durationMs === "number" && durationMs > 0) {
+    void transientNotice(text, { severity, durationMs });
+    return;
+  }
+  void showPlain(severity, text);
+}
 function spawnToast(opts, forceOpts) {
   if (!forceOpts?.bypassEnabledGate && !notificationsEnabled()) return;
   const text = opts.title ? `${opts.title} \u2014 ${opts.message}` : opts.message;
@@ -37938,14 +37993,15 @@ function spawnToast(opts, forceOpts) {
       if (picked === "Open") routeHandler?.({ tabId: opts.tabId, requestId: opts.requestId });
     });
   } else {
-    void vscode2.window.showInformationMessage(text, "Open").then((picked) => {
+    const shown = transientNotice ? transientNotice(text, { severity: "info", durationMs: FINISHED_TOAST_MS }, "Open") : vscode2.window.showInformationMessage(text, "Open");
+    void Promise.resolve(shown).then((picked) => {
       if (picked === "Open" && !activateSessionForTab(opts.tabId)) routeHandler?.({ tabId: opts.tabId });
     });
   }
 }
 function closeToastsMatching(_predicate) {
 }
-var vscode2, routeHandler, notificationsEnabled;
+var vscode2, routeHandler, notificationsEnabled, transientNotice, FINISHED_TOAST_MS;
 var init_toast_window = __esm({
   "src/main/notifications/toast-window.ts"() {
     "use strict";
@@ -37953,6 +38009,8 @@ var init_toast_window = __esm({
     init_session_activation();
     routeHandler = null;
     notificationsEnabled = () => true;
+    transientNotice = null;
+    FINISHED_TOAST_MS = 8e3;
   }
 });
 
@@ -38085,12 +38143,12 @@ function setPluginLspProjectResolver(resolver) {
   resolveProject = resolver;
 }
 function isInside(root, candidate) {
-  const rel = import_node_path11.default.relative(import_node_path11.default.resolve(root), import_node_path11.default.resolve(candidate));
-  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path11.default.sep) && !import_node_path11.default.isAbsolute(rel);
+  const rel = import_node_path12.default.relative(import_node_path12.default.resolve(root), import_node_path12.default.resolve(candidate));
+  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path12.default.sep) && !import_node_path12.default.isAbsolute(rel);
 }
 function readJson(filePath) {
   try {
-    return JSON.parse(import_node_fs8.default.readFileSync(filePath, "utf-8"));
+    return JSON.parse(import_node_fs9.default.readFileSync(filePath, "utf-8"));
   } catch {
     return null;
   }
@@ -38106,12 +38164,12 @@ async function discoverPluginLspConfigs() {
   for (const plugin of await listEnabledInstalledPlugins()) {
     const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace);
     const rawMap = {};
-    collectConfigMap(rawMap, readJson(import_node_path11.default.join(plugin.installPath, ".lsp.json")));
+    collectConfigMap(rawMap, readJson(import_node_path12.default.join(plugin.installPath, ".lsp.json")));
     const declared = manifest.lspServers;
     const declarations = Array.isArray(declared) ? declared : declared === void 0 ? [] : [declared];
     for (const item of declarations) {
       if (typeof item === "string") {
-        const resolved = import_node_path11.default.resolve(plugin.installPath, item);
+        const resolved = import_node_path12.default.resolve(plugin.installPath, item);
         if (isInside(plugin.installPath, resolved)) collectConfigMap(rawMap, readJson(resolved));
       } else {
         collectConfigMap(rawMap, item);
@@ -38122,7 +38180,7 @@ async function discoverPluginLspConfigs() {
       const config = raw;
       if (typeof config.command !== "string" || !config.command.trim()) continue;
       if (!config.extensionToLanguage || typeof config.extensionToLanguage !== "object" || Array.isArray(config.extensionToLanguage)) continue;
-      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path11.default.join(import_node_os6.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
+      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path12.default.join(import_node_os7.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
       const env4 = {};
       for (const [key2, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key2] = subst(value);
       for (const [key2, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
@@ -38150,7 +38208,7 @@ async function discoverPluginLspConfigs() {
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 function fileUri(filePath) {
-  return (0, import_node_url.pathToFileURL)(import_node_path11.default.resolve(filePath)).href;
+  return (0, import_node_url.pathToFileURL)(import_node_path12.default.resolve(filePath)).href;
 }
 function matchLspLanguage(extensionToLanguage, file) {
   const lower = file.toLowerCase();
@@ -38161,14 +38219,14 @@ function matchLspLanguage(extensionToLanguage, file) {
   }
   return null;
 }
-var import_node_child_process9, import_node_fs8, import_node_os6, import_node_path11, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
+var import_node_child_process9, import_node_fs9, import_node_os7, import_node_path12, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
 var init_plugin_lsp = __esm({
   "src/main/plugin-lsp.ts"() {
     "use strict";
     import_node_child_process9 = require("node:child_process");
-    import_node_fs8 = __toESM(require("node:fs"), 1);
-    import_node_os6 = __toESM(require("node:os"), 1);
-    import_node_path11 = __toESM(require("node:path"), 1);
+    import_node_fs9 = __toESM(require("node:fs"), 1);
+    import_node_os7 = __toESM(require("node:os"), 1);
+    import_node_path12 = __toESM(require("node:path"), 1);
     import_node_url = require("node:url");
     init_plugin_helpers();
     LSP_MAX_HEADER_BYTES = 16 * 1024;
@@ -38219,7 +38277,7 @@ var init_plugin_lsp = __esm({
         }
       }
     };
-    resolveProject = (_tabId, file) => import_node_path11.default.dirname(file);
+    resolveProject = (_tabId, file) => import_node_path12.default.dirname(file);
     LspProcess = class {
       constructor(config, projectRoot) {
         this.config = config;
@@ -38277,21 +38335,21 @@ var init_plugin_lsp = __esm({
           }
           this.child = null;
         }
-        const dataDir = import_node_path11.default.join(import_node_os6.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
-        import_node_fs8.default.mkdirSync(dataDir, { recursive: true });
+        const dataDir = import_node_path12.default.join(import_node_os7.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+        import_node_fs9.default.mkdirSync(dataDir, { recursive: true });
         let cwd = this.projectRoot;
         if (this.config.workspaceFolder) {
-          const requested = import_node_path11.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
+          const requested = import_node_path12.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
           if (isInside(this.projectRoot, requested)) cwd = requested;
         }
-        const pluginBin = import_node_path11.default.join(this.config.pluginRoot, "bin");
+        const pluginBin = import_node_path12.default.join(this.config.pluginRoot, "bin");
         const env4 = {
           ...process.env,
           ...Object.fromEntries(Object.entries(this.config.env).map(([k, v]) => [k, this.substitute(v)])),
           CLAUDE_PLUGIN_ROOT: this.config.pluginRoot,
           CLAUDE_PLUGIN_DATA: dataDir,
           CLAUDE_PROJECT_DIR: this.projectRoot,
-          PATH: [import_node_fs8.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path11.default.delimiter)
+          PATH: [import_node_fs9.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path12.default.delimiter)
         };
         this.child = (0, import_node_child_process9.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
           cwd,
@@ -38326,7 +38384,7 @@ var init_plugin_lsp = __esm({
         await this.request("initialize", {
           processId: process.pid,
           rootUri,
-          workspaceFolders: [{ uri: rootUri, name: import_node_path11.default.basename(this.projectRoot) }],
+          workspaceFolders: [{ uri: rootUri, name: import_node_path12.default.basename(this.projectRoot) }],
           capabilities: {
             workspace: { workspaceFolders: true, configuration: true },
             textDocument: {
@@ -38416,7 +38474,7 @@ var init_plugin_lsp = __esm({
             result = items.map(() => this.config.settings ?? null);
           } else if (message.method === "workspace/workspaceFolders") {
             const uri = fileUri(this.projectRoot);
-            result = [{ uri, name: import_node_path11.default.basename(this.projectRoot) }];
+            result = [{ uri, name: import_node_path12.default.basename(this.projectRoot) }];
           } else if (message.method === "workspace/applyEdit") {
             result = { applied: false, failureReason: "Plugin LSP edits are not applied automatically by the bridge" };
           }
@@ -38428,7 +38486,7 @@ var init_plugin_lsp = __esm({
       }
       async syncDocument(file, languageId) {
         const uri = fileUri(file);
-        const content = await import_node_fs8.default.promises.readFile(file, "utf-8");
+        const content = await import_node_fs9.default.promises.readFile(file, "utf-8");
         const previous = this.documents.get(uri);
         if (!previous) {
           this.documents.set(uri, { content, version: 1, languageId });
@@ -38515,11 +38573,11 @@ var init_plugin_lsp = __esm({
       }
       async matching(file, tabId) {
         if (this.definitions.length === 0) await this.refresh();
-        const projectRoot = resolveProject(tabId, file) ?? import_node_path11.default.dirname(file);
+        const projectRoot = resolveProject(tabId, file) ?? import_node_path12.default.dirname(file);
         for (const config of this.definitions) {
           const languageId = matchLspLanguage(config.extensionToLanguage, file);
           if (!languageId) continue;
-          const instanceKey = `${config.id}::${import_node_path11.default.resolve(projectRoot)}`;
+          const instanceKey = `${config.id}::${import_node_path12.default.resolve(projectRoot)}`;
           let process2 = this.instances.get(instanceKey);
           if (!process2) {
             process2 = new LspProcess(config, projectRoot);
@@ -41417,7 +41475,7 @@ __export(claude_code_import_exports, {
   findClaudeCodeEntryByServerUrl: () => findClaudeCodeEntryByServerUrl
 });
 function readCredentialsFile() {
-  const file = import_path19.default.join(import_os13.default.homedir(), ".claude", ".credentials.json");
+  const file = import_path19.default.join(import_os12.default.homedir(), ".claude", ".credentials.json");
   let raw;
   try {
     raw = import_fs18.default.readFileSync(file, "utf-8");
@@ -41444,13 +41502,13 @@ function findClaudeCodeEntryByServerUrl(serverUrl) {
   }
   return null;
 }
-var import_fs18, import_path19, import_os13;
+var import_fs18, import_path19, import_os12;
 var init_claude_code_import = __esm({
   "src/main/mcp/claude-code-import.ts"() {
     "use strict";
     import_fs18 = __toESM(require("fs"), 1);
     import_path19 = __toESM(require("path"), 1);
-    import_os13 = __toESM(require("os"), 1);
+    import_os12 = __toESM(require("os"), 1);
   }
 });
 
@@ -41468,7 +41526,7 @@ var import_path37 = __toESM(require("path"), 1);
 
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
-var import_node_path14 = __toESM(require("node:path"), 1);
+var import_node_path16 = __toESM(require("node:path"), 1);
 
 // src/resync-tracker.ts
 var ResyncTracker = class {
@@ -41587,9 +41645,9 @@ function engineOfModelId(model) {
 }
 
 // src/main/mcp/permission-manager.ts
-var import_node_fs = __toESM(require("node:fs"), 1);
-var import_node_path = __toESM(require("node:path"), 1);
-var import_node_os = __toESM(require("node:os"), 1);
+var import_node_fs2 = __toESM(require("node:fs"), 1);
+var import_node_path2 = __toESM(require("node:path"), 1);
+var import_node_os2 = __toESM(require("node:os"), 1);
 var TOOL_CATEGORIES = {
   // Read-only (auto-allow)
   Read: "read-only",
@@ -41637,16 +41695,16 @@ var CATEGORY_DEFAULTS = {
   "team": "allow",
   "ui": "allow"
 };
-var permissionStorageDir = import_node_os.default.tmpdir();
+var permissionStorageDir = import_node_os2.default.tmpdir();
 function setPermissionStorageDir(dir) {
   permissionStorageDir = dir;
 }
 var RulesStore = class {
-  file = import_node_path.default.join(permissionStorageDir, "open-claude-bridge-permissions.json");
+  file = import_node_path2.default.join(permissionStorageDir, "open-claude-bridge-permissions.json");
   data;
   constructor() {
     try {
-      this.data = JSON.parse(import_node_fs.default.readFileSync(this.file, "utf8"));
+      this.data = JSON.parse(import_node_fs2.default.readFileSync(this.file, "utf8"));
       if (!this.data.rules) this.data.rules = {};
     } catch {
       this.data = { rules: {} };
@@ -41658,10 +41716,10 @@ var RulesStore = class {
   set(key2, value) {
     this.data[key2] = value;
     try {
-      import_node_fs.default.mkdirSync(import_node_path.default.dirname(this.file), { recursive: true });
+      import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
-      import_node_fs.default.writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf8");
-      import_node_fs.default.renameSync(tmp, this.file);
+      import_node_fs2.default.writeFileSync(tmp, JSON.stringify(this.data, null, 2), "utf8");
+      import_node_fs2.default.renameSync(tmp, this.file);
     } catch {
     }
   }
@@ -41745,8 +41803,8 @@ var PermissionManager = class {
 var BATCH_MS = 50;
 var MAX_ENTRIES_PER_IPC = 150;
 var JsonlBatcher = class {
-  constructor(window9, tabId) {
-    this.window = window9;
+  constructor(window10, tabId) {
+    this.window = window10;
     this.tabId = tabId;
   }
   window;
@@ -42298,24 +42356,24 @@ var TranscriptMirror = class {
    *  bounded byte window in the host process. */
   async readRange(beforePos, count) {
     const localEnd = await this.localPosition(beforePos);
-    let window9 = Math.max(256 * 1024, count * 4096);
+    let window10 = Math.max(256 * 1024, count * 4096);
     for (let attempt = 0; attempt < 3; attempt++) {
-      const out = await this.readRangeWindow(beforePos, count, window9, localEnd);
-      if (out.length > 0 || localEnd <= window9) return out;
-      window9 *= 4;
+      const out = await this.readRangeWindow(beforePos, count, window10, localEnd);
+      if (out.length > 0 || localEnd <= window10) return out;
+      window10 *= 4;
     }
     return [];
   }
   async readRangeWindow(beforePos, count, windowSize, localEnd) {
     if (beforePos <= 0 || count <= 0) return [];
-    const window9 = Math.min(localEnd, windowSize);
-    const start = localEnd - window9;
+    const window10 = Math.min(localEnd, windowSize);
+    const start = localEnd - window10;
     let text;
     try {
       const fh = await import_promises6.default.open(this.file, "r");
       try {
-        const buf = Buffer.alloc(window9);
-        const { bytesRead } = await fh.read(buf, 0, window9, start);
+        const buf = Buffer.alloc(window10);
+        const { bytesRead } = await fh.read(buf, 0, window10, start);
         text = buf.subarray(0, bytesRead).toString("utf8");
       } finally {
         await fh.close();
@@ -42352,14 +42410,14 @@ var TranscriptMirror = class {
       return [];
     }
     if (size === 0 || maxRecords <= 0) return [];
-    const window9 = Math.min(size, Math.max(256 * 1024, maxRecords * 4096));
-    const start = size - window9;
+    const window10 = Math.min(size, Math.max(256 * 1024, maxRecords * 4096));
+    const start = size - window10;
     let text;
     try {
       const fh = await import_promises6.default.open(this.file, "r");
       try {
-        const buf = Buffer.alloc(window9);
-        const { bytesRead } = await fh.read(buf, 0, window9, start);
+        const buf = Buffer.alloc(window10);
+        const { bytesRead } = await fh.read(buf, 0, window10, start);
         text = buf.subarray(0, bytesRead).toString("utf8");
       } finally {
         await fh.close();
@@ -42571,37 +42629,37 @@ function toRendererConnectionState(state, authority, authorityGeneration, author
 
 // src/incident-diagnostics.ts
 var import_node_crypto4 = require("node:crypto");
-var import_node_fs10 = require("node:fs");
-var import_node_path12 = require("node:path");
+var import_node_fs11 = require("node:fs");
+var import_node_path13 = require("node:path");
 
 // ../../../src/kamin-host/rolling-log.ts
-var import_node_fs9 = require("node:fs");
+var import_node_fs10 = require("node:fs");
 function removeIfPresent(path51) {
   try {
-    if ((0, import_node_fs9.existsSync)(path51)) (0, import_node_fs9.unlinkSync)(path51);
+    if ((0, import_node_fs10.existsSync)(path51)) (0, import_node_fs10.unlinkSync)(path51);
   } catch {
   }
 }
 function rotateLogFiles(path51, backups) {
   if (backups <= 0) {
     removeIfPresent(path51);
-    return !(0, import_node_fs9.existsSync)(path51);
+    return !(0, import_node_fs10.existsSync)(path51);
   }
   removeIfPresent(`${path51}.${String(backups)}`);
   for (let i = backups - 1; i >= 1; i -= 1) {
     const from = `${path51}.${String(i)}`;
-    if (!(0, import_node_fs9.existsSync)(from)) continue;
+    if (!(0, import_node_fs10.existsSync)(from)) continue;
     const to = `${path51}.${String(i + 1)}`;
     removeIfPresent(to);
     try {
-      (0, import_node_fs9.renameSync)(from, to);
+      (0, import_node_fs10.renameSync)(from, to);
     } catch {
     }
   }
-  if ((0, import_node_fs9.existsSync)(path51)) {
+  if ((0, import_node_fs10.existsSync)(path51)) {
     removeIfPresent(`${path51}.1`);
     try {
-      (0, import_node_fs9.renameSync)(path51, `${path51}.1`);
+      (0, import_node_fs10.renameSync)(path51, `${path51}.1`);
     } catch {
       return false;
     }
@@ -42618,7 +42676,7 @@ var RollingLogWriter = class {
     if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
       throw new Error("rolling log backups must be a non-negative safe integer");
     }
-    if (options.rotateOnOpen && (0, import_node_fs9.existsSync)(path51) && (0, import_node_fs9.statSync)(path51).size > 0) {
+    if (options.rotateOnOpen && (0, import_node_fs10.existsSync)(path51) && (0, import_node_fs10.statSync)(path51).size > 0) {
       rotateLogFiles(path51, options.backups);
     }
     this.open();
@@ -42652,7 +42710,7 @@ var RollingLogWriter = class {
     let offset = 0;
     while (offset < data.length) {
       try {
-        const written = (0, import_node_fs9.writeSync)(fd, data, offset, data.length - offset);
+        const written = (0, import_node_fs10.writeSync)(fd, data, offset, data.length - offset);
         if (written <= 0) return false;
         this.bytes += written;
         offset += written;
@@ -42675,7 +42733,7 @@ var RollingLogWriter = class {
       try {
         if (this.fd === null) this.open();
         if (this.fd === null) return;
-        const written = (0, import_node_fs9.writeSync)(this.fd, data, offset, size);
+        const written = (0, import_node_fs10.writeSync)(this.fd, data, offset, size);
         if (written <= 0) return;
         this.bytes += written;
         offset += written;
@@ -42695,7 +42753,7 @@ var RollingLogWriter = class {
   closeDescriptor() {
     if (this.fd === null) return;
     try {
-      (0, import_node_fs9.closeSync)(this.fd);
+      (0, import_node_fs10.closeSync)(this.fd);
     } catch {
     }
     this.fd = null;
@@ -42703,9 +42761,9 @@ var RollingLogWriter = class {
   open() {
     if (this.permanentlyClosed) return;
     try {
-      this.fd = (0, import_node_fs9.openSync)(this.path, "a");
+      this.fd = (0, import_node_fs10.openSync)(this.path, "a");
       try {
-        this.bytes = (0, import_node_fs9.statSync)(this.path).size;
+        this.bytes = (0, import_node_fs10.statSync)(this.path).size;
       } catch {
         this.closeDescriptor();
         this.bytes = 0;
@@ -42722,8 +42780,8 @@ var RollingLogWriter = class {
     const rotated = rotateLogFiles(this.path, this.options.backups);
     this.bytes = 0;
     try {
-      this.fd = (0, import_node_fs9.openSync)(this.path, rotated ? "a" : "w");
-      this.bytes = (0, import_node_fs9.statSync)(this.path).size;
+      this.fd = (0, import_node_fs10.openSync)(this.path, rotated ? "a" : "w");
+      this.bytes = (0, import_node_fs10.statSync)(this.path).size;
     } catch {
       this.closeDescriptor();
       this.bytes = 0;
@@ -42909,8 +42967,8 @@ function installIncidentDiagnostics(logDir, subscribe) {
   installed = true;
   dropMarked = false;
   try {
-    (0, import_node_fs10.mkdirSync)(logDir, { recursive: true });
-    incidentLog = new RollingLogWriter((0, import_node_path12.join)(logDir, "incident.log"), {
+    (0, import_node_fs11.mkdirSync)(logDir, { recursive: true });
+    incidentLog = new RollingLogWriter((0, import_node_path13.join)(logDir, "incident.log"), {
       maxBytes: INCIDENT_LOG_MAX_BYTES,
       backups: INCIDENT_LOG_BACKUPS,
       rotateOnOpen: true
@@ -43551,16 +43609,16 @@ var ConnectionManager = class _ConnectionManager {
   /** Fingerprint the server last reported for the transcript file. Stored with
    *  the mirror so a later run can prove its copy is still a prefix. */
   mirrorHead = null;
-  constructor(config, window9, tabId, conversationId) {
+  constructor(config, window10, tabId, conversationId) {
     this.config = config;
     this.engine = config.engine;
     this.pendingModel = config.model ?? null;
-    this.window = window9;
+    this.window = window10;
     this.tabId = tabId;
-    this.commands = new ClientCommands(tabId, (event, value) => window9.webContents.send(event, tabId, value));
+    this.commands = new ClientCommands(tabId, (event, value) => window10.webContents.send(event, tabId, value));
     if (conversationId) this.conversationId = conversationId;
     this.logIdentity("bind", { reason: conversationId ? "restored" : "none" });
-    this.batcher = new JsonlBatcher(window9, tabId);
+    this.batcher = new JsonlBatcher(window10, tabId);
     this.idleTracker = new SessionIdleTracker((rawTitle) => {
       _ConnectionManager.onSessionIdle?.(this.tabId, rawTitle);
     });
@@ -44765,6 +44823,7 @@ var import_fs7 = __toESM(require("fs"), 1);
 var import_crypto2 = __toESM(require("crypto"), 1);
 var import_os4 = __toESM(require("os"), 1);
 var import_path8 = __toESM(require("path"), 1);
+init_bridge_state();
 init_plugin_helpers();
 init_plugin_monitors();
 
@@ -45061,7 +45120,7 @@ function hashPluginHook(event, matcher, handler2) {
 function filterApprovedHooks(pluginId, hooks) {
   let approved = null;
   try {
-    const file = import_path8.default.join(import_os4.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
+    const file = bridgeStatePath("plugin-hook-approvals.json");
     const store = JSON.parse(import_fs7.default.readFileSync(file, "utf-8"));
     if (Object.prototype.hasOwnProperty.call(store, pluginId)) approved = new Set(store[pluginId] ?? []);
   } catch {
@@ -45469,8 +45528,8 @@ var TabManager = class {
    *  per-tab background work — plugin monitors, etc. — that needs to die
    *  when the tab closes. */
   onTabCreated = null;
-  constructor(window9) {
-    this.window = window9;
+  constructor(window10) {
+    this.window = window10;
   }
   /** Snapshot of every distinct cwd currently referenced by an open tab. */
   getDistinctCwds() {
@@ -46522,36 +46581,31 @@ init_host_compat();
 // src/main/tabs-state-store.ts
 var import_fs12 = __toESM(require("fs"), 1);
 var import_path13 = __toESM(require("path"), 1);
-var import_os8 = __toESM(require("os"), 1);
 var import_crypto6 = __toESM(require("crypto"), 1);
-var STATE_DIR = import_path13.default.join(import_os8.default.homedir(), ".claude", "open-claude-bridge");
-var STATE_FILE = import_path13.default.join(STATE_DIR, "tabs-state.json");
+init_bridge_state();
 function hashToken(token) {
   return import_crypto6.default.createHash("sha256").update(token).digest("hex").slice(0, 8);
-}
-function ensureDir() {
-  if (!import_fs12.default.existsSync(STATE_DIR)) {
-    import_fs12.default.mkdirSync(STATE_DIR, { recursive: true });
-  }
 }
 function saveTabsState(tabs, token) {
   if (!token) return;
   try {
-    ensureDir();
+    const file = bridgeStatePath("tabs-state.json");
+    import_fs12.default.mkdirSync(import_path13.default.dirname(file), { recursive: true });
     const payload = {
       version: 1,
       tokenHash: hashToken(token),
       tabs
     };
-    import_fs12.default.writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2), "utf-8");
+    import_fs12.default.writeFileSync(file, JSON.stringify(payload, null, 2), "utf-8");
   } catch {
   }
 }
 function loadTabsState(token) {
   if (!token) return null;
   try {
-    if (!import_fs12.default.existsSync(STATE_FILE)) return null;
-    const raw = import_fs12.default.readFileSync(STATE_FILE, "utf-8");
+    const file = bridgeStatePath("tabs-state.json");
+    if (!import_fs12.default.existsSync(file)) return null;
+    const raw = import_fs12.default.readFileSync(file, "utf-8");
     const parsed = JSON.parse(raw);
     if (!parsed || parsed.version !== 1) return null;
     if (parsed.tokenHash !== hashToken(token)) return null;
@@ -46581,7 +46635,7 @@ function registerTabsIPC(ctx) {
 init_host_compat();
 var import_path15 = __toESM(require("path"), 1);
 var import_fs14 = __toESM(require("fs"), 1);
-var import_os9 = __toESM(require("os"), 1);
+var import_os8 = __toESM(require("os"), 1);
 init_plugin_helpers();
 
 // src/main/ipc/skill-files.ts
@@ -46672,7 +46726,7 @@ function registerSkillsAgentsIPC(ctx) {
     const cwd = ctx.getUserCwd();
     return {
       projectClaudeDir: cwd ? import_path15.default.join(cwd, ".claude") : null,
-      userClaudeDir: import_path15.default.join(import_os9.default.homedir(), ".claude")
+      userClaudeDir: import_path15.default.join(import_os8.default.homedir(), ".claude")
     };
   }
   ipcMain.handle("skills:list", async () => {
@@ -46766,7 +46820,7 @@ function registerSkillsAgentsIPC(ctx) {
       return [...skills, ...commands7.filter((r) => r !== null)];
     })();
     const userPromise = scanSkillDirs(import_path15.default.join(userClaudeDir, "skills"), "user");
-    const pluginsFile = import_path15.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const pluginsFile = import_path15.default.join(import_os8.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     const pluginsPromise = (async () => {
       const raw = await safeReadFile2(pluginsFile);
       if (!raw) return [];
@@ -47005,9 +47059,9 @@ function registerSkillsAgentsIPC(ctx) {
     const projectPromise = Promise.all(
       [...projectCwds].map((cwd) => scanAgentsDir(import_path15.default.join(cwd, ".claude", "agents"), "project"))
     ).then((arrs) => arrs.flat());
-    const userPromise = scanAgentsDir(import_path15.default.join(import_os9.default.homedir(), ".claude", "agents"), "user");
+    const userPromise = scanAgentsDir(import_path15.default.join(import_os8.default.homedir(), ".claude", "agents"), "user");
     const pluginsPromise = (async () => {
-      const pluginsFile = import_path15.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+      const pluginsFile = import_path15.default.join(import_os8.default.homedir(), ".claude", "plugins", "installed_plugins.json");
       let raw;
       try {
         raw = await import_fs14.default.promises.readFile(pluginsFile, "utf-8");
@@ -47089,7 +47143,7 @@ function registerSkillsAgentsIPC(ctx) {
   ipcMain.handle("output-styles:list", async () => {
     const rows = [];
     const enabled = await loadEnabledPluginsMap();
-    const pluginsFile = import_path15.default.join(import_os9.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const pluginsFile = import_path15.default.join(import_os8.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     let raw;
     try {
       raw = await import_fs14.default.promises.readFile(pluginsFile, "utf-8");
@@ -47202,14 +47256,16 @@ function registerSkillsAgentsIPC(ctx) {
 // src/main/ipc/hooks.ts
 init_host_compat();
 var import_fs17 = __toESM(require("fs"), 1);
-var import_os12 = __toESM(require("os"), 1);
+var import_os11 = __toESM(require("os"), 1);
 var import_path18 = __toESM(require("path"), 1);
+init_bridge_state();
 
 // src/main/ipc/plugins/handlers-install.ts
 init_host_compat();
 var import_path17 = __toESM(require("path"), 1);
 var import_fs16 = __toESM(require("fs"), 1);
-var import_os11 = __toESM(require("os"), 1);
+var import_os10 = __toESM(require("os"), 1);
+init_bridge_state();
 init_plugin_helpers();
 var import_semver = __toESM(require_semver2(), 1);
 var import_crypto7 = __toESM(require("crypto"), 1);
@@ -47217,7 +47273,7 @@ var import_crypto7 = __toESM(require("crypto"), 1);
 // src/main/ipc/plugins/shared.ts
 var import_path16 = __toESM(require("path"), 1);
 var import_fs15 = __toESM(require("fs"), 1);
-var import_os10 = __toESM(require("os"), 1);
+var import_os9 = __toESM(require("os"), 1);
 
 // src/main/marketplace/url-auth.ts
 function applyAuthToUrl(url, auth) {
@@ -47311,7 +47367,7 @@ function propagateMarketplaceAuth(pluginUrl, marketplaceName) {
   try {
     const plug = new URL(pluginUrl);
     if (plug.protocol !== "http:" && plug.protocol !== "https:") return pluginUrl;
-    const knownFile = import_path16.default.join(import_os10.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    const knownFile = import_path16.default.join(import_os9.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
     if (!import_fs15.default.existsSync(knownFile)) return pluginUrl;
     const known = JSON.parse(import_fs15.default.readFileSync(knownFile, "utf-8"));
     const entry = known[marketplaceName];
@@ -47380,8 +47436,8 @@ async function resolvePluginSource(p, marketplaceName, baseDir) {
 }
 
 // src/main/ipc/plugins/handlers-install.ts
-var SETTINGS_FILE = import_path17.default.join(import_os11.default.homedir(), ".claude", "settings.json");
-var INSTALLED_FILE = import_path17.default.join(import_os11.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+var SETTINGS_FILE = import_path17.default.join(import_os10.default.homedir(), ".claude", "settings.json");
+var INSTALLED_FILE = import_path17.default.join(import_os10.default.homedir(), ".claude", "plugins", "installed_plugins.json");
 function writeJsonAtomic(filePath, value) {
   import_fs16.default.mkdirSync(import_path17.default.dirname(filePath), { recursive: true });
   const tmp = `${filePath}.${process.pid}.tmp`;
@@ -47417,7 +47473,7 @@ function pluginDependencies(manifest, marketplace) {
 }
 function marketplaceEntryManifest(pluginName, marketplace) {
   try {
-    const known = JSON.parse(import_fs16.default.readFileSync(import_path17.default.join(import_os11.default.homedir(), ".claude", "plugins", "known_marketplaces.json"), "utf-8"));
+    const known = JSON.parse(import_fs16.default.readFileSync(import_path17.default.join(import_os10.default.homedir(), ".claude", "plugins", "known_marketplaces.json"), "utf-8"));
     const root = known?.[marketplace]?.installLocation;
     if (typeof root !== "string") return {};
     const manifest = JSON.parse(import_fs16.default.readFileSync(import_path17.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
@@ -47429,7 +47485,7 @@ function marketplaceEntryManifest(pluginName, marketplace) {
 }
 function marketplaceInstallRoot(marketplace) {
   try {
-    const known = JSON.parse(import_fs16.default.readFileSync(import_path17.default.join(import_os11.default.homedir(), ".claude", "plugins", "known_marketplaces.json"), "utf-8"));
+    const known = JSON.parse(import_fs16.default.readFileSync(import_path17.default.join(import_os10.default.homedir(), ".claude", "plugins", "known_marketplaces.json"), "utf-8"));
     return typeof known?.[marketplace]?.installLocation === "string" ? known[marketplace].installLocation : null;
   } catch {
     return null;
@@ -47563,7 +47619,7 @@ async function ensureDependencyClosure(data, pluginId, manifestOverride) {
             throw new Error(`Dependency ${depId}@${version} does not satisfy ${dependency.version} required by ${id}`);
           }
         }
-        const cacheDir = import_path17.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", depMarketplace, depName, version);
+        const cacheDir = import_path17.default.join(import_os10.default.homedir(), ".claude", "plugins", "cache", depMarketplace, depName, version);
         import_fs16.default.rmSync(cacheDir, { recursive: true, force: true });
         copyPluginDirectory(source.dir, cacheDir);
         const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -47655,7 +47711,7 @@ async function collectHookApprovalEntries(pluginId, pluginRoot) {
   }
   let approvedHashes = [];
   try {
-    const approvalFile = import_path17.default.join(import_os11.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
+    const approvalFile = bridgeStatePath("plugin-hook-approvals.json");
     approvedHashes = JSON.parse(import_fs16.default.readFileSync(approvalFile, "utf-8"))?.[pluginId] ?? [];
   } catch {
   }
@@ -47681,8 +47737,9 @@ async function listPendingHookApprovals() {
 async function requestHookApproval(pluginId, pluginRoot) {
   const pending = await getPendingHookApproval(pluginId, pluginRoot);
   if (!pending) return;
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed()) ?? null;
-  if (win) win.webContents.send("plugin-hooks:awaiting-approval", pending);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("plugin-hooks:awaiting-approval", pending);
+  }
 }
 async function requestDependencyHookApprovals(data, dependencyIds) {
   for (const dependencyId of dependencyIds) {
@@ -47726,7 +47783,7 @@ function registerInstallHandlers(reloadMcp) {
         const manifest = JSON.parse(import_fs16.default.readFileSync(pj, "utf-8"));
         if (manifest.version) version = manifest.version;
       } else {
-        const knownFile = import_path17.default.join(import_os11.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+        const knownFile = import_path17.default.join(import_os10.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
         if (import_fs16.default.existsSync(knownFile)) {
           const known = JSON.parse(import_fs16.default.readFileSync(knownFile, "utf-8"));
           const mktInfo = known[marketplace];
@@ -47747,7 +47804,7 @@ function registerInstallHandlers(reloadMcp) {
     const dependencyClosure = await ensureDependencyClosure(data, key2, sourceManifest);
     const defaultEnabled = pluginDefaultEnabled(pluginName, marketplace, sourceManifest);
     await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key2] : []]);
-    const cacheDir = import_path17.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
+    const cacheDir = import_path17.default.join(import_os10.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
     import_fs16.default.rmSync(cacheDir, { recursive: true, force: true });
     import_fs16.default.mkdirSync(cacheDir, { recursive: true });
     const skipDirs = /* @__PURE__ */ new Set(["node_modules", ".git", "__pycache__", ".venv"]);
@@ -47820,8 +47877,8 @@ function registerInstallHandlers(reloadMcp) {
     const dependencyClosure = await ensureDependencyClosure(data, key2, localManifest);
     const defaultEnabled = pluginDefaultEnabled(pluginName, marketplace, localManifest);
     await assertCanEnablePlugins([...dependencyClosure, ...defaultEnabled ? [key2] : []]);
-    const cacheDir = import_path17.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
-    const parentDir = import_path17.default.join(import_os11.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
+    const cacheDir = import_path17.default.join(import_os10.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName, version);
+    const parentDir = import_path17.default.join(import_os10.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
     if (import_fs16.default.existsSync(parentDir)) {
       import_fs16.default.rmSync(parentDir, { recursive: true, force: true });
     }
@@ -47927,7 +47984,7 @@ function registerInstallHandlers(reloadMcp) {
 
 // src/main/ipc/hooks.ts
 init_plugin_helpers();
-var USER_SETTINGS = import_path18.default.join(import_os12.default.homedir(), ".claude", "settings.json");
+var USER_SETTINGS = import_path18.default.join(import_os11.default.homedir(), ".claude", "settings.json");
 function readSettings() {
   try {
     if (!import_fs17.default.existsSync(USER_SETTINGS)) return {};
@@ -47948,7 +48005,7 @@ function readHooksAtPath(filePath) {
 }
 function loadEnabledPluginsHost() {
   try {
-    const installedFile = import_path18.default.join(import_os12.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const installedFile = import_path18.default.join(import_os11.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     if (!import_fs17.default.existsSync(installedFile)) return [];
     const parsed = JSON.parse(import_fs17.default.readFileSync(installedFile, "utf-8"));
     const settingsFile = USER_SETTINGS;
@@ -48203,7 +48260,7 @@ function registerHooksIPC(ctx) {
   ipcMain.handle("hooks:list-pending-plugin-approvals", async () => listPendingHookApprovals());
   ipcMain.handle("hooks:get-plugin-approval", async (_e, pluginId) => {
     try {
-      const approvalsFile = import_path18.default.join(import_os12.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
+      const approvalsFile = bridgeStatePath("plugin-hook-approvals.json");
       if (!import_fs17.default.existsSync(approvalsFile)) return { approved: false, hashes: [] };
       const parsed = JSON.parse(import_fs17.default.readFileSync(approvalsFile, "utf-8"));
       return { approved: !!parsed[pluginId], hashes: parsed[pluginId] ?? [] };
@@ -48213,7 +48270,7 @@ function registerHooksIPC(ctx) {
   });
   ipcMain.handle("hooks:set-plugin-approval", async (_e, pluginId, hashes) => {
     try {
-      const approvalsFile = import_path18.default.join(import_os12.default.homedir(), ".claude", "open-claude-bridge", "plugin-hook-approvals.json");
+      const approvalsFile = bridgeStatePath("plugin-hook-approvals.json");
       import_fs17.default.mkdirSync(import_path18.default.dirname(approvalsFile), { recursive: true });
       let parsed = {};
       try {
@@ -48548,12 +48605,12 @@ function registerMcpIPC(ctx) {
 init_host_compat();
 var import_path21 = __toESM(require("path"), 1);
 var import_fs20 = __toESM(require("fs"), 1);
-var import_os15 = __toESM(require("os"), 1);
+var import_os14 = __toESM(require("os"), 1);
 
 // src/main/ipc/plugins/content-scan.ts
 var import_path20 = __toESM(require("path"), 1);
 var import_fs19 = __toESM(require("fs"), 1);
-var import_os14 = __toESM(require("os"), 1);
+var import_os13 = __toESM(require("os"), 1);
 init_plugin_helpers();
 function countPluginContents(pluginDir, marketplaceRoot) {
   const counts = { commands: 0, agents: 0, skills: 0, lspServers: 0, mcpServers: 0, hooks: 0 };
@@ -48592,7 +48649,7 @@ function countPluginContents(pluginDir, marketplaceRoot) {
         if (Array.isArray(m?.plugins)) counts.subPluginTotal = m.plugins.length;
         if (typeof m?.name === "string") counts.nestedMarketplaceName = m.name;
         if (counts.nestedMarketplaceName && counts.subPluginTotal !== void 0) {
-          const installedPath = import_path20.default.join(import_os14.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+          const installedPath = import_path20.default.join(import_os13.default.homedir(), ".claude", "plugins", "installed_plugins.json");
           if (import_fs19.default.existsSync(installedPath)) {
             const inst = JSON.parse(import_fs19.default.readFileSync(installedPath, "utf-8"));
             if (inst?.version === 2 && inst?.plugins) {
@@ -48737,7 +48794,7 @@ function countPluginLspServers(pluginName, marketplace, pluginDir) {
   }
   if (marketplace) {
     try {
-      const mktJson = import_path20.default.join(import_os14.default.homedir(), ".claude", "plugins", "marketplaces", marketplace, ".claude-plugin", "marketplace.json");
+      const mktJson = import_path20.default.join(import_os13.default.homedir(), ".claude", "plugins", "marketplaces", marketplace, ".claude-plugin", "marketplace.json");
       if (import_fs19.default.existsSync(mktJson)) {
         const mkt = JSON.parse(import_fs19.default.readFileSync(mktJson, "utf-8"));
         const found = mkt.plugins?.find((p) => p.name === pluginName);
@@ -48918,10 +48975,10 @@ function registerContentHandlers() {
     return listPluginContents(pluginDir);
   });
   ipcMain.handle("plugins:list-installed", () => {
-    const pluginsFile = import_path21.default.join(import_os15.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const pluginsFile = import_path21.default.join(import_os14.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     const enabledMap = /* @__PURE__ */ new Map();
     try {
-      const settings = JSON.parse(import_fs20.default.readFileSync(import_path21.default.join(import_os15.default.homedir(), ".claude", "settings.json"), "utf-8"));
+      const settings = JSON.parse(import_fs20.default.readFileSync(import_path21.default.join(import_os14.default.homedir(), ".claude", "settings.json"), "utf-8"));
       const ep = settings?.enabledPlugins;
       if (ep && typeof ep === "object") {
         for (const [k, v] of Object.entries(ep)) {
@@ -48954,7 +49011,7 @@ function registerContentHandlers() {
             }
             if (!description && marketplace) {
               try {
-                const mktJson = import_path21.default.join(import_os15.default.homedir(), ".claude", "plugins", "marketplaces", marketplace, ".claude-plugin", "marketplace.json");
+                const mktJson = import_path21.default.join(import_os14.default.homedir(), ".claude", "plugins", "marketplaces", marketplace, ".claude-plugin", "marketplace.json");
                 if (import_fs20.default.existsSync(mktJson)) {
                   const mkt = JSON.parse(import_fs20.default.readFileSync(mktJson, "utf-8"));
                   const found = mkt.plugins?.find((p) => p.name === name);
@@ -48971,7 +49028,7 @@ function registerContentHandlers() {
           const isCached = installPath ? import_fs20.default.existsSync(installPath) : false;
           let contentDir = isCached ? installPath : "";
           if (!contentDir && marketplace) {
-            const mktRoot = import_path21.default.join(import_os15.default.homedir(), ".claude", "plugins", "marketplaces", marketplace);
+            const mktRoot = import_path21.default.join(import_os14.default.homedir(), ".claude", "plugins", "marketplaces", marketplace);
             for (const candidate of [
               import_path21.default.join(mktRoot, "plugins", name),
               import_path21.default.join(mktRoot, "plugins", "mcp", name),
@@ -49023,7 +49080,7 @@ function registerContentHandlers() {
 init_host_compat();
 var import_path22 = __toESM(require("path"), 1);
 var import_fs21 = __toESM(require("fs"), 1);
-var import_os16 = __toESM(require("os"), 1);
+var import_os15 = __toESM(require("os"), 1);
 init_plugin_helpers();
 function writeJsonAtomic2(filePath, value) {
   import_fs21.default.mkdirSync(import_path22.default.dirname(filePath), { recursive: true });
@@ -49059,7 +49116,7 @@ function registerOptionsHandlers(reloadRuntime) {
     if (typeof pluginId !== "string" || !pluginId.includes("@")) {
       return { schema: {}, values: {}, sensitiveKeys: [] };
     }
-    const pluginsFile = import_path22.default.join(import_os16.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const pluginsFile = import_path22.default.join(import_os15.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     let installPath = "";
     try {
       const data = JSON.parse(import_fs21.default.readFileSync(pluginsFile, "utf-8"));
@@ -49072,7 +49129,7 @@ function registerOptionsHandlers(reloadRuntime) {
     const schema = manifest?.userConfig && typeof manifest.userConfig === "object" ? manifest.userConfig : {};
     const nonSensitive = {};
     try {
-      const settings = JSON.parse(import_fs21.default.readFileSync(import_path22.default.join(import_os16.default.homedir(), ".claude", "settings.json"), "utf-8"));
+      const settings = JSON.parse(import_fs21.default.readFileSync(import_path22.default.join(import_os15.default.homedir(), ".claude", "settings.json"), "utf-8"));
       const opts = settings?.pluginConfigs?.[pluginId]?.options;
       if (opts && typeof opts === "object") Object.assign(nonSensitive, opts);
     } catch {
@@ -49094,7 +49151,7 @@ function registerOptionsHandlers(reloadRuntime) {
       throw new Error("Invalid pluginId");
     }
     if (!values || typeof values !== "object") throw new Error("Invalid values");
-    const pluginsFile = import_path22.default.join(import_os16.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const pluginsFile = import_path22.default.join(import_os15.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     let installPath = "";
     try {
       const data = JSON.parse(import_fs21.default.readFileSync(pluginsFile, "utf-8"));
@@ -49114,11 +49171,11 @@ function registerOptionsHandlers(reloadRuntime) {
     let existingOptions = {};
     let existingSecrets = {};
     try {
-      existingOptions = JSON.parse(import_fs21.default.readFileSync(import_path22.default.join(import_os16.default.homedir(), ".claude", "settings.json"), "utf-8"))?.pluginConfigs?.[pluginId]?.options ?? {};
+      existingOptions = JSON.parse(import_fs21.default.readFileSync(import_path22.default.join(import_os15.default.homedir(), ".claude", "settings.json"), "utf-8"))?.pluginConfigs?.[pluginId]?.options ?? {};
     } catch {
     }
     try {
-      existingSecrets = JSON.parse(import_fs21.default.readFileSync(import_path22.default.join(import_os16.default.homedir(), ".claude", ".credentials.json"), "utf-8"))?.pluginSecrets?.[pluginId] ?? {};
+      existingSecrets = JSON.parse(import_fs21.default.readFileSync(import_path22.default.join(import_os15.default.homedir(), ".claude", ".credentials.json"), "utf-8"))?.pluginSecrets?.[pluginId] ?? {};
     } catch {
     }
     for (const [key2, spec] of Object.entries(schema)) {
@@ -49129,7 +49186,7 @@ function registerOptionsHandlers(reloadRuntime) {
       }
       validateOption(key2, candidate, spec);
     }
-    const settingsPath = import_path22.default.join(import_os16.default.homedir(), ".claude", "settings.json");
+    const settingsPath = import_path22.default.join(import_os15.default.homedir(), ".claude", "settings.json");
     let settings = {};
     if (import_fs21.default.existsSync(settingsPath)) {
       try {
@@ -49150,7 +49207,7 @@ function registerOptionsHandlers(reloadRuntime) {
     }
     settings.pluginConfigs[pluginId].options = nextOptions;
     writeJsonAtomic2(settingsPath, settings);
-    const credsPath = import_path22.default.join(import_os16.default.homedir(), ".claude", ".credentials.json");
+    const credsPath = import_path22.default.join(import_os15.default.homedir(), ".claude", ".credentials.json");
     let creds = {};
     if (import_fs21.default.existsSync(credsPath)) {
       try {
@@ -49190,10 +49247,10 @@ function registerOptionsHandlers(reloadRuntime) {
 init_host_compat();
 var import_path23 = __toESM(require("path"), 1);
 var import_fs22 = __toESM(require("fs"), 1);
-var import_os17 = __toESM(require("os"), 1);
+var import_os16 = __toESM(require("os"), 1);
 function registerBrowseHandlers() {
   ipcMain.handle("plugins:browse-marketplace", async (event, marketplaceName) => {
-    const knownFile = import_path23.default.join(import_os17.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    const knownFile = import_path23.default.join(import_os16.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
     try {
       let scanPluginDir2 = function(dir, pluginDirName) {
         const manifestPath = import_path23.default.join(dir, ".claude-plugin", "plugin.json");
@@ -49247,7 +49304,7 @@ function registerBrowseHandlers() {
       const baseDir = marketplace.installLocation;
       let installedKeys = /* @__PURE__ */ new Set();
       let installedPluginsMap = {};
-      const installedFile = import_path23.default.join(import_os17.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+      const installedFile = import_path23.default.join(import_os16.default.homedir(), ".claude", "plugins", "installed_plugins.json");
       if (import_fs22.default.existsSync(installedFile)) {
         try {
           const instData = JSON.parse(import_fs22.default.readFileSync(installedFile, "utf-8"));
@@ -49417,7 +49474,7 @@ function registerBrowseHandlers() {
       const mktData = JSON.parse(import_fs22.default.readFileSync(mktJson, "utf-8"));
       const nestedName = typeof mktData?.name === "string" ? mktData.name : import_path23.default.basename(pluginPath);
       const plugins = Array.isArray(mktData?.plugins) ? mktData.plugins : [];
-      const installedFile = import_path23.default.join(import_os17.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+      const installedFile = import_path23.default.join(import_os16.default.homedir(), ".claude", "plugins", "installed_plugins.json");
       let installedKeys = /* @__PURE__ */ new Set();
       if (import_fs22.default.existsSync(installedFile)) {
         try {
@@ -49476,12 +49533,12 @@ function registerBrowseHandlers() {
 init_host_compat();
 var import_path25 = __toESM(require("path"), 1);
 var import_fs24 = __toESM(require("fs"), 1);
-var import_os19 = __toESM(require("os"), 1);
+var import_os18 = __toESM(require("os"), 1);
 
 // src/main/plugins/sub-clone.ts
 var import_fs23 = __toESM(require("fs"), 1);
 var import_path24 = __toESM(require("path"), 1);
-var import_os18 = __toESM(require("os"), 1);
+var import_os17 = __toESM(require("os"), 1);
 var import_crypto9 = require("crypto");
 async function pullSubClone(baseDir, pluginName) {
   const pluginDir = import_path24.default.join(baseDir, "plugins", pluginName);
@@ -49539,7 +49596,7 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir, sourceRev
     }
   } catch {
   }
-  const installedFile = import_path24.default.join(import_os18.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+  const installedFile = import_path24.default.join(import_os17.default.homedir(), ".claude", "plugins", "installed_plugins.json");
   let data = { version: 2, plugins: {} };
   if (import_fs23.default.existsSync(installedFile)) {
     try {
@@ -49551,7 +49608,7 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir, sourceRev
   if (!data.plugins?.[key2]) {
     return { ok: true, version, changed: false };
   }
-  const pluginCacheParent = import_path24.default.join(import_os18.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
+  const pluginCacheParent = import_path24.default.join(import_os17.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
   const existingEntry = data.plugins[key2]?.[0];
   const installedPath = existingEntry?.installPath;
   if (sourceRevision && existingEntry?.sourceRevision === sourceRevision && existingEntry?.version === version && typeof installedPath === "string" && import_path24.default.dirname(installedPath) === pluginCacheParent && import_fs23.default.existsSync(installedPath)) {
@@ -49610,7 +49667,7 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir, sourceRev
 init_plugin_helpers();
 function registerSourceHandlers(reloadMcp) {
   ipcMain.handle("plugins:get-source-path", async (_event, pluginName, marketplace) => {
-    const knownFile = import_path25.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    const knownFile = import_path25.default.join(import_os18.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
     if (!import_fs24.default.existsSync(knownFile)) return null;
     try {
       const known = JSON.parse(import_fs24.default.readFileSync(knownFile, "utf-8"));
@@ -49634,7 +49691,7 @@ function registerSourceHandlers(reloadMcp) {
     }
   });
   ipcMain.handle("plugins:sync-cache", async (_event, pluginName, marketplace) => {
-    const knownFile = import_path25.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    const knownFile = import_path25.default.join(import_os18.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
     if (!import_fs24.default.existsSync(knownFile)) throw new Error("No marketplaces configured");
     const known = JSON.parse(import_fs24.default.readFileSync(knownFile, "utf-8"));
     const mktInfo = known[marketplace];
@@ -49677,7 +49734,7 @@ function registerSourceHandlers(reloadMcp) {
     } catch {
       if (mktVersion) version = mktVersion;
     }
-    const pluginCacheParent = import_path25.default.join(import_os19.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
+    const pluginCacheParent = import_path25.default.join(import_os18.default.homedir(), ".claude", "plugins", "cache", marketplace, pluginName);
     const cacheDir = import_path25.default.join(pluginCacheParent, version);
     if (import_fs24.default.existsSync(pluginCacheParent)) {
       import_fs24.default.rmSync(pluginCacheParent, { recursive: true, force: true });
@@ -49703,7 +49760,7 @@ function registerSourceHandlers(reloadMcp) {
       }
     }
     copyDir(pluginSourcePath, cacheDir);
-    const installedFile = import_path25.default.join(import_os19.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const installedFile = import_path25.default.join(import_os18.default.homedir(), ".claude", "plugins", "installed_plugins.json");
     let data = { version: 2, plugins: {} };
     if (import_fs24.default.existsSync(installedFile)) {
       try {
@@ -49730,7 +49787,7 @@ function registerSourceHandlers(reloadMcp) {
   });
   ipcMain.handle("plugins:retry-plugin-source", (_event, pluginName, marketplace) => {
     try {
-      const knownFile = import_path25.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+      const knownFile = import_path25.default.join(import_os18.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
       if (!import_fs24.default.existsSync(knownFile)) return { ok: false, error: "No marketplaces configured" };
       const known = JSON.parse(import_fs24.default.readFileSync(knownFile, "utf-8"));
       const mktInfo = known[marketplace];
@@ -49743,7 +49800,7 @@ function registerSourceHandlers(reloadMcp) {
     }
   });
   ipcMain.handle("plugins:refresh-plugin-source", async (_event, pluginName, marketplace) => {
-    const knownFile = import_path25.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    const knownFile = import_path25.default.join(import_os18.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
     if (!import_fs24.default.existsSync(knownFile)) return { ok: false, error: "No marketplaces configured" };
     let known;
     try {
@@ -49769,7 +49826,7 @@ function registerSourceHandlers(reloadMcp) {
       const key2 = `${pluginName}@${marketplace}`;
       let refreshedRoot = "";
       try {
-        refreshedRoot = JSON.parse(import_fs24.default.readFileSync(import_path25.default.join(import_os19.default.homedir(), ".claude", "plugins", "installed_plugins.json"), "utf-8"))?.plugins?.[key2]?.[0]?.installPath ?? "";
+        refreshedRoot = JSON.parse(import_fs24.default.readFileSync(import_path25.default.join(import_os18.default.homedir(), ".claude", "plugins", "installed_plugins.json"), "utf-8"))?.plugins?.[key2]?.[0]?.installPath ?? "";
       } catch {
       }
       if (refreshedRoot) {
@@ -49804,10 +49861,10 @@ init_host_compat();
 
 // src/main/marketplace/known-store.ts
 var import_fs25 = __toESM(require("fs"), 1);
-var import_os20 = __toESM(require("os"), 1);
+var import_os19 = __toESM(require("os"), 1);
 var import_path26 = __toESM(require("path"), 1);
 function knownMarketplacesPath() {
-  return import_path26.default.join(import_os20.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
+  return import_path26.default.join(import_os19.default.homedir(), ".claude", "plugins", "known_marketplaces.json");
 }
 function readKnownMarketplaces() {
   const file = knownMarketplacesPath();
@@ -49840,7 +49897,7 @@ function listMarketplaces() {
 
 // src/main/marketplace/clone.ts
 var import_fs27 = __toESM(require("fs"), 1);
-var import_os21 = __toESM(require("os"), 1);
+var import_os20 = __toESM(require("os"), 1);
 var import_path28 = __toESM(require("path"), 1);
 
 // src/main/validators.ts
@@ -49887,7 +49944,7 @@ async function cloneMarketplace({ name, rawInput, auth }) {
     sourceBlock = { source: "git", url: input };
     cloneUrl = input;
   }
-  const installLocation = sourceBlock.source === "directory" ? localPath : import_path28.default.join(import_os21.default.homedir(), ".claude", "plugins", "marketplaces", name);
+  const installLocation = sourceBlock.source === "directory" ? localPath : import_path28.default.join(import_os20.default.homedir(), ".claude", "plugins", "marketplaces", name);
   const token = auth?.token?.trim() || "";
   const username = auth?.username?.trim() || "oauth2";
   const hasToken = Boolean(token && cloneUrl && /^https?:\/\//i.test(cloneUrl));
@@ -50009,7 +50066,7 @@ ${stderr}`
     return { ok: false, error: message };
   }
 }
-async function refreshAllMarketplaces(window9) {
+async function refreshAllMarketplaces(window10) {
   if (!import_fs28.default.existsSync(knownMarketplacesPath())) return { ok: true, results: [] };
   const known = readKnownMarketplaces();
   const names = Object.keys(known).filter((n) => known[n]?.autoUpdate !== false);
@@ -50024,8 +50081,8 @@ async function refreshAllMarketplaces(window9) {
     }
     if (!outcome.ok) console.warn(`[marketplaces] ${name}: refresh failed \u2014 ${outcome.error ?? ""}`);
     results.push(outcome);
-    if (window9 && !window9.isDestroyed()) {
-      window9.webContents.send("marketplaces:updated", {
+    if (window10 && !window10.isDestroyed()) {
+      window10.webContents.send("marketplaces:updated", {
         name,
         ok: outcome.ok,
         ...outcome.error === void 0 ? {} : { error: outcome.error }
@@ -50096,7 +50153,7 @@ async function setMarketplaceAuth(name, auth) {
 
 // src/main/marketplace/remove.ts
 var import_fs30 = __toESM(require("fs"), 1);
-var import_os22 = __toESM(require("os"), 1);
+var import_os21 = __toESM(require("os"), 1);
 var import_path30 = __toESM(require("path"), 1);
 function removeMarketplace(name) {
   const known = readKnownMarketplaces();
@@ -50109,7 +50166,7 @@ function removeMarketplace(name) {
     delete known[name];
     writeKnownMarketplaces(known);
   }
-  const installedFile = import_path30.default.join(import_os22.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+  const installedFile = import_path30.default.join(import_os21.default.homedir(), ".claude", "plugins", "installed_plugins.json");
   if (import_fs30.default.existsSync(installedFile)) {
     try {
       const data = JSON.parse(import_fs30.default.readFileSync(installedFile, "utf-8"));
@@ -50208,16 +50265,16 @@ init_toast_window();
 // src/main/mcp/manager.ts
 var import_crypto13 = require("crypto");
 var import_path34 = __toESM(require("path"), 1);
-var import_os26 = __toESM(require("os"), 1);
+var import_os25 = __toESM(require("os"), 1);
 
 // src/main/mcp/state-persistence.ts
 var import_path31 = __toESM(require("path"), 1);
 var import_fs32 = __toESM(require("fs"), 1);
-var import_os23 = __toESM(require("os"), 1);
+var import_os22 = __toESM(require("os"), 1);
+init_bridge_state();
 var McpLegacyStore = class {
-  file = import_path31.default.join(import_os23.default.homedir(), ".claude", "open-claude-bridge", "mcp-servers.json");
-  data;
-  constructor() {
+  constructor(file) {
+    this.file = file;
     try {
       this.data = JSON.parse(import_fs32.default.readFileSync(this.file, "utf8"));
       if (!Array.isArray(this.data.mcpServers)) this.data.mcpServers = [];
@@ -50225,6 +50282,8 @@ var McpLegacyStore = class {
       this.data = { mcpServers: [] };
     }
   }
+  file;
+  data;
   get(key2) {
     return this.data[key2];
   }
@@ -50241,7 +50300,8 @@ var McpLegacyStore = class {
 };
 var _store = null;
 function getMcpStore() {
-  if (!_store) _store = new McpLegacyStore();
+  const file = bridgeStatePath("mcp-servers.json");
+  if (_store?.file !== file) _store = new McpLegacyStore(file);
   return _store;
 }
 function configToClaudeJsonEntry(config) {
@@ -50258,7 +50318,7 @@ function configToClaudeJsonEntry(config) {
   return entry;
 }
 async function mutateClaudeJson(mutate) {
-  const claudeJsonPath = import_path31.default.join(import_os23.default.homedir(), ".claude.json");
+  const claudeJsonPath = import_path31.default.join(import_os22.default.homedir(), ".claude.json");
   let parsed = {};
   try {
     const raw = await import_fs32.default.promises.readFile(claudeJsonPath, "utf-8");
@@ -50270,9 +50330,9 @@ async function mutateClaudeJson(mutate) {
   mutate(parsed.mcpServers, parsed);
   await import_fs32.default.promises.writeFile(claudeJsonPath, JSON.stringify(parsed, null, 2), "utf-8");
 }
-var toolSchemaCacheFile = import_path31.default.join(import_os23.default.homedir(), ".claude", "open-claude-bridge", "mcp-tool-schemas.json");
 function loadToolSchemaCache() {
   try {
+    const toolSchemaCacheFile = bridgeStatePath("mcp-tool-schemas.json");
     const parsed = JSON.parse(import_fs32.default.readFileSync(toolSchemaCacheFile, "utf8"));
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed;
@@ -50283,6 +50343,7 @@ function loadToolSchemaCache() {
 }
 function saveToolSchemaCache(cache2) {
   try {
+    const toolSchemaCacheFile = bridgeStatePath("mcp-tool-schemas.json");
     import_fs32.default.mkdirSync(import_path31.default.dirname(toolSchemaCacheFile), { recursive: true });
     const tmp = `${toolSchemaCacheFile}.tmp`;
     import_fs32.default.writeFileSync(tmp, JSON.stringify(cache2, null, 2), "utf8");
@@ -50294,10 +50355,10 @@ function saveToolSchemaCache(cache2) {
 // src/main/mcp/oauth-store.ts
 var import_fs33 = __toESM(require("fs"), 1);
 var import_path32 = __toESM(require("path"), 1);
-var import_os24 = __toESM(require("os"), 1);
+var import_os23 = __toESM(require("os"), 1);
 var import_crypto10 = __toESM(require("crypto"), 1);
 init_host_compat();
-var CREDS_PATH = import_path32.default.join(import_os24.default.homedir(), ".claude", ".credentials.json");
+var CREDS_PATH = import_path32.default.join(import_os23.default.homedir(), ".claude", ".credentials.json");
 function readCreds() {
   try {
     const raw = import_fs33.default.readFileSync(CREDS_PATH, "utf-8");
@@ -50525,7 +50586,7 @@ async function doRefreshTokens(state) {
 var import_crypto11 = require("crypto");
 var import_path33 = __toESM(require("path"), 1);
 var import_fs34 = __toESM(require("fs"), 1);
-var import_os25 = __toESM(require("os"), 1);
+var import_os24 = __toESM(require("os"), 1);
 init_plugin_helpers();
 function resolveEnvVars(value) {
   return value.replace(/\$\{([^}:]+)(?::-([^}]*))?\}/g, (_m, name, fallback) => {
@@ -50535,9 +50596,9 @@ function resolveEnvVars(value) {
   });
 }
 function expandHome(value) {
-  if (value === "~") return import_os25.default.homedir();
+  if (value === "~") return import_os24.default.homedir();
   if (value.startsWith("~/") || value.startsWith("~\\")) {
-    return import_path33.default.join(import_os25.default.homedir(), value.slice(2));
+    return import_path33.default.join(import_os24.default.homedir(), value.slice(2));
   }
   return value;
 }
@@ -50549,7 +50610,7 @@ function parseMcpJson(parsed, sourcePath, pluginId) {
     pluginRoot = import_path33.default.dirname(pluginRoot);
   }
   const userConfig = pluginId ? loadPluginOptions(pluginId) : null;
-  const pluginDataDir = pluginId ? import_path33.default.join(import_os25.default.homedir(), ".claude", "plugins", "data", pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-")) : null;
+  const pluginDataDir = pluginId ? import_path33.default.join(import_os24.default.homedir(), ".claude", "plugins", "data", pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-")) : null;
   let dataDirEnsured = false;
   const ensureDataDir = () => {
     if (!pluginDataDir) return null;
@@ -50734,7 +50795,7 @@ async function discoverProjectConfigs(projectRoots) {
 }
 async function discoverFromClaudeJsonAsync(claudeDir) {
   const claudeJsonPath = import_path33.default.join(claudeDir, ".claude.json");
-  const homeClaudeJson = import_path33.default.join(import_os25.default.homedir(), ".claude.json");
+  const homeClaudeJson = import_path33.default.join(import_os24.default.homedir(), ".claude.json");
   const collected = [];
   const reads = await Promise.all([claudeJsonPath, homeClaudeJson].map(async (jsonPath) => {
     try {
@@ -51425,7 +51486,63 @@ function suggestFetchHint(cause, host) {
 
 // src/main/mcp/transports/stdio.ts
 var import_child_process4 = require("child_process");
+
+// src/main/mcp/transports/stdio-launch.ts
+var import_node_fs12 = __toESM(require("node:fs"), 1);
+var import_node_path14 = __toESM(require("node:path"), 1);
 init_script_file();
+function envValue(env4, name) {
+  const key2 = Object.keys(env4).find((key3) => key3.toLowerCase() === name.toLowerCase());
+  return key2 === void 0 ? void 0 : env4[key2];
+}
+function windowsCommand(command, cwd, env4) {
+  const directories = /[\\/]/.test(command) ? [""] : [cwd, ...(envValue(env4, "PATH") ?? "").split(";")];
+  const extensions = import_node_path14.default.win32.extname(command) ? [""] : (envValue(env4, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";");
+  for (const directory of directories) {
+    const base = import_node_path14.default.win32.resolve(cwd, directory.replace(/^"(.*)"$/, "$1"), command);
+    for (const extension2 of extensions) {
+      const file = base + extension2;
+      try {
+        if (import_node_fs12.default.statSync(file).isFile()) return file;
+      } catch {
+      }
+    }
+  }
+  return command;
+}
+function batchArgument(value) {
+  let quoted = '"';
+  let slashes = 0;
+  for (const char of value) {
+    if (char === "\\") {
+      slashes++;
+      continue;
+    }
+    quoted += "\\".repeat(char === '"' ? slashes * 2 + 1 : slashes) + char;
+    slashes = 0;
+  }
+  quoted += "\\".repeat(slashes * 2) + '"';
+  return escapeCmd(escapeCmd(quoted));
+}
+function escapeCmd(value) {
+  return value.replace(/[()[\]%!^"`<>&|;, *?]/g, (char) => `^${char}`);
+}
+function stdioLaunch(command, args, cwd, env4) {
+  if (process.platform !== "win32") return { command, args };
+  const file = windowsCommand(command, cwd, env4);
+  if (!/\.(cmd|bat)$/i.test(file)) return { command: file, args };
+  const shell2 = envValue(env4, "ComSpec") ?? "cmd.exe";
+  const escapedCommand = escapeCmd(file);
+  const escapedArgs = args.map(batchArgument);
+  assertCmdLineFits(escapedCommand, escapedArgs, "win32", shell2);
+  return {
+    command: shell2,
+    args: ["/d", "/s", "/c", `"${[escapedCommand, ...escapedArgs].join(" ")}"`],
+    windowsVerbatimArguments: true
+  };
+}
+
+// src/main/mcp/transports/stdio.ts
 init_working_directory();
 function stdioWorkingDirectory(config) {
   return resolveWorkingDirectory(config.workingDirectory, config.projectRoot);
@@ -51435,8 +51552,11 @@ async function connectStdio(ctx, id) {
   const command = state.config.command;
   if (!command) throw new Error("stdio server command is required");
   const args = state.config.args ?? [];
+  const cwd = stdioWorkingDirectory(state.config);
+  const env4 = { ...process.env, ...state.config.env };
+  let launch;
   try {
-    assertCmdLineFits(command, args);
+    launch = stdioLaunch(command, args, cwd, env4);
   } catch (err) {
     ctx.appendLog(id, "error", `[stdio] ${err.message}`);
     throw err;
@@ -51462,16 +51582,14 @@ async function connectStdio(ctx, id) {
       else reject(err ?? new Error("Unknown error"));
     };
     ctx.appendLog(id, "info", `[stdio] spawning: ${command} ${args.join(" ")}`);
-    const proc = (0, import_child_process4.spawn)(command, args, {
+    const proc = (0, import_child_process4.spawn)(launch.command, launch.args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...state.config.env },
-      shell: true,
-      // windowsHide: true keeps conhost.exe windows out of Task Manager —
-      // every `shell: true` spawn on Windows otherwise creates a visible
-      // Console Window Host process per MCP server (so 6 stdio MCPs = 6
-      // conhosts cluttering the process tree).
+      env: env4,
+      shell: false,
+      windowsVerbatimArguments: launch.windowsVerbatimArguments,
+      // Hide the console when a Windows batch launcher needs cmd.exe.
       windowsHide: true,
-      cwd: stdioWorkingDirectory(state.config)
+      cwd
     });
     state.process = proc;
     state.inputBuffer = "";
@@ -51889,25 +52007,25 @@ function handleServerNotification(ctx, serverId, msg) {
 
 // src/main/mcp/test-log.ts
 var TEST_LOG_CAP = 300;
-function appendLog(window9, state, id, level, msg) {
+function appendLog(window10, state, id, level, msg) {
   if (!state) return;
   const entry = { ts: Date.now(), level, msg };
   state.testLog.push(entry);
   if (state.testLog.length > TEST_LOG_CAP) {
     state.testLog.shift();
   }
-  if (!window9.isDestroyed()) {
-    window9.webContents.send("mcp:test-log", { id, entry });
+  if (!window10.isDestroyed()) {
+    window10.webContents.send("mcp:test-log", { id, entry });
   }
 }
 function getTestLog(state) {
   return state ? state.testLog.slice() : [];
 }
-function clearTestLog(window9, state, id) {
+function clearTestLog(window10, state, id) {
   if (!state) return;
   state.testLog = [];
-  if (!window9.isDestroyed()) {
-    window9.webContents.send("mcp:test-log-cleared", { id });
+  if (!window10.isDestroyed()) {
+    window10.webContents.send("mcp:test-log-cleared", { id });
   }
 }
 
@@ -51966,8 +52084,16 @@ var McpServerManager = class _McpServerManager {
   notifyTimer = null;
   notifyLastAt = 0;
   static NOTIFY_MIN_INTERVAL_MS = 200;
-  constructor(window9) {
-    this.window = window9;
+  /** Ключ последнего каталога, отданного через onToolsChanged (INC-2026-0042 b).
+   *  Удаление спящего коннектора, повторный discovery и initAll с тёплым кэшем
+   *  меняют экспортируемый каталог без живого процесса и без exit/connect
+   *  callback — раньше сервер оставался со старым снимком до случайной
+   *  регистрации. Сравнение по содержимому (имена, описания, схемы, ресурсы,
+   *  prompts), а не по длине: одинаковое число тулов с новой схемой — тоже
+   *  изменение. */
+  publishedCatalogKey = JSON.stringify([[], { resources: [], resourceTemplates: [], prompts: [] }]);
+  constructor(window10) {
+    this.window = window10;
     const legacy = (getMcpStore().get("mcpServers") ?? []).filter((c) => !c.autoDiscovered);
     if (legacy.length > 0) {
       this.saveChain = mutateClaudeJson((mcpServers) => {
@@ -51994,7 +52120,7 @@ var McpServerManager = class _McpServerManager {
       appendLog: (id, level, msg) => self.appendLog(id, level, msg),
       notifyChanged: () => self.notifyChanged(),
       get onToolsChanged() {
-        return self.onToolsChanged;
+        return self.onToolsChanged ? () => self.publishTools() : null;
       },
       handleServerMessage: (serverId, msg, sendResponse) => self.handleServerMessage(serverId, msg, sendResponse),
       buildHttpHeaders: (id) => self.buildHttpHeaders(id),
@@ -52124,7 +52250,7 @@ var McpServerManager = class _McpServerManager {
   // blocking the main process when the user has many plugins or projects.
   async discoverLocalMcpConfigs() {
     if (this.disposed) return;
-    const claudeDir = import_path34.default.join(import_os26.default.homedir(), ".claude");
+    const claudeDir = import_path34.default.join(import_os25.default.homedir(), ".claude");
     const existingNames = /* @__PURE__ */ new Set();
     for (const state of this.servers.values()) {
       if (!state.config.autoDiscovered) {
@@ -52366,7 +52492,7 @@ var McpServerManager = class _McpServerManager {
   /** Add a new external MCP server */
   addServer(config) {
     const id = (0, import_crypto13.randomUUID)();
-    const claudeJsonPath = import_path34.default.join(import_os26.default.homedir(), ".claude.json");
+    const claudeJsonPath = import_path34.default.join(import_os25.default.homedir(), ".claude.json");
     const fullConfig = {
       ...config,
       id,
@@ -52424,6 +52550,7 @@ var McpServerManager = class _McpServerManager {
       }
     }
     this.notifyChanged();
+    this.publishTools();
   }
   /** Update an existing server's editable config (name / type / url / headers /
    *  command / args / env / oauth). Preserves identity + source metadata,
@@ -52479,7 +52606,7 @@ var McpServerManager = class _McpServerManager {
       this.disconnectServer(id);
     }
     this.notifyChanged();
-    this.onToolsChanged?.();
+    this.publishTools();
   }
   /** Test connection to a server. Clears the previous log so the user gets
    *  a clean trace of THIS attempt (otherwise repeated Tests accumulate and
@@ -52681,7 +52808,26 @@ var McpServerManager = class _McpServerManager {
       else console.error(`[MCP] Failed to connect to "${state.config.name}":`, fullMsg, cause);
     }
     this.notifyChanged();
-    this.onToolsChanged?.();
+    this.publishTools();
+  }
+  /** Явная рассылка каталога (connect/toggle/transport/list_changed). Запоминает
+   *  отданный ключ, чтобы trailing notifyChanged не дублировал её. */
+  publishTools() {
+    if (this.disposed || !this.onToolsChanged) return;
+    this.publishedCatalogKey = this.catalogKey();
+    this.onToolsChanged();
+  }
+  catalogKey() {
+    return JSON.stringify([this.getExternalToolSchemas(), this.getExternalContentCatalog()]);
+  }
+  /** Публикация изменений без собственного callback (remove/discovery/warm
+   *  cache). Пока какой-то сервер в 'connecting', его тулы временно выпадают из
+   *  экспорта (ленивый кэш исключён) — рассылать такой промежуточный каталог
+   *  значит отнять у CLI тул посреди ленивого вызова. Завершение connect само
+   *  вызывает publishTools и доставит накопленные изменения. */
+  publishToolsIfChanged() {
+    for (const state of this.servers.values()) if (state.status === "connecting") return;
+    if (this.catalogKey() !== this.publishedCatalogKey) this.publishTools();
   }
   disconnectServer(id) {
     const state = this.servers.get(id);
@@ -52826,7 +52972,7 @@ var McpServerManager = class _McpServerManager {
       servers: this.servers,
       window: this.window,
       notifyChanged: () => this.notifyChanged(),
-      onToolsChanged: this.onToolsChanged,
+      onToolsChanged: this.onToolsChanged ? () => this.publishTools() : null,
       rpcRequest: (id, method, params) => this.rpcRequest(id, method, params)
     };
   }
@@ -52891,6 +53037,7 @@ var McpServerManager = class _McpServerManager {
       this.harvestSchemaCache();
       if (this.window.isDestroyed()) return;
       this.window.webContents.send("mcp-servers-changed", this.getServers());
+      this.publishToolsIfChanged();
     }, wait);
   }
   // ─── Test log ───────────────────────────────────────
@@ -52956,16 +53103,16 @@ var import_path35 = __toESM(require("path"), 1);
 
 // src/attachments.ts
 var import_promises7 = __toESM(require("node:fs/promises"), 1);
-var import_node_os7 = __toESM(require("node:os"), 1);
-var import_node_path13 = __toESM(require("node:path"), 1);
-async function saveAttachment(base64, name, root = import_node_os7.default.tmpdir()) {
+var import_node_os8 = __toESM(require("node:os"), 1);
+var import_node_path15 = __toESM(require("node:path"), 1);
+async function saveAttachment(base64, name, root = import_node_os8.default.tmpdir()) {
   if (typeof base64 !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
     throw new Error("Invalid attachment encoding");
   }
   const safe = String(name || "attachment").replace(/[/\\\x00-\x1f<>:"|?*]/g, "_").slice(-120);
   await import_promises7.default.mkdir(root, { recursive: true });
-  const directory = await import_promises7.default.mkdtemp(import_node_path13.default.join(root, "bridge-upload-"));
-  const file = import_node_path13.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
+  const directory = await import_promises7.default.mkdtemp(import_node_path15.default.join(root, "bridge-upload-"));
+  const file = import_node_path15.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
   await import_promises7.default.writeFile(file, Buffer.from(base64, "base64"), { flag: "wx", mode: 384 });
   return file;
 }
@@ -53160,12 +53307,11 @@ function registerCoreIpc(context, configStore) {
   ipcMain.handle("read-clipboard", async () => {
     return await vscode5.env.clipboard.readText();
   });
-  ipcMain.on("show-notification", (_e, severity, message) => {
+  ipcMain.on("show-notification", (_e, severity, message, durationMs) => {
     const m = String(message ?? "");
     if (!m) return;
-    if (severity === "error") void vscode5.window.showErrorMessage(m);
-    else if (severity === "warning") void vscode5.window.showWarningMessage(m);
-    else void vscode5.window.showInformationMessage(m);
+    const sev = severity === "error" ? "error" : severity === "warning" ? "warning" : "info";
+    showTimedNotice(sev, m, typeof durationMs === "number" ? durationMs : void 0);
   });
   ipcMain.handle("open-external", async (_e, url) => {
     try {
@@ -53468,6 +53614,7 @@ var InvokeDiagnostics = class {
 };
 
 // src/bridge-host.ts
+init_bridge_state();
 var HEAVY_SESSION_CHANNELS = /* @__PURE__ */ new Set([
   "jsonl-entries",
   "jsonl-subagent-entries",
@@ -53571,6 +53718,8 @@ var BridgeHost = class {
   configStore;
   mcpManager;
   constructor(context, opts) {
+    const isDefaultProfile = context.kaminProfile?.isDefault ?? false;
+    initBridgeState(context.globalStorageUri.fsPath, { isDefaultProfile });
     const webContents = {
       send: (channel, ...args) => {
         recordBridgeOutbound(channel, args);
@@ -53585,13 +53734,13 @@ var BridgeHost = class {
     });
     setPermissionStorageDir(context.globalStorageUri.fsPath);
     this.configStore = new ConfigStore(context.globalStorageUri.fsPath, opts?.persistConnectionToken);
-    this.configStore.migrateFromElectron();
+    if (isDefaultProfile) this.configStore.migrateFromElectron();
     this.tabManager = new TabManager(this.sink);
     setPluginLspProjectResolver((tabId, file) => {
       const direct = tabId ? this.tabManager.getTab(tabId)?.config.cwd : void 0;
       if (direct) return direct;
-      const resolvedFile = import_node_path14.default.resolve(file);
-      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path14.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path14.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const resolvedFile = import_node_path16.default.resolve(file);
+      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path16.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path16.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
     });
     const getUserCwd = () => vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
     const ctx = {
@@ -54443,6 +54592,7 @@ function relayToolUsage(name, broadcast2) {
 }
 
 // src/index.ts
+init_toast_window();
 var CHAT_VIEW_ID = "claudeBridgeChat";
 var TOOLS_VIEW_IDS = ["claudeBridgePlanView", "claudeBridgeTodosView", "claudeBridgeAgentsView", "claudeBridgeConsoleView", "claudeBridgeToolsUsageView"];
 var CUSTOMIZE_VIEW_IDS = [
@@ -54458,6 +54608,12 @@ var CUSTOMIZE_VIEW_IDS = [
   "claudeBridgeCzStats"
 ];
 function activate(context) {
+  const kWindow = kaminide2.window;
+  if (typeof kWindow?.showTransientMessage === "function") {
+    configureTransientNotice((message, options, ...items) => kWindow.showTransientMessage(message, options, ...items));
+  } else {
+    configureTransientNotice(null);
+  }
   const openChat = () => {
     void vscode9.commands.executeCommand(`${CHAT_VIEW_ID}.focus`).then(void 0, () => vscode9.commands.executeCommand("workbench.view.extension.claudeBridge"));
   };

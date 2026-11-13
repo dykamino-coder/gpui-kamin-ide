@@ -122,6 +122,7 @@ fn main() {
     let h: f32 = args.get(3).and_then(|v| v.parse().ok()).unwrap_or(600.);
     let audit = audit::Audit::new(&host, &list, w, h);
     let (capture, sink) = capture::setup();
+    host.set_offscreen_windows(!capture.window_surface);
     let sink = Some(audit.sink(sink));
     // `WPT_DUMP=1` — снимки разошедшихся пар, `WPT_DUMP=all` — всех подряд.
     // Второе нужно ручному разбору: там проверяется и то, что стенд счёл

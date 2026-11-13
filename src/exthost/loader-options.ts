@@ -9,6 +9,7 @@ import type { SessionsApi } from "./api/sessions.js"
 import type { StatusBar } from "./api/status-bar.js"
 import type { TreeViews } from "./api/tree-views.js"
 import type { Webviews } from "./api/webview.js"
+import type { ShowMessageHook } from "./api-kaminide.js"
 import type { EnvHost, StorageHost, WorkspaceHost } from "./host-services.js"
 import type { Registry } from "./registry.js"
 
@@ -20,7 +21,7 @@ export interface LoaderOptions {
   registry: Registry
   emitNotification: (n: { severity: "info" | "warning" | "error"; message: string }) => void
   /** Promise-returning equivalent for `vscode.window.show*Message`. */
-  showMessage: (severity: "info" | "warning" | "error", message: string, items: string[]) => Promise<string | undefined>
+  showMessage: ShowMessageHook
   /** `vscode.window.showInputBox` implementation. */
   showInputBox: (opts: { prompt?: string; placeHolder?: string; value?: string }) => Promise<string | undefined>
   /** `vscode.window.showQuickPick` — returns chosen item indices, null on cancel. */

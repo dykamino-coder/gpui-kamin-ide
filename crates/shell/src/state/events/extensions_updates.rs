@@ -71,6 +71,7 @@ impl RootView {
                         title: None,
                         message: format!("Update failed: {err}"),
                         actions: vec!["Dismiss".into()],
+                        duration_ms: None,
                         sticky: true,
                     }));
             }
@@ -142,6 +143,7 @@ impl RootView {
                         title: None,
                         message: msg,
                         actions: Vec::new(),
+                        duration_ms: None,
                         sticky: false,
                     };
                     let base = crate::host_link::client()
