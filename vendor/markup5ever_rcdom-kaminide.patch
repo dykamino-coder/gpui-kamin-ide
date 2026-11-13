@@ -1133,7 +1133,7 @@ index 0000000000000000000000000000000000000000..6a37e5ca289081fefe10a3423590ca4e
 +        .unwrap();
 +}
 diff --git a/vendor/markup5ever_rcdom/lib.rs b/vendor/markup5ever_rcdom/lib.rs
-index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fefabf17f5
+index 3cd9c2a93fee730db545c66ba9b4252714335aec..2100869844ccf4fb5f00742e3ac834c2f51f6cee
 --- a/vendor/markup5ever_rcdom/lib.rs
 +++ b/vendor/markup5ever_rcdom/lib.rs
 @@ -49,0 +50,3 @@
@@ -1211,7 +1211,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -
 -    fn parent(&self) -> Option<Weak<Self>> {
 +    fn parent(&self) -> Option<WeakHandle> {
-@@ -188,78 +156,0 @@
+@@ -188,77 +157,37 @@
 -
 -    /// <https://html.spec.whatwg.org/#select-enabled-selectedcontent>
 -    fn get_a_selects_enabled_selectedcontent(&self) -> Option<Rc<Self>> {
@@ -1289,8 +1289,44 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -            data: self.data.clone(),
 -            children: RefCell::new(children),
 -        })
--    }
-@@ -270,4 +161,12 @@
++}
++
++impl Node {
++    /// KaminIDE patch: heap blocks this node holds besides its own `Rc` block, its children
++    /// and its text: the child and attribute lists and the admission leases (requested
++    /// bytes), for the engine bench's memory report. Walked only on request.
++    pub fn heap_blocks(&self, sink: &mut dyn FnMut(*const u8, usize)) {
++        fn list<T>(sink: &mut dyn FnMut(*const u8, usize), items: &[T], capacity: usize) {
++            if capacity > 0 && mem::size_of::<T>() > 0 {
++                sink(items.as_ptr().cast(), capacity * mem::size_of::<T>());
++            }
++        }
++        fn lease(sink: &mut dyn FnMut(*const u8, usize), lease: &admission::Lease) {
++            if let Some(value) = lease {
++                let value: &(dyn std::any::Any + Send + Sync) = &**value;
++                let align = mem::align_of_val(value).max(mem::align_of::<usize>());
++                let header = (2 * mem::size_of::<usize>()).next_multiple_of(align);
++                let bytes = (header + mem::size_of_val(value)).next_multiple_of(align);
++                let start = (value as *const dyn std::any::Any).cast::<u8>();
++                sink(start.wrapping_sub(header), bytes);
++            }
++        }
++        if let Ok(children) = self.children.try_borrow() {
++            list(sink, &children, children.capacity());
++        }
++        if let NodeData::Element { attrs, .. } = &self.data {
++            if let Ok(attrs) = attrs.try_borrow() {
++                list(sink, &attrs, attrs.capacity());
++            }
++        }
++        for cell in [&self.children_lease, &self.attrs_lease, &self.payload_lease] {
++            if let Ok(held) = cell.try_borrow() {
++                lease(sink, &held);
++            }
++        }
++        lease(sink, &self._logical_node);
++        lease(sink, &self._node_lease);
+@@ -270,4 +199,12 @@
 -        let mut nodes = mem::take(&mut *self.children.borrow_mut());
 -        while let Some(node) = nodes.pop() {
 -            let children = mem::take(&mut *node.children.borrow_mut());
@@ -1307,18 +1343,18 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 +            for child in mem::take(&mut *node.children.borrow_mut()) {
 +                enqueue(child, pending);
 +            }
-@@ -275,3 +174,2 @@
+@@ -275,3 +212,2 @@
 -                ref template_contents,
 -                ..
 -            } = node.data
 +                template_contents, ..
 +            } = &node.data
-@@ -279,2 +177,2 @@
+@@ -279,2 +215,2 @@
 -                if let Some(template_contents) = template_contents.borrow_mut().take() {
 -                    nodes.push(template_contents);
 +                if let Some(fragment) = template_contents.borrow_mut().take() {
 +                    enqueue(fragment, pending);
-@@ -284,2 +182,14 @@
+@@ -284,2 +220,14 @@
 -    }
 -}
 +        let mut pending = None;
@@ -1335,7 +1371,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 +#[cfg(test)]
 +#[path = "drop_tests.rs"]
 +mod drop_tests;
-@@ -300 +210,18 @@
+@@ -300 +248,18 @@
 -pub type WeakHandle = Weak<Node>;
 +#[derive(Clone)]
 +pub struct WeakHandle {
@@ -1355,10 +1391,10 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 +        self.weak.upgrade()
 +    }
 +}
-@@ -304 +231 @@
+@@ -304 +269 @@
 -    let previous_parent = child.parent.replace(Some(Rc::downgrade(new_parent)));
 +    let previous_parent = child.parent.replace(Some(WeakHandle::new(new_parent)));
-@@ -311,30 +237,0 @@
+@@ -311,30 +275,0 @@
 -fn get_parent_and_index(target: &Handle) -> Option<(Handle, usize)> {
 -    if let Some(weak) = target.parent.take() {
 -        let parent = weak.upgrade().expect("dangling weak pointer");
@@ -1389,22 +1425,22 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -    }
 -}
 -
-@@ -342,4 +239 @@
+@@ -342,4 +277 @@
 -    if let Some((parent, i)) = get_parent_and_index(target) {
 -        parent.children.borrow_mut().remove(i);
 -        target.parent.set(None);
 -    }
 +    admission::infallible(admission::remove(target, &admission::Unbounded));
-@@ -357,0 +252,2 @@
+@@ -357,0 +290,2 @@
 +    errors_lease: RefCell<admission::Lease>,
 +    errors_owned: RefCell<admission::Work<admission::Lease>>,
-@@ -363 +259 @@
+@@ -363 +297 @@
 -        self
 +        admission::infallible(self.try_finish(&admission::Unbounded))
-@@ -374 +270 @@
+@@ -374 +308 @@
 -        self.errors.borrow_mut().push(msg);
 +        admission::infallible(self.try_parse_error(msg, &admission::Unbounded))
-@@ -413,10 +309 @@
+@@ -413,10 +347 @@
 -        Node::new(NodeData::Element {
 -            name,
 -            attrs: RefCell::new(attrs),
@@ -1416,16 +1452,16 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -            mathml_annotation_xml_integration_point: flags.mathml_annotation_xml_integration_point,
 -        })
 +        admission::infallible(self.try_create_element(name, attrs, flags, &admission::Unbounded))
-@@ -426 +313 @@
+@@ -426 +351 @@
 -        Node::new(NodeData::Comment { contents: text })
 +        admission::infallible(self.try_create_comment(text, &admission::Unbounded))
-@@ -430,4 +317 @@
+@@ -430,4 +355 @@
 -        Node::new(NodeData::ProcessingInstruction {
 -            target,
 -            contents: data,
 -        })
 +        admission::infallible(self.try_create_pi(target, data, &admission::Unbounded))
-@@ -437,18 +321 @@
+@@ -437,18 +359 @@
 -        // Append to an existing Text node if we have one.
 -        if let NodeOrText::AppendText(text) = &child {
 -            if let Some(h) = parent.children.borrow().last() {
@@ -1445,7 +1481,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -            },
 -        );
 +        admission::infallible(self.try_append(parent, child, &admission::Unbounded))
-@@ -458,32 +325 @@
+@@ -458,32 +363 @@
 -        let (parent, i) = get_parent_and_index(sibling)
 -            .expect("append_before_sibling called on node without parent");
 -
@@ -1479,7 +1515,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -        child.parent.set(Some(Rc::downgrade(&parent)));
 -        parent.children.borrow_mut().insert(i, child);
 +        admission::infallible(self.try_before_sibling(sibling, child, &admission::Unbounded))
-@@ -498,9 +334,6 @@
+@@ -498,9 +372,6 @@
 -        let parent = element.parent.take();
 -        let has_parent = parent.is_some();
 -        element.parent.set(parent);
@@ -1495,7 +1531,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 +            child,
 +            &admission::Unbounded,
 +        ))
-@@ -515,8 +348 @@
+@@ -515,8 +386 @@
 -        append(
 -            &self.document,
 -            Node::new(NodeData::Doctype {
@@ -1505,7 +1541,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -            }),
 -        );
 +        admission::infallible(self.try_doctype(name, public_id, system_id, &admission::Unbounded))
-@@ -526,15 +352 @@
+@@ -526,15 +390 @@
 -        let mut existing = if let NodeData::Element { ref attrs, .. } = target.data {
 -            attrs.borrow_mut()
 -        } else {
@@ -1522,7 +1558,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -                .filter(|attr| !existing_names.contains(&attr.name)),
 -        );
 +        admission::infallible(self.try_attributes(target, attrs, &admission::Unbounded))
-@@ -548,10 +360 @@
+@@ -548,10 +398 @@
 -        let mut children = node.children.borrow_mut();
 -        let mut new_children = new_parent.children.borrow_mut();
 -        for child in children.iter() {
@@ -1534,7 +1570,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -        }
 -        new_children.extend(mem::take(&mut *children));
 +        admission::infallible(self.try_reparent(node, new_parent, &admission::Unbounded))
-@@ -571,0 +375,11 @@
+@@ -571,0 +413,11 @@
 +    /// KaminIDE patch: снятие узла со стека открытых элементов.
 +    ///
 +    /// Спецификация требует переносить содержимое выбранного `<option>` в
@@ -1546,7 +1582,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 +        admission::infallible(self.try_pop(node, &admission::Unbounded))
 +    }
 +
-@@ -573,24 +387 @@
+@@ -573,24 +425 @@
 -        let NodeData::Element { name, attrs, .. } = &option.data else {
 -            panic!("\"maybe clone an option into selectedcontent\" called with non-element node");
 -        };
@@ -1572,13 +1608,13 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fe
 -            }
 -        }
 +        admission::infallible(self.try_selectedcontent(option, &admission::Unbounded))
-@@ -605,0 +397,2 @@
+@@ -605,0 +435,2 @@
 +            errors_lease: RefCell::new(None),
 +            errors_owned: RefCell::new(admission::Work::new()),
-@@ -659 +452 @@
+@@ -659 +490 @@
 -                    },
 +                    }
-@@ -677 +470 @@
+@@ -677 +508 @@
 -                },
 +                }
 diff --git a/vendor/markup5ever_rcdom/selectedcontent_tests.rs b/vendor/markup5ever_rcdom/selectedcontent_tests.rs

@@ -9136,6 +9136,50 @@ fn with_element_arena_erased(callback: &mut dyn FnMut(&mut Arena)) -> Result<(),
     }
 }
 
+impl Frame {
+    /// KaminIDE patch: the frame's buffers and tables for the engine bench's memory report
+    /// (`crate::heap_report`). What listeners and element states own is not walked.
+    fn heap_report(&self, sink: &mut crate::heap_report::HeapSink) {
+        use crate::heap_report::{table, vec};
+        let path = "gpui/frame";
+        table::<((GlobalElementId, TypeId), ElementStateBox)>(sink, path, self.element_states.capacity());
+        vec(sink, path, &self.accessed_element_states);
+        vec(sink, path, &self.mouse_listeners);
+        for listener in self.mouse_listeners.iter().flatten() {
+            crate::heap_report::boxed(sink, "gpui/listeners", &**listener);
+        }
+        for state in self.element_states.values() {
+            crate::heap_report::boxed(sink, "gpui/element-states", &*state.inner);
+        }
+        vec(sink, "gpui/hitboxes", &self.hitboxes);
+        table::<(HitboxId, Rc<hit_transform::HitScope>)>(sink, path, self.hitbox_scopes.capacity());
+        table::<(usize, Option<Rc<hit_transform::HitScope>>)>(sink, path, self.hitbox_entry_scopes.capacity());
+        vec(sink, path, &self.window_control_hitboxes);
+        vec(sink, path, &self.deferred_draws);
+        vec(sink, path, &self.input_handlers);
+        vec(sink, path, &self.tooltip_requests);
+        vec(sink, path, &self.cursor_styles);
+        self.scene.heap_report(sink);
+    }
+}
+
+impl Window {
+    /// KaminIDE patch: heap blocks the window holds, by owner path, for the engine bench's
+    /// memory report (`ENGINE_BENCH_MEMORY_REPORT`): element arena, both frames with their
+    /// display lists, the layout engine and the shaped line caches. Walked only on request.
+    pub fn heap_report(&self, cx: &App, sink: &mut crate::heap_report::HeapSink) {
+        if let Ok(arena) = cx.element_arena.try_borrow() {
+            arena.heap_report(sink);
+        }
+        self.rendered_frame.heap_report(sink);
+        self.next_frame.heap_report(sink);
+        if let Some(engine) = &self.layout_engine {
+            engine.heap_report(sink);
+        }
+        self.text_system.heap_report(sink);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{

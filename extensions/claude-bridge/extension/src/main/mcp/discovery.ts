@@ -267,6 +267,7 @@ export async function discoverProjectConfigs(projectRoots: Iterable<string>): Pr
     const configs = parseMcpJson(parsed, mcpJson)
     for (const config of configs) {
       config.sourceType = 'project'
+      config.projectRoot = root
       config.description = `From ${path.basename(root)}/.mcp.json`
     }
     return configs

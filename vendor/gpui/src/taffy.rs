@@ -29,6 +29,22 @@ pub use measured_box::MeasuredBox;
 pub use measured_content::{MeasuredContent, MeasuredStaticPosition};
 pub use measurement::LayoutMeasurement;
 
+impl TaffyLayoutEngine {
+    /// KaminIDE patch: the layout tree and the engine's maps for the engine bench's memory
+    /// report (`crate::heap_report`).
+    pub(crate) fn heap_report(&self, sink: &mut crate::heap_report::HeapSink) {
+        use crate::heap_report::{table, vec};
+        self.taffy.heap_report(sink);
+        let path = "gpui/layout-engine";
+        table::<(LayoutId, Bounds<Pixels>)>(sink, path, self.absolute_layout_bounds.capacity());
+        table::<(LayoutId, (f32, f32))>(sink, path, self.absolute_unrounded.capacity());
+        table::<(LayoutId, (f32, f32))>(sink, path, self.root_origins.capacity());
+        table::<(LayoutId, (f32, f32))>(sink, path, self.placed_origins.capacity());
+        table::<LayoutId>(sink, path, self.computed_layouts.capacity());
+        vec(sink, path, &self.layout_bounds_scratch_space);
+    }
+}
+
 #[cfg(test)]
 mod root_origin_tests;
 

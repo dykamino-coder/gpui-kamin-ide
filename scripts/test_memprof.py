@@ -123,6 +123,33 @@ class Folding(unittest.TestCase):
         self.assertEqual(report["schema"], memprof.SCHEMA)
         json.dumps(report)
 
+    def test_owner_report_reconciles_with_the_live_heap_at_its_start(self):
+        header = "# engine_bench alloc stacks v3 base=0 filter=* until=- sample=0"
+        run = self.run_of([
+            "a 1 layout 100 10 1 2",
+            "a 1 paint 30 20 1 3",
+            "a 1 paint 7 30 1 3",
+            "a 1 style 50 40 1 4",
+            "f 1 paint 7 30",
+            "o dom/nodes 10 100",
+            "a 2 outside 999 50 1 4",  # allocated during the walk: after the snapshot
+            "o layout/taffy 20 24",  # a wrong size is reported, the block still matches
+            "o layout/taffy 0 50",  # no address: an estimate claims the live block of its size
+            "o style/computed 30 7",  # freed before the report: unmatched
+        ], header=header)
+        owners = run.owners
+        self.assertEqual(owners["paths"], {"dom/nodes": 100, "layout/taffy": 74, "style/computed": 7})
+        self.assertEqual(owners["live_bytes"], 180)
+        self.assertEqual(owners["matched_bytes"], 130)
+        self.assertEqual(owners["matched_by_size_bytes"], 50)
+        self.assertEqual(owners["estimated_bytes"], 50)
+        self.assertEqual(owners["unmatched_bytes"], 7)
+        self.assertEqual(owners["size_mismatches"], 1)
+        report = memprof.build_report(run, None, True, 8, 10)
+        self.assertEqual([r["owner"] for r in report["owners"]], ["dom/nodes", "layout/taffy", "style/computed"])
+        self.assertEqual(report["unreported_sites"], [])
+        json.dumps(report)
+
 
 if __name__ == "__main__":
     unittest.main()

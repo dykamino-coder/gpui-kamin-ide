@@ -24,6 +24,8 @@ mod sample;
 mod sink;
 mod window;
 
+#[cfg(feature = "heap-report")]
+pub(crate) use line::owned;
 use line::{emit, head};
 use window::{Filter, Until};
 

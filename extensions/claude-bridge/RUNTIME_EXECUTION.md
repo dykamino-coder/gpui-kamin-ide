@@ -140,6 +140,30 @@ BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа �
 0087–0092 и строка INC-0042 в обзоре отстают от уже смерженных PR; их приводит в
 соответствие reconciliation PR kmaint без нового fix.
 
+### Смена исполнителей 2026-11-13
+
+Таблицы выше сохраняют исходное распределение. Для снижения нагрузки на машину
+лид сократил параллельных исполнителей. Состав пачки и gates не меняются.
+
+- Активны:
+  - Claude: kmaint (verify, реестр, merge, release) и duckspeed;
+  - Codex через драйвер: cxstats (учёт Codex в админке и таблица PTY-сессий,
+    вместо codexstats), cxinc (INC-0108, INC-0107, INC-0042) и cxdeps
+    ([#814](https://github.com/dykamino-coder/gpui-kamin-ide/pull/814):
+    Codex CLI 0.167.2 и npm minor);
+  - relayout10 работает на движке, вне пачки.
+- Остановлены: kfix, kresearch, khooks, kchat, kses, knative, kdeps, toolspeed.
+  Их незакоммиченные черновики остаются в своих seats.
+- Неназначенные ID ждут свободного Codex-слота, очередь ведёт kmaint. Это
+  остатки kfix/kresearch/khooks/kchat/kses/knative из таблиц выше.
+  - Уже приняты: BR-21 decision
+    ([#810](https://github.com/dykamino-coder/gpui-kamin-ide/pull/810)) и
+    INC-0064 design
+    ([#812](https://github.com/dykamino-coder/gpui-kamin-ide/pull/812)).
+  - INC-0094 research — в
+    [#813](https://github.com/dykamino-coder/gpui-kamin-ide/pull/813).
+  - #797 и #804 ведёт лид.
+
 ### Вне пачки (backlog следующего запуска)
 
 - INC-0085 — owner engine (см. выше).
@@ -445,7 +469,7 @@ production-run требует repository secrets и отдельный след�
 | [BR-01](RUNTIME_RELIABILITY.md#br-01--durable-incident-diagnostics) | done | observation | diagnostics | none | Только следующий реальный incident bundle |
 | [BR-02](RUNTIME_RELIABILITY.md#br-02--calibrate-the-long-session-memory-envelope) | ready | research | long session | BR-01 и BR-30 выполнены | Повторяемый Windows envelope artifact |
 | [BR-03](RUNTIME_RELIABILITY.md#br-03--long-session-mitigation) | deferred | change | long session | решение BR-02 | Минимальная доказанная mitigation |
-| [BR-04](RUNTIME_RELIABILITY.md#br-04--recover-webviews-after-extension-host-respawn) | ready | verify | exthost recovery | PR #148 и #152 merged | Windows respawn gate для вью/документов; active editor/selection/LSP — отдельный child после уточнения |
+| [BR-04](RUNTIME_RELIABILITY.md#br-04--recover-webviews-after-extension-host-respawn) | ready | verify | exthost recovery | PR #148, #152 и #832 merged; Windows gate #832 (Chat/Agents) passed 2026-11-13 | После 1.0.95 — respawn на установленном релизе; документы/active editor/selection/LSP — отдельный child после уточнения |
 | [BR-05](RUNTIME_RELIABILITY.md#br-05--rehydrate-authoritative-connection-state) | ready | verify | connection | код PR #14 merged | Остаток live gate: send/close-tab/server errors на exact-main server |
 | [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | ready | verify | rendering/connection | BR-31 implementation PR #147 merged; его R6 ещё открыт | Повторить оба исходных Chat no-pointer сценария и Plugins; сверить duplicate/остаток |
 | [BR-07](RUNTIME_RELIABILITY.md#br-07--surface-native-claude-attention-in-chat) | waiting | change | native attention | BR-11 | Минимальный tab-scoped Console banner |
@@ -461,7 +485,7 @@ production-run требует repository secrets и отдельный след�
 | [BR-17](RUNTIME_RELIABILITY.md#br-17--persist-privacy-safe-bridge-server-logs) | verify | observation | server operations | PR #203 merged | Production rollout of the lifecycle volume + read-only confirmation (deployment owner) |
 | [BR-18](RUNTIME_RELIABILITY.md#br-18--keep-sessionend-relay-available-and-secret-safe-during-teardown) | done | observation | teardown | BR-17 для остаточной причины | PR #20 в `main`; trigger классифицируется по новым logs |
 | [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | ready | verify | local hooks | BR-18 relay fix merged | Bounded local SessionEnd outcome/contract artifact; functional fix отдельно |
-| [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | ready | verify | lifecycle RPC | PR #146 merged | Живой Windows disconnect/reconnect без ложного crash; task-specific evidence |
+| [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | ready | verify | lifecycle RPC | PR #146 merged; probe `hostDisconnect` PR #830 merged; reconnect/crash containment passed 2026-11-13 | Остаток: pending dialog/picker в момент разрыва и реальная ошибка запроса после reconnect |
 | [BR-20](RUNTIME_RELIABILITY.md#br-20--restore-complete-claude-plan-usage-windows) | done | none | account usage | none | PR #202 in `main`; authenticated Podman CLI/dashboard/Account gate passed on exact head; follow-up #307 in `main` reuses BR-20 `parseStatusline` for the chat input limits row (no change to BR-20 scope or status) |
 | [BR-21](RUNTIME_RELIABILITY.md#br-21--define-and-reconcile-dashboard-analytics-semantics) | ready | research | analytics | none | Сначала metric-contract decision PR; child PR ниже |
 | [BR-22](RUNTIME_RELIABILITY.md#br-22--keep-live-chat-render-window-populated-by-drawable-rows) | ready | verify | chat history | none для source/synthetic research; paired dumps для historical attribution | Drawable-row window fix merged в [#388](https://github.com/dykamino-coder/gpui-kamin-ide/pull/388) (INC-2026-0071, Windows gate passed); после релиза — field observation; BR-16 ждёт завершения классификации |
@@ -471,7 +495,7 @@ production-run требует repository secrets и отдельный след�
 | [BR-26](RUNTIME_RELIABILITY.md#br-26--publish-agent-replay-state-atomically) | done | none | Agent Teams UI | none | Generation-scoped replay staging в `main`; BR-25 completion ждёт BR-31 |
 | [BR-27](RUNTIME_RELIABILITY.md#br-27--derive-active-and-completed-from-one-lifecycle-partition) | done | none | Agent Teams UI | none | Partition + parser fix в `main`; BR-26 также done |
 | [BR-28](RUNTIME_RELIABILITY.md#br-28--measure-sidebar-geometry-during-session-hover) | done | none | native sidebar | none | Paired artifact INC-2026-0003: sibling reflow не воспроизводится |
-| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | ready | verify | native sidebar | код PR #37 merged | Windows focus/typing/keyboard/hitbox acceptance |
+| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | ready | change | native sidebar | код PR #37 merged; F2/Escape passed 2026-11-13 (probe `keystroke`, #830) | Enter не коммитит rename (`PressEnter` без rename-ветки), Tab не двигает кольцо фокуса — fix в очереди cxinc, затем Windows gate |
 | [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation) | done | none | diagnostics | none | PR #31 + #47; Windows 12/12 на main 686cc92; BR-02 разблокирован |
 | [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | ready | verify | CEF/webview delivery | PR #147 merged | Windows R6 без pointer/forced repaint; rows и invoke reply ≤ 1 с |
 

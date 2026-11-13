@@ -40,6 +40,50 @@ impl MeasureCache {
     }
 }
 
+#[cfg(feature = "heap-report")]
+impl MeasureCache {
+    /// Замеры абзацев документа для отчёта памяти по владельцам: разрезы на
+    /// строки, позиции и раскладки кусков выключки. Раскладку, общую с кэшем
+    /// строк GPUI, считает тот, кто обошёл её первым.
+    pub(crate) fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
+        let splits = self.splits.try_borrow().map_or(0, |cache| {
+            cache.heap_size(ops, |lines, ops| match ops.shallow(Rc::as_ptr(lines)) {
+                0 => 0,
+                own => own + ops.buffer(lines.as_ptr(), lines.capacity()),
+            })
+        });
+        let fitted = self
+            .fitted
+            .try_borrow()
+            .map_or(0, |cache| cache.heap_size(ops, |_, _| 0));
+        let measured = self.measured.try_borrow().map_or(0, |cache| {
+            cache.heap_size(ops, |segs, ops| {
+                let mut total = ops.buffer(segs.as_ptr(), segs.capacity());
+                for seg in segs {
+                    let layout = ops.shallow(std::sync::Arc::as_ptr(&seg.layout));
+                    if layout > 0 {
+                        let runs = &seg.layout.runs;
+                        total += layout + ops.buffer(runs.as_ptr(), runs.capacity());
+                        for run in runs {
+                            total += ops.buffer(run.glyphs.as_ptr(), run.glyphs.capacity());
+                        }
+                    }
+                    let own = ops.shallow(Rc::as_ptr(&seg.positions));
+                    if own > 0 {
+                        total += own
+                            + seg
+                                .positions
+                                .get()
+                                .map_or(0, |list| ops.buffer(list.as_ptr(), list.capacity()));
+                    }
+                }
+                total
+            })
+        });
+        splits + fitted + measured
+    }
+}
+
 impl crate::text::paragraph::Paragraph {
     /// Запомнить части замера `key` (абзац без частей — ничего): список
     /// хранится в памяти строк текстовой системы рядом с самими частями.
