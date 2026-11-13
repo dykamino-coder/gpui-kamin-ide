@@ -8,6 +8,9 @@ export default defineConfig({
   build: {
     outDir: '../../dist/dashboard',
     emptyOutDir: true,
+    rollupOptions: {
+      input: { dashboard: resolve(__dirname, 'index.html'), api: resolve(__dirname, 'api-docs.html') },
+    },
   },
   resolve: {
     alias: {

@@ -31,7 +31,7 @@ const copiedId = signal<string | null>(null)
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('dashboard_session_token')
-  return token ? { 'Authorization': `Bearer ${token}` } : {}
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 async function fetchTokens() {
@@ -77,7 +77,9 @@ function copyToClipboard(text: string, id: string) {
     document.body.appendChild(ta)
     ta.focus()
     ta.select()
-    try { document.execCommand('copy') } catch {}
+    try {
+      document.execCommand('copy')
+    } catch {}
     document.body.removeChild(ta)
   }
   if (navigator.clipboard?.writeText) {
@@ -86,7 +88,20 @@ function copyToClipboard(text: string, id: string) {
     fallback()
   }
   copiedId.value = id
-  setTimeout(() => { if (copiedId.value === id) copiedId.value = null }, 1500)
+  setTimeout(() => {
+    if (copiedId.value === id) copiedId.value = null
+  }, 1500)
+}
+
+async function copySetupToken(token: ApiToken) {
+  // Lists are masked. The existing setup issuance/recovery operation returns
+  // the credential only when the administrator explicitly requests a copy.
+  const response = await fetch('/api/dashboard/tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name: token.name }),
+  })
+  if (response.ok) copyToClipboard(((await response.json()) as ApiToken).token, token.id)
 }
 
 function maskToken(token: string): string {
@@ -103,7 +118,9 @@ function formatDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export function ApiTokens() {
-  useEffect(() => { fetchTokens() }, [])
+  useEffect(() => {
+    fetchTokens()
+  }, [])
 
   const openCreate = () => {
     newName.value = ''
@@ -146,11 +163,7 @@ export function ApiTokens() {
                   <td class={styles.cellName}>{t.name}</td>
                   <td class={styles.cellToken}>
                     <code class={styles.tokenCode}>{maskToken(t.token)}</code>
-                    <button
-                      class={styles.copyBtn}
-                      onClick={() => copyToClipboard(t.token, t.id)}
-                      title="Copy token"
-                    >
+                    <button class={styles.copyBtn} onClick={() => void copySetupToken(t)} title="Copy token">
                       <i class={copiedId.value === t.id ? 'fa-solid fa-check' : 'fa-solid fa-copy'} />
                     </button>
                   </td>
@@ -174,7 +187,15 @@ export function ApiTokens() {
           How to Connect
         </div>
         <div class={styles.guideContent}>
-          <ol style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: '1.8' }}>
+          <ol
+            style={{
+              margin: 0,
+              paddingLeft: '20px',
+              color: 'var(--text-secondary)',
+              fontSize: '13px',
+              lineHeight: '1.8',
+            }}
+          >
             <li>Create a token above</li>
             <li>Download and install the KaminIDE client</li>
             <li>Enter the server URL and your token in the client settings</li>
@@ -184,10 +205,23 @@ export function ApiTokens() {
       </div>
 
       {/* Create modal */}
-      <Modal isOpen={showModal.value} onClose={() => { showModal.value = false }} title="Create API Token" size="sm"
+      <Modal
+        isOpen={showModal.value}
+        onClose={() => {
+          showModal.value = false
+        }}
+        title="Create API Token"
+        size="sm"
         footer={
           <>
-            <button class={styles.cancelBtn} onClick={() => { showModal.value = false }}>Cancel</button>
+            <button
+              class={styles.cancelBtn}
+              onClick={() => {
+                showModal.value = false
+              }}
+            >
+              Cancel
+            </button>
             <button class={styles.submitBtn} onClick={handleCreate} disabled={creating.value || !newName.value.trim()}>
               {creating.value ? 'Creating...' : 'Create'}
             </button>
@@ -201,8 +235,12 @@ export function ApiTokens() {
             type="text"
             placeholder="e.g. My Laptop, John, Work PC"
             value={newName.value}
-            onInput={(e) => { newName.value = (e.target as HTMLInputElement).value }}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleCreate() }}
+            onInput={(e) => {
+              newName.value = (e.target as HTMLInputElement).value
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCreate()
+            }}
             autoFocus
           />
         </div>
