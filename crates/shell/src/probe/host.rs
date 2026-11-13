@@ -17,7 +17,8 @@ impl ProbeHandler for ShellProbe {
         if let Some(reply) = crate::native_acceptance::handle(cmd, req) {
             return reply;
         }
-        crate::probe::cmds::inspect::handle_inspect(cmd, req)
+        crate::probe::cmds::lifecycle::handle(cmd, req)
+            .or_else(|| crate::probe::cmds::inspect::handle_inspect(cmd, req))
             .or_else(|| crate::probe::cmds::input::handle_input(cmd, req))
             .or_else(|| crate::probe::cmds::app::handle_app(cmd, req))
             .or_else(|| crate::probe::cmds::accept::handle_accept(cmd, req))
@@ -53,4 +54,30 @@ pub fn start() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_disconnect_is_routed_without_a_connected_client() {
+        let reply = ShellProbe.handle("hostDisconnect", &json!({}));
+        assert_eq!(
+            reply,
+            json!({"ok": false, "err": "host client not connected"})
+        );
+    }
+
+    #[test]
+    fn keystroke_is_routed_and_validates_key_before_window_lookup() {
+        let reply = ShellProbe.handle("keystroke", &json!({}));
+        assert_eq!(reply["ok"], false);
+        assert!(
+            reply["err"]
+                .as_str()
+                .unwrap()
+                .starts_with("key is required")
+        );
+    }
 }
