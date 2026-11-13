@@ -80,9 +80,12 @@ impl RootView {
             {
                 let _ = self.tx.try_send(ShellEvent::RunCommand(first.id.clone()));
             }
-        } else if self.renaming_session.is_some() {
+        } else if let Some(id) = &self.renaming_session {
             // Root keymap потребляет Enter раньше on_key_down строки.
             let _ = self.tx.try_send(ShellEvent::CommitRename);
+            // Хэндл инпута умирает вместе с ним: без возврата фокус остаётся
+            // на мёртвом id, и Tab/F2 не доходят до Root до первого клика.
+            self.modal_focus_return = Some(format!("srow:{id}"));
         }
         cx.notify();
     }

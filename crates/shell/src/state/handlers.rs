@@ -172,9 +172,10 @@ impl RootView {
             } else if this.layout_popover || this.appearance_popover {
                 this.layout_popover = false;
                 this.appearance_popover = false;
-            } else if this.renaming_session.is_some() {
-                this.renaming_session = None;
+            } else if let Some(id) = this.renaming_session.take() {
                 this.rename_input = None;
+                // Как Enter: фокус возвращается строке, а не мёртвому инпуту.
+                this.modal_focus_return = Some(format!("srow:{id}"));
             }
             cx.notify();
         }))

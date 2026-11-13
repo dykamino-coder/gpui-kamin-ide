@@ -140,6 +140,33 @@ fn enter_commits_the_focused_rename_input_once_and_escape_still_cancels(cx: &mut
 }
 
 #[gpui::test]
+fn keyboard_rename_exit_returns_focus_to_its_row(cx: &mut TestAppContext) {
+    let _guard = SERIAL.lock().unwrap_or_else(|err| err.into_inner());
+    let (_, root, rx, cx) = fixture(cx);
+    for key in ["enter", "escape"] {
+        rename(&root, cx);
+        root.update(cx, |root, _| {
+            root.renaming_session = Some("keymap-first".into());
+        });
+        assert!(press(key, cx));
+        let back = root.update(cx, |root, _| root.modal_focus_return.take());
+        assert_eq!(back.as_deref(), Some(FIRST), "{key} must return focus");
+        // Строки снова рисуются вместо инпута, как после Commit/CancelRename.
+        root.update(cx, |root, cx| {
+            root.renaming_session = None;
+            root.rename_input = None;
+            cx.notify();
+        });
+        draw(cx);
+        cx.update(|window, cx| assert!(focus_id(FIRST, window, cx)));
+        draw(cx);
+        assert!(press("tab", cx), "Root keys work after {key}");
+        assert_eq!(focused_id().as_deref(), Some(SECOND));
+    }
+    assert_eq!(commits(&rx), 1, "only Enter commits");
+}
+
+#[gpui::test]
 fn tab_and_shift_tab_move_the_visible_focus_ring_and_respect_webview(cx: &mut TestAppContext) {
     let _guard = SERIAL.lock().unwrap_or_else(|err| err.into_inner());
     let (keys, _, _, cx) = fixture(cx);
