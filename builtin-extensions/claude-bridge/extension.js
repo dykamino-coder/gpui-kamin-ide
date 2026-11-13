@@ -47719,8 +47719,9 @@ async function listPendingHookApprovals() {
 async function requestHookApproval(pluginId, pluginRoot) {
   const pending = await getPendingHookApproval(pluginId, pluginRoot);
   if (!pending) return;
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed()) ?? null;
-  if (win) win.webContents.send("plugin-hooks:awaiting-approval", pending);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("plugin-hooks:awaiting-approval", pending);
+  }
 }
 async function requestDependencyHookApprovals(data, dependencyIds) {
   for (const dependencyId of dependencyIds) {
