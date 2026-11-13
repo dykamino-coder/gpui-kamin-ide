@@ -32,11 +32,13 @@
 
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { accountingEventsSelect, type IndexedFilter } from './accounting-schema'
+import { OPENAI_LONG_CONTEXT_TOKENS } from '../../../shared/openai-pricing'
 import { withStatsWrite } from './write-lock'
 import { debugLog, infoLog, warnLog } from '../../logging'
+import type { EngineFilter } from '../engine-filter'
 
 /** Bump to rebuild the rollup when its definition changes. */
-export const ROLLUP_VERSION = '4'
+export const ROLLUP_VERSION = '5'
 const BUILD_CHUNKS = 32
 /** Sessions per drain transaction (one write turn; ~5 s for 256 sessions on a 10 GB
  *  database, well under the write-lock head timeout; smaller batches cost more in total). */
@@ -102,6 +104,7 @@ export function rollupSelect(filter = 'TRUE', indexed?: IndexedFilter): string {
       e.model AS model,
       ${engine} AS engine,
       (e.type = 'assistant' AND ${ctx} > 100000) AS long_prompt,
+      (e.type = 'assistant' AND ${ctx} > ${OPENAI_LONG_CONTEXT_TOKENS}) AS long_context,
       COUNT(*) AS events,
       SUM(CASE WHEN e.type = 'user' THEN 1 ELSE 0 END) AS user_msgs,
       SUM(CASE WHEN e.type = 'assistant' THEN 1 ELSE 0 END) AS assistant_msgs,
@@ -120,7 +123,7 @@ export function rollupSelect(filter = 'TRUE', indexed?: IndexedFilter): string {
     GROUP BY ALL`
 }
 
-const COLUMNS = `session_id, sid, u, session_key, is_subagent, bucket, model, engine, long_prompt, events, user_msgs,
+const COLUMNS = `session_id, sid, u, session_key, is_subagent, bucket, model, engine, long_prompt, long_context, events, user_msgs,
   assistant_msgs, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cache_write_1h_tokens,
   first_ts, last_ts, last_ctx, last_ctx_key`
 
@@ -140,6 +143,7 @@ const SESSION_SUMS = [
 export function sessionLiveSelect(src: string): string {
   return `SELECT ANY_VALUE(session_id) AS session_id, sid, ANY_VALUE(u) AS u, MIN(first_ts) AS first_ts, MAX(last_ts) AS last_ts,
       date_trunc('hour', MAX(bucket)) AS last_hour, arg_max(last_ctx, last_ctx_key) AS ctx,
+      string_agg(DISTINCT engine, ',' ORDER BY engine) AS engines,
       ${SESSION_SUMS.map((c) => `SUM(${c}) AS ${c}`).join(', ')},
       -- last_ctx_key = the group's last top-level assistant row (tool rows carry a model too).
       arg_max(model, last_ctx_key) FILTER (WHERE last_ctx_key IS NOT NULL AND model IS NOT NULL AND model != '') AS model
@@ -157,7 +161,7 @@ const USER_MODEL_SUMS = [
   'cache_write_1h_tokens',
 ]
 export function userModelSelect(src: string, sign = 1): string {
-  return `SELECT u, COALESCE(model, '') AS model, long_prompt,
+  return `SELECT u, COALESCE(model, '') AS model, engine, long_prompt, long_context,
       ${USER_MODEL_SUMS.map((c) => `${sign} * SUM(${c}) AS ${c}`).join(', ')}
     FROM ${src} WHERE u IS NOT NULL GROUP BY ALL`
 }
@@ -179,21 +183,27 @@ export function userHourSessionsSelect(src: string, sign = 1): string {
 }
 
 const DERIVED = {
-  stats_user_model: { keys: 'u, model, long_prompt', sums: USER_MODEL_SUMS, select: userModelSelect },
+  stats_user_model: {
+    keys: 'u, model, engine, long_prompt, long_context',
+    sums: USER_MODEL_SUMS,
+    select: userModelSelect,
+  },
   stats_user_hour: { keys: 'u, hour, model', sums: USER_HOUR_SUMS, select: userHourSelect },
   stats_user_hour_sessions: { keys: 'u, hour, g', sums: ['n'], select: userHourSessionsSelect },
 } as const
 
 /** Readers: the maintained table once built, else the same rows inline. */
-export function derivedSource(table: keyof typeof DERIVED | 'stats_session_live'): string {
-  if (built) return table
-  const l1 = `(${rollupSelect()})`
+export function derivedSource(table: keyof typeof DERIVED | 'stats_session_live', engine: EngineFilter = null): string {
+  if (built && !engine) return table
+  if (built && table === 'stats_user_model') return `(SELECT * FROM ${table} WHERE engine = '${engine}')`
+  const l1 = rollupSource(engine)
   return `(${table === 'stats_session_live' ? sessionLiveSelect(l1) : DERIVED[table].select(l1)})`
 }
 
 /** Level-1 source for readers (time windows at 15-minute grain). */
-export function rollupSource(): string {
-  return built ? 'stats_rollup' : `(${rollupSelect()})`
+export function rollupSource(engine: EngineFilter = null): string {
+  const source = built ? 'stats_rollup' : `(${rollupSelect()})`
+  return engine ? `(SELECT * FROM ${source} WHERE engine = '${engine}')` : source
 }
 
 /** Level-1 rows matching `l1Filter`; a drain's `sid IN (...)` list is served by the
@@ -254,7 +264,7 @@ export async function initRollupSchema(db: DuckDBConnection): Promise<void> {
   const sums = (cs: readonly string[]) => cs.map((c) => `${c} BIGINT NOT NULL`).join(', ')
   await db.run(`CREATE TABLE IF NOT EXISTS stats_rollup (
     session_id TEXT NOT NULL, sid UBIGINT NOT NULL, u TEXT, session_key TEXT NOT NULL, is_subagent INTEGER NOT NULL,
-    bucket TIMESTAMP NOT NULL, model TEXT, engine TEXT NOT NULL, long_prompt BOOLEAN NOT NULL,
+    bucket TIMESTAMP NOT NULL, model TEXT, engine TEXT NOT NULL, long_prompt BOOLEAN NOT NULL, long_context BOOLEAN NOT NULL,
     events BIGINT NOT NULL, user_msgs BIGINT NOT NULL, assistant_msgs BIGINT NOT NULL,
     input_tokens BIGINT NOT NULL, output_tokens BIGINT NOT NULL, cache_read_tokens BIGINT NOT NULL,
     cache_write_tokens BIGINT NOT NULL, cache_write_1h_tokens BIGINT NOT NULL,
@@ -263,13 +273,13 @@ export async function initRollupSchema(db: DuckDBConnection): Promise<void> {
   await db.run(`CREATE INDEX IF NOT EXISTS idx_stats_rollup_sid ON stats_rollup(sid)`)
   await db.run(`CREATE TABLE IF NOT EXISTS stats_session_live (
     session_id TEXT NOT NULL, sid UBIGINT NOT NULL, u TEXT NOT NULL, first_ts TEXT NOT NULL, last_ts TEXT NOT NULL,
-    last_hour TIMESTAMP NOT NULL, ctx BIGINT, ${sums(SESSION_SUMS)}, model TEXT
+    last_hour TIMESTAMP NOT NULL, ctx BIGINT, engines TEXT, ${sums(SESSION_SUMS)}, model TEXT
   )`)
   // The user's sessions list: a bare `u = ?` point lookup.
   await db.run(`CREATE INDEX IF NOT EXISTS idx_stats_session_live_u ON stats_session_live(u)`)
   await db.run(`CREATE TABLE IF NOT EXISTS stats_user_model (
-    u TEXT NOT NULL, model TEXT NOT NULL, long_prompt BOOLEAN NOT NULL, ${sums(USER_MODEL_SUMS)},
-    PRIMARY KEY (u, model, long_prompt)
+    u TEXT NOT NULL, model TEXT NOT NULL, engine TEXT NOT NULL, long_prompt BOOLEAN NOT NULL, long_context BOOLEAN NOT NULL, ${sums(USER_MODEL_SUMS)},
+    PRIMARY KEY (u, model, engine, long_prompt, long_context)
   )`)
   await db.run(`CREATE TABLE IF NOT EXISTS stats_user_hour (
     u TEXT NOT NULL, hour TIMESTAMP NOT NULL, model TEXT NOT NULL, ${sums(USER_HOUR_SUMS)},
@@ -354,7 +364,9 @@ export async function drainRollup(getConn?: () => Promise<DuckDBConnection>): Pr
           await db.run(`DELETE FROM stats_rollup_dirty WHERE ${inList}`)
           await db.run('COMMIT')
         } catch (err) {
-          await db.run('ROLLBACK').catch(() => {})
+          await db
+            .run('ROLLBACK')
+            .catch((error) => warnLog('[stats-rollup] drain rollback failed', { error: String(error) }))
           throw err
         }
         revision++
@@ -395,7 +407,9 @@ export function startRollupBuild(getConn?: () => Promise<DuckDBConnection>): Pro
           await db.run(SET_SETTING, ['stats_rollup_progress', String(chunk + 1)])
           await db.run('COMMIT')
         } catch (err) {
-          await db.run('ROLLBACK').catch(() => {})
+          await db
+            .run('ROLLBACK')
+            .catch((error) => warnLog('[stats-rollup] build rollback failed', { error: String(error) }))
           throw err
         }
       })

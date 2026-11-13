@@ -11,8 +11,9 @@
 // effective input per local day, favorite = model with most in+out tokens.
 
 import type { DuckDBConnection } from '@duckdb/node-api'
-import { rangeStart, type Range } from './stats-queries'
+import { engineRollupStats, rangeStart, type Range, type EngineRollupStats } from './stats-queries'
 import { derivedSource, rollupReady, rollupSource } from './rollup'
+import type { EngineFilter } from '../engine-filter'
 
 export interface CardData {
   sessions: number
@@ -20,7 +21,8 @@ export interface CardData {
   assistantMessages: number
   totalTokens: number
   favoriteModel: string | null
-  models: Array<{ name: string; in: number; out: number; pct: number }>
+  models: Array<{ name: string; engine?: string; in: number; out: number; pct: number }>
+  engines?: EngineRollupStats['engines']
   activeDays: number
   longestStreak: number
   peakHour: number | null
@@ -29,6 +31,7 @@ export interface CardData {
 }
 
 export interface CardsRequest {
+  engine?: EngineFilter
   range: Range
   /** IANA zone (preferred) — DST-exact local days. */
   tz?: string | null
@@ -113,7 +116,7 @@ export async function cardsOverview(db: DuckDBConnection, q: CardsRequest): Prom
      ${c.mm ?? 'NULL::VARCHAR'} AS mm`
   const valid = `model IS NOT NULL AND model != ''`
   const subjects = (k: number) => (mode === 'user' ? Array<unknown>(k).fill(q.subject) : [])
-  const live = derivedSource('stats_session_live')
+  const live = derivedSource('stats_session_live', q.engine)
 
   // Shared tail: the per-hour (or per-bucket) rows `r` → model, day, day×model
   // and hour-of-day branches.
@@ -128,6 +131,7 @@ export async function cardsOverview(db: DuckDBConnection, q: CardsRequest): Prom
   let sql: string
   let params: unknown[]
   if (
+    !q.engine &&
     q.grain !== 'bucket' &&
     rollupReady() &&
     (zone ? !(await zoneHasPartialHours(db, zone)) : Number(lp) % 60 === 0)
@@ -197,11 +201,11 @@ export async function cardsOverview(db: DuckDBConnection, q: CardsRequest): Prom
     // need the 15-minute level 1; the zone is applied per distinct bucket.
     sql = `WITH tzm AS (
         SELECT b AS bucket, CAST(lt AS DATE) AS d, CAST(hour(lt) AS INTEGER) AS h, CAST(lt AS DATE) >= ${winStart} AS in_win
-        FROM (SELECT b, ${local('b')} AS lt FROM (SELECT DISTINCT bucket AS b FROM ${rollupSource()} WHERE ${window('bucket')}))
+        FROM (SELECT b, ${local('b')} AS lt FROM (SELECT DISTINCT bucket AS b FROM ${rollupSource(q.engine)} WHERE ${window('bucket')}))
       ),
       r AS MATERIALIZED (
         SELECT x.u, x.sid, x.model, t.d, t.h, t.in_win, x.user_msgs, x.assistant_msgs, ${TOKEN_SUM} AS tk, x.output_tokens AS ot
-        FROM ${rollupSource()} x JOIN tzm t ON t.bucket = x.bucket
+        FROM ${rollupSource(q.engine)} x JOIN tzm t ON t.bucket = x.bucket
         WHERE x.u IS NOT NULL AND ${window('x.bucket')} ${own('x.u')}
       ),
       -- A session has exactly one owner, so per-(user, session, day) rows turn
@@ -315,11 +319,15 @@ export async function cardsOverview(db: DuckDBConnection, q: CardsRequest): Prom
   }
 
   const out: Record<string, CardData> = {}
+  const splits = await engineRollupStats(db, q)
   for (const [k, c] of cards) {
     if (k === '') continue // sessions without an owner only count in "all"
     c.models.sort((a, b) => b.in + b.out - (a.in + a.out) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
     const total = c.models.reduce((s, m) => s + m.in + m.out, 0)
     for (const m of c.models) m.pct = total > 0 ? ((m.in + m.out) / total) * 100 : 0
+    c.favoriteModel = c.models[0]?.name ?? null
+    c.engines = splits[k]?.engines ?? {}
+    c.models = splits[k]?.models ?? []
     c.favoriteModel = c.models[0]?.name ?? null
     out[k] = c
   }

@@ -21,8 +21,10 @@ import { getUserTimeSeries } from '../../stats/database/aggregates'
 import { clearAll, deleteRequestsByFilter } from '../../stats/database/crud'
 import { getAllSessions } from '../../pty/session-manager'
 import { denyApiToken, denyForeignUser, denyForeignSubject } from '../authz'
+import { engineClause, nullableEngineClause, parseEngineFilter } from '../../stats/engine-filter'
 import { clearRevisionCaches, createRevisionCache } from '../../stats/database/revision-cache'
 import type { CardData } from '../../stats/database/cards-overview'
+import { warnLog } from '../../logging'
 
 /** Resolve the owning user_name for a sessionId (session_tokens is the
  *  authoritative owner map). Returns undefined if unknown. */
@@ -72,8 +74,8 @@ function sweepThrottled(sweepAll: () => Promise<unknown>): void {
   const now = Date.now()
   if (now - lastRequestSweepAt < 60_000) return
   lastRequestSweepAt = now
-  sweepAll().catch(() => {
-    /* fire-and-forget catch-up */
+  sweepAll().catch((error) => {
+    warnLog('dashboard catch-up sweep failed', { error: String(error) })
   })
 }
 
@@ -271,11 +273,12 @@ export function registerStatsRoutes(api: Hono): void {
     sweepThrottled(sweepAll)
     const period = (c.req.query('period') || 'day') as 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year'
     const days = parseInt(c.req.query('days') || '0', 10)
-    const cacheKey = `${period}|${days}`
+    const engine = parseEngineFilter(c.req.query('engine'))
+    const cacheKey = `${period}|${days}|${engine ?? ''}`
     const cached = timeseriesCache.get(cacheKey)
     const now = Date.now()
     if (cached && now - cached.at < 30_000) return c.json(cached.data)
-    const data = await getUserTimeSeries(period, days)
+    const data = await getUserTimeSeries(period, days, engine)
     timeseriesCache.set(cacheKey, { at: now, data })
     return c.json(data)
   })
@@ -319,9 +322,10 @@ export function registerStatsRoutes(api: Hono): void {
     // the real-world range so the interpolated INTERVAL stays a plain int.
     const tzRaw = parseInt(c.req.query('tz') || '0', 10)
     const tzOffsetMin = Math.max(-840, Math.min(840, Number.isFinite(tzRaw) ? tzRaw : 0))
+    const engine = parseEngineFilter(c.req.query('engine'))
     // Keyed by the rollup revision: a refresh of any session invalidates it.
     const { rollupRevision } = await import('../../stats/database/rollup')
-    const cacheKey = `${rollupRevision()}|${range}|${tokenId ?? ''}|${compact ? 'hm' : 'v1'}|${tzOffsetMin}`
+    const cacheKey = `${rollupRevision()}|${range}|${tokenId ?? ''}|${compact ? 'hm' : 'v1'}|${tzOffsetMin}|${engine ?? ''}`
     const cachedOverview = overviewCache.get(cacheKey)
     if (cachedOverview && Date.now() - cachedOverview.at < OVERVIEW_CACHE_TTL_MS) {
       return c.json(cachedOverview.data)
@@ -330,7 +334,7 @@ export function registerStatsRoutes(api: Hono): void {
     // Read model over the incremental rollup (stats-queries.ts) — same
     // formulas as the former raw jsonl_events scans.
     const { legacyOverview } = await import('../../stats/database/stats-queries')
-    const payload = await legacyOverview(db, { range, tokenId, compact, tzOffsetMin })
+    const payload = await legacyOverview(db, { range, tokenId, compact, tzOffsetMin, engine })
     cachePut(overviewCache, cacheKey, payload)
     return c.json(payload)
   })
@@ -355,11 +359,14 @@ export function registerStatsRoutes(api: Hono): void {
     const { rollupRevision, rollupReady } = await import('../../stats/database/rollup')
     const { getDb } = await import('../../stats/database/lifecycle')
     const { cardsOverview } = await import('../../stats/database/cards-overview')
+    const engine = parseEngineFilter(c.req.query('engine'))
     const ready = rollupReady()
     const building = await rollupBuilding()
     if (building) return c.json({ revision: rollupRevision(), ready, range, building })
-    const hit = await cardsCache.get(`${range}|${tz ?? tzOffsetMin}|${subject ?? ''}`, rollupRevision(), async () =>
-      cardsOverview(await getDb(), { range, tz, tzOffsetMin, subject }),
+    const hit = await cardsCache.get(
+      `${range}|${tz ?? tzOffsetMin}|${subject ?? ''}|${engine ?? ''}`,
+      rollupRevision(),
+      async () => cardsOverview(await getDb(), { range, tz, tzOffsetMin, subject, engine }),
     )
     if (c.req.query('rev') === hit.revision) return c.json({ unchanged: true, revision: hit.revision })
     return c.json({ revision: hit.revision, ready, range, cards: hit.data })
@@ -391,12 +398,13 @@ export function registerStatsRoutes(api: Hono): void {
     // Live PTY sessions hold the real cwd in memory — use them as a
     // fallback for historical session_tokens rows that pre-date the
     // `cwd` column migration.
+    const engine = parseEngineFilter(c.req.query('engine'))
     const liveCwdByConvId = new Map<string, string>()
     for (const ps of getAllSessions()) {
       if (ps.cliConversationId && ps.cwd) liveCwdByConvId.set(ps.cliConversationId, ps.cwd)
     }
     const { userSessionsPage } = await import('../../stats/database/stats-queries')
-    const { rows, total } = await userSessionsPage(db, tokenId, { limit, before })
+    const { rows, total } = await userSessionsPage(db, tokenId, { limit, before, engine })
 
     // All metadata (title, compact_boundaries, last_context,
     // pre_boundary_snapshots, context_tokens) is persisted in
@@ -426,6 +434,10 @@ export function registerStatsRoutes(api: Hono): void {
       folder: r.session_cwd || liveCwdByConvId.get(r.session_id) || folderFromPath(r.file_path),
       startedAt: r.started_at,
       lastActivityAt: r.last_activity_at,
+      engines: String(r.engines ?? 'claude')
+        .split(',')
+        .filter(Boolean)
+        .sort(),
       userMessages: Number(r.user_messages ?? 0),
       assistantMessages: Number(r.assistant_messages ?? 0),
       compactCount: Number(r.session_compact_boundaries ?? 0),
@@ -475,6 +487,7 @@ export function registerStatsRoutes(api: Hono): void {
       )
     } catch (error) {
       if (error instanceof JsonlExportBusy) return c.json({ error: error.message }, 429)
+      warnLog('dashboard JSONL export failed', { error: String(error) })
       return c.json({ error: 'JSONL not available — file deleted or unreadable' }, 404)
     }
   }
@@ -486,7 +499,8 @@ export function registerStatsRoutes(api: Hono): void {
     if (resolved instanceof Response) return resolved
     try {
       if (!(await fsp.stat(resolved)).isFile()) throw new Error('not a file')
-    } catch {
+    } catch (error) {
+      warnLog('dashboard JSONL download unavailable', { error: String(error) })
       return c.json({ error: 'JSONL not available — file deleted' }, 404)
     }
     const url = issueJsonlDownload(c, sessionId)
@@ -538,8 +552,8 @@ export function registerStatsRoutes(api: Hono): void {
         try {
           fs.unlinkSync(row.file_path)
           fileRemoved = true
-        } catch {
-          /* ignore */
+        } catch (error) {
+          warnLog('dashboard JSONL removal failed', { error: String(error) })
         }
       }
     }
@@ -553,13 +567,15 @@ export function registerStatsRoutes(api: Hono): void {
     const { getDb } = await import('../../stats/database/lifecycle')
     const db = await getDb()
     const since = new Date(Date.now() - 86_400_000).toISOString()
+    const engine = parseEngineFilter(c.req.query('engine'))
     const row = (
       await db.runAndReadAll(
         `SELECT
          COUNT(*) AS total,
          SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS last24h,
-         MAX(timestamp) AS last_at
-       FROM api_errors`,
+         MAX(timestamp) AS last_at,
+         SUM(CASE WHEN COALESCE(engine, 'claude') = 'codex' THEN 1 ELSE 0 END) AS codex
+       FROM api_errors WHERE TRUE${nullableEngineClause('engine', engine)}`,
         [since],
       )
     ).getRowObjects()[0] as any
@@ -567,6 +583,7 @@ export function registerStatsRoutes(api: Hono): void {
       total: Number(row?.total ?? 0),
       last24h: Number(row?.last24h ?? 0),
       lastAt: row?.last_at ?? null,
+      byEngine: { claude: Number(row?.total ?? 0) - Number(row?.codex ?? 0), codex: Number(row?.codex ?? 0) },
     })
   })
 
@@ -582,6 +599,7 @@ export function registerStatsRoutes(api: Hono): void {
     const period = (c.req.query('period') || 'day') as 'hour' | 'day'
     const days = parseInt(c.req.query('days') || '7', 10)
     const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString()
+    const engine = parseEngineFilter(c.req.query('engine'))
     const groupCol =
       period === 'hour'
         ? `strftime(timestamp::TIMESTAMP, '%Y-%m-%d') || ' ' || strftime(timestamp::TIMESTAMP, '%H')`
@@ -593,7 +611,7 @@ export function registerStatsRoutes(api: Hono): void {
         SUM(CASE WHEN error_type LIKE '%timeout%' OR error_type LIKE '%Timeout%' THEN 1 ELSE 0 END) AS timeouts,
         SUM(CASE WHEN error_type IN ('429') OR error_type LIKE '%rate%' THEN 1 ELSE 0 END) AS rate_limited
        FROM api_errors
-       WHERE timestamp >= ?
+       WHERE timestamp >= ?${nullableEngineClause('engine', engine)}
        GROUP BY period
        ORDER BY period ASC`,
         [sinceIso],
@@ -617,10 +635,12 @@ export function registerStatsRoutes(api: Hono): void {
     const { getDb } = await import('../../stats/database/lifecycle')
     const db = await getDb()
     const limit = Math.min(500, parseInt(c.req.query('limit') || '50', 10))
+    const engine = parseEngineFilter(c.req.query('engine'))
     const rows = (
       await db.runAndReadAll(
-        `SELECT timestamp, session_id, user_name, error_type, url, attempt, max_attempts, retry_ms, raw
-       FROM api_errors
+        `SELECT timestamp, session_id, user_name, error_type, url, attempt, max_attempts, retry_ms, raw,
+         COALESCE(engine, 'claude') AS engine
+       FROM api_errors WHERE TRUE${nullableEngineClause('engine', engine)}
        ORDER BY timestamp DESC LIMIT ?`,
         [limit],
       )
@@ -630,6 +650,7 @@ export function registerStatsRoutes(api: Hono): void {
         timestamp: String(r.timestamp),
         sessionId: r.session_id,
         userName: r.user_name,
+        engine: r.engine,
         errorType: r.error_type,
         url: r.url,
         attempt: Number(r.attempt ?? 0),

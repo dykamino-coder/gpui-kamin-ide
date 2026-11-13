@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { DuckDBConnection } from '@duckdb/node-api'
+import { OPENAI_LONG_CONTEXT_TOKENS } from '../../../shared/openai-pricing'
 
 // Oracle = the raw jsonl_accounting_events SQL the endpoints ran before the
 // rollup. Every rollup-derived number must match it on a synthetic corpus.
@@ -68,14 +69,15 @@ async function rawUserTotals() {
 
 async function rawCost() {
   return num(
-    await all(`SELECT st.user_name AS user_name, e.model AS model,
+    await all(`SELECT st.user_name AS user_name, e.model AS model, e.engine AS engine,
       (${TOKEN_SUM} > 100000) AS long_prompt,
+      (${TOKEN_SUM} > ${OPENAI_LONG_CONTEXT_TOKENS}) AS long_context,
       SUM(COALESCE(e.input_tokens,0)) AS input_tokens, SUM(COALESCE(e.output_tokens,0)) AS output_tokens,
       SUM(COALESCE(e.cache_read_tokens,0)) AS cache_read_tokens, SUM(COALESCE(e.cache_write_tokens,0)) AS cache_write_tokens,
       SUM(COALESCE(e.cache_write_1h_tokens,0)) AS cache_write_1h_tokens
       ${RAW} AND st.user_name IS NOT NULL AND st.user_name != '' AND e.type = 'assistant'
         AND e.model IS NOT NULL AND e.model != ''
-      GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`),
+      GROUP BY 1, 2, 3, 4, 5 ORDER BY user_name, model, long_prompt, engine, long_context`),
   )
 }
 
@@ -94,7 +96,11 @@ async function checkUsers(): Promise<void> {
   expect(totals.map(({ tokens_7d: _a, tokens_30d: _b, ...r }) => r)).toEqual(await rawUserTotals())
   const cost = (await q.userCostRows(db)).sort(
     (a, b) =>
-      a.user_name.localeCompare(b.user_name) || a.model.localeCompare(b.model) || +a.long_prompt - +b.long_prompt,
+      a.user_name.localeCompare(b.user_name) ||
+      a.model.localeCompare(b.model) ||
+      +a.long_prompt - +b.long_prompt ||
+      a.engine.localeCompare(b.engine) ||
+      +a.long_context - +b.long_context,
   )
   expect(cost).toEqual(await rawCost())
   const ctx = await q.userContextTokens(db)

@@ -4,10 +4,19 @@
 
 import type { Hono } from 'hono'
 import { getDb } from '../../stats/database/lifecycle'
-import { userContextTokens, userCostRows, userTotals, type UserTotalsRow } from '../../stats/database/stats-queries'
+import {
+  engineRollupStats,
+  userContextTokens,
+  userCostRows,
+  userTotals,
+  type UserTotalsRow,
+} from '../../stats/database/stats-queries'
 import { createRevisionCache } from '../../stats/database/revision-cache'
 import { getAllSessions } from '../../pty/session-manager'
 import { denyApiToken, denyForeignUser } from '../authz'
+import { parseEngineFilter, type EngineFilter } from '../../stats/engine-filter'
+import { OPENAI_PRICES_AS_OF, openAiCost } from '../../../shared/openai-pricing'
+import { warnLog } from '../../logging'
 
 // Anthropic published base rates per 1M tokens. Keep aligned with the
 // KaminIDE webview's session-cost helper so dashboard cost ≈ client.
@@ -35,16 +44,23 @@ const usersCache = createRevisionCache<{
   aggRows: UserTotalsRow[]
   costByUser: Map<string, number>
   ctxByUser: Map<string, number>
-}>({ max: 1, maxStaleMs: 60_000 })
+  codexCost: Map<string, CodexCostAcc>
+  enginesByUser: Map<string, Record<string, unknown>>
+}>({ max: 3, maxStaleMs: 60_000 })
 
-async function loadUserStats() {
+async function loadUserStats(engine: EngineFilter) {
   const db = await getDb()
   // Same formulas as the former raw jsonl_events scans.
-  const aggRows = await userTotals(db)
+  const aggRows = await userTotals(db, Date.now(), engine)
   // Per-(user, model) breakdown for cost computation — every model
   // family has its own per-1M-token rates.
   const costByUser = new Map<string, number>()
-  for (const r of await userCostRows(db)) {
+  const codexCost = new Map<string, CodexCostAcc>()
+  for (const r of await userCostRows(db, engine)) {
+    if (r.engine === 'codex') {
+      addCodexCost(codexCost, r)
+      continue
+    }
     const base = tierForModel(r.model)
     const multiplier = r.model.includes('haiku-5') && r.long_prompt ? 5 : 1
     const tier = {
@@ -64,8 +80,26 @@ async function loadUserStats() {
   }
   // Sum of per-session real-text Context (last-assistant effective
   // input). Matches the per-session Context column in Sessions modal.
-  const ctxByUser = await userContextTokens(db)
-  return { aggRows, costByUser, ctxByUser }
+  const ctxByUser = await userContextTokens(db, engine)
+  const enginesByUser = new Map<string, Record<string, unknown>>()
+  for (const [user, stats] of Object.entries(await engineRollupStats(db, { engine }))) {
+    if (user === '*') continue
+    enginesByUser.set(
+      user,
+      Object.fromEntries(
+        Object.entries(stats.engines).map(([key, r]) => [
+          key,
+          {
+            sessions: r.sessions,
+            totalInputs: r.userMessages,
+            responses: r.assistantMessages,
+            tokens: r.tokens,
+          },
+        ]),
+      ),
+    )
+  }
+  return { aggRows, costByUser, ctxByUser, codexCost, enginesByUser }
 }
 
 async function loadRoster() {
@@ -88,7 +122,13 @@ async function loadRoster() {
     tokens_7d: 0,
     tokens_30d: 0,
   }))
-  return { aggRows, costByUser: new Map<string, number>(), ctxByUser: new Map<string, number>() }
+  return {
+    aggRows,
+    costByUser: new Map<string, number>(),
+    ctxByUser: new Map<string, number>(),
+    codexCost: new Map<string, CodexCostAcc>(),
+    enginesByUser: new Map<string, Record<string, unknown>>(),
+  }
 }
 
 export function tierForModel(model: string | null | undefined): CostTier {
@@ -111,6 +151,56 @@ export function tierForModel(model: string | null | undefined): CostTier {
   return TIER_3_15
 }
 
+interface CodexCostAcc {
+  usd: number
+  unpricedTokens: number
+  unpricedModels: Set<string>
+}
+
+interface CostRow {
+  user_name: string
+  model: string
+  input_tokens: bigint | number
+  output_tokens: bigint | number
+  cache_read_tokens: bigint | number
+  cache_write_tokens: bigint | number
+  long_context: boolean
+}
+
+/** Adds one (user, model, rate tier) group of codex tokens at the OpenAI list
+ *  price; a model without a published price adds its tokens, never a guess. */
+export function addCodexCost(acc: Map<string, CodexCostAcc>, r: CostRow): void {
+  const entry = acc.get(r.user_name) ?? { usd: 0, unpricedTokens: 0, unpricedModels: new Set<string>() }
+  acc.set(r.user_name, entry)
+  const tokens = {
+    input: Number(r.input_tokens ?? 0),
+    cacheRead: Number(r.cache_read_tokens ?? 0),
+    cacheWrite: Number(r.cache_write_tokens ?? 0),
+    output: Number(r.output_tokens ?? 0),
+  }
+  const usd = openAiCost(r.model, tokens, Boolean(r.long_context))
+  if (usd !== null) {
+    entry.usd += usd
+    return
+  }
+  entry.unpricedTokens += tokens.input + tokens.cacheRead + tokens.cacheWrite + tokens.output
+  entry.unpricedModels.add(r.model)
+}
+
+export function codexSummary(acc: CodexCostAcc | undefined): {
+  apiEquivalentUsd: number
+  unpricedTokens: number
+  unpricedModels: string[]
+  pricesAsOf: string
+} {
+  return {
+    apiEquivalentUsd: acc?.usd ?? 0,
+    unpricedTokens: acc?.unpricedTokens ?? 0,
+    unpricedModels: [...(acc?.unpricedModels ?? [])].sort(),
+    pricesAsOf: OPENAI_PRICES_AS_OF,
+  }
+}
+
 export function registerUserRoutes(api: Hono): void {
   // GET /api/dashboard/users — aggregated per-user summary.
   //
@@ -122,18 +212,17 @@ export function registerUserRoutes(api: Hono): void {
     // Cross-user roster — admin only; a per-user token can't enumerate everyone.
     const denied = denyApiToken(c)
     if (denied) return denied
+    const engine = parseEngineFilter(c.req.query('engine'))
     // Rollup read model (stats-queries.ts), served stale-while-revalidate
     // across rollup revisions; live PTY counts are layered on per request.
     const { rollupRevision, rollupBuildStatus } = await import('../../stats/database/rollup')
-    // During the one-time rollup build: the roster from the owner map only (no
-    // raw-event scan), counters zero, progress in X-Stats-Building.
     const build = rollupBuildStatus()
     if (!build.ready) c.header('X-Stats-Building', String(build.pct))
-    const { aggRows, costByUser, ctxByUser } = build.ready
-      ? (await usersCache.get('users', rollupRevision(), loadUserStats)).data
+    const { aggRows, costByUser, ctxByUser, codexCost, enginesByUser } = build.ready
+      ? (await usersCache.get(engine ?? 'all', rollupRevision(), () => loadUserStats(engine))).data
       : await loadRoster()
     const aggMap = new Map(aggRows.map((r) => [r.user_name, r]))
-    const ptySessions = getAllSessions()
+    const ptySessions = getAllSessions().filter((s) => !engine || s.engine === engine)
     const activeSessionsByUser = new Map<string, number>()
     for (const s of ptySessions) {
       activeSessionsByUser.set(s.userName, (activeSessionsByUser.get(s.userName) || 0) + 1)
@@ -158,8 +247,12 @@ export function registerUserRoutes(api: Hono): void {
           },
           // Sum of per-session real-text Context (matches Sessions modal).
           contextTokens: ctxByUser.get(userName) ?? 0,
-          // USD cost summed across model tiers.
+          // Claude: USD summed across model tiers.
           cost: costByUser.get(userName) ?? 0,
+          // ChatGPT (codex): billed by the ChatGPT plan; the API list price of
+          // the same tokens, and the tokens of models with no published price.
+          codex: codexSummary(codexCost.get(userName)),
+          engines: enginesByUser.get(userName) ?? {},
           firstSeen: r?.first_seen ?? null,
           lastSeen: r?.last_seen ?? null,
           // Token flow (in + out + cache) per rolling window, for sidebar sorting.
@@ -224,7 +317,8 @@ function safeParseArray(str: string | null | undefined): string[] {
   if (!str) return []
   try {
     return JSON.parse(str)
-  } catch {
+  } catch (error) {
+    warnLog('stats user metadata JSON invalid', { error: error instanceof Error ? error.name : 'parse failed' })
     return []
   }
 }

@@ -1,7 +1,11 @@
 // Cost + context estimation using Anthropic's published base API rates.
 // Keep this estimate aligned with server dashboard pricing when models change.
+// ChatGPT (codex) lines use the OpenAI list prices shared with the dashboard.
 //
 // Per-million-token rates in USD.
+import { isEngineUsageLine } from '../../../server/src/shared/engine-accounting'
+import { OPENAI_PRICES_AS_OF, openAiRequestCost } from '../../../server/src/shared/openai-pricing'
+
 export interface CostTier {
   input: number
   output: number
@@ -126,6 +130,11 @@ interface StatEntry {
   /** Субагентский ход: у него своё окно контекста, к главному бару не относится. */
   isSidechain?: boolean
   subagentId?: string
+  /** `codex` on ChatGPT lines; absent on Claude CLI lines. */
+  engine?: string
+  uuid?: string
+  /** Model window codex reported with a usage line. */
+  contextWindow?: number
 }
 
 export interface ContextStats {
@@ -137,9 +146,15 @@ export interface ContextStats {
   limit: number
   /** `compact` — where the CLI auto-compacts (server policy); `cli` — the
    *  CLI-reported model window (older servers); `model` — estimated from the id. */
-  limitSource: 'compact' | 'cli' | 'model'
-  /** Cumulative $ cost across the segment (deduped by message.id). */
+  limitSource: 'compact' | 'cli' | 'engine' | 'model'
+  /** Cumulative $ cost of the segment's Claude responses (deduped by message.id). */
   cost: number
+  /** ChatGPT (codex) responses: billed by the ChatGPT plan, so only the
+   *  API-equivalent list price of priced models; null when the segment has
+   *  no codex usage. */
+  codexCost: number | null
+  /** codex tokens of models without a published API price (shown as tokens). */
+  codexUnpricedTokens: number
   /** Model id used to estimate the limit (empty when none is known). */
   model: string
   /** Compact metadata is provisional until a real post-boundary usage arrives. */
@@ -169,12 +184,16 @@ export function computeContextStats(
   session?: { autoCompactAt?: number | null; contextWindowSize?: number | null } | null,
 ): ContextStats | null {
   let cumulativeCost = 0
+  let codexCost: number | null = null
+  let codexUnpricedTokens = 0
   let peakUsage: UsageBlock | null = null
   let peakUsedTokens = -1
   let peakModel: string | null = null
+  let peakWindow = 0
   let latestUsage: UsageBlock | null = null
   let latestUsedTokens = -1
   let latestModel: string | null = null
+  let latestWindow = 0
   const messageCosts = new Map<string, number>()
   let lastCompact: { postTokens?: number } | null = null
 
@@ -188,30 +207,50 @@ export function computeContextStats(
       latestUsedTokens = -1
       continue
     }
-    if (e.type !== 'assistant') continue
+    // ChatGPT (codex): one `api_usage` line per model response; its item lines
+    // carry no usage (shared/engine-accounting.ts). The plan bills it, so the
+    // price is the API equivalent at OpenAI list prices, never a Claude rate.
+    const codex = isEngineUsageLine(e)
+    if (!codex && e.type !== 'assistant') continue
     const model = e.model ?? e.message?.model
     if (model === '<synthetic>') continue
     const usage = e.usage ?? e.message?.usage
     if (!usage) continue
-    const messageId = e.message?.id
-    const cost = costForUsage(usage, tierForModel(typeof model === 'string' ? model : null))
-    if (messageId) {
-      const previous = messageCosts.get(messageId) ?? 0
-      cumulativeCost += Math.max(previous, cost) - previous
-      messageCosts.set(messageId, Math.max(previous, cost))
-    } else cumulativeCost += cost
+    const modelId = typeof model === 'string' ? model : null
+    if (codex) {
+      const tokens = {
+        input: usage.input_tokens ?? 0,
+        cacheRead: usage.cache_read_input_tokens ?? 0,
+        cacheWrite: usage.cache_creation_input_tokens ?? 0,
+        output: usage.output_tokens ?? 0,
+      }
+      const usd = openAiRequestCost(modelId, tokens)
+      codexCost = (codexCost ?? 0) + (usd ?? 0)
+      if (usd === null) codexUnpricedTokens += tokens.input + tokens.cacheRead + tokens.cacheWrite + tokens.output
+    } else {
+      const messageId = e.message?.id
+      const cost = costForUsage(usage, tierForModel(modelId))
+      if (messageId) {
+        const previous = messageCosts.get(messageId) ?? 0
+        cumulativeCost += Math.max(previous, cost) - previous
+        messageCosts.set(messageId, Math.max(previous, cost))
+      } else cumulativeCost += cost
+    }
     // Стоимость включает субагентов, их отдельное окно не меняет главный бар.
     if (e.isSidechain || e.subagentId) continue
+    const window = codex && typeof e.contextWindow === 'number' ? e.contextWindow : 0
     const used = effectiveInputTokens(usage)
     if (used > peakUsedTokens) {
       peakUsedTokens = used
       peakUsage = usage
-      if (typeof model === 'string') peakModel = model
+      peakWindow = window
+      if (modelId) peakModel = modelId
     }
     // Chronological input → last assignment is the newest real turn.
     latestUsedTokens = used
     latestUsage = usage
-    if (typeof model === 'string') latestModel = model
+    latestWindow = window
+    if (modelId) latestModel = modelId
   }
 
   if (!peakUsage && !lastCompact) return null
@@ -225,13 +264,17 @@ export function computeContextStats(
   const valid = (n: number | null | undefined): number => (typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : 0)
   const compactLimit = valid(session?.autoCompactAt)
   const cliLimit = compactLimit ? 0 : isLiveSegment ? valid(session?.contextWindowSize) : 0
+  // codex reports its model's window with each response: exact, not a guess.
+  const engineLimit = compactLimit || cliLimit ? 0 : valid(isLiveSegment && latestUsage ? latestWindow : peakWindow)
   // Оценка по имени: у сессии ДВА источника модели, и легаси может застрять в
   // ЛЮБОМ из них (витки хранят opus-4-8 до апгрейда, а таб уже живой opus-5
   // после hot-switch — инцидент «100% при 510K»). Берём максимум окон обоих.
   const tabLimit = tabModel ? contextLimitForModel(tabModel) : 0
   const jsonlLimit = useModel ? contextLimitForModel(useModel) : 0
-  const limit = compactLimit || cliLimit || Math.max(tabLimit, jsonlLimit) || contextLimitForModel(null)
-  const modelForLimit = (tabLimit >= jsonlLimit ? tabModel : useModel) ?? useModel ?? tabModel ?? ''
+  const limit = compactLimit || cliLimit || engineLimit || Math.max(tabLimit, jsonlLimit) || contextLimitForModel(null)
+  const modelForLimit = engineLimit
+    ? (useModel ?? tabModel ?? '')
+    : ((tabLimit >= jsonlLimit ? tabModel : useModel) ?? useModel ?? tabModel ?? '')
   let used: number | null = useUsedTokens >= 0 ? useUsedTokens : (useUsage ? effectiveInputTokens(useUsage) : null)
   let freshness: ContextStats['freshness'] = 'usage'
   if (isLiveSegment && lastCompact && !latestUsage) {
@@ -241,6 +284,51 @@ export function computeContextStats(
   }
   const pct = used === null ? null : Math.min(100, Math.round((used / limit) * 100))
   return {
-    pct, used, limit, limitSource: compactLimit ? 'compact' : cliLimit ? 'cli' : 'model', cost: cumulativeCost, model: modelForLimit, freshness,
+    pct,
+    used,
+    limit,
+    limitSource: compactLimit ? 'compact' : cliLimit ? 'cli' : engineLimit ? 'engine' : 'model',
+    cost: cumulativeCost,
+    codexCost,
+    codexUnpricedTokens,
+    model: modelForLimit,
+    freshness,
   }
+}
+
+/** The chip's cost text and tooltip. Claude responses show their API cost;
+ *  ChatGPT responses are billed by the ChatGPT plan, so they show only the
+ *  API-equivalent list price, and tokens where no price is published. */
+export function costDisplay(s: Pick<ContextStats, 'cost' | 'codexCost' | 'codexUnpricedTokens'>): {
+  text: string
+  tooltip: string
+} {
+  if (s.codexCost === null) return { text: formatCost(s.cost), tooltip: 'Session cost (estimate)' }
+  const parts: string[] = []
+  const notes: string[] = []
+  const claude = s.cost > 0
+  if (claude) {
+    parts.push(formatCost(s.cost))
+    notes.push(`Claude ${formatCost(s.cost)} (API estimate)`)
+  }
+  const priced = s.codexCost > 0 || s.codexUnpricedTokens === 0
+  if (priced) {
+    parts.push(`≈${formatCost(s.codexCost)} API`)
+    notes.push(
+      `ChatGPT ≈${formatCost(s.codexCost)}: billed by the ChatGPT plan; this is the API-equivalent price ` +
+        `(OpenAI list prices as of ${OPENAI_PRICES_AS_OF})`,
+    )
+  }
+  if (s.codexUnpricedTokens > 0) {
+    const tokens = formatTokenCount(s.codexUnpricedTokens)
+    parts.push(`${tokens} tok`)
+    notes.push(`${tokens} ChatGPT tokens of a model without a published API price`)
+  }
+  return { text: parts.join(' + '), tooltip: notes.join(' · ') }
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
 }

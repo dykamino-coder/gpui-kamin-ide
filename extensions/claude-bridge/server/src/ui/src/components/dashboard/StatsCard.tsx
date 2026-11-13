@@ -14,6 +14,7 @@ import { cards, cardsError, fetchCard, statsBuilding, subscribeUserStats, users 
 import type { CardData, StatsRange } from '../../signals/users-stats'
 
 type Range = StatsRange
+import { ENGINE_LABEL, EngineBadge, EngineFilterTabs, asEngine, engineFilter, engineParam, type Engine } from './engine'
 
 interface SessionRow {
   sessionId: string
@@ -21,6 +22,8 @@ interface SessionRow {
   folder: string | null
   startedAt: string
   lastActivityAt: string
+  /** Engines the chat ran on (both for a chat continued on the other one). */
+  engines?: string[]
   userMessages: number
   assistantMessages: number
   compactCount: number
@@ -179,6 +182,7 @@ export function BuildProgress({ pct }: { pct: number }) {
 
 /** Pure card body: re-renders only when its own data/range/state change. */
 const StatsCardView = memo(function StatsCardView({ data, range, onRange, loading, error, building }: ViewProps) {
+  const engine = engineFilter.value
   return (
     <Card>
       <div style={{ padding: 16 }}>
@@ -230,6 +234,7 @@ const StatsCardView = memo(function StatsCardView({ data, range, onRange, loadin
               <Metric label="Peak hour" value={fmtHour(data.peakHour)} />
               <Metric label="Favorite model" value={shortModel(data.favoriteModel)} />
             </div>
+            {engine === 'all' && <EngineSplit engines={data.engines} />}
 
             <Heatmap days={data.days} range={range} />
 
@@ -249,10 +254,21 @@ const StatsCardView = memo(function StatsCardView({ data, range, onRange, loadin
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {data.models.map((m) => (
                     <div
-                      key={m.name}
+                      key={`${m.engine ?? 'claude'}|${m.name}`}
                       style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, fontSize: 12 }}
                     >
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{shortModel(m.name)}</span>
+                      <span
+                        style={{
+                          color: 'var(--text-primary)',
+                          fontWeight: 600,
+                          display: 'flex',
+                          gap: 6,
+                          alignItems: 'center',
+                        }}
+                      >
+                        {shortModel(m.name)}
+                        {m.engine === 'codex' && <EngineBadge engine="codex" />}
+                      </span>
                       <span style={{ color: 'var(--text-muted)' }}>
                         {fmtNum(m.in)} in · {fmtNum(m.out)} out
                       </span>
@@ -270,6 +286,30 @@ const StatsCardView = memo(function StatsCardView({ data, range, onRange, loadin
     </Card>
   )
 })
+
+/** Claude vs ChatGPT share of the same counters; hidden while one engine has
+ *  all the activity (nothing to split). */
+function EngineSplit({ engines }: { engines: CardData['engines'] }) {
+  const rows = (['claude', 'codex'] as Engine[]).flatMap((e) => (engines?.[e] ? [{ engine: e, v: engines[e]! }] : []))
+  if (rows.length < 2) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+      {rows.map(({ engine, v }) => (
+        <div
+          key={engine}
+          title={`${ENGINE_LABEL[engine]}: a chat continued on the other engine counts under both`}
+          style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: 8, alignItems: 'center', fontSize: 12 }}
+        >
+          <EngineBadge engine={engine} />
+          <span style={{ color: 'var(--text-muted)' }}>
+            {fmtNum(v.sessions)} sessions · {fmtNum(v.userMessages)} user · {fmtNum(v.assistantMessages)} assistant ·{' '}
+            {fmtNum(v.inTokens)} in · {fmtNum(v.outTokens)} out
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -306,12 +346,14 @@ const EMPTY_CARD: CardData = {
 
 /** One card: default range from the shared batch, other ranges on demand. */
 const UserStatsCard = memo(function UserStatsCard({ subject }: { subject: string }) {
+  const engine = engineFilter.value
   const [range, setRange] = useState<Range>('all')
   const [own, setOwn] = useState<{ range: Range; data: CardData | null; error: string | null } | null>(null)
   // Visible before the page batch arrived: fetch just this card (tens of ms)
   // so on-screen cards render as each is ready; the batch fills the rest.
   const [early, setEarly] = useState<CardData | null>(null)
   useEffect(() => {
+    setEarly(null)
     if (cards.peek()) return
     let cancelled = false
     fetchCard(subject, 'all')
@@ -321,7 +363,7 @@ const UserStatsCard = memo(function UserStatsCard({ subject }: { subject: string
     return () => {
       cancelled = true
     }
-  }, [subject])
+  }, [subject, engine])
   // A known user without rollup rows still gets a zero card, as before.
   const shared = cards.value ? (cards.value[subject] ?? EMPTY_CARD) : early
   // Refetch a card's own range once the one-time build finishes.
@@ -339,7 +381,7 @@ const UserStatsCard = memo(function UserStatsCard({ subject }: { subject: string
     return () => {
       cancelled = true
     }
-  }, [range, subject, statsReady])
+  }, [range, subject, engine, statsReady])
   const data = range === 'all' ? shared : (own?.data ?? null)
   const loading =
     range === 'all' ? !shared && !cardsError.value : !own || own.range !== range || (!own.data && !own.error)
@@ -358,6 +400,7 @@ const UserStatsCard = memo(function UserStatsCard({ subject }: { subject: string
 
 /** Mounts its card when it comes within one screen of the viewport, then keeps it. */
 function LazyCard({ subject }: { subject: string }) {
+  const engine = engineFilter.value
   const ref = useRef<HTMLDivElement>(null)
   const [seen, setSeen] = useState(false)
   useEffect(() => {
@@ -381,7 +424,7 @@ function LazyCard({ subject }: { subject: string }) {
   }, [seen])
   return (
     <div ref={ref} style={{ minWidth: 0, contentVisibility: 'auto', containIntrinsicSize: 'auto 420px' } as any}>
-      {seen ? <UserStatsCard subject={subject} /> : <div style={{ height: 420 }} />}
+      {seen ? <UserStatsCard key={`${subject}|${engine}`} subject={subject} /> : <div style={{ height: 420 }} />}
     </div>
   )
 }
@@ -424,9 +467,24 @@ export function TokensStatsGrid() {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 14 }}>
       <div style={{ minWidth: 0 }}>
-        <div style={headerStyle}>
-          <i class="fa-solid fa-globe" style={{ marginRight: 6, opacity: 0.6 }} />
-          All tokens
+        <div
+          style={{
+            fontSize: 12,
+            color: 'var(--text-secondary)',
+            fontWeight: 700,
+            marginBottom: 4,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span>
+              <i class="fa-solid fa-globe" style={{ marginRight: 6, opacity: 0.6 }} />
+              All tokens
+            </span>
+            {/* One engine filter for every card of the grid. */}
+            <EngineFilterTabs />
+          </span>
         </div>
         <LazyCard subject="*" />
       </div>
@@ -455,6 +513,7 @@ export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListP
   const [sessions, setSessions] = useState<SessionRow[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const engine = engineFilter.value
 
   const [downloadBusy, setDownloadBusy] = useState(false)
   const downloader = useMemo(() => createJsonlDownloader(setDownloadBusy), [tokenId])
@@ -473,7 +532,7 @@ export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListP
     const ctl = new AbortController()
     pageAbort.current = ctl
     const sessTok2 = localStorage.getItem('dashboard_session_token')
-    const q = `limit=${SESSIONS_PAGE}${cursor ? `&before=${encodeURIComponent(cursor)}` : ''}`
+    const q = `limit=${SESSIONS_PAGE}${engineParam(engine)}${cursor ? `&before=${encodeURIComponent(cursor)}` : ''}`
     return fetch(`/api/dashboard/tokens/${encodeURIComponent(tokenId)}/sessions?${q}`, {
       signal: AbortSignal.any ? AbortSignal.any([ctl.signal, AbortSignal.timeout(15_000)]) : ctl.signal,
       headers: sessTok2 ? { Authorization: `Bearer ${sessTok2}` } : {},
@@ -506,7 +565,7 @@ export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListP
       setLoading(false)
     })
     return () => pageAbort.current?.abort()
-  }, [tokenId])
+  }, [tokenId, engine])
   const showMore = () => {
     if (!next || moreBusy) return
     setMoreBusy(true)
@@ -562,12 +621,15 @@ export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListP
 
   return (
     <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <EngineFilterTabs />
+      </div>
       {loading && building != null && <BuildProgress pct={building} />}
       {loading && building == null && <div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div>}
       {error && !loading && <div style={{ padding: 12, color: 'var(--accent-red)', fontSize: 12 }}>{error}</div>}
       {sorted && !loading && sorted.length === 0 && (
         <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-          No sessions for this token yet.
+          {engine === 'all' ? 'No sessions for this token yet.' : `No ${ENGINE_LABEL[engine]} sessions for this token.`}
         </div>
       )}
       {sorted && sorted.length > 0 && (
@@ -577,7 +639,7 @@ export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListP
               <tr>
                 <th style={headStyle}>Title / ID</th>
                 <th style={headStyle}>Folder</th>
-                <th style={headStyle}>Model</th>
+                <th style={headStyle}>Engine / Model</th>
                 <th style={{ ...headStyle, textAlign: 'right' }}>Last Activity</th>
                 <th style={{ ...headStyle, textAlign: 'right' }}>User</th>
                 <th style={{ ...headStyle, textAlign: 'right' }}>Asst</th>
@@ -644,7 +706,14 @@ export function TokenSessionsList({ tokenId, onCountChange }: TokenSessionsListP
                           .join('/') || s.folder
                       : '—'}
                   </td>
-                  <td style={{ ...cellStyle, color: 'var(--text-secondary)' }}>{shortModel(s.model)}</td>
+                  <td style={{ ...cellStyle, color: 'var(--text-secondary)' }}>
+                    <div style={{ display: 'flex', gap: 4, marginBottom: 2 }}>
+                      {(s.engines?.length ? s.engines : ['claude']).map((e) => (
+                        <EngineBadge key={e} engine={asEngine(e)} />
+                      ))}
+                    </div>
+                    {shortModel(s.model)}
+                  </td>
                   <td
                     style={{
                       ...cellStyle,
