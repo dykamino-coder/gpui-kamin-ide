@@ -46,6 +46,130 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 - `observation` — только заранее определённая полевая проверка;
 - `none` — новых PR по задаче сейчас не требуется.
 
+## Текущая пачка `RC-2026-11-13-KAMIN-BRIDGE`
+
+**Status:** in progress. **Snapshot:** public `origin/main`
+`5624a330a3cf1976d24431b2caf649feae74d5c9` (2026-11-13), последний immutable
+release `kaminide-v1.0.94` / server 6.3.171; private evidence: открыт только
+#141 (engine geometry, вне пачки).
+
+**Поручение владельца 2026-11-13:** «надо все добить по камину и бриджу задачи» —
+общий запуск по [maintainer flow](../../docs/MAINTAINER_PR_FLOW.md#general-backlog-run)
+только для KaminIDE/Bridge. Разрешены commit/push/PR/merge и один batch release.
+Работа движка (`crates/html`, бенчи) и hardening/security не входят. Роль автора
+этой записи — maintainer `kmaint`, единственный writer общего реестра.
+
+**Completion target:** каждый ID пачки получает принятый outcome в `main`
+(`done` с evidence, `verify` с конкретным непроведённым gate или `blocked` с
+owner/условием); один проверенный release 1.0.95 после последнего
+release-relevant PR; close-out реестра, обзора и INC-карточек.
+
+### Исполнители и scope
+
+| Исполнитель | ID / PR | Result | Gate |
+| --- | --- | --- | --- |
+| kfix | [INC-0108](runtime-issues/INC-2026-0108.md) | change | automated stdio transport test |
+| kfix | [INC-0107](runtime-issues/INC-2026-0107.md) | research → change | automated + live Windows gate |
+| kfix | [INC-0109](runtime-issues/INC-2026-0109.md) | research | repeated-frame harness / tolerance decision |
+| kfix | [#697](https://github.com/dykamino-coder/gpui-kamin-ide/pull/697) (`783c7d02`) | change, accept | его CI и browser lifecycle proofs |
+| kresearch | BR-11 → (BR-07 позже) | research | versioned CLI blocker inventory |
+| kresearch | BR-21 | research | metric-contract decision; BR-21A–E только после merge |
+| kresearch | BR-22 → BR-16 | research → change | classification; BR-16 с CEF displacement gate |
+| kresearch | BR-23 | change | fake-clock + Windows native toast gate |
+| kresearch | BR-24 | change | ждёт BR-31 R6 ниже |
+| kresearch | BR-02 | research | Windows envelope artifact; BR-03 deferred до решения |
+| kdeps | Codex CLI 0.160.1 → 0.167.2, Claude Code CLI pin (2.1.322), npm/base image/CEF/toolchain | change | CI + применимые smoke |
+| duckspeed | ускорение страницы статистики пользователей админки (DuckDB ~5 ГБ; на production timeout у большинства из 34 карточек) | change | CI + замер на копии данных; **обязательная часть 1.0.95** |
+| kmaint | BR-31 R6 (+ [INC-0002](runtime-issues/INC-2026-0002.md), BR-25 completion) | verify | Windows CEF reveal без pointer, rows и invoke ≤ 1 с |
+| kmaint | BR-06, BR-19, BR-04, BR-29, BR-10 | verify | живой Windows gate каждой карточки |
+| kmaint | BR-05, BR-09, BR-18A | verify | Windows + isolated authenticated Linux server (Podman) |
+| kmaint | BR-17, BR-08 | observation | локальный стенд как дополнение; production — deployment owner |
+
+### Порядок и зависимости
+
+1. Этот coordination PR (snapshot) — до merge любых результатов пачки.
+2. kmaint verify track последовательно: BR-31 R6 → BR-25 completion / INC-0002 →
+   BR-06 → BR-19 → BR-04 → BR-29 → BR-10 → BR-05 → BR-09 → BR-18A → BR-17/08.
+   Каждый ID — отдельный Diagnostic PR с exact candidate и evidence.
+3. BR-24 change ждёт принятого BR-31 R6; BR-16 ждёт BR-22; BR-07 ждёт BR-11;
+   BR-15 ждёт BR-09 live gate и BR-25 completion; BR-03 ждёт BR-02.
+4. Fix PR kfix/kresearch/kdeps принимаются по одному через общую merge-очередь,
+   с fetch, base/head SHA и зелёными required checks; живой gate — по карточке.
+5. До release лид подтверждает merge или исключение #797, #804 и PR учёта Codex
+   в админке (codexstats); kdeps PR — тоже до release либо явное исключение.
+   Обязательны и без них release 1.0.95 не выпускается: PR duckspeed и второй
+   PR codexstats (таблица активных PTY-сессий: живые счётчики User/Asst/Context/Total,
+   группировка сессий по пользователю).
+6. Reconciliation PR → один release 1.0.95 → проверка GitHub Release, Docker
+   image и ancestry → close-out.
+
+### BR-12/13: что нужно от владельца deployment
+
+BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа к production deployment.
+
+- BR-12: снять inventory новой сессии на действующем deployment — имена skills и источник каждого (deployment, CLI builtin, user, project, plugin), без содержимого.
+- BR-12: сообщить image tag/digest и версию Claude Code этого deployment.
+- BR-12: перечислить skills roots и mounts с владельцем (uid/gid), только пути и ownership.
+- BR-13: для каждого deployment сделать backup legacy volume `bridge-sync`.
+- BR-13: подтвердить migration marker и count/hash в `/app/data/bridge-sync`.
+- BR-13: выполнить два restart после миграции и один rollback probe, сообщить результат.
+- BR-13: подтвердить, что legacy mount больше не читается, и разрешить cleanup PR.
+
+### Дополнение snapshot 2026-11-13: все открытые INC
+
+Владелец уточнил «добить всё» по KaminIDE/Bridge, поэтому открытые INC из
+исходного snapshot включены в пачку. Это дополнение того же snapshot
+`5624a330`; входящие после него карточки остаются следующему запуску. Триаж —
+по fresh `main` и GitHub-состоянию указанных PR. Класс не меняет статус
+карточки: `done`/`resolved` ставится только после принятого результата.
+
+| Класс | INC | Owner | Следующий artifact |
+| --- | --- | --- | --- |
+| fix merged, Windows live verify | 0002, 0023, 0025, 0051, 0053, 0055 | kmaint | Diagnostic PR с exact candidate и сценарием карточки |
+| fix merged, Podman/Linux verify | 0015, 0019, 0062 | kmaint | isolated server/dashboard run; 0019 также Windows save/progress |
+| fix merged, сверка по существующему evidence | 0016, 0078, 0079, 0084, 0088, 0089, 0090 | kmaint | reconciliation PR; повторять только непокрытые случаи |
+| fix merged, только deployment observation | 0001, 0041, 0044, 0054, 0063, 0069, 0070, 0071, 0072, 0073, 0074, 0080, 0081, 0091, 0092, 0093 | владелец/лид (0001 — @ToToshka45) | наблюдение после выкладки 1.0.95; maintainer не выполняет |
+| нужен fix: hooks/MCP, marketplace, Agent Teams | 0042 (change), 0077 (change), 0037, 0039, 0040, 0048 (research) | khooks | research → bounded Fix PR |
+| нужен fix: webview/чат | 0031 + 0101 (общий механизм очереди), 0033, 0046, 0100 (research) | kchat | research → bounded Fix PR |
+| нужен fix: sessions/resume | 0028, 0043, 0047, 0099, 0102 (research) | kses | research → bounded Fix PR |
+| нужен fix: native sidebar, CEF/render, browser workspace | 0029, 0032, 0034, 0038, 0020, 0050, 0087, 0094 (research/change); 0064 только design | knative | research → bounded Fix PR; реализация 0064 после WPT по решению владельца |
+| blocked: решение владельца | 0049 (receiving consumer), 0098 (render-only или CLI display mode) | лид спрашивает владельца | продолжение после решения |
+| вне пачки: движок | 0085 (глубина стека float) | engine | не входит в Kamin/Bridge scope |
+
+Дубликатов или неактуальных карточек триаж не нашёл. Карточки 0079, 0081, 0084,
+0087–0092 и строка INC-0042 в обзоре отстают от уже смерженных PR; их приводит в
+соответствие reconciliation PR kmaint без нового fix.
+
+### Смена исполнителей 2026-11-13
+
+Таблицы выше сохраняют исходное распределение. Для снижения нагрузки на машину
+лид сократил параллельных исполнителей. Состав пачки и gates не меняются.
+
+- Активны:
+  - Claude: kmaint (verify, реестр, merge, release) и duckspeed;
+  - Codex через драйвер: cxstats (учёт Codex в админке и таблица PTY-сессий,
+    вместо codexstats), cxinc (INC-0108, INC-0107, INC-0042) и cxdeps
+    ([#814](https://github.com/dykamino-coder/gpui-kamin-ide/pull/814):
+    Codex CLI 0.167.2 и npm minor);
+  - relayout10 работает на движке, вне пачки.
+- Остановлены: kfix, kresearch, khooks, kchat, kses, knative, kdeps, toolspeed.
+  Их незакоммиченные черновики остаются в своих seats.
+- Неназначенные ID ждут свободного Codex-слота, очередь ведёт kmaint. Это
+  остатки kfix/kresearch/khooks/kchat/kses/knative из таблиц выше.
+  - Уже приняты: BR-21 decision
+    ([#810](https://github.com/dykamino-coder/gpui-kamin-ide/pull/810)) и
+    INC-0064 design
+    ([#812](https://github.com/dykamino-coder/gpui-kamin-ide/pull/812)).
+  - INC-0094 research — в
+    [#813](https://github.com/dykamino-coder/gpui-kamin-ide/pull/813).
+  - #797 и #804 ведёт лид.
+
+### Вне пачки (backlog следующего запуска)
+
+- INC-0085 — owner engine (см. выше).
+- Engine PR (#712, #773, #791, #794, #798–#800, #807) и private #141 — работа движка.
+- #797 и #804 ведёт лид; в пачку входят только как release prerequisite (шаг 5).
+
 ## Выборочная сверка после 1.0.80 — 2026-10-25
 
 Scope: только INC-2026-0075/0076; source `origin/main`

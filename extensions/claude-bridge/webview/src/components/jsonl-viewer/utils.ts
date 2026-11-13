@@ -368,7 +368,7 @@ export function groupConsecutiveToolCalls(entries: JsonlEntryData[]): JsonlEntry
         // message.id относится к API-ответу, а не ко всему ходу с инструментами.
         if (taskNotificationText(n) !== null) { notices.push(n); j++; continue }
         if (n.type === 'user' && n.isMeta) { groupEntries.push(n); j++; continue }
-        if (n.type === 'system' && !['compact_boundary', 'away_summary', 'model_fallback'].includes(n.subtype || '')) {
+        if (n.type === 'system' && !['compact_boundary', 'away_summary', 'model_fallback', 'engine_switch'].includes(n.subtype || '')) {
           if (systemEntryDraws(n)) notices.push(n)
           else groupEntries.push(n)
           j++; continue

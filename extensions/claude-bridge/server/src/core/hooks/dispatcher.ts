@@ -111,6 +111,17 @@ export async function dispatchHook(
   } catch (err) {
     result = errorResult(err instanceof Error ? err.message : String(err), start)
   }
+  // Where a hook's time goes: `hostMs` is what the executing host measured
+  // (the client host for local hooks), the rest of `totalMs` is the server and
+  // the WebSocket. The CLI's relay start-up lies outside both.
+  debugLog('Hook dispatched', {
+    sessionId,
+    event: reg.event,
+    host: reg.effectiveHost,
+    outcome: result.outcome,
+    totalMs: Date.now() - start,
+    hostMs: result.durationMs,
+  })
 
   // Audit-log every dispatched hook (success/error/timeout/cancel) so the
   // UI Log tab and downstream compliance tooling can see what happened.
@@ -247,12 +258,22 @@ async function dispatchServer(
     // stuck loop) would otherwise grow these strings until the server OOMs.
     // 1 MiB is far more than any legitimate hook JSON/log; excess is dropped.
     const MAX_HOOK_OUTPUT = 1024 * 1024
-    proc.stdout?.on('data', (d) => {
-      if (stdout.length < MAX_HOOK_OUTPUT) stdout += d.toString()
+    let stdoutDropped = 0
+    // setEncoding decodes across chunk boundaries; per-chunk toString split
+    // multi-byte characters into U+FFFD.
+    proc.stdout?.setEncoding('utf8')
+    proc.stderr?.setEncoding('utf8')
+    proc.stdout?.on('data', (d: string) => {
+      const room = MAX_HOOK_OUTPUT - stdout.length
+      if (room > 0) stdout += d.slice(0, room)
+      stdoutDropped += Math.max(0, d.length - Math.max(0, room))
     })
-    proc.stderr?.on('data', (d) => {
-      if (stderr.length < MAX_HOOK_OUTPUT) stderr += d.toString()
+    proc.stderr?.on('data', (d: string) => {
+      if (stderr.length < MAX_HOOK_OUTPUT) stderr += d.slice(0, MAX_HOOK_OUTPUT - stderr.length)
     })
+    // A cut stdout is reported, never passed on as the hook's whole output.
+    const cutNote = (): string =>
+      stdoutDropped ? `\n[hook stdout exceeded ${MAX_HOOK_OUTPUT} characters; ${stdoutDropped} were dropped]` : ''
 
     const killer = setTimeout(() => {
       try {
@@ -262,7 +283,7 @@ async function dispatchServer(
       }
       resolve({
         stdout,
-        stderr: stderr + `\n[hook killed after ${timeoutMs}ms]`,
+        stderr: stderr + cutNote() + `\n[hook killed after ${timeoutMs}ms]`,
         exitCode: 124,
         outcome: 'timeout',
         durationMs: Date.now() - start,
@@ -272,7 +293,7 @@ async function dispatchServer(
     proc.on('exit', (code) => {
       clearTimeout(killer)
       let jsonOutput: Record<string, unknown> | undefined
-      if (code === 0) {
+      if (code === 0 && !stdoutDropped) {
         try {
           const trimmed = stdout.trim()
           if (trimmed.startsWith('{')) jsonOutput = JSON.parse(trimmed)
@@ -282,7 +303,7 @@ async function dispatchServer(
       }
       resolve({
         stdout,
-        stderr,
+        stderr: stderr + cutNote(),
         exitCode: code ?? 0,
         outcome: code === 0 ? 'success' : 'error',
         jsonOutput,

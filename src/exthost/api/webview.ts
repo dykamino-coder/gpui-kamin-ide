@@ -177,7 +177,9 @@ export class Webviews {
       return
     }
     const registration = this.viewProviders.get(viewId)
-    if (!registration) return
+    // A successful no-op would make the shell's request-once guard permanent,
+    // even though extension activation may register this provider later.
+    if (!registration) throw new Error(`Webview view provider not registered: ${viewId}`)
     this.resolvedViews.add(viewId)
     const { resolvedHtml } = this
     const broadcast = this.posts.broadcastAfterPosts.bind(this.posts) // ordered vs queued posts

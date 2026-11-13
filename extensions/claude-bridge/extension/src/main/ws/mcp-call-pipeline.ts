@@ -132,6 +132,18 @@ export async function handleHookExecute(ctx: McpCallCtx, msg: any): Promise<void
   }
 }
 
+/** This host's share of one call, in milliseconds (0.1 ms), for the server's
+ *  per-call trace. Durations only: the two clocks never need to agree. */
+export function callTiming(
+  receivedAt: number,
+  toolStartedAt: number,
+  toolEndedAt: number,
+  sentAt: number,
+): { queuedMs: number; toolMs: number; totalMs: number } {
+  const ms = (n: number): number => Math.max(0, Math.round(n * 10) / 10)
+  return { queuedMs: ms(toolStartedAt - receivedAt), toolMs: ms(toolEndedAt - toolStartedAt), totalMs: ms(sentAt - receivedAt) }
+}
+
 /** Handle incoming MCP tool call from server. Stores as pending, checks
  *  permissions, then executes via MCP executor. mcp-activity IPC fires for
  *  pending → completed/denied so the renderer can paint the call row. */
@@ -146,6 +158,7 @@ export async function handleMcpCall(
   },
 ): Promise<void> {
   if (ctx.pendingMcpCalls.has(msg.requestId)) return
+  const receivedAt = performance.now()
   const correlation = { requestId: msg.requestId, toolName: msg.toolName }
   mcpDiagnostic('request-received', correlation)
   const controller = new AbortController()
@@ -172,6 +185,7 @@ export async function handleMcpCall(
   }
 
   const start = Date.now()
+  const toolStartedAt = performance.now()
   mcpDiagnostic('execution-started', correlation)
   let result: unknown
   try {
@@ -190,6 +204,7 @@ export async function handleMcpCall(
   } catch (err) {
     result = `Error: ${err instanceof Error ? err.message : String(err)}`
   }
+  const toolEndedAt = performance.now()
   mcpDiagnostic('execution-finished', {
     ...correlation,
     durationMs: Date.now() - start,
@@ -201,6 +216,7 @@ export async function handleMcpCall(
       requestId: msg.requestId,
       result,
       taskOwner: msg.taskOwner,
+      timing: callTiming(receivedAt, toolStartedAt, toolEndedAt, performance.now()),
     })
     // The outbox owns its bounded serialized frame while awaiting an ack.
     result = undefined

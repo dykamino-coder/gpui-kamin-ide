@@ -257,11 +257,43 @@ respawn уже отправляется; полноценного shell recovery
 providers/state нет. BR-05 connection recovery не закрывает этот более широкий контракт.
 Нужен отдельный implementation PR и Windows gate; в этой ревизии код не дописывается.
 
+**Verification 2026-11-13 (batch `RC-2026-11-13-KAMIN-BRIDGE`): failed.**
+
+Setup:
+- Candidate: installed KaminIDE 1.0.94 (contains #148 and #152).
+- A copy of a working profile, server container from `main` `584b5616`.
+- The extension-host child was killed by PID twice; the views were read only through kamin-probe.
+
+Results:
+- The child respawned in 0.83–0.88 s. Chat, Console, Agents and Customize stayed live, and their pages were not reloaded.
+- The new child reported the same five tabs under new tab ids, and none of them was active.
+- Chat stayed bound to the old tab id, and its composer did not become ready.
+- A manual tab switch to the new id restored the composer, but the switch call took more than 10 s to reply.
+- The Agents panel lost the finished team rows (`Completed 2` → empty placeholder) and did not get them back, even after the manual switch.
+
+Not checked: documents, the active editor and LSP reseeding.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/a1401f427d98227c5a1a787cb5a7f617326eddd8/incidents/BR-04/evidence/2026-11-13-br04-1.0.94).
+
+The acceptance requirement "Chat, Console and the neighbouring view return and show the selected session" is not met. Next artifact: change.
+- After a respawn the client keeps the selected tab bound across the new tab ids.
+- The Agents state of the bound tab is replayed.
+- Then the same live gate is repeated.
+
+Owner: the executor the maintainer assigns. The status stays `verify` until that gate passes.
+
 **Status:** implementation PR #148 и дополнительный PR #152 merged;
 Windows runtime acceptance ещё не подтверждена. CI job на Windows не запускает
 живой интерфейс. **Dependency:** none.
 **Acceptance:** automated + Windows runtime merge gate.
 **Windows runtime merge gate:** required.
+
+**Implementation branch:** `dykamino-coder/gpui-kamin-ide:codex/fix-br04-respawn-state`.
+Продолжение восстановления Bridge: сохранить идентичность и выбранную вкладку
+между поколениями child, заново опубликовать вкладки и replay Agents после
+подключения панелей. Автотесты покрывают повторный respawn и completed team rows;
+Windows gate для кандидата выполняет kmaint. До его evidence статус BR-04
+не меняется; документы, editor и LSP остаются частью общего runtime-сценария.
 
 **Реализовано:** оболочка обрабатывает `kamin:exthost:respawned` в
 `ws_events/views.rs`: снимает отметки `resolved_views()` и сразу
@@ -323,6 +355,23 @@ starvation path. После его merge повторить оба исходн�
 ниже сценарий Plugins, сопоставив outbox/pump/replay trace; Agents R6 сам по себе их не покрывает.
 При исчезновении всех проверяемых симптомов закрыть verification с evidence, при
 остатке завести bounded child. Отдельный speculative repaint fix не нужен.
+
+**Verification 2026-11-13 (batch `RC-2026-11-13-KAMIN-BRIDGE`): both Chat cases passed,
+Plugins failure/no-change path passed.**
+- Candidate: installed KaminIDE 1.0.94 (contains #147).
+- Setup: a copy of a working profile and the server container from `main` `584b5616`, driven only through kamin-probe. There was no pointer, focus change or resize.
+- Session switch, 4 runs: tab #1 ran a 45 s Bash turn, then the chat switched to tab #2. That tab showed its history within 0.01–0.06 s. After switching back, tab #1 showed its entries and `working` at once and became ready when the turn ended.
+- Disconnect → reconnect, 4 runs: ready within 0.52–0.58 s. No sample showed `Loading conversations`.
+- Plugins → Update, 3 runs: the card was from a marketplace whose refresh fails in this profile. It stayed busy for 2.6–3.2 s, then the card and the button settled by themselves with the version unchanged.
+- Not run:
+  - a successful Update to a newer version: it would change the real plugin cache of the test machine;
+  - MCP Test/connect;
+  - rapid repeated operations.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/b88f88c65bd6f770b84103a488411e7807da2376/incidents/INC-2026-0044/evidence/2026-11-13-br06-1.0.94).
+Outcome: the two original Chat symptoms do not reproduce on 1.0.94. Remaining gate:
+a successful plugin Update with a disposable local marketplace plugin whose version
+is bumped. Owner: maintainer. No new fix is proposed.
 
 **Status:** waiting для повторной verification; зависимость СНЯТА.
 **Dependency:** BR-31 реализован и влит ([#147](https://github.com/dykamino-coder/gpui-kamin-ide/pull/147)),
@@ -1075,6 +1124,21 @@ call count. Требуется отличить ожидаемую отмену 
 как crash. Typed generation-scoped cancellation ещё нужна; это не завершённый BR-18
 teardown fix.
 
+**Verification 2026-11-13 (kmaint) — passed for reconnect and crash
+containment; dialog cases open.** Candidate: #830 head `cd2e70ee` (adds the
+probe `hostDisconnect`; also changes `crates/ws/src/client.rs`, so this result
+holds for main once #830 is merged), on the installed 1.0.94 runtime, isolated
+profile copy. Six `hostDisconnect` calls, two of them 150 ms after a session
+switch: each was followed by a shell reconnect; the extension-host child kept
+its PID (no crash respawn); no crash, unhandled-rejection or respawn entries in
+the incident logs or `host.log`; Chat ready 0.11–0.14 s later; a session switch
+after a disconnect rebound Chat in 0.68 s.
+[Private evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/6a9f9e03865be05e1e15cf4423ec47f82734abc7/incidents/BR-29/evidence/2026-11-13-keys-830).
+Not covered: a dialog or picker pending at the moment of disconnect (no
+extension command on this profile opens one) and a genuine request error after
+reconnect. Next step: verify those two with a disposable test extension command
+that opens a QuickPick; owner kmaint.
+
 **Status:** implementation PR #146 merged; Windows runtime acceptance ещё не
 подтверждена. CI job на Windows не запускает живой интерфейс.
 **Dependency:** none; BR-17 evidence is not a prerequisite.
@@ -1234,6 +1298,18 @@ full dashboard or authenticated quota runtime gate. Adjacent control focus,
 unavailable refresh and last-known row retention passed in the same harness.
 
 ### BR-21 — Define and reconcile dashboard analytics semantics
+
+**Metric-contract decision — 2026-11-13:** [`metrics-v1`](server/DASHBOARD_METRICS.md)
+fixes turn, human-message, session/subagent, token-UUID identity, engine
+(Claude + Codex), local-calendar range/timezone, token measures, cost catalog
+and revision freshness, and answers the open product questions below (local
+calendar ranges; favorite model by new-token flow; subagent prompts are
+delegated, not user messages; the `All` heatmap shows the last 53 local weeks
+with its own label). Baseline `5624a330a` already deduplicates turns in
+`jsonl_accounting_events`; the remaining defects map to BR-21A–E in its §9.
+No code changes and no child is claimed done; each child keeps the fixtures and
+isolated dashboard gate below. Status of the umbrella stays investigation until
+the children are accepted.
 
 **Close-out audit 2026-09-06:** Утверждённого metric-contract decision artifact нет.
 Наличие stats database/dashboard не закрывает parent attribution, turn identity,
@@ -1654,6 +1730,8 @@ the required Windows gate. This PR is not field attribution or closure.
 pass после BR-31, без forced repaint, pointer, resize или повторного toggle; сохранить R6
 и остальные исходные scenarios как evidence. BR-31 пока не реализован.
 
+**Completion run 2026-11-13 (1.0.94, see BR-31):** the reveal-after-reap case was run 23 times without repaint, pointer, resize or toggle. Finished teammates are listed under `Completed` (2), not `RUNNING`. The BR-31 rows threshold failed in 5 of 23 runs, and the hide/show and tab-switch cases were not run. Completion stays waiting on the BR-31 residual.
+
 **Status:** baseline done (INC-2026-0002); completion gate waiting.
 **Dependency:** BR-31; BR-27 и BR-26 уже merged. **Acceptance:** instrumented
 Windows Agent Teams runtime gate; новый fix PR создаётся только если симптом
@@ -1870,6 +1948,39 @@ double-click, фактический focus/typing, Enter/Escape/blur и сосе
 из BR-28. Probe-вызов BeginRename и state tests не заменяют keyboard/hitbox path; задача
 возвращена в `verify`.
 
+**Verification 2026-11-13 (KaminIDE 1.0.94, copy profile, kamin-probe) —
+partial pass.** Private evidence: [BR-29 run](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/c147ec55a1d9e328d5cd7bd6bb15d356a8d2f0fa/incidents/BR-29/evidence/2026-11-13-br29-1.0.94).
+Passed on the real pointer/WM_CHAR path:
+
+- hover of the row → fly-out pill over the sidebar edge; hover of the pencil keeps
+  the pill and shows `Rename`;
+- pencil click → the pill disappears, the input replaces the name with the whole
+  name selected; typed text replaces it at once (the input has keyboard focus);
+- Escape → cancel, the old name stays and nothing is saved;
+- click outside (into the chat) → blur commits; the new name is shown and persisted
+  in `sessions.json`;
+- double-click → the row becomes active, the input opens selected and without the
+  pill; blur commits again.
+
+Not covered: Enter commit and F2. kamin-probe sends keys only via `SendInput`
+after `SetForegroundWindow`, which takes over the owner's screen. A screen-free
+gate needs an in-process probe keystroke command (gpui `dispatch_keystroke` into
+the window). Also not covered: scroll and session change during the transition,
+and the paired BR-28 bounds. Status stays `verify` for these steps only.
+
+**Keyboard run 2026-11-13 (probe `keystroke` from #830, no OS input).**
+[Private evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/6a9f9e03865be05e1e15cf4423ec47f82734abc7/incidents/BR-29/evidence/2026-11-13-keys-830).
+F2 on a focused session row opens the input with the name selected and no
+pill; Escape cancels. **Enter does not commit:** `startup.rs` binds `enter` to
+`actions::PressEnter` in `Root && !webview`, and the `PressEnter` handler in
+`state/handlers.rs` has no rename branch but still consumes the key. The
+`on_key_down` in `ui/sessions/rename_row.rs` that sends `CommitRename` never
+sees Enter. Escape works because `CloseOverlay` has a `renaming_session`
+branch. Next step: change — give `PressEnter` a rename branch that sends
+`CommitRename` (the same as blur), with a keymap-level test that Enter in the
+rename input commits. Owner: the executor the lead assigns. Scroll and session
+change during the transition and the BR-28 bounds remain `verify`.
+
 **Status:** implementation merged в PR #37; reopened for verification.
 Частичный Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал
 возможен после PR #40 (зелёный Rust-gate на `main`).
@@ -2016,6 +2127,29 @@ source defect (INC-2026-0002). **Dependency:** none; BR-25 completion завис
 от R6. **Acceptance:** automated test на wake без кадра + Windows CEF runtime
 gate (reveal без pointer).
 **Windows runtime merge gate:** required.
+
+**Verification 2026-11-13 (batch `RC-2026-11-13-KAMIN-BRIDGE`): failed on the rows
+threshold, starvation not reproduced.** Candidate: installed KaminIDE 1.0.94
+(`kaminide-v1.0.94`, contains #147), a copy of a working profile, server container
+from `main` `584b5616`. Driven only through kamin-probe: no pointer, keyboard, resize
+or forced repaint. 23 runs of R6: a two-teammate team finishes, Agents is hidden by
+another container in the same slot until its renderer is reaped (21–22 s), then it
+is revealed.
+- Without any input, rows (`Completed 2`) appeared in 23 of 23 runs, and every
+  invoke reply took 18–659 ms.
+- Rows were present 1 s after load in 18 of 23 runs. In the other 5 the
+  placeholder was still shown at 1.2–1.4 s; rows came by 3.5–4.3 s in four runs
+  and by about 23 s in one.
+- The slow runs are the ones where the view became live late (240–380 ms after
+  reveal instead of ~105 ms).
+
+Evidence:
+[private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/e13d43464824d7c0ead8df6dfbf8b0af0d6a2c51/incidents/INC-2026-0002/evidence/2026-11-13-br31-r6-1.0.94).
+Status stays `verify`. Next artifact: research, owner maintainer. Trace for a late-live
+reveal when the resync frames enter the outbox, when the page first calls
+`__kaminPull()` and when the rows render. Only then decide whether a bounded fix
+is needed; no forced repaint or timer. BR-24 and BR-25 completion keep this as
+their prerequisite.
 
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с

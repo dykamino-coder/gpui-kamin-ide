@@ -111,7 +111,7 @@ Usage:
 - Returns matching file paths sorted by modification time
 - Use this tool when you need to find files by name patterns
 - When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
-- OUTPUT SIZE LIMIT: responses are hard-capped at about 720,000 characters. A root-level \`**/*\` over a big tree will be truncated — pass a tighter \`path\` or a more specific pattern first.`,
+- Returns at most the 100 most recently modified matches and says how many matched in total — pass a tighter \`path\` or a more specific pattern for the rest.`,
     inputSchema: {
       type: 'object',
       properties: {

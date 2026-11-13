@@ -109,6 +109,8 @@ pub(super) mod scroll_markers;
 pub(super) mod walk;
 use crate::dom::scroll_markers::*;
 pub use crate::dom::walk::element_attrs;
+#[cfg(feature = "heap-report")]
+pub mod heap;
 mod marks;
 pub(super) mod pseudo;
 mod state_identity;

@@ -10,6 +10,10 @@ pub struct TerminalState {
     pub term_menu_open: bool,
     /// Persist-дефолтный шелл («звёздочка» в пикере, им открываются новые).
     pub term_default_shell: Option<String>,
+    /// Open-in-terminal requested before the first profile snapshot arrived.
+    pub pending_cwd: Option<String>,
+    /// Coalesce shell requests until the event pump handles them.
+    pub spawn_pending: bool,
     /// Идёт mouse-выделение в терминале (drag от mouse-down).
     pub term_selecting: bool,
     /// Окно видимых табов терминала: индекс первого (overflow-шевроны).

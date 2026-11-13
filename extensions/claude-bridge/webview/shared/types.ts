@@ -354,7 +354,7 @@ export interface KaminBridgeApi {
   getActiveTab(): Promise<string | null>
   onTabCreated(callback: (tab: TabInfo) => void): () => void
   onTabClosed(callback: (tabId: string) => void): () => void
-  onTabSwitched(callback: (tabId: string) => void): () => void
+  onTabSwitched(callback: (tabId: string, sequence?: number, generation?: number) => void): () => void
   onTabListChanged(callback: (tabs: TabInfo[]) => void): () => void
   saveTabsState(tabs: PersistedTabState[]): Promise<{ ok: boolean }>
   restoreTabsState(): Promise<PersistedTabState[]>
@@ -768,7 +768,8 @@ export interface KaminBridgeApi {
     callback: (
       tabId: string,
       data: {
-        sessionId: string
+        /** Absent when nothing restarted (a refused engine switch). */
+        sessionId?: string
         effort?: string
         model?: string
         inPlace?: boolean

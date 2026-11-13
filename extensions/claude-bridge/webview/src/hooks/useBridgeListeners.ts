@@ -1,4 +1,4 @@
-import { receiveSubmission, noteSubmissionRows, forgetSubmissions } from '../signals/submissions'
+import { receiveSubmission, noteSubmissionRows, forgetSubmissions, forgetModCapability } from '../signals/submissions'
 import { forgetCompaction, noteCompactionRows } from '../signals/compaction'
 import { setTabUsage } from '../signals/session-usage'
 import { receiveAgentPreferences, receiveCodexAuth, receiveCodexModels } from '../signals/agent'
@@ -191,10 +191,10 @@ export function useBridgeListeners(
       }
     })
 
-    const unsubTabSwitched = bridge.onTabSwitched((tabId: string, seq?: number) => {
+    const unsubTabSwitched = bridge.onTabSwitched((tabId: string, seq?: number, generation?: number) => {
       // Reject a switch the user has already moved past (see applyTabSwitch).
       // A stale one must not touch recency or trigger an eviction sweep either.
-      if (!applyTabSwitch(tabId, typeof seq === 'number' ? seq : Number.MAX_SAFE_INTEGER)) return
+      if (!applyTabSwitch(tabId, typeof seq === 'number' ? seq : Number.MAX_SAFE_INTEGER, generation)) return
       // A tab becoming ACTIVE while the user sits in Customize pulls them back
       // to the chat — covers renderer paths and OS-level entry points (Explorer
       // "Open Claude Bridge" calls createTab in the main process directly).
@@ -216,6 +216,7 @@ export function useBridgeListeners(
       const pinSet = pinnedTabs.value
       const reconciled = reconcileTabSnapshot(newTabs)
       tabs.value = reconciled.map(t => ({ ...t, pinned: pinSet.has(t.id) }))
+      tabPromptReady.value = reconcilePromptReadiness(tabPromptReady.value, reconciled)
       // Sync model/effort for active tab
       const tid = activeTabId.value
       if (tid) {
@@ -329,6 +330,8 @@ export function useBridgeListeners(
         const nextEffort = data.effort ?? cur?.effort
         const nextModel = data.model ?? cur?.model
         const nextEngine = data.engine ?? cur?.engine
+        // An engine switch: receipts follow the new engine's own announcement.
+        if (cur && data.engine && (cur.engine ?? 'claude') !== data.engine) forgetModCapability(tabId)
         if (cur && (cur.effort !== nextEffort || cur.model !== nextModel || cur.engine !== nextEngine)) {
           tabs.value = tabs.value.map(t => t.id === tabId ? { ...t, effort: nextEffort, model: nextModel, engine: nextEngine } : t)
         }

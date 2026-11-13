@@ -37,6 +37,29 @@ Tasks при essential-traffic. Сценарий: собрать образ эт
 контейнере с выданной для приёмки авторизацией пройти start → turn → MCP tool →
 detach → resume → turn и фоновую MCP Task. Это не Windows/CEF-приёмка.
 
+### Client hooks как native http hooks (2.1.322)
+
+Синхронные client command hooks на `PreToolUse` и `PostToolUse` уходят в CLI
+как `type: "http"` (`hooks/http-hook-answer.ts`), остальные события и async
+hooks остаются на command relay. Bridge опирается на такое поведение 2.1.322:
+
+- header `Bearer $CLAUDE_BRIDGE_HOOK_TOKEN` подставляется только при имени в
+  `allowedEnvVars`; значение вида UUID не считается credential;
+- loopback URL разрешён; на `SessionStart` и `Setup` http hooks не запускаются;
+- non-2xx даёт non-blocking hook error; тело 2xx разбирается как JSON output
+  command hook; `permissionDecision: "deny"` и `decision: "block"` дают модели
+  тот же текст, что exit 2 у command hook.
+
+Проверка: fake Messages API и эмулятор endpoint в контейнере образа 2.1.322,
+для обоих событий сравнивались запросы к модели и stream-json у исходного
+command hook и его http-формы: exit 0 с текстом, с JSON и с невалидным JSON,
+exit 1, exit 2 со stderr и без него. Совпадают все случаи, кроме префикса
+`PostToolUse` block: CLI называет hook по URL вместо команды. Для exit 1 и
+других кодов модель тоже получает то же, но строка ошибки в терминале CLI
+будет `HTTP 500 from <url>` вместо stderr; stderr остаётся в журнале hooks
+Bridge. При обновлении
+CLI повторить эту проверку; `KAMIN_HOOK_HTTP=0` возвращает relay для всех hooks.
+
 ## Проверка перехода с 2.1.296
 
 Источники: официальный [changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md),

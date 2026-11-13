@@ -27,6 +27,19 @@ describe('foreground shell local process acceptance', () => {
     }
   }, 6000)
 
+  it('streams a character split between chunks intact on both streams', async () => {
+    const program = `
+      const zh = Buffer.from('Ж', 'utf8');
+      process.stdout.write(zh.subarray(0, 1));
+      process.stderr.write(zh.subarray(0, 1));
+      setTimeout(() => { process.stdout.write(zh.subarray(1)); process.stderr.write(zh.subarray(1)); }, 50);
+    `
+    const streamed: string[] = []
+    const result = await runForegroundCommand(program, process.execPath, 5000, ['-e'], {}, undefined, (s) => streamed.push(s))
+    expect(streamed.join('')).toBe('ЖЖ')
+    expect(result.content[0]!.text).toContain('Ж')
+  })
+
   it('drains a large output while retaining bounded stdout and stderr', async () => {
     const program = `process.stdout.write('x'.repeat(2 * 1024 * 1024)); process.stderr.write('y'.repeat(2 * 1024 * 1024));`
     const result = await runForegroundCommand(program, process.execPath, 3000, ['-e'], {})

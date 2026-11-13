@@ -60,10 +60,8 @@ pub(crate) fn endpoint_slot() -> &'static Mutex<Option<HostEndpoint>> {
     ENDPOINT.get_or_init(|| Mutex::new(None))
 }
 
-pub(crate) static RESOLVED_VIEWS: OnceLock<Mutex<std::collections::HashSet<String>>> =
-    OnceLock::new();
-
-/// Вью, для которых уже пришёл HTML (гасит resolve-ретраи).
-pub(crate) fn resolved_views() -> &'static Mutex<std::collections::HashSet<String>> {
-    RESOLVED_VIEWS.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+/// Requested views and last HTML, scoped to one extension-host generation.
+pub(crate) fn view_resolution() -> &'static Mutex<crate::host::view_resolution::ViewResolution> {
+    static STATE: OnceLock<Mutex<crate::host::view_resolution::ViewResolution>> = OnceLock::new();
+    STATE.get_or_init(Default::default)
 }

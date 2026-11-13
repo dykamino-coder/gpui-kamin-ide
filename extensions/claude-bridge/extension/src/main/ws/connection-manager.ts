@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { appendStreamingText } from '../../shared/streaming-delta'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import type { AgentEngine, ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
+import { engineOfModelId } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
 import type { HostDeclaration } from '../mcp/host-declaration'
@@ -539,7 +540,10 @@ export class ConnectionManager {
       }
     }
     const host = ConnectionManager.hostDeclaration
-    const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null
+    // A replacement child has no in-memory Agent projection. A disk cursor
+    // alone can return an empty delta and never rebuild the retained panels.
+    const needsRespawnHistory = this.stateAuthorityGeneration > 1 && this.cachedJsonlEntries.length === 0
+    const cursor = this.conversationId && !this.pendingNewConversation && !needsRespawnHistory ? await this.getMirrorCursor() : null
     // A reconnect may have swapped the socket while we waited — never write to a
     // stale or closed pipe (the current socket runs its own startSession).
     if (this.ws !== sock || sock.readyState !== WebSocket.OPEN) return
@@ -1096,6 +1100,10 @@ export class ConnectionManager {
     this.batcher.flushMain()
     this.batcher.flushSubagent()
 
+    // A replacement child has not received authoritative history yet. Closing
+    // an empty synthetic replay here would erase the retained Agents snapshot.
+    if (!this.cachedJsonlStatus && this.cachedJsonlEntries.length === 0) return
+
     // Reset the renderer's live flag so it re-enters replay mode. Without
     // this, a tab that previously saw `replayComplete` would treat the
     // cached historical entries below as live, resurrecting dead agents/teams
@@ -1236,10 +1244,40 @@ export class ConnectionManager {
     this.send({ type: 'session:change-effort', effort })
   }
 
-  /** Request model change (triggers PTY restart on server). */
+  /** Request model change (triggers PTY restart on server). A model of the
+   *  other engine continues this chat on that engine (same tab, same
+   *  conversation): the server stops this engine and starts the other one
+   *  with the conversation so far. */
   changeModel(model: string): void {
+    const engine = engineOfModelId(model)
+    if (engine !== this.getEngine()) {
+      this.switchEngine(engine, model)
+      return
+    }
     this.chosenModel = model
     this.send({ type: 'session:change-model', model })
+  }
+
+  /** Continue the chat on `engine`; session:restarted reports the result. */
+  switchEngine(engine: AgentEngine, model: string): void {
+    this.switchUndo ??= { engine: this.config.engine, chosenModel: this.chosenModel }
+    this.chosenModel = model
+    // A reconnect before the conversation is known creates the chat again:
+    // on the engine it runs now.
+    this.config = { ...this.config, engine }
+    this.send({ type: 'session:switch-engine', engine, model })
+  }
+
+  /** What a pending engine switch changed in the tab; a refusal restores it. */
+  private switchUndo: { engine: AgentEngine | undefined; chosenModel: string | null } | null = null
+
+  /** The server reported the switch: done, or refused (the chat stays on its engine). */
+  private settleEngineSwitch(ok: boolean): void {
+    const undo = this.switchUndo
+    this.switchUndo = null
+    if (ok || !undo) return
+    this.config = { ...this.config, engine: undo.engine }
+    this.chosenModel = undo.chosenModel
   }
 
   /** The chat's agent: the tab's request until the server reports the real one. */
@@ -1659,6 +1697,7 @@ export class ConnectionManager {
       notifySessionTitle: (t) => ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => ConnectionManager.onConversationId?.(this.tabId, id),
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
+      settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),
       notifyAgentPreferences: (engine) => ConnectionManager.onAgentPreferences?.(this.tabId, engine),
       notifySessionInfo: (effort, model) => {
         // Снимок для claude-bridge.getSessionInfo (тест-команды).

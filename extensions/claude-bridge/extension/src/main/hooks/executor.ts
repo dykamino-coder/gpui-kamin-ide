@@ -3,7 +3,7 @@
 // PATH, env, IDE binaries, npm-installed tools, etc. Returns stdout/stderr/
 // exitCode back to bridge — which forwards as a CLI-compatible hook response.
 
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -16,6 +16,8 @@ import {
   type ResolvedShell,
 } from '../utils/command-runtime'
 import { resolveWorkingDirectory } from '../utils/working-directory'
+import { scriptInvocation, type ScriptInvocation } from '../utils/script-file'
+import { startWarmShell, takeWarmShell, warmKey } from '../mcp/tools/warm-shell'
 
 export interface HookExecuteRequest {
   type: 'hook:execute'
@@ -48,6 +50,22 @@ export interface HookExecuteResponse {
 
 // Match Claude Code's DEFAULT_HTTP_HOOK_TIMEOUT_MS = 10 minutes.
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
+/** Characters kept per hook stream; a runaway hook must not grow them unbounded. */
+export const HOOK_OUTPUT_CAP = 1024 * 1024
+
+/** Keeps the first HOOK_OUTPUT_CAP characters and counts what it dropped. */
+function boundedText(): { text: string; dropped: number; add(chunk: string): void } {
+  const state = {
+    text: '',
+    dropped: 0,
+    add(chunk: string): void {
+      const room = HOOK_OUTPUT_CAP - state.text.length
+      if (room > 0) state.text += chunk.slice(0, room)
+      state.dropped += Math.max(0, chunk.length - Math.max(0, room))
+    },
+  }
+  return state
+}
 
 function portableBasename(value: string): string {
   return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value
@@ -123,6 +141,16 @@ async function killProcessTree(proc: import('node:child_process').ChildProcess):
   try { process.kill(-proc.pid, 'SIGKILL') } catch {
     try { proc.kill('SIGKILL') } catch { /* best effort */ }
   }
+}
+
+/** A Bash hook runs in a shell started after the previous run of the same
+ *  hook environment, like the Bash tool's warm shell: the hook fires around
+ *  every tool call, and a cold Git Bash costs ~100 ms on Windows each time.
+ *  The script still starts fresh in its own process; stdin carries the input. */
+function warmHookShell(shell: ResolvedShell, scriptPath: string, cwd: string, env: NodeJS.ProcessEnv): ChildProcess | null {
+  if (shell.kind !== 'bash' || process.env.KAMIN_WARM_SHELL === '0') return null
+  const child = takeWarmShell(warmKey(shell.bin, shell.args, env), shell.bin, shell.args, 'bash-hook', env)
+  return child && startWarmShell(child, toPosixShellPath(cwd), toPosixShellPath(scriptPath), true)
 }
 
 export async function executeHook(
@@ -209,12 +237,16 @@ export async function executeHook(
   return new Promise((resolve) => {
     let proc: import('node:child_process').ChildProcess
     let settled = false
+    let script: ScriptInvocation | undefined
     const finish = (result: HookExecuteResponse['result']): void => {
       if (settled) return
       settled = true
       resolve(result)
     }
     try {
+      // A shell-form command of any length runs from a file: Git Bash cuts
+      // long command-line arguments without an error.
+      if (!execForm) script = scriptInvocation(shell!.kind, shell!.args, command)
       proc = execForm
         ? spawn(command, args ?? [], {
           cwd,
@@ -223,29 +255,47 @@ export async function executeHook(
           stdio: ['pipe', 'pipe', 'pipe'],
           detached: process.platform !== 'win32',
         })
-        : spawn(shell!.bin, [...shell!.args, command], {
-          cwd,
-          env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
-          windowsHide: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          detached: process.platform !== 'win32',
-        })
+        : warmHookShell(shell!, script!.file.path, cwd, { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' }) ??
+          spawn(shell!.bin, script!.args, {
+            cwd,
+            env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+            detached: process.platform !== 'win32',
+          })
     } catch (err) {
+      script?.file.dispose()
       finish({
         stdout: '', stderr: `spawn failed: ${err instanceof Error ? err.message : String(err)}`,
         exitCode: 127, outcome: 'error', durationMs: Date.now() - start,
       })
       return
     }
+    if (script) {
+      const dispose = script.file.dispose
+      proc.once('exit', dispose)
+      proc.once('error', dispose)
+    }
 
-    let stdout = ''
-    let stderr = ''
-    const maxOutput = 1024 * 1024
-    proc.stdout?.on('data', d => { if (stdout.length < maxOutput) stdout += d.toString().slice(0, maxOutput - stdout.length) })
-    proc.stderr?.on('data', d => { if (stderr.length < maxOutput) stderr += d.toString().slice(0, maxOutput - stderr.length) })
+    const stdoutCap = boundedText()
+    const stderrCap = boundedText()
+    // setEncoding decodes across chunk boundaries; per-chunk toString split
+    // multi-byte characters into U+FFFD.
+    proc.stdout?.setEncoding('utf8')
+    proc.stderr?.setEncoding('utf8')
+    proc.stdout?.on('data', (d: string) => stdoutCap.add(d))
+    proc.stderr?.on('data', (d: string) => stderrCap.add(d))
+    const streams = (): { stdout: string; stderr: string } => ({
+      stdout: stdoutCap.text,
+      // A cut stdout is reported, never passed on as the hook's whole output.
+      stderr: stderrCap.text +
+        (stdoutCap.dropped ? `\n[hook stdout exceeded ${HOOK_OUTPUT_CAP} characters; ${stdoutCap.dropped} were dropped]` : '') +
+        (stderrCap.dropped ? `\n[hook stderr exceeded ${HOOK_OUTPUT_CAP} characters; ${stderrCap.dropped} were dropped]` : ''),
+    })
 
     const killer = setTimeout(() => {
       void killProcessTree(proc)
+      const { stdout, stderr } = streams()
       finish({
         stdout, stderr: stderr + `\n[hook killed after ${timeoutMs}ms]`,
         exitCode: 124, outcome: 'timeout', durationMs: Date.now() - start,
@@ -254,8 +304,9 @@ export async function executeHook(
 
     proc.on('exit', (code) => {
       clearTimeout(killer)
+      const { stdout, stderr } = streams()
       let jsonOutput: Record<string, unknown> | undefined
-      if (code === 0) {
+      if (code === 0 && !stdoutCap.dropped) {
         try {
           const trimmed = stdout.trim()
           if (trimmed.startsWith('{')) jsonOutput = JSON.parse(trimmed)
@@ -272,6 +323,7 @@ export async function executeHook(
 
     proc.on('error', (err) => {
       clearTimeout(killer)
+      const { stdout, stderr } = streams()
       finish({
         stdout, stderr: stderr + `\nspawn error: ${err.message}`,
         exitCode: 127, outcome: 'error', durationMs: Date.now() - start,

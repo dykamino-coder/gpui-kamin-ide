@@ -5,6 +5,27 @@ mod record;
 mod vector_transform;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
+impl Scene {
+    /// KaminIDE patch: the display list's buffers for the engine bench's memory report
+    /// (`crate::heap_report`). Paths' vertices and the bounds tree nodes are not walked.
+    pub(crate) fn heap_report(&self, sink: &mut crate::heap_report::HeapSink) {
+        use crate::heap_report::vec;
+        let path = "display-list/scene";
+        vec(sink, path, &self.paint_operations);
+        vec(sink, path, &self.groups);
+        vec(sink, path, &self.blocks);
+        vec(sink, path, &self.layer_stack);
+        vec(sink, path, &self.shadows);
+        vec(sink, path, &self.quads);
+        vec(sink, path, &self.paths);
+        vec(sink, path, &self.underlines);
+        vec(sink, path, &self.monochrome_sprites);
+        vec(sink, path, &self.subpixel_sprites);
+        vec(sink, path, &self.polychrome_sprites);
+        vec(sink, path, &self.surfaces);
+    }
+}
+
 #[cfg(test)]
 mod replay_tests;
 

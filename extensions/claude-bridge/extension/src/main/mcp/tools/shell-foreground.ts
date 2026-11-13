@@ -1,5 +1,6 @@
 // Owns bounded foreground shell output and process deadline settlement.
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 import type { McpResult } from './shell'
 import { windowsJobRunner } from './windows-job-runner'
 
@@ -22,6 +23,9 @@ export function runForegroundCommand(
   signal?: AbortSignal,
   onOutput?: (chunk: string) => void,
   cwd?: string,
+  /** A shell started ahead of time (warm-shell.ts); it already carries the
+   *  same runner, flags, environment and folder as the spawn below. */
+  prestarted?: () => ChildProcess | null,
 ): Promise<McpResult> {
   if (signal?.aborted)
     return Promise.resolve({
@@ -74,7 +78,7 @@ export function runForegroundCommand(
     // installed: ending the runner then ends every process of the command.
     const runner = windowsJobRunner()
     const argv = [...shellFlags, command]
-    const child = spawn(runner ?? shell, runner ? [shell, ...argv] : argv, {
+    const child = prestarted?.() ?? spawn(runner ?? shell, runner ? [shell, ...argv] : argv, {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: process.platform !== 'win32',
@@ -151,8 +155,15 @@ export function runForegroundCommand(
     signal?.addEventListener('abort', abort, { once: true })
     if (signal?.aborted) abort()
 
+    // The live stream is decoded per stream across chunk boundaries; the
+    // final result is decoded from the concatenated bytes below.
+    const liveStdout = new StringDecoder('utf8')
+    const liveStderr = new StringDecoder('utf8')
     child.stdout?.on('data', (chunk: Buffer) => {
-      onOutput?.(chunk.toString('utf8'))
+      if (onOutput) {
+        const text = liveStdout.write(chunk)
+        if (text) onOutput(text)
+      }
       if (truncated) return
       totalBytes += chunk.length
       if (totalBytes > MAX_OUTPUT_BYTES) {
@@ -168,7 +179,10 @@ export function runForegroundCommand(
     })
 
     child.stderr?.on('data', (chunk: Buffer) => {
-      onOutput?.(chunk.toString('utf8'))
+      if (onOutput) {
+        const text = liveStderr.write(chunk)
+        if (text) onOutput(text)
+      }
       // Cap stderr on its OWN byte counter — the old check gated on the stdout
       // counter but never incremented for stderr, so a command with tiny stdout
       // and huge stderr (a noisy compiler, `yes 1>&2`) buffered without bound.
