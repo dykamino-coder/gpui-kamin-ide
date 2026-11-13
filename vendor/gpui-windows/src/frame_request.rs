@@ -1,8 +1,10 @@
 //! Спрос на кадр Windows и защита общего UI-потока от вложенной отрисовки.
 
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, rc::Rc, sync::atomic::{AtomicBool, Ordering}};
 use gpui_util::ResultExt;
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{RedrawWindow, RDW_INVALIDATE};
+use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 use crate::WindowsWindowInner;
 
 /// Coordinates window draws on the UI thread. Owned by the platform and
@@ -67,6 +69,11 @@ impl WindowsWindowInner {
         Rc::new(move || {
             if let Some(window) = window.upgrade() {
                 window.state.draw_coordinator.wake_if_idle(|| {
+                    // KaminIDE patch: message-only окно не получает WM_PAINT.
+                    if let Some(pending) = &window.state.offscreen_paint {
+                        post_offscreen_paint(window.hwnd, pending);
+                        return;
+                    }
                     // Без UPDATENOW: WM_PAINT объединяет запросы и не входит в App
                     // синхронно из invalidate_view/set_dirty.
                     unsafe { RedrawWindow(Some(window.hwnd), None, None, RDW_INVALIDATE) }
@@ -77,9 +84,37 @@ impl WindowsWindowInner {
     }
 }
 
+/// KaminIDE patch: the offscreen counterpart of an invalidated update region.
+/// At most one paint message is queued per window, like a pending WM_PAINT;
+/// the window clears `pending` when it handles the message.
+pub(crate) fn post_offscreen_paint(hwnd: HWND, pending: &AtomicBool) {
+    if take_offscreen_slot(pending) {
+        let posted = unsafe {
+            PostMessageW(Some(hwnd), crate::events::WM_GPUI_OFFSCREEN_PAINT, WPARAM(0), LPARAM(0))
+        };
+        if posted.log_err().is_none() {
+            pending.store(false, Ordering::Release);
+        }
+    }
+}
+
+fn take_offscreen_slot(pending: &AtomicBool) -> bool {
+    !pending.swap(true, Ordering::AcqRel)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn offscreen_paint_requests_coalesce_until_handled() {
+        let pending = AtomicBool::new(false);
+        assert!(take_offscreen_slot(&pending));
+        assert!(!take_offscreen_slot(&pending));
+        assert!(!take_offscreen_slot(&pending));
+        pending.store(false, Ordering::Release);
+        assert!(take_offscreen_slot(&pending));
+    }
 
     #[test]
     fn idle_demand_wakes_without_entering_a_draw() {

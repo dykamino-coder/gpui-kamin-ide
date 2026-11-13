@@ -54,8 +54,8 @@ export function observeMcpCatalog(session: PtySession, tools: ToolDefinition[]):
   const pending = Promise.resolve()
     .then(() => getDb())
     .then((db) => withStatsWrite(() => writeCatalog(db, session, bounded)))
-    .catch(() => {
-      warnLog('MCP catalog observation unavailable')
+    .catch((error) => {
+      warnLog('MCP catalog observation unavailable', { error: String(error) })
     })
   catalogs.set(session, pending)
 }
@@ -73,8 +73,8 @@ export function observeMcpCall(session: PtySession, toolName: string): void {
         )
       })
     })
-    .catch(() => {
-      warnLog('MCP call observation unavailable')
+    .catch((error) => {
+      warnLog('MCP call observation unavailable', { error: String(error) })
     })
 }
 

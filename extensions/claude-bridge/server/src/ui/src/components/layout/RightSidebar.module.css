@@ -182,8 +182,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .userTime {
@@ -207,8 +212,14 @@
   border-radius: 4px;
   transition: all var(--transition-fast);
 }
-.userCard:hover .deleteBtn { opacity: 0.6; }
-.deleteBtn:hover { opacity: 1 !important; color: var(--accent-red); background: rgba(248, 81, 73, 0.1); }
+.userCard:hover .deleteBtn {
+  opacity: 0.6;
+}
+.deleteBtn:hover {
+  opacity: 1 !important;
+  color: var(--accent-red);
+  background: rgba(248, 81, 73, 0.1);
+}
 
 /* Placeholder */
 .placeholder {
@@ -245,4 +256,39 @@
   color: var(--text-muted);
   line-height: 1.5;
   max-width: 180px;
+}
+
+.sortBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 6px;
+  flex-shrink: 0;
+}
+
+.sortLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.sortSelect {
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.resortBtn {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--accent-blue);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
 }

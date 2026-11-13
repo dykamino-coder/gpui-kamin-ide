@@ -10,13 +10,29 @@
 // ============================================================================
 
 import type { AgentEvent, AgentToolOutput, AgentToolRef } from '../../shared/agent-events'
+import { ENGINE_USAGE_SUBTYPE } from '../../shared/engine-accounting'
 import type { ContentBlock, JsonlEntry } from '../../shared/jsonl-types'
+
+/** System entry with one model response's token usage (no content, not drawn). */
+const CODEX_USAGE_SUBTYPE = ENGINE_USAGE_SUBTYPE
+
+export interface CodexUsage {
+  input_tokens: number
+  cache_read_input_tokens: number
+  cache_creation_input_tokens: number
+  output_tokens: number
+  reasoning_output_tokens: number
+}
 
 export type CodexTranscriptEntry = JsonlEntry & {
   engine: 'codex'
   /** System entry kind, as in Claude transcripts (`compact_boundary`, …). */
   subtype?: string
   level?: 'info' | 'warning' | 'error'
+  /** CODEX_USAGE_SUBTYPE entries: the model and the response's tokens. */
+  model?: string
+  usage?: CodexUsage
+  contextWindow?: number
 }
 
 /** Provider web search renders with the viewer's existing WebSearch card. */
@@ -94,6 +110,10 @@ export class CodexTranscriptProjector {
           }),
         ]
       }
+      case 'usage': {
+        const e = this.usage(event)
+        return e ? [e] : []
+      }
       case 'context.compaction': {
         const e = this.system(event, 'Conversation compacted', 'info', event.id)
         e.subtype = 'compact_boundary'
@@ -145,6 +165,34 @@ export class CodexTranscriptProjector {
       content,
       ...(this.model ? { model: this.model } : {}),
     })
+  }
+
+  /** One model response's tokens (codex `last`), in the Claude usage shape the
+   *  accounting reads. codex counts cached reads and cache writes inside
+   *  inputTokens, Claude reports them beside it, so they are split out. The
+   *  uuid is keyed by the thread's running total: a usage update codex repeats
+   *  (resume) maps to the same row instead of a second response. */
+  private usage(event: Extract<AgentEvent, { kind: 'usage' }>): CodexTranscriptEntry | null {
+    const u = event.last
+    if (!(u.totalTokens > 0)) return null
+    const cacheRead = Math.max(0, u.cachedInputTokens)
+    const cacheWrite = Math.max(0, u.cacheWriteInputTokens ?? 0)
+    // Bookkeeping, not conversation: it hangs off the chain without becoming
+    // the parent of the next entry, so the chat's parent chain is unchanged.
+    const parent = this.parent
+    const e = this.entry(event, `usage:${event.turnId}:${event.total.totalTokens}`, 'system')
+    this.parent = parent
+    e.subtype = CODEX_USAGE_SUBTYPE
+    e.model = this.model
+    e.usage = {
+      input_tokens: Math.max(0, u.inputTokens - cacheRead - cacheWrite),
+      cache_read_input_tokens: cacheRead,
+      cache_creation_input_tokens: cacheWrite,
+      output_tokens: Math.max(0, u.outputTokens),
+      reasoning_output_tokens: Math.max(0, u.reasoningOutputTokens),
+    }
+    if (event.contextWindow) e.contextWindow = event.contextWindow
+    return e
   }
 
   private system(

@@ -101,6 +101,7 @@ impl RootView {
                                 "Export failed".into()
                             },
                             actions: Vec::new(),
+                            duration_ms: None,
                             sticky: false,
                         }));
                     }
@@ -136,6 +137,7 @@ impl RootView {
                                 "Export failed".into()
                             },
                             actions: Vec::new(),
+                            duration_ms: None,
                             sticky: false,
                         }));
                     }
@@ -200,6 +202,7 @@ impl RootView {
                                 "No layouts found in file".into()
                             },
                             actions: Vec::new(),
+                            duration_ms: None,
                             sticky: false,
                         }));
                     }

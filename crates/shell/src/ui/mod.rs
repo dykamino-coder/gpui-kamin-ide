@@ -41,6 +41,7 @@ pub mod slot_tabs;
 pub mod status;
 pub mod tabs;
 pub mod toast_metrics;
+mod toast_timer;
 pub mod web_menu;
 pub mod ws_row;
 // Мапа для VSIX-иконок — задействуется вторым шагом (contributed-вклады)

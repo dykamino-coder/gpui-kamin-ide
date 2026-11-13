@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/compat'
 import { StatusCard } from './StatusCard'
-import { api, CodexApiError } from '../../services/api-client'
+import { api, CodexApiError, type CodexRateLimits } from '../../services/api-client'
+import { CodexLimitBars } from './CodexLimitBars'
 import { codexAccountEventAt } from '../../signals/server'
 import {
   CODEX_POLL_INTERVAL_MS,
@@ -18,7 +19,13 @@ function actionError(error: unknown): CodexErrorInfo {
 }
 
 /** The Bridge server's shared ChatGPT account (codex engine), signed in with the device-code flow. */
-export function CodexAccountCard() {
+export function CodexAccountCard({
+  version,
+  activeSessions = 0,
+}: {
+  version?: string | null
+  activeSessions?: number
+}) {
   const [status, setStatus] = useState<CodexAccountStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -27,6 +34,8 @@ export function CodexAccountCard() {
   const [actionErr, setActionErr] = useState<CodexErrorInfo | null>(null)
   const [copied, setCopied] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
+  // ChatGPT plan windows; read only while signed in (server returns null otherwise).
+  const [limits, setLimits] = useState<CodexRateLimits | null>(null)
   // Drops responses that arrive after a newer request started.
   const seq = useRef(0)
 
@@ -39,6 +48,12 @@ export function CodexAccountCard() {
         if (id !== seq.current) return
         setStatus(next)
         setFetchError(null)
+        if (!next.loggedIn) return setLimits(null)
+        // A failed limits read keeps the card usable; the bars just stay away.
+        return api
+          .getCodexLimits(force)
+          .then((r) => id === seq.current && setLimits(r.limits))
+          .catch(() => id === seq.current && setLimits(null))
       })
       .catch((error: Error) => {
         if (id === seq.current) setFetchError(error.message)
@@ -63,10 +78,10 @@ export function CodexAccountCard() {
   // Fallback while the admin completes the login (e.g. the dashboard socket is down).
   const polling = shouldPollCodexAccount(status)
   useEffect(() => {
-    if (!polling) return
-    const timer = setInterval(() => void refresh(), CODEX_POLL_INTERVAL_MS)
+    if (!polling && !status?.loggedIn) return
+    const timer = setInterval(() => void refresh(), polling ? CODEX_POLL_INTERVAL_MS : 60_000)
     return () => clearInterval(timer)
-  }, [polling])
+  }, [polling, status?.loggedIn])
 
   const run = async (action: () => Promise<unknown>, after?: (result: unknown) => void) => {
     setBusy(true)
@@ -119,7 +134,11 @@ export function CodexAccountCard() {
       iconColor="var(--accent-green)"
       title="ChatGPT (Codex)"
       status={view.status}
-      items={view.items}
+      items={[
+        ...view.items,
+        { label: 'Version', value: version || '—' },
+        { label: 'Active Sessions', value: String(activeSessions) },
+      ]}
       action={{
         icon: 'fa-solid fa-rotate',
         label: 'Refresh ChatGPT account',
@@ -176,6 +195,8 @@ export function CodexAccountCard() {
           </button>
         </div>
       )}
+
+      {view.mode === 'signed-in' && limits && <CodexLimitBars limits={limits} />}
 
       {view.mode === 'signed-in' && (
         <div class={styles.center}>

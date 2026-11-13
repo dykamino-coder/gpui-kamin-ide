@@ -4,10 +4,13 @@
 // Like the Claude account (/home/bridge/.claude), the ChatGPT account is one
 // per Bridge server: an administrator signs in once (device code) and every
 // session uses it. One home, served by one app-server process (codex-host.ts),
-// keeps a single writer of auth.json, so token refreshes cannot race. It
-// lives under ~/.claude so it shares the volume that already persists the
-// Claude account. Bridge owns config.toml and catalog.json there and never
-// reads or writes auth.json. The operator's personal ~/.codex is never used.
+// keeps a single writer of auth.json, so token refreshes cannot race. In the
+// container image it is the standard /home/bridge/.codex on its own volume
+// (BRIDGE_CODEX_HOME and BRIDGE_CONTAINER=1 come from the Dockerfile). On a
+// host install it defaults to a Bridge-owned ~/.kamin-bridge/codex, never the
+// operator's personal ~/.codex. Older servers kept it in ~/.claude/codex-home;
+// migrateLegacyCodexHome moves it out once. Bridge owns config.toml and
+// catalog.json there and never reads or writes auth.json.
 // ============================================================================
 
 import crypto from 'node:crypto'
@@ -16,16 +19,62 @@ import os from 'node:os'
 import path from 'node:path'
 import { mergeLoopbackNoProxy } from '../config/no-proxy'
 import { codexUserConfig, renderToml } from './config-toml'
+import { CODEX_HOME_LOCK_FILE } from './codex-home-lock'
 import type { ModelCatalog } from './model-catalog'
 
 export const CODEX_HOME_ENV = 'BRIDGE_CODEX_HOME'
 
+/** Set by the container image: there ~/.codex belongs to the Bridge user, not a person. */
+export const CONTAINER_ENV = 'BRIDGE_CONTAINER'
+
 export function defaultCodexHome(env: NodeJS.ProcessEnv = process.env): string {
-  return env[CODEX_HOME_ENV] || path.join(os.homedir(), '.claude', 'codex-home')
+  return env[CODEX_HOME_ENV] || path.join(os.homedir(), '.kamin-bridge', 'codex')
 }
-/** Refuses the operator's personal codex home and anything inside it. */
-export function assertBridgeOwnedHome(home: string, operatorHome: string = os.homedir()): void {
+
+/** Where servers before this change kept the home (inside the Claude config dir). */
+export function legacyCodexHome(operatorHome: string = os.homedir()): string {
+  return path.join(operatorHome, '.claude', 'codex-home')
+}
+
+/**
+ * Moves an older home out of ~/.claude once: only when the new home has no
+ * auth.json yet and the legacy one exists. Copy, then remove, so it works
+ * across volumes; a crash mid-copy leaves the legacy home intact and the next
+ * start copies again.
+ */
+export function migrateLegacyCodexHome(home: string, legacy: string = legacyCodexHome()): boolean {
+  if (path.resolve(home) === path.resolve(legacy)) return false
+  if (!fs.existsSync(legacy)) return false
+  if (fs.existsSync(path.join(home, 'auth.json'))) return false
+  fs.mkdirSync(home, { recursive: true, mode: 0o700 })
+  // The old server's app-server lock stays behind: copied, it gets a fresh
+  // mtime and reads as a live owner from another host for LOCK_STALE_MS, so
+  // the first account check after an upgrade failed with "another Bridge
+  // server already runs codex" (acceptance 2026-11-13).
+  const lock = path.resolve(legacy, CODEX_HOME_LOCK_FILE)
+  fs.cpSync(legacy, home, {
+    recursive: true,
+    force: true,
+    preserveTimestamps: true,
+    filter: (src) => path.resolve(src) !== lock,
+  })
+  fs.rmSync(legacy, { recursive: true, force: true })
+  return true
+}
+
+/**
+ * Refuses the operator's personal codex home and anything inside it. Inside
+ * the container image (BRIDGE_CONTAINER=1) the Bridge user's own ~/.codex is
+ * allowed when BRIDGE_CODEX_HOME names it explicitly.
+ */
+export function assertBridgeOwnedHome(
+  home: string,
+  operatorHome: string = os.homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+): void {
   const resolved = path.resolve(home)
+  const explicit = env[CODEX_HOME_ENV]
+  if (env[CONTAINER_ENV] === '1' && explicit && path.resolve(explicit) === resolved) return
   const personal = path.resolve(operatorHome, '.codex')
   const rel = path.relative(personal, resolved)
   if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) {

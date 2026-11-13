@@ -1,5 +1,5 @@
 import type { JSX } from 'preact'
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
 import { showToast } from '../../../signals/toasts'
 import {
@@ -64,7 +64,7 @@ export function PluginHookApprovalModal(): JSX.Element | null {
   const [selection, setSelection] = useState<SelectionState>({ approvalKey: '', hashes: new Set() })
   const [saving, setSaving] = useState(false)
   const dialogRef = useRef<HTMLDivElement>(null)
-  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const hasPending = pending !== null
   const pendingApprovalKey = pending
     ? approvalSelectionKey(pending.pluginId, pending.hooks, pending.approvedHashes ?? [])
     : ''
@@ -86,19 +86,34 @@ export function PluginHookApprovalModal(): JSX.Element | null {
 
   useEffect(() => {
     if (!pending) return
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     // A quiet heuristic is not proof of safety. Only an already reviewed,
     // byte-identical declaration may start selected.
     setSelection({
       approvalKey: pendingApprovalKey,
       hashes: initiallySelectedHookHashes(pending.hooks, pending.approvedHashes ?? []),
     })
-    const frame = requestAnimationFrame(() => dialogRef.current?.focus())
-    return () => {
-      cancelAnimationFrame(frame)
-      previousFocusRef.current?.focus()
-      previousFocusRef.current = null
+  }, [pendingApprovalKey])
+
+  useLayoutEffect(() => {
+    if (!hasPending) return
+    // One focus session spans the entire queue. Switching its head must not
+    // restore/re-capture a button in the preceding dialog as the return target.
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const keepFocusInDialog = () => {
+      const dialog = dialogRef.current
+      if (dialog && !dialog.contains(document.activeElement)) dialog.focus()
     }
+    // Startup composer autofocus can run after this dialog opens. Keep the
+    // aria-modal focus boundary intact for programmatic focus as well as Tab.
+    document.addEventListener('focusin', keepFocusInDialog)
+    return () => {
+      document.removeEventListener('focusin', keepFocusInDialog)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [hasPending])
+
+  useLayoutEffect(() => {
+    if (pendingApprovalKey) dialogRef.current?.focus()
   }, [pendingApprovalKey])
 
   if (!pending) return null

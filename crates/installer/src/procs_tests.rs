@@ -4,7 +4,7 @@
 
 use super::*;
 
-const IMAGES: [&str; 4] = crate::unlock::IMAGES;
+const IMAGES: [&str; 5] = crate::unlock::IMAGES;
 
 fn p(s: &str) -> PathBuf {
     PathBuf::from(s)
