@@ -89,6 +89,7 @@ impl RootView {
                     .as_deref()
                     .zip(self.rename_input.as_ref()),
                 self.hover_pill.as_deref(),
+                &self.sessions_scroll,
                 &self.tx,
                 p,
             ),

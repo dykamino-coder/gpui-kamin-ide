@@ -117,6 +117,7 @@ impl RootView {
             drag: None,
             hovered_handle: None,
             expanded_projects: std::collections::HashSet::new(),
+            sessions_scroll: gpui::ScrollHandle::new(),
             webview_scrim: false,
             tooltip_live: None,
             last_mouse: (0.0, 0.0),
