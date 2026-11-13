@@ -288,6 +288,13 @@ Windows runtime acceptance ещё не подтверждена. CI job на Win
 **Acceptance:** automated + Windows runtime merge gate.
 **Windows runtime merge gate:** required.
 
+**Implementation branch:** `dykamino-coder/gpui-kamin-ide:codex/fix-br04-respawn-state`.
+Продолжение восстановления Bridge: сохранить идентичность и выбранную вкладку
+между поколениями child, заново опубликовать вкладки и replay Agents после
+подключения панелей. Автотесты покрывают повторный respawn и completed team rows;
+Windows gate для кандидата выполняет kmaint. До его evidence статус BR-04
+не меняется; документы, editor и LSP остаются частью общего runtime-сценария.
+
 **Реализовано:** оболочка обрабатывает `kamin:exthost:respawned` в
 `ws_events/views.rs`: снимает отметки `resolved_views()` и сразу
 перерезолвливает встроенные и динамические вью, не дожидаясь
