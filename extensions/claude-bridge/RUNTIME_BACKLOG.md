@@ -482,7 +482,7 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | `verify` | #839 merged (`a60ef903`); 2026-11-13 Windows gate on `ff6cd87a` passed: Enter commit, Escape, Tab/Shift+Tab, focus back on the row. Earlier: fly-out, double-click, blur commit (1.0.94). Published in 1.0.95. | Scroll/session change during the transition and BR-28 bounds; then the installed 1.0.95. |
 | [BR-29A](RUNTIME_RELIABILITY.md#br-29a--keep-the-keyboard-focus-ring-visible-inside-clipped-containers) | `done` | Registered 2026-11-13 (kmaint2): keyboard focus ring clipped on session rows and tab chips. Fix PR #853 merged (`93dddd3b`); Windows gate on `95ebe50f` passed. Published in 1.0.96; 2026-11-13 the check on the installed 1.0.96 passed. | None. |
 | [BR-29B](RUNTIME_RELIABILITY.md#br-29b--scroll-the-session-list-to-the-keyboard-focused-row) | `ready` | Registered 2026-11-13 (kmaint2): Tab focus on a session row outside the visible part of the list does not scroll the list. | Bounded shell fix with a test that fails on the old code; automated acceptance. |
-| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | `verify` | #147 merged; тот же R6, что INC-0002, затем BR-25/06. | Reveal no-pointer: rows + invoke ≤ 1 с; два separate fixes не нужны. |
+| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | `change` | #147 merged; 2026-11-14: stalls follow UI-thread waits in the diag log append; fix next, then R6, then BR-25/06. | Reveal no-pointer: rows + invoke ≤ 1 с; два separate fixes не нужны. |
 
 ## Принятые результаты: не реализовывать повторно
 
