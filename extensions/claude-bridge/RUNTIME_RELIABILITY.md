@@ -407,10 +407,11 @@ timer отсутствует; stale manager generation и `listTabs` не отк
 - Evidence: [private PR #178](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/178),
   `incidents/BR-05/evidence/2026-11-14-fix-candidate-03e6513a`.
 
-**Status:** registered. **Dependency:** none. **Acceptance:** automated: a respawn test in
+**Status:** done — Fix PR #885 merged 2026-11-14; its respawn test fails on the old code and
+passes on `main`. **Dependency:** none. **Acceptance:** automated: a respawn test in
 `sessions-bridge-respawn.test.ts` that fails on the old code (tab count and the closed session).
 **Windows runtime merge gate:** not required.
-**Next step:** kmaint2: Fix PR that skips the warm pool when the respawn journal was restored.
+**Next step:** none; shipped with the next release.
 
 ### BR-06 — Webview update stalls until pointer activity
 
@@ -2440,6 +2441,13 @@ the stalled layer is the UI thread, blocked in the diagnostic log append.**
 writer thread fed by a channel; `emit_line` only enqueues), with a test that fails while a
 blocked writer blocks the caller. Then repeat R6 and check that the `[cef]`→`[why]` gaps and
 the `[outbox]` stalls are gone.
+
+**Fix 2026-11-14: #886 merged** — `diag.log` and the view HTML cache are written off the UI
+thread. Windows gate on the PR head: 60 of 60 R6 reveals had rows by 1.1 s, with no UI-thread
+wait inside a diag report and zero `[outbox]` stalls (before: 33 stalls, 28 after 0.6–11.6 s
+waits). [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/179).
+**Next step (owner kmaint2):** repeat R6 on the published 1.0.97 installer; if it holds, mark
+BR-31 and INC-2026-0002 done, then continue with BR-25/06.
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
 пробуждением. `deliver()` зовёт её. Polling и таймеры не добавлены: путь
