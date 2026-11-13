@@ -53,6 +53,7 @@ let session: PtySession
  *  executor and obeys `mcp:cancel` exactly as the connection manager does. */
 const host = {
   running: new Map<string, AbortController>(),
+  pending: new Set<Promise<void>>(),
   output: new Map<string, string>(),
   cancels: [] as Frame[],
   acks: [] as boolean[],
@@ -75,7 +76,7 @@ function onFrame(frame: Frame): boolean {
   if (frame.type !== 'mcp:call') return true
   const controller = new AbortController()
   host.running.set(frame.requestId, controller)
-  void runForegroundCommand(
+  const completion = runForegroundCommand(
     String(frame.input?.command),
     process.execPath,
     60_000,
@@ -83,13 +84,16 @@ function onFrame(frame: Frame): boolean {
     process.env,
     controller.signal,
     (chunk) => host.output.set(frame.requestId, (host.output.get(frame.requestId) ?? '') + chunk),
-  ).then(async (result) => {
-    host.running.delete(frame.requestId)
-    const outcome = { type: 'mcp:response' as const, requestId: frame.requestId, taskOwner: frame.taskOwner, result }
-    host.acks.push(
-      frame.taskOwner ? await tasks.settleMcpTask(session, outcome) : calls.settleMcpResult(session.id, outcome),
-    )
-  })
+  )
+    .then(async (result) => {
+      host.running.delete(frame.requestId)
+      const outcome = { type: 'mcp:response' as const, requestId: frame.requestId, taskOwner: frame.taskOwner, result }
+      host.acks.push(
+        frame.taskOwner ? await tasks.settleMcpTask(session, outcome) : calls.settleMcpResult(session.id, outcome),
+      )
+    })
+    .finally(() => host.pending.delete(completion))
+  host.pending.add(completion)
   return true
 }
 
@@ -195,7 +199,13 @@ beforeAll(async () => {
   )
   tasks.startMcpTaskDelivery(() => mock.sessions)
 })
-afterEach(() => {
+afterEach(async () => {
+  // The HTTP interrupt and process exit precede the host's persisted outcome.
+  // Finish that acknowledgement before clearing frames: delivery retries an
+  // unsettled cancellation, which otherwise leaks into the next test.
+  await Promise.all(host.pending)
+  expect(host.running.size).toBe(0)
+  expect(await tasks.mcpTasks.working()).toEqual([])
   host.cancels.length = 0
   host.acks.length = 0
 })
