@@ -1124,6 +1124,21 @@ call count. Требуется отличить ожидаемую отмену 
 как crash. Typed generation-scoped cancellation ещё нужна; это не завершённый BR-18
 teardown fix.
 
+**Verification 2026-11-13 (kmaint) — passed for reconnect and crash
+containment; dialog cases open.** Candidate: #830 head `cd2e70ee` (adds the
+probe `hostDisconnect`; also changes `crates/ws/src/client.rs`, so this result
+holds for main once #830 is merged), on the installed 1.0.94 runtime, isolated
+profile copy. Six `hostDisconnect` calls, two of them 150 ms after a session
+switch: each was followed by a shell reconnect; the extension-host child kept
+its PID (no crash respawn); no crash, unhandled-rejection or respawn entries in
+the incident logs or `host.log`; Chat ready 0.11–0.14 s later; a session switch
+after a disconnect rebound Chat in 0.68 s.
+[Private evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/6a9f9e03865be05e1e15cf4423ec47f82734abc7/incidents/BR-29/evidence/2026-11-13-keys-830).
+Not covered: a dialog or picker pending at the moment of disconnect (no
+extension command on this profile opens one) and a genuine request error after
+reconnect. Next step: verify those two with a disposable test extension command
+that opens a QuickPick; owner kmaint.
+
 **Status:** implementation PR #146 merged; Windows runtime acceptance ещё не
 подтверждена. CI job на Windows не запускает живой интерфейс.
 **Dependency:** none; BR-17 evidence is not a prerequisite.
@@ -1970,6 +1985,19 @@ after `SetForegroundWindow`, which takes over the owner's screen. A screen-free
 gate needs an in-process probe keystroke command (gpui `dispatch_keystroke` into
 the window). Also not covered: scroll and session change during the transition,
 and the paired BR-28 bounds. Status stays `verify` for these steps only.
+
+**Keyboard run 2026-11-13 (probe `keystroke` from #830, no OS input).**
+[Private evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/6a9f9e03865be05e1e15cf4423ec47f82734abc7/incidents/BR-29/evidence/2026-11-13-keys-830).
+F2 on a focused session row opens the input with the name selected and no
+pill; Escape cancels. **Enter does not commit:** `startup.rs` binds `enter` to
+`actions::PressEnter` in `Root && !webview`, and the `PressEnter` handler in
+`state/handlers.rs` has no rename branch but still consumes the key. The
+`on_key_down` in `ui/sessions/rename_row.rs` that sends `CommitRename` never
+sees Enter. Escape works because `CloseOverlay` has a `renaming_session`
+branch. Next step: change — give `PressEnter` a rename branch that sends
+`CommitRename` (the same as blur), with a keymap-level test that Enter in the
+rename input commits. Owner: the executor the lead assigns. Scroll and session
+change during the transition and the BR-28 bounds remain `verify`.
 
 **Status:** implementation merged в PR #37; reopened for verification.
 Частичный Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал
