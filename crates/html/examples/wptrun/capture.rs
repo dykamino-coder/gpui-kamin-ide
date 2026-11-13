@@ -7,6 +7,9 @@ use kamin_html::host::capture::CaptureSession;
 pub(super) struct Capture {
     pub(super) session: Option<CaptureSession>,
     pub(super) offscreen: bool,
+    /// `WPT_SURFACE=window`: прежнее презентуемое окно за краем экрана (сверка).
+    /// По умолчанию кадры идут в текстуру message-only окна, которого DWM не видит.
+    pub(super) window_surface: bool,
     pub(super) first: bool,
     pub(super) ready: bool,
 }
@@ -19,6 +22,13 @@ pub(super) fn setup() -> (
     if !offscreen {
         super::audit::fatal("exact runner requires GPU readback (WPT_OFFSCREEN=1)");
     }
+    let window_surface = match std::env::var("WPT_SURFACE").as_deref() {
+        Err(_) | Ok("offscreen") => false,
+        Ok("window") => true,
+        Ok(other) => super::audit::fatal(format!(
+            "WPT_SURFACE must be offscreen or window, got {other}"
+        )),
+    };
     let first = std::env::var("WPT_FIRST_FRAME").as_deref() == Ok("1");
     let ready = std::env::var("WPT_READY").as_deref() != Ok("0");
     let (session, sink) = if offscreen || first {
@@ -31,6 +41,7 @@ pub(super) fn setup() -> (
         Capture {
             session,
             offscreen,
+            window_surface,
             first,
             ready,
         },

@@ -1,6 +1,7 @@
 // Real file I/O and production limits; logical time, no user commands or account.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { promises as fs } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import os from 'node:os'
 import { McpTaskStore, TASK_LIMITS } from './mcp-task-store'
@@ -62,21 +63,38 @@ it.each(['completed', 'failed', 'cancelled'] as const)(
 )
 
 it('preserves the first unread result at the actual global retained limit', async () => {
-  let first = ''
-  for (let i = 0; i < TASK_LIMITS.retained; i++) {
-    const owner = 'owner-' + (i % 20)
-    const task = await store.create(owner, 'PowerShell', {})
-    if (i === 0) first = task.taskId
-    await store.settle(owner, task.taskId, 'result-' + i)
-    clock++
+  const first = await store.create('owner-0', 'PowerShell', {})
+  const settled = (await store.settle('owner-0', first.taskId, 'result-0'))!
+  // Seed historical records from the real persisted shape. Filling the fixture
+  // through create/settle performs 4096 serial durable flushes, exceeding the
+  // test deadline on a busy disk. Keep real I/O and the production limit, then
+  // exercise admission and settlement across the final capacity boundary.
+  const history = Array.from({ length: TASK_LIMITS.retained - 2 }, (_, index) => ({
+    ...settled,
+    taskId: randomUUID(),
+    owner: 'owner-' + ((index + 1) % 20),
+  }))
+  for (let offset = 0; offset < history.length; offset += 32) {
+    await Promise.all(
+      history
+        .slice(offset, offset + 32)
+        .map((record) => fs.writeFile(path.join(directory, record.taskId + '.json'), JSON.stringify(record))),
+    )
   }
+  expect(await fs.readdir(directory)).toHaveLength(TASK_LIMITS.retained - 1)
+  store = new McpTaskStore(directory, () => clock)
+  const lastOwner = 'owner-' + ((TASK_LIMITS.retained - 1) % 20)
+  const last = await store.create(lastOwner, 'PowerShell', {})
+  await store.settle(lastOwner, last.taskId, 'last result')
   await expect(store.create('fresh', 'Bash', {})).rejects.toMatchObject({
     reason: 'retained_global',
   })
   const release = await store.acquireInline('fresh')
   release()
   store = new McpTaskStore(directory, () => clock)
-  expect((await store.get('owner-0', first))?.result?.content).toEqual([{ type: 'text', text: 'result-0' }])
+  expect((await store.get('owner-0', first.taskId))?.result?.content).toEqual([{ type: 'text', text: 'result-0' }])
+  expect((await store.get(lastOwner, last.taskId))?.result?.content).toEqual([{ type: 'text', text: 'last result' }])
+  expect(await fs.readdir(directory)).toHaveLength(TASK_LIMITS.retained)
 }, 60_000)
 
 it('reserves worst-case terminal bytes across restart so admitted results can settle', async () => {

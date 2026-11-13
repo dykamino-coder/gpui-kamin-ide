@@ -336,7 +336,13 @@ describe('AB-01 delete namespace isolation', () => {
     `${TOKEN}-${'a'.repeat(81)}`,
   ])('does not enter foreign or invalid namespace %s', async (tokenDir) => {
     await freshHelpers()
-    const { settingsDir, jsonl } = seedConversation(undefined, tokenDir)
+    const settingsDir = path.join(home, '.claude', 'bridge-sessions', tokenDir, 'sess-1')
+    fs.mkdirSync(settingsDir, { recursive: true })
+    // Refusal happens before entering this namespace, so an untouched sentinel
+    // is enough. Deriving a CLI project slug for an invalid namespace can exceed
+    // Windows' 255-character component limit when TEMP has a long parent path.
+    const jsonl = path.join(settingsDir, `${CONV}.jsonl`)
+    fs.writeFileSync(jsonl, '{"type":"user","uuid":"u1"}\n')
     const { deleteSessionByConversationId } = await import('./session-core')
     const scan = vi.spyOn(fs, 'readdirSync')
     const stat = vi.spyOn(fs, 'lstatSync')

@@ -45,8 +45,8 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
     } = cfg;
     let frames = animation_frames::configured();
     let passed = move |v: &str| pixel_compare::passed(exact, v);
-    // Off-screen capture: park the window before its first frame.
-    if capture.offscreen {
+    // Presented-window surface (comparison only): park it before its first frame.
+    if capture.window_surface {
         let early = hwnd_of(cx, window);
         if early != 0 {
             capture::park_offscreen(early);
