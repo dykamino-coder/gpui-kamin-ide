@@ -33,6 +33,7 @@ beforeAll(async () => {
       [id, 'alice-token', user, ts],
     )
   }
+  await (await import('./database/rollup')).startRollupBuild(() => lc.getDb())
   app = new Hono()
   ;(await import('../dashboard/controllers/users')).registerUserRoutes(app)
   ;(await import('../dashboard/controllers/stats')).registerStatsRoutes(app)
@@ -114,6 +115,7 @@ async function rows(sessionId: string): Promise<Array<Record<string, any>>> {
 }
 
 async function json(url: string): Promise<any> {
+  await (await import('./database/rollup')).drainRollup(() => lc.getDb())
   const res = await app.request(url)
   expect(res.status).toBe(200)
   return res.json()

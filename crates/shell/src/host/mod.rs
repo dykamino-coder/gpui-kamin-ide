@@ -27,6 +27,7 @@ pub mod paths;
 pub mod prefs;
 pub mod requests_search;
 pub mod requests_tree;
+pub mod show_message;
 pub mod status;
 pub(crate) mod view_resolution;
 pub mod ws_events;

@@ -123,14 +123,14 @@ it('keeps mixed-engine counts, filtered contexts and per-request Codex cost tier
     ])
     const page = await queries.userSessionsPage(db, 'alice', { limit: 1, engine: 'codex' })
     expect(page.total).toBe(3)
-    expect(page.rows[0].engines).toBe('codex')
+    expect(page.rows[0]!.engines).toBe('codex')
     const next = await queries.userSessionsPage(db, 'alice', {
       limit: 1,
-      before: `${page.rows[0].last_activity_at}|${page.rows[0].session_id}`,
+      before: `${page.rows[0]!.last_activity_at}|${page.rows[0]!.session_id}`,
       engine: 'codex',
     })
-    expect(next.rows[0].session_id).not.toBe(page.rows[0].session_id)
-    expect(next.rows[0].engines).toBe('codex')
+    expect(next.rows[0]!.session_id).not.toBe(page.rows[0]!.session_id)
+    expect(next.rows[0]!.engines).toBe('codex')
     if (!built) {
       const pending = await json('/api/dashboard/stats/users-overview?engine=codex')
       expect(pending.building.ready).toBe(false)

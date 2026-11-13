@@ -97,6 +97,7 @@ pub(crate) fn emit_session(
                 .unwrap_or_default(),
             // По умолчанию тост САМ уходит: `sticky: true` намертво вешал
             // пробный тост в углу до перезапуска приложения
+            duration_ms: None,
             sticky: req.get("sticky").and_then(Value::as_bool).unwrap_or(false),
         }),
         _ => return None,
