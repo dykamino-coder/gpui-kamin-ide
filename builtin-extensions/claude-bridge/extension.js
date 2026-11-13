@@ -52008,6 +52008,14 @@ var McpServerManager = class _McpServerManager {
   notifyTimer = null;
   notifyLastAt = 0;
   static NOTIFY_MIN_INTERVAL_MS = 200;
+  /** Ключ последнего каталога, отданного через onToolsChanged (INC-2026-0042 b).
+   *  Удаление спящего коннектора, повторный discovery и initAll с тёплым кэшем
+   *  меняют экспортируемый каталог без живого процесса и без exit/connect
+   *  callback — раньше сервер оставался со старым снимком до случайной
+   *  регистрации. Сравнение по содержимому (имена, описания, схемы, ресурсы,
+   *  prompts), а не по длине: одинаковое число тулов с новой схемой — тоже
+   *  изменение. */
+  publishedCatalogKey = JSON.stringify([[], { resources: [], resourceTemplates: [], prompts: [] }]);
   constructor(window9) {
     this.window = window9;
     const legacy = (getMcpStore().get("mcpServers") ?? []).filter((c) => !c.autoDiscovered);
@@ -52036,7 +52044,7 @@ var McpServerManager = class _McpServerManager {
       appendLog: (id, level, msg) => self.appendLog(id, level, msg),
       notifyChanged: () => self.notifyChanged(),
       get onToolsChanged() {
-        return self.onToolsChanged;
+        return self.onToolsChanged ? () => self.publishTools() : null;
       },
       handleServerMessage: (serverId, msg, sendResponse) => self.handleServerMessage(serverId, msg, sendResponse),
       buildHttpHeaders: (id) => self.buildHttpHeaders(id),
@@ -52466,6 +52474,7 @@ var McpServerManager = class _McpServerManager {
       }
     }
     this.notifyChanged();
+    this.publishTools();
   }
   /** Update an existing server's editable config (name / type / url / headers /
    *  command / args / env / oauth). Preserves identity + source metadata,
@@ -52521,7 +52530,7 @@ var McpServerManager = class _McpServerManager {
       this.disconnectServer(id);
     }
     this.notifyChanged();
-    this.onToolsChanged?.();
+    this.publishTools();
   }
   /** Test connection to a server. Clears the previous log so the user gets
    *  a clean trace of THIS attempt (otherwise repeated Tests accumulate and
@@ -52723,7 +52732,26 @@ var McpServerManager = class _McpServerManager {
       else console.error(`[MCP] Failed to connect to "${state.config.name}":`, fullMsg, cause);
     }
     this.notifyChanged();
-    this.onToolsChanged?.();
+    this.publishTools();
+  }
+  /** Явная рассылка каталога (connect/toggle/transport/list_changed). Запоминает
+   *  отданный ключ, чтобы trailing notifyChanged не дублировал её. */
+  publishTools() {
+    if (this.disposed || !this.onToolsChanged) return;
+    this.publishedCatalogKey = this.catalogKey();
+    this.onToolsChanged();
+  }
+  catalogKey() {
+    return JSON.stringify([this.getExternalToolSchemas(), this.getExternalContentCatalog()]);
+  }
+  /** Публикация изменений без собственного callback (remove/discovery/warm
+   *  cache). Пока какой-то сервер в 'connecting', его тулы временно выпадают из
+   *  экспорта (ленивый кэш исключён) — рассылать такой промежуточный каталог
+   *  значит отнять у CLI тул посреди ленивого вызова. Завершение connect само
+   *  вызывает publishTools и доставит накопленные изменения. */
+  publishToolsIfChanged() {
+    for (const state of this.servers.values()) if (state.status === "connecting") return;
+    if (this.catalogKey() !== this.publishedCatalogKey) this.publishTools();
   }
   disconnectServer(id) {
     const state = this.servers.get(id);
@@ -52868,7 +52896,7 @@ var McpServerManager = class _McpServerManager {
       servers: this.servers,
       window: this.window,
       notifyChanged: () => this.notifyChanged(),
-      onToolsChanged: this.onToolsChanged,
+      onToolsChanged: this.onToolsChanged ? () => this.publishTools() : null,
       rpcRequest: (id, method, params) => this.rpcRequest(id, method, params)
     };
   }
@@ -52933,6 +52961,7 @@ var McpServerManager = class _McpServerManager {
       this.harvestSchemaCache();
       if (this.window.isDestroyed()) return;
       this.window.webContents.send("mcp-servers-changed", this.getServers());
+      this.publishToolsIfChanged();
     }, wait);
   }
   // ─── Test log ───────────────────────────────────────
