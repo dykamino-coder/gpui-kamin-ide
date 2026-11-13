@@ -111,6 +111,8 @@ export interface StorageHost {
   onSecretChange(extId: string, listener: (key: string) => void): () => void
   /** context.globalStorageUri dir (always present). */
   globalStorageDir(extId: string): string
+  /** Host opt-in for importing pre-profile extension state. Unknown hosts opt out. */
+  isDefaultProfile?(): boolean
   /** context.logUri dir (always present). */
   logDir(extId: string): string
   /** context.storageUri dir, or null when no workspace folder is open. */

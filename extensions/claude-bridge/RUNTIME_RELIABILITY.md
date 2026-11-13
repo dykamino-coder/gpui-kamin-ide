@@ -280,6 +280,24 @@ The acceptance requirement "Chat, Console and the neighbouring view return and s
 - The Agents state of the bound tab is replayed.
 - Then the same live gate is repeated.
 
+**Verification 2026-11-13, fix #832 (merged as `f39bc7a7`): passed for Chat and Agents.**
+
+The candidate was the release build of the #832 head on a profile copy with isolated `LOCALAPPDATA`/`USERPROFILE`/`HOME` and its own Bridge token. The extension-host child was killed by PID.
+
+| Case | Respawn | Result |
+| --- | --- | --- |
+| Idle, three runs | 0.99 / 1.44 / 1.09 s | Chat stayed on the same tab and ready |
+| After a finished two-teammate team | — | Agents kept `Completed 2` |
+| While two teammates were `RUNNING` | 0.7 s | After 0.32 s Chat was on the same tab and ready and both rows were still `RUNNING`; the team then completed |
+
+Sidebar session switches after a respawn rebound Chat in 0.12–0.16 s; on 1.0.94 they took more than 10 s.
+
+Not checked: documents, the active editor and LSP reseeding.
+
+Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/944b342faf031ca2c4a787b165e33595080752af/incidents/BR-04/evidence/2026-11-13-gate-832).
+
+Next step: verify again on the installed 1.0.95.
+
 Owner: the executor the maintainer assigns. The status stays `verify` until that gate passes.
 
 **Status:** implementation PR #148 и дополнительный PR #152 merged;
@@ -287,6 +305,13 @@ Windows runtime acceptance ещё не подтверждена. CI job на Win
 живой интерфейс. **Dependency:** none.
 **Acceptance:** automated + Windows runtime merge gate.
 **Windows runtime merge gate:** required.
+
+**Implementation branch:** `dykamino-coder/gpui-kamin-ide:codex/fix-br04-respawn-state`.
+Продолжение восстановления Bridge: сохранить идентичность и выбранную вкладку
+между поколениями child, заново опубликовать вкладки и replay Agents после
+подключения панелей. Автотесты покрывают повторный respawn и completed team rows;
+Windows gate для кандидата выполняет kmaint. До его evidence статус BR-04
+не меняется; документы, editor и LSP остаются частью общего runtime-сценария.
 
 **Реализовано:** оболочка обрабатывает `kamin:exthost:respawned` в
 `ws_events/views.rs`: снимает отметки `resolved_views()` и сразу
@@ -1117,11 +1142,44 @@ call count. Требуется отличить ожидаемую отмену 
 как crash. Typed generation-scoped cancellation ещё нужна; это не завершённый BR-18
 teardown fix.
 
+**Verification 2026-11-13 (kmaint) — passed for reconnect and crash
+containment; dialog cases open.** Candidate: #830 head `cd2e70ee` (adds the
+probe `hostDisconnect`; also changes `crates/ws/src/client.rs`, so this result
+holds for main once #830 is merged), on the installed 1.0.94 runtime, isolated
+profile copy. Six `hostDisconnect` calls, two of them 150 ms after a session
+switch: each was followed by a shell reconnect; the extension-host child kept
+its PID (no crash respawn); no crash, unhandled-rejection or respawn entries in
+the incident logs or `host.log`; Chat ready 0.11–0.14 s later; a session switch
+after a disconnect rebound Chat in 0.68 s.
+[Private evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/6a9f9e03865be05e1e15cf4423ec47f82734abc7/incidents/BR-29/evidence/2026-11-13-keys-830).
+Not covered: a dialog or picker pending at the moment of disconnect (no
+extension command on this profile opens one) and a genuine request error after
+reconnect. Next step: verify those two with a disposable test extension command
+that opens a QuickPick; owner kmaint.
+
 **Status:** implementation PR #146 merged; Windows runtime acceptance ещё не
 подтверждена. CI job на Windows не запускает живой интерфейс.
 **Dependency:** none; BR-17 evidence is not a prerequisite.
 **Acceptance:** automated + Windows runtime merge gate.
 **Windows runtime merge gate:** required.
+
+**Acceptance probe candidate (2026-11-13):** Change PR [#830](https://github.com/dykamino-coder/gpui-kamin-ide/pull/830) adds
+`{"cmd":"hostDisconnect"}` to close only the shell's current host WebSocket.
+The existing disconnect callback cancels pending RPCs and reconnects normally;
+the shell and host processes remain running. `ok: true` acknowledges the close
+request, not completed reconnection. A disconnected client reports an error.
+The same candidate adds `{"cmd":"keystroke","key":"enter"}` (also `f2`,
+`ctrl-a`, and GPUI keystroke syntax) for this gate and BR-29. It dispatches to
+the main GPUI window on its UI executor without OS input or foreground-window
+changes. The response acknowledges dispatch with `handled: true|false`; malformed
+keys, unavailable windows and dispatch timeouts return errors. Expired queued
+keys are discarded. This command targets GPUI keyboard handling, not a separate
+CEF DOM keyboard injection API. Both controls require the existing `probe`
+feature. Unit tests cover a real loopback WebSocket close/pending cancellation/
+owner reconnect and queued Enter/F2 delivery to a focused GPUI test element.
+These controls enable kmaint's exact-candidate Windows gate; they do not mark
+BR-19 or BR-29 accepted. Next owner: kmaint, running the scenarios below and
+the BR-29 rename keyboard gate on the candidate.
 
 **Реализовано:** типизированная отмена `RpcPeerDisconnectedError` с кодом
 `rpc/peer-disconnected` в кадре ответа (`protocol.ts`), `failAll` отклоняет
@@ -1945,6 +2003,19 @@ after `SetForegroundWindow`, which takes over the owner's screen. A screen-free
 gate needs an in-process probe keystroke command (gpui `dispatch_keystroke` into
 the window). Also not covered: scroll and session change during the transition,
 and the paired BR-28 bounds. Status stays `verify` for these steps only.
+
+**Keyboard run 2026-11-13 (probe `keystroke` from #830, no OS input).**
+[Private evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/6a9f9e03865be05e1e15cf4423ec47f82734abc7/incidents/BR-29/evidence/2026-11-13-keys-830).
+F2 on a focused session row opens the input with the name selected and no
+pill; Escape cancels. **Enter does not commit:** `startup.rs` binds `enter` to
+`actions::PressEnter` in `Root && !webview`, and the `PressEnter` handler in
+`state/handlers.rs` has no rename branch but still consumes the key. The
+`on_key_down` in `ui/sessions/rename_row.rs` that sends `CommitRename` never
+sees Enter. Escape works because `CloseOverlay` has a `renaming_session`
+branch. Next step: change — give `PressEnter` a rename branch that sends
+`CommitRename` (the same as blur), with a keymap-level test that Enter in the
+rename input commits. Owner: the executor the lead assigns. Scroll and session
+change during the transition and the BR-28 bounds remain `verify`.
 
 **Status:** implementation merged в PR #37; reopened for verification.
 Частичный Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал

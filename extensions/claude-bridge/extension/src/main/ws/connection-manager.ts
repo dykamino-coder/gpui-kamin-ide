@@ -543,7 +543,10 @@ export class ConnectionManager {
       }
     }
     const host = ConnectionManager.hostDeclaration
-    const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null
+    // A replacement child has no in-memory Agent projection. A disk cursor
+    // alone can return an empty delta and never rebuild the retained panels.
+    const needsRespawnHistory = this.stateAuthorityGeneration > 1 && this.cachedJsonlEntries.length === 0
+    const cursor = this.conversationId && !this.pendingNewConversation && !needsRespawnHistory ? await this.getMirrorCursor() : null
     // A reconnect may have swapped the socket while we waited — never write to a
     // stale or closed pipe (the current socket runs its own startSession).
     if (this.ws !== sock || sock.readyState !== WebSocket.OPEN) return
@@ -1099,6 +1102,10 @@ export class ConnectionManager {
     // second, which confuses dedup + scroll-pinning.
     this.batcher.flushMain()
     this.batcher.flushSubagent()
+
+    // A replacement child has not received authoritative history yet. Closing
+    // an empty synthetic replay here would erase the retained Agents snapshot.
+    if (!this.cachedJsonlStatus && this.cachedJsonlEntries.length === 0) return
 
     // Reset the renderer's live flag so it re-enters replay mode. Without
     // this, a tab that previously saw `replayComplete` would treat the
