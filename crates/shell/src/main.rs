@@ -18,15 +18,13 @@
 //! * `host` — связь с процессом `kamin-host`: входящие события и запросы;
 //! * `state` — состояние окна (`RootView`), обработчики событий и сборка кадра;
 //! * `ui` — компоненты интерфейса, чистые функции без знания о состоянии;
-//! * `overlay` — второе прозрачное окно поверх главного: меню, модалки, тосты;
 //! * `web` — страницы на CEF: чат Bridge, браузер, вью расширений;
 //! * `term` — терминал, `icon_theme` — иконки файлов, `probe` — отладочный канал.
 //!
 //! Событие идёт по кругу: клик в `ui` → канал → `state/events/dispatch.rs` →
 //! обработчик правит `RootView` → следующий кадр собирается заново.
 //!
-//! mimalloc глобально (plan/10: уводит аллокации от DLP/AV heap-хуков);
-//! размер его арен задаёт `kamin-alloc`.
+//! Глобальный mimalloc настраивает `kamin-alloc`.
 
 mod actions;
 mod activity;
@@ -184,6 +182,8 @@ fn main() {
             let mut view_slot = None;
             let view_tx = tx.clone();
             cx.open_window(options, |window, cx| {
+                #[cfg(feature = "probe")]
+                probe::keyboard::start(window.window_handle(), cx);
                 let view = cx.new(|cx| RootView::new(view_tx, cx));
                 let fh = view.read(cx).focus_handle.clone();
                 window.focus(&fh, cx);
