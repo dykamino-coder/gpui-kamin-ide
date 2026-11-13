@@ -2,7 +2,8 @@
 // `Edit(src/**)`), evaluated against a tool input. The CLI evaluates a hook's
 // `if` with the matcher of the native tool; for the Bridge tool that replaces
 // it (`mcp__user-tools__Bash`) the CLI has no matcher and the condition never
-// holds (INC-2026-0107). These functions follow the CLI 2.1.322 matchers:
+// holds (INC-2026-0107). These functions model sampled CLI 2.1.322 matchers;
+// remaining parity gaps are recorded in the incident card. They implement
 // the wildcard rule, the shell rule (each simple command of a compound
 // command; a command the parser cannot split holds, as in the CLI) and the
 // file rule (gitignore pattern relative to the rule's root, then wildcard).
@@ -83,6 +84,7 @@ export function simpleShellCommands(command: string): string[] | null {
     if (ch === "'") {
       const close = command.indexOf("'", i + 1)
       if (close === -1) return null
+      if (command.slice(i + 1, close).includes('\\\n')) return null
       word += command.slice(i + 1, close)
       inWord = true
       i = close
@@ -92,7 +94,10 @@ export function simpleShellCommands(command: string): string[] | null {
       let j = i + 1
       for (; j < command.length && command[j] !== '"'; j++) {
         if (command.startsWith('$(', j) || command.startsWith('${', j) || command[j] === '`') return null
-        if (command[j] === '\\' && j + 1 < command.length && '"\\$`\n'.includes(command[j + 1]!)) j++
+        if (command[j] === '\\' && j + 1 < command.length && '"\\$`\n'.includes(command[j + 1]!)) {
+          if (command[j + 1] === '\n') return null
+          j++
+        }
         word += command[j]
       }
       if (j >= command.length) return null
@@ -101,8 +106,14 @@ export function simpleShellCommands(command: string): string[] | null {
       continue
     }
     if (ch === '\\' && i + 1 < command.length) {
-      if (command[i + 1] !== '\n') word += command[i + 1]
-      inWord = true
+      // Native matching accepts an unsupported continuation inside a word;
+      // one between words is discarded without creating an empty argument.
+      if (command[i + 1] === '\n') {
+        if (inWord) return null
+      } else {
+        word += command[i + 1]
+        inWord = true
+      }
       i++
       continue
     }
@@ -123,7 +134,8 @@ export function simpleShellCommands(command: string): string[] | null {
       i = newline - 1
       continue
     }
-    // Native argv matching omits simple expansions; it never executes them.
+    // Effective CLI environment expansion is not modeled yet (INC-2026-0107).
+    // The current approximation omits unquoted simple expansions.
     if (ch === '$' && /^[A-Za-z_]/.test(command[i + 1] ?? '')) {
       const name = command.slice(i + 1).match(/^[A-Za-z_][A-Za-z0-9_]*/)![0]
       i += name.length
