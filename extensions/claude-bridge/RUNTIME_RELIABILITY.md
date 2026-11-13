@@ -650,6 +650,16 @@ Next artifact: change. The fix should:
 
 Then repeat this gate.
 
+**Fix and repeated gate (2026-11-13, kmaint2):** Fix PR
+[#842](https://github.com/dykamino-coder/gpui-kamin-ide/pull/842) merged as
+`84f9f198`. Windows gate on the exact candidate `0d2863d6` passed all three
+previous failures: with Customize registered before Chat, live requests reach
+Chat without a reload; a mount-time modal takes focus and Tab stays inside it;
+a keyboard-driven queue of two returns focus to the composer. Copy declaration
+was focused but not activated (it writes the desktop clipboard). Evidence:
+[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/fa17a44b19bff3451cd68831ebac6a5b695d4d09/incidents/BR-10/evidence/2026-11-13-pr842-0d2863d6).
+Next step: verify on the installed release that contains `84f9f198`, then close.
+
 ### BR-11 — Inventory native CLI-only blocking states
 
 **Owner-directed test handoff — 2026-10-23:** The
@@ -1608,6 +1618,21 @@ switch/reconnect и pointer activity, а текущий incident возника�
 
 ### BR-23 — Make session-complete notifications transient and turn-scoped
 
+**Fix and Windows gate (2026-11-13, kmaint2):** Change PR
+[#834](https://github.com/dykamino-coder/gpui-kamin-ide/pull/834) merged as
+`5d95419f` (transient host API, eight-second completion notice with `Open`).
+Gate on the exact candidate `94ebd71c` passed for the notice itself: linear
+countdown and automatic close at about 8 s, hover pause and resume of the
+remaining time, `Open` closes the notice and returns the action. A real turn
+ending in a background session showed no notice on the candidate nor on `main`
+without #834, so the live Agent Teams one-per-turn case could not be shown.
+That trigger defect is registered separately as
+[INC-2026-0113](runtime-issues/INC-2026-0113.md).
+Evidence:
+[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/80c464106c2fbe98666a4cf7b92195af5cea9530/incidents/BR-23/evidence/2026-11-13-pr834-94ebd71c).
+Next step: verify the real-completion and Agent Teams cases after INC-2026-0113
+is fixed; then close.
+
 **Owner evidence intake (2026-09-08, TASK-009):** An August 21 screenshot shows at least five `Session finished` notifications with Open/dismiss actions; one tab label appears repeatedly. The owner reports that they do not disappear automatically. This is the existing BR-23 problem, so no duplicate INC task is created.
 
 The still image establishes the stack, not its duration or whether repeated labels belong to one turn. Retain the existing transient/countdown contract, turn identity, suppression and sticky approval/elicitation exceptions. Include the supplied stack as a historical acceptance case alongside timer/hover-pause, Open/dismiss/timeout, repeated-event and multiple-turn scenarios.
@@ -2030,6 +2055,31 @@ groups, scale 1.25. Во всех случаях между before и hover ме
 BR-29 идёт без sibling-layout fix.
 
 ### BR-29 — Make hover-to-rename transition atomic
+
+**Keyboard fix and Windows gate (2026-11-13, kmaint2):** Fix PR
+[#839](https://github.com/dykamino-coder/gpui-kamin-ide/pull/839) merged as
+`a60ef903`. The first live run found that after leaving rename by Enter or
+Escape focus stayed on the removed input, so Tab did nothing until a click; the
+same PR now returns focus to the session row (`modal_focus_return`) with a
+regression test. Gate on the exact candidate `ff6cd87a` passed: Tab 80/80 and
+Shift+Tab move the ring, F2 then typing then Enter commits and persists, Escape
+writes nothing, focus returns to the row. Evidence:
+[private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/39340670ce86ec5db37605e7291f3d2433de11e7/incidents/BR-29/evidence/2026-11-13-pr839-ff6cd87a).
+Remaining: scroll/session change during the transition and BR-28 bounds, then
+a check on the installed release that contains `a60ef903`.
+
+**Child BR-29A — focus ring is clipped in the sidebar and tab strip
+(registered 2026-11-13, kmaint2, lead-directed):** During the #839 gate the
+keyboard focus ring was cut off on session rows and on tab chips. Source:
+`crates/shell/src/ui/focus_ring.rs` draws the ring as an absolute overlay 4 px
+outside the element, and the row list and the tab strip clip their children, so
+the outer part of the ring is not painted. **Status:** confirmed by source and
+live. **Next step:** change, queued with the Codex `cxinc` worker: draw the ring
+inset, or give the clipping containers padding equal to the ring offset (like
+CSS `outline-offset`). **Acceptance:** a layout/paint test that the ring bounds
+stay inside the clip of a row and a tab chip; then a Windows gate that the ring
+is fully visible on a row, a chip and their first/last items. **Windows runtime
+merge gate:** required; owner `kmaint2`.
 
 **Close-out audit 2026-09-06:** В [PR
 #37](https://github.com/dykamino-coder/gpui-kamin-ide/pull/37) явно указано, что probe не
