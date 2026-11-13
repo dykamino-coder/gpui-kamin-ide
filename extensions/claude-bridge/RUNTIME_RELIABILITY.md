@@ -347,6 +347,29 @@ server из проверяемого `main` должен выполнить эт
 outcomes и sanitized evidence. При stall сверить BR-31; нового fix без воспроизведения не
 делать.
 
+**Verification 2026-11-13 on the installed 1.0.96 (kmaint2): send after recovery passed;
+closing a tab inside the reconnect window fails.**
+- Setup: installed KaminIDE 1.0.96 on a copy of a working profile; isolated authenticated server
+  from the official image `open-claude-bridge:6.3.173`. Driven only through kamin-probe.
+  The reconnect window was made by killing the extension-host child process (`--role=exthost`);
+  the parent respawned it in about 1 s.
+- Send after recovery: passed. Three sends right after the respawn each reached the session once;
+  the composer was ready afterwards.
+- Close tab inside the reconnect window: **fails, 2 of 2**. `closeTab` sent 0.3 s after the kill
+  returned without error, but the tab was still listed 10 s and 15 s later. The same call with no
+  kill removed the tab at once and it stayed removed.
+- Likely mechanism (from source, not yet proven live): the parent forwards
+  `kamin:webview:inbound` to the new child as soon as the child is ready, but the child's
+  `Webviews.deliverMessage` drops messages for a view that is not resolved again yet.
+- Also seen, contract not settled: every extension-host respawn added 4 more tabs from the
+  open sessions (9 → 13 → 17 → 20).
+- Not run yet: max-sessions and session-not-found.
+- Evidence: [private PR #177](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/177),
+  `incidents/BR-05/evidence/2026-11-13-installed-1.0.96`.
+- **Next step:** kmaint2: a Fix PR that keeps webview messages that arrive before the view is
+  resolved again and hands them over after resolve, with a test that fails on the old code and
+  this close-tab scenario as the Windows gate. Then run max-sessions and session-not-found.
+
 **Status:** implementation merged в PR #14; reopened for verification.
 **Dependency:** none. **Acceptance:** automated + Windows runtime merge gate;
 непроверенная часть перечислена в audit выше.
@@ -2196,6 +2219,30 @@ This is automated paint evidence, not the required live Windows gate: `kmaint2`
 still checks the complete ring on actual rows/chips including first/last items
 on the exact published candidate. Status remains **verify** pending that gate.
 
+### BR-29B — Scroll the session list to the keyboard-focused row
+
+**Child of BR-29 (registered 2026-11-13, kmaint2, lead-directed).** Found during
+the BR-29A check on the installed KaminIDE 1.0.96 with the official
+`6.3.173` image. Tab moves the keyboard focus (and its ring) to a session
+row that is outside the visible part of the scrolled session list, but the
+list does not scroll. The focused row stays off screen until the list is
+scrolled by hand; the ring was seen only after a manual scroll
+([evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/af5ee6f82f48702cdfaba2b5e386be9c3ec517c3/incidents/BR-29/evidence/2026-11-13-installed-1.0.96), `row-last-side.png`). Browsers scroll a focused element
+into view on `focus()`.
+
+**Source:** `crates/shell/src/ui/sessions_list.rs` builds the list with
+`overflow_y_scrollbar()` and no external scroll handle, and
+`crates/shell/src/ui/focus_ring.rs` only paints the ring; nothing moves the
+scroll offset when the focus changes.
+**Status:** confirmed by source and live. **Fix PR:** [#875](https://github.com/dykamino-coder/gpui-kamin-ide/pull/875): a keyboard focus move records the painted bounds of the focused row, and the session list scrolls by the smallest offset that shows it; the GPUI test fails without the scroll call.
+**Dependency:** none.
+**Acceptance:** a shell test that tabs to a row below and above the visible
+part of a scrolled session list and checks that the row ends up inside the
+list viewport (fails on the current code), plus no scroll change when the
+focus moves by mouse or stays on a visible row. Automated acceptance is
+enough: the behavior is shell layout state that the GPUI test window
+reproduces.
+**Windows runtime merge gate:** not required.
 ### BR-30 — Keep incident-log records atomic across rotation
 
 **Status:** done. Implementation PR #31 и Windows filesystem gate PR #47
@@ -2322,6 +2369,33 @@ reveal when the resync frames enter the outbox, when the page first calls
 is needed; no forced repaint or timer. BR-24 and BR-25 completion keep this as
 their prerequisite.
 
+**Research 2026-11-13 on the published 1.0.96 (kmaint2): one outbox stall caught,
+layer not yet named.** 120 R6 reveals were run on the installed 1.0.96 with the
+official `6.3.173` image, driven only through kamin-probe. Each run read the page
+timeline (navigation timing and the `/__pull/<view>` fetches from Resource
+Timing). When rows were missing at 1 s, the run fetched the outbox from the page
+itself.
+- Accelerated, healthy machine: rows by 1.1 s in 74 of 75 reveals. In the other
+  (batch 3, run 21) the page loaded late (`load` 652 ms against about 190 ms).
+  It pulled 6 times up to 895 ms and then not again. At 1412 ms there were no rows,
+  and the outbox held **4 pending messages**. Handing them to the page rendered the
+  rows by 1823 ms, and its pulls resumed. Host messages therefore waited in the
+  shell outbox for at least about 0.5 s with no pull reaching the page. No page
+  fetch started between 896 and 1442 ms, so the page's pull chain was not blocked
+  on a request.
+- Other slow runs were not app defects: a machine-wide stall of about 121 s
+  (the app's diag ticks and the external dwm watcher both skipped), and its
+  aftermath. Software mode (after that stall) had one similar case (3 pulls by
+  0.3 s, then none, no rows at 7 s); there, the outbox was not checked.
+- The native counters `wake/pull-pending` and `pull/dispatched` are global per
+  second. They cannot tell an undispatched pull from a dispatched
+  `execute_java_script` that never ran in the page.
+[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/4d85e6badc887a728cf5a5037c906413ad4c2a81/incidents/INC-2026-0002/evidence/2026-11-13-br31-r6-1.0.96).
+**Next step (bounded, owner kmaint2):** add per-view delivery diagnostics to the
+existing `[views]` line: pending outbox batches and the age of the oldest one,
+the last `mark_pull_pending`, the last `pull/dispatched` and the last
+`take_all` for that view. Then repeat R6 until a stall is caught and fix the
+named layer. No forced repaint or timer.
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
 пробуждением. `deliver()` зовёт её. Polling и таймеры не добавлены: путь

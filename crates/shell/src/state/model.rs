@@ -50,6 +50,8 @@ pub struct RootView {
     /// Раскрытые группы проектов (projectId). Свёрнутая (по умолчанию)
     /// группа показывает только активные сессии, раскрытая — все.
     pub expanded_projects: std::collections::HashSet<String>,
+    /// Скролл списка сессий: клавиатурный фокус прокручивает его к строке.
+    pub sessions_scroll: gpui::ScrollHandle,
     /// Contributed-вебвью по viewId (main/plan/console).
     /// Скрим-затемнение продублировано ВНУТРЬ вебвью (WebView2 поверх
     /// main-окна — нативный скрим их не накрывает): текущее состояние.
