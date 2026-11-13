@@ -45,7 +45,7 @@ export function activate(context: vscode.ExtensionContext): void {
     onOpenChat: openChat,
     onRegenerateTitle: tabId => sessionsBridge.regenerateTitleByTab(tabId),
   })
-  const sessionsBridge = new SessionsBridge(host, openChat)
+  const sessionsBridge = new SessionsBridge(host, openChat, context.globalStorageUri.fsPath)
   sessionsBridge.install()
   context.subscriptions.push({ dispose: () => { sessionsBridge.dispose(); host.dispose() } })
   // Push the host Monaco editor's active file + selection to the composer's

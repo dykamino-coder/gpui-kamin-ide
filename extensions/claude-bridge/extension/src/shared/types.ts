@@ -368,7 +368,7 @@ export interface KaminBridgeApi {
   getActiveTab(): Promise<string | null>
   onTabCreated(callback: (tab: TabInfo) => void): () => void
   onTabClosed(callback: (tabId: string) => void): () => void
-  onTabSwitched(callback: (tabId: string) => void): () => void
+  onTabSwitched(callback: (tabId: string, sequence?: number, generation?: number) => void): () => void
   onTabListChanged(callback: (tabs: TabInfo[]) => void): () => void
   saveTabsState(tabs: PersistedTabState[]): Promise<{ ok: boolean }>
   restoreTabsState(): Promise<PersistedTabState[]>
