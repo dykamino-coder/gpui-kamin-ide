@@ -203,22 +203,29 @@ export function bashRuleMatches(rule: string, command: string): boolean {
   })
 }
 
-/** The CLI's PowerShell rule: case-insensitive, one candidate per pipeline
- *  element or statement. A script block or subexpression holds. */
+/** Models simple PowerShell commands case-insensitively, one candidate per
+ *  pipeline element or statement. Nested-AST parity gaps remain in INC-0107. */
 export function powershellRuleMatches(rule: string, command: string): boolean {
   const statements: string[] = []
   let words: string[] = [],
     word = '',
     active = false
+  let skipRedirectTarget = false
   const endWord = () => {
-    if (active) words.push(word)
+    if (active) {
+      if (skipRedirectTarget) skipRedirectTarget = false
+      else words.push(word)
+    }
     word = ''
     active = false
   }
   const endCommand = () => {
     endWord()
+    // The command on the right of an assignment still has its own CommandAst.
+    if (/^\$[A-Za-z_]\w*$/.test(words[0] ?? '') && words[1] === '=') words.splice(0, 2)
     if (words.length) statements.push(words.join(' '))
     words = []
+    skipRedirectTarget = false
   }
   for (let i = 0; i < command.length; i++) {
     const ch = command[i]!
@@ -245,9 +252,33 @@ export function powershellRuleMatches(rule: string, command: string): boolean {
       }
       if (!closed) return true
       active = true
+    } else if (ch === '`' && (command[i + 1] === '\n' || command.slice(i + 1, i + 3) === '\r\n')) {
+      // In an unquoted word the AST keeps the escaped newline in its value.
+      if (active) word += command[i + 1] === '\r' ? '\r\n' : '\n'
+      i += command[i + 1] === '\r' ? 2 : 1
     } else if (ch === '`' && i + 1 < command.length) {
       word += command[++i]
       active = true
+    } else if (ch === '#' && !active) {
+      while (i < command.length && command[i] !== '\n') i++
+      endCommand()
+    } else if (
+      !active &&
+      words.length === 0 &&
+      !skipRedirectTarget &&
+      ((ch === '&' && command[i + 1] !== '&') || (ch === '.' && /\s/.test(command[i + 1] ?? '')))
+    ) {
+      // Invocation operators are outside CommandElements in the native AST.
+      continue
+    } else if (ch === '>') {
+      // A stream number adjacent to `>` belongs to the redirection, not argv.
+      if (active && /^[1-6*]$/.test(word)) {
+        word = ''
+        active = false
+      }
+      endWord()
+      while (command[i + 1] === '>') i++
+      skipRedirectTarget = true
     } else if (command.startsWith('$(', i) || command.startsWith('@(', i) || ch === '{' || ch === '}') {
       return true
     } else if (';|\n'.includes(ch) || command.startsWith('&&', i)) {
