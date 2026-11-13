@@ -95,7 +95,8 @@ async function bench(dir: string, runs: number): Promise<void> {
     const rollup = await import('./rollup')
     const b0 = performance.now()
     // An already-built rollup is reset so the build is timed from scratch.
-    if (rollup.rollupReady()) await rollup.resetStatsRollup(await lc.getDb())
+    // BENCH_KEEP=1 keeps a built rollup (drain timings only).
+    if (rollup.rollupReady() && !process.env.BENCH_KEEP) await rollup.resetStatsRollup(await lc.getDb())
     await rollup.startRollupBuild()
     console.log(`rollup build ${(performance.now() - b0).toFixed(0)} ms`)
     const db = await lc.getDb()

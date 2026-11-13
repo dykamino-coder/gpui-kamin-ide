@@ -31,14 +31,18 @@
 // same rows inline.
 
 import type { DuckDBConnection } from '@duckdb/node-api'
-import { accountingEventsSelect } from './accounting-schema'
+import { accountingEventsSelect, type IndexedFilter } from './accounting-schema'
 import { withStatsWrite } from './write-lock'
 import { debugLog, infoLog, warnLog } from '../../logging'
 
 /** Bump to rebuild the rollup when its definition changes. */
 export const ROLLUP_VERSION = '3'
 const BUILD_CHUNKS = 32
+/** Sessions per drain transaction (one write turn; ~5 s for 256 sessions on a 10 GB
+ *  database, well under the write-lock head timeout; smaller batches cost more in total). */
 const DRAIN_BATCH = 256
+/** Sessions per raw read in a drain (an index-served IN list; see accountingEventsSelect). */
+const RAW_GROUP = DRAIN_BATCH
 /** g value for "no earlier active hour within a day's reach" (> any day length). */
 export const NO_RECENT_HOUR = 26
 
@@ -65,8 +69,9 @@ export function rollupReady(): boolean {
 const ctx = `COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0)`
 const topLevelAssistant = `e.type = 'assistant' AND COALESCE(e.is_subagent,0) = 0`
 
-/** Level-1 rows for the sessions matching `filter` (predicate on `session_id`). */
-export function rollupSelect(filter = 'TRUE'): string {
+/** Level-1 rows for the sessions matching `filter` (predicate on `session_id`);
+ *  `indexed` for a short session list (see accountingEventsSelect). */
+export function rollupSelect(filter = 'TRUE', indexed?: IndexedFilter): string {
   const engine = engineColumn ? `COALESCE(e.engine, 'claude')` : `'claude'`
   return `
     SELECT e.session_id, hash(e.session_id) AS sid,
@@ -89,7 +94,7 @@ export function rollupSelect(filter = 'TRUE'): string {
       MAX(e.timestamp) AS last_ts,
       arg_max(${ctx}, {'t': e.timestamp, 'u': e.uuid}) FILTER (WHERE ${topLevelAssistant}) AS last_ctx,
       MAX({'t': e.timestamp, 'u': e.uuid}) FILTER (WHERE ${topLevelAssistant}) AS last_ctx_key
-    FROM (${accountingEventsSelect(filter)}) e
+    FROM (${accountingEventsSelect(filter, indexed)}) e
     LEFT JOIN session_tokens st ON st.session_id = e.session_id AND st.deleted = 0
     WHERE (e.model IS NULL OR e.model != '<synthetic>')
     GROUP BY ALL`
@@ -158,28 +163,37 @@ export function rollupSource(): string {
   return built ? 'stats_rollup' : `(${rollupSelect()})`
 }
 
+/** Level-1 rows matching `l1Filter`; a drain's `sid IN (...)` list is served by the
+ *  sid index (materialized, so callers' filters do not disable the index scan). */
+const l1Rows = (l1Filter: string): string =>
+  `(WITH l AS MATERIALIZED (SELECT * FROM stats_rollup WHERE ${l1Filter}) SELECT * FROM l)`
+
 /** Add (sign 1) or remove (sign -1) the contribution of the level-1 rows matching `l1Filter`. */
 async function applyDerived(db: DuckDBConnection, l1Filter: string, sign: 1 | -1): Promise<void> {
-  const src = `(SELECT * FROM stats_rollup WHERE ${l1Filter})`
+  const src = l1Rows(l1Filter)
   for (const [table, d] of Object.entries(DERIVED)) {
     await db.run(`INSERT INTO ${table} ${d.select(src, sign)}
       ON CONFLICT (${d.keys}) DO UPDATE SET ${d.sums.map((c) => `${c} = ${c} + excluded.${c}`).join(', ')}`)
   }
 }
 
-/** Replace the sessions matching both filters (`rawFilter` on the accounting
- *  view, `l1Filter` on level 1) at every level, as one delta. */
-async function replaceSessions(db: DuckDBConnection, rawFilter: string, l1Filter: string): Promise<void> {
+/** Replace the sessions matching `l1Filter` on level 1 (and, together, the raw
+ *  `parts` on the accounting view) at every level, as one delta. */
+async function replaceSessions(
+  db: DuckDBConnection,
+  parts: Array<{ filter: string; indexed?: IndexedFilter }>,
+  l1Filter: string,
+): Promise<void> {
   await applyDerived(db, l1Filter, -1)
   await db.run(`DELETE FROM stats_rollup WHERE ${l1Filter}`)
-  await db.run(`INSERT INTO stats_rollup (${COLUMNS}) ${rollupSelect(rawFilter)}`)
+  for (const p of parts) await db.run(`INSERT INTO stats_rollup (${COLUMNS}) ${rollupSelect(p.filter, p.indexed)}`)
   await applyDerived(db, l1Filter, 1)
   for (const table of Object.keys(DERIVED)) {
     const zero = table === 'stats_user_hour_sessions' ? 'n = 0' : 'events = 0'
     await db.run(`DELETE FROM ${table} WHERE ${zero}`)
   }
   await db.run(`DELETE FROM stats_session_live WHERE ${l1Filter}`)
-  await db.run(`INSERT INTO stats_session_live ${sessionLiveSelect(`(SELECT * FROM stats_rollup WHERE ${l1Filter})`)}`)
+  await db.run(`INSERT INTO stats_session_live ${sessionLiveSelect(l1Rows(l1Filter))}`)
 }
 
 async function setting(db: DuckDBConnection, key: string): Promise<string | null> {
@@ -213,6 +227,7 @@ export async function initRollupSchema(db: DuckDBConnection): Promise<void> {
     cache_write_tokens BIGINT NOT NULL, cache_write_1h_tokens BIGINT NOT NULL,
     first_ts TEXT NOT NULL, last_ts TEXT NOT NULL, last_ctx BIGINT, last_ctx_key STRUCT(t TEXT, u TEXT)
   )`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_stats_rollup_sid ON stats_rollup(sid)`)
   await db.run(`CREATE TABLE IF NOT EXISTS stats_session_live (
     session_id TEXT NOT NULL, sid UBIGINT NOT NULL, u TEXT NOT NULL, first_ts TEXT NOT NULL, last_ts TEXT NOT NULL,
     last_hour TIMESTAMP NOT NULL, ctx BIGINT
@@ -273,13 +288,28 @@ export async function drainRollup(getConn?: () => Promise<DuckDBConnection>): Pr
     for (;;) {
       const done = await withStatsWrite(async () => {
         const ids = (
-          await db.runAndReadAll(`SELECT session_id FROM stats_rollup_dirty LIMIT ${DRAIN_BATCH}`)
-        ).getRowObjects() as Array<{ session_id: string }>
+          await db.runAndReadAll(
+            `SELECT session_id, CAST(hash(session_id) AS VARCHAR) AS h FROM stats_rollup_dirty LIMIT ${DRAIN_BATCH}`,
+          )
+        ).getRowObjects() as Array<{ session_id: string; h: string }>
         if (ids.length === 0) return true
         const inList = `session_id IN (${ids.map((r) => quote(r.session_id)).join(', ')})`
+        // Level 1+ carry the integer key as literals, so the sid index serves them.
+        const sidList = `sid IN (${ids.map((r) => `${r.h}::UBIGINT`).join(', ')})`
         await db.run('BEGIN')
         try {
-          await replaceSessions(db, inList, inList)
+          const proxy = (
+            await db.runAndReadAll(`SELECT session_id, message_id FROM proxy_usage WHERE ${inList}`)
+          ).getRowObjects() as Array<{ session_id: string; message_id: string }>
+          const parts: Array<{ filter: string; indexed: IndexedFilter }> = []
+          for (let i = 0; i < ids.length; i += RAW_GROUP) {
+            const group = new Set(ids.slice(i, i + RAW_GROUP).map((r) => r.session_id))
+            parts.push({
+              filter: `session_id IN (${[...group].map(quote).join(', ')})`,
+              indexed: { proxyMessageIds: proxy.filter((p) => group.has(p.session_id)).map((p) => p.message_id) },
+            })
+          }
+          await replaceSessions(db, parts, sidList)
           await db.run(`DELETE FROM stats_rollup_dirty WHERE ${inList}`)
           await db.run('COMMIT')
         } catch (err) {
@@ -312,7 +342,11 @@ export function startRollupBuild(getConn?: () => Promise<DuckDBConnection>): Pro
         await db.run('BEGIN')
         try {
           // hash(session_id) is the stored sid, so both filters pick the same sessions.
-          await replaceSessions(db, `hash(session_id) % ${BUILD_CHUNKS} = ${chunk}`, `sid % ${BUILD_CHUNKS} = ${chunk}`)
+          await replaceSessions(
+            db,
+            [{ filter: `hash(session_id) % ${BUILD_CHUNKS} = ${chunk}` }],
+            `sid % ${BUILD_CHUNKS} = ${chunk}`,
+          )
           await db.run(SET_SETTING, ['stats_rollup_progress', String(chunk + 1)])
           await db.run('COMMIT')
         } catch (err) {
