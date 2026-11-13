@@ -137,7 +137,7 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
                     let _ = req_tx.try_send(ShellEvent::Cz(CzEvent::SystemLog(
                         level,
                         "host".into(),
-                        message.clone(),
+                        message,
                     )));
                     let (toast, has_items) = crate::host::show_message::toast_for(req_id, params);
                     let _ = req_tx.try_send(ShellEvent::Toast(toast));
