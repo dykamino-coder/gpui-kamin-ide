@@ -17,6 +17,7 @@ import { denyApiToken, denyForeignUser } from '../authz'
 import { parseEngineFilter, type EngineFilter } from '../../stats/engine-filter'
 import { OPENAI_PRICES_AS_OF, openAiCost } from '../../../shared/openai-pricing'
 import { warnLog } from '../../logging'
+import { readSessionOwners } from '../../stats/database/session-owners'
 
 // Anthropic published base rates per 1M tokens. Keep aligned with the
 // KaminIDE webview's session-cost helper so dashboard cost ≈ client.
@@ -103,13 +104,8 @@ async function loadUserStats(engine: EngineFilter) {
 }
 
 async function loadRoster() {
-  const db = await getDb()
-  const raw = (
-    await db.runAndReadAll(
-      `SELECT user_name, MIN(created_at) AS first_seen, MAX(created_at) AS last_seen FROM session_tokens
-      WHERE deleted = 0 AND user_name IS NOT NULL AND user_name != '' GROUP BY user_name`,
-    )
-  ).getRowObjects() as Array<{ user_name: string; first_seen: string | null; last_seen: string | null }>
+  await getDb() // Ensure the durable owner snapshot is loaded after open/reopen.
+  const raw = readSessionOwners()
   const aggRows: UserTotalsRow[] = raw.map((r) => ({
     user_name: r.user_name,
     user_inputs: 0,

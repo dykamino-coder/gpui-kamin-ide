@@ -42799,6 +42799,93 @@ var ClientCommands = class {
   }
 };
 
+// src/main/ws/submission-handoff.ts
+var SubmissionHandoff = class {
+  constructor(emit2) {
+    this.emit = emit2;
+  }
+  emit;
+  pending = /* @__PURE__ */ new Map();
+  ready = /* @__PURE__ */ new Set();
+  inFlight = /* @__PURE__ */ new Set();
+  remember(id, text) {
+    if (!this.pending.has(id)) this.pending.set(id, { id, text, state: "queued" });
+  }
+  receive(update) {
+    if (!update.id) return;
+    this.inFlight.delete(update.id);
+    if (["read", "cancelled", "fallback"].includes(update.state ?? "")) {
+      this.pending.delete(update.id);
+      this.ready.delete(update.id);
+      return;
+    }
+    const previous = this.pending.get(update.id);
+    if (previous || update.text) this.pending.set(update.id, {
+      ...previous,
+      ...update,
+      text: previous?.text ?? update.text,
+      retryable: false
+    });
+  }
+  end(transferable, confirmed) {
+    const safe = new Set(transferable);
+    for (const item of this.pending.values()) {
+      if (this.ready.has(item.id) || item.retryable) continue;
+      if (safe.has(item.id)) {
+        item.state = "queued";
+        item.cancelable = true;
+        item.warning = "Waiting to reconnect before delivering this message.";
+        this.ready.add(item.id);
+      } else {
+        item.state = "uncertain";
+        item.retryable = true;
+        item.cancelable = true;
+        item.warning = confirmed ? "The previous CLI session ended before delivery was confirmed. Check the transcript, then retry or cancel." : "The previous server did not confirm the handoff. Check the transcript, then retry or cancel.";
+      }
+      this.emit({ ...item });
+    }
+  }
+  /** A snapshot may race the new session's first receipts. */
+  tracked() {
+    return [...this.ready, ...this.inFlight];
+  }
+  replay() {
+    for (const item of this.pending.values()) this.emit({ ...item });
+  }
+  resume(send) {
+    for (const id of this.ready) {
+      this.ready.delete(id);
+      const item = this.pending.get(id);
+      if (!item) continue;
+      this.inFlight.add(id);
+      item.warning = void 0;
+      this.emit({ ...item });
+      send(item.text, id);
+    }
+  }
+  action(id, action, connected, send) {
+    const item = this.pending.get(id);
+    if (!item || !this.ready.has(id) && !item.retryable) return false;
+    if (action === "cancel") {
+      this.ready.delete(id);
+      this.pending.delete(id);
+      this.emit({ ...item, state: "cancelled", retryable: false, cancelable: false, warning: void 0 });
+    } else if (action === "push" && connected) {
+      item.state = "queued";
+      item.retryable = false;
+      item.warning = void 0;
+      this.ready.delete(id);
+      this.inFlight.add(id);
+      this.emit({ ...item });
+      send(item.text, id);
+    } else if (action === "push") {
+      item.warning = "Reconnect this tab before retrying delivery.";
+      this.emit({ ...item });
+    }
+    return true;
+  }
+};
+
 // src/main/ws/transcript-mirror.ts
 var import_fs4 = require("fs");
 var import_promises7 = __toESM(require("fs/promises"), 1);
@@ -43920,6 +44007,9 @@ var CONNECTION_AUTHORITY_GENERATION = Number.isSafeInteger(parsedHostGeneration)
 var lastConnectionAuthoritySequence = 0;
 var ConnectionManager = class _ConnectionManager {
   disposed = false;
+  submissions = new SubmissionHandoff((update) => this.window.webContents.send("session:submission", this.tabId, update));
+  handoffWait;
+  reconnectAfterHandoff = false;
   // Shared cache of the last tree update (all connections share one tree per token)
   static lastTree = null;
   // Optional callback to enrich tree with tab metadata before sending to renderer
@@ -44163,6 +44253,10 @@ var ConnectionManager = class _ConnectionManager {
    * with auth token (or session:resume when we have a previous conversationId).
    */
   connect() {
+    if (this.handoffWait) {
+      this.reconnectAfterHandoff = true;
+      return;
+    }
     if (this.disposed) return;
     if (this.ws) this.disconnect();
     this.intentionalDisconnect = false;
@@ -44528,6 +44622,34 @@ var ConnectionManager = class _ConnectionManager {
    * for its reattach grace window, so a quick reconnect resumes the same
    * process instead of killing + respawning on the same JSONL.
    */
+  disconnectForRebind() {
+    if (this.handoffWait) return;
+    this.intentionalDisconnect = true;
+    this.cancelReconnect();
+    this.stopHeartbeat();
+    if (this.ws?.readyState !== wrapper_default.OPEN) {
+      this.submissions.end([], false);
+      this.disconnect({ endSession: true });
+      return;
+    }
+    const timer = setTimeout(() => finish(), 2e3);
+    const finish = (transferable) => {
+      if (!this.handoffWait) return;
+      clearTimeout(timer);
+      this.handoffWait = void 0;
+      this.submissions.end(transferable ?? [], transferable !== void 0);
+      this.disconnect({ endSession: true });
+      const reconnect = this.reconnectAfterHandoff;
+      this.reconnectAfterHandoff = false;
+      if (reconnect) this.connect();
+    };
+    this.handoffWait = { sessionId: this.state.sessionId, finish };
+    try {
+      this.ws.send(JSON.stringify({ type: "session:end", handoff: true }));
+    } catch {
+      finish();
+    }
+  }
   disconnect(opts = {}) {
     const terminal = opts.endSession || this.disposed;
     this.intentionalDisconnect = true;
@@ -44569,6 +44691,7 @@ var ConnectionManager = class _ConnectionManager {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.handoffWait?.finish();
     this.disconnect();
   }
   /** Returns current connection state. Maps ExtendedConnectionState to
@@ -44597,9 +44720,11 @@ var ConnectionManager = class _ConnectionManager {
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
    *  paste+retry dance. */
   submitText(text, submissionId) {
+    if (submissionId) this.submissions.remember(submissionId, text);
     this.send({ type: "session:submitText", data: text, submissionId });
   }
   submissionAction(id, action) {
+    if (this.submissions.action(id, action, this.state.status === "authenticated", (text, id2) => this.submitText(text, id2))) return;
     this.send({ type: "session:submission-action", id, action });
   }
   resize(cols, rows) {
@@ -44713,6 +44838,7 @@ var ConnectionManager = class _ConnectionManager {
     };
   }
   replayJsonlToRenderer() {
+    this.submissions.replay();
     this.requestedSegment = null;
     this.batcher.flushMain();
     this.batcher.flushSubagent();
@@ -44983,6 +45109,15 @@ var ConnectionManager = class _ConnectionManager {
   }
   dispatchMessage(msg) {
     if (this.disposed) return;
+    if (msg.type === "session:handoff") {
+      if (msg.sessionId === this.handoffWait?.sessionId) this.handoffWait?.finish(msg.transferable);
+      return;
+    }
+    if (msg.type === "session:submission") {
+      this.submissions.receive(msg);
+      msg = { ...msg, retryable: false };
+      if (msg.known) msg = { ...msg, known: [.../* @__PURE__ */ new Set([...msg.known, ...this.submissions.tracked()])] };
+    }
     if (msg.type === "session:resume-not-found" || msg.type === "session:created" && msg.resumeNotFound) {
       if (msg.type === "session:created") this.sendRaw({ type: "session:end" });
       this.pendingNewConversation = false;
@@ -45166,7 +45301,10 @@ var ConnectionManager = class _ConnectionManager {
         this.lastSegmentIndex = index;
       },
       isIntentionallyDisconnected: () => this.intentionalDisconnect,
-      notifyAuthenticated: () => _ConnectionManager.onAuthenticated?.(this),
+      notifyAuthenticated: () => {
+        this.submissions.resume((text, id) => this.submitText(text, id));
+        _ConnectionManager.onAuthenticated?.(this);
+      },
       notifyElicitationRequest: (p) => _ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => _ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => _ConnectionManager.onConversationId?.(this.tabId, id),
@@ -46085,7 +46223,7 @@ var TabManager = class {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
     this.pendingConnect.delete(tabId);
-    tab.connection.disconnect({ endSession: true });
+    tab.connection.disconnectForRebind();
   }
   /**
    * Re-open a disconnected tab's WebSocket session (ConnectionManager.connect

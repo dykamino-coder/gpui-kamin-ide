@@ -348,6 +348,14 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
 
         case 'session:end': {
+          if (msg.handoff && authenticatedSessionId) {
+            const session = getSession(authenticatedSessionId)
+            sendToClient(ws, {
+              type: 'session:handoff',
+              sessionId: authenticatedSessionId,
+              transferable: session ? (sessionCliControl(session)?.handoff() ?? []) : [],
+            })
+          }
           cancelStartup('ended')
           retireBinding('explicit_end')
           break

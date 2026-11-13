@@ -95,7 +95,10 @@ export class CliModTransport {
           }
           const commands: Command[] = []
           for (const pending of this.pending.values()) {
-            if (!pending.claimed) {
+            // An arm only tags the next serialized PTY transaction. Until its
+            // ack reaches us no text has been written, so repeating the same
+            // command/id repairs a lost poll response without replaying input.
+            if (!pending.claimed || pending.command.kind === 'arm') {
               pending.claimed = true
               commands.push(pending.command)
             }
@@ -160,6 +163,19 @@ export class CliModTransport {
     const command: Command = { id: ++this.sequence, kind: 'abort', turnId }
     this.pending.set(command.id, { command, claimed: false, fallback })
     return true
+  }
+
+  /** Withdraw only commands that provably have not delivered text. An arm
+   * carries no text even when claimed; its callback has not run until ack. */
+  withdrawSubmission(submissionId: string): boolean {
+    for (const [id, pending] of this.pending) {
+      const command = pending.command
+      if (command.kind === 'abort' || command.submissionId !== submissionId) continue
+      if (command.kind === 'submit' && pending.claimed) return false
+      this.pending.delete(id)
+      return true
+    }
+    return false
   }
 
   dispose(): void {

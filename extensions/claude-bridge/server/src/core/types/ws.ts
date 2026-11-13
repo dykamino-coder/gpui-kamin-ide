@@ -99,6 +99,7 @@ export interface WsMsgElicitationResponse {
  *  window awaiting reattach — this destroys it immediately. */
 export interface WsMsgSessionEnd {
   type: 'session:end'
+  handoff?: boolean
 }
 
 /** Client requests session resume */

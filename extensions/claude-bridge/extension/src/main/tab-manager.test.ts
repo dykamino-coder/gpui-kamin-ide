@@ -4,6 +4,7 @@ vi.mock('./ws/connection-manager', () => ({ ConnectionManager: class {
   status = 'disconnected'
   connect = vi.fn(() => { this.status = 'connecting' })
   disconnect = vi.fn()
+  disconnectForRebind = vi.fn()
   dispose = vi.fn()
   getState = () => ({ status: 'authenticated', authority: 'session', revision: 1 })
   getEngine = () => 'claude' as const
