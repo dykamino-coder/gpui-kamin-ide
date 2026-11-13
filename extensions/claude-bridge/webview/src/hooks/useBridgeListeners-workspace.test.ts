@@ -28,6 +28,26 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+it('INC-2026-0077 removes only the owning permission when the host cancels it', () => {
+  const bridge = new Proxy({}, { get: (_, name: string) => {
+    if (name.startsWith('on')) return () => () => {}
+    return () => Promise.resolve(name === 'listTabs' ? [] : null)
+  } }) as KaminBridgeApi
+  useBridgeListeners(bridge, { current: new Map() }, { value: false })
+  activeWidgets.value = [
+    { requestId: 'pending', resolved: false, type: 'permission', data: { tabId: 'a' } },
+    { requestId: 'other', resolved: false, type: 'permission', data: { tabId: 'a' } },
+    { requestId: 'pending', resolved: false, type: 'permission', data: { tabId: 'b' } },
+    { requestId: 'pending', resolved: false, type: 'elicitation', data: { tabId: 'a' } },
+  ]
+  const resolved = { kind: 'event', channel: 'permission-resolved', args: ['a', { requestId: 'pending' }] }
+  for (const receiver of state.receivers) receiver(resolved)
+  for (const receiver of state.receivers) receiver(resolved)
+  expect(activeWidgets.value.map(widget => [widget.requestId, widget.type, widget.data.tabId])).toEqual([
+    ['other', 'permission', 'a'], ['pending', 'permission', 'b'], ['pending', 'elicitation', 'a'],
+  ])
+})
+
 it('installs the host snapshot receiver before sync, replaces stale projection and detaches subscriptions', () => {
   const bridge = new Proxy({}, { get: (_, name: string) => {
     if (name.startsWith('on')) return () => () => {}

@@ -26,12 +26,14 @@ export interface PendingMcpExecution {
   output?: string
 }
 
+export type PendingPermissionDecision = PermissionDecision | 'cancelled' | 'disconnected'
+type PermissionOutcome = { allowed: true } | { allowed: false; reason: string }
+
 export function cancelMcpCall(ctx: McpCallCtx, requestId: string, taskOwner?: string): void {
   const call = ctx.pendingMcpCalls.get(requestId)
   if (!call || call.taskOwner !== taskOwner) return
   call.controller?.abort()
-  ctx.pendingPermissions.get(requestId)?.('deny')
-  ctx.pendingPermissions.delete(requestId)
+  ctx.pendingPermissions.get(requestId)?.('cancelled')
 }
 
 export interface McpCallCtx {
@@ -41,7 +43,7 @@ export interface McpCallCtx {
   reportDeliveryFailure: () => void
   deliverResult: (outcome: McpOutcome) => Promise<McpOutcome>
   pendingMcpCalls: Map<string, PendingMcpExecution>
-  pendingPermissions: Map<string, (decision: PermissionDecision) => void>
+  pendingPermissions: Map<string, (decision: PendingPermissionDecision) => void>
   workingDirectory?: () => string | undefined
   commandOwner?: () => string | undefined
   permissionMode: () => PermissionMode
@@ -49,48 +51,62 @@ export interface McpCallCtx {
   denyMcp: (requestId: string, reason: string) => void
 }
 
-/** Permission gate. Returns true if allowed, false if denied, or a Promise
- *  that resolves to true/false after the user responds (for 'ask' scenarios). */
+/** Preserve who denied a call; lifecycle cancellation is not a user response. */
 export function checkToolPermission(
   ctx: McpCallCtx,
   requestId: string,
   toolName: string,
   input: Record<string, unknown>,
-): boolean | Promise<boolean> {
+): PermissionOutcome | Promise<PermissionOutcome> {
   // Internal resource/prompt relays are continuations of an MCP protocol
   // request, not model-invokable shell tools. They are never advertised in
   // tools/list and must not surface a misleading permission dialog.
-  if (toolName.startsWith('__bridge_mcp_')) return true
+  if (toolName.startsWith('__bridge_mcp_')) return { allowed: true }
   const mode = ctx.permissionMode()
-  if (mode === 'bypassPermissions') return true
+  if (mode === 'bypassPermissions') return { allowed: true }
 
   const category = ctx.permissionManager.getToolCategory(toolName)
 
   if (mode === 'acceptEdits') {
-    if (category !== 'shell' && category !== 'git') return true
+    if (category !== 'shell' && category !== 'git') return { allowed: true }
     // Shell/git → ask user
   } else {
     const decision = ctx.permissionManager.checkPermission(toolName, input)
-    if (decision === 'allow') return true
-    if (decision === 'deny') return false
+    if (decision === 'allow') return { allowed: true }
+    if (decision === 'deny') return { allowed: false, reason: 'Permission denied by policy' }
     // decision === 'ask' → ask user
   }
 
-  ctx.window.webContents.send('permission-request', ctx.tabId, {
-    requestId,
-    toolName,
-    input,
-    category,
-  })
-
-  return new Promise<boolean>((resolve) => {
-    ctx.pendingPermissions.set(requestId, (decision: PermissionDecision) => {
-      const allowed = decision !== 'deny'
+  return new Promise<PermissionOutcome>((resolve) => {
+    const settle = (outcome: PermissionOutcome): boolean => {
+      // Replies saved by an old renderer or teardown cannot grant a session rule.
+      if (ctx.pendingPermissions.get(requestId) !== respond) return false
+      ctx.pendingPermissions.delete(requestId)
+      resolve(outcome)
+      try {
+        ctx.window.webContents.send('permission-resolved', ctx.tabId, { requestId })
+      } catch {
+        // A detached view receives the reconciled workspace snapshot on attach.
+      }
+      return true
+    }
+    const respond = (decision: PendingPermissionDecision): void => {
+      const reason = decision === 'deny' ? 'User denied permission'
+        : decision === 'cancelled' ? 'Permission request cancelled'
+        : decision === 'disconnected' ? 'Permission request cancelled: connection disconnected'
+        : undefined
+      if (!settle(reason ? { allowed: false, reason } : { allowed: true })) return
       if (decision === 'allow_session' || decision === 'always') {
         ctx.permissionManager.setSessionPermission(toolName, 'allow')
       }
-      resolve(allowed)
-    })
+    }
+    // Register first: publication can synchronously answer or fail.
+    ctx.pendingPermissions.set(requestId, respond)
+    try {
+      ctx.window.webContents.send('permission-request', ctx.tabId, { requestId, toolName, input, category })
+    } catch (error) {
+      settle({ allowed: false, reason: `Permission request delivery failed: ${error instanceof Error ? error.message : String(error)}` })
+    }
   })
 }
 
@@ -162,12 +178,13 @@ export async function handleMcpCall(
   const correlation = { requestId: msg.requestId, toolName: msg.toolName }
   mcpDiagnostic('request-received', correlation)
   const controller = new AbortController()
-  ctx.pendingMcpCalls.set(msg.requestId, {
+  const call: PendingMcpExecution = {
     toolName: msg.toolName,
     input: msg.input,
     taskOwner: msg.taskOwner,
     controller,
-  })
+  }
+  ctx.pendingMcpCalls.set(msg.requestId, call)
 
   ctx.window.webContents.send('mcp-activity', ctx.tabId, {
     requestId: msg.requestId,
@@ -177,10 +194,11 @@ export async function handleMcpCall(
     status: 'pending',
   })
 
-  const allowed = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input)
-  mcpDiagnostic(allowed ? 'permission-allowed' : 'permission-denied', correlation)
-  if (!allowed || controller.signal.aborted) {
-    ctx.denyMcp(msg.requestId, 'User denied permission')
+  const permission = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input)
+  if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return
+  mcpDiagnostic(permission.allowed ? 'permission-allowed' : 'permission-denied', correlation)
+  if (!permission.allowed || controller.signal.aborted) {
+    ctx.denyMcp(msg.requestId, permission.allowed ? 'Permission request cancelled' : permission.reason)
     return
   }
 
@@ -197,8 +215,7 @@ export async function handleMcpCall(
       taskDeadlineMs: msg.taskOwner ? msg.taskDeadlineMs : undefined,
       shellOwner: ctx.commandOwner?.(),
       onOutput: (chunk) => {
-        const call = ctx.pendingMcpCalls.get(msg.requestId)
-        if (call) call.output = ((call.output ?? '') + chunk).slice(-16384)
+        if (ctx.pendingMcpCalls.get(msg.requestId) === call) call.output = ((call.output ?? '') + chunk).slice(-16384)
       },
     })
   } catch (err) {
@@ -209,7 +226,7 @@ export async function handleMcpCall(
     ...correlation,
     durationMs: Date.now() - start,
   })
-  if (!ctx.pendingMcpCalls.has(msg.requestId)) return
+  if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return
   try {
     const delivery = ctx.deliverResult({
       type: 'mcp:response',
@@ -222,7 +239,7 @@ export async function handleMcpCall(
     result = undefined
     const delivered = await delivery
     result = delivered.type === 'mcp:response' ? delivered.result : delivered.reason
-    if (!ctx.pendingMcpCalls.has(msg.requestId)) return
+    if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return
     ctx.window.webContents.send('mcp-activity', ctx.tabId, {
       requestId: msg.requestId,
       toolName: msg.toolName,
@@ -233,7 +250,7 @@ export async function handleMcpCall(
       durationMs: Date.now() - start,
     })
   } catch (error) {
-    if (!ctx.pendingMcpCalls.has(msg.requestId)) return
+    if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return
     ctx.reportDeliveryFailure()
     ctx.window.webContents.send('mcp-activity', ctx.tabId, {
       requestId: msg.requestId,
@@ -244,6 +261,6 @@ export async function handleMcpCall(
       result: `Delivery failed: ${String(error)}`,
     })
   } finally {
-    ctx.pendingMcpCalls.delete(msg.requestId)
+    if (ctx.pendingMcpCalls.get(msg.requestId) === call) ctx.pendingMcpCalls.delete(msg.requestId)
   }
 }

@@ -762,7 +762,17 @@ export function useBridgeListeners(
     }) ?? (() => {})
     const unsubWorkspaceQuestion = vscodeApi.onHostMessage?.((frame: unknown) => {
       const event = frame as { kind?: string; channel?: string; args?: unknown[] } | null
-      if (event?.kind !== 'event' || event.channel !== 'workspace:question-resolved') return
+      if (event?.kind !== 'event') return
+      if (event.channel === 'permission-resolved') {
+        const tabId = event.args?.[0]
+        const requestId = (event.args?.[1] as { requestId?: unknown } | undefined)?.requestId
+        if (typeof tabId !== 'string' || typeof requestId !== 'string') return
+        activeWidgets.value = activeWidgets.value.filter(widget =>
+          widget.type !== 'permission' || widget.data.tabId !== tabId || widget.requestId !== requestId,
+        )
+        return
+      }
+      if (event.channel !== 'workspace:question-resolved') return
       const requestId = event.args?.[0]
       activeWidgets.value = activeWidgets.value.filter(widget => widget.requestId !== requestId)
     }) ?? (() => {})
