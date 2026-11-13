@@ -21,6 +21,7 @@
     "build:dashboard": "cd src/ui && npm install && npx vite build",
     "build": "npm run build:dashboard",
     "jsonl-inspect": "npx tsx packages/jsonl-viewer-cli/src/cli.ts",
+    "pretest": "npm --prefix src/ui run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

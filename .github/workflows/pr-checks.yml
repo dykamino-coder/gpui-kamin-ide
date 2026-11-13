@@ -177,9 +177,6 @@ jobs:
         run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run lint
-      - name: Build dashboard assets for API documentation tests
-        working-directory: extensions/claude-bridge/server/src/ui
-        run: npm run build
       - run: npm test
       # The tool list a codex chat offers the model is a merge gate for the
       # codex version the image pins. The npm package ships the native binary
