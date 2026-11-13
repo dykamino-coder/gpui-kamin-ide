@@ -6,6 +6,8 @@ import os from 'node:os'
 import path from 'node:path'
 const h = vi.hoisted(() => ({
   deleteData: vi.fn(),
+  write: vi.fn(),
+  rememberEffort: vi.fn(),
   wss: null as any,
   root: '',
   reattach: vi.fn((session: any, ws: any) => (session.ws = ws)),
@@ -32,6 +34,11 @@ vi.mock('ws', async (importOriginal) => {
     },
   }
 })
+vi.mock('./effort-selection', () => ({
+  effortForResume: () => null,
+  forgetEffortSelection: vi.fn(),
+  rememberEffortSelection: h.rememberEffort,
+}))
 vi.mock('../server/ws', () => ({ registerWsRoute: vi.fn() }))
 vi.mock('../auth/tokens', () => ({ resolveToken: h.resolve }))
 vi.mock('../logging', () => ({ debugLog: vi.fn(), warnLog: vi.fn(), errorLog: vi.fn(), infoLog: vi.fn() }))
@@ -52,7 +59,7 @@ vi.mock('./session-manager', () => ({
   reattachSession: h.reattach,
   findSessionByConversation: h.find,
   followCompactLinks: (id: string) => id,
-  writeInput: vi.fn(),
+  writeInput: h.write,
   submitText: vi.fn(),
   resizeTerminal: vi.fn(),
   handleMcpResponse: vi.fn(),
@@ -92,6 +99,7 @@ vi.mock('./session-resume-helpers', () => ({
   repairTranscriptForResume: vi.fn(),
   resolveNewestInChain: () => null,
   lastModelEntryForResume: () => null,
+  lastEffortEntryForResume: () => null,
 }))
 vi.mock('./jsonl-watcher', () => ({
   SKIP_LINE_MARKER: '__skip__',
@@ -144,6 +152,9 @@ let sockets: Socket[] = []
 beforeEach(() => {
   vi.useFakeTimers()
   h.deleteData.mockReset()
+  h.write.mockReset()
+  h.rememberEffort.mockReset()
+  h.restartEffort.mockReset()
   h.create.mockReset()
   h.resolve.mockReset().mockResolvedValue({ userName: 'tester', tokenId: 'token' })
   h.detach.mockReset()
@@ -473,5 +484,44 @@ describe('AB-01 delete-data authentication', () => {
     await socket.message({ type: 'session:create', token: 'synthetic' })
     await socket.message({ type: 'session:delete-data', conversationId: '11111111-2222-3333-4444-555555555555' })
     expect(h.deleteData).toHaveBeenCalledWith('11111111-2222-3333-4444-555555555555', 'tester', 'token')
+  })
+})
+
+describe('INC-2026-0099 effort selection through the real WebSocket handler', () => {
+  it('remembers a successful live choice and reports the same level to the footer', async () => {
+    const session = {
+      ...makeSession('live-effort', socket),
+      cliConversationId: 'chosen-conversation',
+      state: 'running',
+      pty: { onData: () => ({ dispose() {} }) },
+    }
+    h.sessions.set(session.id, session)
+    h.create.mockResolvedValueOnce(session)
+    await socket.message({ type: 'session:create', token: 'synthetic' })
+    h.write.mockReturnValueOnce(true)
+    await socket.message({ type: 'session:change-effort', effort: 'xhigh' })
+    expect(h.write).toHaveBeenCalledWith(session.id, '\x15/effort xhigh\r')
+    expect(h.rememberEffort).toHaveBeenCalledExactlyOnceWith('chosen-conversation', 'xhigh')
+    expect(session.effort).toBe('xhigh')
+    expect(socket.send.mock.calls.map(([raw]) => JSON.parse(raw))).toContainEqual({
+      type: 'session:model-changed',
+      sessionId: session.id,
+      model: 'test',
+      effort: 'xhigh',
+      inPlace: true,
+    })
+    expect(h.restartEffort).not.toHaveBeenCalled()
+  })
+
+  it('does not remember a failed live write when the restart also fails', async () => {
+    const session = { ...makeSession('dead-effort', socket), cliConversationId: 'not-changed' }
+    h.sessions.set(session.id, session)
+    h.create.mockResolvedValueOnce(session)
+    await socket.message({ type: 'session:create', token: 'synthetic' })
+    h.write.mockReturnValueOnce(false)
+    h.restartEffort.mockRejectedValueOnce(new Error('synthetic restart failure'))
+    await socket.message({ type: 'session:change-effort', effort: 'xhigh' })
+    expect(h.rememberEffort).not.toHaveBeenCalled()
+    expect(session.effort).toBe('high')
   })
 })
