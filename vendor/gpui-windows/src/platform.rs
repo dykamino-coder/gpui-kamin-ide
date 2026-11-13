@@ -46,6 +46,9 @@ use gpui::*;
 struct TrackedWindow {
     handle: SafeHwnd,
     frame_signal: Arc<PlatformFrameSignal>,
+    /// KaminIDE patch: set for an offscreen (message-only) window, which never
+    /// receives WM_PAINT; see `post_offscreen_paint`.
+    offscreen_paint: Option<Arc<AtomicBool>>,
 }
 
 impl TrackedWindow {
@@ -80,6 +83,9 @@ pub struct WindowsPlatform {
     handle: HWND,
     suspend_resume_notification: RefCell<Option<HPOWERNOTIFY>>,
     disable_direct_composition: bool,
+    /// KaminIDE patch: windows draw into an offscreen texture of a
+    /// message-only HWND; see [`WindowsPlatform::set_offscreen_windows`].
+    offscreen_windows: Cell<bool>,
     has_package_identity: bool,
     app_identity: RefCell<Option<(String, String)>>,
     system_notifications: RefCell<SystemNotificationState>,
@@ -293,12 +299,23 @@ impl WindowsPlatform {
             direct_write_text_system,
             suspend_resume_notification: RefCell::new(None),
             disable_direct_composition,
+            offscreen_windows: Cell::new(false),
             has_package_identity: has_package_identity(),
             drop_target_helper,
             invalidate_devices: Arc::new(AtomicBool::new(false)),
             app_identity: RefCell::new(None),
             system_notifications: RefCell::new(SystemNotificationState::new()),
         })
+    }
+
+    /// KaminIDE patch: windows opened after this call draw into an offscreen
+    /// render target of the same device, format and shaders, owned by a
+    /// message-only HWND: no swap chain, no DirectComposition visual and no
+    /// desktop window, so the desktop compositor never sees them. Frames are
+    /// read back through `Window::set_frame_capture`; nothing is presented.
+    /// For measurement and pixel-gate hosts that must not load DWM.
+    pub fn set_offscreen_windows(&self, offscreen: bool) {
+        self.offscreen_windows.set(offscreen);
     }
 
     pub(crate) fn window_from_hwnd(&self, hwnd: HWND) -> Option<Rc<WindowsWindowInner>> {
@@ -331,6 +348,7 @@ impl WindowsPlatform {
             main_receiver: self.inner.main_receiver.clone(),
             platform_window_handle: self.handle,
             disable_direct_composition: self.disable_direct_composition,
+            offscreen: self.offscreen_windows.get(),
             directx_devices: self.inner.state.directx_devices.borrow().clone().unwrap(),
             invalidate_devices: self.invalidate_devices.clone(),
             draw_coordinator: self.inner.state.draw_coordinator.clone(),
@@ -492,6 +510,16 @@ impl WindowsPlatform {
                         break;
                     };
                     for hwnd in all_windows.read().iter() {
+                        // KaminIDE patch: a message-only window is never
+                        // visible and gets no WM_PAINT; its paced frame comes
+                        // as one coalesced posted message per vsync.
+                        if let Some(pending) = &hwnd.offscreen_paint {
+                            if let Some(signal_at) = signal_at {
+                                hwnd.frame_signal.record(signal_at, signal_source);
+                            }
+                            post_offscreen_paint(hwnd.as_raw(), pending);
+                            continue;
+                        }
                         unsafe {
                             if let Some(signal_at) = signal_at {
                                 if IsWindowVisible(hwnd.as_raw()).as_bool()
@@ -797,6 +825,7 @@ impl Platform for WindowsPlatform {
         self.raw_window_handles.write().push(TrackedWindow {
             handle: handle.into(),
             frame_signal: window.state.frame_signal.clone(),
+            offscreen_paint: window.state.offscreen_paint.clone(),
         });
 
         Ok(Box::new(window))
@@ -1427,6 +1456,8 @@ pub(crate) struct WindowCreationInfo {
     pub(crate) main_receiver: PriorityQueueReceiver<RunnableVariant>,
     pub(crate) platform_window_handle: HWND,
     pub(crate) disable_direct_composition: bool,
+    /// KaminIDE patch: create a message-only window with an offscreen target.
+    pub(crate) offscreen: bool,
     pub(crate) directx_devices: DirectXDevices,
     /// Flag to instruct the `VSyncProvider` thread to invalidate the directx devices
     /// as resizing them has failed, causing us to have lost at least the render target.

@@ -91,6 +91,9 @@ pub struct WindowsWindowState {
     pub invalidate_devices: Arc<AtomicBool>,
     /// Shared with [`WindowsPlatformState::draw_coordinator`] and every other window.
     pub(crate) draw_coordinator: Rc<DrawCoordinator>,
+    /// KaminIDE patch: `Some` for an offscreen (message-only) window: a paint
+    /// message is queued (see `post_offscreen_paint`).
+    pub(crate) offscreen_paint: Option<Arc<AtomicBool>>,
     fullscreen: Cell<Option<StyleAndBounds>>,
     initial_placement: Cell<Option<WindowOpenStatus>>,
     hwnd: HWND,
@@ -128,6 +131,7 @@ impl WindowsWindowState {
         min_size: Option<Size<Pixels>>,
         appearance: WindowAppearance,
         disable_direct_composition: bool,
+        offscreen: bool,
         invalidate_devices: Arc<AtomicBool>,
         draw_coordinator: Rc<DrawCoordinator>,
     ) -> Result<Self> {
@@ -150,8 +154,12 @@ impl WindowsWindowState {
         let border_offset = WindowBorderOffset::default();
         let restore_from_minimized = None;
         let resize_boost_until = None;
-        let renderer = DirectXRenderer::new(hwnd, directx_devices, disable_direct_composition)
-            .context("Creating DirectX renderer")?;
+        let renderer = if offscreen {
+            DirectXRenderer::new_offscreen(hwnd, directx_devices)
+        } else {
+            DirectXRenderer::new(hwnd, directx_devices, disable_direct_composition)
+        }
+        .context("Creating DirectX renderer")?;
         let callbacks = Callbacks::default();
         let input_handler = None;
         let pending_surrogate = None;
@@ -198,6 +206,7 @@ impl WindowsWindowState {
             hwnd,
             invalidate_devices,
             draw_coordinator,
+            offscreen_paint: offscreen.then(|| Arc::new(AtomicBool::new(false))),
             direct_manipulation,
             a11y: RefCell::new(None),
         })
@@ -287,6 +296,7 @@ impl WindowsWindowInner {
             context.min_size,
             context.appearance,
             context.disable_direct_composition,
+            context.offscreen,
             context.invalidate_devices.clone(),
             context.draw_coordinator.clone(),
         )?;
@@ -438,6 +448,7 @@ struct WindowCreateContext {
     platform_window_handle: HWND,
     appearance: WindowAppearance,
     disable_direct_composition: bool,
+    offscreen: bool,
     directx_devices: DirectXDevices,
     invalidate_devices: Arc<AtomicBool>,
     draw_coordinator: Rc<DrawCoordinator>,
@@ -455,6 +466,10 @@ impl WindowsWindow {
         if let WindowKind::AnchoredPopup(_) = params.kind {
             return Err(popup::PopupNotSupportedError.into());
         }
+        // KaminIDE patch: see `WindowsPlatform::set_offscreen_windows`.
+        if creation_info.offscreen {
+            return Self::new_offscreen(handle, params, creation_info);
+        }
 
         let WindowCreationInfo {
             icon,
@@ -467,6 +482,7 @@ impl WindowsWindow {
             main_receiver,
             platform_window_handle,
             disable_direct_composition,
+            offscreen: _,
             directx_devices,
             invalidate_devices,
             draw_coordinator,
@@ -559,6 +575,7 @@ impl WindowsWindow {
             platform_window_handle,
             appearance,
             disable_direct_composition,
+            offscreen: false,
             directx_devices,
             invalidate_devices,
             draw_coordinator,
@@ -608,6 +625,99 @@ impl WindowsWindow {
 
         Ok(Self(this))
     }
+
+    /// KaminIDE patch: a message-only window (`HWND_MESSAGE` parent) whose
+    /// renderer draws into an offscreen texture. It is never shown, has no
+    /// redirection surface, DirectComposition target, DWM attributes or drop
+    /// target, and the desktop compositor never sees it; the GPUI window,
+    /// event loop and executor are the ordinary ones. The client size is the
+    /// requested bounds at the display scale.
+    fn new_offscreen(
+        handle: AnyWindowHandle,
+        params: WindowParams,
+        creation_info: WindowCreationInfo,
+    ) -> Result<Self> {
+        let WindowCreationInfo {
+            icon,
+            executor,
+            live_windows,
+            current_cursor,
+            cursor_visible,
+            drop_target_helper,
+            validation_number,
+            main_receiver,
+            platform_window_handle,
+            disable_direct_composition,
+            directx_devices,
+            invalidate_devices,
+            draw_coordinator,
+            ..
+        } = creation_info;
+        register_window_class(icon);
+        let scale = directx_devices.instrumentation.config().scale_factor;
+        let display = WindowsDisplay::primary_monitor(scale).context("failed to find any monitor")?;
+        let device = params.bounds.size.to_device_pixels(display.scale_factor());
+        let appearance = system_appearance().unwrap_or_default();
+        let mut context = WindowCreateContext {
+            inner: None,
+            handle,
+            hide_title_bar: true,
+            display,
+            is_movable: false,
+            is_resizable: params.is_resizable,
+            is_minimizable: false,
+            min_size: params.window_min_size,
+            executor,
+            live_windows,
+            current_cursor,
+            cursor_visible,
+            drop_target_helper,
+            validation_number,
+            main_receiver,
+            platform_window_handle,
+            appearance,
+            disable_direct_composition,
+            offscreen: true,
+            directx_devices,
+            invalidate_devices,
+            draw_coordinator,
+            parent_hwnd: None,
+        };
+        let hinstance = get_module_handle();
+        // Created 1x1, then sized: the size change delivers the WM_SIZE that
+        // sizes the renderer, as `SetWindowPlacement` does for a desktop window.
+        let creation_result = unsafe {
+            CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                WINDOW_CLASS_NAME,
+                &HSTRING::new(),
+                WS_POPUP,
+                0,
+                0,
+                1,
+                1,
+                Some(HWND_MESSAGE),
+                None,
+                Some(hinstance.into()),
+                Some(&context as *const _ as *const _),
+            )
+        };
+        let this = context.inner.take().transpose()?;
+        let hwnd = creation_result?;
+        let this = this.context("offscreen window state was not created")?;
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                device.width.0.max(1),
+                device.height.0.max(1),
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+            )?
+        };
+        Ok(Self(this))
+    }
 }
 
 impl rwh::HasWindowHandle for WindowsWindow {
@@ -641,7 +751,10 @@ impl Drop for WindowsWindow {
                 this.dialog_owner.when_idle().await;
                 let handle = this.hwnd;
                 unsafe {
-                    RevokeDragDrop(handle).log_err();
+                    // KaminIDE patch: an offscreen window registered no drop target.
+                    if this.state.offscreen_paint.is_none() {
+                        RevokeDragDrop(handle).log_err();
+                    }
                     DestroyWindow(handle).log_err();
                 }
             })

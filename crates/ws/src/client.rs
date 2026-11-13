@@ -7,6 +7,7 @@
 //! {port,token} от сайдкар-супервизора (hostEndpoint.onChanged-семантика).
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, channel};
 use std::time::Duration;
 
@@ -24,6 +25,7 @@ const IO_TICK: Duration = Duration::from_millis(15);
 
 pub struct WsClient {
     endpoint: Arc<Endpoint>,
+    disconnect_requested: Arc<AtomicBool>,
 }
 
 impl WsClient {
@@ -56,6 +58,8 @@ impl WsClient {
         let endpoint = Arc::new(Endpoint::new(writer_tx, on_event, on_host_request));
 
         let ep = endpoint.clone();
+        let disconnect_requested = Arc::new(AtomicBool::new(false));
+        let disconnect = disconnect_requested.clone();
         std::thread::Builder::new()
             .name("kamin-ws-io".into())
             .spawn(move || {
@@ -63,6 +67,10 @@ impl WsClient {
                 // KAMIN_WS_TRACE=1 — трассировка кадров (диагностика транспорта)
                 let trace = std::env::var("KAMIN_WS_TRACE").is_ok_and(|v| v == "1");
                 'io: loop {
+                    if disconnect.load(Ordering::Relaxed) {
+                        let _ = ws.close(None);
+                        break;
+                    }
                     // 1) слить исходящие
                     loop {
                         match writer_rx.try_recv() {
@@ -111,7 +119,15 @@ impl WsClient {
             })
             .map_err(|e| e.to_string())?;
 
-        Ok(Self { endpoint })
+        Ok(Self {
+            endpoint,
+            disconnect_requested,
+        })
+    }
+
+    /// Close this connection on its IO thread; the owner's normal reconnect runs.
+    pub fn disconnect(&self) {
+        self.disconnect_requested.store(true, Ordering::Relaxed);
     }
 
     /// Блокирующий запрос (звать НЕ из UI-потока; из GPUI — background executor).
@@ -133,5 +149,84 @@ impl WsClient {
     /// Отложенный ответ на host→клиент запрос (после HostReply::Later).
     pub fn respond(&self, id: u64, result: RequestResult) {
         self.endpoint.respond(id, result);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::HostReply;
+    use std::net::TcpListener;
+
+    #[test]
+    fn disconnect_closes_socket_fails_pending_and_owner_reconnects_once() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (seen_tx, seen_rx) = channel();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut ws = tungstenite::accept(stream).unwrap();
+            assert!(matches!(ws.read().unwrap(), Message::Text(_)));
+            seen_tx.send(()).unwrap();
+            assert!(matches!(ws.read().unwrap(), Message::Close(_)));
+            let (stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut next = tungstenite::accept(stream).unwrap();
+            let Message::Text(text) = next.read().unwrap() else {
+                panic!("expected request")
+            };
+            let RpcFrame::Req { id, .. } = serde_json::from_str(text.as_str()).unwrap() else {
+                panic!("expected request frame")
+            };
+            let reply = RpcFrame::Res {
+                id,
+                ok: true,
+                value: Some(Value::Bool(true)),
+                error: None,
+            };
+            next.send(Message::text(serde_json::to_string(&reply).unwrap()))
+                .unwrap();
+            assert!(matches!(next.read().unwrap(), Message::Close(_)));
+        });
+        let (closed_tx, closed_rx) = channel();
+        let client = WsClient::connect(
+            port,
+            "fixture",
+            Arc::new(|_, _| {}),
+            Arc::new(|_, _, _| HostReply::Later),
+            Arc::new(move || {
+                let next = WsClient::connect(
+                    port,
+                    "fixture",
+                    Arc::new(|_, _| {}),
+                    Arc::new(|_, _, _| HostReply::Later),
+                    Arc::new(|| {}),
+                )
+                .unwrap();
+                closed_tx.send(next).unwrap();
+            }),
+        )
+        .unwrap();
+        let pending = client.endpoint.request("pending", vec![]);
+        seen_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        client.disconnect();
+        client.disconnect();
+        assert_eq!(
+            pending.recv_timeout(Duration::from_secs(5)).unwrap(),
+            Err("kamin-host connection lost".into())
+        );
+        let next = closed_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            next.request("new-generation", vec![]),
+            Ok(Value::Bool(true))
+        );
+        assert!(closed_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        next.disconnect();
+        server.join().unwrap();
     }
 }

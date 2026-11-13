@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import { ConnectionManager } from './ws/connection-manager'
 import { syncUserData, syncProjectData, resetSyncTimers } from './sync/sync-client'
+import { hostGeneration } from './host-generation'
 import type { ConnectionConfig, ConnectionState, TabInfo, PermissionDecision } from '../shared/types'
 
 const _tabLogPath = path.join(os.tmpdir(), 'ocb-tab-debug.log')
@@ -46,10 +47,20 @@ export class TabManager {
   // extension consumes host activeChange events in order, so seq order == intent
   // order regardless of how the IPC frames race downstream.
   private switchSeq = 0
+  private readonly generation = hostGeneration()
+  private readonly stateListeners = new Set<() => void>()
+  onDidChangeTabs(listener: () => void): () => void {
+    this.stateListeners.add(listener)
+    return () => { this.stateListeners.delete(listener) }
+  }
+  private publishState(): void {
+    for (const listener of this.stateListeners) listener()
+  }
   /** Emit `tab:switched` with the next sequence number. The single choke point
    *  for every switch so none can slip out unsequenced. */
   private emitSwitched(tabId: string | null): void {
-    this.window.webContents.send('tab:switched', tabId, ++this.switchSeq)
+    this.window.webContents.send('tab:switched', tabId, ++this.switchSeq, this.generation)
+    this.publishState()
   }
   private window: BrowserWindow
 
@@ -557,6 +568,7 @@ export class TabManager {
   }
 
   private notifyTabListChanged(): void {
+    this.publishState()
     if (this.window.isDestroyed()) return
     this.window.webContents.send('tab:list-changed', this.listTabs())
   }

@@ -7,27 +7,17 @@ use crate::host::events::TermEvent;
 use serde_json::Value;
 use smol::channel::Sender;
 
-use crate::host::connect::{KNOWN_WEBVIEWS, dynamic_webviews, webview_known};
+use crate::host::connect::{KNOWN_WEBVIEWS, dynamic_webviews, request_view, webview_known};
 use crate::host::status::request_status;
-use crate::host_link::{ShellEvent, client, resolved_views, t0};
+use crate::host_link::{ShellEvent, client, t0, view_resolution};
 
 /// Имя параметра `on_event_tx` сохранено из замыкания: тела веток
 /// перенесены дословно. `true` — канал обработан здесь.
 pub(crate) fn handle(on_event_tx: &Sender<ShellEvent>, channel: &str, payload: &Value) -> bool {
     match channel {
-        // Ребёнок extension-host перезапустился: его реестр и провайдеры вью
-        // начались с нуля, а у нас вью числятся резолвнутыми — и фильтр
-        // `!resolved_views().contains(id)` ниже навсегда пропускал бы их.
-        // Отсюда «панели пустые до полного перезапуска приложения» (BR-04).
-        //
-        // Снимаем отметки и просим реестр заново; сам resolve пойдёт веткой
-        // `kamin:registry:update`, когда новый ребёнок пришлёт список. Своих
-        // слушателей здесь не заводится, поэтому повторный respawn дубликатов
-        // не создаёт, а события прежнего поколения уже отброшены родителем.
+        // The new child has no providers/views from the previous generation.
         "kamin:exthost:respawned" => {
-            if let Ok(mut resolved) = resolved_views().lock() {
-                resolved.clear();
-            }
+            view_resolution().lock().unwrap().reset();
             request_status(on_event_tx.clone());
             // Модели событие тоже нужно: у нового ребёнка пустые зеркала
             // документов и редакторов, и повторный посев делает она — там
@@ -44,11 +34,9 @@ pub(crate) fn handle(on_event_tx: &Sender<ShellEvent>, channel: &str, payload: &
                     let ids = KNOWN_WEBVIEWS
                         .iter()
                         .map(|s| (*s).to_string())
-                        .chain(dynamic)
-                        .filter(|id| !resolved_views().lock().unwrap().contains(id));
+                        .chain(dynamic);
                     for id in ids {
-                        let _ = client
-                            .request("kamin:webviewView:resolve", vec![serde_json::json!(id)]);
+                        request_view(&client, &id);
                     }
                 }
             });
@@ -76,49 +64,43 @@ pub(crate) fn handle(on_event_tx: &Sender<ShellEvent>, channel: &str, payload: &
                 if let Some(client) = client() {
                     // Встроенные + contributed: страницы Customize тоже
                     // теряли resolve, если активация обогнала первый.
-                    // ТОЛЬКО ещё не резолвнутые: registry:update прилетает
-                    // регулярно (MCP-статусы и т.п.), и безусловный resolve
-                    // гонял 1.6-2МБ HTML КАЖДОГО вью по кругу — хост
-                    // захлёбывался, а шелл перегружал iframe'ы бесконечно
-                    // («Restoring your session…» навсегда).
+                    // Claim before RPC, not on HTML: registry bursts must not
+                    // retransmit cached multi-megabyte HTML while resolve runs.
                     let dynamic: Vec<String> =
                         dynamic_webviews().lock().unwrap().iter().cloned().collect();
                     let ids = KNOWN_WEBVIEWS
                         .iter()
                         .map(|s| (*s).to_string())
-                        .chain(dynamic)
-                        .filter(|id| !resolved_views().lock().unwrap().contains(id));
+                        .chain(dynamic);
                     for id in ids {
-                        let _ = client
-                            .request("kamin:webviewView:resolve", vec![serde_json::json!(id)]);
+                        request_view(&client, &id);
                     }
                 }
             });
         }
         // HTML любого известного вью → хосту на /__webview + навигация
         "kamin:webviewView:html" => {
-            eprintln!(
-                "[t+{:.1}s] webview html arrived",
-                t0().elapsed().as_secs_f32()
-            );
             let id = payload
                 .get("id")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             if webview_known(id) {
-                resolved_views().lock().unwrap().insert(id.to_string());
+                let html = payload
+                    .get("html")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if !view_resolution().lock().unwrap().accept_html(id, html) {
+                    return true;
+                }
+                eprintln!(
+                    "[t+{:.1}s] webview html arrived",
+                    t0().elapsed().as_secs_f32()
+                );
                 // В сторе — shim + html БЕЗ тема-блока: тему вставляет
                 // обработчик схемы при КАЖДОЙ отдаче (`web/scheme.rs`), так
                 // перезагрузка вью всегда получает актуальную палитру, а стор
                 // не зависит от темы (дедуп/rev не дёргаются её сменой).
-                let html = format!(
-                    "{}{}",
-                    crate::ui::chat_webview::vscode_api_shim(id),
-                    payload
-                        .get("html")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                );
+                let html = format!("{}{}", crate::ui::chat_webview::vscode_api_shim(id), html);
                 let _ = on_event_tx.try_send(ShellEvent::Term(TermEvent::WebviewHtml(
                     id.to_string(),
                     html,
@@ -199,28 +181,37 @@ mod respawn_tests {
     //! Проверки идут ОДНИМ тестом: набор отметок глобальный, и параллельные
     //! тесты чистили бы состояние друг друга.
 
-    use crate::host_link::resolved_views;
+    use crate::host_link::view_resolution;
 
     #[test]
     fn respawn_снимает_отметки_резолва_и_чужой_канал_нет() {
         let (tx, _rx) = smol::channel::unbounded();
 
-        resolved_views().lock().unwrap().insert("kamin.chat".into());
+        view_resolution()
+            .lock()
+            .unwrap()
+            .accept_html("kamin.chat", "chat");
         let other = super::handle(&tx, "kamin:unrelated:event", &serde_json::Value::Null);
         assert!(!other, "чужой канал не должен считаться обработанным");
         assert!(
-            resolved_views().lock().unwrap().contains("kamin.chat"),
+            !view_resolution()
+                .lock()
+                .unwrap()
+                .accept_html("kamin.chat", "chat"),
             "отметки чужим каналом сниматься не должны",
         );
 
-        resolved_views()
+        view_resolution()
             .lock()
             .unwrap()
-            .insert("kamin.console".into());
+            .accept_html("kamin.console", "console");
         let handled = super::handle(&tx, "kamin:exthost:respawned", &serde_json::Value::Null);
         assert!(handled, "канал перезапуска обязан обрабатываться здесь");
         assert!(
-            resolved_views().lock().unwrap().is_empty(),
+            view_resolution()
+                .lock()
+                .unwrap()
+                .accept_html("kamin.chat", "chat"),
             "отметки резолва не сняты: вью не вернутся до перезапуска приложения",
         );
 
@@ -239,5 +230,19 @@ mod respawn_tests {
             forwarded,
             "событие перезапуска не дошло до модели: документы не засеются заново",
         );
+        let html = serde_json::json!({ "id": "claudeBridgeChat", "html": "<p>first</p>" });
+        super::handle(&tx, "kamin:webviewView:html", &html);
+        super::handle(&tx, "kamin:webviewView:html", &html);
+        let delivered = std::iter::from_fn(|| _rx.try_recv().ok())
+            .filter(|event| {
+                matches!(
+                    event,
+                    crate::host_link::ShellEvent::Term(
+                        crate::host::events::TermEvent::WebviewHtml(_, _)
+                    )
+                )
+            })
+            .count();
+        assert_eq!(delivered, 1, "identical HTML must reach the UI only once");
     }
 }
