@@ -2081,6 +2081,17 @@ stay inside the clip of a row and a tab chip; then a Windows gate that the ring
 is fully visible on a row, a chip and their first/last items. **Windows runtime
 merge gate:** required; owner `kmaint2`.
 
+**BR-29A candidate (2026-11-13, cxinc):** The focus-ring overlay now sits 2 px
+inside the focused element and reduces its corner radius by that inset. It
+keeps the existing element sizes and keyboard-only modality. Two paint
+regressions render the production session rows and tab chips in tight clipping
+containers, focus their first/middle/last items and check the ring bounds and
+all four painted sides. Both fail on the previous outside overlay; the fixed
+focus suite passes 5/5 and the shell suite passes 194 tests (1 ignored).
+This is automated paint evidence, not the required live Windows gate: `kmaint2`
+still checks the complete ring on actual rows/chips including first/last items
+on the exact published candidate. Status remains **verify** pending that gate.
+
 **Close-out audit 2026-09-06:** В [PR
 #37](https://github.com/dykamino-coder/gpui-kamin-ide/pull/37) явно указано, что probe не
 измеряет input focus. Helper и id-scoped anchor уже merged, но invariant «input сразу
