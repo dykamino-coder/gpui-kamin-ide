@@ -54,8 +54,9 @@ impl Policy {
 
     pub(super) fn continuing(&self, budget: RevisionBudget) -> Self {
         Self {
+            budget,
+            names: Cell::default(),
             counts: self.counts.clone(),
-            ..Self::new(budget)
         }
     }
 
