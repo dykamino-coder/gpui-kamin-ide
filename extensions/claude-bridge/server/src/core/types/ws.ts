@@ -74,6 +74,8 @@ export interface WsMsgMcpResponse {
   sessionId?: string
   requestId: string
   result: unknown
+  /** Client host durations (mcp-trace `ClientTiming`); validated on use. */
+  timing?: unknown
 }
 
 export interface WsMsgMcpDenied {
@@ -137,6 +139,14 @@ export interface WsMsgSessionChangeEffort {
 export interface WsMsgSessionChangeModel {
   type: 'session:change-model'
   model: string
+}
+
+/** A model of the other engine picked in the chat: the conversation goes on
+ *  there, in the same chat. Refused with `session:engine-switch-failed`. */
+export interface WsMsgSessionSwitchEngine {
+  type: 'session:switch-engine'
+  engine: 'claude' | 'codex'
+  model?: string
 }
 
 /** Client requests deletion of session data (settingsDir + JSONL) */
@@ -232,6 +242,7 @@ export type ClientToServerMsg =
   | WsMsgSessionResume
   | WsMsgSessionChangeEffort
   | WsMsgSessionChangeModel
+  | WsMsgSessionSwitchEngine
   | WsMsgSessionDeleteData
   | WsMsgRegisterExternalTools
   | WsMsgRegisterExternalContent

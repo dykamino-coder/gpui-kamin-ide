@@ -11,6 +11,7 @@ mod app;
 
 mod arena;
 mod asset_cache;
+mod heap_report;
 mod assets;
 mod bounds_tree;
 mod plane_bsp;
@@ -307,6 +308,7 @@ pub use test::*;
 pub use text_system::*;
 pub use util::{FutureExt, Timeout};
 pub use view::*;
+pub use heap_report::HeapSink;
 pub use window::*;
 
 #[cfg(not(target_family = "wasm"))]

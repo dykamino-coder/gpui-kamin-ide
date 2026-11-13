@@ -297,6 +297,90 @@ impl Default for TaffyTree {
     }
 }
 
+impl<NodeContext> TaffyTree<NodeContext> {
+    /// KaminIDE patch: heap blocks held by the tree (requested bytes; address null where the
+    /// container does not expose it), for the engine bench's memory report. Shared node styles
+    /// are reported once per call.
+    #[cfg(feature = "std")]
+    pub fn heap_report(&self, sink: &mut dyn FnMut(&'static str, *const u8, usize)) {
+        use core::mem::size_of;
+        use slotmap::Key;
+        // A slotmap slot is the value and a u32 version; the buffer has one sentinel slot.
+        // Its address is that of an occupied value less the slots before it.
+        fn slots<T>(sink: &mut dyn FnMut(&'static str, *const u8, usize), map: &SlotMap<DefaultKey, T>) {
+            let slot = size_of::<(T, u32)>();
+            let start = map.iter().next().map_or(core::ptr::null(), |(key, value)| {
+                let index = (key.data().as_ffi() & 0xffff_ffff) as usize;
+                (value as *const T).cast::<u8>().wrapping_sub(index * slot)
+            });
+            sink("layout/taffy-nodes", start, (map.capacity() + 1) * slot);
+        }
+        fn list<T>(sink: &mut dyn FnMut(&'static str, *const u8, usize), items: &Vec<T>) {
+            if items.capacity() > 0 && size_of::<T>() > 0 {
+                sink("layout/taffy-nodes", items.as_ptr().cast(), items.capacity() * size_of::<T>());
+            }
+        }
+        slots(sink, &self.nodes);
+        slots(sink, &self.children);
+        slots(sink, &self.parents);
+        // The node contexts are a hash table of (index, value, version) entries.
+        let contexts = self.node_context_data.capacity();
+        if contexts > 0 {
+            let buckets = if contexts < 8 { contexts + 1 } else { contexts / 7 * 8 };
+            let slots = buckets * size_of::<(u32, (NodeContext, u32))>();
+            let bytes = (slots + 15) / 16 * 16 + buckets + 16;
+            sink("layout/taffy-nodes", core::ptr::null(), bytes);
+        }
+        let mut styles = std::collections::HashSet::new();
+        for node in self.nodes.values() {
+            let style = SharedStyle::as_ptr(&node.style);
+            if styles.insert(style) {
+                let header = 2 * size_of::<usize>();
+                let start = style.cast::<u8>().wrapping_sub(header);
+                sink("layout/taffy-styles", start, header + size_of::<Style>());
+            }
+            if let Some(layout) = &node.final_layout {
+                sink("layout/taffy-nodes", (&**layout as *const Layout).cast(), size_of::<Layout>());
+            }
+            let hoisted = &node.hoisted_children;
+            if hoisted.capacity() > 0 {
+                sink("layout/taffy-nodes", hoisted.as_ptr().cast(), hoisted.capacity() * size_of::<NodeId>());
+            }
+            let (pointer, bytes) = node.cache.heap_block();
+            sink("layout/taffy-cache", pointer, bytes);
+            match &node.detailed_layout_info {
+                #[cfg(feature = "flexbox")]
+                DetailedLayoutInfo::Flex(info) => {
+                    let block: *const crate::tree::DetailedFlexInfo = &**info;
+                    sink("layout/taffy-nodes", block.cast(), size_of::<crate::tree::DetailedFlexInfo>());
+                    list(sink, &info.lines);
+                    for line in &info.lines {
+                        list(sink, &line.items);
+                    }
+                }
+                #[cfg(feature = "grid")]
+                DetailedLayoutInfo::Grid(info) => {
+                    let block: *const DetailedGridInfo = &**info;
+                    sink("layout/taffy-nodes", block.cast(), size_of::<DetailedGridInfo>());
+                }
+                _ => {}
+            }
+            if let Some(fragmentation) = &node.fragmentation {
+                let block: *const NodeFragmentation = &**fragmentation;
+                sink("layout/taffy-nodes", block.cast(), size_of::<NodeFragmentation>());
+            }
+            #[cfg(feature = "grid")]
+            if let Some(tracks) = &node.subgrid_tracks {
+                let block: *const crate::style::SubgridTracks = &**tracks;
+                sink("layout/taffy-nodes", block.cast(), size_of::<crate::style::SubgridTracks>());
+            }
+        }
+        for children in self.children.values().filter(|children| children.capacity() > 0) {
+            sink("layout/taffy-nodes", children.as_ptr().cast(), children.capacity() * size_of::<NodeId>());
+        }
+    }
+}
+
 #[cfg(feature = "flexbox")]
 impl<NodeContext> TaffyTree<NodeContext> {
     /// KaminIDE patch: fragmentation follows the writing-mode block axis (CSS Writing Modes 3 §6).

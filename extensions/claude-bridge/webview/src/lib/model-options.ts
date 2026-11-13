@@ -32,8 +32,9 @@ export function selectedModelOption(modelId: string | null | undefined): ModelOp
 }
 
 // ─── GPT (ChatGPT through Codex CLI) ─────────────────────────────────────────
-// A chat keeps its agent for life: picking a model of the same agent changes
-// the model in place; a model of the other agent opens a new chat on it.
+// Picking a model of the chat's agent changes the model in place; a model of
+// the other agent continues the same chat on that agent (the server hands it
+// the conversation so far).
 
 export type ModelEngine = 'claude' | 'codex'
 
@@ -65,6 +66,7 @@ export function engineOfModel(modelId: string): ModelEngine {
 
 export type ModelSelection =
   | { kind: 'change'; model: string }
+  | { kind: 'switch'; engine: ModelEngine; model: string }
   | { kind: 'new-chat'; engine: ModelEngine; model: string }
   | { kind: 'remember'; model: string }
 
@@ -73,7 +75,7 @@ export type ModelSelection =
 export function planModelSelection(tabEngine: ModelEngine | null, model: string): ModelSelection {
   const engine = engineOfModel(model)
   if (tabEngine === null) return engine === 'claude' ? { kind: 'remember', model } : { kind: 'new-chat', engine, model }
-  return engine === tabEngine ? { kind: 'change', model } : { kind: 'new-chat', engine, model }
+  return engine === tabEngine ? { kind: 'change', model } : { kind: 'switch', engine, model }
 }
 
 /** The selected entry of a codex chat: its GPT model, or the id as-is. */

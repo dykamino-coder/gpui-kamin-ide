@@ -37,12 +37,22 @@ export interface McpLogEntry {
   status: 'ok' | 'error'
   error?: string
   durationMs?: number
+  /** Where a forwarded tool call spent its time (mcp-trace). */
+  phases?: import('../pty/mcp-trace').McpPhases
 }
 
 export interface SessionTeardown {
   startedAt: number
   timer: NodeJS.Timeout | null
   finalized: boolean
+}
+
+/** A chat whose conversation spans engines (conversation/manifest.ts). */
+export interface ConversationBinding {
+  /** Logical conversation id: the id the client holds. */
+  id: string
+  /** The conversation's own settings directory (manifest + unified log). */
+  dir: string
 }
 
 export interface PtySession {
@@ -138,6 +148,17 @@ export interface PtySession {
    *  (jsonl:status replayComplete + warning) so the chat doesn't sit in
    *  "Loading conversation…" until the first JSONL write. */
   resumeNotFound?: boolean
+  /** A resumed codex chat that never ran a turn continues on a new thread
+   *  (codex had no rollout to resume): not an error for the client, but there
+   *  is nothing to replay, and the new thread id reaches it with its transcript. */
+  resumedOnFreshThread?: boolean
+  /** Set when the chat's conversation spans engines: the client is served the
+   *  conversation's unified log, the engine runs one segment of it. */
+  conversation?: ConversationBinding
+  /** Copies this segment's native transcript into the unified log. */
+  segmentPump?: { flush(): void; stop(): void }
+  /** Engine switch: attaches the transcript once the switch commits. */
+  attachTranscript?: () => void
   /** Whether this session is a sub-agent (shorter idle timeout) */
   isSubAgent: boolean
   /** Parent session ID (for agent tree) */
@@ -255,6 +276,13 @@ export interface SessionConfig {
   /** Agent engine requested by the client; absent → Claude. A chat keeps its
    *  engine for life: resume detects it from the transcript. */
   engine?: AgentEngineId
+  /** Start (or resume) this segment of a multi-engine conversation. Server-set. */
+  conversation?: ConversationBinding
+  /** Engine switch (server-set): a new segment's session, in its own settings
+   *  directory; the conversation moves to it only after it started. */
+  segmentStart?: { settingsDir: string }
+  /** Engine switch (server-set): attach the transcript later (attachTranscript). */
+  deferTranscript?: boolean
 }
 
 // ---------------------------------------------------------------------------

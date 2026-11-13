@@ -1,10 +1,18 @@
 //! Профили шеллов: обнаружение и выбор по id.
 //!
-//! Перенесено без изменения поведения (`plan/100-refactor-250.md`).
+//! Detection runs once on a worker; render only reads published snapshots.
+
+mod cache;
+mod command_timeout;
+
+use cache::ProfileCache;
+
+static CACHE: ProfileCache = ProfileCache::new();
 
 /// Профиль шелла для «+» дропдауна (`ShellProfile` оригинала:
 /// `kamin-host/services/shells.ts`). Поля владеющие: список собирается
 /// обнаружением в рантайме, а не константами.
+#[derive(Clone)]
 pub struct ShellProfile {
     pub id: String,
     pub label: String,
@@ -21,8 +29,7 @@ fn env_or(key: &str, fallback: &str) -> String {
 }
 /// Обнаружение по порядку оригинала (`discoverWindows`): Windows PowerShell,
 /// PowerShell 7, Command Prompt, Git Bash, затем каждый WSL-дистрибутив.
-/// Считается ОДИН раз: `wsl -l -q` стоит десятки миллисекунд.
-fn discover() -> Vec<ShellProfile> {
+fn discover_local() -> Vec<ShellProfile> {
     let mut out: Vec<ShellProfile> = Vec::new();
     let sys_root = env_or("SystemRoot", "C:\\Windows");
     let pf = env_or("ProgramFiles", "C:\\Program Files");
@@ -91,38 +98,66 @@ fn discover() -> Vec<ShellProfile> {
         }
     }
 
+    out
+}
+
+fn discover_wsl(out: &mut Vec<ShellProfile>) {
+    let sys_root = env_or("SystemRoot", "C:\\Windows");
     let wsl = format!("{sys_root}\\System32\\wsl.exe");
     if exists(&wsl) {
         // `wsl -l -q` печатает UTF-16LE — иначе имена приходят с нулями
-        if let Ok(o) = std::process::Command::new(&wsl).args(["-l", "-q"]).output() {
-            let raw: Vec<u16> = o
-                .stdout
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                .collect();
-            for d in String::from_utf16_lossy(&raw)
-                .lines()
-                .map(|l| l.replace(' ', "").trim().to_string())
-                .filter(|l| !l.is_empty())
-            {
-                out.push(ShellProfile {
-                    id: format!("wsl-{d}"),
-                    label: d.clone(),
-                    program: wsl.clone(),
-                    args: vec!["-d".into(), d],
-                    icon: "terminal-linux",
-                });
+        let mut command = std::process::Command::new(&wsl);
+        command.args(["-l", "-q"]);
+        match command_timeout::output(&mut command, std::time::Duration::from_secs(2)) {
+            Ok(stdout) => {
+                let raw: Vec<u16> = stdout
+                    .chunks_exact(2)
+                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .collect();
+                for d in String::from_utf16_lossy(&raw)
+                    .lines()
+                    .map(|l| l.replace(' ', "").trim().to_string())
+                    .filter(|l| !l.is_empty())
+                {
+                    out.push(ShellProfile {
+                        id: format!("wsl-{d}"),
+                        label: d.clone(),
+                        program: wsl.clone(),
+                        args: vec!["-d".into(), d],
+                        icon: "terminal-linux",
+                    });
+                }
             }
+            Err(error) => eprintln!("[terminal] WSL profile detection failed: {error}"),
         }
     }
-    out
 }
-/// Обнаруженные шеллы (кэш на процесс).
+
+/// Start at application startup, never from render. Each snapshot wakes the UI.
+pub fn start_discovery(notify: impl Fn() + Send + 'static) {
+    CACHE.start(discover_local, discover_wsl, notify);
+}
+
+/// Read only: no filesystem access, process spawn, or wait on detection.
 pub fn profiles() -> &'static [ShellProfile] {
-    static ALL: std::sync::OnceLock<Vec<ShellProfile>> = std::sync::OnceLock::new();
-    ALL.get_or_init(discover)
+    CACHE.profiles()
 }
-pub fn profile_by_id(id: &str) -> &'static ShellProfile {
-    let all = profiles();
-    all.iter().find(|p| p.id == id).unwrap_or(&all[0])
+
+/// Wait for detection before falling back from a configured, missing profile.
+pub fn profile_by_id(id: &str) -> Option<&'static ShellProfile> {
+    CACHE.profile_by_id(id)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn render_profile_read_does_not_wait_on_wsl() {
+        let start = std::time::Instant::now();
+        let _ = super::profiles();
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(200),
+            "render profile lookup blocked for {:?}",
+            start.elapsed()
+        );
+    }
 }

@@ -236,6 +236,8 @@ struct BoxFacts {
     moved_from: Option<Rc<BoxStyle>>,
 }
 
+#[cfg(feature = "heap-report")]
+mod heap;
 mod same;
 #[cfg(test)]
 mod tests;

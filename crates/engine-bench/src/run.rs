@@ -75,14 +75,14 @@ pub(super) async fn sample(
             let mut build_time = None;
             let mut timings = None;
             if let Some(records) = &records {
-                let t = Instant::now();
+                let t = kamin_html::work::Clock::now();
                 kamin_html::work::phase!(_document, DocumentOther);
                 view.doc.apply(records, BROWSER_CSS)?;
                 build_time = Some(t.elapsed());
                 timings = Some(view.doc.build_timings());
             }
             if let Step::Cold(markup) = step {
-                let t = Instant::now();
+                let t = kamin_html::work::Clock::now();
                 let mut source = Vec::new();
                 let html = {
                     kamin_html::work::phase!(_phase, HostResources);
@@ -92,7 +92,7 @@ pub(super) async fn sample(
                     }
                 };
                 resources_time = Some(t.elapsed());
-                let t = Instant::now();
+                let t = kamin_html::work::Clock::now();
                 kamin_html::work::phase!(_document, DocumentOther);
                 let doc = Document::builder(&html, BROWSER_CSS)
                     .path(&args.path)
@@ -232,7 +232,10 @@ pub(super) async fn run(
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
-        let mode = report::measured_mode(&samples, &diagnostics, work, usage);
+        #[cfg_attr(not(feature = "heap-report"), allow(unused_mut))]
+        let mut mode = report::measured_mode(&samples, &diagnostics, work, usage);
+        #[cfg(feature = "heap-report")]
+        super::holders::attach(cx, window, &mut mode)?;
         modes.insert(name.into(), mode);
     }
     let mut report = json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,

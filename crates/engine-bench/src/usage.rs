@@ -4,7 +4,10 @@ use super::process::{Snapshot, gpu::Memory};
 use kamin_html::work::Phase;
 use serde_json::{Value, json};
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering::SeqCst},
+    },
     thread::JoinHandle,
     time::Duration,
 };
@@ -34,104 +37,170 @@ impl PhaseUsage {
         }
     }
 }
+/// Чтение процесса и GPU. Делается без замка [`State`]: медленные вызовы ОС
+/// (память процесса, память GPU) не держат ни поток сэмплов, ни границу фазы.
+struct Reading {
+    now: Result<Snapshot, String>,
+    gpu: Option<(u64, u64)>,
+    gpu_error: Option<String>,
+}
+impl Reading {
+    fn take(gpu: Option<&Memory>) -> Self {
+        let now = Snapshot::read().map_err(|error| error.to_string());
+        let (gpu, gpu_error) = match gpu.map(Memory::read) {
+            Some(Ok(sample)) => (Some(sample), None),
+            Some(Err(error)) => (None, Some(error.to_string())),
+            None => (None, None),
+        };
+        Self {
+            now,
+            gpu,
+            gpu_error,
+        }
+    }
+}
 struct State {
     phases: [PhaseUsage; Phase::COUNT],
     phase: usize,
     start: Snapshot,
     last: Snapshot,
-    gpu: Option<Memory>,
     gpu_error: Option<String>,
     error: Option<String>,
     stopped: bool,
 }
 impl State {
-    fn observe(&mut self, next: Option<Phase>) {
-        match Snapshot::read() {
-            Ok(now) => {
-                let gpu = if let Some(gpu) = &self.gpu {
-                    match gpu.read() {
-                        Ok(sample) => Some(sample),
-                        Err(error) => {
-                            self.gpu_error = Some(error.to_string());
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
-                let usage = &mut self.phases[self.phase];
-                usage.allocation_calls += now.allocations.calls - self.last.allocations.calls;
-                usage.allocated_bytes += now.allocations.bytes - self.last.allocations.bytes;
-                usage.freed_bytes += now.allocations.freed - self.last.allocations.freed;
-                if let Some(delta) = now.cpu_100ns.checked_sub(self.last.cpu_100ns) {
-                    usage.cpu += delta;
-                } else {
-                    self.error = Some("process CPU clock regressed".into());
-                }
-                usage.observe(now, gpu);
-                self.last = now;
-                if let Some(next) = next {
-                    self.phase = next as usize;
-                    #[cfg(feature = "allocation-audit")]
-                    super::allocations::probe::phase(self.phase);
-                    self.phases[self.phase].observe(now, gpu);
-                }
+    fn apply(&mut self, reading: Reading, next: Option<Phase>) {
+        if let Some(error) = reading.gpu_error {
+            self.gpu_error = Some(error);
+        }
+        let now = match reading.now {
+            Ok(now) => now,
+            Err(error) => {
+                self.error = Some(error);
+                return;
             }
-            Err(error) => self.error = Some(error.to_string()),
+        };
+        let gpu = reading.gpu;
+        let usage = &mut self.phases[self.phase];
+        usage.allocation_calls += now.allocations.calls - self.last.allocations.calls;
+        usage.allocated_bytes += now.allocations.bytes - self.last.allocations.bytes;
+        usage.freed_bytes += now.allocations.freed - self.last.allocations.freed;
+        if let Some(delta) = now.cpu_100ns.checked_sub(self.last.cpu_100ns) {
+            usage.cpu += delta;
+        } else {
+            self.error = Some("process CPU clock regressed".into());
+        }
+        usage.observe(now, gpu);
+        self.last = now;
+        if let Some(next) = next {
+            self.phase = next as usize;
+            #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
+            super::allocations::probe::phase(self.phase);
+            self.phases[self.phase].observe(now, gpu);
         }
     }
 }
-pub(super) struct Capture {
+/// Граница фазы читает процесс до замка; сэмпл, чтение которого пересеклось с
+/// границей, отбрасывается: иначе более раннее чтение легло бы после более
+/// позднего, и счётчики фазы ушли бы в минус. Нечётное значение — граница
+/// читает процесс, чётное — покой.
+struct Boundaries(AtomicU64);
+impl Boundaries {
+    fn begin(&self) {
+        self.0.fetch_add(1, SeqCst);
+    }
+    fn end(&self) {
+        self.0.fetch_add(1, SeqCst);
+    }
+    fn quiet(&self) -> Option<u64> {
+        let epoch = self.0.load(SeqCst);
+        epoch.is_multiple_of(2).then_some(epoch)
+    }
+    fn unchanged(&self, epoch: u64) -> bool {
+        self.0.load(SeqCst) == epoch
+    }
+}
+/// Снимок на границе фазы: поток окна, своя копия адаптера GPU (замок
+/// только у этого потока, без соперника), запись под коротким замком State.
+struct Boundary {
     state: Arc<Mutex<State>>,
+    gpu: Mutex<Option<Memory>>,
+    boundaries: Arc<Boundaries>,
+}
+impl Boundary {
+    fn observe(&self, next: Option<Phase>) {
+        self.boundaries.begin();
+        let reading = {
+            let gpu = self.gpu.lock().unwrap_or_else(|e| e.into_inner());
+            Reading::take(gpu.as_ref())
+        };
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.apply(reading, next);
+        self.boundaries.end();
+    }
+}
+pub(super) struct Capture {
+    boundary: Arc<Boundary>,
     worker: Option<JoinHandle<()>>,
 }
 impl Capture {
     pub(super) fn begin(luid: (i32, u32)) -> Result<Self, Box<dyn std::error::Error>> {
         let start = Snapshot::read()?;
-        #[cfg(feature = "allocation-audit")]
+        #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
         super::allocations::probe::frame();
-        let (gpu, gpu_error) = match Memory::open(luid.0, luid.1) {
+        let open = || Memory::open(luid.0, luid.1);
+        let (sampler_gpu, gpu_error) = match open() {
             Ok(gpu) => (Some(gpu), None),
             Err(error) => (None, Some(error.to_string())),
         };
+        let boundary_gpu = sampler_gpu.as_ref().and_then(|_| open().ok());
         let state = Arc::new(Mutex::new(State {
             phases: std::array::from_fn(|_| PhaseUsage::default()),
             phase: Phase::PipelineOther as usize,
             start,
             last: start,
-            gpu,
             gpu_error,
             error: None,
             stopped: false,
         }));
-        let shared = state.clone();
+        let boundaries = Arc::new(Boundaries(AtomicU64::new(0)));
+        let (shared, epochs) = (state.clone(), boundaries.clone());
         let worker = std::thread::spawn(move || {
             loop {
                 std::thread::park_timeout(Duration::from_millis(5));
+                let Some(epoch) = epochs.quiet() else {
+                    continue;
+                };
+                let reading = Reading::take(sampler_gpu.as_ref());
                 let mut state = shared.lock().unwrap_or_else(|e| e.into_inner());
                 if state.stopped {
                     break;
                 }
-                state.observe(None);
+                if epochs.unchanged(epoch) {
+                    state.apply(reading, None);
+                }
             }
         });
         Ok(Self {
-            state,
+            boundary: Arc::new(Boundary {
+                state,
+                gpu: Mutex::new(boundary_gpu),
+                boundaries,
+            }),
             worker: Some(worker),
         })
     }
     pub(super) fn observer(&self) -> Arc<dyn Fn(Phase) + Send + Sync> {
-        let state = self.state.clone();
-        Arc::new(move |next| {
-            state
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .observe(Some(next))
-        })
+        let boundary = self.boundary.clone();
+        Arc::new(move |next| boundary.observe(Some(next)))
     }
     pub(super) fn finish(mut self, cold: bool) -> Value {
         self.stop();
-        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let state = self
+            .boundary
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let phases: serde_json::Map<String, Value> = Phase::NAMES
             .iter()
             .enumerate()
@@ -164,19 +233,21 @@ impl Capture {
             "process_cpu_100ns": state.last.cpu_100ns - state.start.cpu_100ns,
             "start": state.start.json(), "end": state.last.json(),
             "error": state.error, "gpu_error": state.gpu_error,
-            "memory_peak_method": "5ms samples plus phase boundaries; lifetime high-water marks separate",
+            "memory_peak_method": "5ms samples plus phase boundaries; lifetime high-water marks separate; a sample whose read overlaps a boundary is dropped",
             "cpu_scope": "kernel+user, all process threads, including measurement thread; exclusive wall-phase attribution",
+            "time_scope": "phase windows exclude the boundary snapshot (kamin_html::work::Clock); it is counted in pipeline_other",
             "steady_method": "end of phase/frame; not a post-GC/quiescence assertion"})
     }
     fn stop(&mut self) {
         if let Some(worker) = self.worker.take() {
-            {
-                let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                state.observe(None);
-                state.stopped = true;
-                #[cfg(feature = "allocation-audit")]
-                super::allocations::probe::outside();
-            }
+            self.boundary.observe(None);
+            self.boundary
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .stopped = true;
+            #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
+            super::allocations::probe::outside();
             worker.thread().unpark();
             let _ = worker.join();
         }
@@ -189,30 +260,4 @@ impl Drop for Capture {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn boundary_samples_preserve_peak_and_distinguish_end_memory() {
-        let mut phase = PhaseUsage::default();
-        phase.observe(
-            Snapshot {
-                rss: 100,
-                commit: 300,
-                ..Default::default()
-            },
-            Some((80, 40)),
-        );
-        phase.observe(
-            Snapshot {
-                rss: 50,
-                commit: 400,
-                ..Default::default()
-            },
-            Some((60, 70)),
-        );
-        assert_eq!((phase.rss, phase.commit), (100, 400));
-        assert_eq!((phase.end.rss, phase.end.commit), (50, 400));
-        assert_eq!(phase.gpu_peak, Some((80, 70)));
-        assert_eq!(phase.gpu_end, Some((60, 70)));
-    }
-}
+mod tests;

@@ -17,10 +17,14 @@
 //   /fake-reroute <model>         emit model/rerouted, then echo
 //   /fake-crash                   start the turn, then the app-server process dies
 //   /fake-hang                    start the turn, then stay silent until interrupted
+//   /fake-recall <word>           answer with the lines naming <word> of what the thread knows:
+//                                 developer instructions, its earlier inputs and answers, and the
+//                                 rest of this message (how a model 'remembers' a conversation)
 //
 // Knobs: FAKE_CODEX_LOGGED_IN=1 (start signed in), FAKE_CODEX_LOGIN_DELAY_MS,
 // FAKE_CODEX_LOGIN_FAIL=<error>, FAKE_CODEX_INIT_FAIL=<error> (stderr + exit 2),
-// FAKE_CODEX_START_DELAY_MS (app-server answers nothing for that long).
+// FAKE_CODEX_START_DELAY_MS (app-server answers nothing for that long),
+// FAKE_CODEX_THREAD_START_FAIL=<error> (thread/start answers with that error).
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -185,10 +189,20 @@ const handlers = {
     nextCursor: null,
   }),
   'thread/start': async (p) => {
-    const t = { id: randomUUID(), model: p?.model ?? 'gpt-fake', cwd: p?.cwd, mcp: mcpFromConfig(p?.config), turns: 0 }
+    if (process.env.FAKE_CODEX_THREAD_START_FAIL) throw new Error(process.env.FAKE_CODEX_THREAD_START_FAIL)
+    const t = {
+      id: randomUUID(),
+      model: p?.model ?? 'gpt-fake',
+      cwd: p?.cwd,
+      mcp: mcpFromConfig(p?.config),
+      instructions: p?.developerInstructions ?? '',
+      turns: 0,
+    }
     await initializeMcp(t.mcp)
     threads.set(t.id, t)
-    saveThread(t)
+    // codex 0.160.1 writes a thread's rollout with its first turn: a thread
+    // that never ran one cannot be resumed by a later app-server.
+    if (!process.env.FAKE_CODEX_ROLLOUT_ON_TURN) saveThread(t)
     queueMicrotask(() => notify('thread/started', { thread: { id: t.id } }))
     return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
   },
@@ -202,6 +216,7 @@ const handlers = {
     t.mcp = mcpFromConfig(p?.config) ?? t.mcp
     await initializeMcp(t.mcp)
     if (p?.model) t.model = p.model
+    if (typeof p?.developerInstructions === 'string') t.instructions = p.developerInstructions
     threads.set(t.id, t)
     saveThread(t)
     return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
@@ -219,6 +234,9 @@ const handlers = {
     t.active = { id: turnId, interrupted: false, effort: p.effort ?? null, model: t.model }
     saveThread(t)
     const text = (p.input ?? []).map((i) => i.text ?? '').join('\n')
+    // What the thread was told, for /fake-recall (a hidden context block included).
+    ;(t.inputs ??= []).push(text)
+    saveThread(t)
     queueMicrotask(() => void runTurn(t, turnId, text))
     return { turn: { id: turnId, status: 'inProgress', error: null, items: [] } }
   },
@@ -253,10 +271,12 @@ function userMessage(t, turnId, text) {
 function agentMessage(t, turnId, text) {
   const id = randomUUID()
   notify('item/started', { threadId: t.id, turnId, item: { type: 'agentMessage', id, text: '' } })
-  for (const chunk of text.match(/.{1,6}/gs) ?? []) {
+  // Small deltas like the real stream; a bulk text in a few big ones.
+  for (const chunk of text.match(text.length > 2_000 ? /.{1,4096}/gs : /.{1,6}/gs) ?? []) {
     notify('item/agentMessage/delta', { threadId: t.id, turnId, itemId: id, delta: chunk })
   }
   notify('item/completed', { threadId: t.id, turnId, item: { type: 'agentMessage', id, text } })
+  if (!text.startsWith('recall:')) (t.said ??= []).push(text)
 }
 
 // Like codex: a thread starts only after its required MCP servers answer
@@ -362,6 +382,16 @@ async function runTurn(t, turnId, text) {
         additionalDetails: null,
       }
       notify('error', { threadId: t.id, turnId, error, willRetry: false })
+    } else if (text.startsWith('/fake-recall ')) {
+      const [command, ...rest] = text.split('\n')
+      const word = command.slice('/fake-recall '.length).trim()
+      // Its session context, everything the thread was told, its own answers.
+      const known = [t.instructions ?? '', ...(t.inputs ?? []).slice(0, -1), rest.join('\n'), ...(t.said ?? [])]
+      const lines = known
+        .join('\n')
+        .split('\n')
+        .filter((l) => word && l.includes(word))
+      agentMessage(t, turnId, lines.length ? `recall: ${lines.join(' | ')}` : `recall: nothing about ${word}`)
     } else {
       if (text.startsWith('/fake-reroute ')) {
         const to = text.split(' ')[1]

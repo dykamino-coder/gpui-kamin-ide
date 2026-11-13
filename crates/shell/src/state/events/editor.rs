@@ -45,7 +45,11 @@ impl RootView {
                 self.activity.pin(PanelSlot::MainBottom, "terminal");
                 self.activity.set_active(PanelSlot::MainBottom, "terminal");
                 self.save_activity();
-                self.spawn_shell_in(&crate::term::profiles()[0], Some(dir));
+                if let Some(profile) = crate::term::profiles().first() {
+                    self.spawn_shell_in(profile, Some(dir));
+                } else {
+                    self.term.pending_cwd = Some(dir);
+                }
             }
             ShellEvent::OpenModal(modal) => {
                 // Настройка «удалять без подтверждения» гасит РОВНО две

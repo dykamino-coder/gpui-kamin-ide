@@ -9,6 +9,7 @@ import { eventBus } from '../events/bus'
 import { debugLog, warnLog } from '../logging'
 import { sendToClient, WS_SEND_MAX_BUFFER } from './session-io'
 import { INTERACTIVE_TOOLS } from './interactive-tools'
+import { traceSent } from './mcp-trace'
 
 /** Default MCP call timeout — most tools finish well under this. Heavy
  *  fs/shell tools (Grep/Glob/Bash/Read/etc.) hit HEAVY_TOOL_TIMEOUT_MS
@@ -71,9 +72,10 @@ export function sendMcpCall(
   toolName: string,
   input: Record<string, unknown>,
   signal?: AbortSignal,
+  /** Caller-chosen id, so the caller can read the call's trace (mcp-trace). */
+  requestId: string = randomUUID(),
 ): Promise<unknown> {
   if (signal?.aborted) return Promise.reject(new Error('MCP request cancelled'))
-  const requestId = randomUUID()
   session.mcpCallCount++
   session.lastActivityAt = new Date()
 
@@ -220,7 +222,10 @@ function trySendMcpCall(session: PtySession, requestId: string, pending: Pending
     toolName: pending.toolName,
     input: pending.input,
   })
-  if (pending.delivered) pending.deliveredTo = ws
+  if (pending.delivered) {
+    pending.deliveredTo = ws
+    traceSent(requestId)
+  }
   if (pending.delivered && pending.retryTimer) {
     clearInterval(pending.retryTimer)
     pending.retryTimer = undefined

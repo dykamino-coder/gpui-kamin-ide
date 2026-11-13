@@ -192,6 +192,10 @@ export class JsonlWatcher {
 
   /** The slug directory where this session's JSONL files live */
   private slugDir: string | null
+  /** Where sub-agent transcripts are, when not next to the tailed file: a
+   *  multi-engine conversation tails its unified log, while the running
+   *  engine writes sub-agents under its own native session. */
+  subagentsDirOf?: () => string | null
 
   private discoveryTimer: ReturnType<typeof setInterval> | null = null
   private discoveryTimeout: ReturnType<typeof setTimeout> | null = null
@@ -353,7 +357,7 @@ export class JsonlWatcher {
     }
 
     const conversationId = path.basename(this.filePath, '.jsonl')
-    const subagentsDir = path.join(this.slugDir, conversationId, 'subagents')
+    const subagentsDir = this.subagentsDirOf?.() ?? path.join(this.slugDir, conversationId, 'subagents')
 
     let files: string[]
     try {
