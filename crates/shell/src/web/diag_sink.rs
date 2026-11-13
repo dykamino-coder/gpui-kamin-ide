@@ -162,7 +162,8 @@ mod tests {
         let (seen_tx, seen) = channel::<String>();
         let gate = Mutex::new(gate);
         let pipe = Pipe::spawn(move |record| {
-            let _ = gate.lock().unwrap().recv();
+            // Bounded, so the old synchronous sink fails the timing check instead of hanging.
+            let _ = gate.lock().unwrap().recv_timeout(Duration::from_secs(1));
             let _ = seen_tx.send(record.to_string());
         });
         let started = Instant::now();
@@ -194,7 +195,7 @@ mod tests {
         let pipe = Pipe::spawn(move |record| {
             // Only the first record waits for the gate.
             if let Some(gate) = gate.lock().unwrap().take() {
-                let _ = gate.recv();
+                let _ = gate.recv_timeout(Duration::from_secs(5));
             }
             let _ = seen_tx.send(record.to_string());
         });
