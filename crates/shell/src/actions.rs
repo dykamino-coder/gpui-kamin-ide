@@ -18,6 +18,10 @@ actions!(
         CloseOverlay,
         /// Enter в инпут-оверлеях: открыть активный результат / выполнить команду.
         PressEnter,
+        /// Tab — следующий tab-стоп оболочки.
+        FocusNext,
+        /// Shift+Tab — предыдущий tab-стоп оболочки.
+        FocusPrevious,
         /// Ctrl+S — сохранить открытый в редакторе файл.
         SaveFile,
         /// Ctrl+B — тоггл сайдбара.

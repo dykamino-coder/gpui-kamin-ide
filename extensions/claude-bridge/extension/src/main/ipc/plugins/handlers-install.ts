@@ -5,6 +5,7 @@ import { ipcMain, BrowserWindow, type IpcMainInvokeEvent } from '@kaminide/host-
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+import { bridgeStatePath } from '../../bridge-state'
 import { collectPluginHooks, hashPluginHook } from '../../sync/plugin-snapshot'
 import {
   assertUniqueEnabledPluginNames,
@@ -309,7 +310,7 @@ async function collectHookApprovalEntries(pluginId: string, pluginRoot: string):
   }
   let approvedHashes: string[] = []
   try {
-    const approvalFile = path.join(os.homedir(), '.claude', 'open-claude-bridge', 'plugin-hook-approvals.json')
+    const approvalFile = bridgeStatePath('plugin-hook-approvals.json')
     approvedHashes = JSON.parse(fs.readFileSync(approvalFile, 'utf-8'))?.[pluginId] ?? []
   } catch {}
   return { pluginId, hooks: flat, approvedHashes }
@@ -339,8 +340,11 @@ export async function listPendingHookApprovals(): Promise<PendingPluginHookAppro
 export async function requestHookApproval(pluginId: string, pluginRoot: string): Promise<void> {
   const pending = await getPendingHookApproval(pluginId, pluginRoot)
   if (!pending) return
-  const win = BrowserWindow.getAllWindows().find(w => !w.isDestroyed()) ?? null
-  if (win) win.webContents.send('plugin-hooks:awaiting-approval', pending)
+  // Chat and Customize can belong to different BridgeHost sinks. Registration
+  // order must not decide which approval UI receives a new request.
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('plugin-hooks:awaiting-approval', pending)
+  }
 }
 
 async function requestDependencyHookApprovals(data: any, dependencyIds: readonly string[]): Promise<void> {

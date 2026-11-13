@@ -214,6 +214,8 @@ export interface UserSummary {
   engines?: Partial<Record<'claude' | 'codex', UserEngineSummary>>
   firstSeen: string | null
   lastSeen: string | null
+  /** Token flow (in + out + cache) over the last 7 / 30 days. */
+  periodTokens?: { d7: number; d30: number }
 }
 
 export type { PlanUsageData as UsageData } from '../../../shared/plan-usage'

@@ -2,39 +2,11 @@
 // and badge of an engine, and the `engine` query parameter of the stats API.
 // 'claude' is Claude Code CLI; 'codex' is ChatGPT (codex app-server).
 
-import { signal } from '@preact/signals'
-
-export type Engine = 'claude' | 'codex'
-export type EngineFilterValue = 'all' | Engine
+import { engineFilter, setEngineFilter, type Engine, type EngineFilterValue } from '../../signals/engine'
+export { engineFilter, setEngineFilter, engineParam, type Engine, type EngineFilterValue } from '../../signals/engine'
 
 export const ENGINE_LABEL: Record<Engine, string> = { claude: 'Claude', codex: 'ChatGPT' }
 const ENGINE_COLOR: Record<Engine, string> = { claude: 'var(--accent-orange)', codex: 'var(--accent-green)' }
-
-function storedFilter(): EngineFilterValue {
-  try {
-    const v = localStorage.getItem('dashboard-engine-filter')
-    return v === 'claude' || v === 'codex' ? v : 'all'
-  } catch {
-    return 'all'
-  }
-}
-
-/** Shared by the Stats, Usage, Users and Sessions views: one choice filters all. */
-export const engineFilter = signal<EngineFilterValue>(storedFilter())
-
-export function setEngineFilter(value: EngineFilterValue): void {
-  engineFilter.value = value
-  try {
-    localStorage.setItem('dashboard-engine-filter', value)
-  } catch {
-    /* per-viewer convenience only */
-  }
-}
-
-/** `&engine=<id>` for a filtered view, '' for all engines. */
-export function engineParam(value: EngineFilterValue): string {
-  return value === 'all' ? '' : `&engine=${value}`
-}
 
 export function asEngine(value: unknown): Engine {
   return value === 'codex' ? 'codex' : 'claude'

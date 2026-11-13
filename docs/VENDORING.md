@@ -253,6 +253,7 @@ git apply --unidiff-zero vendor/gpui-kaminide.patch
 | --- | --- |
 | `WPT_FIRST_FRAME=1` | `crates/html/examples/wptrun`: снимок первого GPU-кадра документа без ожидания сходимости; диагностический режим, CI его не включает |
 | `WPT_READY=0` | `crates/html/examples/wptrun`: отключить сигнал готовности и использовать прежний протокол устойчивости; быстрый путь требует offscreen и фиксированного анимационного времени |
+| `WPT_SURFACE=window` | `crates/html/examples/wptrun`: прежнее презентуемое окно за краем экрана вместо offscreen-текстуры message-only окна (`WindowsPlatform::set_offscreen_windows`); только для сверки RGB/таймингов путей, по умолчанию `offscreen` |
 | `WPT_PHASE_TIMING=1` | `crates/html/examples/wptrun`: микросекунды загрузки, разбора, первого кадра, устойчивости, readback и сравнения в stderr; отчёт вердиктов не меняется |
 | `KAMIN_FORCE_SCALE` | host shell/HTML читает scale и передаёт `InstrumentationConfig`; WPT по умолчанию и engine_bench используют scale 1; Windows display применяет переданный scale |
 | `KAMIN_PREPAINT_PROF=1` | host shell/HTML включает `InstrumentationConfig::prepaint`; профиль приложения читается диагностикой shell |
@@ -288,3 +289,10 @@ record identity, placement, effects and lifecycle. No second backend is added.
 readback. Уничтожение или замена endpoint завершает подписки ошибкой закрытия.
 WPT владеет readiness и выбором кадра; engine_bench сохраняет проверку строго
 одного первого кадра. Production offscreen scenes используют прежний renderer.
+
+`WindowsPlatform::set_offscreen_windows(true)` — путь стендов (engine_bench,
+wptrun): окно GPUI создаётся message-only (`HWND_MESSAGE`), renderer рисует в
+текстуру того же формата, устройства и шейдеров вместо swap chain, без
+DirectComposition и Present; кадровый спрос приходит posted-сообщением вместо
+WM_PAINT. DWM такие окна не видит и не композитит. Прежний путь — флаг хоста
+(`--surface window`, `WPT_SURFACE=window`) только для сверки.

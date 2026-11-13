@@ -133,6 +133,9 @@ function startJsonlWatcher(
               conversationId,
             ])
           })
+          // The stats rollup carries the session owner; this may have just set it.
+          const { markRollupSessionsDirty } = await import('../stats/database/rollup')
+          await markRollupSessionsDirty(db, [conversationId])
         } catch (err) {
           warnLog('session_tokens insert failed', { conversationId, error: String(err) })
         }

@@ -40,6 +40,7 @@ import type { DuckDBConnection } from '@duckdb/node-api'
 import { getDb } from './database/lifecycle'
 import { withStatsWrite } from './database/write-lock'
 import { dedupeByUuid } from './jsonl-batch'
+import { markDirtySql, scheduleRollupDrain } from './database/rollup'
 import { debugLog, warnLog } from '../logging'
 import { readJsonlLines } from '../pty/jsonl-lines'
 import { isEngineUsageLine, isUsagelessItemLine, lineEngine } from '../../shared/engine-accounting'
@@ -325,6 +326,24 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   if (cached?.signature === signature && Date.now() - cached.checkedAt < 60_000) return { inserted: 0 }
   const db = await getDb()
   const write = (sql: string, args: unknown[]) => withStatsWrite(() => db.run(sql, args as any[]))
+  // Statements that rewrite accounting columns (model, attribution, subagent)
+  // mark the session dirty in the same transaction, and only when a row
+  // actually changed — the steady-state no-op UPDATE must not queue a refresh.
+  const rewrite = (sql: string, args: unknown[]) =>
+    withStatsWrite(async () => {
+      await db.run('BEGIN')
+      try {
+        const res = await db.run(sql, args as any[])
+        if (Number(res.rowsChanged) > 0) {
+          const dirty = markDirtySql([path.basename(filePath, '.jsonl')])
+          await db.run(dirty.sql, dirty.params)
+        }
+        await db.run('COMMIT')
+      } catch (err) {
+        await db.run('ROLLBACK').catch(() => {})
+        throw err
+      }
+    })
   const saveOffset = (offset: number) =>
     write(SQL_UPSERT_OFFSET, [filePath, offset, size, new Date().toISOString(), stat.mtimeMs, identity])
   const remember = () => {
@@ -380,7 +399,13 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   // also keeps Sessions cardinality clean.
   if (slugInfo && !info.isSubagent) {
     if (!tokenRow) {
-      await write(SQL_ENSURE_SESSION_TOKEN, [sessionId, slugInfo.tokenId, slugInfo.userName, new Date().toISOString()])
+      // A new owner row changes what the rollup attributes: rewrite() marks it dirty.
+      await rewrite(SQL_ENSURE_SESSION_TOKEN, [
+        sessionId,
+        slugInfo.tokenId,
+        slugInfo.userName,
+        new Date().toISOString(),
+      ])
     } else if (!tokenRow.token_id || tokenRow.token_id.length === 0) {
       // Heal the legacy '' rows that the old backfill produced.
       await write(SQL_REFRESH_SESSION_TOKEN, [slugInfo.tokenId, sessionId])
@@ -392,7 +417,7 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   // A periodic attribution check must not run an UPDATE over every unchanged
   // historical session when the mapping itself has not changed.
   if (cached?.signature !== signature || cached.attribution !== attribution)
-    await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId])
+    await rewrite(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId])
 
   if (startByte >= size) {
     // Only touch jsonl_offsets when the position actually moved — an
@@ -440,6 +465,9 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
           const chunk = rows.slice(i, i + INSERT_CHUNK_ROWS)
           await db.run(insertEventsSql(chunk.length), chunk.flat() as any[])
         }
+        // Same transaction: the rollup can never miss a committed batch.
+        const dirty = markDirtySql([...rows.map((r) => r[1] as string), ...(stale.length ? [sessionId] : [])])
+        await db.run(dirty.sql, dirty.params)
         await db.run('COMMIT')
       } catch (err) {
         try {
@@ -677,7 +705,7 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
   // Backfill once the current snapshot is caught up, rather than repeating
   // the next-assistant lookup over the growing session after every slice.
   try {
-    if (consumed >= size) await write(SQL_FILL_USER_MODELS, [sessionId])
+    if (consumed >= size) await rewrite(SQL_FILL_USER_MODELS, [sessionId])
   } catch (err) {
     warnLog('fillUserModels failed', { sessionId, error: String(err) })
   }
@@ -695,13 +723,14 @@ async function processOneFileUnguarded(info: JsonlFileInfo, maxBytes: number): P
       : (slugInfo?.userName ?? null)
   const tokenIdAfter =
     slugInfo?.tokenId ?? (tokenRowAfter?.token_id && tokenRowAfter.token_id.length > 0 ? tokenRowAfter.token_id : null)
-  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenIdAfter, userNameAfter, subFlag, info.parentSessionId, sessionId])
+  await rewrite(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenIdAfter, userNameAfter, subFlag, info.parentSessionId, sessionId])
 
   // Persist accumulated session metadata (only for non-subagent files —
   // subagents share parent's title etc).
   if (!info.isSubagent) await persistMeta()
 
   await saveOffset(consumed)
+  scheduleRollupDrain()
   if (consumed >= size) remember()
   return { inserted, pending: consumed < size && consumed > startByte }
 }

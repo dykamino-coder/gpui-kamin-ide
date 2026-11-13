@@ -59,6 +59,7 @@
     "@types/react-refresh": "0.14.7",
     "@xterm/headless": "^6.0.0",
     "esbuild": "0.28.2",
+    "jsdom": "^27.4.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.8",
     "vite-plugin-singlefile": "^2.3.4",

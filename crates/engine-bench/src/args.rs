@@ -9,12 +9,32 @@ use std::path::PathBuf;
 pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window]\n\
     engine_bench --list-gpus\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
     Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
     Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
-    then checks each variant pixel-for-pixel against a fresh document.";
+    then checks each variant pixel-for-pixel against a fresh document.\n\
+    Surface: offscreen (default) draws into a GPU texture of a message-only window, never seen\n\
+    by the desktop compositor; window parks a presented desktop window off-screen (comparison only).";
+
+/// Куда рисует стенд: текстура message-only окна (DWM его не видит) или
+/// прежнее презентуемое окно за краем экрана — только для сверки путей.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum Surface {
+    Offscreen,
+    Window,
+}
+
+#[cfg(windows)]
+impl Surface {
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Self::Offscreen => "offscreen",
+            Self::Window => "window",
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Mode {
@@ -96,6 +116,27 @@ mod tests {
         assert_eq!(args.memory_settle_ms, super::MEMORY_STEADY_WINDOW_MS);
         std::fs::remove_file(&page).unwrap();
     }
+
+    #[test]
+    fn surface_defaults_to_offscreen_and_rejects_unknown_values() {
+        let page = std::env::temp_dir().join("engine-bench-surface-test.html");
+        std::fs::write(&page, "<p>x</p>").unwrap();
+        let parse = |extra: &[&str]| {
+            Args::parse(
+                std::iter::once(page.to_str().unwrap())
+                    .chain(extra.iter().copied())
+                    .map(str::to_owned),
+            )
+        };
+        assert_eq!(
+            parse(&[]).unwrap().unwrap().surface,
+            super::Surface::Offscreen
+        );
+        let window = parse(&["--surface", "window"]).unwrap().unwrap();
+        assert_eq!(window.surface, super::Surface::Window);
+        assert!(parse(&["--surface", "hidden"]).is_err());
+        std::fs::remove_file(&page).unwrap();
+    }
 }
 
 pub(super) struct Args {
@@ -111,6 +152,7 @@ pub(super) struct Args {
     pub(super) snapshot: Option<PathBuf>,
     pub(super) frame_diff_dir: Option<PathBuf>,
     pub(super) fresh_check_dir: Option<PathBuf>,
+    pub(super) surface: Surface,
 }
 
 impl Args {
@@ -137,6 +179,7 @@ impl Args {
             snapshot: None,
             frame_diff_dir: None,
             fresh_check_dir: None,
+            surface: Surface::Offscreen,
         };
         while let Some(flag) = args.next() {
             if flag == "--json" {
@@ -189,6 +232,13 @@ impl Args {
                 }
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
                 "--fresh-check-dir" => out.fresh_check_dir = Some(value.into()),
+                "--surface" => {
+                    out.surface = match value.as_str() {
+                        "offscreen" => Surface::Offscreen,
+                        "window" => Surface::Window,
+                        _ => return Err("surface must be offscreen or window".into()),
+                    };
+                }
                 _ => return Err(format!("unknown option: {flag}").into()),
             }
         }

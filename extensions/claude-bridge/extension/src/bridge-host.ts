@@ -42,6 +42,7 @@ import { registerCoreIpc, wireConnectionCallbacks } from "./core-ipc"
 import { registerSyncIPC } from "./main/ipc/sync"
 import { installIncidentDiagnostics, recordBridgeOutbound, recordInvokeBoundary } from "./incident-diagnostics"
 import { InvokeDiagnostics } from './invoke-diagnostics'
+import { initBridgeState } from './main/bridge-state'
 
 interface InboundMessage {
   kind: "invoke" | "send" | "invoke-diagnostic"
@@ -189,6 +190,8 @@ export class BridgeHost {
     /** What the embedding host is and has; defaults to the user's machine (KaminIDE). */
     hostTraits?: HostTraits
   }) {
+    const isDefaultProfile = (context as vscode.ExtensionContext & { kaminProfile?: { isDefault: boolean } }).kaminProfile?.isDefault ?? false
+    initBridgeState(context.globalStorageUri.fsPath, { isDefaultProfile })
     const webContents: WebContents = {
       send: (channel, ...args) => {
         recordBridgeOutbound(channel, args)
@@ -209,7 +212,7 @@ export class BridgeHost {
     // One-shot: bring an upgrading user's Electron Bridge sessions/projects into
     // KaminIDE's sidebar (same store shape + token-key; transcripts resolve
     // server-side by conversationId). No-op after the first run.
-    this.configStore.migrateFromElectron()
+    if (isDefaultProfile) this.configStore.migrateFromElectron()
     this.tabManager = new TabManager(this.sink)
     setPluginLspProjectResolver((tabId, file) => {
       const direct = tabId ? this.tabManager.getTab(tabId)?.config.cwd : undefined

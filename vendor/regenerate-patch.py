@@ -98,6 +98,10 @@ FIXES = {
         " a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and"
         " external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that"
         " reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.",
+        "Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the"
+        " same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or"
+        " resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device"
+        " recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.",
     ],
     "gpui-base": [
         "Editor input: minimap/scroll coordinates, incremental highlighting and run traversal.",
