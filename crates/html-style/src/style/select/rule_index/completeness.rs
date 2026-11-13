@@ -3,6 +3,7 @@
 use super::*;
 use crate::dom::tree_index::TreeIndex;
 use crate::style::select::{Sibs, census_of, matching::matches};
+use html5ever::interface::TreeSink;
 use markup5ever_rcdom::Handle;
 use std::rc::Rc;
 
@@ -85,4 +86,69 @@ fn indexed_matches_equal_full_scan_through_ancestor_and_sibling_chains() {
     .collect();
     let index = RuleIndex::new(&rules, &Admission::default()).unwrap();
     visit(&dom.document, &[], &tree, &rules, &index);
+    let rules: Vec<_> = rules.iter().cycle().take(180).cloned().collect();
+    for mutation in [false, true] {
+        let index = RuleIndex::new(&rules, &Admission::default()).unwrap();
+        index
+            .prepare_bulk(&dom.document, &rules, &tree, mutation)
+            .unwrap();
+        assert_eq!(index.bulk.borrow().is_some(), !mutation);
+        visit(&dom.document, &[], &tree, &rules, &index);
+    }
+}
+
+#[test]
+fn edits_and_tree_changes_rebuild_candidates_without_stale_rows() {
+    let dom =
+        crate::dom::xml::xml_dom("<r><a class='on'/><b data-x='yes'><x/></b><c/></r>").unwrap();
+    let root = dom.document.children.borrow()[0].clone();
+    let a = root.children.borrow()[0].clone();
+    let b = root.children.borrow()[1].clone();
+    let rules: Vec<_> = [".on ~ b > x", "b[data-x=yes] > x", "r > c:last-child"]
+        .into_iter()
+        .cycle()
+        .take(72)
+        .enumerate()
+        .map(|(order, raw)| Rule {
+            sel: Selector::parse(raw).unwrap(),
+            decls: Default::default(),
+            order,
+            origin: crate::style::css::Origin::Author,
+            layer: vec![u32::MAX],
+            link: crate::style::css::LinkMatch::Any,
+        })
+        .collect();
+    for step in 0..5 {
+        match step {
+            1 | 2 => {
+                let handle = if step == 1 { &a } else { &b };
+                let markup5ever_rcdom::NodeData::Element { attrs, .. } = &handle.data else {
+                    unreachable!();
+                };
+                attrs.borrow_mut()[0].value = "off".into();
+            }
+            3 => {
+                let child = b.children.borrow()[0].clone();
+                dom.remove_from_parent(&child);
+                dom.append(&root, html5ever::interface::NodeOrText::AppendNode(child));
+            }
+            4 => {
+                let child = root.children.borrow().last().unwrap().clone();
+                dom.remove_from_parent(&child);
+            }
+            _ => {}
+        }
+        let tree = TreeIndex::new(
+            crate::values::DocumentValues::detached(Default::default()),
+            true,
+        );
+        for mutation in [false, true] {
+            let index = RuleIndex::new(&rules, &Admission::default()).unwrap();
+            index
+                .prepare_bulk(&dom.document, &rules, &tree, mutation)
+                .unwrap();
+            assert_eq!(index.bulk.borrow().is_some(), !mutation);
+            visit(&dom.document, &[], &tree, &rules, &index);
+        }
+    }
 }

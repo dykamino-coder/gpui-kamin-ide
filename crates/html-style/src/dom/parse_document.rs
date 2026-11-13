@@ -119,6 +119,10 @@ pub fn convert_restyling(
     } else if !has_args.is_empty() {
         mark_has(&dom.document, &has_args, &mut vec![], &mut tree)?;
     }
+    if !shadows {
+        doc.index
+            .prepare_bulk(&dom.document, &doc.rules, &tree, invalidation.is_some())?;
+    }
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.

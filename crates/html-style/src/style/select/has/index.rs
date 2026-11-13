@@ -6,27 +6,37 @@ use crate::style::select::ascii_lower as lower;
 use std::collections::HashMap;
 
 #[derive(Default)]
-pub(super) struct Index {
+pub(in crate::style::select) struct Index {
     buckets: [HashMap<String, Vec<usize>>; 4],
     leases: Vec<Option<crate::budget::LiveReservation>>,
 }
 
 impl Index {
-    pub fn insert(
+    pub fn insert_handle(
         &mut self,
-        node: &Ancestor,
+        handle: &Handle,
         i: usize,
         admission: &Admission,
     ) -> Result<(), Error> {
-        if let Some(id) = &node.id {
-            self.add(0, id, i, admission)?;
-        }
-        for class in &node.classes {
-            self.add(1, class, i, admission)?;
-        }
-        self.add(2, &lower(&node.tag), i, admission)?;
-        for (attr, _) in &node.attrs {
-            self.add(3, &lower(attr), i, admission)?;
+        let markup5ever_rcdom::NodeData::Element { name, attrs, .. } = &handle.data else {
+            return Ok(());
+        };
+        let local = &*name.local;
+        let local = local
+            .split_once(':')
+            .filter(|(_, suffix)| !suffix.is_empty())
+            .map_or(local, |(_, suffix)| suffix);
+        self.add(2, &lower(local), i, admission)?;
+        for attr in attrs.borrow().iter() {
+            let key = &*attr.name.local;
+            self.add(3, &lower(key), i, admission)?;
+            if key == "id" {
+                self.add(0, &attr.value, i, admission)?;
+            } else if key == "class" {
+                for class in attr.value.split_whitespace() {
+                    self.add(1, class, i, admission)?;
+                }
+            }
         }
         Ok(())
     }

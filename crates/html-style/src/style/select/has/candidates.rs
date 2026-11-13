@@ -100,7 +100,9 @@ pub(super) fn mark_complex(
             (anchor + 1, record.end)
         };
         let begin = candidates.partition_point(|&i| i < start);
-        let _overlay = tree.matching.anchor(record.all[record.pos].key.clone());
+        let _overlay = tree
+            .matching
+            .anchor(crate::dom::tree_index::NodeKey::of(&record.handle));
         for &candidate in &candidates[begin..] {
             if candidate >= end {
                 break;
