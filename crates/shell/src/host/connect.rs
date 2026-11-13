@@ -129,16 +129,6 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
                         .and_then(Value::as_str)
                         .unwrap_or_default()
                         .to_string();
-                    let items: Vec<String> = params
-                        .get(2)
-                        .and_then(Value::as_array)
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(Value::as_str)
-                                .map(String::from)
-                                .collect()
-                        })
-                        .unwrap_or_default();
                     let level: &'static str = match severity {
                         "error" => "error",
                         "warning" => "warning",
@@ -149,19 +139,7 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
                         "host".into(),
                         message.clone(),
                     )));
-                    let has_items = !items.is_empty();
-                    let toast = crate::ui::toasts::Toast {
-                        id: if has_items {
-                            format!("shellreq-{req_id}")
-                        } else {
-                            format!("shellmsg-{severity}-{message:.32}")
-                        },
-                        severity: severity.to_string(),
-                        title: None,
-                        message,
-                        actions: items,
-                        sticky: has_items, // ждём выбора — не авто-скрывать
-                    };
+                    let (toast, has_items) = crate::host::show_message::toast_for(req_id, params);
                     let _ = req_tx.try_send(ShellEvent::Toast(toast));
                     if has_items {
                         kamin_ws::HostReply::Later

@@ -1565,6 +1565,16 @@ Private evidence: [INC-2026-0036](https://github.com/dykamino-coder/gpui-kamin-i
 контракт непрерывного тоста с кнопкой + Windows native-toast gate.
 **Windows runtime merge gate:** required for the remaining functional fix.
 
+**Implementation handoff (2026-11-13):** The remaining transient-notification
+contract is prepared for review. `kaminide.window.showTransientMessage` forwards
+an explicit bounded duration to the native toast; completion keeps its `Open`
+action and uses an 8-second countdown. Plain VS Code action notifications remain
+sticky. Webview notification duration is preserved. Automated regression tests
+cover the API, routing, countdown options and hover-paused active time; existing
+turn-deduplication tests remain applicable. **Next owner:** kmaint runs the exact
+candidate Windows gate (countdown, automatic dismissal, Open, hover pause and
+Agent Teams). No live pass or task close-out is claimed by this change.
+
 **Регрессия 1.0.61 и её исправление (2026-09-29, живая проверка):** правило
 «раз сервер показал, что умеет хуки, виток закрывает ТОЛЬКО хук» опиралось на
 предположение, что вслед за любым состоянием из хука придёт и хук завершения

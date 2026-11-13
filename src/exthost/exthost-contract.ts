@@ -7,6 +7,7 @@ import type { CodeActionDto, CodeLensDto, ColorDto, ColorInformationDto, ColorPr
 import type { RangeDto } from "./api/range-dto.js"
 import type { StatusBarItemState } from "./api/status-bar.js"
 import type { WebviewStore } from "./api/webview.js"
+import type { ShowMessageHook } from "./api-kaminide.js"
 import type { EnvHost, SessionsHost, StorageHost, WorkspaceHost } from "./host-services.js"
 
 export interface StartOptions {
@@ -23,7 +24,7 @@ export interface StartOptions {
    *  through IPC into the renderer's overlay system. We require them
    *  rather than synthesising fallbacks so a missing wiring fails
    *  loud instead of silently swallowing extension prompts. */
-  showMessage: (severity: "info" | "warning" | "error", message: string, items: string[]) => Promise<string | undefined>
+  showMessage: ShowMessageHook
   showInputBox: (opts: { prompt?: string; placeHolder?: string; value?: string }) => Promise<string | undefined>
   /** `vscode.window.showQuickPick` — returns the chosen item INDICES (so the
    *  caller maps back to the original string/QuickPickItem), or null on cancel. */

@@ -62,6 +62,7 @@ impl RootView {
                         title: None,
                         message: format!("Save failed: {e}"),
                         actions: Vec::new(),
+                        duration_ms: None,
                         sticky: false,
                     }));
             }
@@ -123,6 +124,7 @@ impl RootView {
                 title: None,
                 message,
                 actions: Vec::new(),
+                duration_ms: None,
                 sticky: false,
             }));
             let _ = tx.try_send(ShellEvent::Tree(TreeEvent::RefreshTree));

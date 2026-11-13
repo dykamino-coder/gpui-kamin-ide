@@ -48,6 +48,7 @@ pub fn sample_toast_triggers(tx: &Sender<ShellEvent>, p: &Palette) -> AnyElement
                     } else {
                         Vec::new()
                     },
+                    duration_ms: None,
                     sticky: with_actions,
                 }));
             },

@@ -12413,8 +12413,8 @@ async function bashExecute(input, context) {
     script.file.dispose();
   }
 }
-function appendTail(window9, chunk, cap = BG_OUTPUT_CAP) {
-  const text = window9 + chunk;
+function appendTail(window10, chunk, cap = BG_OUTPUT_CAP) {
+  const text = window10 + chunk;
   if (text.length <= cap) return { text, dropped: 0 };
   let cut = text.length - cap;
   const first = text.charCodeAt(cut);
@@ -22095,7 +22095,7 @@ var require_DOMTokenList = __commonJS({
 var require_select = __commonJS({
   "node_modules/@mixmark-io/domino/lib/select.js"(exports2, module2) {
     "use strict";
-    var window9 = Object.create(null, {
+    var window10 = Object.create(null, {
       location: { get: function() {
         throw new Error("window.location is not supported.");
       } }
@@ -22365,7 +22365,7 @@ var require_select = __commonJS({
         return !!el.disabled;
       },
       ":target": function(el) {
-        return el.id === window9.location.hash.substring(1);
+        return el.id === window10.location.hash.substring(1);
       },
       ":focus": function(el) {
         return el === el.ownerDocument.activeElement;
@@ -22386,7 +22386,7 @@ var require_select = __commonJS({
         return selectors[":nth-match"](param, true);
       },
       ":links-here": function(el) {
-        return el + "" === window9.location + "";
+        return el + "" === window10.location + "";
       },
       ":lang": function(param) {
         return function(el) {
@@ -22416,12 +22416,12 @@ var require_select = __commonJS({
       },
       ":local-link": function(el) {
         if (el.nodeName) {
-          return el.href && el.host === window9.location.host;
+          return el.href && el.host === window10.location.host;
         }
         var param = +el + 1;
         return function(el2) {
           if (!el2.href) return;
-          var url = window9.location + "", href = el2 + "";
+          var url = window10.location + "", href = el2 + "";
           return truncateUrl(url, param) === truncateUrl(href, param);
         };
       },
@@ -36469,8 +36469,8 @@ var require_Location = __commonJS({
     var URL2 = require_URL();
     var URLUtils = require_URLUtils();
     module2.exports = Location;
-    function Location(window9, href) {
-      this._window = window9;
+    function Location(window10, href) {
+      this._window = window10;
       this._href = href;
     }
     Location.prototype = Object.create(URLUtils.prototype, {
@@ -37970,6 +37970,21 @@ var init_session_activation = __esm({
 function setToastRouteHandler(handler2) {
   routeHandler = handler2;
 }
+function configureTransientNotice(fn) {
+  transientNotice = fn;
+}
+function showPlain(severity, text, ...items) {
+  if (severity === "error") return vscode2.window.showErrorMessage(text, ...items);
+  if (severity === "warning") return vscode2.window.showWarningMessage(text, ...items);
+  return vscode2.window.showInformationMessage(text, ...items);
+}
+function showTimedNotice(severity, text, durationMs) {
+  if (transientNotice && typeof durationMs === "number" && durationMs > 0) {
+    void transientNotice(text, { severity, durationMs });
+    return;
+  }
+  void showPlain(severity, text);
+}
 function spawnToast(opts, forceOpts) {
   if (!forceOpts?.bypassEnabledGate && !notificationsEnabled()) return;
   const text = opts.title ? `${opts.title} \u2014 ${opts.message}` : opts.message;
@@ -37978,14 +37993,15 @@ function spawnToast(opts, forceOpts) {
       if (picked === "Open") routeHandler?.({ tabId: opts.tabId, requestId: opts.requestId });
     });
   } else {
-    void vscode2.window.showInformationMessage(text, "Open").then((picked) => {
+    const shown = transientNotice ? transientNotice(text, { severity: "info", durationMs: FINISHED_TOAST_MS }, "Open") : vscode2.window.showInformationMessage(text, "Open");
+    void Promise.resolve(shown).then((picked) => {
       if (picked === "Open" && !activateSessionForTab(opts.tabId)) routeHandler?.({ tabId: opts.tabId });
     });
   }
 }
 function closeToastsMatching(_predicate) {
 }
-var vscode2, routeHandler, notificationsEnabled;
+var vscode2, routeHandler, notificationsEnabled, transientNotice, FINISHED_TOAST_MS;
 var init_toast_window = __esm({
   "src/main/notifications/toast-window.ts"() {
     "use strict";
@@ -37993,6 +38009,8 @@ var init_toast_window = __esm({
     init_session_activation();
     routeHandler = null;
     notificationsEnabled = () => true;
+    transientNotice = null;
+    FINISHED_TOAST_MS = 8e3;
   }
 });
 
@@ -41785,8 +41803,8 @@ var PermissionManager = class {
 var BATCH_MS = 50;
 var MAX_ENTRIES_PER_IPC = 150;
 var JsonlBatcher = class {
-  constructor(window9, tabId) {
-    this.window = window9;
+  constructor(window10, tabId) {
+    this.window = window10;
     this.tabId = tabId;
   }
   window;
@@ -42338,24 +42356,24 @@ var TranscriptMirror = class {
    *  bounded byte window in the host process. */
   async readRange(beforePos, count) {
     const localEnd = await this.localPosition(beforePos);
-    let window9 = Math.max(256 * 1024, count * 4096);
+    let window10 = Math.max(256 * 1024, count * 4096);
     for (let attempt = 0; attempt < 3; attempt++) {
-      const out = await this.readRangeWindow(beforePos, count, window9, localEnd);
-      if (out.length > 0 || localEnd <= window9) return out;
-      window9 *= 4;
+      const out = await this.readRangeWindow(beforePos, count, window10, localEnd);
+      if (out.length > 0 || localEnd <= window10) return out;
+      window10 *= 4;
     }
     return [];
   }
   async readRangeWindow(beforePos, count, windowSize, localEnd) {
     if (beforePos <= 0 || count <= 0) return [];
-    const window9 = Math.min(localEnd, windowSize);
-    const start = localEnd - window9;
+    const window10 = Math.min(localEnd, windowSize);
+    const start = localEnd - window10;
     let text;
     try {
       const fh = await import_promises6.default.open(this.file, "r");
       try {
-        const buf = Buffer.alloc(window9);
-        const { bytesRead } = await fh.read(buf, 0, window9, start);
+        const buf = Buffer.alloc(window10);
+        const { bytesRead } = await fh.read(buf, 0, window10, start);
         text = buf.subarray(0, bytesRead).toString("utf8");
       } finally {
         await fh.close();
@@ -42392,14 +42410,14 @@ var TranscriptMirror = class {
       return [];
     }
     if (size === 0 || maxRecords <= 0) return [];
-    const window9 = Math.min(size, Math.max(256 * 1024, maxRecords * 4096));
-    const start = size - window9;
+    const window10 = Math.min(size, Math.max(256 * 1024, maxRecords * 4096));
+    const start = size - window10;
     let text;
     try {
       const fh = await import_promises6.default.open(this.file, "r");
       try {
-        const buf = Buffer.alloc(window9);
-        const { bytesRead } = await fh.read(buf, 0, window9, start);
+        const buf = Buffer.alloc(window10);
+        const { bytesRead } = await fh.read(buf, 0, window10, start);
         text = buf.subarray(0, bytesRead).toString("utf8");
       } finally {
         await fh.close();
@@ -43591,16 +43609,16 @@ var ConnectionManager = class _ConnectionManager {
   /** Fingerprint the server last reported for the transcript file. Stored with
    *  the mirror so a later run can prove its copy is still a prefix. */
   mirrorHead = null;
-  constructor(config, window9, tabId, conversationId) {
+  constructor(config, window10, tabId, conversationId) {
     this.config = config;
     this.engine = config.engine;
     this.pendingModel = config.model ?? null;
-    this.window = window9;
+    this.window = window10;
     this.tabId = tabId;
-    this.commands = new ClientCommands(tabId, (event, value) => window9.webContents.send(event, tabId, value));
+    this.commands = new ClientCommands(tabId, (event, value) => window10.webContents.send(event, tabId, value));
     if (conversationId) this.conversationId = conversationId;
     this.logIdentity("bind", { reason: conversationId ? "restored" : "none" });
-    this.batcher = new JsonlBatcher(window9, tabId);
+    this.batcher = new JsonlBatcher(window10, tabId);
     this.idleTracker = new SessionIdleTracker((rawTitle) => {
       _ConnectionManager.onSessionIdle?.(this.tabId, rawTitle);
     });
@@ -45510,8 +45528,8 @@ var TabManager = class {
    *  per-tab background work — plugin monitors, etc. — that needs to die
    *  when the tab closes. */
   onTabCreated = null;
-  constructor(window9) {
-    this.window = window9;
+  constructor(window10) {
+    this.window = window10;
   }
   /** Snapshot of every distinct cwd currently referenced by an open tab. */
   getDistinctCwds() {
@@ -50047,7 +50065,7 @@ ${stderr}`
     return { ok: false, error: message };
   }
 }
-async function refreshAllMarketplaces(window9) {
+async function refreshAllMarketplaces(window10) {
   if (!import_fs28.default.existsSync(knownMarketplacesPath())) return { ok: true, results: [] };
   const known = readKnownMarketplaces();
   const names = Object.keys(known).filter((n) => known[n]?.autoUpdate !== false);
@@ -50062,8 +50080,8 @@ async function refreshAllMarketplaces(window9) {
     }
     if (!outcome.ok) console.warn(`[marketplaces] ${name}: refresh failed \u2014 ${outcome.error ?? ""}`);
     results.push(outcome);
-    if (window9 && !window9.isDestroyed()) {
-      window9.webContents.send("marketplaces:updated", {
+    if (window10 && !window10.isDestroyed()) {
+      window10.webContents.send("marketplaces:updated", {
         name,
         ok: outcome.ok,
         ...outcome.error === void 0 ? {} : { error: outcome.error }
@@ -51931,25 +51949,25 @@ function handleServerNotification(ctx, serverId, msg) {
 
 // src/main/mcp/test-log.ts
 var TEST_LOG_CAP = 300;
-function appendLog(window9, state, id, level, msg) {
+function appendLog(window10, state, id, level, msg) {
   if (!state) return;
   const entry = { ts: Date.now(), level, msg };
   state.testLog.push(entry);
   if (state.testLog.length > TEST_LOG_CAP) {
     state.testLog.shift();
   }
-  if (!window9.isDestroyed()) {
-    window9.webContents.send("mcp:test-log", { id, entry });
+  if (!window10.isDestroyed()) {
+    window10.webContents.send("mcp:test-log", { id, entry });
   }
 }
 function getTestLog(state) {
   return state ? state.testLog.slice() : [];
 }
-function clearTestLog(window9, state, id) {
+function clearTestLog(window10, state, id) {
   if (!state) return;
   state.testLog = [];
-  if (!window9.isDestroyed()) {
-    window9.webContents.send("mcp:test-log-cleared", { id });
+  if (!window10.isDestroyed()) {
+    window10.webContents.send("mcp:test-log-cleared", { id });
   }
 }
 
@@ -52008,8 +52026,8 @@ var McpServerManager = class _McpServerManager {
   notifyTimer = null;
   notifyLastAt = 0;
   static NOTIFY_MIN_INTERVAL_MS = 200;
-  constructor(window9) {
-    this.window = window9;
+  constructor(window10) {
+    this.window = window10;
     const legacy = (getMcpStore().get("mcpServers") ?? []).filter((c) => !c.autoDiscovered);
     if (legacy.length > 0) {
       this.saveChain = mutateClaudeJson((mcpServers) => {
@@ -53202,12 +53220,11 @@ function registerCoreIpc(context, configStore) {
   ipcMain.handle("read-clipboard", async () => {
     return await vscode5.env.clipboard.readText();
   });
-  ipcMain.on("show-notification", (_e, severity, message) => {
+  ipcMain.on("show-notification", (_e, severity, message, durationMs) => {
     const m = String(message ?? "");
     if (!m) return;
-    if (severity === "error") void vscode5.window.showErrorMessage(m);
-    else if (severity === "warning") void vscode5.window.showWarningMessage(m);
-    else void vscode5.window.showInformationMessage(m);
+    const sev = severity === "error" ? "error" : severity === "warning" ? "warning" : "info";
+    showTimedNotice(sev, m, typeof durationMs === "number" ? durationMs : void 0);
   });
   ipcMain.handle("open-external", async (_e, url) => {
     try {
@@ -54488,6 +54505,7 @@ function relayToolUsage(name, broadcast2) {
 }
 
 // src/index.ts
+init_toast_window();
 var CHAT_VIEW_ID = "claudeBridgeChat";
 var TOOLS_VIEW_IDS = ["claudeBridgePlanView", "claudeBridgeTodosView", "claudeBridgeAgentsView", "claudeBridgeConsoleView", "claudeBridgeToolsUsageView"];
 var CUSTOMIZE_VIEW_IDS = [
@@ -54503,6 +54521,12 @@ var CUSTOMIZE_VIEW_IDS = [
   "claudeBridgeCzStats"
 ];
 function activate(context) {
+  const kWindow = kaminide2.window;
+  if (typeof kWindow?.showTransientMessage === "function") {
+    configureTransientNotice((message, options, ...items) => kWindow.showTransientMessage(message, options, ...items));
+  } else {
+    configureTransientNotice(null);
+  }
   const openChat = () => {
     void vscode9.commands.executeCommand(`${CHAT_VIEW_ID}.focus`).then(void 0, () => vscode9.commands.executeCommand("workbench.view.extension.claudeBridge"));
   };
