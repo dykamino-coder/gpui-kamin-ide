@@ -10,7 +10,7 @@ import { PermissionManager } from '../mcp/permission-manager'
 import type { HostDeclaration } from '../mcp/host-declaration'
 import { JsonlBatcher } from './jsonl-batcher'
 import { backgroundShellSnapshot, disposeBackgroundShells, stopBackgroundShellForOwner } from '../mcp/tools/shell'
-import { cancelMcpCall, type PendingMcpExecution } from './mcp-call-pipeline'
+import { cancelMcpCall, type PendingMcpExecution, type PendingPermissionDecision } from './mcp-call-pipeline'
 import { McpResultOutbox } from './mcp-result-outbox'
 import { ClientCommands } from './client-commands'
 import { TranscriptMirror } from './transcript-mirror'
@@ -258,7 +258,7 @@ export class ConnectionManager {
   private pendingMcpCalls = new Map<string, PendingMcpExecution>()
 
   // Permission responses waiting to be resolved
-  private pendingPermissions = new Map<string, (decision: PermissionDecision) => void>()
+  private pendingPermissions = new Map<string, (decision: PendingPermissionDecision) => void>()
 
   private idleTracker: SessionIdleTracker
 
@@ -921,20 +921,8 @@ export class ConnectionManager {
       this.mcpResults.dispose()
       this.mcpSessionId = null
       this.recentMcpCalls.clear()
-      for (const call of this.pendingMcpCalls.values()) call.controller?.abort()
-      this.pendingMcpCalls.clear()
+      for (const id of this.pendingMcpCalls.keys()) this.abandonMcpCall(id)
     }
-    // Осиротевшие permission-промисы резолвим отказом, иначе handleMcpCall
-    // висит на await навсегда (утечка замыкания; сервер отваливается по
-    // своему таймауту без ответа).
-    for (const resolve of this.pendingPermissions.values()) {
-      try {
-        resolve('deny')
-      } catch {
-        /* ignore */
-      }
-    }
-    this.pendingPermissions.clear()
     // reconnectAttempt здесь НЕ сбрасывается: connect() при живом сокете
     // зовёт disconnect(), и сброс превращал backoff в вечный 1-секундный
     // цикл при «CLI умирает сразу после спавна». Сброс делают stability-
@@ -1017,6 +1005,19 @@ export class ConnectionManager {
     void this.deliverMcpResult({ type: 'mcp:denied', requestId, reason })
   }
 
+  /** A server session that ended cannot acknowledge its pending calls. */
+  private abandonMcpCall(requestId: string): void {
+    const call = this.pendingMcpCalls.get(requestId)
+    if (!call) return
+    call.controller?.abort()
+    this.pendingPermissions.get(requestId)?.('cancelled')
+    this.pendingMcpCalls.delete(requestId)
+    this.window.webContents.send('mcp-activity', this.tabId, {
+      requestId, toolName: call.toolName, input: call.input, timestamp: Date.now(),
+      status: 'denied', result: 'MCP call cancelled: session ended',
+    })
+  }
+
   private reportMcpDeliveryFailure(): void {
     void vscode.window.showWarningMessage(
       'Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing.',
@@ -1026,13 +1027,14 @@ export class ConnectionManager {
   private async deliverMcpResult(
     outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>,
   ): Promise<void> {
-    if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return
+    const call = this.pendingMcpCalls.get(outcome.requestId)
+    if (!call || !this.mcpSessionId) return
     try {
       outcome = await this.mcpResults.deliver(this.mcpSessionId, {
         ...outcome,
         taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner,
       })
-      if (!this.pendingMcpCalls.has(outcome.requestId)) return
+      if (this.pendingMcpCalls.get(outcome.requestId) !== call) return
       this.window.webContents.send('mcp-activity', this.tabId, {
         requestId: outcome.requestId,
         toolName: '',
@@ -1042,7 +1044,7 @@ export class ConnectionManager {
         result: outcome.type === 'mcp:response' ? outcome.result : outcome.reason,
       })
     } catch (error) {
-      if (!this.pendingMcpCalls.has(outcome.requestId)) return
+      if (this.pendingMcpCalls.get(outcome.requestId) !== call) return
       this.reportMcpDeliveryFailure()
       this.window.webContents.send('mcp-activity', this.tabId, {
         requestId: outcome.requestId,
@@ -1053,7 +1055,7 @@ export class ConnectionManager {
         result: `Delivery failed: ${String(error)}`,
       })
     } finally {
-      this.pendingMcpCalls.delete(outcome.requestId)
+      if (this.pendingMcpCalls.get(outcome.requestId) === call) this.pendingMcpCalls.delete(outcome.requestId)
     }
   }
 
@@ -1781,8 +1783,7 @@ export class ConnectionManager {
         if (this.mcpSessionId && this.mcpSessionId !== state.sessionId) {
           for (const [id, call] of this.pendingMcpCalls) {
             if (!call.taskOwner || call.taskOwner !== this.mcpTaskOwner) {
-              call.controller?.abort()
-              this.pendingMcpCalls.delete(id)
+              this.abandonMcpCall(id)
             }
           }
           this.recentMcpCalls.clear()
@@ -1793,6 +1794,9 @@ export class ConnectionManager {
     } else {
       this.mcpResults.detach()
       this.commands.reset()
+      // Both an explicit disconnect and transport loss cancel unanswered asks.
+      // Reattach may deliver the denial, but cannot reopen the old approval.
+      for (const resolve of this.pendingPermissions.values()) resolve('disconnected')
     }
     const rendererState = this.getState()
     this.window.webContents.send('connection-state-changed', this.tabId, rendererState)

@@ -1,5 +1,5 @@
 // ============================================================================
-// Terminal WebSocket — browser-based PTY for Claude Code auth
+// Terminal WebSocket — browser-based Claude and Codex PTYs
 // ============================================================================
 
 import { WebSocketServer, WebSocket as WS } from 'ws'
@@ -7,7 +7,11 @@ import type { Server as HttpServer } from 'http'
 import os from 'os'
 import { registerWsRoute } from './ws'
 import { eventBus } from '../events/bus'
-import { injectProxyEnv } from '../config/settings'
+import { terminalEnv } from './terminal-env'
+import { codexRuntime } from '../codex/codex-runtime'
+import { resolveCodexCommand } from '../codex/binary'
+import { codexTerminalArgs } from './terminal-codex'
+import { warnLog } from '../logging'
 
 const sessions = new Set<{ pty: ReturnType<typeof import('node-pty').spawn>; ws: WS }>()
 
@@ -25,7 +29,7 @@ function getShell(): { file: string; args: string[] } {
 
 /**
  * Attach a WebSocket server on `/ws/terminal` for interactive PTY sessions.
- * Only one concurrent session is allowed — additional connections are rejected.
+ * Codex sessions exclusively lease the shared account home until process exit.
  */
 export function attachTerminalWebSocket(_server: HttpServer): void {
   const wss = new WebSocketServer({ noServer: true })
@@ -33,28 +37,36 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
   // Register route with central upgrade handler
   registerWsRoute('/ws/terminal', wss)
 
-  wss.on('connection', async (ws: WS) => {
+  wss.on('connection', async (ws: WS, request) => {
     let pty: ReturnType<typeof import('node-pty').spawn>
+    let release: (() => Promise<void>) | undefined
+    let disconnected = false
+    ws.once('close', () => {
+      disconnected = true
+    })
     try {
       // Dynamic import — node-pty is a native module (ESM-compatible)
       const nodePty = await import('node-pty')
-      const shell = getShell()
+      const params = new URL(request.url ?? '/', 'http://localhost').searchParams
+      const runtime = codexRuntime()
+      const codex = params.get('engine') === 'codex'
+      const args = codex ? codexTerminalArgs(params.get('command') ?? 'interactive') : []
+      if (codex) release = await runtime.acquireTerminal()
+      if (disconnected) {
+        await release?.()
+        return
+      }
+      const binary = codex ? resolveCodexCommand() : null
+      const shell = binary ? { file: binary.command, args: [...binary.args, ...args] } : getShell()
       pty = nodePty.spawn(shell.file, shell.args, {
         name: 'xterm-256color',
         cols: 80,
         rows: 24,
         cwd: os.homedir(),
-        env: (() => {
-          const env = { ...process.env } as Record<string, string>
-          // Remove Claude Code session markers so `claude` CLI can run inside PTY
-          delete env.CLAUDECODE
-          delete env.CLAUDE_CODE_SESSION
-          // Inject proxy settings (DB > env vars) for Claude Code only
-          injectProxyEnv(env)
-          return env
-        })(),
+        env: terminalEnv(process.env, runtime.home),
       })
     } catch (err) {
+      await release?.()
       const msg = err instanceof Error ? err.message : String(err)
       ws.send(JSON.stringify({ type: 'error', data: `Failed to spawn PTY: ${msg}` }))
       ws.close()
@@ -72,8 +84,14 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
     let trailTimer: ReturnType<typeof setTimeout> | null = null
     let maxTimer: ReturnType<typeof setTimeout> | null = null
     function flushOutput() {
-      if (trailTimer) { clearTimeout(trailTimer); trailTimer = null }
-      if (maxTimer) { clearTimeout(maxTimer); maxTimer = null }
+      if (trailTimer) {
+        clearTimeout(trailTimer)
+        trailTimer = null
+      }
+      if (maxTimer) {
+        clearTimeout(maxTimer)
+        maxTimer = null
+      }
       if (outputBuffer && ws.readyState === WS.OPEN) {
         ws.send(JSON.stringify({ type: 'output', data: outputBuffer }))
         outputBuffer = ''
@@ -92,6 +110,8 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
 
     // PTY exit
     pty.onExit(({ exitCode }: { exitCode: number }) => {
+      // kill() is asynchronous: keep the lease until the CLI actually exits.
+      void release?.().catch((error) => warnLog('Codex terminal account refresh failed', { reason: String(error) }))
       if (ws.readyState === WS.OPEN) {
         ws.send(JSON.stringify({ type: 'exit', code: exitCode }))
         ws.close()
@@ -118,9 +138,17 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
     })
 
     function cleanup() {
-      if (trailTimer) { clearTimeout(trailTimer); trailTimer = null }
-      if (maxTimer) { clearTimeout(maxTimer); maxTimer = null }
-      try { pty.kill() } catch {}
+      if (trailTimer) {
+        clearTimeout(trailTimer)
+        trailTimer = null
+      }
+      if (maxTimer) {
+        clearTimeout(maxTimer)
+        maxTimer = null
+      }
+      try {
+        pty.kill()
+      } catch {}
       sessions.delete(session)
       broadcastSessionCount()
     }
@@ -139,8 +167,12 @@ export function getTerminalSessionCount(): number {
 /** Clean up all active PTY sessions (called on server shutdown). */
 export function cleanupTerminal(): void {
   for (const session of sessions) {
-    try { session.pty.kill() } catch {}
-    try { session.ws.close() } catch {}
+    try {
+      session.pty.kill()
+    } catch {}
+    try {
+      session.ws.close()
+    } catch {}
   }
   sessions.clear()
 }
