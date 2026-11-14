@@ -453,7 +453,23 @@ Outcome: the two original Chat symptoms do not reproduce on 1.0.94. Remaining ga
 a successful plugin Update with a disposable local marketplace plugin whose version
 is bumped. Owner: maintainer. No new fix is proposed.
 
-**Status:** waiting для повторной verification; зависимость СНЯТА.
+**Verification 2026-11-14 (kmaint2): the remaining gate passed; no symptom remains.** No pointer,
+focus change or resize; driven only through kamin-probe.
+- Published 1.0.98 with server 6.3.175, Customize ([evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/ebe43951f0807e9862360691ee66f0c9ff255e24/incidents/INC-2026-0044/evidence/2026-11-14-br06-published-1.0.98)). A `MutationObserver` in the
+  page stamped the changes, and the script made no probe call between the action and the read 8 s
+  later, so a poll could not have woken the page.
+  - Plugins → Update to a newer version of a disposable local-marketplace plugin, 5 runs: the new
+    version was on the card within 90–142 ms (0.29 s in the polled run).
+  - Rapid repeated Update clicks on two cards: every click settled; the final state was idle.
+  - MCP: a connector added through IPC appeared at 24 ms; Test, 3 runs: `connected — 1 tools` at
+    143–153 ms; rapid Test clicks all ended connected; the removed connector was gone at 37 ms.
+- 1.0.99 release candidate, the two Chat cases, 3 runs ([evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/4a6f7c255305d9665b095109714e298865d8c806/incidents/INC-2026-0044/evidence/2026-11-14-br06-chat-1.0.99)): after a switch away
+  from a working session the other tab showed its history in the first sample, and the working tab
+  showed its entries at once on return; disconnect → reconnect was ready within 0.52–0.54 s. No
+  sample showed a loading text.
+
+**Status:** done — verification closed with evidence; no fix was needed beyond BR-31 (#147, #886)
+and BR-31A (#892).
 **Dependency:** BR-31 реализован и влит ([#147](https://github.com/dykamino-coder/gpui-kamin-ide/pull/147)),
 BR-01 влит ранее — блокирующих зависимостей не осталось. **Acceptance будущего
 fix:** automated + Windows runtime merge gate.
@@ -1260,7 +1276,7 @@ Marker check on the 1.0.97 install with the candidate bundle: the local `Session
 in 1.0.98 let a tab closed just before shutdown keep its socket for the whole window, so the host
 process could stay alive up to 5 s after disposal (`Bridge workspace runtime`, "tab close then
 shutdown", red on `main` since `d8667701`; that workflow is outside the required gate). Terminal
-disposal now closes those sockets at once. Ships in the next release.
+disposal now closes those sockets at once. Published in KaminIDE 1.0.99.
 
 A run during the classification found the token at its 10-session limit for about 3 minutes. Those
 were the detached sessions of a force-killed app, dropped by the server's 10-minute detach grace
@@ -1309,7 +1325,7 @@ call count. Требуется отличить ожидаемую отмену 
 **Fix 2026-11-14: [#908](https://github.com/dykamino-coder/gpui-kamin-ide/pull/908) merged** (`71ef1196`). The client executor and the server
 dispatcher (the same pattern, for server-host hooks) build the result on `close`. After `exit` the
 result waits for `close` for at most 1 s. Both new tests (client and server) fail on the old code.
-**Status:** done by the automated acceptance below — ships in the next release. Not reproduced on a
+**Status:** done by the automated acceptance below — published in KaminIDE 1.0.99. Not reproduced on a
 live Windows install.
 
 **Registration status (2026-11-14):** ready / change. **Parent:** BR-18. **Dependency:** none. **Acceptance:** automated: a test

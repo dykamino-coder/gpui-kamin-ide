@@ -1,5 +1,26 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.99 delivery: hook output and host shutdown — 2026-11-14
+
+Delivery reconciliation 2026-11-14, source `origin/main`
+`dc7246fd` (release #911):
+[KaminIDE 1.0.99](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.99)
+/ server 6.3.176 is published. Ancestry of #908 and #909 in `kaminide-v1.0.99`
+checked. BR-18B (#908) is `done` by its automated acceptance. #909 removes the
+shutdown regression that #900 shipped in 1.0.98 (BR-18A stays `done`). The gate on
+the installed release candidate (silent install over 1.0.98, a send, local and
+server hook markers) and the publication checks are in the
+[private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/4a6f7c255305d9665b095109714e298865d8c806/incidents/BR-18/evidence/2026-11-14-release-1.0.99-gate).
+A live quit inside 5 s of a tab close and the automatic relaunch after an update
+were not exercised.
+
+Merged after the release and not yet published: [#869](https://github.com/dykamino-coder/gpui-kamin-ide/pull/869) (`ce1e7954`), the bounded
+follow-up of [INC-0107](runtime-issues/INC-2026-0107.md) — Windows gate passed on
+the exact candidate, the prompt/agent/mcp_tool argument conditions stay open with
+the executor; and [#895](https://github.com/dykamino-coder/gpui-kamin-ide/pull/895) (`5458767b`) for
+[INC-0117](runtime-issues/INC-2026-0117.md) — `verify`, the exact-RGB run on main
+is in the lead's post-merge batch.
+
 ## KaminIDE 1.0.98 delivery: window present, host dialogs across reconnects, session-limit reason and local SessionEnd — 2026-11-14
 
 Delivery reconciliation 2026-11-14, source `origin/main`
@@ -490,7 +511,7 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | [BR-05](RUNTIME_RELIABILITY.md#br-05--rehydrate-authoritative-connection-state) | `done` | #14, #879 merged; on the published 1.0.97 max-sessions and session-not-found passed (priv #182). | — |
 | [BR-05B](RUNTIME_RELIABILITY.md#br-05b--tell-the-user-why-the-bridge-server-refused-a-tab) | `done` | #898 merged (`60357f3e`): a tab refused at the session limit says why through every retry. Live check passed (priv #187). Published in 1.0.98. | — |
 | [BR-05A](RUNTIME_RELIABILITY.md#br-05a--do-not-grow-the-warm-pool-on-an-extension-host-respawn) | `done` | #885 merged: the warm pool runs only on a cold start, not after a respawn. Published in 1.0.97. | — |
-| [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | `verify` | #147 delivery wake reused: оба Chat no-pointer сценария + Plugins manual Update. | Windows no-pointer outcome; сопоставить BR-31 R6, не добавлять forced repaint. |
+| [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | `done` | Verification closed 2026-11-14: successful plugin Update, rapid repeats and MCP add/Test/remove on the published 1.0.98 (priv #191), both Chat no-pointer cases on the 1.0.99 candidate (priv #192). No symptom remains; no separate fix. | — |
 | [BR-07](RUNTIME_RELIABILITY.md#br-07--surface-native-claude-attention-in-chat) | `waiting` | Tab-scoped Console banner после blocker inventory BR-11. | Versioned native attention contract. |
 | [BR-08](RUNTIME_RELIABILITY.md#br-08--explain-unexpected-automatic-reload-skills) | `observation` | #200 telemetry accepted; owner reports diagnostic window after deployment. | Real reload event/source; maintainer не имеет deployment access. |
 | [BR-09](RUNTIME_RELIABILITY.md#br-09--make-agent-teams-report-delivery-explicit) | `done` | #15 merged; 2026-11-13 both cases passed on the authenticated stand (CLI 2.1.322): 3/3 reports with tab switch and reconnects, one recovery for a lost report. | None. Closed by lead decision 2026-11-13 (server prompt contract unchanged since `584b5616`; client checked on a `main` build). |
@@ -501,8 +522,8 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | [BR-15](RUNTIME_RELIABILITY.md#br-15--evaluate-automatic-agent-teams-selection) | `waiting` | Orchestration eval после BR-09 и BR-25 completion. | Live report gate + delivery completion; BR-26/27 уже done. |
 | [BR-16](RUNTIME_RELIABILITY.md#br-16--stabilize-upward-history-scroll-anchoring) | `waiting` | Upward lazy-load anchor + streaming user-scroll follow policy после BR-22 classification. | Classified history path; keyed displacement Windows CEF gate, не WPT scrollbar result. |
 | [BR-17](RUNTIME_RELIABILITY.md#br-17--persist-privacy-safe-bridge-server-logs) | `observation` | #203 durable lifecycle logging merged; owner rollout/read-only confirmation. | Effective log volume/lifecycle fields на deployment. |
-| [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | `done` | #900 merged (`d8667701`): a local SessionEnd hook runs when a chat is closed. Marker check on the candidate passed 2/2 (priv #189). Published in 1.0.98. Its shutdown regression (host exit delayed up to 5 s) is fixed by #909 (`9b508696`), which ships in the next release. | — |
-| [BR-18B](RUNTIME_RELIABILITY.md#br-18b--collect-a-local-hooks-output-before-reporting-its-result) | `done` | #908 merged (`71ef1196`): a hook's result is built on `close`, on the client and the server; automated acceptance. Ships in the next release. | — |
+| [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | `done` | #900 merged (`d8667701`): a local SessionEnd hook runs when a chat is closed. Marker check on the candidate passed 2/2 (priv #189). Published in 1.0.98. Its shutdown regression (host exit delayed up to 5 s) is fixed by #909 (`9b508696`), published in 1.0.99. | — |
+| [BR-18B](RUNTIME_RELIABILITY.md#br-18b--collect-a-local-hooks-output-before-reporting-its-result) | `done` | #908 merged (`71ef1196`): a hook's result is built on `close`, on the client and the server; automated acceptance. Published in 1.0.99. | — |
 | [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | `done` | #146, #830 merged; reconnect without false crash, the pick dismissed at disconnect and the error after reconnect passed on 1.0.97 (priv #183). | — |
 | [BR-19A](RUNTIME_RELIABILITY.md#br-19a--close-host-dialogs-of-a-dropped-connection-and-answer-only-their-own-request) | `done` | #896 merged (`098a7493`): host replies go only to their own connection; Windows gate on the candidate passed (priv #184). Published in 1.0.98. | — |
 | [BR-21](RUNTIME_RELIABILITY.md#br-21--define-and-reconcile-dashboard-analytics-semantics) | `verify` | Contract #810; #818 (includes #822) merged `a839d5a5`: Codex usage accounting, engine filters, live PTY counters and user grouping. Signed-out card and stats endpoints checked in a temporary container. Published in 1.0.95 / server 6.3.172. | Live check on the 6.3.172 stand with a real GPT reply and live sessions; remaining BR-21 children per the contract. |
