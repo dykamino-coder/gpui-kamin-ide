@@ -57,7 +57,7 @@ impl Wrap for ReplayRecorder {
     }
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let sink = self.pending.sink.clone();
+        let sink = (&self.pending.sink.0, self.pending.sink.1);
         let callbacks = window.next_frame_callback_count();
         // Строки блока рисуются в конце кадра стопки (`paint::coordinator`).
         let ((_, paint), lines) = window.with_ink_sink(sink, |window| {
@@ -104,8 +104,13 @@ impl Hooks for Replay {
     type Prepaint = ();
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        let layout = self.slot.record.ranges(|r| r.layout.clone());
-        match layout.and_then(|layout| window.request_retained_layout(&layout)) {
+        // Занятое поддерево записано в проходе этого кадра: его и займёт
+        // следующий (`Window::request_retained_layout`).
+        let claimed = self
+            .slot
+            .record
+            .ranges(|r| window.request_retained_layout(&mut r.layout));
+        match claimed.flatten() {
             Some(id) => {
                 self.slot.layout.set(Some(id));
                 (id, ())

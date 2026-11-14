@@ -14,6 +14,7 @@ mod font_size;
 mod glyph_units;
 mod len_cx;
 mod len_px;
+mod unit_change;
 mod unit_lengths;
 mod used_font;
 mod viewport_lengths;
@@ -79,7 +80,7 @@ impl Computed {
                 *l = Some(v.fold_viewport(vp, vcx));
             }
         };
-        self.resolve_unit_lengths(fix, vcx);
+        self.resolve_unit_lengths(|l| l.folds_viewport(vcx), fix, vcx);
     }
 
     /// Итоговые возможности OpenType куска — в порядке старшинства

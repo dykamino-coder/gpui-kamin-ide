@@ -148,6 +148,11 @@ impl Sum {
         }
     }
 
+    /// Есть ли слагаемые в единицах окна или контейнера: их сворачивает `fold_viewport`.
+    pub fn has_viewport_terms(&self) -> bool {
+        self.vw != 0.0 || self.vh != 0.0 || self.ext.iter().any(|v| *v != 0.0)
+    }
+
     /// Свернуть единицы окна и контейнера в точки. `viewport` — уже без
     /// полос прокрутки; `container` — содержимое ближайшего контейнера
     /// запросов размера, а без него — малое окно (css-conditional-5: «If no
@@ -160,7 +165,7 @@ impl Sum {
         vertical: bool,
         container: Option<(f32, f32)>,
     ) -> bool {
-        if self.vw == 0.0 && self.vh == 0.0 && self.ext.iter().all(|v| *v == 0.0) {
+        if !self.has_viewport_terms() {
             return false;
         }
         let (w, h) = viewport;

@@ -63,6 +63,12 @@ pub trait Element: 'static + IntoElement {
     /// Transparent adapters must preserve their child's paint environment.
     fn paint_boundary(&self) -> bool { true }
 
+    /// KaminIDE patch: whether the element takes a node of the dispatch tree. A transparent
+    /// wrapper that sets no key context, focus, handler or deferred draw of its own returns
+    /// `false`: its children hang off the node above, and thousands of wrappers a frame do
+    /// not grow the tree.
+    fn dispatch_node(&self) -> bool { true }
+
     /// Host-owned metadata. GPUI only forwards it through transparent holders.
     fn paint_metadata(&self) -> Option<&dyn Any> { None }
 
@@ -468,7 +474,10 @@ impl<E: Element> Drawable<E> {
                     window,
                 );
 
-                let node_id = window.next_frame.dispatch_tree.push_node();
+                let node_id = match self.element.dispatch_node() {
+                    true => window.next_frame.dispatch_tree.push_node(),
+                    false => DispatchNodeId::NONE,
+                };
                 let mut prepaint = self.element.prepaint(
                     global_id.as_ref(),
                     inspector_id.as_ref(),
@@ -477,7 +486,9 @@ impl<E: Element> Drawable<E> {
                     window,
                     cx,
                 );
-                window.next_frame.dispatch_tree.pop_node();
+                if node_id != DispatchNodeId::NONE {
+                    window.next_frame.dispatch_tree.pop_node();
+                }
 
                 if pushed_a11y_node {
                     Self::end_a11y_prepaint(
@@ -549,7 +560,9 @@ impl<E: Element> Drawable<E> {
             } => {
                 Self::push_element_id(&self.element, global_id.as_ref(), window);
 
-                window.next_frame.dispatch_tree.set_active_node(*node_id);
+                if *node_id != DispatchNodeId::NONE {
+                    window.next_frame.dispatch_tree.set_active_node(*node_id);
+                }
                 self.element.paint(
                     global_id.as_ref(),
                     inspector_id.as_ref(),

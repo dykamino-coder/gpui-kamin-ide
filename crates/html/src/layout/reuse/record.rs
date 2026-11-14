@@ -12,18 +12,19 @@ pub(crate) struct Record {
     pub(super) key: Rc<FlowKey>,
     pub(super) start: Counters,
     pub(super) end: Counters,
-    pub(super) snapshot: LayoutSnapshot,
+    /// The exact leaf; `None` until the record is sealed (`recorder`).
+    pub(super) snapshot: Cell<Option<LayoutSnapshot>>,
     /// Чернила относительно точного начала коробки; `None` — ничего не рисовал.
-    pub(super) ink: Option<Bounds<ScaledPixels>>,
+    pub(super) ink: Cell<Option<Bounds<ScaledPixels>>>,
     /// Ширины потока, при которых годна запись (`width::reusable_range`);
     /// `None` — только при ширине записи.
-    pub(super) resizable: Option<(f32, f32)>,
+    pub(super) resizable: Cell<Option<(f32, f32)>>,
     /// Ширина листа — растяжение потока (`width::Width::Stretch`): при
     /// другой ширине краска записи не годна.
-    pub(super) stretch: bool,
+    pub(super) stretch: Cell<bool>,
     /// Блок был далеко от экрана (`recorder::far`): его пропуск вероятен и
     /// без повтора краски.
-    pub(super) far: bool,
+    pub(super) far: Cell<bool>,
     /// Вывод prepaint и краски блока в последнем кадре, где он рисовался.
     /// Только у ближнего блока: далёкий на том же месте под той же маской
     /// и так вне экрана, и его пропуску повтор не нужен (`far`).
@@ -48,11 +49,11 @@ impl Record {
             key: self.key.clone(),
             start: self.start,
             end: self.end,
-            snapshot: self.snapshot,
-            ink: self.ink,
-            resizable: self.resizable,
-            stretch: self.stretch,
-            far: self.far,
+            snapshot: self.snapshot.clone(),
+            ink: self.ink.clone(),
+            resizable: self.resizable.clone(),
+            stretch: self.stretch.clone(),
+            far: self.far.clone(),
             replay: RefCell::new(match repaint {
                 true => None,
                 false => self.replay.take(),
@@ -75,7 +76,7 @@ impl Record {
 
     /// Запись годна в потоке ключа `key` другой ширины.
     pub(super) fn fits_width(&self, key: &FlowKey) -> bool {
-        match self.resizable {
+        match self.resizable.get() {
             Some((lo, hi)) if lo <= 0.0 && hi.is_infinite() => true,
             Some((lo, hi)) => key.flow_width().is_some_and(|w| lo <= w && w <= hi),
             None => false,

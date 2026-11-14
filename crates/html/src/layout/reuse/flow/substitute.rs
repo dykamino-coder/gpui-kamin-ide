@@ -32,7 +32,7 @@ impl FlowCx {
         let same = record.key.same(&self.key);
         // Растянутый блок при другой ширине — та же раскладка в коробке
         // другой ширины: лист по потоку, краска записи не годна.
-        let stretched = !same && record.stretch;
+        let stretched = !same && record.stretch.get();
         // Блок с другими значениями краски: раскладка записи годна, краска нет.
         let repaint = damage == super::super::Damage::Paint;
         // Ближний блок без свежего повтора почти наверняка попадёт на экран,
@@ -41,7 +41,7 @@ impl FlowCx {
         // далёкий. Блок, уже отказанный на экране при этом ключе
         // (`Store::banned`), замещается только далёким: повтор на месте его
         // снова сдвинул бы.
-        let paintable = record.far
+        let paintable = record.far.get()
             || (!stretched
                 && !repaint
                 && !self.reuse.store.banned(e.node_id)
