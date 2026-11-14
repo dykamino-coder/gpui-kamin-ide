@@ -37,11 +37,12 @@ export class NativeRespawnState {
     return createHash('sha256').update(JSON.stringify([cfg.serverUrl, cfg.token])).digest('hex')
   }
 
-  restore(sessions: readonly KaminSession[], active: KaminSession | undefined): void {
-    if (this.generation <= 1 || !this.config().token) return
+  /** True when a previous child's journal was consumed (this is a respawn). */
+  restore(sessions: readonly KaminSession[], active: KaminSession | undefined): boolean {
+    if (this.generation <= 1 || !this.config().token) return false
     let saved: Snapshot
-    try { saved = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Snapshot } catch { return }
-    if (!saved || !Array.isArray(saved.tabs) || saved.parent !== process.ppid || saved.generation >= this.generation || saved.scope !== this.scope()) return
+    try { saved = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Snapshot } catch { return false }
+    if (!saved || !Array.isArray(saved.tabs) || saved.parent !== process.ppid || saved.generation >= this.generation || saved.scope !== this.scope()) return false
     const nativeSessions = new Map(sessions.map(s => [s.id, s]))
     const cfg = this.config()
     for (const tab of saved.tabs) {
@@ -64,6 +65,7 @@ export class NativeRespawnState {
     const selected = active && active.id !== saved.activeNativeId
       ? this.nativeToTab.get(active.id) : saved.activeTabId
     if (selected && this.tm.getTab(selected)) this.tm.switchTab(selected)
+    return true
   }
 
   save(): void {

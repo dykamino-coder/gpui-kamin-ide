@@ -38,6 +38,7 @@ pub fn sessions_sidebar(
     expanded: &HashSet<String>,
     renaming: Option<(&str, &Entity<InputState>)>,
     hover_pill: Option<&str>,
+    scroll: &gpui::ScrollHandle,
     tx: &Sender<ShellEvent>,
     p: &Palette,
 ) -> AnyElement {
@@ -139,7 +140,9 @@ pub fn sessions_sidebar(
         // бейджам-кружочкам счётчиков — отделяем зазором (юзер).
         .pr(px(m::SPACE_3))
         .pb(px(m::SPACE_2))
-        .overflow_y_scrollbar();
+        // Внешний хэндл: Tab-фокус прокручивает список к строке (BR-29B)
+        .overflow_y_scrollbar_with(scroll);
+    crate::ui::focus_ring::reveal_in(scroll, "srow:");
 
     let mut any = false;
     // Порядок групп (решение владельца, 2026-10-13): «No folder» всегда
