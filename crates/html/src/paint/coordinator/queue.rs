@@ -182,16 +182,17 @@ impl CssPaintPass {
             // Вывод в чужих сегментах запись блока не повторит.
             super::capture::job_lost(&job);
             let Positioned { paint, context, .. } = job;
-            let PositionedPaint::Element(mut child) = paint else {
-                unreachable!("a segment record builds its jobs");
-            };
             window
-                .with_paint_ctx(context, |window| {
-                    let moved =
-                        window.with_paint_segment_slices(late.clone(), |w| child.paint(w, cx));
-                    if moved.is_err() {
-                        child.paint(window, cx);
+                .with_paint_ctx(context, |window| match paint {
+                    PositionedPaint::Element(mut child) => {
+                        let moved =
+                            window.with_paint_segment_slices(late.clone(), |w| child.paint(w, cx));
+                        if moved.is_err() {
+                            child.paint(window, cx);
+                        }
                     }
+                    // A replayed job keeps the place its record was painted at.
+                    paint => super::capture::paint_job(paint, &[], None, window, cx),
                 })
                 .expect("CSS positioned job stays in its live GPUI scope");
         }
