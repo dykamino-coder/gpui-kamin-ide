@@ -199,6 +199,18 @@ where
         Some(Self { tree, offset, clip, order, cover, min, max })
     }
 
+    /// KaminIDE patch: this graft moved by `offset` and cut by `clip` in the
+    /// space of the tree it will be grafted into, with the same orderings;
+    /// `None` when nothing of it is visible.
+    pub fn placed(&self, offset: &Point<U>, clip: Option<Bounds<U>>) -> Option<Self> {
+        let own = self.clip.as_ref().map(|c| moved(c, Some(offset)));
+        let clip = match (own, clip) {
+            (Some(a), Some(b)) => Some(meet(&a, &b)?),
+            (a, b) => a.or(b),
+        };
+        Self::new(self.tree.clone(), add_points(&self.offset, offset), clip, self.order)
+    }
+
     /// Raise every grafted ordering by `by`.
     pub fn raise(&mut self, by: u32) {
         self.order += by;
@@ -349,6 +361,11 @@ where
         self.insert_path.clear();
         self.split_entries.clear();
         self.split_covers.clear();
+    }
+
+    /// KaminIDE patch: whether the tree indexes nothing.
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
     }
 
     /// KaminIDE patch: the graft this tree consists of, if it holds exactly

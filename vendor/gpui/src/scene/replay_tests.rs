@@ -2,7 +2,7 @@
 
 use super::*;
 
-fn quad(x: f32, y: f32, w: f32, h: f32) -> Quad {
+pub(in crate::scene) fn quad(x: f32, y: f32, w: f32, h: f32) -> Quad {
     let bounds = Bounds {
         origin: point(ScaledPixels(x), ScaledPixels(y)),
         size: Size { width: ScaledPixels(w), height: ScaledPixels(h) },
@@ -15,13 +15,13 @@ fn quad(x: f32, y: f32, w: f32, h: f32) -> Quad {
     }
 }
 
-fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
+pub(in crate::scene) fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
     quad(x, y, w, h).bounds
 }
 
 /// A finished record: overlapping quads, a layer, one quad that the
 /// output clip removes.
-fn record() -> Scene {
+pub(in crate::scene) fn record() -> Scene {
     let mut scene = Scene::default();
     scene.insert_primitive(quad(0., 0., 40., 40.));
     scene.insert_primitive(quad(10., 10., 40., 40.));
@@ -36,14 +36,14 @@ fn record() -> Scene {
 }
 
 /// The destination already holds content under part of the copy.
-fn destination() -> Scene {
+pub(in crate::scene) fn destination() -> Scene {
     let mut scene = Scene::default();
     scene.insert_primitive(quad(100., 100., 30., 30.));
     scene.insert_primitive(quad(110., 110., 30., 30.));
     scene
 }
 
-fn summary(scene: &Scene) -> Vec<String> {
+pub(in crate::scene) fn summary(scene: &Scene) -> Vec<String> {
     scene
         .paint_operations
         .iter()
@@ -59,7 +59,7 @@ fn summary(scene: &Scene) -> Vec<String> {
         .collect()
 }
 
-fn quads(scene: &Scene) -> Vec<(DrawOrder, [f32; 2])> {
+pub(in crate::scene) fn quads(scene: &Scene) -> Vec<(DrawOrder, [f32; 2])> {
     scene.quads.iter().map(|q| (q.order, q.transformation.translation)).collect()
 }
 

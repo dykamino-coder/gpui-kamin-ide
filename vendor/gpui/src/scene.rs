@@ -1,8 +1,10 @@
 // todo("windows"): remove
 #![cfg_attr(windows, allow(dead_code))]
 
+mod placed;
 mod record;
 mod vector_transform;
+pub(crate) use placed::PlacedMask;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
 impl Scene {
