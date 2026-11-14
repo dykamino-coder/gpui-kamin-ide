@@ -142,6 +142,9 @@ export function createHooksRoutes(): Hono {
     // down has no client to wait for.
     const clientWs = isSessionTearingDown(sessionId) ? (session.ws ?? null) : () => session.ws ?? null
     const result = await dispatchHook(sessionId, hookId, payload, clientWs, session.tokenId, {
+      // Relative file arguments execute in the client home when the tab has
+      // no folder. The CLI's synthetic cwd is not their resolution root.
+      cwd: session.cwd || session.host?.home,
       home: session.host?.home,
       bashHome: c.req.header(BASH_HOME_HEADER),
     })
