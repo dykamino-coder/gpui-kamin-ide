@@ -201,7 +201,7 @@ impl ColumnStack {
 mod tests;
 
 /// Восстановить числовой вход, сохранив элементы и рекордеры.
-pub(super) fn restore_geometry(child: &mut StackChild, k: &Kid) {
+pub(in crate::layout::multicol) fn restore_geometry(child: &mut StackChild, k: &Kid) {
     child.h = k.h;
     child.over = k.over;
     child.mt = k.mt;

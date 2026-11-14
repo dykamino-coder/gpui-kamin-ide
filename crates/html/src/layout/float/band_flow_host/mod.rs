@@ -191,7 +191,8 @@ pub(crate) async fn band_flow_host(
         host.wm,
     );
     let flow =
-        crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height, &opts.cx);
+        crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height, &opts.cx)
+            .retain_numeric(e, inherited, opts);
     let flow = flow.clamp_measure(
         opts.cx.clamp_measure(),
         opts.cx

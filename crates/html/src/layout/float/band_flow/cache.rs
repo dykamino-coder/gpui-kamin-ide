@@ -10,9 +10,24 @@ const CAPACITY: usize = 4;
 pub(super) struct Plans {
     slots: [Cell<Option<Rc<Plan>>>; CAPACITY],
     next: Cell<usize>,
+    pub(super) retained: Option<Rc<super::retained::NumericPlans>>,
 }
 
 impl Plans {
+    pub(super) fn retaining(retained: Option<Rc<super::retained::NumericPlans>>) -> Self {
+        Self {
+            retained,
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn clear(&self) {
+        for slot in &self.slots {
+            slot.take();
+        }
+        self.next.set(0);
+    }
+
     pub(super) fn get(&self, width: f32) -> Option<Rc<Plan>> {
         for slot in &self.slots {
             let plan = slot.take();
@@ -23,7 +38,9 @@ impl Plans {
                 return found;
             }
         }
-        None
+        let plan = self.retained.as_ref()?.get(width)?;
+        self.publish(plan.clone());
+        Some(plan)
     }
 
     pub(super) fn insert(&self, plan: Plan) -> Rc<Plan> {
@@ -33,10 +50,17 @@ impl Plans {
         // FIFO ограничивает удержание больших подготовленных деревьев независимо
         // от числа запросов ширины. Вытесненный план живёт у текущего потребителя.
         let plan = Rc::new(plan);
-        let next = self.next.get();
-        self.slots[next].set(Some(plan.clone()));
-        self.next.set((next + 1) % CAPACITY);
+        if let Some(cache) = &self.retained {
+            cache.insert(&plan);
+        }
+        self.publish(plan.clone());
         plan
+    }
+
+    fn publish(&self, plan: Rc<Plan>) {
+        let next = self.next.get();
+        self.slots[next].set(Some(plan));
+        self.next.set((next + 1) % CAPACITY);
     }
 }
 

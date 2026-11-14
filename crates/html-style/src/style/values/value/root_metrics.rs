@@ -43,7 +43,7 @@ impl Default for RootMetrics {
 
 impl RootMetrics {
     /// Точное сравнение входов кэша: NaN и знак нуля не схлопываются.
-    pub(crate) fn same_inputs(&self, other: &Self) -> bool {
+    pub fn same_inputs(&self, other: &Self) -> bool {
         self.font_px.to_bits() == other.font_px.to_bits()
             && self.line_px.to_bits() == other.line_px.to_bits()
             && self.family == other.family

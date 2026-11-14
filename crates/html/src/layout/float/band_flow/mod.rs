@@ -40,6 +40,7 @@ use tap::Tap;
 mod cache;
 mod prepared;
 mod probe;
+mod retained;
 mod temporary;
 #[cfg(test)]
 mod tests;

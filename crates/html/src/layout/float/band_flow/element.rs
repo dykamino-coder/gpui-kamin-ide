@@ -60,6 +60,7 @@ impl Hooks for BandFlow {
     type Prepaint = ();
 
     fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
+        self.validate_retained(window);
         let kids = self.kids.clone();
         let cache = self.plan.clone();
         let intrinsic = self.intrinsic.clone();

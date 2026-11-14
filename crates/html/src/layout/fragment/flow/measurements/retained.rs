@@ -1,0 +1,48 @@
+//! Числовые распорки строк: адреса абзацев локальны неизменному дереву потока.
+
+use super::FlowMeasure;
+use std::collections::BTreeMap;
+use std::rc::Rc;
+
+#[derive(Clone)]
+pub(crate) struct GrowthSnapshot {
+    paragraphs: Vec<Vec<f32>>,
+    contexts: BTreeMap<usize, GrowthSnapshot>,
+}
+
+impl FlowMeasure {
+    pub(crate) fn snapshot_growth(&self) -> GrowthSnapshot {
+        GrowthSnapshot {
+            paragraphs: self
+                .paragraphs
+                .borrow()
+                .iter()
+                .map(|p| p.borrow().clone())
+                .collect(),
+            contexts: self
+                .contexts
+                .borrow()
+                .iter()
+                .map(|(&key, flow)| (key, flow.snapshot_growth()))
+                .collect(),
+        }
+    }
+
+    /// Только для нового потока того же дерева; рекордеры и курсоры не переносятся.
+    pub(crate) fn restore_growth(&self, snapshot: &GrowthSnapshot) {
+        let mut paragraphs = self.paragraphs.borrow_mut();
+        for (i, value) in snapshot.paragraphs.iter().enumerate() {
+            if i == paragraphs.len() {
+                paragraphs.push(Rc::default());
+            }
+            *paragraphs[i].borrow_mut() = value.clone();
+        }
+        let mut contexts = self.contexts.borrow_mut();
+        for (&key, snapshot) in &snapshot.contexts {
+            contexts
+                .entry(key)
+                .or_insert_with(|| Rc::new(Self::for_lines()))
+                .restore_growth(snapshot);
+        }
+    }
+}

@@ -32,7 +32,7 @@ pub(crate) fn tail_rest_height(block_size: f32, phase: &SpannerRow) -> f32 {
 
 /// `column-height` резервирует всю последнюю строку сетки. Внешний
 /// фрагментаинер ограничивает колонки, но auto-высота коробки — по содержимому.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub(crate) enum RowExtent {
     #[default]
     ColumnHeight,

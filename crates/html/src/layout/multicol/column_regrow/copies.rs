@@ -106,7 +106,7 @@ fn reserve_bands(c: &mut StackChild) {
 mod tests;
 
 /// Геометрия полос и их содержимое используют одно дерево после роста.
-pub(super) fn rebuild(c: &mut crate::layout::fragment::types::StackChild) {
+pub(in crate::layout::multicol) fn rebuild(c: &mut crate::layout::fragment::types::StackChild) {
     let Some(r) = &c.regrow else { return };
     c.fragment_builders = r.rebuild_lazy(c.frags.len());
     c.el = c.fragment_builders[0].element();

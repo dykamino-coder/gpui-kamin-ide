@@ -14,6 +14,7 @@ impl Recipe {
         if !self.axis.is_vertical()
             && self.rows.is_none()
             && opts.cx.position.geometry_record.is_none()
+            && self.numeric.is_none()
         {
             let source = host
                 .children
