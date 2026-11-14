@@ -39,6 +39,9 @@ use types::{GridItem, GridTrackKind, TrackCounts};
 pub(crate) use types::{GridCoordinate, GridLine, OriginZeroLine, MAX_GRID_TRACKS, MAX_OZ_LINE, MIN_OZ_LINE};
 
 pub use types::{GridLineNames, GridLineNamesIter};
+// KaminIDE patch: item contributions kept between the queries of one layout pass.
+pub(crate) mod contribution_memo;
+pub use contribution_memo::ContributionMemo;
 
 mod alignment;
 mod baseline_x;
@@ -604,6 +607,13 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             flow,
         );
     }
+    // KaminIDE patch: (`contribution_memo`) the contributions earlier queries of this pass measured.
+    let contribution_memo = ContributionMemo::applies(items.len(), has_subgrids || own_subgrid.is_some(), margin_trim != 0)
+        .then(|| tree.take_contribution_memo(node))
+        .flatten();
+    if let Some(memo) = &contribution_memo {
+        memo.load(&mut items);
+    }
     let inline_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Inline);
 
     // Run track sizing algorithm for Inline axis
@@ -637,6 +647,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         let width = (initial_column_sum + content_box_inset.horizontal_axis_sum())
             .maybe_clamp(min_size.width, max_size.width)
             .max(padding_border_size.width);
+        contribution_memo::keep(tree, node, contribution_memo, &items);
         return LayoutOutput::from_outer_size(Size { width, height: 0.0 });
     }
 
@@ -716,6 +727,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
 
     // If only the container's size has been requested
     if run_mode == RunMode::ComputeSize {
+        contribution_memo::keep(tree, node, contribution_memo, &items);
         return LayoutOutput::from_outer_size(growth.container(
             container_border_box,
             Size { width: visible_column_sum, height: initial_row_sum },
@@ -898,6 +910,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             has_baseline_aligned_item,
         );
     }
+    contribution_memo::keep(tree, node, contribution_memo, &items);
 
     if (intrinsic_column_contribution_changed && !has_percentage_column)
         || (intrinsic_row_contribution_changed && !has_percentage_row)
