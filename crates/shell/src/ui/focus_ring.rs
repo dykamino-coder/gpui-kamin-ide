@@ -14,10 +14,15 @@ use std::sync::{LazyLock, Mutex};
 use gpui::prelude::*;
 use gpui::{App, FocusHandle, Window, div, px};
 
+mod reveal;
+pub use reveal::reveal_in;
+
 #[cfg(test)]
 mod keymap_tests;
 #[cfg(test)]
 mod paint_tests;
+#[cfg(test)]
+mod reveal_tests;
 
 /// Толщина кольца (`outline: 2px`).
 const RING: f32 = 2.0;
@@ -40,7 +45,11 @@ pub fn begin_frame(window: &Window) {
         .iter()
         .find(|(_, h)| h.is_focused(window))
         .map(|(k, _)| k.clone());
-    *FRAME.lock().unwrap() = (visible, focused);
+    let mut frame = FRAME.lock().unwrap();
+    if frame.1 != focused {
+        reveal::focus_changed(visible, focused.as_deref());
+    }
+    *frame = (visible, focused);
 }
 
 /// Отчеканить хэндлы, запрошенные за кадр. Возвращает true, если появились
@@ -84,7 +93,7 @@ where
     }
     // Внутренний абсолютный оверлей переживает overflow_hidden самого элемента
     // и его контейнеров, не меняя размер и расположение соседних элементов.
-    el.relative().child(
+    reveal::probe(el.relative(), id).child(
         div()
             .absolute()
             .top(px(OFFSET))

@@ -103,7 +103,6 @@ use crate::text::inline::collect::element_nodes::collect_element;
 
 mod boundary_spacing;
 mod overlays;
-pub(crate) mod stacks;
 pub(crate) use overlays::to_rotated_frame;
 mod text_nodes;
 use crate::text::inline::collect::boundary_spacing::set_boundary_spacing;
@@ -150,7 +149,9 @@ pub(super) fn collect_with_empty_metrics(
     has_text: bool,
     cx: &mut CollectCx,
 ) -> Vec<Piece> {
-    stacks::with_stack(|stack| {
+    // The layout state outlives the collection; holding it frees cx for the collection.
+    let layout = std::rc::Rc::clone(cx.layout.layout());
+    layout.collect_stacks.with_stack(|stack| {
         stack
             .enter(|stk| collect_stack(stk, children, inherited, atom, has_text, cx))
             .finish()

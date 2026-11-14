@@ -58,7 +58,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let _conversions = opts.cx.layout().conversions.build();
     let _run_faces = opts.cx.layout().run_faces.build();
     // Heap stacks of the paragraphs — shared within this build (`text::inline::collect::stacks`).
-    let _collect_stacks = crate::text::inline::collect_stacks_build();
+    let _collect_stacks = opts.cx.layout().collect_stacks.build();
     crate::interactive::frame::frame_sanitize(&opts.cx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка
@@ -136,7 +136,7 @@ fn render_block_inner(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option
         crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
     let conversions = opts.cx.layout().conversions.build();
     let run_faces = opts.cx.layout().run_faces.build();
-    let collect_stacks = crate::text::inline::collect_stacks_build();
+    let collect_stacks = opts.cx.layout().collect_stacks.build();
     let out = blocks(std::slice::from_ref(node), &root, opts);
     drop((conversions, run_faces, collect_stacks));
     let layer = icb_layer.finish();

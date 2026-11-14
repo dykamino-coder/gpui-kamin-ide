@@ -54846,15 +54846,16 @@ var NativeRespawnState = class {
     const cfg = this.config();
     return (0, import_crypto14.createHash)("sha256").update(JSON.stringify([cfg.serverUrl, cfg.token])).digest("hex");
   }
+  /** True when a previous child's journal was consumed (this is a respawn). */
   restore(sessions3, active) {
-    if (this.generation <= 1 || !this.config().token) return;
+    if (this.generation <= 1 || !this.config().token) return false;
     let saved;
     try {
       saved = JSON.parse(import_fs36.default.readFileSync(this.file, "utf8"));
     } catch {
-      return;
+      return false;
     }
-    if (!saved || !Array.isArray(saved.tabs) || saved.parent !== process.ppid || saved.generation >= this.generation || saved.scope !== this.scope()) return;
+    if (!saved || !Array.isArray(saved.tabs) || saved.parent !== process.ppid || saved.generation >= this.generation || saved.scope !== this.scope()) return false;
     const nativeSessions = new Map(sessions3.map((s) => [s.id, s]));
     const cfg = this.config();
     for (const tab of saved.tabs) {
@@ -54873,6 +54874,7 @@ var NativeRespawnState = class {
     }
     const selected = active && active.id !== saved.activeNativeId ? this.nativeToTab.get(active.id) : saved.activeTabId;
     if (selected && this.tm.getTab(selected)) this.tm.switchTab(selected);
+    return true;
   }
   save() {
     if (this.generation === 0) return;
@@ -54984,6 +54986,7 @@ var SessionsBridge = class {
         this.scheduleWarmRestore();
       }
     });
+    let respawned = false;
     if (this.storageDir) {
       const tm = this.host.getTabManager();
       this.recovery = new NativeRespawnState(
@@ -54994,12 +54997,12 @@ var SessionsBridge = class {
         this.kaminToTab,
         () => kaminide.sessions.active
       );
-      this.recovery.restore(kaminide.sessions.all, kaminide.sessions.active);
+      respawned = this.recovery.restore(kaminide.sessions.all, kaminide.sessions.active);
       this.subs.push({ dispose: tm.onDidChangeTabs(() => this.recovery?.save()) });
     }
     if (!this.host.getTabManager().getActiveTabId()) this.onActive(kaminide.sessions.active);
     this.recovery?.save();
-    this.scheduleWarmRestore();
+    if (!respawned) this.scheduleWarmRestore();
   }
   // ─── Warm pool ────────────────────────────────────────────────────────────
   // Sessions live continuously on the extension backend: every OPEN session —

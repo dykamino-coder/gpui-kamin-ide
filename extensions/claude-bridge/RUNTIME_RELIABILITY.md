@@ -347,6 +347,32 @@ server из проверяемого `main` должен выполнить эт
 outcomes и sanitized evidence. При stall сверить BR-31; нового fix без воспроизведения не
 делать.
 
+**Verification 2026-11-13 on the installed 1.0.96 (kmaint2): send after recovery passed;
+closing a tab inside the reconnect window fails.**
+- Setup: installed KaminIDE 1.0.96 on a copy of a working profile; isolated authenticated server
+  from the official image `open-claude-bridge:6.3.173`. Driven only through kamin-probe.
+  The reconnect window was made by killing the extension-host child process (`--role=exthost`);
+  the parent respawned it in about 1 s.
+- Send after recovery: passed. Three sends right after the respawn each reached the session once;
+  the composer was ready afterwards.
+- Close tab inside the reconnect window: **fails, 2 of 2**. `closeTab` sent 0.3 s after the kill
+  returned without error, but the tab was still listed 10 s and 15 s later. The same call with no
+  kill removed the tab at once and it stayed removed.
+- Likely mechanism (from source, not yet proven live): the parent forwards
+  `kamin:webview:inbound` to the new child as soon as the child is ready, but the child's
+  `Webviews.deliverMessage` drops messages for a view that is not resolved again yet.
+- Also seen, contract not settled: every extension-host respawn added 4 more tabs from the
+  open sessions (9 → 13 → 17 → 20).
+- Not run yet: max-sessions and session-not-found.
+- Evidence: [private PR #177](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/177),
+  `incidents/BR-05/evidence/2026-11-13-installed-1.0.96`.
+- **Next step:** kmaint2: a Fix PR that keeps webview messages that arrive before the view is
+  resolved again and hands them over after resolve, with a test that fails on the old code and
+  this close-tab scenario as the Windows gate. Then run max-sessions and session-not-found.
+- **2026-11-14:** the close-tab fix merged as #879 (Windows gate passed on its head: the
+  closed tab id was gone by 1 s in 2 of 2 runs). The tab growth is registered as BR-05A.
+  **Next step:** kmaint2: max-sessions and session-not-found.
+
 **Status:** implementation merged в PR #14; reopened for verification.
 **Dependency:** none. **Acceptance:** automated + Windows runtime merge gate;
 непроверенная часть перечислена в audit выше.
@@ -365,6 +391,27 @@ Tests: event-before-tab, stale snapshot, terminal error + reconnect, cold app
 restart при живой server session и несколько tabs. Старый пятисекундный error
 timer отсутствует; stale manager generation и `listTabs` не откатывают более
 новую authority/revision, а fatal error не оставляет false-green composer.
+
+### BR-05A — Do not grow the warm pool on an extension-host respawn
+
+**Registered 2026-11-14 (kmaint2) from the BR-05 gate.**
+- Symptom: every extension-host respawn adds up to 4 more chat tabs, about 8 s after the
+  respawn. On the installed 1.0.96 the count went 9 → 13 → 17 → 20 over three respawns. A tab
+  the user closed just before the respawn can come back with a new tab id.
+- Cause (source): after a respawn `NativeRespawnState.restore` brings back the exact previous
+  tab set, including the warm tabs. `SessionsBridge.install` then still schedules the cold-boot
+  warm pool (`warmRestore`, up to `WARM_POOL_MAX` = 4), which opens tabs for open native
+  sessions that have no live tab. Closing a Bridge tab does not close its native session, so the
+  closed session is such a candidate.
+- Contract: a respawn restores the tab set the user had; the warm pool belongs to a cold start.
+- Evidence: [private PR #178](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/178),
+  `incidents/BR-05/evidence/2026-11-14-fix-candidate-03e6513a`.
+
+**Status:** done — Fix PR #885 merged 2026-11-14; its respawn test fails on the old code and
+passes on `main`. **Dependency:** none. **Acceptance:** automated: a respawn test in
+`sessions-bridge-respawn.test.ts` that fails on the old code (tab count and the closed session).
+**Windows runtime merge gate:** not required.
+**Next step:** none; shipped with the next release.
 
 ### BR-06 — Webview update stalls until pointer activity
 
@@ -2179,7 +2226,7 @@ live. **Fix PR:** [#853](https://github.com/dykamino-coder/gpui-kamin-ide/pull/8
 a middle and the last session rows, while 1.0.95 clips or hides them; only ring
 pixels differ. Evidence:
 [private](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/58f2ce8723fed6be4e49599b29733870bc340ca3/incidents/BR-29/evidence/2026-11-13-pr853-95ebe50f).
-#853 merged as `93dddd3b`. **Next step:** check on the release that contains `93dddd3b`.
+#853 merged as `93dddd3b`. **Status:** done. On 2026-11-13 the check on the installed KaminIDE 1.0.96 (release commit `a7893294`) with the official 6.3.173 image passed: a full ring on each of the 11 tab chips, including the active chip at the right edge, and on the first, fourth and last session rows ([evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/af5ee6f82f48702cdfaba2b5e386be9c3ec517c3/incidents/BR-29/evidence/2026-11-13-installed-1.0.96)).
 **Acceptance:** a layout/paint test that the ring bounds
 stay inside the clip of a row and a tab chip; then a Windows gate that the ring
 is fully visible on a row, a chip and their first/last items. **Windows runtime
@@ -2196,6 +2243,30 @@ This is automated paint evidence, not the required live Windows gate: `kmaint2`
 still checks the complete ring on actual rows/chips including first/last items
 on the exact published candidate. Status remains **verify** pending that gate.
 
+### BR-29B — Scroll the session list to the keyboard-focused row
+
+**Child of BR-29 (registered 2026-11-13, kmaint2, lead-directed).** Found during
+the BR-29A check on the installed KaminIDE 1.0.96 with the official
+`6.3.173` image. Tab moves the keyboard focus (and its ring) to a session
+row that is outside the visible part of the scrolled session list, but the
+list does not scroll. The focused row stays off screen until the list is
+scrolled by hand; the ring was seen only after a manual scroll
+([evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/af5ee6f82f48702cdfaba2b5e386be9c3ec517c3/incidents/BR-29/evidence/2026-11-13-installed-1.0.96), `row-last-side.png`). Browsers scroll a focused element
+into view on `focus()`.
+
+**Source:** `crates/shell/src/ui/sessions_list.rs` builds the list with
+`overflow_y_scrollbar()` and no external scroll handle, and
+`crates/shell/src/ui/focus_ring.rs` only paints the ring; nothing moves the
+scroll offset when the focus changes.
+**Status:** done: #875 merged (`abf6885c`) with the automated acceptance below and published in KaminIDE 1.0.97 (ancestry checked 2026-11-14). **Fix PR:** [#875](https://github.com/dykamino-coder/gpui-kamin-ide/pull/875): a keyboard focus move records the painted bounds of the focused row, and the session list scrolls by the smallest offset that shows it; the GPUI test fails without the scroll call.
+**Dependency:** none.
+**Acceptance:** a shell test that tabs to a row below and above the visible
+part of a scrolled session list and checks that the row ends up inside the
+list viewport (fails on the current code), plus no scroll change when the
+focus moves by mouse or stays on a visible row. Automated acceptance is
+enough: the behavior is shell layout state that the GPUI test window
+reproduces.
+**Windows runtime merge gate:** not required.
 ### BR-30 — Keep incident-log records atomic across rotation
 
 **Status:** done. Implementation PR #31 и Windows filesystem gate PR #47
@@ -2322,6 +2393,61 @@ reveal when the resync frames enter the outbox, when the page first calls
 is needed; no forced repaint or timer. BR-24 and BR-25 completion keep this as
 their prerequisite.
 
+**Research 2026-11-13 on the published 1.0.96 (kmaint2): one outbox stall caught,
+layer not yet named.** 120 R6 reveals were run on the installed 1.0.96 with the
+official `6.3.173` image, driven only through kamin-probe. Each run read the page
+timeline (navigation timing and the `/__pull/<view>` fetches from Resource
+Timing). When rows were missing at 1 s, the run fetched the outbox from the page
+itself.
+- Accelerated, healthy machine: rows by 1.1 s in 74 of 75 reveals. In the other
+  (batch 3, run 21) the page loaded late (`load` 652 ms against about 190 ms).
+  It pulled 6 times up to 895 ms and then not again. At 1412 ms there were no rows,
+  and the outbox held **4 pending messages**. Handing them to the page rendered the
+  rows by 1823 ms, and its pulls resumed. Host messages therefore waited in the
+  shell outbox for at least about 0.5 s with no pull reaching the page. No page
+  fetch started between 896 and 1442 ms, so the page's pull chain was not blocked
+  on a request.
+- Other slow runs were not app defects: a machine-wide stall of about 121 s
+  (the app's diag ticks and the external dwm watcher both skipped), and its
+  aftermath. Software mode (after that stall) had one similar case (3 pulls by
+  0.3 s, then none, no rows at 7 s); there, the outbox was not checked.
+- The native counters `wake/pull-pending` and `pull/dispatched` are global per
+  second. They cannot tell an undispatched pull from a dispatched
+  `execute_java_script` that never ran in the page.
+[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/4d85e6badc887a728cf5a5037c906413ad4c2a81/incidents/INC-2026-0002/evidence/2026-11-13-br31-r6-1.0.96).
+**Next step (bounded, owner kmaint2):** add per-view delivery diagnostics to the
+existing `[views]` line: pending outbox batches and the age of the oldest one,
+the last `mark_pull_pending`, the last `pull/dispatched` and the last
+`take_all` for that view. Then repeat R6 until a stall is caught and fix the
+named layer. No forced repaint or timer.
+
+**Research 2026-11-14 with per-view outbox diagnostics (kmaint2, #878 candidate):
+the stalled layer is the UI thread, blocked in the diagnostic log append.**
+- Candidate: the installed 1.0.96 with the shell from #878 (`[outbox]` lines, delivery
+  unchanged). 45 R6 reveals; 23 of 24 valid reveals in the second batch had rows by 1.1 s.
+- Apart from hidden views, every `[outbox]` stall listed all live views at once, with the
+  pull requested (`mark`) after the batches arrived but no `dispatch` since: the pump task
+  did not run.
+- In 28 of 33 stalls the 4 s before it contain a 0.6–11.6 s gap between the `[cef]` and
+  `[why]` lines of one diag report. Both are written by one synchronous call on the UI
+  thread; between their timestamps the only blocking work is appending the `[cef]` line to
+  `diag.log` (three size checks, open, seek, write, close). Process CPU time stays low over
+  such intervals, so the thread waits rather than computes. The installed 1.0.96 shows the
+  same gaps (22 over 200 ms, max 11.8 s).
+- Not established: whether the wait is the disk itself or an on-access scan of the
+  just-closed log file. Either way, file I/O on the UI thread stalls delivery and painting.
+[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/6d72ace4667c2c604219c2e9abe3d3f922d563c3/incidents/INC-2026-0002/evidence/2026-11-14-br31-outbox-candidate).
+**Next step (bounded, owner kmaint2):** move the diag log writes off the UI thread (one
+writer thread fed by a channel; `emit_line` only enqueues), with a test that fails while a
+blocked writer blocks the caller. Then repeat R6 and check that the `[cef]`→`[why]` gaps and
+the `[outbox]` stalls are gone.
+
+**Fix 2026-11-14: #886 merged** — `diag.log` and the view HTML cache are written off the UI
+thread. Windows gate on the PR head: 60 of 60 R6 reveals had rows by 1.1 s, with no UI-thread
+wait inside a diag report and zero `[outbox]` stalls (before: 33 stalls, 28 after 0.6–11.6 s
+waits). [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/179).
+**Next step (owner kmaint2):** repeat R6 on the published 1.0.97 installer; if it holds, mark
+BR-31 and INC-2026-0002 done, then continue with BR-25/06.
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
 пробуждением. `deliver()` зовёт её. Polling и таймеры не добавлены: путь
@@ -2344,3 +2470,43 @@ flush; polling или timer не добавляются. Tests: unit test, чт�
 `PULL_PENDING` приводит к flush без кадра; Windows gate — процедура R6 из
 INC-2026-0002: reveal пересозданного Agents view без pointer даёт rows и
 invoke reply не позже 1 с в статичной странице.
+
+### BR-31A — Keep the UI thread out of a blocked window present
+
+**Child of BR-31 (registered 2026-11-14, kmaint2, lead-directed).** Found in R6 on the installed
+KaminIDE 1.0.97 release candidate (official `6.3.173` image, kmaint profile copy). R6 passed in 19
+of 20 runs. In the missed run the page asked for its rows at 1050 ms and the next pulls came about
+1 s apart (2104, 3168 ms).
+
+**Facts (diag log of that run):**
+- For about 12 s the main window drew one frame per second. Each `[cef]` tick reports
+  `окно сложило 1 кадров ... презент 1000–1015 мс`. The scene itself stayed cheap: layout
+  30–40 ms per tick. Normal ticks draw 4–5 window frames with 1–4 ms of present in total.
+- Every view reported 3 stalled `[outbox]` batches with `dispatch_ago_ms` about 1050 ms. Pulls are
+  dispatched on the UI thread between frames, so they waited for each present.
+- The diagnostic log writer is not involved (#886): ticks stayed 1.0–1.1 s apart with no
+  `[cef]`→`[why]` gap.
+- The episode was seen once. The same app ran about another hour with no present over 300 ms.
+  There was no dwm restart at that time, and the display idle timeout is off.
+
+**Source:** the `present` time is `Window::present()` → `DirectXRenderer::draw`
+(`vendor/gpui-windows/src/directx_renderer.rs`). `draw` passes the frame-latency gate with a zero
+wait, encodes the scene, and calls `IDXGISwapChain::Present(0, 0)`. Without
+`DXGI_PRESENT_DO_NOT_WAIT`, that call may block the calling thread while the GPU or the compositor
+is behind. The log does not split encode time from the `Present` call, so which of the two waited
+is not proven. The outside cause (GPU load from another process, or a compositor stall) is not
+identified.
+
+**Contract:** the UI thread does not wait for presentation. If a frame cannot be queued, it is
+dropped, and the next paint presents the current scene, as with the frame-latency gate.
+
+**Status:** registered; cause inside the renderer not yet split. **Dependency:** none.
+**Acceptance:** a renderer or platform test that fails on the old code: a frame that could not be
+presented makes the next paint require presentation. Plus the diag line splits encode and
+`Present` time, and R6 on the candidate shows no regression (30 runs, rows by 1.1 s).
+**Windows runtime merge gate:** R6 on the exact candidate. The 1 s stall cannot be triggered on
+demand, so the gate checks for regressions and does not reproduce the stall.
+**Evidence:** [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/918f89ec94174e9c9723db3ffdb1452910d9da8e/incidents/INC-2026-0002/evidence/2026-11-14-br31-r6-1.0.97).
+**Next step:** kmaint2: Fix PR. Present with `DXGI_PRESENT_DO_NOT_WAIT`; on
+`DXGI_ERROR_WAS_STILL_DRAWING`, drop the frame and mark that the next paint must present.
+Report encode and `Present` time separately in the `[cef]` line.

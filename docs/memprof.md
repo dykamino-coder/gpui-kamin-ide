@@ -70,10 +70,24 @@ in the bench JSON).
 
 - `memprof.py report CAND.exe CAND.stacks [BASE.exe BASE.stacks] [--allocated] [--json R.json]`:
   fold existing probe files. `--allocated` counts every allocation of the window (churn) instead of
-  the live heap. `--frames A-B` keeps only records of those frames.
+  the live heap. `--frames A-B` (also on `run`) keeps only blocks allocated in those frames; frees
+  count in every frame, so a block freed after them is not live. The header names the frames, and
+  the share of the audit counter is left out, since that counter covers every frame.
 - `memprof.py diff A.json B.json`: compare two saved reports, no symbols needed (e.g. two days).
 - `--depth N` (frames per stack row, default 8) and `--top N` (rows per table, default 25).
 - `scripts/alloc_stacks.py` is kept as an alias of `report` (`--live` = live heap).
+- `memprof.py ws --exe CAND.exe [--base-exe BASE.exe] --out DIR [--launcher L] -- PAGE.html ...`:
+  the working set by memory region at its peak, for a peak working set that the live heap does not
+  explain (allocator segments that stay committed, direct OS allocations of large blocks, mapped
+  files, images, thread stacks, graphics driver pages). Any build works, timing-only included. The
+  process working set is sampled every `--interval-ms` (default 1); each new peak (by `--step-mb`,
+  default 2) takes a breakdown: `VirtualQueryEx` over the address space and `QueryWorkingSet` for
+  the resident pages, summed by category (`image`, `mapped`, private `stack`, `wc/nocache`,
+  `big-res` for reservations of 16 MiB or more such as allocator arenas, `small-res`, and shared
+  pages apart) and listing the largest private reservations. `ws.txt`/`ws.json` hold the breakdown
+  at each side's sampled peak and the process peak; a peak shorter than one interval shows only in
+  the process peak. With the hidden-desktop launcher the child pid is read from its first line, and
+  the bench JSON goes to `cand.json`/`base.json`.
 
 ## Probe environment (set by `run`)
 
