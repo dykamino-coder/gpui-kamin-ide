@@ -21,6 +21,12 @@ import { replaceSkillsOverlay } from './skills-snapshot'
 import { preModelSwitchAllowMatcher } from './live-switch'
 import { writeStatusLineScript } from './session-statusline'
 import { autoCompactEnv } from './auto-compact'
+import {
+  hasCliHandlerConditions,
+  readHookConditionState,
+  HOOK_CONDITION_SESSION,
+  HOOK_CONDITION_STATE,
+} from '../hooks/cli-handler-conditions'
 
 export { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
 
@@ -240,7 +246,10 @@ export function writeSessionSettings(
       DISABLE_AUTOUPDATER: '1',
     },
   }
-  fs.writeFileSync(path.join(claudeDir, 'settings.local.json'), JSON.stringify(localSettings, null, 2))
+  const localSettingsFile = path.join(claudeDir, 'settings.local.json')
+  const hookConditionState = readHookConditionState(localSettingsFile)
+  if (hookConditionState) Object.assign(localSettings.env, { [HOOK_CONDITION_STATE]: hookConditionState })
+  fs.writeFileSync(localSettingsFile, JSON.stringify(localSettings, null, 2))
 
   ensureTrustFlags(settingsDir)
 
@@ -252,7 +261,13 @@ export function writeSessionSettings(
   // Auto-compaction policy (auto-compact.ts) goes with the --settings flag:
   // flag settings outrank user, project and local settings, and settings env
   // outranks the process env, so a stale value in a profile cannot win.
-  return JSON.stringify({ hooks: cliHooks, env: autoCompactEnv() })
+  return JSON.stringify({
+    hooks: cliHooks,
+    env: {
+      ...autoCompactEnv(),
+      ...(hasCliHandlerConditions(sessionId) ? { [HOOK_CONDITION_SESSION]: sessionId } : {}),
+    },
+  })
 }
 
 /**
