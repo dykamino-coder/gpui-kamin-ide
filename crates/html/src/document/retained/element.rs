@@ -10,11 +10,11 @@
 use super::record::Record;
 use super::window_key::WindowKey;
 use super::{Builder, FrameKey, Slot};
+mod build_in;
 use crate::layout::reuse::FlowReuse;
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, RetainedPaint, RetainedPrepaint, Style,
-    Window, px, size,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId,
+    IntoElement, LayoutId, Pixels, RetainedPaint, Style, Window, px, size,
 };
 use std::rc::Rc;
 
@@ -29,6 +29,9 @@ pub(super) struct Retained {
     /// Кадры, заказанные поддеревом на этом кадре: такой кадр не устоялся.
     scheduled: usize,
     replay: bool,
+    /// Дерево собрано и разложено шагом документа до кадра (`prepared`):
+    /// коробка области просмотра — лист её размера.
+    laid_out: bool,
 }
 
 impl Retained {
@@ -37,11 +40,25 @@ impl Retained {
         key: Option<FrameKey>,
         builder: Builder,
         candidate: bool,
+        prepared: Option<super::prepared::Prepared>,
     ) -> Self {
+        if let Some(prepared) = prepared {
+            return Self {
+                slot,
+                key,
+                builder: prepared.builder,
+                tree: Some(prepared.tree),
+                flow: prepared.flow,
+                scheduled: prepared.scheduled,
+                replay: false,
+                laid_out: true,
+            };
+        }
         let (tree, flow) = if candidate {
             (None, None)
         } else {
             slot.builds.set(slot.builds.get() + 1);
+            slot.inside_draw.set(slot.inside_draw.get() + 1);
             let (tree, flow) = builder.build(true, false);
             (Some(tree), flow)
         };
@@ -53,6 +70,7 @@ impl Retained {
             flow,
             scheduled: 0,
             replay: false,
+            laid_out: false,
         }
     }
 
@@ -62,41 +80,6 @@ impl Retained {
             size: size(px(w).into(), px(h).into()),
             ..Style::default()
         }
-    }
-
-    /// Дерево не подошло к записи: собрать и разложить в тех же границах.
-    fn build_in(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> RetainedPrepaint {
-        let space = size(
-            AvailableSpace::Definite(bounds.size.width),
-            AvailableSpace::Definite(bounds.size.height),
-        );
-        let (_, prepaint) = window.record_retained_prepaint(|window| {
-            // Заместители, отказанные проверкой прошлой сборки, собираются;
-            // если и эта не прошла (другое место корня), то без заместителей.
-            let mut allow = true;
-            loop {
-                self.slot.builds.set(self.slot.builds.get() + 1);
-                let (mut tree, flow) = self.builder.build(allow, true);
-                tree.layout_as_root(space, window, cx);
-                let fits = flow.as_ref().is_none_or(|flow| flow.validate(window));
-                if fits || !allow {
-                    tree.prepaint_at(bounds.origin, window, cx);
-                    self.tree = Some(tree);
-                    self.flow = flow;
-                    return;
-                }
-                if let Some(flow) = &flow {
-                    flow.note_rebuild();
-                }
-                allow = false;
-            }
-        });
-        prepaint
     }
 }
 
@@ -135,6 +118,7 @@ impl Element for Retained {
     ) -> (LayoutId, ()) {
         let before = window.next_frame_callback_count();
         let id = match self.tree.as_mut() {
+            Some(_) if self.laid_out => window.request_layout(self.viewport_style(), None, cx),
             Some(tree) => {
                 let keys = self.builder.layout_keys;
                 window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
@@ -190,6 +174,12 @@ impl Element for Retained {
                 self.tree = None;
             }
             let prepaint = match self.tree.as_mut() {
+                // Разложено корнем до кадра: на место, как в `build_in`.
+                Some(tree) if self.laid_out => {
+                    window
+                        .record_retained_prepaint(|window| tree.prepaint_at(bounds.origin, window, cx))
+                        .1
+                }
                 Some(tree) => {
                     window
                         .record_retained_prepaint(|window| tree.prepaint(window, cx))
