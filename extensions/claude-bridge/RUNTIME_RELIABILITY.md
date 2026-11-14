@@ -1256,6 +1256,12 @@ Marker check on the 1.0.97 install with the candidate bundle: the local `Session
 [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/521f6c4ad63ae3b8f102909b1f74d13e1e715fe6/incidents/BR-18/evidence/2026-11-14-br18a-candidate). **Status:** done — published in KaminIDE 1.0.98. Not covered: a local
 `SessionEnd` on a handoff rebind.
 
+**Regression and follow-up 2026-11-14: [#909](https://github.com/dykamino-coder/gpui-kamin-ide/pull/909) merged** (`9b508696`). #900 as published
+in 1.0.98 let a tab closed just before shutdown keep its socket for the whole window, so the host
+process could stay alive up to 5 s after disposal (`Bridge workspace runtime`, "tab close then
+shutdown", red on `main` since `d8667701`; that workflow is outside the required gate). Terminal
+disposal now closes those sockets at once. Ships in the next release.
+
 A run during the classification found the token at its 10-session limit for about 3 minutes. Those
 were the detached sessions of a force-killed app, dropped by the server's 10-minute detach grace
 (`DETACH_GRACE_MS`); this is expected.
@@ -1300,11 +1306,17 @@ call count. Требуется отличить ожидаемую отмену 
   background child keeps the pipes open still reports soon after the hook itself exits.
 - Direction: build the result on `close`; after `exit`, wait for `close` for about 1 s at most.
 
-**Status:** ready / change. **Parent:** BR-18. **Dependency:** none. **Acceptance:** automated: a test
+**Fix 2026-11-14: [#908](https://github.com/dykamino-coder/gpui-kamin-ide/pull/908) merged** (`71ef1196`). The client executor and the server
+dispatcher (the same pattern, for server-host hooks) build the result on `close`. After `exit` the
+result waits for `close` for at most 1 s. Both new tests (client and server) fail on the old code.
+**Status:** done by the automated acceptance below — ships in the next release. Not reproduced on a
+live Windows install.
+
+**Registration status (2026-11-14):** ready / change. **Parent:** BR-18. **Dependency:** none. **Acceptance:** automated: a test
 with a process that emits `exit`, then output, then `close`, which fails on the old code, and a
 test that a held pipe does not delay the result beyond the window.
 **Windows runtime merge gate:** not required.
-**Next step:** kmaint2: Fix PR.
+**Next step:** none.
 
 ### BR-19 — Treat shell disconnect as lifecycle cancellation, not extension crash
 
