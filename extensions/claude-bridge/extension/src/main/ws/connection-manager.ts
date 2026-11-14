@@ -3,7 +3,7 @@ import * as vscode from 'vscode'
 import { randomUUID } from 'node:crypto'
 import { appendStreamingText } from '../../shared/streaming-delta'
 import type { BrowserWindow } from '@kaminide/host-compat'
-import type { AgentEngine, ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
+import type { AgentEngine, ConnectionConfig, ConnectionRefusal, ConnectionState, PermissionDecision } from '../../shared/types'
 import { engineOfModelId } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
@@ -62,7 +62,25 @@ export interface ExtendedConnectionState {
    *  a delay that was already stale when it was written. */
   nextRetryAt?: number
   retryAttempt?: number
+  refusal?: ConnectionRefusal
   closeCode?: number
+}
+
+/** Server close code for "this token already has the maximum number of
+ *  sessions" (`session-ws.ts`, SessionAdmissionError kind `token`). */
+export const SESSION_LIMIT_CLOSE_CODE = 4002
+
+/** The refusal that stays on the tab: set by a session-limit close, kept
+ *  through the reconnect states that follow, cleared once the tab connects or
+ *  is disconnected on purpose (BR-05B). */
+export function stickyRefusal(
+  previous: ConnectionRefusal | undefined,
+  next: Pick<ExtendedConnectionState, 'status' | 'closeCode'>,
+  intentional: boolean,
+): ConnectionRefusal | undefined {
+  if (next.status === 'authenticated' || intentional) return undefined
+  if (next.closeCode === SESSION_LIMIT_CLOSE_CODE) return 'session-limit'
+  return previous
 }
 
 // Reconnect backoff constants
@@ -1823,6 +1841,8 @@ export class ConnectionManager {
   /** Update internal state and notify renderer via IPC. */
   private setState(state: ExtendedConnectionState): void {
     if (this.identityHold && state.status !== 'authenticated') state = { ...state, resumeNotFound: true }
+    const refusal = stickyRefusal(this.state.refusal, state, this.intentionalDisconnect)
+    if (refusal !== state.refusal) state = { ...state, refusal }
     this.state = state
     this.stateRevision++
     // Session confirmed — the establish watchdog did its job; disarm + reset.
