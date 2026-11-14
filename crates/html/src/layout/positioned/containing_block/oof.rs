@@ -121,6 +121,10 @@ impl OofQueue {
         }
     }
 
+    pub(super) fn len(&self) -> usize {
+        self.items.borrow().len()
+    }
+
     pub(super) fn is_empty(&self) -> bool {
         self.items.borrow().is_empty()
     }

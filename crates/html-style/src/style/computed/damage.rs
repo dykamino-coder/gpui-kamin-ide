@@ -13,54 +13,12 @@ use super::{Computed, InheritedStyle, InheritedUi, ResetBackground};
 impl Computed {
     /// Whether layout reads the same values from both styles.
     pub fn same_layout(&self, other: &Self) -> bool {
-        if self == other {
-            return true;
-        }
-        let Computed {
-            decor_box,
-            block_tag,
-            plain_block_box,
-            clone_audit: _,
-            reset_text_box,
-            reset_cascade,
-            reset_box_layout,
-            reset_flex,
-            reset_border,
-            reset_grid,
-            reset_context,
-            reset_generated,
-            reset_svg_math,
-            reset_positioned,
-            reset_effects,
-            reset_background,
-            reset_mask,
-            reset_shapes,
-            reset_fragmentation,
-            reset_transforms,
-            inh,
-        } = self;
-        let o = other;
-        *decor_box == o.decor_box
-            && *block_tag == o.block_tag
-            && *plain_block_box == o.plain_block_box
-            && *reset_text_box == o.reset_text_box
-            && *reset_cascade == o.reset_cascade
-            && *reset_box_layout == o.reset_box_layout
-            && *reset_flex == o.reset_flex
-            && *reset_border == o.reset_border
-            && *reset_grid == o.reset_grid
-            && *reset_context == o.reset_context
-            && *reset_generated == o.reset_generated
-            && *reset_svg_math == o.reset_svg_math
-            && *reset_positioned == o.reset_positioned
-            && *reset_effects == o.reset_effects
-            && *reset_mask == o.reset_mask
-            && *reset_shapes == o.reset_shapes
-            && *reset_fragmentation == o.reset_fragmentation
-            && *reset_transforms == o.reset_transforms
-            && (reset_background.ptr_eq(&o.reset_background)
-                || same_layout_background(reset_background, &o.reset_background))
-            && (inh == &o.inh || same_layout_inherited(inh, &o.inh))
+        self == other || same_but_color_and(self, other, same_layout_background)
+    }
+
+    /// Whether the styles are equal but for `color`.
+    pub(super) fn same_but_color(&self, other: &Self) -> bool {
+        same_but_color_and(self, other, |a, b| a == b)
     }
 
     /// This style with the inherited UI group `ui`: what a recascade of an
@@ -71,6 +29,59 @@ impl Computed {
         std::rc::Rc::make_mut(&mut out.inh.0).ui = ui;
         out
     }
+}
+
+/// Whether `a` and `b` are equal but for `color` and for what `background`
+/// lets differ in their background groups. The destructuring is exhaustive.
+fn same_but_color_and(
+    a: &Computed,
+    o: &Computed,
+    background: fn(&ResetBackground, &ResetBackground) -> bool,
+) -> bool {
+    let Computed {
+        decor_box,
+        block_tag,
+        plain_block_box,
+        clone_audit: _,
+        reset_text_box,
+        reset_cascade,
+        reset_box_layout,
+        reset_flex,
+        reset_border,
+        reset_grid,
+        reset_context,
+        reset_generated,
+        reset_svg_math,
+        reset_positioned,
+        reset_effects,
+        reset_background,
+        reset_mask,
+        reset_shapes,
+        reset_fragmentation,
+        reset_transforms,
+        inh,
+    } = a;
+    *decor_box == o.decor_box
+        && *block_tag == o.block_tag
+        && *plain_block_box == o.plain_block_box
+        && *reset_text_box == o.reset_text_box
+        && *reset_cascade == o.reset_cascade
+        && *reset_box_layout == o.reset_box_layout
+        && *reset_flex == o.reset_flex
+        && *reset_border == o.reset_border
+        && *reset_grid == o.reset_grid
+        && *reset_context == o.reset_context
+        && *reset_generated == o.reset_generated
+        && *reset_svg_math == o.reset_svg_math
+        && *reset_positioned == o.reset_positioned
+        && *reset_effects == o.reset_effects
+        && *reset_mask == o.reset_mask
+        && *reset_shapes == o.reset_shapes
+        && *reset_fragmentation == o.reset_fragmentation
+        && *reset_transforms == o.reset_transforms
+        && (reset_background.ptr_eq(&o.reset_background)
+            || background(reset_background, &o.reset_background))
+        && (inh == &o.inh || same_layout_inherited(inh, &o.inh))
 }
 
 fn same_layout_inherited(a: &InheritedStyle, b: &InheritedStyle) -> bool {
