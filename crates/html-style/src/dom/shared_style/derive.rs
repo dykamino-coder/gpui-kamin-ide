@@ -18,8 +18,14 @@ impl SharedStyle {
     ) where
         Computed: ResetGroup<T>,
     {
-        if self.used.is_some() || self.computed.any().is_none() {
-            self.used_mut().derive_used::<E, T>(derived, value, edit);
+        // The style module edits the layer (ADR3): an own used layer, or the only stage of
+        // a style that was never materialized.
+        if let Some(used) = &mut self.used {
+            Computed::derive_used_in::<E, T>(used, derived, value, edit);
+            return;
+        }
+        if self.computed.any().is_none() {
+            Computed::derive_used_in::<E, T>(&mut self.cascaded, derived, value, edit);
             return;
         }
         let base = self.base();
