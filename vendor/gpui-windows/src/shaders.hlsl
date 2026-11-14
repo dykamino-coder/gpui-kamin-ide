@@ -1865,3 +1865,36 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
     // поэтому её оставляем как есть.
     return c;
 }
+
+/*
+**
+**              Frame clear
+**
+*/
+
+// KaminIDE patch: the frame clear is drawn as a target-covering strip with
+// blending off instead of ClearRenderTargetView. On Intel Iris Xe the
+// hardware clear is not reliably ordered before the draws that follow it:
+// single pixels of later primitives come out wrong (see `quad_clear.rs`).
+struct ClearColor {
+    float4 color;
+};
+
+StructuredBuffer<ClearColor> clear_colors: register(t1);
+
+struct ClearVertexOutput {
+    float4 position: SV_Position;
+    nointerpolation float4 color: COLOR;
+};
+
+ClearVertexOutput clear_vertex(uint vertex_id: SV_VertexID) {
+    float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
+    ClearVertexOutput output;
+    output.position = float4(unit_vertex.x * 2.0 - 1.0, 1.0 - unit_vertex.y * 2.0, 0.0, 1.0);
+    output.color = clear_colors[0].color;
+    return output;
+}
+
+float4 clear_fragment(ClearVertexOutput input): SV_Target {
+    return input.color;
+}
