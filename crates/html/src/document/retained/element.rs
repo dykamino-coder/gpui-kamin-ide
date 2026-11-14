@@ -35,14 +35,6 @@ pub(super) struct Retained {
     laid_out: Option<gpui::ElementPlace>,
 }
 
-/// Id элемента документа: его записи блоков (`Element::id` ниже).
-pub(super) fn document_id(store: &Rc<crate::layout::reuse::Store>) -> ElementId {
-    ElementId::NamedInteger(
-        "retained-document".into(),
-        Rc::as_ptr(store) as usize as u64,
-    )
-}
-
 impl Retained {
     pub(super) fn new(
         slot: Rc<Slot>,
@@ -108,7 +100,7 @@ impl Element for Retained {
     /// повторялись из прошлого кадра (`Store::draw`). Запись кадра чужого
     /// `Slot` отсеивает `Record::reusable`.
     fn id(&self) -> Option<ElementId> {
-        Some(document_id(&self.builder.store))
+        Some(super::prepared::document_id(&self.builder.store))
     }
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {

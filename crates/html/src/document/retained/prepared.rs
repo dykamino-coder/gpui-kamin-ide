@@ -29,6 +29,15 @@ pub(super) struct Prepared {
     pub(super) parent: ElementPlace,
 }
 
+/// Id элемента документа в кадре: его записи блоков. Они переживают правки
+/// (новый `Slot`), и состояние элемента переживает их тоже.
+pub(super) fn document_id(store: &Rc<crate::layout::reuse::Store>) -> gpui::ElementId {
+    gpui::ElementId::NamedInteger(
+        "retained-document".into(),
+        Rc::as_ptr(store) as usize as u64,
+    )
+}
+
 /// Отметки шага для хоста, который меряет его фазы.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UpdatePhase {
@@ -43,7 +52,7 @@ pub enum UpdatePhase {
 impl Slot {
     /// Подготовленное дерево для кадра с ключом `key`; чужое отбрасывается.
     pub(super) fn take_prepared(&self, key: &Option<FrameKey>) -> Option<Prepared> {
-        let prepared = self.prepared.borrow_mut().take()?;
+        let prepared = self.prepared.take()?;
         (key.as_ref() == Some(&prepared.key)).then_some(prepared)
     }
 }
@@ -63,7 +72,7 @@ impl Document {
         cx: &mut App,
         mut observe: impl FnMut(UpdatePhase),
     ) {
-        self.retained.prepared.borrow_mut().take();
+        self.retained.prepared.take();
         let Some(key) = FrameKey::of(opts) else {
             return;
         };
@@ -75,7 +84,7 @@ impl Document {
         let builder = self.frame_builder(opts, &Some(key.clone()));
         // Элемент документа стоит в кадре под `parent` со своим id: шаг
         // собирает под тем же стеком id и view, ключи состояний — кадра.
-        let id = super::element::document_id(&self.reuse);
+        let id = document_id(&self.reuse);
         let (w, h) = builder.opts.viewport;
         let keys = builder.layout_keys;
         window.with_layout_outside_draw(parent, cx, |window, cx| {
@@ -95,14 +104,14 @@ impl Document {
                 });
                 observe(UpdatePhase::LaidOut);
                 let scheduled = window.next_frame_callback_count().saturating_sub(before);
-                *self.retained.prepared.borrow_mut() = Some(Prepared {
+                self.retained.prepared.replace(Some(Prepared {
                     key,
                     builder,
                     tree,
                     flow,
                     scheduled,
                     parent: parent.clone(),
-                });
+                }));
             })
         });
     }
