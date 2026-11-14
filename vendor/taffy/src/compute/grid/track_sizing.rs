@@ -1,6 +1,7 @@
 //! Implements the track sizing algorithm
 //! <https://www.w3.org/TR/css-grid-1/#layout-algorithm>
 use super::baseline_x::resolve_item_baselines_x;
+use super::contribution_memo as memo;
 use super::types::{GridItem, GridTrack, GridTrackKind, TrackCounts};
 use crate::geometry::{AbstractAxis, Line, Size};
 use crate::style::{AlignContent, AlignContentKeyword, AlignItemsKeyword, AvailableSpace};
@@ -127,7 +128,9 @@ where
         let grid_area_size = self.grid_area_size(item, axis_tracks);
         let available_space = grid_area_size.with(self.axis, None);
         let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item, available_space.width);
-        let contribution = item.min_content_contribution_cached(self.axis, self.tree, grid_area_size, available_space);
+        let contribution = memo::content_contribution(item, self.axis, false, grid_area_size, |item| {
+            item.min_content_contribution_cached(self.axis, self.tree, grid_area_size, available_space)
+        });
         contribution + margin_axis_sums.get(self.axis)
     }
 
@@ -137,7 +140,9 @@ where
         let grid_area_size = self.grid_area_size(item, axis_tracks);
         let available_space = grid_area_size.with(self.axis, None);
         let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item, available_space.width);
-        let contribution = item.max_content_contribution_cached(self.axis, self.tree, grid_area_size, available_space);
+        let contribution = memo::content_contribution(item, self.axis, true, grid_area_size, |item| {
+            item.max_content_contribution_cached(self.axis, self.tree, grid_area_size, available_space)
+        });
         contribution + margin_axis_sums.get(self.axis)
     }
 
@@ -153,8 +158,12 @@ where
         let grid_area_size = self.grid_area_size(item, axis_tracks);
         let available_space = grid_area_size.with(self.axis, None);
         let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item, available_space.width);
-        let contribution =
-            item.minimum_contribution_cached(self.tree, self.axis, axis_tracks, grid_area_size, self.inner_node_size);
+        // The minimum contribution also reads the track sizing functions, which are fixed for the
+        // container in a pass, and the container's inner size in the axis, which the memo compares.
+        let inner = self.inner_node_size.get(self.axis);
+        let contribution = memo::minimum_contribution(item, self.axis, grid_area_size, inner, |item| {
+            item.minimum_contribution_cached(self.tree, self.axis, axis_tracks, grid_area_size, self.inner_node_size)
+        });
         contribution + margin_axis_sums.get(self.axis)
     }
 }

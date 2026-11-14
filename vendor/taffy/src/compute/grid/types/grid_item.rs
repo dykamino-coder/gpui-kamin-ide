@@ -121,6 +121,9 @@ pub(in super::super) struct GridItem {
     pub minimum_contribution_cache: Size<Option<f32>>,
     /// Cache for the max-content size
     pub max_content_contribution_cache: Size<Option<f32>>,
+    /// KaminIDE patch: contributions kept between the queries of one layout pass
+    /// (`contribution_memo`).
+    pub contribution_memo: crate::compute::grid::contribution_memo::ItemMemo,
 
     /// KaminIDE patch: итоговый normal-flow Y без relative, для baseline контейнера.
     pub y_position: f32,
@@ -230,6 +233,7 @@ impl GridItem {
             max_content_contribution_cache: Size::NONE,
             known_dimensions_cache: None,
             minimum_contribution_cache: Size::NONE,
+            contribution_memo: crate::compute::grid::contribution_memo::ItemMemo::OFF,
             y_position: 0.0,
             height: 0.0,
             margin_trim: 0,

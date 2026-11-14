@@ -54,7 +54,7 @@ pub use self::block::{compute_block_align_content_offset, compute_block_layout, 
 pub use self::flexbox::compute_flexbox_layout;
 
 #[cfg(feature = "grid")]
-pub use self::grid::compute_grid_layout;
+pub use self::grid::{compute_grid_layout, ContributionMemo};
 
 #[cfg(feature = "float_layout")]
 pub use self::block::FloatMark;

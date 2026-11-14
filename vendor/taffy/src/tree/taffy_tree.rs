@@ -294,6 +294,23 @@ pub struct TaffyTree<NodeContext = ()> {
     /// calls (up to 1024 keys of capacity): a host that sweeps a few nodes
     /// every frame allocates no list per sweep.
     swept: Vec<DefaultKey>,
+
+    /// KaminIDE patch: tests switch the grid contribution memos (contribution_memo) off and read their
+    /// use; a build keeps them on and holds nothing for them in the tree.
+    #[cfg(all(test, feature = "grid"))]
+    pub(crate) contribution_memo_use: ContributionMemoStats,
+}
+
+/// KaminIDE patch: use and footprint of the grid contribution memos of a tree's layout passes (tests).
+#[cfg(all(test, feature = "grid"))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ContributionMemoStats {
+    /// Whether layout passes keep memos (on unless switched off).
+    pub off: bool,
+    /// The most bytes the memos of one pass held at once.
+    pub peak: usize,
+    /// Contributions read from the memos instead of the items.
+    pub hits: u64,
 }
 
 impl Default for TaffyTree {
@@ -597,6 +614,24 @@ where
     pub(crate) taffy: &'t mut TaffyTree<NodeContext>,
     /// The context provided for passing to measure functions if layout is run over this struct
     pub(crate) measure_function: MeasureFunction,
+    /// KaminIDE patch: grid item contributions kept for this layout pass only: the view lives for
+    /// one computation, so the memos are dropped with it.
+    #[cfg(feature = "grid")]
+    pub(crate) grid_memos: GridMemos,
+}
+
+/// KaminIDE patch: the contribution memos of the large grids of one layout pass.
+#[cfg(feature = "grid")]
+#[derive(Default)]
+pub(crate) struct GridMemos(Vec<(NodeId, crate::compute::ContributionMemo)>);
+
+#[cfg(all(test, feature = "grid"))]
+impl GridMemos {
+    /// Bytes held by the memos.
+    fn bytes(&self) -> usize {
+        self.0.capacity() * core::mem::size_of::<(NodeId, crate::compute::ContributionMemo)>()
+            + self.0.iter().map(|(_, memo)| memo.heap_bytes()).sum::<usize>()
+    }
 }
 
 impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
@@ -969,6 +1004,28 @@ where
         &self.taffy.nodes[node_id.into()].style
     }
 
+    fn take_contribution_memo(&mut self, node_id: NodeId) -> Option<crate::compute::ContributionMemo> {
+        #[cfg(test)]
+        if self.taffy.contribution_memo_use.off {
+            return None;
+        }
+        let memos = &mut self.grid_memos.0;
+        Some(match memos.iter().position(|(node, _)| *node == node_id) {
+            Some(at) => memos.swap_remove(at).1,
+            None => crate::compute::ContributionMemo::default(),
+        })
+    }
+
+    fn put_contribution_memo(&mut self, node_id: NodeId, memo: crate::compute::ContributionMemo) {
+        #[cfg(test)]
+        {
+            let use_ = &mut self.taffy.contribution_memo_use;
+            use_.peak = use_.peak.max(self.grid_memos.bytes() + memo.heap_bytes());
+            use_.hits += memo.hits() as u64;
+        }
+        self.grid_memos.0.push((node_id, memo));
+    }
+
     #[inline(always)]
     fn get_grid_child_style(&self, child_node_id: NodeId) -> Self::GridItemStyle<'_> {
         &self.taffy.nodes[child_node_id.into()].style
@@ -1082,7 +1139,21 @@ impl<NodeContext> TaffyTree<NodeContext> {
             #[cfg(feature = "std")]
             calc: Default::default(),
             swept: Vec::new(),
+            #[cfg(all(test, feature = "grid"))]
+            contribution_memo_use: ContributionMemoStats::default(),
         }
+    }
+
+    /// KaminIDE patch: keep grid contribution memos within a layout pass (tests compare with them off).
+    #[cfg(all(test, feature = "grid"))]
+    pub fn set_contribution_memo(&mut self, enabled: bool) {
+        self.contribution_memo_use.off = !enabled;
+    }
+
+    /// KaminIDE patch: use and footprint of the grid contribution memos so far (tests).
+    #[cfg(all(test, feature = "grid"))]
+    pub fn contribution_memo_stats(&self) -> ContributionMemoStats {
+        self.contribution_memo_use
     }
 
     /// KaminIDE patch: make this tree's calc registry current until the guard drops:
@@ -1647,6 +1718,8 @@ impl<NodeContext> TaffyTree<NodeContext> {
         let _calc = self.calc_scope();
         let mut taffy_view = TaffyView {
             taffy: self,
+            #[cfg(feature = "grid")]
+            grid_memos: Default::default(),
             measure_function,
         };
         compute_root_layout(&mut taffy_view, node_id, available_space);
@@ -1669,7 +1742,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     {
         #[cfg(feature = "std")]
         let _calc = self.calc_scope();
-        let mut view = TaffyView { taffy: self, measure_function };
+        let mut view = TaffyView { taffy: self, measure_function, #[cfg(feature = "grid")] grid_memos: Default::default() };
         view.compute_child_layout(node_id, LayoutInput {
             run_mode: crate::RunMode::ComputeSize,
             sizing_mode: crate::SizingMode::InherentSize,
@@ -1700,6 +1773,8 @@ impl<NodeContext> TaffyTree<NodeContext> {
     pub(crate) fn as_layout_tree(&mut self) -> impl LayoutPartialTree + CacheTree + '_ {
         TaffyView {
             taffy: self,
+            #[cfg(feature = "grid")]
+            grid_memos: Default::default(),
             measure_function: |inputs, _, _, style| {
                 compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
             },
