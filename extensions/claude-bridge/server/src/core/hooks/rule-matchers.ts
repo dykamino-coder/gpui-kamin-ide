@@ -216,7 +216,7 @@ export function bashRuleMatches(rule: string, command: string, home?: string): b
 /** Find a group's end without treating quoted delimiters as syntax. */
 function powershellGroupEnd(command: string, open: number): number | null {
   const opening = command[open]!
-  const closing = opening === '{' ? '}' : ')'
+  const closing = opening === '{' ? '}' : opening === '[' ? ']' : ')'
   let depth = 1
   let quote = ''
   for (let i = open + 1; i < command.length; i++) {
@@ -255,6 +255,58 @@ function powershellCommentEnd(command: string, open: number): number | null {
 // syntax remains outside this sampled matcher rather than becoming a command.
 const POWERSHELL_SCALAR = String.raw`(?:'(?:[^']|'')*'|"(?:[^"\x60$]|\$(?!\()|\x60[\s\S]|"")*"|\$[\w:]+|[-+]?\d+(?:\.\d+)?)`
 const POWERSHELL_SCALAR_LIST = new RegExp(`^${POWERSHELL_SCALAR}(?:\\s*,\\s*${POWERSHELL_SCALAR})*$`)
+const POWERSHELL_ASSIGNMENT_SCALAR = new RegExp(
+  `^\\s*(?:${POWERSHELL_SCALAR}(?:\\s*,\\s*${POWERSHELL_SCALAR})*|[-+]?\\d+(?:\\s*[-+*/%]\\s*\\d+)+)(?=\\s*(?:[;|\\n]|$))`,
+)
+
+function powershellVariableTarget(command: string, start: number): { end: number; expressions: string[] } | null {
+  const variable = /^\$(?:[A-Za-z_]\w*(?::[A-Za-z_]\w*)?|\{[A-Za-z_]\w*(?::[A-Za-z_]\w*)?\})/.exec(command.slice(start))
+  if (!variable) return null
+  let end = start + variable[0].length
+  const expressions: string[] = []
+  for (;;) {
+    const member = /^\.[A-Za-z_]\w*/.exec(command.slice(end))
+    if (member) end += member[0].length
+    else if (command[end] === '[') {
+      const close = powershellGroupEnd(command, end)
+      if (close === null) return null
+      expressions.push(command.slice(end + 1, close))
+      end = close + 1
+    } else break
+  }
+  return { end, expressions }
+}
+
+/** Separate assignment targets from the RHS, retaining expressions inside
+ *  attributes and indices so their CommandAst children can still be visited. */
+function powershellAssignment(command: string, start: number): { end: number; expressions: string[] } | null {
+  let end = start
+  const expressions: string[] = []
+  const skipSpace = () => {
+    while (/[ \t]/.test(command[end] ?? '')) end++
+  }
+  do {
+    skipSpace()
+    while (command[end] === '[') {
+      const close = powershellGroupEnd(command, end)
+      if (close === null) return null
+      const type = command.slice(end + 1, close)
+      const parameters = type.indexOf('(')
+      if (parameters !== -1) expressions.push(type.slice(parameters))
+      end = close + 1
+      skipSpace()
+    }
+    const variable = powershellVariableTarget(command, end)
+    if (!variable) return null
+    end = variable.end
+    expressions.push(...variable.expressions)
+    skipSpace()
+    if (command[end] !== ',') break
+    end++
+  } while (end < command.length)
+  const operator = /^(?:\?\?|[+*/%\-])?=(?!=)/.exec(command.slice(end))
+  return operator ? { end: end + operator[0].length, expressions } : null
+}
 
 /** Hashtable keys are expressions, not command names. Only their values
  *  contribute command children for the sampled literal-key syntax. */
@@ -334,23 +386,27 @@ function powershellCommands(command: string): string[] | null {
   for (let i = 0; i < command.length; i++) {
     const ch = command[i]!
     const assignment =
-      ch === '$' && !active && words.length === 0 && !skipRedirectTarget
-        ? /^\$(?:[A-Za-z_]\w*(?::[A-Za-z_]\w*)?|\{[A-Za-z_]\w*(?::[A-Za-z_]\w*)?\})\s*(?:\?\?|[+*/%\-])?=(?!=)/.exec(
-            command.slice(i),
-          )
+      (ch === '$' || ch === '[') && !active && words.length === 0 && !skipRedirectTarget
+        ? powershellAssignment(command, i)
         : null
     const adjacentVariable =
-      ch === '$' && !active && words.length && !skipRedirectTarget
-        ? /^\$[A-Za-z_]\w*(?::[A-Za-z_]\w*)?(?==)/.exec(command.slice(i))
+      ch === '$' && command[i + 1] !== '{' && !active && words.length && !skipRedirectTarget
+        ? powershellVariableTarget(command, i)
         : null
     const bracedVariable =
       ch === '$' && (words.length || skipRedirectTarget)
         ? /^\$\{[A-Za-z_]\w*(?::[A-Za-z_]\w*)?\}/.exec(command.slice(i))
         : null
     if (assignment) {
-      // Assignment operators and their variable are outside the RHS CommandAst.
-      // Consume the prefix before braced variables become expression groups.
-      i += assignment[0].length - 1
+      for (const expression of assignment.expressions) {
+        if (!expression.trim() || POWERSHELL_SCALAR_LIST.test(expression.trim())) continue
+        const nested = powershellCommands(expression)
+        if (nested === null) return null
+        statements.push(...nested)
+      }
+      // Scalar RHS expressions have no CommandAst of their own.
+      const scalar = POWERSHELL_ASSIGNMENT_SCALAR.exec(command.slice(assignment.end))
+      i = assignment.end + (scalar?.[0].length ?? 0) - 1
     } else if (ch === "'" || ch === '"') {
       const quote = ch
       let closed = false
@@ -417,11 +473,17 @@ function powershellCommands(command: string): string[] | null {
     ) {
       // Invocation operators are outside CommandElements in the native AST.
       continue
-    } else if (adjacentVariable) {
-      // An unquoted simple variable followed by '=' is a separate AST element.
+    } else if (adjacentVariable && command[adjacentVariable.end] === '=') {
+      // An unquoted variable/member followed by '=' is a separate AST element.
       // Recognize it before consuming the word so quotes and escapes stay literal.
-      words.push(adjacentVariable[0])
-      i += adjacentVariable[0].length - 1
+      for (const expression of adjacentVariable.expressions) {
+        if (!expression.trim() || POWERSHELL_SCALAR_LIST.test(expression.trim())) continue
+        const nested = powershellCommands(expression)
+        if (nested === null) return null
+        statements.push(...nested)
+      }
+      words.push(command.slice(i, adjacentVariable.end))
+      i = adjacentVariable.end - 1
     } else if (bracedVariable) {
       // Braces keep the variable and an adjacent literal in one argument.
       word += bracedVariable[0]
