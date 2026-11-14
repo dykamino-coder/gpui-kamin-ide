@@ -215,5 +215,8 @@ fn has(kind: Kind, name: &str, tag: &str, attrs: &[(String, String)]) -> bool {
     }
 }
 
+mod targets;
+pub use targets::targets;
+
 #[cfg(test)]
 mod tests;

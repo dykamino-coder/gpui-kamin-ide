@@ -77,6 +77,11 @@ impl Document {
                             },
                         );
                     }
+                    // A class the sheets read: its restyle may still reach
+                    // only inherited paint values (`repaint`).
+                    Some(_) if open(&change.element, &root) => {
+                        return self.repaint_plan(batch, theme_css);
+                    }
                     _ => return None,
                 }
             }
@@ -138,7 +143,7 @@ pub(super) fn source_ids<'a>(
 }
 
 /// Тег коробки элемента HTML: локальное имя (обход снимает только префикс).
-fn tag_of(handle: &markup5ever_rcdom::Handle) -> String {
+pub(super) fn tag_of(handle: &markup5ever_rcdom::Handle) -> String {
     match &handle.data {
         markup5ever_rcdom::NodeData::Element { name, .. } => name.local.to_string(),
         _ => String::new(),
