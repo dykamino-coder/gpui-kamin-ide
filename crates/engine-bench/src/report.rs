@@ -43,17 +43,18 @@ pub(super) fn mode(samples: &[Sample]) -> Value {
 /// Режим с замерами, счётчиками работы и ресурсами процесса каждого образца.
 /// Один формат для cold/warm/relayout и edit: без него edit-фазы не судимы по
 /// памяти и CPU (verdict.py читает `process_resources`).
-pub(super) fn measured_mode(
-    samples: &[Sample],
-    diagnostics: &[Sample],
-    work: Vec<Value>,
-    usage: Vec<Value>,
-) -> Value {
+pub(super) fn measured_mode(samples: &[Sample], diagnostics: &[Sample]) -> Value {
     let mut out = mode(samples);
     out["diagnostic_scopes"] = mode(diagnostics);
-    out["work_counters"] = json!({"samples": work});
-    out["process_resources"] = json!({"samples": usage});
     out
+}
+
+/// Work counters and process resources of a mode's samples, added when the report is
+/// printed: until then the samples are numbers ([`super::work::Sample`]), not JSON in the
+/// measured heap.
+pub(super) fn attach_work(mode: &mut Value, (work, usage): (Vec<Value>, Vec<Value>)) {
+    mode["work_counters"] = json!({"samples": work});
+    mode["process_resources"] = json!({"samples": usage});
 }
 
 pub(super) fn print(report: &Value, json_output: bool) -> Result<(), serde_json::Error> {
@@ -130,7 +131,8 @@ mod tests {
         ];
         let usage = vec![json!({"phases": {"paint": {"process_cpu_100ns": 0}}}); 2];
         let work = vec![json!({"phases": {}}); 2];
-        let mode = measured_mode(&samples, &samples, work, usage);
+        let mut mode = measured_mode(&samples, &samples);
+        attach_work(&mut mode, (work, usage));
         assert_eq!(
             mode["process_resources"]["samples"]
                 .as_array()
