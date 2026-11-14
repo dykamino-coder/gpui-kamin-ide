@@ -22,6 +22,11 @@ in the bench JSON).
    probe only, without the counters, for a build close to the timing build (use it with
    `--sample`). `--jobs`, `--affinity <mask>`, `--below-normal` and `--wrapper "<command prefix>"`
    (for example a build-slot queue) place the build on a shared machine.
+   `--screen` builds the same thing without link-time optimisation (incremental, 256 codegen
+   units) in the same target directory: several times faster, and cargo keeps both variants'
+   artifacts, so switching does not rebuild the other. Use it for everyday memory profiles and
+   audit counters; final measurements and time profiles need the default build, and both sides
+   of a comparison must be built the same way (`build.json` in `--out` records `lto`).
 
 2. Ask the question:
 

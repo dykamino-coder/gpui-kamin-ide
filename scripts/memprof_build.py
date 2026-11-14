@@ -14,6 +14,13 @@ the PDB, no folded functions.
 One target directory per checkout, always <worktree>/target/prof: every profiler build of a seat
 reuses it, so a rebuild after an edit is incremental.
 
+--screen builds without link-time optimisation (LTO off, 256 codegen units, incremental) in the same
+target directory: several times faster to build, and cargo keeps both variants' artifacts side by
+side, so switching does not rebuild the other. Allocations, and so memory profiles and audit
+counters, are those of the same source; machine code and inlining are not the release ones, so final
+measurements and time profiles (timeprof) need the default build. Compare a candidate only with a
+base built the same way; build.json records which variant DIR holds.
+
 DIR receives engine_bench.exe, engine_bench.pdb and build.json (commit, features, flags).
 """
 
@@ -39,6 +46,8 @@ def add_parser(sub):
     parser.add_argument("--features", default="allocation-audit",
                         help="engine-bench features: allocation-audit (exact, audit counters; default), "
                              "heap-profile (probe only), timing-only (time profiles)")
+    parser.add_argument("--screen", action="store_true",
+                        help="no LTO, incremental: fast to build, for memory profiles; not for time profiles")
     parser.add_argument("--jobs", type=int, help="cargo build jobs")
     parser.add_argument("--affinity", help="core bit mask of the build, e.g. 0xFFF00")
     parser.add_argument("--below-normal", action="store_true", help="run the build at below-normal priority")
@@ -118,6 +127,9 @@ def build_command(args):
     # The encoded form has the highest precedence in cargo and survives any shell in --wrapper.
     env["CARGO_ENCODED_RUSTFLAGS"] = "\x1f".join(flags)
     env.update(CARGO_PROFILE_RELEASE_STRIP="false", CARGO_PROFILE_RELEASE_DEBUG="line-tables-only")
+    if args.screen:
+        env.update(CARGO_PROFILE_RELEASE_LTO="off", CARGO_PROFILE_RELEASE_CODEGEN_UNITS="256",
+                   CARGO_PROFILE_RELEASE_INCREMENTAL="true")
     if args.jobs:
         env["CARGO_BUILD_JOBS"] = str(args.jobs)
     prefix = [part.strip('"') for part in shlex.split(args.wrapper, posix=False)] if args.wrapper else []
@@ -136,7 +148,9 @@ def build_command(args):
     for name in ("engine_bench.exe", "engine_bench.pdb"):
         shutil.copy2(built.with_name(name), out / name)
     facts.update(commit=git(worktree, "rev-parse", "HEAD"), dirty=bool(git(worktree, "status", "--porcelain")),
-                 features=args.features, profile="release + debug line tables", rustflags=flags)
+                 features=args.features, rustflags=flags,
+                 lto="off" if args.screen else "fat",
+                 profile="release without LTO + debug line tables" if args.screen else "release + debug line tables")
     (out / "build.json").write_text(json.dumps(facts, indent=1), encoding="utf-8")
     print(f"{out / 'engine_bench.exe'}: {facts['functions']} functions named, none folded, "
           f"stack {facts['stack_reserve'] >> 20} MiB, commit {facts['commit']}{' (dirty)' if facts['dirty'] else ''}")
