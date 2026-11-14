@@ -13317,6 +13317,7 @@ var init_plugin_monitors = __esm({
 var executor_exports = {};
 __export(executor_exports, {
   HOOK_OUTPUT_CAP: () => HOOK_OUTPUT_CAP,
+  HOOK_OUTPUT_DRAIN_MS: () => HOOK_OUTPUT_DRAIN_MS,
   executeHook: () => executeHook,
   localizeHookPayload: () => localizeHookPayload,
   resolveHookCwd: () => resolveHookCwd
@@ -13533,8 +13534,10 @@ async function executeHook(req, fallbackCwd) {
         durationMs: Date.now() - start
       });
     }, timeoutMs);
-    proc.on("exit", (code) => {
+    let drain;
+    const report = (code) => {
       clearTimeout(killer);
+      clearTimeout(drain);
       const { stdout, stderr } = streams();
       let jsonOutput;
       if (code === 0 && !stdoutCap.dropped) {
@@ -13552,9 +13555,17 @@ async function executeHook(req, fallbackCwd) {
         jsonOutput,
         durationMs: Date.now() - start
       });
+    };
+    let exitCode = null;
+    proc.on("exit", (code) => {
+      clearTimeout(killer);
+      exitCode = code;
+      drain = setTimeout(() => report(code), HOOK_OUTPUT_DRAIN_MS);
     });
+    proc.on("close", (code) => report(code ?? exitCode));
     proc.on("error", (err) => {
       clearTimeout(killer);
+      clearTimeout(drain);
       const { stdout, stderr } = streams();
       finish({
         stdout,
@@ -13574,7 +13585,7 @@ spawn error: ${err.message}`,
     }
   });
 }
-var import_node_child_process6, import_node_os6, import_node_fs7, import_node_path8, DEFAULT_TIMEOUT_MS, HOOK_OUTPUT_CAP;
+var import_node_child_process6, import_node_os6, import_node_fs7, import_node_path8, DEFAULT_TIMEOUT_MS, HOOK_OUTPUT_CAP, HOOK_OUTPUT_DRAIN_MS;
 var init_executor = __esm({
   "src/main/hooks/executor.ts"() {
     "use strict";
@@ -13589,6 +13600,7 @@ var init_executor = __esm({
     init_warm_shell();
     DEFAULT_TIMEOUT_MS = 10 * 60 * 1e3;
     HOOK_OUTPUT_CAP = 1024 * 1024;
+    HOOK_OUTPUT_DRAIN_MS = 1e3;
   }
 });
 
