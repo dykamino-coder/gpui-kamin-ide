@@ -57,8 +57,7 @@ fn repeated_compounds_fit_one_stylesheet_preparation_budget() {
             .borrow()
             .as_ref()
             .unwrap()
-            .candidates(&crate::dom::tree_index::NodeKey::of(&right))
-            .len(),
-        64
+            .candidates(&crate::dom::tree_index::NodeKey::of(&right)),
+        (0..64).collect::<Vec<_>>()
     );
 }

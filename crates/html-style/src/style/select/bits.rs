@@ -40,6 +40,11 @@ impl Bits {
         self.0.iter().all(|&word| word == 0)
     }
 
+    pub fn same(&self, other: &Self, admission: &Admission) -> Result<bool, Error> {
+        admission.work(self.0.len().min(other.0.len()))?;
+        Ok(self.0[..] == other.0[..])
+    }
+
     /// Равные непрерывные срезы позволяют LLVM векторизовать независимые AND.
     pub fn intersect(&mut self, other: &Self, admission: &Admission) -> Result<(), Error> {
         admission.work(self.0.len())?;

@@ -45,7 +45,7 @@ pub(super) fn prepare(scope: &Scope, rules: &[Rule], tree: &TreeIndex) -> Result
         &admission,
     )?;
     let mut handled = Bits::new(rules.len(), &admission)?;
-    let mut matches = Buffer::default();
+    let mut matches: Buffer<(Range<usize>, Bits)> = Buffer::default();
     let mut counts = Buffer::default();
     counts.reserve(scope.records.len(), &admission)?;
     for _ in &scope.records[..] {
@@ -61,11 +61,23 @@ pub(super) fn prepare(scope: &Scope, rules: &[Rule], tree: &TreeIndex) -> Result
         if found.is_empty() {
             continue;
         }
+        // Соседние одинаковые множества считают размеры строк один раз.
+        if let Some((range, previous)) = matches.last_mut()
+            && range.end == i
+            && previous.same(&found, &admission)?
+        {
+            range.end = i + 1;
+        } else {
+            matches.push((i..i + 1, found), &admission)?;
+        }
+    }
+    for (range, found) in &matches[..] {
         for node in found.ones() {
             admission.work(1)?;
-            counts[node] = counts[node].checked_add(1).ok_or(Error::CapacityOverflow)?;
+            counts[node] = counts[node]
+                .checked_add(range.len())
+                .ok_or(Error::CapacityOverflow)?;
         }
-        matches.push((i, found), &admission)?;
     }
     let distinct = counts.iter().filter(|&&count| count > 0).count();
     let lease = admission.storage(distinct.checked_mul(128).ok_or(Error::CapacityOverflow)?)?;
@@ -93,11 +105,13 @@ pub(super) fn prepare(scope: &Scope, rules: &[Rule], tree: &TreeIndex) -> Result
     for _ in 0..total {
         out.rules.push(0, &admission)?;
     }
-    for (rule, found) in &matches[..] {
+    for (range, found) in &matches[..] {
         for node in found.ones() {
-            admission.work(1)?;
-            out.rules[counts[node]] = *rule;
-            counts[node] += 1;
+            admission.work(range.len())?;
+            for rule in range.clone() {
+                out.rules[counts[node]] = rule;
+                counts[node] += 1;
+            }
         }
     }
     Ok(out)
