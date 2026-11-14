@@ -41,7 +41,10 @@ use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
 use frame::{placed, scaled};
 use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
+pub(crate) use flow::mark::Mark as RowMark;
+pub(crate) use flow::{GroupCx, Shallow};
 pub(crate) use key::{Counters, FlowKey};
+pub(crate) use replay::Effects;
 pub(crate) use placeholder::Replay;
 pub(crate) use record::Record;
 use source::{Shells, Source};
@@ -92,6 +95,8 @@ pub(crate) struct FlowReuse {
     next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
     pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Source)>>,
     replay_slots: Cell<Vec<Rc<replay::ReplaySlot>>>,
+    /// Group replays of this build (`replay::group`).
+    groups: replay::Groups,
     /// Far state of this build (`far`): the document's, or made with the
     /// build's first far record or claim.
     far: Cell<Option<Box<far::FrameFar>>>,
@@ -174,6 +179,7 @@ impl FlowReuse {
             next_replays: Default::default(),
             pending_replays: Default::default(),
             replay_slots: Default::default(),
+            groups: Default::default(),
             far: Default::default(),
             far_widths: Cell::new(false),
             far_recorders: Cell::new(0),

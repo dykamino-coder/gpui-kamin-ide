@@ -41,6 +41,7 @@ pub type RowRects = Sink<(Bounds<Pixels>, bool, Bounds<Pixels>)>;
 /// отдельному слою — кромки рисуются НА ЛИНИЯХ сетки поверх фонов
 /// (css-tables-3 §drawing-borders), а конфликт «шире побеждает»
 /// (CSS 2.1 §17.6.2.1) решается порядком: узкие раньше, широкие поверх.
+#[derive(Clone)]
 pub struct EdgeCell {
     pub bounds: Bounds<Pixels>,
     /// Ширины кромок [верх, право, низ, лево] в точках.

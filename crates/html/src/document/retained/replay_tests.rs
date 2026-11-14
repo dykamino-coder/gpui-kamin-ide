@@ -60,15 +60,12 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
         "the table and the tail were rebuilt"
     );
     assert_eq!(reused(&view, cx).2, 0, "an unmoved replay was refused");
-    // A paragraph taller by a fraction of a device pixel moves the tail by
-    // it: paint moved so is not the paint of the new place, the replay fails
-    // the frame check and the frame is built again; the tail is then built
-    // until the key changes.
-    let tall = "<body style='margin:0;display:flow-root'><table style='width:300px'><tr><td>a</td><td>b</td></tr></table>\
-                <p style='padding-top:0.3px'>two</p><p>tail</p></body>";
-    update(&view, cx, tall);
+    // A taller paragraph moves the tail: a block with text is not moved
+    // (`ReplaySlot::valid`), its replay fails the frame check and the frame
+    // is built again.
+    update(&view, cx, &page(&"word ".repeat(400)));
     let (_, _, rebuilt) = reused(&view, cx);
-    assert_eq!(rebuilt, 1, "a block moved by a fraction was replayed");
+    assert_eq!(rebuilt, 1, "a moved block was replayed at its old place");
 }
 
 /// A block without text moved by whole device pixels with all its ink on

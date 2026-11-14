@@ -1068,7 +1068,7 @@ pub(crate) struct Frame {
     pub(crate) tab_stops: TabStopMap,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub(crate) struct PrepaintStateIndex {
     hitboxes_index: usize,
     tooltips_index: usize,

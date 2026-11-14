@@ -84,7 +84,9 @@ impl FlowReuse {
         let mut all = self.store.refused.take();
         all.extend(refused);
         self.store.refused.set(all);
-        self.validate_replays(window) && ok
+        // Every check runs: each marks its own slots.
+        let groups = self.validate_groups(window);
+        self.validate_replays(window) && groups && ok
     }
 
     /// После краски дерева: записи устоявшихся блоков этого кадра завершаются
@@ -134,6 +136,7 @@ impl FlowReuse {
         self.store.unrecorded.replace(unrecorded);
         self.learn_wraps();
         self.finish_replays(screen);
+        self.finish_groups();
         self.finish_far();
         // The frame's ink measures are read: the sinks go with the frame.
         self.ink.release();

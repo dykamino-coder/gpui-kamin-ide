@@ -21,6 +21,20 @@ pub struct RetainedPaint {
     replayable: bool,
 }
 
+impl RetainedPrepaint {
+    /// KaminIDE patch: extend this state by `next`, recorded right after it
+    /// in the same frame (sibling subtrees prepainted in a row): one replay
+    /// of the joined range copies both. `false` leaves it unchanged when
+    /// `next` does not start where this one ends.
+    pub fn append(&mut self, next: &RetainedPrepaint) -> bool {
+        if self.0.end != next.0.start {
+            return false;
+        }
+        self.0.end = next.0.end.clone();
+        true
+    }
+}
+
 impl RetainedPaint {
     /// Whether these commands can be copied into a later frame unchanged.
     /// Composition groups live outside the command list (`Scene::groups`) and

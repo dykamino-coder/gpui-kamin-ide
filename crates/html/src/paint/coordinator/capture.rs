@@ -65,6 +65,32 @@ impl LineCapture {
             .all(|line| window.retained_paint_placeable(line, mask))
     }
 
+    /// One record of the complete records `parts` of blocks painted in a
+    /// row: their lines in order, as one replay puts them back.
+    pub(crate) fn join(parts: &[Rc<LineCapture>]) -> Option<Rc<LineCapture>> {
+        let mut lines: Vec<RetainedPaint> = Vec::new();
+        for part in parts {
+            if !part.complete() {
+                return None;
+            }
+            for line in part.lines.borrow().iter() {
+                if !lines.last_mut().is_some_and(|last| last.append(line)) {
+                    lines.push(line.clone());
+                }
+            }
+        }
+        lines.shrink_to_fit();
+        Some(Rc::new(LineCapture {
+            parent: None,
+            base: 0,
+            open: Cell::new(false),
+            claimed: Cell::new(0),
+            pending: Cell::new(0),
+            lost: Cell::new(false),
+            lines: RefCell::new(lines),
+        }))
+    }
+
     #[cfg(test)]
     pub(crate) fn line_count(&self) -> usize {
         self.lines.borrow().len()

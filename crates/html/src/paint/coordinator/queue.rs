@@ -108,12 +108,17 @@ impl CssPaintPass {
                     window
                         .record_retained_paint(|window| match paint {
                             InlinePaint::Element(mut child) => child.paint(window, cx),
-                            InlinePaint::Replay(record) => {
+                            // A replayed record was made under clean ink
+                            // sinks: what it registers was inert off screen
+                            // when painted, and open sinks allow it again.
+                            InlinePaint::Replay(record) => window.offscreen_inert(|window| {
                                 window.replay_retained_paint(&record);
-                            }
-                            InlinePaint::Placed(record) => {
+                                ((), true)
+                            }),
+                            InlinePaint::Placed(record) => window.offscreen_inert(|window| {
                                 capture::replay_placed(window, &record.0, record.1);
-                            }
+                                ((), true)
+                            }),
                         })
                         .1
                 })

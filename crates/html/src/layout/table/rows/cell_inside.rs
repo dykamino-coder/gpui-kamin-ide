@@ -98,38 +98,17 @@ pub(super) async fn cell_contents(
     // Многоколоночная ячейка режет содержимое на колонки
     // (`cell_columns::column_flow_children`, css-multicol-1 §2).
     let flow = super::cell_columns::column_flow_children(cell);
-    let inner = opts.inner(|cx| cx.constraints.cell_bfc = true);
-    // The contents of a cell not cut into columns are a reuse scope of their
-    // own (`reuse::flow::cells`): an unchanged cell is not built.
-    let scope = match (&flow, &opts.cx.contracts.reuse) {
-        (None, Some(reuse)) => reuse.cell(&cm, &inner),
-        _ => None,
-    };
-    let replayed = scope.as_ref().and_then(|scope| scope.replay_contents(cell, &inner));
-    let inside = match replayed {
-        Some(stand_in) => vec![stand_in],
-        None => {
-            let (mark, tracked) = scope
-                .as_ref()
-                .map(|scope| scope.mark_contents(&inner))
-                .unzip();
-            let mut inside = opts
-                .cx
-                .contracts
-                .build
-                .blocks_stack(
-                    stk,
-                    flow.as_deref().unwrap_or(&cell.children),
-                    &cm,
-                    tracked.as_deref().unwrap_or(&inner),
-                )
-                .await;
-            if let (Some(scope), Some(mark)) = (&scope, mark) {
-                scope.record_contents(cell, mark, &inner, &mut inside);
-            }
-            inside
-        }
-    };
+    let inside = opts
+        .cx
+        .contracts
+        .build
+        .blocks_stack(
+            stk,
+            flow.as_deref().unwrap_or(&cell.children),
+            &cm,
+            &opts.inner(|cx| cx.constraints.cell_bfc = true),
+        )
+        .await;
     let inside = super::cell_alignment::subject(&cm, inside);
     // Обрезанная ячейка не расталкивает колонки: её минимальный
     // вклад в дорожки НУЛЕВОЙ (css-sizing: automatic minimum при

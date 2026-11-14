@@ -16,6 +16,7 @@ mod cell_inside;
 mod cell_size;
 mod edge_probes;
 mod emit;
+mod reuse;
 use cell::table_cell;
 
 use super::context::{RowCursor, RowState, RowsOut, TableGeom, TableLayers};
@@ -31,6 +32,8 @@ pub(super) async fn table_rows(
     opts: &RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
+    // Ряд с теми же входами не собирается: его ячейки повторяются (`reuse`).
+    let reuse = reuse::RowReuse::new(geom, layers, out, opts);
     // Буфер полосы группы рядов — общий для всех её рядов (`RowRects`).
     for record in rows {
         let row = record.element;
@@ -96,9 +99,29 @@ pub(super) async fn table_rows(
             inherited,
             row_style,
         };
-        for slot in &geom.grid.rows[cursor.row_ix - 1].cells {
+        let slots = &geom.grid.rows[cursor.row_ix - 1].cells;
+        let keyed = reuse.as_ref().and_then(|reuse| {
+            let key = reuse.row_key(geom, layers, cursor.row_ix, record, &row_state)?;
+            Some((reuse, key))
+        });
+        if let Some((reuse, key)) = &keyed
+            && reuse.replay(record, key, geom, layers, opts, out)
+        {
+            continue;
+        }
+        let before = (out.cells.len(), out.cells_over.len());
+        let tracked = keyed.as_ref().map(|(reuse, _)| reuse.mark(opts));
+        let cell_opts = tracked.as_ref().map_or(opts, |(_, tracked)| tracked);
+        for slot in slots {
             cursor.col_ix = slot.column;
-            table_cell(stk, geom, layers, cursor, out, opts, &row_state, *slot).await;
+            table_cell(stk, geom, layers, cursor, out, cell_opts, &row_state, *slot).await;
+        }
+        // Ряд пишется, если каждая ячейка дала один элемент слоя ячеек.
+        if let (Some((reuse, key)), Some((mark, _))) = (keyed, tracked)
+            && out.cells_over.len() == before.1
+            && out.cells.len() == before.0 + slots.len()
+        {
+            reuse.record(record, key, mark, geom, layers, opts, out, before.0);
         }
     }
 

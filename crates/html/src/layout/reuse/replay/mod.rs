@@ -14,9 +14,16 @@
 //! повторяет кэшированные подпоследовательности чистых поддеревьев.
 
 mod element;
+mod group;
+mod group_el;
+mod group_state;
 mod slot;
 
 pub(super) use element::{Replay, ReplayRecorder};
+pub(crate) use group::Effects;
+pub(super) use group::{GroupSlot, PendingGroup};
+pub(super) use group_el::{GroupMember, GroupRecorder};
+pub(super) use group_state::{GroupStore, Groups};
 pub(super) use slot::ReplaySlot;
 
 use super::{Counters, FlowKey, Source};

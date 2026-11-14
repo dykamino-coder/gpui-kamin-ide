@@ -1,8 +1,11 @@
 //! Место повтора блока в кадре и его проверка перед prepaint.
 
 use super::{Ranges, ReplayRecord, plain_environment};
-use crate::hooks::Placement;
-use gpui::{Bounds, LayoutId, Pixels, Point, ScaledPixels, Window};
+use crate::hooks::{LineCapture, Placement};
+use gpui::{
+    Bounds, ContentMask, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint, ScaledPixels,
+    Window,
+};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -82,13 +85,26 @@ impl ReplaySlot {
 /// A block with text is not moved yet: its paragraphs register selection
 /// listeners that hold the recorded place (interactive::selection).
 fn moved_to(r: &Ranges, origin: Point<Pixels>, window: &Window) -> Option<Placement> {
-    let mask = r.mask.bounds.scale(r.scale);
-    let offset = (origin - r.origin).scale(r.scale);
+    let output = (&r.prepaint, &r.paint, &*r.lines);
+    placement(origin - r.origin, (&r.mask, r.scale), r.ink, output, window)
+}
+
+/// `moved_to` of recorded output moved by `by`: the frame's mask and scale
+/// `env`, the output's ink, and its prepaint, paint and lines.
+pub(super) fn placement(
+    by: Point<Pixels>,
+    env: (&ContentMask<Pixels>, f32),
+    ink: Option<Bounds<ScaledPixels>>,
+    output: (&RetainedPrepaint, &RetainedPaint, &LineCapture),
+    window: &Window,
+) -> Option<Placement> {
+    let mask = env.0.bounds.scale(env.1);
+    let offset = by.scale(env.1);
     let whole = offset.x.0.fract() == 0.0 && offset.y.0.fract() == 0.0;
     let inside = |ink: Bounds<ScaledPixels>| ink.is_contained_within(&mask);
     (whole
-        && r.ink.is_none_or(inside)
-        && window.retained_placeable(&r.prepaint, &r.paint, mask)
-        && r.lines.placeable(window, mask))
+        && ink.is_none_or(inside)
+        && window.retained_placeable(output.0, output.1, mask)
+        && output.2.placeable(window, mask))
     .then_some((offset, mask))
 }

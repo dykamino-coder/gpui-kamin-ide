@@ -15,6 +15,8 @@ pub(crate) struct Store {
     /// Records of blocks replayed on screen with their layout subtree
     /// (`replay`), by node id.
     pub(super) replays: RefCell<HashMap<u64, Rc<ReplayRecord>>>,
+    /// Replay records of groups of sibling blocks: table rows (`replay::group`).
+    pub(super) groups: super::replay::GroupStore,
     /// Records of far blocks laid out from their kept layout subtree
     /// (`far`), with the storage of the build that claims them; allocated
     /// while there are any. A build holds it while it runs (`FlowReuse::far`).
@@ -85,6 +87,7 @@ impl Store {
     /// nodes either, so no kept layout subtree is left (`far`).
     pub(crate) fn forget_replays(&self) {
         self.replays.take();
+        self.groups.reset();
         self.far.take();
     }
 
@@ -166,6 +169,7 @@ impl Store {
     /// The flow key changed outside its widths: no replay record holds.
     pub(super) fn reset_replays(&self) {
         self.replays.take();
+        self.groups.reset();
         self.far.take();
         self.far_near.take();
         self.banned.take();
@@ -243,6 +247,8 @@ pub struct ReuseStats {
     pub subtrees: u64,
     /// Blocks wrapped for a subtree replay record (`replay::PendingReplay`).
     pub replay_tracked: u64,
+    /// Groups of sibling blocks (table rows) replayed as one record each.
+    pub groups: u64,
     /// Far blocks laid out from their kept layout subtree without a build
     /// (`far`).
     pub far: u64,
