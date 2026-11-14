@@ -4,6 +4,7 @@ import os from 'os'
 import { randomUUID } from 'crypto'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import { ConnectionManager } from './ws/connection-manager'
+import { endSessionEndLingers } from './ws/session-end-linger'
 import { syncUserData, syncProjectData, resetSyncTimers } from './sync/sync-client'
 import { hostGeneration } from './host-generation'
 import type { ConnectionConfig, ConnectionState, TabInfo, PermissionDecision } from '../shared/types'
@@ -442,6 +443,8 @@ export class TabManager {
     for (const tab of this.tabs.values()) tab.connection.dispose()
     this.tabs.clear()
     this.activeTabId = null
+    // A closed tab may still hold its socket for its SessionEnd hooks.
+    endSessionEndLingers()
   }
 
   /**
@@ -557,6 +560,7 @@ export class TabManager {
       resumeNotFound: connection.resumeNotFound,
       nextRetryAt: connection.nextRetryAt,
       retryAttempt: connection.retryAttempt,
+      refusal: connection.refusal,
       effort: tab.effort,
       model: tab.model,
       engine: tab.connection.getEngine(),

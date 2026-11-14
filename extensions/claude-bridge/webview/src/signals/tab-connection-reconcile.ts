@@ -43,6 +43,7 @@ function fromTab(tab: TabInfo): ConnectionState {
     resumeNotFound: tab.resumeNotFound,
     nextRetryAt: tab.nextRetryAt,
     retryAttempt: tab.retryAttempt,
+    refusal: tab.refusal,
   }
 }
 
@@ -59,6 +60,7 @@ function withState(tab: TabInfo, state: ConnectionState): TabInfo {
     resumeNotFound: state.resumeNotFound,
     nextRetryAt: state.nextRetryAt,
     retryAttempt: state.retryAttempt,
+    refusal: state.refusal,
   }
 }
 
@@ -73,6 +75,7 @@ function sameState(tab: TabInfo, state: ConnectionState): boolean {
     && tab.resumeNotFound === state.resumeNotFound
     && tab.nextRetryAt === state.nextRetryAt
     && tab.retryAttempt === state.retryAttempt
+    && tab.refusal === state.refusal
 }
 
 function remember(tabId: string, candidate: ConnectionState): { state: ConnectionState; accepted: boolean } {

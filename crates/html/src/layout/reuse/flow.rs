@@ -186,10 +186,10 @@ impl FlowCx {
         if !single || self.restyled {
             return;
         }
-        let skip = (self.settled || self.resized)
-            && (!edge || self.edges)
-            && mark.inert.of(e)
-            && self.record_skip(e, &mark, now.start, opts, out);
+        let skip_at = ((self.settled || self.resized) && (!edge || self.edges) && mark.inert.of(e))
+            .then(|| self.record_skip(e, &mark, now.start, opts, out))
+            .flatten();
+        let skip = skip_at.is_some();
         // Блок, обёрнутый для пропуска, не пишется для повтора:
         // - первой устоявшейся сборкой: она собирает весь поток, а ближние
         //   блоки для повтора запишет следующая (`mark::replay_worth_recording`);
@@ -210,7 +210,7 @@ impl FlowCx {
             && (self.settled && !self.warm
                 || !store.unrecorded(e.node_id)
                     && (self.resized || self.settled && same_widths_only()));
-        self.record_far(e, &mark, now.start, out);
+        self.record_far(e, &mark, now.start, skip_at, out);
         if !skipped {
             self.record_replay(e, mark, now.start, opts, out);
         }

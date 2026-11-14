@@ -2,7 +2,7 @@
 //! Ключ держит владельцев групп, поэтому повторное использование адресов исключено.
 use super::ComputedSlot;
 use crate::style::computed::{Computed, Storage};
-use crate::style::publication::{ComputedBuilder, Published};
+use crate::style::publication::Published;
 use crate::values::ValueCx;
 use std::rc::Rc;
 
@@ -44,13 +44,8 @@ impl Sharing {
             })
         {
             crate::work::add!(MaterializedSharingHits, 1);
-            if hit.value.decor_box == own.decor_box {
-                return hit.value.clone();
-            }
-            // DOM id нужен стадии коробки; computed CSS от него не зависит.
-            let mut value = ComputedBuilder::from_cascaded(&hit.value);
-            value.decor_box = own.decor_box;
-            return value.finish();
+            // Идентичность элемента в computed-стадию не входит: значение общее.
+            return hit.value.clone();
         }
         let value = slot.compute(parent, own, vcx);
         self.entries[self.next] = Some(Entry {
@@ -101,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn decoration_identity_keeps_css_groups_shared() {
+    fn decoration_identity_leaves_the_computed_value_shared() {
         let doc = DocumentValues::detached(Media::default());
         let parent = Rc::new(Computed::default());
         let mut own = Computed::default();
@@ -117,9 +112,8 @@ mod tests {
             &own,
             doc.values(),
         );
-        assert_eq!(first.decor_box, 10);
-        assert_eq!(second.decor_box, 20);
-        assert!(first.shares_storage(&second));
+        assert_eq!(first.decor_box, 0);
+        assert!(first.handle.ptr_eq(&second.handle));
     }
 
     #[test]
