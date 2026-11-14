@@ -149,9 +149,13 @@ pub(super) fn collect_with_empty_metrics(
     has_text: bool,
     cx: &mut CollectCx,
 ) -> Vec<Piece> {
-    reblessive::Stack::new()
-        .enter(|stk| collect_stack(stk, children, inherited, atom, has_text, cx))
-        .finish()
+    // The layout state outlives the collection; holding it frees cx for the collection.
+    let layout = std::rc::Rc::clone(cx.layout.layout());
+    layout.collect_stacks.with_stack(|stack| {
+        stack
+            .enter(|stk| collect_stack(stk, children, inherited, atom, has_text, cx))
+            .finish()
+    })
 }
 
 // Продолжения строчных предков хранятся в heap, как у блочного построителя.
