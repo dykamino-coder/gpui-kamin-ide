@@ -182,12 +182,14 @@ impl Node {
         data: NodeData,
         attrs_lease: Lease,
         policy: &A,
+        registry: &Rc<crate::NodeRegistry>,
     ) -> Result<Handle, A::Error> {
         let logical_node = policy.node_count()?;
         let node_lease = policy.node(mem::size_of::<Node>() + 2 * mem::size_of::<usize>())?;
         let (text, attributes) = payload(&data, policy)?;
         let payload_lease = policy.payload(text, attributes)?;
-        Ok(Rc::new(Node {
+        let identity = registry.allocate(policy)?;
+        let node = Rc::new(Node {
             parent: Cell::new(None),
             children: RefCell::new(Vec::new()),
             data,
@@ -197,7 +199,10 @@ impl Node {
             attrs_lease: RefCell::new(attrs_lease),
             payload_lease: RefCell::new(payload_lease),
             _node_lease: node_lease,
-        }))
+            identity,
+        });
+        registry.bind(&node);
+        Ok(node)
     }
     pub(crate) fn reserve_children<A: Admission>(
         &self,
@@ -216,8 +221,16 @@ impl Node {
 impl RcDom {
     /// The document node is admitted before Rc allocation.
     pub fn try_new<A: Admission>(policy: &A) -> Result<Self, A::Error> {
+        Self::try_new_in(policy, crate::NodeRegistry::new(policy)?)
+    }
+
+    /// Повторный разбор разделяет реестр с ещё живыми узлами документа.
+    pub fn try_new_in<A: Admission>(
+        policy: &A,
+        registry: Rc<crate::NodeRegistry>,
+    ) -> Result<Self, A::Error> {
         Ok(Self {
-            document: Node::try_new(NodeData::Document, None, policy)?,
+            document: Node::try_new(NodeData::Document, None, policy, &registry)?,
             errors: RefCell::new(Vec::new()),
             quirks_mode: Cell::new(markup5ever::interface::tree_builder::NoQuirks),
             errors_lease: RefCell::new(None),

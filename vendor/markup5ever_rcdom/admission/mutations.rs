@@ -37,7 +37,12 @@ impl RcDom {
         policy.work(attrs.len())?;
         owned_attrs.extend(attrs);
         let template = if flags.template {
-            Some(Node::try_new(NodeData::Document, None, policy)?)
+            Some(Node::try_new(
+                NodeData::Document,
+                None,
+                policy,
+                &self.document.registry(),
+            )?)
         } else {
             None
         };
@@ -51,6 +56,7 @@ impl RcDom {
             },
             attrs_lease,
             policy,
+            &self.document.registry(),
         )
     }
 
@@ -59,7 +65,12 @@ impl RcDom {
         contents: StrTendril,
         policy: &A,
     ) -> Result<Handle, A::Error> {
-        Node::try_new(NodeData::Comment { contents }, None, policy)
+        Node::try_new(
+            NodeData::Comment { contents },
+            None,
+            policy,
+            &self.document.registry(),
+        )
     }
 
     pub fn try_create_pi<A: Admission>(
@@ -72,6 +83,7 @@ impl RcDom {
             NodeData::ProcessingInstruction { target, contents },
             None,
             policy,
+            &self.document.registry(),
         )
     }
 
@@ -95,6 +107,7 @@ impl RcDom {
                 },
                 None,
                 policy,
+                &self.document.registry(),
             )?,
             NodeOrText::AppendNode(node) => node,
         };
@@ -122,6 +135,7 @@ impl RcDom {
                 },
                 None,
                 policy,
+                &self.document.registry(),
             )?,
             NodeOrText::AppendNode(node) => node,
         };
@@ -162,6 +176,7 @@ impl RcDom {
             },
             None,
             policy,
+            &self.document.registry(),
         )?;
         self.try_append(&self.document, NodeOrText::AppendNode(node), policy)
     }

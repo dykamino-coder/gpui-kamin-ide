@@ -6,6 +6,8 @@
 //! Наша часть — превратить его дерево в своё: с каскадом и без узлов, которые
 //! ничего не рисуют.
 
+pub use markup5ever_rcdom::NodeKey;
+
 mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};

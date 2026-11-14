@@ -48,7 +48,9 @@ extern crate markup5ever;
 extern crate tendril;
 
 pub mod admission;
+mod node_key;
 mod selection;
+pub use node_key::{NodeKey, NodeRegistry};
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
@@ -131,22 +133,14 @@ pub struct Node {
     payload_lease: RefCell<admission::Lease>,
     _logical_node: admission::Lease,
     _node_lease: admission::Lease,
+    identity: node_key::Identity,
 }
 
 impl Node {
     /// Create a new node from its contents
     pub fn new(data: NodeData) -> Rc<Self> {
-        Rc::new(Node {
-            data,
-            parent: Cell::new(None),
-            children: RefCell::new(Vec::new()),
-            drop_next: RefCell::new(None),
-            children_lease: RefCell::new(None),
-            attrs_lease: RefCell::new(None),
-            payload_lease: RefCell::new(None),
-            _logical_node: None,
-            _node_lease: None,
-        })
+        let registry = admission::infallible(NodeRegistry::new(&admission::Unbounded));
+        admission::infallible(Self::try_new(data, None, &admission::Unbounded, &registry))
     }
 
     fn parent(&self) -> Option<WeakHandle> {
@@ -166,16 +160,8 @@ impl Node {
                 sink(items.as_ptr().cast(), capacity * mem::size_of::<T>());
             }
         }
-        fn lease(sink: &mut dyn FnMut(*const u8, usize), lease: &admission::Lease) {
-            if let Some(value) = lease {
-                let value: &(dyn std::any::Any + Send + Sync) = &**value;
-                let align = mem::align_of_val(value).max(mem::align_of::<usize>());
-                let header = (2 * mem::size_of::<usize>()).next_multiple_of(align);
-                let bytes = (header + mem::size_of_val(value)).next_multiple_of(align);
-                let start = (value as *const dyn std::any::Any).cast::<u8>();
-                sink(start.wrapping_sub(header), bytes);
-            }
-        }
+        use node_key::lease_block as lease;
+        self.identity.registry.heap_blocks(sink);
         if let Ok(children) = self.children.try_borrow() {
             list(sink, &children, children.capacity());
         }
@@ -428,13 +414,7 @@ impl TreeSink for RcDom {
 
 impl Default for RcDom {
     fn default() -> RcDom {
-        RcDom {
-            document: Node::new(NodeData::Document),
-            errors: Default::default(),
-            quirks_mode: Cell::new(tree_builder::NoQuirks),
-            errors_lease: RefCell::new(None),
-            errors_owned: RefCell::new(admission::Work::new()),
-        }
+        admission::infallible(Self::try_new(&admission::Unbounded))
     }
 }
 

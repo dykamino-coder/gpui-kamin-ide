@@ -69,7 +69,11 @@ impl Node {
         Ok(None)
     }
 
-    fn try_clone_shallow<A: Admission>(&self, policy: &A) -> Result<Handle, A::Error> {
+    fn try_clone_shallow<A: Admission>(
+        &self,
+        policy: &A,
+        registry: &Rc<crate::NodeRegistry>,
+    ) -> Result<Handle, A::Error> {
         let mut attrs_lease = None;
         let data = match &self.data {
             NodeData::Element {
@@ -93,18 +97,22 @@ impl Node {
             // Tendril clones retain their physical storage owner's lease.
             other => other.clone(),
         };
-        Node::try_new(data, attrs_lease, policy)
+        Node::try_new(data, attrs_lease, policy, registry)
     }
 
-    fn try_clone_subtree<A: Admission>(self: &Rc<Self>, policy: &A) -> Result<Handle, A::Error> {
-        let root = self.try_clone_shallow(policy)?;
+    fn try_clone_subtree<A: Admission>(
+        self: &Rc<Self>,
+        policy: &A,
+        registry: &Rc<crate::NodeRegistry>,
+    ) -> Result<Handle, A::Error> {
+        let root = self.try_clone_shallow(policy, registry)?;
         let mut remaining = Work::new();
         remaining.push((self.clone(), root.clone()), policy)?;
         while let Some((source, target)) = remaining.pop() {
             policy.visit()?;
             for child in source.children.borrow().iter() {
                 policy.visit()?;
-                let copied = child.try_clone_shallow(policy)?;
+                let copied = child.try_clone_shallow(policy, registry)?;
                 target.reserve_children(1, policy)?;
                 append(&target, copied.clone());
                 remaining.push((child.clone(), copied), policy)?;
@@ -121,7 +129,7 @@ impl Node {
             ) = (&source.data, &target.data)
             {
                 if let Some(fragment) = source.borrow().as_ref() {
-                    let copied = fragment.try_clone_shallow(policy)?;
+                    let copied = fragment.try_clone_shallow(policy, registry)?;
                     *target.borrow_mut() = Some(copied.clone());
                     remaining.push((fragment.clone(), copied), policy)?;
                 }
@@ -131,10 +139,11 @@ impl Node {
     }
 
     fn try_clone_into<A: Admission>(&self, target: &Handle, policy: &A) -> Result<(), A::Error> {
-        let fragment = Node::try_new(NodeData::Document, None, policy)?;
+        let registry = target.registry();
+        let fragment = Node::try_new(NodeData::Document, None, policy, &registry)?;
         for child in self.children.borrow().iter() {
             policy.visit()?;
-            let copied = child.try_clone_subtree(policy)?;
+            let copied = child.try_clone_subtree(policy, &registry)?;
             fragment.reserve_children(1, policy)?;
             append(&fragment, copied);
         }
