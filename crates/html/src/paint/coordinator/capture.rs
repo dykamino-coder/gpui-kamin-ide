@@ -63,6 +63,11 @@ impl LineCapture {
         self.complete() && self.lines.borrow().is_empty() && self.jobs.borrow().is_empty()
     }
 
+    /// Позиционированное задание ушло из вывода блока: его запись.
+    fn add_job(&self, job: Rc<JobCapture>) {
+        self.jobs.borrow_mut().push(job);
+    }
+
     /// Позиционированное задание блока нарисовано; `replayable` — выводом,
     /// который можно повторить.
     fn job_painted(&self, replayable: bool) {

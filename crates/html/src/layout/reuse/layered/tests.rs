@@ -1,3 +1,5 @@
+//! Which positioned subtrees a replayed block holds whole (`contained`).
+
 use super::*;
 use crate::dom::Marks;
 

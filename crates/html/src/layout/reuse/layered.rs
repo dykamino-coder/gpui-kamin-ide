@@ -16,7 +16,8 @@
 //! - an absolutely positioned box has an ancestor inside the block that
 //!   establishes its containing block (`box_predicates::establishes_cb`, the
 //!   predicate the positioning layers follow);
-//! - a fixed box has one that contains fixed boxes (not by `position`);
+//! - a fixed box has one that contains fixed boxes
+//!   (`box_predicates::contains_fixed`: not by `position`);
 //! - no sticky box and no anchor positioning, which read outside geometry.
 //!
 //! The build checks the rest: no box of the block waits in a layer outside it
@@ -24,7 +25,8 @@
 //! (`Window::retained_replayable`). Any doubt is a rebuild.
 
 use crate::dom::{Element, Node};
-use crate::style::computed::{Computed, Position, box_predicates::establishes_cb};
+use crate::style::computed::box_predicates::{contains_fixed, establishes_cb};
+use crate::style::computed::{Computed, Position};
 
 /// Whether every out-of-flow box of the subtree of `e` has its containing
 /// block inside it (see the module).
@@ -65,14 +67,6 @@ fn children(e: &Element) -> impl Iterator<Item = &Element> {
         Node::Element(c) => Some(c),
         Node::Text(_) => None,
     })
-}
-
-/// A containing block for fixed boxes: `establishes_cb` but for `position`,
-/// which contains only absolutely positioned boxes (CSS 2.1 §10.1 item 3).
-fn contains_fixed(c: &Computed) -> bool {
-    let mut unpositioned = c.clone();
-    unpositioned.reset_positioned.position = None;
-    establishes_cb(&unpositioned)
 }
 
 /// Anchor positioning reads the geometry of other boxes.

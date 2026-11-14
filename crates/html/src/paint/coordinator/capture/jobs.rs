@@ -71,7 +71,7 @@ pub(in crate::paint::coordinator) fn claim(
         deferred: RefCell::default(),
     });
     for owner in owners.iter() {
-        owner.jobs.borrow_mut().push(record.clone());
+        owner.add_job(record.clone());
     }
     (owners, Some(record))
 }

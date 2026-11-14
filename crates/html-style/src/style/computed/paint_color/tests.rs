@@ -1,3 +1,5 @@
+//! Which values make the paint of a box read its `color` (`paint_reads_color`).
+
 use super::*;
 use crate::style::computed::{Outline, Shadow};
 use crate::style::values::value::{Color, ColorOrAuto};
