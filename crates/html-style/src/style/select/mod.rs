@@ -10,11 +10,15 @@ use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+mod bits;
 pub mod bloom;
+mod bulk;
 pub mod cache;
 pub mod has;
 pub mod matching;
+mod relations;
 pub mod rule_index;
+mod sets;
 
 /// Цепочка предков для сопоставления `.card .title`: тег + классы + id.
 #[derive(Clone)]

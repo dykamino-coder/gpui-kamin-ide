@@ -20,15 +20,32 @@ pub struct SharingFacts {
     /// Значение может читать место элемента (`sibling-index()`,
     /// `sibling-count()`) либо скрывает имя функции экранированием.
     pub positional: bool,
+    /// Селектор читает состояние ссылки в любом компаунде.
+    pub link_state: bool,
 }
 
 impl SharingFacts {
     pub fn of(rule: &Rule) -> Self {
         Self {
             revalidate: !stable(&rule.sel),
+            link_state: mentions_link_state(&rule.sel),
             positional: rule.decls.iter().any(|d| positional_text(&d.value)),
         }
     }
+}
+
+fn mentions_link_state(sel: &Selector) -> bool {
+    sel.pseudo.iter().chain(&sel.also).any(|p| {
+        let p = p.to_ascii_lowercase();
+        p.contains("link") || p.contains("visited")
+    }) || sel
+        .prev
+        .as_deref()
+        .is_some_and(|(s, _)| mentions_link_state(s))
+        || sel
+            .ancestor
+            .as_deref()
+            .is_some_and(|(s, _)| mentions_link_state(s))
 }
 
 fn stable(sel: &Selector) -> bool {

@@ -8,91 +8,14 @@
 
 mod candidates;
 mod collect;
-mod index;
+pub(in crate::style::select) mod index;
 mod marks;
-mod scope;
+mod postings;
+pub(in crate::style::select) mod scope;
 mod storage;
-mod walk;
 #[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    fn marked(xml: &str, raw: &str) -> Vec<String> {
-        let dom = crate::dom::xml::xml_dom(xml).unwrap();
-        let mut tree = TreeIndex::new(
-            crate::values::DocumentValues::detached(Default::default()),
-            true,
-        );
-        let arg = parse_has_arg(raw).unwrap();
-        mark_has(&dom.document, &[arg], &mut vec![], &mut tree).unwrap();
-        assert!(!tree.matching.has_anchor());
-        let scope = scope::Scope::new(&dom.document, &[], &tree).unwrap();
-        scope
-            .records
-            .iter()
-            .filter_map(|r| {
-                let node = &r.all[r.pos];
-                (!tree.has_marks_of(&r.handle).is_empty())
-                    .then(|| node.id.clone())
-                    .flatten()
-            })
-            .collect()
-    }
-
-    #[test]
-    fn relative_relations_keep_their_bounds_and_sibling_identity() {
-        let xml = "<root id='r'><a id='a'><x/></a><b id='b'><x/></b><c id='c'/></root>";
-        for (arg, expected) in [
-            ("x", vec!["r", "a", "b"]),
-            ("> x", vec!["a", "b"]),
-            ("+ b", vec!["a"]),
-            ("~ c", vec!["a", "b"]),
-            ("+ b > x", vec!["a"]),
-            ("> a + b > x", vec!["r"]),
-            ("> x + b", vec![]),
-            ("+ c", vec!["b"]),
-        ] {
-            assert_eq!(marked(xml, arg), expected, "{arg}");
-        }
-    }
-
-    #[test]
-    fn alternative_results_do_not_stop_another_relatives_propagation() {
-        assert_eq!(
-            marked(
-                "<r id='r'><a id='a'><z/><b id='b'><x/></b></a></r>",
-                "> z, x"
-            ),
-            ["r", "a", "b"]
-        );
-    }
-
-    #[test]
-    fn filtered_sibling_positions_use_original_siblings_under_overlay() {
-        let xml = "<r id='r'><a id='a'/><b class='keep'/><b class='keep'><x/></b><c/></r>";
-        assert_eq!(marked(xml, "+ b:nth-child(1 of .keep) + b > x"), ["a"]);
-        assert!(marked(xml, "+ b:nth-child(2 of .keep) + b > x").is_empty());
-    }
-
-    #[test]
-    fn shadow_host_overlay_is_scoped_and_cannot_claim_siblings() {
-        let dom = crate::dom::xml::xml_dom("<host><x/></host>").unwrap();
-        let tree = TreeIndex::new(
-            crate::values::DocumentValues::detached(Default::default()),
-            true,
-        );
-        let host = dom.document.children.borrow()[0].clone();
-        let passport = super::super::ancestor_of(&host, Default::default(), &tree).unwrap();
-        let yes = parse_has_arg("> x").unwrap();
-        let no = parse_has_arg("+ x").unwrap();
-        assert_eq!(
-            shadow_marks(&host, &[yes, no], &passport, &tree).unwrap(),
-            [has_id("> x")]
-        );
-        assert!(!tree.matching.has_anchor());
-    }
-}
+mod tests;
+mod walk;
 pub use collect::retain_valid_rules;
 
 use crate::budget::admission::Error;
@@ -187,17 +110,33 @@ pub fn mark_has(
         return Ok(());
     }
     let scope = scope::Scope::new(handle, path, tree)?;
+    mark_scope(&scope, args, tree)
+}
+
+/// Отметки и bulk-правила разделяют единственную топологию документа.
+pub(super) fn mark_scope(
+    scope: &scope::Scope,
+    args: &[HasArg],
+    tree: &mut TreeIndex,
+) -> Result<(), Error> {
     let admission = tree.admission();
     let mut found = marks::Marks::new(scope.records.len(), &admission)?;
     for arg in args {
         found.argument();
         for (sibling, sel) in &arg.parts {
             found.alternative()?;
-            let candidates = candidates::candidates(&scope, sel, tree)?;
+            if super::sets::eligible(sel) {
+                let anchors = super::sets::anchors(scope, sel, tree)?;
+                for i in anchors.ones() {
+                    found.propagate(i, &admission)?;
+                }
+                continue;
+            }
+            let candidates = candidates::candidates(scope, sel, tree)?;
             if let Some((relation, subject)) = candidates::simple(sel) {
-                candidates::mark_simple(&scope, relation, &subject, &candidates, &mut found, tree)?;
+                candidates::mark_simple(scope, relation, &subject, &candidates, &mut found, tree)?;
             } else {
-                candidates::mark_complex(&scope, *sibling, sel, &candidates, &mut found, tree)?;
+                candidates::mark_complex(scope, *sibling, sel, &candidates, &mut found, tree)?;
             }
         }
         for &i in found.touched.iter() {
@@ -226,7 +165,7 @@ pub fn shadow_marks(
             }
             let candidates = candidates::candidates(&scope, sel, tree)?;
             let mut hit = false;
-            for &i in candidates.iter() {
+            for i in candidates.iter() {
                 if scope.match_at(sel, i, tree)? {
                     hit = true;
                     break;

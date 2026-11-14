@@ -143,4 +143,18 @@ mod tests {
         assert!(Edit::parse("nope").is_err());
         assert_eq!(Edit::parse("attr").unwrap(), Edit::Attr);
     }
+
+    #[test]
+    fn has_corpus_pages_accept_the_standard_class_edit() {
+        for page in [
+            include_str!("../corpus/review4/astra/has-siblings-4000.html"),
+            include_str!("../corpus/review4/astra/has-depth-900.html"),
+        ] {
+            let edited = Edit::Class
+                .markup(page)
+                .expect("corpus needs an explicit html edit target");
+            assert_eq!(edited.matches("<html class=\"alt\">").count(), 1);
+            assert_eq!(edited.replace("<html class=\"alt\">", "<html>"), page);
+        }
+    }
 }

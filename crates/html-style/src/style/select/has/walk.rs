@@ -1,18 +1,12 @@
-//! Обход исходного дерева :has(): общие паспорта и только глубина в стеке.
+//! Обход исходного дерева селекторов: preorder без создания паспортов.
 
-use crate::budget::{
-    LiveReservation,
-    admission::{Buffer, Error},
-};
+use crate::budget::admission::{Buffer, Error};
 use crate::dom::tree_index::TreeIndex;
-use crate::style::select::{Ancestor, census_of};
-use markup5ever_rcdom::Handle;
-use std::rc::Rc;
+use markup5ever_rcdom::{Handle, NodeData};
 
-type Visit = (Handle, Rc<Vec<Ancestor>>, usize);
 enum Work {
     Level(Handle),
-    Visit(Handle, Rc<Vec<Ancestor>>, usize),
+    Visit(Handle, usize),
     Descend(Handle),
     Restore(usize),
 }
@@ -20,21 +14,16 @@ enum Work {
 pub(super) struct Walk {
     work: Buffer<Work>,
     pub(super) depth: usize,
-    pub(super) leases: Buffer<Option<LiveReservation>>,
 }
 
 impl Walk {
     pub(super) fn new(root: &Handle, tree: &TreeIndex) -> Result<Self, Error> {
         let mut work = Buffer::default();
         work.push(Work::Level(root.clone()), &tree.admission())?;
-        Ok(Self {
-            work,
-            depth: 0,
-            leases: Buffer::default(),
-        })
+        Ok(Self { work, depth: 0 })
     }
 
-    pub(super) fn next(&mut self, tree: &TreeIndex) -> Result<Option<Visit>, Error> {
+    pub(super) fn next(&mut self, tree: &TreeIndex) -> Result<Option<(Handle, usize)>, Error> {
         let admission = tree.admission();
         while let Some(work) = self.work.pop() {
             admission.work(1)?;
@@ -48,23 +37,22 @@ impl Walk {
                 Work::Level(handle) => {
                     let children = handle.children.borrow();
                     admission.work(children.len())?;
-                    let lease = super::storage::level(&children, &admission, tree)?;
-                    self.leases.push(lease, &admission)?;
-                    let (spots, all) = census_of(&children, tree);
-                    let all = Rc::new(all);
-                    let mut pos = all.len();
-                    for (child, spot) in children.iter().zip(spots).rev() {
-                        if spot.index == 0 {
+                    let mut pos = children
+                        .iter()
+                        .filter(|c| matches!(c.data, NodeData::Element { .. }))
+                        .count();
+                    for child in children.iter().rev() {
+                        if !matches!(child.data, NodeData::Element { .. }) {
                             continue;
                         }
                         pos -= 1;
                         self.work
-                            .push(Work::Visit(child.clone(), all.clone(), pos), &admission)?;
+                            .push(Work::Visit(child.clone(), pos), &admission)?;
                     }
                 }
-                Work::Visit(handle, all, pos) => {
+                Work::Visit(handle, pos) => {
                     self.work.push(Work::Descend(handle.clone()), &admission)?;
-                    return Ok(Some((handle, all, pos)));
+                    return Ok(Some((handle, pos)));
                 }
             }
         }

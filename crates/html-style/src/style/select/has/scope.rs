@@ -1,21 +1,33 @@
-//! Однократная перепись области :has(): preorder-интервалы и общие паспорта братьев.
+//! Область селекторов: preorder-связи, индекс признаков и ленивые паспорта братьев.
 
 use super::*;
 use crate::budget::admission::Buffer;
-use std::rc::Rc;
+use std::{cell::OnceCell, rc::Rc};
 
-pub(super) struct Record {
-    pub handle: Handle,
-    pub all: Rc<Vec<Ancestor>>,
-    pub pos: usize,
-    pub parent: Option<usize>,
-    pub end: usize,
+#[derive(Default)]
+struct Level(OnceCell<Passports>);
+
+struct Passports {
+    all: Rc<Vec<Ancestor>>,
+    _lease: Option<crate::budget::LiveReservation>,
+    _marks: Option<crate::budget::LiveReservation>,
 }
 
-pub(super) struct Scope<'a> {
+pub(in crate::style::select) struct Record {
+    pub handle: Handle,
+    pub pos: usize,
+    pub parent: Option<usize>,
+    pub previous: Option<usize>,
+    pub end: usize,
+    last_child: Option<usize>,
+    level: usize,
+}
+
+pub(in crate::style::select) struct Scope<'a> {
     pub records: Buffer<Record>,
     initial: &'a [Ancestor],
-    _leases: Buffer<Option<crate::budget::LiveReservation>>,
+    root: Handle,
+    levels: Buffer<Level>,
     pub index: super::index::Index,
 }
 
@@ -25,27 +37,42 @@ impl<'a> Scope<'a> {
         let mut index = super::index::Index::default();
         let mut records: Buffer<Record> = Buffer::default();
         let mut stack: Buffer<usize> = Buffer::default();
+        let mut levels = Buffer::default();
         let mut walk = Walk::new(root, tree)?;
-        while let Some((handle, all, pos)) = walk.next(tree)? {
-            let depth = walk.depth;
-            while stack.len() > depth {
+        let mut last_top = None;
+        while let Some((handle, pos)) = walk.next(tree)? {
+            while stack.len() > walk.depth {
                 let i = stack.pop().expect("open ancestor");
                 records[i].end = records.len();
             }
             let parent = stack.last().copied();
-            let record_index = records.len();
-            index.insert(&all[pos], records.len(), &admission)?;
+            let at = records.len();
+            let previous = if let Some(parent) = parent {
+                records[parent].last_child.replace(at)
+            } else {
+                last_top.replace(at)
+            };
+            let level = if let Some(previous) = previous {
+                records[previous].level
+            } else {
+                let level = levels.len();
+                levels.push(Level::default(), &admission)?;
+                level
+            };
+            index.insert_handle(&handle, at, &admission)?;
             records.push(
                 Record {
                     handle,
-                    all,
                     pos,
                     parent,
+                    previous,
                     end: 0,
+                    last_child: None,
+                    level,
                 },
                 &admission,
             )?;
-            stack.push(record_index, &admission)?;
+            stack.push(at, &admission)?;
         }
         while let Some(i) = stack.pop() {
             records[i].end = records.len();
@@ -53,29 +80,98 @@ impl<'a> Scope<'a> {
         Ok(Self {
             records,
             initial: path,
-            _leases: walk.leases,
+            root: root.clone(),
+            levels,
             index,
         })
+    }
+
+    pub fn all_at(&self, i: usize, tree: &TreeIndex) -> Result<&Rc<Vec<Ancestor>>, Error> {
+        let record = &self.records[i];
+        let level = &self.levels[record.level];
+        let handle = record
+            .parent
+            .map_or(&self.root, |p| &self.records[p].handle);
+        if level.0.get().is_none() {
+            let children = handle.children.borrow();
+            let lease = super::storage::level(&children, &tree.admission(), tree)?;
+            let (_, all) = super::super::census_of(&children, tree);
+            let _ = level.0.set(Passports {
+                all: Rc::new(all),
+                _lease: lease,
+                _marks: None,
+            });
+        }
+        Ok(&level.0.get().expect("initialized sibling level").all)
+    }
+
+    /// Временные Rc-копии предыдущей фазы уже отпущены. Новые отметки
+    /// оплачены отдельно; строки и признаки не переписываются.
+    pub fn refresh_marks(&mut self, tree: &TreeIndex) -> Result<(), Error> {
+        let admission = tree.admission();
+        for level in self.levels.iter_mut() {
+            let Some(passports) = level.0.get_mut() else {
+                continue;
+            };
+            let all = Rc::get_mut(&mut passports.all).expect("phase owns sibling passports");
+            admission.work(all.len())?;
+            let bytes = all.iter().try_fold(0usize, |bytes, node| {
+                let count = tree.has_marks.get(&node.key).map_or(0, Vec::len);
+                count
+                    .checked_mul(std::mem::size_of::<u64>())
+                    .and_then(|n| bytes.checked_add(n))
+                    .ok_or(Error::CapacityOverflow)
+            })?;
+            let lease = admission.storage(bytes)?;
+            for node in all {
+                node.has_marks.clear();
+                if let Some(marks) = tree.has_marks.get(&node.key) {
+                    node.has_marks
+                        .try_reserve_exact(marks.len())
+                        .map_err(|_| Error::Allocation)?;
+                    node.has_marks.extend_from_slice(marks);
+                }
+            }
+            passports._marks = lease;
+        }
+        Ok(())
+    }
+
+    pub fn match_local(
+        &self,
+        sel: &Selector,
+        index: usize,
+        tree: &TreeIndex,
+    ) -> Result<bool, Error> {
+        let record = &self.records[index];
+        let all = self.all_at(index, tree)?;
+        tree.admission().work(1)?;
+        Ok(super::super::matching::matches_local(
+            sel,
+            &all[record.pos],
+            &[],
+            Sibs {
+                all,
+                pos: record.pos,
+                is_elem: true,
+                rc: Some(all),
+            },
+        ))
     }
 
     pub fn match_at(&self, sel: &Selector, index: usize, tree: &TreeIndex) -> Result<bool, Error> {
         let admission = tree.admission();
         let record = &self.records[index];
+        let all = self.all_at(index, tree)?;
         let sibs = Sibs {
-            all: &record.all,
+            all,
             pos: record.pos,
             is_elem: true,
-            rc: Some(&record.all),
+            rc: Some(all),
         };
-        // A lone compound without pseudo-classes reads only the element
-        // itself (`matches_compound`): its ancestors are not copied.
-        if sel.pseudo.is_none()
-            && sel.also.is_empty()
-            && sel.prev.is_none()
-            && sel.ancestor.is_none()
-        {
+        if sel.prev.is_none() && sel.ancestor.is_none() && super::super::sets::eligible(sel) {
             admission.work(1)?;
-            return Ok(matches(sel, &record.all[record.pos], &[], sibs));
+            return Ok(matches(sel, &all[record.pos], &[], sibs));
         }
         let mut chain = Buffer::default();
         let mut parent = record.parent;
@@ -89,22 +185,16 @@ impl<'a> Scope<'a> {
         }
         for &i in chain.iter().rev() {
             let r = &self.records[i];
-            let mut ancestor = r.all[r.pos].clone();
-            ancestor.peers = Some((r.all.clone(), r.pos));
+            let all = self.all_at(i, tree)?;
+            let mut ancestor = all[r.pos].clone();
+            ancestor.peers = Some((all.clone(), r.pos));
             path.push(ancestor, &admission)?;
         }
         admission.work(path.len() + 1)?;
-        Ok(matches(sel, &record.all[record.pos], &path, sibs))
+        Ok(matches(sel, &all[record.pos], &path, sibs))
     }
 
     pub fn previous(&self, i: usize) -> Option<usize> {
-        if self.records[i].pos == 0 {
-            return None;
-        }
-        let mut previous = i - 1;
-        while self.records[previous].parent != self.records[i].parent {
-            previous = self.records[previous].parent?;
-        }
-        Some(previous)
+        self.records[i].previous
     }
 }

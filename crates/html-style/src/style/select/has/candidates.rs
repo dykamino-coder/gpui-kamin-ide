@@ -1,14 +1,14 @@
 //! Кандидаты предмета :has() и линейная мемоизация простых отношений.
 
+use super::postings::Candidates;
 use super::*;
-use crate::budget::admission::Buffer;
 use scope::Scope;
 
-pub(super) fn candidates(
-    scope: &Scope,
+pub(super) fn candidates<'a>(
+    scope: &'a Scope,
     sel: &Selector,
     tree: &TreeIndex,
-) -> Result<Buffer<usize>, Error> {
+) -> Result<Candidates<'a>, Error> {
     let admission = tree.admission();
     scope.index.candidates(sel, scope.records.len(), &admission)
 }
@@ -43,12 +43,12 @@ pub(super) fn mark_simple(
     scope: &Scope,
     relation: char,
     subject: &Selector,
-    candidates: &[usize],
+    candidates: &Candidates<'_>,
     found: &mut super::marks::Marks,
     tree: &TreeIndex,
 ) -> Result<(), Error> {
     let admission = tree.admission();
-    for &candidate in candidates {
+    for candidate in candidates.iter() {
         if !scope.match_at(subject, candidate, tree)? {
             continue;
         }
@@ -76,7 +76,7 @@ pub(super) fn mark_complex(
     scope: &Scope,
     sibling: bool,
     sel: &Selector,
-    candidates: &[usize],
+    candidates: &Candidates<'_>,
     found: &mut super::marks::Marks,
     tree: &TreeIndex,
 ) -> Result<(), Error> {
@@ -99,12 +99,10 @@ pub(super) fn mark_complex(
         } else {
             (anchor + 1, record.end)
         };
-        let begin = candidates.partition_point(|&i| i < start);
-        let _overlay = tree.matching.anchor(record.all[record.pos].key.clone());
-        for &candidate in &candidates[begin..] {
-            if candidate >= end {
-                break;
-            }
+        let _overlay = tree
+            .matching
+            .anchor(crate::dom::tree_index::NodeKey::of(&record.handle));
+        for candidate in candidates.window(start, end) {
             if scope.match_at(sel, candidate, tree)? {
                 found.propagate(anchor, &admission)?;
                 break;
