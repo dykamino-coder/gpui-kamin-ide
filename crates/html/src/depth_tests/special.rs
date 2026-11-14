@@ -66,6 +66,10 @@ fn inline_grid_math_table_and_multicol_paint_at_browser_depth_on_eight_mib() {
 }
 
 #[test]
+#[cfg_attr(
+    kamin_unoptimized,
+    ignore = "unoptimized float painting exceeds the fixed stack; covered by optimized CI"
+)]
 fn float_paint_at_browser_depth_on_eight_mib() {
     regression::on_eight_mib(|| {
         let mut cx = gpui::TestAppContext::single();
