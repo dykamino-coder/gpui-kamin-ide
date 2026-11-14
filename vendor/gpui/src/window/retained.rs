@@ -201,7 +201,7 @@ impl Window {
                 .iter()
                 .map(|(id, type_id)| (id.clone(), *type_id)),
         );
-        self.text_system.reuse_layouts(from.line_layout_index..to.line_layout_index);
+        self.text_system.reuse_layouts(from.line_layout_index.clone()..to.line_layout_index.clone());
         Some(RetainedPaint { range: start..self.paint_index(), replayable: true })
     }
 }

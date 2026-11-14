@@ -8,6 +8,7 @@ use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 use std::rc::Rc;
 
+mod cells;
 mod far;
 pub(crate) mod mark;
 mod replay;
