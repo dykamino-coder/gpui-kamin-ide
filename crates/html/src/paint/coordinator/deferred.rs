@@ -3,7 +3,7 @@
 use super::*;
 use crate::hooks::{Hooked, Hooks, IntoHooked};
 use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels};
-use queue::{Inline, InlinePaint, Positioned};
+use queue::{Inline, InlinePaint, Positioned, PositionedPaint};
 
 pub(super) struct PositionedTag;
 static POSITIONED: PositionedTag = PositionedTag;
@@ -108,12 +108,12 @@ deferred!(
     PaintLast,
     Some(&POSITIONED),
     |this: &PaintLast, child, pass: &CssPaintPass, window: &Window| {
-        let job = Positioned {
-            key: this.key,
-            child,
-            context: window.paint_ctx(),
-        };
-        pass.jobs.admit(job);
+        let (captures, record) = capture::claim_job(window, pass, this.key);
+        pass.jobs.admit(Positioned {
+            captures,
+            record,
+            ..Positioned::element(this.key, child, window.paint_ctx())
+        });
     },
     |this: &PaintLast, child: AnyElement, window: &Window| {
         // Behind an opaque consumer only a replayed root may still join the
@@ -124,14 +124,13 @@ deferred!(
         let Some(pass) = current(window).filter(|_| replayed) else {
             return Some(child);
         };
-        let job = Positioned {
-            key: this.key,
-            child,
-            context: window.paint_ctx(),
-        };
+        let job = Positioned::element(this.key, child, window.paint_ctx());
         pass.jobs
             .admit_in(&window.paint_scope_id(), job)
-            .map(|job| job.child)
+            .map(|job| match job.paint {
+                PositionedPaint::Element(child) => child,
+                PositionedPaint::Replay(_) => unreachable!("the job was built here"),
+            })
     }
 );
 deferred!(

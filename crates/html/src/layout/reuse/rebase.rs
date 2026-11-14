@@ -28,10 +28,10 @@ impl Store {
     /// `html`/`body` boxes cascade equal values too (their paint-only values
     /// reach it as its own); a block equal but for paint-only values keeps
     /// its record only if it was far from the screen (`Damage::Paint` stands
-    /// only there). Replay records, which hold their output, go. After a
+    /// only there). Replay records go (but see Store::rebase). After a
     /// patch since the last frame (`patch`), the records hold only by the
     /// next build's comparison.
-    pub(crate) fn rebase(&self, old: &[Node], new: &[Node], restyled: Option<&[u64]>) {
+    pub(super) fn rebase_records(&self, old: &[Node], new: &[Node], restyled: Option<&[u64]>) {
         if self.patched.get() {
             return;
         }

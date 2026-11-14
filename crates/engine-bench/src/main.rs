@@ -11,6 +11,8 @@
 mod accounting;
 mod allocations;
 mod args;
+#[cfg(windows)]
+mod build_info;
 mod diagnostics;
 mod edit;
 #[cfg(windows)]
@@ -31,6 +33,8 @@ mod memory;
 mod pixels;
 #[cfg(windows)]
 mod process;
+#[cfg(all(windows, feature = "work-counters"))]
+mod profile_state;
 mod report;
 mod resources;
 #[cfg(windows)]
@@ -65,6 +69,11 @@ fn main() {
     }
     // Политика арен — как у приложения, до первой аллокации стенда.
     kamin_alloc::configure();
+    #[cfg(all(windows, feature = "work-counters"))]
+    if let Err(error) = profile_state::publish() {
+        eprintln!("engine_bench: {error}");
+        std::process::exit(1);
+    }
     diagnostics::init();
     let result = entry();
     #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
@@ -79,6 +88,11 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     if std::env::args().skip(1).eq(["--list-gpus"]) {
         return gpu::catalog();
+    }
+    #[cfg(windows)]
+    if std::env::args().skip(1).eq(["--build-info"]) {
+        println!("{}", build_info::json());
+        return Ok(());
     }
     let Some(args) = args::Args::parse(std::env::args().skip(1))? else {
         println!("{}", args::USAGE);

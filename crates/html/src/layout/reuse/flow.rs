@@ -9,6 +9,7 @@ use gpui::AnyElement;
 use std::rc::Rc;
 
 mod far;
+mod held;
 pub(crate) mod mark;
 mod replay;
 mod skip;
@@ -38,6 +39,10 @@ pub(crate) struct FlowCx {
     /// The rebuild before this build dropped records (`Store::restyled`):
     /// no child is wrapped for recording.
     restyled: bool,
+    /// A run of restyles, or a flow whose root boxes changed paint-only
+    /// values or are unknown: children are recorded for replay only if they
+    /// paint nothing in their colour (`mark::recolour_worth_recording`).
+    recolour: bool,
 }
 
 impl FlowReuse {
@@ -101,6 +106,10 @@ impl FlowReuse {
         let last_exact = last.as_ref().map(|last| {
             last.same_paint(&key) && !(last.stripped(&key) && self.store.repainted_roots.get())
         });
+        // Without a last key after a rebuild (a store started over by a
+        // restyle) the replay records answer by their own keys
+        // (`ReplayRecord::fits`); a fresh document has none.
+        let unknown = last.is_none() && self.store.rebased.get();
         let (settled, resized, settled_outside_widths) = match last {
             Some(last) => (
                 last.same(&key),
@@ -109,9 +118,10 @@ impl FlowReuse {
             ),
             None => (false, false, false),
         };
-        // Replays compare exactly: after a paint-only change of the root boxes
-        // no block will match one, so none is kept or recorded for the next
-        // frame (as for a key changed outside its widths).
+        // After a paint-only change of the root boxes the replays stay for the
+        // blocks that paint nothing in an inherited colour (`unread_color`),
+        // but none is recorded for the next frame.
+        let keep_replays = settled_outside_widths || unknown;
         let settled_outside_widths = settled_outside_widths && last_exact != Some(false);
         let wm = inherited.wm();
         let resized = !settled && resized && !wm.rtl() && !wm.vertical();
@@ -126,7 +136,7 @@ impl FlowReuse {
                 // Записи другого ключа не подойдут, а держат стили кадра записи.
                 self.store.reset();
             }
-            if !settled_outside_widths {
+            if !keep_replays {
                 self.store.reset_replays();
             }
             let warm = self.store.settled.replace(settled) && settled;
@@ -147,6 +157,7 @@ impl FlowReuse {
             settled_outside_widths,
             warm,
             restyled: self.store.restyled.get(),
+            recolour: self.store.restyled.get() || keep_replays && !settled_outside_widths,
             floats: std::cell::Cell::new(false),
         })
     }
@@ -167,7 +178,8 @@ impl FlowCx {
     /// сборка дала ровно один элемент: записью пропуска и повтора на месте
     /// (`recorder`), если сборка инертна, далёкой записью (`far`) и записью
     /// повтора с поддеревом раскладки (`replay`), если они могут пригодиться.
-    pub(crate) fn record(
+    /// Its step-8 wrapper goes on afterwards (`held`).
+    fn record_built(
         &self,
         e: &Element,
         edge: bool,
@@ -182,8 +194,15 @@ impl FlowCx {
             && now.outlines == mark.outlines
             && now.coordinates == mark.coordinates
             && now.late == mark.late
+            && now.queued == mark.queued
             && out.last().is_some_and(|el| el.paint_metadata().is_none());
-        if !single || self.restyled {
+        if !single {
+            return;
+        }
+        if self.restyled {
+            // A run of restyles records only the replays of blocks that paint
+            // nothing in their colour: a recolour replays them (`unread_color`).
+            self.record_replay(e, mark, now.start, opts, out);
             return;
         }
         let skip_at = ((self.settled || self.resized) && (!edge || self.edges) && mark.inert.of(e))

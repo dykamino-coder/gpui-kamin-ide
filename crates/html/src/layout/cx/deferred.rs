@@ -40,6 +40,35 @@ pub struct Deferred {
     /// Строковых заданий (`PaintInline`), собранных этим деревом: сборщик документа
     /// резервирует под них очередь кадра (`PaintCollect::pair_reserving`).
     pub(crate) inline_jobs: std::cell::Cell<u32>,
+    /// The step-8 wrapper (`PaintLast`) of a root-flow child recorded for
+    /// replay goes on outside the recorder (`reuse::FlowCx::record`): the
+    /// flow asks for it by node id, the child's build leaves its paint key.
+    pub(crate) held_paint_last: std::cell::Cell<HeldPaintLast>,
+}
+
+/// The step-8 wrapper of one root-flow child, left to the flow.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub(crate) enum HeldPaintLast {
+    #[default]
+    None,
+    /// The flow records this node: its build leaves the wrapper.
+    Asked(u64),
+    /// The node's build left the wrapper with this paint key, for its element
+    /// at this index of the flow's output.
+    Held(u64, u64, usize),
+}
+
+/// The build of node `node` would wrap its element, pushed at `at`, in
+/// `PaintLast` with `key`: true if the flow asked for the wrapper, which
+/// then holds the key.
+pub(crate) fn hold_paint_last(paint: &Deferred, node: u64, key: u64, at: usize) -> bool {
+    let asked = paint.held_paint_last.get() == HeldPaintLast::Asked(node);
+    if asked {
+        paint
+            .held_paint_last
+            .set(HeldPaintLast::Held(node, key, at));
+    }
+    asked
 }
 
 #[cfg(test)]

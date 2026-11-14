@@ -77,6 +77,27 @@ impl Source {
         .unwrap_or(false)
     }
 
+    /// The subtree of `e` paints like the recorded one: equal values but for
+    /// `color`, which no box of it paints with (`dom::same_unread_color_tree_as`).
+    /// The source then holds the values of `e`, so the previous subtree goes
+    /// with its document.
+    pub(super) fn same_unread_color(&self, e: &Element) -> bool {
+        let Some(tree) = self.tree.take() else {
+            return false;
+        };
+        let same = self.id == e.node_id
+            && crate::dom::same_unread_color_tree_as(&tree.shell, &tree.styles, &tree.children, e);
+        self.tree.set(Some(match same {
+            true => Tree {
+                shell: tree.shell,
+                styles: BoxStyles::of(e),
+                children: e.children.clone(),
+            },
+            false => tree,
+        }));
+        same
+    }
+
     /// The recorded element, for tests.
     #[cfg(test)]
     pub(super) fn element(&self) -> Option<Element> {

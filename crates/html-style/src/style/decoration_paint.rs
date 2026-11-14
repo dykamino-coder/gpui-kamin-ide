@@ -44,6 +44,52 @@ impl DecorationPaint {
     }
 }
 
+impl DecorationPaint {
+    /// Whether the paint result paints like `other`: equal but for the inks
+    /// (`foreground`, those of `preparation`), which no border side or shadow
+    /// of the box of style `style` resolves as `currentcolor`.
+    pub fn same_unread_color(&self, other: &Self, style: &Computed) -> bool {
+        let Self {
+            decorations,
+            preparation,
+            foreground: _,
+            filter,
+            filter_ops,
+            background,
+            border_colors,
+            shadows,
+        } = self;
+        let preparation = match (preparation, &other.preparation) {
+            (None, None) => true,
+            (Some(a), Some(b)) => {
+                let PaintInput {
+                    parent: _,
+                    foreground: _,
+                    element,
+                    declares_color,
+                } = a;
+                *element == b.element && *declares_color == b.declares_color
+            }
+            _ => false,
+        };
+        *decorations == other.decorations
+            && preparation
+            && *filter == other.filter
+            && *filter_ops == other.filter_ops
+            && *background == other.background
+            && *border_colors == other.border_colors
+            && *shadows == other.shadows
+            && !self.reads_color(style)
+    }
+
+    /// Whether a border side or a shadow of the result resolves the ink of
+    /// the box of style `style` as `currentcolor`.
+    pub fn reads_color(&self, style: &Computed) -> bool {
+        style.border_reads_color(&self.border_colors)
+            || self.shadows.iter().any(|s| s.color.depends_on_current())
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PaintInput {
     pub parent: ForegroundPaint,

@@ -200,6 +200,15 @@ impl Positioning {
         layer.unwrap_or_default().place(spot_place)
     }
 
+    /// Boxes waiting in the open layers: a subtree whose build leaves this
+    /// unchanged handed none of its boxes to a layer outside it.
+    pub(crate) fn queued(&self) -> usize {
+        let cb: usize = self.cb.borrow().iter().map(|l| l.taken.len()).sum();
+        let icb: usize = self.icb.borrow().iter().map(OofQueue::len).sum();
+        let late: usize = self.late.borrow().iter().map(OofQueue::len).sum();
+        cb + icb + late
+    }
+
     /// Does the open top paint layer hold anything? The container's child
     /// loop asks before a positioned sibling: the layer is released before
     /// it, so a static-position abspos paints in tree order (CSS 2.1 app. E,

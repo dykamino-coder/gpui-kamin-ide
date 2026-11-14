@@ -165,7 +165,15 @@ pub(super) async fn blocks_flow(
                 continue;
             }
             if let Some(flow) = &reuse
-                && let Some(el) = flow.replay(e, opts)
+                && let Some(el) = flow.replay(e, opts, || {
+                    element::step8::paints_at_step8(
+                        e,
+                        &nodes[idx + 1..],
+                        inherited,
+                        under_tf,
+                        &opts.cx,
+                    )
+                })
             {
                 out.push(el);
                 flow.built(n);
