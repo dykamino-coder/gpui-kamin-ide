@@ -1247,7 +1247,20 @@ tab close (`session:end`):
 `ConnectionManager.disconnect({ endSession: true })` closes the socket in the same tick as
 `session:end`, a user's default `SessionEnd` hook never runs when a chat is closed.
 [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/c03b9150ac95ea64417ab07ea28ce5d49a33f7c8/incidents/BR-18/evidence/2026-11-14-br18a-local-sessionend-1.0.97).
-**Next step:** a Fix PR, after the owner's order (this card asks for a separate order). Direction:
+**Fix 2026-11-14: [#900](https://github.com/dykamino-coder/gpui-kamin-ide/pull/900) merged** (`d8667701`), ordered by the owner. After `session:end`
+the ended tab keeps its socket and answers only relayed `hook:execute` frames. The socket closes when
+the server closes it or after 5 s (the server's teardown grace); a hook that is still running keeps
+it until it has answered. A handoff rebind still closes at once. The new test fails on the old code.
+Marker check on the 1.0.97 install with the candidate bundle: the local `SessionEnd` hook ran in 2 of
+2 runs (+261 ms, +247 ms after the close, audit `success`), and the server hook ran.
+[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/521f6c4ad63ae3b8f102909b1f74d13e1e715fe6/incidents/BR-18/evidence/2026-11-14-br18a-candidate). **Status:** done — ships in the next release. Not covered: a local
+`SessionEnd` on a handoff rebind.
+
+A run during the classification found the token at its 10-session limit for about 3 minutes. Those
+were the detached sessions of a force-killed app, dropped by the server's 10-minute detach grace
+(`DETACH_GRACE_MS`); this is expected.
+
+**Next step (before the fix):** a Fix PR, after the owner's order (this card asks for a separate order). Direction:
 keep the ended tab's socket open for a bounded window, so the server can relay its own
 `SessionEnd`, and close it on the server's close or on a timeout. The PR needs a test that fails on
 the old code, plus this marker check on the candidate.
