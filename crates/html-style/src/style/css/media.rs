@@ -18,7 +18,7 @@ use features::{mq_and, mq_base, mq_or};
 /// Ширина и высота — в точках, тема — тёмная или светлая. Без них правило
 /// пропускалось целиком, и разметка, написанная от узкого экрана вверх,
 /// навсегда оставалась в узком виде.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Media {
     pub width: f32,
     pub height: f32,

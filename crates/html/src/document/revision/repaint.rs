@@ -66,9 +66,21 @@ impl Document {
         }
         let changed = self.invalidation(batch, theme_css)?;
         let input = values.traversal.take_source()?;
-        let restyles = self.restyles(batch, &changed, &input, theme_css);
+        // The probes leave the cache in the state of the DOM after the
+        // batch: it goes back only with a plan (otherwise the document is
+        // rebuilt, and a fresh cache starts from its DOM).
+        let mut cache = self.restyle.take().unwrap_or_default();
+        let restyles = self.restyles(batch, &changed, &input, theme_css, &mut cache);
         values.traversal.retain(input);
-        let restyles = restyles?;
+        let plan = self.restyled(batch, restyles?)?;
+        self.restyle.set(Some(cache));
+        Some(plan)
+    }
+
+    /// The box tree with the attributes of `batch` and the paint values of
+    /// `restyles` written along copied paths.
+    fn restyled(&self, batch: &Batch, restyles: HashMap<u64, Restyle>) -> Option<Plan> {
+        let values = &self.state.values;
         let ids = super::adopt::source_ids(
             &values.traversal.elements(),
             batch.elements.iter().map(|c| &c.element),
@@ -112,32 +124,26 @@ impl Document {
         changed: &crate::dom::invalidation::Changed,
         input: &crate::dom::input::Admitted,
         theme_css: &str,
+        cache: &mut crate::dom::restyle_probe::RestyleCache,
     ) -> Option<HashMap<u64, Restyle>> {
         let values = &self.state.values;
-        let sheets = super::shape::sheets(&input.dom.document);
+        let media = self.state.media();
+        let probe = cache.probe(input, theme_css, media, values).ok()??;
+        // `attr()` reads attributes outside selectors (a `::before` of a
+        // mutated element): such a document is rebuilt.
         let own = batch
             .elements
             .iter()
             .flat_map(|c| c.old.iter().chain(&c.new));
         let mut own = own.filter(|a| &*a.name.local == "style").map(|a| &*a.value);
-        // `attr()` reads attributes outside selectors (a `::before` of a
-        // mutated element): such a document is rebuilt.
-        let all = sheets.iter().map(String::as_str);
-        if all
-            .chain(std::iter::once(theme_css))
-            .any(|css| css.contains("attr("))
-            || own.any(|css| css.contains("attr("))
-        {
+        if probe.reads_attr() || own.any(|css| css.contains("attr(")) {
             return None;
         }
-        let media = self.state.media();
-        let probe = crate::dom::restyle_probe::RestyleProbe::new(input, theme_css, media, values)
-            .ok()??;
         let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
         let targets = crate::dom::invalidation::targets(probe.rules(), changed, &mutated)?;
-        let before = probe.styles(input, values, &targets).ok()?;
+        let before = cache.styles(&probe, input, values, &targets).ok()?;
         batch.write();
-        let after = probe.styles(input, values, &targets);
+        let after = cache.styles(&probe, input, values, &targets);
         batch.undo();
         let after = after.ok()?;
         let ids = super::adopt::source_ids(&values.traversal.elements(), targets.iter());

@@ -91,6 +91,9 @@ pub struct Document {
     retained: Rc<retained::Slot>,
     /// Записи блоков корневого потока; переживают `update` (`layout::reuse`).
     reuse: Rc<crate::layout::reuse::Store>,
+    /// Правила и контексты проб перерасчёта стиля между правками ревизий
+    /// одних значений (`revision::repaint`); новая сборка начинает заново.
+    restyle: Rc<std::cell::Cell<Option<Box<crate::dom::restyle_probe::RestyleCache>>>>,
     /// Текстовый стиль `body`: им набирается текст верхнего уровня, у
     /// которого своего элемента нет.
     root: crate::style::computed::Computed,

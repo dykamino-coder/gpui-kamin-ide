@@ -24,7 +24,7 @@ fn both(old: &str, new: &str) -> (bool, bool) {
 }
 
 /// Вычисленные стили элементов дерева после материализации.
-fn computed(doc: &Document) -> String {
+pub(super) fn computed(doc: &Document) -> String {
     fn walk(nodes: &[Node], out: &mut String) {
         for node in nodes {
             if let Node::Element(e) = node {

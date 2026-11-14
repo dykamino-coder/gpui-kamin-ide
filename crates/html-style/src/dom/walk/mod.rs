@@ -8,7 +8,7 @@ mod leave;
 mod marker;
 mod pending;
 mod probe;
-pub use probe::{Probed, ProbedRest, probe};
+pub use probe::{Chains, Probed, ProbedRest, probe};
 mod sibling_survey;
 pub use ancestor::element_attrs;
 pub(super) use engine::walk_children;

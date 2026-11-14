@@ -61,6 +61,7 @@ mod invalidation;
 mod records;
 mod repaint;
 mod repaint_background;
+mod repaint_sequence;
 mod revision_budget;
 mod text_edits;
 
