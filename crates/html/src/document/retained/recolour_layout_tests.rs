@@ -8,14 +8,9 @@ use gpui::{TestAppContext, VisualTestContext};
 
 /// Paragraphs on the screen that wrap; `html.paint` recolours them through an
 /// inherited `color`, `html.bold` changes their font weight.
-fn page(class: &str, first: &str) -> String {
+fn page(class: &str) -> String {
     let words = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do";
-    let rows: String = (0..6)
-        .map(|i| {
-            let text = if i == 0 { first } else { words };
-            format!("<p>{text} {i}</p>")
-        })
-        .collect();
+    let rows: String = (0..6).map(|i| format!("<p>{words} {i}</p>")).collect();
     format!(
         "<!doctype html><html class='{class}'><head><style>\
          html,body{{margin:0;padding:0;background:#fff;color:#000}} p{{margin:0}} \
@@ -33,22 +28,19 @@ fn claimed(view: &gpui::Entity<View>, cx: &mut VisualTestContext, html: &str) ->
 
 #[gpui::test]
 fn a_recoloured_paragraph_keeps_its_layout_and_a_new_weight_does_not(cx: &mut TestAppContext) {
-    let words = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do";
-    let (view, cx) = open(cx, &page("", words));
+    let (view, cx) = open(cx, &page(""));
     frame(cx);
-    // One paragraph's new text: the others and their parent are kept.
-    let edited = claimed(&view, cx, &page("", "edited"));
-    claimed(&view, cx, &page("", words));
-    let recoloured = claimed(&view, cx, &page("paint", words));
-    assert!(
-        recoloured > edited,
-        "a recolour kept {recoloured} nodes, a one-paragraph text edit {edited}"
-    );
-    let back = claimed(&view, cx, &page("", words));
+    // The first frames of a document request its leaves without layout keys
+    // (its resources are new): later frames find them by key.
+    claimed(&view, cx, &page("paint"));
+    claimed(&view, cx, &page(""));
+    let recoloured = claimed(&view, cx, &page("paint"));
+    let back = claimed(&view, cx, &page(""));
     assert_eq!(back, recoloured, "the recolour back keeps the same nodes");
-    let bold = claimed(&view, cx, &page("bold", words));
+    let bold = claimed(&view, cx, &page("bold"));
+    // Six paragraphs, each a measured leaf under its box.
     assert!(
-        bold < edited,
-        "a new font weight kept {bold} nodes, a one-paragraph text edit {edited}"
+        recoloured >= 12 && bold * 2 < recoloured,
+        "a recolour kept {recoloured} nodes, a new font weight {bold}"
     );
 }

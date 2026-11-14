@@ -77,7 +77,12 @@ impl Document {
                 _ => return None,
             }
         }
-        Some(Plan::Patched(nodes))
+        if restyles.is_empty() {
+            return Some(Plan::Patched(nodes));
+        }
+        let mut restyled: Vec<u64> = restyles.into_keys().collect();
+        restyled.sort_unstable();
+        Some(Plan::Restyled(nodes, restyled))
     }
 
     /// Новые группы UI элементов, чей стиль меняет пакет, по номерам коробок.
