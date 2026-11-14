@@ -76,8 +76,11 @@ impl ReplaySlot {
 /// not in the record, and at the new place it might show. And the recorded
 /// output is scene commands under that mask alone
 /// (`Window::retained_placeable`): nothing in it holds the recorded place.
-/// Blink moves a cached subsequence the same way when only the paint offset
-/// of its box changed by whole pixels.
+/// Blink and Gecko paint a moved box again (Blink invalidates its display
+/// items for the layout change); here the recorded commands are moved.
+///
+/// A block with text is not moved yet: its paragraphs register selection
+/// listeners that hold the recorded place (interactive::selection).
 fn moved_to(r: &Ranges, origin: Point<Pixels>, window: &Window) -> Option<Placement> {
     let mask = r.mask.bounds.scale(r.scale);
     let offset = (origin - r.origin).scale(r.scale);

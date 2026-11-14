@@ -71,32 +71,35 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
     assert_eq!(rebuilt, 1, "a block moved by a fraction was replayed");
 }
 
-/// A block moved by whole device pixels with all its ink on screen replays at
-/// the new place (`ReplaySlot::valid`): its paint and its lines are the
-/// recorded ones moved, and the frame is the fresh build's.
+/// A block without text moved by whole device pixels with all its ink on
+/// screen replays at the new place (`ReplaySlot::valid`): its paint is the
+/// recorded one moved, and the frame is the fresh build's.
 #[gpui::test]
 fn a_block_moved_by_whole_pixels_replays_at_its_new_place(cx: &mut TestAppContext) {
-    let page = |pad: u32| {
+    let page = |text: &str| {
         format!(
             "<body style='margin:0;display:flow-root'>\
-             <p style='margin:0;height:20px;padding-top:{pad}px'>head</p>\
-             <p style='margin:0;background:silver'>\
-             <span style='background:lime'>tail</span> <u>u</u></p></body>"
+             <p style='margin:0;line-height:20px;width:40px'>{text}</p>\
+             <div style='height:20px;background:silver'></div>\
+             <div style='height:30px;background:gray'>\
+             <div style='width:30px;height:10px;background:lime'></div></div></body>"
         )
     };
-    let (view, cx) = settled(cx, &page(0), &page(1));
-    update(&view, cx, &page(0));
-    update(&view, cx, &page(1));
-    update(&view, cx, &page(0));
-    let before = (replayed(&view, cx), reused(&view, cx).2);
-    update(&view, cx, &page(40));
+    let (view, cx) = settled(cx, &page("one"), &page("two"));
+    // The second settled build records the paragraphs for replay.
+    update(&view, cx, &page("one"));
+    update(&view, cx, &page("two"));
+    let before = replayed(&view, cx);
+    // A second line of the narrow head moves the rest by 20px.
+    let taller = page("two two");
+    update(&view, cx, &taller);
     assert_eq!(
-        (replayed(&view, cx) - before.0, reused(&view, cx).2 - before.1),
-        (1, 0),
-        "the moved tail was not replayed"
+        (replayed(&view, cx) as i64 - before as i64, reused(&view, cx).2),
+        (2, 0),
+        "the moved boxes were not replayed"
     );
     let replay = scene(cx);
-    let (_, fresh) = open(cx, &page(40));
+    let (_, fresh) = open(cx, &taller);
     frame(fresh);
     assert_eq!(replay, scene(fresh), "the moved frame differs");
 }
