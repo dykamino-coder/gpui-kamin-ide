@@ -4,7 +4,7 @@ use crate::dom::{BoxStyles, Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use std::any::{Any, TypeId};
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -14,7 +14,7 @@ pub(crate) use eligibility::eligible;
 type Key = (TypeId, u64, u64);
 
 #[derive(Default)]
-pub(crate) struct Store(RefCell<Frames>);
+pub(crate) struct Store(Cell<Frames>);
 
 #[derive(Default)]
 struct Frames {
@@ -77,8 +77,9 @@ impl Input {
 
 impl Store {
     pub(crate) fn begin_frame(&self) {
-        let mut frames = self.0.borrow_mut();
+        let mut frames = self.0.take();
         frames.previous = std::mem::take(&mut frames.current);
+        self.0.set(frames);
     }
 
     /// Только числа: T не должен владеть элементами, LayoutId или замыканиями кадра.
@@ -96,7 +97,8 @@ impl Store {
             _ => None,
         })?;
         let key = (TypeId::of::<T>(), source.node_id, first);
-        let mut frames = self.0.borrow_mut();
+        // Перемещаем записи целиком: снимки стиля не получают mutable-проекций.
+        let mut frames = self.0.take();
         if let Some(entry) = frames
             .current
             .remove(&key)
@@ -105,6 +107,7 @@ impl Store {
         {
             let value = entry.value.clone().downcast().ok();
             frames.current.insert(key, entry);
+            self.0.set(frames);
             return value;
         }
         let value = Rc::<T>::default();
@@ -115,6 +118,7 @@ impl Store {
                 value: value.clone(),
             },
         );
+        self.0.set(frames);
         Some(value)
     }
 }

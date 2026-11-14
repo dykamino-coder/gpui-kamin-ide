@@ -11,7 +11,7 @@ pub(super) type Extent = (f32, Option<Pixels>, Option<Pixels>);
 #[derive(Default)]
 pub(in crate::layout::multicol::deferred) struct Cache {
     pub(super) window: Cell<Option<(f32, f32)>>,
-    pub(super) plans: RefCell<Vec<Plan>>,
+    pub(super) plans: RefCell<Vec<NumericColumnPlan>>,
     pub(super) extents: RefCell<Vec<(Key, Extent)>>,
 }
 
@@ -23,7 +23,7 @@ pub(super) struct Key {
     pub(super) content_extent: bool,
 }
 
-pub(super) struct Plan {
+pub(super) struct NumericColumnPlan {
     pub(super) key: Key,
     pub(super) height: Option<f32>,
     pub(super) kids: Vec<Child>,

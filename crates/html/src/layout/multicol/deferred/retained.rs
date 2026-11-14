@@ -9,7 +9,7 @@ mod eligibility;
 mod state;
 pub(super) use eligibility::simple_tree;
 pub(super) use state::Cache;
-use state::{Child, Extent, Key, Plan};
+use state::{Child, Extent, Key, NumericColumnPlan};
 
 impl Recipe {
     pub(super) fn restore_numeric(
@@ -50,6 +50,7 @@ impl Recipe {
 
     pub(super) fn remember_numeric(&self, stack: &ColumnStack, width: f32, window: &Window) {
         let Some(cache) = &self.numeric else { return };
+        let cache: &Cache = cache;
         let Some(key) = Key::new(stack, width) else {
             return;
         };
@@ -94,7 +95,7 @@ impl Recipe {
         if plans.len() == 4 {
             plans.remove(0);
         }
-        plans.push(Plan {
+        plans.push(NumericColumnPlan {
             key,
             height: stack.forced_h,
             kids,
@@ -129,6 +130,7 @@ impl Recipe {
         window: &Window,
     ) {
         let Some(cache) = &self.numeric else { return };
+        let cache: &Cache = cache;
         let Some(key) = Key::new(stack, width) else {
             return;
         };

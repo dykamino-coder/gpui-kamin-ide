@@ -35,14 +35,11 @@ impl FlowMeasure {
             if i == paragraphs.len() {
                 paragraphs.push(Rc::default());
             }
-            *paragraphs[i].borrow_mut() = value.clone();
+            let paragraph: &Rc<std::cell::RefCell<Vec<f32>>> = &paragraphs[i];
+            *paragraph.borrow_mut() = value.clone();
         }
-        let mut contexts = self.contexts.borrow_mut();
         for (&key, snapshot) in &snapshot.contexts {
-            contexts
-                .entry(key)
-                .or_insert_with(|| Rc::new(Self::for_lines()))
-                .restore_growth(snapshot);
+            self.context(key).restore_growth(snapshot);
         }
     }
 }

@@ -1,6 +1,6 @@
 //! Межкадровый план полос без элементов, LayoutId и рекордеров прошлого кадра.
 
-use super::{BandFlow, Plan, Slot};
+use super::{BandFlow, Plan, Shapes, Slot};
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
@@ -24,7 +24,7 @@ struct NumericSlot {
     x: f32,
     y: f32,
     avail: f32,
-    shapes: Option<super::Shapes>,
+    shapes: Option<Shapes>,
     float_margins: [f32; 2],
     h: Option<f32>,
     kids: Vec<NumericSlot>,
@@ -107,6 +107,7 @@ impl BandFlow {
 
     pub(super) fn validate_retained(&self, window: &gpui::Window) {
         if let Some(cache) = &self.plan.retained {
+            let cache: &NumericPlans = cache;
             let input = (f32::from(window.rem_size()), window.scale_factor());
             if cache.window.replace(Some(input)) != Some(input) {
                 cache.plans.borrow_mut().clear();
