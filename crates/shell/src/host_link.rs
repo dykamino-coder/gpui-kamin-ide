@@ -43,14 +43,21 @@ pub fn event_tx() -> Option<Sender<ShellEvent>> {
     EVENT_TX.get().cloned()
 }
 
-pub(crate) static CLIENT: OnceLock<Mutex<Option<Arc<WsClient>>>> = OnceLock::new();
+/// Текущее соединение: его поколение и WS-клиент. Поколение отличает
+/// отложенные ответы разных соединений (`host::deferred`, BR-19A).
+pub(crate) static CLIENT: OnceLock<Mutex<Option<(u64, Arc<WsClient>)>>> = OnceLock::new();
 
-pub(crate) fn client_slot() -> &'static Mutex<Option<Arc<WsClient>>> {
+pub(crate) fn client_slot() -> &'static Mutex<Option<(u64, Arc<WsClient>)>> {
     CLIENT.get_or_init(|| Mutex::new(None))
 }
 
 /// Текущий WS-клиент (для запросов из UI-действий).
 pub fn client() -> Option<Arc<WsClient>> {
+    current_link().map(|(_, client)| client)
+}
+
+/// Текущее соединение вместе с его поколением.
+pub(crate) fn current_link() -> Option<(u64, Arc<WsClient>)> {
     client_slot().lock().unwrap().clone()
 }
 
