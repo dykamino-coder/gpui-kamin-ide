@@ -82,6 +82,7 @@ FIXES = {
         "Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.",
     ],
     "gpui-windows": [
+        "Debug shaders: embed both HLSL sources and their shared include, compile with rooted virtual filenames and the existing flags, and keep dev/agent binaries independent of the build worktree. The scoped include callback borrows static bytes until synchronous D3DCompile returns; its raw out-pointers are supplied by the compiler. Release keeps its existing embedded bytecode.",
         "Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.",
         "Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.",
         "Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.",
@@ -95,7 +96,7 @@ FIXES = {
         "Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.",
         "Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.",
         "Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state,"
-        " called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory is touched in three places only: the frame-capture"
+        " called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture"
         " readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads"
         " a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and"
         " external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that"

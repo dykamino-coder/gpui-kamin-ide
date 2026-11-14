@@ -48,6 +48,8 @@ mod group_atlas;
 mod group_batch;
 mod texture_pool;
 mod shader_identity;
+#[cfg(debug_assertions)]
+mod shader_compilation;
 mod present_gate;
 mod quad_clear;
 use group_region::Region;
@@ -3190,13 +3192,7 @@ pub(crate) mod shader_resources {
     use anyhow::Result;
 
     #[cfg(debug_assertions)]
-    use windows::{
-        Win32::Graphics::Direct3D::{
-            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
-            ID3DBlob,
-        },
-        core::{HSTRING, PCSTR},
-    };
+    use windows::Win32::Graphics::Direct3D::ID3DBlob;
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     pub(crate) enum ShaderModule {
@@ -3303,71 +3299,9 @@ pub(crate) mod shader_resources {
         }
     }
 
+    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
     #[cfg(debug_assertions)]
-    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
-        unsafe {
-            use windows::Win32::Graphics::{
-                Direct3D::ID3DInclude, Hlsl::D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            };
-
-            let shader_name = if matches!(entry, ShaderModule::EmojiRasterization) {
-                "color_text_raster.hlsl"
-            } else {
-                "shaders.hlsl"
-            };
-
-            let entry = format!(
-                "{}_{}\0",
-                entry.as_str(),
-                match target {
-                    ShaderTarget::Vertex => "vertex",
-                    ShaderTarget::Fragment => "fragment",
-                }
-            );
-            let target = match target {
-                ShaderTarget::Vertex => "vs_4_1\0",
-                ShaderTarget::Fragment => "ps_4_1\0",
-            };
-
-            let mut compile_blob = None;
-            let mut error_blob = None;
-            let shader_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join(&format!("src/{}", shader_name))
-                .canonicalize()?;
-
-            let entry_point = PCSTR::from_raw(entry.as_ptr());
-            let target_cstr = PCSTR::from_raw(target.as_ptr());
-
-            // really dirty trick because winapi bindings are unhappy otherwise
-            let include_handler = &std::mem::transmute::<usize, ID3DInclude>(
-                D3D_COMPILE_STANDARD_FILE_INCLUDE as usize,
-            );
-
-            let ret = D3DCompileFromFile(
-                &HSTRING::from(shader_path.to_str().unwrap()),
-                None,
-                include_handler,
-                entry_point,
-                target_cstr,
-                D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
-                0,
-                &mut compile_blob,
-                Some(&mut error_blob),
-            );
-            if ret.is_err() {
-                let Some(error_blob) = error_blob else {
-                    return Err(anyhow::anyhow!("{ret:?}"));
-                };
-
-                let error_string =
-                    std::ffi::CStr::from_ptr(error_blob.GetBufferPointer() as *const i8)
-                        .to_string_lossy();
-                log::error!("Shader compile error: {}", error_string);
-                return Err(anyhow::anyhow!("Compile error: {}", error_string));
-            }
-            Ok(compile_blob.unwrap())
-        }
-    }
+    use super::shader_compilation::build_shader_blob;
 
     #[cfg(not(debug_assertions))]
     include!(concat!(env!("OUT_DIR"), "/shaders_bytes.rs"));
@@ -3590,3 +3524,7 @@ fn batch_area(scene: &Scene, batch: &PrimitiveBatch) -> (usize, usize, f64) {
 
 #[cfg(test)]
 mod recovery_tests;
+
+// KaminIDE patch: debug shader artifacts do not retain their source directory.
+#[cfg(all(test, debug_assertions))]
+mod shader_tests;
