@@ -11,6 +11,8 @@
 mod accounting;
 mod allocations;
 mod args;
+#[cfg(windows)]
+mod build_info;
 mod diagnostics;
 mod edit;
 #[cfg(windows)]
@@ -86,6 +88,11 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     if std::env::args().skip(1).eq(["--list-gpus"]) {
         return gpu::catalog();
+    }
+    #[cfg(windows)]
+    if std::env::args().skip(1).eq(["--build-info"]) {
+        println!("{}", build_info::json());
+        return Ok(());
     }
     let Some(args) = args::Args::parse(std::env::args().skip(1))? else {
         println!("{}", args::USAGE);

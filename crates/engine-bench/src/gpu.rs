@@ -5,8 +5,8 @@ use serde_json::{Value, json};
 
 pub(super) fn catalog() -> Result<(), Box<dyn std::error::Error>> {
     let mut policies = serde_json::Map::new();
-    for name in ["default", "high-performance", "minimum-power"] {
-        let adapters = gpu_adapters(&GpuAdapterPreference::parse(name)?)?;
+    for name in ["default", "high-performance", "minimum-power", "software"] {
+        let adapters = gpu_adapters(&preference(name)?)?;
         policies.insert(
             name.into(),
             json!(adapters.iter().map(info).collect::<Vec<_>>()),
@@ -14,6 +14,16 @@ pub(super) fn catalog() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("{}", serde_json::to_string_pretty(&policies)?);
     Ok(())
+}
+
+/// Выбор адаптера по `--gpu`: `software` и `warp` — программный растеризатор
+/// (WARP), остальное разбирает платформа. Только стенд: в приложении эти слова
+/// остаются подстрокой имени адаптера.
+pub(super) fn preference(name: &str) -> Result<GpuAdapterPreference, Box<dyn std::error::Error>> {
+    match name {
+        "software" | "warp" => Ok(GpuAdapterPreference::Software),
+        name => Ok(GpuAdapterPreference::parse(name)?),
+    }
 }
 
 fn info(adapter: &GpuAdapterInfo) -> Value {

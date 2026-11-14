@@ -54,12 +54,11 @@ pub(super) async fn sample(
 ) -> Result<(Measured, kamin_html::host::capture::Frame, work::Sample)> {
     let (started, before, seq, resources_time, build_time, timings, phases, work) = window
         .update(cx, |view, window, cx| -> Result<_> {
-            let records = match step {
-                Step::Edit(html) => Some(
-                    view.doc
-                        .mutations(html)
-                        .ok_or("the edit changes the shape of the document")?,
-                ),
+            // Разметка той же формы сводится к записям мутаций до начала замера.
+            // Правка формы (вставка, удаление узла) входит в движок одним путём —
+            // `Document::update` с новой разметкой; он и меряется.
+            let edit = match step {
+                Step::Edit(html) => Some((html, view.doc.mutations(html))),
                 _ => None,
             };
             let started = Instant::now();
@@ -70,10 +69,17 @@ pub(super) async fn sample(
             let mut resources_time = None;
             let mut build_time = None;
             let mut timings = None;
-            if let Some(records) = &records {
+            if let Some((html, records)) = &edit {
                 let t = kamin_html::work::Clock::now();
                 kamin_html::work::phase!(_document, DocumentOther);
-                view.doc.apply(records, BROWSER_CSS)?;
+                match records {
+                    Some(records) => {
+                        view.doc.apply(records, BROWSER_CSS)?;
+                    }
+                    None => {
+                        view.doc.update(html, BROWSER_CSS)?;
+                    }
+                }
                 build_time = Some(t.elapsed());
                 timings = Some(view.doc.build_timings());
             }
@@ -258,6 +264,8 @@ pub(super) async fn run(
     }
     let run = (cx, window, fonts, args, capture, luid);
     frames.finish(&mut report, run).await?;
+    // После замера установившейся памяти: запись сборки — куча стенда, не страницы.
+    report["build"] = super::build_info::json();
     report::print(&report, args.json)?;
     Ok(())
 }

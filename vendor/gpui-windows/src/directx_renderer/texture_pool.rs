@@ -6,6 +6,11 @@ use super::*;
 pub(super) struct Pool(Vec<BlurTexture>, usize);
 
 impl Pool {
+    /// Idle textures the pool keeps for reuse.
+    pub(super) fn idle(&self) -> &[BlurTexture] {
+        &self.0
+    }
+
     pub(super) fn take(&mut self, device: &ID3D11Device, w: u32, h: u32) -> Result<BlurTexture> {
         if let Some(i) = self.0.iter().position(|t| t.width == w && t.height == h) {
             let texture = self.0.swap_remove(i);

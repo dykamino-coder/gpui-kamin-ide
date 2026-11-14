@@ -30,6 +30,10 @@ pub(crate) fn read(device: &ID3D11Device, generation: u64, factory_debug: bool, 
 
 pub(crate) fn pin(preference: &GpuAdapterPreference, context: &GpuDeviceContext) -> Result<GpuAdapterPreference> {
     if *preference == GpuAdapterPreference::Default { return Ok(preference.clone()); }
+    if *preference == GpuAdapterPreference::Software {
+        if context.adapter_flags & 2 == 0 { bail!("Software GPU selection produced a hardware device"); }
+        return Ok(preference.clone());
+    }
     if context.adapter_flags & 2 != 0 { bail!("Explicit GPU selection produced a software device"); }
     let actual = GpuAdapterPreference::ByLuid { high_part: context.luid_high_part, low_part: context.luid_low_part };
     if matches!(preference, GpuAdapterPreference::ByLuid { .. }) && *preference != actual {
@@ -74,6 +78,14 @@ mod tests {
         context.adapter_flags = 2;
         assert!(pin(&GpuAdapterPreference::MinimumPower, &context).is_err());
         assert_eq!(pin(&GpuAdapterPreference::Default, &context).unwrap(), GpuAdapterPreference::Default);
+    }
+    #[test]
+    fn software_selection_accepts_only_a_software_device() {
+        let mut context = hardware();
+        assert!(pin(&GpuAdapterPreference::Software, &context).is_err());
+        context.adapter_flags = 2;
+        assert_eq!(pin(&GpuAdapterPreference::Software, &context).unwrap(), GpuAdapterPreference::Software);
+        assert!(validate_mode(&GpuAdapterPreference::Software, gpui::DebugDevice::Warp).is_err());
     }
 
 }

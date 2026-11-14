@@ -8195,6 +8195,13 @@ impl Window {
         self.platform_window.gpu_specs()
     }
 
+    /// KaminIDE patch: GPU memory the window's renderer holds, one call per texture: owner path
+    /// (`gpu/...`), bytes of pixel storage, bytes of it in use. Nothing on platforms that do not
+    /// report it.
+    pub fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
+        self.platform_window.gpu_memory(sink)
+    }
+
     /// Perform titlebar double-click action.
     /// This is macOS specific.
     pub fn titlebar_double_click(&self) {

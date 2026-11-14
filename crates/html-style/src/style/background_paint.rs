@@ -75,4 +75,31 @@ impl DecorationInput {
             && border_stroke.map(|(_, widths)| widths)
                 == other.inline.border_stroke.map(|(_, widths)| widths)
     }
+
+    /// Whether the paint result resolves the ink of the box of style `style`.
+    pub fn paint_reads_color(&self, style: &super::computed::Computed) -> bool {
+        self.paint.as_ref().is_some_and(|p| p.reads_color(style))
+    }
+
+    /// Whether the box paints like with `other`: equal but for the ink of
+    /// the paint result, which its border and shadows do not resolve
+    /// (`DecorationPaint::same_unread_color`) on the box of style `style`.
+    /// Inline band and stroke colours are resolved values and compare exactly.
+    pub fn same_unread_color(&self, other: &Self, style: &super::computed::Computed) -> bool {
+        let Self {
+            inline,
+            background_paint,
+            paint,
+            canvas,
+        } = self;
+        let paint = match (paint, &other.paint) {
+            (None, None) => true,
+            (Some(a), Some(b)) => std::rc::Rc::ptr_eq(a, b) || a.same_unread_color(b, style),
+            _ => false,
+        };
+        paint
+            && *inline == other.inline
+            && *background_paint == other.background_paint
+            && *canvas == other.canvas
+    }
 }
