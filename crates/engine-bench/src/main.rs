@@ -33,6 +33,8 @@ mod memory;
 mod pixels;
 #[cfg(windows)]
 mod process;
+#[cfg(all(windows, feature = "work-counters"))]
+mod profile_state;
 mod report;
 mod resources;
 #[cfg(windows)]
@@ -67,6 +69,11 @@ fn main() {
     }
     // Политика арен — как у приложения, до первой аллокации стенда.
     kamin_alloc::configure();
+    #[cfg(all(windows, feature = "work-counters"))]
+    if let Err(error) = profile_state::publish() {
+        eprintln!("engine_bench: {error}");
+        std::process::exit(1);
+    }
     diagnostics::init();
     let result = entry();
     #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
