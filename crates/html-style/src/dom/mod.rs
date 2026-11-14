@@ -12,7 +12,7 @@ mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};
 mod box_id;
-pub use box_id::{BoxId, BoxLink};
+pub use box_id::BoxId;
 mod children;
 mod same_tree;
 pub use same_tree::{

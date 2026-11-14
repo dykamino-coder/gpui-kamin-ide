@@ -35,7 +35,7 @@ impl BoxTree {
         self.arena.get(id)
     }
 
-    /// Опубликовать принятый вход. Клоны путей сохраняют привязку к слоту.
+    /// Опубликовать принятый вход той же формы.
     /// Полная сборка той же формы пока связывается по прежним source id;
     /// это адаптер ревизии, а не постоянный NodeKey исходного DOM.
     pub(crate) fn publish(&mut self, nodes: &[Node]) {
@@ -47,9 +47,7 @@ impl BoxTree {
                 continue;
             };
             old.push(id);
-            if record.source != 0 {
-                previous.entry(record.source).or_default().push_back(id);
-            }
+            previous.entry(record.source).or_default().push_back(id);
             pending.push(record.next);
             pending.push(record.first);
         }
@@ -71,21 +69,16 @@ impl BoxTree {
                 continue;
             };
             let Node::Element(e) = node else { continue };
-            let bound = e.marks.box_id.get();
             let fits = |id| {
                 self.arena
                     .get(id)
                     .is_some_and(|r| r.source == e.node_id && r.epoch != epoch)
             };
-            let id = if fits(bound) {
-                Some(bound)
-            } else {
-                previous.get_mut(&e.node_id).and_then(|ids| {
-                    ids.iter()
-                        .position(|&id| fits(id))
-                        .and_then(|at| ids.remove(at))
-                })
-            };
+            let id = previous.get_mut(&e.node_id).and_then(|ids| {
+                ids.iter()
+                    .position(|&id| fits(id))
+                    .and_then(|at| ids.remove(at))
+            });
             let id = id.or_else(|| {
                 self.arena.insert(BoxRecord {
                     parent: *parent,
@@ -115,7 +108,6 @@ impl BoxTree {
                 self.first = id;
             }
             *last = id;
-            e.marks.box_id.set(id);
             pending.push((e.children.iter(), id, BoxId::NONE));
         }
         for id in old {
