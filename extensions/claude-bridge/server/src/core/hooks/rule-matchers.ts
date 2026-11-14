@@ -333,6 +333,12 @@ function powershellCommands(command: string): string[] | null {
   }
   for (let i = 0; i < command.length; i++) {
     const ch = command[i]!
+    const assignment =
+      ch === '$' && !active && words.length === 0 && !skipRedirectTarget
+        ? /^\$(?:[A-Za-z_]\w*(?::[A-Za-z_]\w*)?|\{[A-Za-z_]\w*(?::[A-Za-z_]\w*)?\})\s*(?:\?\?|[+*/%\-])?=(?!=)/.exec(
+            command.slice(i),
+          )
+        : null
     const adjacentVariable =
       ch === '$' && !active && words.length && !skipRedirectTarget
         ? /^\$[A-Za-z_]\w*(?::[A-Za-z_]\w*)?(?==)/.exec(command.slice(i))
@@ -341,7 +347,11 @@ function powershellCommands(command: string): string[] | null {
       ch === '$' && (words.length || skipRedirectTarget)
         ? /^\$\{[A-Za-z_]\w*(?::[A-Za-z_]\w*)?\}/.exec(command.slice(i))
         : null
-    if (ch === "'" || ch === '"') {
+    if (assignment) {
+      // Assignment operators and their variable are outside the RHS CommandAst.
+      // Consume the prefix before braced variables become expression groups.
+      i += assignment[0].length - 1
+    } else if (ch === "'" || ch === '"') {
       const quote = ch
       let closed = false
       for (i++; i < command.length; i++) {
@@ -407,17 +417,6 @@ function powershellCommands(command: string): string[] | null {
     ) {
       // Invocation operators are outside CommandElements in the native AST.
       continue
-    } else if (
-      ch === '=' &&
-      !skipRedirectTarget &&
-      ((words.length === 0 && active && /^\$[A-Za-z_]\w*$/.test(word)) ||
-        (words.length === 1 && !active && /^\$[A-Za-z_]\w*$/.test(words[0]!)))
-    ) {
-      // Assignment syntax is outside the RHS CommandAst. Consume it before
-      // parsing the command so adjacent '=' and invocation operators work too.
-      words = []
-      word = ''
-      active = false
     } else if (adjacentVariable) {
       // An unquoted simple variable followed by '=' is a separate AST element.
       // Recognize it before consuming the word so quotes and escapes stay literal.
