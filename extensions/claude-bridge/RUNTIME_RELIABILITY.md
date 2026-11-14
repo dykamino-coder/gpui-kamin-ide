@@ -2470,3 +2470,43 @@ flush; polling или timer не добавляются. Tests: unit test, чт�
 `PULL_PENDING` приводит к flush без кадра; Windows gate — процедура R6 из
 INC-2026-0002: reveal пересозданного Agents view без pointer даёт rows и
 invoke reply не позже 1 с в статичной странице.
+
+### BR-31A — Keep the UI thread out of a blocked window present
+
+**Child of BR-31 (registered 2026-11-14, kmaint2, lead-directed).** Found in R6 on the installed
+KaminIDE 1.0.97 release candidate (official `6.3.173` image, kmaint profile copy). R6 passed in 19
+of 20 runs. In the missed run the page asked for its rows at 1050 ms and the next pulls came about
+1 s apart (2104, 3168 ms).
+
+**Facts (diag log of that run):**
+- For about 12 s the main window drew one frame per second. Each `[cef]` tick reports
+  `окно сложило 1 кадров ... презент 1000–1015 мс`. The scene itself stayed cheap: layout
+  30–40 ms per tick. Normal ticks draw 4–5 window frames with 1–4 ms of present in total.
+- Every view reported 3 stalled `[outbox]` batches with `dispatch_ago_ms` about 1050 ms. Pulls are
+  dispatched on the UI thread between frames, so they waited for each present.
+- The diagnostic log writer is not involved (#886): ticks stayed 1.0–1.1 s apart with no
+  `[cef]`→`[why]` gap.
+- The episode was seen once. The same app ran about another hour with no present over 300 ms.
+  There was no dwm restart at that time, and the display idle timeout is off.
+
+**Source:** the `present` time is `Window::present()` → `DirectXRenderer::draw`
+(`vendor/gpui-windows/src/directx_renderer.rs`). `draw` passes the frame-latency gate with a zero
+wait, encodes the scene, and calls `IDXGISwapChain::Present(0, 0)`. Without
+`DXGI_PRESENT_DO_NOT_WAIT`, that call may block the calling thread while the GPU or the compositor
+is behind. The log does not split encode time from the `Present` call, so which of the two waited
+is not proven. The outside cause (GPU load from another process, or a compositor stall) is not
+identified.
+
+**Contract:** the UI thread does not wait for presentation. If a frame cannot be queued, it is
+dropped, and the next paint presents the current scene, as with the frame-latency gate.
+
+**Status:** registered; cause inside the renderer not yet split. **Dependency:** none.
+**Acceptance:** a renderer or platform test that fails on the old code: a frame that could not be
+presented makes the next paint require presentation. Plus the diag line splits encode and
+`Present` time, and R6 on the candidate shows no regression (30 runs, rows by 1.1 s).
+**Windows runtime merge gate:** R6 on the exact candidate. The 1 s stall cannot be triggered on
+demand, so the gate checks for regressions and does not reproduce the stall.
+**Evidence:** [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/918f89ec94174e9c9723db3ffdb1452910d9da8e/incidents/INC-2026-0002/evidence/2026-11-14-br31-r6-1.0.97).
+**Next step:** kmaint2: Fix PR. Present with `DXGI_PRESENT_DO_NOT_WAIT`; on
+`DXGI_ERROR_WAS_STILL_DRAWING`, drop the frame and mark that the next paint must present.
+Report encode and `Present` time separately in the `[cef]` line.
