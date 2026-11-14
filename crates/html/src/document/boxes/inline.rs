@@ -5,19 +5,22 @@
 
 use crate::dom::{BoxId, Element};
 use crate::layout::box_kind;
-use std::ops::Range;
+use crate::style::computed::{Display, RubyRole};
 use std::rc::Rc;
+use std::string::String;
 
 #[cfg(test)]
 mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ItemKind {
-    Text(Range<usize>),
+    Text { start: usize, end: usize },
     Open,
     Close,
     HardBreak,
+    Opportunity,
     Atom,
+    RubyAnnotation,
     OutOfFlow,
     Block,
 }
@@ -38,7 +41,7 @@ pub(crate) struct InlineContent {
 
 struct Frame {
     id: BoxId,
-    inline: bool,
+    closes: bool,
     owner: Option<usize>,
     content: Option<InlineContent>,
 }
@@ -50,6 +53,15 @@ pub(super) struct Collection {
 }
 
 impl Collection {
+    pub(super) fn root(&mut self, id: BoxId) {
+        self.frames.push(Frame {
+            id,
+            closes: false,
+            owner: Some(0),
+            content: Some(InlineContent::default()),
+        });
+    }
+
     fn owner(&mut self) -> Option<&mut InlineContent> {
         let index = self.frames.last()?.owner?;
         self.frames[index].content.as_mut()
@@ -62,30 +74,49 @@ impl Collection {
     }
 
     pub(super) fn enter(&mut self, id: BoxId, element: &Element) {
-        let out_of_flow = box_kind::out_of_flow(&element.style.used());
-        let inline = !out_of_flow && box_kind::real_inline(element) && element.tag != "br";
-        let kind = if out_of_flow {
-            ItemKind::OutOfFlow
+        let style = element.style.used();
+        let contents = style.reset_box_layout.display == Some(Display::Contents);
+        let special = matches!(element.tag.as_str(), "br" | "wbr");
+        let out_of_flow = !contents && box_kind::out_of_flow(&style);
+        let ruby = crate::text::ruby::ruby_role(element);
+        let annotation = matches!(ruby, Some(RubyRole::Text | RubyRole::TextContainer));
+        let inline = contents
+            || (!out_of_flow
+                && box_kind::real_inline(element)
+                && !special
+                && ruby != Some(RubyRole::Container)
+                && !annotation);
+        let kind = if contents {
+            None
+        } else if out_of_flow {
+            Some(ItemKind::OutOfFlow)
         } else if element.tag == "br" {
-            ItemKind::HardBreak
+            Some(ItemKind::HardBreak)
+        } else if element.tag == "wbr" {
+            Some(ItemKind::Opportunity)
+        } else if annotation {
+            Some(ItemKind::RubyAnnotation)
         } else if inline {
-            ItemKind::Open
-        } else if box_kind::inline_level_box(element) || box_kind::replaced_tag(element) {
-            ItemKind::Atom
+            Some(ItemKind::Open)
+        } else if ruby == Some(RubyRole::Container) || box_kind::inline_level_box(element) {
+            Some(ItemKind::Atom)
         } else {
-            ItemKind::Block
+            Some(ItemKind::Block)
         };
-        self.item(id, kind);
-        let owner = if inline {
+        if let Some(kind) = kind {
+            self.item(id, kind);
+        }
+        let inherited = if inline {
             self.frames.last().and_then(|frame| frame.owner)
         } else {
-            Some(self.frames.len())
+            None
         };
+        let owner = inherited.unwrap_or(self.frames.len());
         self.frames.push(Frame {
             id,
-            inline,
-            owner,
-            content: (!inline).then(InlineContent::default),
+            closes: inline && !contents,
+            owner: Some(owner),
+            content: inherited.is_none().then(InlineContent::default),
         });
     }
 
@@ -101,7 +132,10 @@ impl Collection {
             content.text.push_str(text);
             content.items.push(Item {
                 box_id,
-                kind: ItemKind::Text(start..content.text.len()),
+                kind: ItemKind::Text {
+                    start,
+                    end: content.text.len(),
+                },
             });
         }
     }
@@ -110,7 +144,7 @@ impl Collection {
         let Some(frame) = self.frames.pop() else {
             return;
         };
-        if frame.inline {
+        if frame.closes {
             self.item(frame.id, ItemKind::Close);
         }
         let content = frame.content.filter(|content| !content.items.is_empty());
