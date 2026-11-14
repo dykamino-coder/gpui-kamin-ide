@@ -86,7 +86,9 @@ fn allocator_requested() -> bool {
     *ASKED.get_or_init(|| {
         let mut value = [0u16; 8];
         // SAFETY: имя завершено нулём, буфер и его длина принадлежат этому кадру стека.
-        unsafe { GetEnvironmentVariableW(NAME.as_ptr(), value.as_mut_ptr(), value.len() as u32) != 0 }
+        unsafe {
+            GetEnvironmentVariableW(NAME.as_ptr(), value.as_mut_ptr(), value.len() as u32) != 0
+        }
     })
 }
 

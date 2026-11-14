@@ -140,6 +140,16 @@ rebuilt with `memprof.py build`.
   at each side's sampled peak and the process peak; a peak shorter than one interval shows only in
   the process peak. With the hidden-desktop launcher the child pid is read from its first line, and
   the bench JSON goes to `cand.json`/`base.json`.
+- `memprof.py phases --exe CAND.exe [--base-exe BASE.exe] --out DIR [--launcher L] -- PAGE.html ...`
+  (or `--from CAND.json [BASE.json]` for bench JSON of earlier runs): memory at the end of every
+  phase of the measured frames, layer by layer: `live` (requested bytes of live Rust blocks),
+  `allocator` (bytes mimalloc has committed), `held` (allocator minus live: freed pages not yet
+  purged, arena commit and rounding), `commit` (private commit of the process), `ws` and its
+  sampled `peak` inside the phase, `gpu` (DXGI local memory of the process). Rows are medians over
+  the frames of a mode; with a base every column is followed by its delta. It needs an
+  `allocation-audit` build for `live`; no probe and no stacks are involved. The allocator column
+  comes from `mi_stats_get` and is written only under `ENGINE_BENCH_ALLOCATOR_MEMORY=1` (set by
+  this command), so ordinary bench JSON keeps its fields. `phases.txt`/`phases.json` hold the table.
 
 ## Probe environment (set by `run`)
 
