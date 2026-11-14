@@ -26,55 +26,75 @@ enum Reach {
     Descendants,
 }
 
-/// The elements `mutated` and those under them that a rule of `rules` may
-/// restyle after the names of `changed` changed on them; `None`: any element
-/// may restyle, or more than the invalidation limit.
-pub fn targets(rules: &[Rule], changed: &Changed, mutated: &[Handle]) -> Option<Vec<Handle>> {
-    let mut features: Vec<Option<(Kind, &str)>> = Vec::new();
+/// The subject features of the rules that read a changed name in an ancestor
+/// compound: what Blink keeps as the descendant invalidation set of the name
+/// (`invalidation_set.h:462`). An entry without a feature: any descendant.
+pub struct Features(Vec<Option<(Kind, String)>>);
+
+/// The descendant features of `rules` for the names of `changed`; `None`: a
+/// rule reads a name where this map does not follow, any element may restyle.
+pub fn features(rules: &[Rule], changed: &Changed) -> Option<Features> {
+    let mut features: Vec<Option<(Kind, String)>> = Vec::new();
     for rule in rules {
         match reach(&rule.sel, changed)? {
             None | Some(Reach::Subject) => {}
             Some(Reach::Descendants) => {
-                let feature = kind(&rule.sel).map(|k| (k, name(&rule.sel, k)));
+                let feature = kind(&rule.sel).map(|k| (k, name(&rule.sel, k).to_string()));
                 if !features.contains(&feature) {
                     features.push(feature);
                 }
             }
         }
     }
-    let mut out: Vec<Handle> = mutated.to_vec();
-    if features.is_empty() {
-        return Some(out);
-    }
-    for root in mutated {
-        let mut stack: Vec<Handle> = root.children.borrow().clone();
-        while let Some(node) = stack.pop() {
-            let NodeData::Element {
-                name: tag, attrs, ..
-            } = &node.data
-            else {
-                continue;
-            };
-            if &*tag.local == "template" {
-                continue;
-            }
-            let hit = {
-                let attrs = attrs.borrow();
-                features.iter().any(|f| match f {
-                    None => true,
-                    Some((kind, feature)) => has(*kind, feature, &tag.local, &attrs),
-                })
-            };
-            if hit && !out.iter().any(|h| std::rc::Rc::ptr_eq(h, &node)) {
-                if out.len() == mutated.len() + LIMIT {
-                    return None;
-                }
-                out.push(node.clone());
-            }
-            stack.extend(node.children.borrow().iter().cloned());
+    Some(Features(features))
+}
+
+/// The elements `mutated` and those under them that a rule of `rules` may
+/// restyle after the names of `changed` changed on them; `None`: any element
+/// may restyle, or more than the invalidation limit.
+pub fn targets(rules: &[Rule], changed: &Changed, mutated: &[Handle]) -> Option<Vec<Handle>> {
+    features(rules, changed)?.targets(mutated)
+}
+
+impl Features {
+    /// The elements `mutated` and those under them that have one of the
+    /// features; `None`: more than the invalidation limit.
+    pub fn targets(&self, mutated: &[Handle]) -> Option<Vec<Handle>> {
+        let features = &self.0;
+        let mut out: Vec<Handle> = mutated.to_vec();
+        if features.is_empty() {
+            return Some(out);
         }
+        for root in mutated {
+            let mut stack: Vec<Handle> = root.children.borrow().clone();
+            while let Some(node) = stack.pop() {
+                let NodeData::Element {
+                    name: tag, attrs, ..
+                } = &node.data
+                else {
+                    continue;
+                };
+                if &*tag.local == "template" {
+                    continue;
+                }
+                let hit = {
+                    let attrs = attrs.borrow();
+                    features.iter().any(|f| match f {
+                        None => true,
+                        Some((kind, feature)) => has(*kind, feature, &tag.local, &attrs),
+                    })
+                };
+                if hit && !out.iter().any(|h| std::rc::Rc::ptr_eq(h, &node)) {
+                    if out.len() == mutated.len() + LIMIT {
+                        return None;
+                    }
+                    out.push(node.clone());
+                }
+                stack.extend(node.children.borrow().iter().cloned());
+            }
+        }
+        Some(out)
     }
-    Some(out)
 }
 
 /// Where `sel` reads a name of `changed`: `Ok(None)` nowhere, `None` (outer)

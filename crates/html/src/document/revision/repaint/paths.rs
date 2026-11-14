@@ -2,7 +2,7 @@
 //! их поддеревья принимают новые значения краски на месте.
 
 use super::Restyle;
-use crate::document::revision::patch::{Path, elements};
+use crate::document::revision::patch::{Path, elements, span, within};
 use crate::dom::{Element, Node};
 use std::collections::HashMap;
 
@@ -34,8 +34,9 @@ pub(super) fn style_paths(
     let mut paths = Vec::new();
     let mut fits = true;
     if !restyles.is_empty() {
+        let span = span(restyles);
         elements(nodes, |e, path| {
-            match restyles.get(&e.node_id) {
+            match within(&span, e).then(|| restyles.get(&e.node_id)).flatten() {
                 Some(r) if e.tag == r.tag => {
                     fits &= e.style.cascaded().same_paint_groups(&r.old) && takes(e, r);
                     paths.push((path.to_vec(), e.node_id));

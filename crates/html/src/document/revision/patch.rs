@@ -66,13 +66,16 @@ pub(super) fn apply<'a>(nodes: &'a mut Vec<Node>, path: &[usize]) -> Option<&'a 
 
 /// Пути ко всем коробкам адресуемых элементов.
 fn find(nodes: &[Node], targets: &HashMap<u64, Target>, paths: &mut Vec<(Path, u64)>) -> bool {
-    elements(nodes, |e, path| match targets.get(&e.node_id) {
-        Some(target) if e.tag == target.tag && e.attrs == target.old => {
-            paths.push((path.to_vec(), e.node_id));
-            true
+    let span = span(targets);
+    elements(nodes, |e, path| {
+        match within(&span, e).then(|| targets.get(&e.node_id)).flatten() {
+            Some(target) if e.tag == target.tag && e.attrs == target.old => {
+                paths.push((path.to_vec(), e.node_id));
+                true
+            }
+            Some(target) => e.tag != target.tag && e.attrs.is_empty(),
+            None => true,
         }
-        Some(target) => e.tag != target.tag && e.attrs.is_empty(),
-        None => true,
     })
 }
 
@@ -99,4 +102,16 @@ pub(super) fn elements(nodes: &[Node], mut visit: impl FnMut(&Element, &[usize])
         stack.push((&e.children, 0));
     }
     true
+}
+
+/// The span of the box numbers of `targets`: a tree walk passes the boxes
+/// outside it without a lookup (the targets of an edit are few and close).
+pub(super) fn span<T>(targets: &HashMap<u64, T>) -> (u64, u64) {
+    let low = targets.keys().copied().min().unwrap_or(1);
+    (low, targets.keys().copied().max().unwrap_or(0))
+}
+
+/// The number of box `e` is within `span`.
+pub(super) fn within(span: &(u64, u64), e: &Element) -> bool {
+    span.0 <= e.node_id && e.node_id <= span.1
 }

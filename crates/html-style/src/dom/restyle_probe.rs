@@ -7,6 +7,7 @@
 //! слоты считаются отдельным предпроходом по всему документу.
 
 use super::input::Admitted;
+use super::invalidation::{Changed, Features, features};
 use super::outcome::DocumentFailure;
 use super::shadow::Scope;
 use super::tree_index::TreeIndex;
@@ -36,7 +37,14 @@ pub struct RestyleProbe {
 pub struct RestyleCache {
     probe: Option<Rc<RestyleProbe>>,
     chains: Chains,
+    /// Признаки потомков по именам пакета (`invalidation::features`): Blink
+    /// держит такой набор на каждое имя листа, здесь он строится при первой
+    /// правке имени.
+    sets: Vec<(Changed, Option<Rc<Features>>)>,
 }
+
+/// Наборов признаков больше этого числа — начинаются заново.
+const SETS: usize = 16;
 
 impl RestyleCache {
     /// Проба документа значений `values`: правила собираются при первой
@@ -58,8 +66,37 @@ impl RestyleCache {
             return Ok(Some(probe.clone()));
         }
         self.chains = Chains::default();
+        self.sets.clear();
         self.probe = RestyleProbe::new(input, extra_css, media, values)?.map(Rc::new);
         Ok(self.probe.clone())
+    }
+
+    /// Элементы `mutated` и те под ними, чей стиль может изменить пакет имён
+    /// `changed` (`invalidation::targets`); `None` — любой элемент.
+    pub fn targets(
+        &mut self,
+        probe: &RestyleProbe,
+        changed: &Changed,
+        mutated: &[Handle],
+    ) -> Option<Vec<Handle>> {
+        let same =
+            |(c, _): &&(Changed, _)| c.classes == changed.classes && c.attrs == changed.attrs;
+        let features = match self.sets.iter().find(same) {
+            Some((_, features)) => features.clone(),
+            None => {
+                let features = features(probe.rules(), changed).map(Rc::new);
+                if self.sets.len() == SETS {
+                    self.sets.clear();
+                }
+                let names = Changed {
+                    elements: Vec::new(),
+                    ..changed.clone()
+                };
+                self.sets.push((names, features.clone()));
+                features
+            }
+        };
+        features?.targets(mutated)
     }
 
     /// Вход в каждый элемент `targets` при текущем состоянии исходного DOM.

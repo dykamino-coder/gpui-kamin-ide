@@ -30,6 +30,7 @@ use crate::dom::Node;
 use crate::style::computed::Computed;
 use paths::{style_paths, wrapped};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Перерасчёт одного элемента: тег его коробок и каскадный стиль до и после
 /// пакета; стили раскладываются одинаково.
@@ -51,7 +52,26 @@ impl Restyle {
     }
 }
 
+/// What the edits of one document keep between them: the texts of its sheets
+/// and the probe of its restyles. The sheets of a document do not change in
+/// place (a build reads the text of a `<style>`, and an edit of a read text
+/// rebuilds), and a rebuilt document starts over.
+#[derive(Default)]
+pub(in crate::document) struct Kept {
+    sheets: Option<Rc<Vec<String>>>,
+    cache: crate::dom::restyle_probe::RestyleCache,
+}
+
 impl Document {
+    /// The texts of the `<style>` sheets under `root`, collected once.
+    pub(super) fn kept_sheets(&self, root: &markup5ever_rcdom::Handle) -> Rc<Vec<String>> {
+        let mut kept = self.restyle.take().unwrap_or_default();
+        let collect = || Rc::new(super::shape::sheets(root));
+        let sheets = kept.sheets.get_or_insert_with(collect).clone();
+        self.restyle.set(Some(kept));
+        sheets
+    }
+
     /// План пакета смен `class` и `data-*`, если перерасчёт стиля меняет у
     /// найденных элементов только значения краски; `None` — нужна сборка.
     pub(super) fn repaint_plan(&self, batch: &Batch, theme_css: &str) -> Option<Plan> {
@@ -69,11 +89,11 @@ impl Document {
         // The probes leave the cache in the state of the DOM after the
         // batch: it goes back only with a plan (otherwise the document is
         // rebuilt, and a fresh cache starts from its DOM).
-        let mut cache = self.restyle.take().unwrap_or_default();
-        let restyles = self.restyles(batch, &changed, &input, theme_css, &mut cache);
+        let mut kept = self.restyle.take().unwrap_or_default();
+        let restyles = self.restyles(batch, &changed, &input, theme_css, &mut kept.cache);
         values.traversal.retain(input);
         let plan = self.restyled(batch, restyles?)?;
-        self.restyle.set(Some(cache));
+        self.restyle.set(Some(kept));
         Some(plan)
     }
 
@@ -140,7 +160,7 @@ impl Document {
             return None;
         }
         let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
-        let targets = crate::dom::invalidation::targets(probe.rules(), changed, &mutated)?;
+        let targets = cache.targets(&probe, changed, &mutated)?;
         let before = cache.styles(&probe, input, values, &targets).ok()?;
         batch.write();
         let after = cache.styles(&probe, input, values, &targets);
