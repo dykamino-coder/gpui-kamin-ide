@@ -49,3 +49,17 @@ fn configure_sets_arena_reserve_unless_environment_overrides() {
         assert_eq!(arena_reserve_kib(), i64::from(ARENA_RESERVE_KIB));
     }
 }
+
+#[test]
+fn allocator_statistics_layout_matches_the_built_mimalloc() {
+    // SAFETY: обычная пара выделения и освобождения mimalloc.
+    unsafe { mi_free(mi_malloc(1 << 20)) };
+    let memory = super::memory().expect("mi_stats_t size or version changed");
+    assert!(memory.committed > 0 && memory.peak_committed >= memory.committed);
+    assert!(memory.reserved >= memory.committed);
+}
+
+unsafe extern "C" {
+    fn mi_malloc(size: usize) -> *mut c_void;
+    fn mi_free(pointer: *mut c_void);
+}

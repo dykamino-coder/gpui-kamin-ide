@@ -21,6 +21,7 @@ pub(super) struct Snapshot {
     pub(super) commit: u64,
     pub(super) peak_rss: u64,
     pub(super) peak_commit: u64,
+    pub(super) allocator: Option<kamin_alloc::Memory>,
 }
 
 impl Snapshot {
@@ -58,12 +59,49 @@ impl Snapshot {
             commit: memory.PrivateUsage as u64,
             peak_rss: memory.PeakWorkingSetSize as u64,
             peak_commit: memory.PeakPagefileUsage as u64,
+            allocator: allocator_requested().then(kamin_alloc::memory).flatten(),
         })
     }
     pub(super) fn json(self) -> Value {
-        json!({"rust_allocations": self.allocations.json(),
+        let mut out = json!({"rust_allocations": self.allocations.json(),
             "rss_bytes": self.rss, "private_commit_bytes": self.commit,
             "process_lifetime_peak_rss_bytes": self.peak_rss,
-            "process_lifetime_peak_commit_bytes": self.peak_commit})
+            "process_lifetime_peak_commit_bytes": self.peak_commit});
+        if let Some(memory) = self.allocator {
+            out["allocator"] = json!({"reserved_bytes": memory.reserved,
+                "committed_bytes": memory.committed,
+                "peak_committed_bytes": memory.peak_committed,
+                "page_committed_bytes": memory.page_committed,
+                "purged_bytes": memory.purged});
+        }
+        out
     }
+}
+
+/// Память аллокатора входит в снимки только по `ENGINE_BENCH_ALLOCATOR_MEMORY`:
+/// её значения зависят от момента очистки арен, а остальной отчёт сравнивают
+/// между сборками поле в поле. Окружение читается без аллокаций.
+fn allocator_requested() -> bool {
+    static ASKED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ASKED.get_or_init(|| {
+        let mut value = [0u16; 8];
+        // SAFETY: имя завершено нулём, буфер и его длина принадлежат этому кадру стека.
+        unsafe { GetEnvironmentVariableW(NAME.as_ptr(), value.as_mut_ptr(), value.len() as u32) != 0 }
+    })
+}
+
+const NAME: [u16; 30] = {
+    let ascii = b"ENGINE_BENCH_ALLOCATOR_MEMORY\0";
+    let mut out = [0; 30];
+    let mut i = 0;
+    while i < 30 {
+        out[i] = ascii[i] as u16;
+        i += 1;
+    }
+    out
+};
+
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn GetEnvironmentVariableW(name: *const u16, buffer: *mut u16, size: u32) -> u32;
 }

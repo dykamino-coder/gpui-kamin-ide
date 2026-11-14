@@ -342,6 +342,44 @@ class Build(unittest.TestCase):
         self.assertGreater(memprof_build.stack_reserve(sys.executable), 0)
 
 
+class Phases(unittest.TestCase):
+    @staticmethod
+    def bench(live, committed, rss):
+        def phase(scale):
+            end = {"rust_allocations": {"live_requested_bytes": live * scale}, "rss_bytes": rss * scale,
+                   "private_commit_bytes": rss * scale + 5}
+            if committed:
+                end["allocator"] = {"committed_bytes": committed * scale}
+            return {"end": end, "sampled_peak_rss_bytes": rss * scale + 1, "end_gpu": {"local_bytes": 7}}
+
+        frames = [{"phases": {"parse": None, "layout": phase(1), "paint": phase(2)}},
+                  {"phases": {"parse": None, "layout": phase(3), "paint": phase(2)}},
+                  {"phases": {"parse": None, "layout": phase(1), "paint": phase(2)}}]
+        return {"modes": {"relayout": {"process_resources": {"samples": frames}}}, "peak_working_set_bytes": rss * 4}
+
+    def test_layers_are_the_median_over_frames_and_held_is_allocator_minus_live(self):
+        import memprof_phases
+
+        report = memprof_phases.build(self.bench(100, 150, 1000), None)
+        layout, paint = report["modes"]["relayout"]
+        self.assertEqual((layout["phase"], layout["frames"]), ("layout", 3))
+        self.assertEqual((layout["cand_live_bytes"], layout["cand_allocator_bytes"], layout["cand_held_bytes"]),
+                         (100, 150, 50))
+        self.assertEqual((paint["cand_ws_bytes"], paint["cand_peak_bytes"], paint["cand_gpu_bytes"]), (2000, 2001, 7))
+        json.dumps(report)
+
+    def test_a_base_gives_deltas_and_a_missing_layer_is_a_dash(self):
+        import memprof_phases
+
+        report = memprof_phases.build(self.bench(100, 150, 1000), self.bench(90, 0, 1000))
+        out = io.StringIO()
+        memprof_phases.render(report, out)
+        row = next(line for line in out.getvalue().splitlines() if line.endswith("layout"))
+        self.assertIn("+0.00", row)  # 100 - 90 bytes of live heap, in MB
+        self.assertEqual(report["modes"]["relayout"][0]["base_allocator_bytes"], None)
+        self.assertEqual(report["modes"]["relayout"][0]["base_held_bytes"], None)
+
+
 @unittest.skipUnless(sys.platform == "win32", "memprof ws reads Windows process memory")
 class WorkingSet(unittest.TestCase):
     def test_pages_are_classified_by_region_type_and_reservation(self):

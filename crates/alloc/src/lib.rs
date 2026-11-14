@@ -18,6 +18,9 @@
 
 use std::ffi::{c_int, c_long};
 
+mod stats;
+pub use stats::{Memory, memory};
+
 // Символы `mi_option_*` даёт статическая библиотека из `libmimalloc-sys`.
 use mimalloc as _;
 

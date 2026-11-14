@@ -808,9 +808,14 @@ def main(argv=None):
     wsp.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
     import memprof_build
+    import memprof_phases
     memprof_build.add_parser(sub)
+    memprof_phases.add_parser(sub)
 
     args = parser.parse_args(argv)
+    if args.command == "phases":
+        launcher = [p.strip('"') for p in shlex.split(args.launcher, posix=False)] if args.launcher else []
+        return memprof_phases.phases_command(args, launcher, preflight)
     if args.command == "build":
         return memprof_build.build_command(args)
     if args.command == "ws":
