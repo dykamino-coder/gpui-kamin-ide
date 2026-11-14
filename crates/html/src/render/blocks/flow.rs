@@ -7,6 +7,7 @@ mod inline_node;
 pub(super) use inline_node::inline_node;
 
 mod element;
+mod leaf;
 mod trim;
 pub(super) use element::paint_element;
 
