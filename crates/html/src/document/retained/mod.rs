@@ -19,6 +19,10 @@ mod far_tests;
 #[cfg(test)]
 mod invalidation_tests;
 #[cfg(test)]
+mod escaped_replay_tests;
+#[cfg(test)]
+mod layered_replay_tests;
+#[cfg(test)]
 mod paint_damage_tests;
 #[cfg(test)]
 mod rebuild_key_tests;
@@ -35,6 +39,8 @@ mod restyle_run_tests;
 mod reuse_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod unread_color_tests;
 mod window_key;
 
 use super::Document;

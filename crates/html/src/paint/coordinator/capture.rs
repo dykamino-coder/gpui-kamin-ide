@@ -2,12 +2,16 @@
 //! CSS 2.1 Appendix E — в конце кадра стопки, после фонов всех блоков потока,
 //! — и вывод краски одного блока их не содержит. Запись блока снимает вывод
 //! этих заданий отдельно, а повтор ставит его в ту же очередь строк кадра на
-//! место исходных заданий. Позиционированные задания (шаги 8–9) блок так не
-//! повторяет: их порядок задаёт весь кадр.
+//! место исходных заданий. Позиционированные задания (шаг 8), ушедшие в
+//! собиратель контекста, снимаются по одному и возвращаются туда же (`jobs`).
+
+mod jobs;
+
+pub(crate) use jobs::JobCapture;
+pub(super) use jobs::{claim as claim_job, lost as job_lost, paint as paint_job};
 
 use super::*;
 use gpui::RetainedPaint;
-use queue::{Inline, InlinePaint};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -25,29 +29,57 @@ pub(crate) struct LineCapture {
     pending: Cell<u64>,
     lost: Cell<bool>,
     lines: RefCell<Vec<RetainedPaint>>,
+    /// Позиционированные задания блока в порядке прихода (`jobs`).
+    jobs: RefCell<Vec<Rc<JobCapture>>>,
+    /// Вложенность: 0 — запись блока, выше — запись отложенного заданием.
+    level: u8,
 }
 
 impl LineCapture {
-    fn new(window: &Window, base: usize) -> Self {
+    fn new(parent: Option<Rc<LineCapture>>, base: usize, level: u8) -> Self {
         Self {
-            parent: window.render_context::<LineCapture>(),
+            parent,
             base,
             open: Cell::new(true),
             claimed: Cell::new(0),
             pending: Cell::new(0),
             lost: Cell::new(false),
             lines: RefCell::default(),
+            jobs: RefCell::default(),
+            level,
         }
     }
 
     /// Вся отложенная краска блока нарисована в этом кадре и повторяема.
     pub(crate) fn complete(&self) -> bool {
-        !self.lost.get() && !self.open.get() && self.pending.get() == 0
+        !self.lost.get()
+            && !self.open.get()
+            && self.pending.get() == 0
+            && self.jobs.borrow().iter().all(|job| job.complete())
+    }
+
+    /// Блок ничего не отложил за свой вывод, и запись полна.
+    fn nothing(&self) -> bool {
+        self.complete() && self.lines.borrow().is_empty() && self.jobs.borrow().is_empty()
+    }
+
+    /// Позиционированное задание блока нарисовано; `replayable` — выводом,
+    /// который можно повторить.
+    fn job_painted(&self, replayable: bool) {
+        self.pending.set(self.pending.get().saturating_sub(1));
+        if !replayable {
+            self.lost.set(true);
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn line_count(&self) -> usize {
         self.lines.borrow().len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn job_count(&self) -> usize {
+        self.jobs.borrow().len()
     }
 
     /// Задание строк блока нарисовано выводом `range`; `own` — только им.
@@ -93,15 +125,26 @@ pub(super) fn claim(window: &Window, pass: &CssPaintPass) -> Box<[Rc<LineCapture
 }
 
 /// Краска блока `f` и её отложенная часть. Задание, ушедшее за вывод `f`
-/// мимо очереди строк (позиционированное), делает запись неполной.
+/// мимо очередей кадра, делает запись неполной.
 pub(crate) fn capture<R>(
     window: &mut Window,
+    f: impl FnOnce(&mut Window) -> R,
+) -> (R, Rc<LineCapture>) {
+    let parent = window.render_context::<LineCapture>();
+    capture_in(window, parent, 0, f)
+}
+
+/// `capture` под внешней записью `parent` на вложенности `level`.
+fn capture_in<R>(
+    window: &mut Window,
+    parent: Option<Rc<LineCapture>>,
+    level: u8,
     f: impl FnOnce(&mut Window) -> R,
 ) -> (R, Rc<LineCapture>) {
     let pass = current(window);
     let base = pass.as_ref().map_or(0, |pass| pass.jobs.depth());
     let before = pass.as_ref().map(|pass| pass.jobs.admitted_below(base));
-    let deferred = Rc::new(LineCapture::new(window, base));
+    let deferred = Rc::new(LineCapture::new(parent, base, level));
     let result = window.with_render_context(Some(deferred.clone()), f);
     deferred.open.set(false);
     if let (Some(pass), Some(before)) = (pass, before)
@@ -113,26 +156,9 @@ pub(crate) fn capture<R>(
 }
 
 /// Повтор отложенной краски `record` полной записи прошлого кадра: её строки
-/// встают в очередь строк открытого кадра, вне него рисуются на месте.
-/// Ответ — та же краска этого кадра.
+/// и позиционированные задания встают в очереди открытого кадра, вне него
+/// рисуются на месте. Ответ — та же краска этого кадра.
 pub(crate) fn replay(window: &mut Window, record: &LineCapture) -> Rc<LineCapture> {
     debug_assert!(record.complete(), "incomplete deferred paint record");
-    capture(window, |window| {
-        for line in record.lines.borrow().iter() {
-            match current(window).filter(|pass| pass.is_open(window)) {
-                Some(pass) => {
-                    let job = Inline {
-                        paint: InlinePaint::Replay(Box::new(line.clone())),
-                        context: window.raster_paint_ctx(&pass.raster),
-                        captures: claim(window, &pass),
-                    };
-                    pass.jobs.admit_inline(job);
-                }
-                None => {
-                    window.replay_retained_paint(line);
-                }
-            }
-        }
-    })
-    .1
+    capture(window, |window| jobs::readmit(window, record)).1
 }

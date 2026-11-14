@@ -13,6 +13,9 @@ pub(crate) struct Mark {
     pub(super) outlines: usize,
     pub(super) coordinates: usize,
     pub(super) late: bool,
+    /// Boxes waiting in the open positioning layers (`Positioning::queued`):
+    /// a replayed subtree hands none of its boxes to a layer outside it.
+    pub(super) queued: usize,
     /// Чтения ширин снаружи сборкой ребёнка (`BoxConstraints::track_widths`).
     pub(super) widths: Option<Rc<std::cell::Cell<bool>>>,
     /// The child's subtree replay record may pay off (`replay_worth_recording`).
@@ -25,6 +28,9 @@ pub(crate) struct Mark {
     pub(super) shared_widths: bool,
     /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
     pub(super) inert: super::super::plain::Inert,
+    /// The paint key of the child's step-8 wrapper, which the flow puts on
+    /// outside its records (`FlowCx::record`).
+    pub(super) paint_last: Option<u64>,
 }
 
 impl super::FlowCx {
@@ -59,11 +65,13 @@ pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
         outlines: paint.outlines.borrow().len(),
         coordinates: paint.coordinates.borrow().len(),
         late: opts.cx.position.state.late_pending(),
+        queued: opts.cx.position.state.queued(),
         widths: None,
         replay: false,
         far: false,
         shared_widths: false,
         inert: Default::default(),
+        paint_last: None,
     }
 }
 
@@ -73,11 +81,20 @@ impl super::FlowCx {
     /// может оказаться далёким блоком (`far_worth_recording`).
     pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
-        mark.replay = self.replay_worth_recording(e);
+        mark.replay = match self.recolour {
+            true => self.recolour_worth_recording(e),
+            false => self.replay_worth_recording(e),
+        };
         // A build of a run of restyles wraps no child (`FlowCx::record`).
         mark.far = !self.restyled && self.far_candidate(e, opts);
         if mark.replay {
             mark.widths = Some(Rc::default());
+            // Its step-8 wrapper goes on outside the replay recorder.
+            opts.cx
+                .deferred
+                .paint
+                .held_paint_last
+                .set(crate::layout::cx::deferred::HeldPaintLast::Asked(e.node_id));
         } else if mark.far {
             // Width reads happen during the child's build only, and
             // `record_far` reads the flag right after it.
@@ -116,6 +133,17 @@ impl super::FlowCx {
     /// пишет следующая, где дальние уже пропущены и собираются лишь ближние и
     /// изменённые. Так Blink `ShouldCreateSubsequence` кэширует
     /// подпоследовательность только там, где повтор вероятен.
+    /// In a run of restyles a replay record pays off for a block that paints
+    /// nothing in its colour (`dom::paints_without_color`): the next restyle,
+    /// typically a recolour, leaves its frame as it was (Blink keeps the
+    /// display items of objects a colour change does not invalidate). Its
+    /// record answers by its own key and widths (`ReplayRecord::fits`).
+    fn recolour_worth_recording(&self, e: &Element) -> bool {
+        !self.floats.get()
+            && !self.reuse.store.banned(e.node_id)
+            && crate::dom::paints_without_color(e)
+    }
+
     fn replay_worth_recording(&self, e: &Element) -> bool {
         self.settled_outside_widths
             && !self.floats.get()

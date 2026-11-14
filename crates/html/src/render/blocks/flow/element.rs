@@ -12,6 +12,7 @@ mod placement;
 pub(crate) use placement::place_element;
 
 mod position;
+pub(crate) mod step8;
 pub(crate) use position::position_element;
 
 use super::BelowRun;

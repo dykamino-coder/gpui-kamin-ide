@@ -1,6 +1,6 @@
 //! Краска блока, отложенная за его вывод (`coordinator::capture`): строки
-//! блока уходят в очередь кадра стопки и снимаются записью блока; всё иное,
-//! ушедшее за вывод, делает запись неполной.
+//! блока и его позиционированные задания уходят в очереди кадра стопки и
+//! снимаются записью блока; всё иное, ушедшее за вывод, делает запись неполной.
 
 use super::{Events, collect, draw, probe};
 use crate::hooks::{IntoHooked, Wrap};
@@ -114,14 +114,55 @@ fn lines_drained_inside_the_block_stay_in_its_output() {
 }
 
 #[test]
-fn positioned_paint_deferred_past_the_block_leaves_the_record_incomplete() {
+fn positioned_paint_deferred_past_the_block_is_captured_as_its_job() {
     let events = Events::default();
     let deferred = captured(&events, || {
         div()
             .child(positioned("positioned", &events))
+            .child(probe("flow", &events))
             .into_any_element()
     });
-    assert!(!deferred.complete());
+    let painted: Vec<_> = events
+        .borrow()
+        .iter()
+        .filter_map(|&(phase, name)| (phase == "paint").then_some(name))
+        .collect();
+    assert_eq!(painted, ["before", "flow", "after", "positioned"]);
+    assert!(deferred.complete(), "the job was painted by the collector");
+    assert_eq!((deferred.job_count(), deferred.line_count()), (1, 0));
+}
+
+#[test]
+fn a_job_keeps_the_lines_and_jobs_it_defers_itself() {
+    let events = Events::default();
+    let deferred = captured(&events, || {
+        let inner = div()
+            .child(inline(probe("line", &events)))
+            .child(positioned("nested", &events));
+        div()
+            .child(PaintLast::new(inner.into_any_element()).key(1))
+            .child(positioned("sibling", &events))
+            .into_any_element()
+    });
+    assert!(deferred.complete(), "what the job deferred was painted too");
+    // The nested job and the line belong to the first job, not to the block.
+    assert_eq!((deferred.job_count(), deferred.line_count()), (2, 0));
+}
+
+#[test]
+fn a_job_admitted_after_the_block_painted_is_not_its_job() {
+    let events = Events::default();
+    let slot = Slot::default();
+    draw(|| {
+        let block = Capturing {
+            child: probe("flow", &events),
+            slot: slot.clone(),
+        };
+        collect(vec![block.hooked(), positioned("later", &events)])
+    });
+    let deferred = slot.take().expect("the block painted");
+    assert!(deferred.complete());
+    assert_eq!(deferred.job_count(), 0);
 }
 
 #[test]
