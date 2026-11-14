@@ -2,6 +2,9 @@
 
 One command per question (docs/memprof.md):
 
+  memprof.py build --out DIR [--worktree WT] [--features allocation-audit]
+      builds engine_bench for profiling: release code, function names in the PDB, no identical-code
+      folding by the linker (scripts/memprof_build.py). Reports warn about an exe built another way.
   memprof.py run --exe CAND.exe [--base-exe BASE.exe] --at build_elements@2 --out DIR -- PAGE.html --mode relayout --runs 1
       runs engine_bench (allocation-audit or heap-profile build, PDB beside the exe) with the allocation
       probe armed from process start to the end of phase build_elements of measured frame 2, then reports.
@@ -36,6 +39,9 @@ import re
 import shlex
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from memprof_symbols import Symbols  # noqa: E402
 
 SCHEMA = "kamin.memprof.v1"
 
@@ -128,7 +134,6 @@ SUBSYSTEMS = (
     ("gpui", "gpui-other"),
     ("kamin_html", "html-other"),
 )
-HASH = re.compile(r"::h[0-9a-f]{16}$")
 HEADER = re.compile(r"# engine_bench alloc stacks v([123]) base=([0-9a-f]+)(.*)")
 OWNED = re.compile(r"^alloc::(?:rc::Rc|sync::Arc|boxed::Box)(?:<[^>]*>)?::new\w*<(.+)>$")
 
@@ -190,49 +195,6 @@ def classify(names):
     if start is None:
         return "?", "other", owned, []
     return kept[start], subsystem(kept, start), owned, kept[start:]
-
-
-class Symbols:
-    """One image loaded at the base address the process ran it at (dbghelp, PDB beside the exe)."""
-
-    count = 0
-
-    def __init__(self, exe, base):
-        import ctypes as c
-        import ctypes.wintypes as w
-
-        self.c = c
-        self.dbg = c.WinDLL("dbghelp", use_last_error=True)
-        self.dbg.SymInitializeW.argtypes = [w.HANDLE, w.LPCWSTR, w.BOOL]
-        self.dbg.SymLoadModuleExW.argtypes = [
-            w.HANDLE, w.HANDLE, w.LPCWSTR, w.LPCWSTR, c.c_uint64, w.DWORD, c.c_void_p, w.DWORD,
-        ]
-        self.dbg.SymLoadModuleExW.restype = c.c_uint64
-        self.dbg.SymFromAddr.argtypes = [w.HANDLE, c.c_uint64, c.POINTER(c.c_uint64), c.c_void_p]
-        Symbols.count += 1
-        self.handle = 0x5A0000 + Symbols.count  # any unique value: no live process is attached
-        exe = pathlib.Path(exe).resolve()
-        if not self.dbg.SymInitializeW(self.handle, str(exe.parent), False):
-            raise OSError(f"SymInitialize failed: {c.get_last_error()}")
-        if not self.dbg.SymLoadModuleExW(self.handle, None, str(exe), None, base, 0, None, 0):
-            raise OSError(f"cannot load symbols of {exe}: {c.get_last_error()}")
-        self.names = {}
-
-    def name(self, address):
-        if address not in self.names:
-            c = self.c
-            info = c.create_string_buffer(88 + 2048)  # SYMBOL_INFO followed by the name
-            c.c_uint32.from_buffer(info, 0).value = 88
-            c.c_uint32.from_buffer(info, 80).value = 2048
-            offset = c.c_uint64()
-            # A return address belongs to the call before it.
-            if self.dbg.SymFromAddr(self.handle, address - 1, c.byref(offset), info):
-                length = c.c_uint32.from_buffer(info, 76).value
-                text = info.raw[84 : 84 + length].decode("utf-8", "replace")
-                self.names[address] = HASH.sub("", text)
-            else:
-                self.names[address] = "?"
-        return self.names[address]
 
 
 class Run:
@@ -373,8 +335,18 @@ class Run:
                 "unmatched_bytes": sum(size for pointer, (_, size) in owned.items() if pointer not in snapshot),
                 "size_mismatches": mismatched, "unreported": unreported}
 
+    def symbol_quality(self):
+        """What the PDB can and cannot name: no function records, or functions folded by the linker."""
+        scan = getattr(self.symbols, "scan", None)
+        if scan is None:
+            return {"functions": None, "folded_addresses": 0, "folded_names": 0}, {}
+        _addresses, functions, folded = scan()
+        groups = {tuple(group) for group in folded.values()}
+        return {"functions": functions, "folded_addresses": len(groups), "folded_names": len(folded)}, folded
+
     def meta(self):
         return {
+            "symbols": self.symbol_quality()[0],
             "exe": self.exe, "stacks": self.path, "version": self.version, "filter": self.filter,
             "frames": list(self.frames) if self.frames else None,
             "until": self.until, "sample_mean_bytes": self.sample, "window_end": self.end,
@@ -427,7 +399,34 @@ def build_report(cand, base, live, depth, top):
                 row.update(base_blocks=bb, base_bytes=bs, delta_blocks=cb - bb, delta_bytes=cs - bs)
             rows.append(row)
         report[section] = rows
+    report.update(symbol_notes(report, [cand] + ([base] if base else [])))
     return report
+
+
+BUILD_HINT = "rebuild both sides with `memprof.py build` (docs/memprof.md)"
+
+
+def symbol_notes(report, runs):
+    """Warnings about what the symbols cannot name, and the folded sites among the reported rows."""
+    warnings, folded = [], {}
+    for name, run in zip(("cand", "base"), runs):
+        quality, names = run.symbol_quality()
+        folded.update(names)
+        if quality["functions"] == 0:
+            warnings.append(f"{name}: the PDB beside the exe has no function records (no PDB, or a build "
+                            f"without debug info): sites and subsystems below are not reliable; {BUILD_HINT}")
+        elif quality["folded_names"]:
+            warnings.append(f"{name}: the exe was linked with identical-code folding (ICF): "
+                            f"{quality['folded_names']} functions share {quality['folded_addresses']} bodies, and a "
+                            f"frame in such a body carries the name of any one of them. Rows marked {{ICF n}} "
+                            f"may belong to another function of that group; {BUILD_HINT}")
+    seen = {}
+    for section in ("sites", "stacks", "unreported_sites", "unreported_stacks"):
+        for row in report.get(section, ()):
+            for frame in (row["site"], *row.get("stack", ())):
+                if frame in folded:
+                    seen[frame] = folded[frame]
+    return {"warnings": warnings, "folded_sites": seen}
 
 
 def owner_sections(cand, base, top, depth=8):
@@ -487,7 +486,7 @@ def render_owners(report, out):
     for row in report["unreported_sites"]:
         size = row["delta_bytes"] if diff else row["cand_bytes"]
         blocks = row["delta_blocks"] if diff else row["cand_blocks"]
-        label = row["site"] + (f" [{row['type']}]" if row["type"] else "")
+        label = marked(report, row["site"]) + (f" [{row['type']}]" if row["type"] else "")
         text = mb(size) if diff else f"{size / 1e6:.3f}"
         print(f"  {text:>10} {blocks:+9d}  {row['subsystem']:<16} {label}", file=out)
 
@@ -496,7 +495,14 @@ def mb(value):
     return f"{value / 1e6:+.3f}" if value else "0"
 
 
-def render(report, out=sys.stdout):
+def marked(report, frame):
+    """The frame name, marked when the linker folded that function with others."""
+    group = report.get("folded_sites", {}).get(frame)
+    return f"{frame} {{ICF {len(group)}}}" if group else frame
+
+
+def render(report, out=None):
+    out = out or sys.stdout
     runs = report["runs"]
     diff = "base" in runs
     c = runs["cand"]
@@ -509,7 +515,7 @@ def render(report, out=sys.stdout):
     for name, run in runs.items():
         counter = run.get("audit_live_bytes_at_end")
         # The audit counter holds every frame: a share is meaningful only without --frames.
-        seen = "" if run.get("frames") else f" ({run['bytes'] / counter:.2%} seen)"
+        seen = "" if run.get("frames") or not counter else f" ({run['bytes'] / counter:.2%} seen)"
         check = f", audit counter {counter / 1e6:.3f} MB{seen}" if counter else ""
         print(f"  {name}: {run['bytes'] / 1e6:.3f} MB in {run['blocks']} blocks{check}"
               f"{', dropped samples ' + str(run['dropped_samples']) if run['dropped_samples'] else ''}"
@@ -520,6 +526,8 @@ def render(report, out=sys.stdout):
         counters = c.get("audit_live_bytes_at_end"), b.get("audit_live_bytes_at_end")
         if all(counters):
             print(f"  audit counter delta: {mb(counters[0] - counters[1])} MB", file=out)
+    for warning in report.get("warnings", ()):
+        print(f"WARNING {warning}", file=out)
     if report.get("owners"):
         render_owners(report, out)
     key = "delta_bytes" if diff else "cand_bytes"
@@ -539,11 +547,19 @@ def render(report, out=sys.stdout):
                 continue
             blocks = row["delta_blocks"] if diff else row["cand_blocks"]
             size = row[key]
-            label = row["site"] + (f" [{row['type']}]" if row["type"] else "")
+            label = marked(report, row["site"]) + (f" [{row['type']}]" if row["type"] else "")
             if section == "stacks":
-                label = " < ".join(row["stack"]) + (f" [{row['type']}]" if row["type"] else "")
+                label = " < ".join(marked(report, frame) for frame in row["stack"])
+                label += f" [{row['type']}]" if row["type"] else ""
             print(f"  {mb(size) if diff else f'{size / 1e6:.3f}':>10} {blocks:+9d}  {row['subsystem']:<16} {label}"
                   if diff else f"  {size / 1e6:10.3f} {blocks:9d}  {row['subsystem']:<16} {label}", file=out)
+    folded = report.get("folded_sites")
+    if folded:
+        print("\nfolded functions ({ICF n}: one body, n names; the frame may be any of them):", file=out)
+        for frame, group in sorted(folded.items()):
+            others = [name for name in group if name != frame]
+            more = f" and {len(others) - 6} more" if len(others) > 6 else ""
+            print(f"  {frame}\n    = " + "\n    = ".join(others[:6]) + more, file=out)
 
 
 def parse_frames(text):
@@ -562,11 +578,45 @@ def report_command(args):
         if len(args.base) != 2:
             raise SystemExit("the base needs both BASE_EXE and BASE_STACKS")
         base = Run(args.base[0], args.base[1], live, frames)
+    report = write_report(cand, base, live, args)
+    if args.delete_stacks:
+        for path in [args.stacks] + ([args.base[1]] if args.base else []):
+            drop_stacks(path)
+    return report
+
+
+def write_report(cand, base, live, args):
     report = build_report(cand, base, live, args.depth, args.top)
     if args.json:
         pathlib.Path(args.json).write_text(json.dumps(report, indent=1), encoding="utf-8")
     render(report)
     return report
+
+
+def drop_stacks(path):
+    """Removes a folded probe file: an exact one is gigabytes, and the report no longer needs it."""
+    size = os.path.getsize(path)
+    os.remove(path)
+    print(f"removed {path} ({size / 1e9:.2f} GB; --keep-stacks keeps it)", file=sys.stderr)
+
+
+def held(patterns):
+    """Hold files that exist now: benches must not start while another measurement owns the machine."""
+    import glob
+    return sorted(path for pattern in patterns.split(os.pathsep) if pattern for path in glob.glob(pattern))
+
+
+def preflight(args, out, exact):
+    """Stops a run that would disturb a measurement in progress or fill the disk."""
+    holds = held(os.environ.get("KAMIN_BENCH_HOLD", ""))
+    if holds and not args.ignore_hold:
+        raise SystemExit(f"hold: {', '.join(holds)} (KAMIN_BENCH_HOLD); not starting engine_bench. "
+                         "Run again when it is gone, or pass --ignore-hold if the hold is yours")
+    import shutil
+    free = shutil.disk_usage(out).free / (1 << 30)
+    if exact and free < args.min_free_gb:
+        raise SystemExit(f"{free:.0f} GiB free at {out}: an exact probe file is several GB per side; "
+                         f"free space, use --sample 16384 or lower --min-free-gb (now {args.min_free_gb})")
 
 
 def diff_command(args):
@@ -575,7 +625,9 @@ def diff_command(args):
         if report.get("schema") != SCHEMA:
             raise SystemExit(f"not a {SCHEMA} report")
     out = {"schema": SCHEMA, "mode": one["mode"], "depth": one["depth"],
-           "runs": {"cand": one["runs"]["cand"], "base": two["runs"]["cand"]}}
+           "runs": {"cand": one["runs"]["cand"], "base": two["runs"]["cand"]},
+           "warnings": [*one.get("warnings", ()), *(w.replace("cand:", "base:", 1) for w in two.get("warnings", ()))],
+           "folded_sites": {**two.get("folded_sites", {}), **one.get("folded_sites", {})}}
     for section, fields in (("subsystems", ("subsystem",)), ("sites", ("subsystem", "site", "type")),
                             ("stacks", ("subsystem", "site", "type", "stack"))):
         def index(report):
@@ -612,8 +664,12 @@ def run_command(args):
         bench = bench[1:]
     if "--json" not in bench:
         bench.append("--json")
+    preflight(args, out, exact=not args.sample)
+    frames = parse_frames(args.frames)
+    runs = []
     for name, exe in sides:
-        env = dict(os.environ, ENGINE_BENCH_ALLOC_STACKS=spec, ENGINE_BENCH_ALLOC_STACKS_OUT=str(out / f"{name}.stacks"))
+        stacks = out / f"{name}.stacks"
+        env = dict(os.environ, ENGINE_BENCH_ALLOC_STACKS=spec, ENGINE_BENCH_ALLOC_STACKS_OUT=str(stacks))
         for key in ("ENGINE_BENCH_ALLOC_STACKS_UNTIL", "ENGINE_BENCH_MEMORY_REPORT"):
             env.pop(key, None)
         if phase:
@@ -629,15 +685,19 @@ def run_command(args):
         with open(out / f"{name}.json", "wb") as stdout, open(out / f"{name}.err", "wb") as stderr:
             code = subprocess.run(command, env=env, stdout=stdout, stderr=stderr,
                                   stdin=subprocess.DEVNULL, timeout=args.timeout).returncode
-        print(f"{name}: exit {code}, {out / (name + '.stacks')}", file=sys.stderr)
+        print(f"{name}: exit {code}, {stacks}", file=sys.stderr)
         if code:
+            if not args.keep_stacks and stacks.exists():
+                drop_stacks(stacks)
             raise SystemExit(f"{name} run failed, see {out / (name + '.err')}")
-    args.stacks = out / "cand.stacks"
-    args.base = [args.base_exe, out / "base.stacks"] if args.base_exe else None
-    args.allocated = False
+        # Each side is folded and its probe file removed before the next side runs: one raw file
+        # on disk at a time.
+        runs.append(Run(exe, stacks, True, frames))
+        if not args.keep_stacks:
+            drop_stacks(stacks)
     args.json = args.json or out / "report.json"
+    report = write_report(runs[0], runs[1] if len(runs) > 1 else None, True, args)
     with open(out / "report.txt", "w", encoding="utf-8") as text:
-        report = report_command(args)
         render(report, text)
 
 
@@ -661,6 +721,11 @@ def main(argv=None):
     run.add_argument("--launcher", help="command prefix, e.g. a hidden-desktop launcher")
     run.add_argument("--timeout", type=int, default=1800)
     run.add_argument("--frames", help="A-B: report only blocks allocated in these frames")
+    run.add_argument("--keep-stacks", action="store_true",
+                     help="keep the raw probe files (GBs in exact mode); by default each is removed once folded")
+    run.add_argument("--min-free-gb", type=float, default=60,
+                     help="an exact run does not start with less free disk space than this (default 60)")
+    run.add_argument("--ignore-hold", action="store_true", help="start even when a KAMIN_BENCH_HOLD file exists")
     run.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
     rep = sub.add_parser("report", parents=[common], help="fold probe files")
@@ -669,6 +734,7 @@ def main(argv=None):
     rep.add_argument("base", nargs="*", help="BASE_EXE BASE_STACKS")
     rep.add_argument("--allocated", action="store_true", help="every allocation of the window, not the live heap")
     rep.add_argument("--frames", help="A-B: only blocks allocated in these frames (frees count in every frame)")
+    rep.add_argument("--delete-stacks", action="store_true", help="remove the probe files once folded")
 
     dif = sub.add_parser("diff", parents=[common], help="compare two saved JSON reports")
     dif.add_argument("cand")
@@ -681,12 +747,20 @@ def main(argv=None):
     wsp.add_argument("--launcher", help="command prefix that prints 'own child: <pid>' first")
     wsp.add_argument("--interval-ms", type=int, default=1, help="working-set sampling interval")
     wsp.add_argument("--step-mb", type=int, default=2, help="new breakdown when the peak grows by this much")
+    wsp.add_argument("--ignore-hold", action="store_true", help="start even when a KAMIN_BENCH_HOLD file exists")
     wsp.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
+    import memprof_build
+    memprof_build.add_parser(sub)
+
     args = parser.parse_args(argv)
+    if args.command == "build":
+        return memprof_build.build_command(args)
     if args.command == "ws":
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import memprof_ws
+        os.makedirs(args.out, exist_ok=True)
+        args.min_free_gb = 0
+        preflight(args, args.out, exact=False)
         launcher = [p.strip('"') for p in shlex.split(args.launcher, posix=False)] if args.launcher else []
         return memprof_ws.ws_command(args, launcher)
     {"run": run_command, "report": report_command, "diff": diff_command}[args.command](args)
