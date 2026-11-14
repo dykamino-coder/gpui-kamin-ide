@@ -53,6 +53,42 @@ impl SharedStyle {
             && same_ptr(&self.box_facts, &other.box_facts)
             && decoration
     }
+
+    /// Whether the paint of the box resolves its colour in any stage or in
+    /// its decoration input (`Computed::paint_reads_color`).
+    pub fn paint_reads_color(&self) -> bool {
+        let base = self.base();
+        self.cascaded.paint_reads_color()
+            || base.paint_reads_color()
+            || self.used.as_ref().is_some_and(|u| u.paint_reads_color())
+            || self
+                .decoration
+                .as_ref()
+                .is_some_and(|d| d.paint_reads_color(&base))
+    }
+
+    /// Like `same`, but the stages may differ in `color` where the paint of
+    /// the box does not read it (`Computed::same_unread_color`), its
+    /// decoration input's ink included (`DecorationInput::same_unread_color`).
+    pub fn same_unread_color(&self, other: &Self) -> bool {
+        let unread =
+            |a: &Rc<Computed>, b: &Rc<Computed>| Rc::ptr_eq(a, b) || a.same_unread_color(b);
+        let used = match (&self.used, &other.used) {
+            (None, None) => true,
+            (Some(a), Some(b)) => unread(a, b),
+            _ => false,
+        };
+        let base = self.base();
+        let decoration = match (&self.decoration, &other.decoration) {
+            (None, None) => true,
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b) || a.same_unread_color(b, &base),
+            _ => false,
+        };
+        used && unread(&self.cascaded, &other.cascaded)
+            && unread(&base, &other.base())
+            && same_ptr(&self.box_facts, &other.box_facts)
+            && decoration
+    }
 }
 
 #[cfg(test)]
