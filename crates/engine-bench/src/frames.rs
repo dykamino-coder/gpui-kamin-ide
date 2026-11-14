@@ -132,6 +132,17 @@ impl Frames {
     /// После чтения пика памяти и вне замеров: проверка relayout по свежему
     /// документу (`fresh`) и аудит устойчивой памяти (`memory::finish`).
     pub(super) async fn finish(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
+        let directory = run.3.frame_diff_dir.as_deref();
+        let result = self.finish_checks(report, run).await;
+        if let Err(error) = &result
+            && let Err(capture) = preserve_failure(directory, report, &error.to_string())
+        {
+            eprintln!("failed-frame capture failed: {capture}; original refusal: {error}");
+        }
+        result
+    }
+
+    async fn finish_checks(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
         let (cx, window, fonts, args, capture, luid) = run;
         self.fresh(report, (&mut *cx, window, fonts, args, capture, luid))
             .await?;
@@ -178,23 +189,28 @@ impl Frames {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn relayout_input_alternates_without_leaving_the_supported_viewport_range() {
-        assert_eq!(viewport((800, 600), true), (801, 600));
-        assert_eq!(viewport((800, 600), false), (800, 600));
-        assert_eq!(viewport((8192, 1), true), (8191, 1));
-        assert_eq!(viewport((1, 8192), true), (2, 8192));
-    }
-
-    #[test]
-    fn counter_reset_cannot_masquerade_as_zero_work() {
-        assert!(delta((5, 9), (1, 9)).is_err());
-        assert!(delta((5, 9), (5, 0)).is_err());
-        assert_eq!(delta((5, 9), (6, 9)).unwrap(), (1, 0));
-        assert_eq!(delta((5, 9), (5, 10)).unwrap(), (0, 1));
-    }
+/// Первая причина отказа и уже сохранённые RGB-артефакты не теряются при retry.
+fn preserve_failure(
+    directory: Option<&std::path::Path>,
+    report: &Value,
+    error: &str,
+) -> Result<()> {
+    let Some(directory) = directory else {
+        return Ok(());
+    };
+    let path = directory.join("failed-frame.json");
+    let file = match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    serde_json::to_writer_pretty(file, &json!({"error": error, "report": report}))?;
+    Ok(())
 }
+
+#[cfg(test)]
+mod tests;
