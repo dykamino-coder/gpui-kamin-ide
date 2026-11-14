@@ -3,17 +3,19 @@
 
 use super::Fitted;
 use crate::{Document, RenderOpts};
-use gpui::{Context, IntoElement, Render, TestAppContext, Window};
-use std::cell::RefCell;
+use gpui::{App, Context, IntoElement, Render, TestAppContext, Window};
 
-thread_local! {
-    /// Per prepainted paragraph: what its atom copies gave at the prepaint width,
-    /// what the real atoms gave, and the copies left after the prepaint.
-    static REFITS: RefCell<Vec<(Fitted, Fitted, usize)>> = const { RefCell::new(Vec::new()) };
-}
+/// Per prepainted paragraph: what its atom copies gave at the prepaint width,
+/// what the real atoms gave, and the copies left after the prepaint. Kept in
+/// the test's own application.
+#[derive(Default)]
+struct Refits(Vec<(Fitted, Fitted, usize)>);
 
-pub(super) fn record(copied: Fitted, real: Fitted, copies_left: usize) {
-    REFITS.with_borrow_mut(|refits| refits.push((copied, real, copies_left)));
+impl gpui::Global for Refits {}
+
+pub(super) fn record(copied: Fitted, real: Fitted, copies_left: usize, cx: &mut App) {
+    let refits = cx.default_global::<Refits>();
+    refits.0.push((copied, real, copies_left));
 }
 
 struct View(Document);
@@ -33,14 +35,13 @@ impl Render for View {
 
 /// The refits of one frame of `html`.
 fn refits(cx: &mut TestAppContext, html: &str) -> Vec<(Fitted, Fitted, usize)> {
-    REFITS.with_borrow_mut(Vec::clear);
     let doc = Document::builder(html, "").build().unwrap();
     let (_, cx) = cx.add_window_view(|_, _| View(doc));
     cx.update(|window, cx| {
         window.refresh();
         window.draw(cx).clear(cx);
-    });
-    REFITS.with_borrow_mut(std::mem::take)
+        std::mem::take(&mut cx.default_global::<Refits>().0)
+    })
 }
 
 const WORDS: &str = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda";

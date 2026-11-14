@@ -50,9 +50,11 @@ impl Paragraph {
         self.apply_atom_fit(&fitted);
         #[cfg(test)]
         {
-            let fit = self.atom_fit.borrow();
-            let left = fit.atoms.iter().filter(|a| a.snap.is_some()).count();
-            super::check::record(copied, fitted, left);
+            let left = {
+                let fit = self.atom_fit.borrow();
+                fit.atoms.iter().filter(|a| a.snap.is_some()).count()
+            };
+            super::check::record(copied, fitted, left, cx);
         }
     }
 }
