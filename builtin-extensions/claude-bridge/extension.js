@@ -43991,6 +43991,10 @@ function chatReplayTail(entries2, max) {
 
 // src/main/ws/session-end-linger.ts
 var SESSION_END_HOOK_WINDOW_MS = 5e3;
+var lingering = /* @__PURE__ */ new Set();
+function endSessionEndLingers() {
+  for (const close of [...lingering]) close();
+}
 function lingerForSessionEnd(sock, runHook, windowMs = SESSION_END_HOOK_WINDOW_MS) {
   let running = 0;
   let windowOver = false;
@@ -43999,6 +44003,7 @@ function lingerForSessionEnd(sock, runHook, windowMs = SESSION_END_HOOK_WINDOW_M
     if (closed) return;
     closed = true;
     clearTimeout(timer);
+    lingering.delete(close);
     if (sock.readyState === wrapper_default.OPEN || sock.readyState === wrapper_default.CONNECTING) sock.close();
   };
   const send = (reply) => {
@@ -44024,7 +44029,9 @@ function lingerForSessionEnd(sock, runHook, windowMs = SESSION_END_HOOK_WINDOW_M
   sock.on("close", () => {
     closed = true;
     clearTimeout(timer);
+    lingering.delete(close);
   });
+  lingering.add(close);
   const timer = setTimeout(() => {
     windowOver = true;
     if (running === 0) close();
@@ -46502,6 +46509,7 @@ var TabManager = class {
     for (const tab of this.tabs.values()) tab.connection.dispose();
     this.tabs.clear();
     this.activeTabId = null;
+    endSessionEndLingers();
   }
   /**
    * Number of open tabs.

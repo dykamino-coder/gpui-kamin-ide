@@ -7,7 +7,7 @@ vi.mock('../plugin-monitors', () => ({ handleMonitorTriggerCommand: vi.fn(async 
 const executeHook = vi.fn(async () => ({ stdout: 'ok', stderr: '', exitCode: 0, outcome: 'success', durationMs: 3 }))
 vi.mock('../hooks/executor', () => ({ executeHook }))
 import { ConnectionManager } from './connection-manager'
-import { SESSION_END_HOOK_WINDOW_MS } from './session-end-linger'
+import { endSessionEndLingers, SESSION_END_HOOK_WINDOW_MS } from './session-end-linger'
 
 // BR-18A: on a tab close the client sent `session:end` and closed its socket in
 // the same tick, so the server's relay of the session's own local SessionEnd
@@ -79,4 +79,16 @@ it('closes at once on a disconnect that does not end the session', () => {
   manager.disconnect()
   expect(socket.close).toHaveBeenCalledOnce()
   expect(socket.sent.some(m => m.type === 'session:end')).toBe(false)
+})
+
+it('closes ended sockets at once when the host shuts down, and only once', async () => {
+  const { manager, socket } = fixture()
+  manager.disconnect({ endSession: true })
+  expect(socket.close).not.toHaveBeenCalled()
+  endSessionEndLingers()
+  expect(socket.close).toHaveBeenCalledOnce()
+  endSessionEndLingers()
+  await vi.advanceTimersByTimeAsync(SESSION_END_HOOK_WINDOW_MS)
+  expect(socket.close).toHaveBeenCalledOnce()
+  expect(vi.getTimerCount()).toBe(0)
 })
