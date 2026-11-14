@@ -69,6 +69,22 @@ export class CliSubmissions {
     return [...this.items.keys()]
   }
 
+  /** Freeze before PTY destruction. Only these IDs can move automatically to
+   * another CLI; native/claimed submits require the user's delivery decision. */
+  handoff(): string[] {
+    clearInterval(this.timer)
+    this.capable = false
+    const safe: string[] = []
+    for (const item of this.items.values()) {
+      if (item.state === 'queued' || (item.state === 'sending' && this.mod.withdrawSubmission(item.id))) {
+        safe.push(item.id)
+        item.state = 'cancelled'
+      }
+    }
+    this.dispatching = undefined
+    return safe
+  }
+
   submit(id: string, text: string): boolean {
     if (!id || id.length > 128 || Buffer.byteLength(text) > 131_072) return false
     const existing = this.items.get(id)
@@ -149,19 +165,32 @@ export class CliSubmissions {
   }
 
   private drain(): void {
-    if (this.dispatching) return
     const item = [...this.items.values()].find((i) => i.state === 'queued')
     if (!item) return
-    const input = getSessionInputSnapshot(this.session)
-    if (input.rawInputDirty) {
-      if (!item.warning) {
-        item.warning = 'The terminal composer has a draft. Clear or send it before delivering this message.'
-        this.emit(item)
-      }
+    const wait = (warning: string) => {
+      if (item.warning === warning) return
+      item.warning = warning
+      this.emit(item)
+    }
+    if (this.dispatching) {
+      wait('Waiting for the CLI to confirm an earlier message. Check its delivery status in the chat.')
       return
     }
-    if (input.activeKind || input.queuedSubmissions || input.pendingMaintenance.length) return
-    if (item.interrupt && this.busy()) return
+    const input = getSessionInputSnapshot(this.session)
+    if (input.rawInputDirty) {
+      wait('The terminal composer has a draft. Clear or send it before delivering this message.')
+      return
+    }
+    // Pending maintenance waits for idle; user input must not wait behind it
+    // during a long turn. The coordinator still serializes active transactions.
+    if (input.activeKind || input.queuedSubmissions) {
+      wait('Waiting for the current terminal input transaction to finish.')
+      return
+    }
+    if (item.interrupt && this.busy()) {
+      wait('Waiting for the CLI to finish interrupting the current turn.')
+      return
+    }
     if (!this.capable || !this.mod.healthy()) {
       this.fallback(item)
       return

@@ -35,6 +35,7 @@ vi.mock('./session-resume-helpers', () => ({
   repairTranscriptForResume: vi.fn(),
   resolveNewestInChain: () => null,
   lastModelEntryForResume: () => null,
+  lastEffortEntryForResume: () => null,
 }))
 vi.mock('./jsonl-watcher', () => ({
   JsonlWatcher: class {

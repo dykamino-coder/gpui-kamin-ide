@@ -51,6 +51,37 @@ describe('client hook executor', () => {
     expect(result.stdout.trim()).toBe(process.execPath)
   })
 
+  it('runs a shell-form hook longer than any argv limit completely, with its stdin payload', async () => {
+    const body = 'Ж'.repeat(70_000)
+    const result = await executeHook(
+      request({
+        command: `: '${body}'\nread -r payload; echo "$payload" | grep -c PreToolUse; echo TAIL_ХВОСТ; exit 5`,
+        args: undefined,
+        shell: 'bash',
+      }),
+    )
+    expect(result.stdout).toContain('1\n')
+    expect(result.stdout).toContain('TAIL_ХВОСТ')
+    expect(result.exitCode).toBe(5)
+  }, 60_000)
+
+  it('decodes split characters and reports a cut stdout instead of passing it on as whole', async () => {
+    const split = await executeHook(request({
+      command: 'node',
+      args: ['-e', "const z=Buffer.from('{\"r\":\"Ж\"}','utf8');process.stdout.write(z.subarray(0,7));setTimeout(()=>process.stdout.write(z.subarray(7)),50)"],
+    }))
+    expect(split.stdout).toBe('{"r":"Ж"}')
+    expect(split.jsonOutput).toEqual({ r: 'Ж' })
+
+    const big = await executeHook(request({
+      command: 'node',
+      args: ['-e', "process.stdout.write('{\"a\":\"'+'x'.repeat(1100000)+'\"}')"],
+    }))
+    expect(big.stdout.length).toBe(1024 * 1024)
+    expect(big.jsonOutput).toBeUndefined()
+    expect(big.stderr).toMatch(/hook stdout exceeded 1048576 characters; \d+ were dropped/)
+  }, 30_000)
+
   it('does not parse stdout JSON when the hook exits with code 2', async () => {
     const result = await executeHook(
       request({

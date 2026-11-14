@@ -46,7 +46,7 @@ import {
   getTestLog as getTestLogShared,
   type McpTestLogEntry,
 } from './test-log'
-import { connectStdio, callStdioTool, stdioJsonRpc } from './transports/stdio'
+import { connectStdio, callStdioTool, stdioJsonRpc, stdioWorkingDirectory } from './transports/stdio'
 import { connectHttp, callHttpTool, httpJsonRpcAuth } from './transports/http'
 import { connectSseLegacy, sseJsonRpcRequest } from './transports/sse-legacy'
 import { connectWs, callWsTool, wsJsonRpc } from './transports/ws'
@@ -80,8 +80,11 @@ const MAX_RECONNECT_ATTEMPTS = 10
  *  reconnect budget) from "the user edited it" (fresh budget, retry). Excludes
  *  cosmetic/source fields (name, sourcePath, enabled) that don't change wiring. */
 function mcpConnectionFingerprint(c: ExternalMcpServerConfig): string {
+  // The project root is appended only when present, so fingerprints (and the
+  // lazy schema cache keyed by them) of every other server stay unchanged.
   return JSON.stringify([c.type, c.command ?? null, c.args ?? null, c.url ?? null,
-    c.env ?? null, c.workingDirectory ?? null, c.headers ?? null])
+    c.env ?? null, c.workingDirectory ?? null, c.headers ?? null,
+    ...(c.projectRoot ? [c.projectRoot] : [])])
 }
 
 /** Ленивые stdio-серверы (экономия RAM): каждый stdio-MCP — child-процесс
@@ -143,6 +146,15 @@ export class McpServerManager {
   private notifyLastAt = 0
   private static readonly NOTIFY_MIN_INTERVAL_MS = 200
 
+  /** Ключ последнего каталога, отданного через onToolsChanged (INC-2026-0042 b).
+   *  Удаление спящего коннектора, повторный discovery и initAll с тёплым кэшем
+   *  меняют экспортируемый каталог без живого процесса и без exit/connect
+   *  callback — раньше сервер оставался со старым снимком до случайной
+   *  регистрации. Сравнение по содержимому (имена, описания, схемы, ресурсы,
+   *  prompts), а не по длине: одинаковое число тулов с новой схемой — тоже
+   *  изменение. */
+  private publishedCatalogKey = JSON.stringify([[], { resources: [], resourceTemplates: [], prompts: [] }])
+
   constructor(window: BrowserWindow) {
     this.window = window
     // One-shot migration: previously we stored manually-added servers in
@@ -176,7 +188,7 @@ export class McpServerManager {
       servers: this.servers,
       appendLog: (id, level, msg) => self.appendLog(id, level, msg),
       notifyChanged: () => self.notifyChanged(),
-      get onToolsChanged() { return self.onToolsChanged },
+      get onToolsChanged() { return self.onToolsChanged ? () => self.publishTools() : null },
       handleServerMessage: (serverId, msg, sendResponse) => self.handleServerMessage(serverId, msg, sendResponse),
       buildHttpHeaders: (id) => self.buildHttpHeaders(id),
       tryRefreshTokens: (id) => self.tryRefreshTokens(id),
@@ -709,6 +721,9 @@ export class McpServerManager {
       try { deleteTokens(url) } catch { /* noop */ }
     }
     this.notifyChanged()
+    // Explicit removal must reach live tabs even while another connector is
+    // connecting. It has no process/exit callback when served from lazy cache.
+    this.publishTools()
   }
 
   /** Update an existing server's editable config (name / type / url / headers /
@@ -780,7 +795,7 @@ export class McpServerManager {
       this.disconnectServer(id)
     }
     this.notifyChanged()
-    this.onToolsChanged?.()
+    this.publishTools()
   }
 
   /** Test connection to a server. Clears the previous log so the user gets
@@ -933,9 +948,7 @@ export class McpServerManager {
       if (state.config.env && Object.keys(state.config.env).length > 0) {
         this.appendLog(id, 'info', `[connect] env keys: ${Object.keys(state.config.env).join(', ')}`)
       }
-      if (state.config.workingDirectory) {
-        this.appendLog(id, 'info', `[connect] cwd: ${state.config.workingDirectory}`)
-      }
+      this.appendLog(id, 'info', `[connect] cwd: ${stdioWorkingDirectory(state.config)}`)
     } else if (state.config.url) {
       this.appendLog(id, 'info', `[connect] url: ${state.config.url}`)
     }
@@ -1014,7 +1027,29 @@ export class McpServerManager {
       else console.error(`[MCP] Failed to connect to "${state.config.name}":`, fullMsg, cause)
     }
     this.notifyChanged()
-    this.onToolsChanged?.()
+    this.publishTools()
+  }
+
+  /** Явная рассылка каталога (connect/toggle/transport/list_changed). Запоминает
+   *  отданный ключ, чтобы trailing notifyChanged не дублировал её. */
+  private publishTools(): void {
+    if (this.disposed || !this.onToolsChanged) return
+    this.publishedCatalogKey = this.catalogKey()
+    this.onToolsChanged()
+  }
+
+  private catalogKey(): string {
+    return JSON.stringify([this.getExternalToolSchemas(), this.getExternalContentCatalog()])
+  }
+
+  /** Публикация изменений без собственного callback (remove/discovery/warm
+   *  cache). Пока какой-то сервер в 'connecting', его тулы временно выпадают из
+   *  экспорта (ленивый кэш исключён) — рассылать такой промежуточный каталог
+   *  значит отнять у CLI тул посреди ленивого вызова. Завершение connect само
+   *  вызывает publishTools и доставит накопленные изменения. */
+  private publishToolsIfChanged(): void {
+    for (const state of this.servers.values()) if (state.status === 'connecting') return
+    if (this.catalogKey() !== this.publishedCatalogKey) this.publishTools()
   }
 
   private disconnectServer(id: string): void {
@@ -1174,7 +1209,7 @@ export class McpServerManager {
       servers: this.servers,
       window: this.window,
       notifyChanged: () => this.notifyChanged(),
-      onToolsChanged: this.onToolsChanged,
+      onToolsChanged: this.onToolsChanged ? () => this.publishTools() : null,
       rpcRequest: (id, method, params) => this.rpcRequest(id, method, params),
     }
   }
@@ -1260,6 +1295,7 @@ export class McpServerManager {
       this.harvestSchemaCache()
       if (this.window.isDestroyed()) return
       this.window.webContents.send('mcp-servers-changed', this.getServers())
+      this.publishToolsIfChanged()
     }, wait)
   }
 

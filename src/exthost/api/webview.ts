@@ -7,6 +7,7 @@
 // and state persistence are deferred to B7c.
 import type { URI } from "vscode-uri"
 import { EventEmitter } from "./shared.js"
+import { EarlyViewMessages } from "./webview-early.js"
 import { splitCreateOptions } from "./webview-options.js"
 import { WebviewPostQueue } from "./webview-post-queue.js"
 import { asWebviewUriFor, resolveRoots, WEBVIEW_CSP_SOURCE } from "./webview-uris.js"
@@ -108,6 +109,8 @@ export class Webviews {
   // id → owning extension id, so disabling an extension closes its panels.
   private readonly panelOwner = new Map<string, string>()
   private restored = false
+  // BR-05: messages for a view not resolved (again) yet, see webview-early.ts.
+  private readonly early = new EarlyViewMessages()
 
   // Relay queue for postMessage — coalescing, frame cap, ordering vs other
   // broadcasts, purge-on-close. See webview-post-queue.ts.
@@ -177,7 +180,9 @@ export class Webviews {
       return
     }
     const registration = this.viewProviders.get(viewId)
-    if (!registration) return
+    // A successful no-op would make the shell's request-once guard permanent,
+    // even though extension activation may register this provider later.
+    if (!registration) throw new Error(`Webview view provider not registered: ${viewId}`)
     this.resolvedViews.add(viewId)
     const { resolvedHtml } = this
     const broadcast = this.posts.broadcastAfterPosts.bind(this.posts) // ordered vs queued posts
@@ -226,6 +231,7 @@ export class Webviews {
     })
     const noopToken = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => { /* never fires */ } }) }
     void registration.provider.resolveWebviewView(view, { state: undefined }, noopToken)
+    for (const msg of this.early.take(viewId)) recv.fire(msg)
   }
 
   createPanel(viewType: string, title: string, showOptions: unknown, options: CreateWebviewOptions, extensionRoot?: string, restoreState?: unknown, ownerExtId?: string) {
@@ -332,11 +338,14 @@ export class Webviews {
   }
 
   /** A message the renderer relayed from the iframe → the panel's emitter. */
-  deliverMessage(id: string, msg: unknown): void { this.panels.get(id)?.receiveMessage(msg) }
+  deliverMessage(id: string, msg: unknown): void {
+    const target = this.panels.get(id)
+    if (target) target.receiveMessage(msg); else this.early.keep(id, msg) // BR-05: not resolved yet
+  }
   /** The renderer reported the panel's active/visible state changed. */
   updateViewState(id: string, active: boolean, visible: boolean): void { this.panels.get(id)?.setViewState(active, visible) }
   /** The user closed the panel's tab in the renderer. */
-  disposeFromRenderer(id: string): void { this.panels.get(id)?.fireDispose() }
+  disposeFromRenderer(id: string): void { this.early.take(id); this.panels.get(id)?.fireDispose() }
 
   /** Close every panel an extension opened — called when it's disabled so its
    *  webviews don't linger as orphaned, script-running tabs. */

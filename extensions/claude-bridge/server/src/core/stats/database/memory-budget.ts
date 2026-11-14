@@ -9,6 +9,7 @@
 
 import fs from 'fs'
 import os from 'os'
+import { debugLog } from '../../logging'
 
 const MiB = 1024 * 1024
 
@@ -22,8 +23,8 @@ export function processMemoryLimitBytes(readFile: (p: string) => string = (p) =>
       const n = Number(raw)
       // v1 reports a huge sentinel for "unlimited".
       if (Number.isFinite(n) && n > 0 && n < total) return n
-    } catch {
-      /* not in a cgroup with a limit */
+    } catch (error) {
+      debugLog('stats: cgroup memory limit unavailable', { path: p, error: String(error) })
     }
   }
   return total

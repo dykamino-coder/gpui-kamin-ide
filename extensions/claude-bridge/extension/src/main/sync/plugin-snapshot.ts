@@ -2,6 +2,7 @@ import fs from 'fs'
 import crypto from 'crypto'
 import os from 'os'
 import path from 'path'
+import { bridgeStatePath } from '../bridge-state'
 import type { SyncPluginData } from '../../shared/sync-types'
 import { listEnabledInstalledPlugins, readEffectivePluginManifest, substituteUserConfig } from '../plugin-helpers'
 import { buildMonitorTriggerHooks } from '../plugin-monitors'
@@ -219,7 +220,7 @@ export function hashPluginHook(event: string, matcher: string | undefined, handl
 function filterApprovedHooks(pluginId: string, hooks: HookSettings): HookSettings {
   let approved: Set<string> | null = null
   try {
-    const file = path.join(os.homedir(), '.claude', 'open-claude-bridge', 'plugin-hook-approvals.json')
+    const file = bridgeStatePath('plugin-hook-approvals.json')
     const store = JSON.parse(fs.readFileSync(file, 'utf-8')) as Record<string, string[]>
     if (Object.prototype.hasOwnProperty.call(store, pluginId)) approved = new Set(store[pluginId] ?? [])
   } catch { /* no approval store */ }

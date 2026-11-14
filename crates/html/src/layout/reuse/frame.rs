@@ -61,9 +61,9 @@ impl FlowReuse {
                                     ScaledPixels(s.height.as_f32() * scale),
                                 ),
                             };
-                            Some(record.ink.map_or(leaf, |i| i.union(&leaf)))
+                            Some(record.ink.get().map_or(leaf, |i| i.union(&leaf)))
                         }
-                        false => record.ink,
+                        false => record.ink.get(),
                     };
                     replay
                         || painted.is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
@@ -87,8 +87,8 @@ impl FlowReuse {
         self.validate_replays(window) && ok
     }
 
-    /// После краски дерева: записи устоявшихся блоков этого кадра. Ожидающие
-    /// записи отдают записи вход сравнения и освобождаются.
+    /// После краски дерева: записи устоявшихся блоков этого кадра завершаются
+    /// на месте (`Record::seal`); незавершённые освобождаются.
     pub(crate) fn finish(&self) {
         let (Some(screen), Some(mask)) = (self.screen.get(), self.mask.get()) else {
             return;
@@ -113,16 +113,18 @@ impl FlowReuse {
         let pending = self.pending.take();
         let tracked = pending.len() as u64;
         let mut unrecorded = self.store.unrecorded.take();
-        // Each pending record goes as its record is made: the two do not
-        // live side by side for the whole flow.
+        // Each record is sealed in place and kept as it is: nothing is
+        // allocated per block here, and the map grows once.
+        next.reserve(pending.len());
         for pending in pending {
-            let node = pending.id();
-            let finished = pending.finish(screen, mask, epoch);
-            if let Some(narrow) = finished.narrow {
+            let node = pending.record.source.id();
+            let (sealed, narrow) = pending.seal(&self.ink, screen, mask, epoch);
+            let record = pending.record;
+            if let Some(narrow) = narrow {
                 self.narrowed.add(narrow);
             }
-            if let Some(record) = finished.record {
-                next.insert(node, Rc::new(record));
+            if sealed {
+                next.insert(node, record);
                 unrecorded.remove(&node);
                 recorded += 1;
             } else {
@@ -133,6 +135,8 @@ impl FlowReuse {
         self.learn_wraps();
         self.finish_replays(screen);
         self.finish_far();
+        // The frame's ink measures are read: the sinks go with the frame.
+        self.ink.release();
         // Кадр без записей и пропусков под тем же ключом оставляет прежние:
         // они подойдут следующему кадру, а их сброс стоил бы этому.
         if recorded > 0 || skipped > 0 {

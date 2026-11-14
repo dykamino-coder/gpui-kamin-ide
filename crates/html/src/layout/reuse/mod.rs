@@ -76,12 +76,16 @@ pub(crate) struct FlowReuse {
     resized: Cell<bool>,
     /// Wraps of this build's blocks (`narrow`).
     narrowed: narrow::Wraps,
-    /// Pending records of this build's wrapped blocks (`recorder`), owned
-    /// here alone: each goes as soon as its record is made (`finish`). Boxed,
-    /// so each frees its own memory there and the growing list moves only
-    /// pointers, not thousands of pending records.
-    #[allow(clippy::vec_box)]
-    pending: RefCell<Vec<Box<recorder::Pending>>>,
+    /// The records this build's wrapped blocks are making, with what the frame
+    /// measures of each (`recorder::Pending`): the wrap of a block knows its
+    /// record by number here, and `finish` seals each in place and keeps it,
+    /// so a recorded block is one allocation after the frame.
+    pending: RefCell<Vec<recorder::Pending>>,
+    /// The ink sinks of this build's records and replays, by number
+    /// (`gpui::InkSinkList`); released when `finish` has read them.
+    ink: Rc<gpui::InkSinkList>,
+    /// The record whose prepaint is running (`lines::with_record`).
+    open: Cell<Option<usize>>,
     /// Shells the sources of this build share (`source`).
     shells: Shells,
     placeholders: RefCell<Vec<Rc<placeholder::Slot>>>,
@@ -163,6 +167,8 @@ impl FlowReuse {
             resized: Cell::new(false),
             narrowed: Default::default(),
             pending: Default::default(),
+            ink: Default::default(),
+            open: Cell::new(None),
             shells: Shells::default(),
             placeholders: Default::default(),
             next_replays: Default::default(),

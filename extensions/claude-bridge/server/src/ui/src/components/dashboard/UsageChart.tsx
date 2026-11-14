@@ -4,11 +4,14 @@ import { api } from '../../services/api-client'
 import { createRequestOwner } from '../../utils/latest-request'
 import { userColor } from '../../utils/user-colors'
 import styles from './UsageChart.module.css'
+import { EngineFilterTabs, engineFilter } from './engine'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface TimeSeriesPoint {
   userName: string
+  /** 'claude' | 'codex'; absent from older servers (= claude). */
+  engine?: string
   period: string
   requests: number
   inputTokens: number
@@ -205,7 +208,10 @@ export function UsageChart() {
   }, [])
 
   const tab = activeTab.value
-  const data = rawData.value
+  // The server splits every point by engine; the shared filter picks one or
+  // sums both, without another request.
+  const engine = engineFilter.value
+  const data = rawData.value.filter((p) => engine === 'all' || (p.engine ?? 'claude') === engine)
   const isLoading = loading.value
 
   function setTab(t: Tab) {
@@ -313,6 +319,7 @@ export function UsageChart() {
           <i class={`fa-solid fa-chart-line ${styles.titleIcon}`} />
           <span class={styles.title}>Usage</span>
         </div>
+        <EngineFilterTabs />
         <div class={styles.periodTabs}>
           {TABS.map((t) => (
             <button

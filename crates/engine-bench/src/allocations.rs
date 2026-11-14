@@ -4,8 +4,13 @@
 #[cfg(feature = "allocation-audit")]
 pub(super) use counted::Counted;
 
-#[cfg(all(windows, feature = "allocation-audit"))]
+#[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
 pub(super) mod probe;
+
+#[cfg(all(feature = "heap-profile", not(feature = "allocation-audit")))]
+mod sampled;
+#[cfg(all(feature = "heap-profile", not(feature = "allocation-audit")))]
+pub(super) use sampled::Sampled;
 
 #[cfg(feature = "allocation-audit")]
 mod counted {
@@ -28,11 +33,20 @@ mod counted {
     }
     // Пробник стеков выключен по умолчанию: тогда это одно чтение флага.
     #[inline]
-    fn stack(kind: u8, bytes: usize) {
+    fn stack(kind: u8, bytes: usize, pointer: *const u8) {
         #[cfg(windows)]
-        super::probe::record(kind, bytes);
+        super::probe::record(kind, bytes, pointer);
         #[cfg(not(windows))]
-        let _ = (kind, bytes);
+        let _ = (kind, bytes, pointer);
+    }
+    // Освобождение пишется до возврата блока mimalloc: иначе другой поток мог бы
+    // получить тот же адрес и записать его выделение раньше этого освобождения.
+    #[inline]
+    fn release(bytes: usize, pointer: *const u8) {
+        #[cfg(windows)]
+        super::probe::release(bytes, pointer);
+        #[cfg(not(windows))]
+        let _ = (bytes, pointer);
     }
     fn freed(bytes: usize) {
         FREED.fetch_add(bytes as u64, Relaxed);
@@ -46,7 +60,7 @@ mod counted {
             let pointer = unsafe { mimalloc::MiMalloc.alloc(layout) };
             if !pointer.is_null() {
                 allocated(layout.size());
-                stack(b'a', layout.size());
+                stack(b'a', layout.size(), pointer);
             }
             pointer
         }
@@ -54,21 +68,26 @@ mod counted {
             let pointer = unsafe { mimalloc::MiMalloc.alloc_zeroed(layout) };
             if !pointer.is_null() {
                 allocated(layout.size());
-                stack(b'z', layout.size());
+                stack(b'z', layout.size(), pointer);
             }
             pointer
         }
         unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+            release(layout.size(), pointer);
             unsafe { mimalloc::MiMalloc.dealloc(pointer, layout) };
             freed(layout.size());
         }
         unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+            release(layout.size(), pointer);
             let next = unsafe { mimalloc::MiMalloc.realloc(pointer, layout, size) };
             if !next.is_null() {
                 // Р Р°Р·РјРµСЂС‹ realloc СѓС‡РёС‚С‹РІР°СЋС‚СЃСЏ РїРѕР»РЅРѕСЃС‚СЊСЋ; failed realloc РѕСЃС‚Р°РІР»СЏРµС‚ СЃС‚Р°СЂС‹Р№ Р±Р»РѕРє.
                 freed(layout.size());
                 allocated(size);
-                stack(b'r', size);
+                stack(b'r', size, next);
+            } else {
+                // Старый блок остался у вызывающего: пробник снова считает его живым.
+                stack(b'a', layout.size(), pointer);
             }
             next
         }

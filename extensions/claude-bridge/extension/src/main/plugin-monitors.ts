@@ -23,6 +23,7 @@ import os from 'os'
 import path from 'path'
 import { spawn, type ChildProcess } from 'child_process'
 import { resolveWorkingDirectory } from './utils/working-directory'
+import { assertCmdLineFits } from './utils/script-file'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import {
   listEnabledInstalledPlugins,
@@ -196,6 +197,7 @@ function spawnMonitor(inst: MonitorInstance): void {
     // `shell: true` mirrors how CLI runs monitors — the `command` field is a
     // shell string (pipes, redirects, &&). On Windows this launches cmd.exe,
     // on POSIX /bin/sh. `windowsHide` prevents flash-of-console windows.
+    assertCmdLineFits(inst.command)
     const proc = spawn(inst.command, {
       shell: true,
       cwd: inst.cwd,
@@ -208,14 +210,17 @@ function spawnMonitor(inst: MonitorInstance): void {
     inst.status = 'running'
     appendLine(inst, 'meta', `[monitor] spawned pid=${proc.pid ?? 'n/a'}: ${inst.command}`)
 
+    // Decode across chunk boundaries so a split multi-byte character stays intact.
+    proc.stdout?.setEncoding('utf8')
+    proc.stderr?.setEncoding('utf8')
     let stdoutBuf = ''
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      stdoutBuf = consumeMonitorOutput(stdoutBuf, chunk.toString(), line => appendLine(inst, 'stdout', line))
+    proc.stdout?.on('data', (chunk: string) => {
+      stdoutBuf = consumeMonitorOutput(stdoutBuf, chunk, line => appendLine(inst, 'stdout', line))
     })
 
     let stderrBuf = ''
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      stderrBuf = consumeMonitorOutput(stderrBuf, chunk.toString(), line => appendLine(inst, 'stderr', line))
+    proc.stderr?.on('data', (chunk: string) => {
+      stderrBuf = consumeMonitorOutput(stderrBuf, chunk, line => appendLine(inst, 'stderr', line))
     })
 
     proc.on('error', (err) => {

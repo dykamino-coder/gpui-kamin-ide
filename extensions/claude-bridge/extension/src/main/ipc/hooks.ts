@@ -6,6 +6,7 @@ import { ipcMain, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { bridgeStatePath } from '../bridge-state'
 import { getHookApprovalReviewMarker, listPendingHookApprovals } from './plugins/handlers-install'
 import { readEffectivePluginManifestSync } from '../plugin-helpers'
 import type { ConfigStore } from '../config/store'
@@ -370,7 +371,7 @@ export function registerHooksIPC(ctx: HooksIpcContext): void {
 
   ipcMain.handle('hooks:get-plugin-approval', async (_e, pluginId: string) => {
     try {
-      const approvalsFile = path.join(os.homedir(), '.claude', 'open-claude-bridge', 'plugin-hook-approvals.json')
+      const approvalsFile = bridgeStatePath('plugin-hook-approvals.json')
       if (!fs.existsSync(approvalsFile)) return { approved: false, hashes: [] }
       const parsed = JSON.parse(fs.readFileSync(approvalsFile, 'utf-8')) as Record<string, string[]>
       return { approved: !!parsed[pluginId], hashes: parsed[pluginId] ?? [] }
@@ -381,7 +382,7 @@ export function registerHooksIPC(ctx: HooksIpcContext): void {
 
   ipcMain.handle('hooks:set-plugin-approval', async (_e, pluginId: string, hashes: string[]) => {
     try {
-      const approvalsFile = path.join(os.homedir(), '.claude', 'open-claude-bridge', 'plugin-hook-approvals.json')
+      const approvalsFile = bridgeStatePath('plugin-hook-approvals.json')
       fs.mkdirSync(path.dirname(approvalsFile), { recursive: true })
       let parsed: Record<string, string[]> = {}
       try { if (fs.existsSync(approvalsFile)) parsed = JSON.parse(fs.readFileSync(approvalsFile, 'utf-8')) } catch { /* ignore */ }

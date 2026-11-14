@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { promises as fs } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { McpTaskStore, TASK_LIMITS, taskView, taskDeadline } from './mcp-task-store'
@@ -75,14 +76,30 @@ describe('durable bounded task lifecycle', () => {
     expect((await store.get('owner', task.taskId))?.result).toBeUndefined()
   })
   it('bounds active admission independently per owner and globally', async () => {
-    for (let i = 0; i < TASK_LIMITS.active; i++)
-      await store.create('owner-' + Math.floor(i / TASK_LIMITS.activePerOwner), 'Bash', {})
-    await expect(store.create('new-owner', 'Bash', {})).rejects.toThrow('capacity')
-    const first = (await store.working())[0]!
-    await store.settle(first.owner, first.taskId, 'done')
+    const initial = await store.create('owner-0', 'Bash', {})
+    // Load real records near capacity; serial fsyncs during fixture setup can
+    // outlive the test and race the next test's directory and mocks on Windows.
+    const history = Array.from({ length: TASK_LIMITS.active - 2 }, (_, index) => ({
+      ...initial,
+      taskId: randomUUID(),
+      owner: 'owner-' + Math.floor((index + 1) / TASK_LIMITS.activePerOwner),
+    }))
+    for (let offset = 0; offset < history.length; offset += 32) {
+      await Promise.all(
+        history
+          .slice(offset, offset + 32)
+          .map((record) => fs.writeFile(path.join(directory, record.taskId + '.json'), JSON.stringify(record))),
+      )
+    }
+    store = new McpTaskStore(directory, () => clock)
+    await expect(store.create('owner-0', 'Bash', {})).rejects.toMatchObject({ reason: 'active_owner' })
+    await store.create('new-owner', 'Bash', {})
+    await expect(store.create('new-owner', 'Bash', {})).rejects.toMatchObject({ reason: 'active_global' })
+    expect(await store.working()).toHaveLength(TASK_LIMITS.active)
+    await store.settle(initial.owner, initial.taskId, 'done')
     await expect(store.create('owner-1', 'Bash', {})).rejects.toThrow('capacity')
     await expect(store.create('new-owner', 'Bash', {})).resolves.toHaveProperty('taskId')
-  })
+  }, 60_000)
   it('expires from creation time and rejects excessive inputs/results', async () => {
     await expect(
       store.create('owner', 'Bash', {
@@ -217,4 +234,19 @@ it('preserves descriptions and full commands, and persists clearing without dest
   expect((await store.commands('owner')).map((t) => t.taskId)).toEqual([active.taskId])
   expect((await store.get('owner', done.taskId))?.result?.content).toEqual([{ type: 'text', text: 'output' }])
   expect(taskView((await store.get('owner', done.taskId))!)).not.toHaveProperty('hiddenFromCommands')
+})
+
+describe('settlement wake-up', () => {
+  it('wakes a waiter when the task is saved settled, not on intermediate updates', async () => {
+    const task = await store.create('owner', 'Bash', { command: 'echo hi' })
+    const wake = vi.fn()
+    const unsubscribe = store.onSettled(task.taskId, wake)
+    await store.update('owner', task.taskId, (t) => {
+      t.delivered = true
+    })
+    expect(wake).not.toHaveBeenCalled()
+    await store.settle('owner', task.taskId, { content: [{ type: 'text', text: 'hi' }] })
+    expect(wake).toHaveBeenCalledTimes(1)
+    unsubscribe()
+  })
 })

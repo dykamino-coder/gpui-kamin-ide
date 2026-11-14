@@ -98,6 +98,7 @@ export function buildStorageHost(requestRenderer: SecretRelay): StorageHost {
     secretKeys: (extId) => storage.secretKeys(extId),
     onSecretChange: (extId, fn) => storage.onSecretChange(extId, fn),
     globalStorageDir: (extId) => storage.globalStorageDir(extId),
+    isDefaultProfile: () => storage.isDefaultProfile(),
     logDir: (extId) => storage.logDir(extId),
     storageDir: (extId) => storage.storageDir(extId),
   }

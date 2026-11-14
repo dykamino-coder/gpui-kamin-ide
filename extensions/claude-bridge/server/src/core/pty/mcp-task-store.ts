@@ -75,6 +75,8 @@ export class McpTaskStore {
   private queued = 0
   private loaded = false
   private inlineOwners = new Map<string, string>()
+  /** Waiters for a record leaving `working`, woken right after the record is saved. */
+  private settledWaiters = new Map<string, Set<() => void>>()
   constructor(
     private directory: string,
     private now = Date.now,
@@ -149,6 +151,7 @@ export class McpTaskStore {
     this.records.delete(id)
     this.bytes -= this.sizes.get(id) ?? 0
     this.sizes.delete(id)
+    this.wake(id)
   }
   private metadata(task: TaskRecord): TaskRecord {
     const { result, ...metadata } = task
@@ -229,6 +232,24 @@ export class McpTaskStore {
     this.records.set(task.taskId, this.metadata(task))
     this.bytes += growth
     this.sizes.set(task.taskId, size)
+    if (task.status !== 'working') this.wake(task.taskId)
+  }
+  private wake(id: string): void {
+    const waiters = this.settledWaiters.get(id)
+    if (!waiters) return
+    this.settledWaiters.delete(id)
+    for (const wake of waiters) wake()
+  }
+  /** Calls `wake` once when the task is saved in a terminal state; returns the
+   *  unsubscribe. Callers re-read the record afterwards, so a spurious wake is safe. */
+  onSettled(id: string, wake: () => void): () => void {
+    let waiters = this.settledWaiters.get(id)
+    if (!waiters) this.settledWaiters.set(id, (waiters = new Set()))
+    waiters.add(wake)
+    return () => {
+      waiters!.delete(wake)
+      if (waiters!.size === 0 && this.settledWaiters.get(id) === waiters) this.settledWaiters.delete(id)
+    }
   }
   create(owner: string, toolName: string, input: Record<string, unknown>): Promise<TaskRecord> {
     return this.run(async () => {

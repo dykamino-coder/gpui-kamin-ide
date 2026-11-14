@@ -103,3 +103,10 @@ mod tests {
         assert_eq!(Rc::strong_count(&published.handle.0), before);
     }
 }
+
+#[cfg(feature = "heap-report")]
+impl kamin_heap::HeapSize for ComputedHandle {
+    fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
+        self.0.heap_size(ops)
+    }
+}

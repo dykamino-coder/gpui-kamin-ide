@@ -23,6 +23,7 @@ export function toRendererConnectionState(
     resumeNotFound: state.resumeNotFound,
     nextRetryAt: state.nextRetryAt,
     retryAttempt: state.retryAttempt,
+    refusal: state.refusal,
     // Diagnostics classify a disconnect by this number when the server closed
     // without a reason text — dropping it here turned every such close into an
     // unknown cause downstream (INC-2026-0027).

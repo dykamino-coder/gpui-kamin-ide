@@ -135,27 +135,37 @@ pub(super) fn floats(e: &Element) -> bool {
 /// Every element of the subtree of `e`, in document order, passes `f`; the
 /// walk stops at the first that does not. The stack holds one child iterator
 /// per open level, so a block of thousands of inline children costs a few
-/// words per level of depth instead of a list of every pending sibling.
+/// words per level of depth instead of a list of every pending sibling. The
+/// children of `e` itself are walked in place and a childless element opens
+/// no level: a block of text and empty elements allocates nothing.
 pub(super) fn all_elements(e: &Element, mut f: impl FnMut(&Element) -> bool) -> bool {
     if !f(e) {
         return false;
     }
-    let mut open = vec![e.children.iter()];
-    while let Some(level) = open.last_mut() {
-        match level.next() {
+    let mut top = e.children.iter();
+    let mut open: Vec<std::slice::Iter<'_, Node>> = Vec::new();
+    loop {
+        let next = match open.last_mut() {
+            Some(level) => level.next(),
+            None => top.next(),
+        };
+        match next {
             Some(Node::Element(child)) => {
                 if !f(child) {
                     return false;
                 }
-                open.push(child.children.iter());
+                if !child.children.is_empty() {
+                    open.push(child.children.iter());
+                }
             }
             Some(_) => {}
             None => {
-                open.pop();
+                if open.pop().is_none() {
+                    return true;
+                }
             }
         }
     }
-    true
 }
 
 #[cfg(test)]

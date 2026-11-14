@@ -153,7 +153,7 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
     const input = { command: 'legacy', run_in_background: true }
     const response = await request('tools/call', { name: 'Bash', arguments: input }, false)
     expect(await response.text()).toContain('ordinary result')
-    expect(mock.call).toHaveBeenCalledWith(session.id, 'Bash', input, expect.any(AbortSignal))
+    expect(mock.call).toHaveBeenCalledWith(session.id, 'Bash', input, expect.any(AbortSignal), expect.any(String))
   })
   it('returns a handle before execution settles, then retains output through PTY replacement and lost ack', async () => {
     const id = await create()
@@ -206,7 +206,13 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
   it('preserves synchronous calls when the client omits task opt-in', async () => {
     const response = await request('tools/call', { name: 'Bash', arguments: { command: 'short' } }, false)
     expect(await response.text()).toContain('ordinary result')
-    expect(mock.call).toHaveBeenCalledWith(session.id, 'Bash', { command: 'short' }, expect.any(AbortSignal))
+    expect(mock.call).toHaveBeenCalledWith(
+      session.id,
+      'Bash',
+      { command: 'short' },
+      expect.any(AbortSignal),
+      expect.any(String),
+    )
   })
   it('cooperatively cancels a delivered task and rejects a late success', async () => {
     const id = await create()
@@ -313,7 +319,9 @@ describe('retention overload through the actual HTTP handler', () => {
       const next = await tasks.mcpTasks.create(owner, 'Bash', {})
       await tasks.mcpTasks.settle(owner, next.taskId, 'later output')
     }
-  })
+    // This fixture durably creates and settles the actual 256-record owner limit.
+    // Match the real-I/O retention tests rather than the 10-second hook default.
+  }, 60_000)
   afterEach(() => {
     Object.assign(TASK_LIMITS, limits)
     vi.restoreAllMocks()

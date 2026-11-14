@@ -7,6 +7,7 @@ mod commit;
 mod mentions;
 mod mutation;
 mod patch;
+mod repaint;
 mod restyle;
 mod shape;
 #[cfg(test)]

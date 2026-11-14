@@ -35,7 +35,8 @@ impl Computed {
                 *length = Some(value.fold_container(vp, vcx));
             }
         };
-        self.resolve_unit_lengths(fix, vcx);
+        let moves = |l: Len| l.needs_container_context(vcx);
+        self.resolve_unit_lengths(moves, fix, vcx);
         self.resolve_container_other_lengths(vp, vcx);
         for length in {
             let group_0 = &mut *self.reset_fragmentation;
@@ -88,7 +89,7 @@ impl Computed {
             fix(&mut spacing.1);
             self.inh.table_list.border_spacing = Some(spacing);
         }
-        self.resolve_decor_inset_lengths(fix, vcx);
+        self.resolve_decor_inset_lengths(moves, fix, vcx);
     }
 
     /// Поддерживаемые физические оси. Письмо здесь — контейнера, тогда как

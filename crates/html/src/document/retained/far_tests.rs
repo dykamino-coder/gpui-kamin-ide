@@ -13,6 +13,10 @@ fn far(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
     cx.update(|_, cx| view.read(cx).doc.far_blocks())
 }
 
+fn records(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> usize {
+    cx.update(|_, cx| view.read(cx).doc.far_records())
+}
+
 fn rebuilt(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
     cx.update(|_, cx| view.read(cx).doc.reused_blocks().2)
 }
@@ -46,12 +50,41 @@ fn far_paragraphs_are_laid_out_without_a_build_after_a_width_change(cx: &mut Tes
     frame(cx);
     resize(&view, cx, 401.);
     assert_eq!(far(&view, cx), 0, "the first build at a new width records");
+    let kept = records(&view, cx);
+    assert!(kept > 200, "wrapping paragraphs keep far records: {kept}");
     resize(&view, cx, 400.);
     let first = far(&view, cx);
     assert!(first > 200, "far paragraphs were built: {first}");
     resize(&view, cx, 399.);
     assert!(far(&view, cx) - first > 200, "far records were not kept");
     assert_eq!(rebuilt(&view, cx), 0, "a far block was refused");
+}
+
+/// A block of text on one line is skipped at the next widths by its skip
+/// record (`width::Width::Stretch`): the build that records it keeps no far
+/// record, and so no measure function, beside it.
+#[gpui::test]
+fn one_line_rows_keep_no_far_record_beside_their_skip_record(cx: &mut TestAppContext) {
+    let rows: String = (0..300)
+        .map(|i| format!("<div style='height:20px;background:#eee'>Row {i} alpha</div>"))
+        .collect();
+    let (view, cx) = open(cx, &format!("<body style='margin:0'>{rows}</body>"));
+    frame(cx);
+    resize(&view, cx, 401.);
+    assert_eq!(records(&view, cx), 0, "a far record beside a skip record");
+    let skipped =
+        |cx: &mut VisualTestContext| cx.update(|_, cx| view.read(cx).doc.reused_blocks().1);
+    let mut frames = Vec::new();
+    for width in [400., 401., 400.] {
+        let before = skipped(cx);
+        resize(&view, cx, width);
+        frames.push(skipped(cx) - before);
+    }
+    // The rows off screen are skipped by their placeholders in every frame.
+    assert!(frames[0] > 100, "the rows were built again: {frames:?}");
+    assert_eq!(frames, [frames[0]; 3], "a later frame lost the records");
+    assert_eq!((far(&view, cx), records(&view, cx)), (0, 0));
+    assert_eq!(rebuilt(&view, cx), 0);
 }
 
 /// Paragraphs far above the screen decide where the visible ones stand: the

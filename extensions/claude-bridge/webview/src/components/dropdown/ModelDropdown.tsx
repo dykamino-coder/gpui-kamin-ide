@@ -68,7 +68,9 @@ export function ModelDropdown(): JSX.Element {
       bridge.newAgentSession(plan.engine, plan.model)
       return
     }
-    currentModel.value = value
+    // 'switch': the same chat continues on the other agent (the connection
+    // routes a model of the other engine to an engine switch).
+    if (plan.kind === 'change') currentModel.value = value
     if (tabId) bridge.changeModel(tabId, value)
   }
 
@@ -131,7 +133,7 @@ export function ModelDropdown(): JSX.Element {
           key={opt.value}
           icon={opt.icon}
           name={opt.name}
-          description={tabEngine === 'codex' ? 'Opens a new Claude chat' : opt.description}
+          description={tabEngine === 'codex' ? 'Continues this chat on Claude' : opt.description}
           selected={tabEngine !== 'codex' && isSelected(opt.value)}
           disabled={blocked.claude !== null}
           onClick={() => handleSelect(opt.value)}
@@ -147,7 +149,7 @@ export function ModelDropdown(): JSX.Element {
           key={opt.value}
           icon={opt.icon}
           name={opt.name}
-          description={tabEngine === 'codex' ? opt.description : 'Opens a new ChatGPT chat'}
+          description={tabEngine === 'claude' ? 'Continues this chat on ChatGPT' : tabEngine === null ? 'Opens a new ChatGPT chat' : opt.description}
           selected={tabEngine === 'codex' && isSelected(opt.value)}
           disabled={blocked.codex !== null}
           onClick={() => handleSelect(opt.value)}

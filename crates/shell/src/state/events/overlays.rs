@@ -96,6 +96,7 @@ impl RootView {
                                     "VSIX install failed".into()
                                 },
                                 actions: Vec::new(),
+                                duration_ms: None,
                                 sticky: false,
                             }));
                             host_link::request_status(tx.clone());
@@ -148,7 +149,7 @@ impl RootView {
                 self.context_keys = ctx.into_iter().collect();
             }
             ShellEvent::Toast(t) => {
-                // Каунтдаун 8s с паузой на ховере: wall-clock в ToastTimer
+                // Каунтдаун (8s или заказанный) с паузой на ховере: wall-clock в ToastTimer
                 // (полосу 60fps ведёт repeat-анимация в toast_card), фоновый
                 // поток лишь проверяет истечение и шлёт Dismiss (slide-out).
                 let timer = std::sync::Arc::new(crate::ui::toasts::ToastTimer::default());
@@ -156,6 +157,7 @@ impl RootView {
                     let tx = self.tx.clone();
                     let id = t.id.clone();
                     let tm = timer.clone();
+                    let life = t.life_ms();
                     std::thread::spawn(move || {
                         use std::sync::atomic::Ordering;
                         loop {
@@ -163,7 +165,7 @@ impl RootView {
                             if tm.closing.load(Ordering::Relaxed) {
                                 break;
                             }
-                            if tm.active_ms() >= crate::ui::toasts::TOAST_MS {
+                            if tm.active_ms() >= life {
                                 let _ = tx.try_send(ShellEvent::DismissToast(id));
                                 break;
                             }
@@ -264,6 +266,21 @@ impl RootView {
         }
     }
 
+    /// Снять тосты `shell.showMessage`, ждущие выбора: их соединение оборвалось,
+    /// и ответить на них уже нельзя. Ответ `null` при снятии не нужен.
+    pub(crate) fn drop_host_waits(&mut self) {
+        let waiting: Vec<String> = self
+            .toasts
+            .iter()
+            .filter(|t| pending_shell_reply(&t.id, false).is_some())
+            .map(|t| t.id.clone())
+            .collect();
+        for id in waiting {
+            self.answered_toasts.insert(id.clone());
+            let _ = self.tx.try_send(ShellEvent::DismissToast(id));
+        }
+    }
+
     /// Окончательно снять тост: убрать карточку и — если это `shell.showMessage`
     /// с кнопками, чей ответ ещё не ушёл, — завершить ожидающий запрос хоста.
     fn finish_toast(&mut self, id: &str) {
@@ -288,39 +305,10 @@ pub(crate) fn pending_shell_reply(id: &str, answered: bool) -> Option<u64> {
     id.strip_prefix("shellreq-")?.parse::<u64>().ok()
 }
 
-fn respond_to_host(req_id: u64, value: serde_json::Value) {
-    std::thread::spawn(move || {
-        if let Some(c) = crate::host_link::client() {
-            c.respond(req_id, Ok(value));
-        }
-    });
+fn respond_to_host(ticket: u64, value: serde_json::Value) {
+    crate::host::deferred::reply(ticket, value);
 }
 
 #[cfg(test)]
-mod toast_reply_tests {
-    use super::pending_shell_reply;
-
-    #[test]
-    fn неотвеченный_запрос_получает_ответ_при_снятии() {
-        assert_eq!(pending_shell_reply("shellreq-7", false), Some(7));
-    }
-
-    #[test]
-    fn уже_отвеченный_запрос_второй_раз_не_отвечается() {
-        // Клик по кнопке уже отдал выбранный пункт; ответ `null` поверх него
-        // подменил бы выбор пользователя пустотой.
-        assert_eq!(pending_shell_reply("shellreq-7", true), None);
-    }
-
-    #[test]
-    fn тост_без_ожидающего_запроса_ответа_не_требует() {
-        assert_eq!(pending_shell_reply("shellmsg-info-привет", false), None);
-        assert_eq!(pending_shell_reply("toast-12345", false), None);
-    }
-
-    #[test]
-    fn нечисловой_идентификатор_запроса_отбрасывается() {
-        assert_eq!(pending_shell_reply("shellreq-", false), None);
-        assert_eq!(pending_shell_reply("shellreq-abc", false), None);
-    }
-}
+#[path = "overlays_toast_reply_tests.rs"]
+mod toast_reply_tests;

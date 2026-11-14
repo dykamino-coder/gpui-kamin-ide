@@ -166,6 +166,63 @@ pub struct InkSink {
     late: std::cell::Cell<u32>,
 }
 
+/// KaminIDE patch: the ink sinks of one host's frame, opened by number
+/// (`Window::with_ink_sink`). A host that records thousands of blocks a frame
+/// keeps their sinks in one list it releases when the frame's records are
+/// sealed, instead of a sink inside each kept record: the measure belongs to
+/// the frame, the record keeps only its result (Blink accumulates the bounds
+/// of a paint chunk in the paint controller's chunk list, not in the client).
+/// A sink is added while no paint measures into the list (a build), so a
+/// paint never finds the list borrowed.
+#[derive(Default)]
+pub struct InkSinkList(std::cell::RefCell<Vec<InkSink>>);
+
+impl InkSinkList {
+    /// A new, empty sink; its number in the list.
+    pub fn open(&self) -> u32 {
+        let mut sinks = self.0.borrow_mut();
+        sinks.push(InkSink::new());
+        (sinks.len() - 1) as u32
+    }
+
+    /// `f` of sink `at`; `None` once the list was released.
+    pub fn with<R>(&self, at: u32, f: impl FnOnce(&InkSink) -> R) -> Option<R> {
+        self.0.borrow().get(at as usize).map(f)
+    }
+
+    /// Drop every sink and the list's storage: the frame's measures are read.
+    pub fn release(&self) {
+        drop(self.0.take());
+    }
+
+    fn add_in(&self, at: u32, scope: u32, bounds: Bounds<ScaledPixels>) {
+        self.with(at, |sink| sink.add_in(scope, bounds));
+    }
+
+    fn taint_in(&self, at: u32, scope: u32) {
+        self.with(at, |sink| sink.taint_in(scope));
+    }
+}
+
+/// The ink sinks open at a point of paint: rarely more than one, and copied
+/// into every deferred paint environment, so one sink stays inline. One
+/// pointer and a number keep the list as small as a `Vec` (24 bytes with
+/// smallvec's `union`): the scene and every paint snapshot keep their size.
+pub(crate) type InkSinks = smallvec::SmallVec<[(Rc<InkSinkList>, u32); 1]>;
+
+/// Offer `bounds` painted under scope `scope` to the open sinks `sinks`.
+pub(crate) fn ink_add(sinks: &InkSinks, scope: u32, bounds: Bounds<ScaledPixels>) {
+    for (list, at) in sinks {
+        list.add_in(*at, scope, bounds);
+    }
+}
+
+/// Taint the open sinks `sinks` in scope `scope`.
+pub(crate) fn ink_taint(sinks: &InkSinks, scope: u32) {
+    for (list, at) in sinks {
+        list.taint_in(*at, scope);
+    }
+}
 const INK_TAINTED: u32 = 1;
 const INK_PAINTED: u32 = 2;
 const INK_LATE_ALL: u32 = 4;
@@ -322,9 +379,7 @@ impl InkProbe {
             && self.callbacks == window.next_frame_callback_count();
         if !quiet {
             let scope = window.next_frame.scene.ink_scope;
-            for sink in &window.next_frame.scene.ink {
-                sink.taint_in(scope);
-            }
+            ink_taint(&window.next_frame.scene.ink, scope);
             scoped_ink(scope, |sink| sink.taint_in(scope));
         }
     }
@@ -361,22 +416,28 @@ impl RetainedPrepaint {
 /// KaminIDE patch: the layout nodes one subtree requested in a pass
 /// (`Window::capture_layout`). A later pass that keeps the root's stamp can
 /// claim them whole (`Window::request_retained_layout`) instead of requesting
-/// every node again: the subtree's elements need not be built.
-#[derive(Clone)]
+/// every node again: the subtree's elements need not be built. It names the
+/// range of the subtree's requests in its pass, so it is a few numbers
+/// (`Copy`) and holds for the next pass only; the claim renews it for the
+/// pass after.
+#[derive(Clone, Copy)]
 pub struct RetainedSubtree {
-    stamp: u64,
-    nodes: Rc<[::taffy::tree::NodeId]>,
+    pub(crate) stamp: u64,
+    /// The pass whose request sequence holds the nodes.
+    pub(crate) pass: std::num::NonZeroU64,
+    pub(crate) start: u32,
+    pub(crate) len: u32,
 }
 
 impl RetainedSubtree {
     /// Number of layout nodes in the subtree.
     pub fn len(&self) -> usize {
-        self.nodes.len()
+        self.len as usize
     }
 
     /// Whether the subtree has no nodes (never: the root is one).
     pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
+        self.len == 0
     }
 }
 
@@ -418,9 +479,14 @@ impl Window {
         crate::text_system::with_layouts_released(|| f(self))
     }
 
-    /// Paint `f` with `sink` measuring its ink (see [`InkSink`]).
-    pub fn with_ink_sink<R>(&mut self, sink: Rc<InkSink>, f: impl FnOnce(&mut Self) -> R) -> R {
-        self.next_frame.scene.ink.push(sink);
+    /// Paint `f` with sink `at` of `list` measuring its ink (see [`InkSink`],
+    /// [`InkSinkList`]).
+    pub fn with_ink_sink<R>(
+        &mut self,
+        (list, at): (&Rc<InkSinkList>, u32),
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.next_frame.scene.ink.push((list.clone(), at));
         let probe = InkProbe::open(self);
         let result = f(self);
         if let Some(probe) = probe {
@@ -440,9 +506,7 @@ impl Window {
         }
         let scaled = bounds.scale(self.scale_factor());
         let scene = &self.next_frame.scene;
-        for sink in &scene.ink {
-            sink.add_in(scene.ink_scope, scaled);
-        }
+        ink_add(&scene.ink, scene.ink_scope, scaled);
         scoped_ink(scene.ink_scope, |sink| sink.add_in(scene.ink_scope, scaled));
     }
 
@@ -493,9 +557,7 @@ impl Window {
             scene.ink_allowed.1 +=
                 (end.accessed_element_states_index - start.accessed_element_states_index) as u32;
         } else {
-            for sink in &scene.ink {
-                sink.taint_in(scene.ink_scope);
-            }
+            ink_taint(&scene.ink, scene.ink_scope);
             scoped_ink(scene.ink_scope, |sink| sink.taint_in(scene.ink_scope));
         }
         result
@@ -534,20 +596,19 @@ impl Window {
     /// The nodes of the subtree `root` requested since `start`, when the frame
     /// tree keeps them (`None` otherwise).
     pub fn capture_layout(&mut self, start: usize, root: LayoutId) -> Option<RetainedSubtree> {
-        let (stamp, nodes) = self.layout_engine.as_mut()?.capture_subtree(start, root)?;
-        Some(RetainedSubtree { stamp, nodes })
+        self.layout_engine.as_mut()?.capture_subtree(start, root)
     }
 
     /// Claim a subtree captured in the previous pass whole. `None` when a node
-    /// of it changed or was dropped. Its leaves are not measured again: if the
+    /// of it changed or was dropped. A claimed `layout` becomes the capture of
+    /// this pass: the caller keeps it to claim the subtree in the next one.
+    /// Its leaves are not measured again: if the
     /// layout needs a new measurement, `layout_stale` reports it after
     /// `compute_layout`, and the caller must discard this layout (the frame
     /// tree drops itself at the end of such a pass).
-    pub fn request_retained_layout(&mut self, layout: &RetainedSubtree) -> Option<LayoutId> {
+    pub fn request_retained_layout(&mut self, layout: &mut RetainedSubtree) -> Option<LayoutId> {
         self.invalidator.debug_assert_prepaint();
-        self.layout_engine
-            .as_mut()?
-            .claim_subtree(layout.stamp, &layout.nodes)
+        self.layout_engine.as_mut()?.claim_subtree(layout)
     }
 
     /// Keep the measure functions of the leaves of `layout` (requested or
@@ -559,7 +620,7 @@ impl Window {
     /// without, it stays as its request made it, so the keep allocates nothing.
     pub fn keep_retained_measures(&mut self, layout: &RetainedSubtree, compact: bool) {
         if let Some(engine) = self.layout_engine.as_mut() {
-            engine.keep_measures(&layout.nodes, compact);
+            engine.keep_measures(layout, compact);
         }
     }
 
@@ -569,7 +630,7 @@ impl Window {
     /// request would have built it.
     pub fn prepare_retained_measures(&mut self, layout: &RetainedSubtree) {
         if let Some(engine) = self.layout_engine.as_mut() {
-            engine.prepare_measures(&layout.nodes);
+            engine.prepare_measures(layout);
         }
     }
 
@@ -581,7 +642,7 @@ impl Window {
         let mut bounds = self
             .layout_engine
             .as_mut()?
-            .nodes_layout_bounds(&layout.nodes, scale_factor)?;
+            .nodes_layout_bounds(layout, scale_factor)?;
         let offset = if self.exact_element_offset_depth > 0 {
             self.element_offset()
         } else {

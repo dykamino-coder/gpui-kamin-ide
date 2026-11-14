@@ -35,12 +35,26 @@ impl FrameFar {
         self.slots.clear();
     }
 
-    fn find(&self, node: u64) -> Option<&FarRecord> {
+    fn find(&self, node: u64) -> Option<(usize, &FarRecord)> {
         let at = self
             .records
             .binary_search_by_key(&node, FarRecord::id)
             .ok()?;
-        self.records.get(at)
+        Some((at, self.records.get(at)?))
+    }
+
+    /// The records claimed by this build take the captures their claims
+    /// made (`Window::request_retained_layout`): the next pass claims those.
+    /// Before the slots leave the build, whatever becomes of it: the layout
+    /// pass that claimed them has passed either way.
+    pub(super) fn renew(&mut self) {
+        for slot in &self.slots {
+            if let Some(record) = self.records.get(slot.at as usize)
+                && record.id() == slot.id
+            {
+                record.layout.set(slot.subtree.get());
+            }
+        }
     }
 }
 
@@ -61,10 +75,10 @@ impl FlowReuse {
     pub(in crate::layout::reuse) fn with_far_record<R>(
         &self,
         node: u64,
-        f: impl FnOnce(&FarRecord) -> R,
+        f: impl FnOnce(usize, &FarRecord) -> R,
     ) -> Option<R> {
         let far = self.far.take().or_else(|| self.store.far.take())?;
-        let out = far.find(node).map(f);
+        let out = far.find(node).map(|(at, record)| f(at, record));
         self.far.set(Some(far));
         out
     }
@@ -104,6 +118,7 @@ impl FlowReuse {
             return;
         };
         let claimed = far.claimed;
+        far.renew();
         // The records claimed by this build stay; a build that claimed none
         // (the second build of a refused frame) keeps none, like the marks
         // of a refused build it replaces.
@@ -137,11 +152,23 @@ impl FlowReuse {
     }
 }
 
+#[cfg(test)]
+impl crate::layout::reuse::Store {
+    /// Far records the document keeps for its next build, for tests.
+    pub(crate) fn far_records(&self) -> usize {
+        let far = self.far.take();
+        let records = far.as_ref().map_or(0, |far| far.records.len());
+        self.far.set(far);
+        records
+    }
+}
+
 impl Drop for FlowReuse {
     /// A build dropped unfinished (refused and built again) leaves the
     /// document's records as they were.
     fn drop(&mut self) {
         if let Some(mut far) = self.far.take() {
+            far.renew();
             far.rest();
             let kept = self.store.far.take();
             self.store

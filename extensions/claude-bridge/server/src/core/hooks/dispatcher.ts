@@ -14,10 +14,13 @@ import type { HookExecutionResult, HookInputPayload, RegisteredHook } from './ty
 import { debugLog, warnLog } from '../logging'
 import { appendExecution } from './audit-log'
 import { payloadForHook } from './tool-names'
+import { conditionHolds } from './hook-condition'
 
 // Match Claude Code's DEFAULT_HTTP_HOOK_TIMEOUT_MS = 10 * 60 * 1000.
 // Long-running hooks (formatters, test runners) need this room.
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
+/** How long an exited hook's result waits for its output pipes to end. */
+export const HOOK_OUTPUT_DRAIN_MS = 1000
 
 interface PendingHookExec {
   sessionId: string
@@ -77,6 +80,13 @@ export async function dispatchHook(
     return errorResult(`Unknown hook ${hookId} for session ${sessionId}`)
   }
   const start = Date.now()
+  if (reg.serverCondition) {
+    if (!conditionHolds(reg.serverCondition, payload) || reg.serverOnce?.spent) {
+      return { stdout: '', stderr: '', exitCode: 0, outcome: 'success', durationMs: 0 }
+    }
+    // Reserve synchronously before awaiting execution, including parallel calls.
+    if (reg.serverOnce) reg.serverOnce.spent = true
+  }
   payload = payloadForHook(reg.matcher, payload)
   let result: HookExecutionResult
   let auditNote: string | undefined
@@ -102,8 +112,7 @@ export async function dispatchHook(
     } else if (reg.effectiveHost === 'server') {
       result = await dispatchServer(reg, payload, start)
     } else if (reg.handler.type === 'http') {
-      // http: shouldn't normally land here — the rewriter writes them as
-      // direct CLI-side `http` hooks. Fall back to fetch ourselves.
+      // Original HTTP hooks with native argument conditions are relayed here.
       result = await dispatchHttp(reg, payload, start)
     } else {
       result = errorResult(`Cannot dispatch host ${reg.effectiveHost}`, start)
@@ -111,6 +120,17 @@ export async function dispatchHook(
   } catch (err) {
     result = errorResult(err instanceof Error ? err.message : String(err), start)
   }
+  // Where a hook's time goes: `hostMs` is what the executing host measured
+  // (the client host for local hooks), the rest of `totalMs` is the server and
+  // the WebSocket. The CLI's relay start-up lies outside both.
+  debugLog('Hook dispatched', {
+    sessionId,
+    event: reg.event,
+    host: reg.effectiveHost,
+    outcome: result.outcome,
+    totalMs: Date.now() - start,
+    hostMs: result.durationMs,
+  })
 
   // Audit-log every dispatched hook (success/error/timeout/cancel) so the
   // UI Log tab and downstream compliance tooling can see what happened.
@@ -235,9 +255,12 @@ async function dispatchServer(
   const command = (reg.handler as { command: string }).command
   const shell = (reg.handler as { shell?: string }).shell ?? 'bash'
   const timeoutMs = (reg.handler.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000
+  const hook = reg.handler
 
   return new Promise<HookExecutionResult>((resolve) => {
-    const proc = spawn(shell === 'powershell' ? 'pwsh' : 'bash', ['-c', command], {
+    const executable = hook.args ? command : shell === 'powershell' ? 'pwsh' : shell
+    const args = hook.args ?? ['-c', command]
+    const proc = spawn(executable, args, {
       env: { ...process.env, CLAUDE_BRIDGE_HOOK: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
@@ -247,12 +270,22 @@ async function dispatchServer(
     // stuck loop) would otherwise grow these strings until the server OOMs.
     // 1 MiB is far more than any legitimate hook JSON/log; excess is dropped.
     const MAX_HOOK_OUTPUT = 1024 * 1024
-    proc.stdout?.on('data', (d) => {
-      if (stdout.length < MAX_HOOK_OUTPUT) stdout += d.toString()
+    let stdoutDropped = 0
+    // setEncoding decodes across chunk boundaries; per-chunk toString split
+    // multi-byte characters into U+FFFD.
+    proc.stdout?.setEncoding('utf8')
+    proc.stderr?.setEncoding('utf8')
+    proc.stdout?.on('data', (d: string) => {
+      const room = MAX_HOOK_OUTPUT - stdout.length
+      if (room > 0) stdout += d.slice(0, room)
+      stdoutDropped += Math.max(0, d.length - Math.max(0, room))
     })
-    proc.stderr?.on('data', (d) => {
-      if (stderr.length < MAX_HOOK_OUTPUT) stderr += d.toString()
+    proc.stderr?.on('data', (d: string) => {
+      if (stderr.length < MAX_HOOK_OUTPUT) stderr += d.slice(0, MAX_HOOK_OUTPUT - stderr.length)
     })
+    // A cut stdout is reported, never passed on as the hook's whole output.
+    const cutNote = (): string =>
+      stdoutDropped ? `\n[hook stdout exceeded ${MAX_HOOK_OUTPUT} characters; ${stdoutDropped} were dropped]` : ''
 
     const killer = setTimeout(() => {
       try {
@@ -262,17 +295,23 @@ async function dispatchServer(
       }
       resolve({
         stdout,
-        stderr: stderr + `\n[hook killed after ${timeoutMs}ms]`,
+        stderr: stderr + cutNote() + `\n[hook killed after ${timeoutMs}ms]`,
         exitCode: 124,
         outcome: 'timeout',
         durationMs: Date.now() - start,
       })
     }, timeoutMs)
 
-    proc.on('exit', (code) => {
+    // `exit` can arrive before the last output: only `close` means the pipes
+    // have ended (BR-18B). A background child of the hook may keep them open,
+    // so after `exit` the result waits for `close` only for a short window.
+    let drain: ReturnType<typeof setTimeout> | undefined
+    let exitCode: number | null = null
+    const report = (code: number | null): void => {
       clearTimeout(killer)
+      clearTimeout(drain)
       let jsonOutput: Record<string, unknown> | undefined
-      if (code === 0) {
+      if (code === 0 && !stdoutDropped) {
         try {
           const trimmed = stdout.trim()
           if (trimmed.startsWith('{')) jsonOutput = JSON.parse(trimmed)
@@ -282,16 +321,23 @@ async function dispatchServer(
       }
       resolve({
         stdout,
-        stderr,
+        stderr: stderr + cutNote(),
         exitCode: code ?? 0,
         outcome: code === 0 ? 'success' : 'error',
         jsonOutput,
         durationMs: Date.now() - start,
       })
+    }
+    proc.on('exit', (code) => {
+      clearTimeout(killer)
+      exitCode = code
+      drain = setTimeout(() => report(code), HOOK_OUTPUT_DRAIN_MS)
     })
+    proc.on('close', (code) => report(code ?? exitCode))
 
     proc.on('error', (err) => {
       clearTimeout(killer)
+      clearTimeout(drain)
       resolve({
         stdout,
         stderr: stderr + `\nspawn error: ${err.message}`,
@@ -328,7 +374,7 @@ async function dispatchHttp(
   try {
     const response = await fetch(h.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(h.headers ?? {}) },
+      headers: { 'Content-Type': 'application/json', ...expandedHttpHeaders(h.headers, h.allowedEnvVars) },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(timeoutMs),
     })
@@ -339,10 +385,26 @@ async function dispatchHttp(
       exitCode: response.ok ? 0 : 1,
       outcome: response.ok ? 'success' : 'error',
       durationMs: Date.now() - start,
+      httpStatus: response.status,
     }
   } catch (err) {
     return errorResult(err instanceof Error ? err.message : String(err), start)
   }
+}
+
+/** HTTP hooks expand only the variables explicitly allowed in their declaration. */
+export function expandedHttpHeaders(
+  headers: Record<string, string> = {},
+  allowed: string[] = [],
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers).map(([name, value]) => [
+      name,
+      value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, braced: string, plain: string) =>
+        allowed.includes(braced ?? plain) ? (process.env[braced ?? plain] ?? '') : '',
+      ),
+    ]),
+  )
 }
 
 function errorResult(msg: string, start: number = Date.now(), reg?: RegisteredHook): HookExecutionResult {

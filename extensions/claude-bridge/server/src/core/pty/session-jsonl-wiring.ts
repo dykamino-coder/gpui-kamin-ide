@@ -6,6 +6,7 @@ import type { AgentEngineId } from '../../shared/agent-events'
 import { debugLog, warnLog } from '../logging'
 import { lifecycleLog } from '../logging/lifecycle'
 import { JsonlWatcher } from './jsonl-watcher'
+import { segmentSubagentsDir, startSegmentPump } from '../conversation/conversation'
 import { leanEntries } from './jsonl-projection'
 import { sendToClient, socketWritable, trySendToClient } from './session-io'
 import { handleJsonlUserEntry } from './session-stats-recorder'
@@ -25,9 +26,36 @@ export function attachSessionJsonlWatcher(
   config: SessionConfig,
   startTime: number,
   hooks: JsonlWiringHooks,
+): void {
+  // An engine switch starts the joining engine before the conversation moves
+  // to it: its transcript is attached once the switch commits (session-core).
+  if (config.deferTranscript) {
+    session.attachTranscript = () => {
+      session.attachTranscript = undefined
+      startJsonlWatcher(session, config, startTime, hooks)
+    }
+    return
+  }
+  startJsonlWatcher(session, config, startTime, hooks)
+}
+
+function startJsonlWatcher(
+  session: PtySession,
+  config: SessionConfig,
+  startTime: number,
+  hooks: JsonlWiringHooks,
 ): JsonlWatcher {
   const sessionId = session.id
-  const { tokenId, userName, settingsDir } = session
+  const { tokenId, userName } = session
+  // A multi-engine conversation shows the client its unified log (in the
+  // conversation's own directory, already on disk); the engine's native
+  // transcript is copied into it by the segment pump.
+  const conversation = session.conversation
+  const settingsDir = conversation?.dir ?? session.settingsDir
+  if (conversation) {
+    startTime = 0
+    session.segmentPump = startSegmentPump(conversation) ?? undefined
+  }
   // All watcher callbacks send via session.ws (not the captured ws) so a
   // reattached client keeps receiving entries.
   const jsonlWatcher = new JsonlWatcher(
@@ -74,7 +102,7 @@ export function attachSessionJsonlWatcher(
       void (async () => {
         try {
           const { getDb } = await import('../stats/database/lifecycle')
-          const { withStatsWrite } = await import('../stats/database/write-lock')
+          const { writeSessionToken } = await import('../stats/database/session-owners')
           const db = await getDb()
           const realCwd = config.cwd || null
           const titleAtInsert = session.sessionTitle || null
@@ -83,7 +111,7 @@ export function attachSessionJsonlWatcher(
           // session_tokens row on first sight of the file: two writers on
           // one key would fail a COMMIT, and DuckDB turns that into a
           // process-killing FatalException (stats/database/write-lock.ts).
-          await withStatsWrite(async () => {
+          await writeSessionToken(db, conversationId, async () => {
             await db.run(
               `INSERT INTO session_tokens (session_id, token_id, user_name, cwd, title, created_at, deleted, engine)
                VALUES (?, ?, ?, ?, ?, ?, 0, ?)
@@ -105,6 +133,9 @@ export function attachSessionJsonlWatcher(
               conversationId,
             ])
           })
+          // The stats rollup carries the session owner; this may have just set it.
+          const { markRollupSessionsDirty } = await import('../stats/database/rollup')
+          await markRollupSessionsDirty(db, [conversationId])
         } catch (err) {
           warnLog('session_tokens insert failed', { conversationId, error: String(err) })
         }
@@ -124,6 +155,8 @@ export function attachSessionJsonlWatcher(
     () => socketWritable(session.ws),
     config.history,
   )
+  // Sub-agents of the running engine live under its native session.
+  if (conversation) jsonlWatcher.subagentsDirOf = () => segmentSubagentsDir(conversation)
   session.jsonlWatcher = jsonlWatcher
   jsonlWatcher.start()
   return jsonlWatcher

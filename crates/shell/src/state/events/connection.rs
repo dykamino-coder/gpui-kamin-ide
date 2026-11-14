@@ -57,6 +57,11 @@ impl RootView {
             }
             ShellEvent::WsDisconnected => {
                 self.ws_connected = false;
+                // Запросы оборванного соединения завершать некому: пик и тосты
+                // с кнопками уходят без ответа, а не висят до нового (BR-19A).
+                self.quick_pick = None;
+                self.qp_input = None;
+                self.drop_host_waits();
                 self.push_syslog("warning", "shell", "Disconnected from kamin-host");
             }
             // Ребёнок extension-host перезапустился: его зеркала документов и

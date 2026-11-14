@@ -194,9 +194,12 @@ async function blockReason(parsed: URL): Promise<string | null> {
  *  even for chunked / no-Content-Length responses (where a post-hoc slice would
  *  already have materialised the whole body — the OOM the declared-length bail
  *  can't catch). */
-async function readCapped(resp: Response, maxBytes: number): Promise<string> {
+export async function readCapped(resp: Response, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
   const reader = resp.body?.getReader()
-  if (!reader) return (await resp.text()).slice(0, maxBytes)
+  if (!reader) {
+    const text = await resp.text()
+    return { text: text.slice(0, maxBytes), truncated: text.length > maxBytes }
+  }
   const chunks: Uint8Array[] = []
   let total = 0
   for (;;) {
@@ -209,7 +212,10 @@ async function readCapped(resp: Response, maxBytes: number): Promise<string> {
     }
   }
   const buf = Buffer.concat(chunks, total)
-  return new TextDecoder('utf-8', { fatal: false }).decode(buf.subarray(0, maxBytes))
+  // stream: true holds back a character cut by the cap instead of decoding
+  // it as U+FFFD; the cut is reported to the model, never silent.
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(buf.subarray(0, maxBytes), { stream: total > maxBytes })
+  return { text, truncated: total >= maxBytes }
 }
 
 /** Fetch following up to MAX_REDIRECTS hops, re-validating each hop's target
@@ -282,7 +288,7 @@ export async function webFetch(input: Record<string, unknown>): Promise<McpResul
     const contentType = response.headers.get('content-type') || ''
     // Stream-read with a hard byte cap — enforces the ceiling even when the
     // server sends no Content-Length or a chunked body.
-    const body = await readCapped(response, MAX_RAW_HTML_BYTES)
+    const { text: body, truncated: bodyTruncated } = await readCapped(response, MAX_RAW_HTML_BYTES)
 
     let content: string
     if (contentType.includes('text/html') || contentType.includes('application/xhtml')) {
@@ -294,6 +300,8 @@ export async function webFetch(input: Record<string, unknown>): Promise<McpResul
     // Truncate if too large
     if (content.length > MAX_CONTENT_BYTES) {
       content = content.slice(0, MAX_CONTENT_BYTES) + `\n\n[Content truncated at ${Math.round(MAX_CONTENT_BYTES / 1024)}KB]`
+    } else if (bodyTruncated) {
+      content += `\n\n[Response body truncated at ${MAX_RAW_HTML_BYTES / 1024 / 1024} MB before extraction; the rest of the page is missing]`
     }
 
     return textResult(

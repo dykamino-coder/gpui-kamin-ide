@@ -1,7 +1,7 @@
 // stdio transport for MCP servers.
 //
-// Spawns the child process with the configured command + args + env (shell:true
-// on Windows so PATH lookups behave the same as a user shell). JSON-RPC frames
+// Spawns the configured executable directly, or a resolved Windows batch
+// launcher through cmd.exe with its arguments escaped. JSON-RPC frames
 // are newline-delimited on stdout. stderr is mirrored to console AND split
 // per-line into the UI log pane so non-devs can diagnose boot failures.
 
@@ -10,6 +10,17 @@ import type { McpResult } from '../tool-registry'
 import { collectMcpList } from '../pagination'
 import type { McpServerState, TransportContext } from './context'
 import { awaitMcpReply, withProgressToken } from './request-deadline'
+import { stdioLaunch } from './stdio-launch'
+import { resolveWorkingDirectory } from '../../utils/working-directory'
+import type { ExternalMcpServerConfig } from '../../../shared/types'
+
+/** Directory a stdio server starts in: its configured directory, otherwise the
+ *  root of the project that declares it, otherwise the user's home. Without an
+ *  explicit `cwd` the child inherits the extension host's directory, which for
+ *  the installed app is the application directory (INC-2026-0108). */
+export function stdioWorkingDirectory(config: Pick<ExternalMcpServerConfig, 'workingDirectory' | 'projectRoot'>): string {
+  return resolveWorkingDirectory(config.workingDirectory, config.projectRoot)
+}
 
 export async function connectStdio(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
@@ -17,6 +28,15 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
   if (!command) throw new Error('stdio server command is required')
 
   const args = state.config.args ?? []
+  const cwd = stdioWorkingDirectory(state.config)
+  const env = { ...process.env, ...state.config.env }
+  let launch: ReturnType<typeof stdioLaunch>
+  try {
+    launch = stdioLaunch(command, args, cwd, env)
+  } catch (err) {
+    ctx.appendLog(id, 'error', `[stdio] ${(err as Error).message}`)
+    throw err
+  }
 
   // Замерено на машине с защитным ПО/прокси: `npx -y <pkg>@latest`
   // отвечает на initialize через ~29 СЕКУНД (резолв реестра до старта
@@ -42,20 +62,23 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
     }
 
     ctx.appendLog(id, 'info', `[stdio] spawning: ${command} ${args.join(' ')}`)
-    const proc = spawn(command, args, {
+    const proc = spawn(launch.command, launch.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...state.config.env },
-      shell: true,
-      // windowsHide: true keeps conhost.exe windows out of Task Manager —
-      // every `shell: true` spawn on Windows otherwise creates a visible
-      // Console Window Host process per MCP server (so 6 stdio MCPs = 6
-      // conhosts cluttering the process tree).
+      env,
+      shell: false,
+      windowsVerbatimArguments: launch.windowsVerbatimArguments,
+      // Hide the console when a Windows batch launcher needs cmd.exe.
       windowsHide: true,
-      ...(state.config.workingDirectory ? { cwd: state.config.workingDirectory } : {}),
+      cwd,
     })
 
     state.process = proc
     state.inputBuffer = ''
+    // Decode across chunk boundaries: a multi-byte UTF-8 character split
+    // between two reads would otherwise turn into two U+FFFD in the JSON-RPC
+    // frame (Cyrillic tool results arrived corrupted).
+    proc.stdout?.setEncoding('utf8')
+    proc.stderr?.setEncoding('utf8')
     ctx.appendLog(id, 'info', `[stdio] spawned pid=${proc.pid ?? 'n/a'}`)
 
     let stderrBuf = ''
@@ -89,9 +112,9 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
       // 30s timeout — reject immediately as a connect failure.
       finish(false, new Error('Circuit breaker: too many stderr errors'))
     }
-    proc.stderr?.on('data', (data: Buffer) => {
+    proc.stderr?.on('data', (data: string) => {
       if (circuitTripped) return
-      const text = data.toString()
+      const text = data
       stderrBuf += text
       let idx: number
       while ((idx = stderrBuf.indexOf('\n')) !== -1) {
@@ -130,8 +153,8 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
       }
     })
 
-    proc.stdout?.on('data', (data: Buffer) => {
-      state.inputBuffer += data.toString()
+    proc.stdout?.on('data', (data: string) => {
+      state.inputBuffer += data
 
       // Try to parse complete JSON-RPC messages (newline-delimited)
       let newlineIdx: number

@@ -42,9 +42,11 @@ describe('plugin hook proxy', () => {
     expect(listSession('plugin-async-test')[0]?.effectiveHost).toBe('local')
   })
 
-  it('rewrites synchronous plugin commands to the authenticated command relay', async () => {
+  it('rewrites synchronous per-tool plugin commands to authenticated native http hooks', () => {
     const hooks: HookSettings = {
-      PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: 'guard-secrets' }] }],
+      PreToolUse: [
+        { matcher: 'Read', hooks: [{ type: 'command', command: 'guard-secrets', timeout: 30, if: 'Read(*.env)' }] },
+      ],
     }
     const rewritten = rewriteHooksForCli('plugin-sync-test', hooks, {
       kind: 'plugin',
@@ -52,10 +54,42 @@ describe('plugin hook proxy', () => {
       manifestPath: '/plugin.json',
     })
     const handler = rewritten.PreToolUse?.[0]?.hooks[0] as any
+    expect(handler).toEqual({
+      type: 'http',
+      url: expect.stringContaining('/api/hooks/plugin-sync-test/PreToolUse/'),
+      // The CLI substitutes the variable only into the request it sends.
+      headers: { Authorization: `Bearer $${HOOK_RELAY_TOKEN_ENV}`, 'X-Bridge-Hook-Relay': 'http' },
+      allowedEnvVars: [HOOK_RELAY_TOKEN_ENV],
+      timeout: 30,
+      if: 'mcp__user-tools__Read',
+    })
+  })
+
+  it('keeps every hook on the command relay when KAMIN_HOOK_HTTP=0', () => {
+    process.env.KAMIN_HOOK_HTTP = '0'
+    try {
+      const hooks: HookSettings = { PostToolUse: [{ hooks: [{ type: 'command', command: 'fmt' }] }] }
+      const rewritten = rewriteHooksForCli('plugin-sync-test', hooks, { kind: 'user' })
+      expect((rewritten.PostToolUse?.[0]?.hooks[0] as any).command).toBe('node')
+    } finally {
+      delete process.env.KAMIN_HOOK_HTTP
+    }
+  })
+
+  it('rewrites synchronous plugin commands to the authenticated command relay', async () => {
+    const hooks: HookSettings = {
+      UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'guard-secrets' }] }],
+    }
+    const rewritten = rewriteHooksForCli('plugin-sync-test', hooks, {
+      kind: 'plugin',
+      pluginId: 'guard@corp',
+      manifestPath: '/plugin.json',
+    })
+    const handler = rewritten.UserPromptSubmit?.[0]?.hooks[0] as any
     expect(handler.type).toBe('command')
     expect(handler.command).toBe('node')
     expect(handler.args[0]).toBe('-e')
-    expect(handler.args[1]).toContain('/api/hooks/plugin-sync-test/PreToolUse/')
+    expect(handler.args[1]).toContain('/api/hooks/plugin-sync-test/UserPromptSubmit/')
     // The credential is read from the environment at run time — the command
     // text itself must stay free of it (see hook-relay-secret.test.ts).
     expect(handler.args[1]).toContain(HOOK_RELAY_TOKEN_ENV)
@@ -72,7 +106,7 @@ describe('plugin hook proxy', () => {
     const pending = dispatchHook(
       'plugin-sync-test',
       registered.id,
-      { hook_event_name: 'PreToolUse', cwd: '/repo' } as any,
+      { hook_event_name: 'UserPromptSubmit', cwd: '/repo' } as any,
       ws,
     )
     expect(sent.pluginId).toBe('guard@corp')

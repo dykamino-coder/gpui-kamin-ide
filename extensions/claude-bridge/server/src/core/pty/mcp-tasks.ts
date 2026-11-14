@@ -6,6 +6,7 @@ import { createHash, createHmac, randomBytes } from 'node:crypto'
 import type { PtySession } from './types'
 import { notifyTaskChanged } from './mcp-tool-notify'
 import { sendToClient } from './session-io'
+import { traceSent } from './mcp-trace'
 import { McpTaskStore, taskDeadline, taskView, type TaskRecord } from './mcp-task-store'
 
 const root = path.join(os.homedir(), '.claude', 'bridge-mcp')
@@ -92,12 +93,29 @@ async function dispatch(task: TaskRecord, session: PtySession): Promise<void> {
       await mcpTasks.update(task.owner, task.taskId, (record) => {
         record.delivered = false
       })
-    }
+    } else traceSent(task.taskId)
   }
 }
+let drainRequested = false
+/** Runs the drain now; a request that arrives during a drain runs it once more
+ *  right after, so a new task is dispatched at once rather than on the next
+ *  1 s tick. */
 async function drainTasks(): Promise<void> {
-  if (draining) return
+  if (draining) {
+    drainRequested = true
+    return
+  }
   draining = true
+  try {
+    do {
+      drainRequested = false
+      await drainOnce()
+    } while (drainRequested)
+  } finally {
+    draining = false
+  }
+}
+async function drainOnce(): Promise<void> {
   try {
     for (let task of await mcpTasks.working()) {
       if (Date.now() >= taskDeadline(task) + 60_000) {
@@ -125,8 +143,6 @@ async function drainTasks(): Promise<void> {
     }
   } catch {
     /* failed persistence retains outcomes in the client's existing outbox */
-  } finally {
-    draining = false
   }
 }
 export async function createMcpTask(
@@ -156,7 +172,12 @@ export async function cancelMcpTask(session: PtySession, taskId: string): Promis
   if (task?.status === 'working') sendToClient(session.ws, { type: 'mcp:cancel', requestId: taskId, taskOwner: owner })
 }
 
-/** Waits up to `graceMs` for a task to leave `working`; returns the latest record. */
+/** Safety re-read of a waiting task in case a wake-up was missed. */
+const AWAIT_RECHECK_MS = 5_000
+
+/** Waits up to `graceMs` for a task to leave `working`; returns the latest record.
+ *  Woken by the store the moment the settled record is saved — a 200 ms poll
+ *  used to add 0–200 ms (and a disk read per tick) to every short command. */
 export async function awaitMcpTask(
   owner: string,
   taskId: string,
@@ -165,9 +186,30 @@ export async function awaitMcpTask(
 ): Promise<TaskRecord | undefined> {
   const deadline = Date.now() + graceMs
   for (;;) {
-    const task = await mcpTasks.get(owner, taskId)
-    if (!task || task.status !== 'working' || Date.now() >= deadline || signal?.aborted) return task
-    await new Promise((resolve) => setTimeout(resolve, Math.min(200, Math.max(0, deadline - Date.now()))))
+    let wake!: () => void
+    const woken = new Promise<void>((resolve) => (wake = resolve))
+    // Subscribe before reading so a settlement between the read and the wait
+    // still wakes us.
+    const unsubscribe = mcpTasks.onSettled(taskId, wake)
+    try {
+      const task = await mcpTasks.get(owner, taskId)
+      if (!task || task.status !== 'working' || Date.now() >= deadline || signal?.aborted) return task
+      let timer: ReturnType<typeof setTimeout> | undefined
+      signal?.addEventListener('abort', wake, { once: true })
+      try {
+        await Promise.race([
+          woken,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, Math.min(AWAIT_RECHECK_MS, Math.max(0, deadline - Date.now())))
+          }),
+        ])
+      } finally {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', wake)
+      }
+    } finally {
+      unsubscribe()
+    }
   }
 }
 

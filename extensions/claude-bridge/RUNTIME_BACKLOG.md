@@ -1,5 +1,32 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.98 delivery: window present, host dialogs across reconnects, session-limit reason and local SessionEnd — 2026-11-14
+
+Delivery reconciliation 2026-11-14, source `origin/main`
+`3685c3e7` (release #902):
+[KaminIDE 1.0.98](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.98)
+/ server 6.3.175 is published. Ancestry of #892, #896, #898 and #900 in
+`kaminide-v1.0.98` checked. BR-31A (#892), BR-19A (#896), BR-05B (#898) and
+BR-18A (#900) were accepted on their candidates before the release and stay
+`done`. The engine changes #791, #865, #882 and #893 ship in the same release.
+The gate on the installed release candidate (silent install over 1.0.97, a send,
+a local `SessionEnd` marker on a tab close) and the publication checks are in the
+[private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/954bb533a1af411fea126e35a6b8cf9d7c14d6dc/incidents/BR-18/evidence/2026-11-14-release-1.0.98-gate).
+The automatic relaunch after an update was not exercised.
+
+## KaminIDE 1.0.97 delivery: Bridge reconnect, warm pool, session list focus and diag log — 2026-11-14
+
+Delivery reconciliation 2026-11-14, source `origin/main`
+`0e3f9ce2` (release #889):
+[KaminIDE 1.0.97](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.97)
+/ server 6.3.174 is published. Ancestry of #873, #875, #879, #885 and #886 in
+`kaminide-v1.0.97` checked. Publication is not acceptance: INC-2026-0100 (#873),
+BR-29B (#875) and BR-05A (#885) are done by their automated acceptance; BR-05
+(#879) and BR-31 (#886) stay `verify` with the next steps in their rows below.
+The gate on the installed release candidate (close tab in the reconnect window,
+send after respawn, R6 19/20) is in the
+[private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/180).
+
 ## KaminIDE 1.0.94 delivery: interrupt tree stop, hooks, past segment scroll and embedding API — 2026-11-11
 
 Delivery reconciliation 2026-11-11, source `origin/main`
@@ -142,6 +169,18 @@ production sessions upgraded to 6.3.168 or newer, no `Session destroyed` on a
 running CLI and no client call hanging after a reconnect. Next artifact: a
 verification Diagnostic PR. Do not reimplement #714. Other sections of this
 overview keep their own dates and baselines.
+
+## Browser workspace monitor proof follow-up — 2026-11-10
+
+Fresh main `118beaad`: [INC-0087](runtime-issues/INC-2026-0087.md) remains in
+progress. Lead merged #693/#694/#696 (MCP behavior, owned PTY disposal and LSP
+behavior); #695 authentication/tab persistence is pending lead review. The next
+bounded artifact proves six monitor API/channel pairs using the production
+browser transport and shared manager with independently traced synthetic
+processes, including zero-page forwarding and process cleanup. Claude lead
+reviews/merges implementation. Exhaustive execution receipts and the final
+composed actual-model acceptance remain open; the owner does not run tests.
+Historical evidence and its narrower claims below are retained.
 
 ## Browser restart persistence follow-up — 2026-11-10
 
@@ -421,11 +460,11 @@ GPUI/gpui-component и DirectX recovery. Native layout/editor/GPU сценари
 | [INC-0039](runtime-issues/INC-2026-0039.md#maintainer-handoff) | `research` | Private server report, screenshot and JSON state; AgentTeams/report code. | Разделить delivered report, idle и next-action; synthetic lifecycle плюс current real-CLI trace в isolated account. **Граница:** Versioned report/idle contract; #197 status fix не доказывает управление/доставку отчётов. **Owner:** maintainer/test operator. |
 | [INC-0040](runtime-issues/INC-2026-0040.md#maintainer-handoff) | `research` | Two private server research documents; public marketplace/tool source audit. | Inventory destructive entry points; disposable fake marker checkout для pull/auth/add/remove/no-.git/concurrency. **Граница:** Нет deletion command/ancestry, old bundle provenance и pre-loss inventory. Исторический инициатор unknown; не выбирать backup/re-clone fix по догадке. **Owner:** maintainer; reporter only for a future operation trace. |
 | [INC-0041](runtime-issues/INC-2026-0041.md#maintainer-handoff) | `observation` | #158 published in 1.0.61; Windows runtime acceptance recorded; private package exists. | Owner сообщает redacted outcome background/manual refresh в действующей remote integration после обычной доставки. **Граница:** Deployment-only observation; не повторять accepted result/error propagation fix и не запрашивать credentials. **Owner:** deployment owner. |
-| [INC-0042](runtime-issues/INC-2026-0042.md#maintainer-handoff) | `verify` | #302 open (conflicts, Windows gate pending); #304 AGENTS.md split published in 1.0.68. | Проверить оставшийся MCP diff #302 от свежей базы, затем synthetic plugin add/update + supported CLI: catalog convergence и bounded recovery; не начинать параллельный fix. **Граница:** Source-to-runtime trace и catalog acceptance; не расширять reconnect budgets без evidence. **Owner:** maintainer/test operator. |
+| [INC-0042](runtime-issues/INC-2026-0042.md#maintainer-handoff) | `verify` | (a) #302 merged (`f6f6281`, first in 1.0.78; Windows gate passed on `37decd3`); #304 AGENTS.md split published in 1.0.68. (b) cache-only catalog changes: #823 merged (`a1c4e297`), published; on the published 1.0.97 removing sleeping connectors updated the same conversation (priv #185). | (a), (b) deployment owner confirms catalog refresh without reconnect; marketplace background-update rediscovery remains open. **Owner:** deployment owner; rediscovery: maintainer. |
 | [INC-0043](runtime-issues/INC-2026-0043.md#maintainer-handoff) | `research` | Private screenshot, host/incident logs and session/layout JSON from manual restart. | Synthetic active CLI while client restarts: mirror → replay → Chat projection; найти first divergence, сохранить server activity. **Граница:** Correlated current replay/projection artifact; старый серверный trace/provenance неполон, truncation fix не предрешён. **Owner:** maintainer. |
 | [INC-0044](runtime-issues/INC-2026-0044.md#maintainer-handoff) | `observation` | #198 merged, private exact-head Windows pointer-free startup acceptance passed. | После доставки owner подтверждает startup cache/installed/UI convergence в действующей remote integration. **Граница:** Deployment-only outcome; historical attribution unknown. Manual Update/no-pointer остаётся BR-06/31. **Owner:** deployment owner. |
 | [INC-0046](runtime-issues/INC-2026-0046.md#maintainer-handoff) | `research` | Historical sanitized note and submit/queue source; original packet absent. | Synthetic new-session/agent startup с immediate follow-up; trace ready/submit/queued/CLI accepted ordering. **Граница:** Текущая reproduction; поздний fix требует automated ordering + real CLI/Windows. Старый transcript не prerequisite. **Owner:** maintainer. |
-| [INC-0047](runtime-issues/INC-2026-0047.md#maintainer-handoff) | `research` | Historical sanitized note; current rewind/tail/replay/projection source. | Установить current pinned CLI rewind/branch protocol, затем synthetic history transition/replay. **Граница:** Versioned branch contract + differential case; fix требует exact Windows Chat/Console gate. **Owner:** maintainer. |
+| [INC-0047](runtime-issues/INC-2026-0047.md#maintainer-handoff) | `research` | #702 merged (`379788d86784223bb1acf53e4f06947e06d2b423`): same-segment abandoned-prompt-branch filter; existing D4/root/repeated/paged/non-prompt-fork regressions. Historical sanitized note remains. | Сверить существующий fix с pinned CLI rewind mode/selected leaf; выделить остаточный mismatch до новой реализации. **Граница:** Across-compaction case не покрыт #702; исходный exact Windows Chat/Console gate и историческая acceptance открыты. **Owner:** maintainer / replay executor. |
 | [INC-0048](runtime-issues/INC-2026-0048.md#maintainer-handoff) | `research` | Historical sanitized note; #158/#198 contracts and startup/marketplace source. | Fake Git provider: delay/auth/network/failure, session startup и независимые вкладки с auto-update on/off. **Граница:** Trace causal startup blocker или bounded non-reproduction; remote integration только owner observation. **Owner:** maintainer. |
 | [INC-0049](runtime-issues/INC-2026-0049.md#maintainer-handoff) | `decision` | Historical sanitized note; identity source map and clarification plan #206. | Описать поддержанные consumers: conversation resume, live PTY attach, server directory; проверить reachable UI/API. **Граница:** Reporter выбирает intended receiving operation до UX fix. Не нужны реальные ID/папки/токены. **Owner:** maintainer for map; reporter for consumer decision. |
 | [INC-0050](runtime-issues/INC-2026-0050.md#maintainer-handoff) | `research` | Historical sanitized note; CEF key/focus routing, DOM and native focus source. | Synthetic embedded controls/modal: Tab/Shift+Tab, host focus и DOM traversal; сверить already fixed transport. **Граница:** Точный affected element/current failure; заявленный fix требует Windows focus/keyboard gate. **Owner:** maintainer. |
@@ -447,28 +486,35 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | --- | --- | --- | --- |
 | [BR-02](RUNTIME_RELIABILITY.md#br-02--calibrate-the-long-session-memory-envelope) | `research` | Source + private long-session facts; repeated synthetic memory envelope. | Нет current Windows envelope/decision; BR-03 ждёт решение, не выдумывать лимит. |
 | [BR-03](RUNTIME_RELIABILITY.md#br-03--long-session-mitigation) | `waiting` | Mitigation только после BR-02. | Envelope decision и bounded выбранный механизм. |
-| [BR-04](RUNTIME_RELIABILITY.md#br-04--recover-webviews-after-extension-host-respawn) | `verify` | #148/#152 merged: Windows extension-host respawn, Chat/Console/neighbor view и documents. | Windows artifact; active editor/selection/LSP только отдельный child после contract decision. |
-| [BR-05](RUNTIME_RELIABILITY.md#br-05--rehydrate-authoritative-connection-state) | `verify` | #14 merged: isolated exact-main server send/recovery, close-tab и server errors. | Authenticated Windows/Linux gate; production credentials не требуются. |
+| [BR-04](RUNTIME_RELIABILITY.md#br-04--recover-webviews-after-extension-host-respawn) | `verify` | #148/#152/#832 merged; 2026-11-13 Windows gate #832 passed for Chat binding and Agents replay after respawn. Documents not yet checked. Published in 1.0.95. | Respawn on the installed 1.0.95; active editor/selection/LSP только отдельный child после contract decision. |
+| [BR-05](RUNTIME_RELIABILITY.md#br-05--rehydrate-authoritative-connection-state) | `done` | #14, #879 merged; on the published 1.0.97 max-sessions and session-not-found passed (priv #182). | — |
+| [BR-05B](RUNTIME_RELIABILITY.md#br-05b--tell-the-user-why-the-bridge-server-refused-a-tab) | `done` | #898 merged (`60357f3e`): a tab refused at the session limit says why through every retry. Live check passed (priv #187). Published in 1.0.98. | — |
+| [BR-05A](RUNTIME_RELIABILITY.md#br-05a--do-not-grow-the-warm-pool-on-an-extension-host-respawn) | `done` | #885 merged: the warm pool runs only on a cold start, not after a respawn. Published in 1.0.97. | — |
 | [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | `verify` | #147 delivery wake reused: оба Chat no-pointer сценария + Plugins manual Update. | Windows no-pointer outcome; сопоставить BR-31 R6, не добавлять forced repaint. |
 | [BR-07](RUNTIME_RELIABILITY.md#br-07--surface-native-claude-attention-in-chat) | `waiting` | Tab-scoped Console banner после blocker inventory BR-11. | Versioned native attention contract. |
 | [BR-08](RUNTIME_RELIABILITY.md#br-08--explain-unexpected-automatic-reload-skills) | `observation` | #200 telemetry accepted; owner reports diagnostic window after deployment. | Real reload event/source; maintainer не имеет deployment access. |
-| [BR-09](RUNTIME_RELIABILITY.md#br-09--make-agent-teams-report-delivery-explicit) | `verify` | #15 merged: 3/3 reports без recovery и отдельный один bounded recovery. | Current real CLI + isolated authenticated Windows/Linux evidence; отличается от #197 status. |
-| [BR-10](RUNTIME_RELIABILITY.md#br-10--show-the-effective-hook-in-approval-ui) | `verify` | #13 merged: modal focus, Tab/Shift+Tab, approve/reject и соседние controls. | Windows keyboard/focus artifact. |
+| [BR-09](RUNTIME_RELIABILITY.md#br-09--make-agent-teams-report-delivery-explicit) | `done` | #15 merged; 2026-11-13 both cases passed on the authenticated stand (CLI 2.1.322): 3/3 reports with tab switch and reconnects, one recovery for a lost report. | None. Closed by lead decision 2026-11-13 (server prompt contract unchanged since `584b5616`; client checked on a `main` build). |
+| [BR-10](RUNTIME_RELIABILITY.md#br-10--show-the-effective-hook-in-approval-ui) | `verify` | #842 merged (`84f9f198`); 2026-11-13 Windows gate on `0d2863d6` passed: requests reach Chat, focus on show, focus restored after a queue. Published in 1.0.95. | Check on the installed 1.0.95, then close. |
 | [BR-11](RUNTIME_RELIABILITY.md#br-11--inventory-native-cli-only-blocking-states) | `research` | Current pinned CLI-only blockers inventory (включая model confirmation). | Versioned trigger/output/actions; старые production transcripts не prerequisite. |
 | [BR-12](RUNTIME_RELIABILITY.md#br-12--establish-the-server-and-builtin-skills-baseline) | `observation` | Owner inventory roots/mounts/ownership действующего deployment, без contents. | Deployment-owner report; нельзя подменить local synthetic inventory. |
 | [BR-13](RUNTIME_RELIABILITY.md#br-13--retire-the-legacy-bridge-sync-mount-safely) | `observation` | Owner confirms every deployment migrated before legacy cleanup. | Migration proof; до него destructive cleanup запрещён. |
 | [BR-15](RUNTIME_RELIABILITY.md#br-15--evaluate-automatic-agent-teams-selection) | `waiting` | Orchestration eval после BR-09 и BR-25 completion. | Live report gate + delivery completion; BR-26/27 уже done. |
 | [BR-16](RUNTIME_RELIABILITY.md#br-16--stabilize-upward-history-scroll-anchoring) | `waiting` | Upward lazy-load anchor + streaming user-scroll follow policy после BR-22 classification. | Classified history path; keyed displacement Windows CEF gate, не WPT scrollbar result. |
 | [BR-17](RUNTIME_RELIABILITY.md#br-17--persist-privacy-safe-bridge-server-logs) | `observation` | #203 durable lifecycle logging merged; owner rollout/read-only confirmation. | Effective log volume/lifecycle fields на deployment. |
-| [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | `verify` | Explicit end SessionEnd contract в isolated authenticated CLI account. | Bounded Windows/Linux hook outcome; не end/kill чужую production session. |
-| [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | `verify` | #146 merged: Windows shell disconnect/reconnect без false Extension crashed. | Task-specific lifecycle artifact, а не только build CI. |
-| [BR-21](RUNTIME_RELIABILITY.md#br-21--define-and-reconcile-dashboard-analytics-semantics) | `research` | Metric semantics decision из source/synthetic SQL; #169 API и #202 quota не заменяют её. | Identity/range/freshness/model/price decision; только потом BR-21A–E. |
+| [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | `done` | #900 merged (`d8667701`): a local SessionEnd hook runs when a chat is closed. Marker check on the candidate passed 2/2 (priv #189). Published in 1.0.98. Its shutdown regression (host exit delayed up to 5 s) is fixed by #909 (`9b508696`), which ships in the next release. | — |
+| [BR-18B](RUNTIME_RELIABILITY.md#br-18b--collect-a-local-hooks-output-before-reporting-its-result) | `done` | #908 merged (`71ef1196`): a hook's result is built on `close`, on the client and the server; automated acceptance. Ships in the next release. | — |
+| [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | `done` | #146, #830 merged; reconnect without false crash, the pick dismissed at disconnect and the error after reconnect passed on 1.0.97 (priv #183). | — |
+| [BR-19A](RUNTIME_RELIABILITY.md#br-19a--close-host-dialogs-of-a-dropped-connection-and-answer-only-their-own-request) | `done` | #896 merged (`098a7493`): host replies go only to their own connection; Windows gate on the candidate passed (priv #184). Published in 1.0.98. | — |
+| [BR-21](RUNTIME_RELIABILITY.md#br-21--define-and-reconcile-dashboard-analytics-semantics) | `verify` | Contract #810; #818 (includes #822) merged `a839d5a5`: Codex usage accounting, engine filters, live PTY counters and user grouping. Signed-out card and stats endpoints checked in a temporary container. Published in 1.0.95 / server 6.3.172. | Live check on the 6.3.172 stand with a real GPT reply and live sessions; remaining BR-21 children per the contract. |
 | [BR-22](RUNTIME_RELIABILITY.md#br-22--keep-live-chat-render-window-populated-by-drawable-rows) | `research` | Private screenshots + current predicate/window/projection source; synthetic long history/question/stream matrix. | Нет paired historic drawable dumps. Сначала классифицировать current failing boundary; BR-16/change gate сохраняется. |
-| [BR-23](RUNTIME_RELIABILITY.md#br-23--make-session-complete-notifications-transient-and-turn-scoped) | `change` | #161/#164 merged; bounded transient host toast contract и tests. | Current manual-dismiss toast недостаточен; fake-clock + exact Windows native toast acceptance. |
+| [BR-23](RUNTIME_RELIABILITY.md#br-23--make-session-complete-notifications-transient-and-turn-scoped) | `verify` | #834 merged (`5d95419f`); 2026-11-13 Windows gate on `94ebd71c` passed for countdown, auto-close, hover pause/resume and Open; a real background completion also shows the transient notice ([INC-2026-0113](runtime-issues/INC-2026-0113.md) closed as a measurement error). Published in 1.0.95. | Live Agent Teams one-per-turn on the installed 1.0.95. |
 | [BR-24](RUNTIME_RELIABILITY.md#br-24--bound-and-reconcile-lost-webview-invoke-replies) | `waiting` | Behavioral fix ждёт classified production observation + BR-31 R6; #201 diagnostics merged. | Source/synthetic timeout/late-ack countercheck доступен сейчас отдельно; он не снимает prerequisites fix. |
 | [BR-25](RUNTIME_RELIABILITY.md#br-25--verify-agents-view-delivery-and-rehydration-after-reveal) | `waiting` | Baseline done, #147 merged; completion без repaint workaround после BR-31 R6. | Windows Agents delivery/reveal completion artifact. |
-| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | `verify` | #37 merged: actual typing/F2/flyout/double-click/Enter/Esc/blur/hitbox. | Windows focus/keyboard gate; geometric probe сам по себе недостаточен. |
-| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | `verify` | #147 merged; тот же R6, что INC-0002, затем BR-25/06. | Reveal no-pointer: rows + invoke ≤ 1 с; два separate fixes не нужны. |
+| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | `done` | #37, #839 merged; on the published 1.0.97 scroll and session change during the transition and the BR-28 bounds passed (priv #186). | — |
+| [BR-29A](RUNTIME_RELIABILITY.md#br-29a--keep-the-keyboard-focus-ring-visible-inside-clipped-containers) | `done` | Registered 2026-11-13 (kmaint2): keyboard focus ring clipped on session rows and tab chips. Fix PR #853 merged (`93dddd3b`); Windows gate on `95ebe50f` passed. Published in 1.0.96; 2026-11-13 the check on the installed 1.0.96 passed. | None. |
+| [BR-29B](RUNTIME_RELIABILITY.md#br-29b--scroll-the-session-list-to-the-keyboard-focused-row) | `done` | Registered 2026-11-13 (kmaint2): Tab focus on a session row outside the visible part of the list does not scroll the list. Fix PR #875 merged (`abf6885c`) with the automated acceptance of the card; published in 1.0.97. | None. |
+| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | `done` | #147, #886 merged, published in 1.0.97. R6 on the published 1.0.97: 30 of 30 (priv #181). The present layer is BR-31A (#892). | — |
+| [BR-31A](RUNTIME_RELIABILITY.md#br-31a--keep-the-ui-thread-out-of-a-blocked-window-present) | `done` | #892 merged (`cb1f1024`): Present never waits; Windows gate R6 60/60 on the candidate (priv #181). Published in 1.0.98. | — |
 
 ## Принятые результаты: не реализовывать повторно
 

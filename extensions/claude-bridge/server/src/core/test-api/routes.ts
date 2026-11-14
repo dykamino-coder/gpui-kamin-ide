@@ -29,9 +29,9 @@ export function createTestRoutes(): Hono {
   // ── Ensure test token exists ─────────────────────────
   // Returns existing token or creates a new one named "e2e-test"
   api.post('/api/test/ensure-token', async (c) => {
-    const body = await c.req.json<{ name?: string }>().catch(() => ({} as { name?: string }))
+    const body = await c.req.json<{ name?: string }>().catch(() => ({}) as { name?: string })
     const name = body.name || 'e2e-test'
-    const existing = (await listTokens()).find(t => t.name === name)
+    const existing = (await listTokens()).find((t) => t.name === name)
     if (existing) {
       return c.json({ token: existing.token, id: existing.id, created: false })
     }
@@ -47,7 +47,7 @@ export function createTestRoutes(): Hono {
   // ── List active sessions ──────────────────────────────
   api.get('/api/test/sessions', (c) => {
     const sessions = getAllSessions()
-    const list = sessions.map(s => ({
+    const list = sessions.map((s) => ({
       id: s.id,
       user: s.userName,
       cwd: s.cwd,
@@ -158,13 +158,15 @@ export function createTestRoutes(): Hono {
           jsonRpcId: undefined,
         })
 
-        ws.send(JSON.stringify({
-          type: 'elicitation:request',
-          requestId,
-          toolName: 'test-elicitation',
-          message: body.message,
-          requestedSchema: body.requestedSchema,
-        }))
+        ws.send(
+          JSON.stringify({
+            type: 'elicitation:request',
+            requestId,
+            toolName: 'test-elicitation',
+            message: body.message,
+            requestedSchema: body.requestedSchema,
+          }),
+        )
       })
 
       return c.json({ requestId, result })

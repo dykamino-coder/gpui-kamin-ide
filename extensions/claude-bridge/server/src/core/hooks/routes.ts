@@ -9,10 +9,14 @@
 //   3. We return the exact stdout/stderr/exitCode envelope. The relay writes
 //      those streams and exits identically, so Claude Code remains the single
 //      authority for event-specific command-hook semantics.
+// Native http flow (`X-Bridge-Hook-Relay: http`, per-tool events only): the
+// CLI posts the hook input itself, and the answer is the http-hook body with
+// the same effect as the command's exit code (see http-hook-answer.ts).
 // Legacy HTTP sessions are still translated below until they are restarted.
 
 import { Hono } from 'hono'
 import { dispatchHook } from './dispatcher'
+import { commandLabel, HTTP_HOOK_RELAY, httpHookAnswer } from './http-hook-answer'
 import { getSession } from '../pty/session-manager'
 import { finalizeSessionTeardown, isSessionTearingDown } from '../pty/session-core'
 import type { HookInputPayload } from './types'
@@ -93,7 +97,9 @@ export function createHooksRoutes(): Hono {
     } catch {
       return c.json({ error: 'Invalid JSON' }, 400)
     }
-    const commandRelay = c.req.header('X-Bridge-Hook-Relay') === 'command'
+    const relayKind = c.req.header('X-Bridge-Hook-Relay')
+    const commandRelay = relayKind === 'command'
+    const httpRelay = relayKind === HTTP_HOOK_RELAY
 
     // Deterministic session status: the FIRING of these CLI lifecycle events is
     // the authoritative signal (vs scraping OSC spinner glyphs). Emit before any
@@ -119,6 +125,7 @@ export function createHooksRoutes(): Hono {
             200,
           )
         }
+        if (httpRelay) return c.json({}, 200)
         return c.json({ continue: true, suppressOutput: true }, 200)
       }
     }
@@ -146,6 +153,11 @@ export function createHooksRoutes(): Hono {
 
     if (commandRelay) {
       return c.json({ result }, 200)
+    }
+    if (httpRelay) {
+      const reg = getHook(sessionId, hookId)
+      const answer = httpHookAnswer(event, result, reg ? commandLabel(reg.handler) : '')
+      return c.body(answer.body, answer.status as 200, { 'Content-Type': 'application/json' })
     }
 
     // Legacy HTTP-hook compatibility for sessions created before this fix.

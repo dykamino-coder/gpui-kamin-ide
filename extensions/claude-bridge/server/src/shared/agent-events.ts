@@ -15,6 +15,8 @@ export interface AgentTokenUsage {
   totalTokens: number
   inputTokens: number
   cachedInputTokens: number
+  /** Input written to the provider's prompt cache (0 when none is reported). */
+  cacheWriteInputTokens: number
   outputTokens: number
   reasoningOutputTokens: number
 }

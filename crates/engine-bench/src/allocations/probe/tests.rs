@@ -1,5 +1,6 @@
-//! Фильтр пробника, отсутствие следа в счётчиках и граница строки записи.
+//! Фильтр и конец окна пробника, отсутствие следа в счётчиках, граница строки.
 
+use super::line::Line;
 use super::*;
 
 const NAMES: [&str; 3] = ["layout", "paint", "raster_gpu_readback"];
@@ -46,9 +47,34 @@ fn filter_rejects_unknown_phases_and_malformed_ranges() {
 }
 
 #[test]
+fn window_ends_when_the_last_frame_leaves_the_until_phase() {
+    let (build, layout, other) = (4, 5, 10);
+    let mut window = Until::Before;
+    for (phase, frame) in [(other, 1), (build, 1), (layout, 1), (other, 2)] {
+        window = window.step(build, 2, phase, frame);
+        assert_eq!(
+            window,
+            Until::Before,
+            "earlier frames leave the window open"
+        );
+    }
+    window = window.step(build, 2, build, 2);
+    assert_eq!(window, Until::Inside);
+    window = window.step(build, 2, layout, 2);
+    assert_eq!(window, Until::Closed);
+    assert_eq!(
+        window.step(build, 2, build, 2),
+        Until::Closed,
+        "closed for good"
+    );
+    assert_eq!(Until::Open.step(build, 2, layout, 2), Until::Open);
+}
+
+#[test]
 fn disarmed_probe_leaves_the_allocation_counters_alone() {
     let before = super::super::Snapshot::read();
-    record(b'a', 64);
+    record(b'a', 64, std::ptr::null());
+    release(64, std::ptr::null());
     let after = super::super::Snapshot::read();
     assert_eq!((before.calls, before.bytes), (after.calls, after.bytes));
 }
@@ -62,4 +88,19 @@ fn line_refuses_text_past_its_stack_buffer() {
     assert!(line.write_str("abcd").is_ok());
     assert!(line.write_str("e").is_err());
     assert_eq!(line.length, 1024);
+}
+
+#[test]
+fn lines_carry_the_pointer_after_the_size() {
+    let (line, text) = head(b'f', 16, 0xbeef0 as *const u8);
+    assert!(text.is_ok());
+    let line = std::str::from_utf8(&line.bytes[..line.length]).unwrap();
+    // Кадр и фаза общие для процесса: другие тесты стенда могут их двигать.
+    let fields: Vec<_> = line.split(' ').collect();
+    assert_eq!(
+        (fields[0], fields[3], fields[4]),
+        ("f", "16", "beef0"),
+        "{line}"
+    );
+    assert_eq!(fields.len(), 5, "a free has no stack: {line}");
 }

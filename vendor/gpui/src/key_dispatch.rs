@@ -68,6 +68,13 @@ use std::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct DispatchNodeId(usize);
 
+impl DispatchNodeId {
+    /// KaminIDE patch: the node of an element that takes none (`Element::dispatch_node`).
+    /// A sentinel rather than an `Option`, so the draw phase of every element keeps its size;
+    /// no tree holds `usize::MAX` nodes.
+    pub(crate) const NONE: Self = Self(usize::MAX);
+}
+
 pub(crate) struct DispatchTree {
     node_stack: Vec<DispatchNodeId>,
     pub(crate) context_stack: Vec<KeyContext>,

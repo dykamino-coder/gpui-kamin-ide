@@ -2,6 +2,7 @@
 // Both stream the whole transcript once and keep only bounded aggregates:
 // capped maps, a ring of recent turns and the latest compact summary.
 
+import { isEngineUsageLine, isUsagelessItemLine } from '../../shared/engine-accounting'
 import { intArg } from './args'
 import { openTranscript, readLines } from './line-reader'
 import { redact } from './redact'
@@ -115,7 +116,8 @@ export async function outlineSession(ctx: CallerContext, args: Record<string, un
         }
         const msg = entry.message as { id?: unknown; model?: unknown; usage?: Record<string, number> }
         const id = typeof msg.id === 'string' ? msg.id : null
-        if (id === null || id !== lastMsgId) {
+        // A codex item is not a response: its `api_usage` line counts it.
+        if (!isUsagelessItemLine(entry) && (id === null || id !== lastMsgId)) {
           lastMsgId = id
           usage.assistant_messages++
           if (typeof msg.model === 'string') bump(models, msg.model, 50)
@@ -127,6 +129,14 @@ export async function outlineSession(ctx: CallerContext, args: Record<string, un
             usage.cache_write += u.cache_creation_input_tokens ?? 0
           }
         }
+      } else if (isEngineUsageLine(entry)) {
+        const e = entry as { model?: unknown; usage?: Record<string, number> }
+        usage.assistant_messages++
+        if (typeof e.model === 'string') bump(models, e.model, 50)
+        usage.input += e.usage?.input_tokens ?? 0
+        usage.output += e.usage?.output_tokens ?? 0
+        usage.cache_read += e.usage?.cache_read_input_tokens ?? 0
+        usage.cache_write += e.usage?.cache_creation_input_tokens ?? 0
       }
     }
   } finally {

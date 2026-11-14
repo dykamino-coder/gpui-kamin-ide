@@ -32,6 +32,8 @@ export type ClientMessage =
       sessionId?: string
       requestId: string
       result: unknown
+      /** Durations on this host, read by the server's per-call trace. */
+      timing?: { queuedMs: number; toolMs: number; totalMs: number }
     }
   | {
       type: 'mcp:denied'
@@ -60,6 +62,7 @@ export type ClientMessage =
     }
   | { type: 'session:change-effort'; effort: string }
   | { type: 'session:change-model'; model: string }
+  | { type: 'session:switch-engine'; engine: 'claude' | 'codex'; model: string }
   | { type: 'session:delete-data'; conversationId: string }
   | {
       type: 'hook:response'
@@ -185,7 +188,12 @@ export type ServerMessage =
       sessionId: string
       effort?: string
       model?: string
+      /** Set when the chat moved to another engine (session:switch-engine). */
+      engine?: 'claude' | 'codex'
+      engineSwitch?: { prepareMs: number; startMs: number; contextBytes?: number }
     }
+  /** The engine switch was refused; the chat keeps running as it was. */
+  | { type: 'session:engine-switch-failed'; error: string }
   // Горячая смена модели (/model в живой PTY) — sessionId прежний, без реплея.
   | {
       type: 'session:model-changed'
@@ -225,6 +233,7 @@ export type ServerMessage =
       type: 'session:submission'
       sessionId: string
     } & import('./types').SubmissionUpdate)
+  | { type: 'session:handoff'; sessionId: string; transferable: string[] }
   | { type: 'jsonl:download-begin'; fileName: string | null; total: number }
   | { type: 'jsonl:download-chunk'; chunk: string; sent: number; total: number }
   | { type: 'jsonl:download-end'; fileName: string | null; total: number }

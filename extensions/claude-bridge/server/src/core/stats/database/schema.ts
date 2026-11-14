@@ -12,12 +12,15 @@
 
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { initAccountingSchema } from './accounting-schema'
+import { initRollupSchema } from './rollup'
+import { initSessionOwners } from './session-owners'
+import { debugLog, warnLog } from '../../logging'
 
 async function tryExec(db: DuckDBConnection, sql: string): Promise<void> {
   try {
     await db.run(sql)
-  } catch {
-    /* idempotent migration — swallow */
+  } catch (error) {
+    debugLog('stats additive migration skipped', { error: String(error) })
   }
 }
 
@@ -32,6 +35,9 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
     calls BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (bridge_session_id, tool_name)
   )`)
+  await tryExec(db, 'ALTER TABLE mcp_tool_observations ADD COLUMN source TEXT')
+  await tryExec(db, 'ALTER TABLE mcp_tool_observations ADD COLUMN last_called_at TEXT')
+  await tryExec(db, 'ALTER TABLE mcp_tool_observations ADD COLUMN calls_complete BOOLEAN DEFAULT FALSE')
   await db.run(`
     CREATE TABLE IF NOT EXISTS requests (
       id TEXT PRIMARY KEY,
@@ -141,6 +147,9 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   await tryExec(db, 'ALTER TABLE jsonl_events DROP COLUMN hour')
 
   await tryExec(db, 'ALTER TABLE jsonl_events ADD COLUMN cache_write_1h_tokens INTEGER DEFAULT 0')
+  // Engine of the transcript LINE ('claude' | 'codex'; NULL = legacy Claude).
+  // Per line, not per session: one conversation can run on both engines.
+  await tryExec(db, 'ALTER TABLE jsonl_events ADD COLUMN engine TEXT')
   await initAccountingSchema(db)
 
   // ── session_tokens: bridge-managed conversation index, soft-delete,
@@ -213,6 +222,8 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   await db.run(`CREATE INDEX IF NOT EXISTS idx_api_errors_timestamp ON api_errors(timestamp)`)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_api_errors_user_name ON api_errors(user_name)`)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_api_errors_error_type ON api_errors(error_type)`)
+  // NULL = a Claude CLI error (the only kind recorded before codex).
+  await tryExec(db, 'ALTER TABLE api_errors ADD COLUMN engine TEXT')
 
   // ── jsonl_offsets: incremental scan offsets per file.
   await db.run(`
@@ -294,7 +305,12 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
         [new Date().toISOString()],
       )
     }
-  } catch {
-    /* ignore */
+  } catch (error) {
+    warnLog('stats session metadata migration failed', { error: String(error) })
   }
+
+  await initSessionOwners(db)
+
+  // Dashboard rollup tables (built in the background after boot).
+  await initRollupSchema(db)
 }

@@ -11,6 +11,7 @@ mod app;
 
 mod arena;
 mod asset_cache;
+mod heap_report;
 mod assets;
 mod bounds_tree;
 mod plane_bsp;
@@ -70,6 +71,11 @@ pub mod frame_perf {
     pub static DRAW_US: AtomicU32 = AtomicU32::new(0);
     /// Время презента (отправка сцены на ГПУ и Commit), мкс.
     pub static PRESENT_US: AtomicU32 = AtomicU32::new(0);
+    /// KaminIDE patch (BR-31A): из них внутри вызова `Present` свапчейна, мкс.
+    pub static SWAP_US: AtomicU32 = AtomicU32::new(0);
+    /// KaminIDE patch (BR-31A): кадров не отдано компоузеру (гейт или
+    /// `Present` без ожидания); их презентует следующая отрисовка.
+    pub static DROPPED_FRAMES: AtomicU32 = AtomicU32::new(0);
     /// Сколько кадров окна сложилось за период.
     pub static FRAMES: AtomicU32 = AtomicU32::new(0);
     /// Время фазы prepaint (раскладка), мкс.
@@ -307,6 +313,7 @@ pub use test::*;
 pub use text_system::*;
 pub use util::{FutureExt, Timeout};
 pub use view::*;
+pub use heap_report::HeapSink;
 pub use window::*;
 
 #[cfg(not(target_family = "wasm"))]
