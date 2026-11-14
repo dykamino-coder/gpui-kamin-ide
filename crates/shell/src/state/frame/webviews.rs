@@ -13,12 +13,28 @@ fn html_cache_path(id: &str) -> std::path::PathBuf {
 }
 
 /// Сохранить HTML вью на диск — чтобы следующий запуск рисовал панель сразу.
+///
+/// Не на UI-потоке (BR-31): HTML чата — мегабайты, а пишется он в кадре, где
+/// вью поднимается; ожидание диска задерживало показ панели. Запись идёт во
+/// временный файл и переименовывается, так что параллельные записи одного вью
+/// оставляют целый файл последней из них.
 fn cache_html(id: &str, html: &str) {
     let path = html_cache_path(id);
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let _ = std::fs::write(path, html);
+    let html = html.to_string();
+    let spawned = std::thread::Builder::new()
+        .name("kamin-html-cache".into())
+        .spawn(move || {
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let tmp = path.with_extension(format!("html.{}.{n}.tmp", std::process::id()));
+            if std::fs::write(&tmp, html).is_ok() && std::fs::rename(&tmp, &path).is_err() {
+                let _ = std::fs::remove_file(&tmp);
+            }
+        });
+    drop(spawned);
 }
 
 impl RootView {

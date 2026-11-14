@@ -12,7 +12,10 @@ mod browsers;
 #[cfg(debug_assertions)]
 pub(crate) use acceptance::{acceptance_log, reset_fixture};
 pub(crate) use pump::rhythm as frame_rhythm;
-pub(crate) use {diag_sink::emit_line as startup_log, gpu_mode::software_render};
+pub(crate) use {
+    diag_sink::emit_line as startup_log, diag_sink::flush as flush_startup_log,
+    gpu_mode::software_render,
+};
 mod context_menu;
 mod copy_frame;
 mod cursors;
@@ -25,6 +28,7 @@ mod diag_activity;
 mod diag_clock;
 pub(crate) mod diag_event_name;
 mod diag_log;
+mod diag_outbox;
 mod diag_sink;
 pub(crate) mod diag_views;
 pub(crate) mod diag_why;
@@ -111,6 +115,7 @@ pub(crate) fn wake_pump() {
 /// шевельнёт мышью (INC-2026-0002).
 pub(crate) fn mark_pull_pending(id: &str) {
     diag_why::tick("wake/pull-pending");
+    diag_outbox::marked(id);
     if let Ok(mut set) = PULL_PENDING.lock() {
         set.insert(id.to_string());
     }
@@ -406,6 +411,7 @@ pub(crate) fn flush_pending_pulls() {
     for id in ids {
         if browsers::exists(&id) {
             diag_why::tick("pull/dispatched");
+            diag_outbox::dispatched(&id);
             browsers::execute_script(&id, "window.__kaminPull()");
         }
     }

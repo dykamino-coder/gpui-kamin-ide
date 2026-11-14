@@ -369,6 +369,9 @@ closing a tab inside the reconnect window fails.**
 - **Next step:** kmaint2: a Fix PR that keeps webview messages that arrive before the view is
   resolved again and hands them over after resolve, with a test that fails on the old code and
   this close-tab scenario as the Windows gate. Then run max-sessions and session-not-found.
+- **2026-11-14:** the close-tab fix merged as #879 (Windows gate passed on its head: the
+  closed tab id was gone by 1 s in 2 of 2 runs). The tab growth is registered as BR-05A.
+  **Next step:** kmaint2: max-sessions and session-not-found.
 
 **Status:** implementation merged в PR #14; reopened for verification.
 **Dependency:** none. **Acceptance:** automated + Windows runtime merge gate;
@@ -388,6 +391,27 @@ Tests: event-before-tab, stale snapshot, terminal error + reconnect, cold app
 restart при живой server session и несколько tabs. Старый пятисекундный error
 timer отсутствует; stale manager generation и `listTabs` не откатывают более
 новую authority/revision, а fatal error не оставляет false-green composer.
+
+### BR-05A — Do not grow the warm pool on an extension-host respawn
+
+**Registered 2026-11-14 (kmaint2) from the BR-05 gate.**
+- Symptom: every extension-host respawn adds up to 4 more chat tabs, about 8 s after the
+  respawn. On the installed 1.0.96 the count went 9 → 13 → 17 → 20 over three respawns. A tab
+  the user closed just before the respawn can come back with a new tab id.
+- Cause (source): after a respawn `NativeRespawnState.restore` brings back the exact previous
+  tab set, including the warm tabs. `SessionsBridge.install` then still schedules the cold-boot
+  warm pool (`warmRestore`, up to `WARM_POOL_MAX` = 4), which opens tabs for open native
+  sessions that have no live tab. Closing a Bridge tab does not close its native session, so the
+  closed session is such a candidate.
+- Contract: a respawn restores the tab set the user had; the warm pool belongs to a cold start.
+- Evidence: [private PR #178](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/178),
+  `incidents/BR-05/evidence/2026-11-14-fix-candidate-03e6513a`.
+
+**Status:** done — Fix PR #885 merged 2026-11-14; its respawn test fails on the old code and
+passes on `main`. **Dependency:** none. **Acceptance:** automated: a respawn test in
+`sessions-bridge-respawn.test.ts` that fails on the old code (tab count and the closed session).
+**Windows runtime merge gate:** not required.
+**Next step:** none; shipped with the next release.
 
 ### BR-06 — Webview update stalls until pointer activity
 
@@ -2234,7 +2258,7 @@ into view on `focus()`.
 `overflow_y_scrollbar()` and no external scroll handle, and
 `crates/shell/src/ui/focus_ring.rs` only paints the ring; nothing moves the
 scroll offset when the focus changes.
-**Status:** confirmed by source and live. **Fix PR:** [#875](https://github.com/dykamino-coder/gpui-kamin-ide/pull/875): a keyboard focus move records the painted bounds of the focused row, and the session list scrolls by the smallest offset that shows it; the GPUI test fails without the scroll call.
+**Status:** done: #875 merged (`abf6885c`) with the automated acceptance below and published in KaminIDE 1.0.97 (ancestry checked 2026-11-14). **Fix PR:** [#875](https://github.com/dykamino-coder/gpui-kamin-ide/pull/875): a keyboard focus move records the painted bounds of the focused row, and the session list scrolls by the smallest offset that shows it; the GPUI test fails without the scroll call.
 **Dependency:** none.
 **Acceptance:** a shell test that tabs to a row below and above the visible
 part of a scrolled session list and checks that the row ends up inside the
@@ -2396,6 +2420,34 @@ existing `[views]` line: pending outbox batches and the age of the oldest one,
 the last `mark_pull_pending`, the last `pull/dispatched` and the last
 `take_all` for that view. Then repeat R6 until a stall is caught and fix the
 named layer. No forced repaint or timer.
+
+**Research 2026-11-14 with per-view outbox diagnostics (kmaint2, #878 candidate):
+the stalled layer is the UI thread, blocked in the diagnostic log append.**
+- Candidate: the installed 1.0.96 with the shell from #878 (`[outbox]` lines, delivery
+  unchanged). 45 R6 reveals; 23 of 24 valid reveals in the second batch had rows by 1.1 s.
+- Apart from hidden views, every `[outbox]` stall listed all live views at once, with the
+  pull requested (`mark`) after the batches arrived but no `dispatch` since: the pump task
+  did not run.
+- In 28 of 33 stalls the 4 s before it contain a 0.6–11.6 s gap between the `[cef]` and
+  `[why]` lines of one diag report. Both are written by one synchronous call on the UI
+  thread; between their timestamps the only blocking work is appending the `[cef]` line to
+  `diag.log` (three size checks, open, seek, write, close). Process CPU time stays low over
+  such intervals, so the thread waits rather than computes. The installed 1.0.96 shows the
+  same gaps (22 over 200 ms, max 11.8 s).
+- Not established: whether the wait is the disk itself or an on-access scan of the
+  just-closed log file. Either way, file I/O on the UI thread stalls delivery and painting.
+[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/6d72ace4667c2c604219c2e9abe3d3f922d563c3/incidents/INC-2026-0002/evidence/2026-11-14-br31-outbox-candidate).
+**Next step (bounded, owner kmaint2):** move the diag log writes off the UI thread (one
+writer thread fed by a channel; `emit_line` only enqueues), with a test that fails while a
+blocked writer blocks the caller. Then repeat R6 and check that the `[cef]`→`[why]` gaps and
+the `[outbox]` stalls are gone.
+
+**Fix 2026-11-14: #886 merged** — `diag.log` and the view HTML cache are written off the UI
+thread. Windows gate on the PR head: 60 of 60 R6 reveals had rows by 1.1 s, with no UI-thread
+wait inside a diag report and zero `[outbox]` stalls (before: 33 stalls, 28 after 0.6–11.6 s
+waits). [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/179).
+**Next step (owner kmaint2):** repeat R6 on the published 1.0.97 installer; if it holds, mark
+BR-31 and INC-2026-0002 done, then continue with BR-25/06.
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
 пробуждением. `deliver()` зовёт её. Polling и таймеры не добавлены: путь

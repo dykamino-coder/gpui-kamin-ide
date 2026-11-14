@@ -142,3 +142,23 @@ describe('BR-04 native child respawn', () => {
     expect([...fixture.files.values()].join('')).not.toContain(cfg.token)
   })
 })
+
+describe('BR-05A warm pool after a respawn', () => {
+  it('restores the tab set without growing it or reviving a closed session', () => {
+    for (const n of ['b', 'c', 'd', 'e', 'f', 'g']) {
+      fixture.sessions.push({ id: `native-${n}`, projectId: 'p', name: n.toUpperCase(), open: true, lastOpened: n.charCodeAt(0),
+        metadata: { bridge: { conversationId: `conversation-${n}` } } })
+    }
+    const first = child(1)
+    vi.advanceTimersByTime(4000) // cold start: active tab + WARM_POOL_MAX warm tabs
+    expect(first.tm.size).toBe(5)
+    const closed = first.tm.listTabs().find(t => t.conversationId !== 'conversation-a')!
+    first.tm.closeTab(closed.id) // the user closes a warm tab; its native session stays open
+    const kept = first.tm.listTabs().map(t => t.id)
+    first.bridge.dispose()
+    const second = child(2)
+    vi.advanceTimersByTime(30_000)
+    expect(second.tm.listTabs().map(t => t.id)).toEqual(kept)
+    expect(second.tm.listTabs().some(t => t.conversationId === closed.conversationId)).toBe(false)
+  })
+})
