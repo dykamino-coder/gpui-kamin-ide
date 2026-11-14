@@ -13,6 +13,10 @@
 //! - `Patched` — копия путей к правленым коробкам (`patch`); у новой ревизии
 //!   новый сохраняемый кадр, а факты прошлого дерева служат основой фактов
 //!   нового (`DocState::adopting`): обходятся только новые списки детей.
+//! - `Restyled` — копия путей к перестилизованным коробкам. Если изменились
+//!   только значения, которые берёт слой сцены документа (`paint_damage`),
+//!   они пишутся в слой (`layer_write`), а ревизия сохраняет кадр, как
+//!   `Clean`; иначе — новый сохраняемый кадр, как `Patched`.
 
 use crate::document::{Document, state::DocState};
 use crate::dom::Node;
@@ -46,16 +50,24 @@ impl Document {
                 if let Some(nodes) = nodes {
                     self.nodes = Rc::new(nodes);
                 }
-                let base = self.state.values.images.borrow().base().cloned();
-                self.state
-                    .values
-                    .admit_revision(revision.clone(), base.as_ref());
-                self.key = key;
-                self.last_failure = None;
-                #[cfg(feature = "engine-bench")]
-                {
-                    self.timings = timings;
-                }
+                self.keep_frame(
+                    key,
+                    revision,
+                    #[cfg(feature = "engine-bench")]
+                    timings,
+                );
+            }
+            // Only values the scene layer takes changed: they are written
+            // into it, and the recorded frame (`Slot`) replays with them.
+            Plan::Restyled(nodes, restyled) if self.write_paint_values(&nodes, &restyled) => {
+                self.reuse.restyle(&self.nodes, &nodes, &restyled);
+                self.nodes = Rc::new(nodes);
+                self.keep_frame(
+                    key,
+                    revision,
+                    #[cfg(feature = "engine-bench")]
+                    timings,
+                );
             }
             Plan::Patched(nodes) => {
                 *self = self.adopted(
@@ -78,6 +90,40 @@ impl Document {
                 );
             }
         }
+    }
+
+    /// Ревизия `key` с прежним кадром, состоянием и фактами раскладки.
+    fn keep_frame(
+        &mut self,
+        key: u64,
+        revision: &crate::budget::RevisionBudget,
+        #[cfg(feature = "engine-bench")] timings: crate::document::BuildTimings,
+    ) {
+        let base = self.state.values.images.borrow().base().cloned();
+        self.state
+            .values
+            .admit_revision(revision.clone(), base.as_ref());
+        self.key = key;
+        self.last_failure = None;
+        #[cfg(feature = "engine-bench")]
+        {
+            self.timings = timings;
+        }
+    }
+
+    /// Write the paint values `restyled` changed from the current tree to
+    /// `nodes` into the scene layer of the last recorded frame; `false`, with
+    /// nothing written, when there is no such layer or a change is not a
+    /// layer write (`layer_write`).
+    fn write_paint_values(&self, nodes: &[Node], restyled: &[u64]) -> bool {
+        let Some(layer) = self.reuse.scene_layer() else {
+            return false;
+        };
+        // A frame replays only from a settled record of this tree.
+        if !self.frame_recorded() {
+            return false;
+        }
+        super::layer_write::write_paint_values(&self.nodes, nodes, restyled, &layer).is_some()
     }
 
     /// Следующая ревизия с деревом `nodes` и прежними значениями документа;

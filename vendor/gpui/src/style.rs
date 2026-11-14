@@ -1032,6 +1032,17 @@ impl Style {
             );
             // KaminIDE patch: a scene layer may rewrite this fill in place.
             window.with_paint_value(crate::LayerValue::Background, |window| window.paint_quad(fill));
+        } else {
+            // KaminIDE patch: no fill — a scene layer keeps its place, where a
+            // write may put one (`scene::layer::write`).
+            window.with_paint_value(crate::LayerValue::Background, |window| {
+                window.reserve_painted_quad(|window| {
+                    let bounds = window
+                        .render_context::<crate::PaintTraversal>()
+                        .map_or(bounds, |host| (host.fill_bounds)(self, bounds, window));
+                    quad(bounds, corner_radii, Hsla::transparent_black(), Edges::default(), Hsla::transparent_black(), self.border_style)
+                })
+            });
         }
 
         // Upstream's own inset shadows (`BoxShadow::inset` in `box_shadow`),

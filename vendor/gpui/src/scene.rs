@@ -3,7 +3,7 @@
 
 mod layer;
 pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-pub(crate) use layer::{Binding, LayerOp, LayerSlot};
+pub(crate) use layer::{Binding, LayerOp, LayerSlot, Reserved};
 mod record;
 mod vector_transform;
 pub(crate) mod affine_transform;

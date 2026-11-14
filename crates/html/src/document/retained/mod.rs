@@ -149,6 +149,12 @@ impl Document {
         element::Retained::new(self.retained.clone(), key, builder, candidate).into_any_element()
     }
 
+    /// Есть записанный устоявшийся кадр этого дерева: следующий кадр с теми же
+    /// опциями хоста может его повторить.
+    pub(super) fn frame_recorded(&self) -> bool {
+        self.retained.recorded.borrow().is_some()
+    }
+
     /// Сколько раз кадр собран и сколько раз повторён (`render_viewport`).
     pub fn retained_frames(&self) -> (u64, u64) {
         (self.retained.builds.get(), self.retained.replays.get())

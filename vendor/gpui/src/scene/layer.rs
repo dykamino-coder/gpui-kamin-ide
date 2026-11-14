@@ -8,17 +8,19 @@
 //! from the layer and keeps per layer version: a cache, not a second list.
 //!
 //! Between frames the host writes values into the layer through bindings
-//! (`LayerHandle::set_background`): a binding scope (`Window::with_paint_owner`
-//! and the value scope of the painter) names the primitives it painted, so a
-//! write finds them by bisection, raises the version and returns the damaged
-//! rectangle. A frame holds the content it draws strongly only from its draw
+//! (`LayerHandle::set_backgrounds`, `write`): a binding scope
+//! (`Window::with_paint_owner` and the value scope of the painter) names the
+//! primitives it painted, and the place of the ones it did not paint (a box
+//! without a background), so a write finds them by bisection, raises the
+//! version and returns the damaged rectangle. A frame holds the content it draws strongly only from its draw
 //! to its present, and the host's handle weakly after: a write copies the
 //! content only while a frame or snapshot still holds it, and a frame that
 //! replays the layer's command later reads the host's current content.
 
 mod frame;
+mod write;
 
-use super::{Background, Bounds, Hsla, PaintOperation, Primitive, ScaledPixels, Scene};
+use super::{Bounds, PaintOperation, ScaledPixels, Scene};
 pub(crate) use frame::{LayerOp, LayerSlot};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -43,6 +45,18 @@ pub(crate) struct Binding {
     pub(crate) opacity: f32,
 }
 
+/// The place of a quad a binding scope did not paint (no fill): the quad it
+/// would have painted, transparent, with its order in the scene, and the
+/// command that painted it before a write took it out (`u32::MAX`: none).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Reserved {
+    pub(crate) owner: u32,
+    pub(crate) value: LayerValue,
+    pub(crate) quad: crate::Quad,
+    pub(crate) op: u32,
+    pub(crate) opacity: f32,
+}
+
 /// A finished scene with its version and bindings.
 pub struct SceneLayer {
     pub(crate) scene: Scene,
@@ -52,6 +66,8 @@ pub struct SceneLayer {
     bounds: Option<Bounds<ScaledPixels>>,
     /// By owner, then value, then quad: a write finds its range by bisection.
     bindings: Vec<Binding>,
+    /// By owner, then value: the places of unpainted fills.
+    reserved: Vec<Reserved>,
 }
 
 /// Process-wide counters of layer work (`frame_perf`-style, read by benches).
@@ -91,19 +107,22 @@ impl Clone for SceneLayer {
             version: self.version,
             bounds: self.bounds,
             bindings: self.bindings.clone(),
+            reserved: self.reserved.clone(),
         }
     }
 }
 
 impl SceneLayer {
-    /// Finish `scene`, painted with `bindings` (quad indices in paint order),
-    /// into a layer: the scene is sorted once and the bindings follow their quads.
-    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>) -> Self {
+    /// Finish `scene`, painted with `bindings` (quad indices in paint order)
+    /// and `reserved` places, into a layer: the scene is sorted once and the
+    /// bindings follow their quads.
+    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>, mut reserved: Vec<Reserved>) -> Self {
         let moved = scene.finish_tracking_quads();
         for binding in &mut bindings {
             binding.quad = moved[binding.quad as usize];
         }
         bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
+        reserved.sort_by_key(|r| (r.owner, r.value, r.quad.order));
         let bounds = scene
             .paint_operations
             .iter()
@@ -117,7 +136,7 @@ impl SceneLayer {
             .reduce(|a, b| a.union(&b));
         static NEXT: AtomicU64 = AtomicU64::new(1);
         layer_counters::RECORDS.fetch_add(1, Relaxed);
-        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings }
+        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, reserved }
     }
 
     /// Union of the primitives' bounds within their content masks; `None`
@@ -140,12 +159,6 @@ impl SceneLayer {
     pub fn scene(&self) -> &Scene {
         &self.scene
     }
-
-    fn bound(&self, owner: u32, value: LayerValue) -> std::ops::Range<usize> {
-        let start = self.bindings.partition_point(|b| (b.owner, b.value) < (owner, value));
-        let end = self.bindings.partition_point(|b| (b.owner, b.value) <= (owner, value));
-        start..end
-    }
 }
 
 impl LayerHandle {
@@ -161,71 +174,6 @@ impl LayerHandle {
     /// Whether two handles name the same layer.
     pub fn same_layer(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
-    }
-
-    /// Write the background of `owner`: every quad its background scope
-    /// painted takes `to`, when every one of them was painted in `from`.
-    /// `set_backgrounds` of one write.
-    pub fn set_background(&self, owner: u32, from: Hsla, to: Hsla) -> Option<Bounds<ScaledPixels>> {
-        self.set_backgrounds(&[(owner, from, to)])?
-    }
-
-    /// Write the backgrounds `(owner, from, to)`: every quad an owner's
-    /// background scope painted takes `to` (under the opacity it was painted
-    /// with). All or nothing: `None`, with nothing written, when an owner has
-    /// no such quad, one of its quads was painted in another colour than
-    /// `from`, or `to` is transparent (the painter paints no quad then); the
-    /// host paints again. Otherwise the damaged rectangle in device pixels
-    /// (`None` inside for no write), also added to the layer's damage for the
-    /// next frame that draws it.
-    pub fn set_backgrounds(&self, writes: &[(u32, Hsla, Hsla)]) -> Option<Option<Bounds<ScaledPixels>>> {
-        let mut current = self.0.content.borrow_mut();
-        for &(owner, from, to) in writes {
-            let range = current.bound(owner, LayerValue::Background);
-            let painted = |b: &Binding| Background::from(from).opacity(b.opacity);
-            let all = current.bindings[range.clone()].iter().all(|b| {
-                current.scene.quads.get(b.quad as usize).is_some_and(|q| q.background == painted(b))
-            });
-            if to.a == 0. || range.is_empty() || !all {
-                return None;
-            }
-        }
-        if writes.is_empty() {
-            return Some(None);
-        }
-        let layer = Rc::make_mut(&mut current);
-        let mut damage: Option<Bounds<ScaledPixels>> = None;
-        let mut written = 0;
-        for &(owner, _, to) in writes {
-            let mut edge = to;
-            edge.a = 0.;
-            for at in layer.bound(owner, LayerValue::Background) {
-                let b = layer.bindings[at];
-                let fill = Background::from(to).opacity(b.opacity);
-                let border = edge.opacity(b.opacity);
-                if let Some(quad) = layer.scene.quads.get_mut(b.quad as usize) {
-                    quad.background = fill;
-                    quad.border_color = border;
-                    let rect = super::placed_bounds(&Primitive::Quad(*quad))
-                        .intersect(&quad.content_mask.bounds);
-                    damage = Some(damage.map_or(rect, |d| d.union(&rect)));
-                }
-                if let Some(PaintOperation::Primitive(Primitive::Quad(quad))) =
-                    layer.scene.paint_operations.get_mut(b.op as usize)
-                {
-                    quad.background = fill;
-                    quad.border_color = border;
-                }
-                written += 1;
-            }
-        }
-        layer.version += 1;
-        layer_counters::VALUES_WRITTEN.fetch_add(written, Relaxed);
-        if let Some(rect) = damage {
-            let old = self.0.damage.get();
-            self.0.damage.set(Some(old.map_or(rect, |d| d.union(&rect))));
-        }
-        Some(damage)
     }
 }
 

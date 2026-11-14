@@ -2946,13 +2946,23 @@ impl Window {
     /// whose bounds don't intersect their content mask are culled at paint time and won't appear.
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_quads(&self) -> Vec<Quad> {
-        self.rendered_frame.scene.quads.clone()
+        let scene = &self.rendered_frame.scene;
+        let mut quads = scene.quads.clone();
+        for layer in scene.layer_contents() {
+            quads.extend(layer.scene().quads.iter().copied());
+        }
+        quads
     }
 
     /// Returns the underlines in the most recently rendered frame's scene.
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_underlines(&self) -> Vec<Underline> {
-        self.rendered_frame.scene.underlines.clone()
+        let scene = &self.rendered_frame.scene;
+        let mut underlines = scene.underlines.clone();
+        for layer in scene.layer_contents() {
+            underlines.extend(layer.scene().underlines.iter().cloned());
+        }
+        underlines
     }
 
     /// Set the content size of the window.
