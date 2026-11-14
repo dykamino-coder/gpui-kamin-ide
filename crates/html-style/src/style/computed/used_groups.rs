@@ -51,4 +51,17 @@ impl Computed {
         let group = self.reset_group();
         *group = derived.derive::<E, T>(group, value, edit);
     }
+
+    /// Edit reset group `T` of `style` as [`Self::derive_used`] does: a style that only
+    /// this holder holds is edited in place, a shared one is copied first.
+    pub fn derive_used_in<E: 'static, T: Clone + 'static>(
+        style: &mut std::rc::Rc<Computed>,
+        derived: &DerivedGroups,
+        value: u64,
+        edit: impl FnOnce(&mut T),
+    ) where
+        Self: ResetGroup<T>,
+    {
+        std::rc::Rc::make_mut(style).derive_used::<E, T>(derived, value, edit);
+    }
 }

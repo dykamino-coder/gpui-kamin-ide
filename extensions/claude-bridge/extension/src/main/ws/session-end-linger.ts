@@ -5,6 +5,15 @@ import WebSocket from 'ws'
  *  5 s (`TEARDOWN_GRACE_MS` in the server's `session-core.ts`). */
 export const SESSION_END_HOOK_WINDOW_MS = 5000
 
+/** Close functions of the sockets that are still inside their window. */
+const lingering = new Set<() => void>()
+
+/** Closes every ended socket now: the host is shutting down and must not
+ *  be kept alive by a window (terminal disposal, tests). */
+export function endSessionEndLingers(): void {
+  for (const close of [...lingering]) close()
+}
+
 type Socket = Pick<WebSocket, 'readyState' | 'send' | 'close' | 'on' | 'removeAllListeners'>
 
 /** Keep an ended session's socket open just long enough to run the local hooks
@@ -28,6 +37,7 @@ export function lingerForSessionEnd(
     if (closed) return
     closed = true
     clearTimeout(timer)
+    lingering.delete(close)
     if (sock.readyState === WebSocket.OPEN || sock.readyState === WebSocket.CONNECTING) sock.close()
   }
   const send = (reply: unknown) => {
@@ -54,7 +64,9 @@ export function lingerForSessionEnd(
   sock.on('close', () => {
     closed = true
     clearTimeout(timer)
+    lingering.delete(close)
   })
+  lingering.add(close)
   const timer = setTimeout(() => {
     windowOver = true
     if (running === 0) close()
