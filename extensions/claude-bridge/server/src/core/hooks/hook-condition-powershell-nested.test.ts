@@ -4,6 +4,17 @@ import { powershellRuleMatches } from './rule-matchers'
 
 describe('PowerShell hook conditions with nested expressions', () => {
   it.each([
+    ['Write-Output "prefix$(Get-Location)"', 'Write-Output prefix$(Get-Location)'],
+    ['Write-Output { Get-Location }', 'Write-Output { Get-Location }'],
+  ])('traverses command AST children of %s without accepting unrelated rules', (command, outer) => {
+    expect(powershellRuleMatches('Get-Location', command)).toBe(true)
+    expect(powershellRuleMatches(outer, command)).toBe(true)
+    for (const rule of ['Get-Process *', 'Out-String', 'Write-Output fixture', 'echo *']) {
+      expect(powershellRuleMatches(rule, command)).toBe(false)
+    }
+  })
+
+  it.each([
     ['Get-Location', '(Get-Location)', true],
     ['Get-Location', 'Write-Output $(Get-Location)', true],
     ['Write-Output *', 'Write-Output $(Get-Location)', true],

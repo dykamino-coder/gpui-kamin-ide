@@ -130,8 +130,6 @@ export interface RegisteredHook {
   effectiveHost: 'local' | 'server' | 'http' // resolved from handler.host + defaults
   /** Native argument condition, evaluated before executing the relayed hook. */
   serverCondition?: { tool: string; content: string }
-  /** CLI `once` must not be consumed by calls rejected by serverCondition. */
-  serverOnce?: { spent: boolean }
 }
 
 export type HookSource =

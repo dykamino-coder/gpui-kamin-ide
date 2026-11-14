@@ -51,7 +51,7 @@ describe('native hook condition translation', () => {
       { kind: 'user' },
     )
     expect(cli.PreToolUse![0]!.hooks[0]).toMatchObject({ type: 'http', if: 'mcp__user-tools__Bash' })
-    expect(cli.PreToolUse![0]!.hooks[0]!.once).toBeUndefined()
+    expect(cli.PreToolUse![0]!.hooks[0]!.once).toBe(true)
     expect(listSession(SESSION)[0]!.serverCondition).toEqual({ tool: 'Bash', content: 'git *' })
   })
   it('keeps async command semantics and leaves prompt argument conditions pending', () => {
@@ -97,7 +97,7 @@ describe('native argument rules', () => {
     ['echo *', 'echo fixture | xargs echo', true],
     ['printf $(pwd)', "printf '$(pwd)'", true],
   ] as const)('Bash(%s), %s => %s', (rule, command, expected) => {
-    expect(bashRuleMatches(rule, command)).toBe(expected)
+    expect(bashRuleMatches(rule, command, '/home/cli')).toBe(expected)
   })
   it('handles literal operators in PowerShell quotes and case-insensitive command names', () => {
     expect(powershellRuleMatches('git *', "Write-Output '$(pwd)'")).toBe(false)
@@ -128,7 +128,7 @@ describe('native argument rules', () => {
   })
 })
 
-it('filters before dispatch/audit and spends once only on the first matching call, including concurrency', async () => {
+it('filters before dispatch/audit and runs each matching settings hook call, including concurrency', async () => {
   rewriteHooksForCli(
     SESSION,
     {
@@ -163,9 +163,9 @@ it('filters before dispatch/audit and spends once only on the first matching cal
     dispatchHook(SESSION, hook.id, payload('git status'), ws as never),
     dispatchHook(SESSION, hook.id, payload('git diff'), ws as never),
   ])
-  expect(inputs).toHaveLength(1)
+  expect(inputs).toHaveLength(2)
   expect(inputs[0]!.tool_name).toBe('Bash')
-  expect(appendExecution).toHaveBeenCalledTimes(1)
+  expect(appendExecution).toHaveBeenCalledTimes(2)
 })
 
 it.each([200, 403])('filters original HTTP hooks and preserves status %s and JSON decision', async (status) => {
