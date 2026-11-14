@@ -13,8 +13,8 @@ use super::{Builder, FrameKey, Slot};
 mod build_in;
 use crate::layout::reuse::FlowReuse;
 use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, Pixels, RetainedPaint, Style, Window, px, size,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, RetainedPaint, Style, Window, px, size,
 };
 use std::rc::Rc;
 
@@ -37,7 +37,10 @@ pub(super) struct Retained {
 
 /// Id элемента документа: его записи блоков (`Element::id` ниже).
 pub(super) fn document_id(store: &Rc<crate::layout::reuse::Store>) -> ElementId {
-    ElementId::NamedInteger("retained-document".into(), Rc::as_ptr(store) as usize as u64)
+    ElementId::NamedInteger(
+        "retained-document".into(),
+        Rc::as_ptr(store) as usize as u64,
+    )
 }
 
 impl Retained {
@@ -183,7 +186,9 @@ impl Element for Retained {
                 // Разложено корнем до кадра: на место, как в `build_in`.
                 Some(tree) if self.laid_out.is_some() => {
                     window
-                        .record_retained_prepaint(|window| tree.prepaint_at(bounds.origin, window, cx))
+                        .record_retained_prepaint(|window| {
+                            tree.prepaint_at(bounds.origin, window, cx)
+                        })
                         .1
                 }
                 Some(tree) => {

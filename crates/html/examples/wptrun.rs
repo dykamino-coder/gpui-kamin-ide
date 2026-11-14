@@ -50,8 +50,6 @@ mod html_attrs;
 mod links;
 #[path = "wptrun/page.rs"]
 mod page;
-#[path = "wptrun/step.rs"]
-mod step;
 #[path = "wptrun/page_border.rs"]
 mod page_border;
 #[path = "wptrun/page_box.rs"]
@@ -80,6 +78,8 @@ mod retry;
 mod run;
 #[path = "wptrun/show.rs"]
 mod show;
+#[path = "wptrun/step.rs"]
+mod step;
 #[path = "wptrun/style_imports.rs"]
 mod style_imports;
 #[path = "wptrun/stylesheet.rs"]

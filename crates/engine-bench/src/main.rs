@@ -41,6 +41,7 @@ mod resources;
 mod run;
 #[cfg(windows)]
 mod startup;
+mod step;
 mod stylesheet;
 #[cfg(all(windows, feature = "work-counters"))]
 mod usage;
@@ -48,7 +49,6 @@ mod usage;
 mod view;
 #[cfg(windows)]
 mod work;
-mod step;
 
 // Тот же аллокатор, что у обычного приложения, без тестовой платформы GPUI.
 #[global_allocator]

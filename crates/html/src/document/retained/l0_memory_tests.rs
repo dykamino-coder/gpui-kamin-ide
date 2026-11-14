@@ -49,7 +49,11 @@ fn steps_leave_no_arena_lines_or_states_growing_between_frames(cx: &mut TestAppC
     );
     assert_eq!(seen, base, "the step changed what frames leave behind");
     for (arena, _, states) in &seen {
-        assert_eq!((*arena, *states), (0, 0), "a frame left elements or states: {seen:?}");
+        assert_eq!(
+            (*arena, *states),
+            (0, 0),
+            "a frame left elements or states: {seen:?}"
+        );
     }
     // After the first frames at each width, each width keeps its line count.
     for i in FRAMES / 2..FRAMES {

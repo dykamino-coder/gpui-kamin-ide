@@ -3,7 +3,7 @@
 //! приложении. Стопка страниц печатной пары собирается в кадре, как прежде.
 
 use super::page::Page;
-use gpui::{Entity, ElementPlace, Window};
+use gpui::{ElementPlace, Entity, Window};
 
 /// Зарегистрировать шаг `page` в его окне на всё время жизни окна.
 pub(super) fn register(page: &Entity<Page>, window: &mut Window) {
@@ -15,7 +15,8 @@ pub(super) fn register(page: &Entity<Page>, window: &mut Window) {
             let _ = page.update(cx, |page, cx| {
                 if !page.paged() {
                     let opts = page.opts(window, None);
-                    page.doc.update_rendering(&opts, &parent, window, cx, |_| {});
+                    page.doc
+                        .update_rendering(&opts, &parent, window, cx, |_| {});
                 }
             });
         })

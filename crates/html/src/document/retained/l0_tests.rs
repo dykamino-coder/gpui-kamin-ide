@@ -6,9 +6,9 @@ use super::tests::{frame, open};
 use super::{Builder, FrameKey};
 use crate::{Document, RenderOpts};
 use gpui::{
-    App, AvailableSpace, Bounds, Element, ElementId, ElementPlace, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, ParentElement, Pixels, Styled, TestAppContext, Window, div, point, px,
-    size,
+    App, AvailableSpace, Bounds, Element, ElementId, ElementPlace, GlobalElementId,
+    InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Styled, TestAppContext,
+    Window, div, point, px, size,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -44,13 +44,19 @@ fn boxes(doc: &Document, window: &mut Window, cx: &mut App) -> Vec<Bounds<Pixels
     let builder: Builder = doc.frame_builder(&opts(), &FrameKey::of(&opts()));
     let (mut tree, _) = builder.build(false, false);
     let id = tree.request_layout(window, cx);
-    let space = size(AvailableSpace::Definite(px(400.)), AvailableSpace::Definite(px(300.)));
+    let space = size(
+        AvailableSpace::Definite(px(400.)),
+        AvailableSpace::Definite(px(300.)),
+    );
     window.compute_layout(id, space, cx);
     window.subtree_layout_bounds(id)
 }
 
 /// Builds of the frame so far, and those made inside `Window::draw`.
-pub(super) fn builds(view: &gpui::Entity<super::tests::View>, cx: &mut gpui::VisualTestContext) -> (u64, u64) {
+pub(super) fn builds(
+    view: &gpui::Entity<super::tests::View>,
+    cx: &mut gpui::VisualTestContext,
+) -> (u64, u64) {
     cx.update(|_, app| {
         let doc = &view.read(app).doc;
         (doc.retained_frames().0, doc.builds_inside_draw())
@@ -69,7 +75,10 @@ fn frames_are_built_by_the_step_not_inside_draw(cx: &mut TestAppContext) {
     cx.update(|_, app| view.update(app, |v, _| v.viewport = (450., 280.)));
     frame(cx);
     let (built_after, inside_after) = builds(&view, cx);
-    assert!(built_after >= built + 2, "the step built no frame: {built} -> {built_after}");
+    assert!(
+        built_after >= built + 2,
+        "the step built no frame: {built} -> {built_after}"
+    );
     assert_eq!(inside_after, inside, "frames were built inside draw");
 }
 
@@ -78,10 +87,14 @@ fn same_boxes(html: &str, cx: &mut TestAppContext) {
     let cx = cx.add_empty_window();
     let inside = Rc::new(RefCell::new(Vec::new()));
     let seen = inside.clone();
-    cx.draw(point(px(0.), px(0.)), size(px(400.), px(300.)), |window, app| {
-        *seen.borrow_mut() = boxes(&doc, window, app);
-        div()
-    });
+    cx.draw(
+        point(px(0.), px(0.)),
+        size(px(400.), px(300.)),
+        |window, app| {
+            *seen.borrow_mut() = boxes(&doc, window, app);
+            div()
+        },
+    );
     let place = ElementPlace::default();
     let outside = cx.update(|window, app| {
         window.with_layout_outside_draw(&place, app, |w, app| boxes(&doc, w, app))
@@ -116,8 +129,10 @@ fn reads_between_frames_leave_no_elements_lines_or_states(cx: &mut TestAppContex
                 view.update(app, |v, cx| {
                     let kids = v.doc.render(&opts());
                     let mut tree = div().w(px(400.)).children(kids).into_any_element();
-                    let space =
-                        size(AvailableSpace::Definite(px(400.)), AvailableSpace::MinContent);
+                    let space = size(
+                        AvailableSpace::Definite(px(400.)),
+                        AvailableSpace::MinContent,
+                    );
                     tree.layout_as_root(space, w, cx);
                 })
             })
@@ -127,7 +142,11 @@ fn reads_between_frames_leave_no_elements_lines_or_states(cx: &mut TestAppContex
     assert_eq!(before, after, "reads left a trace between frames");
     cx.update(|_, app| view.update(app, |v, _| v.viewport = (500., 300.)));
     frame(cx);
-    assert_eq!(builds(&view, cx).1, inside, "a frame after reads was built inside draw");
+    assert_eq!(
+        builds(&view, cx).1,
+        inside,
+        "a frame after reads was built inside draw"
+    );
 }
 
 /// Counts its layouts in its element state.

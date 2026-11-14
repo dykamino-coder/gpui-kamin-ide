@@ -80,29 +80,29 @@ impl Document {
         let keys = builder.layout_keys;
         window.with_layout_outside_draw(parent, cx, |window, cx| {
             window.with_id(id, |window| {
-            let before = window.next_frame_callback_count();
-            self.retained.builds.set(self.retained.builds.get() + 1);
-            let (mut tree, flow) = builder.build(true, false);
-            observe(UpdatePhase::Built);
-            let space = size(
-                AvailableSpace::Definite(px(w)),
-                AvailableSpace::Definite(px(h)),
-            );
-            window.with_layout_keys(keys, |window| {
-                tree.request_layout(window, cx);
-                observe(UpdatePhase::Requested);
-                tree.layout_as_root(space, window, cx)
-            });
-            observe(UpdatePhase::LaidOut);
-            let scheduled = window.next_frame_callback_count().saturating_sub(before);
-            *self.retained.prepared.borrow_mut() = Some(Prepared {
-                key,
-                builder,
-                tree,
-                flow,
-                scheduled,
-                parent: parent.clone(),
-            });
+                let before = window.next_frame_callback_count();
+                self.retained.builds.set(self.retained.builds.get() + 1);
+                let (mut tree, flow) = builder.build(true, false);
+                observe(UpdatePhase::Built);
+                let space = size(
+                    AvailableSpace::Definite(px(w)),
+                    AvailableSpace::Definite(px(h)),
+                );
+                window.with_layout_keys(keys, |window| {
+                    tree.request_layout(window, cx);
+                    observe(UpdatePhase::Requested);
+                    tree.layout_as_root(space, window, cx)
+                });
+                observe(UpdatePhase::LaidOut);
+                let scheduled = window.next_frame_callback_count().saturating_sub(before);
+                *self.retained.prepared.borrow_mut() = Some(Prepared {
+                    key,
+                    builder,
+                    tree,
+                    flow,
+                    scheduled,
+                    parent: parent.clone(),
+                });
             })
         });
     }
@@ -112,7 +112,11 @@ impl Document {
         self.retained.inside_draw.get()
     }
 
-    pub(super) fn frame_builder(&self, opts: &crate::RenderOpts, key: &Option<FrameKey>) -> Builder {
+    pub(super) fn frame_builder(
+        &self,
+        opts: &crate::RenderOpts,
+        key: &Option<FrameKey>,
+    ) -> Builder {
         Builder {
             state: self.state.clone(),
             nodes: self.nodes.clone(),

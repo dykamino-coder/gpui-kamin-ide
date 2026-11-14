@@ -25,25 +25,26 @@ pub(super) fn register(view: &Entity<View>, window: &mut Window) -> Subscription
             }
             kamin_html::work::phase!(_work, BuildElements);
             let mut mark = Clock::now();
-            view.doc.update_rendering(&opts, &parent, window, cx, |phase| {
-                let spent = mark.elapsed();
-                mark = Clock::now();
-                let mut phases = phases.borrow_mut();
-                match phase {
-                    UpdatePhase::Built => {
-                        phases.build += spent;
-                        kamin_html::work::switch!(LayoutRequest);
+            view.doc
+                .update_rendering(&opts, &parent, window, cx, |phase| {
+                    let spent = mark.elapsed();
+                    mark = Clock::now();
+                    let mut phases = phases.borrow_mut();
+                    match phase {
+                        UpdatePhase::Built => {
+                            phases.build += spent;
+                            kamin_html::work::switch!(LayoutRequest);
+                        }
+                        UpdatePhase::Requested => {
+                            phases.request_layout += spent;
+                            kamin_html::work::switch!(Layout);
+                        }
+                        UpdatePhase::LaidOut => {
+                            phases.step_layout += spent;
+                            kamin_html::work::switch!(BuildElements);
+                        }
                     }
-                    UpdatePhase::Requested => {
-                        phases.request_layout += spent;
-                        kamin_html::work::switch!(Layout);
-                    }
-                    UpdatePhase::LaidOut => {
-                        phases.step_layout += spent;
-                        kamin_html::work::switch!(BuildElements);
-                    }
-                }
-            });
+                });
         });
     })
 }

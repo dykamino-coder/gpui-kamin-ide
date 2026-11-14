@@ -15,24 +15,24 @@
 
 mod element;
 #[cfg(test)]
-mod l0_memory_tests;
-#[cfg(test)]
-mod l0_tests;
-#[cfg(test)]
 mod escaped_replay_tests;
 #[cfg(test)]
 mod far_tests;
 #[cfg(test)]
 mod invalidation_tests;
 #[cfg(test)]
+mod l0_memory_tests;
+#[cfg(test)]
+mod l0_tests;
+#[cfg(test)]
 mod layered_replay_tests;
 #[cfg(test)]
 mod paint_damage_tests;
+mod prepared;
 #[cfg(test)]
 mod rebuild_key_tests;
 #[cfg(test)]
 mod recolour_layout_tests;
-mod prepared;
 pub use prepared::UpdatePhase;
 mod record;
 #[cfg(test)]

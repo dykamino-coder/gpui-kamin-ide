@@ -43,7 +43,8 @@ pub(super) fn open<'a>(
     cx.update(|window, app| {
         let step = window.on_update_rendering(move |window, app| {
             stepped.update(app, |view, cx| {
-                view.doc.update_rendering(&view.opts(), &parent, window, cx, |_| {})
+                view.doc
+                    .update_rendering(&view.opts(), &parent, window, cx, |_| {})
             })
         });
         view.update(app, |view, _| view.step = Some(step));
