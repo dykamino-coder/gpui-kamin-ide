@@ -46,6 +46,7 @@ fn delta(before: (u64, u64), after: (u64, u64)) -> Result<(u64, u64)> {
 
 pub(super) struct Frames {
     pixels: Vec<Recorder>,
+    directory: Option<std::path::PathBuf>,
     base: (u32, u32),
     relayout: bool,
     before: (u64, u64),
@@ -65,6 +66,7 @@ impl Frames {
         }
         Ok(Self {
             pixels,
+            directory: args.frame_diff_dir.clone(),
             base: args.viewport,
             relayout,
             before: (0, 0),
@@ -96,6 +98,23 @@ impl Frames {
         mode: &str,
         index: usize,
     ) -> Result<()> {
+        let result = self.observe_checks(cx, window, frame, mode, index);
+        if result.is_err() {
+            capture_refusal(self.directory.as_deref(), &self.report(), &result);
+        }
+        result
+    }
+
+    fn observe_checks(
+        &mut self,
+        cx: &AsyncApp,
+        window: WindowHandle<View>,
+        frame: Frame,
+        mode: &str,
+        index: usize,
+    ) -> Result<()> {
+        let group = usize::from(self.relayout && !index.is_multiple_of(2));
+        self.pixels[group].observe(frame.pixels, frame.seq, mode, index)?;
         let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
         let counts = delta(if mode == "cold" { (0, 0) } else { self.before }, after)?;
         // A frame whose reused blocks were refused at prepaint is built once
@@ -106,10 +125,9 @@ impl Frames {
             )
             .into());
         }
-        let group = usize::from(self.relayout && !index.is_multiple_of(2));
         self.samples.push(json!({"mode": mode, "sample_index": index,
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1}));
-        self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
+        Ok(())
     }
 
     pub(super) fn report(&self) -> Value {
@@ -134,11 +152,7 @@ impl Frames {
     pub(super) async fn finish(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
         let directory = run.3.frame_diff_dir.as_deref();
         let result = self.finish_checks(report, run).await;
-        if let Err(error) = &result
-            && let Err(capture) = preserve_failure(directory, report, &error.to_string())
-        {
-            eprintln!("failed-frame capture failed: {capture}; original refusal: {error}");
-        }
+        capture_refusal(directory, report, &result);
         result
     }
 
@@ -186,6 +200,14 @@ impl Frames {
         mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
         mode["fresh_checks"] = json!(checks);
         Ok(())
+    }
+}
+
+fn capture_refusal(directory: Option<&std::path::Path>, report: &Value, result: &Result<()>) {
+    if let Err(error) = result
+        && let Err(capture) = preserve_failure(directory, report, &error.to_string())
+    {
+        eprintln!("failed-frame capture failed: {capture}; original refusal: {error}");
     }
 }
 

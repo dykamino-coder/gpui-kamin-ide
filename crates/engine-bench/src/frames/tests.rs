@@ -40,8 +40,10 @@ fn failure_report_keeps_first_refusal_and_pixel_artifact_paths() {
             .unwrap();
     }
     let report = pixels.report();
-    preserve_failure(Some(&directory), &report, "first refusal").unwrap();
-    preserve_failure(Some(&directory), &Value::Null, "retry refusal").unwrap();
+    let first: Result<()> = Err("first refusal".into());
+    capture_refusal(Some(&directory), &report, &first);
+    capture_refusal(Some(&directory), &Value::Null, &Err("retry refusal".into()));
+    assert_eq!(first.unwrap_err().to_string(), "first refusal");
     let saved: Value =
         serde_json::from_slice(&std::fs::read(directory.join("failed-frame.json")).unwrap())
             .unwrap();
