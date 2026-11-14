@@ -238,6 +238,7 @@ struct BoxFacts {
 
 #[cfg(feature = "heap-report")]
 mod heap;
+mod restyle;
 mod same;
 #[cfg(test)]
 mod tests;

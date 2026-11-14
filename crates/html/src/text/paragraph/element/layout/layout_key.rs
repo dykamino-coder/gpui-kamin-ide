@@ -84,12 +84,15 @@ impl Paragraph {
             if same {
                 continue;
             }
-            // Exhaustive: a new run field must be added to the key.
+            // Exhaustive: a new run field must be added to the key, or named
+            // here as one the probe does not read.
             let gpui::TextRun {
                 len: _,
                 font,
-                color,
-                background_color,
+                // Paint only: glyph and run background colours give no
+                // advance, line break or baseline (`same_style`).
+                color: _,
+                background_color: _,
                 font_size,
                 background_pad,
                 background_radius,
@@ -98,7 +101,7 @@ impl Paragraph {
                 underline,
                 strikethrough,
             } = run;
-            (font, color, background_color).hash(&mut hasher);
+            font.hash(&mut hasher);
             (
                 font_size.map(px),
                 background_pad.map(px),
@@ -165,14 +168,20 @@ impl Paragraph {
     }
 }
 
-/// Whether two runs differ only in length.
+/// Whether two runs measure alike: they differ only in length and in the
+/// colours of their glyphs and background, which the probe does not read. A
+/// recoloured paragraph (`color` inherited from a restyled ancestor, Blink
+/// `StyleDifference::NeedsPaintInvalidation`, Gecko `nsChangeHint_RepaintFrame`)
+/// keeps its key, so its measured leaf, the leaf's cached line splits and every
+/// ancestor of an unchanged subtree are claimed: the frame lays out nothing.
+/// The paint reads the colours from the new runs.
 fn same_style(a: &gpui::TextRun, b: &gpui::TextRun) -> bool {
     // Exhaustive: a new run field must be compared too.
     let gpui::TextRun {
         len: _,
         font,
-        color,
-        background_color,
+        color: _,
+        background_color: _,
         font_size,
         background_pad,
         background_radius,
@@ -182,8 +191,6 @@ fn same_style(a: &gpui::TextRun, b: &gpui::TextRun) -> bool {
         strikethrough,
     } = a;
     *font == b.font
-        && *color == b.color
-        && *background_color == b.background_color
         && *font_size == b.font_size
         && *background_pad == b.background_pad
         && *background_radius == b.background_radius
@@ -198,7 +205,7 @@ mod tests {
     use super::same_style;
 
     #[test]
-    fn runs_that_differ_only_in_length_share_a_style() {
+    fn runs_that_differ_only_in_length_and_colours_share_a_style() {
         let a = gpui::TextRun {
             len: 3,
             ..Default::default()
@@ -210,9 +217,10 @@ mod tests {
         assert!(same_style(&a, &b));
         let c = gpui::TextRun {
             color: gpui::hsla(0.5, 0.5, 0.5, 1.0),
+            background_color: Some(gpui::hsla(0.1, 0.5, 0.5, 1.0)),
             ..b.clone()
         };
-        assert!(!same_style(&b, &c));
+        assert!(same_style(&b, &c), "colours are paint only");
         let d = gpui::TextRun {
             font_size: Some(gpui::px(20.)),
             ..b.clone()

@@ -14,6 +14,28 @@ impl Store {
         self.records.replace(records);
     }
 
+    /// The document `old` was restyled in place as `new` (copied paths, the
+    /// same node ids), the elements `restyled` with new cascaded values: the
+    /// records are compared as at a rebuild (`rebase`), so a run of such
+    /// restyles keeps the far blocks and stops recording the near ones, as a
+    /// run of rebuilds does. After a patch since the last frame they hold only
+    /// by the next build's comparison (`patch`).
+    pub(crate) fn restyle(
+        &self,
+        old: &[crate::dom::Node],
+        new: &[crate::dom::Node],
+        restyled: &[u64],
+    ) {
+        if self.patched.get() {
+            self.patch();
+            return;
+        }
+        for record in self.records.borrow().values() {
+            record.source.release();
+        }
+        self.rebase(old, new, Some(restyled));
+    }
+
     /// The document is about to be rebuilt from the same source DOM, and the
     /// rebuild hands this store over (`rebase`, which compares document boxes,
     /// not record sources): the records release their sources, blocks of the

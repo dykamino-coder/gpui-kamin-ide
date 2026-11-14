@@ -367,7 +367,14 @@ impl WindowsWindowInner {
             .resize_boost_until
             .get()
             .is_some_and(|t| std::time::Instant::now() < t);
-        self.draw_window(handle, NativeDraw::paint(boosted))
+        // KaminIDE patch (BR-31A): a frame the renderer dropped instead of
+        // waiting is presented now, even if the scene is unchanged.
+        let dropped = self
+            .state
+            .renderer
+            .try_borrow()
+            .is_ok_and(|renderer| renderer.needs_presentation());
+        self.draw_window(handle, NativeDraw::paint(boosted || dropped))
     }
 
     /// KaminIDE patch: one coalesced offscreen paint; requests arriving while
