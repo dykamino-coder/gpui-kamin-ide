@@ -5807,7 +5807,7 @@ index 0000000000000000000000000000000000000000..43852ab765fc7284d4be693d5579de8b
 +    }
 +}
 diff --git a/vendor/gpui/src/bounds_tree.rs b/vendor/gpui/src/bounds_tree.rs
-index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000aad2676b8
+index e95e32477b912b810607b20306be5f7d53c76df2..9b913055afdf1457ce8b3eccae91736f2380f985
 --- a/vendor/gpui/src/bounds_tree.rs
 +++ b/vendor/gpui/src/bounds_tree.rs
 @@ -1 +1 @@
@@ -5846,7 +5846,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +/// grafts the record's tree instead of inserting every primitive again;
 +/// queries through a graft stay exact (see `Graft`).
 +#[derive(Debug, Clone)]
-@@ -29,9 +52,244 @@
+@@ -29,9 +52,256 @@
 -    /// Index of the leaf with the highest ordering (for fast-path lookups).
 -    max_leaf: Option<usize>,
 -    /// Reusable stack for tree traversal during insertion.
@@ -6006,6 +6006,18 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +        Some(Self { tree, offset, clip, order, cover, min, max })
 +    }
 +
++    /// KaminIDE patch: this graft moved by `offset` and cut by `clip` in the
++    /// space of the tree it will be grafted into, with the same orderings;
++    /// `None` when nothing of it is visible.
++    pub fn placed(&self, offset: &Point<U>, clip: Option<Bounds<U>>) -> Option<Self> {
++        let own = self.clip.as_ref().map(|c| moved(c, Some(offset)));
++        let clip = match (own, clip) {
++            (Some(a), Some(b)) => Some(meet(&a, &b)?),
++            (a, b) => a.or(b),
++        };
++        Self::new(self.tree.clone(), add_points(&self.offset, offset), clip, self.order)
++    }
++
 +    /// Raise every grafted ordering by `by`.
 +    pub fn raise(&mut self, by: u32) {
 +        self.order += by;
@@ -6100,10 +6112,10 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +}
 +
 +/// A node of the bounds tree.
-@@ -43 +301 @@
+@@ -43 +313 @@
 -    /// Bounding box containing this node and all descendants.
 +    /// Bounding box containing every entry.
-@@ -47,23 +305,2 @@
+@@ -47,23 +317,2 @@
 -    /// Node-specific data.
 -    kind: NodeKind,
 -}
@@ -6129,7 +6141,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 -    indices: [usize; MAX_CHILDREN],
 +    /// Whether the entries are inserted rectangles rather than child nodes.
 +    bottom: bool,
-@@ -71,4 +308,8 @@
+@@ -71,4 +320,8 @@
 -}
 -
 -impl NodeChildren {
@@ -6142,12 +6154,12 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +    U: Clone + Debug + Default + PartialEq,
 +{
 +    fn new(bottom: bool) -> Self {
-@@ -76 +317,3 @@
+@@ -76 +329,3 @@
 -            indices: [0; MAX_CHILDREN],
 +            bounds: Bounds::default(),
 +            max_order: 0,
 +            bottom,
-@@ -78,15 +321,6 @@
+@@ -78,15 +333,6 @@
 -        }
 -    }
 -
@@ -6169,15 +6181,20 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +
 +    fn entries(&self) -> &[Entry<U>] {
 +        &self.entries[..self.len as usize]
-@@ -110,0 +345 @@
+@@ -110,0 +357 @@
 +        self.height = 0;
-@@ -111,0 +347,2 @@
+@@ -111,0 +359,2 @@
 +        self.min_order = None;
 +        self.grafts.clear();
-@@ -113 +350,140 @@
+@@ -113 +362,145 @@
 -        self.search_stack.clear();
 +        self.split_entries.clear();
 +        self.split_covers.clear();
++    }
++
++    /// KaminIDE patch: whether the tree indexes nothing.
++    pub fn is_empty(&self) -> bool {
++        self.root.is_none()
 +    }
 +
 +    /// KaminIDE patch: the graft this tree consists of, if it holds exactly
@@ -6316,20 +6333,20 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +        };
 +        self.grafts.push(graft);
 +        self.insert_entry(entry);
-@@ -120,0 +497,6 @@
+@@ -120,0 +514,6 @@
 +        self.insert_at_least(new_bounds, 1)
 +    }
 +
 +    /// KaminIDE patch: вставка с порядком не ниже `min_order` — после
 +    /// переписанного порядка объёмного контекста (`Scene::pop_depth_context`).
 +    pub fn insert_at_least(&mut self, new_bounds: Bounds<U>, min_order: u32) -> u32 {
-@@ -123,4 +505 @@
+@@ -123,4 +522 @@
 -        let ordering = max_intersecting + 1;
 -
 -        // Insert the new leaf
 -        let new_leaf_idx = self.insert_leaf(new_bounds, ordering);
 +        let ordering = (max_intersecting + 1).max(min_order);
-@@ -129,6 +508,11 @@
+@@ -129,6 +525,11 @@
 -        self.max_leaf = match self.max_leaf {
 -            None => Some(new_leaf_idx),
 -            Some(old_idx) if self.nodes[old_idx].max_order < ordering => Some(new_leaf_idx),
@@ -6347,7 +6364,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +            max_order: ordering,
 +            child: 0,
 +        });
-@@ -139,0 +524,17 @@
+@@ -139,0 +541,17 @@
 +        let mut pool = std::mem::take(&mut self.search_pool);
 +        let found = self.max_above(query, None, 0, &mut pool, 0);
 +        self.search_pool = pool;
@@ -6365,7 +6382,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +        pool: &mut Vec<Vec<usize>>,
 +        depth: usize,
 +    ) -> u32 {
-@@ -141,8 +542,10 @@
+@@ -141,8 +559,10 @@
 -            return 0;
 -        };
 -
@@ -6384,7 +6401,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +        if let Some((bounds, order)) = &self.max_leaf {
 +            if query.intersects(&moved(bounds, offset)) {
 +                return *order;
-@@ -153,9 +556,9 @@
+@@ -153,9 +573,9 @@
 -        self.search_stack.clear();
 -        self.search_stack.push(NonNull::from(&self.nodes[root_idx]));
 -
@@ -6403,7 +6420,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +
 +        while let Some(node_idx) = stack.pop() {
 +            let node = &self.nodes[node_idx];
-@@ -168,2 +571,13 @@
+@@ -168,2 +588,13 @@
 -            // Spatial pruning: skip if bounds don't intersect
 -            if !query.intersects(&node.bounds) {
 +            if node.bottom {
@@ -6419,7 +6436,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +                            .max_above(query, offset, max_found, pool, depth + 1),
 +                    };
 +                }
-@@ -173,3 +587,8 @@
+@@ -173,3 +604,8 @@
 -            match &node.kind {
 -                NodeKind::Leaf { order } => {
 -                    max_found = cmp::max(max_found, *order);
@@ -6431,7 +6448,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +                    || !query.intersects(&moved(&entry.bounds, offset))
 +                {
 +                    continue;
-@@ -177,11 +596,7 @@
+@@ -177,11 +613,7 @@
 -                NodeKind::Internal { children } => {
 -                    // Children are maintained with highest max_order at the end.
 -                    // Push in forward order to highest (last) is popped first.
@@ -6450,7 +6467,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +                        best = Some(entry);
 +                    }
 +                    None => best = Some(entry),
-@@ -190,2 +605,6 @@
+@@ -190,2 +622,6 @@
 -        }
 -
 +            if let Some(best) = best {
@@ -6459,7 +6476,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +        }
 +
 +        pool[depth] = stack;
-@@ -195,26 +614,126 @@
+@@ -195,26 +631,126 @@
 -    /// Inserts a leaf node with the given bounds and ordering.
 -    /// Returns the index of the new leaf.
 -    fn insert_leaf(&mut self, bounds: Bounds<U>, order: u32) -> usize {
@@ -6612,7 +6629,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +        for entry in entries {
 +            node.bounds = if node.len == 0 {
 +                entry.bounds.clone()
-@@ -222,22 +741 @@
+@@ -222,22 +758 @@
 -                children.push(new_leaf_idx);
 -                children.push(root_idx);
 -            }
@@ -6636,7 +6653,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 -            let NodeKind::Internal { children } = &current.kind else {
 -                unreachable!("Should only traverse internal nodes");
 +                node.bounds.union(&entry.bounds)
-@@ -245,103 +743,30 @@
+@@ -245,103 +760,30 @@
 -
 -            self.insert_path.push(current_idx);
 -
@@ -6770,7 +6787,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +                        prefix.half_perimeter() + self.split_covers[len - 1 - k].half_perimeter();
 +                    if best.as_ref().is_none_or(|(c, _, _)| cost < *c) {
 +                        best = Some((cost, vertical, k));
-@@ -350,6 +775,27 @@
+@@ -350,6 +792,27 @@
 -            }
 -
 -            updated_child_idx = Some(node_idx);
@@ -6804,12 +6821,12 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +                j -= 1;
 +            }
 +        }
-@@ -366,0 +813 @@
+@@ -366,0 +830 @@
 +            height: 0,
-@@ -367,0 +815,2 @@
+@@ -367,0 +832,2 @@
 +            min_order: None,
 +            grafts: Vec::new(),
-@@ -369 +818,83 @@
+@@ -369 +835,83 @@
 -            search_stack: Vec::new(),
 +            search_pool: Vec::new(),
 +            split_entries: Vec::new(),
@@ -6894,7 +6911,7 @@ index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000a
 +                return tree;
 +            }
 +            level = next;
-@@ -472 +1003,320 @@
+@@ -472 +1020,320 @@
 -}
 +
 +    /// Checks the balanced-tree invariants below `node` and returns the number
@@ -11657,11 +11674,12 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f29638a47f6c9
+index 160587a4ad924f80c2dd01b90a8300febbc13105..a7b934ac84eb5cefb76b5097bedd341807a755c3
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
-@@ -2,0 +3,28 @@
+@@ -2,0 +3,29 @@
 +
++pub(crate) mod placed;
 +mod record;
 +mod vector_transform;
 +pub(crate) mod affine_transform;
@@ -11689,7 +11707,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +
 +#[cfg(test)]
 +mod replay_tests;
-@@ -38,0 +67,58 @@
+@@ -38,0 +68,58 @@
 +/// KaminIDE patch: overlap orders from the bounds tree are spaced by this
 +/// step, leaving room below each level for per-primitive bottom-layer orders
 +/// (`push_bottom_layer`): equal orders are batched by primitive kind (quads
@@ -11748,9 +11766,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    pub fragments: Vec<Vec<Point<ScaledPixels>>>,
 +}
 +
-@@ -41,0 +128 @@
+@@ -41,0 +129 @@
 +    pub(crate) segment_capture: Option<Box<segments::Capture>>,
-@@ -43 +130,14 @@
+@@ -43 +131,14 @@
 -    primitive_bounds: BoundsTree<ScaledPixels>,
 +    /// KaminIDE patch: группы, нарисованные в отдельные буферы.
 +    ///
@@ -11766,10 +11784,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    /// tree indexing each, with the offset of the ops' orders above it, so a
 +    /// later frame replaying the same range grafts it again.
 +    blocks: Vec<ReplayedBlock>,
-@@ -44,0 +145,2 @@
+@@ -44,0 +146,2 @@
 +    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
 +    bottom_seq: DrawOrder,
-@@ -52,0 +155,49 @@
+@@ -52,0 +156,49 @@
 +    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
 +    pub(crate) in_group: bool,
 +    /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
@@ -11819,7 +11837,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    outer_plane: Option<u32>,
 +    plane_depth: usize,
 +    union: Option<Bounds<ScaledPixels>>,
-@@ -56,0 +208,140 @@
+@@ -56,0 +209,140 @@
 +    /// KaminIDE patch: начать объёмный контекст.
 +    pub fn push_depth_context(&mut self) {
 +        self.paint_operations.push(PaintOperation::StartDepthContext);
@@ -11960,9 +11978,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +        }
 +    }
 +
-@@ -57,0 +349 @@
+@@ -57,0 +350 @@
 +        self.segment_capture = None;
-@@ -59 +351,6 @@
+@@ -59 +352,6 @@
 -        self.primitive_bounds.clear();
 +        self.groups.clear();
 +        match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
@@ -11970,22 +11988,22 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +            None => self.primitive_bounds = Default::default(),
 +        }
 +        self.blocks.clear();
-@@ -60,0 +358 @@
+@@ -60,0 +359 @@
 +        self.bottom_seq = 0;
-@@ -68,0 +367,6 @@
+@@ -68,0 +368,6 @@
 +        self.hoisted_backdrops.clear();
 +        self.depth = DepthSort::default();
 +        self.ink.clear();
 +        self.ink_scope = 0;
 +        self.ink_allowed = (0, 0);
 +        crate::window::reset_ink_scopes();
-@@ -76 +380 @@
+@@ -76 +381 @@
 -        let order = self.primitive_bounds.insert(bounds);
 +        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
-@@ -79 +383 @@
+@@ -79 +384 @@
 -            .push(PaintOperation::StartLayer(bounds));
 +            .push(PaintOperation::StartLayer(bounds, order));
-@@ -86,0 +391,15 @@
+@@ -86,0 +392,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
 +    ///
 +    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
@@ -12001,7 +12019,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -89,3 +408,5 @@
+@@ -89,3 +409,5 @@
 -        let clipped_bounds = primitive
 -            .bounds()
 -            .intersect(&primitive.content_mask().bounds);
@@ -12010,7 +12028,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +        crate::window::ink_add(&self.ink, self.ink_scope, placed_bounds);
 +        crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
 +        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -97,5 +418,10 @@
+@@ -97,5 +419,10 @@
 -        let order = self
 -            .layer_stack
 -            .last()
@@ -12026,7 +12044,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +            Some(o) => o,
 +            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
 +        };
-@@ -136,0 +463,16 @@
+@@ -136,0 +464,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
 +            let (kind, index) = match &primitive {
 +                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
@@ -12043,7 +12061,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -139,2 +481,40 @@
+@@ -139,2 +482,40 @@
 -    }
 -
 +        if let Some(capture) = self.segment_capture.as_mut() {
@@ -12086,7 +12104,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +522,76 @@
+@@ -142 +523,76 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let operations = &prev_scene.paint_operations[range.clone()];
 +        // A block whose borrowed tree died with its record is packed again.
@@ -12164,7 +12182,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +599,201 @@
+@@ -144,4 +600,219 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -12231,11 +12249,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +        source: ReplaySource,
 +        mut place: impl FnMut(&mut PaintOperation) -> bool,
 +    ) -> bool {
-+        if !self.layer_stack.is_empty()
-+            || !self.depth.contexts.is_empty()
-+            || !self.depth.plane_stack.is_empty()
-+            || !Self::shiftable(operations)
-+        {
++        if !self.takes_blocks() || !Self::shiftable(operations) {
 +            return false;
 +        }
 +        let (graft, owned) = match source {
@@ -12247,6 +12261,33 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +                (crate::bounds_tree::Graft::new(tree, Point::default(), None, 0), true)
 +            }
 +        };
++        let placed = operations.iter().filter_map(|operation| {
++            let mut operation = operation.clone();
++            place(&mut operation).then_some(operation)
++        });
++        self.append_block(placed, graft, owned);
++        true
++    }
++
++    /// KaminIDE patch: whether nothing open here (a layer, a 3D context or
++    /// plane) orders primitives its own way, so a block of commands can be
++    /// appended with its recorded orders (`append_block`).
++    fn takes_blocks(&self) -> bool {
++        self.layer_stack.is_empty()
++            && self.depth.contexts.is_empty()
++            && self.depth.plane_stack.is_empty()
++    }
++
++    /// KaminIDE patch: the body of `replay_shifted`: append the already
++    /// placed, `shiftable` commands `placed` as one block indexed by `graft`
++    /// (`owned`: its tree belongs to this scene). The caller checked
++    /// `takes_blocks`.
++    fn append_block(
++        &mut self,
++        placed: impl Iterator<Item = PaintOperation>,
++        graft: Option<crate::bounds_tree::Graft<ScaledPixels>>,
++        owned: bool,
++    ) {
 +        let mut raise = 0;
 +        let graft = graft.map(|mut graft| {
 +            raise = self.tree_mut().min_raise(&graft);
@@ -12260,11 +12301,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +        // clipped record copies only what is visible), and a frame keeps its
 +        // capacity for the next frame, so a reservation for every recorded
 +        // command would stay as dead capacity in both frames.
-+        for operation in operations {
-+            let mut operation = operation.clone();
-+            if !place(&mut operation) {
-+                continue;
-+            }
++        for mut operation in placed {
 +            match &mut operation {
 +                PaintOperation::Primitive(primitive) => {
 +                    if !self.ink.is_empty() || self.ink_scope != 0 {
@@ -12302,7 +12339,6 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +            ops: start..self.paint_operations.len(),
 +            index,
 +        });
-+        true
 +    }
 +
 +    /// KaminIDE patch: add an ordered primitive to its kind's list.
@@ -12370,7 +12406,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -193,0 +846,92 @@
+@@ -193,0 +865,92 @@
 +/// KaminIDE patch: bounds of a primitive at its place on screen (after its
 +/// transformation), before the content mask.
 +fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
@@ -12463,20 +12499,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +        }
 +}
 +
-@@ -213,0 +958 @@
+@@ -213,0 +977 @@
 +#[derive(Clone)]
-@@ -216 +961,4 @@
+@@ -216 +980,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +966,4 @@
+@@ -217,0 +985,4 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
-@@ -259,0 +1012,55 @@
+@@ -259,0 +1031,55 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -12532,7 +12568,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -543,0 +1351,10 @@
+@@ -543,0 +1370,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -12543,19 +12579,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +1398,5 @@
+@@ -580,0 +1417,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1425,5 @@
+@@ -602,0 +1444,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1477,12 @@
+@@ -649,0 +1496,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -12568,10 +12604,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1590 @@
+@@ -751 +1609 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1597,54 @@
+@@ -757,0 +1616,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -12626,7 +12662,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1667,23 @@
+@@ -773,0 +1686,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -12650,12 +12686,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..f757a6e94c5f3f6422f503149a6f2963
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1712,2 @@
+@@ -795,0 +1731,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1734 @@
+@@ -815,0 +1753 @@
 +            color_mapping: None,
-@@ -835,0 +1755,6 @@
+@@ -835,0 +1774,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
@@ -12775,6 +12811,472 @@ index 0000000000000000000000000000000000000000..ce8acb35ac9cf0333bc961c32a10b181
 +        scene.finish();
 +        scene
 +    }
++}
+diff --git a/vendor/gpui/src/scene/placed.rs b/vendor/gpui/src/scene/placed.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..70e971ea154275ee350b0939f252398544977881
+--- /dev/null
++++ b/vendor/gpui/src/scene/placed.rs
+@@ -0,0 +1,273 @@
++//! KaminIDE patch: a range of the commands of a finished scene (a rendered
++//! frame or a paint record) placed into another scene in one pass: moved by
++//! an offset and indexed by one tree, with no intermediate scene. Fragment
++//! pieces (a recorded child cut over columns) and blocks repeated at another
++//! place of the next frame both use it.
++
++use super::*;
++use crate::bounds_tree::Graft;
++
++/// What the content masks of a placed range become.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub(crate) enum PlacedMask {
++    /// The masks move with the commands and are cut by the clip, if any: a
++    /// record placed under the clip of its destination, as `copy_record`
++    /// places it (by any offset).
++    Moves(Option<Bounds<ScaledPixels>>),
++    /// Every command of the range has exactly this mask (the frame's) and
++    /// keeps it: content that moves under a mask that stays. The offset must
++    /// be a whole number of device pixels (glyphs and snapped edges painted
++    /// afresh at the new place would not be the old ones moved by a fraction).
++    Fixed(Bounds<ScaledPixels>),
++}
++
++/// Whether `primitive` puts the buffer of a paint group of its scene on screen.
++fn group_output(primitive: &Primitive) -> bool {
++    matches!(primitive, Primitive::Surface(surface) if surface.group > 0)
++}
++
++/// Whether every mask of `primitive` is `mask`.
++fn masked_by(primitive: &Primitive, mask: &Bounds<ScaledPixels>) -> bool {
++    primitive.content_mask().bounds == *mask
++        && match primitive {
++            Primitive::Path(path) => path.vertices.iter().all(|v| v.content_mask.bounds == *mask),
++            _ => true,
++        }
++}
++
++/// Move `primitive` under a mask that stays (`PlacedMask::Fixed`).
++fn move_under(primitive: &mut Primitive, offset: Point<ScaledPixels>, mask: Bounds<ScaledPixels>) {
++    record::geometry::primitive(primitive, offset, None);
++    let mask = ContentMask { bounds: mask };
++    match primitive {
++        Primitive::Shadow(p) => p.content_mask = mask,
++        Primitive::Quad(p) => p.content_mask = mask,
++        Primitive::Underline(p) => p.content_mask = mask,
++        Primitive::MonochromeSprite(p) => p.content_mask = mask,
++        Primitive::SubpixelSprite(p) => p.content_mask = mask,
++        Primitive::PolychromeSprite(p) => p.content_mask = mask,
++        Primitive::Surface(p) => p.content_mask = mask,
++        Primitive::Path(p) => {
++            for vertex in &mut p.vertices {
++                vertex.content_mask = mask.clone();
++            }
++            p.content_mask = mask;
++        }
++    }
++}
++
++/// The rectangle the bounds tree holds for `primitive` moved under `mask`.
++fn moved_under(primitive: &Primitive, offset: Point<ScaledPixels>, mask: &Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
++    let placed = match primitive {
++        // Not cloned for its vertices: a path is placed by its bounds.
++        Primitive::Path(path) => record::geometry::bounds(path.bounds, offset),
++        primitive => {
++            let mut moved = primitive.clone();
++            record::geometry::primitive(&mut moved, offset, None);
++            placed_bounds(&moved)
++        }
++    };
++    placed.intersect(mask)
++}
++
++impl Scene {
++    /// The block of exactly the commands `ops` (blocks are in command order).
++    fn block(&self, ops: &Range<usize>) -> Option<&ReplayedBlock> {
++        let first = self.blocks.partition_point(|block| block.ops.start < ops.start);
++        self.blocks[first..]
++            .iter()
++            .take_while(|block| block.ops.start == ops.start)
++            .find(|block| block.ops == *ops)
++    }
++
++    /// Index the commands `ops` of this finished scene by a tree of their
++    /// own, kept with the scene: every later `replay_placed_range` of the
++    /// range grafts it instead of packing the commands again. A scene whose
++    /// ranges are placed many times (a fragmented record, one range per
++    /// segment) indexes each once. Nothing is done for a range that already
++    /// has a block or cannot be placed as one.
++    pub(crate) fn index_range(&mut self, ops: Range<usize>) {
++        let Some(operations) = self.paint_operations.get(ops.clone()) else {
++            return;
++        };
++        if self.block(&ops).is_some() || !Self::shiftable(operations) {
++            return;
++        }
++        let mut packed = Self::packed(operations);
++        packed.freeze();
++        let index = match Graft::new(std::rc::Rc::new(packed), Point::default(), None, 0) {
++            Some(graft) => BlockIndex::Owned(graft),
++            None => BlockIndex::Empty,
++        };
++        let at = self.blocks.partition_point(|block| block.ops.start <= ops.start);
++        self.blocks.insert(at, ReplayedBlock { ops, index });
++    }
++
++    /// Whether the commands `ops` of this finished scene can be placed
++    /// elsewhere as one block: their orders come from the bounds tree and
++    /// their layers are closed (`shiftable`: no bottom layer, no 3D depth
++    /// sort), none puts a paint group's buffer on screen and the scene hoists
++    /// no backdrop (both belong to this scene), and for `PlacedMask::Fixed`
++    /// each has exactly that mask.
++    pub(crate) fn placeable(&self, ops: Range<usize>, mask: &PlacedMask) -> bool {
++        let Some(operations) = self.paint_operations.get(ops) else {
++            return false;
++        };
++        self.hoisted_backdrops.is_empty()
++            && Self::shiftable(operations)
++            && operations.iter().all(|operation| match operation {
++                PaintOperation::Primitive(primitive) => {
++                    !group_output(primitive)
++                        && match mask {
++                            PlacedMask::Fixed(mask) => masked_by(primitive, mask),
++                            PlacedMask::Moves(_) => true,
++                        }
++                }
++                _ => true,
++            })
++    }
++
++    /// The index of the commands `ops` of `source` moved by `offset` with
++    /// their masks and cut by `clip`: a graft of the tree that indexed them
++    /// (the whole scene's, or the range's block), else of a tree packed from
++    /// them.
++    fn moved_index(
++        source: &Scene,
++        ops: &Range<usize>,
++        offset: Point<ScaledPixels>,
++        clip: Option<Bounds<ScaledPixels>>,
++    ) -> ReplaySource {
++        // A finished frame has released its tree (`finish_frame`).
++        if *ops == (0..source.paint_operations.len()) && !source.primitive_bounds.is_empty() {
++            let graft = Graft::new(source.primitive_bounds.clone(), offset, clip, 0);
++            return ReplaySource::Graft(graft, false);
++        }
++        match source.block(ops).map(|block| &block.index) {
++            Some(BlockIndex::Empty) => return ReplaySource::Graft(None, false),
++            Some(BlockIndex::Owned(graft)) => {
++                return ReplaySource::Graft(graft.placed(&offset, clip), true);
++            }
++            Some(BlockIndex::Shared(graft)) => {
++                if let Some(graft) = graft.upgrade() {
++                    return ReplaySource::Graft(graft.placed(&offset, clip), false);
++                }
++            }
++            None => {}
++        }
++        let mut packed = Self::packed(&source.paint_operations[ops.clone()]);
++        packed.freeze();
++        ReplaySource::Graft(Graft::new(std::rc::Rc::new(packed), offset, clip, 0), true)
++    }
++
++    /// The index of `operations` moved by `offset` under `mask`, which stays:
++    /// a part the mask hid at the old place can be seen at the new one, so no
++    /// tree of the old rectangles is exact; the moved ones are packed.
++    fn fixed_index(
++        operations: &[PaintOperation],
++        offset: Point<ScaledPixels>,
++        mask: &Bounds<ScaledPixels>,
++    ) -> ReplaySource {
++        let mut rects = Vec::new();
++        let mut layers = 0usize;
++        for operation in operations {
++            match operation {
++                PaintOperation::StartLayer(bounds, order) => {
++                    if layers == 0 {
++                        rects.push((record::geometry::bounds(*bounds, offset), order / ORDER_STEP));
++                    }
++                    layers += 1;
++                }
++                PaintOperation::EndLayer => layers -= 1,
++                PaintOperation::Primitive(primitive) if layers == 0 => {
++                    let clipped = moved_under(primitive, offset, mask);
++                    if !clipped.is_empty() {
++                        rects.push((clipped, primitive.order() / ORDER_STEP));
++                    }
++                }
++                _ => {}
++            }
++        }
++        let mut packed = BoundsTree::packed(rects, |coordinate| coordinate.0);
++        packed.freeze();
++        ReplaySource::Graft(Graft::new(std::rc::Rc::new(packed), Point::default(), None, 0), true)
++    }
++
++    /// `replay_placed(&isolated, offset, clip)` of the isolated scene a plan
++    /// paints `record` into under the mask `extent` (`Window::paint_plan`),
++    /// without that scene: each command takes the same two placements in the
++    /// same order (cut by `extent` in place, then moved by `offset` and cut
++    /// by `clip`), and the record's tree is grafted through both, as the
++    /// graft of a scene that is one graft collapses. `false`, and nothing is
++    /// written, where either of the two replays would decline.
++    pub(crate) fn replay_record_placed(
++        &mut self,
++        record: &Scene,
++        extent: Bounds<ScaledPixels>,
++        offset: Point<ScaledPixels>,
++        clip: Bounds<ScaledPixels>,
++    ) -> bool {
++        if !record.groups.is_empty() || !record.hoisted_backdrops.is_empty() {
++            return false;
++        }
++        let graft = Graft::new(record.primitive_bounds.clone(), Point::default(), Some(extent), 0)
++            .and_then(|graft| graft.placed(&offset, Some(clip)));
++        let source = ReplaySource::Graft(graft, false);
++        self.replay_shifted(&record.paint_operations, source, |operation| match operation {
++            PaintOperation::Primitive(primitive) => {
++                record::geometry::primitive(primitive, Point::default(), Some(extent));
++                record::geometry::primitive(primitive, offset, Some(clip));
++                !placed_bounds(primitive).intersect(&primitive.content_mask().bounds).is_empty()
++            }
++            PaintOperation::StartLayer(bounds, _) => {
++                *bounds = record::geometry::bounds(*bounds, offset);
++                true
++            }
++            _ => true,
++        })
++    }
++
++    /// Append the commands `ops` of the finished scene `source`, moved by
++    /// `offset`, in one pass, with one index for all of them: the commands
++    /// keep their recorded orders under one raise (`replay_shifted`), and
++    /// later inserts see exactly the rectangles the moved commands cover.
++    /// Commands their mask hides are dropped, as `insert_primitive` drops
++    /// them. `false`, and nothing is written, when the range is not
++    /// `placeable`, the offset of a `PlacedMask::Fixed` range is not a whole
++    /// number of device pixels, or this scene's open state (a layer, a 3D
++    /// context) needs the per-primitive replay.
++    pub(crate) fn replay_placed_range(
++        &mut self,
++        source: &Scene,
++        ops: Range<usize>,
++        offset: Point<ScaledPixels>,
++        mask: PlacedMask,
++    ) -> bool {
++        if !source.placeable(ops.clone(), &mask) {
++            return false;
++        }
++        let operations = &source.paint_operations[ops.clone()];
++        let index = match &mask {
++            PlacedMask::Moves(clip) => Self::moved_index(source, &ops, offset, *clip),
++            PlacedMask::Fixed(_) if offset.x.0.fract() != 0.0 || offset.y.0.fract() != 0.0 => return false,
++            PlacedMask::Fixed(mask) => Self::fixed_index(operations, offset, mask),
++        };
++        self.replay_shifted(operations, index, |operation| match operation {
++            PaintOperation::Primitive(primitive) => {
++                match mask {
++                    PlacedMask::Moves(clip) => record::geometry::primitive(primitive, offset, clip),
++                    PlacedMask::Fixed(mask) => move_under(primitive, offset, mask),
++                }
++                !placed_bounds(primitive).intersect(&primitive.content_mask().bounds).is_empty()
++            }
++            PaintOperation::StartLayer(bounds, _) => {
++                *bounds = record::geometry::bounds(*bounds, offset);
++                true
++            }
++            _ => true,
++        })
++    }
++}
++
++#[cfg(test)]
++#[path = "placed_tests.rs"]
++mod tests;
+diff --git a/vendor/gpui/src/scene/placed_tests.rs b/vendor/gpui/src/scene/placed_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f9b24ebc0c9483946f60503b7c6108a6c242457e
+--- /dev/null
++++ b/vendor/gpui/src/scene/placed_tests.rs
+@@ -0,0 +1,181 @@
++//! KaminIDE patch: a placed range equals the placed copy of the same commands.
++
++use super::*;
++use crate::scene::replay_tests::{destination, quad, quads, record, rect, summary};
++
++fn at(x: f32, y: f32) -> Point<ScaledPixels> {
++    point(ScaledPixels(x), ScaledPixels(y))
++}
++
++/// A quad under a mask of its own.
++fn masked(x: f32, y: f32, w: f32, h: f32, mask: Bounds<ScaledPixels>) -> Quad {
++    Quad { content_mask: ContentMask { bounds: mask }, ..quad(x, y, w, h) }
++}
++
++fn orders(scene: &Scene) -> Vec<DrawOrder> {
++    scene
++        .paint_operations
++        .iter()
++        .filter_map(|operation| match operation {
++            PaintOperation::Primitive(primitive) => Some(primitive.order()),
++            _ => None,
++        })
++        .collect()
++}
++
++const PROBES: [(f32, f32, f32, f32); 3] = [(115., 115., 2., 2.), (105., 155., 3., 3.), (300., 100., 5., 5.)];
++
++fn probe(scenes: [&mut Scene; 2]) {
++    for scene in scenes {
++        for (x, y, w, h) in PROBES {
++            scene.insert_primitive(quad(x, y, w, h));
++        }
++    }
++}
++
++#[test]
++fn the_whole_range_is_the_placed_record() {
++    let clip = Some(rect(90., 90., 150., 150.));
++    let record = record();
++    let all = 0..record.paint_operations.len();
++
++    let mut whole = destination();
++    assert!(whole.replay_placed(&record, at(100., 100.), clip));
++    let mut ranged = destination();
++    assert!(ranged.replay_placed_range(&record, all, at(100., 100.), PlacedMask::Moves(clip)));
++
++    assert_eq!(summary(&ranged), summary(&whole));
++    probe([&mut ranged, &mut whole]);
++    assert_eq!(summary(&ranged), summary(&whole));
++    ranged.finish();
++    whole.finish();
++    assert_eq!(quads(&ranged), quads(&whole));
++}
++
++/// What `Window::paint_plan` wrote in two copies: the record into an isolated
++/// scene under the plan's mask, that scene into the frame.
++#[test]
++fn a_record_placed_through_a_mask_is_its_isolated_copy_placed() {
++    let record = record();
++    let extent = rect(0., 0., 45., 70.);
++    let clip = rect(90., 90., 150., 150.);
++    let mut isolated = Scene::default();
++    assert!(isolated.replay_placed(&record, Point::default(), Some(extent)));
++    let mut two_step = destination();
++    assert!(two_step.replay_placed(&isolated, at(100., 100.), Some(clip)));
++    let mut direct = destination();
++    assert!(direct.replay_record_placed(&record, extent, at(100., 100.), clip));
++
++    assert_eq!(summary(&direct), summary(&two_step));
++    probe([&mut direct, &mut two_step]);
++    assert_eq!(summary(&direct), summary(&two_step));
++    direct.finish();
++    two_step.finish();
++    assert_eq!(quads(&direct), quads(&two_step));
++}
++
++/// The first two commands of the record, placed as a range, are the placed
++/// record of those two commands alone, whether the range has an index of
++/// its own or is packed at each use.
++#[test]
++fn a_range_is_the_placed_record_of_its_commands() {
++    let clip = Some(rect(90., 90., 150., 150.));
++    let mut alone = Scene::default();
++    alone.insert_primitive(quad(0., 0., 40., 40.));
++    alone.insert_primitive(quad(10., 10., 40., 40.));
++    alone.finish();
++    let mut whole = destination();
++    assert!(whole.replay_placed(&alone, at(100., 100.), clip));
++
++    let mut source = record();
++    let mut packed = destination();
++    assert!(packed.replay_placed_range(&source, 0..2, at(100., 100.), PlacedMask::Moves(clip)));
++    source.index_range(0..2);
++    source.index_range(0..2);
++    assert_eq!(source.blocks.len(), 1);
++    let mut grafted = destination();
++    assert!(grafted.replay_placed_range(&source, 0..2, at(100., 100.), PlacedMask::Moves(clip)));
++    assert!(matches!(grafted.blocks.last().map(|b| &b.index), Some(BlockIndex::Owned(_))));
++
++    assert_eq!(summary(&packed), summary(&whole));
++    assert_eq!(summary(&grafted), summary(&whole));
++    probe([&mut packed, &mut whole]);
++    probe([&mut grafted, &mut Scene::default()]);
++    assert_eq!(summary(&packed), summary(&whole));
++    assert_eq!(summary(&grafted), summary(&whole));
++}
++
++/// A range from the middle of a scene keeps the order of its commands and
++/// lies above what it covers and below what is painted over it later.
++#[test]
++fn a_later_range_keeps_the_overlap_rule() {
++    let source = record();
++    // The layer with its two quads: commands 2..6.
++    let mut scene = Scene::default();
++    scene.insert_primitive(quad(100., 150., 30., 30.));
++    let under = orders(&scene)[0];
++    assert!(scene.replay_placed_range(&source, 2..6, at(100., 100.), PlacedMask::Moves(None)));
++    scene.insert_primitive(quad(105., 155., 3., 3.));
++    scene.insert_primitive(quad(500., 500., 3., 3.));
++    let orders = orders(&scene);
++    assert_eq!(orders.len(), 5);
++    assert!(under < orders[1] && orders[1] < orders[2], "{orders:?}");
++    assert!(orders[2] < orders[3], "a quad over the placed layer is above it: {orders:?}");
++    assert!(orders[4] < orders[1], "a quad away from it is not raised: {orders:?}");
++}
++
++#[test]
++fn a_range_that_cannot_move_as_one_is_declined() {
++    let mut bottom = Scene::default();
++    bottom.push_bottom_layer();
++    bottom.insert_primitive(quad(0., 0., 10., 10.));
++    bottom.pop_layer();
++    bottom.finish();
++    let source = record();
++    let mut scene = destination();
++    let before = scene.paint_operations.len();
++    let moves = PlacedMask::Moves(None);
++    assert!(!bottom.placeable(0..bottom.paint_operations.len(), &moves));
++    assert!(!scene.replay_placed_range(&bottom, 0..bottom.paint_operations.len(), at(0., 0.), moves));
++    // Half a layer, and a range past the end.
++    assert!(!scene.replay_placed_range(&source, 2..4, at(0., 0.), moves));
++    assert!(!scene.replay_placed_range(&source, 0..100, at(0., 0.), moves));
++    // An open layer of the destination.
++    scene.push_layer(rect(0., 0., 10., 10.));
++    assert!(!scene.replay_placed_range(&source, 0..2, at(0., 0.), moves));
++    assert_eq!(scene.paint_operations.len(), before + 1);
++    assert_eq!(scene.blocks.len(), 0);
++}
++
++/// Content moved under a mask that stays: the mask is kept, what leaves it
++/// is dropped, and a part the mask hid at the old place is indexed at the
++/// new one.
++#[test]
++fn a_fixed_mask_stays_while_its_content_moves() {
++    let view = rect(0., 0., 100., 100.);
++    let mut frame = Scene::default();
++    frame.insert_primitive(masked(0., 0., 50., 20., view));
++    frame.insert_primitive(masked(0., 90., 50., 40., view));
++    frame.finish_frame();
++    let all = 0..frame.paint_operations.len();
++    let fixed = PlacedMask::Fixed(view);
++
++    assert!(frame.placeable(all.clone(), &fixed));
++    assert!(!frame.placeable(all.clone(), &PlacedMask::Fixed(rect(0., 0., 100., 90.))));
++    let mut next = Scene::default();
++    assert!(!next.replay_placed_range(&frame, all.clone(), at(0., -30.5), fixed));
++    assert!(next.paint_operations.is_empty() && next.blocks.is_empty());
++
++    // Up by 30: the first quad leaves the view, the second is whole in it.
++    assert!(next.replay_placed_range(&frame, all, at(0., -30.), fixed));
++    assert_eq!(next.paint_operations.len(), 1);
++    let PaintOperation::Primitive(Primitive::Quad(moved)) = &next.paint_operations[0] else {
++        panic!("a quad");
++    };
++    assert_eq!(moved.content_mask.bounds, view);
++    assert_eq!(moved.transformation.translation, [0., -30.]);
++    // y 70..100 of the moved quad was below the view before the move.
++    next.insert_primitive(masked(0., 80., 10., 10., view));
++    let orders = orders(&next);
++    assert!(orders[0] < orders[1], "{orders:?}");
 +}
 diff --git a/vendor/gpui/src/scene/record.rs b/vendor/gpui/src/scene/record.rs
 new file mode 100644
@@ -12935,7 +13437,7 @@ index 0000000000000000000000000000000000000000..6d2ea81a9a139481107fc909826a19d7
 +}
 diff --git a/vendor/gpui/src/scene/replay_tests.rs b/vendor/gpui/src/scene/replay_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..96ce71c11a00c60ddb6cd3e9af73e105368f4ae6
+index 0000000000000000000000000000000000000000..75c9216a04f147ac1ecca805d3bbb36247f21d7c
 --- /dev/null
 +++ b/vendor/gpui/src/scene/replay_tests.rs
 @@ -0,0 +1,192 @@
@@ -12943,7 +13445,7 @@ index 0000000000000000000000000000000000000000..96ce71c11a00c60ddb6cd3e9af73e105
 +
 +use super::*;
 +
-+fn quad(x: f32, y: f32, w: f32, h: f32) -> Quad {
++pub(in crate::scene) fn quad(x: f32, y: f32, w: f32, h: f32) -> Quad {
 +    let bounds = Bounds {
 +        origin: point(ScaledPixels(x), ScaledPixels(y)),
 +        size: Size { width: ScaledPixels(w), height: ScaledPixels(h) },
@@ -12956,13 +13458,13 @@ index 0000000000000000000000000000000000000000..96ce71c11a00c60ddb6cd3e9af73e105
 +    }
 +}
 +
-+fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
++pub(in crate::scene) fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
 +    quad(x, y, w, h).bounds
 +}
 +
 +/// A finished record: overlapping quads, a layer, one quad that the
 +/// output clip removes.
-+fn record() -> Scene {
++pub(in crate::scene) fn record() -> Scene {
 +    let mut scene = Scene::default();
 +    scene.insert_primitive(quad(0., 0., 40., 40.));
 +    scene.insert_primitive(quad(10., 10., 40., 40.));
@@ -12977,14 +13479,14 @@ index 0000000000000000000000000000000000000000..96ce71c11a00c60ddb6cd3e9af73e105
 +}
 +
 +/// The destination already holds content under part of the copy.
-+fn destination() -> Scene {
++pub(in crate::scene) fn destination() -> Scene {
 +    let mut scene = Scene::default();
 +    scene.insert_primitive(quad(100., 100., 30., 30.));
 +    scene.insert_primitive(quad(110., 110., 30., 30.));
 +    scene
 +}
 +
-+fn summary(scene: &Scene) -> Vec<String> {
++pub(in crate::scene) fn summary(scene: &Scene) -> Vec<String> {
 +    scene
 +        .paint_operations
 +        .iter()
@@ -13000,7 +13502,7 @@ index 0000000000000000000000000000000000000000..96ce71c11a00c60ddb6cd3e9af73e105
 +        .collect()
 +}
 +
-+fn quads(scene: &Scene) -> Vec<(DrawOrder, [f32; 2])> {
++pub(in crate::scene) fn quads(scene: &Scene) -> Vec<(DrawOrder, [f32; 2])> {
 +    scene.quads.iter().map(|q| (q.order, q.transformation.translation)).collect()
 +}
 +
@@ -13133,10 +13635,10 @@ index 0000000000000000000000000000000000000000..96ce71c11a00c60ddb6cd3e9af73e105
 +}
 diff --git a/vendor/gpui/src/scene/segments.rs b/vendor/gpui/src/scene/segments.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..710a156c3f64da9df8c978553ebf14494034dac8
+index 0000000000000000000000000000000000000000..4ebe42b257ad87d7af3f43e453d0e46ad3ac0d45
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments.rs
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,100 @@
 +//! Разветвление некомпозированных команд по явным сегментам перед заморозкой.
 +
 +use super::*;
@@ -13148,8 +13650,10 @@ index 0000000000000000000000000000000000000000..710a156c3f64da9df8c978553ebf1449
 +mod groups;
 +mod freeze;
 +mod commands;
++mod view;
 +use groups::Group;
 +pub(crate) use clips::{Clip, Tag};
++pub(crate) use view::SegmentView;
 +
 +type Routes = Rc<[PaintSegment]>;
 +type ReadRoutes = Rc<dyn Fn() -> Tag>;
@@ -13544,6 +14048,137 @@ index 0000000000000000000000000000000000000000..b09832d694d351eac6b4b47d155f7b2b
 +            node = clip.parent.as_ref();
 +        }
 +        *common = candidate.parent.clone();
++    }
++}
+diff --git a/vendor/gpui/src/scene/segments/view.rs b/vendor/gpui/src/scene/segments/view.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f9667b732f9e1524910cb2cf57a18993f15e35e6
+--- /dev/null
++++ b/vendor/gpui/src/scene/segments/view.rs
+@@ -0,0 +1,125 @@
++//! KaminIDE patch: a segment kept as a selection of its draft's commands
++//! instead of a scene of copies (`freeze_segment`). The draft is recorded
++//! once for all the segments of a fragmented box; a segment's commands are
++//! spread over it in paint order (backgrounds of every column, then floats,
++//! then text), so a segment is a list of picks, not a range. A pick is placed
++//! when the segment is painted: one write of each command into the frame.
++
++use super::*;
++use crate::bounds_tree::Graft;
++
++/// One command of the draft admitted to the segment, and its clip there.
++struct Pick {
++    op: u32,
++    clip: Bounds<ScaledPixels>,
++}
++
++pub(crate) struct SegmentView {
++    picks: Vec<Pick>,
++    /// The move of every pick from the draft to the segment.
++    delta: Point<ScaledPixels>,
++    /// The rectangles of the picks in the segment, with their draft orders:
++    /// the picks move together, so the orders keep the overlap rule there.
++    tree: Rc<BoundsTree<ScaledPixels>>,
++}
++
++impl Scene {
++    /// The segment `id` of this draft as a selection, clipped by `extent`
++    /// like `freeze_segment` clips it. `None` when the segment needs the
++    /// frozen scene: the draft has paint groups, hoisted backdrops or layers,
++    /// or the segment places a command twice or by different moves (the
++    /// draft orders would not order them).
++    pub(crate) fn segment_view(
++        &self,
++        id: PaintSegmentId,
++        scale: f32,
++        extent: Bounds<ScaledPixels>,
++    ) -> Option<SegmentView> {
++        let capture = self.segment_capture.as_ref()?;
++        if !self.groups.is_empty()
++            || !self.hoisted_backdrops.is_empty()
++            || capture.primitives.len() != self.paint_operations.len()
++        {
++            return None;
++        }
++        let mut picks = Vec::new();
++        let mut rects = Vec::new();
++        let mut delta = None;
++        for (op, (operation, tag)) in self.paint_operations.iter().zip(&capture.primitives).enumerate() {
++            let PaintOperation::Primitive(primitive) = operation else {
++                return None;
++            };
++            let mut routes = tag.routes.iter().filter(|route| route.id == id).copied();
++            let Some(route) = routes.next() else {
++                continue;
++            };
++            let moved = (route.destination - route.source).scale(scale);
++            if routes.next().is_some() || *delta.get_or_insert(moved) != moved {
++                return None;
++            }
++            let clip = Tag::clip_chain(tag.clips.as_ref(), None, route, scale, extent);
++            let clip = tag.admission(route, scale, clip);
++            let mut placed = primitive.clone();
++            record::geometry::primitive(&mut placed, moved, Some(clip));
++            let rect = placed_bounds(&placed).intersect(&placed.content_mask().bounds);
++            if !rect.is_empty() {
++                picks.push(Pick { op: op as u32, clip });
++                rects.push((rect, primitive.order() / ORDER_STEP));
++            }
++        }
++        picks.shrink_to_fit();
++        let mut tree = BoundsTree::packed(rects, |coordinate| coordinate.0);
++        tree.freeze();
++        Some(SegmentView { picks, delta: delta.unwrap_or_default(), tree: Rc::new(tree) })
++    }
++
++    /// Keep of a draft only what its segment views and a later
++    /// `freeze_segment` read: the command log, without the per-kind lists and
++    /// the index of a scene that is never drawn itself.
++    pub(crate) fn keep_commands(&mut self) {
++        self.primitive_bounds = Default::default();
++        self.blocks = Vec::new();
++        self.shadows = Vec::new();
++        self.quads = Vec::new();
++        self.paths = Vec::new();
++        self.underlines = Vec::new();
++        self.monochrome_sprites = Vec::new();
++        self.subpixel_sprites = Vec::new();
++        self.polychrome_sprites = Vec::new();
++        self.surfaces = Vec::new();
++    }
++
++    /// `replay_record_placed` of `draft.freeze_segment(..)` without the
++    /// frozen scene: every pick takes the placements its copy would take, in
++    /// the same order (moved into the segment under its clip, cut by
++    /// `extent`, moved by `offset` and cut by `clip`). The picks keep their
++    /// draft orders under one raise. `false`, and nothing is written, when
++    /// this scene's open state needs the per-primitive replay.
++    pub(crate) fn replay_view(
++        &mut self,
++        draft: &Scene,
++        view: &SegmentView,
++        extent: Bounds<ScaledPixels>,
++        offset: Point<ScaledPixels>,
++        clip: Bounds<ScaledPixels>,
++    ) -> bool {
++        if !self.takes_blocks() {
++            return false;
++        }
++        let graft = Graft::new(view.tree.clone(), Point::default(), Some(extent), 0)
++            .and_then(|graft| graft.placed(&offset, Some(clip)));
++        let placed = view.picks.iter().filter_map(|pick| {
++            let PaintOperation::Primitive(primitive) = &draft.paint_operations[pick.op as usize] else {
++                return None;
++            };
++            let mut primitive = primitive.clone();
++            record::geometry::primitive(&mut primitive, view.delta, Some(pick.clip));
++            record::geometry::primitive(&mut primitive, Point::default(), Some(extent));
++            record::geometry::primitive(&mut primitive, offset, Some(clip));
++            let seen = !placed_bounds(&primitive).intersect(&primitive.content_mask().bounds).is_empty();
++            seen.then_some(PaintOperation::Primitive(primitive))
++        });
++        self.append_block(placed, graft, false);
++        true
 +    }
 +}
 diff --git a/vendor/gpui/src/scene/vector_transform.rs b/vendor/gpui/src/scene/vector_transform.rs
@@ -25505,10 +26140,10 @@ index 0000000000000000000000000000000000000000..6a1794918b3be567d1fad54d7a61bb09
 +or unwind; an abort invalidates the draw rather than granting replay rights.
 diff --git a/vendor/gpui/src/window/paint_record/invocation.rs b/vendor/gpui/src/window/paint_record/invocation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c7204329ff323b9a819fd92a96a68fc29e51607c
+index 0000000000000000000000000000000000000000..3facbca971895d6afcd1147477894cb96422cf93
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/invocation.rs
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,149 @@
 +//! Запись один раз и атомарный вызов плана в свежей композиционной области.
 +
 +use super::*;
@@ -25524,7 +26159,7 @@ index 0000000000000000000000000000000000000000..c7204329ff323b9a819fd92a96a68fc2
 +    ) -> Result<(R, PaintRecord), PaintRecordError> {
 +        let _recording = self.render_contexts.enter::<segments::Recording>(None);
 +        let (result, scene, identity, scale) = self.capture_paint_commands(source_clip, cx, paint)?;
-+        Ok((result, PaintRecord(Rc::new(Recorded { identity, scale, clip: source_clip, scene }))))
++        Ok((result, PaintRecord(Rc::new(Recorded::frozen(identity, scale, source_clip, scene)))))
 +    }
 +
 +    pub(super) fn capture_paint_commands<R>(
@@ -25581,6 +26216,14 @@ index 0000000000000000000000000000000000000000..c7204329ff323b9a819fd92a96a68fc2
 +            return Err(PaintRecordError::InvalidGeometry);
 +        }
 +        let clip = placement.clip.intersect(&self.content_mask().bounds).scale(self.scale_factor());
++        // KaminIDE patch: one record under no scope goes straight into the
++        // frame, placed as the isolated scene below would place it.
++        if presentation.is_none()
++            && let Some(record) = plan.single()
++            && self.place_record(record, extent, scaled, clip)
++        {
++            return Ok(self.with_paint_scope(|window| window.paint_scope_id()));
++        }
 +        let (invocation, scene) = {
 +            // Неизменяемый план — один лист сегментного обхода;
 +            // его собственные эффекты разрешены до привязки к сегментам.
@@ -25599,6 +26242,29 @@ index 0000000000000000000000000000000000000000..c7204329ff323b9a819fd92a96a68fc2
 +            self.next_frame.scene.replay_record(&scene);
 +        }
 +        Ok(invocation)
++    }
++
++    /// KaminIDE patch: the commands of `record` written into the frame once:
++    /// what `plan.paint` into an isolated scene masked by `extent` and
++    /// `replay_placed(&scene, offset, clip)` of that scene write, without the
++    /// scene. A segment kept as a view of its draft is placed from the draft.
++    /// `false`, and nothing is written, when the record or the frame's open
++    /// state needs the isolated scene.
++    fn place_record(
++        &mut self,
++        record: &PaintRecord,
++        extent: Bounds<Pixels>,
++        offset: Point<ScaledPixels>,
++        clip: Bounds<ScaledPixels>,
++    ) -> bool {
++        let extent = ContentMask { bounds: extent }.scale(self.scale_factor()).bounds;
++        let frame = &mut self.next_frame.scene;
++        match &record.0.segment {
++            Some(segment) if record.0.scene.get().is_none() => {
++                frame.replay_view(&segment.draft, &segment.view, extent, offset, clip)
++            }
++            _ => frame.replay_record_placed(record.0.scene(), extent, offset, clip),
++        }
 +    }
 +
 +    fn record_scene<R>(
@@ -25629,10 +26295,10 @@ index 0000000000000000000000000000000000000000..c7204329ff323b9a819fd92a96a68fc2
 +}
 diff --git a/vendor/gpui/src/window/paint_record/mod.rs b/vendor/gpui/src/window/paint_record/mod.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b9c7e7e5f83f911dd60361b302882086be31b4c1
+index 0000000000000000000000000000000000000000..75f8ded37bb5ae3e0547d1d4d3adc3121e6a7e4c
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/mod.rs
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,100 @@
 +//! Неизменяемые команды одного draw и явное размещение в другом paint scope.
 +
 +use super::*;
@@ -25652,7 +26318,33 @@ index 0000000000000000000000000000000000000000..b9c7e7e5f83f911dd60361b302882086
 +    identity: paint_scope::Identity,
 +    scale: f32,
 +    clip: Bounds<Pixels>,
-+    scene: Scene,
++    /// KaminIDE patch: the frozen commands; of a segment kept as a view of
++    /// its draft, made only when something reads them as a scene.
++    scene: std::cell::OnceCell<Scene>,
++    segment: Option<Segment>,
++}
++
++/// KaminIDE patch: a segment of a draft shared by the records of all its
++/// segments (`Window::record_paint_segments`): the picks of the draft's
++/// commands, placed when the record is painted.
++struct Segment {
++    draft: Rc<Scene>,
++    id: PaintSegmentId,
++    source: Bounds<Pixels>,
++    view: crate::scene::segments::SegmentView,
++}
++
++impl Recorded {
++    fn frozen(identity: paint_scope::Identity, scale: f32, clip: Bounds<Pixels>, scene: Scene) -> Self {
++        Self { identity, scale, clip, scene: scene.into(), segment: None }
++    }
++
++    fn scene(&self) -> &Scene {
++        self.scene.get_or_init(|| {
++            let segment = self.segment.as_ref().expect("a record is a scene or a segment of a draft");
++            segment.draft.freeze_segment(segment.id, self.scale, segment.source)
++        })
++    }
 +}
 +
 +/// Explicit source-to-destination translation and final destination-space clip.
@@ -25693,11 +26385,11 @@ index 0000000000000000000000000000000000000000..b9c7e7e5f83f911dd60361b302882086
 +
 +    /// Inspect frozen commands in renderer contract tests without mutating them.
 +    #[cfg(any(test, feature = "test-support"))]
-+    pub fn scene(&self) -> &Scene { &self.0.scene }
++    pub fn scene(&self) -> &Scene { self.0.scene() }
 +
 +    /// Проверка сохранённых подложек до включения их команд в кадр.
 +    #[cfg(any(test, feature = "test-support"))]
-+    pub fn hoisted_backdrops(&self) -> &[crate::PaintSurface] { &self.0.scene.hoisted_backdrops }
++    pub fn hoisted_backdrops(&self) -> &[crate::PaintSurface] { &self.0.scene().hoisted_backdrops }
 +
 +    fn check(&self, window: &Window) -> Result<(), PaintRecordError> {
 +        self.0.identity.check_pass(window)?;
@@ -25709,10 +26401,10 @@ index 0000000000000000000000000000000000000000..b9c7e7e5f83f911dd60361b302882086
 +}
 diff --git a/vendor/gpui/src/window/paint_record/plan.rs b/vendor/gpui/src/window/paint_record/plan.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6355f3b0ca4369d50f56030d469a6b47efc8aa2d
+index 0000000000000000000000000000000000000000..2e5bb2135238178d881a52998488a18ea188b2a7
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/plan.rs
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,193 @@
 +//! Плоское неизменяемое дерево команд и переоткрываемых механических scopes.
 +
 +use super::*;
@@ -25797,6 +26489,14 @@ index 0000000000000000000000000000000000000000..6355f3b0ca4369d50f56030d469a6b47
 +        Self(commands.into())
 +    }
 +
++    /// KaminIDE patch: the record of a plan that is one record under no scope.
++    pub(super) fn single(&self) -> Option<&PaintRecord> {
++        match &*self.0 {
++            [Command::Record(record)] => Some(record),
++            _ => None,
++        }
++    }
++
 +    pub(super) fn validate(
 +        &self, window: &Window, presentation: Option<TransformationMatrix>,
 +    ) -> Result<Bounds<Pixels>, PaintRecordError> {
@@ -25840,14 +26540,14 @@ index 0000000000000000000000000000000000000000..6355f3b0ca4369d50f56030d469a6b47
 +                Command::Record(record) => {
 +                    let mask = window.content_mask().scale(window.scale_factor());
 +                    if presentation.is_none()
-+                        && window.next_frame.scene.replay_placed(&record.0.scene, Point::default(), Some(mask.bounds))
++                        && window.next_frame.scene.replay_placed(record.0.scene(), Point::default(), Some(mask.bounds))
 +                    {
 +                        continue;
 +                    }
 +                    let scene = match presentation {
-+                        Some(matrix) => present(record.0.scene.copy_record(Point::default(), None), matrix)
++                        Some(matrix) => present(record.0.scene().copy_record(Point::default(), None), matrix)
 +                            .copy_record(Point::default(), Some(mask.bounds)),
-+                        None => record.0.scene.copy_record(Point::default(), Some(mask.bounds)),
++                        None => record.0.scene().copy_record(Point::default(), Some(mask.bounds)),
 +                    };
 +                    let scene = window.adopt_scene(scene);
 +                    window.next_frame.scene.replay_record(&scene);
@@ -25900,10 +26600,10 @@ index 0000000000000000000000000000000000000000..6355f3b0ca4369d50f56030d469a6b47
 +}
 diff --git a/vendor/gpui/src/window/paint_record/segments.rs b/vendor/gpui/src/window/paint_record/segments.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e7f0b2c1b76eb79ef8d5f7c294915e5c7ce93777
+index 0000000000000000000000000000000000000000..794fd206d4213079c0200cb6f5af66be80b24c51
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/segments.rs
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,196 @@
 +//! Границы сегментов до публикации immutable record; CSS выбирает размещения.
 +
 +use super::*;
@@ -26019,31 +26719,61 @@ index 0000000000000000000000000000000000000000..e7f0b2c1b76eb79ef8d5f7c294915e5c
 +        let _selection = self.render_contexts.enter(Some(Rc::new(Selection(routes))));
 +        let contexts = self.render_contexts.clone();
 +        let scope_segments = segments.clone();
-+        let read = Rc::new(move || crate::scene::segments::Tag {
-+            routes: contexts.get::<Selection>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
-+            scopes: scopes(&scope_segments, contexts.get::<Selection>().as_deref()),
-+            clips: contexts.get::<crate::scene::segments::Clip>(),
-+            slices: contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
++        // KaminIDE patch: the tag is read for every primitive, the selection
++        // changes at scope entry: its scopes are listed once per selection
++        // (kept with the selection, so its address names it).
++        let listed: std::cell::RefCell<Option<(Option<Rc<Selection>>, Rc<[PaintSegment]>)>> = Default::default();
++        let read = Rc::new(move || {
++            let selected = contexts.get::<Selection>();
++            let mut listed = listed.borrow_mut();
++            let same = listed.as_ref().is_some_and(|(of, _)| match (of, &selected) {
++                (Some(of), Some(selected)) => Rc::ptr_eq(of, selected),
++                (None, None) => true,
++                _ => false,
++            });
++            if !same {
++                *listed = Some((selected.clone(), scopes(&scope_segments, selected.as_deref())));
++            }
++            crate::scene::segments::Tag {
++                routes: selected.as_ref().map_or_else(|| Rc::from([]), |value| value.0.clone()),
++                scopes: listed.as_ref().map_or_else(|| Rc::from([]), |(_, scopes)| scopes.clone()),
++                clips: contexts.get::<crate::scene::segments::Clip>(),
++                slices: contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
++            }
 +        });
-+        let (result, draft, identity, scale) = self.capture_paint_commands(source_clip, cx, |window, cx| {
++        let (result, mut draft, identity, scale) = self.capture_paint_commands(source_clip, cx, |window, cx| {
 +            let _recording = window.render_contexts.enter(Some(Rc::new(Recording)));
 +            let _clips = window.render_contexts.enter::<crate::scene::segments::Clip>(None);
 +            let _slices = window.render_contexts.enter::<admission::Slices>(None);
 +            window.next_frame.scene.begin_segments(read);
 +            paint(window, cx)
 +        })?;
-+        let mut records = Vec::with_capacity(segments.len());
++        // KaminIDE patch: a segment is a view of the draft where it can be
++        // (`Scene::segment_view`), a frozen scene of copies otherwise.
++        let mut parts = Vec::with_capacity(segments.len());
 +        for (index, segment) in segments.iter().enumerate() {
 +            if segments[..index].iter().any(|prior| prior.id == segment.id) { continue; }
-+            let scene = draft.freeze_segment(segment.id, scale, source_clip);
 +            let clip = draft.segment_clip(segment.id, source_clip);
 +            if !validation::scaled_bounds_valid(clip, scale) {
 +                return Err(PaintRecordError::InvalidGeometry);
 +            }
-+            records.push((segment.id, PaintRecord(Rc::new(Recorded {
-+                identity: identity.clone(), scale, clip, scene,
-+            }))));
++            let view = draft.segment_view(segment.id, scale, clip.scale(scale));
++            let scene = match view {
++                Some(_) => None,
++                None => Some(draft.freeze_segment(segment.id, scale, source_clip)),
++            };
++            parts.push((segment.id, clip, view, scene));
 +        }
++        // The views read the draft's command log only.
++        if parts.iter().any(|part| part.2.is_some()) {
++            draft.keep_commands();
++        }
++        let draft = Rc::new(draft);
++        let records = parts.into_iter().map(|(id, clip, view, scene)| {
++            let segment = view.map(|view| Segment { draft: draft.clone(), id, source: source_clip, view });
++            let scene = scene.map_or_else(Default::default, std::cell::OnceCell::from);
++            (id, PaintRecord(Rc::new(Recorded { identity: identity.clone(), scale, clip, scene, segment })))
++        }).collect();
 +        Ok((result, PaintSegmentRecords(records)))
 +    }
 +}
