@@ -333,6 +333,14 @@ function powershellCommands(command: string): string[] | null {
   }
   for (let i = 0; i < command.length; i++) {
     const ch = command[i]!
+    const adjacentVariable =
+      ch === '$' && !active && words.length && !skipRedirectTarget
+        ? /^\$[A-Za-z_]\w*(?::[A-Za-z_]\w*)?(?==)/.exec(command.slice(i))
+        : null
+    const bracedVariable =
+      ch === '$' && (words.length || skipRedirectTarget)
+        ? /^\$\{[A-Za-z_]\w*(?::[A-Za-z_]\w*)?\}/.exec(command.slice(i))
+        : null
     if (ch === "'" || ch === '"') {
       const quote = ch
       let closed = false
@@ -410,6 +418,16 @@ function powershellCommands(command: string): string[] | null {
       words = []
       word = ''
       active = false
+    } else if (adjacentVariable) {
+      // An unquoted simple variable followed by '=' is a separate AST element.
+      // Recognize it before consuming the word so quotes and escapes stay literal.
+      words.push(adjacentVariable[0])
+      i += adjacentVariable[0].length - 1
+    } else if (bracedVariable) {
+      // Braces keep the variable and an adjacent literal in one argument.
+      word += bracedVariable[0]
+      active = true
+      i += bracedVariable[0].length - 1
     } else if (ch === '>') {
       // A stream number adjacent to `>` belongs to the redirection, not argv.
       if (active && /^[1-6*]$/.test(word)) {
