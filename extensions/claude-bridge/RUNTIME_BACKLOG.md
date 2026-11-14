@@ -1,5 +1,25 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.101 delivery: hook-condition lease recovery — 2026-11-15
+
+Delivery reconciliation 2026-11-15, source `origin/main`
+`f89e0db6338767c7cf3bee7a3598725b88243bbc`; release #926
+`bfbf43f480098c9687d11ec4244f2d659b5076b4`:
+[KaminIDE 1.0.101](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.101)
+/ server 6.3.178 is published. Git ancestry of #869, #917 and #923 in the tag
+and the published Release were checked. [INC-0118](runtime-issues/INC-2026-0118.md)
+and its parent [INC-0107](runtime-issues/INC-2026-0107.md) are resolved for their
+accepted scope: the exact-candidate Windows gates already passed, including
+lease recovery after forced 5 s and 30 s CLI pauses. The release candidate and
+release commit have the same tree ([private gate evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/ccf4e8a19a8db6a47b1221ccf56ef80a323a5a6a/incidents/INC-2026-0118/evidence/2026-11-15-release-1.0.101-gate)).
+No remaining gate is claimed completed merely by publication. The original CLI
+stall remains unattributed. First-message truncation after a server restart and
+the gate script's history-reload/count error are separate investigations owned
+by `cxstats`; next artifact: corrected wait-condition regression and a single
+prompt replay, with a new incident only if the product defect is confirmed.
+
+The dated sections below preserve their historical delivery snapshots.
+
 ## KaminIDE 1.0.100 delivery: native hook conditions and the frame clear — 2026-11-14
 
 Delivery reconciliation 2026-11-14, source `origin/main`
