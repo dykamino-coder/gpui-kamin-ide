@@ -1869,6 +1869,13 @@ impl Div {
         self
     }
 
+    /// KaminIDE patch: name the values the box's own paint binds in a scene
+    /// layer (`LayerHandle::set_background`) by `owner`; 0 for none.
+    pub fn paint_owner(mut self, owner: u32) -> Self {
+        self.interactivity.paint_owner = owner;
+        self
+    }
+
     /// Прикрепление непрозрачных paint-метаданных без изменения дерева layout.
     pub fn with_paint_metadata(mut self, metadata: impl std::any::Any) -> Self {
         self.paint_metadata = Some(std::rc::Rc::new(metadata));
@@ -2300,6 +2307,9 @@ pub(crate) struct AriaProperties {
 /// interactivity in the `Div` element.
 pub struct Interactivity {
     pub(crate) box_painter: Option<crate::BoxPainter>,
+    /// KaminIDE patch: the owner the box's own paint binds its values to
+    /// (`Window::with_paint_owner`); 0 for none.
+    pub(crate) paint_owner: u32,
     /// The element ID of the element. In id is required to support a stateful subset of the interactivity such as on_click.
     pub element_id: Option<ElementId>,
     /// Whether the element was clicked. This will only be present after layout.
@@ -2349,6 +2359,7 @@ impl Default for Interactivity {
     fn default() -> Self {
         Self {
             box_painter: None,
+            paint_owner: 0,
             element_id: None,
             active: None,
             hovered: None,
@@ -2894,7 +2905,9 @@ impl Interactivity {
         }
 
         window.with_element_opacity(style.opacity, |window| {
-            style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx);
+            window.with_paint_owner(self.paint_owner, |window| {
+                style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx)
+            });
             style.paint_after_box(window, cx, |window: &mut Window, cx: &mut App| {
                 window.with_child_style(&style, bounds, |window| {
                     window.with_tab_group(tab_group, |window| {

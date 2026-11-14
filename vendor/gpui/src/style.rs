@@ -1021,7 +1021,7 @@ impl Style {
                 None => Hsla::default(),
             };
             border_color.a = 0.;
-            window.paint_quad(quad(
+            let fill = quad(
                 window.render_context::<crate::PaintTraversal>()
                     .map_or(bounds, |host| (host.fill_bounds)(self, bounds, window)),
                 corner_radii,
@@ -1029,7 +1029,9 @@ impl Style {
                 Edges::default(),
                 border_color,
                 self.border_style,
-            ));
+            );
+            // KaminIDE patch: a scene layer may rewrite this fill in place.
+            window.with_paint_value(crate::LayerValue::Background, |window| window.paint_quad(fill));
         }
 
         // Upstream's own inset shadows (`BoxShadow::inset` in `box_shadow`),

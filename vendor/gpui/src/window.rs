@@ -70,6 +70,8 @@ mod natural_image;
 mod absolute_transformation;
 pub(crate) mod vector_transform;
 mod scene_capture;
+mod scene_layer;
+pub use scene_layer::RecordedLayer;
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
@@ -1284,6 +1286,13 @@ pub struct Window {
     /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
     pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
     pub(crate) element_opacity: f32,
+    /// KaminIDE patch: the scene layer being recorded (`window::scene_layer`)
+    /// and the binding scope of the paint (`with_paint_owner`, `with_paint_value`).
+    pub(crate) layer_recording: Option<Box<scene_layer::LayerRecording>>,
+    /// The source layer of content painted into the frame (`RecordedLayer::Painted`).
+    pub(crate) layer_source: Option<Rc<crate::SceneLayer>>,
+    pub(crate) paint_owner: u32,
+    pub(crate) paint_value: Option<crate::LayerValue>,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     /// KaminIDE patch: the innermost transformed-subtree hit scope during prepaint.
     hit_scope: Option<Rc<hit_transform::HitScope>>,
@@ -2225,6 +2234,10 @@ impl Window {
             content_mask_stack: Vec::new(),
             hit_scope: None,
             element_opacity: 1.0,
+            layer_recording: None,
+            layer_source: None,
+            paint_owner: 0,
+            paint_value: None,
             requested_autoscroll: None,
             last_text_input_configuration: None,
             focused_text_input_active: false,
@@ -3776,7 +3789,11 @@ impl Window {
         let _foreground_turn = profiler::journal::foreground_turn();
         #[cfg(feature = "profiler")]
         let present_start = Instant::now();
+        // KaminIDE patch: the frame holds its layers' content only while it
+        // is drawn (`scene::layer`); a host's write after this copies nothing.
+        self.rendered_frame.scene.hold_layers();
         self.platform_window.draw(&self.rendered_frame.scene);
+        self.rendered_frame.scene.release_layers();
         #[cfg(feature = "profiler")]
         self.window_profiler.record_present(
             present_start,
@@ -4263,10 +4280,12 @@ impl Window {
 
         self.text_system
             .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
-        self.next_frame.scene.replay(
-            range.start.scene_index..range.end.scene_index,
-            &self.rendered_frame.scene,
-        );
+        // KaminIDE patch: a range recorded inside a scene layer is in its scene.
+        let scenes = range.start.scene_index..range.end.scene_index;
+        match self.replay_source() {
+            Some(source) => self.next_frame.scene.replay(scenes, source.scene()),
+            None => self.next_frame.scene.replay(scenes, &self.rendered_frame.scene),
+        }
     }
 
     /// KaminIDE patch: read the host context of type `T` for this traversal.
@@ -5226,7 +5245,11 @@ impl Window {
         // The strip split below restricts screen-space content masks, which
         // only matches the quad's own coordinates without a transformation.
         if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
+            let before = self.next_frame.scene.quads.len();
             self.next_frame.scene.insert_primitive(quad);
+            if self.paint_value.is_some() {
+                self.bind_painted_quad(before, opacity);
+            }
             return;
         }
 
