@@ -24,6 +24,10 @@ it.each([
   ['Read', '/home/client with spaces', '/workspace', '/home/client with spaces/notes/a.md'],
   ['Edit', '/home/client', '/workspace', '/home/client/notes/a.md'],
   ['Write', String.raw`C:\Users\client`, String.raw`D:\workspace`, String.raw`C:\Users\client\notes\a.md`],
+  ['Read', '/home/client with spaces', '', 'notes/a.md'],
+  ['Edit', '/home/client', '', 'notes/a.md'],
+  ['Write', String.raw`C:\Users\client`, '', String.raw`notes\a.md`],
+  ['NotebookEdit', String.raw`C:\Users\client with spaces`, '', 'notes/a.md'],
 ])(
   'evaluates %s home rules using the declared client home on each matching settings call',
   async (tool, home, cwd, filePath) => {
@@ -80,7 +84,7 @@ it.each([
         body: JSON.stringify({
           hook_event_name: 'PreToolUse',
           tool_name: `mcp__user-tools__${tool}`,
-          tool_input: { file_path },
+          tool_input: { [tool === 'NotebookEdit' ? 'notebook_path' : 'file_path']: file_path },
           cwd: '/server',
           home: '/forged-home',
         }),

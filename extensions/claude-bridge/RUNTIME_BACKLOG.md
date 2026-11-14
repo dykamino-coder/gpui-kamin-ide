@@ -1,5 +1,24 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.100 delivery: native hook conditions and the frame clear — 2026-11-14
+
+Delivery reconciliation 2026-11-14, source `origin/main`
+`b8686e74` (release #919):
+[KaminIDE 1.0.100](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.100)
+/ server 6.3.177 is published. Ancestry of #869, #917 and #905 in
+`kaminide-v1.0.100` checked. [INC-0107](runtime-issues/INC-2026-0107.md) is
+`verify`: both parts are published, but the gate on the installed release
+candidate found [INC-0118](runtime-issues/INC-2026-0118.md) — after a stall of
+the CLI longer than 3 s the conditions on prompt, agent and mcp_tool hooks stop
+applying for the rest of the session. It is listed in the release's known
+issues; the fix [#923](https://github.com/dykamino-coder/gpui-kamin-ide/pull/923) (`6aa64804`) is merged after its Windows gate
+and awaits the next release. The candidate gate (silent install over 1.0.99,
+start, first frame on Intel Iris Xe without a switch to software rendering, a
+send, hooks) is in the [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/d07ebf4c478c9136fc2dbc38f7b0f88b23678664/incidents/INC-2026-0118/evidence/2026-11-14-release-1.0.100-gate).
+The automatic relaunch after an update was not exercised.
+[#895](https://github.com/dykamino-coder/gpui-kamin-ide/pull/895) for [INC-0117](runtime-issues/INC-2026-0117.md) is in the tag
+but not in the installer (engine code); its exact-RGB run stays with the lead.
+
 ## KaminIDE 1.0.99 delivery: hook output and host shutdown — 2026-11-14
 
 Delivery reconciliation 2026-11-14, source `origin/main`
@@ -14,12 +33,7 @@ server hook markers) and the publication checks are in the
 A live quit inside 5 s of a tab close and the automatic relaunch after an update
 were not exercised.
 
-Merged after the release and not yet published: [#869](https://github.com/dykamino-coder/gpui-kamin-ide/pull/869) (`ce1e7954`), the bounded
-follow-up of [INC-0107](runtime-issues/INC-2026-0107.md) — Windows gate passed on
-the exact candidate, the prompt/agent/mcp_tool argument conditions stay open with
-the executor; and [#895](https://github.com/dykamino-coder/gpui-kamin-ide/pull/895) (`5458767b`) for
-[INC-0117](runtime-issues/INC-2026-0117.md) — `verify`, the exact-RGB run on main
-is in the lead's post-merge batch.
+The fixes merged after this release are recorded in the 1.0.100 section above.
 
 ## KaminIDE 1.0.98 delivery: window present, host dialogs across reconnects, session-limit reason and local SessionEnd — 2026-11-14
 

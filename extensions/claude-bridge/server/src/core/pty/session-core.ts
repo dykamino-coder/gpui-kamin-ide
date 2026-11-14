@@ -74,6 +74,8 @@ import { SessionAdmission } from './session-admission'
 import { withSyncSnapshotLock } from '../sync/lock'
 import { closeToolNotificationStream } from './mcp-tool-notify'
 import { createCliModTransport, CLI_MOD_PLUGIN } from './cli-mod-transport'
+import { CliHandlerConditions, hasCliHandlerConditions } from '../hooks/cli-handler-conditions'
+import { BASH_HOME_ENV } from '../hooks/hook-environment'
 import { SessionCliControl, sessionCliControl } from './session-cli-control'
 
 // Re-export the per-session MCP-call helpers so callers that historically
@@ -550,6 +552,14 @@ async function createAdmittedSession(
   if (cliMod) {
     env.BRIDGE_CLI_MOD_SOCKET = cliMod.socketPath
     env.BRIDGE_CLI_MOD_SESSION = sessionId
+    if (hasCliHandlerConditions(sessionId)) {
+      cliMod.hookConditions = new CliHandlerConditions(
+        sessionId,
+        path.join(settingsDir, '.claude', 'settings.local.json'),
+        { cwd: config.cwd || config.host?.home, home: config.host?.home, bashHome: env[BASH_HOME_ENV] },
+      )
+      env.BRIDGE_CLI_MOD_HOOK_CONDITIONS = '1'
+    }
   }
   try {
     fs.writeFileSync(cliSettingsFile, cliSettings, { mode: 0o600, flag: 'wx' })
