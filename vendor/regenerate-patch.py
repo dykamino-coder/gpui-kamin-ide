@@ -80,6 +80,7 @@ FIXES = {
         "Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.",
         "Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).",
         "Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.",
+        "GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.",
     ],
     "gpui-windows": [
         "Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.",
@@ -106,6 +107,7 @@ FIXES = {
         " recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.",
         "Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency"
         " gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.",
+        "GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.",
     ],
     "gpui-base": [
         "Editor input: minimap/scroll coordinates, incremental highlighting and run traversal.",

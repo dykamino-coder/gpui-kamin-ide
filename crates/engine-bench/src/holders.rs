@@ -38,6 +38,7 @@ fn report(doc: &kamin_html::Document, window: &gpui::Window, cx: &App) -> Value 
     });
     let owners = ops.report();
     drop(ops);
+    let gpu = gpu(window);
     let reported = owners.total();
     let audit = cfg!(feature = "allocation-audit");
     json!({
@@ -45,7 +46,38 @@ fn report(doc: &kamin_html::Document, window: &gpui::Window, cx: &App) -> Value 
         "reported_bytes": reported,
         "audit_live_bytes": audit.then_some(live),
         "unclassified_bytes": audit.then(|| live as i64 - reported as i64),
+        "gpu": gpu,
         "scope": "Rust heap held by the document and the GPUI window after the frame; requested bytes, shared Rc blocks counted once",
+    })
+}
+
+/// Память GPU окна по владельцам: текстуры атласов и целей отрисовки. Это не
+/// куча: в сумму владельцев и сверку со счётчиком аудита не входит.
+fn gpu(window: &gpui::Window) -> Value {
+    // путь, байты, из них занято, число текстур
+    let mut owners: Vec<(&'static str, u64, u64, u64)> = Vec::new();
+    window.gpu_memory(&mut |path, bytes, used| {
+        #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
+        super::allocations::probe::gpu(path, bytes, used);
+        match owners.iter_mut().find(|owner| owner.0 == path) {
+            Some(owner) => {
+                owner.1 += bytes;
+                owner.2 += used;
+                owner.3 += 1;
+            }
+            None => owners.push((path, bytes, used, 1)),
+        }
+    });
+    let entries: Vec<Value> = owners
+        .iter()
+        .map(|&(path, bytes, used, textures)| {
+            json!({"path": path, "bytes": bytes, "used_bytes": used, "textures": textures})
+        })
+        .collect();
+    json!({
+        "owners": entries,
+        "bytes": owners.iter().map(|owner| owner.1).sum::<u64>(),
+        "scope": "textures the window's renderer holds, by their descriptions; not the driver's reservation",
     })
 }
 

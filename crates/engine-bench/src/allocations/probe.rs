@@ -24,9 +24,9 @@ mod sample;
 mod sink;
 mod window;
 
-#[cfg(feature = "heap-report")]
-pub(crate) use line::owned;
 use line::{emit, head};
+#[cfg(feature = "heap-report")]
+pub(crate) use line::{gpu, owned};
 use window::{Filter, Until};
 
 use kamin_html::work::Phase;

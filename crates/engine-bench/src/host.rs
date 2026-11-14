@@ -72,7 +72,7 @@ pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Erro
 
 pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut startup = super::startup::Startup::new();
-    let preference = gpui_windows::GpuAdapterPreference::parse(&args.gpu)?;
+    let preference = super::gpu::preference(&args.gpu)?;
     // Ошибки имени возвращаем до входа в событийный цикл платформы.
     if matches!(preference, gpui_windows::GpuAdapterPreference::ByName(_)) {
         gpui_windows::gpu_adapters(&preference)?;

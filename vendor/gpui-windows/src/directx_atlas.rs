@@ -173,6 +173,30 @@ impl DirectXAtlas {
     }
 }
 
+impl DirectXAtlas {
+    /// KaminIDE patch: every atlas page as (owner path, bytes, bytes of allocated tiles), see
+    /// `DirectXRenderer::gpu_memory`. A registered external texture (a CEF frame) is a page of
+    /// the polychrome list with no allocated tiles.
+    pub(crate) fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
+        let lock = self.0.lock();
+        let lists = [
+            ("gpu/atlas/monochrome", &lock.backend.monochrome_textures),
+            ("gpu/atlas/polychrome", &lock.backend.polychrome_textures),
+            ("gpu/atlas/subpixel", &lock.backend.subpixel_textures),
+        ];
+        for (path, list) in lists {
+            for texture in list.textures.iter().flatten() {
+                let used = texture.allocator.allocated_space().max(0) as u64;
+                sink(
+                    path,
+                    crate::directx_renderer::texture_bytes(&texture.texture),
+                    used * u64::from(texture.bytes_per_pixel),
+                );
+            }
+        }
+    }
+}
+
 impl PlatformAtlas for DirectXAtlas {
     fn get_or_insert_with<'a>(
         &self,

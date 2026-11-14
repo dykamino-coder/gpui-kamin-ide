@@ -215,6 +215,19 @@ bench builds). Not walked yet: values inside the element arena, captures of list
 states (their boxes are counted), tendril text, retained reuse records, paragraph caches, the
 platform text system; they stay in the unreported list.
 
+The same report lists GPU memory apart from the heap, «who holds GPU memory»: every texture the
+window's renderer holds, by owner path, with the number of textures and how much of them is in
+use. `gpu/atlas/monochrome|polychrome|subpixel` are the glyph and image atlas pages (in use =
+allocated tiles; a registered external texture is a polychrome page with none),
+`gpu/target/frame|path|path-msaa` the frame and path targets, `gpu/group/stage|atlas|pool|
+level-backdrop` the buffers of isolated groups, `gpu/blur/copy|blend-copy|down|gauss` the blur
+scratch. Bytes follow the texture descriptions (size, format, mip levels, MSAA samples): what the
+pixels take, not what the driver reserved; compare the total with `end_gpu.local_bytes` of the
+bench JSON, which is the driver's figure for the whole process. The numbers are also in
+`memory_owners.gpu` of the bench JSON. Not walked: the swap chain's other buffers, DirectWrite's
+glyph rasterization targets, buffers and shaders. The walk reads existing fields on request
+(`Window::gpu_memory`); nothing is counted while rendering.
+
 ## Limits
 
 - Exact mode writes one line per allocation: wide-16000 up to the end of the first relayout build

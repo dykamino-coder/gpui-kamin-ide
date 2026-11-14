@@ -221,6 +221,7 @@ class Run:
             self.dropped = 0
             self.lines = 0
             self.owners = None
+            self.gpu = {}  # owner path -> [textures, bytes, bytes in use]
             self.estimates = []
             self.frames = frames
             self.groups = self._fold(handle, live, frames)
@@ -243,6 +244,13 @@ class Run:
         measured = {}  # pointer -> (path, bytes) of measured blocks
         paths = collections.defaultdict(int)
         for line in handle:
+            if line.startswith("g "):
+                _, path, size, used = line.split()
+                entry = self.gpu.setdefault(path, [0, 0, 0])
+                entry[0] += 1
+                entry[1] += int(size)
+                entry[2] += int(used)
+                continue
             if line.startswith("o "):
                 _, path, pointer, size = line.split()
                 if snapshot is None:
@@ -386,6 +394,8 @@ def build_report(cand, base, live, depth, top):
               "runs": {"cand": cand.meta(), **({"base": base.meta()} if base else {})}}
     if cand.owners:
         report.update(owner_sections(cand.owners, base.owners if base else None, top, depth))
+    if cand.gpu or (base and base.gpu):
+        report["gpu_owners"] = gpu_rows(cand.gpu, base.gpu if base else None)
     names = {"subsystems": ("subsystem",), "sites": ("subsystem", "site", "type"),
              "stacks": ("subsystem", "site", "type", "stack")}
     for section, fields in names.items():
@@ -464,6 +474,33 @@ def owner_sections(cand, base, top, depth=8):
     return out
 
 
+def gpu_rows(cand, base):
+    """Renderer textures by owner path: count, bytes and bytes in use, against the base's."""
+    rows = []
+    for path in sorted(set(cand) | set(base or {})):
+        textures, size, used = cand.get(path, (0, 0, 0))
+        row = {"owner": path, "cand_textures": textures, "cand_bytes": size, "cand_used_bytes": used}
+        if base is not None:
+            other = base.get(path, (0, 0, 0))
+            row.update(base_textures=other[0], base_bytes=other[1], delta_bytes=size - other[1])
+        rows.append(row)
+    rows.sort(key=lambda r: (-abs(r.get("delta_bytes", r["cand_bytes"])), r["owner"]))
+    return rows
+
+
+def render_gpu(report, out):
+    rows = report["gpu_owners"]
+    diff = rows and "base_bytes" in rows[0]
+    total = sum(r["cand_bytes"] for r in rows)
+    print(f"\nwho holds GPU memory (renderer textures after the last frame, MB; total {total / 1e6:.3f}"
+          + (f", base {sum(r['base_bytes'] for r in rows) / 1e6:.3f}" if diff else "") + "):", file=out)
+    for row in rows:
+        tail = f" {row['base_bytes'] / 1e6:9.3f} {mb(row['delta_bytes']):>10}" if diff else ""
+        used = row["cand_used_bytes"] / row["cand_bytes"] if row["cand_bytes"] else 0.0
+        print(f"  {row['cand_bytes'] / 1e6:10.3f}{tail}  {row['owner']}"
+              f" ({row['cand_textures']} textures, {used:.0%} in use)", file=out)
+
+
 def render_owners(report, out):
     diff = "base" in report["owners_summary"]
     print("\nwho holds the heap (owner report after the last frame, MB):", file=out)
@@ -530,6 +567,8 @@ def render(report, out=None):
         print(f"WARNING {warning}", file=out)
     if report.get("owners"):
         render_owners(report, out)
+    if report.get("gpu_owners"):
+        render_gpu(report, out)
     key = "delta_bytes" if diff else "cand_bytes"
     print("\nby subsystem (MB):", file=out)
     print(f"  {'delta' if diff else 'bytes':>10} {'blocks':>9}  {'cand':>9} {'base':>9}  subsystem" if diff

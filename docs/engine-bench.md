@@ -207,8 +207,10 @@ in each host so their prior document/cache histories match.
 
 ## GPU adapter selection
 
-`--gpu default|high-performance|minimum-power|NAME` selects a DXGI adapter for
-this benchmark process only. `NAME` is a case-insensitive name substring and
+`--gpu default|high-performance|minimum-power|software|NAME` selects a DXGI adapter for
+this benchmark process only. `software` (or `warp`) is the software rasterizer (WARP), also in
+release builds: the way to measure software rendering; the bench JSON then reports the
+"Microsoft Basic Render Driver" adapter with the software flag. `NAME` is a case-insensitive name substring and
 must match exactly one adapter; missing or ambiguous matches fail. Omission and
 `default` keep GPUI's original `EnumAdapters` device-creation path. On the review
 machine this selects Intel Iris Xe. The application and WPT runner still create
@@ -219,6 +221,7 @@ target/bench/release/engine_bench.exe --list-gpus
 target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu "Iris" --json
 target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu "RTX 4080" --json
 target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu high-performance --json
+target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu software --json
 ```
 
 Power policies use `IDXGIFactory6::EnumAdapterByGpuPreference`; enumeration
