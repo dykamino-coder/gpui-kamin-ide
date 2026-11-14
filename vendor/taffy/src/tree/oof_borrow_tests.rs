@@ -36,6 +36,8 @@ fn explicit_area_can_reuse_borrowed_candidates_without_consuming_the_wrapper() {
     for _ in 0..2 {
         let mut view = TaffyView {
             taffy: &mut tree,
+            #[cfg(feature = "grid")]
+            grid_memos: Default::default(),
             measure_function: |input, _, _, style| {
                 crate::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| Size::ZERO)
             },
