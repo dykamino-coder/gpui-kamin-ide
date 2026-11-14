@@ -170,7 +170,8 @@ BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа �
 
 | ID | PR | Статус | Остаточный gate / следующий шаг |
 | --- | --- | --- | --- |
-| [INC-0107](runtime-issues/INC-2026-0107.md) | [#869](https://github.com/dykamino-coder/gpui-kamin-ide/pull/869) (`ce1e7954`), [#917](https://github.com/dykamino-coder/gpui-kamin-ide/pull/917) (`410fd289`) | verify: обе части слиты; Windows gate 13/13 на `882449b5` (priv #193) и 13 шагов на `3ec8dc37` (priv #194) | публикация в следующем релизе — kmaint2; затем запись published fix в карточке |
+| [INC-0107](runtime-issues/INC-2026-0107.md) | [#869](https://github.com/dykamino-coder/gpui-kamin-ide/pull/869) (`ce1e7954`), [#917](https://github.com/dykamino-coder/gpui-kamin-ide/pull/917) (`410fd289`) | verify: обе части опубликованы в 1.0.100 после своих Windows gates (priv #193, #194) | закрывается публикацией fix INC-0118 — kmaint2 |
+| [INC-0118](runtime-issues/INC-2026-0118.md) | [#923](https://github.com/dykamino-coder/gpui-kamin-ide/pull/923) (`6aa64804`) | verify: fix слит; Windows gate на `ebf11d7e` пройден — шаг mcp_tool ×3, паузы CLI 5 и 30 с (priv #196) | публикация в следующем релизе — kmaint2 |
 | [INC-0117](runtime-issues/INC-2026-0117.md) | [#895](https://github.com/dykamino-coder/gpui-kamin-ide/pull/895) (`5458767b`) | verify: fix слит, CI зелёный на объединённой голове | exact-RGB на `main` в пачке после merge — лид; чистый прогон закрывает карточку |
 
 ### Вне пачки (backlog следующего запуска)
