@@ -112,3 +112,25 @@ fn the_canvas_background_layout_values_and_hover_layers_rebuild() {
         assert_eq!(both(&old, &new), (false, false), "{style}");
     }
 }
+
+/// The probe keeps the rules of the document between its edits: after the
+/// first edit (which builds them) a steady edit parses no sheet.
+#[cfg(feature = "work-counters")]
+#[test]
+fn a_steady_edit_parses_no_sheet() {
+    use crate::work::{Counter, Session};
+    let old = page("html.alt [data-deep]{background:#eee}");
+    let new = old.replace("<html>", "<html class=\"alt\">");
+    let mut doc = Document::builder(&old, "").build().unwrap();
+    assert!(doc.update(&new, "").unwrap().changed());
+    let session = Session::begin();
+    assert!(doc.update(&old, "").unwrap().changed());
+    assert!(doc.update(&new, "").unwrap().changed());
+    let work = session.finish();
+    let parsed: u64 = work
+        .0
+        .iter()
+        .map(|phase| phase[Counter::SheetsParsed as usize])
+        .sum();
+    assert_eq!(parsed, 0);
+}

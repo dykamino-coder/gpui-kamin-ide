@@ -133,13 +133,13 @@ impl Chains {
         preserve: bool,
     ) {
         for context in &mut self.0 {
-            let Some(record) = context.path.get_mut(above) else {
+            let Some(record) = context.path.get(above) else {
                 continue;
             };
             if record.key != me.key || record.attrs == me.attrs {
                 continue;
             }
-            *record = me.clone();
+            context.path[above] = me.clone();
             if above + 1 == context.path.len() {
                 context.vars = vars.clone();
                 context.preserve = preserve;
