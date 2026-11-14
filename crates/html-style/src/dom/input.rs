@@ -26,6 +26,11 @@ impl Context {
     pub fn budget(&self) -> &crate::budget::RevisionBudget {
         &self.0.budget
     }
+
+    /// Новый work scope сохраняет учёт живого исходного DOM.
+    pub fn continuing(&self, budget: crate::budget::RevisionBudget) -> Self {
+        Self(Rc::new(self.0.continuing(budget)))
+    }
 }
 
 /// Исходное дерево остаётся во владении revision независимо от её представления.
@@ -60,6 +65,11 @@ impl Admitted {
 
     pub fn context(&self) -> Context {
         self.context.clone()
+    }
+
+    /// Перенести сохранённый DOM в контекст кандидата; прежний нужен для отката.
+    pub fn replace_context(&mut self, context: Context) -> Context {
+        std::mem::replace(&mut self.context, context)
     }
 
     pub fn with_context(

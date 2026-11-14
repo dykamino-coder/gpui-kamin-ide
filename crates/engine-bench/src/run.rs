@@ -51,11 +51,7 @@ pub(super) async fn sample(
     step: Step<'_>,
     capture: &CaptureSession,
     luid: (i32, u32),
-) -> Result<(
-    Measured,
-    kamin_html::host::capture::Frame,
-    (serde_json::Value, serde_json::Value),
-)> {
+) -> Result<(Measured, kamin_html::host::capture::Frame, work::Sample)> {
     let (started, before, seq, resources_time, build_time, timings, phases, work) = window
         .update(cx, |view, window, cx| -> Result<_> {
             let records = match step {
@@ -204,27 +200,28 @@ pub(super) async fn run(
     let baseline_memory = host::peak_memory()?;
     let startup = super::process::Snapshot::read()?;
     let mut modes = serde_json::Map::new();
+    // Work samples of each mode stay numbers until the report is printed.
+    let mut work_samples = Vec::with_capacity(3);
     let mut frames = Frames::new(args)?;
     let mut snapshot_pending = args.snapshot.as_deref();
     if matches!(args.mode, Mode::Warm | Mode::Relayout | Mode::Edit) {
         sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
     }
     if args.mode == Mode::Edit {
-        let edits = super::edits::run(cx, window, fonts, args, capture, luid).await?;
+        let (edits, work) = super::edits::run(cx, window, fonts, args, capture, luid).await?;
         modes.insert("edit".into(), edits);
+        work_samples.push(("edit", work));
     }
     for &(name, cold) in args.mode.phases() {
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
         let mut work = Vec::with_capacity(args.runs);
-        let mut usage = Vec::with_capacity(args.runs);
         let step = super::memory::phase_step(cx, capture, cold).await?;
         for index in 1..=args.runs {
             frames.prepare(cx, window, index)?;
-            let (sample, frame, (counts, resources)) =
+            let (sample, frame, counts) =
                 sample(cx, window, fonts, args, step, capture, luid).await?;
             work.push(counts);
-            usage.push(resources);
             if let Some(path) = snapshot_pending.take() {
                 pixels::save(&frame.pixels, path)?;
             }
@@ -233,10 +230,16 @@ pub(super) async fn run(
             diagnostics.push(sample.diagnostics);
         }
         #[cfg_attr(not(feature = "heap-report"), allow(unused_mut))]
-        let mut mode = report::measured_mode(&samples, &diagnostics, work, usage);
+        let mut mode = report::measured_mode(&samples, &diagnostics);
         #[cfg(feature = "heap-report")]
         super::holders::attach(cx, window, &mut mode)?;
         modes.insert(name.into(), mode);
+        work_samples.push((name, work));
+    }
+    for (name, samples) in &work_samples {
+        if let Some(mode) = modes.get_mut(*name) {
+            report::attach_work(mode, work::json(samples));
+        }
     }
     let mut report = json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,
         "device_scale_factor": 1, "surface": args.surface.name(), "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
