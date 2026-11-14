@@ -42,6 +42,17 @@ pub(super) fn emit(mut line: Line, text: std::fmt::Result) {
 }
 
 /// Блок, который измерил отчёт памяти по владельцам: `o <путь> <указатель> <байты>`.
+/// Текстура рендерера в отчёте владельцев: путь, байты, из них занято.
+#[cfg(feature = "heap-report")]
+pub(crate) fn gpu(path: &str, bytes: u64, used: u64) {
+    let mut line = Line {
+        bytes: [0; 1024],
+        length: 0,
+    };
+    let text = write!(line, "g {path} {bytes} {used}");
+    emit(line, text);
+}
+
 /// Пишется и вне окна: отчёт сверяет его с живыми блоками окна.
 #[cfg(feature = "heap-report")]
 pub(crate) fn owned(path: &str, pointer: *const u8, bytes: usize) {

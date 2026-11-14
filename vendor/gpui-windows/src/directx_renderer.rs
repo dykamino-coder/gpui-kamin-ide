@@ -47,6 +47,8 @@ mod gaussian;
 mod group_atlas;
 mod group_batch;
 mod texture_pool;
+mod gpu_memory;
+pub(crate) use gpu_memory::texture_bytes;
 mod shader_identity;
 mod present_gate;
 mod quad_clear;

@@ -83,3 +83,21 @@ fn copied_subtree_keeps_actual_callback_alive_after_source_clear() {
     copy.clear();
     assert!(callback.upgrade().is_none());
 }
+
+#[test]
+fn a_copy_has_room_for_its_subtree_only() {
+    let mut source = TaffyTree::<NodeContext>::new();
+    let leaves = [
+        source.new_leaf(fixed(1.0, 1.0)).unwrap(),
+        source.new_leaf(fixed(2.0, 2.0)).unwrap(),
+    ];
+    let inner = source.new_with_children(fixed(3.0, 3.0), &leaves).unwrap();
+    let root = source.new_with_children(fixed(4.0, 4.0), &[inner]).unwrap();
+    // A sibling subtree is not counted.
+    source.new_leaf(fixed(5.0, 5.0)).unwrap();
+    assert_eq!(subtree_nodes(&source, root), 4);
+    let (copy, copied_root) = copy_tree(&source, root);
+    assert_eq!(copy.total_node_count(), 4);
+    assert!(copy.node_storage_full(), "no spare node slots beyond the subtree");
+    assert_eq!(copy.children(copied_root).unwrap().len(), 1);
+}

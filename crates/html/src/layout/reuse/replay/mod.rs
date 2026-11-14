@@ -56,6 +56,9 @@ pub(crate) struct ReplayRecord {
     fills: bool,
     pub(super) start: Counters,
     pub(super) end: Counters,
+    /// The paint key of the block's step-8 wrapper, which goes on outside
+    /// the records (`flow::held`).
+    pub(super) paint_last: Option<u64>,
     /// Диапазоны последнего кадра; `None` только на время их правки.
     ranges: Cell<Option<Ranges>>,
 }
@@ -69,12 +72,14 @@ impl ReplayRecord {
         Some(out)
     }
 
-    /// Запись подходит потоку `key` при счётчиках `start` и поддереве `e`.
+    /// Запись подходит потоку `key` при счётчиках `start` и поддереве `e`:
+    /// тем же или отличным только `color`, которым ни одна его коробка не
+    /// рисует (`Source::same_unread_color`, `super::unread_color`).
     pub(super) fn fits(&self, key: &FlowKey, start: Counters, e: &Element) -> bool {
         self.key.same_outside_widths(key)
             && (!(self.widths || self.fills) || self.key.same_widths(key))
             && self.start == start
-            && self.source.same(e)
+            && (self.source.same(e) || self.source.same_unread_color(e))
     }
 }
 
@@ -90,6 +95,7 @@ pub(super) struct PendingReplay {
     pub(super) widths: Rc<Cell<bool>>,
     /// Блок заполняет ширину потока (`plain::fills_width`).
     fills: bool,
+    paint_last: Option<u64>,
     layout: RefCell<Option<(RetainedSubtree, LayoutId)>>,
     prepaint: RefCell<Option<PlacedPrepaint>>,
     paint: RefCell<Option<RetainedPaint>>,
@@ -108,6 +114,7 @@ impl PendingReplay {
         widths: Rc<Cell<bool>>,
         fills: bool,
         ink: &Rc<InkSinkList>,
+        paint_last: Option<u64>,
     ) -> Self {
         Self {
             key,
@@ -115,6 +122,7 @@ impl PendingReplay {
             end,
             widths,
             fills,
+            paint_last,
             layout: RefCell::new(None),
             prepaint: RefCell::new(None),
             paint: RefCell::new(None),
@@ -155,6 +163,7 @@ impl PendingReplay {
             widths: self.widths.get(),
             start: self.start,
             end: self.end,
+            paint_last: self.paint_last,
             ranges: Cell::new(Some(Ranges {
                 layout,
                 prepaint,

@@ -23,6 +23,7 @@ mod far;
 mod flow;
 mod frame;
 mod key;
+mod layered;
 pub(crate) mod lines;
 mod narrow;
 mod placeholder;
@@ -35,6 +36,7 @@ mod source;
 mod store;
 #[cfg(test)]
 mod tests;
+mod unread_color;
 mod width;
 
 use crate::dom::{Element, Node};

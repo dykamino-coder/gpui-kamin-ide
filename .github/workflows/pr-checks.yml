@@ -34,6 +34,7 @@ jobs:
       bridge_dashboard: ${{ steps.changes.outputs.bridge_dashboard }}
       bridge_extension: ${{ steps.changes.outputs.bridge_extension }}
       bridge_webview: ${{ steps.changes.outputs.bridge_webview }}
+      bridge_workspace: ${{ steps.changes.outputs.bridge_workspace }}
       rust: ${{ steps.changes.outputs.rust }}
       vendor: ${{ steps.changes.outputs.vendor }}
       vendor_taffy: ${{ steps.changes.outputs.vendor_taffy }}
@@ -104,6 +105,7 @@ jobs:
           set_scope bridge_dashboard '^extensions/claude-bridge/server/src/ui/'
           set_scope bridge_extension '^(extensions/claude-bridge/(extension/|server/)|builtin-extensions/claude-bridge/(extension\.js|package\.json)$|src/kamin-host/rolling-log\.ts$)'
           set_scope bridge_webview '^(extensions/claude-bridge/(webview|browser-client)/|extensions/claude-bridge/server/src/ui/src/lib/terminal-console/|builtin-extensions/claude-bridge/(chat|tools|customize)\.html$)'
+          set_scope bridge_workspace '^(extensions/claude-bridge/(workspace|extension|webview|browser-client|server)/|src/kamin-host/services/(pty[^/]*\.ts|shells\.ts)$|package(-lock)?\.json$|\.github/workflows/bridge-workspace\.yml$)'
           set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/(check_(event_routing|conventions|engine_test_support)|fetch_main_baseline|test_fetch_main_baseline|ci/(build_main_baseline|test_build_main_baseline))\.py$|(clippy|rustfmt)\.toml$)'
           set_scope vendor '^(vendor/|rust-toolchain\.toml$)'
           set_scope vendor_taffy '^(vendor/taffy/|vendor/taffy-kaminide\.patch$|rust-toolchain\.toml$)'
@@ -309,6 +311,49 @@ jobs:
       - name: Verify the committed webview bundles
         working-directory: ${{ github.workspace }}
         run: git diff --exit-code -- builtin-extensions/claude-bridge/chat.html builtin-extensions/claude-bridge/tools.html builtin-extensions/claude-bridge/customize.html
+
+  # The workspace host runs the extension's real session lifecycle, including
+  # tab close and shutdown, on both platforms. It was a separate optional
+  # workflow until a 1.0.98 shutdown regression merged without it (#900).
+  bridge-workspace:
+    name: Bridge workspace runtime
+    needs: scope
+    if: needs.scope.outputs.bridge_workspace == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: extensions/claude-bridge/workspace
+    steps:
+      - name: Check out the pull request merge candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            extensions/claude-bridge/workspace/package-lock.json
+            extensions/claude-bridge/extension/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+        working-directory: .
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+        working-directory: extensions/claude-bridge/extension
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:parity
+      - run: npm run test:acceptance
+      - run: npm run build
 
   html-layer-imports:
     name: HTML layer imports
@@ -774,6 +819,7 @@ jobs:
       - bridge-dashboard
       - bridge-extension
       - bridge-webview
+      - bridge-workspace
       - rust-windows
       - html-layer-imports
       - html-transitional
@@ -794,6 +840,7 @@ jobs:
           DASHBOARD_RESULT: ${{ needs.bridge-dashboard.result }}
           EXTENSION_RESULT: ${{ needs.bridge-extension.result }}
           WEBVIEW_RESULT: ${{ needs.bridge-webview.result }}
+          WORKSPACE_RESULT: ${{ needs.bridge-workspace.result }}
           RUST_RESULT: ${{ needs.rust-windows.result }}
           HTML_LAYERS_RESULT: ${{ needs.html-layer-imports.result }}
           HTML_TRANSITIONAL_RESULT: ${{ needs.html-transitional.result }}
@@ -812,6 +859,7 @@ jobs:
             "$DASHBOARD_RESULT" \
             "$EXTENSION_RESULT" \
             "$WEBVIEW_RESULT" \
+            "$WORKSPACE_RESULT" \
             "$RUST_RESULT" \
             "$HTML_LAYERS_RESULT" \
             "$HTML_TRANSITIONAL_RESULT" \

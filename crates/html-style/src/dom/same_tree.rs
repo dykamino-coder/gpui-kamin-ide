@@ -220,6 +220,8 @@ fn same_children<'a>(
 
 mod cascaded;
 pub use cascaded::{CascadedMemo, same_cascaded_box, same_cascaded_tree};
+mod unread_color;
+pub use unread_color::{paints_without_color, same_unread_color_tree_as};
 
 #[cfg(test)]
 mod tests;

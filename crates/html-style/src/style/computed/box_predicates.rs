@@ -29,7 +29,23 @@ pub fn establishes_cb(c: &Computed) -> bool {
             | Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
             | Some(crate::style::computed::Position::Sticky)
-    ) || c.reset_transforms.transform.is_some()
+    ) || contains_unpositioned(c)
+}
+
+/// `establishes_cb` but for `position`, which contains only absolutely
+/// positioned boxes (CSS 2.1 §10.1 item 3): a containing block for fixed
+/// boxes too.
+pub fn contains_fixed(c: &Computed) -> bool {
+    !matches!(
+        c.reset_box_layout.display,
+        Some(crate::style::computed::Display::Contents)
+            | Some(crate::style::computed::Display::None)
+    ) && contains_unpositioned(c)
+}
+
+/// The barriers of `establishes_cb` other than `position`.
+fn contains_unpositioned(c: &Computed) -> bool {
+    c.reset_transforms.transform.is_some()
         // css-transforms-2: `preserve-3d` is a containing block for all descendants.
         || c.reset_transforms.preserve_3d == Some(true)
         || c.reset_effects.filter.is_some()

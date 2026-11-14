@@ -24,17 +24,34 @@ pub struct LayoutMeasurement {
 
 impl TaffyLayoutEngine {
     pub fn snapshot_measurement(&self, root: LayoutId, scale_factor: f32) -> LayoutMeasurement {
-        let mut tree = TaffyTree::new();
-        tree.disable_rounding();
-        // The copied styles carry the engine tree's `calc()` handles.
-        tree.share_calc_registry(&self.taffy);
-        let root = copy_subtree(&self.taffy, &mut tree, root.into());
+        let (tree, root) = copy_tree(&self.taffy, root.into());
         LayoutMeasurement {
             tree,
             root,
             scale_factor,
         }
     }
+}
+
+/// A tree holding a copy of the subtree of `root`, with room for exactly its nodes:
+/// a page keeps one copy per measured subtree, most of them a few nodes.
+fn copy_tree(source: &TaffyTree<NodeContext>, root: NodeId) -> (TaffyTree<NodeContext>, NodeId) {
+    let mut tree = TaffyTree::with_capacity(subtree_nodes(source, root));
+    tree.disable_rounding();
+    // The copied styles carry the engine tree's `calc()` handles.
+    tree.share_calc_registry(source);
+    let root = copy_subtree(source, &mut tree, root);
+    (tree, root)
+}
+
+// KaminIDE patch: keep the optional stacker feature optional.
+#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
+fn subtree_nodes(source: &TaffyTree<NodeContext>, node: NodeId) -> usize {
+    let children = source.children_slice(node);
+    1 + children
+        .iter()
+        .map(|&child| subtree_nodes(source, child))
+        .sum::<usize>()
 }
 
 // KaminIDE patch: keep the optional stacker feature optional.

@@ -17,7 +17,10 @@ use gpui::{App, Window, px, size};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[cfg(test)]
+mod check;
 mod memo;
+mod refit;
 use memo::AtomMemo;
 
 pub(super) struct FitAtom {
@@ -31,8 +34,9 @@ pub(super) struct FitAtom {
     drop: f32,
     /// Measurements of the atom's subtree, shared with later frames.
     memo: Rc<AtomMemo>,
-    /// Copy of the atom tree for unseen widths (this frame's measures: not kept).
-    snap: gpui::LayoutMeasurement,
+    /// Copy of the atom tree for unseen widths, while the paragraph is measured:
+    /// its prepaint drops it (`AtomFit::release`).
+    snap: Option<gpui::LayoutMeasurement>,
 }
 
 /// Resolved atom geometry for one available width: (index, width, height,
@@ -79,8 +83,14 @@ impl AtomFit {
             let (h, b) = match seen.iter().find(|m| m.0 == w) {
                 Some(&(_, h, b)) => (h, b),
                 None => {
-                    a.snap.cap_child_outer_width(ATOM_CHILD, px(w));
-                    let (s, b, _) = a.snap.measure(
+                    // Prepaint follows the last measure of its paragraph.
+                    let Some(snap) = a.snap.as_mut() else {
+                        debug_assert!(false, "atom measured at a new width after prepaint");
+                        memo.at_width.set(seen);
+                        continue;
+                    };
+                    snap.cap_child_outer_width(ATOM_CHILD, px(w));
+                    let (s, b, _) = snap.measure(
                         size(
                             gpui::AvailableSpace::Definite(px(w)),
                             gpui::AvailableSpace::MaxContent,
@@ -102,6 +112,23 @@ impl AtomFit {
         }
         self.cache.push((avail, out.clone()));
         out
+    }
+
+    /// Atoms narrower than max-content when the containing block is `avail` wide,
+    /// with that width: what `fit` measures, without measuring.
+    fn widths(&self, avail: f32) -> Vec<(usize, f32)> {
+        let narrowed = |a: &FitAtom| {
+            let w = avail.max(a.memo.min);
+            (a.memo.snap.is_some() && w < a.memo.max - COORD_EPS).then_some((a.k, w))
+        };
+        self.atoms.iter().filter_map(narrowed).collect()
+    }
+
+    /// Drop the copies of the atom trees: the paragraph is measured, and prepaint
+    /// lays the real atoms out (Blink lays an atomic inline out once, in the line:
+    /// `LayoutAtomicInline`; there is no second tree to keep).
+    fn release(&mut self) {
+        self.atoms.iter_mut().for_each(|a| drop(a.snap.take()));
     }
 }
 
@@ -150,7 +177,7 @@ impl Paragraph {
                     base: b.base,
                     drop: b.drop,
                     memo,
-                    snap,
+                    snap: Some(snap),
                 });
             }
         }
@@ -182,51 +209,5 @@ impl Paragraph {
                 span.1 = px(w);
             }
         }
-    }
-
-    /// Prepaint: lay the real atoms out at the width the measurement used.
-    pub(super) fn refit_atoms(&mut self, avail: f32, window: &mut Window, cx: &mut App) {
-        if self.atom_fit.borrow().is_empty() {
-            return;
-        }
-        let fitted = self.atom_fit.borrow_mut().fit(avail, window, cx);
-        for &(k, w, _, _, _) in &fitted {
-            let Some(slot) = self.atoms.get_mut(k) else {
-                continue;
-            };
-            let Some(root) = slot.root.get() else {
-                continue;
-            };
-            window.cap_layout_child_outer_width(root, ATOM_CHILD, px(w));
-            slot.el.layout_as_root(
-                size(
-                    gpui::AvailableSpace::Definite(px(w)),
-                    gpui::AvailableSpace::MaxContent,
-                ),
-                window,
-                cx,
-            );
-        }
-        // Real geometry wins over the copy's for placement and painting.
-        let fitted: Fitted = fitted
-            .iter()
-            .map(|&(k, w, h, base, drop)| {
-                let root = self.atoms[k].root.get();
-                let (real_h, real_base, drop) = match root {
-                    Some(id) => {
-                        let row_h = f32::from(window.layout_exact(id).1.height);
-                        atoms::row_geometry::row_geometry(Some(id), row_h, window)
-                    }
-                    None => (h, base, drop),
-                };
-                let real_base = if real_base <= 0.0 && real_h > 0.0 {
-                    real_h
-                } else {
-                    real_base
-                };
-                (k, w, real_h, real_base, drop)
-            })
-            .collect();
-        self.apply_atom_fit(&fitted);
     }
 }

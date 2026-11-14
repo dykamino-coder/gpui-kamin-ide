@@ -1,14 +1,37 @@
 //! Очереди конечных CSS-заданий: FIFO строк и стабильные ключи документа.
 
-use super::capture::LineCapture;
+use super::capture::{JobCapture, LineCapture};
 use super::*;
 use gpui::{AnyElement, App, PaintCtx, PaintScopeId, RasterPaintCtx, RetainedPaint};
 use std::collections::{BTreeMap, VecDeque};
 
 pub(super) struct Positioned {
     pub key: u64,
-    pub child: AnyElement,
+    pub paint: PositionedPaint,
     pub context: PaintCtx,
+    /// Записи блоков, из вывода которых ушло это задание, и его запись у
+    /// них (`capture::jobs`). Почти всегда пусто.
+    pub captures: Box<[Rc<LineCapture>]>,
+    pub record: Option<Rc<JobCapture>>,
+}
+
+/// Элемент шага 8 либо запись его краски прошлого кадра (повтор блока).
+pub(super) enum PositionedPaint {
+    Element(AnyElement),
+    Replay(Rc<JobCapture>),
+}
+
+impl Positioned {
+    /// Задание собранного элемента вне записей блоков.
+    pub fn element(key: u64, child: AnyElement, context: PaintCtx) -> Self {
+        Self {
+            key,
+            paint: PositionedPaint::Element(child),
+            context,
+            captures: Box::default(),
+            record: None,
+        }
+    }
 }
 
 pub(super) struct Inline {
@@ -124,15 +147,20 @@ impl CssPaintPass {
     pub(super) fn drain(&self, depth: usize, window: &mut Window, cx: &mut App) {
         loop {
             self.drain_inline(depth, window, cx);
-            let next = self.jobs.pop_min(depth);
-            let Some(Positioned {
-                mut child, context, ..
-            }) = next
-            else {
+            let Some(job) = self.jobs.pop_min(depth) else {
                 break;
             };
+            let Positioned {
+                paint,
+                context,
+                captures,
+                record,
+                ..
+            } = job;
             window
-                .with_paint_ctx(context, |window| child.paint(window, cx))
+                .with_paint_ctx(context, |window| {
+                    super::capture::paint_job(paint, &captures, record, window, cx)
+                })
                 .expect("CSS positioned job stays in its live GPUI scope");
         }
     }
@@ -148,20 +176,23 @@ impl CssPaintPass {
     ) {
         loop {
             self.drain_inline(depth, window, cx);
-            let next = self.jobs.pop_min(depth);
-            let Some(Positioned {
-                mut child, context, ..
-            }) = next
-            else {
+            let Some(job) = self.jobs.pop_min(depth) else {
                 break;
             };
+            // Вывод в чужих сегментах запись блока не повторит.
+            super::capture::job_lost(&job);
+            let Positioned { paint, context, .. } = job;
             window
-                .with_paint_ctx(context, |window| {
-                    let moved =
-                        window.with_paint_segment_slices(late.clone(), |w| child.paint(w, cx));
-                    if moved.is_err() {
-                        child.paint(window, cx);
+                .with_paint_ctx(context, |window| match paint {
+                    PositionedPaint::Element(mut child) => {
+                        let moved =
+                            window.with_paint_segment_slices(late.clone(), |w| child.paint(w, cx));
+                        if moved.is_err() {
+                            child.paint(window, cx);
+                        }
                     }
+                    // A replayed job keeps the place its record was painted at.
+                    paint => super::capture::paint_job(paint, &[], None, window, cx),
                 })
                 .expect("CSS positioned job stays in its live GPUI scope");
         }
