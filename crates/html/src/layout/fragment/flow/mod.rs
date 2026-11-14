@@ -20,7 +20,7 @@ pub(crate) mod soft_keep;
 pub(crate) use continuation::ContentLine;
 pub(crate) use line_growth::LinePush;
 mod stack;
-pub(crate) use measurements::{FlowMeasure, FlowNode, Record};
+pub(crate) use measurements::{FlowMeasure, FlowNode, GrowthSnapshot, Record};
 pub(crate) use stack::fragment_leaf;
 
 /// Строки блочного контейнера дают разрывы класса B (css-break-3 §4.3).

@@ -9,6 +9,9 @@ use std::rc::Rc;
 
 type ParagraphGrowth = Rc<RefCell<Vec<f32>>>;
 
+mod retained;
+pub(crate) use retained::GrowthSnapshot;
+
 #[derive(Clone, Debug)]
 pub(crate) struct FlowNode {
     pub(crate) measurements: Rc<FlowMeasure>,

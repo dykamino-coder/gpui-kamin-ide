@@ -17,6 +17,8 @@ mod owners;
 mod progress;
 mod record;
 mod trial;
+pub(super) use copies::rebuild;
+pub(super) use trial::restore_geometry;
 
 impl ColumnStack {
     /// Раскладка главной копии ребёнка `i` в колонку до укладки.

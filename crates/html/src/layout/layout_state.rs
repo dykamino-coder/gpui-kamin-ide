@@ -9,6 +9,8 @@ use std::cell::Cell;
 
 #[derive(Default)]
 pub(crate) struct LayoutState {
+    /// Числовая геометрия контекстов с проверкой входов каждой ревизии.
+    pub(crate) formatting: std::rc::Rc<crate::layout::formatting_cache::Store>,
     /// Anchor geometry and fallback selection belonging to this document.
     pub(crate) anchors: AnchorState,
     /// Факты неизменяемого дерева; новая computed-публикация их сбрасывает.
@@ -28,10 +30,11 @@ pub(crate) struct LayoutState {
 
 impl LayoutState {
     /// Состояние ревизии, дерево которой — копия путей к правкам прошлого
-    /// (`Document::adopted`): из прошлого переходит только основа подготовки
-    /// дерева (`PreparationCache::continuing`), остальное начинается заново.
+    /// (`Document::adopted`): переходят подготовка дерева и проверяемые числовые
+    /// результаты контекстов, рекордеры и геометрия кадра начинаются заново.
     pub(crate) fn continuing(previous: &Self) -> Self {
         Self {
+            formatting: previous.formatting.clone(),
             preparation: crate::layout::cx::subtree::PreparationCache::continuing(
                 &previous.preparation,
             ),

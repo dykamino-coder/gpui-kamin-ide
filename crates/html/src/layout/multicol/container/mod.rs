@@ -78,11 +78,14 @@ pub(crate) fn multicol_column_stack(
                 Some(_) => (cols as usize).saturating_add(1),
                 None => cols.max(1) as usize,
             };
-            let deferred = (line_col_w.is_none() && nest_rows.is_none())
-                .then(|| {
-                    super::deferred::Recipe::new(e, &merged, opts, cols, fixed, col_axis, rows)
-                })
-                .flatten();
+            let deferred = ((line_col_w.is_none()
+                || (!col_vert
+                    && fixed.is_none()
+                    && rows.is_none()
+                    && super::deferred::Recipe::can_retain(e, opts)))
+                && nest_rows.is_none())
+            .then(|| super::deferred::Recipe::new(e, &merged, opts, cols, fixed, col_axis, rows))
+            .flatten();
             let (kid_parent, kid_starts, kid_par, kids) = if deferred.is_some() {
                 (Vec::new(), Vec::new(), Vec::new(), Vec::new())
             } else {

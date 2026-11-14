@@ -8,6 +8,7 @@ pub(crate) mod build_contracts;
 pub(crate) mod cx;
 pub(crate) mod depth;
 pub(crate) mod float;
+pub(crate) mod formatting_cache;
 pub(crate) mod fragment;
 pub(crate) mod grid;
 pub(crate) mod intrinsic_wrap;

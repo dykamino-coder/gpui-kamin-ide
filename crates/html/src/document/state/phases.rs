@@ -22,7 +22,7 @@ impl DocState {
     /// Пустое состояние документа, разбираемого носителем `media`. Провайдер
     /// шрифтовых фактов по умолчанию — бэкенд text этого документа.
     pub fn new(media: Media) -> Rc<Self> {
-        Self::with_paragraphs(media, Default::default(), None)
+        Self::with_paragraphs(media, Default::default(), None, None)
     }
 
     /// Состояние следующей ревизии того же документа (`Document::update`): замеры
@@ -38,6 +38,7 @@ impl DocState {
             media,
             crate::text::paragraph_state::ParagraphState::continuing(&previous.paragraph),
             Some(&previous.values),
+            Some(&previous.layout),
         )
     }
 
@@ -64,6 +65,7 @@ impl DocState {
         media: Media,
         paragraph: crate::text::paragraph_state::ParagraphState,
         previous: Option<&DocumentValues>,
+        previous_layout: Option<&crate::layout::layout_state::LayoutState>,
     ) -> Rc<Self> {
         let text = Rc::<crate::text::text_fonts::TextFonts>::default();
         let fonts = text.clone();
@@ -78,7 +80,12 @@ impl DocState {
         };
         Rc::new(Self {
             values,
-            layout: Default::default(),
+            layout: Rc::new(crate::layout::layout_state::LayoutState {
+                formatting: previous_layout
+                    .map(|layout| layout.formatting.clone())
+                    .unwrap_or_default(),
+                ..Default::default()
+            }),
             text,
             paragraph,
         })
@@ -89,6 +96,7 @@ impl DocState {
     pub(crate) fn begin_frame(&self) {
         self.values.begin_frame_inputs();
         self.paragraph.begin_frame();
+        self.layout.formatting.begin_frame();
         self.values.reset_painted_frame();
     }
 

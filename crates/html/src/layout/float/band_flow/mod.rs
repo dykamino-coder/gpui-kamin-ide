@@ -24,7 +24,7 @@ mod prepaint;
 use crate::layout::float::shapes::FloatShape;
 use gpui::{AnyElement, App, IntoElement, LayoutId, Window, div, prelude::*, px};
 pub use kid::{GroupWrap, Kid, Kind, Nest, ShapeOf};
-use std::{cell::Cell, rc::Rc, sync::Arc};
+use std::{cell::Cell, rc::Rc, sync::Arc, vec::Vec};
 mod place;
 use place::place_seq;
 mod float_kid;
@@ -40,6 +40,7 @@ use tap::Tap;
 mod cache;
 mod prepared;
 mod probe;
+mod retained;
 mod temporary;
 #[cfg(test)]
 mod tests;

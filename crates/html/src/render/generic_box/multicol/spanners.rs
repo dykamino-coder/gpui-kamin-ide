@@ -68,7 +68,13 @@ pub(super) fn deferred(
             probe_opts.frag.watch = None;
             probe_opts.cx.position.state = Default::default();
             probe_opts.cx.deferred = Default::default();
-            if opts.cx.position.geometry_record.is_none() && opts.cx.position.geometry.is_none() {
+            if opts.cx.position.geometry_record.is_none()
+                && opts.cx.position.geometry.is_none()
+                && host.children.iter().any(|node| {
+                    matches!(node, Node::Element(child) if
+                        crate::layout::positioned::containing_block::metrics::layout::contains_positioned(child))
+                })
+            {
                 let kids: Vec<_> = host
                     .children
                     .iter()

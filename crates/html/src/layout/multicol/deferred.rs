@@ -15,6 +15,7 @@ mod clip_tests;
 mod geometry;
 #[cfg(test)]
 mod oof_tests;
+mod retained;
 #[cfg(test)]
 mod table_row_tests;
 
@@ -38,9 +39,16 @@ pub(crate) struct Recipe {
     pub(crate) intrinsic_builds: std::cell::Cell<usize>,
     /// The row extents of the spanner flow this stack is a row of.
     row: Option<std::rc::Rc<crate::layout::multicol::spanner::RowSlot>>,
+    numeric: Option<std::rc::Rc<retained::Cache>>,
 }
 
 impl Recipe {
+    pub(crate) fn can_retain(host: &Element, opts: &RenderOpts) -> bool {
+        let simple = retained::simple_tree(host);
+        let eligible = crate::layout::formatting_cache::eligible(host, opts);
+        simple && eligible
+    }
+
     // Все независимые ограничения колонки сохраняются до известной ширины.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
@@ -58,6 +66,12 @@ impl Recipe {
         laid::pending_mixed(&prepared, merged, opts.cx.frame())?;
         let mut opts = opts.clone();
         let row = (opts.cx.fragmentation.spanner_rows.take()).filter(|s| s.is_row_of(host.node_id));
+        let numeric = (!axis.is_vertical()
+            && fixed.is_none()
+            && rows.is_none()
+            && retained::simple_tree(host))
+        .then(|| opts.cx.layout().formatting.get(host, merged, &opts))
+        .flatten();
         Some(std::rc::Rc::new(Self {
             host: host.clone(),
             merged: merged.clone(),
@@ -70,6 +84,7 @@ impl Recipe {
             #[cfg(test)]
             intrinsic_builds: Default::default(),
             row,
+            numeric,
         }))
     }
 
@@ -119,6 +134,10 @@ impl Recipe {
         let (children, geometry) = self.recorded_children(width, window, cx);
         stack.children = children;
         stack.oof.geometry = geometry;
+        if self.restore_numeric(stack, width, window) {
+            stack.report_lead();
+            return;
+        }
         if stack.fixed_height.is_some() {
             stack.copies = stack
                 .children
@@ -136,6 +155,7 @@ impl Recipe {
         stack.regrow_children(window, cx);
         stack.paginate_children(window, cx);
         stack.reserve_overflow_copies();
+        self.remember_numeric(stack, width, window);
         stack.report_lead();
     }
 
@@ -150,6 +170,9 @@ impl Recipe {
             crate::work::add!(SpannerRowReuses, 1);
             return extent;
         }
+        if let Some(extent) = self.cached_extent(stack, width, window) {
+            return extent;
+        }
         let extent = gpui::with_temporary_element_arena(|| {
             window.with_nested_layout(|window| {
                 let col_width = ((width - stack.gap * (stack.count as f32 - 1.0))
@@ -162,6 +185,7 @@ impl Recipe {
         if let Some(row) = &self.row {
             row.put(width, extent);
         }
+        self.remember_extent(stack, width, extent, window);
         extent
     }
 

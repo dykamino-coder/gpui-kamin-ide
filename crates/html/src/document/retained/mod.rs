@@ -16,6 +16,8 @@
 mod element;
 #[cfg(test)]
 mod far_tests;
+#[cfg(all(test, feature = "work-counters"))]
+mod formatting_context_recolour_tests;
 #[cfg(test)]
 mod invalidation_tests;
 #[cfg(test)]
