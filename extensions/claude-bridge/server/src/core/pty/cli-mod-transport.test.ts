@@ -162,6 +162,28 @@ describe('private mod transport', () => {
     expect(reset).toHaveBeenCalledTimes(2)
   })
 
+  socketIt('refuses condition requests after the lease expired and serves them again after a new hello', async () => {
+    const { transport, call } = await setup()
+    const prepare = vi.fn(async () => ({ generation: 'g' }))
+    const reset = vi.fn()
+    transport.hookConditions = { prepare, reset, dispose: vi.fn() } as unknown as CliHandlerConditions
+    await call('/hello')
+    expect((await call('/hooks/prepare', { generation: 'g', event: 'PreToolUse', payload: {} })).status).toBe(200)
+    // No request for more than three seconds, e.g. a stalled CLI.
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 3001)
+    expect(transport.healthy()).toBe(false)
+    clock.mockRestore()
+    expect(reset).toHaveBeenCalledOnce()
+    expect((await call('/hooks/prepare', { generation: 'h', event: 'PreToolUse', payload: {} })).status).toBe(409)
+    expect(prepare).toHaveBeenCalledOnce()
+    // The same module instance introduces itself again and is served.
+    expect((await call('/hello')).status).toBe(200)
+    expect((await call('/hooks/prepare', { generation: 'h', event: 'PreToolUse', payload: {} })).status).toBe(200)
+    expect(prepare).toHaveBeenCalledTimes(2)
+    expect(transport.healthy()).toBe(true)
+  })
+
   socketIt('cancels a disconnected prepare request before it acquires the declaration catalog', async () => {
     const { transport, call } = await setup()
     let started!: () => void
