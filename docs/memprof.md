@@ -6,17 +6,27 @@ in the bench JSON).
 
 ## In one minute
 
-1. Build each side with symbols (the PDB must lie beside the exe):
+1. Build each side with the profiler build (one command; the exe and its PDB land in `--out`):
 
    ```powershell
-   $env:CARGO_PROFILE_RELEASE_STRIP="false"; $env:CARGO_PROFILE_RELEASE_DEBUG="line-tables-only"
-   cargo build -p engine-bench --bin engine_bench --features allocation-audit --profile release --target-dir target/bench
-   # copy target/bench/release/engine_bench.exe and engine_bench.pdb to e.g. bin/cand/
+   python scripts/memprof.py build --out bin/cand            # the checkout in the current directory
+   python scripts/memprof.py build --out bin/base --worktree ../base-checkout
    ```
 
-   `allocation-audit` is exact and keeps the audit counters, so the report can be checked against
-   `live_requested_bytes`. `heap-profile` has the probe only, without the counters, for a build
-   close to the timing build; use it with `--sample`.
+   It builds `engine_bench` in the release profile with the PDB kept (function names and line
+   tables) into `<worktree>/target/prof`, the one profiler target directory of a checkout, and
+   links it with `/OPT:NOICF`; see
+   [The profiler build](#the-profiler-build) for why a plain release build misnames sites.
+   `--features` picks the bench build: `allocation-audit` (default) is exact and keeps the audit
+   counters, so the report can be checked against `live_requested_bytes`; `heap-profile` has the
+   probe only, without the counters, for a build close to the timing build (use it with
+   `--sample`). `--jobs`, `--affinity <mask>`, `--below-normal` and `--wrapper "<command prefix>"`
+   (for example a build-slot queue) place the build on a shared machine.
+   `--screen` builds the same thing without link-time optimisation (incremental, 256 codegen
+   units) in the same target directory: several times faster, and cargo keeps both variants'
+   artifacts, so switching does not rebuild the other. Use it for everyday memory profiles and
+   audit counters; final measurements and time profiles need the default build, and both sides
+   of a comparison must be built the same way (`build.json` in `--out` records `lto`).
 
 2. Ask the question:
 
@@ -31,6 +41,15 @@ in the bench JSON).
    only what the frame allocated. Add `--sample 16384` for a sampled run (much smaller files and
    faster runs; bytes become estimates). Wrap the bench with `--launcher "<command prefix>"`, for
    example a hidden-desktop launcher.
+
+   The raw probe files (`cand.stacks`, `base.stacks`; gigabytes each in exact mode) are folded and
+   removed side by side: the candidate runs, is folded and its file is deleted before the base
+   runs, so at most one raw file is on disk. `--keep-stacks` keeps them for a later
+   `memprof.py report` (which has `--delete-stacks`). An exact run does not start with less than
+   `--min-free-gb` (default 60) of free space at `--out`. `run` and `ws` also refuse to start the
+   bench while a hold file exists: `KAMIN_BENCH_HOLD` lists glob patterns separated by `;` (files
+   another measurement creates while it needs a quiet machine); `--ignore-hold` is for the owner
+   of the hold.
 
 3. Read `out/s0/report.txt` (also `report.json`):
 
@@ -53,12 +72,42 @@ in the bench JSON).
    differently, so one logical stack can appear as a `+N`/`-N` pair of rows; the subsystem totals
    are not affected.
 
+## The profiler build
+
+A release build misleads a profile in two ways, and `memprof.py build` removes both:
+
+- **No names.** The release profile strips symbols. Without function records in the PDB dbghelp
+  falls back to exported or mangled names, the allocator frames are not recognised and everything
+  lands in `other`. `build` sets `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only` and
+  `CARGO_PROFILE_RELEASE_STRIP=false`; nothing in `Cargo.toml` changes, so any commit builds.
+- **Folded functions.** The MSVC linker merges functions with identical machine code (`/OPT:ICF`,
+  on for optimised builds): one body remains, and a stack frame in it gets the name of any one of
+  the merged functions. Generic code makes this common (one fat-LTO build: about 1400 functions in 476
+  bodies), and a profile then blames, say, `TaffyTree::with_capacity` for blocks a different
+  function allocated. `build` links with `/OPT:NOICF` and keeps the linker flags of
+  `.cargo/config.toml` (the 8 MiB stack).
+
+After the build the command checks the image: the stack reserve in the PE header equals the
+`/STACK` of the cargo config, the PDB has function records, and no two functions share an address.
+`build.json` beside the exe records the commit, features and flags.
+
+Every report checks the same on the exes it is given. For an exe built another way it prints
+
+```text
+WARNING cand: the exe was linked with identical-code folding (ICF): 1402 functions share 476 bodies ...
+```
+
+marks each folded frame in the tables as `name {ICF n}` and lists, under «folded functions», the
+other names that frame may stand for (`folded_sites` in the JSON). A PDB without function records
+gets its own warning. Treat a marked site as «one of these functions» until both sides are
+rebuilt with `memprof.py build`.
+
 ## Choosing the base and the mode
 
 - Base: the merge base of the candidate branch with `main` (`git merge-base origin/main <branch>`),
-  not today's `main`, so the difference is the candidate's own change. Build both sides with the
-  same features and the same `CARGO_PROFILE_RELEASE_*` settings; if a side predates this tool,
-  cherry-pick the memprof commit onto it (only `crates/engine-bench` and `scripts` change).
+  not today's `main`, so the difference is the candidate's own change. Build both sides with
+  `memprof.py build` and the same `--features` (`--worktree` points at the base checkout; the
+  script of a newer checkout builds an older commit as it is).
 - Exact (default, `allocation-audit`): every block; totals equal the audit counter. Use it for the
   final answer and for differences under a few MB.
 - Sampled (`--sample 16384`, `allocation-audit` or `heap-profile`): first look at a large page or a
@@ -144,8 +193,8 @@ of exactly its size), what they named wrongly (`unmatched`, a reporter bug), and
 nobody reported, by allocation site and stack (`unreported_stacks` in the JSON): the list of
 reporters still to write. Holders no reporter can reach, such as captures of type-erased mouse
 listeners, are inferred from the stacks of unreported blocks by the small `HELD_BY` table in
-`scripts/memprof.py` and printed apart, marked «inferred from stacks, not measured». `--owners` records the whole run exactly (several GB on wide-16000; the
-helper scripts delete the `.stacks` file after folding).
+`scripts/memprof.py` and printed apart, marked «inferred from stacks, not measured». `--owners`
+records the whole run exactly (several GB on wide-16000; the file is removed once folded).
 
 Owner paths, about:memory style: `dom/nodes`, `dom/text`, `dom/attributes`, `dom/source-tree` (the
 parse tree a revision keeps), `style/computed`, `style/groups`, `style/inherited`,
