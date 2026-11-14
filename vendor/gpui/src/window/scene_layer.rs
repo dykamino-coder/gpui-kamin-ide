@@ -119,6 +119,31 @@ impl Window {
         });
     }
 
+    /// Whether the rendered frame shows nothing new on screen: it repeats the
+    /// frame before it except values written into layers outside the window
+    /// (`Scene::damage`), and the platform shows that frame already. Then it
+    /// needs neither raster nor present.
+    pub(crate) fn present_unneeded(&self) -> bool {
+        let Some(damage) = self.rendered_frame.scene.damage() else {
+            return false;
+        };
+        let screen = Bounds { origin: Point::default(), size: self.viewport_size }
+            .scale(self.scale_factor());
+        let unseen = damage.is_none_or(|d| d.intersect(&screen).is_empty());
+        unseen && self.frame_presented && self.platform_window.last_frame_presented()
+    }
+
+    /// Present the frame just drawn, unless it changed nothing on screen and
+    /// the platform did not ask for a presentation (`present_unneeded`).
+    pub(crate) fn present_drawn(&mut self, required: bool) {
+        if !required && self.present_unneeded() {
+            crate::scene::layer_counters::PRESENTS_SKIPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.needs_present.set(false);
+            return;
+        }
+        self.present();
+    }
+
     /// The scene `reuse_paint` copies paint ranges from: the source layer of
     /// the content being painted, else the rendered frame's.
     pub(crate) fn replay_source(&self) -> Option<Rc<SceneLayer>> {

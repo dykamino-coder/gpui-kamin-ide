@@ -66,6 +66,8 @@ pub mod layer_counters {
     /// Primitives frames copied from earlier scenes (`Scene::replay` and
     /// the record replays): what a layer saves.
     pub static PRIMITIVES_COPIED: AtomicU64 = AtomicU64::new(0);
+    /// Frames neither rastered nor presented: nothing changed on screen.
+    pub static PRESENTS_SKIPPED: AtomicU64 = AtomicU64::new(0);
 }
 
 /// The host's layer: its current content, which a write replaces.

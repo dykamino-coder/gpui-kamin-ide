@@ -1221,6 +1221,8 @@ impl Frame {
 
         // KaminIDE patch: also releases the frame's grafts (`finish_frame`).
         self.scene.finish_frame();
+        // KaminIDE patch: what changed against the frame this one replays.
+        self.scene.note_damage(&prev_frame.scene);
     }
 }
 
@@ -1291,6 +1293,8 @@ pub struct Window {
     pub(crate) layer_recording: Option<Box<scene_layer::LayerRecording>>,
     /// The source layer of content painted into the frame (`RecordedLayer::Painted`).
     pub(crate) layer_source: Option<Rc<crate::SceneLayer>>,
+    /// The platform showed a frame of this window (`present_unneeded`).
+    pub(crate) frame_presented: bool,
     pub(crate) paint_owner: u32,
     pub(crate) paint_value: Option<crate::LayerValue>,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
@@ -1967,7 +1971,9 @@ impl Window {
                                 }
                                 let arena_clear_needed = window.draw(cx);
                                 let t1 = std::time::Instant::now();
-                                window.present();
+                                // KaminIDE patch: a drawn frame that changed
+                                // nothing on screen is neither rastered nor presented.
+                                window.present_drawn(request_frame_options.require_presentation);
                                 {
                                     use crate::frame_perf::*;
                                     use std::sync::atomic::Ordering::Relaxed;
@@ -2236,6 +2242,7 @@ impl Window {
             element_opacity: 1.0,
             layer_recording: None,
             layer_source: None,
+            frame_presented: false,
             paint_owner: 0,
             paint_value: None,
             requested_autoscroll: None,
@@ -3794,6 +3801,7 @@ impl Window {
         self.rendered_frame.scene.hold_layers();
         self.platform_window.draw(&self.rendered_frame.scene);
         self.rendered_frame.scene.release_layers();
+        self.frame_presented = true;
         #[cfg(feature = "profiler")]
         self.window_profiler.record_present(
             present_start,

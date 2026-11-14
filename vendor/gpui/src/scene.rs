@@ -3,7 +3,7 @@
 
 mod layer;
 pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-pub(crate) use layer::{Binding, LayerCell, LayerOp, LayerSlot};
+pub(crate) use layer::{Binding, LayerOp, LayerSlot};
 mod record;
 mod vector_transform;
 pub(crate) mod affine_transform;
@@ -188,6 +188,7 @@ pub struct Scene {
     /// frame differs from the one it replays only there (`Scene::damage`).
     pub(crate) fresh: u32,
     pub(crate) layer_damage: Option<Bounds<ScaledPixels>>,
+    damage: Option<Option<Bounds<ScaledPixels>>>,
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -383,6 +384,7 @@ impl Scene {
         self.layer_order.clear();
         self.fresh = 0;
         self.layer_damage = None;
+        self.damage = None;
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();
         self.ink.clear();

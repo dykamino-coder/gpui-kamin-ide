@@ -232,7 +232,10 @@ impl Element for Retained {
                 return ((), record);
             };
             let before = window.next_frame_callback_count();
-            let (_, paint) = window.record_retained_paint(|window| tree.paint(window, cx));
+            let store = &self.builder.store;
+            let (_, paint) = window.record_retained_paint(|window| {
+                store.paint_layered(window, |window| tree.paint(window, cx))
+            });
             if let Some(flow) = &self.flow {
                 flow.finish();
             }

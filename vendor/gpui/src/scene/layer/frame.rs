@@ -54,7 +54,7 @@ impl Scene {
 
     /// Add the slot of a replayed layer command (its order already set);
     /// `false` when the host dropped the layer, which then draws nothing.
-    pub(super) fn push_layer_slot(&mut self, op: &LayerOp) -> bool {
+    pub(crate) fn push_layer_slot(&mut self, op: &LayerOp) -> bool {
         let Some(cell) = op.cell.upgrade() else {
             return false;
         };
@@ -145,6 +145,30 @@ impl Scene {
         self.layer_order.clear();
         self.layer_order.extend(0..layers.len() as u32);
         self.layer_order.sort_by_key(|&at| layers[at as usize].order);
+    }
+
+    /// What this finished frame changed against `previous`, the frame it
+    /// replays (`damage`). Platform-neutral: a renderer or a CPU backend may
+    /// raster only the damage, and a frame whose damage is off screen needs
+    /// no raster at all.
+    pub(crate) fn note_damage(&mut self, previous: &Scene) {
+        let same = self.fresh == 0
+            && self.groups.is_empty()
+            && previous.groups.is_empty()
+            && self.hoisted_backdrops.is_empty()
+            && self.paint_operations.len() == previous.paint_operations.len()
+            && self.layers.len() == previous.layers.len()
+            && self.layers.iter().zip(&previous.layers).all(|(a, b)| {
+                a.order == b.order && Weak::ptr_eq(&a.cell, &b.cell)
+            });
+        self.damage = same.then_some(self.layer_damage);
+    }
+
+    /// The device-pixel rectangle this frame changed against the frame
+    /// before it: `Some(None)` — nothing, `Some(Some(r))` — only `r` (values
+    /// written into its layers), `None` — unknown (new paint).
+    pub fn damage(&self) -> Option<Option<Bounds<ScaledPixels>>> {
+        self.damage
     }
 
     /// Count `n` primitives copied from an earlier scene.
