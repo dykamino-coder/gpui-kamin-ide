@@ -5,17 +5,13 @@
 use crate::host::events::CzEvent;
 use crate::host_link::{self, ShellEvent};
 
-/// Ответ хосту на shell.showQuickPick: indices или null (cancel), в фоне.
-pub(crate) fn respond_quick_pick(req_id: u64, indices: Option<Vec<usize>>) {
-    std::thread::spawn(move || {
-        if let Some(c) = crate::host_link::client() {
-            let value = match indices {
-                Some(v) => serde_json::json!(v),
-                None => serde_json::Value::Null,
-            };
-            c.respond(req_id, Ok(value));
-        }
-    });
+/// Ответ хосту на shell.showQuickPick по билету: indices или null (cancel).
+pub(crate) fn respond_quick_pick(ticket: u64, indices: Option<Vec<usize>>) {
+    let value = match indices {
+        Some(v) => serde_json::json!(v),
+        None => serde_json::Value::Null,
+    };
+    crate::host::deferred::reply(ticket, value);
 }
 
 /// Restore из корзины по исходному пути (самый свежий одноимённый).
