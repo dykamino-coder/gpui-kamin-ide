@@ -93,6 +93,9 @@ struct CacheKey {
     /// Whether each known dimension is definite. Normalized such that an axis
     /// without a known dimension is always `true`.
     known_dimensions_are_definite: Size<bool>,
+    /// KaminIDE patch: the sizing mode and collapsible margins of the entry's input. Kept in
+    /// the key's padding (the key stays 24 bytes), so entries of different modes live side by side.
+    mode: CacheMode,
 }
 
 impl CacheKey {
@@ -140,16 +143,19 @@ impl From<&LayoutInput> for CacheKey {
                 .zip_map(input.known_dimensions, |is_definite, kd| {
                     is_definite || kd.is_none()
                 }),
+            mode: CacheMode::from(input),
         }
     }
 }
 
-/// The layout inputs that affect a node's layout but are not part of the [`CacheKey`]: the
-/// [`SizingMode`] and whether each of the node's vertical margins is collapsible, packed into a `u8`.
+/// The layout inputs that affect a node's layout besides its sizes: the [`SizingMode`] and
+/// whether each of the node's vertical margins is collapsible, packed into a `u8`.
 ///
-/// These are determined by the layout algorithm of the node's parent and by the node's own style,
-/// so they only change for a given node when one of those changes. Rather than keying every entry
-/// on them, a [`Cache`] records the single mode that all of its entries were computed with.
+/// KaminIDE patch: part of every entry's [`CacheKey`]. Upstream keeps one mode per cache and
+/// drops all entries on a store of another mode, assuming a node is laid out in one mode per
+/// pass. A node can be asked in both modes in one pass (a grid inside a flex item is measured
+/// with `ContentSize` and with `InherentSize`), and then every query of the other mode missed:
+/// the 300×16 table of `p07` ran its track sizing 25 times per frame for 10 distinct inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 struct CacheMode(u8);
@@ -163,10 +169,6 @@ impl CacheMode {
     const COLLAPSIBLE_START_MARGIN_BIT: u8 = 0b010;
     /// Set if the node's bottom margin is collapsible
     const COLLAPSIBLE_END_MARGIN_BIT: u8 = 0b100;
-
-    /// The mode of a cache that has never been stored to. Which mode this is does not matter,
-    /// as such a cache has no entries.
-    const INITIAL: Self = Self(0);
 }
 
 impl From<&LayoutInput> for CacheMode {
@@ -182,27 +184,6 @@ impl From<&LayoutInput> for CacheMode {
                 | (collapsible.end as u8 * Self::COLLAPSIBLE_END_MARGIN_BIT),
         )
     }
-}
-
-#[cfg(all(debug_assertions, feature = "std"))]
-std::thread_local! {
-    /// See [`cache_mode_change_evictions`]
-    static MODE_CHANGE_EVICTIONS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
-}
-
-/// The number of times that the current thread has stored a result into a non-empty [`Cache`]
-/// whose entries were computed with a different `sizing_mode` or `vertical_margins_are_collapsible`,
-/// dropping those entries.
-///
-/// This is expected when the layout algorithm of a node's parent has changed since the node was
-/// last laid out. It must not happen while laying out a tree whose caches started out empty: that
-/// would mean that Taffy lays a node out with more than one mode in a single pass, with each
-/// change of mode throwing away the node's cache. Taffy's test suite uses this function to check
-/// that. Only available in debug builds.
-#[doc(hidden)]
-#[cfg(all(debug_assertions, feature = "std"))]
-pub fn cache_mode_change_evictions() -> usize {
-    MODE_CHANGE_EVICTIONS.with(|count| count.get())
 }
 
 /// Cached intermediate layout results
@@ -273,10 +254,6 @@ pub struct Cache {
     next_measure_entry: u8,
     /// Tracks if all cache entries are empty
     is_empty: bool,
-    /// The `sizing_mode` and `vertical_margins_are_collapsible` inputs that all of the cache's
-    /// entries were computed with. Results are only retrieved for inputs that have the same mode,
-    /// and storing a result that was computed with a different mode drops the existing entries.
-    mode: CacheMode,
 }
 
 /// KaminIDE patch: heap blocks of the cache for the engine bench's memory report.
@@ -310,16 +287,12 @@ impl Cache {
             recently_used_entries: 0,
             next_measure_entry: 0,
             is_empty: true,
-            mode: CacheMode::INITIAL,
         }
     }
 
     /// Try to retrieve a cached result from the cache
     #[inline]
     pub fn get(&mut self, input: &LayoutInput) -> Option<LayoutOutput> {
-        if self.mode != CacheMode::from(input) {
-            return None;
-        }
         let key = CacheKey::from(input);
         match input.run_mode {
             RunMode::PerformLayout => self
@@ -332,6 +305,7 @@ impl Cache {
                 for (index, entry) in slots.iter().enumerate() {
                     let Some(entry) = entry else { continue };
                     if entry.key.kd_available_space == key.kd_available_space
+                        && entry.key.mode == key.mode
                         && entry.key.known_dimensions_are_definite == key.known_dimensions_are_definite
                         && (entry.key.x_axis_parent_size() == key.x_axis_parent_size())
                         && entry.key.size_is_valid_for(&key)
@@ -351,15 +325,6 @@ impl Cache {
     pub fn store(&mut self, input: &LayoutInput, layout_output: LayoutOutput) {
         if input.run_mode == RunMode::PerformHiddenLayout {
             return;
-        }
-        let mode = CacheMode::from(input);
-        if self.mode != mode {
-            #[cfg(all(debug_assertions, feature = "std"))]
-            if !self.is_empty {
-                MODE_CHANGE_EVICTIONS.with(|count| count.set(count.get() + 1));
-            }
-            self.clear();
-            self.mode = mode;
         }
         let key = CacheKey::from(input);
         match input.run_mode {
@@ -547,7 +512,7 @@ mod tests {
 
     #[test]
     fn cache_mode_distinguishes_every_combination_of_inputs() {
-        let mut modes = [CacheMode::INITIAL; 8];
+        let mut modes = [CacheMode(0); 8];
         for (index, mode) in modes.iter_mut().enumerate() {
             *mode = CacheMode::from(&LayoutInput {
                 sizing_mode: if index & 1 == 0 { SizingMode::ContentSize } else { SizingMode::InherentSize },
@@ -578,23 +543,18 @@ mod tests {
     }
 
     #[test]
-    fn storing_with_a_different_mode_drops_the_existing_entries() {
-        for other in other_modes(input(3.0)) {
+    fn storing_with_a_different_mode_keeps_the_entries_of_other_modes() {
+        for other in other_modes(input(1.0)) {
             let mut cache = Cache::new();
             cache.store(&perform_layout_input(100.0, 50.0), output(1.0));
             cache.store(&input(1.0), output(2.0));
 
+            // The same sizes in another mode are another measurement
             cache.store(&other, output(3.0));
             assert_eq!(cache.get(&other), Some(output(3.0)));
-            assert!(cache.final_layout_entry.is_none());
-            assert_eq!(cache.measure_slots().iter().flatten().count(), 1);
-
-            // The old entries are gone, even for inputs that have the mode that the cache had before
-            cache.store(&input(4.0), output(4.0));
-            assert_eq!(cache.get(&perform_layout_input(100.0, 50.0)), None);
-            assert_eq!(cache.get(&input(1.0)), None);
-            assert_eq!(cache.get(&other), None);
-            assert_eq!(cache.get(&input(4.0)), Some(output(4.0)));
+            assert_eq!(cache.get(&input(1.0)), Some(output(2.0)));
+            assert_eq!(cache.get(&perform_layout_input(100.0, 50.0)), Some(output(1.0)));
+            assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
         }
 
         for other in other_modes(perform_layout_input(100.0, 50.0)) {
@@ -602,10 +562,11 @@ mod tests {
             cache.store(&perform_layout_input(100.0, 50.0), output(1.0));
             cache.store(&input(1.0), output(2.0));
 
+            // The final layout has one slot: the latest one stands
             cache.store(&other, output(3.0));
             assert_eq!(cache.get(&other), Some(output(3.0)));
-            assert!(cache.measure_slots().iter().all(|entry| entry.is_none()));
             assert_eq!(cache.get(&perform_layout_input(100.0, 50.0)), None);
+            assert_eq!(cache.get(&input(1.0)), Some(output(2.0)));
         }
     }
 
@@ -618,22 +579,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(debug_assertions, feature = "std"))]
-    fn mode_change_evictions_are_counted_for_non_empty_caches_only() {
-        let content_size = LayoutInput { sizing_mode: SizingMode::ContentSize, ..input(1.0) };
-        let evictions = cache_mode_change_evictions();
-
-        let mut cache = Cache::new();
-        cache.store(&content_size, output(1.0));
-        cache.store(&LayoutInput { sizing_mode: SizingMode::ContentSize, ..input(2.0) }, output(2.0));
-        assert_eq!(cache_mode_change_evictions(), evictions);
-
-        cache.store(&input(1.0), output(1.0));
-        assert_eq!(cache_mode_change_evictions(), evictions + 1);
-
-        cache.clear();
-        cache.store(&content_size, output(1.0));
-        assert_eq!(cache_mode_change_evictions(), evictions + 1);
+    fn the_mode_fits_in_the_padding_of_the_key() {
+        assert_eq!(core::mem::size_of::<CacheKey>(), 24);
     }
 }
 
