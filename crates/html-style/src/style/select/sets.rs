@@ -47,7 +47,7 @@ fn compound(scope: &Scope, sel: &Selector, tree: &TreeIndex) -> Result<Bits, Err
     let mut subject = sel.clone();
     subject.prev = None;
     subject.ancestor = None;
-    for &i in candidates.iter() {
+    for i in candidates.iter() {
         if scope.match_at(&subject, i, tree)? {
             bits.insert(i);
         }

@@ -10,6 +10,7 @@ mod candidates;
 mod collect;
 pub(in crate::style::select) mod index;
 mod marks;
+mod postings;
 pub(in crate::style::select) mod scope;
 mod storage;
 #[cfg(test)]
@@ -155,7 +156,7 @@ pub fn shadow_marks(
             }
             let candidates = candidates::candidates(&scope, sel, tree)?;
             let mut hit = false;
-            for &i in candidates.iter() {
+            for i in candidates.iter() {
                 if scope.match_at(sel, i, tree)? {
                     hit = true;
                     break;

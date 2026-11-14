@@ -1,7 +1,8 @@
 //! Индекс необходимых токенов предмета :has(); самый узкий список сохраняет preorder.
 
+use super::postings::Candidates;
 use super::*;
-use crate::budget::admission::{Admission, Buffer};
+use crate::budget::admission::Admission;
 use crate::style::select::ascii_lower as lower;
 use std::collections::HashMap;
 
@@ -74,7 +75,7 @@ impl Index {
         sel: &Selector,
         count: usize,
         admission: &Admission,
-    ) -> Result<Buffer<usize>, Error> {
+    ) -> Result<Candidates<'_>, Error> {
         let mut narrowest: Option<&[usize]> = None;
         let empty: &[usize] = &[];
         let mut consider = |kind: usize, key: &str| {
@@ -95,18 +96,35 @@ impl Index {
         for attr in &sel.attrs {
             consider(3, &lower(&attr.name));
         }
-        let mut out = Buffer::default();
-        if let Some(list) = narrowest {
-            admission.work(list.len())?;
-            for &i in list {
-                out.push(i, admission)?;
-            }
-        } else {
-            admission.work(count)?;
-            for i in 0..count {
-                out.push(i, admission)?;
-            }
-        }
+        let out = Candidates::new(narrowest, count);
+        admission.work(out.len())?;
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::budget::{BudgetKind, RevisionBudget};
+
+    #[test]
+    fn repeated_posting_queries_borrow_the_existing_storage() {
+        let revision = RevisionBudget::standalone();
+        let admission = Admission::new(revision.clone());
+        let mut index = Index::default();
+        for i in 0..1024 {
+            index.add(1, "shared", i, &admission).unwrap();
+        }
+        let document = revision.document();
+        let remaining =
+            document.limits().limit(BudgetKind::LiveBytes) - document.used(BudgetKind::LiveBytes);
+        let _occupied = document
+            .reserve(BudgetKind::LiveBytes, remaining - 1)
+            .unwrap();
+        let sel = Selector::parse(".shared").unwrap();
+        for _ in 0..8 {
+            let candidates = index.candidates(&sel, 1024, &admission).unwrap();
+            assert_eq!(candidates.len(), 1024);
+        }
     }
 }
