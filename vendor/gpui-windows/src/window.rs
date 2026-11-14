@@ -1244,6 +1244,10 @@ impl PlatformWindow for WindowsWindow {
         self.state.renderer.borrow().gpu_specs().log_err()
     }
 
+    fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
+        self.state.renderer.borrow().gpu_memory(sink)
+    }
+
     fn update_ime_position(&self, bounds: Bounds<Pixels>) {
         let scale_factor = self.state.scale_factor.get();
         let caret_position = POINT {

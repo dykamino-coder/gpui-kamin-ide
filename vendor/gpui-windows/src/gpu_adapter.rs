@@ -19,6 +19,9 @@ pub enum GpuAdapterPreference {
     MinimumPower,
     ByName(String),
     ByLuid { high_part: i32, low_part: u32 },
+    /// KaminIDE patch: the software rasterizer (WARP), for measuring software rendering in
+    /// optimized builds. No selector string parses to it: a host constructs it on purpose.
+    Software,
 }
 
 impl GpuAdapterPreference {
@@ -78,6 +81,9 @@ pub(crate) fn adapters(
     factory: &IDXGIFactory6,
     preference: &GpuAdapterPreference,
 ) -> Result<Vec<IDXGIAdapter1>> {
+    if *preference == GpuAdapterPreference::Software {
+        return Ok(vec![unsafe { factory.EnumWarpAdapter()? }]);
+    }
     let power = match preference {
         GpuAdapterPreference::HighPerformance => Some(DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE),
         GpuAdapterPreference::MinimumPower => Some(DXGI_GPU_PREFERENCE_MINIMUM_POWER),
@@ -177,5 +183,11 @@ mod tests {
         assert!(!matches_identity(&GpuAdapterPreference::ByLuid { high_part: 0, low_part: 42 }, &info));
         for count in [0, 2] { assert!(require_unique(&GpuAdapterPreference::ByName("GPU".into()), count).is_err()); }
         assert!(require_unique(&GpuAdapterPreference::MinimumPower, 1).is_ok());
+    }
+    #[test]
+    fn no_selector_string_selects_the_software_rasterizer() {
+        for name in ["software", "warp", "Software", "WARP"] {
+            assert_eq!(GpuAdapterPreference::parse(name).unwrap(), GpuAdapterPreference::ByName(name.to_lowercase()));
+        }
     }
 }

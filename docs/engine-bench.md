@@ -120,6 +120,19 @@ Use saved first-frame PNGs and an independent exact RGB comparison for validatio
 Repeated-frame differences in a static document are an engine determinism finding
 to investigate separately; this harness records them without claiming a cause.
 
+`--mode edit` alternates the input and a second markup on the same document, with the same
+phases and work counters for every kind of edit. A second markup of the same tree shape (text and
+attribute edits) is applied as DOM mutation records (`edit_input: "mutation_records"`); one that
+changes the shape (a node inserted or removed) enters the engine the only way it has today,
+`Document::update` with the new markup, parse included (`edit_input: "document_update"`). `--edit` picks
+the second markup: `text` (one letter of a text node after the middle of the document), `attr`
+(a `data-edit` attribute on an element there), `class` (`class="alt"` on the root), `insert`
+(a copy of the first leaf element after the middle, placed right after it: one node more) and
+`remove` (that leaf element deleted: one node less). A leaf element has no child elements, so its
+copy is valid in any parent and the edit changes one node, not how the surroundings parse.
+`--edit-markup FILE` gives the second markup itself, for any other mutation; the mode's `edit`
+field is then `{"markup": FILE}`.
+
 In `relayout` and `edit` modes, `fresh_checks` also records
 `incremental_bgr_fnv1a64` and `fresh_bgr_fnv1a64`, using the same RGB-only BGR
 fingerprint as the measured sequence. `--fresh-check-dir DIR` retains both frames
@@ -205,10 +218,26 @@ document rendered by `wptrun` at the same viewport, scale and fonts, using GPU
 first-frame capture and **exact RGB equality**. Use one fresh process per fixture
 in each host so their prior document/cache histories match.
 
+## Build record
+
+The JSON's `build` object says how this exe was built: `features` (the enabled cargo features of
+the bench package, sorted), `profile` (the cargo profile directory), `opt_level`,
+`debug_assertions` and `profile_overrides` (code-changing profile settings taken from the
+environment, such as `lto=off` of `memprof.py build --screen`). `engine_bench --build-info`
+prints the same object without running anything. A base and a candidate with different records
+differ by more than the change under test (`timing-only` against `engine-bench` adds the work
+counters, `allocation-audit` the allocation probe), so the comparing tools refuse such a pair and
+list the differences: `memprof.py run|report|diff|ws`, and `python scripts/bench_build.py
+BASE CAND` for any two exes or bench JSON files. `--allow-feature-mismatch` is for the cases where
+the difference is the point. An exe or JSON from before this record is compared on what its JSON
+shows (work counters, allocation audit).
+
 ## GPU adapter selection
 
-`--gpu default|high-performance|minimum-power|NAME` selects a DXGI adapter for
-this benchmark process only. `NAME` is a case-insensitive name substring and
+`--gpu default|high-performance|minimum-power|software|NAME` selects a DXGI adapter for
+this benchmark process only. `software` (or `warp`) is the software rasterizer (WARP), also in
+release builds: the way to measure software rendering; the bench JSON then reports the
+"Microsoft Basic Render Driver" adapter with the software flag. `NAME` is a case-insensitive name substring and
 must match exactly one adapter; missing or ambiguous matches fail. Omission and
 `default` keep GPUI's original `EnumAdapters` device-creation path. On the review
 machine this selects Intel Iris Xe. The application and WPT runner still create
@@ -219,6 +248,7 @@ target/bench/release/engine_bench.exe --list-gpus
 target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu "Iris" --json
 target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu "RTX 4080" --json
 target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu high-performance --json
+target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu software --json
 ```
 
 Power policies use `IDXGIFactory6::EnumAdapterByGpuPreference`; enumeration

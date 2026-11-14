@@ -1336,6 +1336,10 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     }
     fn set_client_inset(&self, _inset: Pixels) {}
     fn gpu_specs(&self) -> Option<GpuSpecs>;
+    /// KaminIDE patch: GPU memory the window's renderer holds, one call per texture: owner path
+    /// (`gpu/...`), bytes of pixel storage, bytes of it in use (an atlas page is partly empty).
+    /// For the engine bench's memory report; walked only on request.
+    fn gpu_memory(&self, _sink: &mut dyn FnMut(&'static str, u64, u64)) {}
 
     fn update_ime_position(&self, _bounds: Bounds<Pixels>);
 
