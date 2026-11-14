@@ -45,6 +45,7 @@ export function ChatHeaderStrip(): JSX.Element | null {
           error={activeTab?.error}
           nextRetryAt={activeTab?.nextRetryAt}
           retryAttempt={activeTab?.retryAttempt}
+          refusal={activeTab?.refusal}
         />
         {/* Session name next to the status dot. Falls back to the folder (then
             the "#1" label) until the CLI has generated a topic. Ellipsises so a

@@ -109,9 +109,16 @@ export interface ConnectionState {
   /** Which attempt the pending retry will be. Retries never stop, so this is
    *  what shows the loop is alive. */
   retryAttempt?: number
+  /** Why the server keeps refusing this tab, from an allowlisted close code
+   *  (BR-05B). Stays set across retries until the tab connects. */
+  refusal?: ConnectionRefusal
   /** Allowlisted diagnostic only; the server-provided close reason is excluded. */
   closeCode?: number
 }
+
+/** A refusal the client can name without trusting server text. `session-limit`:
+ *  close code 4002, the token already has the maximum number of sessions. */
+export type ConnectionRefusal = 'session-limit'
 
 // Tab info for sidebar rendering
 export interface TabInfo {
@@ -131,6 +138,7 @@ export interface TabInfo {
    *  pending reconnect (see ConnectionStatusBadge). */
   nextRetryAt?: number
   retryAttempt?: number
+  refusal?: ConnectionRefusal
   effort?: string // current effort level (high, low, medium, default)
   model?: string // current model (opus, sonnet, haiku)
   /** The chat's agent (absent from older hosts → Claude). */

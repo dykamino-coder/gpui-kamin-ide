@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { retryLabel } from './ConnectionStatusBadge'
+import { refusalLabel, retryLabel } from './ConnectionStatusBadge'
 
 describe('retryLabel', () => {
   it('says when the next attempt is and that retries do not stop', () => {
@@ -14,5 +14,12 @@ describe('retryLabel', () => {
 
   it('omits the attempt number before any retry has been counted', () => {
     expect(retryLabel(3, 0)).toBe('Reconnecting — in 3s. Retries continue (up to 30s apart).')
+  })
+})
+
+describe('refusalLabel (BR-05B)', () => {
+  it('names the session limit and what frees a slot, in client-owned text', () => {
+    expect(refusalLabel('session-limit')).toContain('maximum number of sessions')
+    expect(refusalLabel('session-limit')).toContain('Close another chat')
   })
 })

@@ -43192,6 +43192,7 @@ function toRendererConnectionState(state, authority, authorityGeneration, author
     resumeNotFound: state.resumeNotFound,
     nextRetryAt: state.nextRetryAt,
     retryAttempt: state.retryAttempt,
+    refusal: state.refusal,
     // Diagnostics classify a disconnect by this number when the server closed
     // without a reason text — dropping it here turned every such close into an
     // unknown cause downstream (INC-2026-0027).
@@ -43988,10 +43989,58 @@ function chatReplayTail(entries2, max) {
   return newestInFileOrder(kept, max);
 }
 
+// src/main/ws/session-end-linger.ts
+var SESSION_END_HOOK_WINDOW_MS = 5e3;
+function lingerForSessionEnd(sock, runHook, windowMs = SESSION_END_HOOK_WINDOW_MS) {
+  let running = 0;
+  let windowOver = false;
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    clearTimeout(timer);
+    if (sock.readyState === wrapper_default.OPEN || sock.readyState === wrapper_default.CONNECTING) sock.close();
+  };
+  const send = (reply) => {
+    if (sock.readyState === wrapper_default.OPEN) sock.send(JSON.stringify(reply));
+  };
+  sock.removeAllListeners();
+  sock.on("error", () => {
+  });
+  sock.on("message", (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+    if (msg?.type !== "hook:execute" || closed) return;
+    running++;
+    void runHook(msg, send).finally(() => {
+      running--;
+      if (windowOver && running === 0) close();
+    });
+  });
+  sock.on("close", () => {
+    closed = true;
+    clearTimeout(timer);
+  });
+  const timer = setTimeout(() => {
+    windowOver = true;
+    if (running === 0) close();
+  }, windowMs);
+}
+
 // src/main/ws/connection-manager.ts
 var MIRROR_PAINT_RECORDS = 200;
 var REPLAY_TAIL_MAX = 4500;
 var CLIENT_STREAM_PROTOCOL = 1;
+var SESSION_LIMIT_CLOSE_CODE = 4002;
+function stickyRefusal(previous, next, intentional) {
+  if (next.status === "authenticated" || intentional) return void 0;
+  if (next.closeCode === SESSION_LIMIT_CLOSE_CODE) return "session-limit";
+  return previous;
+}
 var RECONNECT_BASE_MS = 1e3;
 var RECONNECT_MAX_MS = 3e4;
 var RECONNECT_MULTIPLIER = 2;
@@ -44638,7 +44687,7 @@ var ConnectionManager = class _ConnectionManager {
       clearTimeout(timer);
       this.handoffWait = void 0;
       this.submissions.end(transferable ?? [], transferable !== void 0);
-      this.disconnect({ endSession: true });
+      this.disconnect({ endSession: true, linger: false });
       const reconnect = this.reconnectAfterHandoff;
       this.reconnectAfterHandoff = false;
       if (reconnect) this.connect();
@@ -44657,13 +44706,20 @@ var ConnectionManager = class _ConnectionManager {
     this.stopHeartbeat();
     this.clearEstablishTimer();
     this.clearStabilityTimer();
-    if (this.ws) {
-      if (opts.endSession && this.ws.readyState === wrapper_default.OPEN) {
-        try {
-          this.ws.send(JSON.stringify({ type: "session:end" }));
-        } catch {
-        }
+    if (this.ws && opts.endSession && this.ws.readyState === wrapper_default.OPEN) {
+      let sent = true;
+      try {
+        this.ws.send(JSON.stringify({ type: "session:end" }));
+      } catch {
+        sent = false;
       }
+      if (sent && opts.linger !== false) {
+        const ctx = this.mcpCallCtx();
+        lingerForSessionEnd(this.ws, (msg, send) => handleHookExecute({ ...ctx, send }, msg));
+        this.ws = null;
+      }
+    }
+    if (this.ws) {
       this.ws.removeAllListeners();
       this.ws.on("error", () => {
       });
@@ -45371,6 +45427,8 @@ var ConnectionManager = class _ConnectionManager {
   /** Update internal state and notify renderer via IPC. */
   setState(state) {
     if (this.identityHold && state.status !== "authenticated") state = { ...state, resumeNotFound: true };
+    const refusal = stickyRefusal(this.state.refusal, state, this.intentionalDisconnect);
+    if (refusal !== state.refusal) state = { ...state, refusal };
     this.state = state;
     this.stateRevision++;
     if (state.status === "authenticated") {
@@ -46540,6 +46598,7 @@ var TabManager = class {
       resumeNotFound: connection.resumeNotFound,
       nextRetryAt: connection.nextRetryAt,
       retryAttempt: connection.retryAttempt,
+      refusal: connection.refusal,
       effort: tab.effort,
       model: tab.model,
       engine: tab.connection.getEngine(),
