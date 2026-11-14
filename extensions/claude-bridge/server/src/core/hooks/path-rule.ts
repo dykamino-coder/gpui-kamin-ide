@@ -14,6 +14,8 @@ export interface PathRuleContext {
   cwd?: string
   /** Home directory of the client (rule root for `~/x`), when known. */
   home?: string
+  /** Home seen by the CLI's Bash matcher, separate from the client's home. */
+  bashHome?: string
 }
 
 const WINDOWS_PATH = /^[A-Za-z]:[\\/]/

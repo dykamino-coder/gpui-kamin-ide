@@ -111,6 +111,12 @@ function launchHooks(call: (typeof h.spawn.mock.calls)[number]) {
   return settings.hooks as Record<string, Array<{ hooks: Array<{ args: string[]; url?: string }> }>>
 }
 
+it('preserves the startup CLI home when settings override HOME for hook children', async () => {
+  fs.writeFileSync(path.join(h.sync, 'settings.json'), JSON.stringify({ env: { HOME: '/settings-home' } }))
+  await core.createSession(socket, 'synthetic', 'owner', { resumeConversationId: conversation, bearerHash: 'owner' })
+  expect(h.spawn.mock.calls[0]![2].env.CLAUDE_BRIDGE_BASH_HOME).toBe(h.root)
+})
+
 async function hookStatus(call: (typeof h.spawn.mock.calls)[number], event: string, token?: string) {
   // Per-tool events reach the CLI as native http hooks, the rest as a relay.
   const hook = launchHooks(call)[event]![0]!.hooks[0]!

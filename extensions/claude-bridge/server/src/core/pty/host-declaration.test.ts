@@ -71,6 +71,13 @@ beforeEach(() => {
 })
 
 describe('declaration normalization', () => {
+  it.each(['/home/client with spaces', String.raw`C:\Users\client with spaces`])(
+    'preserves client home %s as a path',
+    (home) => {
+      expect(normalizeHostDeclaration({ tools: ['Read'], home })).toHaveProperty('home', home)
+    },
+  )
+
   it('treats anything that is not a declaration as no declaration', () => {
     for (const raw of [undefined, null, 'linux', [], {}, { tools: 'Bash' }])
       expect(normalizeHostDeclaration(raw)).toBeUndefined()

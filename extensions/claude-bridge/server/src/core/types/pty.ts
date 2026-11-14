@@ -27,6 +27,8 @@ export interface HostDeclaration {
   platform: string
   /** Noun phrase naming where the tools run, e.g. "the user's machine". */
   place: string
+  /** Client home used by hook path conditions rooted at `~/`. */
+  home?: string
 }
 
 export type SessionState = 'starting' | 'running' | 'exiting' | 'exited'
