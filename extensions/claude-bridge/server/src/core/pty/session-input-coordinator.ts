@@ -36,6 +36,7 @@ interface PendingMaintenance {
 
 interface SessionInputState {
   promptReady: boolean
+  promptObserved: boolean
   rawInputDirty: boolean
   rawPasteMode: boolean
   rawEscape: string
@@ -56,6 +57,7 @@ function inputState(session: PtySession): SessionInputState {
   if (!state) {
     state = {
       promptReady: false,
+      promptObserved: false,
       rawInputDirty: false,
       rawPasteMode: false,
       rawEscape: '',
@@ -348,14 +350,23 @@ export function submitCoordinatedText(session: PtySession, text: string): void {
   const state = inputState(session)
   cancelMaintenanceTimer(state)
   const queued: QueuedSubmission = { kind: 'user', text }
-  if (state.active) state.queue.push(queued)
+  // A running PTY is not necessarily a CLI that can consume bracketed paste.
+  // After its first prompt, retain native mid-turn queuing even while busy.
+  if (!state.promptObserved || state.active) state.queue.push(queued)
   else startSubmission(session, state, queued)
 }
 
 export function setSessionPromptReady(session: PtySession, promptReady: boolean): void {
   const state = inputState(session)
   state.promptReady = promptReady
-  if (promptReady) for (const ready of readyWaiters.get(session)?.splice(0) ?? []) ready()
+  if (promptReady) {
+    state.promptObserved = true
+    if (!state.active) {
+      const queued = state.queue.shift()
+      if (queued) startSubmission(session, state, queued)
+    }
+    for (const ready of readyWaiters.get(session)?.splice(0) ?? []) ready()
+  }
   schedulePendingMaintenance(session, state, 'prompt-ready')
 }
 
@@ -423,6 +434,7 @@ export function requestMaintenanceSubmission(
 
 export function getSessionInputSnapshot(session: PtySession): {
   promptReady: boolean
+  promptObserved: boolean
   rawInputDirty: boolean
   activeKind: 'user' | 'maintenance' | null
   queuedSubmissions: number
@@ -431,6 +443,7 @@ export function getSessionInputSnapshot(session: PtySession): {
   const state = inputState(session)
   return {
     promptReady: state.promptReady,
+    promptObserved: state.promptObserved,
     rawInputDirty: state.rawInputDirty,
     activeKind: state.active?.kind ?? null,
     queuedSubmissions: state.queue.length,
