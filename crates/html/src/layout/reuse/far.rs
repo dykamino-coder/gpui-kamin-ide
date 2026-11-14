@@ -33,10 +33,11 @@ pub(super) use element::FarRecorder;
 pub(super) use stand_in::Far;
 pub(crate) use state::FrameFar;
 
-use super::{Counters, FlowReuse, Source, scaled};
+use super::{Counters, FlowKey, FlowReuse, Source, scaled};
 use crate::dom::Element;
 use gpui::{Bounds, LayoutId, Pixels, RetainedSubtree, ScaledPixels, Window, point, size};
 use std::cell::Cell;
+use std::rc::Rc;
 
 /// How far ink reached outside the layout boxes of a block, per side, in
 /// device pixels (`ink_beyond`).
@@ -49,11 +50,14 @@ pub(super) struct Excess {
 }
 
 /// A far block's layout subtree with the build inputs it was requested for,
-/// kept in the far state of the document (`FrameFar::records`). Its flow key
-/// is the store's: records of another key outside the widths are dropped
-/// with the key (`Store::reset_replays`).
+/// kept in the far state of the document (`FrameFar::records`). Records of
+/// the root flow are dropped with its key outside the widths
+/// (`Store::reset_replays`); a record of a nested flow answers by its own
+/// key (`FlowCx::far_key_fits`).
 pub(crate) struct FarRecord {
     source: Source,
+    /// The key of the flow whose build requested the subtree.
+    pub(super) key: Rc<FlowKey>,
     start: Counters,
     pub(super) end: Counters,
     /// The capture of the last pass that requested or claimed the subtree
@@ -68,7 +72,8 @@ pub(crate) struct FarRecord {
 }
 
 impl FarRecord {
-    /// The record fits a flow at counters `start` with subtree `e`.
+    /// The record fits a flow of its key outside the widths (the caller's
+    /// `FlowCx::far_key_fits`) at counters `start` with subtree `e`.
     pub(super) fn fits(&self, start: Counters, e: &Element) -> bool {
         self.start == start && self.source.same(e)
     }
@@ -89,6 +94,7 @@ type Placed = (Bounds<ScaledPixels>, Option<Bounds<ScaledPixels>>);
 /// A far record in the making, kept in its recorder (`FarRecorder`), which
 /// lives in the frame's element arena like the block's own elements.
 pub(super) struct PendingFar {
+    key: Rc<FlowKey>,
     start: Counters,
     end: Counters,
     layout: Option<RetainedSubtree>,
@@ -98,8 +104,9 @@ pub(super) struct PendingFar {
 }
 
 impl PendingFar {
-    pub(super) fn new(start: Counters, end: Counters) -> Self {
+    pub(super) fn new(key: Rc<FlowKey>, start: Counters, end: Counters) -> Self {
         Self {
+            key,
             start,
             end,
             layout: None,
@@ -112,6 +119,7 @@ impl PendingFar {
     fn finish(&self, source: Source, excess: Excess, scope: u32) -> Option<FarRecord> {
         Some(FarRecord {
             source,
+            key: self.key.clone(),
             start: self.start,
             end: self.end,
             layout: Cell::new(self.layout?),

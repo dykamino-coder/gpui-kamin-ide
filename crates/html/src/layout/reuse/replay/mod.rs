@@ -14,6 +14,7 @@
 //! повторяет кэшированные подпоследовательности чистых поддеревьев.
 
 mod element;
+mod frame;
 mod slot;
 
 pub(super) use element::{Replay, ReplayRecorder};
@@ -96,6 +97,8 @@ pub(super) struct PendingReplay {
     /// Блок заполняет ширину потока (`plain::fills_width`).
     fills: bool,
     paint_last: Option<u64>,
+    /// The record is kept for a block far from the screen too (kept_far).
+    keep_far: bool,
     layout: RefCell<Option<(RetainedSubtree, LayoutId)>>,
     prepaint: RefCell<Option<PlacedPrepaint>>,
     paint: RefCell<Option<RetainedPaint>>,
@@ -123,6 +126,7 @@ impl PendingReplay {
             widths,
             fills,
             paint_last,
+            keep_far: false,
             layout: RefCell::new(None),
             prepaint: RefCell::new(None),
             paint: RefCell::new(None),
@@ -133,9 +137,17 @@ impl PendingReplay {
         }
     }
 
+    /// The record of a block that has no skip record to stand for it far
+    /// from the screen (a nested replay area): `finish` keeps it there.
+    pub(super) fn kept_far(mut self) -> Self {
+        self.keep_far = true;
+        self
+    }
+
     /// Готовая запись блока `source`, если его prepaint и краска переносимы
     /// и он был у экрана `screen` (чернилами, а без них коробкой): дальний
-    /// блок пропускает запись пропуска (`recorder::far`), она дешевле повтора.
+    /// блок пропускает запись пропуска (`recorder::far`), она дешевле повтора;
+    /// запись без неё (`kept_far`) остаётся и там.
     pub(super) fn finish(
         &self,
         source: Source,
@@ -151,7 +163,7 @@ impl PendingReplay {
         let paint = self.paint.take()?;
         let (scale, serial) = self.env.get()?;
         let ink = bounds.unwrap_or(Bounds { origin, size }.scale(scale));
-        if super::recorder::far(Some(ink), Point::default(), screen) {
+        if !self.keep_far && super::recorder::far(Some(ink), Point::default(), screen) {
             return None;
         }
         let mask = self.mask.take()?;
@@ -182,60 +194,4 @@ impl PendingReplay {
 /// Окружение, в котором краска переносима как есть: корень окна без сдвига.
 fn plain_environment(window: &Window) -> bool {
     window.retained_root_environment() && window.element_offset() == point(px(0.0), px(0.0))
-}
-
-impl super::FlowReuse {
-    /// Проверка повторов кадра (`ReplaySlot::valid`); неудачные блоки (все,
-    /// если раскладке понадобилась мера) запрещаются, пока ключ потока тот же.
-    pub(super) fn validate_replays(&self, window: &mut Window) -> bool {
-        let slots = self.replay_slots.take();
-        let failed: Vec<u64> = slots
-            .iter()
-            .filter(|slot| !slot.valid(window))
-            .map(|slot| slot.node())
-            .collect();
-        if !failed.is_empty() {
-            // A stale layout does not say which block needed a measurement.
-            let all = window.layout_stale();
-            let mut banned = self.store.banned.take();
-            banned.extend(
-                slots
-                    .iter()
-                    .map(|slot| slot.node())
-                    .filter(|n| all || failed.contains(n)),
-            );
-            self.store.banned.replace(banned);
-            return false;
-        }
-        if !slots.is_empty() {
-            let mut stats = self.store.stats.get();
-            stats.replayed += slots.len() as u64;
-            stats.subtrees += slots.len() as u64;
-            self.store.stats.set(stats);
-        }
-        true
-    }
-
-    /// Записи повтора этого кадра: повторённые и завершённые у экрана `screen`.
-    pub(super) fn finish_replays(&self, screen: Bounds<ScaledPixels>) {
-        let mut replays = self.next_replays.take();
-        let mut reads = self.store.reads_widths.take();
-        let pending = self.pending_replays.take();
-        let mut stats = self.store.stats.get();
-        stats.replay_tracked += pending.len() as u64;
-        self.store.stats.set(stats);
-        for (pending, source) in pending {
-            let node = source.id();
-            if pending.widths.get() {
-                reads.insert(node);
-            } else {
-                reads.remove(&node);
-            }
-            if let Some(record) = pending.finish(source, screen) {
-                replays.insert(node, Rc::new(record));
-            }
-        }
-        self.store.reads_widths.replace(reads);
-        self.store.replays.replace(replays);
-    }
 }

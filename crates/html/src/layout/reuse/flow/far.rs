@@ -1,6 +1,7 @@
 //! A far child of the root flow laid out from its kept layout subtree
 //! (`far`): the record lookup before a build and the wrapper after it.
 
+use super::super::FlowKey;
 use super::super::far::{Far, FarRecorder, FarSlot, PendingFar};
 use super::super::recorder::Recorder;
 use super::{Counters, FlowCx, Mark};
@@ -17,7 +18,7 @@ impl FlowCx {
     pub(super) fn far(&self, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         let start = Counters::read(&opts.cx);
         let slot = self.reuse.with_far_record(e.node_id, |at, record| {
-            if !record.fits(start, e) {
+            if !self.far_key_fits(&record.key) || !record.fits(start, e) {
                 return None;
             }
             record.end.write(&opts.cx);
@@ -29,6 +30,23 @@ impl FlowCx {
             far.slots.push(slot.clone());
         });
         Some(Far::new(slot).hooked())
+    }
+
+    /// A far record made under flow key `key` holds for this flow: the same
+    /// key outside the widths. The root flow drops its records with such a
+    /// key (`Store::reset_replays`), so there the answer is always yes; a
+    /// nested flow has a key of its own.
+    fn far_key_fits(&self, key: &Rc<FlowKey>) -> bool {
+        if Rc::ptr_eq(key, &self.key) {
+            return true;
+        }
+        let last = self.far_key.take();
+        let fits = match &last {
+            Some((seen, fits)) if Rc::ptr_eq(seen, key) => *fits,
+            _ => key.same_outside_widths(&self.key),
+        };
+        self.far_key.set(Some((key.clone(), fits)));
+        fits
     }
 
     /// Wrap the built element of child `e` once: for a far record when its
@@ -52,7 +70,7 @@ impl FlowCx {
         let Some(child) = out.pop() else { return };
         let wrap = match (far, skip) {
             (true, _) => {
-                let pending = PendingFar::new(mark.start, end);
+                let pending = PendingFar::new(self.key.clone(), mark.start, end);
                 let source = self.reuse.shells.source(e);
                 self.reuse.add_far_recorder();
                 FarRecorder::new(child, self.reuse.clone(), (pending, source), skip).hooked()

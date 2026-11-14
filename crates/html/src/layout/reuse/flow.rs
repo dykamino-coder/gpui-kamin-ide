@@ -43,6 +43,9 @@ pub(crate) struct FlowCx {
     /// values or are unknown: children are recorded for replay only if they
     /// paint nothing in their colour (`mark::recolour_worth_recording`).
     recolour: bool,
+    /// The last key of a far record compared with `key` and the answer
+    /// (`far_key_fits`): the records of one build share their key.
+    far_key: std::cell::Cell<Option<(Rc<FlowKey>, bool)>>,
 }
 
 impl FlowReuse {
@@ -159,6 +162,7 @@ impl FlowReuse {
             restyled: self.store.restyled.get(),
             recolour: self.store.restyled.get() || keep_replays && !settled_outside_widths,
             floats: std::cell::Cell::new(false),
+            far_key: Default::default(),
         })
     }
 }
@@ -202,7 +206,7 @@ impl FlowCx {
         if self.restyled {
             // A run of restyles records only the replays of blocks that paint
             // nothing in their colour: a recolour replays them (`unread_color`).
-            self.record_replay(e, mark, now.start, opts, out);
+            self.record_replay(e, mark, now.start, opts, out, false);
             return;
         }
         let skip_at = ((self.settled || self.resized) && (!edge || self.edges) && mark.inert.of(e))
@@ -231,7 +235,7 @@ impl FlowCx {
                     && (self.resized || self.settled && same_widths_only()));
         self.record_far(e, &mark, now.start, skip_at, out);
         if !skipped {
-            self.record_replay(e, mark, now.start, opts, out);
+            self.record_replay(e, mark, now.start, opts, out, false);
         }
     }
 }

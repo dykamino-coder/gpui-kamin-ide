@@ -56,7 +56,9 @@ impl FlowCx {
     }
 
     /// Обернуть собранный элемент ребёнка `e` записью повтора, если её
-    /// стоит делать (`Mark::widths`) и поддерево повторяемо.
+    /// стоит делать (`Mark::widths`) и поддерево повторяемо. `keep_far`: the
+    /// record stays for a block far from the screen too
+    /// (`PendingReplay::kept_far`).
     pub(super) fn record_replay(
         &self,
         e: &Element,
@@ -64,6 +66,7 @@ impl FlowCx {
         end: Counters,
         opts: &RenderOpts,
         out: &mut Vec<AnyElement>,
+        keep_far: bool,
     ) {
         let Some(widths) = mark.widths.filter(|_| mark.replay) else {
             return;
@@ -73,7 +76,7 @@ impl FlowCx {
             return;
         }
         let Some(child) = out.pop() else { return };
-        let pending = Rc::new(PendingReplay::new(
+        let pending = PendingReplay::new(
             self.key.clone(),
             mark.start,
             end,
@@ -81,7 +84,11 @@ impl FlowCx {
             super::super::plain::fills_width(e),
             &self.reuse.ink,
             mark.paint_last,
-        ));
+        );
+        let pending = Rc::new(match keep_far {
+            true => pending.kept_far(),
+            false => pending,
+        });
         let source = self.reuse.shells.source(e);
         super::super::push(&self.reuse.pending_replays, (pending.clone(), source));
         out.push(ReplayRecorder::new(child, pending).hooked());
