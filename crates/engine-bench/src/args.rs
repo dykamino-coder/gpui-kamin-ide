@@ -149,8 +149,6 @@ pub(super) struct Args {
     pub(super) runs: usize,
     pub(super) mode: Mode,
     pub(super) edit: super::edit::Edit,
-    /// Готовая вторая разметка режима `edit` вместо правки `edit`.
-    pub(super) edit_markup: Option<PathBuf>,
     pub(super) json: bool,
     pub(super) trace_frames: bool,
     pub(super) memory_settle_ms: u64,
@@ -178,7 +176,6 @@ impl Args {
             runs: 30,
             mode: Mode::Both,
             edit: super::edit::Edit::Text,
-            edit_markup: None,
             json: false,
             trace_frames: false,
             memory_settle_ms: 0,
@@ -224,7 +221,7 @@ impl Args {
                     };
                 }
                 "--edit" => out.edit = super::edit::Edit::parse(&value)?,
-                "--edit-markup" => out.edit_markup = Some(value.into()),
+                "--edit-markup" => super::edit::set_markup_file(value.into())?,
                 "--gpu" if !value.trim().is_empty() => out.gpu = value,
                 "--gpu" => return Err("GPU selector must not be empty".into()),
                 "--snapshot" => out.snapshot = Some(value.into()),

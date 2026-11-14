@@ -27,7 +27,7 @@ pub(super) async fn run(
     luid: (i32, u32),
 ) -> Result<(Value, Vec<work::Sample>)> {
     let base = resources::read(&args.path)?;
-    let edited = match &args.edit_markup {
+    let edited = match super::edit::markup_file() {
         Some(path) => resources::read(path)?,
         None => args.edit.markup(&base)?,
     };
@@ -119,7 +119,7 @@ pub(super) async fn run(
         checks.push(check);
     }
     let mut mode = report::measured_mode(&samples, &diagnostics);
-    mode["edit"] = match &args.edit_markup {
+    mode["edit"] = match super::edit::markup_file() {
         Some(path) => json!({"markup": path}),
         None => json!(format!("{:?}", args.edit).to_lowercase()),
     };

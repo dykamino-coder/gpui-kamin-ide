@@ -18,6 +18,21 @@ pub(crate) enum Edit {
     Remove,
 }
 
+/// Готовая вторая разметка (`--edit-markup FILE`) вместо правки `Edit`. Хранится
+/// вне `Args`: их размер входит в кучу стенда (замыкание и задача цикла событий),
+/// а аудит сравнивает живые байты кандидата и базы точно.
+static MARKUP_FILE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+pub(crate) fn set_markup_file(path: std::path::PathBuf) -> Result<()> {
+    MARKUP_FILE
+        .set(path)
+        .map_err(|_| "--edit-markup is given twice".into())
+}
+
+pub(crate) fn markup_file() -> Option<&'static std::path::Path> {
+    MARKUP_FILE.get().map(std::path::PathBuf::as_path)
+}
+
 impl Edit {
     pub(crate) fn parse(value: &str) -> Result<Self> {
         Ok(match value {
