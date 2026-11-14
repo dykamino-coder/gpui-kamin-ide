@@ -1234,7 +1234,25 @@ teardown отклоняются. Почему исходная длинная se
 
 ### BR-18A — Classify local SessionEnd execution on explicit end
 
-**Status:** ready / verify; implementation не заявлена. **Parent:** BR-18.
+**Classification 2026-11-14 on the published 1.0.97 (kmaint2): the local hook is lost, a
+defect.** Bounded marker hooks in an isolated profile, with an authenticated 6.3.174 stand, then a
+tab close (`session:end`):
+- Control: a local `SessionStart` hook ran.
+- A server `SessionEnd` hook ran 105 ms after the close.
+- The local `SessionEnd` relay failed after 115 ms ("Client-host WS is not open — local hooks are
+  skipped until the client reconnects"), and its marker was never written. Same result in two runs.
+
+`resolveHost` routes `SessionEnd` command hooks to the client by default, and
+`browser-client/README.md` states no exception for an explicit end. Because
+`ConnectionManager.disconnect({ endSession: true })` closes the socket in the same tick as
+`session:end`, a user's default `SessionEnd` hook never runs when a chat is closed.
+[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/c03b9150ac95ea64417ab07ea28ce5d49a33f7c8/incidents/BR-18/evidence/2026-11-14-br18a-local-sessionend-1.0.97).
+**Next step:** a Fix PR, after the owner's order (this card asks for a separate order). Direction:
+keep the ended tab's socket open for a bounded window, so the server can relay its own
+`SessionEnd`, and close it on the server's close or on a timeout. The PR needs a test that fails on
+the old code, plus this marker check on the candidate.
+
+**Status (before 2026-11-14):** ready / verify; implementation не заявлена. **Parent:** BR-18.
 **Dependency:** none. **Acceptance:** bounded Diagnostic/decision PR с Windows
 client и isolated authenticated Linux server из одного проверяемого `main`.
 
@@ -2578,7 +2596,16 @@ official `open-claude-bridge:6.3.174` image (10 sessions per token).
   other tabs, Retry). The tab is not false-green, and it does not retry silently forever.
 - Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/42458e6ca088e9b0a7f5718c16feb901805020cd/incidents/BR-05/evidence/2026-11-14-max-sessions-not-found-1.0.97).
 
-**Status:** registered. **Dependency:** none. **Acceptance:** automated: a client test where a
+**Fix 2026-11-14: [#898](https://github.com/dykamino-coder/gpui-kamin-ide/pull/898) merged** (`60357f3e`). The tab state keeps
+`refusal: 'session-limit'` from the 4002 close through every retry until it connects. The composer
+and the status tooltip name the limit and say that closing another chat frees a slot. The text is
+client-owned; the server's close text is still not shown. Retries continue. The new test fails on
+the old code. Live check on the 1.0.97 install with the new bundle: the refused tab showed the
+reason from 1 s through retry 5 and connected by 20 s after a slot freed. [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/3d459f13db5cf10df67a8c0696fa7fc7424ada87/incidents/BR-05/evidence/2026-11-14-br05b-candidate).
+**Status:** done — ships in the next release. The server-wide limit has no distinct close code and
+keeps the generic text.
+
+**Registration status (2026-11-14):** registered. **Dependency:** none. **Acceptance:** automated: a client test where a
 `4002` close shows the refusal reason and Retry, and a freed slot still connects. Windows runtime
 merge gate: not required. **Next step:** research the close-code path from the server through the
 extension to the chat state; owner kmaint2.
