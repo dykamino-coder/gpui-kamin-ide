@@ -1,4 +1,5 @@
-//! Headless COM ownership regressions; never create a HWND or present a frame.
+//! Headless COM ownership regressions; never create a HWND. Only `present`
+//! hands frames to a composition swap chain that no visual shows.
 
 use super::recovery::RecoveryResources;
 use super::{
@@ -18,6 +19,8 @@ mod fixtures;
 use fixtures::*;
 // KaminIDE patch: offscreen targets share these headless fixtures.
 mod offscreen;
+// KaminIDE patch (BR-31A): dropped frames are presented by the next paint.
+mod present;
 
 #[test]
 fn effects_follow_device_generation_after_repeated_recovery() {

@@ -57,6 +57,7 @@ FIXES = {
         "Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.",
         "Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.",
         "Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.",
+        "Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.",
         "Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.",
         "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
         "Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.",
@@ -102,6 +103,8 @@ FIXES = {
         " same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or"
         " resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device"
         " recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.",
+        "Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency"
+        " gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.",
     ],
     "gpui-base": [
         "Editor input: minimap/scroll coordinates, incremental highlighting and run traversal.",

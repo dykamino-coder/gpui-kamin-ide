@@ -17,7 +17,7 @@ enum Work<'a> {
     Visit(Visit<'a>),
     Leave(Box<Pending<'a>>, Restore),
 }
-fn visits<'a>(
+pub(super) fn visits<'a>(
     survey: Rc<Survey>,
     scope: Rc<Scope>,
     vars: Rc<VarMap>,
@@ -46,7 +46,7 @@ fn visits<'a>(
     }
     Ok(jobs)
 }
-fn descend<'a>(
+pub(super) fn descend<'a>(
     p: &Pending<'a>,
     tree: &TreeIndex,
     path: &mut Vec<Ancestor>,
