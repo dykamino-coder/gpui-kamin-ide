@@ -92,6 +92,9 @@ impl FlowCx {
         }
         let record = store.replays.borrow().get(&e.node_id).cloned();
         let record = record.filter(|r| r.fits(&self.key, Counters::read(&opts.cx), e))?;
+        if record.widths {
+            opts.cx.constraints.note_nested_read();
+        }
         record.end.write(&opts.cx);
         let mut next = self.reuse.next_replays.take();
         next.insert(e.node_id, record.clone());
@@ -99,6 +102,19 @@ impl FlowCx {
         let slot = Rc::new(ReplaySlot::new(record));
         super::super::push_cell(&self.reuse.replay_slots, slot.clone());
         Some(Replay::new(slot).hooked())
+    }
+
+    /// The state before the build of the contents of a cell, and the options
+    /// to build them with: a copy of `opts` that records the build's outside
+    /// width reads for the replay record (`track_widths_nested`: the cell may
+    /// be inside a block that is recorded too). A cell is recorded for replay
+    /// only, so nothing of the flow's far state is touched.
+    pub(crate) fn mark_contents(&self, opts: &RenderOpts) -> (Mark, Box<RenderOpts>) {
+        let mut mark = mark_of(opts, 0);
+        let widths = Rc::<std::cell::Cell<bool>>::default();
+        mark.replay = true;
+        mark.widths = Some(widths.clone());
+        (mark, opts.inner(|cx| cx.constraints.track_widths_nested(widths)))
     }
 
     /// Wrap the just built contents of cell `e` for a replay record, if the

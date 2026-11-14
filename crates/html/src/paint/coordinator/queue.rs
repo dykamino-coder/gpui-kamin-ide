@@ -1,6 +1,6 @@
 //! Очереди конечных CSS-заданий: FIFO строк и стабильные ключи документа.
 
-use super::capture::LineCapture;
+use super::capture::{LineCapture, Placement};
 use super::*;
 use gpui::{AnyElement, App, PaintCtx, PaintScopeId, RasterPaintCtx, RetainedPaint};
 use std::collections::{BTreeMap, VecDeque};
@@ -27,6 +27,8 @@ pub(super) struct Inline {
 pub(super) enum InlinePaint {
     Element(AnyElement),
     Replay(Box<RetainedPaint>),
+    /// The output moved to another place of this frame (`capture::replay`).
+    Placed(Box<(RetainedPaint, Placement)>),
 }
 
 pub(super) struct Frame {
@@ -108,6 +110,9 @@ impl CssPaintPass {
                             InlinePaint::Element(mut child) => child.paint(window, cx),
                             InlinePaint::Replay(record) => {
                                 window.replay_retained_paint(&record);
+                            }
+                            InlinePaint::Placed(record) => {
+                                capture::replay_placed(window, &record.0, record.1);
                             }
                         })
                         .1

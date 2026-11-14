@@ -156,11 +156,19 @@ impl Window {
         mask: Bounds<ScaledPixels>,
     ) -> bool {
         let (from, to) = (&prepaint.0.start, &prepaint.0.end);
-        let (start, end) = (&paint.range.start, &paint.range.end);
         self.retained_replayable(prepaint, paint)
             && from.hitboxes_index == to.hitboxes_index
             && from.tooltips_index == to.tooltips_index
             && from.deferred_draws_index == to.deferred_draws_index
+            && self.retained_paint_placeable(paint, mask)
+    }
+
+    /// KaminIDE patch: `retained_placeable` of paint output alone: a range a
+    /// subtree painted outside its own prepaint and paint (its lines, painted
+    /// by the host at the end of a stacking context).
+    pub fn retained_paint_placeable(&self, paint: &RetainedPaint, mask: Bounds<ScaledPixels>) -> bool {
+        let (start, end) = (&paint.range.start, &paint.range.end);
+        paint.replayable
             && start.mouse_listeners_index == end.mouse_listeners_index
             && start.input_handlers_index == end.input_handlers_index
             && start.cursor_styles_index == end.cursor_styles_index

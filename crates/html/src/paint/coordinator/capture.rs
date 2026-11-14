@@ -6,12 +6,23 @@
 //! повторяет: их порядок задаёт весь кадр.
 
 use super::*;
-use gpui::RetainedPaint;
+use gpui::{Bounds, Point, RetainedPaint, ScaledPixels};
 use queue::{Inline, InlinePaint};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
+
+/// Where the paint of a moved block goes: its offset from the recorded place
+/// and the frame's mask, in device pixels (`Window::retained_placeable`).
+pub(crate) type Placement = (Point<ScaledPixels>, Bounds<ScaledPixels>);
+
+/// Paint output `paint` of the last frame at `placed`. The caller checked
+/// that it can be placed (`LineCapture::placeable`, a whole offset).
+pub(crate) fn replay_placed(window: &mut Window, paint: &RetainedPaint, placed: Placement) {
+    let done = window.replay_retained_paint_placed(paint, placed.0, placed.1);
+    debug_assert!(done.is_some(), "a checked record is placed");
+}
 
 /// Отложенная краска одного блока в одном кадре.
 pub(crate) struct LineCapture {
@@ -43,6 +54,15 @@ impl LineCapture {
     /// Вся отложенная краска блока нарисована в этом кадре и повторяема.
     pub(crate) fn complete(&self) -> bool {
         !self.lost.get() && !self.open.get() && self.pending.get() == 0
+    }
+
+    /// Every line of the record can be painted at another place under the
+    /// frame's mask `mask` (`Window::retained_paint_placeable`).
+    pub(crate) fn placeable(&self, window: &Window, mask: Bounds<ScaledPixels>) -> bool {
+        let lines = self.lines.borrow();
+        lines
+            .iter()
+            .all(|line| window.retained_paint_placeable(line, mask))
     }
 
     #[cfg(test)]
@@ -114,23 +134,34 @@ pub(crate) fn capture<R>(
 
 /// Повтор отложенной краски `record` полной записи прошлого кадра: её строки
 /// встают в очередь строк открытого кадра, вне него рисуются на месте.
-/// Ответ — та же краска этого кадра.
-pub(crate) fn replay(window: &mut Window, record: &LineCapture) -> Rc<LineCapture> {
+/// Ответ — та же краска этого кадра. `placed` — блок встал на другое место.
+pub(crate) fn replay(
+    window: &mut Window,
+    record: &LineCapture,
+    placed: Option<Placement>,
+) -> Rc<LineCapture> {
     debug_assert!(record.complete(), "incomplete deferred paint record");
     capture(window, |window| {
         for line in record.lines.borrow().iter() {
             match current(window).filter(|pass| pass.is_open(window)) {
                 Some(pass) => {
+                    let paint = match placed {
+                        Some(placed) => InlinePaint::Placed(Box::new((line.clone(), placed))),
+                        None => InlinePaint::Replay(Box::new(line.clone())),
+                    };
                     let job = Inline {
-                        paint: InlinePaint::Replay(Box::new(line.clone())),
+                        paint,
                         context: window.raster_paint_ctx(&pass.raster),
                         captures: claim(window, &pass),
                     };
                     pass.jobs.admit_inline(job);
                 }
-                None => {
-                    window.replay_retained_paint(line);
-                }
+                None => match placed {
+                    Some(placed) => replay_placed(window, line, placed),
+                    None => {
+                        window.replay_retained_paint(line);
+                    }
+                },
             }
         }
     })

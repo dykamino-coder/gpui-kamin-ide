@@ -1,7 +1,8 @@
 //! Место повтора блока в кадре и его проверка перед prepaint.
 
-use super::{ReplayRecord, plain_environment};
-use gpui::{LayoutId, Window};
+use super::{Ranges, ReplayRecord, plain_environment};
+use crate::hooks::Placement;
+use gpui::{Bounds, LayoutId, Pixels, Point, ScaledPixels, Window};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -9,6 +10,9 @@ use std::rc::Rc;
 pub(in crate::layout::reuse) struct ReplaySlot {
     pub(super) record: Rc<ReplayRecord>,
     pub(super) layout: Cell<Option<LayoutId>>,
+    /// The block lies at another place than recorded (`valid`): where its
+    /// paint goes, and its new origin.
+    pub(super) moved: Cell<Option<(Placement, Point<Pixels>)>>,
 }
 
 impl ReplaySlot {
@@ -16,6 +20,7 @@ impl ReplaySlot {
         Self {
             record,
             layout: Cell::new(None),
+            moved: Cell::new(None),
         }
     }
 
@@ -25,8 +30,9 @@ impl ReplaySlot {
     }
 
     /// Повтор этого кадра точен: узлы заняты, ни одна мера не понадобилась,
-    /// блок лёг на записанное место того же размера в том же окружении, а
-    /// диапазоны записаны в только что показанном кадре.
+    /// блок того же размера лёг в том же окружении на записанное место либо
+    /// переносим на новое (`moved_to`), а диапазоны записаны в только что
+    /// показанном кадре.
     pub(in crate::layout::reuse) fn valid(&self, window: &mut Window) -> bool {
         let Some(id) = self.layout.get() else {
             return false;
@@ -41,17 +47,45 @@ impl ReplaySlot {
             window.scale_factor(),
             window.content_mask(),
         );
-        fresh
-            && self
-                .record
-                .ranges(|r| {
-                    r.serial + 1 == serial
-                        && r.lines.complete()
-                        && r.scale == scale
-                        && r.mask == mask
-                        && r.origin == origin
-                        && r.size == size
-                })
-                .unwrap_or(false)
+        let placed = self.record.ranges(|r| {
+            let same = r.serial + 1 == serial
+                && r.lines.complete()
+                && r.scale == scale
+                && r.mask == mask
+                && r.size == size;
+            match same {
+                true if r.origin == origin => Some(None),
+                true => moved_to(r, origin, window).map(|placed| Some((placed, origin))),
+                false => None,
+            }
+        });
+        let Some(placed) = placed.flatten().filter(|_| fresh) else {
+            return false;
+        };
+        self.moved.set(placed);
+        true
     }
+}
+
+/// Where the paint of the record `r` goes when its block lies at `origin`,
+/// another place than recorded, if the paint can be moved there exactly.
+///
+/// The offset is a whole number of device pixels: glyphs and snapped edges
+/// painted afresh at the new place are then the recorded ones moved. All of
+/// the block's ink lay inside the frame's mask: a primitive the mask hid is
+/// not in the record, and at the new place it might show. And the recorded
+/// output is scene commands under that mask alone
+/// (`Window::retained_placeable`): nothing in it holds the recorded place.
+/// Blink moves a cached subsequence the same way when only the paint offset
+/// of its box changed by whole pixels.
+fn moved_to(r: &Ranges, origin: Point<Pixels>, window: &Window) -> Option<Placement> {
+    let mask = r.mask.bounds.scale(r.scale);
+    let offset = (origin - r.origin).scale(r.scale);
+    let whole = offset.x.0.fract() == 0.0 && offset.y.0.fract() == 0.0;
+    let inside = |ink: Bounds<ScaledPixels>| ink.is_contained_within(&mask);
+    (whole
+        && r.ink.is_none_or(inside)
+        && window.retained_placeable(&r.prepaint, &r.paint, mask)
+        && r.lines.placeable(window, mask))
+    .then_some((offset, mask))
 }

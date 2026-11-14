@@ -169,7 +169,7 @@ impl Hooks for Placeholder {
             // Строки вне открытого кадра рисуются на месте: в выводе блока.
             let (deferred, paint) = window.record_retained_paint(|window| {
                 window.replay_retained_paint(&paint);
-                crate::hooks::replay_deferred(window, &deferred)
+                crate::hooks::replay_deferred(window, &deferred, None)
             });
             self.update(|r| {
                 r.paint = paint;

@@ -60,11 +60,45 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
         "the table and the tail were rebuilt"
     );
     assert_eq!(reused(&view, cx).2, 0, "an unmoved replay was refused");
-    // A taller paragraph moves the tail: its replay fails the frame check and
-    // the frame is built again; the tail is then built until the key changes.
-    update(&view, cx, &page(&"word ".repeat(400)));
+    // A paragraph taller by a fraction of a device pixel moves the tail by
+    // it: paint moved so is not the paint of the new place, the replay fails
+    // the frame check and the frame is built again; the tail is then built
+    // until the key changes.
+    let tall = "<body style='margin:0;display:flow-root'><table style='width:300px'><tr><td>a</td><td>b</td></tr></table>\
+                <p style='padding-top:0.3px'>two</p><p>tail</p></body>";
+    update(&view, cx, tall);
     let (_, _, rebuilt) = reused(&view, cx);
-    assert_eq!(rebuilt, 1, "a moved block was replayed at its old place");
+    assert_eq!(rebuilt, 1, "a block moved by a fraction was replayed");
+}
+
+/// A block moved by whole device pixels with all its ink on screen replays at
+/// the new place (`ReplaySlot::valid`): its paint and its lines are the
+/// recorded ones moved, and the frame is the fresh build's.
+#[gpui::test]
+fn a_block_moved_by_whole_pixels_replays_at_its_new_place(cx: &mut TestAppContext) {
+    let page = |pad: u32| {
+        format!(
+            "<body style='margin:0;display:flow-root'>\
+             <p style='margin:0;height:20px;padding-top:{pad}px'>head</p>\
+             <p style='margin:0;background:silver'>\
+             <span style='background:lime'>tail</span> <u>u</u></p></body>"
+        )
+    };
+    let (view, cx) = settled(cx, &page(0), &page(1));
+    update(&view, cx, &page(0));
+    update(&view, cx, &page(1));
+    update(&view, cx, &page(0));
+    let before = (replayed(&view, cx), reused(&view, cx).2);
+    update(&view, cx, &page(40));
+    assert_eq!(
+        (replayed(&view, cx) - before.0, reused(&view, cx).2 - before.1),
+        (1, 0),
+        "the moved tail was not replayed"
+    );
+    let replay = scene(cx);
+    let (_, fresh) = open(cx, &page(40));
+    frame(fresh);
+    assert_eq!(replay, scene(fresh), "the moved frame differs");
 }
 
 /// While the width changes, a block that fills it (`width: auto`) gets no

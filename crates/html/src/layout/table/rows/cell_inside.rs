@@ -109,11 +109,10 @@ pub(super) async fn cell_contents(
     let inside = match replayed {
         Some(stand_in) => vec![stand_in],
         None => {
-            let mark = scope.as_ref().map(|scope| scope.mark(cell, &inner, 0));
-            let tracked = scope
+            let (mark, tracked) = scope
                 .as_ref()
-                .zip(mark.as_ref())
-                .and_then(|(scope, mark)| scope.child_opts(mark, &inner));
+                .map(|scope| scope.mark_contents(&inner))
+                .unzip();
             let mut inside = opts
                 .cx
                 .contracts
@@ -126,7 +125,6 @@ pub(super) async fn cell_contents(
                 )
                 .await;
             if let (Some(scope), Some(mark)) = (&scope, mark) {
-                scope.give_back(&mark, &inner);
                 scope.record_contents(cell, mark, &inner, &mut inside);
             }
             inside

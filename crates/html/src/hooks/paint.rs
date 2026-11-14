@@ -18,7 +18,7 @@ pub(crate) fn paint_atomic(div: Div) -> Div {
     crate::paint::coordinator::atomic(div)
 }
 
-pub(crate) use crate::paint::coordinator::LineCapture;
+pub(crate) use crate::paint::coordinator::{LineCapture, Placement, replay_placed};
 
 /// Paint a block and capture the paint it deferred past its own output.
 pub(crate) fn paint_capturing<R>(
@@ -28,12 +28,14 @@ pub(crate) fn paint_capturing<R>(
     crate::paint::coordinator::capture(window, f)
 }
 
-/// Replay a complete deferred paint record into this frame's queues.
+/// Replay a complete deferred paint record into this frame's queues, at
+/// `placed` when its block moved.
 pub(crate) fn replay_deferred(
     window: &mut Window,
     record: &LineCapture,
+    placed: Option<Placement>,
 ) -> std::rc::Rc<LineCapture> {
-    crate::paint::coordinator::replay(window, record)
+    crate::paint::coordinator::replay(window, record, placed)
 }
 
 pub(crate) fn paint_reopen<R>(window: &mut Window, f: impl FnOnce(&mut Window) -> R) -> R {

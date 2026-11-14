@@ -40,6 +40,9 @@ pub(super) struct Ranges {
     mask: ContentMask<Pixels>,
     scale: f32,
     serial: u64,
+    /// The block's ink in device pixels, lines included (`InkSink`); `None`
+    /// — it painted nothing.
+    ink: Option<Bounds<ScaledPixels>>,
     /// Строки блока в фазе строк контекста (`paint::coordinator::capture`).
     lines: Rc<LineCapture>,
 }
@@ -164,6 +167,7 @@ impl PendingReplay {
                 mask,
                 scale,
                 serial,
+                ink: bounds,
                 lines,
             })),
         })

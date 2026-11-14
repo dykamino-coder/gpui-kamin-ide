@@ -2,7 +2,7 @@
 //! который повторяет его раскладку, prepaint и краску (`super`).
 
 use super::{PendingReplay, ReplaySlot, plain_environment};
-use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred};
+use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred, replay_placed};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use std::rc::Rc;
 /// Прозрачная обёртка блока: снимает узлы раскладки, диапазоны prepaint и
@@ -134,12 +134,27 @@ impl Hooks for Replay {
         window: &mut Window,
         _: &mut App,
     ) {
+        let moved = self.slot.moved.get();
         self.slot.record.ranges(|r| {
+            let placed = moved.map(|(placed, _)| placed);
             // Строки вне открытого кадра рисуются на месте: в выводе блока.
             let (lines, paint) = window.record_retained_paint(|window| {
-                window.replay_retained_paint(&r.paint);
-                replay_deferred(window, &r.lines)
+                match placed {
+                    Some(placed) => replay_placed(window, &r.paint, placed),
+                    None => {
+                        window.replay_retained_paint(&r.paint);
+                    }
+                }
+                replay_deferred(window, &r.lines, placed)
             });
+            // The record is now of the block at its new place.
+            if let Some(((offset, _), origin)) = moved {
+                r.origin = origin;
+                r.ink = r.ink.map(|ink| Bounds {
+                    origin: ink.origin + offset,
+                    size: ink.size,
+                });
+            }
             r.paint = paint;
             r.lines = lines;
             r.serial = window.frame_serial();

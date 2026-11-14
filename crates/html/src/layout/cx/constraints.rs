@@ -46,6 +46,20 @@ impl WidthSink for Cell<bool> {
     }
 }
 
+/// The sink of a subtree tracked inside a tracked one
+/// (`BoxConstraints::track_widths_nested`).
+struct NestedSink {
+    own: Rc<Cell<bool>>,
+    outer: Rc<dyn WidthSink>,
+}
+
+impl WidthSink for NestedSink {
+    fn note(&self) {
+        self.own.set(true);
+        self.outer.note();
+    }
+}
+
 /// Read set of the widths of a subtree kept across frames (`layout::reuse`):
 /// the subtree's build output stays valid under another available width
 /// unless the build consumed a width that came from outside the subtree.
@@ -182,6 +196,34 @@ impl BoxConstraints {
         self.widths.sink.set(Some(sink));
         self.cb_outside.set(true);
         self.avail_outside.set(true);
+    }
+
+    /// `track_widths` of a subtree inside a tracked one (a table cell inside a
+    /// recorded block): its outside reads go to `sink`, and to the sink of
+    /// the enclosing subtree while a width of this context comes from outside
+    /// that one too. Which of the two widths a read consumed is not told
+    /// apart there: the enclosing subtree may be told of a read of a width set
+    /// inside it, which only makes its record fit fewer widths.
+    pub(crate) fn track_widths_nested(&mut self, sink: Rc<Cell<bool>>) {
+        let outer = self
+            .widths
+            .sink()
+            .filter(|_| self.cb_outside.get() || self.avail_outside.get());
+        let sink: Rc<dyn WidthSink> = match outer {
+            Some(outer) => Rc::new(NestedSink { own: sink, outer }),
+            None => sink,
+        };
+        self.widths.sink.set(Some(sink));
+        self.cb_outside.set(true);
+        self.avail_outside.set(true);
+    }
+
+    /// A subtree that is not built again (a replayed table cell) read an
+    /// outside width when it was built: tell the enclosing tracked subtree,
+    /// as the build would have (see `track_widths_nested`).
+    pub(crate) fn note_nested_read(&self) {
+        self.widths
+            .note(self.cb_outside.get() || self.avail_outside.get());
     }
 
     /// End `track_widths_in_place`: the context tracks nothing again.

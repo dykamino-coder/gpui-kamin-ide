@@ -14,7 +14,7 @@ mod paint;
 pub(crate) use paint::{paint_collect, paint_inline};
 mod painter;
 pub(crate) use paint::BareRecords;
-pub(crate) use paint::{LineCapture, paint_capturing, replay_deferred};
+pub(crate) use paint::{LineCapture, Placement, paint_capturing, replay_deferred, replay_placed};
 pub(crate) use paint::{
     Replay, SlotScopes, presented_hit_scopes, with_copy_area, with_copy_hits, with_copy_segment,
 };
