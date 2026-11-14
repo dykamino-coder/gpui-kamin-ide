@@ -373,7 +373,22 @@ closing a tab inside the reconnect window fails.**
   closed tab id was gone by 1 s in 2 of 2 runs). The tab growth is registered as BR-05A.
   **Next step:** kmaint2: max-sessions and session-not-found.
 
-**Status:** implementation merged в PR #14; reopened for verification.
+**Verification 2026-11-14 on the published 1.0.97 (kmaint2): max-sessions and session-not-found
+passed.** Official `open-claude-bridge:6.3.174` image (10 sessions per token), profile copy,
+kamin-probe only.
+- Max sessions: the 11th tab stayed `connecting` with `promptReady=false` and retried with backoff
+  for 20 s. It was not false-green, and the server stayed at 10 sessions. After one tab was
+  closed, it connected on its next retry by 20 s.
+- Session not found: resuming an unknown conversation id gave status `error`, the not-found text,
+  Retry and Start new conversation, with `promptReady=false`. No server session was started.
+  Start new connected by 2 s.
+- Not part of the contract: the refused tab never says why. The 4002 reason is dropped and the
+  retries go on silently. Registered as BR-05B.
+- Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/42458e6ca088e9b0a7f5718c16feb901805020cd/incidents/BR-05/evidence/2026-11-14-max-sessions-not-found-1.0.97).
+
+**Status:** done — all four scenarios from the #14 audit passed (send after recovery and close tab
+on 1.0.96/1.0.97, max-sessions and session-not-found on 1.0.97). **Next step:** none; the refusal
+reason is BR-05B.
 **Dependency:** none. **Acceptance:** automated + Windows runtime merge gate;
 непроверенная часть перечислена в audit выше.
 
@@ -1259,8 +1274,19 @@ extension command on this profile opens one) and a genuine request error after
 reconnect. Next step: verify those two with a disposable test extension command
 that opens a QuickPick; owner kmaint.
 
-**Status:** implementation PR #146 merged; Windows runtime acceptance ещё не
-подтверждена. CI job на Windows не запускает живой интерфейс.
+**Verification 2026-11-14 on the published 1.0.97 (kmaint2): containment and the error after
+reconnect passed; the pending picker leaves a stale QuickPick.** A disposable test extension
+opened a QuickPick (with and without `catch`) through `kamin:command:execute`; profile copy,
+kamin-probe only.
+- Passed: the pick pending at `hostDisconnect` resolved as dismissed; the extension-host child kept
+  its PID, no crash, unhandled-rejection or respawn lines; Chat ready within 0.02 s. A genuine
+  error after reconnect (`command ... not found`) came back as that error.
+- Failed: the QuickPick stays on screen after the reconnect, and the next pick resolves
+  `undefined` after 16–30 ms without input. Registered as BR-19A.
+- Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/789467934b2eb07ba26b1475d801f5f37ac5014f/incidents/BR-19/evidence/2026-11-14-pending-pick-1.0.97).
+
+**Status:** done for the contract of this card — #146 merged; reconnect, crash containment and
+the error after reconnect passed on 1.0.94 and 1.0.97. The stale picker is BR-19A.
 **Dependency:** none; BR-17 evidence is not a prerequisite.
 **Acceptance:** automated + Windows runtime merge gate.
 **Windows runtime merge gate:** required.
@@ -2448,6 +2474,12 @@ wait inside a diag report and zero `[outbox]` stalls (before: 33 stalls, 28 afte
 waits). [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/179).
 **Next step (owner kmaint2):** repeat R6 on the published 1.0.97 installer; if it holds, mark
 BR-31 and INC-2026-0002 done, then continue with BR-25/06.
+
+**Acceptance 2026-11-14: R6 on the published 1.0.97 passed 30 of 30** (rows at the first check,
+1023–1098 ms; no `[outbox]` stall line; at most 35 ms of window present per tick). The installer
+SHA-256 matches its provenance. [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/60e61d33fd9a670ec2e0f006127c545a8f817e06/incidents/INC-2026-0002/evidence/2026-11-14-br31-r6-published-1.0.97). The
+present layer seen on the candidate is fixed separately in BR-31A (#892).
+**Status:** done. **Next step:** BR-25 completion and BR-06 repeat (no longer wait for R6).
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
 пробуждением. `deliver()` зовёт её. Polling и таймеры не добавлены: путь
@@ -2500,7 +2532,16 @@ identified.
 **Contract:** the UI thread does not wait for presentation. If a frame cannot be queued, it is
 dropped, and the next paint presents the current scene, as with the frame-latency gate.
 
-**Status:** registered; cause inside the renderer not yet split. **Dependency:** none.
+**Fix 2026-11-14: [#892](https://github.com/dykamino-coder/gpui-kamin-ide/pull/892) merged** (`cb1f1024`). `Present(0, DXGI_PRESENT_DO_NOT_WAIT)`; a
+frame that is still drawing or blocked at the frame-latency gate is dropped, keeps its gate count,
+and the next paint presents it. The `[cef]` line reports the `Present` call time and dropped
+frames. Tests fail on the old code. Windows gate on the candidate: R6 60 of 60 rows at the first
+check; two Agents page-load failures in another batch coincided with an external machine stall
+(07:56, outside the app). [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/60e61d33fd9a670ec2e0f006127c545a8f817e06/incidents/INC-2026-0002/evidence/2026-11-14-br31a-candidate).
+**Status:** done — merged and accepted; ships in the next release. The outside cause of the 1 s
+present is not identified.
+
+**Registration status (2026-11-14):** registered; cause inside the renderer not yet split. **Dependency:** none.
 **Acceptance:** a renderer or platform test that fails on the old code: a frame that could not be
 presented makes the next paint require presentation. Plus the diag line splits encode and
 `Present` time, and R6 on the candidate shows no regression (30 runs, rows by 1.1 s).
@@ -2510,3 +2551,43 @@ demand, so the gate checks for regressions and does not reproduce the stall.
 **Next step:** kmaint2: Fix PR. Present with `DXGI_PRESENT_DO_NOT_WAIT`; on
 `DXGI_ERROR_WAS_STILL_DRAWING`, drop the frame and mark that the next paint must present.
 Report encode and `Present` time separately in the `[cef]` line.
+
+### BR-05B — Tell the user why the Bridge server refused a tab
+
+**Registered 2026-11-14 (kmaint2) from the BR-05 max-sessions verification.** Published 1.0.97,
+official `open-claude-bridge:6.3.174` image (10 sessions per token).
+- Symptom: when the token already has the maximum number of sessions, an 11th tab stays
+  `Connecting to bridge...` and shows `Reconnecting... (attempt N, Ns)`, with up to 30 s between
+  attempts. It never says the server refused it or why.
+- Fact: the server closes the socket with `4002` and `Max sessions reached`; the client state keeps
+  only the reconnect attempt. The tab connects by itself once a slot frees (BR-05 contract holds).
+- Contract: a refusal for a server limit is shown to the user with its reason and an action (close
+  other tabs, Retry). The tab is not false-green, and it does not retry silently forever.
+- Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/42458e6ca088e9b0a7f5718c16feb901805020cd/incidents/BR-05/evidence/2026-11-14-max-sessions-not-found-1.0.97).
+
+**Status:** registered. **Dependency:** none. **Acceptance:** automated: a client test where a
+`4002` close shows the refusal reason and Retry, and a freed slot still connects. Windows runtime
+merge gate: not required. **Next step:** research the close-code path from the server through the
+extension to the chat state; owner kmaint2.
+
+### BR-19A — Close host dialogs of a dropped connection and answer only their own request
+
+**Registered 2026-11-14 (kmaint2) from the BR-19 verification on the published 1.0.97.**
+- Symptom: a QuickPick open while the shell's host WebSocket drops stays on screen after the
+  reconnect. The next `showQuickPick` resolves `undefined` after 16–30 ms without input.
+- Cause (source): kamin-host numbers host→shell requests from 1 on every connection
+  (`RpcEndpoint.nextId`). On a new pick, `QuickPickShow` cancels the old one with
+  `respond_quick_pick(old.req_id, None)` through the *current* client. The old id equals the new
+  pick's id on the new connection, so that cancel answers the new pick. Nothing closes the pick on
+  `WsDisconnected`. Sticky `showMessage` toasts with actions and the native open/save dialogs reply
+  through the current client in the same way.
+- Contract: a deferred reply goes only to the connection that sent the request. A disconnect closes
+  that connection's pick and action toasts without a reply.
+- Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/789467934b2eb07ba26b1475d801f5f37ac5014f/incidents/BR-19/evidence/2026-11-14-pending-pick-1.0.97).
+
+**Status:** registered; fix approved by the lead. **Dependency:** none. **Acceptance:** automated:
+a test that fails on the old code (a cancel of a pick from the old connection does not answer the
+new pick with the same id); plus the probe reproduction on the candidate (no QuickPick after the
+reconnect, and the next pick waits for input). **Windows runtime merge gate:** the reproduction on
+the exact candidate. **Next step:** kmaint2: Fix PR with replies bound to the connection
+generation.
