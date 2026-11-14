@@ -205,6 +205,20 @@ document rendered by `wptrun` at the same viewport, scale and fonts, using GPU
 first-frame capture and **exact RGB equality**. Use one fresh process per fixture
 in each host so their prior document/cache histories match.
 
+## Build record
+
+The JSON's `build` object says how this exe was built: `features` (the enabled cargo features of
+the bench package, sorted), `profile` (the cargo profile directory), `opt_level`,
+`debug_assertions` and `profile_overrides` (code-changing profile settings taken from the
+environment, such as `lto=off` of `memprof.py build --screen`). `engine_bench --build-info`
+prints the same object without running anything. A base and a candidate with different records
+differ by more than the change under test (`timing-only` against `engine-bench` adds the work
+counters, `allocation-audit` the allocation probe), so the comparing tools refuse such a pair and
+list the differences: `memprof.py run|report|diff|ws`, and `python scripts/bench_build.py
+BASE CAND` for any two exes or bench JSON files. `--allow-feature-mismatch` is for the cases where
+the difference is the point. An exe or JSON from before this record is compared on what its JSON
+shows (work counters, allocation audit).
+
 ## GPU adapter selection
 
 `--gpu default|high-performance|minimum-power|software|NAME` selects a DXGI adapter for

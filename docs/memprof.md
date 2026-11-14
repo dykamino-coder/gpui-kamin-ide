@@ -22,6 +22,9 @@ in the bench JSON).
    probe only, without the counters, for a build close to the timing build (use it with
    `--sample`). `--jobs`, `--affinity <mask>`, `--below-normal` and `--wrapper "<command prefix>"`
    (for example a build-slot queue) place the build on a shared machine.
+   A base and a candidate built with different features or profiles are not compared: `run`,
+   `report`, `diff` and `ws` stop and list the differences (`--allow-feature-mismatch` overrides;
+   see the build record in [engine-bench.md](engine-bench.md#build-record)).
    `--screen` builds the same thing without link-time optimisation (incremental, 256 codegen
    units) in the same target directory: several times faster, and cargo keeps both variants'
    artifacts, so switching does not rebuild the other. Use it for everyday memory profiles and

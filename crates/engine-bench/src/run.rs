@@ -242,7 +242,7 @@ pub(super) async fn run(
         }
     }
     let mut report = json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,
-        "device_scale_factor": 1, "surface": args.surface.name(), "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
+        "device_scale_factor": 1, "surface": args.surface.name(), "profile": "release", "build": super::build_info::json(), "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "gpu": gpu,
         "engine_version": env!("CARGO_PKG_VERSION"),
         "runs_per_mode": args.runs,

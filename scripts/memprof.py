@@ -616,6 +616,7 @@ def report_command(args):
     if args.base:
         if len(args.base) != 2:
             raise SystemExit("the base needs both BASE_EXE and BASE_STACKS")
+        same_build(args.exe, args.base[0], args)
         base = Run(args.base[0], args.base[1], live, frames)
     report = write_report(cand, base, live, args)
     if args.delete_stacks:
@@ -624,8 +625,17 @@ def report_command(args):
     return report
 
 
+def same_build(cand_exe, base_exe, args):
+    """Refuses a base and a candidate built with different features or profiles (bench_build)."""
+    import bench_build
+    return bench_build.require_same(bench_build.of_exe(base_exe), bench_build.of_exe(cand_exe),
+                                    args.allow_feature_mismatch)
+
+
 def write_report(cand, base, live, args):
+    import bench_build
     report = build_report(cand, base, live, args.depth, args.top)
+    report["builds"] = {name: bench_build.of_exe(run.exe) for name, run in (("cand", cand), ("base", base)) if run}
     if args.json:
         pathlib.Path(args.json).write_text(json.dumps(report, indent=1), encoding="utf-8")
     render(report)
@@ -663,7 +673,10 @@ def diff_command(args):
     for report in (one, two):
         if report.get("schema") != SCHEMA:
             raise SystemExit(f"not a {SCHEMA} report")
-    out = {"schema": SCHEMA, "mode": one["mode"], "depth": one["depth"],
+    import bench_build
+    builds = {"cand": (one.get("builds") or {}).get("cand"), "base": (two.get("builds") or {}).get("cand")}
+    bench_build.require_same(builds["base"], builds["cand"], args.allow_feature_mismatch)
+    out = {"schema": SCHEMA, "mode": one["mode"], "depth": one["depth"], "builds": builds,
            "runs": {"cand": one["runs"]["cand"], "base": two["runs"]["cand"]},
            "warnings": [*one.get("warnings", ()), *(w.replace("cand:", "base:", 1) for w in two.get("warnings", ()))],
            "folded_sites": {**two.get("folded_sites", {}), **one.get("folded_sites", {})}}
@@ -703,6 +716,8 @@ def run_command(args):
         bench = bench[1:]
     if "--json" not in bench:
         bench.append("--json")
+    if args.base_exe:
+        same_build(args.exe, args.base_exe, args)
     preflight(args, out, exact=not args.sample)
     frames = parse_frames(args.frames)
     runs = []
@@ -747,8 +762,11 @@ def main(argv=None):
     common.add_argument("--depth", type=int, default=8, help="stack frames kept from the site (default 8)")
     common.add_argument("--top", type=int, default=25, help="rows per site/stack table (default 25)")
     common.add_argument("--json", help="also write the report as JSON")
+    mismatch = argparse.ArgumentParser(add_help=False)
+    mismatch.add_argument("--allow-feature-mismatch", action="store_true",
+                          help="compare a base and a candidate built with different features or profiles")
 
-    run = sub.add_parser("run", parents=[common], help="run engine_bench with the probe, then report")
+    run = sub.add_parser("run", parents=[common, mismatch], help="run engine_bench with the probe, then report")
     run.add_argument("--exe", required=True, help="candidate engine_bench.exe (PDB beside it)")
     run.add_argument("--base-exe", help="base engine_bench.exe")
     run.add_argument("--at", help="<phase>@<frame>: live heap when this phase of this frame ends")
@@ -767,7 +785,7 @@ def main(argv=None):
     run.add_argument("--ignore-hold", action="store_true", help="start even when a KAMIN_BENCH_HOLD file exists")
     run.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
-    rep = sub.add_parser("report", parents=[common], help="fold probe files")
+    rep = sub.add_parser("report", parents=[common, mismatch], help="fold probe files")
     rep.add_argument("exe")
     rep.add_argument("stacks")
     rep.add_argument("base", nargs="*", help="BASE_EXE BASE_STACKS")
@@ -775,11 +793,11 @@ def main(argv=None):
     rep.add_argument("--frames", help="A-B: only blocks allocated in these frames (frees count in every frame)")
     rep.add_argument("--delete-stacks", action="store_true", help="remove the probe files once folded")
 
-    dif = sub.add_parser("diff", parents=[common], help="compare two saved JSON reports")
+    dif = sub.add_parser("diff", parents=[common, mismatch], help="compare two saved JSON reports")
     dif.add_argument("cand")
     dif.add_argument("base")
 
-    wsp = sub.add_parser("ws", help="working set by memory region at its peak (any engine_bench build)")
+    wsp = sub.add_parser("ws", parents=[mismatch], help="working set by memory region at its peak (any engine_bench build)")
     wsp.add_argument("--exe", required=True, help="candidate engine_bench.exe")
     wsp.add_argument("--base-exe", help="base engine_bench.exe")
     wsp.add_argument("--out", required=True, help="directory for bench JSON and the report")
@@ -799,6 +817,8 @@ def main(argv=None):
         import memprof_ws
         os.makedirs(args.out, exist_ok=True)
         args.min_free_gb = 0
+        if args.base_exe:
+            same_build(args.exe, args.base_exe, args)
         preflight(args, args.out, exact=False)
         launcher = [p.strip('"') for p in shlex.split(args.launcher, posix=False)] if args.launcher else []
         return memprof_ws.ws_command(args, launcher)

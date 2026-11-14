@@ -278,6 +278,18 @@ class RunCommand(unittest.TestCase):
         self.assertEqual(report["subsystems"][0]["cand_bytes"], 100)
         self.assertIn("by subsystem", (self.out / "report.txt").read_text(encoding="utf-8"))
 
+    def test_differently_built_sides_do_not_run_unless_allowed(self):
+        import bench_build
+        builds = {"c.exe": {"features": ["allocation-audit"], "profile": "release"},
+                  "b.exe": {"features": ["heap-profile"], "profile": "release"}}
+        with unittest.mock.patch.object(bench_build, "of_exe", lambda exe: builds[str(exe)]):
+            with self.assertRaises(SystemExit) as stopped:
+                self.run_memprof()
+            self.assertIn("heap-profile", str(stopped.exception))
+            self.assertEqual(self.seen, [])
+            self.run_memprof("--allow-feature-mismatch")
+        self.assertEqual(self.seen, [[], []])
+
     def test_keep_stacks_leaves_the_probe_files(self):
         self.run_memprof("--keep-stacks")
         self.assertEqual(sorted(p.name for p in self.out.glob("*.stacks")), ["base.stacks", "cand.stacks"])

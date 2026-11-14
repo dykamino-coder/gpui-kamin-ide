@@ -11,6 +11,7 @@ pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
     [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window]\n\
     engine_bench --list-gpus\n\
+    engine_bench --build-info   (features and profile of this exe, as in the JSON's `build`)\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
     Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
     Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
