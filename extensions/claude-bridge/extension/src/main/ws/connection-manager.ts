@@ -34,6 +34,7 @@ import { handleServerMessage } from './handle-server-message'
 import { chatReplayTail, isChatStoredEntry } from '../../shared/chat-stored-entries'
 import { newestInFileOrder } from '../../shared/jsonl-cache-order'
 import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, tabWorkingDirectory, type McpCallCtx } from './mcp-call-pipeline'
+import { lingerForSessionEnd } from './session-end-linger'
 
 export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
 
@@ -912,7 +913,8 @@ export class ConnectionManager {
       clearTimeout(timer)
       this.handoffWait = undefined
       this.submissions.end(transferable ?? [], transferable !== undefined)
-      this.disconnect({ endSession: true })
+      // A handoff already ended the session with its own reply: no window.
+      this.disconnect({ endSession: true, linger: false })
       const reconnect = this.reconnectAfterHandoff
       this.reconnectAfterHandoff = false
       if (reconnect) this.connect()
@@ -922,7 +924,7 @@ export class ConnectionManager {
     catch { finish() }
   }
 
-  disconnect(opts: { endSession?: boolean } = {}): void {
+  disconnect(opts: { endSession?: boolean; linger?: boolean } = {}): void {
     const terminal = opts.endSession || this.disposed
     this.intentionalDisconnect = true
     this.cancelReconnect()
@@ -930,14 +932,22 @@ export class ConnectionManager {
     this.clearEstablishTimer()
     this.clearStabilityTimer()
 
-    if (this.ws) {
-      if (opts.endSession && this.ws.readyState === WebSocket.OPEN) {
-        try {
-          this.ws.send(JSON.stringify({ type: 'session:end' }))
-        } catch {
-          /* closing anyway */
-        }
+    if (this.ws && opts.endSession && this.ws.readyState === WebSocket.OPEN) {
+      let sent = true
+      try {
+        this.ws.send(JSON.stringify({ type: 'session:end' }))
+      } catch {
+        sent = false
       }
+      // The CLI fires SessionEnd while it exits and the server relays the
+      // local hooks to this socket: keep it for that window (BR-18A).
+      if (sent && opts.linger !== false) {
+        const ctx = this.mcpCallCtx()
+        lingerForSessionEnd(this.ws, (msg, send) => runHookExecute({ ...ctx, send }, msg))
+        this.ws = null
+      }
+    }
+    if (this.ws) {
       // Remove listeners to avoid triggering reconnect on close
       this.ws.removeAllListeners()
       // close() на CONNECTING-сокете эмитит 'error' («WebSocket was closed
