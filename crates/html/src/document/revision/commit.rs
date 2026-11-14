@@ -25,6 +25,10 @@ pub(super) enum Plan {
     Clean(Option<Vec<Node>>),
     /// Дерево с копией только путей к правкам.
     Patched(Vec<Node>),
+    /// Copied paths to restyled boxes (`repaint_plan`), with the node ids of
+    /// the elements whose cascaded values changed: the block records are
+    /// compared as at a rebuild (`layout::reuse::Store::restyle`).
+    Restyled(Vec<Node>, Vec<u64>),
 }
 
 impl Document {
@@ -56,6 +60,17 @@ impl Document {
             Plan::Patched(nodes) => {
                 *self = self.adopted(
                     nodes,
+                    None,
+                    key,
+                    revision,
+                    #[cfg(feature = "engine-bench")]
+                    timings,
+                );
+            }
+            Plan::Restyled(nodes, restyled) => {
+                *self = self.adopted(
+                    nodes,
+                    Some(&restyled),
                     key,
                     revision,
                     #[cfg(feature = "engine-bench")]
@@ -65,10 +80,12 @@ impl Document {
         }
     }
 
-    /// Следующая ревизия с деревом `nodes` и прежними значениями документа.
+    /// Следующая ревизия с деревом `nodes` и прежними значениями документа;
+    /// `restyled` — элементы с новыми каскадными значениями (`Plan::Restyled`).
     fn adopted(
         &self,
         nodes: Vec<Node>,
+        restyled: Option<&[u64]>,
         key: u64,
         revision: &crate::budget::RevisionBudget,
         #[cfg(feature = "engine-bench")] timings: crate::document::BuildTimings,
@@ -78,9 +95,13 @@ impl Document {
         state.values.admit_revision(revision.clone(), base.as_ref());
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
-        // The records hold for the patched tree only by the next build's
-        // comparison (`layout::reuse::Store::patch`).
-        self.reuse.patch();
+        match restyled {
+            // A restyle reaches the records as a rebuild's does.
+            Some(ids) => self.reuse.restyle(&self.nodes, &nodes, ids),
+            // The records hold for the patched tree only by the next build's
+            // comparison (`layout::reuse::Store::patch`).
+            None => self.reuse.patch(),
+        }
         Document {
             state,
             nodes: Rc::new(nodes),

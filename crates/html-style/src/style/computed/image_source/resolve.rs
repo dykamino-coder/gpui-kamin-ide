@@ -30,6 +30,21 @@ impl ImageSource {
         }
     }
 
+    /// Изменит ли `resolve_lengths` изображение (`Gradient::lengths_pending`): по ссылке.
+    pub fn lengths_pending(&self, moves: impl Fn(Len) -> bool + Copy, vcx: ValueCx<'_>) -> bool {
+        match self {
+            Self::Gradient { value, .. } => value.lengths_pending(moves, vcx),
+            Self::Conic(value) => value.lengths_pending(moves),
+            Self::CrossFade(items) => items
+                .iter()
+                .any(|(image, _)| image.lengths_pending(moves, vcx)),
+            Self::Filter { image, program } => {
+                image.lengths_pending(moves, vcx) || program.lengths_pending(moves, vcx)
+            }
+            _ => false,
+        }
+    }
+
     pub fn resolve_lengths(&mut self, fix: &impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
         match self {
             Self::Gradient { value, .. } => value.resolve_lengths(fix, vcx),

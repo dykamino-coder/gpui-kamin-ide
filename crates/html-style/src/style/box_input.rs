@@ -20,6 +20,10 @@ pub struct BoxStyleInput {
     /// declarations join the element's own cascade in the position fallback
     /// origin (css-anchor-position-1 §fallback-rule).
     pub try_source: Option<crate::dom::SharedStyle>,
+    /// Identity of the decorating box (css-text-decor-3 §2.1): the element this
+    /// box belongs to, or 0 for an anonymous box. A fact of the element, not a
+    /// computed value, so equal computed styles of siblings stay one value.
+    pub decor_box: u64,
 }
 
 impl BoxStyleInput {
@@ -32,6 +36,7 @@ impl BoxStyleInput {
         paint: Option<std::rc::Rc<crate::style::decoration_paint::DecorationPaint>>,
     ) -> Self {
         Self {
+            decor_box: style.decor_box,
             style,
             paint,
             context,

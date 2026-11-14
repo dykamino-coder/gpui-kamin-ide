@@ -97,6 +97,22 @@ impl BgLayer {
                 .any(|l| l.needs_line_height(vcx))
     }
 
+    /// Изменит ли `resolve_lengths` слой: по ссылке, без копии.
+    pub fn lengths_pending(&self, moves: impl Fn(Len) -> bool + Copy, vcx: ValueCx<'_>) -> bool {
+        let size = match self.size {
+            BgSize::Fixed(w, h) => [w, h],
+            _ => [None, None],
+        };
+        self.image
+            .as_ref()
+            .is_some_and(|image| image.lengths_pending(moves, vcx))
+            || [self.position.x, self.position.y]
+                .into_iter()
+                .chain(size)
+                .flatten()
+                .any(moves)
+    }
+
     pub fn resolve_lengths(&mut self, fix: &impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
         if let Some(image) = &mut self.image {
             image.resolve_lengths(fix, vcx);

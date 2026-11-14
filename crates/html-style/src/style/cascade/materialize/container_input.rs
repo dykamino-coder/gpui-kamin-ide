@@ -18,6 +18,12 @@ impl ComputedSlot {
         vcx: crate::values::ValueCx<'_>,
     ) -> crate::style::publication::Published {
         let mut computed = super::super::compute::build(parent, own, vcx);
+        // Идентичность украшающей коробки — факт элемента, а не вычисленное значение
+        // (css-text-decor-3 §2.1): её несёт каскадный стиль, поэтому равные computed
+        // стили соседей остаются одним общим значением.
+        if computed.decor_box != 0 {
+            computed.decor_box = 0;
+        }
         if super::sharing::size_key(computed.reset_context.cq_size)
             != super::sharing::size_key(self.1.get())
         {

@@ -118,6 +118,7 @@ impl SharedStyle {
         let facts = self.box_facts.as_deref();
         BoxStyleInput {
             try_source: facts.and_then(|f| f.try_source.clone()),
+            decor_box: self.decor_box(),
             ..BoxStyleInput::new(
                 style,
                 facts.and_then(|f| f.context.clone()),
@@ -133,6 +134,14 @@ impl SharedStyle {
                 self.decoration.as_deref().and_then(|d| d.paint.clone()),
             )
         }
+    }
+
+    /// Identity of the decorating box (css-text-decor-3 §2.1): only the cascaded stage has it.
+    pub fn decor_box(&self) -> u64 {
+        self.box_facts
+            .as_deref()
+            .and_then(|f| f.decor_box)
+            .unwrap_or(self.cascaded.decor_box)
     }
 
     /// Только собственный фон; потомки наследуют computed CSS, а не этот вход.
@@ -185,6 +194,7 @@ impl SharedStyle {
             context: input.context,
             try_source: input.try_source,
             moved_from: None,
+            decor_box: (input.decor_box != input.style.decor_box).then_some(input.decor_box),
         };
         let decoration = crate::style::background_paint::DecorationInput {
             inline: input.inline_decoration,
@@ -196,8 +206,10 @@ impl SharedStyle {
             cascaded: input.style,
             computed: ComputedSlot::default(),
             used: None,
-            box_facts: (facts.context.is_some() || facts.try_source.is_some())
-                .then(|| Rc::new(facts)),
+            box_facts: (facts.context.is_some()
+                || facts.try_source.is_some()
+                || facts.decor_box.is_some())
+            .then(|| Rc::new(facts)),
             decoration: Some(Rc::new(decoration)).filter(|d| **d != Default::default()),
         }
     }
@@ -226,18 +238,12 @@ impl SharedStyle {
     }
 }
 
-/// Факты коробки, созданной или перенесённой раскладкой: контекст
-/// коробки-родителя, стиль элемента, чей каскад пересчитывают варианты
-/// `position-try`, и коробка родителя по дереву элементов перенесённой коробки.
-#[derive(Clone, Debug, Default)]
-struct BoxFacts {
-    context: Option<Rc<BoxContext<WritingMode, Align>>>,
-    try_source: Option<SharedStyle>,
-    moved_from: Option<Rc<BoxStyle>>,
-}
-
+mod derive;
+mod facts;
 #[cfg(feature = "heap-report")]
 mod heap;
+use facts::BoxFacts;
+mod restyle;
 mod same;
 #[cfg(test)]
 mod tests;

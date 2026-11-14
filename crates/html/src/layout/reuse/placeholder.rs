@@ -115,15 +115,16 @@ impl Hooks for Placeholder {
     type Prepaint = ();
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        let snapshot = &self.slot.record.snapshot;
-        if snapshot.scale() != window.scale_factor() {
+        // A kept record is sealed, so it has its leaf (`Record::seal`).
+        let snapshot = self.slot.record.snapshot.get();
+        let Some(snapshot) = snapshot.filter(|s| s.scale() == window.scale_factor()) else {
             // Лист другого масштаба неточен: проверка кадра отвергнет его.
             return (window.request_layout(gpui::Style::default(), [], cx), ());
-        }
+        };
         let id = if self.slot.stretched {
             window.request_snapshot_layout(&snapshot.stretched())
         } else {
-            window.request_snapshot_layout(snapshot)
+            window.request_snapshot_layout(&snapshot)
         };
         self.slot.layout.set(Some(id));
         (id, ())

@@ -39,9 +39,9 @@ pub(crate) fn flow_children(
             .map(|n| match n {
                 Node::Element(mut e) => {
                     if e.style.used().reset_flex.flex_shrink.is_none() {
-                        // Одна правка общей группы у всех соседей: общий результат
-                        // документа вместо копии группы у каждого блока.
-                        e.style.used_mut().derive_used::<FlowNoShrink, ResetFlex>(
+                        // Одна правка общего стиля у всех соседей: общий used-стиль
+                        // документа вместо копии стиля и группы у каждого блока.
+                        e.style.derive_used::<FlowNoShrink, ResetFlex>(
                             &opts.cx.doc().values.derived,
                             0,
                             |flex| flex.flex_shrink = Some(0.0),

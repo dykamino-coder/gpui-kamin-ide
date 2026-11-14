@@ -175,9 +175,7 @@ impl TaffyLayoutEngine {
         if edge > 0.0 {
             return true;
         }
-        let Ok(children) = self.taffy.children(node) else {
-            return false;
-        };
+        let children = self.taffy.children_slice(node);
         let in_flow = |child: &NodeId| {
             self.taffy.style(*child).is_ok_and(|style| {
                 style.display != Display::None && style.position != Position::Absolute

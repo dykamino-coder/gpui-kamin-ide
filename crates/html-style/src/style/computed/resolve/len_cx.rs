@@ -178,6 +178,15 @@ impl Len {
             other => other,
         }
     }
+
+    /// Меняет ли длину `fold_viewport`: тот же разбор без свёртки.
+    pub fn folds_viewport(self, vcx: ValueCx<'_>) -> bool {
+        match self {
+            Len::Vw(_) | Len::Vh(_) => true,
+            Len::Calc(i) => calc_get(i, vcx).has_viewport_terms(),
+            _ => false,
+        }
+    }
 }
 
 impl Computed {

@@ -16,7 +16,16 @@ use crate::ui::toasts::Toast;
 pub const TRANSIENT_MIN_MS: u32 = 1_000;
 pub const TRANSIENT_MAX_MS: u32 = 60_000;
 
+/// Есть ли у сообщения кнопки: тогда ответ хосту откладывается до решения.
+pub fn has_actions(params: &[Value]) -> bool {
+    params
+        .get(2)
+        .and_then(Value::as_array)
+        .is_some_and(|a| a.iter().any(Value::is_string))
+}
+
 /// Тост и признак отложенного ответа (`true` — ответ даст снятие тоста).
+/// `req_id` — билет отложенного ответа (`host::deferred`), а не id хоста.
 pub fn toast_for(req_id: u64, params: &[Value]) -> (Toast, bool) {
     let severity = params.first().and_then(Value::as_str).unwrap_or("info");
     let message = params

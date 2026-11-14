@@ -130,6 +130,17 @@ impl BgLists {
             .flat_map(|(_, layers)| layers)
             .any(|layer| layer.needs_line_height(vcx))
     }
+    /// Изменит ли `resolve_lengths` хотя бы один слой: по ссылке, без копии списков.
+    pub fn lengths_pending(
+        &self,
+        moves: impl Fn(super::super::Len) -> bool + Copy,
+        vcx: ValueCx<'_>,
+    ) -> bool {
+        self.lists
+            .iter()
+            .flat_map(|(_, layers)| layers)
+            .any(|layer| layer.lengths_pending(moves, vcx))
+    }
     pub fn resolve_lengths(
         &mut self,
         fix: &impl Fn(&mut Option<super::super::Len>),

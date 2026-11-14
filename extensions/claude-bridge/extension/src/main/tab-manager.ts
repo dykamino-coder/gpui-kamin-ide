@@ -557,6 +557,7 @@ export class TabManager {
       resumeNotFound: connection.resumeNotFound,
       nextRetryAt: connection.nextRetryAt,
       retryAttempt: connection.retryAttempt,
+      refusal: connection.refusal,
       effort: tab.effort,
       model: tab.model,
       engine: tab.connection.getEngine(),

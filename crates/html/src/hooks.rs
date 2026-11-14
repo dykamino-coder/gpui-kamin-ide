@@ -38,6 +38,10 @@ pub(crate) trait Hooks: 'static {
     fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
         None
     }
+    /// The element takes a node of the dispatch tree (`gpui::Element`).
+    fn dispatch_node(&self) -> bool {
+        true
+    }
 
     /// State from `request_layout`, handed to `prepaint` and `paint`.
     type Layout: 'static;
@@ -72,6 +76,10 @@ pub(crate) trait Wrap: 'static {
     fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
         None
     }
+    /// The element takes a node of the dispatch tree (`gpui::Element`).
+    fn dispatch_node(&self) -> bool {
+        true
+    }
 
     fn child(&mut self) -> &mut AnyElement;
 
@@ -94,6 +102,9 @@ impl<T: Wrap> Hooks for T {
     }
     fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
         Wrap::paint_metadata(self)
+    }
+    fn dispatch_node(&self) -> bool {
+        Wrap::dispatch_node(self)
     }
 
     type Layout = ();
@@ -151,6 +162,9 @@ impl<T: Hooks> Element for Hooked<T> {
     }
     fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
         self.0.paint_metadata()
+    }
+    fn dispatch_node(&self) -> bool {
+        self.0.dispatch_node()
     }
 
     type RequestLayoutState = T::Layout;

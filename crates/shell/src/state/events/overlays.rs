@@ -266,6 +266,21 @@ impl RootView {
         }
     }
 
+    /// Снять тосты `shell.showMessage`, ждущие выбора: их соединение оборвалось,
+    /// и ответить на них уже нельзя. Ответ `null` при снятии не нужен.
+    pub(crate) fn drop_host_waits(&mut self) {
+        let waiting: Vec<String> = self
+            .toasts
+            .iter()
+            .filter(|t| pending_shell_reply(&t.id, false).is_some())
+            .map(|t| t.id.clone())
+            .collect();
+        for id in waiting {
+            self.answered_toasts.insert(id.clone());
+            let _ = self.tx.try_send(ShellEvent::DismissToast(id));
+        }
+    }
+
     /// Окончательно снять тост: убрать карточку и — если это `shell.showMessage`
     /// с кнопками, чей ответ ещё не ушёл, — завершить ожидающий запрос хоста.
     fn finish_toast(&mut self, id: &str) {
@@ -290,12 +305,8 @@ pub(crate) fn pending_shell_reply(id: &str, answered: bool) -> Option<u64> {
     id.strip_prefix("shellreq-")?.parse::<u64>().ok()
 }
 
-fn respond_to_host(req_id: u64, value: serde_json::Value) {
-    std::thread::spawn(move || {
-        if let Some(c) = crate::host_link::client() {
-            c.respond(req_id, Ok(value));
-        }
-    });
+fn respond_to_host(ticket: u64, value: serde_json::Value) {
+    crate::host::deferred::reply(ticket, value);
 }
 
 #[cfg(test)]
