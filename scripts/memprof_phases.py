@@ -81,10 +81,10 @@ def build(cand, base):
 
 def cell(value, base, diff):
     if value is None:
-        return f"{'-':>9}" + (f"{'':>9}" if diff else "")
-    text = f"{value / 1e6:9.2f}"
+        return f"{'-':>10}" + (f"{'':>10}" if diff else "")
+    text = f"{value / 1e6:10.2f}"
     if diff:
-        text += f"{(value - base) / 1e6:+9.2f}" if base is not None else f"{'':>9}"
+        text += f"{(value - base) / 1e6:+10.2f}" if base is not None else f"{'':>10}"
     return text
 
 
@@ -97,7 +97,7 @@ def render(report, out=None):
     for name, value in peaks.items():
         if value:
             print(f"  {name}: process peak working set {value / 1e6:.2f}", file=out)
-    width = 18 if diff else 9
+    width = 20 if diff else 10
     for mode, rows in report["modes"].items():
         print(f"\n{mode}:", file=out)
         print("  " + "".join(f"{column:>{width}}" for column in COLUMNS) + "  frames  phase", file=out)
