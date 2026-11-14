@@ -7,6 +7,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import memprof  # noqa: E402
@@ -182,6 +183,135 @@ class Folding(unittest.TestCase):
         self.assertEqual([r["owner"] for r in report["owners"]], ["dom/nodes", "layout/taffy", "style/computed"])
         self.assertEqual(report["unreported_sites"], [])
         json.dumps(report)
+
+
+class FoldedSymbols(FakeSymbols):
+    """Symbols of an image whose linker folded NAMES[2] with two other functions."""
+
+    def __init__(self, names, functions=10, folded=True):
+        super().__init__(names)
+        group = sorted([names[2], "taffy::tree::TaffyTree::with_capacity", "zzz::other"])
+        self.result = (functions - 2, functions, {name: group for name in group} if folded else {})
+
+    def scan(self):
+        return self.result
+
+
+class SymbolQuality(unittest.TestCase):
+    def report(self, symbols):
+        path = probe_file(["a 1 layout 100 10 1 2", "a 1 paint 30 20 1 3"])
+        self.addCleanup(pathlib.Path(path).unlink)
+        report = memprof.build_report(memprof.Run("x.exe", path, True, symbols=symbols), None, True, 8, 10)
+        out = io.StringIO()
+        memprof.render(report, out)
+        json.dumps(report)
+        return report, out.getvalue()
+
+    def test_folded_functions_are_warned_about_and_marked_in_the_rows(self):
+        report, text = self.report(FoldedSymbols(NAMES))
+        self.assertEqual(report["runs"]["cand"]["symbols"],
+                         {"functions": 10, "folded_addresses": 1, "folded_names": 3})
+        self.assertIn("WARNING cand: the exe was linked with identical-code folding (ICF): 3 functions share 1",
+                      text)
+        self.assertIn("kamin_html::layout::a {ICF 3}", text)
+        self.assertNotIn("kamin_html::paint::b {ICF", text)
+        self.assertIn("    = taffy::tree::TaffyTree::with_capacity", text)
+        self.assertEqual(list(report["folded_sites"]), ["kamin_html::layout::a"])
+
+    def test_an_image_without_folding_has_no_warning(self):
+        report, text = self.report(FoldedSymbols(NAMES, folded=False))
+        self.assertEqual(report["warnings"], [])
+        self.assertNotIn("ICF", text)
+
+    def test_a_pdb_without_function_records_is_warned_about(self):
+        _, text = self.report(FoldedSymbols(NAMES, functions=0, folded=False))
+        self.assertIn("WARNING cand: the PDB beside the exe has no function records", text)
+
+
+class RunCommand(unittest.TestCase):
+    def setUp(self):
+        self.out = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, self.out, True)
+        for name in ("Symbols",):
+            self.addCleanup(setattr, memprof, name, getattr(memprof, name))
+        memprof.Symbols = lambda exe, base: FakeSymbols(NAMES)
+        original = memprof.subprocess.run
+        self.addCleanup(setattr, memprof.subprocess, "run", original)
+        self.seen = []
+
+        def bench(command, env, **_):
+            # The previous side's probe file must be gone before the next side writes its own.
+            self.seen.append(sorted(p.name for p in self.out.glob("*.stacks")))
+            pathlib.Path(env["ENGINE_BENCH_ALLOC_STACKS_OUT"]).write_text(
+                "# engine_bench alloc stacks v3 base=0 filter=*@0-2 until=paint sample=0\na 1 layout 100 10 1 2\n",
+                encoding="utf-8")
+            return __import__("types").SimpleNamespace(returncode=0)
+
+        memprof.subprocess.run = bench
+
+    def run_memprof(self, *extra):
+        with unittest.mock.patch("sys.stdout", io.StringIO()), unittest.mock.patch("sys.stderr", io.StringIO()):
+            memprof.main(["run", "--exe", "c.exe", "--base-exe", "b.exe", "--at", "paint@2", "--out", str(self.out),
+                          "--min-free-gb", "0", *extra, "--", "p.html"])
+
+    def test_each_probe_file_is_removed_once_folded(self):
+        self.run_memprof()
+        self.assertEqual(self.seen, [[], []])
+        self.assertEqual(list(self.out.glob("*.stacks")), [])
+        report = json.loads((self.out / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["subsystems"][0]["cand_bytes"], 100)
+        self.assertIn("by subsystem", (self.out / "report.txt").read_text(encoding="utf-8"))
+
+    def test_keep_stacks_leaves_the_probe_files(self):
+        self.run_memprof("--keep-stacks")
+        self.assertEqual(sorted(p.name for p in self.out.glob("*.stacks")), ["base.stacks", "cand.stacks"])
+
+    def test_a_hold_file_stops_the_run_before_the_bench_starts(self):
+        hold = self.out / "HOLD-PAIRS"
+        hold.write_text("someone measures", encoding="utf-8")
+        with unittest.mock.patch.dict(memprof.os.environ, {"KAMIN_BENCH_HOLD": str(self.out / "HOLD*")}):
+            with self.assertRaises(SystemExit) as stop:
+                self.run_memprof()
+            self.assertIn("HOLD-PAIRS", str(stop.exception))
+            self.assertEqual(self.seen, [])
+            self.run_memprof("--ignore-hold")
+        self.assertEqual(len(self.seen), 2)
+
+    def test_an_exact_run_needs_free_disk_space(self):
+        with self.assertRaises(SystemExit) as stop:
+            with unittest.mock.patch("sys.stderr", io.StringIO()):
+                memprof.main(["run", "--exe", "c.exe", "--at", "paint@2", "--out", str(self.out),
+                              "--min-free-gb", "1e9", "--", "p.html"])
+        self.assertIn("GiB free", str(stop.exception))
+        self.assertEqual(self.seen, [])
+
+
+class Build(unittest.TestCase):
+    def test_flags_keep_the_config_and_add_noicf(self):
+        import memprof_build
+
+        root = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, root, True)
+        (root / ".cargo").mkdir()
+        (root / ".cargo" / "config.toml").write_text(
+            '[target.x86_64-pc-windows-msvc]\nrustflags = ["-C", "link-args=/STACK:8388608"]\n', encoding="utf-8")
+        flags = memprof_build.rustflags(root)
+        self.assertEqual(flags, ["-C", "link-args=/STACK:8388608", "-C", "link-arg=/OPT:NOICF"])
+        self.assertEqual(memprof_build.expected_stack(flags), 8388608)
+        self.assertEqual(memprof_build.rustflags(root / "absent"), ["-C", "link-arg=/OPT:NOICF"])
+
+    def test_the_repository_config_keeps_its_stack_in_the_profiler_build(self):
+        import memprof_build
+
+        flags = memprof_build.rustflags(pathlib.Path(__file__).resolve().parent.parent)
+        self.assertEqual(memprof_build.expected_stack(flags), 8 << 20)
+        self.assertEqual(flags[-2:], memprof_build.NOICF)
+
+    @unittest.skipUnless(sys.platform == "win32", "reads a PE image")
+    def test_stack_reserve_is_read_from_the_pe_header(self):
+        import memprof_build
+
+        self.assertGreater(memprof_build.stack_reserve(sys.executable), 0)
 
 
 @unittest.skipUnless(sys.platform == "win32", "memprof ws reads Windows process memory")

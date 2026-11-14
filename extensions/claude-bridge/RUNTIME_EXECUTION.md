@@ -164,6 +164,15 @@ BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа �
     [#813](https://github.com/dykamino-coder/gpui-kamin-ide/pull/813).
   - #797 и #804 ведёт лид.
 
+### Дополнение 2026-11-14: слитые после 1.0.99 fixes
+
+Оба PR приняты `kmaint2` после выпуска 1.0.99 и ждут следующего релиза.
+
+| ID | PR | Статус | Остаточный gate / следующий шаг |
+| --- | --- | --- | --- |
+| [INC-0107](runtime-issues/INC-2026-0107.md) | [#869](https://github.com/dykamino-coder/gpui-kamin-ide/pull/869) (`ce1e7954`) | bounded-часть слита; Windows gate 13/13 на `882449b5` (priv #193) | остаются argument conditions для prompt/agent/mcp_tool — cxinc, нужно решение лида по механизму CLI; карточка открыта |
+| [INC-0117](runtime-issues/INC-2026-0117.md) | [#895](https://github.com/dykamino-coder/gpui-kamin-ide/pull/895) (`5458767b`) | verify: fix слит, CI зелёный на объединённой голове | exact-RGB на `main` в пачке после merge — лид; чистый прогон закрывает карточку |
+
 ### Вне пачки (backlog следующего запуска)
 
 - INC-0085 — owner engine (см. выше).
@@ -473,7 +482,7 @@ production-run требует repository secrets и отдельный след�
 | [BR-05](RUNTIME_RELIABILITY.md#br-05--rehydrate-authoritative-connection-state) | done | none | connection | none | #14, #879 merged; 2026-11-14 на опубликованном 1.0.97: max-sessions и session-not-found passed (priv #182); причина отказа — BR-05B | — |
 | [BR-05B](RUNTIME_RELIABILITY.md#br-05b--tell-the-user-why-the-bridge-server-refused-a-tab) | done | none | connection | none | Fix #898 merged 2026-11-14 (`60357f3e`); live check на 1.0.97 + бандл кандидата passed (priv #187); опубликовано в 1.0.98 | — |
 | [BR-05A](RUNTIME_RELIABILITY.md#br-05a--do-not-grow-the-warm-pool-on-an-extension-host-respawn) | done | none | connection | none | Fix PR #885 merged 2026-11-14; automated acceptance: respawn test fails on the old code, passes on main; опубликовано в 1.0.97, на установленном кандидате респаун не добавил вкладок | — |
-| [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | ready | verify | rendering/connection | BR-31 done (R6 на 1.0.97 30/30) | Повторить оба исходных Chat no-pointer сценария и Plugins; сверить duplicate/остаток |
+| [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | done | none | rendering/connection | none | 2026-11-14: остаточный гейт пройден без pointer/focus/resize — успешный plugin Update 5/5, rapid repeats, MCP add/Test/remove на опубликованном 1.0.98 (priv #191); оба Chat-сценария 3/3 на кандидате 1.0.99 (priv #192); отдельный fix не понадобился | — |
 | [BR-07](RUNTIME_RELIABILITY.md#br-07--surface-native-claude-attention-in-chat) | waiting | change | native attention | BR-11 | Минимальный tab-scoped Console banner |
 | [BR-08](RUNTIME_RELIABILITY.md#br-08--explain-unexpected-automatic-reload-skills) | waiting | observation | skills sync | telemetry PR #200 merged | Post-merge production observation of the diagnostic window (deployment owner) |
 | [BR-09](RUNTIME_RELIABILITY.md#br-09--make-agent-teams-report-delivery-explicit) | done | none | Agent Teams | код PR #15 merged; 2026-11-13 оба случая passed на authenticated стенде (CLI 2.1.322, сервер 584b5616) | Закрыто решением lead 2026-11-13: серверный prompt contract не менялся с 584b5616 до `main`, клиент проверен на main-сборке |
@@ -486,8 +495,8 @@ production-run требует repository secrets и отдельный след�
 | [BR-16](RUNTIME_RELIABILITY.md#br-16--stabilize-upward-history-scroll-anchoring) | waiting | change | chat history | classification BR-22 | Keyed-anchor PR с CEF displacement gate |
 | [BR-17](RUNTIME_RELIABILITY.md#br-17--persist-privacy-safe-bridge-server-logs) | verify | observation | server operations | PR #203 merged | Production rollout of the lifecycle volume + read-only confirmation (deployment owner) |
 | [BR-18](RUNTIME_RELIABILITY.md#br-18--keep-sessionend-relay-available-and-secret-safe-during-teardown) | done | observation | teardown | BR-17 для остаточной причины | PR #20 в `main`; trigger классифицируется по новым logs |
-| [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | done | none | local hooks | BR-18 relay fix merged | Fix #900 merged 2026-11-14 (`d8667701`): сокет закрытой вкладки живёт до закрытия сервером или 5 с; marker на кандидате: local SessionEnd выполнен 2/2 (priv #189); опубликовано в 1.0.98. Регрессия 1.0.98 (выход хоста до +5 с после закрытия вкладки) исправлена #909 (`9b508696`), войдёт в следующий релиз | — |
-| [BR-18B](RUNTIME_RELIABILITY.md#br-18b--collect-a-local-hooks-output-before-reporting-its-result) | done | none | local hooks | none | Fix #908 merged 2026-11-14 (`71ef1196`): результат хука собирается на `close` (клиент и server dispatcher), окно 1 с после `exit`; автоматическая приёмка: тесты падают на старом коде; войдёт в следующий релиз | — |
+| [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | done | none | local hooks | BR-18 relay fix merged | Fix #900 merged 2026-11-14 (`d8667701`): сокет закрытой вкладки живёт до закрытия сервером или 5 с; marker на кандидате: local SessionEnd выполнен 2/2 (priv #189); опубликовано в 1.0.98. Регрессия 1.0.98 (выход хоста до +5 с после закрытия вкладки) исправлена #909 (`9b508696`), опубликовано в 1.0.99 | — |
+| [BR-18B](RUNTIME_RELIABILITY.md#br-18b--collect-a-local-hooks-output-before-reporting-its-result) | done | none | local hooks | none | Fix #908 merged 2026-11-14 (`71ef1196`): результат хука собирается на `close` (клиент и server dispatcher), окно 1 с после `exit`; автоматическая приёмка: тесты падают на старом коде; опубликовано в 1.0.99 | — |
 | [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | done | none | lifecycle RPC | none | #146, #830 merged; 2026-11-14 на опубликованном 1.0.97: отмена pick при разрыве и ошибка после reconnect passed (priv #183); устаревший QuickPick — BR-19A | — |
 | [BR-19A](RUNTIME_RELIABILITY.md#br-19a--close-host-dialogs-of-a-dropped-connection-and-answer-only-their-own-request) | done | none | lifecycle RPC | none | Fix #896 merged 2026-11-14 (`098a7493`); Windows gate на кандидате passed (priv #184); опубликовано в 1.0.98 | — |
 | [BR-20](RUNTIME_RELIABILITY.md#br-20--restore-complete-claude-plan-usage-windows) | done | none | account usage | none | PR #202 in `main`; authenticated Podman CLI/dashboard/Account gate passed on exact head; follow-up #307 in `main` reuses BR-20 `parseStatusline` for the chat input limits row (no change to BR-20 scope or status) |
