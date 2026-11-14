@@ -105,7 +105,7 @@ impl Document {
         Document {
             state,
             nodes: Rc::new(nodes),
-            retained: Default::default(),
+            retained: self.retained.following(),
             reuse: self.reuse.clone(),
             restyle: self.restyle.clone(),
             root: self.root.clone(),

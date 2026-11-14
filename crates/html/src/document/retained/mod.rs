@@ -70,6 +70,8 @@ pub(super) struct Slot {
     prepared: std::cell::RefCell<Option<prepared::Prepared>>,
     /// Сборки внутри `Window::draw` — наблюдение для тестов и стенда.
     inside_draw: Cell<u64>,
+    /// Место документа в последнем кадре: шаг собирает под ним.
+    place: std::cell::RefCell<Option<gpui::ElementPlace>>,
 }
 
 /// Опции хоста, от которых зависит кадр. Остальные поля `RenderOpts` хосту

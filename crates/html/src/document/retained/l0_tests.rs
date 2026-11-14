@@ -6,7 +6,7 @@ use super::tests::{frame, open};
 use super::{Builder, FrameKey};
 use crate::{Document, RenderOpts};
 use gpui::{
-    App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId, InspectorElementId,
+    App, AvailableSpace, Bounds, Element, ElementId, ElementPlace, GlobalElementId, InspectorElementId,
     IntoElement, LayoutId, ParentElement, Pixels, Styled, TestAppContext, Window, div, point, px,
     size,
 };
@@ -49,19 +49,28 @@ fn boxes(doc: &Document, window: &mut Window, cx: &mut App) -> Vec<Bounds<Pixels
     window.subtree_layout_bounds(id)
 }
 
+/// Builds of the frame so far, and those made inside `Window::draw`.
+fn builds(view: &gpui::Entity<super::tests::View>, cx: &mut gpui::VisualTestContext) -> (u64, u64) {
+    cx.update(|_, app| {
+        let doc = &view.read(app).doc;
+        (doc.retained_frames().0, doc.builds_inside_draw())
+    })
+}
+
 #[gpui::test]
 fn frames_are_built_by_the_step_not_inside_draw(cx: &mut TestAppContext) {
     let (view, cx) = open(cx, PAGE);
+    // The first frame places the document: only then the step knows where.
     frame(cx);
+    let (built, inside) = builds(&view, cx);
     frame(cx);
     cx.update(|_, app| view.update(app, |v, _| v.viewport = (500., 300.)));
     frame(cx);
-    let (builds, inside) = cx.update(|_, app| {
-        let doc = &view.read(app).doc;
-        (doc.retained_frames().0, doc.builds_inside_draw())
-    });
-    assert!(builds >= 2, "the step built no frame: {builds}");
-    assert_eq!(inside, 0, "frames were built inside draw");
+    cx.update(|_, app| view.update(app, |v, _| v.viewport = (450., 280.)));
+    frame(cx);
+    let (built_after, inside_after) = builds(&view, cx);
+    assert!(built_after >= built + 2, "the step built no frame: {built} -> {built_after}");
+    assert_eq!(inside_after, inside, "frames were built inside draw");
 }
 
 fn same_boxes(html: &str, cx: &mut TestAppContext) {
@@ -73,9 +82,12 @@ fn same_boxes(html: &str, cx: &mut TestAppContext) {
         *seen.borrow_mut() = boxes(&doc, window, app);
         div()
     });
-    let outside =
-        cx.update(|window, app| window.with_layout_outside_draw(app, |w, app| boxes(&doc, w, app)));
-    let read = cx.update(|window, app| window.with_layout_read(app, |w, app| boxes(&doc, w, app)));
+    let place = ElementPlace::default();
+    let outside = cx.update(|window, app| {
+        window.with_layout_outside_draw(&place, app, |w, app| boxes(&doc, w, app))
+    });
+    let read =
+        cx.update(|window, app| window.with_layout_read(&place, app, |w, app| boxes(&doc, w, app)));
     let inside = inside.borrow();
     assert!(inside.len() > 10, "too few boxes: {}", inside.len());
     assert_eq!(*inside, outside, "the step placed a box elsewhere");
@@ -96,10 +108,11 @@ fn the_step_places_every_box_of_a_deep_chain_where_the_frame_does(cx: &mut TestA
 fn reads_between_frames_leave_no_elements_lines_or_states(cx: &mut TestAppContext) {
     let (view, cx) = open(cx, PAGE);
     frame(cx);
+    let (_, inside) = builds(&view, cx);
     let before = cx.update(|window, app| window.layout_footprint(app));
     for _ in 0..5 {
         cx.update(|window, app| {
-            window.with_layout_read(app, |w, app| {
+            window.with_layout_read(&ElementPlace::default(), app, |w, app| {
                 view.update(app, |v, cx| {
                     let kids = v.doc.render(&opts());
                     let mut tree = div().w(px(400.)).children(kids).into_any_element();
@@ -112,9 +125,9 @@ fn reads_between_frames_leave_no_elements_lines_or_states(cx: &mut TestAppContex
     }
     let after = cx.update(|window, app| window.layout_footprint(app));
     assert_eq!(before, after, "reads left a trace between frames");
+    cx.update(|_, app| view.update(app, |v, _| v.viewport = (500., 300.)));
     frame(cx);
-    let inside = cx.update(|_, app| view.read(app).doc.builds_inside_draw());
-    assert_eq!(inside, 0);
+    assert_eq!(builds(&view, cx).1, inside, "a frame after reads was built inside draw");
 }
 
 /// Counts its layouts in its element state.
@@ -181,7 +194,7 @@ fn a_frame_takes_the_element_state_a_read_moved(cx: &mut TestAppContext) {
     cx.draw(point(px(0.), px(0.)), space, |_, _| Counter(n.clone()));
     assert_eq!(n.get(), 1);
     let set_aside = cx.update(|window, app| {
-        window.with_layout_read(app, |w, app| {
+        window.with_layout_read(&ElementPlace::default(), app, |w, app| {
             let mut el = Counter(n.clone()).into_any_element();
             el.layout_as_root(space.map(AvailableSpace::Definite), w, app);
         });

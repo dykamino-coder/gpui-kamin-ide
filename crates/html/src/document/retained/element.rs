@@ -29,9 +29,9 @@ pub(super) struct Retained {
     /// Кадры, заказанные поддеревом на этом кадре: такой кадр не устоялся.
     scheduled: usize,
     replay: bool,
-    /// Дерево собрано и разложено шагом документа до кадра (`prepared`):
-    /// коробка области просмотра — лист её размера.
-    laid_out: bool,
+    /// Дерево собрано и разложено шагом документа до кадра (`prepared`) для
+    /// этого места в кадре: коробка области просмотра — лист её размера.
+    laid_out: Option<gpui::ElementPlace>,
 }
 
 impl Retained {
@@ -51,7 +51,7 @@ impl Retained {
                 flow: prepared.flow,
                 scheduled: prepared.scheduled,
                 replay: false,
-                laid_out: true,
+                laid_out: Some(prepared.place),
             };
         }
         let (tree, flow) = if candidate {
@@ -70,7 +70,7 @@ impl Retained {
             flow,
             scheduled: 0,
             replay: false,
-            laid_out: false,
+            laid_out: None,
         }
     }
 
@@ -116,9 +116,12 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
+        self.adopt_place(window.element_place());
         let before = window.next_frame_callback_count();
         let id = match self.tree.as_mut() {
-            Some(_) if self.laid_out => window.request_layout(self.viewport_style(), None, cx),
+            Some(_) if self.laid_out.is_some() => {
+                window.request_layout(self.viewport_style(), None, cx)
+            }
             Some(tree) => {
                 let keys = self.builder.layout_keys;
                 window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
@@ -175,7 +178,7 @@ impl Element for Retained {
             }
             let prepaint = match self.tree.as_mut() {
                 // Разложено корнем до кадра: на место, как в `build_in`.
-                Some(tree) if self.laid_out => {
+                Some(tree) if self.laid_out.is_some() => {
                     window
                         .record_retained_prepaint(|window| tree.prepaint_at(bounds.origin, window, cx))
                         .1

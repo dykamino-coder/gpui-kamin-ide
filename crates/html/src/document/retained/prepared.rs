@@ -12,7 +12,7 @@
 use super::{Builder, FrameKey, Slot};
 use crate::Document;
 use crate::layout::reuse::FlowReuse;
-use gpui::{AnyElement, App, AvailableSpace, Window, px, size};
+use gpui::{AnyElement, App, AvailableSpace, ElementPlace, Window, px, size};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -25,6 +25,8 @@ pub(super) struct Prepared {
     pub(super) flow: Option<Rc<FlowReuse>>,
     /// Кадры, заказанные сборкой и раскладкой шага.
     pub(super) scheduled: usize,
+    /// Место в кадре, под которым дерево собрано.
+    pub(super) place: ElementPlace,
 }
 
 /// Отметки шага для хоста, который меряет его фазы.
@@ -32,11 +34,29 @@ pub(super) struct Prepared {
 pub enum UpdatePhase {
     /// Дерево собрано, начинается запрос раскладки.
     Built,
+    /// Узлы раскладки запрошены, начинается её вычисление.
+    Requested,
     /// Раскладка разрешена; кадр получит готовое дерево.
     LaidOut,
 }
 
 impl Slot {
+    /// Записи следующей ревизии того же документа: место в кадре прежнее
+    /// (id документа — его записи блоков, они переживают правки).
+    pub(in crate::document) fn following(&self) -> Rc<Slot> {
+        let next = Slot::default();
+        *next.place.borrow_mut() = self.place.borrow().clone();
+        Rc::new(next)
+    }
+
+    /// Место документа в кадре, который его рисует.
+    pub(super) fn note_place(&self, place: ElementPlace) {
+        let mut known = self.place.borrow_mut();
+        if known.as_ref() != Some(&place) {
+            *known = Some(place);
+        }
+    }
+
     /// Подготовленное дерево для кадра с ключом `key`; чужое отбрасывается.
     pub(super) fn take_prepared(&self, key: &Option<FrameKey>) -> Option<Prepared> {
         let prepared = self.prepared.borrow_mut().take()?;
@@ -61,13 +81,17 @@ impl Document {
         };
         let candidate = *self.retained.recorded.borrow() == Some(key.clone())
             && self.state.values.resources_unchanged();
+        // Место узнаёт первый кадр документа; до него шаг не собирает.
+        let Some(place) = self.retained.place.borrow().clone() else {
+            return;
+        };
         if candidate {
             return;
         }
         let builder = self.frame_builder(opts, &Some(key.clone()));
         let (w, h) = builder.opts.viewport;
         let keys = builder.layout_keys;
-        window.with_layout_outside_draw(cx, |window, cx| {
+        window.with_layout_outside_draw(&place, cx, |window, cx| {
             let before = window.next_frame_callback_count();
             self.retained.builds.set(self.retained.builds.get() + 1);
             let (mut tree, flow) = builder.build(true, false);
@@ -76,7 +100,11 @@ impl Document {
                 AvailableSpace::Definite(px(w)),
                 AvailableSpace::Definite(px(h)),
             );
-            window.with_layout_keys(keys, |window| tree.layout_as_root(space, window, cx));
+            window.with_layout_keys(keys, |window| {
+                tree.request_layout(window, cx);
+                observe(UpdatePhase::Requested);
+                tree.layout_as_root(space, window, cx)
+            });
             observe(UpdatePhase::LaidOut);
             let scheduled = window.next_frame_callback_count().saturating_sub(before);
             *self.retained.prepared.borrow_mut() = Some(Prepared {
@@ -85,6 +113,7 @@ impl Document {
                 tree,
                 flow,
                 scheduled,
+                place: place.clone(),
             });
         });
     }

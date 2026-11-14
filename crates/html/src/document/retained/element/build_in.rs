@@ -1,10 +1,27 @@
-//! Сборка кадра внутри prepaint: запись не подошла, а шаг документа дерево не
-//! подготовил (или подготовленное отказала проверка заместителей).
+//! Сборка кадра внутри `Window::draw`: запись не подошла, а шаг документа
+//! дерево не подготовил, подготовил для другого места в кадре, или
+//! подготовленное отказала проверка заместителей.
 
 use super::Retained;
-use gpui::{App, AvailableSpace, Bounds, Pixels, RetainedPrepaint, Window, size};
+use gpui::{App, AvailableSpace, Bounds, ElementPlace, Pixels, RetainedPrepaint, Window, size};
 
 impl Retained {
+    /// Место документа в этом кадре. Дерево шага, собранное для другого
+    /// места, не годится: ключи состояний его элементов отличались бы от
+    /// кадра — тогда кадр собирается здесь, как без шага.
+    pub(super) fn adopt_place(&mut self, place: ElementPlace) {
+        if self.laid_out.as_ref().is_some_and(|laid| *laid != place) {
+            self.laid_out = None;
+            self.scheduled = 0;
+            self.slot.builds.set(self.slot.builds.get() + 1);
+            self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
+            let (tree, flow) = self.builder.build(true, false);
+            self.tree = Some(tree);
+            self.flow = flow;
+        }
+        self.slot.note_place(place);
+    }
+
     /// Дерево не подошло к записи: собрать и разложить в тех же границах.
     pub(super) fn build_in(
         &mut self,

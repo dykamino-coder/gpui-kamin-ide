@@ -99,6 +99,7 @@ mod box_edges;
 mod layout_inputs;
 mod retained_layout;
 mod update_rendering;
+pub use update_rendering::ElementPlace;
 pub use retained_layout::{ElementIdContext, ElementLayoutContext, RetainedLayout};
 use layout_inputs::PrepaintRoots;
 pub use layout_inputs::LayoutInputId;

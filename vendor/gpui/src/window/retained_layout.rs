@@ -6,7 +6,7 @@ use std::{cell::RefCell, rc::Rc};
 /// Цепочка идентификаторов независимо измеренного поддерева в текущем кадре.
 /// Геометрией, клипами, стилем текста и rendered view владеет вызывающий код.
 /// Снимок хранит только живых предков; копии разделяют неизменяемый срез.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct ElementIdContext(Rc<[crate::ElementId]>);
 
 /// Inputs inherited by an element constructed during deferred measurement.
