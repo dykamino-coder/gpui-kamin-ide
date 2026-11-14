@@ -2,6 +2,20 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { WorkspacePresentation } from '../src/presentation.js'
 
+test('INC-2026-0077 clears a resolved permission across views before transport acknowledgement', () => {
+  const events: any[] = []
+  const state = new WorkspacePresentation((channel, ...args) => events.push({ channel, args }))
+  state.observe({ kind: 'event', channel: 'permission-request', args: ['tab', { requestId: 'pending' }] })
+  state.observe({ kind: 'event', channel: 'permission-request', args: ['other-tab', { requestId: 'other' }] })
+  state.observe({ kind: 'event', channel: 'permission-resolved', args: ['wrong-tab', { requestId: 'pending' }] })
+  assert.equal(events.length, 0)
+  state.observe({ kind: 'event', channel: 'permission-resolved', args: ['tab', { requestId: 'pending' }] })
+  state.observe({ kind: 'event', channel: 'permission-resolved', args: ['tab', { requestId: 'pending' }] })
+  assert.deepEqual(events, [{ channel: 'workspace:question-resolved', args: ['pending'] }])
+  assert.deepEqual(state.snapshot().filter(frame => frame.channel === 'permission-request').map(frame => (frame.args as any)[1].requestId), ['other'])
+  assert.equal(state.accept({ kind: 'send', channel: 'permission-response', args: ['pending', 'allow_once'] }), false)
+})
+
 test('host retains prompts and receipts, resolves them across views and never repeats accepted text', () => {
   const events: any[] = []
   const state = new WorkspacePresentation((channel, ...args) => {

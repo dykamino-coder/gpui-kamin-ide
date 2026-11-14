@@ -82,7 +82,7 @@ pub(super) fn decorate(
             position: c.inh.text_ink.underline_pos.unwrap_or(0),
             inset,
             clone: own.reset_fragmentation.bdb_clone,
-            source: own.decor_box,
+            source: c.decor_box,
             rtl: c.wm().rtl(),
             over_lang,
             font: DecorFont {

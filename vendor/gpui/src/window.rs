@@ -75,8 +75,9 @@ mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained;
-pub(crate) use retained::{reset_ink_scopes, scoped_ink};
-pub use retained::{InkScope, InkSink, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
+pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
+pub(crate) use retained::InkSinks;
+pub use retained::{InkScope, InkSink, InkSinkList, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
 mod hit_transform;
 pub use hit_transform::PaintHitScope;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
@@ -9136,6 +9137,50 @@ fn with_element_arena_erased(callback: &mut dyn FnMut(&mut Arena)) -> Result<(),
     }
 }
 
+impl Frame {
+    /// KaminIDE patch: the frame's buffers and tables for the engine bench's memory report
+    /// (`crate::heap_report`). What listeners and element states own is not walked.
+    fn heap_report(&self, sink: &mut crate::heap_report::HeapSink) {
+        use crate::heap_report::{table, vec};
+        let path = "gpui/frame";
+        table::<((GlobalElementId, TypeId), ElementStateBox)>(sink, path, self.element_states.capacity());
+        vec(sink, path, &self.accessed_element_states);
+        vec(sink, path, &self.mouse_listeners);
+        for listener in self.mouse_listeners.iter().flatten() {
+            crate::heap_report::boxed(sink, "gpui/listeners", &**listener);
+        }
+        for state in self.element_states.values() {
+            crate::heap_report::boxed(sink, "gpui/element-states", &*state.inner);
+        }
+        vec(sink, "gpui/hitboxes", &self.hitboxes);
+        table::<(HitboxId, Rc<hit_transform::HitScope>)>(sink, path, self.hitbox_scopes.capacity());
+        table::<(usize, Option<Rc<hit_transform::HitScope>>)>(sink, path, self.hitbox_entry_scopes.capacity());
+        vec(sink, path, &self.window_control_hitboxes);
+        vec(sink, path, &self.deferred_draws);
+        vec(sink, path, &self.input_handlers);
+        vec(sink, path, &self.tooltip_requests);
+        vec(sink, path, &self.cursor_styles);
+        self.scene.heap_report(sink);
+    }
+}
+
+impl Window {
+    /// KaminIDE patch: heap blocks the window holds, by owner path, for the engine bench's
+    /// memory report (`ENGINE_BENCH_MEMORY_REPORT`): element arena, both frames with their
+    /// display lists, the layout engine and the shaped line caches. Walked only on request.
+    pub fn heap_report(&self, cx: &App, sink: &mut crate::heap_report::HeapSink) {
+        if let Ok(arena) = cx.element_arena.try_borrow() {
+            arena.heap_report(sink);
+        }
+        self.rendered_frame.heap_report(sink);
+        self.next_frame.heap_report(sink);
+        if let Some(engine) = &self.layout_engine {
+            engine.heap_report(sink);
+        }
+        self.text_system.heap_report(sink);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -9468,6 +9513,73 @@ mod tests {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
             div()
         }
+    }
+
+    /// KaminIDE patch: the open ink sinks, copied into every paint snapshot,
+    /// take the room of the list of sinks they replaced.
+    #[test]
+    fn open_ink_sinks_take_the_room_of_a_vec() {
+        use std::mem::size_of;
+        assert_eq!(
+            size_of::<crate::InkSinks>(),
+            size_of::<Vec<std::rc::Rc<crate::InkSink>>>()
+        );
+    }
+
+    /// KaminIDE patch: a wrapper that opts out of the dispatch tree
+    /// (`Element::dispatch_node`) takes no node of it; its child still does.
+    #[test]
+    fn transparent_wrappers_take_no_dispatch_node() {
+        struct Wrapper(crate::AnyElement, bool);
+        impl IntoElement for Wrapper {
+            type Element = Self;
+            fn into_element(self) -> Self { self }
+        }
+        impl crate::Element for Wrapper {
+            type RequestLayoutState = ();
+            type PrepaintState = ();
+            fn dispatch_node(&self) -> bool { self.1 }
+            fn id(&self) -> Option<crate::ElementId> { None }
+            fn source_location(&self) -> Option<&'static std::panic::Location<'static>> { None }
+            fn request_layout(
+                &mut self, _: Option<&crate::GlobalElementId>,
+                _: Option<&crate::InspectorElementId>, window: &mut Window, cx: &mut crate::App,
+            ) -> (crate::LayoutId, ()) {
+                (self.0.request_layout(window, cx), ())
+            }
+            fn prepaint(
+                &mut self, _: Option<&crate::GlobalElementId>,
+                _: Option<&crate::InspectorElementId>, _: Bounds<Pixels>, _: &mut (),
+                window: &mut Window, cx: &mut crate::App,
+            ) {
+                self.0.prepaint(window, cx);
+            }
+            fn paint(
+                &mut self, _: Option<&crate::GlobalElementId>,
+                _: Option<&crate::InspectorElementId>, _: Bounds<Pixels>, _: &mut (), _: &mut (),
+                window: &mut Window, cx: &mut crate::App,
+            ) {
+                self.0.paint(window, cx);
+            }
+        }
+        struct Wrapped(bool);
+        impl Render for Wrapped {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let node = self.0;
+                div().children((0..100).map(move |_| Wrapper(div().into_any_element(), node)))
+            }
+        }
+        let mut cx = TestAppContext::single();
+        let mut nodes = |node: bool| {
+            let window = cx.add_window(move |_, _| Wrapped(node));
+            cx.update_window(window.into(), |_, window, cx| {
+                window.draw(cx).clear(cx);
+                window.rendered_frame.dispatch_tree.len()
+            })
+            .unwrap()
+        };
+        let (with, without) = (nodes(true), nodes(false));
+        assert_eq!(with - without, 100, "each transparent wrapper took a node");
     }
 
     struct OpensWindowOnPaint {

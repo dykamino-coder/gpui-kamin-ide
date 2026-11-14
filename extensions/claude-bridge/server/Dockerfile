@@ -6,7 +6,7 @@
 # =============================================================================
 
 # ---------- Stage 1: builder ------------------------------------------------
-FROM node:22-bookworm-slim AS builder
+FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ git ca-certificates \
@@ -31,7 +31,7 @@ RUN rm -rf src/ui/node_modules
 RUN npm prune --omit=dev --no-audit --no-fund
 
 # ---------- Stage 2: runtime -----------------------------------------------
-FROM node:22-bookworm-slim AS runtime
+FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runtime
 
 # Explicit system roots are assembled by outbound-tls.ts in verified mode.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
@@ -54,7 +54,7 @@ ARG CLAUDE_CODE_CACHE_BUST=1
 # (src/core/codex/tool-gate.codex.test.ts; CI installs this exact ARG).
 # The npm package carries the native binary as a per-platform optional
 # dependency — no install script, no download from OpenAI at build time.
-ARG CODEX_VERSION=0.160.1
+ARG CODEX_VERSION=0.167.2
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" tsx@4 \
     && npm cache clean --force \
     && rm -rf /tmp/* /root/.npm
@@ -70,7 +70,7 @@ ENV BRIDGE_CODEX_VERSION=${CODEX_VERSION}
 
 # Non-root user (Claude Code refuses --dangerously-skip-permissions as root).
 RUN groupadd -r bridge && useradd -r -g bridge -m -d /home/bridge -s /bin/bash bridge \
-    && mkdir -p /app/data /app/logs/lifecycle /home/bridge/.claude \
+    && mkdir -p /app/data /app/logs/lifecycle /home/bridge/.claude /home/bridge/.codex \
     && chown -R bridge:bridge /app /home/bridge
 
 WORKDIR /app
@@ -111,7 +111,10 @@ ENV BRIDGE_LIFECYCLE_LOG_DIR=/app/data/logs/lifecycle
 
 EXPOSE 3456
 
-VOLUME ["/app/data", "/home/bridge/.claude", "/app/logs"]
+# The ChatGPT account of this server (codex-home.ts); its own volume, not inside ~/.claude.
+ENV BRIDGE_CONTAINER=1
+ENV BRIDGE_CODEX_HOME=/home/bridge/.codex
+VOLUME ["/app/data", "/home/bridge/.claude", "/home/bridge/.codex", "/app/logs"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["npx", "tsx", "bin/claude-bridge.ts"]

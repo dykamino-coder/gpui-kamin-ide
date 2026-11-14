@@ -1,5 +1,6 @@
 import type { JSX } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
+import type { ConnectionRefusal } from '../../../shared/types'
 
 interface ConnectionStatusBadgeProps {
   status: 'connected' | 'connecting' | 'disconnected' | 'error'
@@ -8,6 +9,8 @@ interface ConnectionStatusBadgeProps {
   nextRetryAt?: number
   /** Which attempt that retry will be. */
   retryAttempt?: number
+  /** Why the server keeps refusing the tab (BR-05B). */
+  refusal?: ConnectionRefusal
 }
 
 const COLOR: Record<ConnectionStatusBadgeProps['status'], string> = {
@@ -33,10 +36,19 @@ export function retryLabel(secondsLeft: number, attempt: number): string {
   return `Reconnecting — ${which}${when}. Retries continue (up to ${String(MAX_BACKOFF_S)}s apart).`
 }
 
+/** What the user is told about a refusal. Client-owned text: the server's own
+ *  close reason is never shown (see `closeCode`). */
+export function refusalLabel(refusal: ConnectionRefusal): string {
+  switch (refusal) {
+    case 'session-limit':
+      return 'The Bridge server refused this chat: this token already has the maximum number of sessions. Close another chat to free a slot.'
+  }
+}
+
 /** Compact "traffic-light" status dot — replaces the previous text badge.
  *  The chat title is the dominant chrome of the header now; status reads
  *  as a single 12-px coloured dot with the full label in a tooltip. */
-export function ConnectionStatusBadge({ status, error, nextRetryAt, retryAttempt }: ConnectionStatusBadgeProps): JSX.Element {
+export function ConnectionStatusBadge({ status, error, nextRetryAt, retryAttempt, refusal }: ConnectionStatusBadgeProps): JSX.Element {
   const pending = nextRetryAt !== undefined && status !== 'connected'
   const [, tick] = useState(0)
   useEffect(() => {
@@ -51,6 +63,7 @@ export function ConnectionStatusBadge({ status, error, nextRetryAt, retryAttempt
     const left = Math.max(0, Math.ceil((nextRetryAt - Date.now()) / 1000))
     tooltip = retryLabel(left, retryAttempt ?? 0)
   }
+  if (refusal && status !== 'connected') tooltip = `${refusalLabel(refusal)} ${tooltip}`
   const color = COLOR[status]
   return (
     <span

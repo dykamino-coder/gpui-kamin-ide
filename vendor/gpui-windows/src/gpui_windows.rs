@@ -36,7 +36,7 @@ pub(crate) use directx_renderer::*;
 pub(crate) use dispatcher::*;
 pub(crate) use display::*;
 pub(crate) use events::*;
-pub(crate) use frame_request::DrawCoordinator;
+pub(crate) use frame_request::{DrawCoordinator, post_offscreen_paint};
 pub(crate) use keyboard::*;
 pub(crate) use platform::*;
 pub(crate) use system_notifications::*;

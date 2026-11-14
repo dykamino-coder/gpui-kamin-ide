@@ -4,6 +4,7 @@
 // a result envelope.
 
 export type McpResult = {
+  isError?: boolean
   content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>
 }
 
@@ -13,9 +14,10 @@ export function textResult(text: string): McpResult {
 
 export function errorResult(message: string): McpResult {
   // Match Claude Code SDK error shape: prefix `Error: ` so the model's
-  // built-in error parsing kicks in. Anything past the colon becomes the
-  // user-visible reason.
+  // built-in error parsing kicks in, and flag the MCP result as an error so
+  // clients render and count it as a failed tool call (native is_error).
   return {
+    isError: true,
     content: [
       {
         type: 'text',

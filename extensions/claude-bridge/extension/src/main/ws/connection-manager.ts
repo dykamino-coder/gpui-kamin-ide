@@ -3,15 +3,17 @@ import * as vscode from 'vscode'
 import { randomUUID } from 'node:crypto'
 import { appendStreamingText } from '../../shared/streaming-delta'
 import type { BrowserWindow } from '@kaminide/host-compat'
-import type { AgentEngine, ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
+import type { AgentEngine, ConnectionConfig, ConnectionRefusal, ConnectionState, PermissionDecision } from '../../shared/types'
+import { engineOfModelId } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
 import type { HostDeclaration } from '../mcp/host-declaration'
 import { JsonlBatcher } from './jsonl-batcher'
 import { backgroundShellSnapshot, disposeBackgroundShells, stopBackgroundShellForOwner } from '../mcp/tools/shell'
-import { cancelMcpCall, type PendingMcpExecution } from './mcp-call-pipeline'
+import { cancelMcpCall, type PendingMcpExecution, type PendingPermissionDecision } from './mcp-call-pipeline'
 import { McpResultOutbox } from './mcp-result-outbox'
 import { ClientCommands } from './client-commands'
+import { SubmissionHandoff } from './submission-handoff'
 import { TranscriptMirror } from './transcript-mirror'
 import { toRendererConnectionState } from './connection-state'
 import { recordConversationIdentity, type IdentityAction } from '../../incident-diagnostics'
@@ -32,6 +34,7 @@ import { handleServerMessage } from './handle-server-message'
 import { chatReplayTail, isChatStoredEntry } from '../../shared/chat-stored-entries'
 import { newestInFileOrder } from '../../shared/jsonl-cache-order'
 import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, tabWorkingDirectory, type McpCallCtx } from './mcp-call-pipeline'
+import { lingerForSessionEnd } from './session-end-linger'
 
 export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
 
@@ -60,7 +63,25 @@ export interface ExtendedConnectionState {
    *  a delay that was already stale when it was written. */
   nextRetryAt?: number
   retryAttempt?: number
+  refusal?: ConnectionRefusal
   closeCode?: number
+}
+
+/** Server close code for "this token already has the maximum number of
+ *  sessions" (`session-ws.ts`, SessionAdmissionError kind `token`). */
+export const SESSION_LIMIT_CLOSE_CODE = 4002
+
+/** The refusal that stays on the tab: set by a session-limit close, kept
+ *  through the reconnect states that follow, cleared once the tab connects or
+ *  is disconnected on purpose (BR-05B). */
+export function stickyRefusal(
+  previous: ConnectionRefusal | undefined,
+  next: Pick<ExtendedConnectionState, 'status' | 'closeCode'>,
+  intentional: boolean,
+): ConnectionRefusal | undefined {
+  if (next.status === 'authenticated' || intentional) return undefined
+  if (next.closeCode === SESSION_LIMIT_CLOSE_CODE) return 'session-limit'
+  return previous
 }
 
 // Reconnect backoff constants
@@ -118,6 +139,9 @@ let lastConnectionAuthoritySequence = 0
 
 export class ConnectionManager {
   private disposed = false
+  private submissions = new SubmissionHandoff(update => this.window.webContents.send('session:submission', this.tabId, update))
+  private handoffWait?: { sessionId?: string; finish: (transferable?: string[]) => void }
+  private reconnectAfterHandoff = false
   // Shared cache of the last tree update (all connections share one tree per token)
   static lastTree: unknown[] | null = null
   // Optional callback to enrich tree with tab metadata before sending to renderer
@@ -257,7 +281,7 @@ export class ConnectionManager {
   private pendingMcpCalls = new Map<string, PendingMcpExecution>()
 
   // Permission responses waiting to be resolved
-  private pendingPermissions = new Map<string, (decision: PermissionDecision) => void>()
+  private pendingPermissions = new Map<string, (decision: PendingPermissionDecision) => void>()
 
   private idleTracker: SessionIdleTracker
 
@@ -400,6 +424,10 @@ export class ConnectionManager {
    * with auth token (or session:resume when we have a previous conversationId).
    */
   connect(): void {
+    if (this.handoffWait) {
+      this.reconnectAfterHandoff = true
+      return
+    }
     if (this.disposed) return
     if (this.ws) this.disconnect()
 
@@ -473,6 +501,9 @@ export class ConnectionManager {
       // so this never actually waits except on the first cold-launch session.
       const sock = this.ws
       if (sock) void this.startSession(sock)
+      // The session's first Bash/Grep call should not pay for the shell
+      // snapshot and binary lookups; start them now, once per host.
+      void import('../mcp/tools/shell-prewarm').then((m) => m.prewarmShellTools()).catch(() => {})
     })
 
     this.ws.on('message', (raw) => {
@@ -539,7 +570,10 @@ export class ConnectionManager {
       }
     }
     const host = ConnectionManager.hostDeclaration
-    const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null
+    // A replacement child has no in-memory Agent projection. A disk cursor
+    // alone can return an empty delta and never rebuild the retained panels.
+    const needsRespawnHistory = this.stateAuthorityGeneration > 1 && this.cachedJsonlEntries.length === 0
+    const cursor = this.conversationId && !this.pendingNewConversation && !needsRespawnHistory ? await this.getMirrorCursor() : null
     // A reconnect may have swapped the socket while we waited — never write to a
     // stale or closed pipe (the current socket runs its own startSession).
     if (this.ws !== sock || sock.readyState !== WebSocket.OPEN) return
@@ -863,7 +897,34 @@ export class ConnectionManager {
    * for its reattach grace window, so a quick reconnect resumes the same
    * process instead of killing + respawning on the same JSONL.
    */
-  disconnect(opts: { endSession?: boolean } = {}): void {
+  disconnectForRebind(): void {
+    if (this.handoffWait) return
+    this.intentionalDisconnect = true
+    this.cancelReconnect()
+    this.stopHeartbeat()
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      this.submissions.end([], false)
+      this.disconnect({ endSession: true })
+      return
+    }
+    const timer = setTimeout(() => finish(), 2000)
+    const finish = (transferable?: string[]) => {
+      if (!this.handoffWait) return
+      clearTimeout(timer)
+      this.handoffWait = undefined
+      this.submissions.end(transferable ?? [], transferable !== undefined)
+      // A handoff already ended the session with its own reply: no window.
+      this.disconnect({ endSession: true, linger: false })
+      const reconnect = this.reconnectAfterHandoff
+      this.reconnectAfterHandoff = false
+      if (reconnect) this.connect()
+    }
+    this.handoffWait = { sessionId: this.state.sessionId, finish }
+    try { this.ws.send(JSON.stringify({ type: 'session:end', handoff: true })) }
+    catch { finish() }
+  }
+
+  disconnect(opts: { endSession?: boolean; linger?: boolean } = {}): void {
     const terminal = opts.endSession || this.disposed
     this.intentionalDisconnect = true
     this.cancelReconnect()
@@ -871,14 +932,22 @@ export class ConnectionManager {
     this.clearEstablishTimer()
     this.clearStabilityTimer()
 
-    if (this.ws) {
-      if (opts.endSession && this.ws.readyState === WebSocket.OPEN) {
-        try {
-          this.ws.send(JSON.stringify({ type: 'session:end' }))
-        } catch {
-          /* closing anyway */
-        }
+    if (this.ws && opts.endSession && this.ws.readyState === WebSocket.OPEN) {
+      let sent = true
+      try {
+        this.ws.send(JSON.stringify({ type: 'session:end' }))
+      } catch {
+        sent = false
       }
+      // The CLI fires SessionEnd while it exits and the server relays the
+      // local hooks to this socket: keep it for that window (BR-18A).
+      if (sent && opts.linger !== false) {
+        const ctx = this.mcpCallCtx()
+        lingerForSessionEnd(this.ws, (msg, send) => runHookExecute({ ...ctx, send }, msg))
+        this.ws = null
+      }
+    }
+    if (this.ws) {
       // Remove listeners to avoid triggering reconnect on close
       this.ws.removeAllListeners()
       // close() на CONNECTING-сокете эмитит 'error' («WebSocket was closed
@@ -914,20 +983,8 @@ export class ConnectionManager {
       this.mcpResults.dispose()
       this.mcpSessionId = null
       this.recentMcpCalls.clear()
-      for (const call of this.pendingMcpCalls.values()) call.controller?.abort()
-      this.pendingMcpCalls.clear()
+      for (const id of this.pendingMcpCalls.keys()) this.abandonMcpCall(id)
     }
-    // Осиротевшие permission-промисы резолвим отказом, иначе handleMcpCall
-    // висит на await навсегда (утечка замыкания; сервер отваливается по
-    // своему таймауту без ответа).
-    for (const resolve of this.pendingPermissions.values()) {
-      try {
-        resolve('deny')
-      } catch {
-        /* ignore */
-      }
-    }
-    this.pendingPermissions.clear()
     // reconnectAttempt здесь НЕ сбрасывается: connect() при живом сокете
     // зовёт disconnect(), и сброс превращал backoff в вечный 1-секундный
     // цикл при «CLI умирает сразу после спавна». Сброс делают stability-
@@ -941,6 +998,7 @@ export class ConnectionManager {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    this.handoffWait?.finish()
     this.disconnect()
   }
 
@@ -973,10 +1031,12 @@ export class ConnectionManager {
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
    *  paste+retry dance. */
   submitText(text: string, submissionId?: string): void {
+    if (submissionId) this.submissions.remember(submissionId, text)
     this.send({ type: 'session:submitText', data: text, submissionId })
   }
 
   submissionAction(id: string, action: 'cancel' | 'push' | 'interrupt'): void {
+    if (this.submissions.action(id, action, this.state.status === 'authenticated', (text, id) => this.submitText(text, id))) return
     this.send({ type: 'session:submission-action', id, action })
   }
 
@@ -1010,6 +1070,19 @@ export class ConnectionManager {
     void this.deliverMcpResult({ type: 'mcp:denied', requestId, reason })
   }
 
+  /** A server session that ended cannot acknowledge its pending calls. */
+  private abandonMcpCall(requestId: string): void {
+    const call = this.pendingMcpCalls.get(requestId)
+    if (!call) return
+    call.controller?.abort()
+    this.pendingPermissions.get(requestId)?.('cancelled')
+    this.pendingMcpCalls.delete(requestId)
+    this.window.webContents.send('mcp-activity', this.tabId, {
+      requestId, toolName: call.toolName, input: call.input, timestamp: Date.now(),
+      status: 'denied', result: 'MCP call cancelled: session ended',
+    })
+  }
+
   private reportMcpDeliveryFailure(): void {
     void vscode.window.showWarningMessage(
       'Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing.',
@@ -1019,13 +1092,14 @@ export class ConnectionManager {
   private async deliverMcpResult(
     outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>,
   ): Promise<void> {
-    if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return
+    const call = this.pendingMcpCalls.get(outcome.requestId)
+    if (!call || !this.mcpSessionId) return
     try {
       outcome = await this.mcpResults.deliver(this.mcpSessionId, {
         ...outcome,
         taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner,
       })
-      if (!this.pendingMcpCalls.has(outcome.requestId)) return
+      if (this.pendingMcpCalls.get(outcome.requestId) !== call) return
       this.window.webContents.send('mcp-activity', this.tabId, {
         requestId: outcome.requestId,
         toolName: '',
@@ -1035,7 +1109,7 @@ export class ConnectionManager {
         result: outcome.type === 'mcp:response' ? outcome.result : outcome.reason,
       })
     } catch (error) {
-      if (!this.pendingMcpCalls.has(outcome.requestId)) return
+      if (this.pendingMcpCalls.get(outcome.requestId) !== call) return
       this.reportMcpDeliveryFailure()
       this.window.webContents.send('mcp-activity', this.tabId, {
         requestId: outcome.requestId,
@@ -1046,7 +1120,7 @@ export class ConnectionManager {
         result: `Delivery failed: ${String(error)}`,
       })
     } finally {
-      this.pendingMcpCalls.delete(outcome.requestId)
+      if (this.pendingMcpCalls.get(outcome.requestId) === call) this.pendingMcpCalls.delete(outcome.requestId)
     }
   }
 
@@ -1089,12 +1163,17 @@ export class ConnectionManager {
   }
 
   replayJsonlToRenderer(): void {
+    this.submissions.replay()
     this.requestedSegment = null
     // Flush any in-flight IPC batches FIRST. Otherwise the renderer sees the
     // stale cache first and a 50ms-later batch with overlapping entries
     // second, which confuses dedup + scroll-pinning.
     this.batcher.flushMain()
     this.batcher.flushSubagent()
+
+    // A replacement child has not received authoritative history yet. Closing
+    // an empty synthetic replay here would erase the retained Agents snapshot.
+    if (!this.cachedJsonlStatus && this.cachedJsonlEntries.length === 0) return
 
     // Reset the renderer's live flag so it re-enters replay mode. Without
     // this, a tab that previously saw `replayComplete` would treat the
@@ -1236,10 +1315,40 @@ export class ConnectionManager {
     this.send({ type: 'session:change-effort', effort })
   }
 
-  /** Request model change (triggers PTY restart on server). */
+  /** Request model change (triggers PTY restart on server). A model of the
+   *  other engine continues this chat on that engine (same tab, same
+   *  conversation): the server stops this engine and starts the other one
+   *  with the conversation so far. */
   changeModel(model: string): void {
+    const engine = engineOfModelId(model)
+    if (engine !== this.getEngine()) {
+      this.switchEngine(engine, model)
+      return
+    }
     this.chosenModel = model
     this.send({ type: 'session:change-model', model })
+  }
+
+  /** Continue the chat on `engine`; session:restarted reports the result. */
+  switchEngine(engine: AgentEngine, model: string): void {
+    this.switchUndo ??= { engine: this.config.engine, chosenModel: this.chosenModel }
+    this.chosenModel = model
+    // A reconnect before the conversation is known creates the chat again:
+    // on the engine it runs now.
+    this.config = { ...this.config, engine }
+    this.send({ type: 'session:switch-engine', engine, model })
+  }
+
+  /** What a pending engine switch changed in the tab; a refusal restores it. */
+  private switchUndo: { engine: AgentEngine | undefined; chosenModel: string | null } | null = null
+
+  /** The server reported the switch: done, or refused (the chat stays on its engine). */
+  private settleEngineSwitch(ok: boolean): void {
+    const undo = this.switchUndo
+    this.switchUndo = null
+    if (ok || !undo) return
+    this.config = { ...this.config, engine: undo.engine }
+    this.chosenModel = undo.chosenModel
   }
 
   /** The chat's agent: the tab's request until the server reports the real one. */
@@ -1436,6 +1545,15 @@ export class ConnectionManager {
 
   private dispatchMessage(msg: ServerMessage): void {
     if (this.disposed) return
+    if (msg.type === 'session:handoff') {
+      if (msg.sessionId === this.handoffWait?.sessionId) this.handoffWait?.finish(msg.transferable)
+      return
+    }
+    if (msg.type === 'session:submission') {
+      this.submissions.receive(msg)
+      msg = { ...msg, retryable: false }
+      if (msg.known) msg = { ...msg, known: [...new Set([...msg.known, ...this.submissions.tracked()])] }
+    }
     if (msg.type === 'session:resume-not-found' || (msg.type === 'session:created' && msg.resumeNotFound)) {
       // Old servers ignored the opt-in and already spawned: end the temporary
       // CLI before exposing any authenticated state, output, or identity.
@@ -1654,11 +1772,15 @@ export class ConnectionManager {
         this.lastSegmentIndex = index
       },
       isIntentionallyDisconnected: () => this.intentionalDisconnect,
-      notifyAuthenticated: () => ConnectionManager.onAuthenticated?.(this),
+      notifyAuthenticated: () => {
+        this.submissions.resume((text, id) => this.submitText(text, id))
+        ConnectionManager.onAuthenticated?.(this)
+      },
       notifyElicitationRequest: (p) => ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => ConnectionManager.onConversationId?.(this.tabId, id),
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
+      settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),
       notifyAgentPreferences: (engine) => ConnectionManager.onAgentPreferences?.(this.tabId, engine),
       notifySessionInfo: (effort, model) => {
         // Снимок для claude-bridge.getSessionInfo (тест-команды).
@@ -1729,6 +1851,8 @@ export class ConnectionManager {
   /** Update internal state and notify renderer via IPC. */
   private setState(state: ExtendedConnectionState): void {
     if (this.identityHold && state.status !== 'authenticated') state = { ...state, resumeNotFound: true }
+    const refusal = stickyRefusal(this.state.refusal, state, this.intentionalDisconnect)
+    if (refusal !== state.refusal) state = { ...state, refusal }
     this.state = state
     this.stateRevision++
     // Session confirmed — the establish watchdog did its job; disarm + reset.
@@ -1739,8 +1863,7 @@ export class ConnectionManager {
         if (this.mcpSessionId && this.mcpSessionId !== state.sessionId) {
           for (const [id, call] of this.pendingMcpCalls) {
             if (!call.taskOwner || call.taskOwner !== this.mcpTaskOwner) {
-              call.controller?.abort()
-              this.pendingMcpCalls.delete(id)
+              this.abandonMcpCall(id)
             }
           }
           this.recentMcpCalls.clear()
@@ -1751,6 +1874,9 @@ export class ConnectionManager {
     } else {
       this.mcpResults.detach()
       this.commands.reset()
+      // Both an explicit disconnect and transport loss cancel unanswered asks.
+      // Reattach may deliver the denial, but cannot reopen the old approval.
+      for (const resolve of this.pendingPermissions.values()) resolve('disconnected')
     }
     const rendererState = this.getState()
     this.window.webContents.send('connection-state-changed', this.tabId, rendererState)

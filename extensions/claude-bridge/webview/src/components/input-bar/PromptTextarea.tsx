@@ -2,6 +2,7 @@ import type { JSX, RefObject } from 'preact'
 import { useRef, useEffect } from 'preact/hooks'
 import { tabPromptReady, tabPromptVisible, mcpLoading } from '../../signals/connection'
 import { activeTabId, tabs } from '../../signals/tabs'
+import type { ConnectionRefusal } from '../../../shared/types'
 
 interface PromptTextareaProps {
   textareaRef?: RefObject<HTMLTextAreaElement | null>
@@ -10,8 +11,12 @@ interface PromptTextareaProps {
   onPaste: (e: ClipboardEvent) => void
 }
 
-function getPlaceholder(mcp: boolean, connStatus: string, promptReady: boolean): string {
+export function getPlaceholder(mcp: boolean, connStatus: string, promptReady: boolean, refusal?: ConnectionRefusal): string {
   if (mcp) return 'Loading MCP tools...'
+  // A refused tab keeps retrying; say why instead of a bare "Connecting" (BR-05B).
+  if (refusal === 'session-limit' && connStatus !== 'connected') {
+    return 'Session limit reached on the Bridge server — close another chat; this one connects when a slot frees'
+  }
   if (connStatus === 'disconnected' || connStatus === 'error') return 'Disconnected — waiting for bridge...'
   if (connStatus === 'connecting') return 'Connecting to bridge...'
   if (!promptReady) return 'Claude is working...'
@@ -38,7 +43,7 @@ export function PromptTextarea({ textareaRef: externalRef, onInput, onKeyDown, o
     ? 'Choose Retry or Start new conversation to continue.'
     : isBusy
     ? 'Type to queue message... (will send when ready)'
-    : getPlaceholder(mcp, connStatus, isPromptReady)
+    : getPlaceholder(mcp, connStatus, isPromptReady, tab?.refusal)
 
   function handleInput(): void {
     const el = ref.current

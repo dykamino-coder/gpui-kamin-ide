@@ -36,6 +36,7 @@ impl BoxStyle {
             element_style: _,
             try_style,
             self_node: _,
+            decor_box: _,
             cb_node: _,
             fixed_cb_node: _,
             cb_scroll_insets,

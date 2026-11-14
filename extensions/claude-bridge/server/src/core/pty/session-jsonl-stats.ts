@@ -7,6 +7,7 @@
 
 import type { PtySession } from './types'
 import type { JsonlEntry } from '../../shared/jsonl-types'
+import { isEngineUsageLine, isUsagelessItemLine } from '../../shared/engine-accounting'
 
 interface Usage {
   input_tokens?: number
@@ -34,6 +35,16 @@ export function resetJsonlStats(session: PtySession): void {
 /** Fold one parsed JSONL entry into the session's live counters. Fired for
  *  every entry the watcher parses (both the initial replay and live tail). */
 export function accumulateJsonlStats(session: PtySession, entry: JsonlEntry): void {
+  // codex: one `api_usage` line per model response; its item lines carry none.
+  if (isUsagelessItemLine(entry)) return
+  if (isEngineUsageLine(entry)) {
+    const u = (entry as { usage?: Usage }).usage ?? {}
+    const input = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+    session.contextTokens = input
+    session.assistantMessages++
+    session.totalTokens += input + (u.output_tokens ?? 0)
+    return
+  }
   if (entry.type === 'user') {
     // Tool-result rows are also `type:"user"` but aren't real user messages —
     // match session-stats-recorder's filter so the count means "prompts sent".
@@ -49,7 +60,8 @@ export function accumulateJsonlStats(session: PtySession, entry: JsonlEntry): vo
   if (u) {
     // Context window at this (latest) turn = everything fed as input. Updated on
     // every usage-bearing line so a trailing usage-less split can't zero it.
-    session.contextTokens = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+    session.contextTokens =
+      (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
   }
 
   // Count + total ONCE per message.id — skip continuation lines of the same
@@ -61,7 +73,10 @@ export function accumulateJsonlStats(session: PtySession, entry: JsonlEntry): vo
   if (id) lastAsstMsgId.set(session, id)
   session.assistantMessages++
   if (u) {
-    session.totalTokens += (u.input_tokens ?? 0) + (u.output_tokens ?? 0)
-      + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+    session.totalTokens +=
+      (u.input_tokens ?? 0) +
+      (u.output_tokens ?? 0) +
+      (u.cache_read_input_tokens ?? 0) +
+      (u.cache_creation_input_tokens ?? 0)
   }
 }

@@ -1,14 +1,9 @@
-import { signal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
 import { Card, SectionHeader } from '../shared'
 import { userColor } from '../../utils/user-colors'
-import { api } from '../../services/api-client'
-import type { UserSummary } from '../../services/api-client'
+import { refreshUsers, subscribeUserStats, users, usersLoaded } from '../../signals/users-stats'
 import { selectedTokenId, selectTokenId } from '../../signals/ui'
 import styles from './UserCards.module.css'
-
-const users = signal<UserSummary[]>([])
-const loading = signal(false)
 
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -35,30 +30,23 @@ function timeAgo(iso: string | null): string {
   return `${d}d ago`
 }
 
-export async function fetchUsers() {
-  loading.value = true
-  try {
-    users.value = await api.getUsers()
-  } catch {}
-  loading.value = false
-}
+/** Shared roster refresh (signals/users-stats.ts). */
+export const fetchUsers = refreshUsers
 
 export function UserCards() {
-  useEffect(() => {
-    fetchUsers()
-    const id = setInterval(fetchUsers, 30000)
-    return () => clearInterval(id)
-  }, [])
+  useEffect(() => subscribeUserStats(), [])
 
   const data = users.value
-  const isLoading = loading.value
+  const isLoading = !usersLoaded.value
 
   if (isLoading && data.length === 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <SectionHeader title="Users" icon="fa-solid fa-users" />
         <Card>
-          <div class={styles.loading}><i class="fa-solid fa-spinner fa-spin" /> Loading...</div>
+          <div class={styles.loading}>
+            <i class="fa-solid fa-spinner fa-spin" /> Loading...
+          </div>
         </Card>
       </div>
     )
@@ -108,31 +96,64 @@ export function UserCards() {
               </div>
               <div class={styles.statsRow}>
                 <div class={styles.stat}>
-                  <span class={styles.statValue} style={{ color: 'var(--accent-blue)' }}>{u.totalInputs}</span>
+                  <span class={styles.statValue} style={{ color: 'var(--accent-blue)' }}>
+                    {u.totalInputs}
+                  </span>
                   <span class={styles.statLabel}>Inputs</span>
                 </div>
                 <div class={styles.stat}>
-                  <span class={styles.statValue} style={{ color: 'var(--accent-purple)' }}>{fmtTokens(totalTokens)}</span>
+                  <span class={styles.statValue} style={{ color: 'var(--accent-purple)' }}>
+                    {fmtTokens(totalTokens)}
+                  </span>
                   <span class={styles.statLabel}>Tokens</span>
                 </div>
                 <div class={styles.stat}>
-                  <span class={styles.statValue} style={{ color: 'var(--accent-green)' }}>{fmtCost(u.cost)}</span>
+                  <span class={styles.statValue} style={{ color: 'var(--accent-green)' }}>
+                    {fmtCost(u.cost)}
+                  </span>
                   <span class={styles.statLabel}>Cost</span>
                 </div>
               </div>
               {totalTokens > 0 && (
                 <div class={styles.tokenBar}>
-                  <div class={styles.tokenSegment} style={{ flex: u.tokens.input, background: 'var(--accent-blue)' }} title={`Input: ${fmtTokens(u.tokens.input)}`} />
-                  <div class={styles.tokenSegment} style={{ flex: u.tokens.output, background: 'var(--accent-purple)' }} title={`Output: ${fmtTokens(u.tokens.output)}`} />
-                  <div class={styles.tokenSegment} style={{ flex: u.tokens.cacheRead, background: 'var(--accent-green)' }} title={`Cache Read: ${fmtTokens(u.tokens.cacheRead)}`} />
-                  <div class={styles.tokenSegment} style={{ flex: u.tokens.cacheCreation, background: 'var(--accent-yellow)' }} title={`Cache Write: ${fmtTokens(u.tokens.cacheCreation)}`} />
+                  <div
+                    class={styles.tokenSegment}
+                    style={{ flex: u.tokens.input, background: 'var(--accent-blue)' }}
+                    title={`Input: ${fmtTokens(u.tokens.input)}`}
+                  />
+                  <div
+                    class={styles.tokenSegment}
+                    style={{ flex: u.tokens.output, background: 'var(--accent-purple)' }}
+                    title={`Output: ${fmtTokens(u.tokens.output)}`}
+                  />
+                  <div
+                    class={styles.tokenSegment}
+                    style={{ flex: u.tokens.cacheRead, background: 'var(--accent-green)' }}
+                    title={`Cache Read: ${fmtTokens(u.tokens.cacheRead)}`}
+                  />
+                  <div
+                    class={styles.tokenSegment}
+                    style={{ flex: u.tokens.cacheCreation, background: 'var(--accent-yellow)' }}
+                    title={`Cache Write: ${fmtTokens(u.tokens.cacheCreation)}`}
+                  />
                 </div>
               )}
               <div class={styles.tokenLegend}>
-                <span><i class={styles.dot} style={{ background: 'var(--accent-blue)' }} /> In {fmtTokens(u.tokens.input)}</span>
-                <span><i class={styles.dot} style={{ background: 'var(--accent-purple)' }} /> Out {fmtTokens(u.tokens.output)}</span>
-                <span><i class={styles.dot} style={{ background: 'var(--accent-green)' }} /> Cache R {fmtTokens(u.tokens.cacheRead)}</span>
-                <span><i class={styles.dot} style={{ background: 'var(--accent-yellow)' }} /> Cache W {fmtTokens(u.tokens.cacheCreation)}</span>
+                <span>
+                  <i class={styles.dot} style={{ background: 'var(--accent-blue)' }} /> In {fmtTokens(u.tokens.input)}
+                </span>
+                <span>
+                  <i class={styles.dot} style={{ background: 'var(--accent-purple)' }} /> Out{' '}
+                  {fmtTokens(u.tokens.output)}
+                </span>
+                <span>
+                  <i class={styles.dot} style={{ background: 'var(--accent-green)' }} /> Cache R{' '}
+                  {fmtTokens(u.tokens.cacheRead)}
+                </span>
+                <span>
+                  <i class={styles.dot} style={{ background: 'var(--accent-yellow)' }} /> Cache W{' '}
+                  {fmtTokens(u.tokens.cacheCreation)}
+                </span>
               </div>
             </Card>
           )

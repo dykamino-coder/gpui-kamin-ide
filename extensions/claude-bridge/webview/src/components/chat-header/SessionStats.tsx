@@ -6,7 +6,7 @@ import { compactSegments, activeSegmentIdx } from '../../signals/compact-segment
 import { replayProgressByTab } from '../../signals/replay-progress'
 import { usageByTab } from '../../signals/session-usage'
 import { useBridge } from '../../hooks/useBridge'
-import { computeContextStats, formatCost } from '../../utils/session-cost'
+import { computeContextStats, costDisplay } from '../../utils/session-cost'
 import { CHIP_LABEL_STYLE, CHIP_STYLE, METER_TRACK_STYLE, meterFillStyle } from '../input-bar/usage-chip'
 
 // Context pressure bands — reused by color AND by the Compact button. The pct
@@ -104,6 +104,7 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
       ? 'var(--accent-orange)'
       : 'var(--text-muted)'
   const pctColor = band === 'ok' ? 'var(--text-secondary)' : barColor
+  const cost = costDisplay(s)
 
   function sendCompact(): void {
     const id = activeTabId.value
@@ -128,7 +129,7 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
     // tokens, cost, and Compact once the context is in the warn band. The row
     // drops the meters (`meters=false`) when the pills do not fit on one line.
     const meterColor = band === 'ok' ? 'var(--accent-green)' : barColor
-    const costText = costSettling ? '…' : formatCost(s.cost)
+    const costText = costSettling ? '…' : cost.text
     return (
       <>
         <span data-tooltip={contextTooltip} title={contextTooltip} style={CHIP_STYLE}>
@@ -144,8 +145,8 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
           <span style="color:var(--text-disabled)">{contextText}</span>
         </span>
         <span
-          data-tooltip={costSettling ? 'Session cost finalises once history finishes loading' : 'Session cost (estimate)'}
-          title={costSettling ? 'Session cost finalises once history finishes loading' : 'Session cost (estimate)'}
+          data-tooltip={costSettling ? 'Session cost finalises once history finishes loading' : cost.tooltip}
+          title={costSettling ? 'Session cost finalises once history finishes loading' : cost.tooltip}
           style={CHIP_STYLE}
         >
           <span style={`color:${costSettling ? 'var(--text-disabled)' : 'var(--text-secondary)'};font-weight:600`}>{costText}</span>
@@ -168,7 +169,7 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
   return (
     <div
       class="session-stats"
-      data-tooltip={`${contextTooltip} · Session cost ≈ ${costSettling ? 'calculating…' : formatCost(s.cost)}`}
+      data-tooltip={`${contextTooltip} · ${costSettling ? 'Session cost: calculating…' : `${cost.tooltip}: ${cost.text}`}`}
       style="display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);line-height:1;font-variant-numeric:tabular-nums"
     >
       {s.pct !== null && <div style="width:60px;height:4px;background:var(--bg-surface);border-radius:var(--radius-xs);overflow:hidden;flex-shrink:0">
@@ -182,7 +183,7 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
       <span style="color:var(--text-disabled)">·</span>
       {costSettling
         ? <span style="color:var(--text-disabled)" title="Session cost finalises once history finishes loading">…</span>
-        : <span>{formatCost(s.cost)}</span>}
+        : <span title={cost.tooltip}>{cost.text}</span>}
       {band !== 'ok' && (
         <button
           onClick={sendCompact}

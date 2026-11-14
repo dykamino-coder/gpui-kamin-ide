@@ -10,6 +10,7 @@
 //! [`RenderOpts::cx`]: crate::layout::options::RenderOpts::cx
 
 mod clamp;
+pub(crate) mod collect_stacks;
 mod constraints;
 mod contracts;
 pub(crate) mod conversions;

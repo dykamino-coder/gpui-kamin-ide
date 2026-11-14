@@ -29,6 +29,8 @@ pub(crate) const WM_GPUI_KEYBOARD_LAYOUT_CHANGED: u32 = WM_USER + 6;
 pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
 pub(crate) const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
 pub(crate) const WM_GPUI_END_SESSION: u32 = WM_USER + 9;
+/// KaminIDE patch: the WM_PAINT of an offscreen (message-only) window.
+pub(crate) const WM_GPUI_OFFSCREEN_PAINT: u32 = WM_USER + 10;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
@@ -102,6 +104,7 @@ impl WindowsWindowInner {
             WM_ERASEBKGND => Some(1),
             WM_NCHITTEST => self.handle_hit_test_msg(handle, lparam),
             WM_PAINT => self.handle_paint_msg(handle),
+            WM_GPUI_OFFSCREEN_PAINT => self.handle_offscreen_paint_msg(handle),
             WM_CLOSE => self.handle_close_msg(),
             WM_DESTROY => self.handle_destroy_msg(handle),
             WM_QUERYENDSESSION => Some(1),
@@ -278,9 +281,13 @@ impl WindowsWindowInner {
         // разворота, а следующие WM_PAINT пропускали отрисовку как «не
         // грязную» — окно больше, контент старый до первого события ввода
         // (замер probe: кадр есть за 0.02 с, на экране его нет).
-        self.state.resize_boost_until.set(Some(
-            std::time::Instant::now() + RESIZE_PRESENTATION_BOOST,
-        ));
+        // KaminIDE patch: an offscreen window has no compositor to lose a
+        // present, so it gets no boost (no unrequested frames after WM_SIZE).
+        if self.state.offscreen_paint.is_none() {
+            self.state.resize_boost_until.set(Some(
+                std::time::Instant::now() + RESIZE_PRESENTATION_BOOST,
+            ));
+        }
         // The new size is presented now, focused or not.
         self.draw_window(
             self.hwnd,
@@ -360,7 +367,23 @@ impl WindowsWindowInner {
             .resize_boost_until
             .get()
             .is_some_and(|t| std::time::Instant::now() < t);
-        self.draw_window(handle, NativeDraw::paint(boosted))
+        // KaminIDE patch (BR-31A): a frame the renderer dropped instead of
+        // waiting is presented now, even if the scene is unchanged.
+        let dropped = self
+            .state
+            .renderer
+            .try_borrow()
+            .is_ok_and(|renderer| renderer.needs_presentation());
+        self.draw_window(handle, NativeDraw::paint(boosted || dropped))
+    }
+
+    /// KaminIDE patch: one coalesced offscreen paint; requests arriving while
+    /// it draws post the next one.
+    fn handle_offscreen_paint_msg(&self, handle: HWND) -> Option<isize> {
+        if let Some(pending) = &self.state.offscreen_paint {
+            pending.store(false, Ordering::Release);
+        }
+        self.handle_paint_msg(handle)
     }
 
     fn handle_close_msg(&self) -> Option<isize> {

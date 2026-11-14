@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   root: '',
   sync: '',
+  effort: null as { effort: string; timestamp: string } | null,
   spawn: vi.fn((_cmd: string, _args: string[], _options: { env: Record<string, string> }) => ({
     pid: 1,
     onExit: vi.fn((_callback: (event: { exitCode: number }) => void) => ({ dispose() {} })),
@@ -16,6 +17,7 @@ const h = vi.hoisted(() => ({
   streaming: vi.fn(async () => ({ enabled: false })),
 }))
 vi.mock('node-pty', () => ({ spawn: h.spawn }))
+vi.mock('../stats/database/lifecycle', () => ({ getDataDir: () => path.join(h.root, 'data') }))
 vi.mock('../sync/routes', () => ({
   getUserSyncDir: () => h.sync,
   getProjectSyncDir: () => h.sync,
@@ -32,6 +34,7 @@ vi.mock('./session-resume-helpers', () => ({
   repairTranscriptForResume: vi.fn(),
   resolveNewestInChain: () => null,
   lastModelEntryForResume: () => null,
+  lastEffortEntryForResume: () => h.effort,
 }))
 vi.mock('./jsonl-watcher', () => ({
   JsonlWatcher: class {
@@ -73,6 +76,7 @@ beforeEach(async () => {
   vi.stubEnv('USERPROFILE', h.root)
   vi.stubEnv('BRIDGE_LIFECYCLE_LOG_DIR', path.join(h.root, 'journal'))
   h.spawn.mockClear()
+  h.effort = null
   h.streaming.mockReset().mockResolvedValue({ enabled: false })
   fs.mkdirSync(h.sync)
   fs.writeFileSync(
@@ -104,19 +108,20 @@ function launchHooks(call: (typeof h.spawn.mock.calls)[number]) {
     at < 0
       ? JSON.parse(fs.readFileSync(path.join(h.root, 'conversation', '.claude', 'settings.json'), 'utf8'))
       : JSON.parse(fs.readFileSync(args[at + 1]!, 'utf8'))
-  return settings.hooks as Record<string, Array<{ hooks: Array<{ args: string[] }> }>>
+  return settings.hooks as Record<string, Array<{ hooks: Array<{ args: string[]; url?: string }> }>>
 }
 
 async function hookStatus(call: (typeof h.spawn.mock.calls)[number], event: string, token?: string) {
-  const relay = launchHooks(call)[event]![0]!.hooks[0]!.args[1]!
-  const url = relay.match(/request\(("[^" ]+")/)![1]!
+  // Per-tool events reach the CLI as native http hooks, the rest as a relay.
+  const hook = launchHooks(call)[event]![0]!.hooks[0]!
+  const url = hook.url ?? JSON.parse(hook.args[1]!.match(/request\(("[^" ]+")/)![1]!)
   return (
     await app.request(
-      new Request(JSON.parse(url), {
+      new Request(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Bridge-Hook-Relay': 'command',
+          'X-Bridge-Hook-Relay': hook.url ? 'http' : 'command',
           Authorization: `Bearer ${token ?? call[2].env.CLAUDE_BRIDGE_HOOK_TOKEN}`,
         },
         body: JSON.stringify({ hook_event_name: event, tool_name: 'mcp__user-tools__Grep' }),
@@ -268,4 +273,46 @@ it('always acknowledges Bridge Stop and SubagentStop status hooks during an acti
       )
     }
   }
+})
+
+it('respawns a resumed conversation with its recorded effort instead of the default (INC-2026-0099)', async () => {
+  // The transcript's last assistant row ran at xhigh (chosen live via /effort);
+  // the respawn used to pass the default `--effort high`.
+  h.effort = { effort: 'xhigh', timestamp: '2026-11-11T10:00:00.000Z' }
+  const session = await core.createSession(socket, 'synthetic', 'owner', {
+    resumeConversationId: conversation,
+    bearerHash: 'owner',
+  })
+  const args = h.spawn.mock.calls[0]![1]
+  expect(args[args.indexOf('--effort') + 1]).toBe('xhigh')
+  expect(session.effort).toBe('xhigh')
+
+  // An explicit level from the caller (effort restart) still wins.
+  await core.createSession(socket, 'synthetic', 'owner', {
+    resumeConversationId: conversation,
+    bearerHash: 'owner',
+    effort: 'low',
+  })
+  const explicit = h.spawn.mock.calls[1]![1]
+  expect(explicit[explicit.indexOf('--effort') + 1]).toBe('low')
+})
+
+it('keeps the default effort when the transcript names no level the CLI accepts', async () => {
+  h.effort = { effort: 'ultra', timestamp: '2026-11-11T10:00:00.000Z' }
+  await core.createSession(socket, 'synthetic', 'owner', { resumeConversationId: conversation, bearerHash: 'owner' })
+  const args = h.spawn.mock.calls[0]![1]
+  expect(args[args.indexOf('--effort') + 1]).toBe('high')
+})
+
+it('uses a durable menu choice before the next assistant row on resume (INC-2026-0099)', async () => {
+  const choices = await import('./effort-selection')
+  choices.rememberEffortSelection(conversation, 'max', new Date('2026-11-11T10:05:00.000Z'))
+  h.effort = { effort: 'high', timestamp: '2026-11-11T10:00:00.000Z' }
+  const session = await core.createSession(socket, 'synthetic', 'owner', {
+    resumeConversationId: conversation,
+    bearerHash: 'owner',
+  })
+  const args = h.spawn.mock.calls[0]![1]
+  expect(args[args.indexOf('--effort') + 1]).toBe('max')
+  expect(session.effort).toBe('max')
 })

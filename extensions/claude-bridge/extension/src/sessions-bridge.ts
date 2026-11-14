@@ -12,6 +12,7 @@ import { setSessionActivateHandler } from "./session-activation"
 import { getDisplayedTab, onDisplayedTabChange } from "./displayed-tab"
 import { agentForNewChat, bridgeMetaFor, readBridgeMeta, type AgentChoice, type BridgeMeta } from "./agent-session"
 import { isAgentEngine } from "./shared/types"
+import { NativeRespawnState } from './native-respawn-state'
 
 // Warm pool: how long after install/config the OTHER open sessions are resumed
 // in the background, and how many at most. The delay keeps the boot bandwidth
@@ -38,7 +39,8 @@ export class SessionsBridge {
   private readonly hookDrivenTabs = new Set<string>()
   private readonly subs: kaminide.Disposable[] = []
 
-  constructor(private readonly host: BridgeHost, private readonly openChat: () => void) {}
+  private recovery: NativeRespawnState | undefined
+  constructor(private readonly host: BridgeHost, private readonly openChat: () => void, private readonly storageDir?: string) {}
 
   install(): void {
     // Bind Claude conversationId + AI title back onto the owning KaminIDE session.
@@ -122,8 +124,22 @@ export class SessionsBridge {
         this.scheduleWarmRestore()
       }
     })
-    this.onActive(kaminide.sessions.active)
-    this.scheduleWarmRestore()
+    let respawned = false
+    if (this.storageDir) {
+      const tm = this.host.getTabManager()
+      this.recovery = new NativeRespawnState(this.storageDir, tm,
+        () => this.host.getConfigStore().get(), this.tabToKamin, this.kaminToTab, () => kaminide.sessions.active)
+      respawned = this.recovery.restore(kaminide.sessions.all, kaminide.sessions.active)
+      this.subs.push({ dispose: tm.onDidChangeTabs(() => this.recovery?.save()) })
+    }
+    // A restored Bridge selection can differ from the native session sidebar.
+    // Only seed from native selection when recovery did not select a live tab.
+    if (!this.host.getTabManager().getActiveTabId()) this.onActive(kaminide.sessions.active)
+    this.recovery?.save()
+    // BR-05A: a respawn already restored the user's tab set, warm tabs included.
+    // The warm pool is for a cold start; running it again here added up to
+    // WARM_POOL_MAX more tabs per respawn, including sessions the user closed.
+    if (!respawned) this.scheduleWarmRestore()
   }
 
   // ─── Warm pool ────────────────────────────────────────────────────────────
@@ -169,6 +185,7 @@ export class SessionsBridge {
       if (tabId) {
         this.kaminToTab.set(s.id, tabId)
         this.tabToKamin.set(tabId, s.id)
+        this.recovery?.save()
       }
     }
     // Staggered webview pre-fill from the disk mirror (see PREFILL_*). If the
@@ -222,6 +239,7 @@ export class SessionsBridge {
     this.resyncTimer = setTimeout(() => {
       this.resyncTimer = null
       const tm = this.host.getTabManager()
+      tm.notifyTabListChangedPublic() // initial connection events may precede view attachment
       const active = tm.getActiveTabId()
       if (!active) return
       tm.switchTab(active) // re-send tab:switched so panels bind the right session
@@ -312,6 +330,7 @@ export class SessionsBridge {
     if (tabId) {
       this.kaminToTab.set(s.id, tabId)
       this.tabToKamin.set(tabId, s.id)
+      this.recovery?.save()
     }
     this.openChat()
   }
@@ -335,6 +354,7 @@ export class SessionsBridge {
   }
 
   dispose(): void {
+    if (this.resyncTimer) { clearTimeout(this.resyncTimer); this.resyncTimer = null }
     if (this.warmTimer) { clearTimeout(this.warmTimer); this.warmTimer = null }
     for (const t of this.prefillTimers) clearTimeout(t)
     this.prefillTimers.clear()

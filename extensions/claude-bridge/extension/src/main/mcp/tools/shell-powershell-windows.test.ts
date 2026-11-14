@@ -6,7 +6,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 vi.mock('../../plugin-helpers', () => ({ listEnabledPluginBinDirs: async () => [] }))
 const fixture = vi.hoisted(() => ({ executable: '' }))
-vi.mock('../../utils/command-runtime', () => ({ findPowerShellExecutable: async () => fixture.executable }))
+vi.mock('../../utils/command-runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../utils/command-runtime')>()),
+  findPowerShellExecutable: async () => fixture.executable,
+}))
 const directories: string[] = []
 afterEach(() => {
   for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true })

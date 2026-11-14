@@ -34,7 +34,8 @@ pub(in crate::style::computed) struct ShadowValue {
 }
 
 impl ShadowValue {
-    pub fn numeric(&self, vcx: ValueCx<'_>) -> Option<Shadow> {
+    /// Смещения, размытие и растяжение в точках; `None` — длины ещё не решены.
+    pub fn offsets(&self, vcx: ValueCx<'_>) -> Option<[f32; 4]> {
         let mut values = [0.0; 4];
         for (slot, length) in values.iter_mut().zip(self.lengths) {
             *slot = match length {
@@ -45,6 +46,11 @@ impl ShadowValue {
                 _ => return None,
             };
         }
+        Some(values)
+    }
+
+    pub fn numeric(&self, vcx: ValueCx<'_>) -> Option<Shadow> {
+        let values = self.offsets(vcx)?;
         Some(Shadow {
             x: values[0],
             y: values[1],

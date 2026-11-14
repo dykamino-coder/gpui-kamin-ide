@@ -4,7 +4,9 @@ import os from 'os'
 import { randomUUID } from 'crypto'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import { ConnectionManager } from './ws/connection-manager'
+import { endSessionEndLingers } from './ws/session-end-linger'
 import { syncUserData, syncProjectData, resetSyncTimers } from './sync/sync-client'
+import { hostGeneration } from './host-generation'
 import type { ConnectionConfig, ConnectionState, TabInfo, PermissionDecision } from '../shared/types'
 
 const _tabLogPath = path.join(os.tmpdir(), 'ocb-tab-debug.log')
@@ -46,10 +48,20 @@ export class TabManager {
   // extension consumes host activeChange events in order, so seq order == intent
   // order regardless of how the IPC frames race downstream.
   private switchSeq = 0
+  private readonly generation = hostGeneration()
+  private readonly stateListeners = new Set<() => void>()
+  onDidChangeTabs(listener: () => void): () => void {
+    this.stateListeners.add(listener)
+    return () => { this.stateListeners.delete(listener) }
+  }
+  private publishState(): void {
+    for (const listener of this.stateListeners) listener()
+  }
   /** Emit `tab:switched` with the next sequence number. The single choke point
    *  for every switch so none can slip out unsequenced. */
   private emitSwitched(tabId: string | null): void {
-    this.window.webContents.send('tab:switched', tabId, ++this.switchSeq)
+    this.window.webContents.send('tab:switched', tabId, ++this.switchSeq, this.generation)
+    this.publishState()
   }
   private window: BrowserWindow
 
@@ -147,7 +159,7 @@ export class TabManager {
     this.pendingConnect.delete(tabId)
     // Explicit user action — end the server session now (a bare socket close
     // would only detach it for the reattach grace window).
-    tab.connection.disconnect({ endSession: true })
+    tab.connection.disconnectForRebind()
   }
 
   /**
@@ -431,6 +443,8 @@ export class TabManager {
     for (const tab of this.tabs.values()) tab.connection.dispose()
     this.tabs.clear()
     this.activeTabId = null
+    // A closed tab may still hold its socket for its SessionEnd hooks.
+    endSessionEndLingers()
   }
 
   /**
@@ -546,6 +560,7 @@ export class TabManager {
       resumeNotFound: connection.resumeNotFound,
       nextRetryAt: connection.nextRetryAt,
       retryAttempt: connection.retryAttempt,
+      refusal: connection.refusal,
       effort: tab.effort,
       model: tab.model,
       engine: tab.connection.getEngine(),
@@ -557,6 +572,7 @@ export class TabManager {
   }
 
   private notifyTabListChanged(): void {
+    this.publishState()
     if (this.window.isDestroyed()) return
     this.window.webContents.send('tab:list-changed', this.listTabs())
   }

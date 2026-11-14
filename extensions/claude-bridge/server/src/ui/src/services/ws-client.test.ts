@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { wsClient } from './ws-client'
-import { cachedAccount, codexAccountEventAt, isConnected, terminalSessions } from '../signals/server'
+import { cachedAccount, codexAccountEventAt, isConnected, terminalSessions, ptySessions } from '../signals/server'
 
 // Server CI installs only server dependencies, not the dashboard.
 // This transport fixture needs mutable values, not Preact rendering.
@@ -65,6 +65,30 @@ describe('dashboard socket lifecycle (INC-2026-0014)', () => {
     vi.unstubAllGlobals()
   })
   const latest = () => Socket.instances[Socket.instances.length - 1]!
+
+  it('keeps the engine and identity of new sessions and patches live counters', () => {
+    ptySessions.value = []
+    wsClient.connect('ws://synthetic/first')
+    latest().onopen?.()
+    const push = (type: string, data: unknown) => latest().onmessage?.({ data: JSON.stringify({ type, data }) })
+    push('session:created', { sessionId: 'codex-1', tokenId: 'identity-1', userName: 'Same name', engine: 'codex' })
+    expect(ptySessions.value[0]).toMatchObject({ engine: 'codex', tokenId: 'identity-1' })
+    push('session:updated', {
+      sessionId: 'codex-1',
+      userMessages: 2,
+      assistantMessages: 3,
+      contextTokens: 4000,
+      totalTokens: 5000,
+    })
+    expect(ptySessions.value[0]).toMatchObject({
+      userMessages: 2,
+      assistantMessages: 3,
+      contextTokens: 4000,
+      totalTokens: 5000,
+    })
+    push('session:updated', { sessionId: 'codex-1', userMessages: 0 })
+    expect(ptySessions.value[0]).toMatchObject({ userMessages: 0, totalTokens: 5000 })
+  })
 
   it('does not reconnect after delayed intentional close', () => {
     wsClient.connect('ws://synthetic/first')

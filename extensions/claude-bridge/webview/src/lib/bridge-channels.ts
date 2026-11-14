@@ -203,6 +203,7 @@ export const EVENT: Record<string, string> = {
   onOutput: 'pty-output',
   onExit: 'pty-exit',
   onPermissionRequest: 'permission-request',
+  onPermissionResolved: 'permission-resolved',
   onMcpActivity: 'mcp-activity',
   onJsonlEntries: 'jsonl-entries',
   onOlderPage: 'jsonl:older-page',

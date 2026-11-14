@@ -109,6 +109,7 @@ pub(crate) fn emit(req: &Value) -> Value {
             } else {
                 name
             },
+            duration_ms: None,
             sticky: false,
             actions: Vec::new(),
         }),
@@ -124,6 +125,7 @@ pub(crate) fn emit(req: &Value) -> Value {
             } else {
                 Vec::new()
             },
+            duration_ms: None,
             sticky: req.get("line").and_then(Value::as_i64).unwrap_or(0) == 1,
         }),
         // {"cmd":"emit","kind":"dsDropdown"} — тоггл дропдауна семпла

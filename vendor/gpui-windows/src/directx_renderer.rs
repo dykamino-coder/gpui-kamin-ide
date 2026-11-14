@@ -48,6 +48,7 @@ mod group_atlas;
 mod group_batch;
 mod texture_pool;
 mod shader_identity;
+mod present_gate;
 use group_region::Region;
 
 pub(crate) struct DirectXRenderer {
@@ -59,6 +60,9 @@ pub(crate) struct DirectXRenderer {
     pipelines: DirectXRenderPipelines,
     direct_composition: Option<DirectComposition>,
     disable_direct_composition: bool,
+    /// KaminIDE patch: frames go to an offscreen texture, never presented
+    /// (`WindowsPlatform::set_offscreen_windows`).
+    offscreen: bool,
     font_info: &'static FontInfo,
     /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
     blur: BlurScratch,
@@ -96,6 +100,9 @@ pub(crate) struct DirectXRenderer {
     capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
     /// Идёт основная сцена кадра (не буфер группы) — её пачки и меряются.
     timing_main: bool,
+    /// KaminIDE patch (BR-31A): the last frame was not handed to the
+    /// compositor, so the next paint must present (`present_gate`).
+    unpresented: bool,
 }
 
 /// KaminIDE patch: ресурсы backdrop blur. Копия бэкбуфера (сэмплить
@@ -390,20 +397,12 @@ pub(crate) struct DirectXRendererDevices {
     annotation: Option<ID3DUserDefinedAnnotation>,
 }
 
-/// KaminIDE patch (#76): HANDLE waitable-объекта свапчейна (latency 1);
-/// закрывается при пересоздании ресурсов (device lost).
-struct FrameLatencyGate(windows::Win32::Foundation::HANDLE);
-impl Drop for FrameLatencyGate {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = windows::Win32::Foundation::CloseHandle(self.0);
-        }
-    }
-}
+use present_gate::FrameLatencyGate;
 
 struct DirectXResources {
     // Direct3D rendering objects
-    swap_chain: IDXGISwapChain1,
+    /// KaminIDE patch: `None` for an offscreen target (`new_offscreen`).
+    swap_chain: Option<IDXGISwapChain1>,
     /// KaminIDE patch (#76): см. FrameLatencyGate.
     frame_gate: Option<FrameLatencyGate>,
     render_target: Option<ID3D11Texture2D>,
@@ -503,7 +502,23 @@ impl DirectXRenderer {
         directx_devices: &DirectXDevices,
         disable_direct_composition: bool,
     ) -> Result<Self> {
-        if disable_direct_composition {
+        Self::build(hwnd, directx_devices, disable_direct_composition, false)
+    }
+
+    /// KaminIDE patch: the same device, pipelines and render target format
+    /// as a window renderer, drawing into a texture instead of a swap chain
+    /// back buffer; `present` does nothing.
+    pub(crate) fn new_offscreen(hwnd: HWND, directx_devices: &DirectXDevices) -> Result<Self> {
+        Self::build(hwnd, directx_devices, true, true)
+    }
+
+    fn build(
+        hwnd: HWND,
+        directx_devices: &DirectXDevices,
+        disable_direct_composition: bool,
+        offscreen: bool,
+    ) -> Result<Self> {
+        if disable_direct_composition && !offscreen {
             log::info!("Direct Composition is disabled.");
         }
 
@@ -511,8 +526,12 @@ impl DirectXRenderer {
             .context("Creating DirectX devices")?;
         let atlas = Arc::new(DirectXAtlas::new(&devices.device, &devices.device_context));
 
-        let resources = DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
-            .context("Creating DirectX resources")?;
+        let resources = if offscreen {
+            DirectXResources::new_offscreen(&devices, 1, 1)
+        } else {
+            DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
+        }
+        .context("Creating DirectX resources")?;
         let globals = DirectXGlobalElements::new(&devices.device)
             .context("Creating DirectX global elements")?;
         let pipelines = DirectXRenderPipelines::new(&devices.device)
@@ -524,7 +543,7 @@ impl DirectXRenderer {
             let composition = DirectComposition::new(devices.dxgi_device.as_ref().unwrap(), hwnd)
                 .context("Creating DirectComposition")?;
             composition
-                .set_swap_chain(&resources.swap_chain)
+                .set_swap_chain(resources.swap_chain()?)
                 .context("Setting swap chain for DirectComposition")?;
             Some(composition)
         };
@@ -538,6 +557,7 @@ impl DirectXRenderer {
             pipelines,
             direct_composition,
             disable_direct_composition,
+            offscreen,
             font_info: Self::get_font_info(),
             blur: BlurScratch::default(),
             gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
@@ -551,6 +571,7 @@ impl DirectXRenderer {
             height: 1,
             backdrop: None,
             skip_draws: false,
+            unpresented: false,
         })
     }
 
@@ -643,14 +664,49 @@ impl DirectXRenderer {
         // композиции DWM: на RDP-компоузере это 30-90 мс НА КАЖДЫЙ КАДР
         // (замер diag.log юзера: «презент 397-911 мс»/с) — корень задержки
         // ввода ~1.5с на слабой машине.
-        let result = unsafe {
-            self.resources
-                .as_ref()
-                .expect("resources missing")
-                .swap_chain
-                .Present(0, DXGI_PRESENT(0))
+        // KaminIDE patch: an offscreen target is complete once drawn.
+        let Some(swap_chain) = &self.resources.as_ref().expect("resources missing").swap_chain
+        else {
+            self.unpresented = false;
+            return Ok(());
         };
-        result.ok().context("Presenting swap chain failed")
+        // KaminIDE patch (BR-31A): never wait inside Present. While the GPU
+        // or the compositor is behind, a plain Present blocked the UI thread
+        // for about 1 s per frame and webview pulls waited behind it. A frame
+        // that cannot be queued now is dropped, and the next paint presents.
+        let started = std::time::Instant::now();
+        let result = unsafe { swap_chain.Present(0, DXGI_PRESENT_DO_NOT_WAIT) };
+        present_gate::count_present_call(started.elapsed());
+        let shown = present_gate::frame_shown(result)?;
+        if shown {
+            // The queued frame will signal the gate again; a dropped one
+            // keeps the count it took for the next attempt.
+            if let Some(gate) = &self.res().frame_gate {
+                gate.spend();
+            }
+        } else {
+            self.drop_frame();
+        }
+        self.unpresented = !shown;
+        Ok(())
+    }
+
+    /// KaminIDE patch (BR-31A): the frame was not handed to the compositor;
+    /// ask for a low-priority paint, which presents it (`needs_presentation`).
+    fn drop_frame(&mut self) {
+        self.unpresented = true;
+        present_gate::count_dropped_frame();
+        if !self.hwnd.is_invalid() {
+            unsafe {
+                let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(self.hwnd), None, false);
+            }
+        }
+    }
+
+    /// KaminIDE patch (BR-31A): the last frame was dropped, so the next paint
+    /// must present even if the scene is unchanged.
+    pub(crate) fn needs_presentation(&self) -> bool {
+        self.unpresented
     }
 
     pub(crate) fn handle_device_lost(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
@@ -713,22 +769,15 @@ impl DirectXRenderer {
         // KaminIDE patch: under frame capture (WPT runner) never skip a frame
         // on the compositor's latency gate — an occluded window's frames are
         // consumed rarely and the page would never be drawn.
-        if let Some(gate) = self
+        let gate_open = self
             .res()
             .frame_gate
             .as_ref()
             .filter(|_| self.capture.is_none())
-        {
-            use windows::Win32::Foundation::WAIT_TIMEOUT;
-            use windows::Win32::System::Threading::WaitForSingleObject;
-            let wait = unsafe { WaitForSingleObject(gate.0, 0) };
-            if wait == WAIT_TIMEOUT {
-                unsafe {
-                    let _ =
-                        windows::Win32::Graphics::Gdi::InvalidateRect(Some(self.hwnd), None, false);
-                }
-                return Ok(());
-            }
+            .is_none_or(FrameLatencyGate::try_take);
+        if !gate_open {
+            self.drop_frame();
+            return Ok(());
         }
         self.render(scene, background_appearance)?;
         if self.capture.is_some() {
@@ -1335,10 +1384,10 @@ impl DirectXRenderer {
         self.height = height;
 
         self.resize_with(|resources, devices| {
-            unsafe {
-                resources
-                    .swap_chain
-                    .ResizeBuffers(
+            // KaminIDE patch: an offscreen target is simply recreated.
+            if let Some(swap_chain) = &resources.swap_chain {
+                unsafe {
+                    swap_chain.ResizeBuffers(
                         BUFFER_COUNT as u32,
                         width,
                         height,
@@ -1346,6 +1395,7 @@ impl DirectXRenderer {
                         DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
                     )
                     .context("Failed to resize swap chain")?;
+                }
             }
             resources.recreate_resources(devices, width, height)
         })
@@ -2166,7 +2216,7 @@ impl DirectXResources {
             swap_chain.cast::<IDXGISwapChain2>().ok().and_then(|sc2| {
                 sc2.SetMaximumFrameLatency(1).ok()?;
                 let h = sc2.GetFrameLatencyWaitableObject();
-                (!h.is_invalid()).then_some(FrameLatencyGate(h))
+                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
             })
         };
 
@@ -2178,11 +2228,11 @@ impl DirectXResources {
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
             viewport,
-        ) = create_resources(devices, &swap_chain, width, height)?;
+        ) = create_resources(devices, Some(&swap_chain), width, height)?;
         set_rasterizer_state(&devices.device, &devices.device_context)?;
 
         Ok(Self {
-            swap_chain,
+            swap_chain: Some(swap_chain),
             frame_gate,
             render_target: Some(render_target),
             render_target_view,
@@ -2192,6 +2242,37 @@ impl DirectXResources {
             path_intermediate_srv,
             viewport,
         })
+    }
+
+    /// KaminIDE patch: a render target texture in place of a swap chain back
+    /// buffer: same format, size and single sample, no frame latency gate.
+    pub fn new_offscreen(devices: &DirectXRendererDevices, width: u32, height: u32) -> Result<Self> {
+        let (
+            render_target,
+            render_target_view,
+            path_intermediate_texture,
+            path_intermediate_srv,
+            path_intermediate_msaa_texture,
+            path_intermediate_msaa_view,
+            viewport,
+        ) = create_resources(devices, None, width, height)?;
+        set_rasterizer_state(&devices.device, &devices.device_context)?;
+        Ok(Self {
+            swap_chain: None,
+            frame_gate: None,
+            render_target: Some(render_target),
+            render_target_view,
+            path_intermediate_texture,
+            path_intermediate_msaa_texture,
+            path_intermediate_msaa_view,
+            path_intermediate_srv,
+            viewport,
+        })
+    }
+
+    /// KaminIDE patch: the swap chain of a presented (non-offscreen) target.
+    fn swap_chain(&self) -> Result<&IDXGISwapChain1> {
+        self.swap_chain.as_ref().context("offscreen target has no swap chain")
     }
 
     #[inline]
@@ -2209,7 +2290,7 @@ impl DirectXResources {
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
             viewport,
-        ) = create_resources(devices, &self.swap_chain, width, height)?;
+        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
         self.render_target = Some(render_target);
         self.render_target_view = render_target_view;
         self.path_intermediate_texture = path_intermediate_texture;
@@ -2688,7 +2769,7 @@ fn create_swap_chain(
 #[inline]
 fn create_resources(
     devices: &DirectXRendererDevices,
-    swap_chain: &IDXGISwapChain1,
+    swap_chain: Option<&IDXGISwapChain1>,
     width: u32,
     height: u32,
 ) -> Result<(
@@ -2700,8 +2781,10 @@ fn create_resources(
     Option<ID3D11RenderTargetView>,
     D3D11_VIEWPORT,
 )> {
-    let (render_target, render_target_view) =
-        create_render_target_and_its_view(swap_chain, &devices.device)?;
+    let (render_target, render_target_view) = match swap_chain {
+        Some(swap_chain) => create_render_target_and_its_view(swap_chain, &devices.device)?,
+        None => create_offscreen_target_and_its_view(&devices.device, width, height)?,
+    };
     let (path_intermediate_texture, path_intermediate_srv) =
         create_path_intermediate_texture(&devices.device, width, height)?;
     let (path_intermediate_msaa_texture, path_intermediate_msaa_view) =
@@ -2731,6 +2814,42 @@ fn create_render_target_and_its_view(
     device: &ID3D11Device,
 ) -> Result<(ID3D11Texture2D, Option<ID3D11RenderTargetView>)> {
     let render_target: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0) }?;
+    let mut render_target_view = None;
+    unsafe { device.CreateRenderTargetView(&render_target, None, Some(&mut render_target_view))? };
+    Ok((render_target, render_target_view))
+}
+
+/// KaminIDE patch: the offscreen counterpart of a swap chain back buffer
+/// (`DXGI_USAGE_RENDER_TARGET_OUTPUT` = render-target binding only), so
+/// every pass that reads the frame copies it exactly as before.
+fn offscreen_target_desc(width: u32, height: u32) -> D3D11_TEXTURE2D_DESC {
+    D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: RENDER_TARGET_FORMAT,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+        CPUAccessFlags: 0,
+        MiscFlags: 0,
+    }
+}
+
+fn create_offscreen_target_and_its_view(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+) -> Result<(ID3D11Texture2D, Option<ID3D11RenderTargetView>)> {
+    let mut render_target = None;
+    unsafe {
+        device.CreateTexture2D(&offscreen_target_desc(width, height), None, Some(&mut render_target))?
+    };
+    let render_target = render_target.context("offscreen render target")?;
     let mut render_target_view = None;
     unsafe { device.CreateRenderTargetView(&render_target, None, Some(&mut render_target_view))? };
     Ok((render_target, render_target_view))

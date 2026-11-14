@@ -1,4 +1,5 @@
-//! Headless COM ownership regressions; never create a HWND or present a frame.
+//! Headless COM ownership regressions; never create a HWND. Only `present`
+//! hands frames to a composition swap chain that no visual shows.
 
 use super::recovery::RecoveryResources;
 use super::{
@@ -16,6 +17,10 @@ use windows::Win32::{
 
 mod fixtures;
 use fixtures::*;
+// KaminIDE patch: offscreen targets share these headless fixtures.
+mod offscreen;
+// KaminIDE patch (BR-31A): dropped frames are presented by the next paint.
+mod present;
 
 #[test]
 fn effects_follow_device_generation_after_repeated_recovery() {
@@ -121,7 +126,7 @@ fn failed_resize_is_unavailable_and_same_or_different_size_retry_repairs_it() {
                 anyhow::bail!("injected ResizeBuffers failure");
             }
             unsafe {
-                resources.swap_chain.ResizeBuffers(
+                resources.swap_chain().unwrap().ResizeBuffers(
                     BUFFER_COUNT as u32,
                     size,
                     size,
@@ -133,7 +138,7 @@ fn failed_resize_is_unavailable_and_same_or_different_size_retry_repairs_it() {
                 anyhow::bail!("injected target failure");
             }
             let _target =
-                create_render_target_and_its_view(&resources.swap_chain, &devices.device)?;
+                create_render_target_and_its_view(resources.swap_chain()?, &devices.device)?;
             if stage == 2 {
                 anyhow::bail!("injected intermediate failure");
             }

@@ -66,6 +66,8 @@ impl DocumentValues {
             )),
         };
         self.font_facts.snapshot.replace(Some(snapshot.clone()));
+        // Лица набора выведены из прежнего снимка.
+        self.font_facts.faces.clear();
         snapshot
     }
 

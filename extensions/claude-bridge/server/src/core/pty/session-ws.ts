@@ -11,6 +11,7 @@ import {
   rememberCommandResult,
 } from './commands'
 import { settleMcpTask } from './mcp-tasks'
+import { traceAnswered } from './mcp-trace'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
 import type { Server as HttpServer } from 'http'
@@ -23,6 +24,7 @@ import { ResumeNotFoundError } from './session-resume-not-found'
 import { SessionAdmissionError } from './session-admission'
 import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId } from './live-switch'
 import { interruptClaudeTurn, switchClaudeModelInPlace } from './claude-turn'
+import { rememberEffortSelection } from './effort-selection'
 import {
   codexBinding,
   codexEffort as codexReasoningEffort,
@@ -31,7 +33,7 @@ import {
 } from './session-codex'
 import { isAgentEngineId } from '../engine/engines'
 import { broadcastAgentPreferences, handleAgentWsMessage, sendAgentPreferences } from './session-ws-agent'
-import { chooseEngineForNewChat } from '../engine/engine-auth'
+import { chooseEngineForNewChat, mainAgentRefusal } from '../engine/engine-auth'
 import { codexRuntime } from '../codex/codex-runtime'
 import { streamFileChunks, waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
@@ -57,6 +59,7 @@ import {
   getSession,
   restartWithEffort,
   restartWithModel,
+  switchSessionEngine,
   getSessionTree,
   deleteSessionByConversationId,
 } from './session-manager'
@@ -67,6 +70,7 @@ import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 import { notifyToolListChanged, replaceRegisteredTools } from './mcp-tool-notify'
 import { normalizeHostDeclaration, sameHostDeclaration } from './host-declaration'
+import { noteSegmentModel } from '../conversation/conversation'
 
 /**
  * Map: sessionId → WS client.
@@ -138,6 +142,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
     let authenticatedUser: string | null = null
     let authenticatedTokenId: string | null = null
     let socketGone = false
+    // An engine switch replaces the chat's session; messages sent meanwhile
+    // (a prompt typed right after the pick) wait for the new one instead of
+    // failing with 'Not authenticated' and dropping the socket.
+    let engineSwitch: Promise<unknown> | null = null
     type Startup = { reason?: 'disconnected' | 'ended' | 'replaced'; destroyReason?: DestroyReason }
     let startup: Startup | undefined
     const beginStartup = (reason: DestroyReason): Startup => {
@@ -222,6 +230,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
       } catch {
         sendError(ws, 'Invalid JSON')
         return
+      }
+      if (engineSwitch && msg.type !== 'session:end') {
+        await engineSwitch.catch(() => {})
+        if (socketGone || ws.readyState !== WS.OPEN) return
       }
 
       switch (msg.type) {
@@ -336,6 +348,14 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
 
         case 'session:end': {
+          if (msg.handoff && authenticatedSessionId) {
+            const session = getSession(authenticatedSessionId)
+            sendToClient(ws, {
+              type: 'session:handoff',
+              sessionId: authenticatedSessionId,
+              transferable: session ? (sessionCliControl(session)?.handoff() ?? []) : [],
+            })
+          }
           cancelStartup('ended')
           retireBinding('explicit_end')
           break
@@ -406,6 +426,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         case 'mcp:response':
         case 'mcp:denied': {
           if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
+          if (msg.type === 'mcp:response') traceAnswered(msg.requestId, msg.timing)
           let accepted: boolean
           try {
             const session = getSession(authenticatedSessionId)
@@ -742,6 +763,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // tick, so the dialog cannot slip past the responder.
               armSwitchConfirm(session, 'effort', msg.effort)
               session.effort = msg.effort
+              // The live `/effort` reaches only this process; a respawn reads
+              // the choice back from here (INC-2026-0099).
+              rememberEffortSelection(session.cliConversationId, msg.effort)
               ws.send(
                 JSON.stringify({
                   type: 'session:model-changed',
@@ -825,6 +849,93 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           break
         }
 
+        // A model of the other engine picked in this chat: the conversation
+        // continues on that engine, in this chat (conversation/manifest.ts).
+        case 'session:switch-engine': {
+          if (!authenticatedSessionId || !authenticatedUser) {
+            sendError(ws, 'Not authenticated — send session:create first')
+            return
+          }
+          const session = getSession(authenticatedSessionId)
+          if (!session) {
+            sendError(ws, 'Session not found')
+            return
+          }
+          const refuse = (error: string) => ws.send(JSON.stringify({ type: 'session:engine-switch-failed', error }))
+          const model = typeof msg.model === 'string' && msg.model ? msg.model : null
+          if (!isAgentEngineId(msg.engine) || (model !== null && !isSafeModelId(model))) {
+            refuse('Unsupported engine or model')
+            return
+          }
+          if ((session.engine ?? 'claude') === msg.engine) {
+            refuse('This chat already runs on that engine')
+            return
+          }
+          // The gate goes up before the first await: a prompt sent meanwhile
+          // waits for the joining engine instead of reaching the leaving one,
+          // and a second switch waits, then finds the chat already moved.
+          let switched!: () => void
+          engineSwitch = new Promise<void>((resolve) => (switched = resolve))
+          const oldSessionId = authenticatedSessionId
+          let operation: ReturnType<typeof beginStartup> | undefined
+          try {
+            const refusal = await mainAgentRefusal(msg.engine, { runtime: codexRuntime() })
+            if (refusal) {
+              refuse(refusal)
+              return
+            }
+            operation = beginStartup('engine_switch')
+            sessionWsMap.delete(oldSessionId)
+            authenticatedSessionId = null
+            const {
+              session: next,
+              timings,
+              contextBytes,
+            } = await switchSessionEngine(
+              oldSessionId,
+              { engine: msg.engine, model },
+              ws,
+              authenticatedUser,
+              session.tokenId,
+            )
+            if (!ownsStartup(operation)) {
+              releaseLateSession(next, operation)
+              return
+            }
+            authenticatedSessionId = next.id
+            sessionWsMap.set(next.id, ws)
+            ws.send(
+              JSON.stringify({
+                type: 'session:restarted',
+                sessionId: next.id,
+                mcpTaskOwner: next.mcpEndpoint?.id,
+                effort: next.effort,
+                model: next.model || model,
+                engine: next.engine ?? 'claude',
+                engineSwitch: { ...timings, contextBytes },
+              }),
+            )
+            void sendAgentPreferences(ws, session.tokenId)
+            broadcastTree(session.tokenId)
+          } catch (err) {
+            if (!operation || !ownsStartup(operation)) return
+            const errMsg = err instanceof Error ? err.message : String(err)
+            errorLog('Failed to switch engine', { error: errMsg })
+            // The switch commits only once the joining engine runs: on a
+            // failure the leaving one is still there and the tab stays on it.
+            if (getSession(oldSessionId)) {
+              authenticatedSessionId = oldSessionId
+              sessionWsMap.set(oldSessionId, ws)
+            }
+            refuse(`Failed to switch engine: ${errMsg}`)
+          } finally {
+            if (operation && startup === operation) startup = undefined
+            engineSwitch = null
+            switched()
+          }
+          break
+        }
+
         case 'session:change-model': {
           if (!authenticatedSessionId) {
             sendError(ws, 'Not authenticated — send session:create first')
@@ -861,6 +972,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               codexModel.modelChanged(next)
               session.model = next
               saveCodexChoice(session, { model: next })
+              if (session.conversation) noteSegmentModel(session.conversation, next)
             }
             ws.send(
               JSON.stringify({
@@ -874,6 +986,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             return
           }
           if (switchClaudeModelInPlace(session, authenticatedSessionId, msg.model, writeInput)) {
+            if (session.conversation) noteSegmentModel(session.conversation, msg.model)
             ws.send(
               JSON.stringify({
                 type: 'session:model-changed',

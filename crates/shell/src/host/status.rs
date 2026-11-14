@@ -209,16 +209,8 @@ pub fn request_status(tx: Sender<ShellEvent>) {
                     // aux-панель (Agents/Todos/Tools) оставалась без attach у
                     // расширения — html жил из дискового кэша, а сообщения ей
                     // никогда не шли («панель агентов пустая», прод + стенд).
-                    // resolve_webview сам по потоку; повторный resolve уже
-                    // резолвнутого вью гасится на стороне resolve-цикла хоста
-                    // дедупом html (rev не меняется — iframe не перегружается).
-                    if !crate::host_link::resolved_views()
-                        .lock()
-                        .unwrap()
-                        .contains(&v.id)
-                    {
-                        crate::host::connect::resolve_webview(v.id.clone());
-                    }
+                    // The shared request guard also covers in-flight resolves.
+                    crate::host::connect::resolve_webview(v.id.clone());
                 }
             }
             crate::activity::set_dyn_tools(dyn_tools);

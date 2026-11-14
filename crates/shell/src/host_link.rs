@@ -43,14 +43,24 @@ pub fn event_tx() -> Option<Sender<ShellEvent>> {
     EVENT_TX.get().cloned()
 }
 
-pub(crate) static CLIENT: OnceLock<Mutex<Option<Arc<WsClient>>>> = OnceLock::new();
+/// Текущее соединение: его поколение и WS-клиент. Поколение отличает
+/// отложенные ответы разных соединений (`host::deferred`, BR-19A).
+pub(crate) static CLIENT: OnceLock<Mutex<Option<Link>>> = OnceLock::new();
 
-pub(crate) fn client_slot() -> &'static Mutex<Option<Arc<WsClient>>> {
+/// Поколение соединения и его WS-клиент.
+pub(crate) type Link = (u64, Arc<WsClient>);
+
+pub(crate) fn client_slot() -> &'static Mutex<Option<Link>> {
     CLIENT.get_or_init(|| Mutex::new(None))
 }
 
 /// Текущий WS-клиент (для запросов из UI-действий).
 pub fn client() -> Option<Arc<WsClient>> {
+    current_link().map(|(_, client)| client)
+}
+
+/// Текущее соединение вместе с его поколением.
+pub(crate) fn current_link() -> Option<Link> {
     client_slot().lock().unwrap().clone()
 }
 
@@ -60,10 +70,8 @@ pub(crate) fn endpoint_slot() -> &'static Mutex<Option<HostEndpoint>> {
     ENDPOINT.get_or_init(|| Mutex::new(None))
 }
 
-pub(crate) static RESOLVED_VIEWS: OnceLock<Mutex<std::collections::HashSet<String>>> =
-    OnceLock::new();
-
-/// Вью, для которых уже пришёл HTML (гасит resolve-ретраи).
-pub(crate) fn resolved_views() -> &'static Mutex<std::collections::HashSet<String>> {
-    RESOLVED_VIEWS.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+/// Requested views and last HTML, scoped to one extension-host generation.
+pub(crate) fn view_resolution() -> &'static Mutex<crate::host::view_resolution::ViewResolution> {
+    static STATE: OnceLock<Mutex<crate::host::view_resolution::ViewResolution>> = OnceLock::new();
+    STATE.get_or_init(Default::default)
 }

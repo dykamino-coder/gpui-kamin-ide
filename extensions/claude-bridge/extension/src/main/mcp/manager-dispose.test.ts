@@ -17,7 +17,10 @@ vi.mock('./discovery', () => ({
   discoverProjectConfigs: vi.fn(async () => []),
   resolveEnvVars: (value: unknown) => value,
 }))
-vi.mock('./transports/stdio', () => ({ connectStdio: vi.fn() }))
+vi.mock('./transports/stdio', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./transports/stdio')>(),
+  connectStdio: vi.fn(),
+}))
 
 import { discoverFromClaudeJsonAsync } from './discovery'
 import { connectStdio } from './transports/stdio'

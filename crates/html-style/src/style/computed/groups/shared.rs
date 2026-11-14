@@ -104,3 +104,11 @@ mod tests {
         assert_eq!(&*delta, &[1, 2, 3, 4]);
     }
 }
+
+#[cfg(feature = "heap-report")]
+impl<T> kamin_heap::HeapSize for StyleGroup<T> {
+    fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
+        // Значение группы — свойства CSS; их собственная куча пока не измеряется.
+        ops.shallow(Rc::as_ptr(&self.0))
+    }
+}

@@ -192,6 +192,10 @@ export class JsonlWatcher {
 
   /** The slug directory where this session's JSONL files live */
   private slugDir: string | null
+  /** Where sub-agent transcripts are, when not next to the tailed file: a
+   *  multi-engine conversation tails its unified log, while the running
+   *  engine writes sub-agents under its own native session. */
+  subagentsDirOf?: () => string | null
 
   private discoveryTimer: ReturnType<typeof setInterval> | null = null
   private discoveryTimeout: ReturnType<typeof setTimeout> | null = null
@@ -226,7 +230,8 @@ export class JsonlWatcher {
   // lands mid-rebuild sets `Again` to trigger exactly one more pass afterwards.
   private rebuildingIndex = false
   private rebuildIndexAgain = false
-  private pendingStatsEnd: number | undefined
+  /** End byte of the last record folded into the live counters (foldStats). */
+  private statsOffset = 0
 
   /** Active subagent JSONL watchers (keyed by file path) */
   private subagentWatchers = new Map<string, SubagentJsonlWatcher>()
@@ -353,7 +358,7 @@ export class JsonlWatcher {
     }
 
     const conversationId = path.basename(this.filePath, '.jsonl')
-    const subagentsDir = path.join(this.slugDir, conversationId, 'subagents')
+    const subagentsDir = this.subagentsDirOf?.() ?? path.join(this.slugDir, conversationId, 'subagents')
 
     let files: string[]
     try {
@@ -789,6 +794,22 @@ export class JsonlWatcher {
     this.readInitialContent()
   }
 
+  /** Folds one record into the live dashboard counters exactly once. The
+   *  counters follow the file by byte position, whichever pass read the record
+   *  (full replay, index pass, tail) and whether or not a client took it: a
+   *  reattach re-reading the tail no longer counts it twice. */
+  private foldStats(entry: JsonlEntry, start: number, end: number): void {
+    if (start < this.statsOffset) return
+    this.statsOffset = end
+    this.onStatsEntry?.(entry)
+  }
+
+  /** Counters restart from zero; the next pass folds the file from byte 0. */
+  private resetStats(): void {
+    this.statsOffset = 0
+    this.onReplayReset?.()
+  }
+
   /** Rebuild the compact-segment index from the CURRENT file and push it to the
    *  client, so a live /compact updates the segment strip without a reload.
    *
@@ -798,9 +819,8 @@ export class JsonlWatcher {
    *
    *  Coalesced: a boundary arriving mid-rebuild sets a re-run flag rather than
    *  overlapping two parses (which could deliver stale-then-fresh out of order). */
-  private async rebuildSegmentIndex(statsEnd?: number): Promise<void> {
+  private async rebuildSegmentIndex(): Promise<void> {
     if (!this.filePath || this.stopped) return
-    if (statsEnd !== undefined) this.pendingStatsEnd = statsEnd
     if (this.rebuildingIndex) {
       this.rebuildIndexAgain = true
       return
@@ -812,8 +832,6 @@ export class JsonlWatcher {
         const filePath = this.filePath
         if (!filePath || this.stopped) return
         const gen = this.replayGen
-        const seedEnd = this.pendingStatsEnd
-        this.pendingStatsEnd = undefined
         const signal = this.replayAbort?.signal
         const live = () => !this.stopped && this.filePath === filePath && this.replayGen === gen
         const builder = this.indexBuilder?.clone() ?? new SegmentIndexBuilder()
@@ -826,7 +844,8 @@ export class JsonlWatcher {
             const parsed = parseJsonlLine(line.text)
             if (parsed) {
               builder.add(parsed, line.start)
-              if (seedEnd !== undefined && line.end <= seedEnd) this.onStatsEntry?.(parsed)
+              // The counters fill here too, so they do not wait for a client.
+              this.foldStats(parsed, line.start, line.end)
             }
             end = line.end
           }
@@ -989,7 +1008,7 @@ export class JsonlWatcher {
 
     // Full replay restarts the live dashboard counters from zero — the reads
     // below re-accumulate the whole file, so a reattach won't double-count.
-    if (this.history?.mode !== 'paged' || !this.indexBuilder) this.onReplayReset?.()
+    if (this.history?.mode !== 'paged' || !this.indexBuilder) this.resetStats()
 
     try {
       const stat = await fsp.stat(filePath)
@@ -1007,6 +1026,9 @@ export class JsonlWatcher {
       }
 
       if (this.history?.mode === 'paged') {
+        // No client to take the page (detached after a restart, for hours):
+        // fill the counters now instead of after the first delivery.
+        if (this.writable && !this.writable()) void this.rebuildSegmentIndex()
         const fp = await fingerprintTranscript(filePath)
         const cursor = this.history.cursor
         this.history.cursor = undefined
@@ -1054,7 +1076,7 @@ export class JsonlWatcher {
         // Metadata is indexed independently. Older records are requested by
         // byte cursor; they never flood and evict the visible newest window.
         this.startPolling()
-        void this.rebuildSegmentIndex(this.lastOffset)
+        void this.rebuildSegmentIndex()
         return
       }
 
@@ -1103,7 +1125,7 @@ export class JsonlWatcher {
         // replay re-inserted one fresh request row per historical prompt on
         // each resume/reattach — thousands of unawaited DuckDB writes per
         // replay of a large transcript, and an ever-growing requests table.
-        this.onStatsEntry?.(parsed)
+        this.foldStats(parsed, line.start, line.end)
       }
       if (!live()) return
       // An atomic replacement can happen while the old descriptor is read.
@@ -1382,7 +1404,11 @@ export class JsonlWatcher {
       // (a single longer record is still read whole). A client that was frozen
       // while the CLI wrote tens of MiB no longer costs one giant Buffer, one
       // giant string and one giant frame.
-      const { entries, endPos, truncated } = await this.readEntriesFromOffset(filePath, this.lastOffset, stat.size)
+      const { entries, spans, endPos, truncated } = await this.readEntriesFromOffset(
+        filePath,
+        this.lastOffset,
+        stat.size,
+      )
       if (!live()) return
       const currentStat = await fsp.stat(filePath)
       if (!live()) return
@@ -1402,6 +1428,12 @@ export class JsonlWatcher {
         return
       }
 
+      // Paged counters follow the forward index, independently of delivery.
+      // Folding a high tail offset before the index reaches older records
+      // would skip that history forever. Detached clients also need counters.
+      if (this.history?.mode === 'paged') await this.rebuildSegmentIndex()
+      if (!live()) return
+
       // Deliver BEFORE advancing the offset: if the socket cannot take the
       // frame, wait for it to drain (no re-read, no re-serialise); the offset
       // only moves past entries the client actually got, so a slow client can
@@ -1412,8 +1444,8 @@ export class JsonlWatcher {
       this.lastOffset = Math.max(this.lastOffset, endPos)
       more = truncated
       let sawBoundary = false
-      for (const parsed of entries) {
-        this.onStatsEntry?.(parsed)
+      for (const [i, parsed] of entries.entries()) {
+        if (this.history?.mode !== 'paged') this.foldStats(parsed, spans[i]![0], spans[i]![1])
         if (parsed.type === 'user' && this.onUserEntry) this.onUserEntry(parsed)
         if (parsed.type === 'system' && (parsed as { subtype?: string }).subtype === 'compact_boundary')
           sawBoundary = true
@@ -1437,8 +1469,9 @@ export class JsonlWatcher {
     filePath: string,
     offset: number,
     size: number,
-  ): Promise<{ entries: JsonlEntry[]; endPos: number; truncated: boolean }> {
+  ): Promise<{ entries: JsonlEntry[]; spans: Array<[number, number]>; endPos: number; truncated: boolean }> {
     const entries: JsonlEntry[] = []
+    const spans: Array<[number, number]> = []
     let endPos = offset
     let truncated = false
     for await (const line of readJsonlLines(filePath, { start: offset, end: size })) {
@@ -1459,6 +1492,7 @@ export class JsonlWatcher {
         } else {
           // Live records stay untagged (unchanged wire contract for the tail).
           entries.push(parsed)
+          spans.push([line.start, line.end])
           endPos = line.end
         }
       }
@@ -1467,7 +1501,7 @@ export class JsonlWatcher {
         break
       }
     }
-    return { entries, endPos, truncated }
+    return { entries, spans, endPos, truncated }
   }
 }
 

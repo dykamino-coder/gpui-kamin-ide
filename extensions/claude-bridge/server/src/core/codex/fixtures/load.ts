@@ -37,4 +37,4 @@ export function threadByPrompt(trace: TraceFrame[]): Record<string, string> {
   }
   return out
 }
-export const GATE_TRACE = 'gate-parallel-0.160.1.jsonl'
+export const GATE_TRACE = 'gate-parallel-0.167.2.jsonl'

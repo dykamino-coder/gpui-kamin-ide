@@ -109,9 +109,16 @@ export interface ConnectionState {
   /** Which attempt the pending retry will be. Retries never stop, so this is
    *  what shows the loop is alive. */
   retryAttempt?: number
+  /** Why the server keeps refusing this tab, from an allowlisted close code
+   *  (BR-05B). Stays set across retries until the tab connects. */
+  refusal?: ConnectionRefusal
   /** Allowlisted diagnostic only; the server-provided close reason is excluded. */
   closeCode?: number
 }
+
+/** A refusal the client can name without trusting server text. `session-limit`:
+ *  close code 4002, the token already has the maximum number of sessions. */
+export type ConnectionRefusal = 'session-limit'
 
 // Tab info for sidebar rendering
 export interface TabInfo {
@@ -131,6 +138,7 @@ export interface TabInfo {
    *  pending reconnect (see ConnectionStatusBadge). */
   nextRetryAt?: number
   retryAttempt?: number
+  refusal?: ConnectionRefusal
   effort?: string // current effort level (high, low, medium, default)
   model?: string // current model (opus, sonnet, haiku)
   /** The chat's agent (absent from older hosts → Claude). */
@@ -354,7 +362,7 @@ export interface KaminBridgeApi {
   getActiveTab(): Promise<string | null>
   onTabCreated(callback: (tab: TabInfo) => void): () => void
   onTabClosed(callback: (tabId: string) => void): () => void
-  onTabSwitched(callback: (tabId: string) => void): () => void
+  onTabSwitched(callback: (tabId: string, sequence?: number, generation?: number) => void): () => void
   onTabListChanged(callback: (tabs: TabInfo[]) => void): () => void
   saveTabsState(tabs: PersistedTabState[]): Promise<{ ok: boolean }>
   restoreTabsState(): Promise<PersistedTabState[]>
@@ -462,6 +470,7 @@ export interface KaminBridgeApi {
 
   // ─── MCP permissions ──────────────────────────────────
   onPermissionRequest(callback: (tabId: string, req: PermissionRequest) => void): () => void
+  onPermissionResolved(callback: (tabId: string, data: { requestId: string }) => void): () => void
   respondPermission(requestId: string, decision: PermissionDecision): void
 
   // ─── MCP activity (per-tab) ───────────────────────────
@@ -768,7 +777,8 @@ export interface KaminBridgeApi {
     callback: (
       tabId: string,
       data: {
-        sessionId: string
+        /** Absent when nothing restarted (a refused engine switch). */
+        sessionId?: string
         effort?: string
         model?: string
         inPlace?: boolean
