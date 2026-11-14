@@ -16,8 +16,9 @@ were not exercised.
 
 Merged after the release and not yet published: [#869](https://github.com/dykamino-coder/gpui-kamin-ide/pull/869) (`ce1e7954`), the bounded
 follow-up of [INC-0107](runtime-issues/INC-2026-0107.md) — Windows gate passed on
-the exact candidate, the prompt/agent/mcp_tool argument conditions stay open with
-the executor; and [#895](https://github.com/dykamino-coder/gpui-kamin-ide/pull/895) (`5458767b`) for
+the exact candidate; its follow-up [#917](https://github.com/dykamino-coder/gpui-kamin-ide/pull/917) (`410fd289`) for the prompt/agent/mcp_tool
+argument conditions, also merged after its Windows gate (`verify`, awaits a
+release); and [#895](https://github.com/dykamino-coder/gpui-kamin-ide/pull/895) (`5458767b`) for
 [INC-0117](runtime-issues/INC-2026-0117.md) — `verify`, the exact-RGB run on main
 is in the lead's post-merge batch.
 
