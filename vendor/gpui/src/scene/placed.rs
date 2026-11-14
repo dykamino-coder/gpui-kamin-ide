@@ -197,6 +197,40 @@ impl Scene {
         ReplaySource::Graft(Graft::new(std::rc::Rc::new(packed), Point::default(), None, 0), true)
     }
 
+    /// `replay_placed(&isolated, offset, clip)` of the isolated scene a plan
+    /// paints `record` into under the mask `extent` (`Window::paint_plan`),
+    /// without that scene: each command takes the same two placements in the
+    /// same order (cut by `extent` in place, then moved by `offset` and cut
+    /// by `clip`), and the record's tree is grafted through both, as the
+    /// graft of a scene that is one graft collapses. `false`, and nothing is
+    /// written, where either of the two replays would decline.
+    pub(crate) fn replay_record_placed(
+        &mut self,
+        record: &Scene,
+        extent: Bounds<ScaledPixels>,
+        offset: Point<ScaledPixels>,
+        clip: Bounds<ScaledPixels>,
+    ) -> bool {
+        if !record.groups.is_empty() || !record.hoisted_backdrops.is_empty() {
+            return false;
+        }
+        let graft = Graft::new(record.primitive_bounds.clone(), Point::default(), Some(extent), 0)
+            .and_then(|graft| graft.placed(&offset, Some(clip)));
+        let source = ReplaySource::Graft(graft, false);
+        self.replay_shifted(&record.paint_operations, source, |operation| match operation {
+            PaintOperation::Primitive(primitive) => {
+                record::geometry::primitive(primitive, Point::default(), Some(extent));
+                record::geometry::primitive(primitive, offset, Some(clip));
+                !placed_bounds(primitive).intersect(&primitive.content_mask().bounds).is_empty()
+            }
+            PaintOperation::StartLayer(bounds, _) => {
+                *bounds = record::geometry::bounds(*bounds, offset);
+                true
+            }
+            _ => true,
+        })
+    }
+
     /// Append the commands `ops` of the finished scene `source`, moved by
     /// `offset`, in one pass, with one index for all of them: the commands
     /// keep their recorded orders under one raise (`replay_shifted`), and

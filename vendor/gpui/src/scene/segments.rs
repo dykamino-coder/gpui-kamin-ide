@@ -9,8 +9,10 @@ mod clips;
 mod groups;
 mod freeze;
 mod commands;
+mod view;
 use groups::Group;
 pub(crate) use clips::{Clip, Tag};
+pub(crate) use view::SegmentView;
 
 type Routes = Rc<[PaintSegment]>;
 type ReadRoutes = Rc<dyn Fn() -> Tag>;

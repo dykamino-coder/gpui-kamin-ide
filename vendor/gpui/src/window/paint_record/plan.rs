@@ -82,6 +82,14 @@ impl PaintPlan {
         Self(commands.into())
     }
 
+    /// KaminIDE patch: the record of a plan that is one record under no scope.
+    pub(super) fn single(&self) -> Option<&PaintRecord> {
+        match &*self.0 {
+            [Command::Record(record)] => Some(record),
+            _ => None,
+        }
+    }
+
     pub(super) fn validate(
         &self, window: &Window, presentation: Option<TransformationMatrix>,
     ) -> Result<Bounds<Pixels>, PaintRecordError> {
@@ -125,14 +133,14 @@ impl PaintPlan {
                 Command::Record(record) => {
                     let mask = window.content_mask().scale(window.scale_factor());
                     if presentation.is_none()
-                        && window.next_frame.scene.replay_placed(&record.0.scene, Point::default(), Some(mask.bounds))
+                        && window.next_frame.scene.replay_placed(record.0.scene(), Point::default(), Some(mask.bounds))
                     {
                         continue;
                     }
                     let scene = match presentation {
-                        Some(matrix) => present(record.0.scene.copy_record(Point::default(), None), matrix)
+                        Some(matrix) => present(record.0.scene().copy_record(Point::default(), None), matrix)
                             .copy_record(Point::default(), Some(mask.bounds)),
-                        None => record.0.scene.copy_record(Point::default(), Some(mask.bounds)),
+                        None => record.0.scene().copy_record(Point::default(), Some(mask.bounds)),
                     };
                     let scene = window.adopt_scene(scene);
                     window.next_frame.scene.replay_record(&scene);

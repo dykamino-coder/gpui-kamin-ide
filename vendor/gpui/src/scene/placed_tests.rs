@@ -52,6 +52,28 @@ fn the_whole_range_is_the_placed_record() {
     assert_eq!(quads(&ranged), quads(&whole));
 }
 
+/// What `Window::paint_plan` wrote in two copies: the record into an isolated
+/// scene under the plan's mask, that scene into the frame.
+#[test]
+fn a_record_placed_through_a_mask_is_its_isolated_copy_placed() {
+    let record = record();
+    let extent = rect(0., 0., 45., 70.);
+    let clip = rect(90., 90., 150., 150.);
+    let mut isolated = Scene::default();
+    assert!(isolated.replay_placed(&record, Point::default(), Some(extent)));
+    let mut two_step = destination();
+    assert!(two_step.replay_placed(&isolated, at(100., 100.), Some(clip)));
+    let mut direct = destination();
+    assert!(direct.replay_record_placed(&record, extent, at(100., 100.), clip));
+
+    assert_eq!(summary(&direct), summary(&two_step));
+    probe([&mut direct, &mut two_step]);
+    assert_eq!(summary(&direct), summary(&two_step));
+    direct.finish();
+    two_step.finish();
+    assert_eq!(quads(&direct), quads(&two_step));
+}
+
 /// The first two commands of the record, placed as a range, are the placed
 /// record of those two commands alone, whether the range has an index of
 /// its own or is packed at each use.

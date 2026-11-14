@@ -660,11 +660,7 @@ impl Scene {
         source: ReplaySource,
         mut place: impl FnMut(&mut PaintOperation) -> bool,
     ) -> bool {
-        if !self.layer_stack.is_empty()
-            || !self.depth.contexts.is_empty()
-            || !self.depth.plane_stack.is_empty()
-            || !Self::shiftable(operations)
-        {
+        if !self.takes_blocks() || !Self::shiftable(operations) {
             return false;
         }
         let (graft, owned) = match source {
@@ -676,6 +672,33 @@ impl Scene {
                 (crate::bounds_tree::Graft::new(tree, Point::default(), None, 0), true)
             }
         };
+        let placed = operations.iter().filter_map(|operation| {
+            let mut operation = operation.clone();
+            place(&mut operation).then_some(operation)
+        });
+        self.append_block(placed, graft, owned);
+        true
+    }
+
+    /// KaminIDE patch: whether nothing open here (a layer, a 3D context or
+    /// plane) orders primitives its own way, so a block of commands can be
+    /// appended with its recorded orders (`append_block`).
+    fn takes_blocks(&self) -> bool {
+        self.layer_stack.is_empty()
+            && self.depth.contexts.is_empty()
+            && self.depth.plane_stack.is_empty()
+    }
+
+    /// KaminIDE patch: the body of `replay_shifted`: append the already
+    /// placed, `shiftable` commands `placed` as one block indexed by `graft`
+    /// (`owned`: its tree belongs to this scene). The caller checked
+    /// `takes_blocks`.
+    fn append_block(
+        &mut self,
+        placed: impl Iterator<Item = PaintOperation>,
+        graft: Option<crate::bounds_tree::Graft<ScaledPixels>>,
+        owned: bool,
+    ) {
         let mut raise = 0;
         let graft = graft.map(|mut graft| {
             raise = self.tree_mut().min_raise(&graft);
@@ -689,11 +712,7 @@ impl Scene {
         // clipped record copies only what is visible), and a frame keeps its
         // capacity for the next frame, so a reservation for every recorded
         // command would stay as dead capacity in both frames.
-        for operation in operations {
-            let mut operation = operation.clone();
-            if !place(&mut operation) {
-                continue;
-            }
+        for mut operation in placed {
             match &mut operation {
                 PaintOperation::Primitive(primitive) => {
                     if !self.ink.is_empty() || self.ink_scope != 0 {
@@ -731,7 +750,6 @@ impl Scene {
             ops: start..self.paint_operations.len(),
             index,
         });
-        true
     }
 
     /// KaminIDE patch: add an ordered primitive to its kind's list.

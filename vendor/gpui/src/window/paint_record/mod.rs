@@ -17,7 +17,33 @@ struct Recorded {
     identity: paint_scope::Identity,
     scale: f32,
     clip: Bounds<Pixels>,
-    scene: Scene,
+    /// KaminIDE patch: the frozen commands; of a segment kept as a view of
+    /// its draft, made only when something reads them as a scene.
+    scene: std::cell::OnceCell<Scene>,
+    segment: Option<Segment>,
+}
+
+/// KaminIDE patch: a segment of a draft shared by the records of all its
+/// segments (`Window::record_paint_segments`): the picks of the draft's
+/// commands, placed when the record is painted.
+struct Segment {
+    draft: Rc<Scene>,
+    id: PaintSegmentId,
+    source: Bounds<Pixels>,
+    view: crate::scene::segments::SegmentView,
+}
+
+impl Recorded {
+    fn frozen(identity: paint_scope::Identity, scale: f32, clip: Bounds<Pixels>, scene: Scene) -> Self {
+        Self { identity, scale, clip, scene: scene.into(), segment: None }
+    }
+
+    fn scene(&self) -> &Scene {
+        self.scene.get_or_init(|| {
+            let segment = self.segment.as_ref().expect("a record is a scene or a segment of a draft");
+            segment.draft.freeze_segment(segment.id, self.scale, segment.source)
+        })
+    }
 }
 
 /// Explicit source-to-destination translation and final destination-space clip.
@@ -58,11 +84,11 @@ impl PaintRecord {
 
     /// Inspect frozen commands in renderer contract tests without mutating them.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn scene(&self) -> &Scene { &self.0.scene }
+    pub fn scene(&self) -> &Scene { self.0.scene() }
 
     /// Проверка сохранённых подложек до включения их команд в кадр.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn hoisted_backdrops(&self) -> &[crate::PaintSurface] { &self.0.scene.hoisted_backdrops }
+    pub fn hoisted_backdrops(&self) -> &[crate::PaintSurface] { &self.0.scene().hoisted_backdrops }
 
     fn check(&self, window: &Window) -> Result<(), PaintRecordError> {
         self.0.identity.check_pass(window)?;

@@ -113,31 +113,61 @@ impl Window {
         let _selection = self.render_contexts.enter(Some(Rc::new(Selection(routes))));
         let contexts = self.render_contexts.clone();
         let scope_segments = segments.clone();
-        let read = Rc::new(move || crate::scene::segments::Tag {
-            routes: contexts.get::<Selection>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
-            scopes: scopes(&scope_segments, contexts.get::<Selection>().as_deref()),
-            clips: contexts.get::<crate::scene::segments::Clip>(),
-            slices: contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
+        // KaminIDE patch: the tag is read for every primitive, the selection
+        // changes at scope entry: its scopes are listed once per selection
+        // (kept with the selection, so its address names it).
+        let listed: std::cell::RefCell<Option<(Option<Rc<Selection>>, Rc<[PaintSegment]>)>> = Default::default();
+        let read = Rc::new(move || {
+            let selected = contexts.get::<Selection>();
+            let mut listed = listed.borrow_mut();
+            let same = listed.as_ref().is_some_and(|(of, _)| match (of, &selected) {
+                (Some(of), Some(selected)) => Rc::ptr_eq(of, selected),
+                (None, None) => true,
+                _ => false,
+            });
+            if !same {
+                *listed = Some((selected.clone(), scopes(&scope_segments, selected.as_deref())));
+            }
+            crate::scene::segments::Tag {
+                routes: selected.as_ref().map_or_else(|| Rc::from([]), |value| value.0.clone()),
+                scopes: listed.as_ref().map_or_else(|| Rc::from([]), |(_, scopes)| scopes.clone()),
+                clips: contexts.get::<crate::scene::segments::Clip>(),
+                slices: contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
+            }
         });
-        let (result, draft, identity, scale) = self.capture_paint_commands(source_clip, cx, |window, cx| {
+        let (result, mut draft, identity, scale) = self.capture_paint_commands(source_clip, cx, |window, cx| {
             let _recording = window.render_contexts.enter(Some(Rc::new(Recording)));
             let _clips = window.render_contexts.enter::<crate::scene::segments::Clip>(None);
             let _slices = window.render_contexts.enter::<admission::Slices>(None);
             window.next_frame.scene.begin_segments(read);
             paint(window, cx)
         })?;
-        let mut records = Vec::with_capacity(segments.len());
+        // KaminIDE patch: a segment is a view of the draft where it can be
+        // (`Scene::segment_view`), a frozen scene of copies otherwise.
+        let mut parts = Vec::with_capacity(segments.len());
         for (index, segment) in segments.iter().enumerate() {
             if segments[..index].iter().any(|prior| prior.id == segment.id) { continue; }
-            let scene = draft.freeze_segment(segment.id, scale, source_clip);
             let clip = draft.segment_clip(segment.id, source_clip);
             if !validation::scaled_bounds_valid(clip, scale) {
                 return Err(PaintRecordError::InvalidGeometry);
             }
-            records.push((segment.id, PaintRecord(Rc::new(Recorded {
-                identity: identity.clone(), scale, clip, scene,
-            }))));
+            let view = draft.segment_view(segment.id, scale, clip.scale(scale));
+            let scene = match view {
+                Some(_) => None,
+                None => Some(draft.freeze_segment(segment.id, scale, source_clip)),
+            };
+            parts.push((segment.id, clip, view, scene));
         }
+        // The views read the draft's command log only.
+        if parts.iter().any(|part| part.2.is_some()) {
+            draft.keep_commands();
+        }
+        let draft = Rc::new(draft);
+        let records = parts.into_iter().map(|(id, clip, view, scene)| {
+            let segment = view.map(|view| Segment { draft: draft.clone(), id, source: source_clip, view });
+            let scene = scene.map_or_else(Default::default, std::cell::OnceCell::from);
+            (id, PaintRecord(Rc::new(Recorded { identity: identity.clone(), scale, clip, scene, segment })))
+        }).collect();
         Ok((result, PaintSegmentRecords(records)))
     }
 }

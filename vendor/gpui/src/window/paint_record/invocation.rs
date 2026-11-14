@@ -13,7 +13,7 @@ impl Window {
     ) -> Result<(R, PaintRecord), PaintRecordError> {
         let _recording = self.render_contexts.enter::<segments::Recording>(None);
         let (result, scene, identity, scale) = self.capture_paint_commands(source_clip, cx, paint)?;
-        Ok((result, PaintRecord(Rc::new(Recorded { identity, scale, clip: source_clip, scene }))))
+        Ok((result, PaintRecord(Rc::new(Recorded::frozen(identity, scale, source_clip, scene)))))
     }
 
     pub(super) fn capture_paint_commands<R>(
@@ -70,6 +70,14 @@ impl Window {
             return Err(PaintRecordError::InvalidGeometry);
         }
         let clip = placement.clip.intersect(&self.content_mask().bounds).scale(self.scale_factor());
+        // KaminIDE patch: one record under no scope goes straight into the
+        // frame, placed as the isolated scene below would place it.
+        if presentation.is_none()
+            && let Some(record) = plan.single()
+            && self.place_record(record, extent, scaled, clip)
+        {
+            return Ok(self.with_paint_scope(|window| window.paint_scope_id()));
+        }
         let (invocation, scene) = {
             // Неизменяемый план — один лист сегментного обхода;
             // его собственные эффекты разрешены до привязки к сегментам.
@@ -88,6 +96,29 @@ impl Window {
             self.next_frame.scene.replay_record(&scene);
         }
         Ok(invocation)
+    }
+
+    /// KaminIDE patch: the commands of `record` written into the frame once:
+    /// what `plan.paint` into an isolated scene masked by `extent` and
+    /// `replay_placed(&scene, offset, clip)` of that scene write, without the
+    /// scene. A segment kept as a view of its draft is placed from the draft.
+    /// `false`, and nothing is written, when the record or the frame's open
+    /// state needs the isolated scene.
+    fn place_record(
+        &mut self,
+        record: &PaintRecord,
+        extent: Bounds<Pixels>,
+        offset: Point<ScaledPixels>,
+        clip: Bounds<ScaledPixels>,
+    ) -> bool {
+        let extent = ContentMask { bounds: extent }.scale(self.scale_factor()).bounds;
+        let frame = &mut self.next_frame.scene;
+        match &record.0.segment {
+            Some(segment) if record.0.scene.get().is_none() => {
+                frame.replay_view(&segment.draft, &segment.view, extent, offset, clip)
+            }
+            _ => frame.replay_record_placed(record.0.scene(), extent, offset, clip),
+        }
     }
 
     fn record_scene<R>(
