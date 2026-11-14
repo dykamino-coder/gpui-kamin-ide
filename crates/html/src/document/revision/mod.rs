@@ -135,6 +135,8 @@ impl Document {
                 .as_ref()
                 .and_then(crate::dom::invalidation::Invalidation::finish);
             self.hand_over_reuse(&mut candidate, restyled);
+        } else {
+            candidate.state.boxes.borrow_mut().replace(&candidate.nodes);
         }
         *self = candidate;
         Ok(self.report())

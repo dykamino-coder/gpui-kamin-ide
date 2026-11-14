@@ -3,6 +3,25 @@
 use super::*;
 
 #[test]
+fn box_facts_follow_cow_ownership_and_invalidate_on_mutation_or_publication() {
+    let mut children: Children = vec![Node::Text("old".into())].into();
+    let summary = BoxTreeSummary {
+        floats: true,
+        ..Default::default()
+    };
+    children.publish_box_summary(summary);
+    let old = children.clone();
+    assert_eq!(old.box_summary(), Some(summary));
+    children[0] = Node::Text("changed".into());
+    assert_eq!(children.box_summary(), None);
+    assert_eq!(old.box_summary(), Some(summary));
+    children.publish_box_summary(summary);
+    children.dirty_intrinsic_sizes();
+    assert_eq!(children.box_summary(), None);
+    assert_eq!(old.box_summary(), Some(summary));
+}
+
+#[test]
 fn published_snapshot_releases_builder_capacity_and_still_detaches_on_growth() {
     let mut nodes = Vec::with_capacity(64);
     nodes.push(Node::Text("original".into()));

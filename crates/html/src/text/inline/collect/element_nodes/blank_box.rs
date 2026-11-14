@@ -27,8 +27,6 @@ pub(super) fn blank_box(
     // отдельным слоем — он места в строке не занимает (место
     // держат распорки) и высоту строки не меняет (§10.8: поля,
     // отступы и рамки строчного в неё не входят).
-    let mut inner_text = String::new();
-    crate::dom::text_content::gather_text(&e.children, &mut inner_text);
     // Из одних СХЛОПЫВАЕМЫХ пробелов — тоже пустая: пробелы
     // схлопнутся в соседний или срежутся у края строки (§4.1.1,
     // §4.1.3), а рамка без фона прогоном не рисуется
@@ -37,14 +35,11 @@ pub(super) fn blank_box(
     // Коробка с элементами внутри (атомы, `<br>`) не пустая, даже
     // без текста: слой нарисовал бы её одной строкой поверх
     // настоящих фрагментов (`border-radius-012`).
-    let only_text = e.children.iter().all(|n| matches!(n, Node::Text(_)));
-    let blank = only_text
-        && (inner_text.is_empty()
-            || (merged.inh.text_flow.keep_spaces != Some(true)
-                && !painted_bg
-                && inner_text
-                    .chars()
-                    .all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))));
+    let blank = text_is_blank(
+        e,
+        merged.inh.text_flow.keep_spaces == Some(true),
+        painted_bg,
+    );
     if blank && (lead != 0.0 || trail != 0.0) {
         let px_of = px_lossy_zero;
         let size = merged.used_font(MEDIUM_FONT_SIZE_PX, cx.vcx()).size_px;
@@ -122,3 +117,30 @@ pub(super) fn blank_box(
     }
     blank
 }
+
+/// Подготовленный снимок отвечает без сборки строк и без обхода потомков.
+/// У синтетического списка достаточно непосредственных детей: элемент внутри
+/// сразу исключает пустую коробку, его поддерево здесь не требуется.
+fn text_is_blank(e: &Element, keep_spaces: bool, painted_bg: bool) -> bool {
+    let text = e.children.box_summary().map_or_else(
+        || {
+            e.children
+                .iter()
+                .fold(crate::dom::BoxTextFacts::default(), |facts, node| {
+                    facts
+                        | match node {
+                            Node::Text(text) => crate::dom::BoxTextFacts::text(text),
+                            Node::Element(_) => crate::dom::BoxTextFacts {
+                                elements: true,
+                                ..Default::default()
+                            },
+                        }
+                })
+        },
+        |summary| summary.text,
+    );
+    !text.elements && (!text.nonempty || (!keep_spaces && !painted_bg && !text.significant))
+}
+
+#[cfg(test)]
+mod tests;

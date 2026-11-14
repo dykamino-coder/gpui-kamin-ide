@@ -15,7 +15,10 @@ pub(super) fn has_text(children: &[Node]) -> bool {
                     Some(Position::Absolute | Position::Fixed)
                 )
                 && element.style.used().reset_box_layout.float.unwrap_or(0) == 0
-                && has_text(&element.children)
+                && element.children.box_summary().map_or_else(
+                    || has_text(&element.children),
+                    |summary| summary.text.in_flow,
+                )
         }
     })
 }
@@ -26,3 +29,6 @@ pub(super) fn different_metrics(style: &Computed, parent: &Computed) -> bool {
         || style.inh.font.font_family != parent.inh.font.font_family
         || style.inh.font.monospace != parent.inh.font.monospace
 }
+
+#[cfg(test)]
+mod tests;

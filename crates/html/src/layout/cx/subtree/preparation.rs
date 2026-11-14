@@ -6,16 +6,9 @@ use crate::layout::order::{Unkeyed, unkeyed_positioned};
 use std::rc::Rc;
 
 pub(crate) struct Preparation {
-    pub(crate) facts: Rc<SubtreeFacts>,
     pub(crate) unkeyed: Rc<Unkeyed>,
     pub(crate) clearance_possible: bool,
-    /// Сколько подготовок продолжено от последней полной (`continued`).
-    depth: u8,
 }
-
-/// Предел цепочки продолжений: глубже факты собираются полным обходом, чтобы
-/// поиск по слоям и удержанные ими метки снимков не росли с числом правок.
-const MAX_DEPTH: u8 = 4;
 
 type Snapshot = ((usize, usize), Rc<Preparation>);
 
@@ -56,9 +49,7 @@ impl PreparationCache {
         let fresh = stable && !changed;
         let prepared = match snapshot {
             Some((old, prepared)) if fresh && old == key => prepared,
-            Some((BASE, base)) if fresh && base.depth < MAX_DEPTH => {
-                Rc::new(Preparation::continued(&base, nodes))
-            }
+            Some((BASE, base)) if fresh => Rc::new(Preparation::continued(&base, nodes)),
             _ => Rc::new(Preparation::new(nodes)),
         };
         if stable {
@@ -69,16 +60,14 @@ impl PreparationCache {
 }
 
 impl Preparation {
-    /// Подготовка дерева той же формы и стилей, что у `base`: факты — слой
-    /// над фактами `base` с записями только для новых списков детей.
+    /// Подготовка дерева той же формы и стилей, что у `base`. Неизменённые
+    /// COW-списки уже владеют фактами; обрабатываются только скопированные.
     fn continued(base: &Self, nodes: &[Node]) -> Self {
-        let mut facts = SubtreeFacts::overlay(base.facts.clone());
+        let mut facts = SubtreeFacts::default();
         let clearance_possible = facts.clearance_possible(nodes);
         Self {
-            facts: Rc::new(facts),
             unkeyed: base.unkeyed.clone(),
             clearance_possible,
-            depth: base.depth + 1,
         }
     }
 
@@ -102,9 +91,7 @@ impl Preparation {
         while let Some((e, leave)) = pending.pop() {
             if leave {
                 let flags = facts.list_flags(&e.children);
-                facts
-                    .children
-                    .insert(e.children.identity(), (e.children.mark(), flags));
+                e.children.publish_box_summary(flags);
                 // Конец поддерева исключает собственных потомков из проверки
                 // более позднего позиционированного (CSS2 Appendix E, шаг 8).
                 map.insert(e.node_id, at);
@@ -124,10 +111,8 @@ impl Preparation {
         }
         let clearance_possible = facts.clearance_possible(nodes);
         Self {
-            facts: Rc::new(facts),
             unkeyed: Rc::new((map, last)),
             clearance_possible,
-            depth: 0,
         }
     }
 }

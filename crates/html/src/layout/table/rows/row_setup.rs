@@ -7,7 +7,6 @@ use crate::layout::build_contracts::Layer;
 use crate::layout::cx::LayoutCx;
 use crate::layout::table::anon::html_cell;
 use crate::layout::table::is_cell;
-use crate::layout::table::rows::gather_text;
 use crate::layout::table::slot_grid::{CellSlot, grid_line};
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Overflow};
@@ -232,12 +231,16 @@ pub(super) fn hides_empty_cell(
             .table_list
             .empty_cells_hide
             == Some(true)
-        && {
-            let mut текст = String::new();
-            gather_text(&cell.children, &mut текст);
-            crate::dom::whitespace::blank_text(&текст)
-                && !cell.children.iter().any(|n| matches!(n, Node::Element(_)))
-        }
+        && empty_cell_text(cell)
+}
+
+// CSS2 §17.6.1.1: дочерняя коробка сразу исключает пустую ячейку.
+// Подготовленный снимок уже содержит ответ; у синтетики читаем только детей.
+fn empty_cell_text(cell: &Element) -> bool {
+    cell.children.box_summary().map_or_else(
+        || cell.children.iter().all(crate::dom::whitespace::is_blank),
+        |summary| !summary.text.elements && !summary.text.significant,
+    )
 }
 
 #[cfg(test)]
