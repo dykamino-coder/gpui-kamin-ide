@@ -30,6 +30,7 @@ import { BRIDGE_HOOK_EVENTS, type BridgeHookEvent } from './types'
 import { resolveToken } from '../auth/tokens'
 import type { ResolvedToken } from '../auth/tokens'
 import { getAllSessions } from '../pty/session-core'
+import { BASH_HOME_HEADER } from './hook-environment'
 
 async function resolveCaller(c: import('hono').Context): Promise<ResolvedToken | null> {
   const auth = c.req.header('Authorization') || ''
@@ -140,7 +141,13 @@ export function createHooksRoutes(): Hono {
     // client reconnects waits for the new socket. A session that is shutting
     // down has no client to wait for.
     const clientWs = isSessionTearingDown(sessionId) ? (session.ws ?? null) : () => session.ws ?? null
-    const result = await dispatchHook(sessionId, hookId, payload, clientWs, session.tokenId)
+    const result = await dispatchHook(sessionId, hookId, payload, clientWs, session.tokenId, {
+      // Relative file arguments execute in the client home when the tab has
+      // no folder. The CLI's synthetic cwd is not their resolution root.
+      cwd: session.cwd || session.host?.home,
+      home: session.host?.home,
+      bashHome: c.req.header(BASH_HOME_HEADER),
+    })
     c.header('X-Bridge-Hook-Exit-Code', String(result.exitCode))
 
     // The SessionEnd this window was held open for has been served, so close it

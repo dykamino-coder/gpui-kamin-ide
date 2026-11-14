@@ -35,6 +35,7 @@ export function normalizeHostDeclaration(raw: unknown): HostDeclaration | undefi
     tools: MCP_TOOLS.map((tool) => tool.name).filter((name) => declared.has(name)),
     platform: /^[A-Za-z0-9_.-]+$/.test(platform) ? platform : 'unknown',
     place: phrase(input.place, 80) || DEFAULT_PLACE,
+    ...(typeof input.home === 'string' && input.home ? { home: input.home } : {}),
   }
 }
 

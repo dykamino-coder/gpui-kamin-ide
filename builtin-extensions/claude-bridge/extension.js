@@ -53774,6 +53774,7 @@ var McpServerManager = class _McpServerManager {
 };
 
 // src/main/mcp/host-declaration.ts
+var import_node_os8 = require("node:os");
 init_command_runtime();
 var USER_MACHINE_TRAITS = { place: "the user's machine", preview: false };
 var PREVIEW_TOOLS = ["preview_mount", "preview_update", "preview_unmount"];
@@ -53801,7 +53802,7 @@ async function probeHostDeclaration(registered, traits, lookup2 = {}) {
     ...git ? [] : GIT_TOOLS,
     ...traits.preview ? [] : PREVIEW_TOOLS
   ]);
-  return { tools: registered.filter((name) => !missing.has(name)), platform, place: traits.place };
+  return { tools: registered.filter((name) => !missing.has(name)), platform, place: traits.place, home: (0, import_node_os8.homedir)() };
 }
 
 // src/bridge-host.ts
@@ -53816,9 +53817,9 @@ var import_path35 = __toESM(require("path"), 1);
 
 // src/attachments.ts
 var import_promises8 = __toESM(require("node:fs/promises"), 1);
-var import_node_os8 = __toESM(require("node:os"), 1);
+var import_node_os9 = __toESM(require("node:os"), 1);
 var import_node_path17 = __toESM(require("node:path"), 1);
-async function saveAttachment(base64, name, root = import_node_os8.default.tmpdir()) {
+async function saveAttachment(base64, name, root = import_node_os9.default.tmpdir()) {
   if (typeof base64 !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
     throw new Error("Invalid attachment encoding");
   }

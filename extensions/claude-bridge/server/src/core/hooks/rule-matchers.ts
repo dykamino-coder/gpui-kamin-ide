@@ -59,7 +59,7 @@ const SHELL_OPERATORS = ['&&', '||', '|&', ';;', ';', '|', '&', '\n']
 /** The simple commands of a shell command as argv strings, or null when the
  *  command uses a construct this splitter does not model (substitution,
  *  heredoc, subshell, compound keyword). The CLI's matcher then holds. */
-export function simpleShellCommands(command: string): string[] | null {
+export function simpleShellCommands(command: string, home?: string): string[] | null {
   const commands: string[][] = []
   let words: string[] = []
   let word = ''
@@ -97,6 +97,12 @@ export function simpleShellCommands(command: string): string[] | null {
         if (command[j] === '\\' && j + 1 < command.length && '"\\$`\n'.includes(command[j + 1]!)) {
           if (command[j + 1] === '\n') return null
           j++
+        } else if (command[j] === '$' && /^[A-Za-z_]/.test(command[j + 1] ?? '')) {
+          const name = command.slice(j + 1).match(/^[A-Za-z_][A-Za-z0-9_]*/)![0]
+          if (name !== 'HOME' || home === undefined) return null
+          word += home
+          j += name.length
+          continue
         }
         word += command[j]
       }
@@ -134,10 +140,14 @@ export function simpleShellCommands(command: string): string[] | null {
       i = newline - 1
       continue
     }
-    // Effective CLI environment expansion is not modeled yet (INC-2026-0107).
-    // The current approximation omits unquoted simple expansions.
+    // The native matcher knows HOME (os.homedir), rather than expanding every
+    // environment variable. An unknown variable makes the parse conservative,
+    // even when that variable exists in settings.env or the process environment.
     if (ch === '$' && /^[A-Za-z_]/.test(command[i + 1] ?? '')) {
       const name = command.slice(i + 1).match(/^[A-Za-z_][A-Za-z0-9_]*/)![0]
+      if (name !== 'HOME' || !home || /[\s*?\[\]]/.test(home)) return null
+      word += home
+      inWord = true
       i += name.length
       continue
     }
@@ -186,8 +196,8 @@ export function simpleShellCommands(command: string): string[] | null {
 
 /** The CLI's Bash rule: the rule accepts the call when it accepts any simple
  *  command, also behind `xargs`. */
-export function bashRuleMatches(rule: string, command: string): boolean {
-  const commands = simpleShellCommands(command)
+export function bashRuleMatches(rule: string, command: string, home?: string): boolean {
+  const commands = simpleShellCommands(command, home)
   if (commands === null || commands.length === 0) return true
   const prefix = legacyPrefix(rule)
   return commands.some((candidate) => {
@@ -203,8 +213,10 @@ export function bashRuleMatches(rule: string, command: string): boolean {
   })
 }
 
-/** Find the closing parenthesis without treating quoted parentheses as syntax. */
+/** Find a group's end without treating quoted delimiters as syntax. */
 function powershellGroupEnd(command: string, open: number): number | null {
+  const opening = command[open]!
+  const closing = opening === '{' ? '}' : opening === '[' ? ']' : ')'
   let depth = 1
   let quote = ''
   for (let i = open + 1; i < command.length; i++) {
@@ -218,21 +230,136 @@ function powershellGroupEnd(command: string, open: number): number | null {
       }
     } else if (ch === "'" || ch === '"') {
       quote = ch
+    } else if (command.startsWith('<#', i)) {
+      const close = powershellCommentEnd(command, i)
+      if (close === null) return null
+      i = close
     } else if (ch === '#') {
       while (i < command.length && command[i] !== '\n') i++
-    } else if (ch === '(') {
+    } else if (ch === opening) {
       depth++
-    } else if (ch === ')' && --depth === 0) {
+    } else if (ch === closing && --depth === 0) {
       return i
     }
   }
   return null
 }
 
+/** The sampled native matcher ends a block comment at its first terminator. */
+function powershellCommentEnd(command: string, open: number): number | null {
+  const close = command.indexOf('#>', open + 2)
+  return close === -1 ? null : close + 1
+}
+
 // These scalar expressions have no CommandAst children. Other expression
 // syntax remains outside this sampled matcher rather than becoming a command.
 const POWERSHELL_SCALAR = String.raw`(?:'(?:[^']|'')*'|"(?:[^"\x60$]|\$(?!\()|\x60[\s\S]|"")*"|\$[\w:]+|[-+]?\d+(?:\.\d+)?)`
 const POWERSHELL_SCALAR_LIST = new RegExp(`^${POWERSHELL_SCALAR}(?:\\s*,\\s*${POWERSHELL_SCALAR})*$`)
+const POWERSHELL_ASSIGNMENT_SCALAR = new RegExp(
+  `^\\s*(?:${POWERSHELL_SCALAR}(?:\\s*,\\s*${POWERSHELL_SCALAR})*|[-+]?\\d+(?:\\s*[-+*/%]\\s*\\d+)+)(?=\\s*(?:[;|\\n]|$))`,
+)
+
+function powershellVariableTarget(command: string, start: number): { end: number; expressions: string[] } | null {
+  const variable = /^\$(?:[A-Za-z_]\w*(?::[A-Za-z_]\w*)?|\{[A-Za-z_]\w*(?::[A-Za-z_]\w*)?\})/.exec(command.slice(start))
+  if (!variable) return null
+  let end = start + variable[0].length
+  const expressions: string[] = []
+  for (;;) {
+    const member = /^\.[A-Za-z_]\w*/.exec(command.slice(end))
+    if (member) end += member[0].length
+    else if (command[end] === '[') {
+      const close = powershellGroupEnd(command, end)
+      if (close === null) return null
+      expressions.push(command.slice(end + 1, close))
+      end = close + 1
+    } else break
+  }
+  return { end, expressions }
+}
+
+/** Separate assignment targets from the RHS, retaining expressions inside
+ *  attributes and indices so their CommandAst children can still be visited. */
+function powershellAssignment(command: string, start: number): { end: number; expressions: string[] } | null {
+  let end = start
+  const expressions: string[] = []
+  const skipSpace = () => {
+    while (/[ \t]/.test(command[end] ?? '')) end++
+  }
+  do {
+    skipSpace()
+    while (command[end] === '[') {
+      const close = powershellGroupEnd(command, end)
+      if (close === null) return null
+      const type = command.slice(end + 1, close)
+      const parameters = type.indexOf('(')
+      if (parameters !== -1) expressions.push(type.slice(parameters))
+      end = close + 1
+      skipSpace()
+    }
+    const variable = powershellVariableTarget(command, end)
+    if (!variable) return null
+    end = variable.end
+    expressions.push(...variable.expressions)
+    skipSpace()
+    if (command[end] !== ',') break
+    end++
+  } while (end < command.length)
+  const operator = /^(?:\?\?|[+*/%\-])?=(?!=)/.exec(command.slice(end))
+  return operator ? { end: end + operator[0].length, expressions } : null
+}
+
+/** Hashtable keys are expressions, not command names. Only their values
+ *  contribute command children for the sampled literal-key syntax. */
+function powershellHashtableCommands(body: string): string[] | null {
+  const statements: string[] = []
+  let start = 0,
+    valueStart: number | null = null,
+    quote = ''
+  const endEntry = (end: number): boolean => {
+    if (valueStart === null) return !body.slice(start, end).trim()
+    const value = body.slice(valueStart, end).trim()
+    if (!value) return false
+    // Scalar arithmetic contains no CommandAst, just like scalar literals.
+    if (!POWERSHELL_SCALAR_LIST.test(value) && !/^[-+]?\d+(?:\s*[-+*/%]\s*\d+)+$/.test(value)) {
+      const nested = powershellCommands(value)
+      if (nested === null) return false
+      statements.push(...nested)
+    }
+    return true
+  }
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]!
+    if (ch === '`' && quote !== "'") i++
+    else if (quote) {
+      if (ch === quote) {
+        if (body[i + 1] === quote) i++
+        else quote = ''
+      }
+    } else if (ch === "'" || ch === '"') quote = ch
+    else if (body.startsWith('<#', i)) {
+      const close = powershellCommentEnd(body, i)
+      if (close === null) return null
+      i = close
+    } else if (ch === '#') {
+      while (i < body.length && body[i] !== '\n') i++
+      i--
+    } else if (ch === '(' || ch === '{') {
+      const close = powershellGroupEnd(body, i)
+      if (close === null) return null
+      i = close
+    } else if (ch === '=' && valueStart === null) {
+      const key = body.slice(start, i).trim()
+      if (!/^[A-Za-z_]\w*$/.test(key) && !POWERSHELL_SCALAR_LIST.test(key)) return null
+      valueStart = i + 1
+    } else if (ch === ';' || ch === '\n') {
+      if (!endEntry(i)) return null
+      start = i + 1
+      valueStart = null
+    }
+  }
+  if (quote || !endEntry(body.length)) return null
+  return statements
+}
 
 /** Sampled CommandAst candidates, including commands inside grouped pipelines
  *  and subexpressions. null keeps the fallback for unsupported syntax. */
@@ -252,15 +379,35 @@ function powershellCommands(command: string): string[] | null {
   }
   const endCommand = () => {
     endWord()
-    // The command on the right of an assignment still has its own CommandAst.
-    if (/^\$[A-Za-z_]\w*$/.test(words[0] ?? '') && words[1] === '=') words.splice(0, 2)
     if (words.length) statements.push(words.join(' '))
     words = []
     skipRedirectTarget = false
   }
   for (let i = 0; i < command.length; i++) {
     const ch = command[i]!
-    if (ch === "'" || ch === '"') {
+    const assignment =
+      (ch === '$' || ch === '[') && !active && words.length === 0 && !skipRedirectTarget
+        ? powershellAssignment(command, i)
+        : null
+    const adjacentVariable =
+      ch === '$' && command[i + 1] !== '{' && !active && words.length && !skipRedirectTarget
+        ? powershellVariableTarget(command, i)
+        : null
+    const bracedVariable =
+      ch === '$' && (words.length || skipRedirectTarget)
+        ? /^\$\{[A-Za-z_]\w*(?::[A-Za-z_]\w*)?\}/.exec(command.slice(i))
+        : null
+    if (assignment) {
+      for (const expression of assignment.expressions) {
+        if (!expression.trim() || POWERSHELL_SCALAR_LIST.test(expression.trim())) continue
+        const nested = powershellCommands(expression)
+        if (nested === null) return null
+        statements.push(...nested)
+      }
+      // Scalar RHS expressions have no CommandAst of their own.
+      const scalar = POWERSHELL_ASSIGNMENT_SCALAR.exec(command.slice(assignment.end))
+      i = assignment.end + (scalar?.[0].length ?? 0) - 1
+    } else if (ch === "'" || ch === '"') {
       const quote = ch
       let closed = false
       for (i++; i < command.length; i++) {
@@ -278,7 +425,18 @@ function powershellCommands(command: string): string[] | null {
           word += command[++i]
           continue
         }
-        if (quote === '"' && command.startsWith('$(', i)) return null
+        if (quote === '"' && command.startsWith('$(', i)) {
+          const close = powershellGroupEnd(command, i + 1)
+          if (close === null) return null
+          const nested = powershellCommands(command.slice(i + 2, close))
+          if (nested === null) return null
+          statements.push(...nested)
+          // ExpandableStringExpressionAst.Value keeps the subexpression's
+          // source, while its CommandAst children are matched independently.
+          word += command.slice(i, close + 1)
+          i = close
+          continue
+        }
         word += c
       }
       if (!closed) return null
@@ -290,6 +448,20 @@ function powershellCommands(command: string): string[] | null {
     } else if (ch === '`' && i + 1 < command.length) {
       word += command[++i]
       active = true
+    } else if (command.startsWith('<#', i) && !active) {
+      const close = powershellCommentEnd(command, i)
+      if (close === null) return null
+      i = close
+    } else if (command.startsWith('--%', i) && !active && words.length && /\s|^$/.test(command[i + 3] ?? '')) {
+      // Stop-parsing leaves the rest of this line as one literal value,
+      // including quotes and apparent subexpressions or redirections.
+      words.push('--%')
+      const newline = command.indexOf('\n', i + 3)
+      const end = newline === -1 ? command.length : newline
+      const literal = command.slice(i + 3, end).replace(/^[ \t]+/, '')
+      if (literal) words.push(literal)
+      endCommand()
+      i = end
     } else if (ch === '#' && !active) {
       while (i < command.length && command[i] !== '\n') i++
       endCommand()
@@ -301,6 +473,22 @@ function powershellCommands(command: string): string[] | null {
     ) {
       // Invocation operators are outside CommandElements in the native AST.
       continue
+    } else if (adjacentVariable && command[adjacentVariable.end] === '=') {
+      // An unquoted variable/member followed by '=' is a separate AST element.
+      // Recognize it before consuming the word so quotes and escapes stay literal.
+      for (const expression of adjacentVariable.expressions) {
+        if (!expression.trim() || POWERSHELL_SCALAR_LIST.test(expression.trim())) continue
+        const nested = powershellCommands(expression)
+        if (nested === null) return null
+        statements.push(...nested)
+      }
+      words.push(command.slice(i, adjacentVariable.end))
+      i = adjacentVariable.end - 1
+    } else if (bracedVariable) {
+      // Braces keep the variable and an adjacent literal in one argument.
+      word += bracedVariable[0]
+      active = true
+      i += bracedVariable[0].length - 1
     } else if (ch === '>') {
       // A stream number adjacent to `>` belongs to the redirection, not argv.
       if (active && /^[1-6*]$/.test(word)) {
@@ -310,14 +498,21 @@ function powershellCommands(command: string): string[] | null {
       endWord()
       while (command[i + 1] === '>') i++
       skipRedirectTarget = true
-    } else if (command.startsWith('$(', i) || command.startsWith('@(', i) || ch === '(') {
+    } else if (
+      command.startsWith('$(', i) ||
+      command.startsWith('@(', i) ||
+      command.startsWith('@{', i) ||
+      ch === '(' ||
+      ch === '{'
+    ) {
       if (active) return null
-      const open = ch === '(' ? i : i + 1
+      const open = ch === '(' || ch === '{' ? i : i + 1
       const close = powershellGroupEnd(command, open)
       if (close === null) return null
       const body = command.slice(open + 1, close).trim()
       let nested: string[] | null = []
-      if (body && !POWERSHELL_SCALAR_LIST.test(body)) nested = powershellCommands(body)
+      if (command.startsWith('@{', i)) nested = powershellHashtableCommands(body)
+      else if (body && !POWERSHELL_SCALAR_LIST.test(body)) nested = powershellCommands(body)
       if (nested === null) return null
       statements.push(...nested)
       if (words.length || skipRedirectTarget) {
@@ -327,7 +522,7 @@ function powershellCommands(command: string): string[] | null {
       }
       if (close + 1 < command.length && !/[\s;|&>]/.test(command[close + 1]!)) return null
       i = close
-    } else if (ch === '{' || ch === '}' || ch === ')') {
+    } else if (ch === '}' || ch === ')') {
       return null
     } else if (';|\n'.includes(ch) || command.startsWith('&&', i)) {
       endCommand()
@@ -346,17 +541,22 @@ function powershellCommands(command: string): string[] | null {
 /** Models sampled PowerShell command ASTs case-insensitively. Unsupported
  *  nested syntax still has parity gaps recorded in INC-0107. */
 export function powershellRuleMatches(rule: string, command: string): boolean {
+  // The native universal rule bypasses command extraction, including empty ASTs.
+  if (rule.trim() === '*') return true
   const statements = powershellCommands(command)
   if (statements === null) return true
-  if (statements.length === 0) return true
   const prefix = legacyPrefix(rule)
   return statements.some((candidate) => {
     const [name, ...args] = candidate.split(' ')
-    const base = name!.replaceAll('\\', '/').split('/').at(-1)!
-    return [candidate, [base, ...args].join(' ')].some((c) => {
-      if (prefix !== null)
-        return c.toLowerCase() === prefix.toLowerCase() || c.toLowerCase().startsWith(prefix.toLowerCase() + ' ')
-      return wildcardMatches(rule, c, true, true)
-    })
+    // A module qualifier is omitted by the native matcher, while an absolute
+    // or relative executable path remains part of the command's name.
+    const base = /^[A-Za-z]:|^\\\\|^\.\.?\\/.test(name!) ? name! : name!.split('\\').at(-1)!
+    const normalized = [base, ...args].join(' ')
+    if (prefix !== null)
+      return (
+        normalized.toLowerCase() === prefix.toLowerCase() ||
+        normalized.toLowerCase().startsWith(prefix.toLowerCase() + ' ')
+      )
+    return wildcardMatches(rule, normalized, true, true)
   })
 }

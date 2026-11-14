@@ -4,7 +4,7 @@ import { createServer, type Server, type RequestListener } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildHookCommandRelay, HOOK_RELAY_TOKEN_ENV } from './proxy-rewriter'
+import { BASH_HOME_HEADER, buildHookCommandRelay, HOOK_RELAY_TOKEN_ENV } from './proxy-rewriter'
 
 const servers: Server[] = []
 afterEach(async () => {
@@ -53,6 +53,27 @@ function relay(url: string): Promise<{ stdout: string; stderr: string; code: num
 const success = JSON.stringify({ result: { stdout: 'done', stderr: '', exitCode: 0 } })
 
 describe('hook relay transport', () => {
+  it('captures effective CLI home for a Bash condition inside the relay process', async () => {
+    let home: string | undefined
+    const url = await listen((req, res) => {
+      home = req.headers[BASH_HOME_HEADER.toLowerCase()] as string | undefined
+      req.resume()
+      res.end(success)
+    })
+    const child = spawn(process.execPath, ['-e', buildHookCommandRelay(url, undefined, true)], {
+      env: {
+        ...process.env,
+        HOME: '/settings-home',
+        USERPROFILE: '/settings-home',
+        CLAUDE_BRIDGE_BASH_HOME: '/effective-cli-home',
+        [HOOK_RELAY_TOKEN_ENV]: 'synthetic',
+      },
+    })
+    child.stdin.end('{}')
+    expect(await new Promise((resolve) => child.on('close', resolve))).toBe(0)
+    expect(home).toBe('/effective-cli-home')
+  })
+
   it('reports connection refusal including the OS errno without exposing the URL', async () => {
     const url = await listen(() => {})
     const server = servers.pop()!

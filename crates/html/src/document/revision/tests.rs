@@ -60,6 +60,7 @@ mod differential;
 mod invalidation;
 mod records;
 mod repaint;
+mod revision_budget;
 mod text_edits;
 
 const PAGE: &str = "<!doctype html><html><head><style>p{color:#123}td{padding:1px}\

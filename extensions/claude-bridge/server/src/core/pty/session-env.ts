@@ -4,6 +4,8 @@
 // and so the core file shrinks below the 1k-LOC ceiling.
 // ============================================================================
 
+import os from 'node:os'
+import { BASH_HOME_ENV } from '../hooks/hook-environment'
 import { injectProxyEnv } from '../config/settings'
 import { config, DEFAULT_SESSION_MODEL } from '../config'
 import type { SessionConfig } from './types'
@@ -71,6 +73,8 @@ export function buildSessionEnv(sessionId: string, userName: string): Record<str
 
   // Inject proxy settings
   injectProxyEnv(env)
+
+  env[BASH_HOME_ENV] = os.homedir()
 
   // Skip ALL interactive dialogs (effort, trust, onboarding, grove, etc.)
   // IS_DEMO=1 bypasses the entire pcq() dialog gate function in CLI
