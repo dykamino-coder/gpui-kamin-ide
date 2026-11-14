@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
+import type { CliHandlerConditions } from '../hooks/cli-handler-conditions'
 
 type Command =
   | { id: number; kind: 'submit'; text: string; submissionId?: string }
@@ -23,11 +24,13 @@ export class CliModTransport {
   private sequence = 0
   private pending = new Map<number, Pending>()
   private closed = false
+  private turnId: string | null = null
   private timer: ReturnType<typeof setInterval>
   onTurn: (turnId: string | null) => void = () => {}
   onUnavailable: () => void = () => {}
   onUncertain: () => void = () => {}
   onRead: (submissionId: string, uuid: string) => void = () => {}
+  hookConditions?: CliHandlerConditions
 
   constructor(readonly sessionId: string) {
     fs.chmodSync(this.directory, 0o700)
@@ -39,7 +42,7 @@ export class CliModTransport {
         if (Buffer.byteLength(body) > 1_048_576) req.destroy()
       })
       req.on('error', () => {})
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
           const data = JSON.parse(body)
           if (
@@ -57,11 +60,36 @@ export class CliModTransport {
           if (req.url === '/hello') {
             if (this.instance && this.instance !== data.instance) this.expire()
             this.instance = data.instance
-          } else if (req.url !== '/poll' || !this.instance || this.instance !== data.instance) {
+          } else if (
+            !['/poll', '/hooks/prepare', '/hooks/restore', '/hooks/release', '/hooks/wait'].includes(req.url ?? '') ||
+            !this.instance ||
+            this.instance !== data.instance
+          ) {
             res.writeHead(409).end()
             return
           }
           this.heartbeat = Date.now()
+          if (req.url?.startsWith('/hooks/')) {
+            if (!this.hookConditions) {
+              res.writeHead(409).end()
+              return
+            }
+            let result: { generation?: string } = {}
+            if (req.url === '/hooks/wait') await new Promise((resolve) => setTimeout(resolve, 50))
+            else if (typeof data.generation !== 'string') {
+              res.writeHead(400).end()
+              return
+            } else if (req.url === '/hooks/prepare') {
+              const controller = new AbortController()
+              res.once('close', () => {
+                if (!res.writableEnded) controller.abort()
+              })
+              result = await this.hookConditions.prepare(data.event, data.payload, data.generation, controller.signal)
+            } else if (req.url === '/hooks/restore') result = this.hookConditions.restore(data.generation)
+            else this.hookConditions.release(data.generation)
+            res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(result))
+            return
+          }
           if (Array.isArray(data.reads)) {
             for (const read of data.reads.slice(0, 128)) {
               if (
@@ -76,12 +104,12 @@ export class CliModTransport {
           if (Array.isArray(data.turns)) {
             for (const turn of data.turns.slice(0, 256)) {
               if (turn.turnId === null || (typeof turn.turnId === 'string' && turn.turnId.length < 256)) {
-                this.onTurn(turn.turnId)
+                this.recordTurn(turn.turnId)
               }
             }
           }
           if (data.turnId === null || (typeof data.turnId === 'string' && data.turnId.length < 256)) {
-            this.onTurn(data.turnId)
+            this.recordTurn(data.turnId)
           }
           if (Array.isArray(data.acks)) {
             for (const ack of data.acks.slice(0, 128)) {
@@ -135,12 +163,28 @@ export class CliModTransport {
   private expire(): void {
     this.heartbeat = 0
     this.instance = ''
+    this.turnId = null
+    this.resetHookConditions()
     const pending = [...this.pending.values()]
     this.pending.clear()
     this.onUnavailable()
     for (const item of pending) {
       if (!item.claimed) item.fallback()
       else this.onUncertain()
+    }
+  }
+
+  private recordTurn(turnId: string | null): void {
+    if (this.turnId !== null && turnId === null) this.resetHookConditions()
+    this.turnId = turnId
+    this.onTurn(turnId)
+  }
+
+  private resetHookConditions(): void {
+    try {
+      this.hookConditions?.reset()
+    } catch {
+      // Teardown can remove the conversation directory before the last poll.
     }
   }
 
@@ -183,6 +227,11 @@ export class CliModTransport {
     this.closed = true
     clearInterval(this.timer)
     this.pending.clear()
+    try {
+      this.hookConditions?.dispose()
+    } catch {
+      // The conversation directory can already have been removed by teardown.
+    }
     this.server.close()
     this.server.closeAllConnections()
     // Only paths created by this instance; never recursively remove a session directory.

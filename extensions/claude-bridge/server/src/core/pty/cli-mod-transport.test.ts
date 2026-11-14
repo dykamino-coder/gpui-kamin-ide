@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import http from 'node:http'
 import fs from 'node:fs'
 import { CliModTransport, createCliModTransport } from './cli-mod-transport'
+import type { CliHandlerConditions } from '../hooks/cli-handler-conditions'
 
 const transports: CliModTransport[] = []
 const versionProbe = vi.hoisted(() => vi.fn())
@@ -146,5 +147,44 @@ describe('private mod transport', () => {
     expect(transport.submit('full', vi.fn())).toBe(false)
     transport.dispose()
     expect(fs.existsSync(transport.directory)).toBe(false)
+  })
+
+  socketIt('resets original-handler decisions once per completed turn and on replacement', async () => {
+    const { transport, call } = await setup()
+    const reset = vi.fn()
+    transport.hookConditions = { reset, dispose: vi.fn() } as unknown as CliHandlerConditions
+    await call('/hello')
+    await call('/poll', { turnId: 'first' })
+    await call('/poll', { turns: [{ turnId: 'first' }, { turnId: null }] })
+    await call('/poll')
+    expect(reset).toHaveBeenCalledTimes(1)
+    await call('/hello', { instance: 'replacement' })
+    expect(reset).toHaveBeenCalledTimes(2)
+  })
+
+  socketIt('cancels a disconnected prepare request before it acquires the declaration catalog', async () => {
+    const { transport, call } = await setup()
+    let started!: () => void
+    const ready = new Promise<void>((resolve) => (started = resolve))
+    let observed!: AbortSignal
+    const prepare = vi.fn((_event, _payload, _generation, signal: AbortSignal) => {
+      observed = signal
+      started()
+      return new Promise<Record<string, never>>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true })
+      })
+    })
+    transport.hookConditions = { prepare, dispose: vi.fn() } as unknown as CliHandlerConditions
+    await call('/hello')
+    const req = http.request({ socketPath: transport.socketPath, path: '/hooks/prepare', method: 'POST' })
+    req.on('error', () => {})
+    req.end(JSON.stringify({ protocol: 1, session: 'session-a', version: '2.1.322', instance: 'one', generation: 'a' }))
+    await ready
+    const cancelled = new Promise<void>((resolve) =>
+      observed.addEventListener('abort', () => resolve(), { once: true }),
+    )
+    req.destroy()
+    await cancelled
+    expect(observed.aborted).toBe(true)
   })
 })
