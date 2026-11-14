@@ -1,19 +1,10 @@
 name: bridge workspace checks
 
+# Pull requests run this suite as the `Bridge workspace runtime` job of
+# pr-checks.yml, where `required quality gate` waits for it. This workflow keeps
+# the main-branch and manual runs.
+
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - extensions/claude-bridge/workspace/**
-      - src/kamin-host/services/pty*.ts
-      - src/kamin-host/services/shells.ts
-      - package.json
-      - package-lock.json
-      - extensions/claude-bridge/extension/**
-      - extensions/claude-bridge/webview/**
-      - extensions/claude-bridge/browser-client/**
-      - extensions/claude-bridge/server/src/core/pty/mcp-tools-defs.ts
-      - .github/workflows/bridge-workspace.yml
   push:
     branches: [main]
     paths:
@@ -34,7 +25,7 @@ permissions:
 
 concurrency:
   group: bridge-workspace-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   transport:
