@@ -4,6 +4,9 @@ use super::Node;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
+mod box_summary;
+pub use box_summary::{BoxTextFacts, BoxTreeSummary};
+
 /// Дети элемента с копированием при изменении списка.
 #[derive(Clone, Debug, Default)]
 pub struct Children(Rc<Snapshot>);
@@ -23,6 +26,7 @@ impl ChildrenMark {
 struct Snapshot {
     nodes: Vec<Node>,
     intrinsic: super::intrinsic::IntrinsicCache,
+    box_summary: std::cell::Cell<Option<BoxTreeSummary>>,
 }
 
 impl Clone for Snapshot {
@@ -30,6 +34,7 @@ impl Clone for Snapshot {
         Self {
             nodes: self.nodes.clone(),
             intrinsic: Default::default(),
+            box_summary: Default::default(),
         }
     }
 }
@@ -43,6 +48,17 @@ impl Children {
     /// Изменение computed-стиля самого узла или его потомка.
     pub fn dirty_intrinsic_sizes(&self) {
         self.0.intrinsic.dirty();
+        self.0.box_summary.set(None);
+    }
+
+    /// Готовые факты списка без обхода узлов и без отдельного индекса дерева.
+    pub fn box_summary(&self) -> Option<BoxTreeSummary> {
+        self.0.box_summary.get()
+    }
+
+    /// Публикация post-order подготовки; факты живут столько же, сколько снимок.
+    pub fn publish_box_summary(&self, summary: BoxTreeSummary) {
+        self.0.box_summary.set(Some(summary));
     }
 
     /// Идентичность неизменяемого снимка: изменение списка отделяет его через COW.
@@ -73,6 +89,7 @@ impl From<Vec<Node>> for Children {
         Self(Rc::new(Snapshot {
             nodes,
             intrinsic: Default::default(),
+            box_summary: Default::default(),
         }))
     }
 }
@@ -96,6 +113,7 @@ impl DerefMut for Children {
         // ветвь. Копии старого снимка сохраняют свой корректный результат.
         let snapshot = Rc::make_mut(&mut self.0);
         snapshot.intrinsic.dirty();
+        snapshot.box_summary.set(None);
         &mut snapshot.nodes
     }
 }

@@ -74,24 +74,30 @@ fn continued_preparation_visits_only_the_copied_lists_and_equals_a_full_one() {
     five.children[0] = Node::Text("y".into());
     // Прошлое дерево живо и не тронуто: копия при записи отделила пути.
     assert_ne!(format!("{nodes:?}"), format!("{next:?}"));
+    let mut all = Vec::new();
+    lists(&next, &mut all);
+    assert_eq!(
+        all.iter()
+            .filter(|list| list.box_summary().is_none())
+            .count(),
+        3
+    );
     let continued = PreparationCache::continuing(&cache).get(&next, true, false);
-    assert_eq!(continued.facts.children.len(), 3, "only the copied lists");
+    let summaries: Vec<_> = all.iter().map(|list| list.box_summary()).collect();
+    assert!(summaries.iter().all(Option::is_some));
     let full = Preparation::new(&next);
     assert_eq!(continued.unkeyed.0, full.unkeyed.0);
     assert_eq!(continued.unkeyed.1, full.unkeyed.1);
     assert_eq!(continued.clearance_possible, full.clearance_possible);
-    let mut all = Vec::new();
-    lists(&next, &mut all);
-    for list in all {
-        let identity = list.identity();
-        assert_eq!(
-            continued.facts.cached(identity),
-            full.facts.cached(identity)
-        );
-    }
+    assert_eq!(
+        summaries,
+        all.iter()
+            .map(|list| list.box_summary())
+            .collect::<Vec<_>>()
+    );
     // Пересчёт стиля (`changed`) готовит дерево полным обходом.
     let again = PreparationCache::continuing(&cache).get(&next, true, true);
-    assert_eq!(again.depth, 0);
+    assert!(!Rc::ptr_eq(&continued.unkeyed, &again.unkeyed));
 }
 
 #[test]
@@ -116,4 +122,41 @@ fn paint_indices_use_preorder_entries_and_subtree_ends() {
     assert_eq!(prepared.unkeyed.0[&positioned_id], 2);
     assert_eq!(prepared.unkeyed.0[&root_id], 2);
     assert_eq!(prepared.unkeyed.0[&sibling_id], 3);
+}
+
+#[cfg(feature = "work-counters")]
+#[test]
+fn prepared_cells_read_retained_facts_without_subtree_queries() {
+    use crate::work::{Counter, Session};
+    let nodes = vec![el(
+        1,
+        (2..1026)
+            .map(|id| el(id, vec![el(id + 1024, vec![])]))
+            .collect(),
+    )];
+    Preparation::new(&nodes);
+    let Node::Element(table) = &nodes[0] else {
+        unreachable!()
+    };
+    let session = Session::begin();
+    for node in table.children.iter() {
+        let Node::Element(cell) = node else {
+            unreachable!()
+        };
+        assert!(
+            !SubtreeFacts::default()
+                .prepared_list(&cell.children)
+                .expect("prepared cell")
+                .margins
+        );
+    }
+    let work = session.finish();
+    let total = |counter: Counter| {
+        work.0
+            .iter()
+            .map(|phase| phase[counter as usize])
+            .sum::<u64>()
+    };
+    assert_eq!(total(Counter::SubtreeQueries), 0);
+    assert_eq!(total(Counter::SubtreeNodesVisited), 1024);
 }

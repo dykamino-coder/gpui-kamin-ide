@@ -3,13 +3,13 @@
 use crate::dom::Element;
 use crate::layout::box_kind::in_flow;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn orthogonal_limit(
     e: &Element,
-    merged: &mut Computed,
+    merged: &mut BoxStyle,
     inherited: &Computed,
     opts: &RenderOpts,
 ) {

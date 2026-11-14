@@ -60,8 +60,12 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
         }
     }
     merged.resolve_viewport(opts.viewport, vcx);
-    quirks::fill(e, &mut merged, inherited, opts);
-    crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
+    if e.marks.quirks_fill {
+        quirks::fill(e, &mut merged, inherited, opts);
+    }
+    if merged.reset_transforms.offset_icb {
+        crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
+    }
     let gutters = crate::interactive::scroll_extent::classic::model(
         opts.cx.scroll.frame.as_ref(),
         e.node_id,
@@ -87,4 +91,40 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     merged
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::Node;
+    use std::rc::Rc;
+
+    #[test]
+    fn an_ordinary_box_keeps_its_published_style_shared() {
+        let opts = RenderOpts {
+            text: gpui::TextStyle::default(),
+            viewport: (800.0, 600.0),
+            normal_line_height: 1.2,
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        let parent = BoxStyle::default();
+        let nodes = [Node::Element(crate::layout::table::anon::anon_element(
+            "div",
+            vec![],
+        ))];
+        crate::style::cascade::materialize::materialize(&nodes, parent.style_rc(), opts.cx.vcx());
+        let Node::Element(element) = &nodes[0] else {
+            unreachable!()
+        };
+        let published = element
+            .style
+            .slot()
+            .any()
+            .expect("published computed style");
+        for _ in 0..2 {
+            let merged = merged_style(element, &parent, &opts);
+            assert!(Rc::ptr_eq(merged.style_rc(), &published));
+        }
+    }
 }

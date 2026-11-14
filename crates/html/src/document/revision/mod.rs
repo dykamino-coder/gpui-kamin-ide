@@ -130,6 +130,7 @@ impl Document {
                 return Err(record(failure, self));
             }
         };
+        candidate.state.boxes.borrow_mut().replace(&candidate.nodes);
         *self = candidate;
         Ok(self.report())
     }

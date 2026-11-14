@@ -50,9 +50,6 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let prepared = opts.cx.layout().preparation.get(nodes, stable, changed);
     let opts = &*opts.inner(|cx| {
         cx.values.inert_clear = !prepared.clearance_possible;
-        cx.contracts.subtrees = std::rc::Rc::new(std::cell::RefCell::new(
-            crate::layout::cx::subtree::SubtreeFacts::overlay(prepared.facts.clone()),
-        ));
     });
     // Переводы стилей коробок — общие в пределах этой сборки (`layout::cx::conversions`).
     let _conversions = opts.cx.layout().conversions.build();

@@ -76,6 +76,7 @@ use crate::document::logical_properties::resolve_logical;
 use crate::document::writing_mode::propagate_writing_mode;
 
 mod box_style;
+pub(crate) mod boxes;
 
 use crate::dom::Node;
 use state::DocState;

@@ -11,6 +11,8 @@ pub use markup5ever_rcdom::NodeKey;
 mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};
+mod box_id;
+pub use box_id::{BoxId, BoxLink};
 mod children;
 mod same_tree;
 pub use same_tree::{
@@ -22,7 +24,7 @@ mod intrinsic;
 pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
 pub mod invalidation;
 pub mod traversal;
-pub use children::{Children, ChildrenMark};
+pub use children::{BoxTextFacts, BoxTreeSummary, Children, ChildrenMark};
 mod direction;
 pub mod early_admission;
 mod shared_style;

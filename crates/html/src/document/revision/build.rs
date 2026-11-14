@@ -148,6 +148,9 @@ impl Document {
             return Err((failure, Box::new(source)));
         }
         state.values.traversal.retain(source.input);
+        if state.boxes.borrow().is_empty() {
+            state.boxes.borrow_mut().publish(&nodes);
+        }
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
         Ok(Document {
