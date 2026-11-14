@@ -7,7 +7,7 @@ use std::{cell::RefCell, rc::Rc};
 /// Геометрией, клипами, стилем текста и rendered view владеет вызывающий код.
 /// Снимок хранит только живых предков; копии разделяют неизменяемый срез.
 #[derive(Clone, PartialEq, Debug, Default)]
-pub struct ElementIdContext(Rc<[crate::ElementId]>);
+pub struct ElementIdContext(pub(super) Rc<[crate::ElementId]>);
 
 /// Inputs inherited by an element constructed during deferred measurement.
 /// Paint geometry, clips and effects remain owned by the current traversal.

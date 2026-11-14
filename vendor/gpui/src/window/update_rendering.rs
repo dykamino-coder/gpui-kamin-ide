@@ -35,22 +35,43 @@ pub struct ElementPlace {
     view: Option<EntityId>,
 }
 
-impl Window {
-    /// The place of the element being laid out, prepainted or painted now
-    /// (`ElementPlace`).
-    pub fn element_place(&self) -> ElementPlace {
-        ElementPlace {
-            ids: self.element_id_context(),
-            view: self.rendered_entity_stack.last().copied(),
+impl ElementPlace {
+    /// The place of the root element of `view`'s render: the view's id on
+    /// the stack, the view rendering.
+    pub fn of_view(view: EntityId) -> Self {
+        Self {
+            ids: ElementIdContext(std::rc::Rc::from([crate::ElementId::View(view)].as_slice())),
+            view: Some(view),
         }
     }
 
+}
+
+impl Window {
+    /// The element being laid out, prepainted or painted now (its own id on
+    /// top of the stack) stands directly under `parent`. Allocates nothing.
+    pub fn element_stands_under(&self, parent: &ElementPlace) -> bool {
+        let ids = &*parent.ids.0;
+        self.rendered_entity_stack.last().copied() == parent.view
+            && self.element_id_stack.len() == ids.len() + 1
+            && self.element_id_stack[..ids.len()] == *ids
+    }
+
+    /// Run `f` at `place`: its id stack and view (the stack is inline up to
+    /// its capacity, so entering a place does not allocate).
     fn with_element_place<R>(&mut self, place: &ElementPlace, f: impl FnOnce(&mut Self) -> R) -> R {
-        let ids = &place.ids;
-        match place.view {
-            Some(view) => self.with_rendered_view(view, |window| window.with_element_id_context(ids, f)),
-            None => self.with_element_id_context(ids, f),
-        }
+        let mut stack: smallvec::SmallVec<[crate::ElementId; 32]> =
+            place.ids.0.iter().cloned().collect();
+        std::mem::swap(&mut self.element_id_stack, &mut stack);
+        let (result, _) = self.with_restore(
+            stack,
+            |window, outer| std::mem::swap(&mut window.element_id_stack, outer),
+            |window| match place.view {
+                Some(view) => window.with_rendered_view(view, f),
+                None => f(window),
+            },
+        );
+        result
     }
 
     /// Register `f` to run at the start of every draw, before its paint pass

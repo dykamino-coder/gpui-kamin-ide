@@ -50,6 +50,8 @@ mod html_attrs;
 mod links;
 #[path = "wptrun/page.rs"]
 mod page;
+#[path = "wptrun/step.rs"]
+mod step;
 #[path = "wptrun/page_border.rs"]
 mod page_border;
 #[path = "wptrun/page_box.rs"]
@@ -185,12 +187,14 @@ fn main() {
                                 .set_frame_capture(Some(sink))
                                 .expect("Windows GPU readback");
                         }
-                        cx.new(|_| Page {
+                        let page = cx.new(|_| Page {
                             doc: empty,
                             select: None,
                             #[cfg(feature = "wpt-harness")]
                             probes: Default::default(),
-                        })
+                        });
+                        step::register(&page, window);
+                        page
                     },
                 )
                 .unwrap();

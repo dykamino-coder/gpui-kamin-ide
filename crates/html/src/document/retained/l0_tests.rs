@@ -13,7 +13,7 @@ use gpui::{
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-const PAGE: &str = "<p style='margin:20px'>hello <b>world</b> and a longer line of text \
+pub(super) const PAGE: &str = "<p style='margin:20px'>hello <b>world</b> and a longer line of text \
  that wraps somewhere in the middle of the box</p>\
  <div style='display:flex;gap:4px'><div style='flex:1'>a</div><div style='width:30px'>b</div></div>\
  <div style='display:grid;grid-template-columns:1fr 2fr'><div>c</div><div>d d d</div></div>\
@@ -50,7 +50,7 @@ fn boxes(doc: &Document, window: &mut Window, cx: &mut App) -> Vec<Bounds<Pixels
 }
 
 /// Builds of the frame so far, and those made inside `Window::draw`.
-fn builds(view: &gpui::Entity<super::tests::View>, cx: &mut gpui::VisualTestContext) -> (u64, u64) {
+pub(super) fn builds(view: &gpui::Entity<super::tests::View>, cx: &mut gpui::VisualTestContext) -> (u64, u64) {
     cx.update(|_, app| {
         let doc = &view.read(app).doc;
         (doc.retained_frames().0, doc.builds_inside_draw())

@@ -25,8 +25,8 @@ pub(super) struct Prepared {
     pub(super) flow: Option<Rc<FlowReuse>>,
     /// Кадры, заказанные сборкой и раскладкой шага.
     pub(super) scheduled: usize,
-    /// Место в кадре, под которым дерево собрано.
-    pub(super) place: ElementPlace,
+    /// Место в кадре, под которым стоит элемент документа этого дерева.
+    pub(super) parent: ElementPlace,
 }
 
 /// Отметки шага для хоста, который меряет его фазы.
@@ -41,22 +41,6 @@ pub enum UpdatePhase {
 }
 
 impl Slot {
-    /// Записи следующей ревизии того же документа: место в кадре прежнее
-    /// (id документа — его записи блоков, они переживают правки).
-    pub(in crate::document) fn following(&self) -> Rc<Slot> {
-        let next = Slot::default();
-        *next.place.borrow_mut() = self.place.borrow().clone();
-        Rc::new(next)
-    }
-
-    /// Место документа в кадре, который его рисует.
-    pub(super) fn note_place(&self, place: ElementPlace) {
-        let mut known = self.place.borrow_mut();
-        if known.as_ref() != Some(&place) {
-            *known = Some(place);
-        }
-    }
-
     /// Подготовленное дерево для кадра с ключом `key`; чужое отбрасывается.
     pub(super) fn take_prepared(&self, key: &Option<FrameKey>) -> Option<Prepared> {
         let prepared = self.prepared.borrow_mut().take()?;
@@ -67,10 +51,14 @@ impl Slot {
 impl Document {
     /// Шаг документа перед кадром окна (`gpui::Window::on_update_rendering`):
     /// собрать и разложить кадр с опциями `opts`, если его не повторит
-    /// записанный кадр. `observe` получает отметки фаз шага.
+    /// записанный кадр. `parent` — место в кадре, где хост рисует
+    /// `render_viewport` (корень view — `ElementPlace::of_view`); кадр в
+    /// другом месте соберётся сам, как без шага. `observe` получает отметки
+    /// фаз шага.
     pub fn update_rendering(
         &self,
         opts: &crate::RenderOpts,
+        parent: &ElementPlace,
         window: &mut Window,
         cx: &mut App,
         mut observe: impl FnMut(UpdatePhase),
@@ -81,17 +69,17 @@ impl Document {
         };
         let candidate = *self.retained.recorded.borrow() == Some(key.clone())
             && self.state.values.resources_unchanged();
-        // Место узнаёт первый кадр документа; до него шаг не собирает.
-        let Some(place) = self.retained.place.borrow().clone() else {
-            return;
-        };
         if candidate {
             return;
         }
         let builder = self.frame_builder(opts, &Some(key.clone()));
+        // Элемент документа стоит в кадре под `parent` со своим id: шаг
+        // собирает под тем же стеком id и view, ключи состояний — кадра.
+        let id = super::element::document_id(&self.reuse);
         let (w, h) = builder.opts.viewport;
         let keys = builder.layout_keys;
-        window.with_layout_outside_draw(&place, cx, |window, cx| {
+        window.with_layout_outside_draw(parent, cx, |window, cx| {
+            window.with_id(id, |window| {
             let before = window.next_frame_callback_count();
             self.retained.builds.set(self.retained.builds.get() + 1);
             let (mut tree, flow) = builder.build(true, false);
@@ -113,8 +101,9 @@ impl Document {
                 tree,
                 flow,
                 scheduled,
-                place: place.clone(),
+                parent: parent.clone(),
             });
+            })
         });
     }
 

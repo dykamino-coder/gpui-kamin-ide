@@ -30,8 +30,14 @@ pub(super) struct Retained {
     scheduled: usize,
     replay: bool,
     /// Дерево собрано и разложено шагом документа до кадра (`prepared`) для
-    /// этого места в кадре: коробка области просмотра — лист её размера.
+    /// элемента документа под этим местом в кадре: коробка области просмотра
+    /// — лист её размера.
     laid_out: Option<gpui::ElementPlace>,
+}
+
+/// Id элемента документа: его записи блоков (`Element::id` ниже).
+pub(super) fn document_id(store: &Rc<crate::layout::reuse::Store>) -> ElementId {
+    ElementId::NamedInteger("retained-document".into(), Rc::as_ptr(store) as usize as u64)
 }
 
 impl Retained {
@@ -51,7 +57,7 @@ impl Retained {
                 flow: prepared.flow,
                 scheduled: prepared.scheduled,
                 replay: false,
-                laid_out: Some(prepared.place),
+                laid_out: Some(prepared.parent),
             };
         }
         let (tree, flow) = if candidate {
@@ -99,10 +105,7 @@ impl Element for Retained {
     /// повторялись из прошлого кадра (`Store::draw`). Запись кадра чужого
     /// `Slot` отсеивает `Record::reusable`.
     fn id(&self) -> Option<ElementId> {
-        Some(ElementId::NamedInteger(
-            "retained-document".into(),
-            Rc::as_ptr(&self.builder.store) as usize as u64,
-        ))
+        Some(document_id(&self.builder.store))
     }
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
@@ -116,7 +119,7 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        self.adopt_place(window.element_place());
+        self.check_place(window);
         let before = window.next_frame_callback_count();
         let id = match self.tree.as_mut() {
             Some(_) if self.laid_out.is_some() => {

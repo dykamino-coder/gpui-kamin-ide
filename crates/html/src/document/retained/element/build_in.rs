@@ -3,14 +3,18 @@
 //! подготовленное отказала проверка заместителей.
 
 use super::Retained;
-use gpui::{App, AvailableSpace, Bounds, ElementPlace, Pixels, RetainedPrepaint, Window, size};
+use gpui::{App, AvailableSpace, Bounds, Pixels, RetainedPrepaint, Window, size};
 
 impl Retained {
-    /// Место документа в этом кадре. Дерево шага, собранное для другого
-    /// места, не годится: ключи состояний его элементов отличались бы от
-    /// кадра — тогда кадр собирается здесь, как без шага.
-    pub(super) fn adopt_place(&mut self, place: ElementPlace) {
-        if self.laid_out.as_ref().is_some_and(|laid| *laid != place) {
+    /// Дерево шага, собранное для другого места в кадре, не годится: ключи
+    /// состояний его элементов отличались бы от кадра — тогда кадр
+    /// собирается здесь, как без шага.
+    pub(super) fn check_place(&mut self, window: &Window) {
+        if self
+            .laid_out
+            .as_ref()
+            .is_some_and(|parent| !window.element_stands_under(parent))
+        {
             self.laid_out = None;
             self.scheduled = 0;
             self.slot.builds.set(self.slot.builds.get() + 1);
@@ -19,7 +23,6 @@ impl Retained {
             self.tree = Some(tree);
             self.flow = flow;
         }
-        self.slot.note_place(place);
     }
 
     /// Дерево не подошло к записи: собрать и разложить в тех же границах.

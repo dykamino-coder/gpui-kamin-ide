@@ -37,22 +37,32 @@ pub(super) fn open<'a>(
     cx: &'a mut TestAppContext,
     html: &str,
 ) -> (gpui::Entity<View>, &'a mut VisualTestContext) {
-    let doc = Document::builder(html, "").build().unwrap();
-    let (view, cx) = cx.add_window_view(|_, _| View {
-        doc,
-        viewport: (400., 300.),
-        step: None,
-    });
+    let (view, cx) = open_without_step(cx, html);
     let stepped = view.clone();
+    let parent = gpui::ElementPlace::of_view(view.entity_id());
     cx.update(|window, app| {
         let step = window.on_update_rendering(move |window, app| {
             stepped.update(app, |view, cx| {
-                view.doc.update_rendering(&view.opts(), window, cx, |_| {})
+                view.doc.update_rendering(&view.opts(), &parent, window, cx, |_| {})
             })
         });
         view.update(app, |view, _| view.step = Some(step));
     });
     (view, cx)
+}
+
+/// The host without the document step: every frame builds inside the draw
+/// (the frame path before `Document::update_rendering`).
+pub(super) fn open_without_step<'a>(
+    cx: &'a mut TestAppContext,
+    html: &str,
+) -> (gpui::Entity<View>, &'a mut VisualTestContext) {
+    let doc = Document::builder(html, "").build().unwrap();
+    cx.add_window_view(|_, _| View {
+        doc,
+        viewport: (400., 300.),
+        step: None,
+    })
 }
 
 pub(super) fn frame(cx: &mut VisualTestContext) {
