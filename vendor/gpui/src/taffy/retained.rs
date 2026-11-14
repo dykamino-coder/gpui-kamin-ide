@@ -363,7 +363,12 @@ impl TaffyLayoutEngine {
                 let _ = self.taffy.set_style(node, style);
             }
         }
-        self.taffy.retain_nodes(|node| live.contains(&node));
+        // A pass only adds nodes, so this pass's nodes are in the tree: when
+        // they are all of it there is nothing to sweep, and the sweep would
+        // visit every slot the tree ever had (its storage never shrinks).
+        if live.len() != self.taffy.total_node_count() {
+            self.taffy.retain_nodes(|node| live.contains(&node));
+        }
         retained.memos.retain(|node, _| live.contains(node));
         // A kept leaf is measured again only by the function of the request
         // that claims it, so the old function and everything it captured (a
