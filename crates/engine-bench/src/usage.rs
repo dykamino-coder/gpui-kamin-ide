@@ -194,18 +194,71 @@ impl Capture {
         let boundary = self.boundary.clone();
         Arc::new(move |next| boundary.observe(Some(next)))
     }
-    pub(super) fn finish(mut self, cold: bool) -> Value {
+    /// The resources of the sample as numbers; its JSON is built only for the report
+    /// ([`Sample::json`]), so samples kept until then do not grow the measured heap.
+    pub(super) fn finish(mut self) -> Sample {
         self.stop();
         let state = self
             .boundary
             .state
             .lock()
             .unwrap_or_else(|e| e.into_inner());
+        Sample {
+            phases: state.phases.clone(),
+            cpu: state.last.cpu_100ns - state.start.cpu_100ns,
+            start: state.start,
+            end: state.last,
+            error: state.error.clone(),
+            gpu_error: state.gpu_error.clone(),
+        }
+    }
+    fn stop(&mut self) {
+        if let Some(worker) = self.worker.take() {
+            self.boundary.observe(None);
+            self.boundary
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .stopped = true;
+            #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
+            super::allocations::probe::outside();
+            worker.thread().unpark();
+            let _ = worker.join();
+        }
+    }
+}
+impl Drop for Capture {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Resources of one finished sample: fixed-size numbers until the report asks for JSON.
+pub(super) struct Sample {
+    phases: [PhaseUsage; Phase::COUNT],
+    cpu: u64,
+    start: Snapshot,
+    end: Snapshot,
+    error: Option<String>,
+    gpu_error: Option<String>,
+}
+impl Sample {
+    /// Heap bytes the sample owns: only error messages (tests only).
+    #[cfg(test)]
+    pub(super) fn owned_bytes(&self) -> usize {
+        [&self.error, &self.gpu_error]
+            .into_iter()
+            .flatten()
+            .map(String::capacity)
+            .sum()
+    }
+    /// The report form; `cold` keeps the document phases, which run only in cold and edit samples.
+    pub(super) fn json(&self, cold: bool) -> Value {
         let phases: serde_json::Map<String, Value> = Phase::NAMES
             .iter()
             .enumerate()
             .map(|(i, name)| {
-                let usage = &state.phases[i];
+                let usage = &self.phases[i];
                 let gpu = |v: Option<(u64, u64)>| {
                     v.map(
                         |(local, shared)| json!({"local_bytes": local, "non_local_bytes": shared}),
@@ -230,32 +283,13 @@ impl Capture {
             .collect();
         json!({"phases": phases,
             "rust_allocation_audit_enabled": cfg!(feature = "allocation-audit"),
-            "process_cpu_100ns": state.last.cpu_100ns - state.start.cpu_100ns,
-            "start": state.start.json(), "end": state.last.json(),
-            "error": state.error, "gpu_error": state.gpu_error,
+            "process_cpu_100ns": self.cpu,
+            "start": self.start.json(), "end": self.end.json(),
+            "error": self.error.clone(), "gpu_error": self.gpu_error.clone(),
             "memory_peak_method": "5ms samples plus phase boundaries; lifetime high-water marks separate; a sample whose read overlaps a boundary is dropped",
             "cpu_scope": "kernel+user, all process threads, including measurement thread; exclusive wall-phase attribution",
             "time_scope": "phase windows exclude the boundary snapshot (kamin_html::work::Clock); it is counted in pipeline_other",
             "steady_method": "end of phase/frame; not a post-GC/quiescence assertion"})
-    }
-    fn stop(&mut self) {
-        if let Some(worker) = self.worker.take() {
-            self.boundary.observe(None);
-            self.boundary
-                .state
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .stopped = true;
-            #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
-            super::allocations::probe::outside();
-            worker.thread().unpark();
-            let _ = worker.join();
-        }
-    }
-}
-impl Drop for Capture {
-    fn drop(&mut self) {
-        self.stop();
     }
 }
 
