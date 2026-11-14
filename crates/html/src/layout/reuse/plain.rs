@@ -64,13 +64,7 @@ pub(super) fn plain(e: &Element) -> bool {
 /// Элемент `e` сам инертен: обычный поток или таблица, без собственного слоя.
 fn inert(e: &Element) -> bool {
     let style = e.style.used();
-    let tag = e.tag.as_str();
-    (TAGS.contains(&tag) || TABLE.contains(&tag))
-        && e.hover.is_none()
-        && e.anim.is_none()
-        && e.first_letter.is_none()
-        && e.first_line.is_none()
-        && e.list_item.is_none()
+    flow_kind(e)
         && matches!(
             style.reset_positioned.position,
             None | Some(Position::Static)
@@ -83,20 +77,42 @@ fn inert(e: &Element) -> bool {
         && style.reset_effects.blend.is_none_or(|b| b == 0)
 }
 
-/// Поддерево `e` можно повторить на экране (`replay`): инертно как `plain`,
-/// без единиц области просмотра в стилях и без вертикального письма, гибких
-/// и сеточных коробок: их сборка читает размеры окна напрямую, а не через
-/// ограничения, чьи чтения записываются.
-pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
-    all_elements(e, |e| replayable_node(e, vcx))
+/// Элемент — коробка обычного потока или таблицы без наведения, анимации,
+/// псевдоэлементов первой строки и буквы и маркера.
+pub(super) fn flow_kind(e: &Element) -> bool {
+    let tag = e.tag.as_str();
+    (TAGS.contains(&tag) || TABLE.contains(&tag))
+        && e.hover.is_none()
+        && e.anim.is_none()
+        && e.first_letter.is_none()
+        && e.first_line.is_none()
+        && e.list_item.is_none()
 }
 
-/// Элемент `e` сам по себе не мешает повтору поддерева (`replayable`).
+/// Поддерево `e` можно повторить на экране (`replay`): коробки потока без
+/// флоатов, единиц области просмотра, вертикального письма, гибких и
+/// сеточных коробок (их сборка читает размеры окна напрямую, а не через
+/// ограничения, чьи чтения записываются). Позиционирование и свои слои —
+/// только оставаясь внутри поддерева (`layered::contained`).
+pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
+    let node = |e: &Element| {
+        let float = e.style.used().reset_box_layout.float;
+        flow_kind(e) && float.is_none_or(|f| f == 0) && layout_reads_outside_nothing(e, vcx)
+    };
+    all_elements(e, node) && super::layered::contained(e)
+}
+
+/// Элемент `e` сам по себе не мешает повтору поддерева (`replayable`), а
+/// в далёком блоке — и без позиционирования и слоёв (`far`).
 pub(super) fn replayable_node(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
+    inert(e) && layout_reads_outside_nothing(e, vcx)
+}
+
+/// Без вертикального письма, единиц области просмотра, гибких и сеточных коробок.
+fn layout_reads_outside_nothing(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
     use crate::style::computed::Display;
     let style = e.style.used();
-    inert(e)
-        && !style.wm().vertical()
+    !style.wm().vertical()
         && !style.has_viewport_lengths(vcx)
         && !matches!(
             style.reset_box_layout.display,

@@ -354,7 +354,17 @@ npm --prefix extensions/claude-bridge/webview run build
 Workflow `.github/workflows/pr-checks.yml` автоматически выполняет этот контур
 для затронутых частей каждого PR. Job `required quality gate` имеет стабильное
 имя и проходит только когда все применимые Node, Bridge, Rust, Windows installer
-и release dry-run jobs успешны;
+и release dry-run jobs успешны.
+В состав gate входят `root Node checks`, `Bridge server checks`,
+`Bridge dashboard build`, `Bridge extension checks`, `Bridge webview checks`,
+`Bridge workspace runtime` (Ubuntu и Windows), `Windows Rust tests`,
+`HTML layer imports`, `HTML transitional paths`, три vendor jobs,
+`Windows installer build` и `release pipeline dry run`; каждый запускается по
+своему фильтру путей. `Bridge workspace runtime` обязателен для PR, которые
+меняют `extensions/claude-bridge/` (`extension`, `server`, `webview`,
+`workspace`, `browser-client`): он исполняет жизненный цикл сессий расширения,
+включая закрытие вкладки и завершение host-процесса. Пропущенный по фильтру job
+gate не блокирует;
 docs-only PR в этом workflow ограничивается scope, whitespace и проверкой
 явных записей доставки ниже.
 Независимый workflow `.github/workflows/pr-metadata.yml` проверяет заголовок и

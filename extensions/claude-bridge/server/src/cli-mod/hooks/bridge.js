@@ -101,18 +101,33 @@ function localConditionSnapshot(settings) {
 }
 
 async function conditionRequest($, state, route, data = {}) {
-  const response = await $.http.fetch(`http://bridge/hooks/${route}`, {
-    socketPath: state.socketPath,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      protocol: 1,
-      session: state.session,
-      instance: state.instance,
-      version: state.version,
-      ...data,
-    }),
-  })
+  const send = () =>
+    $.http.fetch(`http://bridge/hooks/${route}`, {
+      socketPath: state.socketPath,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        protocol: 1,
+        session: state.session,
+        instance: state.instance,
+        version: state.version,
+        ...data,
+      }),
+    })
+  let response = await send()
+  if (!response.ok) {
+    // The server drops this module's lease after three seconds without a
+    // request (a stalled CLI is enough) and then refuses every request. Ask
+    // for the lease again and repeat once; without this the conditions stayed
+    // off for the rest of the session (INC-2026-0118). Calls stay unguarded
+    // only while no lease can be obtained.
+    try {
+      await exchange($, state, '/hello')
+    } catch {
+      throw new Error('Bridge hook conditions unavailable')
+    }
+    response = await send()
+  }
   if (!response.ok) throw new Error('Bridge hook conditions unavailable')
   return JSON.parse(response.text)
 }
