@@ -57,7 +57,6 @@ use crate::dom::{Element, Node};
 use gpui::{AnyElement, IntoElement};
 pub(crate) mod atom_parent;
 pub(super) mod collect;
-pub(crate) use crate::text::inline::collect::stacks::build as collect_stacks_build;
 pub(crate) use crate::text::inline::collect::to_rotated_frame;
 use crate::text::inline::collect::*;
 pub(super) mod hyphenate;
