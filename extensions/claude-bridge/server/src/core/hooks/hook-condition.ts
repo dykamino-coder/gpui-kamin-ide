@@ -101,7 +101,7 @@ export function conditionHolds(
   }
   switch (rule.tool) {
     case 'Bash':
-      return value('command', (v) => bashRuleMatches(rule.content, v))
+      return value('command', (v) => bashRuleMatches(rule.content, v, ctx.bashHome))
     case 'PowerShell':
       return value('command', (v) => powershellRuleMatches(rule.content, v))
     case 'Read':

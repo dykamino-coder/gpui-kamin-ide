@@ -14,6 +14,8 @@ import { registerSessionHooks } from './registry'
 import { matcherForCli } from './tool-names'
 import { conditionForCli } from './hook-condition'
 import { HTTP_HOOK_EVENTS, HTTP_HOOK_RELAY } from './http-hook-answer'
+import { BASH_HOME_ENV, BASH_HOME_HEADER } from './hook-environment'
+export { BASH_HOME_HEADER } from './hook-environment'
 
 /** Env var the CLI process carries for us. The relay credential travels in
  *  the session's own process environment, never in the command text: the
@@ -25,6 +27,7 @@ export const HOOK_RELAY_TOKEN_ENV = 'CLAUDE_BRIDGE_HOOK_TOKEN'
 export function buildHookCommandRelay(
   url: string,
   context = { event: 'unknown', type: 'command', host: 'local' },
+  bashCondition = false,
 ): string {
   const safeLabel = (value: string) => (/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value) ? value : 'unknown')
   const labels = { event: safeLabel(context.event), type: safeLabel(context.type), host: safeLabel(context.host) }
@@ -49,7 +52,7 @@ export function buildHookCommandRelay(
     'if(!k){process.stderr.write("Missing hook relay credential");process.exitCode=1;return}',
     'const {request}=require("node:http");',
     `const r=await new Promise((resolve,reject)=>{const q=request(${JSON.stringify(url)},`,
-    '{method:"POST",agent:false,headers:{"Content-Type":"application/json","Authorization":"Bearer "+k,"X-Bridge-Hook-Relay":"command"}},',
+    `{method:"POST",agent:false,headers:{"Content-Type":"application/json","Authorization":"Bearer "+k,"X-Bridge-Hook-Relay":"command"${bashCondition ? `,${JSON.stringify(BASH_HOME_HEADER)}:process.env[${JSON.stringify(BASH_HOME_ENV)}]||""` : ''}}},`,
     's=>{let t="";s.setEncoding("utf8");s.on("data",c=>t+=c);s.on("error",reject);',
     's.on("end",()=>resolve({status:s.statusCode,text:t}))});q.on("error",reject);q.end(d)});',
     'const t=r.text;',
@@ -102,9 +105,11 @@ export function rewriteHooksForCli(
         if (h.type !== 'command' && h.type !== 'http') return condition.serverRule ? h : translated
         if (condition.serverRule) {
           reg.serverCondition = condition.serverRule
-          if (h.once) reg.serverOnce = { spent: false }
         }
-        const once = condition.serverRule ? undefined : h.once
+        // These declarations are emitted into --settings, where the CLI
+        // ignores once. Only skill-frontmatter hooks have once semantics;
+        // filtering settings hooks must not introduce a server-side limit.
+        const once = h.once
         if (h.type === 'http' && !condition.serverRule) return translated
         if (h.type === 'command' && reg.effectiveHost === 'server' && !condition.serverRule) return translated
 
@@ -125,6 +130,10 @@ export function rewriteHooksForCli(
             allowedEnvVars: [HOOK_RELAY_TOKEN_ENV],
           }
           if (h.timeout !== undefined) http.timeout = h.timeout
+          if (condition.serverRule?.tool === 'Bash') {
+            http.headers![BASH_HOME_HEADER] = `$${BASH_HOME_ENV}`
+            http.allowedEnvVars!.push(BASH_HOME_ENV)
+          }
           if (condition.cliIf !== undefined) http.if = condition.cliIf
           if (h.statusMessage !== undefined) http.statusMessage = h.statusMessage
           if (once !== undefined) http.once = once
@@ -137,7 +146,14 @@ export function rewriteHooksForCli(
         const relay: HookHandler = {
           type: 'command',
           command: 'node',
-          args: ['-e', buildHookCommandRelay(proxyUrl, { event, type: h.type, host: reg.effectiveHost })],
+          args: [
+            '-e',
+            buildHookCommandRelay(
+              proxyUrl,
+              { event, type: h.type, host: reg.effectiveHost },
+              condition.serverRule?.tool === 'Bash',
+            ),
+          ],
           timeout: h.timeout,
           if: condition.cliIf,
           statusMessage: h.statusMessage,

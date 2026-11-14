@@ -40,6 +40,8 @@ mod shader_compilation {
             "polychrome_sprite",
             // KaminIDE patch: backdrop blur (тосты)
             "blur",
+            // KaminIDE patch: frame clear drawn with blending off (Intel)
+            "clear",
         ];
 
         let rust_binding_path = format!("{}/shaders_bytes.rs", out_dir);

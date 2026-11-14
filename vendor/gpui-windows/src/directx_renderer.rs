@@ -49,6 +49,7 @@ mod group_batch;
 mod texture_pool;
 mod shader_identity;
 mod present_gate;
+mod quad_clear;
 use group_region::Region;
 
 pub(crate) struct DirectXRenderer {
@@ -429,6 +430,8 @@ struct DirectXRenderPipelines {
     poly_sprites: PipelineState<PolychromeSprite>,
     /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
     blur_pipeline: PipelineState<BlurQuad>,
+    /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
+    clear_pipeline: PipelineState<quad_clear::ClearColor>,
 }
 
 struct DirectXGlobalElements {
@@ -613,8 +616,8 @@ impl DirectXRenderer {
         self.atlas.clone()
     }
 
-    fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
-        let clear_color = self.backdrop.as_ref().unwrap_or(clear_color);
+    fn pre_draw(&mut self, clear_color: &[f32; 4]) -> Result<()> {
+        let clear_color = *self.backdrop.as_ref().unwrap_or(clear_color);
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
             .devices
@@ -634,14 +637,9 @@ impl DirectXRenderer {
                 _pad: 0,
             }],
         )?;
+        // KaminIDE patch: the clear is a draw, issued once the target, the
+        // viewport and the frame parameters are bound (quad_clear).
         unsafe {
-            device_context.ClearRenderTargetView(
-                resources
-                    .render_target_view
-                    .as_ref()
-                    .context("missing render target view")?,
-                clear_color,
-            );
             device_context
                 .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
             device_context.RSSetViewports(Some(slice::from_ref(&resources.viewport)));
@@ -652,7 +650,7 @@ impl DirectXRenderer {
             device_context
                 .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
         }
-        Ok(())
+        self.clear_frame(clear_color)
     }
 
     #[inline]
@@ -2368,6 +2366,14 @@ impl DirectXRenderPipelines {
             create_blend_state(device)?,
         )?;
 
+        let clear_pipeline = PipelineState::new(
+            device,
+            "clear_pipeline",
+            ShaderModule::Clear,
+            1,
+            create_blend_state_replace(device)?,
+        )?;
+
         Ok(Self {
             shadow_pipeline,
             quad_pipeline,
@@ -2378,6 +2384,7 @@ impl DirectXRenderPipelines {
             subpixel_sprites,
             poly_sprites,
             blur_pipeline,
+            clear_pipeline,
         })
     }
 }
@@ -3204,6 +3211,8 @@ pub(crate) mod shader_resources {
         EmojiRasterization,
         /// KaminIDE patch: backdrop blur (тосты).
         Blur,
+        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
+        Clear,
     }
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -3284,6 +3293,10 @@ pub(crate) mod shader_resources {
                 ShaderModule::Blur => match target {
                     ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
                     ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
+                },
+                ShaderModule::Clear => match target {
+                    ShaderTarget::Vertex => CLEAR_VERTEX_BYTES,
+                    ShaderTarget::Fragment => CLEAR_FRAGMENT_BYTES,
                 },
             };
             Self { inner: bytes }
@@ -3373,6 +3386,7 @@ pub(crate) mod shader_resources {
                 ShaderModule::PolychromeSprite => "polychrome_sprite",
                 ShaderModule::EmojiRasterization => "emoji_rasterization",
                 ShaderModule::Blur => "blur",
+                ShaderModule::Clear => "clear",
             }
         }
     }

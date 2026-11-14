@@ -3,6 +3,8 @@
 
 #[cfg(feature = "allocation-audit")]
 pub(super) use counted::Counted;
+#[cfg(all(test, feature = "allocation-audit"))]
+pub(super) use counted::thread_live;
 
 #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
 pub(super) mod probe;
@@ -25,7 +27,24 @@ mod counted {
     static LIVE: AtomicU64 = AtomicU64::new(0);
     static PEAK: AtomicU64 = AtomicU64::new(0);
 
+    // Tests only: live bytes by thread, so a test can check its own thread while others run.
+    #[cfg(test)]
+    thread_local! {
+        static THREAD_LIVE: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+    }
+    #[cfg(test)]
+    fn thread_delta(bytes: i64) {
+        let _ = THREAD_LIVE.try_with(|live| live.set(live.get() + bytes));
+    }
+    /// Bytes this thread allocated and has not freed (tests only).
+    #[cfg(test)]
+    pub(crate) fn thread_live() -> i64 {
+        THREAD_LIVE.with(std::cell::Cell::get)
+    }
+
     fn allocated(bytes: usize) {
+        #[cfg(test)]
+        thread_delta(bytes as i64);
         CALLS.fetch_add(1, Relaxed);
         BYTES.fetch_add(bytes as u64, Relaxed);
         let live = LIVE.fetch_add(bytes as u64, Relaxed) + bytes as u64;
@@ -49,6 +68,8 @@ mod counted {
         let _ = (bytes, pointer);
     }
     fn freed(bytes: usize) {
+        #[cfg(test)]
+        thread_delta(-(bytes as i64));
         FREED.fetch_add(bytes as u64, Relaxed);
         LIVE.fetch_sub(bytes as u64, Relaxed);
     }

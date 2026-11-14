@@ -92,15 +92,24 @@ impl Document {
     ) -> Result<BuildReport, DocumentFailure> {
         // Read from the source DOM before it is taken and the batch written.
         let invalidation = self.invalidation(batch, theme_css);
-        let input = self
+        let mut input = self
             .state
             .values
             .traversal
             .take_source()
             .expect("Document retains its source DOM");
+        // Узлы остаются прежними, но допуск источников и каскад принадлежат
+        // новой ревизии. Отказ кандидата не должен отравлять прежний ledger.
+        let next_context = input.context().continuing(revision.clone());
+        let context = input.replace_context(next_context);
+        let agent_css = input.agent_css.get();
         batch.write();
-        let refused = |this: &mut Self, mut failure: DocumentFailure, input| {
+        let refused = |this: &mut Self,
+                       mut failure: DocumentFailure,
+                       mut input: crate::dom::input::Admitted| {
             batch.undo();
+            input.replace_context(context.clone());
+            input.agent_css.set(agent_css);
             this.state.values.traversal.retain(input);
             failure.report.retained_revision = Some(this.key);
             this.last_failure = Some(failure);

@@ -15,6 +15,7 @@ import { debugLog, warnLog } from '../logging'
 import { appendExecution } from './audit-log'
 import { payloadForHook } from './tool-names'
 import { conditionHolds } from './hook-condition'
+import type { PathRuleContext } from './path-rule'
 
 // Match Claude Code's DEFAULT_HTTP_HOOK_TIMEOUT_MS = 10 * 60 * 1000.
 // Long-running hooks (formatters, test runners) need this room.
@@ -74,6 +75,7 @@ export async function dispatchHook(
   payload: HookInputPayload,
   wsSource: ClientWsSource,
   auditTokenId?: string,
+  conditionContext: PathRuleContext = {},
 ): Promise<HookExecutionResult> {
   const reg = getHook(sessionId, hookId)
   if (!reg) {
@@ -81,11 +83,9 @@ export async function dispatchHook(
   }
   const start = Date.now()
   if (reg.serverCondition) {
-    if (!conditionHolds(reg.serverCondition, payload) || reg.serverOnce?.spent) {
+    if (!conditionHolds(reg.serverCondition, payload, conditionContext)) {
       return { stdout: '', stderr: '', exitCode: 0, outcome: 'success', durationMs: 0 }
     }
-    // Reserve synchronously before awaiting execution, including parallel calls.
-    if (reg.serverOnce) reg.serverOnce.spent = true
   }
   payload = payloadForHook(reg.matcher, payload)
   let result: HookExecutionResult
