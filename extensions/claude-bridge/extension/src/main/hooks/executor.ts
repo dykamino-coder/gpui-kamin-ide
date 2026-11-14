@@ -52,6 +52,8 @@ export interface HookExecuteResponse {
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 /** Characters kept per hook stream; a runaway hook must not grow them unbounded. */
 export const HOOK_OUTPUT_CAP = 1024 * 1024
+/** How long an exited hook's result waits for its output pipes to end. */
+export const HOOK_OUTPUT_DRAIN_MS = 1000
 
 /** Keeps the first HOOK_OUTPUT_CAP characters and counts what it dropped. */
 function boundedText(): { text: string; dropped: number; add(chunk: string): void } {
@@ -302,8 +304,13 @@ export async function executeHook(
       })
     }, timeoutMs)
 
-    proc.on('exit', (code) => {
+    // `exit` can arrive before the last output: only `close` means the pipes
+    // have ended (BR-18B). A background child of the hook may keep them open,
+    // so after `exit` the result waits for `close` only for a short window.
+    let drain: ReturnType<typeof setTimeout> | undefined
+    const report = (code: number | null): void => {
       clearTimeout(killer)
+      clearTimeout(drain)
       const { stdout, stderr } = streams()
       let jsonOutput: Record<string, unknown> | undefined
       if (code === 0 && !stdoutCap.dropped) {
@@ -319,10 +326,18 @@ export async function executeHook(
         jsonOutput,
         durationMs: Date.now() - start,
       })
+    }
+    let exitCode: number | null = null
+    proc.on('exit', (code) => {
+      clearTimeout(killer)
+      exitCode = code
+      drain = setTimeout(() => report(code), HOOK_OUTPUT_DRAIN_MS)
     })
+    proc.on('close', (code) => report(code ?? exitCode))
 
     proc.on('error', (err) => {
       clearTimeout(killer)
+      clearTimeout(drain)
       const { stdout, stderr } = streams()
       finish({
         stdout, stderr: stderr + `\nspawn error: ${err.message}`,

@@ -1253,8 +1253,14 @@ the server closes it or after 5 s (the server's teardown grace); a hook that is 
 it until it has answered. A handoff rebind still closes at once. The new test fails on the old code.
 Marker check on the 1.0.97 install with the candidate bundle: the local `SessionEnd` hook ran in 2 of
 2 runs (+261 ms, +247 ms after the close, audit `success`), and the server hook ran.
-[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/521f6c4ad63ae3b8f102909b1f74d13e1e715fe6/incidents/BR-18/evidence/2026-11-14-br18a-candidate). **Status:** done — ships in the next release. Not covered: a local
+[Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/521f6c4ad63ae3b8f102909b1f74d13e1e715fe6/incidents/BR-18/evidence/2026-11-14-br18a-candidate). **Status:** done — published in KaminIDE 1.0.98. Not covered: a local
 `SessionEnd` on a handoff rebind.
+
+**Regression and follow-up 2026-11-14: [#909](https://github.com/dykamino-coder/gpui-kamin-ide/pull/909) merged** (`9b508696`). #900 as published
+in 1.0.98 let a tab closed just before shutdown keep its socket for the whole window, so the host
+process could stay alive up to 5 s after disposal (`Bridge workspace runtime`, "tab close then
+shutdown", red on `main` since `d8667701`; that workflow is outside the required gate). Terminal
+disposal now closes those sockets at once. Ships in the next release.
 
 A run during the classification found the token at its 10-session limit for about 3 minutes. Those
 were the detached sessions of a force-killed app, dropped by the server's 10-minute detach grace
@@ -1282,6 +1288,35 @@ call count. Требуется отличить ожидаемую отмену 
 от потери обязательного local hook; prompts, commands с secrets и credentials
 в public evidence не попадают. Новый functional fix начинается только отдельным
 поручением после классификации. В текущей ревизии этот остаток только заведён.
+
+### BR-18B — Collect a local hook's output before reporting its result
+
+**Registered 2026-11-14 (kmaint2) from a CI failure on the 1.0.98 release branch.**
+- Symptom: a local command hook that exits 0 is sometimes reported with an empty `stdout`. In CI
+  `warm-shell.test.ts` failed once with `expected '' to contain '"n":0'` while the exit code matched
+  ([run](https://github.com/dykamino-coder/gpui-kamin-ide/actions/runs/43578145929/job/132396937898));
+  a rerun passed.
+- Fact (source): `executeHook` in `extension/src/main/hooks/executor.ts` builds the result in the
+  process `exit` handler. Node may emit `exit` before the last `stdout`/`stderr` data is delivered;
+  only `close` means the streams have ended. The foreground Bash tool already waits for `close`
+  (`shell-foreground.ts`).
+- Consequence: the hook's output can be lost, including a JSON decision (for example a `deny` from
+  `PreToolUse`), which is then not applied.
+- Contract: a hook result contains everything the hook wrote before it exited. A hook whose
+  background child keeps the pipes open still reports soon after the hook itself exits.
+- Direction: build the result on `close`; after `exit`, wait for `close` for about 1 s at most.
+
+**Fix 2026-11-14: [#908](https://github.com/dykamino-coder/gpui-kamin-ide/pull/908) merged** (`71ef1196`). The client executor and the server
+dispatcher (the same pattern, for server-host hooks) build the result on `close`. After `exit` the
+result waits for `close` for at most 1 s. Both new tests (client and server) fail on the old code.
+**Status:** done by the automated acceptance below — ships in the next release. Not reproduced on a
+live Windows install.
+
+**Registration status (2026-11-14):** ready / change. **Parent:** BR-18. **Dependency:** none. **Acceptance:** automated: a test
+with a process that emits `exit`, then output, then `close`, which fails on the old code, and a
+test that a held pipe does not delay the result beyond the window.
+**Windows runtime merge gate:** not required.
+**Next step:** none.
 
 ### BR-19 — Treat shell disconnect as lifecycle cancellation, not extension crash
 
@@ -2582,7 +2617,7 @@ and the next paint presents it. The `[cef]` line reports the `Present` call time
 frames. Tests fail on the old code. Windows gate on the candidate: R6 60 of 60 rows at the first
 check; two Agents page-load failures in another batch coincided with an external machine stall
 (07:56, outside the app). [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/60e61d33fd9a670ec2e0f006127c545a8f817e06/incidents/INC-2026-0002/evidence/2026-11-14-br31a-candidate).
-**Status:** done — merged and accepted; ships in the next release. The outside cause of the 1 s
+**Status:** done — merged and accepted; published in KaminIDE 1.0.98. The outside cause of the 1 s
 present is not identified.
 
 **Registration status (2026-11-14):** registered; cause inside the renderer not yet split. **Dependency:** none.
@@ -2615,7 +2650,7 @@ and the status tooltip name the limit and say that closing another chat frees a 
 client-owned; the server's close text is still not shown. Retries continue. The new test fails on
 the old code. Live check on the 1.0.97 install with the new bundle: the refused tab showed the
 reason from 1 s through retry 5 and connected by 20 s after a slot freed. [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/3d459f13db5cf10df67a8c0696fa7fc7424ada87/incidents/BR-05/evidence/2026-11-14-br05b-candidate).
-**Status:** done — ships in the next release. The server-wide limit has no distinct close code and
+**Status:** done — published in KaminIDE 1.0.98. The server-wide limit has no distinct close code and
 keeps the generic text.
 
 **Registration status (2026-11-14):** registered. **Dependency:** none. **Acceptance:** automated: a client test where a
@@ -2643,7 +2678,7 @@ to the connection generation (`host::deferred`). A disconnect closes the pending
 action toasts without a reply. Two of the five new tests fail on the old rule. Windows gate on the
 candidate: after the reconnect the pick is gone, and the next pick waits for input (Escape gives
 `null`, Enter gives the item). Containment is unchanged. [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/19d2b1a720909786ca6fd167b8903848a0bb6939/incidents/BR-19/evidence/2026-11-14-br19a-candidate).
-**Status:** done — merged and accepted; ships in the next release.
+**Status:** done — merged and accepted; published in KaminIDE 1.0.98.
 
 **Registration status (2026-11-14):** registered; fix approved by the lead. **Dependency:** none. **Acceptance:** automated:
 a test that fails on the old code (a cancel of a pick from the old connection does not answer the
