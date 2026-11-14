@@ -10,10 +10,10 @@ pub(super) fn project(
     backwards: bool,
     admission: &Admission,
 ) -> Result<Bits, Error> {
-    let mut out = Bits::new(scope.records.len(), admission)?;
     if source.is_empty() {
-        return Ok(out);
+        return Ok(Bits::empty());
     }
+    let mut out = Bits::new(scope.records.len(), admission)?;
     let transitive = matches!(relation, ' ' | '~');
     let neighbour = |i: usize| {
         if matches!(relation, '+' | '~') {

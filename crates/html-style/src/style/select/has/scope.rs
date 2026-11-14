@@ -20,14 +20,14 @@ pub(in crate::style::select) struct Record {
     pub previous: Option<usize>,
     pub end: usize,
     last_child: Option<usize>,
-    children: Level,
+    level: usize,
 }
 
 pub(in crate::style::select) struct Scope<'a> {
     pub records: Buffer<Record>,
     initial: &'a [Ancestor],
     root: Handle,
-    top: Level,
+    levels: Buffer<Level>,
     pub index: super::index::Index,
 }
 
@@ -37,6 +37,7 @@ impl<'a> Scope<'a> {
         let mut index = super::index::Index::default();
         let mut records: Buffer<Record> = Buffer::default();
         let mut stack: Buffer<usize> = Buffer::default();
+        let mut levels = Buffer::default();
         let mut walk = Walk::new(root, tree)?;
         let mut last_top = None;
         while let Some((handle, pos)) = walk.next(tree)? {
@@ -51,6 +52,13 @@ impl<'a> Scope<'a> {
             } else {
                 last_top.replace(at)
             };
+            let level = if let Some(previous) = previous {
+                records[previous].level
+            } else {
+                let level = levels.len();
+                levels.push(Level::default(), &admission)?;
+                level
+            };
             index.insert_handle(&handle, at, &admission)?;
             records.push(
                 Record {
@@ -60,7 +68,7 @@ impl<'a> Scope<'a> {
                     previous,
                     end: 0,
                     last_child: None,
-                    children: Level::default(),
+                    level,
                 },
                 &admission,
             )?;
@@ -73,15 +81,17 @@ impl<'a> Scope<'a> {
             records,
             initial: path,
             root: root.clone(),
-            top: Level::default(),
+            levels,
             index,
         })
     }
 
     pub fn all_at(&self, i: usize, tree: &TreeIndex) -> Result<&Rc<Vec<Ancestor>>, Error> {
-        let (level, handle) = self.records[i].parent.map_or((&self.top, &self.root), |p| {
-            (&self.records[p].children, &self.records[p].handle)
-        });
+        let record = &self.records[i];
+        let level = &self.levels[record.level];
+        let handle = record
+            .parent
+            .map_or(&self.root, |p| &self.records[p].handle);
         if level.0.get().is_none() {
             let children = handle.children.borrow();
             let lease = super::storage::level(&children, &tree.admission(), tree)?;
@@ -99,9 +109,7 @@ impl<'a> Scope<'a> {
     /// оплачены отдельно; строки и признаки не переписываются.
     pub fn refresh_marks(&mut self, tree: &TreeIndex) -> Result<(), Error> {
         let admission = tree.admission();
-        for level in
-            std::iter::once(&mut self.top).chain(self.records.iter_mut().map(|r| &mut r.children))
-        {
+        for level in self.levels.iter_mut() {
             let Some(passports) = level.0.get_mut() else {
                 continue;
             };

@@ -26,7 +26,7 @@ pub(super) fn link_matches(
             .map(|i| (i, LinkMatch::Any))
             .collect()
     };
-    if !candidates.iter().any(|&i| index.link_state[i])
+    if !candidates.iter().any(|&i| index.sharing[i].link_state)
         || !me.visited && path.iter().all(|a| !a.visited)
     {
         return plain(me, path);
@@ -57,7 +57,7 @@ pub(super) fn link_matches(
         .filter_map(|i| {
             let r = &rules[i];
             let unvisited = matches(&r.sel, &me_u, &path_u, sibs);
-            let visited = if index.link_state[i] {
+            let visited = if index.sharing[i].link_state {
                 matches(&r.sel, &me_v, &path_v, sibs)
             } else {
                 unvisited

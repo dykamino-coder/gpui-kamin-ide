@@ -19,7 +19,6 @@ pub struct RuleIndex {
     universal: Bucket,
     bulk: RefCell<Option<Box<super::bulk::Table>>>,
     ancestors: Vec<Bloom>,
-    pub link_state: Vec<bool>,
     /// Решения правил для разделения стиля между элементами.
     pub sharing: Vec<SharingFacts>,
     _lease: Option<crate::budget::LiveReservation>,
@@ -42,14 +41,10 @@ impl RuleIndex {
             universal: Bucket::default(),
             bulk: RefCell::new(None),
             ancestors: Vec::new(),
-            link_state: Vec::new(),
             sharing: Vec::new(),
             _lease: admission.storage(bytes)?,
         };
         out.ancestors
-            .try_reserve_exact(rules.len())
-            .map_err(|_| Error::Allocation)?;
-        out.link_state
             .try_reserve_exact(rules.len())
             .map_err(|_| Error::Allocation)?;
         out.sharing
@@ -72,7 +67,6 @@ impl RuleIndex {
             bucket.rules.try_reserve(1).map_err(|_| Error::Allocation)?;
             bucket.rules.push(i);
             out.ancestors.push(Bloom::requirements(&rule.sel));
-            out.link_state.push(mentions_link_state(&rule.sel));
             out.sharing.push(SharingFacts::of(rule));
         }
         Ok(out)
@@ -188,20 +182,6 @@ fn token(sel: &Selector) -> Option<(usize, &str)> {
         return Some((2, tag));
     }
     sel.attrs.first().map(|a| (3, a.name.as_str()))
-}
-
-fn mentions_link_state(sel: &Selector) -> bool {
-    sel.pseudo.iter().chain(&sel.also).any(|p| {
-        let p = p.to_ascii_lowercase();
-        p.contains("link") || p.contains("visited")
-    }) || sel
-        .prev
-        .as_deref()
-        .is_some_and(|(s, _)| mentions_link_state(s))
-        || sel
-            .ancestor
-            .as_deref()
-            .is_some_and(|(s, _)| mentions_link_state(s))
 }
 
 #[cfg(test)]

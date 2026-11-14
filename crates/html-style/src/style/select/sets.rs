@@ -40,19 +40,19 @@ pub(super) fn eligible(sel: &Selector) -> bool {
 
 fn compound(scope: &Scope, sel: &Selector, tree: &TreeIndex) -> Result<Bits, Error> {
     let admission = tree.admission();
-    let mut bits = Bits::new(scope.records.len(), &admission)?;
+    let mut bits = None;
     let candidates = scope
         .index
         .candidates(sel, scope.records.len(), &admission)?;
-    if candidates.is_empty() {
-        return Ok(bits);
-    }
     for i in candidates.iter() {
         if scope.match_local(sel, i, tree)? {
-            bits.insert(i);
+            if bits.is_none() {
+                bits = Some(Bits::new(scope.records.len(), &admission)?);
+            }
+            bits.as_mut().expect("nonempty compound").insert(i);
         }
     }
-    Ok(bits)
+    Ok(bits.unwrap_or_else(Bits::empty))
 }
 
 pub(super) fn matches(

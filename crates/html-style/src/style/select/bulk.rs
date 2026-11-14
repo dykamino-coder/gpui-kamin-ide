@@ -7,12 +7,13 @@ use crate::budget::{
 };
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::style::css::Rule;
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
 
 pub(super) struct Table {
     handled: Bits,
-    nodes: HashMap<NodeKey, Buffer<usize>>,
-    leases: Buffer<Option<LiveReservation>>,
+    nodes: HashMap<NodeKey, Range<usize>>,
+    rules: Buffer<usize>,
+    _nodes: Option<LiveReservation>,
 }
 
 impl Table {
@@ -21,18 +22,9 @@ impl Table {
     }
 
     pub fn candidates(&self, key: &NodeKey) -> &[usize] {
-        self.nodes.get(key).map_or(&[], |rules| &rules[..])
-    }
-
-    fn insert(&mut self, key: NodeKey, rule: usize, tree: &TreeIndex) -> Result<(), Error> {
-        let admission = tree.admission();
-        admission.work(1)?;
-        if !self.nodes.contains_key(&key) {
-            let lease = admission.storage(128)?;
-            self.nodes.try_reserve(1).map_err(|_| Error::Allocation)?;
-            self.leases.push(lease, &admission)?;
-        }
-        self.nodes.entry(key).or_default().push(rule, &admission)
+        self.nodes
+            .get(key)
+            .map_or(&[], |range| &self.rules[range.clone()])
     }
 }
 
@@ -52,21 +44,61 @@ pub(super) fn prepare(scope: &Scope, rules: &[Rule], tree: &TreeIndex) -> Result
         rules.iter().filter(|r| eligible(r)).map(|r| &r.sel),
         &admission,
     )?;
-    let mut table = Table {
-        handled: Bits::new(rules.len(), &admission)?,
-        nodes: HashMap::new(),
-        leases: Buffer::default(),
-    };
+    let mut handled = Bits::new(rules.len(), &admission)?;
+    let mut matches = Buffer::default();
+    let mut counts = Buffer::default();
+    counts.reserve(scope.records.len(), &admission)?;
+    for _ in &scope.records[..] {
+        counts.push(0usize, &admission)?;
+    }
     for (i, rule) in rules.iter().enumerate() {
         if !eligible(rule) {
             continue;
         }
         admission.work(1)?;
         let found = sets::matches(scope, &rule.sel, tree, &compounds)?;
-        table.handled.insert(i);
+        handled.insert(i);
+        if found.is_empty() {
+            continue;
+        }
         for node in found.ones() {
-            table.insert(NodeKey::of(&scope.records[node].handle), i, tree)?;
+            admission.work(1)?;
+            counts[node] = counts[node].checked_add(1).ok_or(Error::CapacityOverflow)?;
+        }
+        matches.push((i, found), &admission)?;
+    }
+    let distinct = counts.iter().filter(|&&count| count > 0).count();
+    let lease = admission.storage(distinct.checked_mul(128).ok_or(Error::CapacityOverflow)?)?;
+    let mut nodes = HashMap::new();
+    nodes.try_reserve(distinct).map_err(|_| Error::Allocation)?;
+    let mut total = 0usize;
+    admission.work(counts.len())?;
+    for (i, count) in counts.iter_mut().enumerate() {
+        let end = total.checked_add(*count).ok_or(Error::CapacityOverflow)?;
+        if *count > 0 {
+            nodes.insert(NodeKey::of(&scope.records[i].handle), total..end);
+        }
+        *count = total;
+        total = end;
+    }
+    // Один backing store не создаёт отдельные Vec и ledger-владельцев на каждый узел.
+    let mut out = Table {
+        handled,
+        nodes,
+        rules: Buffer::default(),
+        _nodes: lease,
+    };
+    out.rules.reserve(total, &admission)?;
+    admission.work(total)?;
+    for _ in 0..total {
+        out.rules.push(0, &admission)?;
+    }
+    for (rule, found) in &matches[..] {
+        for node in found.ones() {
+            admission.work(1)?;
+            out.rules[counts[node]] = *rule;
+            counts[node] += 1;
         }
     }
-    Ok(table)
+    Ok(out)
 }

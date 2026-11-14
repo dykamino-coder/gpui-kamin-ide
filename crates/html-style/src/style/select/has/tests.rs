@@ -97,3 +97,25 @@ fn negative_complex_sibling_argument_is_linear_in_document_size() {
         revision.used(BudgetKind::TraversalVisits)
     );
 }
+
+#[test]
+fn bounded_storage_for_wide_scope_releases_with_its_owner() {
+    use crate::budget::{BudgetKind, RevisionBudget};
+    let xml = format!("<r>{}</r>", "<i/>".repeat(4096));
+    let dom = crate::dom::xml::xml_dom(&xml).unwrap();
+    let revision = RevisionBudget::standalone();
+    let document = revision.document().clone();
+    let values = crate::values::DocumentValues::detached(Default::default());
+    values.admit_revision(revision, None);
+    let tree = TreeIndex::new(values, true);
+    let before = document.used(BudgetKind::LiveBytes);
+    let scope = scope::Scope::new(&dom.document, &[], &tree).unwrap();
+    assert_eq!(scope.records.len(), 4097);
+    let retained = document.used(BudgetKind::LiveBytes) - before;
+    assert!(
+        retained <= 3 * 1024 * 1024,
+        "wide selector scope retained {retained} bytes"
+    );
+    drop(scope);
+    assert_eq!(document.used(BudgetKind::LiveBytes), before);
+}

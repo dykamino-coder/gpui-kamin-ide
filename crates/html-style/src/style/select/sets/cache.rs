@@ -123,4 +123,28 @@ mod tests {
         b.arguments.clear();
         assert!(!same(&a, &b));
     }
+
+    #[test]
+    fn bounded_storage_for_absent_compound_needs_no_result_backing() {
+        use crate::budget::{BudgetKind, RevisionBudget};
+        let dom = crate::dom::xml::xml_dom("<r><i/></r>").unwrap();
+        let revision = RevisionBudget::standalone();
+        let document = revision.document().clone();
+        let values = crate::values::DocumentValues::detached(Default::default());
+        values.admit_revision(revision, None);
+        let tree = TreeIndex::new(values, true);
+        let scope = Scope::new(&dom.document, &[], &tree).unwrap();
+        let selector = Selector::parse(".absent").unwrap();
+        let remaining =
+            document.limits().limit(BudgetKind::LiveBytes) - document.used(BudgetKind::LiveBytes);
+        let _occupied = document
+            .reserve(BudgetKind::LiveBytes, remaining - 1)
+            .unwrap();
+        let found = compound(&scope, &selector, &tree).unwrap();
+        assert!(found.is_empty());
+        assert!(found.ones().next().is_none());
+        assert!(!found.contains(0));
+        assert!(!found.contains(scope.records.len() - 1));
+        assert!(found.copy(&tree.admission()).unwrap().is_empty());
+    }
 }
