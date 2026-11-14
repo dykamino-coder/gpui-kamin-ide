@@ -14,7 +14,6 @@ use crate::dom::shadow::*;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::walk::*;
 use crate::style::css::{Media, VarMap};
-use crate::style::select::has::mark_has;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -116,12 +115,14 @@ pub fn convert_restyling(
             &mut tree,
         )?;
         finish_slots(drafts, &mut tree)?;
-    } else if !has_args.is_empty() {
-        mark_has(&dom.document, &has_args, &mut vec![], &mut tree)?;
-    }
-    if !shadows {
-        doc.index
-            .prepare_bulk(&dom.document, &doc.rules, &tree, invalidation.is_some())?;
+    } else {
+        doc.index.prepare_document(
+            &dom.document,
+            &doc.rules,
+            &has_args,
+            &mut tree,
+            invalidation.is_some(),
+        )?;
     }
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке

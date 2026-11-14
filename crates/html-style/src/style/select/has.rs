@@ -110,6 +110,15 @@ pub fn mark_has(
         return Ok(());
     }
     let scope = scope::Scope::new(handle, path, tree)?;
+    mark_scope(&scope, args, tree)
+}
+
+/// Отметки и bulk-правила разделяют единственную топологию документа.
+pub(super) fn mark_scope(
+    scope: &scope::Scope,
+    args: &[HasArg],
+    tree: &mut TreeIndex,
+) -> Result<(), Error> {
     let admission = tree.admission();
     let mut found = marks::Marks::new(scope.records.len(), &admission)?;
     for arg in args {
@@ -117,17 +126,17 @@ pub fn mark_has(
         for (sibling, sel) in &arg.parts {
             found.alternative()?;
             if super::sets::eligible(sel) {
-                let anchors = super::sets::anchors(&scope, sel, tree)?;
+                let anchors = super::sets::anchors(scope, sel, tree)?;
                 for i in anchors.ones() {
                     found.propagate(i, &admission)?;
                 }
                 continue;
             }
-            let candidates = candidates::candidates(&scope, sel, tree)?;
+            let candidates = candidates::candidates(scope, sel, tree)?;
             if let Some((relation, subject)) = candidates::simple(sel) {
-                candidates::mark_simple(&scope, relation, &subject, &candidates, &mut found, tree)?;
+                candidates::mark_simple(scope, relation, &subject, &candidates, &mut found, tree)?;
             } else {
-                candidates::mark_complex(&scope, *sibling, sel, &candidates, &mut found, tree)?;
+                candidates::mark_complex(scope, *sibling, sel, &candidates, &mut found, tree)?;
             }
         }
         for &i in found.touched.iter() {

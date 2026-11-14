@@ -22,6 +22,11 @@ use pseudo::{host_holds, is_holds, pseudo_holds};
 /// `sibs` — предыдущие соседи-элементы узла в порядке разметки: по ним
 /// решаются соседние комбинаторы `+` и `~`.
 pub fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+    matches_local(sel, me, path, sibs) && combinators(sel, path, sibs)
+}
+
+/// Канонический компаунд без переходов к соседям и предкам; AST заимствован.
+pub(super) fn matches_local(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
     crate::work::add!(StyleMatchAttempts, 1);
     if !me.matching.work(1) {
         return false;
@@ -38,7 +43,7 @@ pub fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> 
     {
         return false;
     }
-    matches_ignoring_pseudo(sel, me, path, sibs)
+    compound_holds(sel, me, path, sibs)
 }
 
 /// То же сопоставление, но без отсева по псевдоклассу — для слоя наведения.
@@ -48,6 +53,10 @@ pub fn matches_ignoring_pseudo(
     path: &[Ancestor],
     sibs: Sibs,
 ) -> bool {
+    compound_holds(sel, me, path, sibs) && combinators(sel, path, sibs)
+}
+
+fn compound_holds(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
     if !matches_compound(sel, me) {
         return false;
     }
@@ -60,6 +69,10 @@ pub fn matches_ignoring_pseudo(
     {
         return false;
     }
+    true
+}
+
+fn combinators(sel: &Selector, path: &[Ancestor], sibs: Sibs) -> bool {
     // Соседний комбинатор: `+` — ровно предыдущий сосед-элемент, `~` — любой
     // раньше. Сосед проверяется ПОЛНЫМ сопоставлением со своими соседями
     // слева и тем же путём предков (соседи его делят).

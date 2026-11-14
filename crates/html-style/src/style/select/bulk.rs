@@ -7,7 +7,6 @@ use crate::budget::{
 };
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::style::css::Rule;
-use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 
 pub(super) struct Table {
@@ -43,17 +42,16 @@ fn eligible(rule: &Rule) -> bool {
 
 /// Малые таблицы и изменения остаются на element-major пути с Invalidation.
 /// Bulk окупается при большом количестве повторяемых проверок цепочек.
-pub(super) fn prepare(
-    root: &Handle,
-    rules: &[Rule],
-    tree: &TreeIndex,
-    mutation: bool,
-) -> Result<Option<Table>, Error> {
-    if mutation || rules.iter().filter(|r| eligible(r)).take(64).count() < 64 {
-        return Ok(None);
-    }
-    let scope = Scope::new(root, &[], tree)?;
+pub(super) fn enabled(rules: &[Rule], mutation: bool) -> bool {
+    !mutation && rules.iter().filter(|r| eligible(r)).take(64).count() >= 64
+}
+
+pub(super) fn prepare(scope: &Scope, rules: &[Rule], tree: &TreeIndex) -> Result<Table, Error> {
     let admission = tree.admission();
+    let compounds = sets::Cache::new(
+        rules.iter().filter(|r| eligible(r)).map(|r| &r.sel),
+        &admission,
+    )?;
     let mut table = Table {
         handled: Bits::new(rules.len(), &admission)?,
         nodes: HashMap::new(),
@@ -64,11 +62,11 @@ pub(super) fn prepare(
             continue;
         }
         admission.work(1)?;
-        let found = sets::matches(&scope, &rule.sel, tree)?;
+        let found = sets::matches(scope, &rule.sel, tree, &compounds)?;
         table.handled.insert(i);
         for node in found.ones() {
             table.insert(NodeKey::of(&scope.records[node].handle), i, tree)?;
         }
     }
-    Ok(Some(table))
+    Ok(table)
 }

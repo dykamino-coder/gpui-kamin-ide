@@ -14,6 +14,10 @@ pub(super) struct Bucket {
 }
 
 impl Bucket {
+    pub fn clear(&self) {
+        self.cache.borrow_mut().clear();
+    }
+
     pub fn append(
         &self,
         bloom: Bloom,

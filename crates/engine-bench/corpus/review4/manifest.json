@@ -49,7 +49,7 @@
     {
       "id": "astra/has-depth-900",
       "path": "astra/has-depth-900.html",
-      "sha256": "0d9a4da8d4e5e10a140f00148465b3e0368a05b3a42d116933d4875aa77b976a"
+      "sha256": "91fc01c01cb04820ea1f2359146d6bb1e3a8b0fb6d9ae7e138be637bb6f9bd71"
     },
     {
       "id": "astra/has-siblings-1000",
@@ -64,7 +64,7 @@
     {
       "id": "astra/has-siblings-4000",
       "path": "astra/has-siblings-4000.html",
-      "sha256": "ea539f7d1abb0e2a416d98fc7b1305126efaf12258f43369ba5c25387b795872"
+      "sha256": "cce1ae2a9052cf09b085e112754c954a794dfa898e81973d43d80be76f995fda"
     },
     {
       "id": "astra/has-siblings-500",

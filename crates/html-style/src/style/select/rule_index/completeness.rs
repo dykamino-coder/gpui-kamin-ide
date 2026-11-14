@@ -51,7 +51,10 @@ fn indexed_matches_equal_full_scan_through_ancestor_and_sibling_chains() {
         crate::values::DocumentValues::detached(Default::default()),
         true,
     );
-    let args = [crate::style::select::has::parse_has_arg("x").unwrap()];
+    let args: Vec<_> = ["*", "x", "y", ".absent", "+ b", "~ c"]
+        .into_iter()
+        .map(|raw| crate::style::select::has::parse_has_arg(raw).unwrap())
+        .collect();
     crate::style::select::has::mark_has(&dom.document, &args, &mut vec![], &mut tree).unwrap();
     let rules: Vec<_> = [
         "*",
@@ -70,6 +73,10 @@ fn indexed_matches_equal_full_scan_through_ancestor_and_sibling_chains() {
         ":not(.missing)",
         "x:nth-child(2 of x)",
         "b:has(x) .leaf",
+        "r:has(*) b:has(x) .leaf",
+        "a:has(+ b) + b:has(x) > x",
+        "a:has(~ c) ~ b > x:nth-child(2)",
+        "r:has(.absent) > b .leaf",
         "b:has(y) .leaf",
         "b:has(x):not(.missing) .leaf",
     ]
@@ -87,11 +94,16 @@ fn indexed_matches_equal_full_scan_through_ancestor_and_sibling_chains() {
     let index = RuleIndex::new(&rules, &Admission::default()).unwrap();
     visit(&dom.document, &[], &tree, &rules, &index);
     let rules: Vec<_> = rules.iter().cycle().take(180).cloned().collect();
+    let index = RuleIndex::new(&rules, &Admission::default()).unwrap();
     for mutation in [false, true] {
-        let index = RuleIndex::new(&rules, &Admission::default()).unwrap();
+        let mut prepared = TreeIndex::new(
+            crate::values::DocumentValues::detached(Default::default()),
+            true,
+        );
         index
-            .prepare_bulk(&dom.document, &rules, &tree, mutation)
+            .prepare_document(&dom.document, &rules, &args, &mut prepared, mutation)
             .unwrap();
+        assert!(prepared.has_marks == tree.has_marks, "prepared :has marks");
         assert_eq!(index.bulk.borrow().is_some(), !mutation);
         visit(&dom.document, &[], &tree, &rules, &index);
     }
@@ -118,6 +130,7 @@ fn edits_and_tree_changes_rebuild_candidates_without_stale_rows() {
             link: crate::style::css::LinkMatch::Any,
         })
         .collect();
+    let index = RuleIndex::new(&rules, &Admission::default()).unwrap();
     for step in 0..5 {
         match step {
             1 | 2 => {
@@ -138,14 +151,13 @@ fn edits_and_tree_changes_rebuild_candidates_without_stale_rows() {
             }
             _ => {}
         }
-        let tree = TreeIndex::new(
+        let mut tree = TreeIndex::new(
             crate::values::DocumentValues::detached(Default::default()),
             true,
         );
         for mutation in [false, true] {
-            let index = RuleIndex::new(&rules, &Admission::default()).unwrap();
             index
-                .prepare_bulk(&dom.document, &rules, &tree, mutation)
+                .prepare_document(&dom.document, &rules, &[], &mut tree, mutation)
                 .unwrap();
             assert_eq!(index.bulk.borrow().is_some(), !mutation);
             visit(&dom.document, &[], &tree, &rules, &index);

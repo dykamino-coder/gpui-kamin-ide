@@ -92,8 +92,44 @@ impl RuleIndex {
         tree: &crate::dom::tree_index::TreeIndex,
         mutation: bool,
     ) -> Result<(), Error> {
-        *self.bulk.borrow_mut() = super::bulk::prepare(root, rules, tree, mutation)?.map(Box::new);
+        self.reset_bulk();
+        *self.bulk.borrow_mut() = if super::bulk::enabled(rules, mutation) {
+            let scope = super::has::scope::Scope::new(root, &[], tree)?;
+            Some(Box::new(super::bulk::prepare(&scope, rules, tree)?))
+        } else {
+            None
+        };
         Ok(())
+    }
+
+    /// Одна область для :has и bulk; состояние не переживает сборку DOM.
+    pub fn prepare_document(
+        &self,
+        root: &markup5ever_rcdom::Handle,
+        rules: &[Rule],
+        args: &[super::has::HasArg],
+        tree: &mut crate::dom::tree_index::TreeIndex,
+        mutation: bool,
+    ) -> Result<(), Error> {
+        self.reset_bulk();
+        if !super::bulk::enabled(rules, mutation) {
+            return super::has::mark_has(root, args, &mut vec![], tree);
+        }
+        let mut scope = super::has::scope::Scope::new(root, &[], tree)?;
+        if !args.is_empty() {
+            super::has::mark_scope(&scope, args, tree)?;
+            scope.refresh_marks(tree)?;
+        }
+        *self.bulk.borrow_mut() = Some(Box::new(super::bulk::prepare(&scope, rules, tree)?));
+        Ok(())
+    }
+
+    fn reset_bulk(&self) {
+        *self.bulk.borrow_mut() = None;
+        self.universal.clear();
+        for bucket in self.buckets.iter().flat_map(|buckets| buckets.values()) {
+            bucket.clear();
+        }
     }
 
     fn try_candidates(&self, me: &Ancestor, path: &[Ancestor]) -> Result<Buffer<usize>, Error> {

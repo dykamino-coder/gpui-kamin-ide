@@ -24,6 +24,12 @@ impl Bits {
         self.0[i / 64] & (1 << (i % 64)) != 0
     }
 
+    pub fn copy(&self, admission: &Admission) -> Result<Self, Error> {
+        let mut out = Self::new(self.0.len() * 64, admission)?;
+        out.0.copy_from_slice(&self.0);
+        Ok(out)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.iter().all(|&word| word == 0)
     }

@@ -10,6 +10,7 @@ struct Level(OnceCell<Passports>);
 struct Passports {
     all: Rc<Vec<Ancestor>>,
     _lease: Option<crate::budget::LiveReservation>,
+    _marks: Option<crate::budget::LiveReservation>,
 }
 
 pub(in crate::style::select) struct Record {
@@ -88,9 +89,66 @@ impl<'a> Scope<'a> {
             let _ = level.0.set(Passports {
                 all: Rc::new(all),
                 _lease: lease,
+                _marks: None,
             });
         }
         Ok(&level.0.get().expect("initialized sibling level").all)
+    }
+
+    /// Временные Rc-копии предыдущей фазы уже отпущены. Новые отметки
+    /// оплачены отдельно; строки и признаки не переписываются.
+    pub fn refresh_marks(&mut self, tree: &TreeIndex) -> Result<(), Error> {
+        let admission = tree.admission();
+        for level in
+            std::iter::once(&mut self.top).chain(self.records.iter_mut().map(|r| &mut r.children))
+        {
+            let Some(passports) = level.0.get_mut() else {
+                continue;
+            };
+            let all = Rc::get_mut(&mut passports.all).expect("phase owns sibling passports");
+            admission.work(all.len())?;
+            let bytes = all.iter().try_fold(0usize, |bytes, node| {
+                let count = tree.has_marks.get(&node.key).map_or(0, Vec::len);
+                count
+                    .checked_mul(std::mem::size_of::<u64>())
+                    .and_then(|n| bytes.checked_add(n))
+                    .ok_or(Error::CapacityOverflow)
+            })?;
+            let lease = admission.storage(bytes)?;
+            for node in all {
+                node.has_marks.clear();
+                if let Some(marks) = tree.has_marks.get(&node.key) {
+                    node.has_marks
+                        .try_reserve_exact(marks.len())
+                        .map_err(|_| Error::Allocation)?;
+                    node.has_marks.extend_from_slice(marks);
+                }
+            }
+            passports._marks = lease;
+        }
+        Ok(())
+    }
+
+    pub fn match_local(
+        &self,
+        sel: &Selector,
+        index: usize,
+        tree: &TreeIndex,
+    ) -> Result<bool, Error> {
+        let record = &self.records[index];
+        let all = self.all_at(index, tree)?;
+        tree.admission().work(1)?;
+        Ok(super::super::matching::matches_local(
+            sel,
+            &all[record.pos],
+            &[],
+            Sibs {
+                all,
+                pos: record.pos,
+                is_elem: true,
+                rc: Some(all),
+            },
+        ))
     }
 
     pub fn match_at(&self, sel: &Selector, index: usize, tree: &TreeIndex) -> Result<bool, Error> {

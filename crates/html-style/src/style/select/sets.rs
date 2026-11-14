@@ -5,6 +5,9 @@ use crate::budget::admission::{Buffer, Error};
 use crate::dom::tree_index::TreeIndex;
 use crate::style::css::{PseudoKind, Selector};
 
+mod cache;
+pub(super) use cache::Cache;
+
 pub(super) fn edge(sel: &Selector) -> Option<(&Selector, char)> {
     if let Some((left, direct)) = sel.prev.as_deref() {
         Some((left, if *direct { '+' } else { '~' }))
@@ -44,18 +47,20 @@ fn compound(scope: &Scope, sel: &Selector, tree: &TreeIndex) -> Result<Bits, Err
     if candidates.is_empty() {
         return Ok(bits);
     }
-    let mut subject = sel.clone();
-    subject.prev = None;
-    subject.ancestor = None;
     for i in candidates.iter() {
-        if scope.match_at(&subject, i, tree)? {
+        if scope.match_local(sel, i, tree)? {
             bits.insert(i);
         }
     }
     Ok(bits)
 }
 
-pub(super) fn matches(scope: &Scope, sel: &Selector, tree: &TreeIndex) -> Result<Bits, Error> {
+pub(super) fn matches(
+    scope: &Scope,
+    sel: &Selector,
+    tree: &TreeIndex,
+    cache: &Cache,
+) -> Result<Bits, Error> {
     let admission = tree.admission();
     let mut chain = Buffer::default();
     let mut left = sel;
@@ -63,13 +68,13 @@ pub(super) fn matches(scope: &Scope, sel: &Selector, tree: &TreeIndex) -> Result
         chain.push((left, relation), &admission)?;
         left = next;
     }
-    let mut found = compound(scope, left, tree)?;
+    let mut found = cache.compound(scope, left, tree)?;
     for &(right, relation) in chain.iter().rev() {
         if found.is_empty() {
             break;
         }
         found = project(scope, &found, relation, false, &admission)?;
-        found.intersect(&compound(scope, right, tree)?, &admission)?;
+        found.intersect(&cache.compound(scope, right, tree)?, &admission)?;
     }
     Ok(found)
 }
@@ -135,7 +140,7 @@ mod tests {
         ] {
             let sel = Selector::parse(raw).unwrap_or_else(|| panic!("selector fixture: {raw}"));
             assert!(eligible(&sel), "{raw}");
-            let actual = matches(&scope, &sel, &tree).unwrap();
+            let actual = matches(&scope, &sel, &tree, &Cache::default()).unwrap();
             for i in 0..scope.records.len() {
                 assert_eq!(
                     actual.contains(i),
