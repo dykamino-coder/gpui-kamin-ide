@@ -4,7 +4,6 @@
 
 use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::types::{Intrinsic, Kid, Rows, StackAxis, StackChild};
-use gpui::{Bounds, Pixels};
 
 pub mod avoid;
 mod axis;
@@ -80,6 +79,9 @@ pub struct ColumnStack {
     /// Куски детей можно рисовать записью главной копии (`element::replay`): стопка не
     /// в листах печати — их копии представлены матрицей листа.
     pub(crate) replay: bool,
+    /// The layout engine of the children when the measure of this frame prepared them
+    /// (`deferred::Prepared`): prepaint and paint run inside it.
+    pub(crate) engine: Option<gpui::RetainedLayout>,
 }
 
 impl ColumnStack {
@@ -147,6 +149,7 @@ impl ColumnStack {
             lead_report: None,
             discard: false,
             replay: false,
+            engine: None,
         }
     }
 
@@ -222,15 +225,6 @@ impl ColumnStack {
     /// `prepaint` горизонтальной стопки).
     pub(crate) fn kid_geoms(&self) -> Vec<Kid> {
         self.children.iter().map(StackChild::kid).collect()
-    }
-
-    /// Строчный и блочный размеры коробки стопки по её оси.
-    pub(crate) fn axis_sizes(&self, bounds: Bounds<Pixels>) -> (f32, f32) {
-        if self.axis.is_vertical() {
-            (f32::from(bounds.size.height), f32::from(bounds.size.width))
-        } else {
-            (f32::from(bounds.size.width), f32::from(bounds.size.height))
-        }
     }
 
     /// Где стоит колонка `col`: номер в линии и смещение линии. Без рядов и

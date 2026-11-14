@@ -22,22 +22,46 @@ impl ColumnStack {
     /// многоколоночник, и его prepaint идёт внутри этого.
     #[inline(never)]
     fn prepaint_columns(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        // A stack without a recipe keeps this frame as it was: it is on a
+        // recursion as deep as the document (`depth_tests::special`).
+        if self.deferred.is_some() {
+            return self.prepaint_deferred(bounds, window, cx);
+        }
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
-        self.measure_columns(col_w, window, cx);
+        self.column_breaks(col_w, window, cx);
         let planned = self.plan_columns(bounds, col_w);
         let step = col_w + self.gap;
         self.prepaint_frags(window, cx, bounds, col_w, &planned.0, step);
         self.finish_prepaint(bounds, col_w, planned, window, cx);
     }
 
-    /// Меры детей по реальной ширине колонки (отложенная стопка и точки разрыва).
+    /// A stack whose width came late: the measure of this frame already built
+    /// its content and laid it out at this column width (`deferred::Prepared`),
+    /// and the rest of the frame runs in that layout. `rule_to` caps pagination
+    /// and is not known to the measure, so such a stack prepares here.
     #[inline(never)]
-    fn measure_columns(&mut self, col_w: f32, window: &mut Window, cx: &mut App) {
-        if let Some(recipe) = self.deferred.clone() {
+    fn prepaint_deferred(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let w = f32::from(bounds.size.width);
+        let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
+        let kept = (self.deferred.as_ref())
+            .and_then(|recipe| recipe.take_prepared(col_w))
+            .filter(|_| self.rule_to.is_none());
+        self.engine = kept.map(|kept| kept.adopt(self));
+        let outer = (self.engine.as_ref()).map(|engine| window.enter_retained_layout(engine));
+        if outer.is_none()
+            && let Some(recipe) = self.deferred.clone()
+        {
             recipe.prepare(self, col_w, window, cx);
         }
         self.column_breaks(col_w, window, cx);
+        let planned = self.plan_columns(bounds, col_w);
+        let step = col_w + self.gap;
+        self.prepaint_frags(window, cx, bounds, col_w, &planned.0, step);
+        self.finish_prepaint(bounds, col_w, planned, window, cx);
+        if let Some(outer) = outer {
+            window.leave_retained_layout(outer);
+        }
     }
 
     /// Native OOF, спаннеры и линейки — после prepaint копий.
@@ -99,6 +123,9 @@ impl Hooks for ColumnStack {
             self.paint_axis(bounds, window, cx);
             return;
         }
+        if self.engine.is_some() {
+            return self.paint_kept(_state, prepaint, window, cx);
+        }
         if self.oof.plan.borrow().failure.is_some() || self.record_native(window, cx).is_err() {
             return;
         }
@@ -130,5 +157,27 @@ impl Hooks for ColumnStack {
         }
         // Positioned continuations without a column copy of their ancestors.
         let _ = self.paint_orphans(window);
+    }
+}
+
+impl ColumnStack {
+    /// Paint in the layout the measure prepared the children in. The stack's own
+    /// `paint` stays the frame it was: it is on a recursion as deep as the
+    /// document (`depth_tests::special`).
+    #[inline(never)]
+    fn paint_kept(
+        &mut self,
+        state: &mut LayoutId,
+        prepaint: &mut Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let Some(engine) = self.engine.take() else {
+            return;
+        };
+        let outer = window.enter_retained_layout(&engine);
+        Hooks::paint(self, *prepaint, state, prepaint, window, cx);
+        window.leave_retained_layout(outer);
+        self.engine = Some(engine);
     }
 }

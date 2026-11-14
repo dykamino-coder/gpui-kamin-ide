@@ -13,6 +13,8 @@ mod children;
 #[cfg(test)]
 mod clip_tests;
 mod geometry;
+mod kept;
+pub(crate) use kept::Prepared;
 #[cfg(test)]
 mod oof_tests;
 #[cfg(test)]
@@ -38,6 +40,8 @@ pub(crate) struct Recipe {
     pub(crate) intrinsic_builds: std::cell::Cell<usize>,
     /// The row extents of the spanner flow this stack is a row of.
     row: Option<std::rc::Rc<crate::layout::multicol::spanner::RowSlot>>,
+    /// The stack prepared by the last measure of this frame, for its prepaint.
+    kept: std::cell::RefCell<Option<Prepared>>,
 }
 
 impl Recipe {
@@ -70,6 +74,7 @@ impl Recipe {
             #[cfg(test)]
             intrinsic_builds: Default::default(),
             row,
+            kept: Default::default(),
         }))
     }
 
@@ -150,15 +155,32 @@ impl Recipe {
             crate::work::add!(SpannerRowReuses, 1);
             return extent;
         }
-        let extent = gpui::with_temporary_element_arena(|| {
-            window.with_nested_layout(|window| {
-                let col_width = ((width - stack.gap * (stack.count as f32 - 1.0))
-                    / stack.count as f32)
-                    .max(1.0);
+        let col_width =
+            ((width - stack.gap * (stack.count as f32 - 1.0)) / stack.count as f32).max(1.0);
+        let extent = if self.axis.is_vertical() {
+            gpui::with_temporary_element_arena(|| {
+                window.with_nested_layout(|window| {
+                    self.prepare(stack, col_width, window, cx);
+                    let extent = self.measured_extent(stack, width, window, cx);
+                    // Элементы с LayoutId вложенного движка не переживают этот вызов.
+                    stack.children.clear();
+                    stack.oof.geometry = Default::default();
+                    extent
+                })
+            })
+        } else {
+            // The prepaint of this frame takes the prepared stack (`take_prepared`):
+            // its children stay in the frame's element arena and keep their layout
+            // in `engine`. An earlier measure of the frame is replaced.
+            self.kept.borrow_mut().take();
+            let mut engine = gpui::RetainedLayout::default();
+            let extent = window.with_retained_layout(&mut engine, |window| {
                 self.prepare(stack, col_width, window, cx);
                 self.measured_extent(stack, width, window, cx)
-            })
-        });
+            });
+            *self.kept.borrow_mut() = Some(Prepared::of(stack, engine));
+            extent
+        };
         if let Some(row) = &self.row {
             row.put(width, extent);
         }
@@ -187,10 +209,13 @@ impl Recipe {
                 super::column_baselines::Measurements::new(&mut stack.children, window, cx);
             baselines.measure(stack, &kids, width, &lines, &plan, &spans, window, cx)
         };
-        // Элементы с LayoutId вложенного движка не переживают этот вызов.
-        stack.children.clear();
-        stack.oof.geometry = Default::default();
         (height, first, last)
+    }
+
+    /// The stack this frame's measure prepared at `col_w`, if it did.
+    pub(crate) fn take_prepared(&self, col_w: f32) -> Option<Prepared> {
+        let kept = self.kept.borrow_mut().take();
+        kept.filter(|kept| kept.col_w() == col_w)
     }
 }
 

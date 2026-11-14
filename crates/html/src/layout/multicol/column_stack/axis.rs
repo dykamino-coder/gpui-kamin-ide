@@ -7,6 +7,15 @@ use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, IntoElement, Pixels, Window, point, px, size};
 
 impl ColumnStack {
+    /// Строчный и блочный размеры коробки стопки по её оси.
+    pub(crate) fn axis_sizes(&self, bounds: Bounds<Pixels>) -> (f32, f32) {
+        if self.axis.is_vertical() {
+            (f32::from(bounds.size.height), f32::from(bounds.size.width))
+        } else {
+            (f32::from(bounds.size.width), f32::from(bounds.size.height))
+        }
+    }
+
     /// Раскладка стопки в ВЕРТИКАЛЬНОМ письме: та же укладка (`balance`),
     /// физика — через `axis_box`. Горизонтальная стопка идёт прежним
     /// `prepaint` байт в байт. Повтор шапок таблицы, строки flex (`Par`),

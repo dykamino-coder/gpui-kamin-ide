@@ -110,6 +110,32 @@ impl Window {
         self.with_retained_layout(&mut RetainedLayout::default(), f)
     }
 
+    /// KaminIDE patch: `with_retained_layout` without its two stack frames, for a
+    /// caller on a recursion as deep as the document (a multicol nested in a
+    /// multicol at every level). Returns what `leave_retained_layout` takes; the
+    /// caller leaves on every path it returns by. An unwind between the two
+    /// leaves this subtree's engine in the window, and the enclosing
+    /// `with_retained_layout` scopes still restore their own.
+    pub fn enter_retained_layout(&mut self, retained: &RetainedLayout) -> Option<RetainedLayout> {
+        if Rc::ptr_eq(&retained.0, &self.layout_owner.0) {
+            return None;
+        }
+        let outer = std::mem::replace(&mut self.layout_owner, retained.clone());
+        *outer.0.borrow_mut() = self.layout_engine.take();
+        self.layout_engine = retained.0.borrow_mut().take();
+        Some(outer)
+    }
+
+    /// KaminIDE patch: the end of `enter_retained_layout`.
+    pub fn leave_retained_layout(&mut self, outer: Option<RetainedLayout>) {
+        let Some(outer) = outer else {
+            return;
+        };
+        *self.layout_owner.0.borrow_mut() = self.layout_engine.take();
+        self.layout_engine = outer.0.borrow_mut().take();
+        self.layout_owner = outer;
+    }
+
     /// Activate a prepared subtree, restoring both engines even on unwind.
     /// Nested measurement may enter while the surrounding engine is absent.
     pub fn with_retained_layout<R>(

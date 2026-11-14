@@ -186,6 +186,7 @@ impl ColumnStack {
                     spans_plan: std::cell::RefCell::new(Vec::new()),
                     nest_report: None,
                     lead_report: lead_report.clone(),
+                    engine: None,
                 };
                 // Вертикальное письмо: место под прогрессию колонок — по
                 // СТРОЧНОЙ оси, то есть высота коробки (css-multicol-1 §2), а
