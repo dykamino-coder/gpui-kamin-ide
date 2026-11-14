@@ -19,7 +19,7 @@
 # 17. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
 # 18. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
 # 19. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
-# 20. Retained trees: retain_nodes drops unkept nodes in one sweep, reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
+# 20. Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
 # 21. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
 # 22. Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.
 #
@@ -25802,7 +25802,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c53286dd3
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..bde957f21ba321750882bb16db5f8ac65317329e
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -25948,13 +25948,18 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +    fn fragmentation_mut(&mut self) -> &mut NodeFragmentation {
 +        self.fragmentation.get_or_insert_with(|| Box::new(NodeFragmentation::NONE))
 +    }
-@@ -168,0 +287,5 @@
+@@ -168,0 +287,10 @@
 +
 +    /// KaminIDE patch: `calc()` pairs referenced by the styles of this tree's nodes
 +    /// (`kamin_calc`); cleared with the nodes.
 +    #[cfg(feature = "std")]
 +    calc: super::kamin_calc::SharedRegistry,
-@@ -173,0 +297,194 @@
++
++    /// KaminIDE patch: the keys `retain_nodes` drops, kept empty between
++    /// calls (up to 1024 keys of capacity): a host that sweeps a few nodes
++    /// every frame allocates no list per sweep.
++    swept: Vec<DefaultKey>,
+@@ -173,0 +302,194 @@
 +    }
 +}
 +
@@ -26149,10 +26154,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
-@@ -260 +577 @@
+@@ -260 +582 @@
 -            self.nodes[node_id.into()].final_layout
 +            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
-@@ -283,0 +601,19 @@
+@@ -283,0 +606,19 @@
 +    /// Resolve keyword-based calc-size axes before the final native dispatch.
 +    fn compute_child_layout(
 +        &mut self,
@@ -26172,10 +26177,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +        )
 +    }
 +
-@@ -287 +623 @@
+@@ -287 +628 @@
 -    fn compute_child_layout(
 +    fn compute_child_layout_inner(
-@@ -299,0 +636,13 @@
+@@ -299,0 +641,13 @@
 +        #[cfg(feature = "flexbox")]
 +        if self.taffy.nodes[node_id.into()]
 +            .style
@@ -26189,11 +26194,11 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +            }
 +        }
 +
-@@ -313,2 +662 @@
+@@ -313,2 +667 @@
 -            let mut output = match (display_mode, has_children) {
 -                (Display::None, _) => compute_hidden_layout(tree, node_id),
 +            let output = match (display_mode, has_children) {
-@@ -319,11 +667 @@
+@@ -319,11 +672 @@
 -                #[cfg(feature = "flexbox")]
 -                (Display::Flex, true) => compute_flexbox_layout(tree, node_id, inputs),
 -                #[cfg(feature = "grid")]
@@ -26206,7 +26211,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 -                    (tree.measure_function)(inputs, node_id, node_context, style)
 -                }
 +                _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
-@@ -331,8 +669,28 @@
+@@ -331,8 +674,28 @@
 -
 -            // Lay out any out-of-flow candidates for which this node is the containing block.
 -            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
@@ -26243,7 +26248,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +            #[cfg(feature = "grid")]
 +            (Display::Grid, false) if !self.taffy.nodes[node_id.into()].has_context => {
 +                compute_grid_layout(self, node_id, inputs)
-@@ -340,3 +698,36 @@
+@@ -340,3 +703,36 @@
 -
 -            output
 -        })
@@ -26283,12 +26288,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -401,2 +792,2 @@
+@@ -401,2 +797,2 @@
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -520,0 +912,34 @@
+@@ -520,0 +917,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -26323,7 +26328,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].fragmentation().flex_fragmentation
 +    }
-@@ -546,0 +972,21 @@
+@@ -546,0 +977,21 @@
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
 +        self.taffy.nodes[node_id.into()].subgrid_tracks.as_deref().cloned()
 +    }
@@ -26345,10 +26350,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +        }
 +    }
 +
-@@ -565 +1011 @@
+@@ -565 +1016 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +1033,25 @@
+@@ -586,0 +1038,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -26374,10 +26379,11 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +        })
 +    }
 +
-@@ -606 +1077,18 @@
+@@ -606 +1082,19 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
++            swept: Vec::new(),
 +        }
 +    }
 +
@@ -26394,12 +26400,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +1108,2 @@
+@@ -620,2 +1114,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +1119,6 @@
+@@ -631,2 +1125,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -26408,12 +26414,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +1137,2 @@
+@@ -645,2 +1143,2 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -666,0 +1159,110 @@
+@@ -666,0 +1165,115 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
@@ -26498,16 +26504,21 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +    /// kept: its pairs are interned by value, so handles stay valid for the
 +    /// kept styles.
 +    pub fn retain_nodes(&mut self, mut keep: impl FnMut(NodeId) -> bool) {
-+        let dropped: Vec<DefaultKey> =
-+            self.nodes.keys().filter(|key| !keep(NodeId::from(*key))).collect();
++        let mut dropped = core::mem::take(&mut self.swept);
++        dropped.extend(self.nodes.keys().filter(|key| !keep(NodeId::from(*key))));
 +        if dropped.is_empty() {
++            self.swept = dropped;
 +            return;
 +        }
-+        for key in &dropped {
-+            let _ = self.children.remove(*key);
-+            let _ = self.parents.remove(*key);
-+            let _ = self.nodes.remove(*key);
-+            let _ = self.node_context_data.remove(*key);
++        for key in dropped.drain(..) {
++            let _ = self.children.remove(key);
++            let _ = self.parents.remove(key);
++            let _ = self.nodes.remove(key);
++            let _ = self.node_context_data.remove(key);
++        }
++        // A sweep of a whole document is rare: its list is not worth keeping.
++        if dropped.capacity() <= 1024 {
++            self.swept = dropped;
 +        }
 +        let mut orphaned = Vec::new();
 +        for (key, parent) in self.parents.iter_mut() {
@@ -26524,7 +26535,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +        for node in orphaned {
 +            let _ = self.mark_dirty(node);
 +        }
-@@ -873,0 +1476,17 @@
+@@ -873,0 +1487,17 @@
 +    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
 +    #[inline]
 +    pub fn node_storage_full(&self) -> bool {
@@ -26542,12 +26553,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +        }
 +    }
 +
-@@ -897,2 +1516,2 @@
+@@ -897,2 +1527,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1528,31 @@
+@@ -908,0 +1539,31 @@
 +    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
 +    #[inline]
 +    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
@@ -26579,10 +26590,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1563 @@
+@@ -913 +1574 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1567,8 @@
+@@ -916,0 +1578,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -26591,7 +26602,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1635,6 @@
+@@ -977 +1646,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -26599,7 +26610,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -984,0 +1648,26 @@
+@@ -984,0 +1659,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -26626,15 +26637,15 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1677 @@
+@@ -988 +1688 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1692,3 @@
+@@ -1003 +1703,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1721,54 @@
+@@ -1029,0 +1732,54 @@
 +    }
 +
 +    #[test]
@@ -26689,7 +26700,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4f40067dd88405b3a3b1981d54cb138c
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2288,81 @@
+@@ -1543 +2299,81 @@
 -}
 +
 +    #[test]

@@ -23,7 +23,7 @@ use super::{Counters, FlowKey, Source};
 use crate::dom::Element;
 use crate::hooks::LineCapture;
 use gpui::{
-    Bounds, ContentMask, InkSink, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint,
+    Bounds, ContentMask, InkSinkList, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint,
     RetainedSubtree, ScaledPixels, Size, Window, point, px,
 };
 use std::cell::{Cell, RefCell};
@@ -96,7 +96,8 @@ pub(super) struct PendingReplay {
     env: Cell<Option<(f32, u64)>>,
     mask: RefCell<Option<ContentMask<Pixels>>>,
     lines: RefCell<Option<Rc<LineCapture>>>,
-    sink: Rc<InkSink>,
+    /// The block's ink sink in its build's list (`FlowReuse::ink`).
+    sink: (Rc<InkSinkList>, u32),
 }
 
 impl PendingReplay {
@@ -106,6 +107,7 @@ impl PendingReplay {
         end: Counters,
         widths: Rc<Cell<bool>>,
         fills: bool,
+        ink: &Rc<InkSinkList>,
     ) -> Self {
         Self {
             key,
@@ -119,7 +121,7 @@ impl PendingReplay {
             env: Cell::new(None),
             mask: RefCell::new(None),
             lines: RefCell::new(None),
-            sink: Rc::default(),
+            sink: (ink.clone(), ink.open()),
         }
     }
 
@@ -131,17 +133,16 @@ impl PendingReplay {
         source: Source,
         screen: Bounds<ScaledPixels>,
     ) -> Option<ReplayRecord> {
-        if self.sink.tainted() {
+        let (list, at) = &self.sink;
+        let (bounds, tainted) = list.with(*at, |sink| (sink.bounds(), sink.tainted()))?;
+        if tainted {
             return None;
         }
         let (layout, _) = self.layout.take()?;
         let (prepaint, origin, size) = self.prepaint.take()?;
         let paint = self.paint.take()?;
         let (scale, serial) = self.env.get()?;
-        let ink = self
-            .sink
-            .bounds()
-            .unwrap_or(Bounds { origin, size }.scale(scale));
+        let ink = bounds.unwrap_or(Bounds { origin, size }.scale(scale));
         if super::recorder::far(Some(ink), Point::default(), screen) {
             return None;
         }

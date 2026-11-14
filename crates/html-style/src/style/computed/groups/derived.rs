@@ -55,25 +55,79 @@ impl DerivedGroups {
             edit: TypeId::of::<(E, T)>(),
             value,
         };
-        // Карта вынута на время правки: `edit` правит одну группу и в кэш не входит.
+        let hit = |entry: &Entry| {
+            StyleGroup::<T>::restore(&entry.source)
+                .filter(|held| held.ptr_eq(source))
+                .and_then(|_| StyleGroup::<T>::restore(&entry.result))
+        };
+        self.cached(key, hit, || {
+            let mut result = source.clone();
+            edit(&mut result);
+            (source.erase(), result.erase(), result)
+        })
+    }
+
+    /// Значение `source` после правки `edit` вида `E` со значением `value`: то же правило,
+    /// что у групп ([`Self::derive`]), для целого общего значения (used-стиль соседей с
+    /// одним вычисленным стилем и одной правкой — один стиль, Stylo `style/sharing`).
+    /// `edit` может сама выводить группы через этот кэш.
+    pub fn derive_shared<E: 'static, V: Clone + 'static>(
+        &self,
+        source: &Rc<V>,
+        value: u64,
+        edit: impl FnOnce(&mut V),
+    ) -> Rc<V> {
+        let key = Key {
+            source: Rc::as_ptr(source) as *const () as usize,
+            edit: TypeId::of::<(E, V)>(),
+            value,
+        };
+        let hit = |entry: &Entry| {
+            let held = entry.source.clone().downcast::<V>().ok()?;
+            Rc::ptr_eq(&held, source)
+                .then(|| entry.result.clone().downcast::<V>().ok())
+                .flatten()
+        };
+        self.cached(key, hit, || {
+            let mut result = V::clone(source);
+            edit(&mut result);
+            let result = Rc::new(result);
+            (
+                source.clone() as Rc<dyn Any>,
+                result.clone() as Rc<dyn Any>,
+                result,
+            )
+        })
+    }
+
+    /// Результат записи `key`, если `hit` его узнаёт, иначе новый от `make` (исходный и
+    /// результат без типа и сам результат). Карта не занята во время `make`: правка может
+    /// выводить через этот же кэш.
+    fn cached<R>(
+        &self,
+        key: Key,
+        hit: impl FnOnce(&Entry) -> Option<R>,
+        make: impl FnOnce() -> (Rc<dyn Any>, Rc<dyn Any>, R),
+    ) -> R {
         let mut entries = self.0.take().unwrap_or_default();
         let generation = entries.generation;
         if let Some(entry) = entries.map.get_mut(&key)
-            && StyleGroup::<T>::restore(&entry.source).is_some_and(|held| held.ptr_eq(source))
-            && let Some(result) = StyleGroup::<T>::restore(&entry.result)
+            && let Some(result) = hit(entry)
         {
             entry.used = generation;
             self.0.set(Some(entries));
             return result;
         }
-        let mut result = source.clone();
-        edit(&mut result);
+        self.0.set(Some(entries));
+        let (source, erased, result) = make();
+        let mut entries = self.0.take().unwrap_or_default();
+        let used = entries.generation;
         entries.map.insert(
             key,
             Entry {
-                source: source.erase(),
-                result: result.erase(),
-                used: generation,
+                source,
+                result: erased,
+                used,
             },
         );
         self.0.set(Some(entries));
@@ -119,69 +173,4 @@ impl DerivedGroups {
     }
 }
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct Push;
-    struct Other;
-
-    #[test]
-    fn one_edit_of_one_group_is_shared() {
-        let cache = DerivedGroups::default();
-        let base = StyleGroup::new(vec![1]);
-        let first = cache.derive::<Push, _>(&base, 2, |v| v.push(2));
-        // Another owner handle of the same group hits the same entry.
-        let alias = base.clone();
-        let second = cache.derive::<Push, _>(&alias, 2, |v| v.push(2));
-        drop(alias);
-        assert!(first.ptr_eq(&second));
-        assert_eq!(&*first, &[1, 2]);
-        assert_eq!(&*base, &[1]);
-        let third = cache.derive::<Push, _>(&base, 3, |v| v.push(3));
-        assert!(!third.ptr_eq(&first));
-        let other = cache.derive::<Other, _>(&base, 2, |v| v.push(2));
-        assert!(!other.ptr_eq(&first));
-        let distinct = StyleGroup::new(vec![1]);
-        assert!(
-            !cache
-                .derive::<Push, _>(&distinct, 2, |v| v.push(2))
-                .ptr_eq(&first)
-        );
-    }
-
-    #[test]
-    fn frames_release_unused_entries() {
-        let cache = DerivedGroups::default();
-        let base = StyleGroup::new(vec![1]);
-        let kept = cache.derive::<Push, _>(&base, 2, |v| v.push(2));
-        let _dropped = cache.derive::<Push, _>(&base, 3, |v| v.push(3));
-        cache.begin_frame();
-        assert_eq!(cache.len(), 2);
-        assert!(
-            cache
-                .derive::<Push, _>(&base, 2, |v| v.push(2))
-                .ptr_eq(&kept)
-        );
-        cache.begin_frame();
-        assert_eq!(cache.len(), 1);
-        let other = StyleGroup::new(vec![5]);
-        let _ = cache.derive::<Push, _>(&other, 2, |v| v.push(2));
-        assert_eq!(cache.len(), 2);
-        drop(other);
-        cache.release_unowned();
-        assert_eq!(cache.len(), 1);
-    }
-
-    #[test]
-    fn the_last_document_releases_entries_while_values_live() {
-        let values = crate::values::DocumentValues::detached(Default::default());
-        let base = StyleGroup::new(vec![1]);
-        values.hold_document();
-        let _ = values.derived.derive::<Push, _>(&base, 2, |v| v.push(2));
-        values.hold_document();
-        values.release_document();
-        assert_eq!(values.derived.len(), 1);
-        values.release_document();
-        assert_eq!(values.derived.len(), 0);
-    }
-}
+mod tests;

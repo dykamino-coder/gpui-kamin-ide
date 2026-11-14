@@ -70,36 +70,6 @@ impl Computed {
         };
         self.reset_border.radius_ell = ell.iter().any(Option::is_some).then_some(ell);
     }
-
-    pub fn resolve_radius_lengths(&mut self, fix: impl Fn(&mut Option<Len>)) {
-        let resolve = |radius: &mut Option<Len>| {
-            fix(radius);
-            if let Some(Len::Px(value)) = radius {
-                *value = value.max(0.0);
-            }
-        };
-        for corner in {
-            let group_0 = &mut *self.reset_border;
-            [
-                &mut group_0.radius.tl,
-                &mut group_0.radius.tr,
-                &mut group_0.radius.br,
-                &mut group_0.radius.bl,
-            ]
-        } {
-            resolve(corner);
-        }
-        if let Some(corners) = self.reset_border.radius_ell.as_mut() {
-            for (x, y) in corners.iter_mut().flatten() {
-                let mut rx = Some(*x);
-                let mut ry = Some(*y);
-                resolve(&mut rx);
-                resolve(&mut ry);
-                *x = rx.unwrap_or(Len::Px(0.0));
-                *y = ry.unwrap_or(Len::Px(0.0));
-            }
-        }
-    }
 }
 
 // CSS Backgrounds 3 §5.1: only a top-level slash separates the radius axes.

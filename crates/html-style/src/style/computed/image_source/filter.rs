@@ -15,6 +15,15 @@ impl ImageFilter {
             )
             .any(|l| l.needs_line_height(vcx))
     }
+    /// Изменит ли `resolve_lengths` фильтр: длина сворачивается, размытие уже в точках или
+    /// тень уже числовая.
+    pub(super) fn lengths_pending(&self, moves: impl Fn(Len) -> bool, vcx: ValueCx<'_>) -> bool {
+        self.blur_length
+            .is_some_and(|l| moves(l) || matches!(l, Len::Px(_)))
+            || self.shadow_value.as_ref().is_some_and(|shadow| {
+                shadow.lengths.into_iter().flatten().any(&moves) || shadow.offsets(vcx).is_some()
+            })
+    }
     pub(super) fn resolve_lengths(&mut self, fix: &impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
         fix(&mut self.blur_length);
         if let Some(Len::Px(px)) = self.blur_length {

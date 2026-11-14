@@ -165,7 +165,7 @@ pub struct Scene {
     /// KaminIDE patch: ink sinks of retained subtrees open at this point of the
     /// paint (Window::with_ink_sink); each one takes the placed bounds of every
     /// primitive offered to the scene, before culling.
-    pub(crate) ink: Vec<std::rc::Rc<crate::InkSink>>,
+    pub(crate) ink: crate::window::InkSinks,
     /// KaminIDE patch: the open scope of the frame's scope sink (Window::with_ink_scope), 0 if none.
     pub(crate) ink_scope: u32,
     /// Mouse listeners and element state reads declared inert while unseen
@@ -407,9 +407,7 @@ impl Scene {
         let mut primitive = primitive.into();
         let placed_bounds = placed_bounds(&primitive);
         // KaminIDE patch: ink of open retained subtrees, culled or not.
-        for sink in &self.ink {
-            sink.add_in(self.ink_scope, placed_bounds);
-        }
+        crate::window::ink_add(&self.ink, self.ink_scope, placed_bounds);
         crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
         let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
 
@@ -712,9 +710,7 @@ impl Scene {
             self.paint_operations.push(operation);
         }
         if let Some(ink) = ink {
-            for sink in &self.ink {
-                sink.add_in(self.ink_scope, ink);
-            }
+            crate::window::ink_add(&self.ink, self.ink_scope, ink);
             crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, ink));
         }
         let index = match graft {

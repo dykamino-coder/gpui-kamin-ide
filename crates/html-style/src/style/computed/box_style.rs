@@ -75,6 +75,8 @@ pub struct BoxStyle {
     /// порядковый номер сборки в кадре («последний якорь раньше по дереву» в
     /// реестре прошлого кадра) и ключ коробки в реестре размеров клетки.
     pub self_node: u64,
+    /// Identity of the decorating box (css-text-decor-3 §2.1), outside the shared style.
+    pub decor_box: u64,
     pub cb_node: u64,
     /// Ближайший CB fixed; промежуточный position:relative его не заменяет.
     pub fixed_cb_node: u64,
@@ -132,6 +134,7 @@ impl BoxStyle {
             canvas_background,
             paint,
             try_source,
+            decor_box,
         } = input.into();
         // Определённость высоты и квирк-опора доли, которые раскладка положила
         // в стиль элемента-копии, — исходные значения контекста его коробки.
@@ -150,6 +153,7 @@ impl BoxStyle {
             inline_format: None,
             element_style: None,
             self_node: 0,
+            decor_box,
             cb_node: 0,
             fixed_cb_node: 0,
             cb_scroll_insets: Default::default(),
@@ -203,7 +207,10 @@ impl BoxStyle {
 impl BoxStyle {
     /// Вычисленный стиль без контекста коробки (стиль элемента, сделанного раскладкой).
     pub fn into_computed(self) -> Computed {
-        Rc::unwrap_or_clone(self.style)
+        let mut style = Rc::unwrap_or_clone(self.style);
+        // Стиль элемента, сделанного раскладкой, — его каскадный: несёт идентичность коробки.
+        style.decor_box = self.decor_box;
+        style
     }
 }
 

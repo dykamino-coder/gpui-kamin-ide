@@ -1,6 +1,7 @@
 //! Повтор блоков корневого потока после смены его ширины (`layout::reuse::width`):
 //! блок, чья раскладка от ширины не зависит, переживает её.
 
+mod painted_rows;
 mod replay_records;
 
 use super::tests::{View, frame, open};

@@ -2,6 +2,7 @@
 //! которого каждый абзац уложился в одну строку, раскладывается так же в
 //! любом потоке, где эти строки не короче места (`width::Width::Stretch`).
 
+use super::FlowReuse;
 use gpui::Window;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -47,22 +48,41 @@ impl LineSink {
             None => self.broken.set(true),
         }
     }
+
+    /// Строки блока `inner`, записанного внутри этого: внешняя запись
+    /// слышит их разом, когда внутренняя закрыта (`with_record`).
+    fn absorb(&self, inner: &LineSink) {
+        self.paragraphs
+            .set(self.paragraphs.get() + inner.paragraphs.get());
+        self.slack.set(self.slack.get().min(inner.slack.get()));
+        self.broken.set(self.broken.get() || inner.broken.get());
+    }
 }
 
-/// Открытые приёмники prepaint: внутренний и внешние записи.
-struct Open {
-    sink: Rc<LineSink>,
-    outer: Option<Rc<Open>>,
-}
-
-/// Выполнить prepaint `f` со строками абзацев, собранными и в `sink`.
-pub(super) fn with_sink<R>(
-    sink: Rc<LineSink>,
+/// Выполнить prepaint `f` со строками абзацев, собранными в запись `at`
+/// сборки `reuse` и, когда он закончен, во внешнюю открытую запись.
+/// Открытая запись — сборка в контексте окна и номер записи в ней: открытие
+/// ничего не выделяет.
+pub(super) fn with_record<R>(
+    reuse: &Rc<FlowReuse>,
+    at: usize,
     window: &mut Window,
     f: impl FnOnce(&mut Window) -> R,
 ) -> R {
-    let outer = window.render_context::<Open>();
-    window.with_render_context(Some(Rc::new(Open { sink, outer })), f)
+    let outer = window
+        .render_context::<FlowReuse>()
+        .and_then(|outer| Some((outer.open.get()?, outer)))
+        .filter(|(i, outer)| !(Rc::ptr_eq(outer, reuse) && *i == at));
+    let saved = reuse.open.replace(Some(at));
+    let result = window.with_render_context(Some(reuse.clone()), f);
+    reuse.open.set(saved);
+    if let Some((i, outer)) = outer {
+        let (all, inner) = (outer.pending.borrow(), reuse.pending.borrow());
+        if let (Some(o), Some(n)) = (all.get(i), inner.get(at)) {
+            o.making.lines.absorb(&n.making.lines);
+        }
+    }
+    result
 }
 
 /// Абзац ширины `width` уложен в строки шириной (с отступом) `lines`.
@@ -72,19 +92,17 @@ pub(crate) fn report(
     vertical: bool,
     mut lines: impl ExactSizeIterator<Item = f32>,
 ) {
-    let mut open = window.render_context::<Open>();
-    if open.is_none() {
+    let Some(reuse) = window.render_context::<FlowReuse>() else {
         return;
-    }
+    };
+    let Some(at) = reuse.open.get() else { return };
     let one = (lines.len() == 1 && !vertical)
         .then(|| lines.next())
         .flatten();
-    while let Some(scope) = open {
-        scope.sink.note(width, one);
-        open = scope.outer.clone();
+    if let Some(open) = reuse.pending.borrow().get(at) {
+        open.making.lines.note(width, one);
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +119,17 @@ mod tests {
         assert_eq!(two.slack(), None, "one anonymous paragraph per text block");
         sink.note(300.0, None);
         assert_eq!(sink.slack(), None, "a wrapped or vertical paragraph");
+    }
+
+    #[test]
+    fn an_outer_sink_hears_the_paragraphs_of_an_inner_one() {
+        let (outer, inner) = (LineSink::default(), LineSink::default());
+        inner.note(300.0, Some(250.0));
+        outer.absorb(&inner);
+        assert_eq!((inner.slack(), outer.slack()), (Some(50.0), Some(50.0)));
+        let wrapped = LineSink::default();
+        wrapped.note(300.0, None);
+        outer.absorb(&wrapped);
+        assert!(outer.broken() && outer.slack().is_none());
     }
 }
