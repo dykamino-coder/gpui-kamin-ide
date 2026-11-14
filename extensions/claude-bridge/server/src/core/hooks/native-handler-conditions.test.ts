@@ -142,6 +142,51 @@ describe('original handler event lifetime', () => {
     expect(calls.map((call) => call.route)).toEqual(['/hooks/prepare', '/hooks/restore', '/hooks/release'])
   })
 
+  it('asks for the lease again when the server refuses a condition request, then gates the call', async () => {
+    const { $, handlers, calls } = await activeModule()
+    const granted = $.http.fetch.getMockImplementation()!
+    // The server dropped the lease (no request for three seconds): it refuses
+    // everything except /hello until the module introduces itself again.
+    let lease = false
+    $.http.fetch.mockImplementation(async (url: string, options: any) => {
+      if (url.endsWith('/hello')) lease = true
+      else if (!lease) {
+        calls.push({ route: new URL(url).pathname, refused: true })
+        return { ok: false, text: '' }
+      }
+      return granted(url, options)
+    })
+    const input = { tool: 'mcp__user-tools__Bash', tool_use_id: 'call', command: 'echo original' }
+    const next = vi.fn(async () => ({ deny: 'original block' }))
+    expect(await handlers.get('classic.PreToolUse')!($, input, next)).toEqual({ deny: 'original block' })
+    expect(next).toHaveBeenCalledOnce()
+    expect(calls.map((call) => (call.refused ? `refused ${call.route}` : call.route))).toEqual([
+      'refused /hooks/prepare',
+      '/hello',
+      '/hooks/prepare',
+      '/hooks/restore',
+      '/hooks/release',
+    ])
+    // The lease holds for the next call: no second introduction.
+    calls.length = 0
+    await handlers.get('classic.PreToolUse')!($, { ...input, tool_use_id: 'later' }, async () => ({}))
+    expect(calls.map((call) => call.route)).toEqual(['/hooks/prepare', '/hooks/restore', '/hooks/release'])
+  })
+
+  it('leaves the call unguarded only while no lease can be obtained', async () => {
+    const { $, handlers, calls } = await activeModule()
+    $.http.fetch.mockImplementation(async (url: string) => {
+      calls.push({ route: new URL(url).pathname })
+      return { ok: false, text: '' }
+    })
+    const next = vi.fn(async () => ({}))
+    await expect(
+      handlers.get('classic.PreToolUse')!($, { tool: 'mcp__user-tools__Bash', tool_use_id: 'call' }, next),
+    ).rejects.toThrow('Bridge hook conditions unavailable')
+    expect(next).not.toHaveBeenCalled()
+    expect(calls.map((call) => call.route)).toEqual(['/hooks/prepare', '/hello'])
+  })
+
   it('suppresses only marker-only ConfigChange events and preserves real edits and other sources', async () => {
     const { $, handlers } = await activeModule()
     const event = { source: 'local_settings', file_path: '/fixture/settings.local.json' }
