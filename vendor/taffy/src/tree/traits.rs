@@ -409,6 +409,17 @@ pub trait LayoutGridContainer: LayoutPartialTree {
     /// child layout never accumulates it. Default implementation stores nothing.
     fn set_content_shift(&mut self, _node_id: NodeId, _dy: f32) {}
 
+    /// KaminIDE patch: take the item contributions kept for grid `node_id` in this layout pass
+    /// ([`ContributionMemo`](crate::compute::ContributionMemo)), or a new empty memo. `None` (the
+    /// default) keeps none: a tree that implements this must drop every memo at the end of the
+    /// pass, since the contributions are valid only while no child changes.
+    fn take_contribution_memo(&mut self, _node_id: NodeId) -> Option<crate::compute::ContributionMemo> {
+        None
+    }
+
+    /// KaminIDE patch: keep `memo` for the next query of grid `node_id` in this layout pass.
+    fn put_contribution_memo(&mut self, _node_id: NodeId, _memo: crate::compute::ContributionMemo) {}
+
     /// KaminIDE patch: block space a fragmenting caller inserts after track `track` of the
     /// physical `axis` (css-grid-2 §12). Tracks are indexed like
     /// [`DetailedGridTracksInfo::positions`](crate::compute::grid::DetailedGridTracksInfo):

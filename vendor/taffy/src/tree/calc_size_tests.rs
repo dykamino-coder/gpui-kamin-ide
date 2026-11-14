@@ -25,7 +25,7 @@ fn measured(inputs: LayoutInput, _: NodeId, _: Option<&mut ()>, style: &Style) -
 fn width(style: Style, inputs: LayoutInput) -> f32 {
     let mut tree = TaffyTree::<()>::new();
     let node = tree.new_leaf(style).unwrap();
-    let mut view = TaffyView { taffy: &mut tree, measure_function: measured };
+    let mut view = TaffyView { taffy: &mut tree, measure_function: measured, #[cfg(feature = "grid")] grid_memos: Default::default() };
     view.compute_child_layout(node, inputs, #[cfg(feature = "block_layout")] None).size.width
 }
 
@@ -102,7 +102,7 @@ fn automatic_minimum_uses_content_before_ratio_transfer() {
         let mut inputs = input(AvailableSpace::Definite(800.0));
         inputs.known_dimensions.set_abs(axis, None);
         inputs.known_dimensions.set_abs(axis.other_axis(), Some(100.0));
-        let mut view = TaffyView { taffy: &mut tree, measure_function: measured };
+        let mut view = TaffyView { taffy: &mut tree, measure_function: measured, #[cfg(feature = "grid")] grid_memos: Default::default() };
         let output = view.compute_child_layout(node, inputs, None);
         assert_eq!(output.size.get_abs(axis), 100.0);
     }
