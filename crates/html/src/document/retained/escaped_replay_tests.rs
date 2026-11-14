@@ -72,7 +72,10 @@ fn a_restyled_job_reaches_the_frame(cx: &mut TestAppContext) {
     let both = format!("{}{}", loose("a", "#f00"), loose("b", "#0a0"));
     let (_, before, after, fresh) = edit(cx, &both, &page("", &recoloured, "one"));
     assert_eq!(after, fresh);
-    assert_ne!(before, after, "the new background of the job reached the frame");
+    assert_ne!(
+        before, after,
+        "the new background of the job reached the frame"
+    );
 }
 
 #[gpui::test]

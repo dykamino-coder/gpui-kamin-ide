@@ -15,11 +15,11 @@
 
 mod element;
 #[cfg(test)]
+mod escaped_replay_tests;
+#[cfg(test)]
 mod far_tests;
 #[cfg(test)]
 mod invalidation_tests;
-#[cfg(test)]
-mod escaped_replay_tests;
 #[cfg(test)]
 mod layered_replay_tests;
 #[cfg(test)]
