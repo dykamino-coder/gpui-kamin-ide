@@ -182,6 +182,12 @@ pub struct Scene {
     /// insertion order, and their indices by order for batching.
     pub(crate) layers: Vec<LayerSlot>,
     layer_order: Vec<u32>,
+    /// KaminIDE patch: primitives and layers painted into this scene rather
+    /// than replayed from another, and the rectangles written into the
+    /// replayed layers since they were last drawn: with no fresh paint, the
+    /// frame differs from the one it replays only there (`Scene::damage`).
+    pub(crate) fresh: u32,
+    pub(crate) layer_damage: Option<Bounds<ScaledPixels>>,
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -375,6 +381,8 @@ impl Scene {
         self.surfaces.clear();
         self.layers.clear();
         self.layer_order.clear();
+        self.fresh = 0;
+        self.layer_damage = None;
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();
         self.ink.clear();
@@ -415,6 +423,7 @@ impl Scene {
     }
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
+        self.fresh += 1;
         let mut primitive = primitive.into();
         let placed_bounds = placed_bounds(&primitive);
         // KaminIDE patch: ink of open retained subtrees, culled or not.
@@ -820,11 +829,18 @@ impl Scene {
         match operation {
             PaintOperation::Primitive(primitive) => {
                 Self::count_copied(1);
-                self.insert_primitive(primitive)
+                let fresh = self.fresh;
+                self.insert_primitive(primitive);
+                self.fresh = fresh;
             }
             PaintOperation::Layer(layer) => {
                 if let Some(cell) = layer.cell.upgrade() {
+                    let (fresh, damage) = (self.fresh, cell.damage.take());
                     self.insert_layer(&LayerHandle(cell), layer.bounds);
+                    self.fresh = fresh;
+                    if let Some(rect) = damage {
+                        self.layer_damage = Some(self.layer_damage.map_or(rect, |d| d.union(&rect)));
+                    }
                 }
             }
             PaintOperation::StartLayer(bounds, _) => self.push_layer(bounds),

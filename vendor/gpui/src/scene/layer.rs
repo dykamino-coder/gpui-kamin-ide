@@ -20,7 +20,7 @@ mod frame;
 
 use super::{Background, Bounds, Hsla, PaintOperation, Primitive, ScaledPixels, Scene};
 pub(crate) use frame::{LayerOp, LayerSlot};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
@@ -72,7 +72,12 @@ pub mod layer_counters {
 #[derive(Clone)]
 pub struct LayerHandle(pub(crate) Rc<LayerCell>);
 
-pub(crate) struct LayerCell(pub(crate) RefCell<Rc<SceneLayer>>);
+pub(crate) struct LayerCell {
+    pub(crate) content: RefCell<Rc<SceneLayer>>,
+    /// Union of the rectangles written since a frame last took the layer
+    /// (`Scene::push_layer_slot`): that frame's damage from this layer.
+    pub(crate) damage: Cell<Option<Bounds<ScaledPixels>>>,
+}
 
 impl Clone for SceneLayer {
     /// A write's copy: only while a frame or snapshot holds the content.
@@ -143,12 +148,12 @@ impl SceneLayer {
 
 impl LayerHandle {
     pub(crate) fn new(layer: SceneLayer) -> Self {
-        Self(Rc::new(LayerCell(RefCell::new(Rc::new(layer)))))
+        Self(Rc::new(LayerCell { content: RefCell::new(Rc::new(layer)), damage: Cell::new(None) }))
     }
 
     /// The current content.
     pub fn content(&self) -> Rc<SceneLayer> {
-        self.0.0.borrow().clone()
+        self.0.content.borrow().clone()
     }
 
     /// Whether two handles name the same layer.
@@ -157,49 +162,68 @@ impl LayerHandle {
     }
 
     /// Write the background of `owner`: every quad its background scope
-    /// painted takes `to`, when every one of them was painted in `from` (under
-    /// the opacity it was painted with). Returns the damaged rectangle in
-    /// device pixels, or `None` with nothing written when the owner has no
-    /// such quad or one painted something else, or when `to` is transparent
-    /// (the painter paints no quad then): the host paints again.
+    /// painted takes `to`, when every one of them was painted in `from`.
+    /// `set_backgrounds` of one write.
     pub fn set_background(&self, owner: u32, from: Hsla, to: Hsla) -> Option<Bounds<ScaledPixels>> {
-        if to.a == 0. {
-            return None;
-        }
-        let mut current = self.0.0.borrow_mut();
-        let range = current.bound(owner, LayerValue::Background);
-        let painted = |b: &Binding| Background::from(from).opacity(b.opacity);
-        let all = !range.is_empty()
-            && current.bindings[range.clone()].iter().all(|b| {
+        self.set_backgrounds(&[(owner, from, to)])?
+    }
+
+    /// Write the backgrounds `(owner, from, to)`: every quad an owner's
+    /// background scope painted takes `to` (under the opacity it was painted
+    /// with). All or nothing: `None`, with nothing written, when an owner has
+    /// no such quad, one of its quads was painted in another colour than
+    /// `from`, or `to` is transparent (the painter paints no quad then); the
+    /// host paints again. Otherwise the damaged rectangle in device pixels
+    /// (`None` inside for no write), also added to the layer's damage for the
+    /// next frame that draws it.
+    pub fn set_backgrounds(&self, writes: &[(u32, Hsla, Hsla)]) -> Option<Option<Bounds<ScaledPixels>>> {
+        let mut current = self.0.content.borrow_mut();
+        for &(owner, from, to) in writes {
+            let range = current.bound(owner, LayerValue::Background);
+            let painted = |b: &Binding| Background::from(from).opacity(b.opacity);
+            let all = current.bindings[range.clone()].iter().all(|b| {
                 current.scene.quads.get(b.quad as usize).is_some_and(|q| q.background == painted(b))
             });
-        if !all {
-            return None;
+            if to.a == 0. || range.is_empty() || !all {
+                return None;
+            }
+        }
+        if writes.is_empty() {
+            return Some(None);
         }
         let layer = Rc::make_mut(&mut current);
         let mut damage: Option<Bounds<ScaledPixels>> = None;
-        let mut edge = to;
-        edge.a = 0.;
-        for at in range.clone() {
-            let b = layer.bindings[at];
-            let fill = Background::from(to).opacity(b.opacity);
-            let border = edge.opacity(b.opacity);
-            if let Some(quad) = layer.scene.quads.get_mut(b.quad as usize) {
-                quad.background = fill;
-                quad.border_color = border;
-                let rect = quad.bounds.intersect(&quad.content_mask.bounds);
-                damage = Some(damage.map_or(rect, |d| d.union(&rect)));
-            }
-            if let Some(PaintOperation::Primitive(Primitive::Quad(quad))) =
-                layer.scene.paint_operations.get_mut(b.op as usize)
-            {
-                quad.background = fill;
-                quad.border_color = border;
+        let mut written = 0;
+        for &(owner, _, to) in writes {
+            let mut edge = to;
+            edge.a = 0.;
+            for at in layer.bound(owner, LayerValue::Background) {
+                let b = layer.bindings[at];
+                let fill = Background::from(to).opacity(b.opacity);
+                let border = edge.opacity(b.opacity);
+                if let Some(quad) = layer.scene.quads.get_mut(b.quad as usize) {
+                    quad.background = fill;
+                    quad.border_color = border;
+                    let rect = super::placed_bounds(&Primitive::Quad(*quad))
+                        .intersect(&quad.content_mask.bounds);
+                    damage = Some(damage.map_or(rect, |d| d.union(&rect)));
+                }
+                if let Some(PaintOperation::Primitive(Primitive::Quad(quad))) =
+                    layer.scene.paint_operations.get_mut(b.op as usize)
+                {
+                    quad.background = fill;
+                    quad.border_color = border;
+                }
+                written += 1;
             }
         }
         layer.version += 1;
-        layer_counters::VALUES_WRITTEN.fetch_add(range.len() as u64, Relaxed);
-        damage
+        layer_counters::VALUES_WRITTEN.fetch_add(written, Relaxed);
+        if let Some(rect) = damage {
+            let old = self.0.damage.get();
+            self.0.damage.set(Some(old.map_or(rect, |d| d.union(&rect))));
+        }
+        Some(damage)
     }
 }
 

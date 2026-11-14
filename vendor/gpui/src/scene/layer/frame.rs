@@ -44,6 +44,9 @@ impl Scene {
             Some(order) => order,
             None => self.tree_mut().insert(bounds) * ORDER_STEP,
         };
+        // A recorded layer is new paint: its damage is all of it.
+        layer.0.damage.take();
+        self.fresh += 1;
         let cell = Rc::downgrade(&layer.0);
         self.paint_operations.push(PaintOperation::Layer(LayerOp { cell: cell.clone(), bounds, order }));
         self.layers.push(LayerSlot { order, cell, held: Some(layer.content()) });
@@ -55,7 +58,10 @@ impl Scene {
         let Some(cell) = op.cell.upgrade() else {
             return false;
         };
-        let held = cell.0.borrow().clone();
+        let held = cell.content.borrow().clone();
+        if let Some(rect) = cell.damage.take() {
+            self.layer_damage = Some(self.layer_damage.map_or(rect, |d| d.union(&rect)));
+        }
         self.layers.push(LayerSlot { order: op.order, cell: op.cell.clone(), held: Some(held) });
         true
     }
@@ -83,7 +89,7 @@ impl Scene {
     pub(crate) fn hold_layers(&mut self) {
         for slot in &mut self.layers {
             if slot.held.is_none() {
-                slot.held = slot.cell.upgrade().map(|cell| cell.0.borrow().clone());
+                slot.held = slot.cell.upgrade().map(|cell| cell.content.borrow().clone());
             }
         }
     }
