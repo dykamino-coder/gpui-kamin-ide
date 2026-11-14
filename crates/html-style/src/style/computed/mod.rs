@@ -73,6 +73,7 @@ mod clone_audit;
 mod damage;
 mod paint_color;
 pub use clone_audit::CloneAudit;
+mod paint_groups;
 pub mod scroll;
 pub mod snap;
 mod used_color;

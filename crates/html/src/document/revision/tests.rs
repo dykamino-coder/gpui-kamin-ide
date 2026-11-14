@@ -60,6 +60,7 @@ mod differential;
 mod invalidation;
 mod records;
 mod repaint;
+mod repaint_background;
 mod revision_budget;
 mod text_edits;
 

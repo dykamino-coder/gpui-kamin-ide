@@ -18,7 +18,9 @@ pub(super) fn parent_eq(a: &Computed, b: &Computed, own: &Computed) -> bool {
         }
 }
 
-fn inherits_reset(own: &Computed) -> bool {
+/// Whether the computed stage of `own` reads non-inherited values of its
+/// parent (css-cascade-5 §7.3.1).
+pub(crate) fn inherits_reset(own: &Computed) -> bool {
     let cascade = &own.reset_cascade;
     !cascade.explicit_inherit.is_empty()
         || !cascade.inherit_longhands.is_empty()
