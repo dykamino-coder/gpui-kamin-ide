@@ -53,6 +53,7 @@ pub fn run(on_launch: impl FnOnce(&mut gpui::App) + 'static) {
 #[cfg(windows)]
 fn fail(error: anyhow::Error) -> ! {
     crate::web::startup_log(format!("[boot] adapter error: {error:#}"));
+    crate::web::flush_startup_log(std::time::Duration::from_secs(2));
     std::process::exit(2)
 }
 
