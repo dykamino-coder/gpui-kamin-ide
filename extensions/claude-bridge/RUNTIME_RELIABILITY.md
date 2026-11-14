@@ -1283,6 +1283,29 @@ call count. Требуется отличить ожидаемую отмену 
 в public evidence не попадают. Новый functional fix начинается только отдельным
 поручением после классификации. В текущей ревизии этот остаток только заведён.
 
+### BR-18B — Collect a local hook's output before reporting its result
+
+**Registered 2026-11-14 (kmaint2) from a CI failure on the 1.0.98 release branch.**
+- Symptom: a local command hook that exits 0 is sometimes reported with an empty `stdout`. In CI
+  `warm-shell.test.ts` failed once with `expected '' to contain '"n":0'` while the exit code matched
+  ([run](https://github.com/dykamino-coder/gpui-kamin-ide/actions/runs/43578145929/job/132396937898));
+  a rerun passed.
+- Fact (source): `executeHook` in `extension/src/main/hooks/executor.ts` builds the result in the
+  process `exit` handler. Node may emit `exit` before the last `stdout`/`stderr` data is delivered;
+  only `close` means the streams have ended. The foreground Bash tool already waits for `close`
+  (`shell-foreground.ts`).
+- Consequence: the hook's output can be lost, including a JSON decision (for example a `deny` from
+  `PreToolUse`), which is then not applied.
+- Contract: a hook result contains everything the hook wrote before it exited. A hook whose
+  background child keeps the pipes open still reports soon after the hook itself exits.
+- Direction: build the result on `close`; after `exit`, wait for `close` for about 1 s at most.
+
+**Status:** ready / change. **Parent:** BR-18. **Dependency:** none. **Acceptance:** automated: a test
+with a process that emits `exit`, then output, then `close`, which fails on the old code, and a
+test that a held pipe does not delay the result beyond the window.
+**Windows runtime merge gate:** not required.
+**Next step:** kmaint2: Fix PR.
+
 ### BR-19 — Treat shell disconnect as lifecycle cancellation, not extension crash
 
 **Close-out audit 2026-09-06:** `src/kamin-host/ws-server.ts` по-прежнему передаёт обычный
