@@ -13,8 +13,6 @@
 /// the default (no marks).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Marks {
-    /// Связь входного представления с удерживаемой коробкой документа.
-    pub box_id: super::BoxLink,
     /// Общий для клонов ключ синтетической коробки; node_id остаётся layout-меткой.
     pub state_id: std::rc::Rc<std::cell::OnceCell<String>>,
     /// Document root/body eligible for the quirks-mode block-size fill rules.
