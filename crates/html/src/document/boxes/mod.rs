@@ -5,6 +5,8 @@
 
 mod arena;
 mod inline;
+#[cfg(test)]
+mod key_tests;
 mod source;
 #[cfg(test)]
 mod tests;
@@ -69,7 +71,22 @@ impl BoxTree {
         let epoch = self.epoch;
         self.first = BoxId::NONE;
         let mut inline = inline::Collection::default();
-        let mut pending = vec![(nodes.iter(), BoxId::NONE, BoxId::NONE)];
+        // Фрагмент может состоять из текста или соседних inline без Element-
+        // родителя. Его IFC принадлежит документной коробке, а не первому span.
+        let root = if nodes.iter().any(|node| match node {
+            Node::Text(_) => true,
+            Node::Element(e) => crate::layout::box_kind::inline_level_box(e),
+        }) {
+            self.record(Source::Root, BoxId::NONE, 0, &mut previous)
+                .unwrap_or(BoxId::NONE)
+        } else {
+            BoxId::NONE
+        };
+        if root.is_some() {
+            self.first = root;
+            inline.root(root);
+        }
+        let mut pending = vec![(nodes.iter(), root, BoxId::NONE)];
         while let Some((siblings, parent, last)) = pending.last_mut() {
             let Some(node) = siblings.next() else {
                 pending.pop();
@@ -83,36 +100,8 @@ impl BoxTree {
                 continue;
             };
             let origin = Source::of(e);
-            let fits = |id| {
-                self.arena
-                    .get(id)
-                    .is_some_and(|r| r.origin == origin && r.epoch != epoch)
-            };
-            let id = previous.get_mut(&origin).and_then(|ids| {
-                ids.iter()
-                    .position(|&id| fits(id))
-                    .and_then(|at| ids.remove(at))
-            });
-            let id = id.or_else(|| {
-                self.arena.insert(BoxRecord {
-                    parent: *parent,
-                    first: BoxId::NONE,
-                    next: BoxId::NONE,
-                    source: e.node_id,
-                    origin,
-                    inline: None,
-                    epoch,
-                })
-            });
+            let id = self.record(origin, *parent, e.node_id, &mut previous);
             let Some(id) = id else { continue };
-            self.arena.link(
-                id,
-                Link::Reset {
-                    parent: *parent,
-                    source: e.node_id,
-                    epoch,
-                },
-            );
             if last.is_some() {
                 self.arena.link(*last, Link::Next(id));
             } else if parent.is_some() {
@@ -132,6 +121,38 @@ impl BoxTree {
                 self.arena.remove(id);
             }
         }
+    }
+
+    fn record(
+        &mut self,
+        origin: Source,
+        parent: BoxId,
+        source: u64,
+        previous: &mut HashMap<Source, VecDeque<BoxId>>,
+    ) -> Option<BoxId> {
+        // Очередь содержит только живые старые слоты. Каждый извлекается один
+        // раз; повторный линейный поиск среди фрагментов одного узла не нужен.
+        let id = previous.get_mut(&origin).and_then(VecDeque::pop_front);
+        let id = id.or_else(|| {
+            self.arena.insert(BoxRecord {
+                parent,
+                first: BoxId::NONE,
+                next: BoxId::NONE,
+                source,
+                origin,
+                inline: None,
+                epoch: self.epoch,
+            })
+        })?;
+        self.arena.link(
+            id,
+            Link::Reset {
+                parent,
+                source,
+                epoch: self.epoch,
+            },
+        );
+        Some(id)
     }
 
     /// Полная смена формы до появления постоянных ключей DOM: старые ключи

@@ -37,8 +37,8 @@ fn utf8_runs_keep_inline_boundaries_and_atoms_without_duplicate_text() {
         .items
         .iter()
         .filter_map(|item| {
-            if let ItemKind::Text(range) = &item.kind {
-                Some(&content.text[range.clone()])
+            if let ItemKind::Text { start, end } = item.kind {
+                Some(&content.text[start..end])
             } else {
                 None
             }
@@ -129,4 +129,82 @@ fn commit_preserves_unchanged_flow_and_old_consumer_keeps_its_text() {
     assert_eq!(old.text, "old text");
     assert_eq!(new.text, "new text");
     assert!(!Rc::ptr_eq(&old, &new));
+}
+
+#[test]
+fn contents_and_break_opportunities_keep_the_enclosing_flow() {
+    let doc = Document::builder(
+        "<main>before<span style='display:contents'>inside</span><wbr><br style='display:contents'>after</main>",
+        "",
+    ).build().unwrap();
+    let content = flow(&doc, "main");
+    assert_eq!(content.text, "beforeinsideafter");
+    assert_eq!(
+        content
+            .items
+            .iter()
+            .filter(|i| i.kind == ItemKind::Opportunity)
+            .count(),
+        1,
+    );
+    assert!(!content.items.iter().any(|i| matches!(
+        i.kind,
+        ItemKind::Open | ItemKind::Close | ItemKind::Block | ItemKind::HardBreak
+    )));
+}
+
+#[test]
+fn ruby_is_a_leaf_in_the_parent_flow() {
+    let doc = Document::builder(
+        "<main>before<ruby>base<rt>annotation</rt></ruby>after</main>",
+        "",
+    )
+    .build()
+    .unwrap();
+    let content = flow(&doc, "main");
+    assert_eq!(content.text, "beforeafter");
+    assert!(content.items.iter().any(|i| i.kind == ItemKind::Atom));
+    assert!(!flow(&doc, "ruby").text.contains("annotation"));
+    assert!(
+        flow(&doc, "ruby")
+            .items
+            .iter()
+            .any(|i| i.kind == ItemKind::RubyAnnotation)
+    );
+    assert_eq!(flow(&doc, "rt").text, "annotation");
+}
+
+#[test]
+fn a_root_inline_fragment_retains_its_text() {
+    let mut element =
+        crate::layout::table::anon::anon_element("span", vec![Node::Text("fragment".into())]);
+    element.inline = true;
+    let mut tree = super::super::BoxTree::default();
+    tree.publish(&[Node::Element(element)]);
+    assert_eq!(
+        tree.get(tree.first).unwrap().inline.as_ref().unwrap().text,
+        "fragment"
+    );
+}
+
+#[test]
+fn root_text_and_inline_siblings_share_one_document_flow() {
+    let mut span =
+        crate::layout::table::anon::anon_element("span", vec![Node::Text("middle".into())]);
+    span.inline = true;
+    let mut tree = super::super::BoxTree::default();
+    tree.publish(&[
+        Node::Text("before".into()),
+        Node::Element(span),
+        Node::Text("after".into()),
+    ]);
+    let root = tree.first;
+    let content = tree.get(root).unwrap().inline.as_ref().unwrap();
+    assert_eq!(content.text, "beforemiddleafter");
+    tree.publish(&[Node::Text("changed".into())]);
+    assert_eq!(tree.first, root);
+    assert_eq!(
+        tree.get(root).unwrap().inline.as_ref().unwrap().text,
+        "changed"
+    );
 }

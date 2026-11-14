@@ -1,27 +1,15 @@
 //! Ключ источника коробки: POD DOM-узла отдельно от синтетической роли.
 //!
-//! До подключения M1 тип повторяет его зафиксированный ABI. Числовой транспорт
-//! Element::node_id здесь только распаковывается, его порядок не используется.
+//! Числовой транспорт Element::node_id только распаковывается проектным типом
+//! M1; порядок и плотность ключей не используются.
 
 use crate::dom::Element;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(super) struct NodeKey {
-    pub(super) slot: u32,
-    pub(super) generation: u32,
-}
-
-impl NodeKey {
-    fn from_packed(value: u64) -> Self {
-        Self {
-            slot: value as u32,
-            generation: (value >> 32) as u32,
-        }
-    }
-}
+pub(super) use crate::dom::NodeKey;
+use std::string::String;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) enum Source {
+    Root,
     Node(NodeKey),
     Synthetic(String),
 }
