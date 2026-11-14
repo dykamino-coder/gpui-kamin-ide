@@ -150,6 +150,10 @@ pub(crate) fn report(instrumentation: &gpui::Instrumentation) {
     // Стоимость кадра ОКНА — из счётчиков gpui (patch `frame_perf`).
     let gd = gpui::frame_perf::DRAW_US.swap(0, Ordering::Relaxed) / 1000;
     let gp = gpui::frame_perf::PRESENT_US.swap(0, Ordering::Relaxed) / 1000;
+    // BR-31A: of it, the time inside the swap chain `Present` call and the frames
+    // dropped instead of waiting for the compositor.
+    let g_swap = gpui::frame_perf::SWAP_US.swap(0, Ordering::Relaxed) / 1000;
+    let g_dropped = gpui::frame_perf::DROPPED_FRAMES.swap(0, Ordering::Relaxed);
     let gf = gpui::frame_perf::FRAMES.swap(0, Ordering::Relaxed);
     let g_pre = gpui::frame_perf::PREPAINT_US.swap(0, Ordering::Relaxed) / 1000;
     let g_hit = gpui::frame_perf::HITTEST_US.swap(0, Ordering::Relaxed) / 1000;
@@ -188,9 +192,9 @@ pub(crate) fn report(instrumentation: &gpui::Instrumentation) {
         ));
     }
     let active = [
-        f, p, r, b, m, c, d, us, mx, ctx, tex, gd, gp, gf, g_pre, g_hit, g_pnt, g_nodes, g_runs,
-        g_meas, g_taffy, g_measus, g_reused, sw_put, sw_dirty, sw_gap, g_shaped, g_cachedl,
-        g_shape_ms, stretched, exact, died,
+        f, p, r, b, m, c, d, us, mx, ctx, tex, gd, gp, g_swap, g_dropped, gf, g_pre, g_hit, g_pnt,
+        g_nodes, g_runs, g_meas, g_taffy, g_measus, g_reused, sw_put, sw_dirty, sw_gap, g_shaped,
+        g_cachedl, g_shape_ms, stretched, exact, died,
     ]
     .iter()
     .any(|&count| count != 0);
@@ -199,7 +203,7 @@ pub(crate) fn report(instrumentation: &gpui::Instrumentation) {
         .is_ok_and(|mut clock| clock.should_emit(active, now));
     if emit {
         emit_line(format!(
-            "[cef] interval_ms={interval}: кадров {f}, кадров окна {d}, отрисовок {p}, заказов {r}, занято {b}, не тот размер {m}, обрезано {c}, растянуто {stretched}, точно {exact}, кадр окна в среднем {avg} мкс, худший {mx} мкс, из них состояние {ctx_avg} мкс; текстуры {tex} мс, строк дерева {rows}; окно сложило {gf} кадров: сцена {gd} мс, презент {gp} мс (раскладка {g_pre} мс, попадания {g_hit} мс, рисование {g_pnt} мс); узлов на кадр {per}, замеров на кадр {per_meas}, проходов {g_runs}; taffy {g_taffy} мс, замеры {g_measus} мс; переиграно вью {g_reused}; шейпинг: промахов {g_shaped} ({g_shape_ms} мс), из кэша {g_cachedl}"
+            "[cef] interval_ms={interval}: кадров {f}, кадров окна {d}, отрисовок {p}, заказов {r}, занято {b}, не тот размер {m}, обрезано {c}, растянуто {stretched}, точно {exact}, кадр окна в среднем {avg} мкс, худший {mx} мкс, из них состояние {ctx_avg} мкс; текстуры {tex} мс, строк дерева {rows}; окно сложило {gf} кадров: сцена {gd} мс, презент {gp} мс, из них вызов Present {g_swap} мс, не отдано кадров {g_dropped} (раскладка {g_pre} мс, попадания {g_hit} мс, рисование {g_pnt} мс); узлов на кадр {per}, замеров на кадр {per_meas}, проходов {g_runs}; taffy {g_taffy} мс, замеры {g_measus} мс; переиграно вью {g_reused}; шейпинг: промахов {g_shaped} ({g_shape_ms} мс), из кэша {g_cachedl}"
         ));
     }
     // #76: топ self-time prepaint по типам элементов (KAMIN_PREPAINT_PROF=1).

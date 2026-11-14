@@ -57,6 +57,7 @@ FIXES = {
         "Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.",
         "Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.",
         "Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.",
+        "Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.",
         "Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.",
         "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
         "Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.",
@@ -103,6 +104,8 @@ FIXES = {
         " same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or"
         " resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device"
         " recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.",
+        "Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency"
+        " gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.",
     ],
     "gpui-base": [
         "Editor input: minimap/scroll coordinates, incremental highlighting and run traversal.",
@@ -141,6 +144,7 @@ FIXES = {
         "Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.",
         "Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.",
         "Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.",
+        "Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.",
     ],
     "html5ever": [
         "Admission: opt-in fallible driver and sink operation hooks stop canonical tokenization/tree repair immediately, including EOF recovery; preflight growable token and tree-builder buffers.",

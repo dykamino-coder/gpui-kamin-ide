@@ -243,6 +243,7 @@ mod facts;
 #[cfg(feature = "heap-report")]
 mod heap;
 use facts::BoxFacts;
+mod restyle;
 mod same;
 #[cfg(test)]
 mod tests;

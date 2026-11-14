@@ -22,32 +22,41 @@
 # 20. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
 # 21. Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.
 # 22. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
-# 23. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
-# 24. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
-# 25. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
-# 26. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
-# 27. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
-# 28. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
-# 29. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
-# 30. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
-# 31. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
-# 32. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
-# 33. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
-# 34. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
-# 35. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
-# 36. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
-# 37. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
-# 38. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
-# 39. Retained subtrees: public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
-# 40. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
-# 41. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
-# 42. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
-# 43. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
-# 44. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
+# 23. Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.
+# 24. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
+# 25. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
+# 26. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
+# 27. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
+# 28. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
+# 29. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
+# 30. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
+# 31. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
+# 32. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
+# 33. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
+# 34. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
+# 35. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
+# 36. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
+# 37. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
+# 38. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
+# 39. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
+# 40. Retained subtrees: public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
+# 41. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
+# 42. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
+# 43. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
+# 44. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
+# 45. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
 
+diff --git a/vendor/gpui/.cargo-ok b/vendor/gpui/.cargo-ok
+deleted file mode 100644
+index 5f8b795830acbab5961c1a28c76a7916c9631493..0000000000000000000000000000000000000000
+--- a/vendor/gpui/.cargo-ok
++++ /dev/null
+@@ -1 +0,0 @@
+-{"v":1}
+\ No newline at end of file
 diff --git a/vendor/gpui/Cargo.lock b/vendor/gpui/Cargo.lock
 deleted file mode 100644
 index c09b2c7977d933310de9e8fdac42ffeab6888395..0000000000000000000000000000000000000000
@@ -10802,14 +10811,14 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..901383175a1386f737ab1be8fbfc5ae4
 @@ -3936,0 +4091 @@
 +            DefiniteLength::Calc(add, fraction) => *add == 0. && *fraction == 0.,
 diff --git a/vendor/gpui/src/gpui.rs b/vendor/gpui/src/gpui.rs
-index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..b4def9646725795bfff23527be9d2c48ed6f5d04
+index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..bd4c4c66f6248a8daefaff88f2820b668ced1cac
 --- a/vendor/gpui/src/gpui.rs
 +++ b/vendor/gpui/src/gpui.rs
 @@ -13,0 +14 @@
 +mod heap_report;
 @@ -15,0 +17 @@
 +mod plane_bsp;
-@@ -18,0 +21,86 @@
+@@ -18,0 +21,91 @@
 +/// KaminIDE patch (INC-2026-0001, диагностика): КТО делает окно грязным —
 +/// место в исходниках вызова notify/refresh/on_next_frame (`#[track_caller]`).
 +/// Без этого 60 кадров/с без кадров CEF, ввода и известных анимаций в логе
@@ -10863,6 +10872,11 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..b4def9646725795bfff23527be9d2c48
 +    pub static DRAW_US: AtomicU32 = AtomicU32::new(0);
 +    /// Время презента (отправка сцены на ГПУ и Commit), мкс.
 +    pub static PRESENT_US: AtomicU32 = AtomicU32::new(0);
++    /// KaminIDE patch (BR-31A): из них внутри вызова `Present` свапчейна, мкс.
++    pub static SWAP_US: AtomicU32 = AtomicU32::new(0);
++    /// KaminIDE patch (BR-31A): кадров не отдано компоузеру (гейт или
++    /// `Present` без ожидания); их презентует следующая отрисовка.
++    pub static DROPPED_FRAMES: AtomicU32 = AtomicU32::new(0);
 +    /// Сколько кадров окна сложилось за период.
 +    pub static FRAMES: AtomicU32 = AtomicU32::new(0);
 +    /// Время фазы prepaint (раскладка), мкс.
@@ -10896,22 +10910,22 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..b4def9646725795bfff23527be9d2c48
 +pub mod prepaint_prof;
 +mod instrumentation;
 +pub use instrumentation::*;
-@@ -21,0 +110,2 @@
+@@ -21,0 +115,2 @@
 +mod paint_traversal;
 +pub use paint_traversal::*;
-@@ -61,0 +152,2 @@
+@@ -61,0 +157,2 @@
 +/// KaminIDE patch: GPU readback of drawn frames (WPT runner).
 +pub mod frame_capture;
-@@ -187,0 +280 @@
+@@ -187,0 +285 @@
 +pub use gpui_util::ResultExt;
-@@ -206,0 +300,3 @@
+@@ -206,0 +305,3 @@
 +// KaminIDE patch: растеризация SVG из строки — нужна крейту разметки (функции
 +// модуля публичны и попадают в glob выше); FontStretch и замер — для html.
 +pub use text_system::FontStretch;
-@@ -209 +305 @@
+@@ -209 +310 @@
 -pub use taffy::{AvailableSpace, LayoutId};
 +pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, CompactMeasure, Measure, MeasuredBox, MeasuredContent, MeasuredStaticPosition, RowItemBaseline};
-@@ -214,0 +311 @@
+@@ -214,0 +316 @@
 +pub use heap_report::HeapSink;
 diff --git a/vendor/gpui/src/heap_report.rs b/vendor/gpui/src/heap_report.rs
 new file mode 100644

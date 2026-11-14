@@ -22,6 +22,8 @@ mod invalidation_tests;
 mod paint_damage_tests;
 #[cfg(test)]
 mod rebuild_key_tests;
+#[cfg(test)]
+mod recolour_layout_tests;
 mod record;
 #[cfg(test)]
 mod replay_tests;
