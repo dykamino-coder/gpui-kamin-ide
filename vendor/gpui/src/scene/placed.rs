@@ -23,12 +23,7 @@ pub(crate) enum PlacedMask {
 
 /// Whether `primitive` puts the buffer of a paint group of its scene on screen.
 fn group_output(primitive: &Primitive) -> bool {
-    #[cfg(not(target_os = "macos"))]
-    if let Primitive::Surface(surface) = primitive {
-        return surface.group > 0;
-    }
-    let _ = primitive;
-    false
+    matches!(primitive, Primitive::Surface(surface) if surface.group > 0)
 }
 
 /// Whether every mask of `primitive` is `mask`.
