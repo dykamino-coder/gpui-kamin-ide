@@ -19,6 +19,8 @@ import { conditionHolds } from './hook-condition'
 // Match Claude Code's DEFAULT_HTTP_HOOK_TIMEOUT_MS = 10 * 60 * 1000.
 // Long-running hooks (formatters, test runners) need this room.
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
+/** How long an exited hook's result waits for its output pipes to end. */
+export const HOOK_OUTPUT_DRAIN_MS = 1000
 
 interface PendingHookExec {
   sessionId: string
@@ -300,8 +302,14 @@ async function dispatchServer(
       })
     }, timeoutMs)
 
-    proc.on('exit', (code) => {
+    // `exit` can arrive before the last output: only `close` means the pipes
+    // have ended (BR-18B). A background child of the hook may keep them open,
+    // so after `exit` the result waits for `close` only for a short window.
+    let drain: ReturnType<typeof setTimeout> | undefined
+    let exitCode: number | null = null
+    const report = (code: number | null): void => {
       clearTimeout(killer)
+      clearTimeout(drain)
       let jsonOutput: Record<string, unknown> | undefined
       if (code === 0 && !stdoutDropped) {
         try {
@@ -319,10 +327,17 @@ async function dispatchServer(
         jsonOutput,
         durationMs: Date.now() - start,
       })
+    }
+    proc.on('exit', (code) => {
+      clearTimeout(killer)
+      exitCode = code
+      drain = setTimeout(() => report(code), HOOK_OUTPUT_DRAIN_MS)
     })
+    proc.on('close', (code) => report(code ?? exitCode))
 
     proc.on('error', (err) => {
       clearTimeout(killer)
+      clearTimeout(drain)
       resolve({
         stdout,
         stderr: stderr + `\nspawn error: ${err.message}`,

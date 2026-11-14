@@ -48,6 +48,8 @@ mod group_atlas;
 mod group_batch;
 mod texture_pool;
 mod shader_identity;
+mod present_gate;
+mod quad_clear;
 use group_region::Region;
 
 pub(crate) struct DirectXRenderer {
@@ -99,6 +101,9 @@ pub(crate) struct DirectXRenderer {
     capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
     /// Идёт основная сцена кадра (не буфер группы) — её пачки и меряются.
     timing_main: bool,
+    /// KaminIDE patch (BR-31A): the last frame was not handed to the
+    /// compositor, so the next paint must present (`present_gate`).
+    unpresented: bool,
 }
 
 /// KaminIDE patch: ресурсы backdrop blur. Копия бэкбуфера (сэмплить
@@ -393,16 +398,7 @@ pub(crate) struct DirectXRendererDevices {
     annotation: Option<ID3DUserDefinedAnnotation>,
 }
 
-/// KaminIDE patch (#76): HANDLE waitable-объекта свапчейна (latency 1);
-/// закрывается при пересоздании ресурсов (device lost).
-struct FrameLatencyGate(windows::Win32::Foundation::HANDLE);
-impl Drop for FrameLatencyGate {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = windows::Win32::Foundation::CloseHandle(self.0);
-        }
-    }
-}
+use present_gate::FrameLatencyGate;
 
 struct DirectXResources {
     // Direct3D rendering objects
@@ -434,6 +430,8 @@ struct DirectXRenderPipelines {
     poly_sprites: PipelineState<PolychromeSprite>,
     /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
     blur_pipeline: PipelineState<BlurQuad>,
+    /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
+    clear_pipeline: PipelineState<quad_clear::ClearColor>,
 }
 
 struct DirectXGlobalElements {
@@ -576,6 +574,7 @@ impl DirectXRenderer {
             height: 1,
             backdrop: None,
             skip_draws: false,
+            unpresented: false,
         })
     }
 
@@ -617,8 +616,8 @@ impl DirectXRenderer {
         self.atlas.clone()
     }
 
-    fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
-        let clear_color = self.backdrop.as_ref().unwrap_or(clear_color);
+    fn pre_draw(&mut self, clear_color: &[f32; 4]) -> Result<()> {
+        let clear_color = *self.backdrop.as_ref().unwrap_or(clear_color);
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
             .devices
@@ -638,14 +637,9 @@ impl DirectXRenderer {
                 _pad: 0,
             }],
         )?;
+        // KaminIDE patch: the clear is a draw, issued once the target, the
+        // viewport and the frame parameters are bound (quad_clear).
         unsafe {
-            device_context.ClearRenderTargetView(
-                resources
-                    .render_target_view
-                    .as_ref()
-                    .context("missing render target view")?,
-                clear_color,
-            );
             device_context
                 .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
             device_context.RSSetViewports(Some(slice::from_ref(&resources.viewport)));
@@ -656,7 +650,7 @@ impl DirectXRenderer {
             device_context
                 .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
         }
-        Ok(())
+        self.clear_frame(clear_color)
     }
 
     #[inline]
@@ -671,10 +665,46 @@ impl DirectXRenderer {
         // KaminIDE patch: an offscreen target is complete once drawn.
         let Some(swap_chain) = &self.resources.as_ref().expect("resources missing").swap_chain
         else {
+            self.unpresented = false;
             return Ok(());
         };
-        let result = unsafe { swap_chain.Present(0, DXGI_PRESENT(0)) };
-        result.ok().context("Presenting swap chain failed")
+        // KaminIDE patch (BR-31A): never wait inside Present. While the GPU
+        // or the compositor is behind, a plain Present blocked the UI thread
+        // for about 1 s per frame and webview pulls waited behind it. A frame
+        // that cannot be queued now is dropped, and the next paint presents.
+        let started = std::time::Instant::now();
+        let result = unsafe { swap_chain.Present(0, DXGI_PRESENT_DO_NOT_WAIT) };
+        present_gate::count_present_call(started.elapsed());
+        let shown = present_gate::frame_shown(result)?;
+        if shown {
+            // The queued frame will signal the gate again; a dropped one
+            // keeps the count it took for the next attempt.
+            if let Some(gate) = &self.res().frame_gate {
+                gate.spend();
+            }
+        } else {
+            self.drop_frame();
+        }
+        self.unpresented = !shown;
+        Ok(())
+    }
+
+    /// KaminIDE patch (BR-31A): the frame was not handed to the compositor;
+    /// ask for a low-priority paint, which presents it (`needs_presentation`).
+    fn drop_frame(&mut self) {
+        self.unpresented = true;
+        present_gate::count_dropped_frame();
+        if !self.hwnd.is_invalid() {
+            unsafe {
+                let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(self.hwnd), None, false);
+            }
+        }
+    }
+
+    /// KaminIDE patch (BR-31A): the last frame was dropped, so the next paint
+    /// must present even if the scene is unchanged.
+    pub(crate) fn needs_presentation(&self) -> bool {
+        self.unpresented
     }
 
     pub(crate) fn handle_device_lost(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
@@ -737,22 +767,15 @@ impl DirectXRenderer {
         // KaminIDE patch: under frame capture (WPT runner) never skip a frame
         // on the compositor's latency gate — an occluded window's frames are
         // consumed rarely and the page would never be drawn.
-        if let Some(gate) = self
+        let gate_open = self
             .res()
             .frame_gate
             .as_ref()
             .filter(|_| self.capture.is_none())
-        {
-            use windows::Win32::Foundation::WAIT_TIMEOUT;
-            use windows::Win32::System::Threading::WaitForSingleObject;
-            let wait = unsafe { WaitForSingleObject(gate.0, 0) };
-            if wait == WAIT_TIMEOUT {
-                unsafe {
-                    let _ =
-                        windows::Win32::Graphics::Gdi::InvalidateRect(Some(self.hwnd), None, false);
-                }
-                return Ok(());
-            }
+            .is_none_or(FrameLatencyGate::try_take);
+        if !gate_open {
+            self.drop_frame();
+            return Ok(());
         }
         self.render(scene, background_appearance)?;
         if self.capture.is_some() {
@@ -2191,7 +2214,7 @@ impl DirectXResources {
             swap_chain.cast::<IDXGISwapChain2>().ok().and_then(|sc2| {
                 sc2.SetMaximumFrameLatency(1).ok()?;
                 let h = sc2.GetFrameLatencyWaitableObject();
-                (!h.is_invalid()).then_some(FrameLatencyGate(h))
+                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
             })
         };
 
@@ -2343,6 +2366,14 @@ impl DirectXRenderPipelines {
             create_blend_state(device)?,
         )?;
 
+        let clear_pipeline = PipelineState::new(
+            device,
+            "clear_pipeline",
+            ShaderModule::Clear,
+            1,
+            create_blend_state_replace(device)?,
+        )?;
+
         Ok(Self {
             shadow_pipeline,
             quad_pipeline,
@@ -2353,6 +2384,7 @@ impl DirectXRenderPipelines {
             subpixel_sprites,
             poly_sprites,
             blur_pipeline,
+            clear_pipeline,
         })
     }
 }
@@ -3179,6 +3211,8 @@ pub(crate) mod shader_resources {
         EmojiRasterization,
         /// KaminIDE patch: backdrop blur (тосты).
         Blur,
+        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
+        Clear,
     }
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -3259,6 +3293,10 @@ pub(crate) mod shader_resources {
                 ShaderModule::Blur => match target {
                     ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
                     ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
+                },
+                ShaderModule::Clear => match target {
+                    ShaderTarget::Vertex => CLEAR_VERTEX_BYTES,
+                    ShaderTarget::Fragment => CLEAR_FRAGMENT_BYTES,
                 },
             };
             Self { inner: bytes }
@@ -3348,6 +3386,7 @@ pub(crate) mod shader_resources {
                 ShaderModule::PolychromeSprite => "polychrome_sprite",
                 ShaderModule::EmojiRasterization => "emoji_rasterization",
                 ShaderModule::Blur => "blur",
+                ShaderModule::Clear => "clear",
             }
         }
     }

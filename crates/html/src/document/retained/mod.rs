@@ -22,6 +22,8 @@ mod invalidation_tests;
 mod paint_damage_tests;
 #[cfg(test)]
 mod rebuild_key_tests;
+#[cfg(test)]
+mod recolour_layout_tests;
 mod record;
 #[cfg(test)]
 mod replay_tests;
@@ -180,5 +182,11 @@ impl Document {
     #[cfg(test)]
     pub(crate) fn far_blocks(&self) -> u64 {
         self.reuse.stats.get().far
+    }
+
+    /// Far records kept for the next build.
+    #[cfg(test)]
+    pub(crate) fn far_records(&self) -> usize {
+        self.reuse.far_records()
     }
 }

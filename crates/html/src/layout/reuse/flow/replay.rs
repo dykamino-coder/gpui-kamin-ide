@@ -64,6 +64,7 @@ impl FlowCx {
             end,
             widths,
             super::super::plain::fills_width(e),
+            &self.reuse.ink,
         ));
         let source = self.reuse.shells.source(e);
         super::super::push(&self.reuse.pending_replays, (pending.clone(), source));

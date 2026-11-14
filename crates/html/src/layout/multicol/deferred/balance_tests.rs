@@ -103,6 +103,7 @@ fn float_balance_trials_keep_the_source_and_repeated_layout_stable(cx: &mut gpui
             background_paint,
             inline_decoration,
             try_source,
+            decor_box: _,
         } = input;
         assert!(try_source.is_none(), "fixture has no position-try source");
         (

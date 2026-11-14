@@ -71,6 +71,11 @@ pub mod frame_perf {
     pub static DRAW_US: AtomicU32 = AtomicU32::new(0);
     /// Время презента (отправка сцены на ГПУ и Commit), мкс.
     pub static PRESENT_US: AtomicU32 = AtomicU32::new(0);
+    /// KaminIDE patch (BR-31A): из них внутри вызова `Present` свапчейна, мкс.
+    pub static SWAP_US: AtomicU32 = AtomicU32::new(0);
+    /// KaminIDE patch (BR-31A): кадров не отдано компоузеру (гейт или
+    /// `Present` без ожидания); их презентует следующая отрисовка.
+    pub static DROPPED_FRAMES: AtomicU32 = AtomicU32::new(0);
     /// Сколько кадров окна сложилось за период.
     pub static FRAMES: AtomicU32 = AtomicU32::new(0);
     /// Время фазы prepaint (раскладка), мкс.

@@ -31,7 +31,7 @@ pub(crate) struct Store {
     /// Blocks whose last replay recording read a width from outside: their
     /// records fit only the same widths.
     pub(super) reads_widths: Cell<HashSet<u64>>,
-    /// Blocks whose last skip wrap (`recorder::Pending`) ended without a
+    /// Blocks whose last skip wrap (`recorder::Making`) ended without a
     /// record: a build at a changed width wraps them for subtree replay too.
     pub(super) unrecorded: Cell<HashSet<u64>>,
     /// Ключ потока прошлой сборки: записи делаются, только пока он устоялся,
@@ -111,7 +111,7 @@ impl Store {
             // A repainted block stands only off screen (`FlowCx::placeholder`):
             // the layout compare of a near one, a walk of its whole subtree,
             // would only find a record its build cannot use.
-            true => (record.far && source.same_layout(e)).then_some(false),
+            true => (record.far.get() && source.same_layout(e)).then_some(false),
         };
         if verdict == Some(true) {
             return Some((record, damage));
@@ -230,7 +230,7 @@ pub(crate) enum Damage {
 /// Счётчики наблюдения повтора блоков.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ReuseStats {
-    /// Blocks wrapped for recording (`recorder::Pending`).
+    /// Blocks wrapped for recording (`recorder::Making`).
     pub tracked: u64,
     pub recorded: u64,
     pub skipped: u64,

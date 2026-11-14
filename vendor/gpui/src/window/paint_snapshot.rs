@@ -24,7 +24,7 @@ pub struct PaintCtx {
     content_mask_stack: Vec<ContentMask<Pixels>>,
     image_cache_stack: Vec<AnyImageCache>,
     /// KaminIDE patch: ink sinks open at capture keep measuring deferred paint.
-    ink: Vec<Rc<InkSink>>,
+    ink: InkSinks,
     /// The ink scope at capture; its top bit (`LAYOUTS_RELEASED`) holds the
     /// line-layout release scope, which deferred paint keeps too
     /// (`Window::with_line_layouts_released`), so the snapshot keeps its size.

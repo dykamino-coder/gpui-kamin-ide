@@ -3,7 +3,7 @@
 use crate::host::events::CzEvent;
 pub use crate::host::events::ShellEvent;
 use crate::host::paths::{data_dirs, dev_repo};
-use crate::host::{rebind, status::request_status};
+use crate::host::{deferred, rebind, status::request_status};
 use crate::host_link::{EVENT_TX, client, client_slot, t0, view_resolution};
 use kamin_sidecar::{HostConfig, HostEndpoint, HostMode, HostState};
 use kamin_ws::WsClient;
@@ -102,6 +102,9 @@ pub(crate) fn request_view(client: &WsClient, id: &str) {
 /// Retry через RETRY_DELAY_MS только к тому же хосту; новый ведёт on_endpoint.
 pub(crate) fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) {
     std::thread::spawn(move || {
+        // Поколение этой попытки: ответы на её запросы уходят только ей.
+        static GENERATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let generation = GENERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         let on_event_tx = tx.clone();
         let on_event: kamin_ws::EventListener = Arc::new(move |channel: &str, payload: &Value| {
             crate::host::ws_events::dispatch(&on_event_tx, channel, payload);
@@ -112,11 +115,12 @@ pub(crate) fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: 
         let on_host_request: kamin_ws::HostRequestHandler = Arc::new(
             move |req_id: u64, method: &str, params: &[Value]| match method {
                 // QuickPick: (items, options) — ответ после выбора юзера
-                // (respond(req_id) из root по QuickPickResolve)
+                // (ответ по билету из root по QuickPickResolve)
                 "shell.showQuickPick" => {
                     let items = params.first().cloned().unwrap_or(Value::Array(vec![]));
                     let options = params.get(1).cloned().unwrap_or(Value::Null);
-                    let _ = req_tx.try_send(ShellEvent::QuickPickShow(req_id, items, options));
+                    let ticket = deferred::defer(generation, req_id);
+                    let _ = req_tx.try_send(ShellEvent::QuickPickShow(ticket, items, options));
                     kamin_ws::HostReply::Later
                 }
                 "shell.showMessage" => {
@@ -139,7 +143,14 @@ pub(crate) fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: 
                         "host".into(),
                         message,
                     )));
-                    let (toast, has_items) = crate::host::show_message::toast_for(req_id, params);
+                    // Тост с кнопками отвечает позже — по билету.
+                    let has_items = crate::host::show_message::has_actions(params);
+                    let ticket = if has_items {
+                        deferred::defer(generation, req_id)
+                    } else {
+                        0
+                    };
+                    let (toast, _) = crate::host::show_message::toast_for(ticket, params);
                     let _ = req_tx.try_send(ShellEvent::Toast(toast));
                     if has_items {
                         kamin_ws::HostReply::Later
@@ -151,21 +162,17 @@ pub(crate) fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: 
                 // Диалог блокирует — уводим в поток, ответ отдаём позже.
                 "shell.showOpenDialog" => {
                     let options = params.first().cloned().unwrap_or(Value::Null);
+                    let ticket = deferred::defer(generation, req_id);
                     std::thread::spawn(move || {
-                        let reply = crate::host::dialogs::show_open_dialog(&options);
-                        if let Some(c) = crate::host_link::client() {
-                            c.respond(req_id, Ok(reply));
-                        }
+                        deferred::reply(ticket, crate::host::dialogs::show_open_dialog(&options));
                     });
                     kamin_ws::HostReply::Later
                 }
                 "shell.showSaveDialog" => {
                     let options = params.first().cloned().unwrap_or(Value::Null);
+                    let ticket = deferred::defer(generation, req_id);
                     std::thread::spawn(move || {
-                        let reply = crate::host::dialogs::show_save_dialog(&options);
-                        if let Some(c) = crate::host_link::client() {
-                            c.respond(req_id, Ok(reply));
-                        }
+                        deferred::reply(ticket, crate::host::dialogs::show_save_dialog(&options));
                     });
                     kamin_ws::HostReply::Later
                 }
@@ -195,6 +202,7 @@ pub(crate) fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: 
         let on_disconnect = Arc::new(move || {
             let _ = disc_tx.try_send(ShellEvent::WsDisconnected);
             *client_slot().lock().unwrap() = None;
+            deferred::forget(generation);
             std::thread::sleep(Duration::from_millis(kamin_ws::RETRY_DELAY_MS));
             if let Some(next) = rebind::retry_target(disc_state.snapshot(), &own) {
                 connect_ws(next, disc_tx.clone(), disc_state.clone());
@@ -210,7 +218,7 @@ pub(crate) fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: 
         ) {
             Ok(client) => {
                 let client = Arc::new(client);
-                *client_slot().lock().unwrap() = Some(client.clone());
+                *client_slot().lock().unwrap() = Some((generation, client.clone()));
                 rebind::adopt_endpoint(&endpoint, &tx);
                 let _ = tx.try_send(ShellEvent::WsConnected);
                 // Гидрация: сессии + воркспейс (re-seed на реконнект — тот же путь)

@@ -3,7 +3,7 @@ import * as vscode from 'vscode'
 import { randomUUID } from 'node:crypto'
 import { appendStreamingText } from '../../shared/streaming-delta'
 import type { BrowserWindow } from '@kaminide/host-compat'
-import type { AgentEngine, ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
+import type { AgentEngine, ConnectionConfig, ConnectionRefusal, ConnectionState, PermissionDecision } from '../../shared/types'
 import { engineOfModelId } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
@@ -34,6 +34,7 @@ import { handleServerMessage } from './handle-server-message'
 import { chatReplayTail, isChatStoredEntry } from '../../shared/chat-stored-entries'
 import { newestInFileOrder } from '../../shared/jsonl-cache-order'
 import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, tabWorkingDirectory, type McpCallCtx } from './mcp-call-pipeline'
+import { lingerForSessionEnd } from './session-end-linger'
 
 export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
 
@@ -62,7 +63,25 @@ export interface ExtendedConnectionState {
    *  a delay that was already stale when it was written. */
   nextRetryAt?: number
   retryAttempt?: number
+  refusal?: ConnectionRefusal
   closeCode?: number
+}
+
+/** Server close code for "this token already has the maximum number of
+ *  sessions" (`session-ws.ts`, SessionAdmissionError kind `token`). */
+export const SESSION_LIMIT_CLOSE_CODE = 4002
+
+/** The refusal that stays on the tab: set by a session-limit close, kept
+ *  through the reconnect states that follow, cleared once the tab connects or
+ *  is disconnected on purpose (BR-05B). */
+export function stickyRefusal(
+  previous: ConnectionRefusal | undefined,
+  next: Pick<ExtendedConnectionState, 'status' | 'closeCode'>,
+  intentional: boolean,
+): ConnectionRefusal | undefined {
+  if (next.status === 'authenticated' || intentional) return undefined
+  if (next.closeCode === SESSION_LIMIT_CLOSE_CODE) return 'session-limit'
+  return previous
 }
 
 // Reconnect backoff constants
@@ -894,7 +913,8 @@ export class ConnectionManager {
       clearTimeout(timer)
       this.handoffWait = undefined
       this.submissions.end(transferable ?? [], transferable !== undefined)
-      this.disconnect({ endSession: true })
+      // A handoff already ended the session with its own reply: no window.
+      this.disconnect({ endSession: true, linger: false })
       const reconnect = this.reconnectAfterHandoff
       this.reconnectAfterHandoff = false
       if (reconnect) this.connect()
@@ -904,7 +924,7 @@ export class ConnectionManager {
     catch { finish() }
   }
 
-  disconnect(opts: { endSession?: boolean } = {}): void {
+  disconnect(opts: { endSession?: boolean; linger?: boolean } = {}): void {
     const terminal = opts.endSession || this.disposed
     this.intentionalDisconnect = true
     this.cancelReconnect()
@@ -912,14 +932,22 @@ export class ConnectionManager {
     this.clearEstablishTimer()
     this.clearStabilityTimer()
 
-    if (this.ws) {
-      if (opts.endSession && this.ws.readyState === WebSocket.OPEN) {
-        try {
-          this.ws.send(JSON.stringify({ type: 'session:end' }))
-        } catch {
-          /* closing anyway */
-        }
+    if (this.ws && opts.endSession && this.ws.readyState === WebSocket.OPEN) {
+      let sent = true
+      try {
+        this.ws.send(JSON.stringify({ type: 'session:end' }))
+      } catch {
+        sent = false
       }
+      // The CLI fires SessionEnd while it exits and the server relays the
+      // local hooks to this socket: keep it for that window (BR-18A).
+      if (sent && opts.linger !== false) {
+        const ctx = this.mcpCallCtx()
+        lingerForSessionEnd(this.ws, (msg, send) => runHookExecute({ ...ctx, send }, msg))
+        this.ws = null
+      }
+    }
+    if (this.ws) {
       // Remove listeners to avoid triggering reconnect on close
       this.ws.removeAllListeners()
       // close() на CONNECTING-сокете эмитит 'error' («WebSocket was closed
@@ -1823,6 +1851,8 @@ export class ConnectionManager {
   /** Update internal state and notify renderer via IPC. */
   private setState(state: ExtendedConnectionState): void {
     if (this.identityHold && state.status !== 'authenticated') state = { ...state, resumeNotFound: true }
+    const refusal = stickyRefusal(this.state.refusal, state, this.intentionalDisconnect)
+    if (refusal !== state.refusal) state = { ...state, refusal }
     this.state = state
     this.stateRevision++
     // Session confirmed — the establish watchdog did its job; disarm + reset.

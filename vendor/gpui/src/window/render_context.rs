@@ -59,8 +59,11 @@ impl PartialEq for Snapshot {
 pub(super) struct RenderContexts(Rc<RefCell<Values>>);
 
 impl RenderContexts {
+    /// KaminIDE patch: a copy sized to the values, not to the live map. The live map keeps the
+    /// capacity of its deepest scope after the scopes end (an empty map of eight buckets);
+    /// a clone would copy those buckets into every paint snapshot, an empty one included.
     pub(super) fn snapshot(&self) -> Snapshot {
-        Snapshot(self.0.borrow().clone())
+        Snapshot(self.0.borrow().iter().map(|(id, value)| (*id, value.clone())).collect())
     }
 
     pub(super) fn enter_snapshot(&self, snapshot: Snapshot) -> SnapshotScope {
@@ -242,6 +245,21 @@ mod tests {
         }
         assert_eq!(*contexts.get::<u32>().unwrap(), 23);
         assert_eq!(&*contexts.get::<String>().unwrap(), "caller");
+    }
+
+    #[test]
+    fn a_snapshot_takes_the_room_of_its_values_not_of_the_live_map() {
+        let contexts = RenderContexts::default();
+        {
+            let _a = contexts.enter(Some(Rc::new(1u8)));
+            let _b = contexts.enter(Some(Rc::new(2u16)));
+            let _c = contexts.enter(Some(Rc::new(3u32)));
+            let _d = contexts.enter(Some(Rc::new(4u64)));
+        }
+        assert!(contexts.0.borrow().is_empty() && contexts.0.borrow().capacity() >= 4);
+        assert_eq!(contexts.snapshot().0.capacity(), 0, "an empty snapshot allocates nothing");
+        let _one = contexts.enter(Some(Rc::new(5u32)));
+        assert!(contexts.snapshot().0.capacity() < 4);
     }
 
     #[test]

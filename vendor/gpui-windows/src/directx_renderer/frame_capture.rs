@@ -67,6 +67,7 @@ impl DirectXRenderer {
             &self.pipelines.subpixel_sprites.shader_executables,
             &self.pipelines.poly_sprites.shader_executables,
             &self.pipelines.blur_pipeline.shader_executables,
+            &self.pipelines.clear_pipeline.shader_executables,
         ].into_iter().flatten().cloned().collect();
         shader_executables.sort();
         shader_executables.dedup();
