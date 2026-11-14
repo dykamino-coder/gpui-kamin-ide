@@ -17753,10 +17753,10 @@ index 0000000000000000000000000000000000000000..5481d0d5208eb1345375695bcce643a7
 +}
 diff --git a/vendor/gpui/src/taffy/measurement.rs b/vendor/gpui/src/taffy/measurement.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..091159723a3fe1b0608b2b119ee451c3a5c179d6
+index 0000000000000000000000000000000000000000..7ed951a0631f9ff34b755efccff432afad57c954
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/measurement.rs
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,202 @@
 +//! Measure a copied native subtree while the Window layout engine is borrowed by a parent.
 +//! Styles and cache state are independent; actual element measurement callbacks are shared.
 +
@@ -17783,17 +17783,34 @@ index 0000000000000000000000000000000000000000..091159723a3fe1b0608b2b119ee451c3
 +
 +impl TaffyLayoutEngine {
 +    pub fn snapshot_measurement(&self, root: LayoutId, scale_factor: f32) -> LayoutMeasurement {
-+        let mut tree = TaffyTree::new();
-+        tree.disable_rounding();
-+        // The copied styles carry the engine tree's `calc()` handles.
-+        tree.share_calc_registry(&self.taffy);
-+        let root = copy_subtree(&self.taffy, &mut tree, root.into());
++        let (tree, root) = copy_tree(&self.taffy, root.into());
 +        LayoutMeasurement {
 +            tree,
 +            root,
 +            scale_factor,
 +        }
 +    }
++}
++
++/// A tree holding a copy of the subtree of `root`, with room for exactly its nodes:
++/// a page keeps one copy per measured subtree, most of them a few nodes.
++fn copy_tree(source: &TaffyTree<NodeContext>, root: NodeId) -> (TaffyTree<NodeContext>, NodeId) {
++    let mut tree = TaffyTree::with_capacity(subtree_nodes(source, root));
++    tree.disable_rounding();
++    // The copied styles carry the engine tree's `calc()` handles.
++    tree.share_calc_registry(source);
++    let root = copy_subtree(source, &mut tree, root);
++    (tree, root)
++}
++
++// KaminIDE patch: keep the optional stacker feature optional.
++#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
++fn subtree_nodes(source: &TaffyTree<NodeContext>, node: NodeId) -> usize {
++    let children = source.children_slice(node);
++    1 + children
++        .iter()
++        .map(|&child| subtree_nodes(source, child))
++        .sum::<usize>()
 +}
 +
 +// KaminIDE patch: keep the optional stacker feature optional.
@@ -17944,10 +17961,10 @@ index 0000000000000000000000000000000000000000..091159723a3fe1b0608b2b119ee451c3
 +mod tests;
 diff --git a/vendor/gpui/src/taffy/measurement_tests.rs b/vendor/gpui/src/taffy/measurement_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..503a14b5e85f46ab69e81803bdee51c872673f3a
+index 0000000000000000000000000000000000000000..b126b734f4279558695d21a0d2f71f6c76657767
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/measurement_tests.rs
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,103 @@
 +//! Independent subtree measurement keeps native layout caches and callbacks separate.
 +
 +use super::*;
@@ -18032,6 +18049,24 @@ index 0000000000000000000000000000000000000000..503a14b5e85f46ab69e81803bdee51c8
 +    assert!(callback.upgrade().is_some());
 +    copy.clear();
 +    assert!(callback.upgrade().is_none());
++}
++
++#[test]
++fn a_copy_has_room_for_its_subtree_only() {
++    let mut source = TaffyTree::<NodeContext>::new();
++    let leaves = [
++        source.new_leaf(fixed(1.0, 1.0)).unwrap(),
++        source.new_leaf(fixed(2.0, 2.0)).unwrap(),
++    ];
++    let inner = source.new_with_children(fixed(3.0, 3.0), &leaves).unwrap();
++    let root = source.new_with_children(fixed(4.0, 4.0), &[inner]).unwrap();
++    // A sibling subtree is not counted.
++    source.new_leaf(fixed(5.0, 5.0)).unwrap();
++    assert_eq!(subtree_nodes(&source, root), 4);
++    let (copy, copied_root) = copy_tree(&source, root);
++    assert_eq!(copy.total_node_count(), 4);
++    assert!(copy.node_storage_full(), "no spare node slots beyond the subtree");
++    assert_eq!(copy.children(copied_root).unwrap().len(), 1);
 +}
 diff --git a/vendor/gpui/src/taffy/native_sizing_tests.rs b/vendor/gpui/src/taffy/native_sizing_tests.rs
 new file mode 100644
