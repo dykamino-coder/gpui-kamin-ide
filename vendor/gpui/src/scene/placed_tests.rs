@@ -140,11 +140,30 @@ fn a_range_that_cannot_move_as_one_is_declined() {
     // Half a layer, and a range past the end.
     assert!(!scene.replay_placed_range(&source, 2..4, at(0., 0.), moves));
     assert!(!scene.replay_placed_range(&source, 0..100, at(0., 0.), moves));
-    // An open layer of the destination.
-    scene.push_layer(rect(0., 0., 10., 10.));
-    assert!(!scene.replay_placed_range(&source, 0..2, at(0., 0.), moves));
-    assert_eq!(scene.paint_operations.len(), before + 1);
+    assert_eq!(scene.paint_operations.len(), before);
+}
+
+/// Under an open layer of the destination the range is still placed: its
+/// commands are inserted one by one and take the layer's order.
+#[test]
+fn a_range_under_an_open_layer_is_inserted_by_command() {
+    let source = record();
+    let mut scene = destination();
+    let before = scene.paint_operations.len();
+    scene.push_layer(rect(0., 0., 300., 300.));
+    let clip = Some(rect(90., 90., 150., 150.));
+    assert!(scene.replay_placed_range(&source, 0..2, at(100., 100.), PlacedMask::Moves(clip)));
+    assert_eq!(scene.paint_operations.len(), before + 3);
     assert_eq!(scene.blocks.len(), 0);
+    let PaintOperation::StartLayer(_, layer) = scene.paint_operations[before] else {
+        panic!("a layer");
+    };
+    assert_eq!(orders(&scene)[before..], [layer, layer]);
+    let PaintOperation::Primitive(Primitive::Quad(moved)) = &scene.paint_operations[before + 1] else {
+        panic!("a quad");
+    };
+    assert_eq!(moved.transformation.translation, [100., 100.]);
+    assert_eq!(moved.content_mask.bounds, rect(100., 100., 40., 40.));
 }
 
 /// Content moved under a mask that stays: the mask is kept, what leaves it
@@ -173,7 +192,9 @@ fn a_fixed_mask_stays_while_its_content_moves() {
         panic!("a quad");
     };
     assert_eq!(moved.content_mask.bounds, view);
-    assert_eq!(moved.transformation.translation, [0., -30.]);
+    // An untransformed quad moves its bounds, as a fresh paint writes it.
+    assert_eq!(moved.bounds, rect(0., 60., 50., 40.));
+    assert_eq!(moved.transformation, TransformationMatrix::unit());
     // y 70..100 of the moved quad was below the view before the move.
     next.insert_primitive(masked(0., 80., 10., 10., view));
     let orders = orders(&next);

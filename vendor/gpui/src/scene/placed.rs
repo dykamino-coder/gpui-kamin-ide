@@ -35,9 +35,37 @@ fn masked_by(primitive: &Primitive, mask: &Bounds<ScaledPixels>) -> bool {
         }
 }
 
+/// Move the box of a primitive that has a transformation: an untransformed
+/// one moves its bounds, as painting it afresh at the new place writes it (a
+/// whole-pixel move then leaves the command as a fresh paint would make it,
+/// and moves do not pile up in the matrix frame after frame); a transformed
+/// one is moved after its transformation.
+fn move_box(bounds: &mut Bounds<ScaledPixels>, transformation: &mut TransformationMatrix, offset: Point<ScaledPixels>) {
+    if *transformation == TransformationMatrix::unit() {
+        bounds.origin += offset;
+    } else {
+        transformation.translation[0] += offset.x.0;
+        transformation.translation[1] += offset.y.0;
+    }
+}
+
+/// Move `primitive` as content of a frame (`PlacedMask::Fixed`), masks apart.
+fn move_fixed(primitive: &mut Primitive, offset: Point<ScaledPixels>) {
+    match primitive {
+        Primitive::Quad(p) => move_box(&mut p.bounds, &mut p.transformation, offset),
+        Primitive::MonochromeSprite(p) => move_box(&mut p.bounds, &mut p.transformation, offset),
+        Primitive::SubpixelSprite(p) => move_box(&mut p.bounds, &mut p.transformation, offset),
+        Primitive::PolychromeSprite(p) => move_box(&mut p.bounds, &mut p.transformation, offset),
+        // No transformation: `geometry::primitive` moves their bounds.
+        Primitive::Shadow(_) | Primitive::Underline(_) | Primitive::Surface(_) | Primitive::Path(_) => {
+            record::geometry::primitive(primitive, offset, None)
+        }
+    }
+}
+
 /// Move `primitive` under a mask that stays (`PlacedMask::Fixed`).
 fn move_under(primitive: &mut Primitive, offset: Point<ScaledPixels>, mask: Bounds<ScaledPixels>) {
-    record::geometry::primitive(primitive, offset, None);
+    move_fixed(primitive, offset);
     let mask = ContentMask { bounds: mask };
     match primitive {
         Primitive::Shadow(p) => p.content_mask = mask,
@@ -63,7 +91,7 @@ fn moved_under(primitive: &Primitive, offset: Point<ScaledPixels>, mask: &Bounds
         Primitive::Path(path) => record::geometry::bounds(path.bounds, offset),
         primitive => {
             let mut moved = primitive.clone();
-            record::geometry::primitive(&mut moved, offset, None);
+            move_fixed(&mut moved, offset);
             placed_bounds(&moved)
         }
     };
@@ -231,10 +259,11 @@ impl Scene {
     /// keep their recorded orders under one raise (`replay_shifted`), and
     /// later inserts see exactly the rectangles the moved commands cover.
     /// Commands their mask hides are dropped, as `insert_primitive` drops
-    /// them. `false`, and nothing is written, when the range is not
-    /// `placeable`, the offset of a `PlacedMask::Fixed` range is not a whole
-    /// number of device pixels, or this scene's open state (a layer, a 3D
-    /// context) needs the per-primitive replay.
+    /// them. Under an open layer or 3D context of this scene, which orders
+    /// primitives its own way, the placed commands are inserted one by one
+    /// instead. `false`, and nothing is written, only when the range is not
+    /// `placeable` or the offset of a `PlacedMask::Fixed` range is not a
+    /// whole number of device pixels: both can be asked before painting.
     pub(crate) fn replay_placed_range(
         &mut self,
         source: &Scene,
@@ -251,7 +280,7 @@ impl Scene {
             PlacedMask::Fixed(_) if offset.x.0.fract() != 0.0 || offset.y.0.fract() != 0.0 => return false,
             PlacedMask::Fixed(mask) => Self::fixed_index(operations, offset, mask),
         };
-        self.replay_shifted(operations, index, |operation| match operation {
+        let place = |operation: &mut PaintOperation| match operation {
             PaintOperation::Primitive(primitive) => {
                 match mask {
                     PlacedMask::Moves(clip) => record::geometry::primitive(primitive, offset, clip),
@@ -264,7 +293,19 @@ impl Scene {
                 true
             }
             _ => true,
-        })
+        };
+        if !self.replay_shifted(operations, index, place) {
+            // An open layer or 3D context here orders primitives its own
+            // way: the placed commands are inserted one by one, as `replay`
+            // inserts a range it cannot copy as a block.
+            for operation in operations {
+                let mut operation = operation.clone();
+                if place(&mut operation) {
+                    self.replay_operation(operation);
+                }
+            }
+        }
+        true
     }
 }
 

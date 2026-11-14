@@ -12814,10 +12814,10 @@ index 0000000000000000000000000000000000000000..ce8acb35ac9cf0333bc961c32a10b181
 +}
 diff --git a/vendor/gpui/src/scene/placed.rs b/vendor/gpui/src/scene/placed.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..70e971ea154275ee350b0939f252398544977881
+index 0000000000000000000000000000000000000000..4b884ce3b40c012fed6a7741c17ad2d60dd2769f
 --- /dev/null
 +++ b/vendor/gpui/src/scene/placed.rs
-@@ -0,0 +1,273 @@
+@@ -0,0 +1,314 @@
 +//! KaminIDE patch: a range of the commands of a finished scene (a rendered
 +//! frame or a paint record) placed into another scene in one pass: moved by
 +//! an offset and indexed by one tree, with no intermediate scene. Fragment
@@ -12855,9 +12855,37 @@ index 0000000000000000000000000000000000000000..70e971ea154275ee350b0939f2523985
 +        }
 +}
 +
++/// Move the box of a primitive that has a transformation: an untransformed
++/// one moves its bounds, as painting it afresh at the new place writes it (a
++/// whole-pixel move then leaves the command as a fresh paint would make it,
++/// and moves do not pile up in the matrix frame after frame); a transformed
++/// one is moved after its transformation.
++fn move_box(bounds: &mut Bounds<ScaledPixels>, transformation: &mut TransformationMatrix, offset: Point<ScaledPixels>) {
++    if *transformation == TransformationMatrix::unit() {
++        bounds.origin += offset;
++    } else {
++        transformation.translation[0] += offset.x.0;
++        transformation.translation[1] += offset.y.0;
++    }
++}
++
++/// Move `primitive` as content of a frame (`PlacedMask::Fixed`), masks apart.
++fn move_fixed(primitive: &mut Primitive, offset: Point<ScaledPixels>) {
++    match primitive {
++        Primitive::Quad(p) => move_box(&mut p.bounds, &mut p.transformation, offset),
++        Primitive::MonochromeSprite(p) => move_box(&mut p.bounds, &mut p.transformation, offset),
++        Primitive::SubpixelSprite(p) => move_box(&mut p.bounds, &mut p.transformation, offset),
++        Primitive::PolychromeSprite(p) => move_box(&mut p.bounds, &mut p.transformation, offset),
++        // No transformation: `geometry::primitive` moves their bounds.
++        Primitive::Shadow(_) | Primitive::Underline(_) | Primitive::Surface(_) | Primitive::Path(_) => {
++            record::geometry::primitive(primitive, offset, None)
++        }
++    }
++}
++
 +/// Move `primitive` under a mask that stays (`PlacedMask::Fixed`).
 +fn move_under(primitive: &mut Primitive, offset: Point<ScaledPixels>, mask: Bounds<ScaledPixels>) {
-+    record::geometry::primitive(primitive, offset, None);
++    move_fixed(primitive, offset);
 +    let mask = ContentMask { bounds: mask };
 +    match primitive {
 +        Primitive::Shadow(p) => p.content_mask = mask,
@@ -12883,7 +12911,7 @@ index 0000000000000000000000000000000000000000..70e971ea154275ee350b0939f2523985
 +        Primitive::Path(path) => record::geometry::bounds(path.bounds, offset),
 +        primitive => {
 +            let mut moved = primitive.clone();
-+            record::geometry::primitive(&mut moved, offset, None);
++            move_fixed(&mut moved, offset);
 +            placed_bounds(&moved)
 +        }
 +    };
@@ -13051,10 +13079,11 @@ index 0000000000000000000000000000000000000000..70e971ea154275ee350b0939f2523985
 +    /// keep their recorded orders under one raise (`replay_shifted`), and
 +    /// later inserts see exactly the rectangles the moved commands cover.
 +    /// Commands their mask hides are dropped, as `insert_primitive` drops
-+    /// them. `false`, and nothing is written, when the range is not
-+    /// `placeable`, the offset of a `PlacedMask::Fixed` range is not a whole
-+    /// number of device pixels, or this scene's open state (a layer, a 3D
-+    /// context) needs the per-primitive replay.
++    /// them. Under an open layer or 3D context of this scene, which orders
++    /// primitives its own way, the placed commands are inserted one by one
++    /// instead. `false`, and nothing is written, only when the range is not
++    /// `placeable` or the offset of a `PlacedMask::Fixed` range is not a
++    /// whole number of device pixels: both can be asked before painting.
 +    pub(crate) fn replay_placed_range(
 +        &mut self,
 +        source: &Scene,
@@ -13071,7 +13100,7 @@ index 0000000000000000000000000000000000000000..70e971ea154275ee350b0939f2523985
 +            PlacedMask::Fixed(_) if offset.x.0.fract() != 0.0 || offset.y.0.fract() != 0.0 => return false,
 +            PlacedMask::Fixed(mask) => Self::fixed_index(operations, offset, mask),
 +        };
-+        self.replay_shifted(operations, index, |operation| match operation {
++        let place = |operation: &mut PaintOperation| match operation {
 +            PaintOperation::Primitive(primitive) => {
 +                match mask {
 +                    PlacedMask::Moves(clip) => record::geometry::primitive(primitive, offset, clip),
@@ -13084,7 +13113,19 @@ index 0000000000000000000000000000000000000000..70e971ea154275ee350b0939f2523985
 +                true
 +            }
 +            _ => true,
-+        })
++        };
++        if !self.replay_shifted(operations, index, place) {
++            // An open layer or 3D context here orders primitives its own
++            // way: the placed commands are inserted one by one, as `replay`
++            // inserts a range it cannot copy as a block.
++            for operation in operations {
++                let mut operation = operation.clone();
++                if place(&mut operation) {
++                    self.replay_operation(operation);
++                }
++            }
++        }
++        true
 +    }
 +}
 +
@@ -13093,10 +13134,10 @@ index 0000000000000000000000000000000000000000..70e971ea154275ee350b0939f2523985
 +mod tests;
 diff --git a/vendor/gpui/src/scene/placed_tests.rs b/vendor/gpui/src/scene/placed_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f9b24ebc0c9483946f60503b7c6108a6c242457e
+index 0000000000000000000000000000000000000000..226835c47c74b2139549b663568a7ac7c5c44990
 --- /dev/null
 +++ b/vendor/gpui/src/scene/placed_tests.rs
-@@ -0,0 +1,181 @@
+@@ -0,0 +1,202 @@
 +//! KaminIDE patch: a placed range equals the placed copy of the same commands.
 +
 +use super::*;
@@ -13239,11 +13280,30 @@ index 0000000000000000000000000000000000000000..f9b24ebc0c9483946f60503b7c6108a6
 +    // Half a layer, and a range past the end.
 +    assert!(!scene.replay_placed_range(&source, 2..4, at(0., 0.), moves));
 +    assert!(!scene.replay_placed_range(&source, 0..100, at(0., 0.), moves));
-+    // An open layer of the destination.
-+    scene.push_layer(rect(0., 0., 10., 10.));
-+    assert!(!scene.replay_placed_range(&source, 0..2, at(0., 0.), moves));
-+    assert_eq!(scene.paint_operations.len(), before + 1);
++    assert_eq!(scene.paint_operations.len(), before);
++}
++
++/// Under an open layer of the destination the range is still placed: its
++/// commands are inserted one by one and take the layer's order.
++#[test]
++fn a_range_under_an_open_layer_is_inserted_by_command() {
++    let source = record();
++    let mut scene = destination();
++    let before = scene.paint_operations.len();
++    scene.push_layer(rect(0., 0., 300., 300.));
++    let clip = Some(rect(90., 90., 150., 150.));
++    assert!(scene.replay_placed_range(&source, 0..2, at(100., 100.), PlacedMask::Moves(clip)));
++    assert_eq!(scene.paint_operations.len(), before + 3);
 +    assert_eq!(scene.blocks.len(), 0);
++    let PaintOperation::StartLayer(_, layer) = scene.paint_operations[before] else {
++        panic!("a layer");
++    };
++    assert_eq!(orders(&scene)[before..], [layer, layer]);
++    let PaintOperation::Primitive(Primitive::Quad(moved)) = &scene.paint_operations[before + 1] else {
++        panic!("a quad");
++    };
++    assert_eq!(moved.transformation.translation, [100., 100.]);
++    assert_eq!(moved.content_mask.bounds, rect(100., 100., 40., 40.));
 +}
 +
 +/// Content moved under a mask that stays: the mask is kept, what leaves it
@@ -13272,7 +13332,9 @@ index 0000000000000000000000000000000000000000..f9b24ebc0c9483946f60503b7c6108a6
 +        panic!("a quad");
 +    };
 +    assert_eq!(moved.content_mask.bounds, view);
-+    assert_eq!(moved.transformation.translation, [0., -30.]);
++    // An untransformed quad moves its bounds, as a fresh paint writes it.
++    assert_eq!(moved.bounds, rect(0., 60., 50., 40.));
++    assert_eq!(moved.transformation, TransformationMatrix::unit());
 +    // y 70..100 of the moved quad was below the view before the move.
 +    next.insert_primitive(masked(0., 80., 10., 10., view));
 +    let orders = orders(&next);
