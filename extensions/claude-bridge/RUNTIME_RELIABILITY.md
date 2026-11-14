@@ -2143,6 +2143,19 @@ writes nothing, focus returns to the row. Evidence:
 Remaining: scroll/session change during the transition and BR-28 bounds, then
 a check on the installed release that contains `a60ef903`.
 
+**Verification 2026-11-14 on the published 1.0.97 (kmaint2): remainder passed.** The pointer
+hovered the row for real, which showed the pill, and F2 started the rename.
+- Wheel scroll right after F2: the pill is gone, and the input moves with the list. Only a
+  neighbour row shows its pill afterwards. Escape returns focus to the row.
+- Session switch right after F2: no pill, and the input stays in place, uncovered. The renaming row
+  shows no pill on hover. Escape returns focus to the row.
+- BR-28 paired bounds: idle → hover and idle → rename change only the hovered row's band and the
+  list scrollbar thumb. A status-dot animation of another row changes without hover too.
+- [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/da2ff1baa6d9308e96158522ec94e22c9ee2f29f/incidents/BR-29/evidence/2026-11-14-transition-1.0.97).
+
+**Status:** done — the full acceptance list of this card passed on 1.0.94–1.0.97.
+**Next step:** none.
+
 **Close-out audit 2026-09-06:** В [PR
 #37](https://github.com/dykamino-coder/gpui-kamin-ide/pull/37) явно указано, что probe не
 измеряет input focus. Helper и id-scoped anchor уже merged, но invariant «input сразу
@@ -2585,7 +2598,14 @@ extension to the chat state; owner kmaint2.
   that connection's pick and action toasts without a reply.
 - Evidence: [private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/789467934b2eb07ba26b1475d801f5f37ac5014f/incidents/BR-19/evidence/2026-11-14-pending-pick-1.0.97).
 
-**Status:** registered; fix approved by the lead. **Dependency:** none. **Acceptance:** automated:
+**Fix 2026-11-14: [#896](https://github.com/dykamino-coder/gpui-kamin-ide/pull/896) merged** (`098a7493`). Deferred host replies carry a ticket bound
+to the connection generation (`host::deferred`). A disconnect closes the pending QuickPick and the
+action toasts without a reply. Two of the five new tests fail on the old rule. Windows gate on the
+candidate: after the reconnect the pick is gone, and the next pick waits for input (Escape gives
+`null`, Enter gives the item). Containment is unchanged. [Evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/19d2b1a720909786ca6fd167b8903848a0bb6939/incidents/BR-19/evidence/2026-11-14-br19a-candidate).
+**Status:** done — merged and accepted; ships in the next release.
+
+**Registration status (2026-11-14):** registered; fix approved by the lead. **Dependency:** none. **Acceptance:** automated:
 a test that fails on the old code (a cancel of a pick from the old connection does not answer the
 new pick with the same id); plus the probe reproduction on the candidate (no QuickPick after the
 reconnect, and the next pick waits for input). **Windows runtime merge gate:** the reproduction on
