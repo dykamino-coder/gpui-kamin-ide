@@ -37,6 +37,15 @@ impl Store {
         self.layer.replace(layer);
     }
 
+    /// `paint_layered` as the document's retained paint record.
+    pub(crate) fn record_layered(
+        &self,
+        window: &mut gpui::Window,
+        f: impl FnOnce(&mut gpui::Window),
+    ) -> gpui::RetainedPaint {
+        window.record_retained_paint(|window| self.paint_layered(window, f)).1
+    }
+
     /// The layer of the last recorded frame, if it painted into one.
     pub(crate) fn scene_layer(&self) -> Option<gpui::LayerHandle> {
         self.layer.borrow().clone()

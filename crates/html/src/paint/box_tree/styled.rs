@@ -156,5 +156,8 @@ pub(crate) fn styled_div_with_dimensions(
             d = d.child(extra);
         }
     }
+    // The box's own fill binds to its number in the document's scene layer
+    // (`document::revision::layer_write`).
+    let d = d.paint_owner(u32::try_from(e.node_id).unwrap_or(0));
     super::container_units::observe(d, e, style)
 }
