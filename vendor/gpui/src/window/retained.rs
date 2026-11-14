@@ -136,6 +136,74 @@ impl Window {
         self.reuse_paint(record.range.clone());
         RetainedPaint { range: start..self.paint_index(), replayable: true }
     }
+
+    /// KaminIDE patch: whether a record made in the rendered frame can be
+    /// replayed at another place of this one (`replay_retained_paint_placed`).
+    ///
+    /// The subtree's output must be scene commands alone: a hitbox, tooltip,
+    /// deferred draw, listener, input handler, cursor style or tab stop holds
+    /// the recorded place, and nothing moves those. Its commands must be
+    /// placeable under the frame's mask `mask` (`Scene::placeable`): every
+    /// primitive clipped by `mask` alone, which does not move with the
+    /// subtree. A clip of the subtree's own would move, and what it cut
+    /// together with `mask` at the recorded place is not what it cuts at
+    /// another. The walk is over the subtree's commands; a host that asks
+    /// every frame keeps the answer with its record.
+    pub fn retained_placeable(
+        &self,
+        prepaint: &RetainedPrepaint,
+        paint: &RetainedPaint,
+        mask: Bounds<ScaledPixels>,
+    ) -> bool {
+        let (from, to) = (&prepaint.0.start, &prepaint.0.end);
+        let (start, end) = (&paint.range.start, &paint.range.end);
+        self.retained_replayable(prepaint, paint)
+            && from.hitboxes_index == to.hitboxes_index
+            && from.tooltips_index == to.tooltips_index
+            && from.deferred_draws_index == to.deferred_draws_index
+            && start.mouse_listeners_index == end.mouse_listeners_index
+            && start.input_handlers_index == end.input_handlers_index
+            && start.cursor_styles_index == end.cursor_styles_index
+            && start.tab_handle_index == end.tab_handle_index
+            && self.rendered_frame.scene.placeable(
+                start.scene_index..end.scene_index,
+                &crate::scene::placed::PlacedMask::Fixed(mask),
+            )
+    }
+
+    /// KaminIDE patch: copy the paint output of a `retained_placeable` record
+    /// into this frame moved by `offset`, under the same mask `mask`.
+    /// Primitives the mask hid entirely at the recorded place are not in the
+    /// record: the caller replays only a subtree whose ink lay inside the
+    /// mask when it was recorded. `None` (nothing written) when the offset is
+    /// not whole device pixels or the scene's open state needs the subtree
+    /// painted; the caller then builds the subtree.
+    pub fn replay_retained_paint_placed(
+        &mut self,
+        record: &RetainedPaint,
+        offset: Point<ScaledPixels>,
+        mask: Bounds<ScaledPixels>,
+    ) -> Option<RetainedPaint> {
+        let start = self.paint_index();
+        let (from, to) = (&record.range.start, &record.range.end);
+        let placed = self.next_frame.scene.replay_placed_range(
+            &self.rendered_frame.scene,
+            from.scene_index..to.scene_index,
+            offset,
+            crate::scene::placed::PlacedMask::Fixed(mask),
+        );
+        if !placed {
+            return None;
+        }
+        self.next_frame.accessed_element_states.extend(
+            self.rendered_frame.accessed_element_states
+                [from.accessed_element_states_index..to.accessed_element_states_index]
+                .iter()
+                .map(|(id, type_id)| (id.clone(), *type_id)),
+        );
+        self.text_system.reuse_layouts(from.line_layout_index..to.line_layout_index);
+        Some(RetainedPaint { range: start..self.paint_index(), replayable: true })
+    }
 }
 
 /// KaminIDE patch: placed bounds of everything a retained subtree offered to
