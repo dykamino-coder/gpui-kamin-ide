@@ -1,5 +1,6 @@
 //! Режим `edit`: кадры после локальной правки разметки (`edit::Edit`),
-//! применённой записями мутаций DOM (`Document::apply`), по очереди правка и
+//! применённой записями мутаций DOM (`Document::apply`), а когда правка меняет
+//! форму дерева (вставка, удаление узла) — `Document::update`, по очереди правка и
 //! возврат, затем проверка, что каждый вариант совпадает по пикселям со свежим
 //! документом той же разметки.
 
@@ -26,9 +27,14 @@ pub(super) async fn run(
     luid: (i32, u32),
 ) -> Result<(Value, Vec<work::Sample>)> {
     let base = resources::read(&args.path)?;
-    let edited = args.edit.markup(&base)?;
+    let edited = match &args.edit_markup {
+        Some(path) => resources::read(path)?,
+        None => args.edit.markup(&base)?,
+    };
     // Вариант 0 — вход, 1 — правка; первый замер идёт после холодного кадра входа.
     let variants = [base.as_str(), edited.as_str()];
+    // Документ сейчас держит вход: форма правки видна до первого замера.
+    let same_shape = window.read_with(cx, |view, _| view.doc.mutations(&edited).is_some())?;
     super::memory::steady(cx, capture).await?;
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
@@ -113,8 +119,15 @@ pub(super) async fn run(
         checks.push(check);
     }
     let mut mode = report::measured_mode(&samples, &diagnostics);
-    mode["edit"] = json!(format!("{:?}", args.edit).to_lowercase());
-    mode["edit_input"] = json!("mutation_records");
+    mode["edit"] = match &args.edit_markup {
+        Some(path) => json!({"markup": path}),
+        None => json!(format!("{:?}", args.edit).to_lowercase()),
+    };
+    mode["edit_input"] = json!(if same_shape {
+        "mutation_records"
+    } else {
+        "document_update"
+    });
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
     Ok((mode, work))

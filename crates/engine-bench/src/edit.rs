@@ -12,6 +12,10 @@ pub(crate) enum Edit {
     Attr,
     /// Класс `alt` у корневого `html` (так переключают стиль пробы браузеров).
     Class,
+    /// Новый узел: копия первого листового элемента после середины, сразу за ним.
+    Insert,
+    /// Удаление первого листового элемента после середины документа.
+    Remove,
 }
 
 impl Edit {
@@ -20,7 +24,9 @@ impl Edit {
             "text" => Self::Text,
             "attr" => Self::Attr,
             "class" => Self::Class,
-            _ => return Err("edit must be text, attr or class".into()),
+            "insert" => Self::Insert,
+            "remove" => Self::Remove,
+            _ => return Err("edit must be text, attr, class, insert or remove".into()),
         })
     }
 
@@ -30,6 +36,16 @@ impl Edit {
             Self::Text => text(html),
             Self::Attr => attr(html),
             Self::Class => class(html),
+            Self::Insert => leaf(html).map(|leaf| {
+                let mut out = html.to_owned();
+                out.insert_str(leaf.end, &html[leaf.start..leaf.end]);
+                out
+            }),
+            Self::Remove => leaf(html).map(|leaf| {
+                let mut out = html.to_owned();
+                out.replace_range(leaf, "");
+                out
+            }),
         };
         edited.ok_or_else(|| format!("no place for a {self:?} edit in the input").into())
     }
@@ -91,6 +107,52 @@ fn attr(html: &str) -> Option<String> {
     None
 }
 
+/// Первый листовой элемент после середины: `<имя ...>текст</имя>` без вложенных
+/// тегов. Копия такого элемента рядом с ним допустима в любом родителе (ячейка
+/// таблицы, пункт списка, строчный элемент), поэтому вставка и удаление меняют
+/// ровно один узел дерева, а не то, как разбирается окружение.
+fn leaf(html: &str) -> Option<std::ops::Range<usize>> {
+    let bytes = html.as_bytes();
+    let mut at = middle(html);
+    while let Some(offset) = html[at..].find('<') {
+        let start = at + offset;
+        let open = start + 1;
+        at = open;
+        if !bytes.get(open).is_some_and(u8::is_ascii_alphabetic) || in_raw_text(html, open) {
+            continue;
+        }
+        let name_end = (open..html.len())
+            .find(|&i| !bytes[i].is_ascii_alphanumeric())
+            .unwrap_or(html.len());
+        let name = &html[open..name_end];
+        if ["script", "style", "template", "title"]
+            .iter()
+            .any(|raw| name.eq_ignore_ascii_case(raw))
+        {
+            continue;
+        }
+        let Some(tag_end) = html[name_end..].find('>').map(|e| name_end + e) else {
+            return None;
+        };
+        if bytes[tag_end - 1] == b'/' {
+            continue;
+        }
+        let content = tag_end + 1;
+        let Some(next) = html[content..].find('<').map(|e| content + e) else {
+            return None;
+        };
+        let close = &html[next..];
+        let closes = close.len() > name.len() + 2
+            && close.starts_with("</")
+            && close[2..2 + name.len()].eq_ignore_ascii_case(name)
+            && close.as_bytes()[2 + name.len()] == b'>';
+        if closes {
+            return Some(start..next + name.len() + 3);
+        }
+    }
+    None
+}
+
 fn class(html: &str) -> Option<String> {
     let lower = html.to_ascii_lowercase();
     let open = lower.find("<html")? + "<html".len();
@@ -135,6 +197,40 @@ mod tests {
         let edited = Edit::Class.markup(&page).unwrap();
         assert!(edited.starts_with("<html class=\"alt\">"), "{edited}");
         assert!(Edit::Class.markup("<html class=x>").is_err());
+    }
+
+    #[test]
+    fn insert_and_remove_change_one_leaf_element_after_the_middle() {
+        let page = page();
+        let inserted = Edit::Insert.markup(&page).unwrap();
+        assert_eq!(inserted.matches("<p>alpha</p>").count(), 11, "{inserted}");
+        assert_eq!(inserted.len(), page.len() + "<p>alpha</p>".len());
+        let removed = Edit::Remove.markup(&page).unwrap();
+        assert_eq!(removed.matches("<p>alpha</p>").count(), 9, "{removed}");
+        assert!(removed.contains("<script>var a</script>"));
+        assert_eq!(Edit::Remove.markup(&inserted).unwrap(), page);
+    }
+
+    #[test]
+    fn a_leaf_is_an_element_without_child_elements_outside_raw_text() {
+        // The padding puts the middle of the document before every candidate.
+        let tail = "<div><br><IMG src=x><em/><span>x</SPAN><b>y</b></div><script>a<b></b></script>";
+        let page = format!("<body>{}{tail}</body>", " ".repeat(200));
+        let removed = Edit::Remove.markup(&page).unwrap();
+        assert_eq!(
+            removed.trim_start_matches("<body>").trim_start(),
+            tail.replace("<span>x</SPAN>", "") + "</body>"
+        );
+        let inserted = Edit::Insert.markup(&page).unwrap();
+        assert!(
+            inserted.contains("<span>x</SPAN><span>x</SPAN><b>y</b>"),
+            "{inserted}"
+        );
+        assert!(
+            Edit::Insert
+                .markup("<body><br><script>x</script></body>")
+                .is_err()
+        );
     }
 
     #[test]

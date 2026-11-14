@@ -120,6 +120,19 @@ Use saved first-frame PNGs and an independent exact RGB comparison for validatio
 Repeated-frame differences in a static document are an engine determinism finding
 to investigate separately; this harness records them without claiming a cause.
 
+`--mode edit` alternates the input and a second markup on the same document, with the same
+phases and work counters for every kind of edit. A second markup of the same tree shape (text and
+attribute edits) is applied as DOM mutation records (`edit_input: "mutation_records"`); one that
+changes the shape (a node inserted or removed) enters the engine the only way it has today,
+`Document::update` with the new markup, parse included (`edit_input: "document_update"`). `--edit` picks
+the second markup: `text` (one letter of a text node after the middle of the document), `attr`
+(a `data-edit` attribute on an element there), `class` (`class="alt"` on the root), `insert`
+(a copy of the first leaf element after the middle, placed right after it: one node more) and
+`remove` (that leaf element deleted: one node less). A leaf element has no child elements, so its
+copy is valid in any parent and the edit changes one node, not how the surroundings parse.
+`--edit-markup FILE` gives the second markup itself, for any other mutation; the mode's `edit`
+field is then `{"markup": FILE}`.
+
 In `relayout` and `edit` modes, `fresh_checks` also records
 `incremental_bgr_fnv1a64` and `fresh_bgr_fnv1a64`, using the same RGB-only BGR
 fingerprint as the measured sequence. `--fresh-check-dir DIR` retains both frames
