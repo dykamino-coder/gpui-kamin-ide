@@ -62,8 +62,18 @@ class Folding(unittest.TestCase):
         self.assertEqual(phases["layout"]["cand_frames"], 2)
         self.assertEqual(phases["layout"]["cand_other_threads_us"], 400)
         self.assertEqual(phases["layout"]["cand_bench_ms"], 6.5)
+        self.assertEqual(phases["layout"]["cand_frame_median_us"], 3000)
+        self.assertEqual(phases["style"]["cand_frame_median_us"], 700)
         self.assertEqual((phases["paint"]["cand_cpu_us"], phases["paint"]["cand_wait_us"]), (100, 400))
         json.dumps(report)
+
+    def test_the_bench_side_is_its_median_frame(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
+            handle.write("launcher line\n" + json.dumps({"modes": {"relayout": {"samples_ms": [
+                {"layout": 4.0, "first_frame_total": 9.0}, {"layout": 6.0}, {"layout": 50.0}]}}}))
+        self.addCleanup(pathlib.Path(handle.name).unlink)
+        self.assertEqual(timeprof.bench_phases(handle.name), {"layout": 6.0})
+        self.assertIsNone(timeprof.bench_phases(handle.name + ".missing"))
 
     def test_sites_and_subsystems_follow_memprof_rules_with_inlined_frames(self):
         report = timeprof.build_report(self.profile(), None, 8, 10)

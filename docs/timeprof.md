@@ -32,10 +32,14 @@ probes compiled into the engine (a debug branch per question, a rebuild per prob
 
    ```text
    timeprof, every phase; main thread wall time by samples, ms
-     cand: 5210 samples, target ran 4.87 s and stood suspended 9.8% more, interval 1000 us
+     cand: 5435 samples, target ran 4.67 s and stood suspended 7.6% more, interval 1000 us
    by phase:
-          wall    on cpu   waiting   threads frames     bench      base     delta  phase
-       1410.22   1402.10      8.12      0.00     20   1398.71   1105.40   +304.82  layout
+          wall    on cpu   waiting   threads frames per frame     bench  phase
+       2039.19    198.97   1840.22     16.55     14      2.39         -  outside
+       1104.59   1085.00     19.59      3.58     13     40.35     42.53  layout
+        742.28    725.23     17.05      2.78     13     31.02     32.09  build_elements
+        330.86    326.05      4.81      1.60     13      2.24      1.79  prepaint
+         88.16     51.72     36.44      4.08     13      6.01      4.28  raster_gpu_readback
    by subsystem (who the time belongs to):
    by where the thread was:          <- engine code, allocator, a wait, or a system DLL
    by site (first engine frame from the leaf):
@@ -43,11 +47,15 @@ probes compiled into the engine (a debug branch per question, a rebuild per prob
    by stack (depth 8 from the site, leaf first):
    ```
 
-   `wall` is the main thread's time in the phase by samples; `bench` is the same phase as the bench
-   timed it itself, so the two columns show how much the sampler saw. `on cpu` and `waiting` split
-   the wall time by the thread's own CPU counter: a phase that waits for the GPU or for a present
-   has little CPU and its stacks end in the waiting call. `threads` is CPU time of other threads
-   during the phase.
+   (A run of a many-paragraph page, `--mode relayout --runs 10`, on a build without LTO; with a
+   base, `base` and `delta` columns follow.) `wall` is the main thread's time in the phase by
+   samples, summed over the frames it saw: 13 here, the ten measured ones plus the cold frame before
+   them and the fresh-document checks after. `per frame` is its median over those frames and `bench`
+   the median of the same phase as the bench timed its measured frames itself, so the two columns
+   show how much the sampler saw; the sampled figure leaves out the time the target stood suspended.
+   `on cpu` and `waiting` split the wall time by the thread's own CPU counter: a phase that waits
+   for the GPU or for a present has little CPU and its stacks end in the waiting call. `threads` is
+   CPU time of other threads during the phase. `outside` is the time between frames (settling).
 
 4. Narrow it without running again (`cand.samples` and `base.samples` stay in `--out`; they are small):
 
@@ -118,3 +126,7 @@ probes compiled into the engine (a debug branch per question, a rebuild per prob
   leaf side, which sites and subsystems use, is intact.
 - GPU work is seen as the CPU time and the waits of the calls that submit it, not as time on the
   GPU itself.
+- A few stacks per thousand do not reach the thread's start (in the run above 8 of 4856 main-thread
+  samples ended inside a graphics driver DLL without unwind data); their leaf side is still used.
+- Shares by subsystem hold on a `memprof.py build --screen` exe, but its milliseconds are not the
+  release ones: time a final comparison on the default build of both sides.

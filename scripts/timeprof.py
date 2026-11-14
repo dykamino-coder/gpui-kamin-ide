@@ -28,6 +28,7 @@ import json
 import os
 import pathlib
 import shlex
+import statistics
 import subprocess
 import sys
 import time
@@ -53,6 +54,7 @@ class Profile:
         self.callees = collections.defaultdict(lambda: [0, 0])  # under --focus: path below the focus frame
         self.phase_us = collections.defaultdict(lambda: [0, 0, 0, set()])  # wall, on cpu, other threads, frames
         self.waiting = collections.defaultdict(int)
+        self.frame_us = collections.defaultdict(int)  # (phase, frame) -> main thread wall
         self.leaves = collections.defaultdict(int)
         self.focus_us = 0
         self.symbols = symbols
@@ -145,6 +147,7 @@ class Profile:
             totals[0] += weight
             totals[1] += cpu
             totals[3].add(frame)
+            self.frame_us[(phase, frame)] += weight
             self.waiting[phase] += weight - cpu
         else:
             totals[2] += weight
@@ -169,19 +172,22 @@ class Profile:
 
 
 def bench_phases(path):
-    """Phase wall time the bench measured itself, summed over its frames (ms); None without the JSON."""
+    """Median phase wall time per frame the bench measured itself (ms); None without the JSON.
+
+    The bench reports its measured frames only; the samples also cover the cold frame before them
+    and the fresh-document checks after, so totals differ and the per-frame medians are compared."""
     try:
         text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
         data = json.loads(text[text.index("{"):])
     except (OSError, ValueError):
         return None
-    totals = collections.defaultdict(float)
+    frames = collections.defaultdict(list)
     for mode in data.get("modes", {}).values():
         for sample in mode.get("samples_ms", ()):
             for phase, value in sample.items():
                 if isinstance(value, (int, float)) and phase != "first_frame_total":
-                    totals[phase] += value
-    return dict(totals)
+                    frames[phase].append(value)
+    return {phase: statistics.median(values) for phase, values in frames.items()}
 
 
 def side_tables(profile, depth):
@@ -195,7 +201,9 @@ def side_tables(profile, depth):
             entry[0] += count
             entry[1] += weight
     for phase, (wall, cpu, other, frames) in profile.phase_us.items():
-        phases[(phase,)] = [len(frames), wall, cpu, other, profile.waiting.get(phase, 0)]
+        per_frame = [profile.frame_us[(phase, frame)] for frame in frames]
+        phases[(phase,)] = [len(frames), wall, cpu, other, profile.waiting.get(phase, 0),
+                            statistics.median(per_frame) if per_frame else 0]
     return {"phases": phases, "subsystems": subsystems, "sites": sites, "stacks": stacks,
             "functions": {key: [value[1], value[0]] for key, value in profile.inclusive.items()},
             "callees": {(" > ".join(key),): [value[1], value[0]] for key, value in profile.callees.items()},
@@ -214,12 +222,12 @@ def build_report(cand, base, depth, top, bench=None):
               "runs": {"cand": cand.meta(), **({"base": base.meta()} if base else {})}}
     rows = []
     for key in sorted(set(one["phases"]) | set(two["phases"]), key=lambda k: -one["phases"].get(k, [0, 0])[1]):
-        c, b = one["phases"].get(key, [0] * 5), two["phases"].get(key, [0] * 5)
+        c, b = one["phases"].get(key, [0] * 6), two["phases"].get(key, [0] * 6)
         row = {"phase": key[0], "cand_frames": c[0], "cand_us": c[1], "cand_cpu_us": c[2],
-               "cand_other_threads_us": c[3], "cand_wait_us": c[4]}
+               "cand_other_threads_us": c[3], "cand_wait_us": c[4], "cand_frame_median_us": c[5]}
         if base:
             row.update(base_frames=b[0], base_us=b[1], base_cpu_us=b[2], base_other_threads_us=b[3],
-                       base_wait_us=b[4], delta_us=c[1] - b[1])
+                       base_wait_us=b[4], base_frame_median_us=b[5], delta_us=c[1] - b[1])
         for name, measured in (("cand", (bench or {}).get("cand")), ("base", (bench or {}).get("base"))):
             if measured and key[0] in measured:
                 row[f"{name}_bench_ms"] = round(measured[key[0]], 3)
@@ -276,13 +284,16 @@ def render(report, out=None):
             tail = f" {ms(row['base_us']):>9} {ms(row['delta_us'], True):>9}" if diff else ""
             print(f"  {ms(row['cand_us']):>9}{tail}  {row['path']}", file=out)
     print("\nby phase:", file=out)
-    head = f"  {'wall':>9} {'on cpu':>9} {'waiting':>9} {'threads':>9} {'frames':>6} {'bench':>9}"
+    print("  (wall..threads: totals over the frames; per frame: median over the frames, beside the bench's own"
+          " median of its measured frames)", file=out)
+    head = f"  {'wall':>9} {'on cpu':>9} {'waiting':>9} {'threads':>9} {'frames':>6} {'per frame':>9} {'bench':>9}"
     print(head + (f" {'base':>9} {'delta':>9}" if diff else "") + "  phase", file=out)
     for row in report["phases"]:
         bench = f"{row['cand_bench_ms']:.2f}" if "cand_bench_ms" in row else "-"
         tail = f" {ms(row['base_us']):>9} {ms(row['delta_us'], True):>9}" if diff else ""
         print(f"  {ms(row['cand_us']):>9} {ms(row['cand_cpu_us']):>9} {ms(row['cand_wait_us']):>9} "
-              f"{ms(row['cand_other_threads_us']):>9} {row['cand_frames']:>6} {bench:>9}{tail}  {row['phase']}", file=out)
+              f"{ms(row['cand_other_threads_us']):>9} {row['cand_frames']:>6} {ms(row['cand_frame_median_us']):>9} "
+              f"{bench:>9}{tail}  {row['phase']}", file=out)
     titles = (("subsystems", "by subsystem (who the time belongs to)"), ("leaves", "by where the thread was"),
               ("sites", "by site (first engine frame from the leaf)"),
               ("functions", "by function, inclusive (time with the function anywhere on the stack)"),
