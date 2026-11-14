@@ -1,5 +1,18 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.97 delivery: Bridge reconnect, warm pool, session list focus and diag log — 2026-11-14
+
+Delivery reconciliation 2026-11-14, source `origin/main`
+`0e3f9ce2` (release #889):
+[KaminIDE 1.0.97](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.97)
+/ server 6.3.174 is published. Ancestry of #873, #875, #879, #885 and #886 in
+`kaminide-v1.0.97` checked. Publication is not acceptance: INC-2026-0100 (#873),
+BR-29B (#875) and BR-05A (#885) are done by their automated acceptance; BR-05
+(#879) and BR-31 (#886) stay `verify` with the next steps in their rows below.
+The gate on the installed release candidate (close tab in the reconnect window,
+send after respawn, R6 19/20) is in the
+[private package](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/180).
+
 ## KaminIDE 1.0.94 delivery: interrupt tree stop, hooks, past segment scroll and embedding API — 2026-11-11
 
 Delivery reconciliation 2026-11-11, source `origin/main`
@@ -460,8 +473,8 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | [BR-02](RUNTIME_RELIABILITY.md#br-02--calibrate-the-long-session-memory-envelope) | `research` | Source + private long-session facts; repeated synthetic memory envelope. | Нет current Windows envelope/decision; BR-03 ждёт решение, не выдумывать лимит. |
 | [BR-03](RUNTIME_RELIABILITY.md#br-03--long-session-mitigation) | `waiting` | Mitigation только после BR-02. | Envelope decision и bounded выбранный механизм. |
 | [BR-04](RUNTIME_RELIABILITY.md#br-04--recover-webviews-after-extension-host-respawn) | `verify` | #148/#152/#832 merged; 2026-11-13 Windows gate #832 passed for Chat binding and Agents replay after respawn. Documents not yet checked. Published in 1.0.95. | Respawn on the installed 1.0.95; active editor/selection/LSP только отдельный child после contract decision. |
-| [BR-05](RUNTIME_RELIABILITY.md#br-05--rehydrate-authoritative-connection-state) | `verify` | #14 merged; close tab inside the reconnect window fixed by #879 (Windows gate passed). | kmaint2: max-sessions, session-not-found. |
-| [BR-05A](RUNTIME_RELIABILITY.md#br-05a--do-not-grow-the-warm-pool-on-an-extension-host-respawn) | `done` | #885 merged: the warm pool runs only on a cold start, not after a respawn. | — |
+| [BR-05](RUNTIME_RELIABILITY.md#br-05--rehydrate-authoritative-connection-state) | `verify` | #14 merged; close tab inside the reconnect window fixed by #879, published in 1.0.97; on the installed 1.0.97 candidate close tab and send after respawn passed. | kmaint2: max-sessions, session-not-found. |
+| [BR-05A](RUNTIME_RELIABILITY.md#br-05a--do-not-grow-the-warm-pool-on-an-extension-host-respawn) | `done` | #885 merged: the warm pool runs only on a cold start, not after a respawn. Published in 1.0.97. | — |
 | [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | `verify` | #147 delivery wake reused: оба Chat no-pointer сценария + Plugins manual Update. | Windows no-pointer outcome; сопоставить BR-31 R6, не добавлять forced repaint. |
 | [BR-07](RUNTIME_RELIABILITY.md#br-07--surface-native-claude-attention-in-chat) | `waiting` | Tab-scoped Console banner после blocker inventory BR-11. | Versioned native attention contract. |
 | [BR-08](RUNTIME_RELIABILITY.md#br-08--explain-unexpected-automatic-reload-skills) | `observation` | #200 telemetry accepted; owner reports diagnostic window after deployment. | Real reload event/source; maintainer не имеет deployment access. |
@@ -482,8 +495,9 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | [BR-25](RUNTIME_RELIABILITY.md#br-25--verify-agents-view-delivery-and-rehydration-after-reveal) | `waiting` | Baseline done, #147 merged; completion без repaint workaround после BR-31 R6. | Windows Agents delivery/reveal completion artifact. |
 | [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | `verify` | #839 merged (`a60ef903`); 2026-11-13 Windows gate on `ff6cd87a` passed: Enter commit, Escape, Tab/Shift+Tab, focus back on the row. Earlier: fly-out, double-click, blur commit (1.0.94). Published in 1.0.95. | Scroll/session change during the transition and BR-28 bounds; then the installed 1.0.95. |
 | [BR-29A](RUNTIME_RELIABILITY.md#br-29a--keep-the-keyboard-focus-ring-visible-inside-clipped-containers) | `done` | Registered 2026-11-13 (kmaint2): keyboard focus ring clipped on session rows and tab chips. Fix PR #853 merged (`93dddd3b`); Windows gate on `95ebe50f` passed. Published in 1.0.96; 2026-11-13 the check on the installed 1.0.96 passed. | None. |
-| [BR-29B](RUNTIME_RELIABILITY.md#br-29b--scroll-the-session-list-to-the-keyboard-focused-row) | `ready` | Registered 2026-11-13 (kmaint2): Tab focus on a session row outside the visible part of the list does not scroll the list. | Bounded shell fix with a test that fails on the old code; automated acceptance. |
-| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | `verify` | #147, #886 merged (diag log off the UI thread; gate 60/60 R6 ≤ 1.1 s on the head). R6 on the published 1.0.97, then BR-25/06. | Reveal no-pointer: rows + invoke ≤ 1 с; два separate fixes не нужны. |
+| [BR-29B](RUNTIME_RELIABILITY.md#br-29b--scroll-the-session-list-to-the-keyboard-focused-row) | `done` | Registered 2026-11-13 (kmaint2): Tab focus on a session row outside the visible part of the list does not scroll the list. Fix PR #875 merged (`abf6885c`) with the automated acceptance of the card; published in 1.0.97. | None. |
+| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | `verify` | #147, #886 merged (diag log off the UI thread; gate 60/60 R6 ≤ 1.1 s on the head), published in 1.0.97. R6 on the 1.0.97 candidate 19/20: the miss coincides with the window Present blocking about 1 s per frame. Next: BR-31A for that layer, then R6 on the published 1.0.97, then BR-25/06. | Reveal no-pointer: rows + invoke ≤ 1 с; два separate fixes не нужны. |
+| [BR-31A](RUNTIME_RELIABILITY.md#br-31a--keep-the-ui-thread-out-of-a-blocked-window-present) | `ready` | Registered 2026-11-14 (kmaint2): on the 1.0.97 candidate the window present blocked the UI thread for about 1 s per frame for about 12 s, and pulls waited. | Fix PR: present without waiting, a dropped frame is presented by the next paint, separate encode/present times; R6 on the candidate. |
 
 ## Принятые результаты: не реализовывать повторно
 
