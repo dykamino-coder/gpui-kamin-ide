@@ -28,6 +28,8 @@ mod record;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
+mod row_tests;
+#[cfg(test)]
 mod resize_tests;
 #[cfg(test)]
 mod restyle_run_tests;
@@ -176,6 +178,12 @@ impl Document {
     #[cfg(test)]
     pub(crate) fn replayed_subtrees(&self) -> u64 {
         self.reuse.stats.get().subtrees
+    }
+
+    /// Groups of sibling blocks (table rows) replayed as one record each.
+    #[cfg(test)]
+    pub(crate) fn replayed_groups(&self) -> u64 {
+        self.reuse.stats.get().groups
     }
 
     /// Far blocks laid out from their kept layout subtree (`layout::reuse::far`).
