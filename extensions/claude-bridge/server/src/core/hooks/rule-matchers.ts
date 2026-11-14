@@ -327,8 +327,6 @@ function powershellCommands(command: string): string[] | null {
   }
   const endCommand = () => {
     endWord()
-    // The command on the right of an assignment still has its own CommandAst.
-    if (/^\$[A-Za-z_]\w*$/.test(words[0] ?? '') && words[1] === '=') words.splice(0, 2)
     if (words.length) statements.push(words.join(' '))
     words = []
     skipRedirectTarget = false
@@ -401,6 +399,17 @@ function powershellCommands(command: string): string[] | null {
     ) {
       // Invocation operators are outside CommandElements in the native AST.
       continue
+    } else if (
+      ch === '=' &&
+      !skipRedirectTarget &&
+      ((words.length === 0 && active && /^\$[A-Za-z_]\w*$/.test(word)) ||
+        (words.length === 1 && !active && /^\$[A-Za-z_]\w*$/.test(words[0]!)))
+    ) {
+      // Assignment syntax is outside the RHS CommandAst. Consume it before
+      // parsing the command so adjacent '=' and invocation operators work too.
+      words = []
+      word = ''
+      active = false
     } else if (ch === '>') {
       // A stream number adjacent to `>` belongs to the redirection, not argv.
       if (active && /^[1-6*]$/.test(word)) {
@@ -417,13 +426,6 @@ function powershellCommands(command: string): string[] | null {
       ch === '(' ||
       ch === '{'
     ) {
-      // Assignment syntax is outside a value expression's CommandElements.
-      if (active && /^\$[A-Za-z_]\w*=$/.test(word) && !words.length) {
-        word = ''
-        active = false
-      } else if (words.length === 2 && /^\$[A-Za-z_]\w*$/.test(words[0]!) && words[1] === '=') {
-        words = []
-      }
       if (active) return null
       const open = ch === '(' || ch === '{' ? i : i + 1
       const close = powershellGroupEnd(command, open)
