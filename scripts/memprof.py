@@ -810,7 +810,7 @@ def main(argv=None):
     import memprof_build
     import memprof_phases
     memprof_build.add_parser(sub)
-    memprof_phases.add_parser(sub)
+    memprof_phases.add_parser(sub, [mismatch])
 
     args = parser.parse_args(argv)
     if args.command == "phases":

@@ -17,6 +17,7 @@ the layers side by side at the end of each phase of each measured frame, from th
 
 Rows are the median over the measured frames of a mode; with a base, each column is followed by its
 delta. A column the build does not report (no audit counters, an exe without allocator memory) is `-`.
+A base and a candidate built with different features or profiles are refused (--allow-feature-mismatch).
 """
 
 import json
@@ -25,6 +26,8 @@ import pathlib
 import statistics
 import subprocess
 import sys
+
+import bench_build
 
 COLUMNS = ("live", "allocator", "held", "commit", "ws", "peak", "gpu")
 
@@ -106,8 +109,8 @@ def render(report, out=None):
             print(f"  {cells}  {row['frames']:>6}  {row['phase']}", file=out)
 
 
-def add_parser(sub):
-    parser = sub.add_parser("phases", help="live heap, allocator commit, process and GPU memory by phase end")
+def add_parser(sub, parents=()):
+    parser = sub.add_parser("phases", parents=list(parents), help="live heap, allocator commit, process and GPU memory by phase end")
     parser.add_argument("--exe", help="candidate engine_bench.exe (allocation-audit build)")
     parser.add_argument("--base-exe", help="base engine_bench.exe")
     parser.add_argument("--out", help="directory for bench JSON and the report")
@@ -121,6 +124,8 @@ def add_parser(sub):
 def phases_command(args, launcher, preflight):
     if args.files:
         cand, base = load(args.files[0]), load(args.files[1]) if len(args.files) > 1 else None
+        if base:
+            bench_build.require_same(bench_build.of_report(base), bench_build.of_report(cand), args.allow_feature_mismatch)
         return render(build(cand, base))
     if not args.exe or not args.out:
         raise SystemExit("phases needs --exe and --out, or --from CAND.json [BASE.json]")
@@ -128,6 +133,9 @@ def phases_command(args, launcher, preflight):
     out.mkdir(parents=True, exist_ok=True)
     args.min_free_gb = 0
     preflight(args, out, exact=False)
+    if args.base_exe:
+        bench_build.require_same(bench_build.of_exe(args.base_exe), bench_build.of_exe(args.exe),
+                                 args.allow_feature_mismatch)
     bench = [arg for arg in args.bench if arg != "--"]
     if "--json" not in bench:
         bench.append("--json")
