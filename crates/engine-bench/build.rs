@@ -2,6 +2,11 @@
 //! оптимизации и переопределения профиля из окружения. Сравнение двух exe с
 //! разными features или профилем — не сравнение кода; скрипты его отвергают.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "a build script reads the environment cargo gives it"
+)]
+
 use std::{env, path::PathBuf};
 
 /// Настройки профиля, меняющие машинный код; символы и strip его не меняют.
