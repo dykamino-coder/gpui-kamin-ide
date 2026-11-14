@@ -162,9 +162,7 @@ fn wrapped(nodes: &[Node]) -> bool {
 /// `new` differs from `old` only in the inherited UI group, in values that
 /// layout does not read (`Computed::same_layout`).
 fn ui_only(old: &Computed, new: &Computed) -> bool {
-    let mut probe = old.clone();
-    std::rc::Rc::make_mut(&mut probe.inh.0).ui = new.inh.ui.clone();
-    probe == *new && old.same_layout(new)
+    old.with_inherited_ui(new.inh.ui.clone()) == *new && old.same_layout(new)
 }
 
 /// Пути к коробкам перерассчитанных элементов (с их тегом и прежней группой

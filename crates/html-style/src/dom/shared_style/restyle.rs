@@ -28,6 +28,6 @@ impl SharedStyle {
     /// stage materializes again under the same parent.
     pub fn set_cascaded_ui(&mut self, ui: StyleGroup<InheritedUi>) {
         let cascaded = self.cascaded_mut();
-        std::rc::Rc::make_mut(&mut cascaded.inh.0).ui = ui;
+        *cascaded = cascaded.with_inherited_ui(ui);
     }
 }

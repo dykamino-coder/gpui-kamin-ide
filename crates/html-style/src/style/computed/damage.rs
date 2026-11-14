@@ -62,6 +62,15 @@ impl Computed {
                 || same_layout_background(reset_background, &o.reset_background))
             && (inh == &o.inh || same_layout_inherited(inh, &o.inh))
     }
+
+    /// This style with the inherited UI group `ui`: what a recascade of an
+    /// element whose rules changed only inherited UI values gives (Blink
+    /// `kInherit` recalc, Stylo `RECASCADE_SELF`). The other groups stay shared.
+    pub fn with_inherited_ui(&self, ui: super::StyleGroup<InheritedUi>) -> Computed {
+        let mut out = self.clone();
+        std::rc::Rc::make_mut(&mut out.inh.0).ui = ui;
+        out
+    }
 }
 
 fn same_layout_inherited(a: &InheritedStyle, b: &InheritedStyle) -> bool {
