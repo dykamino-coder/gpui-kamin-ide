@@ -222,13 +222,12 @@ describe('idle hibernation on the session socket', () => {
   })
 
   it('keeps resize and tool registrations for the wake without waking', async () => {
-    const { session } = await asleepChat()
+    await asleepChat()
     await socket.message({ type: 'session:resize', cols: 140, rows: 50 })
     const tools = [{ name: 'new_tool', description: '', inputSchema: {} }]
     await socket.message({ type: 'mcp:register-external-tools', tools })
     await socket.message({ type: 'session:interrupt' })
     expect(h.create).toHaveBeenCalledTimes(1)
-    expect(session.registeredTools).toEqual(tools)
 
     const fresh = makeSession('s-new', socket)
     h.create.mockImplementationOnce(async () => {

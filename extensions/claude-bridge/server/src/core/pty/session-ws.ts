@@ -121,6 +121,46 @@ eventBus.on('codex:account-updated', pushAgentAuth)
  *  first, `pass` needs no CLI, `ignore` has nothing to act on (its effect, if
  *  any, is kept for the wake), `release` drops the sleeping chat from this
  *  socket (a new chat, or an explicit end). */
+/** What a sleeping chat keeps: enough to respawn it as it was. The stopped
+ *  session object (output buffer, watchers, MCP log) is left to the GC. */
+type SleepingChat = Pick<
+  PtySession,
+  | 'id'
+  | 'tokenId'
+  | 'cliConversationId'
+  | 'settingsDir'
+  | 'effort'
+  | 'model'
+  | 'streamProtocol'
+  | 'host'
+  | 'bearerHash'
+  | 'conversation'
+  | 'launchConfig'
+  | 'registeredTools'
+  | 'registeredResources'
+  | 'registeredResourceTemplates'
+  | 'registeredPrompts'
+>
+
+function sleepingChat(s: PtySession): SleepingChat {
+  return {
+    id: s.id,
+    tokenId: s.tokenId,
+    cliConversationId: s.cliConversationId,
+    settingsDir: s.settingsDir,
+    effort: s.effort,
+    model: s.model,
+    streamProtocol: s.streamProtocol,
+    host: s.host,
+    bearerHash: s.bearerHash,
+    conversation: s.conversation,
+    launchConfig: s.launchConfig,
+    registeredTools: s.registeredTools,
+    registeredResources: s.registeredResources,
+    registeredResourceTemplates: s.registeredResourceTemplates,
+    registeredPrompts: s.registeredPrompts,
+  }
+}
 const IDLE_COMMANDS_REQUEST_MS = 10_000
 
 export function sleepAction(type: string): 'wake' | 'pass' | 'ignore' | 'release' {
@@ -277,7 +317,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
     // While asleep the chat has no CLI: `asleep` keeps the stopped session's
     // object (launch config, model, effort, registrations) and `done` settles
     // once its teardown finished. The next message that needs the CLI wakes it.
-    let asleep: { session: PtySession; done: Promise<void>; cols: number; rows: number } | null = null
+    let asleep: { session: SleepingChat; done: Promise<void>; cols: number; rows: number } | null = null
     const unregisterHibernation = registerHibernationHandle({
       awakeSessionId: () =>
         !asleep &&
@@ -298,7 +338,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           conversationId: session.cliConversationId ?? undefined,
         })
         sessionWsMap.delete(id)
-        asleep = { session, done: hibernateSession(id), cols: session.pty.cols, rows: session.pty.rows }
+        const { cols, rows } = session.pty
+        asleep = { session: sleepingChat(session), done: hibernateSession(id), cols, rows }
         return true
       },
     })
