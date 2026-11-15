@@ -7,6 +7,7 @@ impl HeapSize for BoxTree {
     fn heap_size(&self, ops: &mut Ops) -> usize {
         self.arena.heap_size(ops)
             + ops.table::<((usize, usize), crate::dom::BoxId)>(self.flows.capacity())
+            + ops.table::<(u64, crate::dom::BoxId)>(self.by_node.capacity())
             + self
                 .finished
                 .as_ref()

@@ -5,6 +5,8 @@
 
 mod adapter;
 mod arena;
+#[cfg(test)]
+mod box_of_tests;
 mod finish;
 pub(crate) use finish::MixedText;
 #[cfg(feature = "heap-report")]
@@ -42,6 +44,9 @@ pub(crate) struct BoxRecord {
 pub(crate) struct BoxTree {
     arena: Arena,
     flows: std::collections::HashMap<(usize, usize), BoxId>,
+    /// The first box of each keyed source element (`Element::node_id`):
+    /// layout finds its box in O(1); fragment copies share it.
+    by_node: std::collections::HashMap<u64, BoxId>,
     first: BoxId,
     epoch: u64,
     finished: Option<(u64, crate::text::inline::normalization::Inputs)>,
@@ -58,6 +63,11 @@ impl BoxTree {
     /// shared values (`used`): no caller reaches a `Computed` through it.
     pub(crate) fn edit(tree: &std::cell::RefCell<Self>) -> std::cell::RefMut<'_, Self> {
         tree.borrow_mut()
+    }
+
+    /// The box of the source element with key `node_id` (its first fragment).
+    pub(crate) fn box_of(&self, node_id: u64) -> Option<BoxId> {
+        self.by_node.get(&node_id).copied()
     }
 
     pub(crate) fn get(&self, id: BoxId) -> Option<&BoxRecord> {
@@ -123,6 +133,7 @@ impl BoxTree {
         let epoch = self.epoch;
         self.first = BoxId::NONE;
         self.flows.clear();
+        self.by_node.clear();
         let mut inline = inline::Collection::default();
         // Фрагмент может состоять из текста или соседних inline без Element-
         // родителя. Его IFC принадлежит документной коробке, а не первому span.
@@ -168,6 +179,9 @@ impl BoxTree {
                 self.first = id;
             }
             *last = id;
+            if e.node_id != 0 {
+                self.by_node.entry(e.node_id).or_insert(id);
+            }
             if !e.children.is_empty() {
                 self.flows.insert(finish::slice_key(&e.children), id);
             }
