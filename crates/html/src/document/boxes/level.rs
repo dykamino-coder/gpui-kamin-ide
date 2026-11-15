@@ -82,11 +82,11 @@ impl<'a> Level<'a> {
 
     pub(super) fn append(&mut self, tree: &mut BoxTree, id: BoxId) {
         if self.last.is_some() {
-            if let Some(last) = tree.arena.get_mut(self.last) {
+            if let Some(last) = tree.arena.record_mut(self.last) {
                 last.next = id;
             }
         } else if self.parent.is_some() {
-            if let Some(parent) = tree.arena.get_mut(self.parent) {
+            if let Some(parent) = tree.arena.record_mut(self.parent) {
                 parent.first = id;
             }
         } else {
@@ -115,7 +115,7 @@ impl<'a> Level<'a> {
 
 /// Прежний элемент на месте `at` среди `new` братьев: тот же индекс либо
 /// сдвиг на разницу длин (одна вставка или удаление перед ним).
-pub(super) fn paired<'a>(old: &'a [Node], new: usize, at: usize, key: u64) -> Option<&'a Element> {
+pub(super) fn paired(old: &[Node], new: usize, at: usize, key: u64) -> Option<&Element> {
     let shifted = (at + old.len()).checked_sub(new);
     [Some(at), shifted]
         .into_iter()

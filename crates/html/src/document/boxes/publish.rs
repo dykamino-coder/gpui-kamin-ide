@@ -104,7 +104,7 @@ impl BoxTree {
             }
             let level = pending.last_mut().expect("level");
             level.append(self, id);
-            if let Some(record) = self.arena.get_mut(id) {
+            if let Some(record) = self.arena.record_mut(id) {
                 record.external = epochs::external_contribution(e, level.owner);
             }
             let prev = match level.prev {
@@ -183,7 +183,7 @@ impl BoxTree {
         changed: &mut Vec<(BoxId, Change)>,
     ) -> BoxId {
         if let Some(id) = reused
-            && let Some(record) = self.arena.get_mut(id)
+            && let Some(record) = self.arena.record_mut(id)
         {
             if record.parent != parent {
                 changed.push((id, Change::Own));

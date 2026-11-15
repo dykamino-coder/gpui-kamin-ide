@@ -94,7 +94,7 @@ impl Arena {
         id: BoxId,
         content: Option<std::rc::Rc<super::inline::InlineContent>>,
     ) -> bool {
-        let Some(record) = self.get_mut(id) else {
+        let Some(record) = self.record_mut(id) else {
             return false;
         };
         // Неизменный вход сохраняет Rc: потребитель может удержать его
@@ -109,14 +109,14 @@ impl Arena {
 
     /// Отцепить детей коробки перед повторной сборкой её списка.
     pub(super) fn unlink_first(&mut self, id: BoxId) {
-        if let Some(record) = self.get_mut(id) {
+        if let Some(record) = self.record_mut(id) {
             record.first = BoxId::NONE;
         }
     }
 
     /// Запись по живому ключу: только для полей, которыми владеет само дерево
     /// (эпохи, признак вклада, слот раскладки), без смены топологии.
-    pub(super) fn get_mut(&mut self, id: BoxId) -> Option<&mut BoxRecord> {
+    pub(super) fn record_mut(&mut self, id: BoxId) -> Option<&mut BoxRecord> {
         let slot = self.slots.get_mut(id.slot as usize)?;
         (slot.generation == id.generation)
             .then_some(slot.value.as_mut())
@@ -163,14 +163,14 @@ mod tests {
     fn mutation_keeps_the_slot_and_stale_keys_never_resolve() {
         let mut arena = Arena::default();
         let first = arena.insert(record(1)).expect("slot");
-        arena.get_mut(first).expect("live").epochs.layout = 7;
+        arena.record_mut(first).expect("live").epochs.layout = 7;
         assert_eq!(arena.get(first).map(|r| r.epochs.layout), Some(7));
         assert_eq!(arena.remove(first).map(|r| r.source), Some(1));
         let next = arena.insert(record(2)).expect("reused slot");
         assert_eq!(first.slot, next.slot);
         assert_ne!(first.generation, next.generation);
         assert!(arena.get(first).is_none());
-        assert!(arena.get_mut(first).is_none());
+        assert!(arena.record_mut(first).is_none());
         assert!(arena.remove(first).is_none());
         assert_eq!(
             arena.get(next).map(|r| (r.source, r.epochs.layout)),

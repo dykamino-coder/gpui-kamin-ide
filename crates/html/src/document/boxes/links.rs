@@ -53,7 +53,7 @@ impl BoxTree {
     /// Слот результата раскладки (создаётся при первом обращении). Живёт, пока
     /// жива коробка; смена эпох его не сбрасывает — годность решает раскладка.
     pub(crate) fn slot_mut(&mut self, id: BoxId) -> Option<&mut LayoutSlot> {
-        let record = self.arena.get_mut(id)?;
+        let record = self.arena.record_mut(id)?;
         Some(record.layout_slot.get_or_insert_with(Default::default))
     }
 }
@@ -65,7 +65,7 @@ impl BoxTree {
         if self.clock == u32::MAX {
             let ids: Vec<_> = self.iter().map(|(id, _)| id).collect();
             for id in ids {
-                if let Some(r) = self.arena.get_mut(id) {
+                if let Some(r) = self.arena.record_mut(id) {
                     r.epochs = Epochs {
                         layout: 1,
                         child: 1,
@@ -84,7 +84,7 @@ impl BoxTree {
     /// на предке, уже получившем эту эпоху: O(изменённых + глубина).
     pub(super) fn propagate(&mut self, clock: u32, changed: &[(BoxId, Change)]) {
         for &(id, change) in changed {
-            let Some(record) = self.arena.get_mut(id) else {
+            let Some(record) = self.arena.record_mut(id) else {
                 continue;
             };
             record.epochs.layout = clock;
@@ -94,7 +94,7 @@ impl BoxTree {
             record.epochs.intrinsic = clock;
             let (mut child, mut at) = (true, record.parent);
             while child || !stop {
-                let Some(parent) = self.arena.get_mut(at) else {
+                let Some(parent) = self.arena.record_mut(at) else {
                     break;
                 };
                 if child {
