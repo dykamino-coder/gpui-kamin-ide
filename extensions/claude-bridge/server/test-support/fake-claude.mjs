@@ -152,6 +152,48 @@ async function agents(count = 800, team) {
   fs.appendFileSync(childFile, rows.map((row) => JSON.stringify(row) + '\n').join(''))
   await hook('SubagentStart', { agent_id: agentId, agent_type: agentName })
 }
+// Load mode (BRIDGE_FAKE_LOAD_K > 0): an ordinary prompt runs a turn shaped
+// like a real coding turn — K tool calls through the Bridge MCP endpoint
+// (Read, Grep, Bash in turn) with model "think" time between them, transcript
+// records and console output, framed by the CLI's OSC 7501 status. Used to
+// load-test the server's main thread with many chats without paying ~200 MB
+// per real CLI. No API traffic, no prompt content: synthetic only.
+const LOAD_K = Number(process.env.BRIDGE_FAKE_LOAD_K ?? 0)
+const LOAD_THINK_MS = Number(process.env.BRIDGE_FAKE_LOAD_THINK_MS ?? 2000)
+const LOAD_TOOLS = [
+  ['Read', { file_path: process.env.BRIDGE_FAKE_LOAD_FILE ?? '/tmp/work/f1.txt' }],
+  ['Grep', { pattern: 'needle', path: process.env.BRIDGE_FAKE_LOAD_DIR ?? '/tmp/work' }],
+  ['Bash', { command: 'ls | head -5', description: 'List files' }],
+]
+const osc = (state) => process.stdout.write(`\x1b]7501;app=claude-code:state=${state}\x07`)
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+let loadMcpReady = false
+async function loadTurn() {
+  osc('working')
+  if (!loadMcpReady) {
+    await rpc('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'fake-claude', version: '0.0.0' },
+    })
+    await rpc('notifications/initialized', {})
+    loadMcpReady = true
+  }
+  for (let i = 0; i < LOAD_K; i++) {
+    await pause(LOAD_THINK_MS)
+    const [name, input] = LOAD_TOOLS[i % LOAD_TOOLS.length]
+    const call = rec.tool(`mcp__user-tools__${name}`, input)
+    emit(call)
+    process.stdout.write(`\r\n\x1b[32m\u25cf ${name}\x1b[0m(${JSON.stringify(input)})\r\n`)
+    const response = await rpc('tools/call', { name, arguments: input })
+    const text = String(response?.result?.content?.[0]?.text ?? '')
+    emit(rec.result(call.message.content[0].id, text.slice(0, 4000)))
+    process.stdout.write(text.slice(0, 1500).replace(/\n/g, '\r\n'))
+  }
+  await pause(LOAD_THINK_MS)
+  emit(rec.assistant([{ type: 'text', text: 'Synthetic load turn complete' }]))
+  osc('idle')
+}
 /** Messages this process received (in memory only, for /fake-recall). */
 const received = []
 async function execute(command) {
@@ -270,6 +312,10 @@ async function execute(command) {
       break
     }
     default:
+      if (LOAD_K > 0) {
+        await loadTurn()
+        break
+      }
       emit(
         rec.assistant([{ type: 'text', text: 'Synthetic response. Use /fake-agents, /fake-mcp, /compact or /usage.' }]),
       )
@@ -361,5 +407,6 @@ else {
       }) + '\n',
     )
   screen('Credential-free dev harness')
+  if (LOAD_K > 0) osc('idle')
   await hook('SessionStart', { source: resumed >= 0 ? 'resume' : 'startup' })
 }

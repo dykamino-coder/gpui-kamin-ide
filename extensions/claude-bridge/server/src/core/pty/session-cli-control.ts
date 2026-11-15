@@ -105,10 +105,12 @@ export class SessionCliControl {
   }
 
   /** Why this CLI must keep running, or null when it sits idle at its prompt.
-   *  Unknown turn state counts as work: hibernation never guesses. */
+   *  Without the mod or OSC status (before the first turn, older CLIs) the
+   *  hook-driven prompt state decides; no known prompt counts as work. */
   liveWork(): 'turn' | 'submission' | 'status-unknown' | null {
-    if (!this.authoritative()) return 'status-unknown'
-    if (this.busy()) return 'turn'
+    if (this.authoritative()) {
+      if (this.busy()) return 'turn'
+    } else if (!getSessionInputSnapshot(this.session).promptReady) return 'status-unknown'
     if (this.submissions?.pending()) return 'submission'
     return null
   }

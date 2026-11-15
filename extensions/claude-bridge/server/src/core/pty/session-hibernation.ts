@@ -11,7 +11,7 @@
 // wakeup — keeps it awake.
 // ============================================================================
 
-import { debugLog, warnLog } from '../logging'
+import { debugLog, infoLog, warnLog } from '../logging'
 import { runningShellCount } from './commands'
 import { mcpTasks } from './mcp-tasks'
 import { hasInflightMcpCall } from './session-mcp-call'
@@ -77,7 +77,11 @@ const defaultDeps: BlockerDeps = {
   inflightCall: hasInflightMcpCall,
   workingTask: (owner) => mcpTasks.hasWorkingOwner(owner),
   runningShells: runningShellCount,
-  liveWork: (session) => sessionCliControl(session)?.liveWork() ?? 'status-unknown',
+  // null from liveWork() means idle; only a missing control is unknown.
+  liveWork: (session) => {
+    const control = sessionCliControl(session)
+    return control ? control.liveWork() : 'status-unknown'
+  },
   childAlive: (id) => {
     const child = sessions.get(id)
     return !!child && child.state !== 'exited'
@@ -123,6 +127,7 @@ export interface HibernationHandle {
 const handles = new Set<HibernationHandle>()
 let sweepTimer: ReturnType<typeof setInterval> | null = null
 const SWEEP_MS = 30_000
+let lastBlockedPicture = ''
 
 export function registerHibernationHandle(handle: HibernationHandle): () => void {
   handles.add(handle)
@@ -144,12 +149,22 @@ interface Candidate {
   session: PtySession
 }
 
-function candidates(now: number, minIdleMs: number, deps: BlockerDeps): Candidate[] {
+function candidates(
+  now: number,
+  minIdleMs: number,
+  deps: BlockerDeps,
+  blocked?: Map<string, number>,
+): Candidate[] {
   const out: Candidate[] = []
   for (const handle of handles) {
     const id = handle.awakeSessionId()
     const session = id ? sessions.get(id) : undefined
-    if (!session || hibernationBlocker(session, now, minIdleMs, deps)) continue
+    if (!session) continue
+    const blocker = hibernationBlocker(session, now, minIdleMs, deps)
+    if (blocker) {
+      if (blocker !== 'recent') blocked?.set(blocker, (blocked.get(blocker) ?? 0) + 1)
+      continue
+    }
     out.push({ handle, session })
   }
   // Least recently used first.
@@ -174,7 +189,18 @@ export function sweepIdleSessions(
 ): number {
   if (config.idleMs <= 0) return 0
   let slept = 0
-  for (const candidate of candidates(now, config.idleMs, deps)) if (sleep(candidate)) slept++
+  const blocked = new Map<string, number>()
+  for (const candidate of candidates(now, config.idleMs, deps, blocked)) if (sleep(candidate)) slept++
+  // Idle chats kept awake by live work, logged when the picture changes: the
+  // answer to "why does this chat not sleep" without a debug build.
+  const picture = [...blocked]
+    .sort()
+    .map(([k, n]) => `${k}=${n}`)
+    .join(' ')
+  if (picture !== lastBlockedPicture) {
+    lastBlockedPicture = picture
+    if (picture) infoLog('Hibernation: idle chats kept awake', { blockers: picture })
+  }
   if (config.maxAwake > 0) slept += evict(awakeClaudeCount() - config.maxAwake, now, config, deps)
   if (slept) debugLog('Hibernation sweep', { slept, awake: awakeClaudeCount() })
   return slept

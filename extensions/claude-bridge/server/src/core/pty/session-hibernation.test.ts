@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const h = vi.hoisted(() => ({ sessions: new Map<string, any>() }))
+const h = vi.hoisted(() => ({ sessions: new Map<string, any>(), control: undefined as any }))
 vi.mock('./session-core', () => ({ sessions: h.sessions }))
 vi.mock('./mcp-tasks', () => ({ mcpTasks: { hasWorkingOwner: () => false } }))
 vi.mock('./session-mcp-call', () => ({ hasInflightMcpCall: () => false }))
 vi.mock('./commands', () => ({ runningShellCount: () => 0 }))
-vi.mock('./session-cli-control', () => ({ sessionCliControl: () => undefined }))
-vi.mock('../logging', () => ({ debugLog: vi.fn(), warnLog: vi.fn() }))
+vi.mock('./session-cli-control', () => ({ sessionCliControl: () => h.control }))
+vi.mock('../logging', () => ({ debugLog: vi.fn(), infoLog: vi.fn(), warnLog: vi.fn() }))
 
 import {
   acquireWakeSlot,
@@ -150,6 +150,19 @@ describe('sweep and the awake bound', () => {
     offs.forEach((off) => off())
   })
 
+  it('treats an idle CLI (liveWork null) as sleepable with the real dependencies', () => {
+    const slept: string[] = []
+    const off = registerHibernationHandle(handleFor('a', slept))
+    h.sessions.set('a', session('a', 20))
+    h.control = { liveWork: () => null }
+    try {
+      expect(sweepIdleSessions(NOW, config)).toBe(1)
+      expect(slept).toEqual(['a'])
+    } finally {
+      h.control = undefined
+      off()
+    }
+  })
   it('is off when the idle threshold is 0', () => {
     const slept: string[] = []
     const off = registerHibernationHandle(handleFor('a', slept))
