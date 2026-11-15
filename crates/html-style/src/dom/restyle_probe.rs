@@ -12,12 +12,14 @@ use super::outcome::DocumentFailure;
 use super::shadow::Scope;
 use super::tree_index::{HasMarks, TreeIndex};
 use super::walk::{self, Chains, Probed};
-use crate::style::css::{Media, Rule};
+use crate::style::css::Media;
 use crate::style::select::has::{HasArg, mark_has};
 use crate::values::DocumentValues;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+mod rules;
 
 /// Правила документа одной ревизии для проб его элементов.
 pub struct RestyleProbe {
@@ -54,7 +56,10 @@ pub struct RestyleCache {
     /// The `:has()` marks of the source DOM, marked by the first probe that
     /// needs them. A batch probed here changes no value a `:has()` argument
     /// reads: `invalidation::targets` does not follow a name inside a
-    /// selector argument, so such a batch rebuilds; a batch that edits texts
+    /// selector argument, so such a batch rebuilds, and `targets` drops the
+    /// marks for a name any `:has()` argument reads (`has_reads`); a batch
+    /// that inserts or removes nodes or changes element states rebuilds; a
+    /// batch that edits texts
     /// drops them (`forget_has`). Blink likewise re-marks only for the
     /// features of `:has()` arguments (`StyleEngine::InvalidateAncestorsOrSiblingsAffectedByHas`,
     /// `style_engine.cc:1676`);
@@ -114,6 +119,12 @@ impl RestyleCache {
         changed: &Changed,
         mutated: &[Handle],
     ) -> Option<Vec<Handle>> {
+        // A name read inside a `:has()` argument changes its marks. Such a
+        // batch rebuilds anyway (`features` does not follow selector
+        // arguments); the marks go first so no probe reads them stale.
+        if super::invalidation::has_reads(&probe.has_args, changed) {
+            self.has = None;
+        }
         let same =
             |(c, _): &&(Changed, _)| c.classes == changed.classes && c.attrs == changed.attrs;
         let features = match self.sets.iter().find(same) {
@@ -193,65 +204,6 @@ impl RestyleCache {
             Some(kept) => Ok(kept),
             None => self.styles(probe, input, values, targets),
         }
-    }
-}
-
-impl RestyleProbe {
-    fn new(
-        input: &Admitted,
-        extra_css: &str,
-        asked: Media,
-        values: &Rc<DocumentValues>,
-    ) -> Result<Option<Self>, DocumentFailure> {
-        let mut media = asked;
-        let admission = crate::budget::admission::Admission::new(input.context().budget().clone());
-        let document = &input.dom.document;
-        if super::shadow::has_declarative_shadow(document, &admission)? {
-            return Ok(None);
-        }
-        if let Some(dark) = super::page_scheme::preference(document, media.dark, &admission)? {
-            media.dark = dark;
-        }
-        let vcx = values.values().with_scheme(scheme(media));
-        let rules =
-            super::document_rules::document_rules(input, extra_css, media, &admission, vcx)?;
-        Ok(Some(Self::built(
-            rules.doc,
-            rules.has_args,
-            rules.reads_attr,
-            (media, asked),
-            extra_css,
-        )))
-    }
-
-    /// Проба из правил сборки документа без теней (`convert_restyling`):
-    /// `media` — носитель со схемой страницы и носитель, с которым звали
-    /// сборку.
-    pub(super) fn built(
-        doc: Rc<Scope>,
-        has_args: Vec<HasArg>,
-        reads_attr: bool,
-        (media, asked): (Media, Media),
-        extra_css: &str,
-    ) -> Self {
-        Self {
-            doc,
-            has_args,
-            media,
-            asked,
-            extra_css: extra_css.into(),
-            reads_attr,
-        }
-    }
-
-    /// Лист документа или тема читают атрибуты элементов вне селекторов.
-    pub fn reads_attr(&self) -> bool {
-        self.reads_attr
-    }
-
-    /// Правила области документа (агент, тема, листы страницы).
-    pub fn rules(&self) -> &[Rule] {
-        &self.doc.rules
     }
 }
 
