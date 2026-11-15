@@ -261,9 +261,9 @@ export function makeRoomForOneMore(now = Date.now(), config = hibernationConfig(
 // A CLI start costs about a second of CPU. Twenty chats woken at once would
 // all take several seconds; a bounded pool lets the first ones through fast.
 // A wake for a message someone already sent goes before a warm-up (the user
-// is typing in a sleeping chat), and warm-ups never take the last slot, so a
-// burst of them cannot hold up a waiting message. A queued warm-up whose
-// message arrives is promoted in place (`ticket.urgent = true`).
+// is typing in a sleeping chat), and warm-ups use at most half the pool and
+// never its last slot, so a burst of them cannot hold up a waiting message.
+// A warm-up whose message arrives is promoted in place (`promoteWake`).
 
 export interface WakeTicket {
   urgent: boolean
@@ -276,10 +276,15 @@ interface Waiter {
 }
 
 let wakeActive = 0
+/** Running wakes that are warm-ups (no message yet). */
+const warmActive = new Set<WakeTicket>()
 const wakeQueue: Waiter[] = []
 
 function mayStart(ticket: WakeTicket, limit: number): boolean {
-  return wakeActive < (ticket.urgent || limit < 2 ? limit : limit - 1)
+  if (ticket.urgent || limit < 2) return wakeActive < limit
+  // A boot in flight cannot be preempted: warm-ups keep to half the pool so a
+  // message that arrives meanwhile finds free slots and CPU.
+  return wakeActive < limit - 1 && warmActive.size < Math.floor(limit / 2)
 }
 
 function grantNext(): void {
@@ -298,11 +303,13 @@ export function acquireWakeSlot(
   return new Promise((resolve) => {
     const grant = () => {
       wakeActive++
+      if (!ticket.urgent) warmActive.add(ticket)
       let released = false
       resolve(() => {
         if (released) return
         released = true
         wakeActive--
+        warmActive.delete(ticket)
         grantNext()
       })
     }
@@ -315,6 +322,8 @@ export function acquireWakeSlot(
 export function promoteWake(ticket: WakeTicket): void {
   if (ticket.urgent) return
   ticket.urgent = true
+  // Running already: it now serves a message and frees a warm-up place.
+  warmActive.delete(ticket)
   grantNext()
 }
 

@@ -193,33 +193,45 @@ describe('wake pool', () => {
     expect(wakePoolState()).toEqual({ active: 0, queued: 0 })
   })
 
-  it('lets a wake with a message pass queued warm-ups and keeps one slot from warm-ups', async () => {
+  it('lets a wake with a message pass queued warm-ups, which keep to half the pool', async () => {
     const order: string[] = []
-    const take = (name: string, urgent: boolean) => acquireWakeSlot(3, { urgent }).then((r) => (order.push(name), r))
+    const take = (name: string, urgent: boolean) => acquireWakeSlot(4, { urgent }).then((r) => (order.push(name), r))
     const warmA = await take('warmA', false)
     const warmB = await take('warmB', false)
-    // The last slot is not for warm-ups.
+    // Two warm-ups are half of four: the next ones wait.
     const warmC = take('warmC', false)
     const warmD = { urgent: false }
-    const promoted = acquireWakeSlot(3, warmD).then((r) => (order.push('warmD'), r))
+    const promoted = acquireWakeSlot(4, warmD).then((r) => (order.push('warmD'), r))
     await Promise.resolve()
     expect(wakePoolState()).toEqual({ active: 2, queued: 2 })
     const message = await take('message', true)
     expect(order).toEqual(['warmA', 'warmB', 'message'])
-    warmA()
-    await Promise.resolve()
-    // Two busy of three: still no room for a warm-up.
-    expect(order).toEqual(['warmA', 'warmB', 'message'])
-    // warmD got its message: it takes the free slot ahead of warmC.
+    // warmD got its message: it takes the last slot ahead of warmC.
     promoteWake(warmD)
     const rD = await promoted
+    expect(order).toEqual(['warmA', 'warmB', 'message', 'warmD'])
+    warmA()
+    await Promise.resolve()
+    // Three busy of four: the last slot is not for a warm-up.
+    expect(order).toEqual(['warmA', 'warmB', 'message', 'warmD'])
     warmB()
-    message()
     const rC = await warmC
     expect(order).toEqual(['warmA', 'warmB', 'message', 'warmD', 'warmC'])
-    rD()
-    rC()
+    for (const r of [message, rD, rC]) r()
     expect(wakePoolState()).toEqual({ active: 0, queued: 0 })
+  })
+
+  it('counts a running warm-up that got its message as urgent', async () => {
+    const ticket = { urgent: false }
+    const first = await acquireWakeSlot(4, ticket)
+    const second = await acquireWakeSlot(4, { urgent: false })
+    const third = acquireWakeSlot(4, { urgent: false })
+    await Promise.resolve()
+    expect(wakePoolState()).toEqual({ active: 2, queued: 1 })
+    promoteWake(ticket)
+    const r3 = await third
+    expect(wakePoolState()).toEqual({ active: 3, queued: 0 })
+    for (const r of [first, second, r3]) r()
   })
 })
 
