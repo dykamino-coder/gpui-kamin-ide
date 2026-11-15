@@ -472,7 +472,7 @@ function registerBackground(
 }
 
 const BASH_ID_REQUIRED =
-  'bash_id is required: the numeric id from a legacy run_in_background result. A background command that returned an MCP task is tracked by the CLI, which reports its completion.'
+  'bash_id is required: the numeric id from a legacy run_in_background result. For a background command that returned an MCP task, pass the MCP task id (a UUID such as 56ad45d4-ce5a-…), not the short task name the CLI shows.'
 
 /** The numeric legacy shell id of a BashOutput/KillShell call, or null. Only a
  *  whole number counts: `parseInt` read the leading digit of a task id such as

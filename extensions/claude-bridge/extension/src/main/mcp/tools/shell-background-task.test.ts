@@ -184,7 +184,7 @@ describe('background shell ids', () => {
       const taskId = `${id}06b7b05-599e-4b6c-929d-69ff3066d3b8`
       for (const call of [killBackgroundShell, readBackgroundOutput]) {
         const r = await call({ bash_id: taskId })
-        expect(r.content[0]!.text).toContain('MCP task is tracked by the CLI')
+        expect(r.content[0]!.text).toContain('pass the MCP task id')
       }
       expect(proc.kill).not.toHaveBeenCalled()
       expect(processKill).not.toHaveBeenCalled()

@@ -12965,7 +12965,7 @@ var init_shell = __esm({
     cachedBash = null;
     bashLookupInFlight = null;
     BG_OUTPUT_CAP = 100 * 1024;
-    BASH_ID_REQUIRED = "bash_id is required: the numeric id from a legacy run_in_background result. A background command that returned an MCP task is tracked by the CLI, which reports its completion.";
+    BASH_ID_REQUIRED = "bash_id is required: the numeric id from a legacy run_in_background result. For a background command that returned an MCP task, pass the MCP task id (a UUID such as 56ad45d4-ce5a-\u2026), not the short task name the CLI shows.";
     cachedPwsh = null;
     pwshLookupInFlight = null;
   }
