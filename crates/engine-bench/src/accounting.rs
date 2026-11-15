@@ -46,6 +46,7 @@ pub(super) struct Input {
     pub(super) present: Duration,
     pub(super) readback: Duration,
     pub(super) total: Duration,
+    pub(super) readback_to_resume: Duration,
 }
 
 fn subtract(parent: Duration, child: Duration) -> Result<Duration, &'static str> {
@@ -72,6 +73,7 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
         ("cpu_draw_total", Some(ms(input.draw))),
         ("gpu_readback", Some(ms(input.readback))),
         ("taffy_inclusive", Some(ms(input.layout))),
+        ("readback_to_resume", Some(ms(input.readback_to_resume))),
     ]);
     for (name, scope) in [
         ("build_elements", &phases.build),
@@ -121,6 +123,7 @@ mod tests {
             present: us(10),
             readback: us(4),
             total: us(60),
+            readback_to_resume: us(1),
         }
     }
 
