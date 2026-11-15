@@ -437,7 +437,13 @@ impl Compare<'_> {
     }
 
     /// Сцены группы рисуют одно и то же: равные примитивы в равном порядке.
+    /// Сцена с удерживаемым слоем (`scene::layer`, попавшим в группу повтором
+    /// диапазона) не равна никакой: слой меняется на месте, его примитивов
+    /// нет в списках сцены, и равные списки не значат равную картинку.
     fn same_scene(&mut self, a: &Scene, b: &Scene) -> bool {
+        if !a.layers.is_empty() || !b.layers.is_empty() {
+            return false;
+        }
         if a.shadows.len() != b.shadows.len()
             || a.quads.len() != b.quads.len()
             || a.paths.len() != b.paths.len()

@@ -6385,7 +6385,7 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_atlas.rs b/vendor/gpui-windows/src/directx_atlas.rs
-index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a2f144681
+index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..c8a8271eff295b81281362b36a2fe082281e342a
 --- a/vendor/gpui-windows/src/directx_atlas.rs
 +++ b/vendor/gpui-windows/src/directx_atlas.rs
 @@ -16 +16,8 @@
@@ -6405,7 +6405,7 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a
 @@ -37 +47 @@
 -        DirectXAtlas(Mutex::new(AtlasState::new(DirectXAtlasTextures {
 +        let state = Mutex::new(AtlasState::new(DirectXAtlasTextures {
-@@ -43 +53,25 @@
+@@ -43 +53,30 @@
 -        })))
 +        }));
 +        DirectXAtlas(state, std::sync::atomic::AtomicU64::new(0))
@@ -6420,22 +6420,27 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a
 +        self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +    }
 +
-+    /// KaminIDE patch: whether a sprite of `scene` (or of its groups) samples an
-+    /// external texture, whose content may differ from the last frame's.
++    /// KaminIDE patch: whether a sprite of `scene` (of its groups, or of the
++    /// retained layers it draws) samples an external texture, whose content
++    /// may differ from the last frame's.
 +    pub(crate) fn samples_external(&self, scene: &gpui::Scene) -> bool {
 +        let lock = self.0.lock();
-+        let external = |s: &gpui::Scene| {
++        let lock = &*lock;
++        fn external(lock: &AtlasState<DirectXAtlasTextures>, s: &gpui::Scene) -> bool {
 +            s.polychrome_sprites.iter().any(|sprite| {
 +                lock.backend
 +                    .texture(sprite.tile.texture_id)
 +                    .is_some_and(|t| t.external)
-+            })
-+        };
-+        external(scene) || scene.groups.iter().any(|g| external(&g.scene))
-@@ -49,0 +84,2 @@
++            }) || s.groups.iter().any(|g| external(lock, &g.scene))
++                || (0..s.layer_count())
++                    .filter_map(|i| s.layer(i))
++                    .any(|layer| external(lock, layer.scene()))
++        }
++        external(lock, scene)
+@@ -49,0 +89,2 @@
 +    // KaminIDE patch: None = слот освобождён (кадр «в полёте» пережил
 +    // unregister_external) — вызывающий пропускает отрисовку этой пачки.
-@@ -56,0 +93,104 @@
+@@ -56,0 +98,104 @@
 +    }
 +
 +    /// KaminIDE patch: положить ЧУЖУЮ текстуру D3D11 (готовый кадр CEF) в
@@ -6540,7 +6545,7 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a
 +        }
 +        drop(lock);
 +        self.bump();
-@@ -71,0 +212,26 @@
+@@ -71,0 +217,26 @@
 +        drop(lock);
 +        self.bump();
 +    }
@@ -6567,18 +6572,18 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a
 +                );
 +            }
 +        }
-@@ -87,0 +254 @@
+@@ -87,0 +259 @@
 +        self.bump();
-@@ -225 +392,5 @@
+@@ -225 +397,5 @@
 -        let index = texture_list.free_list.pop();
 +        // KaminIDE patch: индексы НЕ переиспользуем (см. register_external) —
 +        // кадр «в полёте» со спрайтом старого владельца индекса рисовал чужую
 +        // текстуру. Слоты-пустышки копятся медленно (полное освобождение
 +        // атласной текстуры — редкость), Option в Vec дёшев.
 +        let index: Option<usize> = None;
-@@ -242,0 +414 @@
+@@ -242,0 +419 @@
 +            external: false,
-@@ -252,0 +425,3 @@
+@@ -252,0 +430,3 @@
 +    // KaminIDE patch: Option вместо unwrap-паники. Слот может быть None:
 +    // текстура вью снята unregister_external, а кадр с её спрайтом ещё в
 +    // полёте (CEF-насос реентерабелен) — тогда спрайт просто не рисуем.

@@ -13015,10 +13015,10 @@ index 0000000000000000000000000000000000000000..ce8acb35ac9cf0333bc961c32a10b181
 +}
 diff --git a/vendor/gpui/src/scene/damage.rs b/vendor/gpui/src/scene/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7f794317d9ab7a6123e6b3e0e9ac18b9994c6bce
+index 0000000000000000000000000000000000000000..b8c854ce432de8a89e25c8b1c9cba076ba077088
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage.rs
-@@ -0,0 +1,727 @@
+@@ -0,0 +1,733 @@
 +//! KaminIDE patch: повреждение кадра — где новая сцена рисует иначе, чем та,
 +//! что окно рисовало прошлым кадром.
 +//!
@@ -13458,7 +13458,13 @@ index 0000000000000000000000000000000000000000..7f794317d9ab7a6123e6b3e0e9ac18b9
 +    }
 +
 +    /// Сцены группы рисуют одно и то же: равные примитивы в равном порядке.
++    /// Сцена с удерживаемым слоем (`scene::layer`, попавшим в группу повтором
++    /// диапазона) не равна никакой: слой меняется на месте, его примитивов
++    /// нет в списках сцены, и равные списки не значат равную картинку.
 +    fn same_scene(&mut self, a: &Scene, b: &Scene) -> bool {
++        if !a.layers.is_empty() || !b.layers.is_empty() {
++            return false;
++        }
 +        if a.shadows.len() != b.shadows.len()
 +            || a.quads.len() != b.quads.len()
 +            || a.paths.len() != b.paths.len()
@@ -13748,10 +13754,10 @@ index 0000000000000000000000000000000000000000..7f794317d9ab7a6123e6b3e0e9ac18b9
 +}
 diff --git a/vendor/gpui/src/scene/damage/group_match.rs b/vendor/gpui/src/scene/damage/group_match.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b504a6fc43e3df3df05d4bde5319e6e15d05ac88
+index 0000000000000000000000000000000000000000..c59cd109e3a6d1f0aec1f0a5ef4a182092ff50fe
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/group_match.rs
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,145 @@
 +//! KaminIDE patch: which group of the compared frame paints what a group of
 +//! this frame paints, so the renderer can keep that group's image.
 +//!
@@ -13869,6 +13875,32 @@ index 0000000000000000000000000000000000000000..b504a6fc43e3df3df05d4bde5319e6e1
 +        // Two equal groups each take one old group, never the same one.
 +        let twins = [(0., 0.1), (0., 0.1)];
 +        assert_eq!(bases(&twins[..1], &twins), [Some(0), None]);
++    }
++
++    /// A group whose scene draws a retained layer (a replayed range) paints
++    /// what the layer holds now, which its primitive lists do not show: it
++    /// keeps no image of the last frame, whatever the lists say.
++    #[test]
++    fn a_group_drawing_a_retained_layer_matches_no_group() {
++        use crate::scene::layer::{LayerHandle, SceneLayer};
++        let layered = |hue: f32| {
++            let mut content = Scene::default();
++            content.insert_primitive(Quad {
++                bounds: b(0.),
++                content_mask: ContentMask { bounds: b(0.) },
++                background: Background::from(hsla(hue, 0.5, 0.5, 1.)),
++                ..Default::default()
++            });
++            let handle = LayerHandle::new(SceneLayer::finish(content, Vec::new(), Vec::new()));
++            let mut s = scene(&[(0., 0.1)]);
++            s.groups[0].scene.insert_layer(&handle, b(0.));
++            (s, handle)
++        };
++        let (mut a, _keep_a) = layered(0.2);
++        a.note_frame_damage(&Scene::default(), 1, (256, 64));
++        let (mut s, _keep_s) = layered(0.7);
++        s.note_frame_damage(&a, 2, (256, 64));
++        assert_eq!(s.group_base(0), None);
 +    }
 +}
 \ No newline at end of file
