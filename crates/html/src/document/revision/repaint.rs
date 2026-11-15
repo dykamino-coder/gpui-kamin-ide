@@ -62,6 +62,19 @@ pub(in crate::document) struct Kept {
     cache: crate::dom::restyle_probe::RestyleCache,
 }
 
+impl Kept {
+    /// What a built document keeps: the rules of its build as the probe.
+    pub(in crate::document) fn built(
+        cache: crate::dom::restyle_probe::RestyleCache,
+    ) -> std::rc::Rc<std::cell::Cell<Option<Box<Self>>>> {
+        let kept = Self {
+            sheets: None,
+            cache,
+        };
+        Rc::new(std::cell::Cell::new(Some(Box::new(kept))))
+    }
+}
+
 impl Document {
     /// The texts of the `<style>` sheets under `root`, collected once.
     pub(super) fn kept_sheets(&self, root: &markup5ever_rcdom::Handle) -> Rc<Vec<String>> {
