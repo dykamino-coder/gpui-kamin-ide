@@ -104,7 +104,6 @@ fn the_canvas_background_layout_values_and_hover_layers_rebuild() {
         "html.alt{background:#eee}",
         "html.alt [data-deep]{background:#eee;padding:1px}",
         "html.alt [data-deep]{background:url(a.png)}",
-        "html.alt [data-deep]{border-color:red}",
         "html.alt [data-deep]{background:#eee}[data-deep]:hover{color:red}",
     ] {
         let old = page(style);

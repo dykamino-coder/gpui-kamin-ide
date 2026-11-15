@@ -8,17 +8,26 @@
 //! included, is layout damage. The destructuring is exhaustive: a new field of
 //! a compared struct must be classified here.
 
-use super::{Computed, InheritedStyle, InheritedUi, ResetBackground};
+use super::{Computed, InheritedStyle, InheritedUi, ResetBackground, ResetBorder, ResetCascade};
 
 impl Computed {
     /// Whether layout reads the same values from both styles.
     pub fn same_layout(&self, other: &Self) -> bool {
-        self == other || same_but_color_and(self, other, same_layout_background)
+        self == other || same_but_color_and(self, other, same_layout_background, false)
+    }
+
+    /// Whether layout reads the same values from both styles once the colours
+    /// of the borders are paint values too, as they are for a block-level box
+    /// outside tables (Blink order-visual, paint invalidation only): a
+    /// collapsed table border and the sides of an inline box are layout
+    /// results here, which carry their colours.
+    pub fn same_layout_but_border_colors(&self, other: &Self) -> bool {
+        self == other || same_but_color_and(self, other, same_layout_background, true)
     }
 
     /// Whether the styles are equal but for `color`.
     pub(super) fn same_but_color(&self, other: &Self) -> bool {
-        same_but_color_and(self, other, |a, b| a == b)
+        same_but_color_and(self, other, |a, b| a == b, false)
     }
 
     /// This style with the inherited UI group `ui`: what a recascade of an
@@ -31,12 +40,14 @@ impl Computed {
     }
 }
 
-/// Whether `a` and `b` are equal but for `color` and for what `background`
-/// lets differ in their background groups. The destructuring is exhaustive.
+/// Whether `a` and `b` are equal but for `color`, for what `background` lets
+/// differ in their background groups and, with `borders`, for the colours of
+/// their borders. The destructuring is exhaustive.
 fn same_but_color_and(
     a: &Computed,
     o: &Computed,
     background: fn(&ResetBackground, &ResetBackground) -> bool,
+    borders: bool,
 ) -> bool {
     let Computed {
         decor_box,
@@ -65,10 +76,12 @@ fn same_but_color_and(
         && *block_tag == o.block_tag
         && *plain_block_box == o.plain_block_box
         && *reset_text_box == o.reset_text_box
-        && *reset_cascade == o.reset_cascade
+        && (*reset_cascade == o.reset_cascade
+            || borders && same_cascade_but_border_colors(reset_cascade, &o.reset_cascade))
         && *reset_box_layout == o.reset_box_layout
         && *reset_flex == o.reset_flex
-        && *reset_border == o.reset_border
+        && (*reset_border == o.reset_border
+            || borders && same_but_border_colors(reset_border, &o.reset_border))
         && *reset_grid == o.reset_grid
         && *reset_context == o.reset_context
         && *reset_generated == o.reset_generated
@@ -130,6 +143,47 @@ fn same_layout_ui(a: &InheritedUi, b: &InheritedUi) -> bool {
         && *math_shift == b.math_shift
         && *math_level == b.math_level
         && *math_operator_form == b.math_operator_form
+}
+
+/// The cascade metadata of two styles is equal but for the cascade order of
+/// their border colours, which resolves logical against physical sides of
+/// the colours alone (SideOrder::border).
+fn same_cascade_but_border_colors(a: &ResetCascade, b: &ResetCascade) -> bool {
+    let mut a = a.clone();
+    a.side_order.border[2] = b.side_order.border[2];
+    a == *b
+}
+
+fn same_but_border_colors(a: &ResetBorder, b: &ResetBorder) -> bool {
+    let ResetBorder {
+        border_box,
+        border_width,
+        radius,
+        border_inherit,
+        border_visible,
+        border_colors: _,
+        border_side_styles,
+        border_dashed,
+        border_dotted,
+        outline,
+        border_image,
+        radius_ell,
+        corner_shape,
+        border_shape,
+    } = a;
+    *border_box == b.border_box
+        && *border_width == b.border_width
+        && *radius == b.radius
+        && *border_inherit == b.border_inherit
+        && *border_visible == b.border_visible
+        && *border_side_styles == b.border_side_styles
+        && *border_dashed == b.border_dashed
+        && *border_dotted == b.border_dotted
+        && *outline == b.outline
+        && *border_image == b.border_image
+        && *radius_ell == b.radius_ell
+        && *corner_shape == b.corner_shape
+        && *border_shape == b.border_shape
 }
 
 fn same_layout_background(a: &ResetBackground, b: &ResetBackground) -> bool {
@@ -196,5 +250,18 @@ mod tests {
         let mut d = b.clone();
         d.inh.ui.hidden = Some(true);
         assert!(!b.same_layout(&d), "visibility stays exact");
+    }
+
+    #[test]
+    fn border_colours_are_paint_only_where_asked() {
+        let a = Computed::default();
+        let mut b = a.clone();
+        b.reset_border.border_colors[1] = Color::BLACK.into();
+        b.reset_cascade.side_order.border[2][1] = Default::default();
+        assert!(!a.same_layout(&b), "layout damage by default");
+        assert!(a.same_layout_but_border_colors(&b));
+        let mut c = b.clone();
+        c.reset_border.border_width.top = Some(Len::Px(2.0));
+        assert!(!b.same_layout_but_border_colors(&c), "width is layout");
     }
 }

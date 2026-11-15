@@ -53,6 +53,34 @@ impl Restyle {
     fn background(&self) -> bool {
         self.old.reset_background != self.new.reset_background
     }
+
+    /// The colours of the box's borders change.
+    fn borders(&self) -> bool {
+        self.old.reset_border.border_colors != self.new.reset_border.border_colors
+    }
+}
+
+/// Whether the colours of the borders of a box with the cascaded style
+/// `style` may be paint values: no table part, whose collapsed borders are a
+/// layout result with their colours, and no inline-level box, whose sides are
+/// painted with its line (`Computed::same_layout_but_border_colors`;
+/// the box itself is checked too, `paths::takes`).
+fn painted_borders(style: &Computed) -> bool {
+    use crate::style::computed::Display;
+    !matches!(
+        style.reset_box_layout.display,
+        Some(
+            Display::Table
+                | Display::InlineTable
+                | Display::TableRow
+                | Display::TableRowGroup
+                | Display::TableCell
+                | Display::Contents
+                | Display::InlineBlock
+                | Display::InlineFlex
+                | Display::InlineGrid
+        )
+    )
 }
 
 impl Document {
@@ -193,7 +221,8 @@ impl Document {
                 None => (old.style, new.style),
             };
             // The frame may only repaint: layout reads the same values.
-            if !old.same_layout(&new) {
+            let borders = painted_borders(&old) && painted_borders(&new);
+            if !(old.same_layout(&new) || borders && old.same_layout_but_border_colors(&new)) {
                 return None;
             }
             let restyle = Restyle {
