@@ -108,13 +108,32 @@ fn generation_exhaustion_retires_the_slot_without_aba() {
     let registry = dom.document.registry();
     let mut last = admission::infallible(registry.allocate(&admission::Unbounded));
     let slot = last.key.slot;
-    registry.slots.borrow_mut().values[slot as usize].generation = u32::MAX;
-    last.key.generation = u32::MAX;
+    last.key.generation = LAST_GENERATION;
     let old = last.key;
     drop(last);
     let next = element(&dom, false);
     assert_ne!(next.key().slot, slot);
     assert!(registry.resolve(old).is_none());
+}
+
+#[test]
+fn the_registry_spends_one_word_per_slot_and_reuses_freed_slots() {
+    let dom = RcDom::default();
+    let registry = dom.document.registry();
+    let nodes: Vec<_> = (0..100).map(|_| element(&dom, false)).collect();
+    let capacity = registry.slots.borrow().values.capacity();
+    assert_eq!(mem::size_of_val(&registry.slots.borrow().values[0]), 8);
+    let keys: Vec<_> = nodes.iter().map(|n| n.key()).collect();
+    drop(nodes);
+    for key in &keys {
+        assert!(registry.resolve(*key).is_none());
+    }
+    let again: Vec<_> = (0..100).map(|_| element(&dom, false)).collect();
+    assert_eq!(registry.slots.borrow().values.capacity(), capacity);
+    for node in &again {
+        assert!(keys.iter().any(|k| k.slot == node.key().slot));
+        assert!(Rc::ptr_eq(&registry.resolve(node.key()).unwrap(), node));
+    }
 }
 
 #[test]

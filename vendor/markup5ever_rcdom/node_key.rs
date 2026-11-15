@@ -34,17 +34,56 @@ impl NodeKey {
 }
 
 const NONE: u32 = u32::MAX;
+/// The largest generation a slot word holds (31 bits beside the tag bit).
+const LAST_GENERATION: u32 = u32::MAX >> 1;
+/// A slot handed to an identity whose node is not bound yet, or retired.
+const RESERVED: u64 = 1;
 
-struct Slot {
-    node: Weak<Node>,
-    generation: u32,
-    next: u32,
-}
-
+/// One word per slot. A live node's `Weak` as a raw pointer (aligned, so
+/// even), or an odd tag: a free slot is `next << 32 | generation << 1 | 1`
+/// (the next free slot and the generation it hands out), `RESERVED` an
+/// allocated but unbound or retired one. The generation of a live slot is in
+/// its node's key, so the registry spends one word per slot and nothing per
+/// node besides it (Blink keeps node ids in a side map from node to id,
+/// `DOMNodeIds` over `WeakIdentifierMap`; here the id is in the node and the
+/// map from id to node is this dense vector).
 struct Slots {
-    values: Vec<Slot>,
+    values: Vec<u64>,
     lease: Lease,
     free: u32,
+}
+
+fn free_word(next: u32, generation: u32) -> u64 {
+    (next as u64) << 32 | (generation as u64) << 1 | 1
+}
+
+impl Slots {
+    fn node(&self, slot: u32) -> Option<Handle> {
+        let word = *self.values.get(slot as usize)?;
+        if word & 1 == 1 {
+            return None;
+        }
+        // SAFETY: an even word is a pointer from `Weak::into_raw` that the
+        // slot owns until it is replaced; it is not consumed here.
+        let weak = mem::ManuallyDrop::new(unsafe { Weak::from_raw(word as usize as *const Node) });
+        weak.upgrade()
+    }
+
+    fn release(&mut self, slot: u32) {
+        let word = mem::replace(&mut self.values[slot as usize], RESERVED);
+        if word & 1 == 0 {
+            // SAFETY: the slot owned this `Weak::into_raw` pointer.
+            drop(unsafe { Weak::from_raw(word as usize as *const Node) });
+        }
+    }
+}
+
+impl Drop for Slots {
+    fn drop(&mut self) {
+        for slot in 0..self.values.len() as u32 {
+            self.release(slot);
+        }
+    }
 }
 
 /// Слабый реестр разделяется живыми узлами, включая отсоединённые под JS.
@@ -72,10 +111,12 @@ impl NodeRegistry {
         policy: &A,
     ) -> Result<Identity, A::Error> {
         let mut slots = self.slots.borrow_mut();
-        let slot = if slots.free != NONE {
+        let (slot, generation) = if slots.free != NONE {
             let index = slots.free;
-            slots.free = slots.values[index as usize].next;
-            index
+            let word = slots.values[index as usize];
+            slots.free = (word >> 32) as u32;
+            slots.values[index as usize] = RESERVED;
+            (index, (word as u32) >> 1)
         } else {
             let index = u32::try_from(slots.values.len()).map_err(|_| policy.overflow())?;
             // NONE зарезервирован как конец списка свободных слотов.
@@ -84,36 +125,29 @@ impl NodeRegistry {
             }
             let Slots { values, lease, .. } = &mut *slots;
             admission::reserve(values, lease, 1, policy)?;
-            values.push(Slot {
-                node: Weak::new(),
-                generation: 1,
-                next: NONE,
-            });
-            index
-        };
-        let key = NodeKey {
-            slot,
-            generation: slots.values[slot as usize].generation,
+            values.push(RESERVED);
+            (index, 1)
         };
         Ok(Identity {
-            key,
+            key: NodeKey { slot, generation },
             registry: self.clone(),
         })
     }
-
     /// Проверка границ, поколения и upgrade: O(1), без обхода дерева.
     pub fn resolve(&self, key: NodeKey) -> Option<Handle> {
-        let slots = self.slots.borrow();
-        let slot = slots.values.get(key.slot as usize)?;
-        (key.generation != 0 && key.generation == slot.generation)
-            .then(|| slot.node.upgrade())
-            .flatten()
+        if key.generation == 0 {
+            return None;
+        }
+        let node = self.slots.borrow().node(key.slot)?;
+        (node.identity.key == key).then_some(node)
     }
 
     pub(crate) fn bind(&self, node: &Handle) {
-        self.slots.borrow_mut().values[node.key().slot as usize].node = Rc::downgrade(node);
+        let mut slots = self.slots.borrow_mut();
+        let slot = node.key().slot;
+        slots.release(slot);
+        slots.values[slot as usize] = Weak::into_raw(Rc::downgrade(node)) as usize as u64;
     }
-
     pub(crate) fn heap_blocks(&self, sink: &mut dyn FnMut(*const u8, usize)) {
         let header = 2 * mem::size_of::<usize>();
         sink(
@@ -124,7 +158,7 @@ impl NodeRegistry {
         if slots.values.capacity() > 0 {
             sink(
                 slots.values.as_ptr().cast(),
-                slots.values.capacity() * mem::size_of::<Slot>(),
+                slots.values.capacity() * mem::size_of::<u64>(),
             );
         }
         lease_block(sink, &self._lease);
@@ -155,19 +189,16 @@ pub(crate) struct Identity {
 impl Drop for Identity {
     fn drop(&mut self) {
         let mut slots = self.registry.slots.borrow_mut();
-        let free = slots.free;
-        let slot = &mut slots.values[self.key.slot as usize];
-        debug_assert_eq!(slot.generation, self.key.generation);
-        slot.node = Weak::new();
+        let slot = self.key.slot;
+        slots.release(slot);
         // Переполнение не возвращает слот в оборот: старый ключ не воскресает.
-        if let Some(generation) = slot.generation.checked_add(1) {
-            slot.generation = generation;
-            slot.next = free;
-            slots.free = self.key.slot;
+        if self.key.generation < LAST_GENERATION {
+            let free = slots.free;
+            slots.values[slot as usize] = free_word(free, self.key.generation + 1);
+            slots.free = slot;
         }
     }
 }
-
 impl Node {
     pub fn key(&self) -> NodeKey {
         self.identity.key
