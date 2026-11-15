@@ -44,6 +44,9 @@ impl Hash for HandleKey {
     }
 }
 
+/// The storage one `:has()` mark is charged for.
+const MARK_BYTES: usize = 128;
+
 /// The `:has()` marks of one marking of a DOM (`TreeIndex::take_has`).
 #[derive(Default)]
 pub struct HasMarks {
@@ -102,7 +105,7 @@ impl TreeIndex {
     ) -> Result<(), crate::budget::admission::Error> {
         use crate::budget::admission::Error;
         let admission = self.admission();
-        let lease = admission.storage(128)?;
+        let lease = admission.storage(MARK_BYTES)?;
         self.has_marks
             .try_reserve(1)
             .map_err(|_| Error::Allocation)?;
@@ -117,10 +120,21 @@ impl TreeIndex {
     /// index of the same DOM whose `:has()` arguments read the same values
     /// (`put_has`).
     pub fn take_has(&mut self) -> HasMarks {
-        HasMarks {
-            marks: std::mem::take(&mut self.has_marks),
-            leases: std::mem::take(&mut self.has_leases),
+        let marks = std::mem::take(&mut self.has_marks);
+        let mut leases = std::mem::take(&mut self.has_leases);
+        // Kept marks hold one lease for all of them instead of one per mark,
+        // which a marking needs while it grows; if the budget refuses the
+        // joint lease, the marks keep their own.
+        let admission = self.admission();
+        if let Some(bytes) = leases.len().checked_mul(MARK_BYTES)
+            && let Ok(lease) = admission.storage(bytes)
+        {
+            let mut one = crate::budget::admission::Buffer::default();
+            if one.push(lease, &admission).is_ok() {
+                leases = one;
+            }
         }
+        HasMarks { marks, leases }
     }
 
     /// Marks taken from an index of the same DOM (`take_has`).
