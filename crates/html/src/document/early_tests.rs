@@ -178,7 +178,11 @@ fn css_and_url_refusals_keep_committed_revision_and_release_candidate() {
         let mut text = String::new();
         crate::dom::text_content::gather_text(document.nodes(), &mut text);
         assert_eq!(text, "KEEP");
-        assert_eq!(governor.used(BudgetKind::LiveBytes), live);
+        // Свободные слоты остаются в реестре; повторный отказ не наращивает ёмкость.
+        let retained = governor.used(BudgetKind::LiveBytes);
+        assert!(retained >= live);
+        assert!(document.update(candidate, "").is_err());
+        assert_eq!(governor.used(BudgetKind::LiveBytes), retained);
         drop((state, document));
         assert_eq!(governor.used(BudgetKind::LiveBytes), 0);
         assert_eq!(governor.used(BudgetKind::Documents), 0);

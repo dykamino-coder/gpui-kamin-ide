@@ -44,7 +44,7 @@ fn a_recoloured_body_repaints_the_offscreen_records(cx: &mut TestAppContext) {
 }
 
 /// The `body` children of `nodes`.
-fn flow(nodes: &[Node]) -> &[Node] {
+pub(super) fn flow(nodes: &[Node]) -> &[Node] {
     let html = nodes.iter().find_map(|n| match n {
         Node::Element(e) if e.tag == "html" => Some(e),
         _ => None,
@@ -98,8 +98,14 @@ fn case(cx: &mut TestAppContext) -> Case {
         (doc.reuse.clone(), doc.nodes.to_vec())
     });
     let recorded = store.recorded().into_iter().filter(|e| e.tag == "div");
-    let block = recorded
-        .max_by_key(|e| e.node_id)
+    let recorded: std::collections::HashMap<_, _> = recorded.map(|e| (e.node_id, e)).collect();
+    let block = flow(&nodes)
+        .iter()
+        .rev()
+        .find_map(|n| match n {
+            Node::Element(e) => recorded.get(&e.node_id).cloned(),
+            _ => None,
+        })
         .expect("settled blocks were recorded");
     let changed = retexted(&nodes, block.node_id);
     assert_eq!(flow(&changed).len(), flow(&nodes).len());
@@ -144,9 +150,18 @@ fn a_restyled_block_with_new_layout_values_compares_every_block(cx: &mut TestApp
     // Another far recorded block is restyled and changed too: what follows
     // it in document order (counters, list numbers) may have changed.
     let recorded = store.recorded().into_iter().filter(|e| e.tag == "div");
-    let other = recorded
-        .filter(|e| e.node_id < block.node_id)
-        .max_by_key(|e| e.node_id)
+    let recorded: std::collections::HashMap<_, _> = recorded.map(|e| (e.node_id, e)).collect();
+    let prior: Vec<_> = flow(&nodes)
+        .iter()
+        .take_while(|n| !matches!(n, Node::Element(e) if e.node_id == block.node_id))
+        .collect();
+    let other = prior
+        .into_iter()
+        .rev()
+        .find_map(|n| match n {
+            Node::Element(e) => recorded.get(&e.node_id).cloned(),
+            _ => None,
+        })
         .expect("two far blocks were recorded");
     let changed = retexted(&changed, other.node_id);
     store.rebase(&nodes, &changed, Some(&[other.node_id]));

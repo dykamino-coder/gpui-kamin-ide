@@ -14,7 +14,7 @@ pub fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ances
             .map(|a| a.value.to_string())
     };
     Some(Ancestor {
-        key: crate::dom::tree_index::NodeKey::of(child),
+        key: crate::dom::tree_index::HandleKey::of(child),
         matching: tree.matching.clone(),
         ancestor_bloom: None,
         counter_style: Default::default(),

@@ -2,10 +2,10 @@
 
 use super::{Ancestor, Sibs};
 use crate::budget::admission::{Admission, Error};
-use crate::dom::tree_index::NodeKey;
+use crate::dom::tree_index::HandleKey;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-type NthKey = (NodeKey, u8, String);
+type NthKey = (HandleKey, u8, String);
 struct NthEntry {
     ranks: Rc<Vec<usize>>,
     _lease: Option<crate::budget::LiveReservation>,
@@ -14,13 +14,13 @@ struct NthEntry {
 pub struct MatchCaches {
     doc: Rc<crate::values::DocumentValues>,
     admission: Admission,
-    anchor: RefCell<Option<NodeKey>>,
+    anchor: RefCell<Option<HandleKey>>,
     nth: RefCell<HashMap<NthKey, NthEntry>>,
 }
 
 pub struct AnchorScope<'a> {
     caches: &'a MatchCaches,
-    previous: Option<NodeKey>,
+    previous: Option<HandleKey>,
 }
 impl Drop for AnchorScope<'_> {
     fn drop(&mut self) {
@@ -51,13 +51,13 @@ impl MatchCaches {
     pub fn work(&self, count: usize) -> bool {
         self.accept(self.admission.work(count)).is_some()
     }
-    pub fn anchor(&self, key: NodeKey) -> AnchorScope<'_> {
+    pub fn anchor(&self, key: HandleKey) -> AnchorScope<'_> {
         AnchorScope {
             caches: self,
             previous: self.anchor.replace(Some(key)),
         }
     }
-    pub fn is_anchor(&self, key: &NodeKey) -> bool {
+    pub fn is_anchor(&self, key: &HandleKey) -> bool {
         self.anchor.borrow().as_ref() == Some(key)
     }
     pub fn has_anchor(&self) -> bool {
@@ -159,12 +159,12 @@ mod tests {
         let r = dom.document.children.borrow()[0].clone();
         let x = r.children.borrow()[0].clone();
         let caches = MatchCaches::new(crate::values::DocumentValues::detached(Default::default()));
-        let outer = caches.anchor(NodeKey::of(&r));
+        let outer = caches.anchor(HandleKey::of(&r));
         {
-            let _inner = caches.anchor(NodeKey::of(&x));
-            assert!(caches.is_anchor(&NodeKey::of(&x)));
+            let _inner = caches.anchor(HandleKey::of(&x));
+            assert!(caches.is_anchor(&HandleKey::of(&x)));
         }
-        assert!(caches.is_anchor(&NodeKey::of(&r)));
+        assert!(caches.is_anchor(&HandleKey::of(&r)));
         drop(outer);
         assert!(!caches.has_anchor());
     }
