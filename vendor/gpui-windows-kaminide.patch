@@ -10787,10 +10787,10 @@ index 0000000000000000000000000000000000000000..cc7317a71e56ae16682701821419c3da
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/layer_cache.rs b/vendor/gpui-windows/src/directx_renderer/layer_cache.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..32edf25ffc6f437bd7fcb2048558b5a59832f4d2
+index 0000000000000000000000000000000000000000..db98c0c9fb6c536aed10b6382cfb47707046bca0
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/layer_cache.rs
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,132 @@
 +//! KaminIDE patch: instance buffers of retained scene layers (`gpui::SceneLayer`).
 +//!
 +//! A frame draws a layer (`PrimitiveBatch::Layer`) from buffers kept per
@@ -10850,6 +10850,16 @@ index 0000000000000000000000000000000000000000..32edf25ffc6f437bd7fcb2048558b5a5
 +        self.frame += 1;
 +    }
 +
++    /// The buffers of a layer the last frame drew and this one has not yet,
++    /// emptied for another layer to fill.
++    fn take_stale(&mut self) -> Option<LayerBuffers> {
++        let frame = self.frame;
++        let id = *self.layers.iter().find(|(_, layer)| layer.frame != frame)?.0;
++        let mut buffers = self.layers.remove(&id)?;
++        buffers.version = None;
++        Some(buffers)
++    }
++
 +    /// The device was lost: every buffer with it.
 +    pub(super) fn clear(&mut self) {
 +        self.layers.clear();
@@ -10891,7 +10901,13 @@ index 0000000000000000000000000000000000000000..32edf25ffc6f437bd7fcb2048558b5a5
 +        };
 +        let mut buffers = match self.layer_cache.layers.remove(&layer.id()) {
 +            Some(buffers) => buffers,
-+            None => self.new_layer_buffers()?,
++            // A layer recorded again in place of one the last frame drew takes
++            // over that layer's buffers, already grown to its size: a rebuilt
++            // document costs an upload, not new device buffers.
++            None => match self.layer_cache.take_stale() {
++                Some(buffers) => buffers,
++                None => self.new_layer_buffers()?,
++            },
 +        };
 +        self.swap_layer_buffers(&mut buffers.sets);
 +        let fresh = buffers.version == Some(layer.version());

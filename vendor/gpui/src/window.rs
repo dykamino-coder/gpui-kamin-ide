@@ -1306,6 +1306,11 @@ pub struct Window {
     /// The next drawn frame is presented even if it changed nothing on screen
     /// (Window::require_presentation).
     pub(crate) presentation_required: bool,
+    /// KaminIDE patch: a frame capture reads the presented frames
+    /// (`Window::set_frame_capture`), and whether its reader lets unchanged
+    /// frames go unpresented (`Window::allow_unpresented_readback`).
+    pub(crate) frame_readback: bool,
+    pub(crate) unpresented_readback: bool,
     pub(crate) paint_owner: u32,
     pub(crate) paint_value: Option<crate::LayerValue>,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
@@ -2256,6 +2261,8 @@ impl Window {
             layer_source: None,
             frame_presented: false,
             presentation_required: false,
+            frame_readback: false,
+            unpresented_readback: false,
             paint_owner: 0,
             paint_value: None,
             requested_autoscroll: None,

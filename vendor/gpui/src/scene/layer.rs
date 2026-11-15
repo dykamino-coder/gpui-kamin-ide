@@ -23,7 +23,7 @@ mod frame;
 mod splice;
 mod write;
 
-use super::{Bounds, PaintOperation, ScaledPixels, Scene};
+use super::{Bounds, ScaledPixels, Scene};
 pub(crate) use boxes::{BoxEnv, BoxRange, OpenBox, ink_of};
 pub(crate) use frame::{LayerOp, LayerSlot};
 use std::cell::{Cell, RefCell};
@@ -61,8 +61,24 @@ pub struct SceneLayer {
     /// The runs of the boxes' own commands, in paint order.
     pub(crate) boxes: Vec<BoxRange>,
     /// `(owner, index into boxes)`, sorted: a box's runs by bisection
-    /// (`runs_of`), not a scan of every run of the layer.
-    by_owner: Vec<(u32, u32)>,
+    /// (`runs_of`), not a scan of every run of the layer. Built lazily.
+    by_owner: std::cell::OnceCell<Vec<(u32, u32)>>,
+}
+
+/// Union of the placed bounds within their content masks of `operations`'
+/// primitives, in command order: what `Scene::primitive_ink` keeps.
+#[cfg(debug_assertions)]
+fn ink_of_commands(operations: &[super::PaintOperation]) -> Option<Bounds<ScaledPixels>> {
+    operations
+        .iter()
+        .filter_map(|operation| match operation {
+            super::PaintOperation::Primitive(p) => {
+                Some(super::placed_bounds(p).intersect(&p.content_mask().bounds))
+            }
+            _ => None,
+        })
+        .filter(|b| !b.is_empty())
+        .reduce(|a, b| a.union(&b))
 }
 
 /// Process-wide counters of layer work (`frame_perf`-style, read by benches).
@@ -123,29 +139,35 @@ impl SceneLayer {
             binding.quad = moved[binding.quad as usize];
         }
         bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
-        let bounds = scene
-            .paint_operations
-            .iter()
-            .filter_map(|operation| match operation {
-                PaintOperation::Primitive(p) => {
-                    Some(super::placed_bounds(p).intersect(&p.content_mask().bounds))
-                }
-                _ => None,
-            })
-            .filter(|b| !b.is_empty())
-            .reduce(|a, b| a.union(&b));
+        // Kept while the scene was painted: no second pass over the commands.
+        let bounds = scene.primitive_ink;
+        #[cfg(debug_assertions)]
+        assert!(
+            bounds == ink_of_commands(&scene.paint_operations),
+            "the scene's kept ink differs from its commands"
+        );
         static NEXT: AtomicU64 = AtomicU64::new(1);
         layer_counters::RECORDS.fetch_add(1, Relaxed);
-        let mut by_owner: Vec<(u32, u32)> =
-            boxes.iter().enumerate().map(|(at, b)| (b.owner, at as u32)).collect();
-        by_owner.sort_unstable();
+        let by_owner = std::cell::OnceCell::new();
         Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, boxes, by_owner }
+    }
+
+    /// `(owner, index into boxes)` sorted, built at the first lookup: a layer
+    /// no host repaints a box of never builds it.
+    fn by_owner(&self) -> &[(u32, u32)] {
+        self.by_owner.get_or_init(|| {
+            let mut by_owner: Vec<(u32, u32)> =
+                self.boxes.iter().enumerate().map(|(at, b)| (b.owner, at as u32)).collect();
+            by_owner.sort_unstable();
+            by_owner
+        })
     }
 
     /// The indices of `owner`'s runs in `boxes`, in paint order.
     pub(crate) fn runs_of(&self, owner: u32) -> impl Iterator<Item = usize> + '_ {
-        let from = self.by_owner.partition_point(|&(o, _)| o < owner);
-        self.by_owner[from..]
+        let by_owner = self.by_owner();
+        let from = by_owner.partition_point(|&(o, _)| o < owner);
+        by_owner[from..]
             .iter()
             .take_while(move |&&(o, _)| o == owner)
             .map(|&(_, at)| at as usize)
@@ -155,6 +177,11 @@ impl SceneLayer {
     /// when the layer draws nothing.
     pub fn bounds(&self) -> Option<Bounds<ScaledPixels>> {
         self.bounds
+    }
+
+    /// The number of bindings and of box runs recorded.
+    pub(crate) fn recorded_sizes(&self) -> (usize, usize) {
+        (self.bindings.len(), self.boxes.len())
     }
 
     /// Identity of the recording; a copy on write keeps it.

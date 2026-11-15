@@ -191,6 +191,11 @@ pub struct Scene {
     pub(crate) fresh: u32,
     pub(crate) layer_damage: Option<Bounds<ScaledPixels>>,
     damage: Option<Option<Bounds<ScaledPixels>>>,
+    /// KaminIDE patch: union of the placed bounds within their content masks
+    /// of every primitive command, kept where a command is added: the bounds
+    /// of a layer finished from this scene (`SceneLayer::finish`) without a
+    /// second pass over its commands.
+    pub(crate) primitive_ink: Option<Bounds<ScaledPixels>>,
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -387,6 +392,7 @@ impl Scene {
         self.fresh = 0;
         self.layer_damage = None;
         self.damage = None;
+        self.primitive_ink = None;
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();
         self.ink.clear();
@@ -438,6 +444,7 @@ impl Scene {
         if clipped_bounds.is_empty() {
             return;
         }
+        self.add_primitive_ink(clipped_bounds);
 
         let order = match self.layer_stack.last().copied() {
             // Above the root background (tree order 1), below everything that
@@ -726,10 +733,11 @@ impl Scene {
             }
             match &mut operation {
                 PaintOperation::Primitive(primitive) => {
+                    let placed = placed_bounds(primitive);
                     if !self.ink.is_empty() || self.ink_scope != 0 {
-                        let placed = placed_bounds(primitive);
                         ink = Some(ink.map_or(placed, |ink| ink.union(&placed)));
                     }
+                    self.add_primitive_ink(placed.intersect(&primitive.content_mask().bounds));
                     *primitive.order_mut() += shift;
                     self.push_ordered(primitive);
                     copied += 1;
@@ -773,6 +781,28 @@ impl Scene {
             index,
         });
         true
+    }
+
+    /// KaminIDE patch: room in the command and primitive lists for as many as
+    /// `other` holds (a recording of content painted before).
+    pub(crate) fn reserve_like(&mut self, other: &Scene) {
+        self.paint_operations.reserve_exact(other.paint_operations.len());
+        self.shadows.reserve_exact(other.shadows.len());
+        self.quads.reserve_exact(other.quads.len());
+        self.paths.reserve_exact(other.paths.len());
+        self.underlines.reserve_exact(other.underlines.len());
+        self.monochrome_sprites.reserve_exact(other.monochrome_sprites.len());
+        self.subpixel_sprites.reserve_exact(other.subpixel_sprites.len());
+        self.polychrome_sprites.reserve_exact(other.polychrome_sprites.len());
+        self.surfaces.reserve_exact(other.surfaces.len());
+    }
+
+    /// KaminIDE patch: count the clipped bounds of a primitive command added
+    /// to this scene in `primitive_ink`; empty bounds paint nothing.
+    fn add_primitive_ink(&mut self, clipped: Bounds<ScaledPixels>) {
+        if !clipped.is_empty() {
+            self.primitive_ink = Some(self.primitive_ink.map_or(clipped, |u| u.union(&clipped)));
+        }
     }
 
     /// KaminIDE patch: add an ordered primitive to its kind's list.
@@ -819,6 +849,7 @@ impl Scene {
                 if clipped.is_empty() {
                     continue;
                 }
+                scene.add_primitive_ink(clipped);
                 scene.push_ordered(primitive);
             }
             scene.paint_operations.push(operation);
