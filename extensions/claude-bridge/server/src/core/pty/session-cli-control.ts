@@ -8,6 +8,17 @@ import type { CliModTransport } from './cli-mod-transport'
 
 const controls = new WeakMap<PtySession, SessionCliControl>()
 
+/** Text only the CLI's own input line understands: a slash command, an
+ *  @-mention, a pasted image or an attachment path line, which the CLI expands.
+ *  Such a message goes through the terminal on purpose, not as a fallback. */
+export function needsTerminalDelivery(text: string): boolean {
+  return (
+    /^\s*\//.test(text) ||
+    /(^|\s)@\S/.test(text) ||
+    /\[Image(?:\s|#|\])/.test(text) ||
+    /(?:^|\n)(?:\/|[A-Za-z]:[\\/])\S/.test(text)
+  )
+}
 export class SessionCliControl {
   readonly parser: ProgramStatusParser
   private osc: ProgramStatus | undefined
@@ -182,10 +193,7 @@ export class SessionCliControl {
     const input = getSessionInputSnapshot(this.session)
     // Engine submit intentionally does not expand mentions, pastes or native commands.
     if (
-      /^\s*\//.test(text) ||
-      /(^|\s)@\S/.test(text) ||
-      /\[Image(?:\s|#|\])/.test(text) ||
-      /(?:^|\n)(?:\/|[A-Za-z]:[\\/])\S/.test(text) ||
+      needsTerminalDelivery(text) ||
       (!submissionId &&
         (input.rawInputDirty || input.activeKind || input.queuedSubmissions || input.pendingMaintenance.length))
     )

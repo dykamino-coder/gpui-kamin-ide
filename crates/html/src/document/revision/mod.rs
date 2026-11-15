@@ -15,6 +15,7 @@ mod patch;
 mod repaint;
 mod restyle;
 mod shape;
+mod source_index;
 #[cfg(test)]
 mod tests;
 mod text;

@@ -56,17 +56,23 @@ pub(super) fn style_paths(
 /// The box `e` and its subtree take the restyle `r` of its element in place.
 /// The box itself keeps no animation frames or copies of its computed values
 /// outside the cascaded stage (for a new background, no decoration inputs
-/// either). Its subtree follows by rematerialization: under new inherited
+/// either; for new border colours, no inline box). Its subtree follows by
+/// rematerialization: under new inherited
 /// values no box keeps a hover or first-letter/-line layer, animation frames
 /// or such copies; under a new background alone only a style that inherits
 /// reset values explicitly reads it (css-cascade-5 §7.3.1), and no such style
 /// is a layer or keeps copies.
 fn takes(e: &Element, r: &Restyle) -> bool {
-    let (inherited, background) = (r.inherited(), r.background());
+    let (inherited, background, borders) = (r.inherited(), r.background(), r.borders());
     if e.anim.is_some() || e.style.holds_inherited_copies() {
         return false;
     }
-    if background && e.style.holds_decoration() {
+    if (background || borders) && e.style.holds_decoration() {
+        return false;
+    }
+    // The sides of an inline box and the collapsed borders of a table are
+    // layout results with their colours.
+    if borders && (e.inline || TABLE_PARTS.contains(&e.tag.as_str())) {
         return false;
     }
     elements(std::slice::from_ref(&Node::Element(e.clone())), |b, _| {
@@ -79,6 +85,11 @@ fn takes(e: &Element, r: &Restyle) -> bool {
         }
     })
 }
+
+/// The tags of the HTML table parts (HTML §15.3.8 gives them table displays).
+const TABLE_PARTS: &[&str] = &[
+    "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th",
+];
 
 /// The hover and first-letter/-line layers of a box.
 fn layers(b: &Element) -> impl Iterator<Item = &Option<crate::dom::SharedStyle>> {

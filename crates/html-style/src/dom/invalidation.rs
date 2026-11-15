@@ -141,6 +141,12 @@ impl Invalidation {
     }
 }
 
+/// Whether a `:has()` argument of `args` reads a name of `changed`: the
+/// marks of the arguments (`style::select::has::mark_has`) may then differ.
+pub fn has_reads(args: &[crate::style::select::has::HasArg], changed: &Changed) -> bool {
+    (args.iter()).any(|arg| arg.parts.iter().any(|(_, sel)| reads(sel, changed)))
+}
+
 /// `sel` reads a name of `changed` in one of its compounds or arguments.
 fn reads(sel: &Selector, changed: &Changed) -> bool {
     let among = |names: &[String], name: &str| names.iter().any(|n| n.eq_ignore_ascii_case(name));

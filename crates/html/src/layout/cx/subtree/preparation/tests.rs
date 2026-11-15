@@ -8,24 +8,24 @@ use crate::style::computed::Position;
 fn stable_snapshot_reuses_preparation_until_computed_publication_changes() {
     let nodes = vec![Node::Element(anon_element("div", vec![]))];
     let cache = PreparationCache::default();
-    let first = cache.get(&nodes, true, true);
-    assert!(Rc::ptr_eq(&first, &cache.get(&nodes, true, false)));
-    let changed = cache.get(&nodes, true, true);
+    let first = cache.get(&nodes, Some(1), true);
+    assert!(Rc::ptr_eq(&first, &cache.get(&nodes, Some(1), false)));
+    let changed = cache.get(&nodes, Some(1), true);
     assert!(!Rc::ptr_eq(&first, &changed));
-    assert!(Rc::ptr_eq(&changed, &cache.get(&nodes, true, false)));
+    assert!(Rc::ptr_eq(&changed, &cache.get(&nodes, Some(1), false)));
 }
 
 #[test]
 fn raw_tree_is_recomputed_even_if_its_address_does_not_change() {
     let mut nodes = vec![Node::Element(anon_element("div", vec![]))];
     let cache = PreparationCache::default();
-    let first = cache.get(&nodes, false, false);
+    let first = cache.get(&nodes, None, false);
     assert!(!first.clearance_possible);
     let Node::Element(e) = &mut nodes[0] else {
         unreachable!()
     };
     e.style.used_mut().reset_box_layout.float = Some(1);
-    let next = cache.get(&nodes, false, false);
+    let next = cache.get(&nodes, None, false);
     assert!(next.clearance_possible);
     assert!(!Rc::ptr_eq(&first, &next));
 }
@@ -59,7 +59,7 @@ fn continued_preparation_visits_only_the_copied_lists_and_equals_a_full_one() {
         ],
     )];
     let cache = PreparationCache::default();
-    cache.get(&nodes, true, true);
+    cache.get(&nodes, Some(1), true);
     // Правка текста копирует только списки на пути: корня, 4 и 5.
     let mut next = nodes.clone();
     let Node::Element(root) = &mut next[0] else {
@@ -74,7 +74,7 @@ fn continued_preparation_visits_only_the_copied_lists_and_equals_a_full_one() {
     five.children[0] = Node::Text("y".into());
     // Прошлое дерево живо и не тронуто: копия при записи отделила пути.
     assert_ne!(format!("{nodes:?}"), format!("{next:?}"));
-    let continued = PreparationCache::continuing(&cache).get(&next, true, false);
+    let continued = PreparationCache::continuing(&cache).get(&next, Some(2), false);
     assert_eq!(continued.facts.children.len(), 3, "only the copied lists");
     let full = Preparation::new(&next);
     assert_eq!(continued.unkeyed.0, full.unkeyed.0);
@@ -90,7 +90,7 @@ fn continued_preparation_visits_only_the_copied_lists_and_equals_a_full_one() {
         );
     }
     // Пересчёт стиля (`changed`) готовит дерево полным обходом.
-    let again = PreparationCache::continuing(&cache).get(&next, true, true);
+    let again = PreparationCache::continuing(&cache).get(&next, Some(2), true);
     assert_eq!(again.depth, 0);
 }
 
@@ -116,4 +116,27 @@ fn paint_indices_use_preorder_entries_and_subtree_ends() {
     assert_eq!(prepared.unkeyed.0[&positioned_id], 2);
     assert_eq!(prepared.unkeyed.0[&root_id], 2);
     assert_eq!(prepared.unkeyed.0[&sibling_id], 3);
+}
+
+#[test]
+fn a_text_edit_at_the_old_root_address_does_not_take_the_old_preparation() {
+    // A text edit gives a new tree whose root list may sit at the address of
+    // the previous one; the tree number tells them apart, the address cannot.
+    let mut nodes = vec![el(1, vec![el(2, vec![Node::Text("a".into())])])];
+    let address = nodes.as_ptr();
+    let cache = PreparationCache::default();
+    let first = cache.get(&nodes, Some(1), false);
+    let Node::Element(root) = &mut nodes[0] else {
+        unreachable!()
+    };
+    let Node::Element(two) = &mut root.children[0] else {
+        unreachable!()
+    };
+    two.children[0] = Node::Text("b".into());
+    assert_eq!(nodes.as_ptr(), address, "the same root address");
+    let next = cache.get(&nodes, Some(2), false);
+    assert!(!Rc::ptr_eq(&first, &next), "the old tree's preparation");
+    assert_eq!(next.depth, 0);
+    // The same tree number is the same tree: the preparation is kept.
+    assert!(Rc::ptr_eq(&next, &cache.get(&nodes, Some(2), false)));
 }
