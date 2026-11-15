@@ -1,4 +1,4 @@
-import { receiveSubmission, noteSubmissionRows, forgetSubmissions, forgetModCapability } from '../signals/submissions'
+import { receiveSubmission, noteSubmissionRows, forgetSubmissions, forgetModCapability, shouldToastDelivery, submissions } from '../signals/submissions'
 import { forgetCompaction, noteCompactionRows } from '../signals/compaction'
 import { setTabUsage } from '../signals/session-usage'
 import { receiveAgentPreferences, receiveCodexAuth, receiveCodexModels } from '../signals/agent'
@@ -600,8 +600,9 @@ export function useBridgeListeners(
 
     const unsubSubmission = bridge.onSubmission((tabId, data) => {
       if (data.rejected && !tabs.peek().some(tab => tab.id === tabId)) return
+      const shown = data.id ? submissions.peek().get(tabId)?.find(item => item.id === data.id) : undefined
       receiveSubmission(tabId, data)
-      if (data.warning && (data.rejected || data.state === 'fallback' || data.capable === false))
+      if (data.warning && (data.rejected || data.state === 'fallback' || data.capable === false) && shouldToastDelivery(data, shown))
         showToast({ type: 'info', title: 'Message delivery', message: data.warning })
     })
 
