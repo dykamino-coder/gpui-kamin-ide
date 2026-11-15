@@ -131,10 +131,7 @@ impl Document {
                 return Err(record(failure, self));
             }
         };
-        candidate
-            .state
-            .boxes
-            .borrow_mut()
+        crate::document::boxes::BoxTree::edit(&candidate.state.boxes)
             .replace(&candidate.nodes, &candidate.state.values);
         *self = candidate;
         Ok(self.report())

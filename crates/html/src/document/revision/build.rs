@@ -151,9 +151,7 @@ impl Document {
         }
         state.values.traversal.retain(source.input);
         if state.boxes.borrow().is_empty() {
-            state
-                .boxes
-                .borrow_mut()
+            crate::document::boxes::BoxTree::edit(&state.boxes)
                 .publish_document(&nodes, &state.values);
         }
         // Документ отпускает выведенные группы стиля в Drop.

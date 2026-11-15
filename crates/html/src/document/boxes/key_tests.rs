@@ -37,7 +37,6 @@ fn detach_retires_only_its_box_and_reinsert_keeps_the_dom_key() {
     assert!(tree.get(removed).is_none());
     assert_eq!(tree.first, retained);
     assert_eq!(left.key(), key);
-    assert!(dom.document.resolve_key(key).is_some());
     dom.append_before_sibling(&right, NodeOrText::AppendNode(left.clone()));
     tree.publish(&[project(&left), project(&right)]);
     assert_ne!(tree.first, removed);
@@ -46,7 +45,7 @@ fn detach_retires_only_its_box_and_reinsert_keeps_the_dom_key() {
 }
 
 #[test]
-fn a_reused_dom_slot_never_inherits_the_dropped_nodes_box() {
+fn a_new_dom_node_never_inherits_the_dropped_nodes_box() {
     let dom = RcDom::default();
     let old = authored(&dom);
     let key = old.key();
@@ -54,10 +53,8 @@ fn a_reused_dom_slot_never_inherits_the_dropped_nodes_box() {
     tree.publish(&[project(&old)]);
     let old_box = tree.first;
     drop(old);
-    assert!(dom.document.resolve_key(key).is_none());
     let next = authored(&dom);
-    assert_eq!(next.key().slot, key.slot);
-    assert_ne!(next.key().generation, key.generation);
+    assert_ne!(next.key(), key);
     tree.publish(&[project(&next)]);
     assert_ne!(tree.first, old_box);
     assert!(tree.get(old_box).is_none());
@@ -70,7 +67,7 @@ fn a_reused_dom_slot_never_inherits_the_dropped_nodes_box() {
 #[test]
 fn the_text_source_index_records_keys_without_retaining_nodes() {
     let dom = RcDom::default();
-    let text = dom.document.new_in(markup5ever_rcdom::NodeData::Text {
+    let text = dom.new_node(markup5ever_rcdom::NodeData::Text {
         contents: std::cell::RefCell::new("text".into()),
     });
     let key = text.key();
@@ -78,6 +75,5 @@ fn the_text_source_index_records_keys_without_retaining_nodes() {
     let id = traversal.record_text(&text).unwrap();
     assert_eq!(traversal.text_keys()[id.get() as usize - 1], key);
     drop(text);
-    assert!(dom.document.resolve_key(key).is_none());
     assert_eq!(traversal.text_keys()[id.get() as usize - 1], key);
 }

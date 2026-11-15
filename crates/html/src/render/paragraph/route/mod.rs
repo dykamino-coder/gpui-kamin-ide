@@ -19,6 +19,7 @@ mod collect;
 mod native;
 mod probed;
 mod row_record;
+mod spacer;
 mod spans;
 mod styling;
 

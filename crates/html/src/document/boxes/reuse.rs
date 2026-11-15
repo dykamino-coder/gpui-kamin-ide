@@ -50,12 +50,7 @@ mod tests {
 
     #[test]
     fn interleaved_sources_keep_fragment_order_without_reusing_a_slot_twice() {
-        let source = |slot| {
-            Source::Node(NodeKey {
-                slot,
-                generation: 1,
-            })
-        };
+        let source = |key: u64| Source::Node(NodeKey::from_packed(key));
         let id = |slot| BoxId {
             slot,
             generation: 1,

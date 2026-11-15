@@ -53,6 +53,12 @@ impl BoxTree {
         !self.first.is_some()
     }
 
+    /// The one mutable entry to a document's box tree. Used styles in it are
+    /// shared values (`used`): no caller reaches a `Computed` through it.
+    pub(crate) fn edit(tree: &std::cell::RefCell<Self>) -> std::cell::RefMut<'_, Self> {
+        tree.borrow_mut()
+    }
+
     pub(crate) fn get(&self, id: BoxId) -> Option<&BoxRecord> {
         self.arena.get(id)
     }

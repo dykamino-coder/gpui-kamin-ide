@@ -175,10 +175,9 @@ mod tests {
             first: BoxId::NONE,
             next: BoxId::NONE,
             source,
-            origin: super::super::source::Source::Node(super::super::source::NodeKey {
-                slot: source as u32,
-                generation: 1,
-            }),
+            origin: super::super::source::Source::Node(super::super::source::NodeKey::from_packed(
+                source,
+            )),
             inline: None,
             prepared: None,
             epoch: 0,

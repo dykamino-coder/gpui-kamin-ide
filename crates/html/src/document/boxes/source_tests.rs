@@ -5,11 +5,7 @@ use crate::dom::{Element, NodeKey, Text};
 
 fn element(key: u32, children: Vec<Node>) -> Element {
     let mut e = crate::layout::table::anon::anon_element("div", children);
-    e.node_id = NodeKey {
-        slot: key,
-        generation: 1,
-    }
-    .packed();
+    e.node_id = NodeKey::from_packed(u64::from(key)).packed();
     e
 }
 
@@ -38,14 +34,8 @@ fn hiding_an_anonymous_sibling_does_not_transfer_its_box_id() {
 
 #[test]
 fn text_fragment_identity_uses_dom_keys_instead_of_text_order() {
-    let left_key = NodeKey {
-        slot: 7,
-        generation: 1,
-    };
-    let right_key = NodeKey {
-        slot: 9,
-        generation: 1,
-    };
+    let left_key = NodeKey::from_packed(7);
+    let right_key = NodeKey::from_packed(9);
     let text =
         |value: &str, id| Node::Text(Text::from_source(value.into(), crate::dom::TextId::new(id)));
     let left = wrapper(text("left", 1));
