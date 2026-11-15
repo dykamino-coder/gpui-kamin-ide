@@ -81,6 +81,14 @@ impl PreparationCache {
     }
 }
 
+#[cfg(test)]
+impl Preparation {
+    /// A full preparation of `nodes`, as a new tree gets it.
+    pub(crate) fn fresh(nodes: &[Node]) -> Self {
+        Self::new(nodes)
+    }
+}
+
 impl Preparation {
     /// Подготовка дерева той же формы и стилей, что у `base`: факты — слой
     /// над фактами `base` с записями только для новых списков детей.

@@ -132,3 +132,42 @@ fn insert_and_remove_prepare_the_new_tree_with_a_full_walk(cx: &mut gpui::TestAp
         assert!(!std::rc::Rc::ptr_eq(&first, &next));
     }
 }
+
+fn element(node: &markup5ever_rcdom::Handle, local: &str) -> Option<markup5ever_rcdom::Handle> {
+    use markup5ever_rcdom::NodeData;
+    if matches!(&node.data, NodeData::Element { name, .. } if &*name.local == local) {
+        return Some(node.clone());
+    }
+    let children = node.children.borrow();
+    children.iter().find_map(|c| element(c, local))
+}
+
+#[gpui::test]
+fn a_clean_revision_keeps_its_state_and_a_preparation_equal_to_a_fresh_one(
+    cx: &mut gpui::TestAppContext,
+) {
+    // The only revision that replaces the tree under the same layout state
+    // (`Plan::Clean`: `class`/`data-*` no rule reads). A text edit is a
+    // `Patched` revision with a new state. Under the old address key a
+    // Clean tree could take the previous tree's preparation; that tree has
+    // the same shape and styles, so the preparation's values are its own.
+    let mut doc = Document::builder("<p>one</p><div><p>two</p></div>", "")
+        .build()
+        .unwrap();
+    prepared(cx, &doc);
+    let (state, tree) = (doc.state.clone(), doc.tree);
+    let p = element(&doc.source_dom(), "p").unwrap();
+    let mark = super::Mutation::Attribute {
+        element: p,
+        name: html5ever::QualName::new(None, html5ever::ns!(), "data-k".into()),
+        value: Some("1".into()),
+    };
+    doc.apply(&[mark], "").unwrap();
+    assert!(std::rc::Rc::ptr_eq(&state, &doc.state), "a Clean revision");
+    assert_ne!(tree, doc.tree, "a new tree number");
+    let (kept, _) = prepared(cx, &doc);
+    let fresh = crate::layout::cx::subtree::Preparation::fresh(doc.nodes());
+    assert_eq!(kept.unkeyed.0, fresh.unkeyed.0);
+    assert_eq!(kept.unkeyed.1, fresh.unkeyed.1);
+    assert_eq!(kept.clearance_possible, fresh.clearance_possible);
+}
