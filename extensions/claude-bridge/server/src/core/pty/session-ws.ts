@@ -161,7 +161,9 @@ function sleepingChat(s: PtySession): SleepingChat {
     registeredPrompts: s.registeredPrompts,
   }
 }
-const WAKE_INPUT_READY_MS = 10_000
+// Twenty CLIs booting at once on a small server can take well over ten seconds;
+// waiting is better than falling back to terminal typing with a warning.
+const WAKE_INPUT_READY_MS = 30_000
 
 /** Resolves once the CLI accepts input (or after `limitMs`: delivery then
  *  takes the ordinary fallback path rather than waiting forever). */
