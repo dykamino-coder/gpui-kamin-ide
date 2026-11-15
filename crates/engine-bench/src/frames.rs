@@ -20,7 +20,7 @@ pub(super) type Run<'a, 'b> = (
     &'b FontContext,
     &'b Args,
     &'b CaptureSession,
-    (i32, u32),
+    &'b super::work::Adapter,
 );
 
 fn viewport(base: (u32, u32), alternate: bool) -> (u32, u32) {
@@ -49,6 +49,8 @@ pub(super) struct Frames {
     base: (u32, u32),
     relayout: bool,
     before: (u64, u64),
+    /// Сборки внутри `Window::draw` до кадра (`Document::builds_inside_draw`).
+    before_inside: u64,
     samples: Vec<Value>,
 }
 
@@ -68,6 +70,7 @@ impl Frames {
             base: args.viewport,
             relayout,
             before: (0, 0),
+            before_inside: 0,
             samples: Vec::new(),
         })
     }
@@ -84,6 +87,7 @@ impl Frames {
                 view.viewport = Some(viewport(self.base, !index.is_multiple_of(2)));
             }
             self.before = view.doc.retained_frames();
+            self.before_inside = view.doc.builds_inside_draw();
         })?;
         Ok(())
     }
@@ -96,8 +100,14 @@ impl Frames {
         mode: &str,
         index: usize,
     ) -> Result<()> {
-        let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
-        let counts = delta(if mode == "cold" { (0, 0) } else { self.before }, after)?;
+        let (after, inside) = window.read_with(cx, |view, _| {
+            (view.doc.retained_frames(), view.doc.builds_inside_draw())
+        })?;
+        let cold = mode == "cold";
+        let counts = delta(if cold { (0, 0) } else { self.before }, after)?;
+        let inside = inside
+            .checked_sub(if cold { 0 } else { self.before_inside })
+            .ok_or("document inside-draw build counter regressed")?;
         // A frame whose reused blocks were refused at prepaint is built once
         // more within the same frame; both builds are part of the sample.
         if self.relayout && (counts.0 == 0 || counts.1 != 0) {
@@ -108,7 +118,8 @@ impl Frames {
         }
         let group = usize::from(self.relayout && !index.is_multiple_of(2));
         self.samples.push(json!({"mode": mode, "sample_index": index,
-            "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1}));
+            "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
+            "builds_inside_draw": inside}));
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
     }
 

@@ -6,7 +6,11 @@ mod tests;
 
 pub use completion::{CaptureClosed, Completion};
 use gpui::frame_capture::{CapturedFrame, FrameCaptureSink};
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 /// Кадр с номером завершения внутри этой сессии. Буфер readback один на кадр:
 /// first и latest делят его (как результат `CopyOutputRequest` в Chromium
@@ -15,6 +19,8 @@ use std::{cell::RefCell, rc::Rc, time::Duration};
 pub struct Frame {
     pub seq: u64,
     pub pixels: Rc<CapturedFrame>,
+    /// Момент завершения readback в потоке окна, до пробуждения ждущих.
+    pub completed_at: Instant,
 }
 
 impl Frame {
@@ -107,6 +113,7 @@ impl FrameCaptureSink for Endpoint {
         let frame = Frame {
             seq,
             pixels: Rc::new(pixels),
+            completed_at: Instant::now(),
         };
         if state.armed {
             state.first = Some(frame.clone());
