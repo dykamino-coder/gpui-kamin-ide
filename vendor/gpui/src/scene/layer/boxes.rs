@@ -4,9 +4,9 @@
 //! borders and host painter, `Window::with_box_paint`) takes one draw-order
 //! key from the scene's bounds tree, as one primitive covering the box and
 //! its own ink would, and every command of it the next order above the key
-//! in paint order. The key's bucket `[key, key + ORDER_STEP)` holds that
-//! box's commands only: they are one run in each sorted primitive list and
-//! one run of paint commands, which a later recording of the box replaces
+//! in paint order. Boxes that do not overlap may share a key; each holds at
+//! most one entry of an order of the key's bucket, in paint order among them,
+//! and one run of paint commands, which a later recording of the box replaces
 //! whole (`Window::rerecord_layer_box`), whatever the number of commands.
 //! Blink keeps the display items of a client in paint order and repaints a
 //! client's items into a new artifact (`paint_controller.cc:228`); the key
@@ -106,7 +106,8 @@ impl Scene {
         for operation in &self.paint_operations[ops.clone()] {
             match operation {
                 PaintOperation::Primitive(p) => {
-                    plain &= !matches!(p, Primitive::Path(_) | Primitive::Surface(_));
+                    // Sprites sort by tile within an order: not in paint order.
+                    plain &= matches!(p, Primitive::Shadow(_) | Primitive::Quad(_) | Primitive::Underline(_));
                     ink = union(ink, ink_of(p));
                 }
                 _ => plain = false,

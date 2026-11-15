@@ -14,6 +14,8 @@
 //! Иначе кадр собирается заново, как `Document::render`.
 
 mod box_repaint;
+#[cfg(test)]
+mod box_repaint_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;

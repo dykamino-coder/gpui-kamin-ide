@@ -131,3 +131,154 @@ fn a_dropped_layer_replays_as_nothing() {
     assert_eq!(next.layer_count(), 0);
     assert!(next.paint_operations.is_empty());
 }
+
+/// The paint state of a test box.
+fn env() -> super::BoxEnv {
+    super::BoxEnv {
+        bounds: Bounds::default(),
+        mask: ContentMask { bounds: Bounds::default() },
+        transformation: crate::TransformationMatrix::unit(),
+        opacity: 1.,
+        rem_size: crate::px(16.),
+        fill: None,
+    }
+}
+
+/// Paint box `owner` of `area` as the quads `fills` (the first bound as its
+/// background, the others as borders would be) into `scene`, under `key`
+/// when given.
+fn paint_box(
+    scene: &mut Scene,
+    bindings: &mut Vec<Binding>,
+    owner: u32,
+    area: Bounds<ScaledPixels>,
+    fills: &[(Bounds<ScaledPixels>, Hsla)],
+    key: Option<crate::scene::DrawOrder>,
+) -> super::BoxRange {
+    assert!(scene.open_box(owner, area, env(), key));
+    for (n, &(b, color)) in fills.iter().enumerate() {
+        let at = scene.quads.len() as u32;
+        scene.insert_primitive(quad(b, color, 1.));
+        let op = (scene.paint_operations.len() - 1) as u32;
+        if n > 0 {
+            continue;
+        }
+        bindings.push(Binding { owner, value: LayerValue::Background, quad: at, op, opacity: 1. });
+    }
+    scene.close_box().expect("the box was open")
+}
+
+/// Boxes 1, 2 and 3 side by side (one key: they do not overlap) with 2, 1
+/// and 2 quads, and a quad of no box over all of them.
+fn boxes_layer() -> LayerHandle {
+    let (mut scene, mut bindings, mut boxes) = (Scene::default(), Vec::new(), Vec::new());
+    let one = rect(0., 0., 100., 20.);
+    boxes.push(paint_box(&mut scene, &mut bindings, 1, one, &[(one, red()), (rect(0., 0., 100., 2.), blue())], None));
+    let two = rect(0., 20., 100., 20.);
+    boxes.push(paint_box(&mut scene, &mut bindings, 2, two, &[(two, red())], None));
+    let three = rect(0., 40., 100., 20.);
+    boxes.push(paint_box(&mut scene, &mut bindings, 3, three, &[(three, blue()), (rect(0., 40., 100., 2.), red())], None));
+    scene.insert_primitive(quad(rect(0., 0., 100., 60.), hsla(0., 0., 0., 0.5), 1.));
+    LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))
+}
+
+/// Replace box `at`'s run with `fills`, as `Window::rerecord_layer_box` does.
+fn rerecord(layer: &LayerHandle, at: usize, fills: &[(Bounds<ScaledPixels>, Hsla)]) -> Option<bool> {
+    let (owner, key, area) = {
+        let content = layer.content();
+        let b = &content.boxes[at];
+        (b.owner, b.key, b.area)
+    };
+    let (mut scene, mut bindings) = (Scene::default(), Vec::new());
+    paint_box(&mut scene, &mut bindings, owner, area, fills, Some(key));
+    let mut current = layer.0.content.borrow_mut();
+    let ink = current.check_box(at, &scene)?;
+    let (_, moved) = std::rc::Rc::make_mut(&mut current).replace_box(at, scene, bindings, ink);
+    Some(moved)
+}
+
+/// Each box's quads, read through its commands, and the bound fills.
+fn painted(layer: &LayerHandle) -> Vec<(u32, Vec<Bounds<ScaledPixels>>)> {
+    let content = layer.content();
+    let scene = content.scene();
+    // The sorted list holds exactly the commands' quads, in order.
+    let mut listed: Vec<String> = scene.quads.iter().map(|q| format!("{q:?}")).collect();
+    let mut commanded: Vec<String> = scene
+        .paint_operations
+        .iter()
+        .filter_map(|op| match op {
+            PaintOperation::Primitive(crate::Primitive::Quad(q)) => Some(format!("{q:?}")),
+            _ => None,
+        })
+        .collect();
+    assert!(scene.quads.windows(2).all(|w| w[0].order <= w[1].order), "the list stays sorted");
+    listed.sort();
+    commanded.sort();
+    assert_eq!(listed, commanded, "the sorted list and the commands hold the same quads");
+    for b in &content.bindings {
+        let q = scene.quads[b.quad as usize];
+        let PaintOperation::Primitive(crate::Primitive::Quad(c)) = scene.paint_operations[b.op as usize] else {
+            panic!("a binding names a quad command");
+        };
+        assert_eq!(format!("{q:?}"), format!("{c:?}"), "a binding's quad is its command's");
+    }
+    content
+        .boxes
+        .iter()
+        .map(|b| {
+            let quads = scene.paint_operations[b.ops.start as usize..b.ops.end as usize]
+                .iter()
+                .filter_map(|op| match op {
+                    PaintOperation::Primitive(crate::Primitive::Quad(q)) => Some(q.bounds),
+                    _ => None,
+                })
+                .collect();
+            (b.owner, quads)
+        })
+        .collect()
+}
+
+#[test]
+fn boxes_that_do_not_overlap_share_a_key_and_keep_their_runs_apart() {
+    let layer = boxes_layer();
+    let content = layer.content();
+    let keys: Vec<_> = content.boxes.iter().map(|b| b.key).collect();
+    assert_eq!(keys[0], keys[1]);
+    assert_eq!(keys[1], keys[2]);
+    drop(content);
+    assert_eq!(painted(&layer)[1], (2, vec![rect(0., 20., 100., 20.)]));
+}
+
+#[test]
+fn a_box_run_is_replaced_one_to_many_many_to_none_and_none_to_one() {
+    let layer = boxes_layer();
+    let before = painted(&layer);
+    let two = rect(0., 20., 100., 20.);
+    let fills = [(two, blue()), (rect(0., 20., 100., 2.), red()), (rect(0., 38., 100., 2.), red())];
+    assert_eq!(rerecord(&layer, 1, &fills), Some(true), "later commands moved");
+    let after = painted(&layer);
+    assert_eq!(after[0], before[0], "the box before kept its quads");
+    assert_eq!(after[2], before[2], "the box after kept its quads");
+    assert_eq!(after[1].1, fills.iter().map(|f| f.0).collect::<Vec<_>>());
+    assert_eq!(layer.content().scene().quads.len(), 8);
+    // Its background binds the new quads: a value write reaches them.
+    assert!(layer.set_background(2, blue(), red()).is_some());
+    assert!(rerecord(&layer, 1, &[]).is_some());
+    let none = painted(&layer);
+    assert!(none[1].1.is_empty());
+    assert_eq!((none[0].clone(), none[2].clone()), (before[0].clone(), before[2].clone()));
+    assert_eq!(layer.content().scene().quads.len(), 5);
+    assert!(layer.set_background(2, red(), blue()).is_none(), "no quad of box 2 is bound");
+    assert!(rerecord(&layer, 1, &[(two, red())]).is_some());
+    assert_eq!(painted(&layer), before);
+    assert!(layer.set_background(1, red(), blue()).is_some(), "box 1's binding still holds");
+}
+
+#[test]
+fn a_run_whose_new_ink_crosses_a_box_of_the_same_key_is_refused() {
+    let layer = boxes_layer();
+    let version = layer.content().version();
+    // Over box 3: the earlier key would paint it under box 3, out of paint order.
+    assert_eq!(rerecord(&layer, 1, &[(rect(0., 20., 100., 30.), red())]), None);
+    assert_eq!(layer.content().version(), version, "nothing was replaced");
+}

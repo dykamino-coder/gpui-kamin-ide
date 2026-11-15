@@ -1,9 +1,9 @@
 //! KaminIDE patch: a box's run of commands replaced in a scene layer.
 //!
 //! The new run (a scratch scene the box painted with its key,
-//! `Window::rerecord_layer_box`) goes where the old one was: the bucket of
-//! the key in every sorted primitive list and the box's range of paint
-//! commands. Nothing of another box is painted again or copied; quad
+//! `Window::rerecord_layer_box`) goes where the old one was: the box's
+//! entries in every sorted primitive list (boxes that do not overlap share a
+//! key, see `Run`) and the box's range of paint commands. Nothing of another box is painted again or copied; quad
 //! bindings and command ranges after the run move by its change in length.
 //! The run may cover more than the area its key was taken for only when no
 //! command of another box over the new ink is ordered against paint order.
@@ -13,21 +13,73 @@ use super::{Binding, SceneLayer};
 use crate::scene::{DrawOrder, ORDER_STEP, PaintOperation, Primitive, Scene};
 use crate::{Bounds, ScaledPixels};
 
-/// The bucket of `key` in a list sorted by order.
-fn bucket<T>(list: &[T], key: DrawOrder, order: impl Fn(&T) -> DrawOrder) -> std::ops::Range<usize> {
-    let start = list.partition_point(|x| order(x) < key);
-    let end = list.partition_point(|x| order(x) < key + ORDER_STEP);
-    start..end
+/// The kinds of plain primitives a box's run may hold.
+#[derive(Clone, Copy, PartialEq)]
+enum Kind {
+    Shadow,
+    Quad,
+    Underline,
 }
 
-fn splice<T>(list: &mut Vec<T>, key: DrawOrder, order: impl Fn(&T) -> DrawOrder, new: Vec<T>) -> (usize, usize, usize) {
-    let range = bucket(list, key, order);
-    let (start, old) = (range.start, range.len());
-    let len = new.len();
-    list.splice(range, new);
-    (start, old, len)
+fn kind(operation: &PaintOperation) -> Option<Kind> {
+    match operation {
+        PaintOperation::Primitive(Primitive::Shadow(_)) => Some(Kind::Shadow),
+        PaintOperation::Primitive(Primitive::Quad(_)) => Some(Kind::Quad),
+        PaintOperation::Primitive(Primitive::Underline(_)) => Some(Kind::Underline),
+        _ => None,
+    }
 }
 
+/// The run of one box in one sorted list. The `n`th command of a box has
+/// the order `key + 1 + n`, so each box sharing the key holds at most one
+/// entry of an order, and the sort (stable) keeps those in paint order: the
+/// box's entry of an order follows the `before[n]` entries of the boxes with
+/// the key painted before it.
+struct Run<'a> {
+    key: DrawOrder,
+    kind: Kind,
+    before: &'a [[u32; 3]],
+}
+
+impl Run<'_> {
+    fn at<T>(&self, list: &[T], order: impl Fn(&T) -> DrawOrder, n: usize) -> usize {
+        let o = self.key + 1 + n as DrawOrder;
+        list.partition_point(|x| order(x) < o) + self.before.get(n).map_or(0, |b| b[self.kind as usize]) as usize
+    }
+
+    /// Replace the entries of the commands `old` with those of `new` (both
+    /// the box's commands in paint order, with `items` the entries of `new`
+    /// of this kind); the indices removed (in removal order) and inserted.
+    fn splice<T>(
+        &self,
+        list: &mut Vec<T>,
+        order: impl Fn(&T) -> DrawOrder + Copy,
+        old: &[PaintOperation],
+        new: &[PaintOperation],
+        items: Vec<T>,
+    ) -> (Vec<usize>, Vec<usize>) {
+        let mut removed = Vec::new();
+        for (n, operation) in old.iter().enumerate().rev() {
+            if kind(operation) == Some(self.kind) {
+                let at = self.at(list, order, n);
+                list.remove(at);
+                removed.push(at);
+            }
+        }
+        let mut items = items.into_iter();
+        let mut inserted = Vec::new();
+        for (n, operation) in new.iter().enumerate() {
+            if kind(operation) == Some(self.kind)
+                && let Some(item) = items.next()
+            {
+                let at = self.at(list, order, n);
+                list.insert(at, item);
+                inserted.push(at);
+            }
+        }
+        (removed, inserted)
+    }
+}
 fn primitive_order(p: &Primitive) -> DrawOrder {
     match p {
         Primitive::Shadow(x) => x.order,
@@ -46,11 +98,12 @@ impl SceneLayer {
     /// replace its run; `None` to refuse.
     pub(crate) fn check_box(&self, at: usize, new: &Scene) -> Option<Option<Bounds<ScaledPixels>>> {
         let b = self.boxes.get(at)?;
-        if !b.replaceable || !new.paths.is_empty() || !new.surfaces.is_empty() || !new.groups.is_empty() {
+        if !b.replaceable || !new.groups.is_empty() {
             return None;
         }
         let mut ink: Option<Bounds<ScaledPixels>> = None;
         for operation in &new.paint_operations {
+            kind(operation)?;
             let PaintOperation::Primitive(p) = operation else { return None };
             let rect = ink_of(p);
             if !rect.is_empty() {
@@ -100,33 +153,65 @@ impl SceneLayer {
     ) -> (Option<Bounds<ScaledPixels>>, bool) {
         let b = self.boxes[at].clone();
         let key = b.key;
+        // Entries of each order and kind of the boxes with the key before this one.
+        let longest = new.paint_operations.len().max((b.ops.end - b.ops.start) as usize);
+        let mut before = vec![[0u32; 3]; longest];
+        for other in self.boxes[..at].iter().filter(|o| o.key == key) {
+            let ops = &self.scene.paint_operations[other.ops.start as usize..other.ops.end as usize];
+            for (n, operation) in ops.iter().enumerate().take(longest) {
+                if let Some(k) = kind(operation) {
+                    before[n][k as usize] += 1;
+                }
+            }
+        }
+        let old: Vec<PaintOperation> = self.scene.paint_operations[b.ops.start as usize..b.ops.end as usize].to_vec();
         let s = &mut self.scene;
-        splice(&mut s.shadows, key, |x| x.order, new.shadows);
-        let (quad_start, quad_old, quad_new) = splice(&mut s.quads, key, |x| x.order, new.quads);
-        splice(&mut s.underlines, key, |x| x.order, new.underlines);
-        splice(&mut s.monochrome_sprites, key, |x| x.order, new.monochrome_sprites);
-        splice(&mut s.subpixel_sprites, key, |x| x.order, new.subpixel_sprites);
-        splice(&mut s.polychrome_sprites, key, |x| x.order, new.polychrome_sprites);
+        let run = |kind| Run { key, kind, before: &before };
+        run(Kind::Shadow).splice(&mut s.shadows, |x| x.order, &old, &new.paint_operations, new.shadows);
+        let (quads_removed, quads_inserted) =
+            run(Kind::Quad).splice(&mut s.quads, |x| x.order, &old, &new.paint_operations, new.quads);
+        run(Kind::Underline).splice(&mut s.underlines, |x| x.order, &old, &new.paint_operations, new.underlines);
         let (op_start, op_end) = (b.ops.start, b.ops.end);
         let op_new = new.paint_operations.len() as u32;
         s.paint_operations.splice(op_start as usize..op_end as usize, new.paint_operations);
-        let quad_end = (quad_start + quad_old) as u32;
-        let quad_shift = quad_new as i64 - quad_old as i64;
         let op_shift = op_new as i64 - (op_end - op_start) as i64;
-        let moved = |index: u32, end: u32, shift: i64| if index >= end { (index as i64 + shift) as u32 } else { index };
-        self.bindings.retain(|x| !(quad_start as u32..quad_end).contains(&x.quad));
-        for x in &mut self.bindings {
-            x.quad = moved(x.quad, quad_end, quad_shift);
-            if x.op != u32::MAX {
-                x.op = moved(x.op, op_end, op_shift);
+        // Bindings follow their quads and commands; the box's old ones go.
+        let gone = |x: &Binding| (op_start..op_end).contains(&x.op);
+        let mut kept: Vec<Binding> = Vec::with_capacity(self.bindings.len());
+        // Removal indices are taken one after another from the list as it
+        // shrinks; a binding of a removed quad goes.
+        let mut original = self.bindings.clone();
+        for &at in &quads_removed {
+            for x in &mut original {
+                if x.quad != u32::MAX && x.quad as usize > at {
+                    x.quad -= 1;
+                } else if x.quad as usize == at {
+                    x.quad = u32::MAX;
+                }
             }
         }
-        self.bindings.extend(bindings.into_iter().map(|x| Binding {
-            quad: quad_start as u32 + x.quad,
-            op: op_start + x.op,
-            ..x
+        for (x, was) in original.into_iter().zip(&self.bindings) {
+            if gone(was) || x.quad == u32::MAX {
+                continue;
+            }
+            kept.push(x);
+        }
+        for &at in &quads_inserted {
+            for x in &mut kept {
+                if x.quad as usize >= at {
+                    x.quad += 1;
+                }
+            }
+        }
+        for x in &mut kept {
+            if x.op != u32::MAX && x.op >= op_end {
+                x.op = (x.op as i64 + op_shift) as u32;
+            }
+        }
+        kept.extend(bindings.into_iter().filter_map(|x| {
+            Some(Binding { quad: *quads_inserted.get(x.quad as usize)? as u32, op: op_start + x.op, ..x })
         }));
-        self.bindings.sort_by_key(|x| (x.owner, x.value, x.quad));
+        self.bindings = kept;        self.bindings.sort_by_key(|x| (x.owner, x.value, x.quad));
         // Boxes are kept in paint order: the later ones' commands follow.
         let shift = |index: u32| (index as i64 + op_shift) as u32;
         for other in &mut self.boxes[at + 1..] {
