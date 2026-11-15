@@ -64,6 +64,8 @@ fn own(e: &Element, descendants: u8) -> u8 {
 }
 
 mod preparation;
+#[cfg(test)]
+pub(crate) use preparation::Preparation;
 pub(crate) use preparation::PreparationCache;
 
 impl SubtreeFacts {

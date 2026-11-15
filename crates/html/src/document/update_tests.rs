@@ -91,3 +91,44 @@ fn update_carries_paragraph_measurements_but_not_tree_facts() {
     ));
     assert_eq!(super::test_tree::tree(&doc), super::test_tree::tree(&fresh));
 }
+
+/// The preparation of the document's tree after a frame of it is built.
+fn prepared(
+    cx: &mut gpui::TestAppContext,
+    doc: &Document,
+) -> (std::rc::Rc<crate::layout::cx::subtree::Preparation>, bool) {
+    use gpui::{IntoElement, ParentElement, point, px, size};
+    let options = crate::layout::options::RenderOpts {
+        text: gpui::TextStyle::default(),
+        viewport: (800., 600.),
+        normal_line_height: 1.2,
+        cx: Default::default(),
+        frag: Default::default(),
+    };
+    cx.add_empty_window()
+        .draw(point(px(0.), px(0.)), size(px(800.), px(600.)), |_, _| {
+            gpui::div()
+                .children(doc.render(&options))
+                .into_any_element()
+        });
+    doc.state
+        .layout
+        .preparation
+        .last()
+        .expect("a document tree")
+}
+
+#[gpui::test]
+fn insert_and_remove_prepare_the_new_tree_with_a_full_walk(cx: &mut gpui::TestAppContext) {
+    let (one, two) = ("<p>one</p>", "<p>one</p><div><p>two</p></div>");
+    let mut doc = Document::builder(one, "").build().unwrap();
+    let (first, _) = prepared(cx, &doc);
+    for html in [two, one] {
+        let tree = doc.tree;
+        assert!(doc.update(html, "").unwrap().changed());
+        assert_ne!(tree, doc.tree, "a new tree number");
+        let (next, full) = prepared(cx, &doc);
+        assert!(full, "{html}: the new tree is walked in full");
+        assert!(!std::rc::Rc::ptr_eq(&first, &next));
+    }
+}
