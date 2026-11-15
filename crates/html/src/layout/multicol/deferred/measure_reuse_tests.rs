@@ -2,11 +2,8 @@
 //! once per frame: prepaint takes the columns of the final measure.
 //! Counted with `crate::work`; run with `--features work-counters`.
 
-use crate::work::{Counter, Session, Snapshot};
-
-fn total(snapshot: &Snapshot, counter: Counter) -> u64 {
-    snapshot.0.iter().map(|phase| phase[counter as usize]).sum()
-}
+use crate::layout::multicol::work_frame::{frame_work, total};
+use crate::work::Counter;
 
 fn page(items: usize) -> String {
     let item = "<p style='margin:0 0 3px'>One two three four five six seven eight.</p>";
@@ -17,27 +14,9 @@ fn page(items: usize) -> String {
     )
 }
 
-/// Child layouts and kept measures of one frame, and the frame's scene.
+/// Child layouts and kept measures of one frame.
 fn frame(cx: &mut gpui::TestAppContext, html: &str) -> (u64, u64) {
-    use gpui::{IntoElement, ParentElement, point, px, size};
-    let document = crate::Document::builder(html, crate::BROWSER_CSS)
-        .build()
-        .expect("test document");
-    let options = crate::layout::options::RenderOpts {
-        text: gpui::TextStyle::default(),
-        viewport: (800., 600.),
-        normal_line_height: 1.2,
-        cx: Default::default(),
-        frag: Default::default(),
-    };
-    let session = Session::begin();
-    cx.add_empty_window()
-        .draw(point(px(0.), px(0.)), size(px(800.), px(600.)), |_, _| {
-            gpui::div()
-                .children(document.render(&options))
-                .into_any_element()
-        });
-    let work = session.finish();
+    let work = frame_work(cx, html);
     (
         total(&work, Counter::MulticolChildLayouts),
         total(&work, Counter::MulticolMeasureReuses),
