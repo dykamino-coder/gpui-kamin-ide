@@ -3,10 +3,13 @@
 //! invalidation, Gecko `nsChangeHint_RepaintFrame`, Servo `REPAINT`).
 //!
 //! The set is closed and small on purpose: `color` (inherited, so a change
-//! reaches every descendant's own style) and the background colour of the box
-//! itself (with g_explicit, which only presentational hints at cascade time and control painting read). Everything else, `currentcolor` values resolved into other groups
-//! included, is layout damage. The destructuring is exhaustive: a new field of
-//! a compared struct must be classified here.
+//! reaches every descendant's own style), the background colour and gradients
+//! of the box itself (with `bg_explicit`, which only presentational hints at
+//! cascade time and control painting read) and, on request, its border
+//! colours. A background image with a URL stays layout damage: it loads as a
+//! resource of the build. Everything else, `currentcolor` values resolved into
+//! other groups included, is layout damage. The destructuring is exhaustive: a
+//! new field of a compared struct must be classified here.
 
 use super::{Computed, InheritedStyle, InheritedUi, ResetBackground, ResetBorder, ResetCascade};
 
@@ -191,9 +194,9 @@ fn same_layout_background(a: &ResetBackground, b: &ResetBackground) -> bool {
         background: _,
         bg_explicit: _,
         background_color: _,
-        gradient,
-        gradient_raw,
-        gradient_current,
+        gradient: _,
+        gradient_raw: _,
+        gradient_current: _,
         background_blend,
         bg_fixed,
         bg_clip,
@@ -206,10 +209,7 @@ fn same_layout_background(a: &ResetBackground, b: &ResetBackground) -> bool {
         bg_lists,
         bg_repeat,
     } = a;
-    *gradient == b.gradient
-        && *gradient_raw == b.gradient_raw
-        && *gradient_current == b.gradient_current
-        && *background_blend == b.background_blend
+    *background_blend == b.background_blend
         && *bg_fixed == b.bg_fixed
         && *bg_clip == b.bg_clip
         && *bg_origin == b.bg_origin
