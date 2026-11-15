@@ -783,6 +783,20 @@ impl Scene {
         true
     }
 
+    /// KaminIDE patch: room in the command and primitive lists for as many as
+    /// `other` holds (a recording of content painted before).
+    pub(crate) fn reserve_like(&mut self, other: &Scene) {
+        self.paint_operations.reserve_exact(other.paint_operations.len());
+        self.shadows.reserve_exact(other.shadows.len());
+        self.quads.reserve_exact(other.quads.len());
+        self.paths.reserve_exact(other.paths.len());
+        self.underlines.reserve_exact(other.underlines.len());
+        self.monochrome_sprites.reserve_exact(other.monochrome_sprites.len());
+        self.subpixel_sprites.reserve_exact(other.subpixel_sprites.len());
+        self.polychrome_sprites.reserve_exact(other.polychrome_sprites.len());
+        self.surfaces.reserve_exact(other.surfaces.len());
+    }
+
     /// KaminIDE patch: count the clipped bounds of a primitive command added
     /// to this scene in `primitive_ink`; empty bounds paint nothing.
     fn add_primitive_ink(&mut self, clipped: Bounds<ScaledPixels>) {

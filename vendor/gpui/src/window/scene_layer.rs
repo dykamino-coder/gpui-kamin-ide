@@ -55,10 +55,20 @@ impl Window {
             }, f);
             return (result, RecordedLayer::Painted);
         }
-        let recording = Box::new(LayerRecording { bindings: Vec::new(), boxes: Vec::new(), source });
+        // The content painted again is about the size of its last recording:
+        // its lists start at that size instead of growing by copies.
+        let mut scene = Scene::default();
+        let (mut bindings, mut boxes) = (Vec::new(), Vec::new());
+        if let Some(last) = &source {
+            scene.reserve_like(&last.scene);
+            let (bound, runs) = last.recorded_sizes();
+            bindings.reserve_exact(bound);
+            boxes.reserve_exact(runs);
+        }
+        let recording = Box::new(LayerRecording { bindings, boxes, source });
         // The frame's scene and no recording wait in `state` while `f`
         // paints into a new scene; restoring swaps them back, on unwind too.
-        let mut state = (Scene::default(), Some(recording));
+        let mut state = (scene, Some(recording));
         mem::swap(&mut self.next_frame.scene, &mut state.0);
         mem::swap(&mut self.layer_recording, &mut state.1);
         let (result, (scene, recording)) = self.with_restore(state, |window, state| {

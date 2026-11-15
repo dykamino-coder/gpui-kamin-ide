@@ -179,6 +179,11 @@ impl SceneLayer {
         self.bounds
     }
 
+    /// The number of bindings and of box runs recorded.
+    pub(crate) fn recorded_sizes(&self) -> (usize, usize) {
+        (self.bindings.len(), self.boxes.len())
+    }
+
     /// Identity of the recording; a copy on write keeps it.
     pub fn id(&self) -> u64 {
         self.id

@@ -11682,7 +11682,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a5489dfe193e
+index 160587a4ad924f80c2dd01b90a8300febbc13105..02e2d26bdff64d8cd78296454a814c5a81abcef5
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,33 @@
@@ -12227,7 +12227,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +634,243 @@
+@@ -144,4 +634,257 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -12384,6 +12384,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +        true
 +    }
 +
++    /// KaminIDE patch: room in the command and primitive lists for as many as
++    /// `other` holds (a recording of content painted before).
++    pub(crate) fn reserve_like(&mut self, other: &Scene) {
++        self.paint_operations.reserve_exact(other.paint_operations.len());
++        self.shadows.reserve_exact(other.shadows.len());
++        self.quads.reserve_exact(other.quads.len());
++        self.paths.reserve_exact(other.paths.len());
++        self.underlines.reserve_exact(other.underlines.len());
++        self.monochrome_sprites.reserve_exact(other.monochrome_sprites.len());
++        self.subpixel_sprites.reserve_exact(other.subpixel_sprites.len());
++        self.polychrome_sprites.reserve_exact(other.polychrome_sprites.len());
++        self.surfaces.reserve_exact(other.surfaces.len());
++    }
++
 +    /// KaminIDE patch: count the clipped bounds of a primitive command added
 +    /// to this scene in `primitive_ink`; empty bounds paint nothing.
 +    fn add_primitive_ink(&mut self, clipped: Bounds<ScaledPixels>) {
@@ -12475,9 +12489,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -162,0 +892 @@
+@@ -162,0 +906 @@
 +        self.finish_layers();
-@@ -190,2 +920,96 @@
+@@ -190,2 +934,96 @@
 -        }
 -    }
 +            layers: &self.layers,
@@ -12576,7 +12590,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1036,5 @@
+@@ -212,2 +1050,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -12584,20 +12598,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1043,4 @@
+@@ -216 +1057,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1048,6 @@
+@@ -217,0 +1062,6 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
 +    /// KaminIDE patch: a retained layer (`scene::layer`), ordered like one primitive.
 +    Layer(LayerOp),
-@@ -259,0 +1096,55 @@
+@@ -259,0 +1110,55 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -12653,22 +12667,22 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1177,2 @@
+@@ -285,0 +1191,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1212,4 @@
+@@ -318,0 +1226,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1361 @@
+@@ -463,0 +1375 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1394,2 @@
+@@ -495,0 +1408,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -527,0 +1428 @@
+@@ -527,0 +1442 @@
 +            Self::Layer(index) => format!("layer {index}"),
-@@ -543,0 +1445,10 @@
+@@ -543,0 +1459,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -12679,19 +12693,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +1492,5 @@
+@@ -580,0 +1506,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1519,5 @@
+@@ -602,0 +1533,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1571,12 @@
+@@ -649,0 +1585,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -12704,10 +12718,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1684 @@
+@@ -751 +1698 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1691,54 @@
+@@ -757,0 +1705,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -12762,7 +12776,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1761,23 @@
+@@ -773,0 +1775,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -12786,12 +12800,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a548
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1806,2 @@
+@@ -795,0 +1820,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1828 @@
+@@ -815,0 +1842 @@
 +            color_mapping: None,
-@@ -835,0 +1849,6 @@
+@@ -835,0 +1863,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
@@ -12914,10 +12928,10 @@ index 0000000000000000000000000000000000000000..ce8acb35ac9cf0333bc961c32a10b181
 +}
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..33f409b83075d438fd5366e4de92677d1e8b76fc
+index 0000000000000000000000000000000000000000..9bc2e76f13bb1aaab0c9f4e6ae37108c27f4e403
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,220 @@
 +//! KaminIDE patch: a retained scene layer.
 +//!
 +//! A host paints content once into a layer (`Window::record_scene_layer`),
@@ -13097,6 +13111,11 @@ index 0000000000000000000000000000000000000000..33f409b83075d438fd5366e4de92677d
 +    /// when the layer draws nothing.
 +    pub fn bounds(&self) -> Option<Bounds<ScaledPixels>> {
 +        self.bounds
++    }
++
++    /// The number of bindings and of box runs recorded.
++    pub(crate) fn recorded_sizes(&self) -> (usize, usize) {
++        (self.bindings.len(), self.boxes.len())
 +    }
 +
 +    /// Identity of the recording; a copy on write keeps it.
@@ -30653,10 +30672,10 @@ index 0000000000000000000000000000000000000000..f86b14fa0513bf4b384e11a27c3cc61a
 +}
 diff --git a/vendor/gpui/src/window/scene_layer.rs b/vendor/gpui/src/window/scene_layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..62e88ad078af785f8db3ad2433afe15c4f634a64
+index 0000000000000000000000000000000000000000..f55948c5755b13a7dfbbd25624e1bb9790ea09ee
 --- /dev/null
 +++ b/vendor/gpui/src/window/scene_layer.rs
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,179 @@
 +//! KaminIDE patch: recording retained scene layers (`scene::layer`) and
 +//! binding the values a host may write into them.
 +//!
@@ -30714,10 +30733,20 @@ index 0000000000000000000000000000000000000000..62e88ad078af785f8db3ad2433afe15c
 +            }, f);
 +            return (result, RecordedLayer::Painted);
 +        }
-+        let recording = Box::new(LayerRecording { bindings: Vec::new(), boxes: Vec::new(), source });
++        // The content painted again is about the size of its last recording:
++        // its lists start at that size instead of growing by copies.
++        let mut scene = Scene::default();
++        let (mut bindings, mut boxes) = (Vec::new(), Vec::new());
++        if let Some(last) = &source {
++            scene.reserve_like(&last.scene);
++            let (bound, runs) = last.recorded_sizes();
++            bindings.reserve_exact(bound);
++            boxes.reserve_exact(runs);
++        }
++        let recording = Box::new(LayerRecording { bindings, boxes, source });
 +        // The frame's scene and no recording wait in `state` while `f`
 +        // paints into a new scene; restoring swaps them back, on unwind too.
-+        let mut state = (Scene::default(), Some(recording));
++        let mut state = (scene, Some(recording));
 +        mem::swap(&mut self.next_frame.scene, &mut state.0);
 +        mem::swap(&mut self.layer_recording, &mut state.1);
 +        let (result, (scene, recording)) = self.with_restore(state, |window, state| {
