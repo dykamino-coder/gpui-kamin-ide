@@ -14,8 +14,12 @@ use std::sync::atomic::Ordering::Relaxed;
 
 impl SceneLayer {
     fn bound(&self, owner: u32, value: LayerValue) -> Range<usize> {
-        let start = self.bindings.partition_point(|b| (b.owner, b.value) < (owner, value));
-        let end = self.bindings.partition_point(|b| (b.owner, b.value) <= (owner, value));
+        let start = self
+            .bindings
+            .partition_point(|b| (b.owner, b.value) < (owner, value));
+        let end = self
+            .bindings
+            .partition_point(|b| (b.owner, b.value) <= (owner, value));
         start..end
     }
 
@@ -25,7 +29,10 @@ impl SceneLayer {
         !range.is_empty()
             && self.bindings[range].iter().all(|b| {
                 let fill = Background::from(from).opacity(b.opacity);
-                self.scene.quads.get(b.quad as usize).is_some_and(|q| q.background == fill)
+                self.scene
+                    .quads
+                    .get(b.quad as usize)
+                    .is_some_and(|q| q.background == fill)
             })
     }
 }
@@ -45,7 +52,10 @@ impl LayerHandle {
     /// quad then); the host records the box again. Otherwise the damaged
     /// rectangle in device pixels (`None` inside for no write), also added to
     /// the layer's damage for the next frame that draws it.
-    pub fn set_backgrounds(&self, writes: &[(u32, Option<Hsla>, Option<Hsla>)]) -> Option<Option<Bounds<ScaledPixels>>> {
+    pub fn set_backgrounds(
+        &self,
+        writes: &[(u32, Option<Hsla>, Option<Hsla>)],
+    ) -> Option<Option<Bounds<ScaledPixels>>> {
         let opaque = |c: Option<Hsla>| c.filter(|c| c.a > 0.);
         let mut current = self.0.content.borrow_mut();
         let mut plain = Vec::with_capacity(writes.len());
@@ -77,7 +87,9 @@ impl LayerHandle {
                     let rect = super::boxes::ink_of(&Primitive::Quad(*quad));
                     damage = Some(damage.map_or(rect, |d| d.union(&rect)));
                 }
-                if let Some(PaintOperation::Primitive(Primitive::Quad(quad))) = layer.scene.paint_operations.get_mut(b.op as usize) {
+                if let Some(PaintOperation::Primitive(Primitive::Quad(quad))) =
+                    layer.scene.paint_operations.get_mut(b.op as usize)
+                {
                     quad.background = fill;
                     quad.border_color = border;
                 }
@@ -88,7 +100,9 @@ impl LayerHandle {
         layer_counters::VALUES_WRITTEN.fetch_add(written, Relaxed);
         if let Some(rect) = damage {
             let old = self.0.damage.get();
-            self.0.damage.set(Some(old.map_or(rect, |d| d.union(&rect))));
+            self.0
+                .damage
+                .set(Some(old.map_or(rect, |d| d.union(&rect))));
         }
         Some(damage)
     }

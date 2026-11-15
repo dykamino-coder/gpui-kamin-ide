@@ -44,7 +44,8 @@ struct Run<'a> {
 impl Run<'_> {
     fn at<T>(&self, list: &[T], order: impl Fn(&T) -> DrawOrder, n: usize) -> usize {
         let o = self.key + 1 + n as DrawOrder;
-        list.partition_point(|x| order(x) < o) + self.before.get(n).map_or(0, |b| b[self.kind as usize]) as usize
+        list.partition_point(|x| order(x) < o)
+            + self.before.get(n).map_or(0, |b| b[self.kind as usize]) as usize
     }
 
     /// Replace the entries of the commands `old` with those of `new` (both
@@ -104,7 +105,9 @@ impl SceneLayer {
         let mut ink: Option<Bounds<ScaledPixels>> = None;
         for operation in &new.paint_operations {
             kind(operation)?;
-            let PaintOperation::Primitive(p) = operation else { return None };
+            let PaintOperation::Primitive(p) = operation else {
+                return None;
+            };
             let rect = ink_of(p);
             if !rect.is_empty() {
                 ink = Some(ink.map_or(rect, |i| i.union(&rect)));
@@ -128,17 +131,27 @@ impl SceneLayer {
     /// order against box `b`'s key: earlier ones below it, later ones above.
     fn ordered_around(&self, b: &BoxRange, rect: Bounds<ScaledPixels>) -> bool {
         let (start, end) = (b.ops.start as usize, b.ops.end as usize);
-        self.scene.paint_operations.iter().enumerate().all(|(i, operation)| {
-            if (start..end).contains(&i) {
-                return true;
-            }
-            let PaintOperation::Primitive(p) = operation else { return true };
-            if ink_of(p).intersect(&rect).is_empty() {
-                return true;
-            }
-            let order = primitive_order(p);
-            if i < start { order < b.key } else { order >= b.key + ORDER_STEP }
-        })
+        self.scene
+            .paint_operations
+            .iter()
+            .enumerate()
+            .all(|(i, operation)| {
+                if (start..end).contains(&i) {
+                    return true;
+                }
+                let PaintOperation::Primitive(p) = operation else {
+                    return true;
+                };
+                if ink_of(p).intersect(&rect).is_empty() {
+                    return true;
+                }
+                let order = primitive_order(p);
+                if i < start {
+                    order < b.key
+                } else {
+                    order >= b.key + ORDER_STEP
+                }
+            })
     }
 
     /// Replace the run of box `at` with `new` and its `bindings` (indices
@@ -154,26 +167,53 @@ impl SceneLayer {
         let b = self.boxes[at].clone();
         let key = b.key;
         // Entries of each order and kind of the boxes with the key before this one.
-        let longest = new.paint_operations.len().max((b.ops.end - b.ops.start) as usize);
+        let longest = new
+            .paint_operations
+            .len()
+            .max((b.ops.end - b.ops.start) as usize);
         let mut before = vec![[0u32; 3]; longest];
         for other in self.boxes[..at].iter().filter(|o| o.key == key) {
-            let ops = &self.scene.paint_operations[other.ops.start as usize..other.ops.end as usize];
+            let ops =
+                &self.scene.paint_operations[other.ops.start as usize..other.ops.end as usize];
             for (n, operation) in ops.iter().enumerate().take(longest) {
                 if let Some(k) = kind(operation) {
                     before[n][k as usize] += 1;
                 }
             }
         }
-        let old: Vec<PaintOperation> = self.scene.paint_operations[b.ops.start as usize..b.ops.end as usize].to_vec();
+        let old: Vec<PaintOperation> =
+            self.scene.paint_operations[b.ops.start as usize..b.ops.end as usize].to_vec();
         let s = &mut self.scene;
-        let run = |kind| Run { key, kind, before: &before };
-        run(Kind::Shadow).splice(&mut s.shadows, |x| x.order, &old, &new.paint_operations, new.shadows);
-        let (quads_removed, quads_inserted) =
-            run(Kind::Quad).splice(&mut s.quads, |x| x.order, &old, &new.paint_operations, new.quads);
-        run(Kind::Underline).splice(&mut s.underlines, |x| x.order, &old, &new.paint_operations, new.underlines);
+        let run = |kind| Run {
+            key,
+            kind,
+            before: &before,
+        };
+        run(Kind::Shadow).splice(
+            &mut s.shadows,
+            |x| x.order,
+            &old,
+            &new.paint_operations,
+            new.shadows,
+        );
+        let (quads_removed, quads_inserted) = run(Kind::Quad).splice(
+            &mut s.quads,
+            |x| x.order,
+            &old,
+            &new.paint_operations,
+            new.quads,
+        );
+        run(Kind::Underline).splice(
+            &mut s.underlines,
+            |x| x.order,
+            &old,
+            &new.paint_operations,
+            new.underlines,
+        );
         let (op_start, op_end) = (b.ops.start, b.ops.end);
         let op_new = new.paint_operations.len() as u32;
-        s.paint_operations.splice(op_start as usize..op_end as usize, new.paint_operations);
+        s.paint_operations
+            .splice(op_start as usize..op_end as usize, new.paint_operations);
         let op_shift = op_new as i64 - (op_end - op_start) as i64;
         // Bindings follow their quads and commands; the box's old ones go.
         let gone = |x: &Binding| (op_start..op_end).contains(&x.op);
@@ -209,9 +249,14 @@ impl SceneLayer {
             }
         }
         kept.extend(bindings.into_iter().filter_map(|x| {
-            Some(Binding { quad: *quads_inserted.get(x.quad as usize)? as u32, op: op_start + x.op, ..x })
+            Some(Binding {
+                quad: *quads_inserted.get(x.quad as usize)? as u32,
+                op: op_start + x.op,
+                ..x
+            })
         }));
-        self.bindings = kept;        self.bindings.sort_by_key(|x| (x.owner, x.value, x.quad));
+        self.bindings = kept;
+        self.bindings.sort_by_key(|x| (x.owner, x.value, x.quad));
         // Boxes are kept in paint order: the later ones' commands follow.
         let shift = |index: u32| (index as i64 + op_shift) as u32;
         for other in &mut self.boxes[at + 1..] {

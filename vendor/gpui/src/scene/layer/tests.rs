@@ -6,13 +6,18 @@ use crate::{Background, Bounds, ContentMask, Hsla, Quad, ScaledPixels, Scene, hs
 use std::sync::atomic::Ordering::Relaxed;
 
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
-    Bounds { origin: point(ScaledPixels(x), ScaledPixels(y)), size: size(ScaledPixels(w), ScaledPixels(h)) }
+    Bounds {
+        origin: point(ScaledPixels(x), ScaledPixels(y)),
+        size: size(ScaledPixels(w), ScaledPixels(h)),
+    }
 }
 
 fn quad(b: Bounds<ScaledPixels>, color: Hsla, opacity: f32) -> Quad {
     Quad {
         bounds: b,
-        content_mask: ContentMask { bounds: rect(0., 0., 1000., 1000.) },
+        content_mask: ContentMask {
+            bounds: rect(0., 0., 1000., 1000.),
+        },
         background: Background::from(color).opacity(opacity),
         ..Default::default()
     }
@@ -35,11 +40,27 @@ fn layer() -> LayerHandle {
         let at = scene.quads.len() as u32;
         scene.insert_primitive(q);
         let op = (scene.paint_operations.len() - 1) as u32;
-        bindings.push(Binding { owner, value: LayerValue::Background, quad: at, op, opacity });
+        bindings.push(Binding {
+            owner,
+            value: LayerValue::Background,
+            quad: at,
+            op,
+            opacity,
+        });
     };
     paint(&mut scene, quad(rect(0., 0., 100., 100.), red(), 1.), 7, 1.);
-    paint(&mut scene, quad(rect(50., 50., 100., 100.), blue(), 1.), 9, 1.);
-    paint(&mut scene, quad(rect(120., 120., 10., 10.), red(), 0.5), 7, 0.5);
+    paint(
+        &mut scene,
+        quad(rect(50., 50., 100., 100.), blue(), 1.),
+        9,
+        1.,
+    );
+    paint(
+        &mut scene,
+        quad(rect(120., 120., 10., 10.), red(), 0.5),
+        7,
+        0.5,
+    );
     LayerHandle::new(SceneLayer::finish(scene, bindings, Vec::new()))
 }
 
@@ -47,16 +68,28 @@ fn layer() -> LayerHandle {
 fn a_background_write_changes_only_its_owners_quads_and_returns_their_damage() {
     let layer = layer();
     let before = layer.content().version();
-    let damage = layer.set_background(7, red(), blue()).expect("owner 7 painted red");
+    let damage = layer
+        .set_background(7, red(), blue())
+        .expect("owner 7 painted red");
     assert_eq!(damage, rect(0., 0., 130., 130.));
     let content = layer.content();
     assert_eq!(content.version(), before + 1);
     let fills: Vec<Background> = content.scene().quads.iter().map(|q| q.background).collect();
     assert!(fills.contains(&Background::from(blue()).opacity(0.5)));
-    assert_eq!(fills.iter().filter(|f| **f == Background::from(blue())).count(), 2);
+    assert_eq!(
+        fills
+            .iter()
+            .filter(|f| **f == Background::from(blue()))
+            .count(),
+        2
+    );
     for op in &content.scene().paint_operations {
         if let PaintOperation::Primitive(crate::Primitive::Quad(q)) = op {
-            assert_ne!(q.background, Background::from(red()), "commands follow the quads");
+            assert_ne!(
+                q.background,
+                Background::from(red()),
+                "commands follow the quads"
+            );
         }
     }
 }
@@ -78,13 +111,29 @@ fn a_held_layer_is_copied_on_write_and_a_released_one_is_not() {
     frame.insert_layer(&layer, rect(0., 0., 200., 200.));
     let copies = layer_counters::COW_CLONES.load(Relaxed);
     layer.set_background(9, blue(), red()).unwrap();
-    assert_eq!(layer_counters::COW_CLONES.load(Relaxed), copies + 1, "the frame held it");
-    assert_eq!(frame.layer(0).unwrap().version(), 0, "the frame keeps what it drew");
+    assert_eq!(
+        layer_counters::COW_CLONES.load(Relaxed),
+        copies + 1,
+        "the frame held it"
+    );
+    assert_eq!(
+        frame.layer(0).unwrap().version(),
+        0,
+        "the frame keeps what it drew"
+    );
     frame.release_layers();
     layer.set_background(9, red(), blue()).unwrap();
-    assert_eq!(layer_counters::COW_CLONES.load(Relaxed), copies + 1, "nothing held it");
+    assert_eq!(
+        layer_counters::COW_CLONES.load(Relaxed),
+        copies + 1,
+        "nothing held it"
+    );
     frame.hold_layers();
-    assert_eq!(frame.layer(0).unwrap().version(), 2, "a held again frame reads the current content");
+    assert_eq!(
+        frame.layer(0).unwrap().version(),
+        2,
+        "a held again frame reads the current content"
+    );
 }
 
 #[test]
@@ -97,7 +146,10 @@ fn a_layer_batches_at_its_order_among_the_frame_primitives() {
     frame.finish();
     let batches: Vec<String> = frame.batches().map(|b| b.label()).collect();
     assert_eq!(batches, ["quads (1)", "layer 0", "quads (1)"]);
-    assert!(matches!(frame.batches().nth(1), Some(PrimitiveBatch::Layer(0))));
+    assert!(matches!(
+        frame.batches().nth(1),
+        Some(PrimitiveBatch::Layer(0))
+    ));
 }
 
 #[test]
@@ -136,7 +188,9 @@ fn a_dropped_layer_replays_as_nothing() {
 fn env() -> super::BoxEnv {
     super::BoxEnv {
         bounds: Bounds::default(),
-        mask: ContentMask { bounds: Bounds::default() },
+        mask: ContentMask {
+            bounds: Bounds::default(),
+        },
         transformation: crate::TransformationMatrix::unit(),
         opacity: 1.,
         rem_size: crate::px(16.),
@@ -163,7 +217,13 @@ fn paint_box(
         if n > 0 {
             continue;
         }
-        bindings.push(Binding { owner, value: LayerValue::Background, quad: at, op, opacity: 1. });
+        bindings.push(Binding {
+            owner,
+            value: LayerValue::Background,
+            quad: at,
+            op,
+            opacity: 1.,
+        });
     }
     scene.close_box().expect("the box was open")
 }
@@ -173,17 +233,42 @@ fn paint_box(
 fn boxes_layer() -> LayerHandle {
     let (mut scene, mut bindings, mut boxes) = (Scene::default(), Vec::new(), Vec::new());
     let one = rect(0., 0., 100., 20.);
-    boxes.push(paint_box(&mut scene, &mut bindings, 1, one, &[(one, red()), (rect(0., 0., 100., 2.), blue())], None));
+    boxes.push(paint_box(
+        &mut scene,
+        &mut bindings,
+        1,
+        one,
+        &[(one, red()), (rect(0., 0., 100., 2.), blue())],
+        None,
+    ));
     let two = rect(0., 20., 100., 20.);
-    boxes.push(paint_box(&mut scene, &mut bindings, 2, two, &[(two, red())], None));
+    boxes.push(paint_box(
+        &mut scene,
+        &mut bindings,
+        2,
+        two,
+        &[(two, red())],
+        None,
+    ));
     let three = rect(0., 40., 100., 20.);
-    boxes.push(paint_box(&mut scene, &mut bindings, 3, three, &[(three, blue()), (rect(0., 40., 100., 2.), red())], None));
+    boxes.push(paint_box(
+        &mut scene,
+        &mut bindings,
+        3,
+        three,
+        &[(three, blue()), (rect(0., 40., 100., 2.), red())],
+        None,
+    ));
     scene.insert_primitive(quad(rect(0., 0., 100., 60.), hsla(0., 0., 0., 0.5), 1.));
     LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))
 }
 
 /// Replace box `at`'s run with `fills`, as `Window::rerecord_layer_box` does.
-fn rerecord(layer: &LayerHandle, at: usize, fills: &[(Bounds<ScaledPixels>, Hsla)]) -> Option<bool> {
+fn rerecord(
+    layer: &LayerHandle,
+    at: usize,
+    fills: &[(Bounds<ScaledPixels>, Hsla)],
+) -> Option<bool> {
     let (owner, key, area) = {
         let content = layer.content();
         let b = &content.boxes[at];
@@ -211,16 +296,28 @@ fn painted(layer: &LayerHandle) -> Vec<(u32, Vec<Bounds<ScaledPixels>>)> {
             _ => None,
         })
         .collect();
-    assert!(scene.quads.windows(2).all(|w| w[0].order <= w[1].order), "the list stays sorted");
+    assert!(
+        scene.quads.windows(2).all(|w| w[0].order <= w[1].order),
+        "the list stays sorted"
+    );
     listed.sort();
     commanded.sort();
-    assert_eq!(listed, commanded, "the sorted list and the commands hold the same quads");
+    assert_eq!(
+        listed, commanded,
+        "the sorted list and the commands hold the same quads"
+    );
     for b in &content.bindings {
         let q = scene.quads[b.quad as usize];
-        let PaintOperation::Primitive(crate::Primitive::Quad(c)) = scene.paint_operations[b.op as usize] else {
+        let PaintOperation::Primitive(crate::Primitive::Quad(c)) =
+            scene.paint_operations[b.op as usize]
+        else {
             panic!("a binding names a quad command");
         };
-        assert_eq!(format!("{q:?}"), format!("{c:?}"), "a binding's quad is its command's");
+        assert_eq!(
+            format!("{q:?}"),
+            format!("{c:?}"),
+            "a binding's quad is its command's"
+        );
     }
     content
         .boxes
@@ -254,8 +351,16 @@ fn a_box_run_is_replaced_one_to_many_many_to_none_and_none_to_one() {
     let layer = boxes_layer();
     let before = painted(&layer);
     let two = rect(0., 20., 100., 20.);
-    let fills = [(two, blue()), (rect(0., 20., 100., 2.), red()), (rect(0., 38., 100., 2.), red())];
-    assert_eq!(rerecord(&layer, 1, &fills), Some(true), "later commands moved");
+    let fills = [
+        (two, blue()),
+        (rect(0., 20., 100., 2.), red()),
+        (rect(0., 38., 100., 2.), red()),
+    ];
+    assert_eq!(
+        rerecord(&layer, 1, &fills),
+        Some(true),
+        "later commands moved"
+    );
     let after = painted(&layer);
     assert_eq!(after[0], before[0], "the box before kept its quads");
     assert_eq!(after[2], before[2], "the box after kept its quads");
@@ -266,12 +371,21 @@ fn a_box_run_is_replaced_one_to_many_many_to_none_and_none_to_one() {
     assert!(rerecord(&layer, 1, &[]).is_some());
     let none = painted(&layer);
     assert!(none[1].1.is_empty());
-    assert_eq!((none[0].clone(), none[2].clone()), (before[0].clone(), before[2].clone()));
+    assert_eq!(
+        (none[0].clone(), none[2].clone()),
+        (before[0].clone(), before[2].clone())
+    );
     assert_eq!(layer.content().scene().quads.len(), 5);
-    assert!(layer.set_background(2, red(), blue()).is_none(), "no quad of box 2 is bound");
+    assert!(
+        layer.set_background(2, red(), blue()).is_none(),
+        "no quad of box 2 is bound"
+    );
     assert!(rerecord(&layer, 1, &[(two, red())]).is_some());
     assert_eq!(painted(&layer), before);
-    assert!(layer.set_background(1, red(), blue()).is_some(), "box 1's binding still holds");
+    assert!(
+        layer.set_background(1, red(), blue()).is_some(),
+        "box 1's binding still holds"
+    );
 }
 
 #[test]
@@ -279,6 +393,9 @@ fn a_run_whose_new_ink_crosses_a_box_of_the_same_key_is_refused() {
     let layer = boxes_layer();
     let version = layer.content().version();
     // Over box 3: the earlier key would paint it under box 3, out of paint order.
-    assert_eq!(rerecord(&layer, 1, &[(rect(0., 20., 100., 30.), red())]), None);
+    assert_eq!(
+        rerecord(&layer, 1, &[(rect(0., 20., 100., 30.), red())]),
+        None
+    );
     assert_eq!(layer.content().version(), version, "nothing was replaced");
 }

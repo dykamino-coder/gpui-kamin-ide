@@ -116,18 +116,18 @@ impl Document {
     /// nothing written, when there is no such layer or a change is not a
     /// layer write (`layer_write`).
     fn write_paint_values(&self, nodes: &[Node], restyled: &[u64]) -> bool {
-        let Some(layer) = self.reuse.scene_layer() else {
+        let (Some(layer), true) = (self.reuse.scene_layer(), self.frame_recorded()) else {
+            // A frame replays only from a settled record of this tree.
+            crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);
             return false;
         };
-        // A frame replays only from a settled record of this tree.
-        if !self.frame_recorded() {
-            return false;
-        }
         let plain = |a: &crate::dom::Element, b: &crate::dom::Element| {
             crate::paint::box_tree::styled::paints_only_own_box(&self.state, a)
                 && crate::paint::box_tree::styled::paints_only_own_box(&self.state, b)
         };
-        let Some(repaints) = super::layer_write::write_paint_values(&self.nodes, nodes, restyled, &layer, plain) else {
+        let Some(repaints) =
+            super::layer_write::write_paint_values(&self.nodes, nodes, restyled, &layer, plain)
+        else {
             return false;
         };
         self.reuse.queue_repaints(repaints);

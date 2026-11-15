@@ -236,7 +236,10 @@ impl Element for Retained {
                 return ((), record);
             };
             let before = window.next_frame_callback_count();
-            let paint = self.builder.store.record_layered(window, |w| tree.paint(w, cx));
+            let paint = self
+                .builder
+                .store
+                .record_layered(window, |w| tree.paint(w, cx));
             if let Some(flow) = &self.flow {
                 flow.finish();
             }

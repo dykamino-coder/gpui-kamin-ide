@@ -43,7 +43,11 @@ pub(super) async fn run(
     let mut layer = Vec::with_capacity(args.runs);
     for index in 1..=args.runs {
         let variant = index % 2;
-        let before = (layer_work(), window.read_with(cx, |view, _| view.doc.retained_frames())?);
+        let path_before = kamin_html::paint_path::read();
+        let before = (
+            layer_work(),
+            window.read_with(cx, |view, _| view.doc.retained_frames())?,
+        );
         let (measured, frame, counts) = sample(
             cx,
             window,
@@ -58,8 +62,16 @@ pub(super) async fn run(
         diagnostics.push(measured.diagnostics);
         work.push(counts);
         last[variant] = Some(frame.pixels);
-        let after = (layer_work(), window.read_with(cx, |view, _| view.doc.retained_frames())?);
-        layer.push(layer_delta(before, after));
+        let after = (
+            layer_work(),
+            window.read_with(cx, |view, _| view.doc.retained_frames())?,
+        );
+        let mut delta = layer_delta(before, after);
+        let path_after = kamin_html::paint_path::read();
+        for (i, name) in kamin_html::paint_path::NAMES.iter().enumerate() {
+            delta[format!("path_{name}")] = json!(path_after[i].wrapping_sub(path_before[i]));
+        }
+        layer.push(delta);
     }
     let mut checks = Vec::new();
     for (variant, incremental) in last.iter().enumerate() {

@@ -20,7 +20,11 @@ impl Store {
     /// Paint the document `f` into a new scene layer drawn here, with the
     /// last one as the source of the blocks replayed inside, and keep it.
     /// Paint the layer cannot hold goes into the frame (`RecordedLayer`).
-    pub(crate) fn paint_layered(&self, window: &mut gpui::Window, f: impl FnOnce(&mut gpui::Window)) {
+    pub(crate) fn paint_layered(
+        &self,
+        window: &mut gpui::Window,
+        f: impl FnOnce(&mut gpui::Window),
+    ) {
         let source = self.scene_layer();
         let (_, layer) = window.record_scene_layer(source.as_ref(), f);
         let layer = match layer {
@@ -43,7 +47,9 @@ impl Store {
         window: &mut gpui::Window,
         f: impl FnOnce(&mut gpui::Window),
     ) -> gpui::RetainedPaint {
-        window.record_retained_paint(|window| self.paint_layered(window, f)).1
+        window
+            .record_retained_paint(|window| self.paint_layered(window, f))
+            .1
     }
 
     /// The layer of the last recorded frame, if it painted into one.

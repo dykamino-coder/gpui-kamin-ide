@@ -44,7 +44,12 @@ pub(super) fn write_paint_values(
     let mut records = Vec::new();
     for (a, b) in before.iter().zip(&after) {
         let damage = classify(a, b);
-        if damage == PaintDamage::Rebuild || !plain(a, b) {
+        if damage == PaintDamage::Rebuild {
+            crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
+            return None;
+        }
+        if !plain(a, b) {
+            crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
             return None;
         }
         u32::try_from(a.node_id).ok()?;
@@ -72,6 +77,15 @@ pub(super) fn write_paint_values(
     }
     records.sort_unstable();
     records.dedup();
+    crate::paint_path::add(&crate::paint_path::RECORDS, records.len() as u64);
+    crate::paint_path::add(
+        &crate::paint_path::VALUES,
+        (writes.len()
+            - writes
+                .iter()
+                .filter(|w| records.binary_search(&u64::from(w.0)).is_ok())
+                .count()) as u64,
+    );
     Some(records)
 }
 

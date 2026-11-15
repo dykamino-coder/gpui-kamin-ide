@@ -69,15 +69,26 @@ fn edits(cx: &mut TestAppContext, steps: &[&str]) -> Vec<(bool, Vec<String>, Vec
         scenes.push(quads(vcx));
     }
     let fresh: Vec<_> = steps.iter().map(|s| fresh(cx, &page(s))).collect();
-    out.into_iter().zip(scenes).zip(fresh).map(|((n, s), f)| (n, s, f)).collect()
+    out.into_iter()
+        .zip(scenes)
+        .zip(fresh)
+        .map(|((n, s), f)| (n, s, f))
+        .collect()
 }
 
 #[gpui::test]
-fn a_fill_that_appears_changes_colour_and_goes_is_recorded_without_a_build(cx: &mut TestAppContext) {
+fn a_fill_that_appears_changes_colour_and_goes_is_recorded_without_a_build(
+    cx: &mut TestAppContext,
+) {
     let steps = [" data-edit", " data-edit=\"2\"", ""];
     for (i, (counts, scene, fresh)) in edits(cx, &steps).into_iter().enumerate() {
         assert!(counts, "edit {:?} built the frame", steps[i]);
-        assert_eq!(first_difference(&scene, &fresh), None, "edit {:?} differs from a fresh frame", steps[i]);
+        assert_eq!(
+            first_difference(&scene, &fresh),
+            None,
+            "edit {:?} differs from a fresh frame",
+            steps[i]
+        );
     }
 }
 

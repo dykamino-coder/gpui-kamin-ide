@@ -54,7 +54,10 @@ impl Builder {
             });
             match painted {
                 Some(shifted) => moved |= shifted,
-                None => return false,
+                None => {
+                    crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+                    return false;
+                }
             }
         }
         if moved {

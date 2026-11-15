@@ -94,7 +94,10 @@ fn own_paint_only(old: &Computed, new: &Computed) -> Option<PaintValue> {
     let (a, b) = (&old.reset_background, &new.reset_background);
     let (x, y) = (&old.reset_border, &new.reset_border);
     let mut bits = PaintValue::default();
-    if a.background != b.background || a.background_color != b.background_color || a.bg_explicit != b.bg_explicit {
+    if a.background != b.background
+        || a.background_color != b.background_color
+        || a.bg_explicit != b.bg_explicit
+    {
         bits = bits.union(PaintValue::BACKGROUND_COLOR);
     }
     if x.border_colors != y.border_colors {

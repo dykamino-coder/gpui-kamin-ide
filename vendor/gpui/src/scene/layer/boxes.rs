@@ -13,7 +13,8 @@
 //! lets this layer splice the box's run in place instead.
 
 use super::super::{
-    BoundsTree, DrawOrder, ORDER_STEP, PaintOperation, Primitive, ScaledPixels, Scene, placed_bounds,
+    BoundsTree, DrawOrder, ORDER_STEP, PaintOperation, Primitive, ScaledPixels, Scene,
+    placed_bounds,
 };
 use crate::{Bounds, ContentMask, Pixels, TransformationMatrix};
 use std::ops::Range;
@@ -72,11 +73,26 @@ impl Scene {
     /// device pixels); `key` keeps the key of an earlier recording. `false`
     /// where the scene orders by other means (stacking layers, 3D, a box
     /// already open): the box paints as before.
-    pub(crate) fn open_box(&mut self, owner: u32, area: Bounds<ScaledPixels>, env: BoxEnv, key: Option<DrawOrder>) -> bool {
-        if self.open_box.is_some() || !self.layer_stack.is_empty() || !self.depth.plane_stack.is_empty() {
+    pub(crate) fn open_box(
+        &mut self,
+        owner: u32,
+        area: Bounds<ScaledPixels>,
+        env: BoxEnv,
+        key: Option<DrawOrder>,
+    ) -> bool {
+        if self.open_box.is_some()
+            || !self.layer_stack.is_empty()
+            || !self.depth.plane_stack.is_empty()
+        {
             return false;
         }
-        self.open_box = Some(OpenBox { owner, ops: self.paint_operations.len(), area, env, key });
+        self.open_box = Some(OpenBox {
+            owner,
+            ops: self.paint_operations.len(),
+            area,
+            env,
+            key,
+        });
         true
     }
 
@@ -107,7 +123,10 @@ impl Scene {
             match operation {
                 PaintOperation::Primitive(p) => {
                     // Sprites sort by tile within an order: not in paint order.
-                    plain &= matches!(p, Primitive::Shadow(_) | Primitive::Quad(_) | Primitive::Underline(_));
+                    plain &= matches!(
+                        p,
+                        Primitive::Shadow(_) | Primitive::Quad(_) | Primitive::Underline(_)
+                    );
                     ink = union(ink, ink_of(p));
                 }
                 _ => plain = false,
@@ -164,7 +183,9 @@ impl Scene {
         let mut next: [usize; 8] = std::array::from_fn(|k| lens[k].saturating_sub(taken[k]));
         for (n, at) in ops.enumerate() {
             let order = key + (1 + n as DrawOrder).min(ORDER_STEP - 1);
-            let PaintOperation::Primitive(p) = &mut self.paint_operations[at] else { continue };
+            let PaintOperation::Primitive(p) = &mut self.paint_operations[at] else {
+                continue;
+            };
             let kind = count(p);
             set_order(p, order);
             let index = next[kind];
@@ -183,7 +204,10 @@ impl Scene {
     }
 }
 
-fn tree_insert(tree: &mut std::rc::Rc<BoundsTree<ScaledPixels>>, area: Bounds<ScaledPixels>) -> DrawOrder {
+fn tree_insert(
+    tree: &mut std::rc::Rc<BoundsTree<ScaledPixels>>,
+    area: Bounds<ScaledPixels>,
+) -> DrawOrder {
     std::rc::Rc::make_mut(tree).insert(area)
 }
 

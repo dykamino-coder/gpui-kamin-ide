@@ -29,7 +29,10 @@ pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui:
 /// fragments), not the root's canvas, not hidden, no filter or backdrop
 /// layer. Only such a box records its own paint again in the document's
 /// scene layer (`document::retained::box_repaint`).
-pub(crate) fn paints_only_own_box(doc: &std::rc::Rc<crate::document::state::DocState>, e: &Element) -> bool {
+pub(crate) fn paints_only_own_box(
+    doc: &std::rc::Rc<crate::document::state::DocState>,
+    e: &Element,
+) -> bool {
     if matches!(e.tag.as_str(), "html" | "body") || e.hover.is_some() {
         return false;
     }
@@ -44,7 +47,8 @@ pub(crate) fn paints_only_own_box(doc: &std::rc::Rc<crate::document::state::DocS
     {
         return false;
     }
-    let cx = crate::layout::cx::LayoutCx::default().with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
+    let cx = crate::layout::cx::LayoutCx::default()
+        .with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
     let empty = !e.children.iter().any(|n| !is_blank(n));
     decorations(c, empty, cx.frame(), Some(&cx)).is_empty()
 }

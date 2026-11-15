@@ -8,8 +8,8 @@
 //! nor its neighbours paint again, and the frame that shows the layer copies
 //! none of its primitives.
 
-use super::*;
 use super::scene_layer::LayerRecording;
+use super::*;
 use crate::scene::{BoxEnv, LayerHandle, Primitive};
 use crate::{PaintTraversal, Style};
 
@@ -17,7 +17,12 @@ impl Window {
     /// The own paint `f` of box `owner` with border box `bounds`: inside a
     /// layer recording it takes one key and keeps its paint state for a later
     /// recording of the box; elsewhere it only names the owner of its values.
-    pub(crate) fn with_box_paint<R>(&mut self, owner: u32, bounds: Bounds<Pixels>, f: impl FnOnce(&mut Self) -> R) -> R {
+    pub(crate) fn with_box_paint<R>(
+        &mut self,
+        owner: u32,
+        bounds: Bounds<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
         if owner == 0 || self.layer_recording.is_none() {
             return self.with_paint_owner(owner, f);
         }
@@ -34,7 +39,10 @@ impl Window {
             return self.with_paint_owner(owner, f);
         }
         let result = self.with_paint_owner(owner, f);
-        if let (Some(range), Some(recording)) = (self.next_frame.scene.close_box(), self.layer_recording.as_mut()) {
+        if let (Some(range), Some(recording)) = (
+            self.next_frame.scene.close_box(),
+            self.layer_recording.as_mut(),
+        ) {
             recording.boxes.push(range);
         }
         result
@@ -44,7 +52,10 @@ impl Window {
     /// again takes the bounds its first recording placed, the host's raster
     /// frame of that paint being gone.
     pub(crate) fn box_fill_bounds(&self, style: &Style, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
-        if let Some(fill) = self.box_fill.or_else(|| self.next_frame.scene.open_box_fill()) {
+        if let Some(fill) = self
+            .box_fill
+            .or_else(|| self.next_frame.scene.open_box_fill())
+        {
             return fill;
         }
         self.render_context::<PaintTraversal>()
@@ -53,7 +64,10 @@ impl Window {
 
     /// Keep the fill bounds of the box whose own paint is open, painted or not.
     pub(crate) fn note_box_fill(&mut self, style: &Style, bounds: Bounds<Pixels>) {
-        if self.box_fill.is_none() && self.next_frame.scene.box_open() && self.next_frame.scene.open_box_fill().is_none() {
+        if self.box_fill.is_none()
+            && self.next_frame.scene.box_open()
+            && self.next_frame.scene.open_box_fill().is_none()
+        {
             let fill = self.box_fill_bounds(style, bounds);
             self.next_frame.scene.set_open_box_fill(fill);
         }
@@ -90,7 +104,13 @@ impl Window {
         }
         let runs: Vec<usize> = {
             let content = layer.0.content.borrow();
-            content.boxes.iter().enumerate().filter(|(_, b)| b.owner == owner).map(|(at, _)| at).collect()
+            content
+                .boxes
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| b.owner == owner)
+                .map(|(at, _)| at)
+                .collect()
         };
         if runs.is_empty() {
             return None;
@@ -113,9 +133,13 @@ impl Window {
             moved |= shifted;
             if let Some(rect) = damage {
                 let old = layer.0.damage.get();
-                layer.0.damage.set(Some(old.map_or(rect, |d| d.union(&rect))));
+                layer
+                    .0
+                    .damage
+                    .set(Some(old.map_or(rect, |d| d.union(&rect))));
             }
-            crate::scene::layer_counters::BOXES_RERECORDED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            crate::scene::layer_counters::BOXES_RERECORDED
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         Some(moved)
     }
@@ -130,7 +154,11 @@ impl Window {
         cx: &mut App,
         paint: &mut impl FnMut(&mut Self, &mut App, Bounds<Pixels>),
     ) -> (Scene, Vec<crate::scene::Binding>) {
-        let recording = Box::new(LayerRecording { bindings: Vec::new(), boxes: Vec::new(), source: None });
+        let recording = Box::new(LayerRecording {
+            bindings: Vec::new(),
+            boxes: Vec::new(),
+            source: None,
+        });
         let mut state = (Scene::default(), Some(recording));
         mem::swap(&mut self.next_frame.scene, &mut state.0);
         mem::swap(&mut self.layer_recording, &mut state.1);
