@@ -11,6 +11,8 @@
 // wakeup — keeps it awake.
 // ============================================================================
 
+import fs from 'node:fs'
+import os from 'node:os'
 import { debugLog, infoLog, warnLog } from '../logging'
 import { runningShellCount } from './commands'
 import { mcpTasks } from './mcp-tasks'
@@ -25,7 +27,8 @@ export interface HibernationConfig {
   /** Upper bound on running Claude CLIs; 0 = no bound. When a wake would
    *  exceed it, the least recently used idle chat goes to sleep first. */
   maxAwake: number
-  /** CLIs respawned at once; further wakes wait their turn (FIFO). */
+  /** CLIs respawned at once; further wakes wait their turn, those with a
+   *  message first. Defaults to the CPUs the server may use. */
   wakeConcurrency: number
   /** Shortest idle time for a chat evicted to honour maxAwake. */
   evictIdleMs: number
@@ -37,11 +40,39 @@ function envNumber(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n >= 0 ? n : fallback
 }
 
-export function hibernationConfig(env: NodeJS.ProcessEnv = process.env): HibernationConfig {
+/** CPUs this process may use: the affinity mask, capped by a cgroup CPU quota
+ *  (a container with `--cpus 4` on a 20-core host gets 4). */
+export function cpuBudget(
+  read: (path: string) => string = (path) => fs.readFileSync(path, 'utf8'),
+  cores: number = os.availableParallelism(),
+): number {
+  let quota = Infinity
+  try {
+    const [max, period] = read('/sys/fs/cgroup/cpu.max').trim().split(/\s+/)
+    if (max !== 'max' && Number(max) > 0 && Number(period) > 0) quota = Number(max) / Number(period)
+  } catch {
+    try {
+      const max = Number(read('/sys/fs/cgroup/cpu/cpu.cfs_quota_us').trim())
+      const period = Number(read('/sys/fs/cgroup/cpu/cpu.cfs_period_us').trim())
+      if (max > 0 && period > 0) quota = max / period
+    } catch {
+      // No cgroup limit readable: the affinity mask is the budget.
+    }
+  }
+  return Math.max(1, Math.min(cores, Math.ceil(quota)))
+}
+
+let cachedCpuBudget: number | undefined
+
+export function hibernationConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  cpus: number = (cachedCpuBudget ??= cpuBudget()),
+): HibernationConfig {
   return {
     idleMs: envNumber(env.BRIDGE_HIBERNATE_IDLE_MIN, 15) * 60_000,
     maxAwake: Math.floor(envNumber(env.BRIDGE_MAX_AWAKE_SESSIONS, 0)),
-    wakeConcurrency: Math.max(1, Math.floor(envNumber(env.BRIDGE_WAKE_CONCURRENCY, 4))),
+    // A CLI boot keeps about one core busy until it takes input.
+    wakeConcurrency: Math.max(1, Math.floor(envNumber(env.BRIDGE_WAKE_CONCURRENCY, Math.max(2, cpus)))),
     evictIdleMs: envNumber(env.BRIDGE_HIBERNATE_EVICT_IDLE_S, 60) * 1000,
   }
 }
@@ -229,11 +260,41 @@ export function makeRoomForOneMore(now = Date.now(), config = hibernationConfig(
 // ── Wake pool ────────────────────────────────────────────────────────────────
 // A CLI start costs about a second of CPU. Twenty chats woken at once would
 // all take several seconds; a bounded pool lets the first ones through fast.
+// A wake for a message someone already sent goes before a warm-up (the user
+// is typing in a sleeping chat), and warm-ups never take the last slot, so a
+// burst of them cannot hold up a waiting message. A queued warm-up whose
+// message arrives is promoted in place (`ticket.urgent = true`).
+
+export interface WakeTicket {
+  urgent: boolean
+}
+
+interface Waiter {
+  ticket: WakeTicket
+  limit: number
+  grant: () => void
+}
 
 let wakeActive = 0
-const wakeQueue: Array<() => void> = []
+const wakeQueue: Waiter[] = []
 
-export function acquireWakeSlot(limit = hibernationConfig().wakeConcurrency): Promise<() => void> {
+function mayStart(ticket: WakeTicket, limit: number): boolean {
+  return wakeActive < (ticket.urgent || limit < 2 ? limit : limit - 1)
+}
+
+function grantNext(): void {
+  for (;;) {
+    let index = wakeQueue.findIndex((w) => w.ticket.urgent && mayStart(w.ticket, w.limit))
+    if (index < 0) index = wakeQueue.findIndex((w) => mayStart(w.ticket, w.limit))
+    if (index < 0) return
+    wakeQueue.splice(index, 1)[0]!.grant()
+  }
+}
+
+export function acquireWakeSlot(
+  limit = hibernationConfig().wakeConcurrency,
+  ticket: WakeTicket = { urgent: true },
+): Promise<() => void> {
   return new Promise((resolve) => {
     const grant = () => {
       wakeActive++
@@ -242,12 +303,19 @@ export function acquireWakeSlot(limit = hibernationConfig().wakeConcurrency): Pr
         if (released) return
         released = true
         wakeActive--
-        wakeQueue.shift()?.()
+        grantNext()
       })
     }
-    if (wakeActive < limit) grant()
-    else wakeQueue.push(grant)
+    wakeQueue.push({ ticket, limit, grant })
+    grantNext()
   })
+}
+
+/** A queued warm-up became urgent: let it through if a slot is free. */
+export function promoteWake(ticket: WakeTicket): void {
+  if (ticket.urgent) return
+  ticket.urgent = true
+  grantNext()
 }
 
 /** Test hook: the pool's current occupancy. */

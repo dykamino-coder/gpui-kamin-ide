@@ -10,9 +10,11 @@ vi.mock('../logging', () => ({ debugLog: vi.fn(), infoLog: vi.fn(), warnLog: vi.
 
 import {
   acquireWakeSlot,
+  cpuBudget,
   hibernationBlocker,
   hibernationConfig,
   makeRoomForOneMore,
+  promoteWake,
   registerHibernationHandle,
   SCHEDULED_WAKEUP_MARGIN_MS,
   sweepIdleSessions,
@@ -190,11 +192,65 @@ describe('wake pool', () => {
     r4()
     expect(wakePoolState()).toEqual({ active: 0, queued: 0 })
   })
+
+  it('lets a wake with a message pass queued warm-ups and keeps one slot from warm-ups', async () => {
+    const order: string[] = []
+    const take = (name: string, urgent: boolean) => acquireWakeSlot(3, { urgent }).then((r) => (order.push(name), r))
+    const warmA = await take('warmA', false)
+    const warmB = await take('warmB', false)
+    // The last slot is not for warm-ups.
+    const warmC = take('warmC', false)
+    const warmD = { urgent: false }
+    const promoted = acquireWakeSlot(3, warmD).then((r) => (order.push('warmD'), r))
+    await Promise.resolve()
+    expect(wakePoolState()).toEqual({ active: 2, queued: 2 })
+    const message = await take('message', true)
+    expect(order).toEqual(['warmA', 'warmB', 'message'])
+    warmA()
+    await Promise.resolve()
+    // Two busy of three: still no room for a warm-up.
+    expect(order).toEqual(['warmA', 'warmB', 'message'])
+    // warmD got its message: it takes the free slot ahead of warmC.
+    promoteWake(warmD)
+    const rD = await promoted
+    warmB()
+    message()
+    const rC = await warmC
+    expect(order).toEqual(['warmA', 'warmB', 'message', 'warmD', 'warmC'])
+    rD()
+    rC()
+    expect(wakePoolState()).toEqual({ active: 0, queued: 0 })
+  })
+})
+
+describe('cpuBudget', () => {
+  const files = (map: Record<string, string>) => (path: string) => {
+    if (!(path in map)) throw new Error('ENOENT')
+    return map[path]!
+  }
+  it('takes the lower of affinity and the cgroup quota', () => {
+    expect(cpuBudget(files({ '/sys/fs/cgroup/cpu.max': '400000 100000\n' }), 20)).toBe(4)
+    expect(cpuBudget(files({ '/sys/fs/cgroup/cpu.max': '250000 100000' }), 20)).toBe(3)
+    expect(cpuBudget(files({ '/sys/fs/cgroup/cpu.max': 'max 100000' }), 10)).toBe(10)
+    expect(cpuBudget(files({ '/sys/fs/cgroup/cpu.max': '4000000 100000' }), 8)).toBe(8)
+  })
+  it('reads cgroup v1 and falls back to affinity', () => {
+    expect(
+      cpuBudget(
+        files({ '/sys/fs/cgroup/cpu/cpu.cfs_quota_us': '200000', '/sys/fs/cgroup/cpu/cpu.cfs_period_us': '100000' }),
+        16,
+      ),
+    ).toBe(2)
+    expect(cpuBudget(files({ '/sys/fs/cgroup/cpu/cpu.cfs_quota_us': '-1' }), 6)).toBe(6)
+    expect(cpuBudget(files({}), 1)).toBe(1)
+  })
 })
 
 describe('configuration', () => {
   it('has defaults for a single user and reads overrides', () => {
-    expect(hibernationConfig({})).toEqual({ idleMs: 15 * MIN, maxAwake: 0, wakeConcurrency: 4, evictIdleMs: MIN })
+    expect(hibernationConfig({}, 4)).toEqual({ idleMs: 15 * MIN, maxAwake: 0, wakeConcurrency: 4, evictIdleMs: MIN })
+    expect(hibernationConfig({}, 12).wakeConcurrency).toBe(12)
+    expect(hibernationConfig({}, 1).wakeConcurrency).toBe(2)
     expect(
       hibernationConfig({
         BRIDGE_HIBERNATE_IDLE_MIN: '0',

@@ -459,7 +459,11 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
         ...(typeof m.promptReady === 'boolean' ? { promptReady: m.promptReady } : {}),
         ...(typeof m.waiting === 'boolean' ? { waiting: m.waiting } : {}),
         ...(typeof m.lastMessage === 'string' ? { lastMessage: m.lastMessage } : {}),
+        ...(typeof m.hibernation === 'string' ? { hibernation: m.hibernation } : {}),
       })
+      // A CLI sleeping or waking is not a turn: no idle notification, no
+      // working/finished edge on the session row.
+      if (typeof m.hibernation === 'string') break
       ctx.trackActivityForIdle(rawTitle, isWorking, hookDriven)
       ctx.notifyActivity(isWorking, hookDriven)
       break

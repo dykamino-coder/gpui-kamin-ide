@@ -15,7 +15,7 @@ import { markOpen } from '../signals/open-timeline'
 import { scheduleSaveTabsState, ghostifyClosedPinned, reclaimGhostIfMatch } from '../lib/tabs-persist'
 import { mcpLoading, tabPromptReady, lastSendAt, reconnectNonce } from '../signals/connection'
 import { mcpServers } from '../signals/customize'
-import { tabActivity, tabWaiting, sidebarMode, activeCustomizePanel } from '../signals/ui'
+import { tabActivity, tabWaiting, sidebarMode, activeCustomizePanel, setTabHibernation } from '../signals/ui'
 import { hostEditorSelection } from '../signals/file-viewer'
 import { showToast } from '../signals/toasts'
 import { activeWidgets } from '../signals/widgets'
@@ -609,7 +609,10 @@ export function useBridgeListeners(
       const d = data as {
         rawTitle?: string; isWorking?: boolean
         hookDriven?: boolean; promptReady?: boolean; waiting?: boolean
+        hibernation?: 'asleep' | 'waking' | 'awake'
       }
+      // Any frame from a live CLI means it is awake again.
+      setTabHibernation(tabId, d.hibernation === 'asleep' || d.hibernation === 'waking' ? d.hibernation : null)
 
       // Deterministic path — the CLI's own lifecycle hooks (UserPromptSubmit /
       // Stop / SessionStart / Notification). These beat the OSC-spinner + prompt-

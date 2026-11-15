@@ -65,7 +65,7 @@ import {
   deleteSessionByConversationId,
   hibernateSession,
 } from './session-manager'
-import { acquireWakeSlot, registerHibernationHandle } from './session-hibernation'
+import { acquireWakeSlot, promoteWake, registerHibernationHandle, type WakeTicket } from './session-hibernation'
 import { hasInflightMcpCall, settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
 import { sessionCliControl } from './session-cli-control'
@@ -170,14 +170,16 @@ async function untilInputReady(session: PtySession, limitMs: number): Promise<vo
   while (Date.now() < deadline && session.state === 'running') {
     const control = sessionCliControl(session)
     if (!control || control.inputReady()) return
-    await new Promise((resolve) => setTimeout(resolve, 25))
+    await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
 
 const IDLE_COMMANDS_REQUEST_MS = 10_000
 
-export function sleepAction(type: string): 'wake' | 'pass' | 'ignore' | 'release' {
+export function sleepAction(type: string): 'wake' | 'warm' | 'pass' | 'ignore' | 'release' {
   switch (type) {
+    case 'session:warm':
+      return 'warm'
     case 'session:create':
     case 'session:resume':
     case 'session:end':
@@ -353,18 +355,42 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         sessionWsMap.delete(id)
         const { cols, rows } = session.pty
         asleep = { session: sleepingChat(session), done: hibernateSession(id), cols, rows }
+        sendHibernationState(id, 'asleep')
         return true
       },
     })
+
+    // Hibernation as the client sees it, on the ordinary activity frame: an
+    // asleep chat is idle at its prompt (typing into it sends `session:warm`),
+    // a waking one shows a working status until its new CLI reports itself.
+    const sendHibernationState = (sessionId: string, hibernation: 'asleep' | 'waking' | 'awake') =>
+      sendToClient(ws, {
+        type: 'session:activity',
+        sessionId,
+        hookDriven: true,
+        rawTitle: hibernation === 'waking' ? 'Waking up the session…' : '',
+        isWorking: hibernation === 'waking',
+        waiting: false,
+        ...(hibernation === 'asleep' ? { promptReady: true } : {}),
+        hibernation,
+      })
     ws.once('close', unregisterHibernation)
 
-    const wake = (): Promise<boolean> => {
+    // The wake in flight, if any: its pool ticket is promoted when a message
+    // arrives for a chat that was only warming up.
+    let waking: { ticket: WakeTicket; run: Promise<boolean> } | null = null
+    const wake = (urgent: boolean): Promise<boolean> => {
       const sleeping = asleep!
       const old = sleeping.session
       const operation = beginStartup('replace_resume')
       const started = Date.now()
+      const ticket: WakeTicket = { urgent }
+      // The client shows the chat as waking until the new CLI reports itself.
+      sendHibernationState(old.id, 'waking')
       const run = (async (): Promise<boolean> => {
-        const release = await acquireWakeSlot()
+        const release = await acquireWakeSlot(undefined, ticket)
+        const slotAt = Date.now()
+        let spawnedAt: number | undefined
         try {
           await sleeping.done
           if (!ownsStartup(operation)) return false
@@ -397,6 +423,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             return false
           }
           fresh.streamProtocol = old.streamProtocol ?? 0
+          spawnedAt = Date.now()
           // The slot is held until the CLI takes input: a CLI boot is CPU-bound
           // well past the spawn, and twenty at once would all finish late.
           // Messages that woke the chat wait until the CLI takes input the normal
@@ -421,7 +448,18 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               model: fresh.model,
             }),
           )
-          lifecycleLog('session_wake', { sessionId: fresh.id, waitedMs: Date.now() - started })
+          sendHibernationState(fresh.id, 'awake')
+          const now = Date.now()
+          // Phases: pool wait, server-side start (teardown wait, settings,
+          // MCP endpoint, spawn), CLI boot until its input channel is up.
+          lifecycleLog('session_wake', {
+            sessionId: fresh.id,
+            waitedMs: now - started,
+            urgent: ticket.urgent,
+            slotMs: slotAt - started,
+            startMs: spawnedAt! - slotAt,
+            bootMs: now - spawnedAt!,
+          })
           return true
         } catch (err) {
           if (!ownsStartup(operation)) return false
@@ -438,8 +476,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
       })()
       engineSwitch = run
+      waking = { ticket, run }
       void run.finally(() => {
         if (engineSwitch === run) engineSwitch = null
+        if (waking?.run === run) waking = null
       })
       return run
     }
@@ -453,6 +493,26 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         sendError(ws, 'Invalid JSON')
         return
       }
+      if (asleep) {
+        // Before waiting on a wake: a message is confirmed at once (it waits in
+        // order for the new CLI), and a warm-up it lands on goes to the front.
+        const action = sleepAction(msg.type)
+        if (action === 'wake' && msg.type === 'session:submitText' && msg.submissionId)
+          sendToClient(ws, {
+            type: 'session:submission',
+            sessionId: asleep.session.id,
+            id: msg.submissionId,
+            text: msg.data,
+            state: 'queued',
+            cancelable: false,
+            createdAt: Date.now(),
+          })
+        if (action === 'wake' && waking) promoteWake(waking.ticket)
+        if (action === 'warm') {
+          if (!engineSwitch) void wake(false)
+          return
+        }
+      }
       if (engineSwitch && msg.type !== 'session:end') {
         await engineSwitch.catch(() => {})
         if (socketGone || ws.readyState !== WS.OPEN) return
@@ -460,6 +520,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
       if (asleep) {
         const sleeping = asleep
         switch (sleepAction(msg.type)) {
+          case 'warm':
+            return
           case 'ignore':
             if (msg.type === 'session:resize' && msg.cols > 0 && msg.rows > 0) {
               sleeping.cols = msg.cols
@@ -487,7 +549,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             if (socketGone || ws.readyState !== WS.OPEN) return
             break
           case 'wake':
-            if (!(await (engineSwitch ?? wake()))) return
+            if (!(await (engineSwitch ?? wake(true)))) return
             if (socketGone || ws.readyState !== WS.OPEN) return
             break
         }
@@ -645,6 +707,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           submitText(authenticatedSessionId, msg.data, msg.submissionId)
           break
         }
+
+        case 'session:warm':
+          // The chat is awake already: nothing to warm.
+          break
 
         case 'session:submission-action': {
           if (!authenticatedSessionId) return

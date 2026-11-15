@@ -39,6 +39,7 @@
   {"id":"send:reveal-in-explorer","status":"explicitly-not-applicable-with-reason","reason":"KaminIDE host feature, not Bridge","evidence":"extension/src/core-ipc.ts","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:session:choose-new","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:session:interrupt","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
+  {"id":"send:session:warm","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:session:retry-stored","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:set-config","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/config.ts":1,"extension/src/sessions-bridge.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:show-notification","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},

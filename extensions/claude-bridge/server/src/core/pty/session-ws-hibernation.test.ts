@@ -7,6 +7,8 @@ import path from 'node:path'
 const h = vi.hoisted(() => ({
   deleteData: vi.fn(),
   submit: vi.fn(),
+  acquire: vi.fn(async (_ticket: unknown) => () => {}),
+  promote: vi.fn(),
   hibernate: vi.fn(),
   handles: [] as any[],
   write: vi.fn(),
@@ -44,7 +46,8 @@ vi.mock('./effort-selection', () => ({
 }))
 vi.mock('../server/ws', () => ({ registerWsRoute: vi.fn() }))
 vi.mock('./session-hibernation', () => ({
-  acquireWakeSlot: async () => () => {},
+  acquireWakeSlot: (_limit: unknown, ticket: unknown) => h.acquire(ticket),
+  promoteWake: (ticket: { urgent: boolean }) => h.promote(ticket),
   registerHibernationHandle: (handle: any) => {
     h.handles.push(handle)
     return () => {}
@@ -180,6 +183,8 @@ beforeEach(() => {
   vi.useFakeTimers()
   h.create.mockReset()
   h.submit.mockReset()
+  h.acquire.mockReset().mockImplementation(async () => () => {})
+  h.promote.mockReset()
   h.find.mockReset()
   h.destroy.mockReset()
   h.hibernate.mockReset().mockResolvedValue(undefined)
@@ -285,6 +290,79 @@ describe('idle hibernation on the session socket', () => {
       ['s-new', 'one', 'a'],
       ['s-new', 'two', 'b'],
     ])
+  })
+
+  it('confirms a message at once and reports asleep, waking and awake', async () => {
+    await asleepChat()
+    const frames = () => vi.mocked(sendToClient).mock.calls.map(([, m]) => m as any)
+    expect(frames()).toContainEqual(
+      expect.objectContaining({
+        type: 'session:activity',
+        sessionId: 's-old',
+        hibernation: 'asleep',
+        promptReady: true,
+      }),
+    )
+    let started!: () => void
+    const fresh = makeSession('s-new', socket)
+    h.create.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          started = () => {
+            h.sessions.set(fresh.id, fresh)
+            resolve(fresh)
+          }
+        }),
+    )
+    const pending = socket.message({ type: 'session:submitText', data: 'hello', submissionId: 'q-1' })
+    await vi.advanceTimersByTimeAsync(0)
+    // Before the CLI exists: the receipt and the waking status.
+    expect(frames()).toContainEqual(
+      expect.objectContaining({ type: 'session:submission', id: 'q-1', text: 'hello', state: 'queued' }),
+    )
+    expect(frames()).toContainEqual(
+      expect.objectContaining({ type: 'session:activity', hibernation: 'waking', isWorking: true }),
+    )
+    expect(h.acquire).toHaveBeenLastCalledWith({ urgent: true })
+    started()
+    await pending
+    expect(frames()).toContainEqual(
+      expect.objectContaining({ type: 'session:activity', sessionId: 's-new', hibernation: 'awake', isWorking: false }),
+    )
+    expect(h.submit).toHaveBeenCalledWith('s-new', 'hello', 'q-1')
+  })
+
+  it('warms a sleeping chat without a message and promotes it when one arrives', async () => {
+    await asleepChat()
+    let granted!: () => void
+    h.acquire.mockImplementationOnce(() => new Promise((resolve) => (granted = () => resolve(() => {}))))
+    const fresh = makeSession('s-new', socket)
+    h.create.mockImplementationOnce(async () => {
+      h.sessions.set(fresh.id, fresh)
+      return fresh
+    })
+    await socket.message({ type: 'session:warm' })
+    expect(h.acquire).toHaveBeenLastCalledWith({ urgent: false })
+    // A second warm-up while one runs starts nothing new.
+    await socket.message({ type: 'session:warm' })
+    expect(h.acquire).toHaveBeenCalledTimes(1)
+    const pending = socket.message({ type: 'session:submitText', data: 'now', submissionId: 'w-1' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.promote).toHaveBeenCalledWith({ urgent: false })
+    granted()
+    await pending
+    expect(h.create).toHaveBeenCalledTimes(2)
+    expect(h.submit).toHaveBeenCalledWith('s-new', 'now', 'w-1')
+  })
+
+  it('ignores a warm-up for a chat that is awake', async () => {
+    const session = makeSession('s-awake', socket)
+    h.sessions.set(session.id, session)
+    h.create.mockResolvedValueOnce(session)
+    await socket.message({ type: 'session:create', token: 'synthetic' })
+    await socket.message({ type: 'session:warm' })
+    expect(h.create).toHaveBeenCalledTimes(1)
+    expect(h.acquire).not.toHaveBeenCalled()
   })
 
   it('holds the waking message until the new CLI takes input', async () => {
