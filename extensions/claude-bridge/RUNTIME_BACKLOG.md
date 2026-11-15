@@ -1,5 +1,20 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.103 delivery: message sent during reconnect — 2026-11-15
+
+Delivery reconciliation 2026-11-15, source `origin/main`
+`5a7919a3c29ee76b9c340d06592705bd988914be` (release #941):
+[KaminIDE 1.0.103](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.103)
+/ server 6.3.180 is published. The ancestry of #938 in the tag and the published
+Release were checked; the image is
+`docker.io/dykamino/open-claude-bridge:6.3.180@sha256:b61ee7b41f76ca18ecc7c19616f0f20869bc8f8e4ef1d42791b8c6917cb8cf2b`.
+[INC-0120](runtime-issues/INC-2026-0120.md) is resolved for its accepted scope.
+The exact-head gate on `eaa6d51f` showed red on 1.0.102 ("Queued", no answer)
+and green on the candidate (text restored to the message box, a single answer
+after resend). The release candidate `ba850cbf` repeated it against a server
+built from the release commit ([private gate evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/5c9d20d9078b0171cb546fdaffaaea1cf075fba3/incidents/INC-2026-0120/evidence/2026-11-15-pr938-gate-eaa6d51f)).
+The browser-workspace part is covered by automated tests only. Publication is
+not acceptance in the owner's environment.
 ## KaminIDE 1.0.102 delivery: first message after a server restart — 2026-11-15
 
 Delivery reconciliation 2026-11-15, source `origin/main`
