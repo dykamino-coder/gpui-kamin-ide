@@ -75,16 +75,12 @@ impl Document {
         };
         // Та же форма: отличие — записи мутаций прежнего DOM, путь применения
         // общий с `apply`; иначе новая разметка собирается целиком.
-        let mut same_shape = false;
-        let mut invalidation = None;
         if let Some(old) = self.state.values.source_dom()
             && let Some(shape) = shape::compare(&old, &source.input.dom.document)
             && let Some(batch) = mutation::Batch::new(&shape.records())
         {
             #[cfg(feature = "engine-bench")]
             let started = crate::work::Clock::now();
-            same_shape = true;
-            invalidation = self.invalidation(&batch, theme_css);
             if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
                 batch.write();
                 self.commit(
@@ -99,16 +95,19 @@ impl Document {
                 );
                 return Ok(self.report());
             }
+            // Узлы прежнего DOM остаются живыми: перестройка меняет коробки,
+            // но не идентичность источников. Отказ откатывается тем же путём,
+            // что и у apply, включая бюджет и изменённые атрибуты/тексты.
+            let rebuilt = self.rebuild(&batch, theme_css, source.key, revision);
+            #[cfg(feature = "engine-bench")]
+            if rebuilt.is_ok() {
+                self.timings.parse = source.parse;
+            }
+            return rebuilt;
         }
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
         let state = super::state::DocState::continuing(media, &self.state);
-        let mut invalidation = invalidation.map(crate::dom::invalidation::Invalidation::new);
-        if same_shape {
-            // The records go to the rebuilt document (`restyle`); their
-            // sources are not needed for that.
-            self.reuse.release_sources();
-        }
         let candidate = match Self::try_source(
             source,
             theme_css,
@@ -117,27 +116,18 @@ impl Document {
             state,
             &fonts,
             revision,
-            invalidation.as_mut(),
+            None,
         ) {
             Ok(candidate) => candidate,
             Err((failure, _)) => {
-                if same_shape {
-                    self.reuse.forget();
-                }
                 return Err(record(failure, self));
             }
         };
-        // The same source shape gives the same node ids (traversal counters):
-        // the block records may hold for the restyled tree (`restyle`).
-        let mut candidate = candidate;
-        if same_shape {
-            let restyled = invalidation
-                .as_ref()
-                .and_then(crate::dom::invalidation::Invalidation::finish);
-            self.hand_over_reuse(&mut candidate, restyled);
-        } else {
-            candidate.state.boxes.borrow_mut().replace(&candidate.nodes);
-        }
+        candidate
+            .state
+            .boxes
+            .borrow_mut()
+            .replace(&candidate.nodes, &candidate.state.values);
         *self = candidate;
         Ok(self.report())
     }

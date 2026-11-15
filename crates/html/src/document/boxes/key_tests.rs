@@ -50,11 +50,15 @@ fn a_reused_dom_slot_never_inherits_the_dropped_nodes_box() {
     let dom = RcDom::default();
     let old = authored(&dom);
     let key = old.key();
+    let traversal = crate::values::traversal::TraversalState::default();
+    traversal.record_element(&old, 1);
+    assert_eq!(traversal.element_keys()[&1], key);
     let mut tree = BoxTree::default();
     tree.publish(&[project(&old)]);
     let old_box = tree.first;
     drop(old);
     assert!(dom.document.resolve_key(key).is_none());
+    assert_eq!(traversal.element_keys()[&1], key, "POD index is weak");
     let next = authored(&dom);
     assert_eq!(next.key().slot, key.slot);
     assert_ne!(next.key().generation, key.generation);
@@ -65,4 +69,19 @@ fn a_reused_dom_slot_never_inherits_the_dropped_nodes_box() {
         tree.get(tree.first).unwrap().origin,
         Source::Node(next.key())
     );
+}
+
+#[test]
+fn the_text_source_index_records_keys_without_retaining_nodes() {
+    let dom = RcDom::default();
+    let text = dom.document.new_in(markup5ever_rcdom::NodeData::Text {
+        contents: std::cell::RefCell::new("text".into()),
+    });
+    let key = text.key();
+    let traversal = crate::values::traversal::TraversalState::default();
+    let id = traversal.record_text(&text).unwrap();
+    assert_eq!(traversal.text_keys()[id.get() as usize - 1], key);
+    drop(text);
+    assert!(dom.document.resolve_key(key).is_none());
+    assert_eq!(traversal.text_keys()[id.get() as usize - 1], key);
 }

@@ -1,25 +1,98 @@
 //! Ключ источника коробки: POD DOM-узла отдельно от синтетической роли.
 //!
-//! Числовой транспорт Element::node_id только распаковывается проектным типом
-//! M1; порядок и плотность ключей не используются.
+//! До перевода Element::node_id в M1 настоящий ключ приходит из записи обхода;
+//! порядок, плотность и адреса коробок не используются как идентичность.
 
-use crate::dom::Element;
 pub(super) use crate::dom::NodeKey;
+use crate::dom::{BoxId, Element};
+use std::rc::Rc;
 use std::string::String;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) enum Source {
     Root,
+    Viewport,
     Node(NodeKey),
-    Synthetic(String),
+    Synthetic(Rc<Synthetic>),
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub(super) struct Synthetic {
+    owner: BoxId,
+    tag: String,
+    role: u16,
+    extent: super::sources::Extent,
+}
+
+#[cfg(feature = "heap-report")]
+kamin_heap::heap_fields!(Synthetic { tag });
+
+#[cfg(feature = "heap-report")]
+impl kamin_heap::HeapSize for Source {
+    fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
+        match self {
+            Self::Synthetic(source) => kamin_heap::HeapSize::heap_size(source, ops),
+            _ => 0,
+        }
+    }
 }
 
 impl Source {
-    pub(super) fn of(element: &Element) -> Self {
-        if element.node_id != 0 {
-            Self::Node(NodeKey::from_packed(element.node_id))
+    pub(super) fn authored(element: &Element) -> bool {
+        use crate::style::box_input::BoxOrigin;
+        element.node_id != 0
+            && !element.marks.anonymous_wrapper
+            && !element.marks.anonymous_cell
+            && !element.marks.anon
+            && !element.marks.spanner_content_box
+            && !element.marks.initial_letter
+            && !matches!(
+                element.marks.box_origin,
+                Some(BoxOrigin::Marker | BoxOrigin::EmbeddedRoot)
+            )
+    }
+
+    pub(super) fn of(
+        element: &Element,
+        owner: BoxId,
+        extent: super::sources::Extent,
+        key: Option<NodeKey>,
+    ) -> Self {
+        if Self::authored(element)
+            && let Some(key) = key
+        {
+            Self::Node(key)
+        } else if !owner.is_some() && element.tag == "html-viewport" {
+            // Единственная корневая коробка окна не является фрагментом
+            // первого/последнего ребёнка и переживает замену их диапазона.
+            Self::Viewport
         } else {
-            Self::Synthetic(element.marks.state_id.get().cloned().unwrap_or_default())
+            let marks = &element.marks;
+            let flags = [
+                marks.anonymous_wrapper,
+                marks.anonymous_cell,
+                marks.anon,
+                marks.spanner_content_box,
+                marks.initial_letter,
+                element.inline,
+            ];
+            let mut role = flags
+                .into_iter()
+                .enumerate()
+                .fold(0, |role, (bit, set)| role | (u16::from(set) << bit));
+            use crate::style::box_input::BoxOrigin;
+            role |= match marks.box_origin {
+                Some(BoxOrigin::Moved) => 1 << 6,
+                Some(BoxOrigin::Marker) => 2 << 6,
+                Some(BoxOrigin::EmbeddedRoot) => 3 << 6,
+                None => 0,
+            };
+            Self::Synthetic(Rc::new(Synthetic {
+                owner,
+                tag: element.tag.clone(),
+                role,
+                extent,
+            }))
         }
     }
 }

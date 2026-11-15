@@ -11,7 +11,10 @@ impl Document {
     /// or, if those are unknown, of both trees (`Store::rebase`), so the
     /// previous frame tree goes with this document.
     pub(super) fn hand_over_reuse(&self, next: &mut Document, restyled: Option<&[u64]>) {
-        next.state.boxes.borrow_mut().publish(&next.nodes);
+        next.state
+            .boxes
+            .borrow_mut()
+            .publish_document(&next.nodes, &next.state.values);
         self.reuse.rebase(&self.nodes, &next.nodes, restyled);
         next.reuse = self.reuse.clone();
     }

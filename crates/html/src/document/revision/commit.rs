@@ -44,7 +44,8 @@ impl Document {
         match plan {
             Plan::Clean(nodes) => {
                 if let Some(nodes) = nodes {
-                    self.state.boxes.borrow_mut().publish(&nodes);
+                    // Plan::Clean доказывает неизменность всех прочитанных
+                    // входов: обновляются только непрочитанные атрибуты.
                     self.nodes = Rc::new(nodes);
                 }
                 let base = self.state.values.images.borrow().base().cloned();
@@ -96,7 +97,10 @@ impl Document {
         state.values.admit_revision(revision.clone(), base.as_ref());
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
-        state.boxes.borrow_mut().publish(&nodes);
+        state
+            .boxes
+            .borrow_mut()
+            .publish_document(&nodes, &state.values);
         match restyled {
             // A restyle reaches the records as a rebuild's does.
             Some(ids) => self.reuse.restyle(&self.nodes, &nodes, ids),

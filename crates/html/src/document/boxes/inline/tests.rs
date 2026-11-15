@@ -4,7 +4,7 @@ use super::*;
 use crate::document::Document;
 use crate::dom::Node;
 
-fn flow(doc: &Document, tag: &str) -> Rc<InlineContent> {
+pub(super) fn flow(doc: &Document, tag: &str) -> Rc<InlineContent> {
     let mut pending: Vec<_> = doc.nodes.iter().collect();
     let source = loop {
         let Node::Element(element) = pending.pop().expect("flow element") else {
@@ -206,5 +206,21 @@ fn root_text_and_inline_siblings_share_one_document_flow() {
     assert_eq!(
         tree.get(root).unwrap().inline.as_ref().unwrap().text,
         "changed"
+    );
+}
+
+#[test]
+fn root_contents_siblings_share_the_document_flow() {
+    let contents = |text: &str| {
+        let mut element =
+            crate::layout::table::anon::anon_element("div", vec![Node::Text(text.into())]);
+        element.style.cascaded_mut().reset_box_layout.display = Some(Display::Contents);
+        Node::Element(element)
+    };
+    let mut tree = super::super::BoxTree::default();
+    tree.publish(&[contents("left"), contents("right")]);
+    assert_eq!(
+        tree.get(tree.first).unwrap().inline.as_ref().unwrap().text,
+        "leftright"
     );
 }

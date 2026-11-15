@@ -4,17 +4,23 @@
 //! публикация меняет существующие записи, а удаление увеличивает поколение слота.
 
 mod arena;
-mod inline;
+#[cfg(feature = "heap-report")]
+mod heap;
+pub(crate) mod inline;
 #[cfg(test)]
 mod key_tests;
+mod reuse;
 mod source;
+#[cfg(test)]
+mod source_tests;
+mod sources;
 #[cfg(test)]
 mod tests;
 
 use crate::dom::{BoxId, Node};
 use arena::{Arena, Link};
+use reuse::Reuse;
 use source::Source;
-use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 pub(crate) struct BoxRecord {
@@ -43,10 +49,45 @@ impl BoxTree {
         self.arena.get(id)
     }
 
+    /// Живые коробки без обхода адаптерного дерева Element/Children.
+    /// Порядок слотов не задаёт порядок документа: его задают first/next.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (BoxId, &BoxRecord)> {
+        self.arena.iter()
+    }
+
     /// Опубликовать принятый вход той же формы.
     /// Источник задаётся NodeKey DOM, а синтетическая роль — отдельно от него.
-    pub(crate) fn publish(&mut self, nodes: &[Node]) {
-        let mut previous: HashMap<Source, VecDeque<BoxId>> = HashMap::new();
+    #[cfg(test)]
+    fn publish(&mut self, nodes: &[Node]) {
+        self.publish_sources(nodes, &[]);
+    }
+
+    pub(crate) fn publish_document(
+        &mut self,
+        nodes: &[Node],
+        values: &crate::values::DocumentValues,
+    ) {
+        let keys = values.traversal.element_keys();
+        self.publish_keyed(nodes, &values.traversal.text_keys(), &|id| {
+            keys.get(&id).copied()
+        });
+    }
+
+    #[cfg(test)]
+    fn publish_sources(&mut self, nodes: &[Node], text_keys: &[crate::dom::NodeKey]) {
+        self.publish_keyed(nodes, text_keys, &|id| {
+            Some(crate::dom::NodeKey::from_packed(id))
+        });
+    }
+
+    fn publish_keyed(
+        &mut self,
+        nodes: &[Node],
+        text_keys: &[crate::dom::NodeKey],
+        element_key: &dyn Fn(u64) -> Option<crate::dom::NodeKey>,
+    ) {
+        let sources = sources::Sources::collect(nodes, text_keys, element_key);
+        let mut previous = Reuse::default();
         let mut old = Vec::new();
         let mut pending = vec![self.first];
         while let Some(id) = pending.pop() {
@@ -54,10 +95,7 @@ impl BoxTree {
                 continue;
             };
             old.push(id);
-            previous
-                .entry(record.origin.clone())
-                .or_default()
-                .push_back(id);
+            previous.insert(record.origin.clone(), id);
             pending.push(record.next);
             pending.push(record.first);
         }
@@ -75,7 +113,11 @@ impl BoxTree {
         // родителя. Его IFC принадлежит документной коробке, а не первому span.
         let root = if nodes.iter().any(|node| match node {
             Node::Text(_) => true,
-            Node::Element(e) => crate::layout::box_kind::inline_level_box(e),
+            Node::Element(e) => {
+                crate::layout::box_kind::inline_level_box(e)
+                    || e.style.used().reset_box_layout.display
+                        == Some(crate::style::computed::Display::Contents)
+            }
         }) {
             self.record(Source::Root, BoxId::NONE, 0, &mut previous)
                 .unwrap_or(BoxId::NONE)
@@ -99,7 +141,7 @@ impl BoxTree {
                 }
                 continue;
             };
-            let origin = Source::of(e);
+            let origin = Source::of(e, *parent, sources.get(e), element_key(e.node_id));
             let id = self.record(origin, *parent, e.node_id, &mut previous);
             let Some(id) = id else { continue };
             if last.is_some() {
@@ -128,11 +170,11 @@ impl BoxTree {
         origin: Source,
         parent: BoxId,
         source: u64,
-        previous: &mut HashMap<Source, VecDeque<BoxId>>,
+        previous: &mut Reuse,
     ) -> Option<BoxId> {
         // Очередь содержит только живые старые слоты. Каждый извлекается один
         // раз; повторный линейный поиск среди фрагментов одного узла не нужен.
-        let id = previous.get_mut(&origin).and_then(VecDeque::pop_front);
+        let id = previous.take(&origin);
         let id = id.or_else(|| {
             self.arena.insert(BoxRecord {
                 parent,
@@ -157,12 +199,12 @@ impl BoxTree {
 
     /// Полная смена формы до появления постоянных ключей DOM: старые ключи
     /// коробок инвалидируются, а слоты получают новые поколения.
-    pub(crate) fn replace(&mut self, nodes: &[Node]) {
-        let ids: Vec<_> = self.arena.iter().map(|(id, _)| id).collect();
+    pub(crate) fn replace(&mut self, nodes: &[Node], values: &crate::values::DocumentValues) {
+        let ids: Vec<_> = self.iter().map(|(id, _)| id).collect();
         for id in ids {
             self.arena.remove(id);
         }
         self.first = BoxId::NONE;
-        self.publish(nodes);
+        self.publish_document(nodes, values);
     }
 }

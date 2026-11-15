@@ -72,7 +72,7 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
         .unwrap();
     let old_state = doc.state.clone();
     let old_revision = doc.revision_budget();
-    let before = doc.budget().used(BudgetKind::LiveBytes);
+    let dom_key = doc.source_dom().key();
     let live = doc.budget().reserve(BudgetKind::LiveBytes, 8).unwrap();
     let salt = doc.salt();
     let failure = doc.update(&"x".repeat(17), "").unwrap_err();
@@ -82,11 +82,16 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
     assert!(doc.update("<p>b</p>", "").unwrap().changed());
     assert_eq!(doc.revision_budget().used(BudgetKind::SourceBytes), 8);
     assert_eq!(old_revision.used(BudgetKind::SourceBytes), 8);
-    assert!(doc.budget().used(BudgetKind::LiveBytes) > before + 8);
+    assert_eq!(doc.source_dom().key(), dom_key);
+    // Перестройка сохраняет исходный DOM, поэтому второй комплект его
+    // storage не появляется. Старый ticket по-прежнему списан с того же ledger.
+    let charged = doc.budget().used(BudgetKind::LiveBytes);
+    assert_eq!(charged, old_revision.document().used(BudgetKind::LiveBytes));
+    drop(live);
+    assert_eq!(doc.budget().used(BudgetKind::LiveBytes), charged - 8);
     assert_eq!(governor.used(BudgetKind::Documents), 1);
     drop(doc);
     drop(old_revision);
-    drop(live);
     assert_eq!(governor.used(BudgetKind::Documents), 1);
     drop(old_state);
     assert_eq!(governor.used(BudgetKind::Documents), 0);
