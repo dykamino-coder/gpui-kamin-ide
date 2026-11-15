@@ -59,6 +59,9 @@ struct Class {
 #[derive(Default)]
 pub(super) struct Collection {
     frames: Vec<Frame>,
+    /// Буферы закрытых потоков: следующий поток пишет в них, а наружу уходит
+    /// копия точного размера.
+    spare: Vec<InlineContent>,
     pub(super) finished: Vec<(BoxId, Option<Rc<InlineContent>>)>,
 }
 
@@ -103,7 +106,8 @@ impl Collection {
             id,
             closes: inline && !contents && !suppressed,
             owner: (!suppressed).then_some(owner),
-            content: (!suppressed && inherited.is_none()).then(InlineContent::default),
+            content: (!suppressed && inherited.is_none())
+                .then(|| self.spare.pop().unwrap_or_default()),
         });
     }
 
@@ -196,7 +200,16 @@ impl Collection {
         if frame.closes {
             self.item(frame.id, ItemKind::Close);
         }
-        let content = frame.content.filter(|content| !content.items.is_empty());
+        let content = frame.content.and_then(|mut scratch| {
+            let exact = (!scratch.items.is_empty()).then(|| InlineContent {
+                text: scratch.text.as_str().into(),
+                items: scratch.items.clone(),
+            });
+            scratch.text.clear();
+            scratch.items.clear();
+            self.spare.push(scratch);
+            exact
+        });
         self.finished.push((frame.id, content.map(Rc::new)));
     }
 }

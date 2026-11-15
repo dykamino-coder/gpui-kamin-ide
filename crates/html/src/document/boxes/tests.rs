@@ -214,7 +214,7 @@ fn rejected_cascade_keeps_box_records_and_keys_unchanged() {
             .into_iter()
             .map(|id| {
                 let r = tree.get(id).unwrap();
-                (id, r.parent, r.first, r.next, r.source, r.epoch)
+                (id, r.parent, r.first, r.next, r.source, r.epochs)
             })
             .collect::<Vec<_>>()
     };

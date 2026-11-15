@@ -208,6 +208,8 @@ impl BoxTree {
             text: if text == **source {
                 source.clone()
             } else {
+                text.text.shrink_to_fit();
+                text.items.shrink_to_fit();
                 Rc::new(text)
             },
         };

@@ -153,7 +153,6 @@ mod tests {
             )),
             inline: None,
             prepared: None,
-            epoch: 0,
             epochs: Default::default(),
             external: false,
             layout_slot: None,
@@ -164,8 +163,8 @@ mod tests {
     fn mutation_keeps_the_slot_and_stale_keys_never_resolve() {
         let mut arena = Arena::default();
         let first = arena.insert(record(1)).expect("slot");
-        arena.get_mut(first).expect("live").epoch = 7;
-        assert_eq!(arena.get(first).map(|r| r.epoch), Some(7));
+        arena.get_mut(first).expect("live").epochs.layout = 7;
+        assert_eq!(arena.get(first).map(|r| r.epochs.layout), Some(7));
         assert_eq!(arena.remove(first).map(|r| r.source), Some(1));
         let next = arena.insert(record(2)).expect("reused slot");
         assert_eq!(first.slot, next.slot);
@@ -173,7 +172,10 @@ mod tests {
         assert!(arena.get(first).is_none());
         assert!(arena.get_mut(first).is_none());
         assert!(arena.remove(first).is_none());
-        assert_eq!(arena.get(next).map(|r| (r.source, r.epoch)), Some((2, 0)));
+        assert_eq!(
+            arena.get(next).map(|r| (r.source, r.epochs.layout)),
+            Some((2, 0))
+        );
     }
 
     #[test]

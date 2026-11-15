@@ -132,7 +132,7 @@ impl BoxTree {
                 changed.push((id, Change::Own));
             }
             if e.node_id != 0 {
-                self.by_node.entry(e.node_id).or_insert(id);
+                self.by_node.insert_first(e.node_id, id);
             }
             let kept = reused == Some(id) && matches!(prev, Prev::Clean) && !inline.feeds_owner(e);
             if kept {
@@ -191,7 +191,6 @@ impl BoxTree {
             record.parent = parent;
             record.source = source;
             record.next = BoxId::NONE;
-            record.epoch = self.epoch;
             return id;
         }
         let id = self.arena.insert(BoxRecord {
@@ -202,7 +201,6 @@ impl BoxTree {
             origin,
             inline: None,
             prepared: None,
-            epoch: self.epoch,
             epochs: Default::default(),
             external: false,
             layout_slot: None,
@@ -219,8 +217,8 @@ impl BoxTree {
             let Some(record) = self.arena.remove(id) else {
                 continue;
             };
-            if record.source != 0 && self.by_node.get(&record.source) == Some(&id) {
-                self.by_node.remove(&record.source);
+            if record.source != 0 {
+                self.by_node.remove_if(record.source, id);
             }
             let mut child = record.first;
             while let Some(next) = self.get(child).map(|r| r.next) {

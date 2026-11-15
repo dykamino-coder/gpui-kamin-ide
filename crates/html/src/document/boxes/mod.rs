@@ -7,6 +7,7 @@ mod adapter;
 mod arena;
 #[cfg(test)]
 mod box_of_tests;
+mod by_node;
 mod epochs;
 pub(crate) use epochs::Epochs;
 #[cfg(test)]
@@ -43,7 +44,6 @@ pub(crate) struct BoxRecord {
     origin: Source,
     pub(crate) inline: Option<Rc<inline::InlineContent>>,
     prepared: Option<Box<finish::Prepared>>,
-    epoch: u64,
     /// Номера публикаций, на которых изменились входы раскладки.
     pub(crate) epochs: Epochs,
     /// Вклад в intrinsic-размеры предка не зависит от содержимого.
@@ -58,7 +58,7 @@ pub(crate) struct BoxTree {
     flows: std::collections::HashMap<(usize, usize), BoxId>,
     /// The first box of each keyed source element (`Element::node_id`):
     /// layout finds its box in O(1); fragment copies share it.
-    by_node: std::collections::HashMap<u64, BoxId>,
+    by_node: by_node::ByNode,
     first: BoxId,
     epoch: u64,
     /// Номер публикации для эпох раскладки (`Epochs`).
@@ -90,7 +90,7 @@ impl BoxTree {
         )
     )]
     pub(crate) fn box_of(&self, node_id: u64) -> Option<BoxId> {
-        self.by_node.get(&node_id).copied()
+        self.by_node.get(node_id)
     }
 
     pub(crate) fn get(&self, id: BoxId) -> Option<&BoxRecord> {
