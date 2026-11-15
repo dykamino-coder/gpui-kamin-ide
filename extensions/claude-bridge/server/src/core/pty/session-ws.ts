@@ -178,6 +178,17 @@ async function untilInputReady(session: PtySession, limitMs: number): Promise<vo
 
 const IDLE_COMMANDS_REQUEST_MS = 10_000
 
+/** Messages from the user that need the CLI: their wake goes to the front of
+ *  the pool. Everything else that wakes a chat (a transcript request when a tab
+ *  is shown, say) waits behind them like a warm-up. */
+const URGENT_WAKE = new Set([
+  'session:submitText',
+  'session:input',
+  'session:change-effort',
+  'session:change-model',
+  'session:switch-engine',
+])
+
 export function sleepAction(type: string): 'wake' | 'warm' | 'pass' | 'ignore' | 'release' {
   switch (type) {
     case 'session:warm':
@@ -509,7 +520,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             cancelable: false,
             createdAt: Date.now(),
           })
-        if (action === 'wake' && waking) promoteWake(waking.ticket)
+        if (action === 'wake' && waking && URGENT_WAKE.has(msg.type)) promoteWake(waking.ticket)
         if (action === 'warm') {
           if (!engineSwitch) void wake(false)
           return
@@ -551,7 +562,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             if (socketGone || ws.readyState !== WS.OPEN) return
             break
           case 'wake':
-            if (!(await (engineSwitch ?? wake(true)))) return
+            if (!(await (engineSwitch ?? wake(URGENT_WAKE.has(msg.type))))) return
             if (socketGone || ws.readyState !== WS.OPEN) return
             break
         }

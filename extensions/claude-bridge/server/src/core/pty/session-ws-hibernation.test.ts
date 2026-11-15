@@ -355,6 +355,31 @@ describe('idle hibernation on the session socket', () => {
     expect(h.submit).toHaveBeenCalledWith('s-new', 'now', 'w-1')
   })
 
+  it('wakes for a transcript request behind user messages, and a later message does not promote it twice', async () => {
+    await asleepChat()
+    let granted!: () => void
+    h.acquire.mockImplementationOnce(() => new Promise((resolve) => (granted = () => resolve(() => {}))))
+    const fresh = makeSession('s-new', socket, { jsonlWatcher: { replayAll: vi.fn(), getFilePath: () => null } })
+    h.create.mockImplementationOnce(async () => {
+      h.sessions.set(fresh.id, fresh)
+      return fresh
+    })
+    const sync = socket.message({ type: 'jsonl:sync-request', knownUuids: [] })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.acquire).toHaveBeenLastCalledWith({ urgent: false })
+    // Another non-user frame while it boots does not jump the queue.
+    const other = socket.message({ type: 'jsonl:segment-request', start: 0, end: 1 })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.promote).not.toHaveBeenCalled()
+    const typed = socket.message({ type: 'session:submitText', data: 'go', submissionId: 'u-1' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.promote).toHaveBeenCalledTimes(1)
+    granted()
+    await Promise.all([sync, other, typed])
+    expect(h.create).toHaveBeenCalledTimes(2)
+    expect(h.submit).toHaveBeenCalledWith('s-new', 'go', 'u-1')
+  })
+
   it('ignores a warm-up for a chat that is awake', async () => {
     const session = makeSession('s-awake', socket)
     h.sessions.set(session.id, session)
