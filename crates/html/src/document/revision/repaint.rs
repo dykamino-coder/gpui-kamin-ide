@@ -20,17 +20,19 @@
 //! (`Plan::Patched`), и каждый перерассчитанный элемент кадр может только
 //! перекрасить (`Plan::Restyled`).
 
+mod fold;
 mod paths;
 
+use super::boxes::Boxes;
 use super::commit::Plan;
+pub(in crate::document) use super::kept::Kept;
 use super::mutation::Batch;
 use super::patch::{Target, apply, attr_paths, patch};
 use crate::document::Document;
 use crate::dom::Node;
 use crate::style::computed::Computed;
-use paths::{style_paths, wrapped};
+use paths::style_paths;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 /// Перерасчёт одного элемента: тег его коробок и каскадный стиль до и после
 /// пакета; стили раскладываются одинаково.
@@ -52,76 +54,47 @@ impl Restyle {
     }
 }
 
-/// What the edits of one document keep between them: the texts of its sheets
-/// and the probe of its restyles. The sheets of a document do not change in
-/// place (a build reads the text of a `<style>`, and an edit of a read text
-/// rebuilds), and a rebuilt document starts over.
-#[derive(Default)]
-pub(in crate::document) struct Kept {
-    sheets: Option<Rc<Vec<String>>>,
-    cache: crate::dom::restyle_probe::RestyleCache,
-}
-
-impl Kept {
-    /// What a built document keeps: the rules of its build as the probe.
-    pub(in crate::document) fn built(
-        cache: crate::dom::restyle_probe::RestyleCache,
-    ) -> std::rc::Rc<std::cell::Cell<Option<Box<Self>>>> {
-        let kept = Self {
-            sheets: None,
-            cache,
-        };
-        Rc::new(std::cell::Cell::new(Some(Box::new(kept))))
-    }
-}
-
 impl Document {
-    /// The texts of the `<style>` sheets under `root`, collected once.
-    pub(super) fn kept_sheets(&self, root: &markup5ever_rcdom::Handle) -> Rc<Vec<String>> {
-        let mut kept = self.restyle.take().unwrap_or_default();
-        let collect = || Rc::new(super::shape::sheets(root));
-        let sheets = kept.sheets.get_or_insert_with(collect).clone();
-        self.restyle.set(Some(kept));
-        sheets
-    }
-
     /// План пакета смен `class` и `data-*`, если перерасчёт стиля меняет у
     /// найденных элементов только значения краски; `None` — нужна сборка.
-    pub(super) fn repaint_plan(&self, batch: &Batch, theme_css: &str) -> Option<Plan> {
+    /// `changed` — the names and node ids of the batch (`invalidation`).
+    pub(super) fn repaint_plan(
+        &self,
+        batch: &Batch,
+        changed: &crate::dom::invalidation::Changed,
+        theme_css: &str,
+    ) -> Option<Plan> {
         let values = &self.state.values;
         if !batch.texts.is_empty() || values.quirks() {
             return None;
         }
-        // Unwrapped `html`/`body` (`document::unwrap_document`) fold their
-        // values into the cascaded styles of the top-level boxes.
-        if !wrapped(&self.nodes) {
-            return None;
-        }
-        let changed = self.invalidation(batch, theme_css)?;
         let input = values.traversal.take_source()?;
         // The probes leave the cache in the state of the DOM after the
         // batch: it goes back only with a plan (otherwise the document is
         // rebuilt, and a fresh cache starts from its DOM).
         let mut kept = self.restyle.take().unwrap_or_default();
-        let restyles = self.restyles(batch, &changed, &input, theme_css, &mut kept.cache);
+        let restyles = self.restyles(batch, changed, &input, theme_css, &mut kept.cache);
         values.traversal.retain(input);
-        let plan = self.restyled(batch, restyles?)?;
+        let boxes = kept.boxes(&self.nodes)?;
+        let plan = self.restyled(batch, &changed.elements, &boxes, restyles?)?;
         self.restyle.set(Some(kept));
         Some(plan)
     }
 
     /// The box tree with the attributes of `batch` and the paint values of
     /// `restyles` written along copied paths.
-    fn restyled(&self, batch: &Batch, restyles: HashMap<u64, Restyle>) -> Option<Plan> {
-        let values = &self.state.values;
-        let ids = super::adopt::element_ids(
-            &values.traversal.elements(),
-            batch.elements.iter().map(|c| &c.element),
-        );
+    /// `ids` — the node ids of the elements of `batch`, in its order.
+    fn restyled(
+        &self,
+        batch: &Batch,
+        ids: &[u64],
+        boxes: &Boxes,
+        restyles: HashMap<u64, Restyle>,
+    ) -> Option<Plan> {
         let mut attrs = HashMap::new();
-        for (change, id) in batch.elements.iter().zip(ids) {
+        for (change, &id) in batch.elements.iter().zip(ids) {
             attrs.insert(
-                id?,
+                id,
                 Target {
                     tag: super::adopt::tag_of(&change.element),
                     old: crate::dom::element_attrs(&change.old),
@@ -129,24 +102,32 @@ impl Document {
                 },
             );
         }
-        let attr_paths = attr_paths(&self.nodes, &attrs)?;
-        let style_paths = style_paths(&self.nodes, &restyles)?;
+        let attr_paths = attr_paths(&self.nodes, boxes, &attrs)?;
+        // Matching rules that change no cascaded value (an inline style or a
+        // more specific rule wins): the batch only writes `class`/`data-*`,
+        // which the frame build does not read, so the frame is the recorded
+        // one (`Plan::Clean`), as when no sheet mentions the names.
+        if restyles.is_empty() {
+            if attr_paths.is_empty() {
+                return Some(Plan::Clean(None));
+            }
+            let mut nodes = (*self.nodes).clone();
+            return patch(&mut nodes, attr_paths, &attrs).then_some(Plan::Clean(Some(nodes)));
+        }
+        let style_paths = style_paths(&self.nodes, boxes, &restyles)?;
         let mut nodes = (*self.nodes).clone();
         if !patch(&mut nodes, attr_paths, &attrs) {
             return None;
         }
-        for (path, id) in style_paths {
-            match (apply(&mut nodes, &path), restyles.get(&id)) {
+        for (path, id) in &style_paths {
+            match (apply(&mut nodes, path), restyles.get(id)) {
                 (Some(Node::Element(e)), Some(r)) => e.style.set_cascaded_paint(&r.new),
                 _ => return None,
             }
         }
-        if restyles.is_empty() {
-            return Some(Plan::Patched(nodes));
-        }
         let mut restyled: Vec<u64> = restyles.into_keys().collect();
         restyled.sort_unstable();
-        Some(Plan::Restyled(nodes, restyled))
+        Some(Plan::Restyled(nodes, restyled, style_paths))
     }
 
     /// Перерасчёты элементов, чей стиль меняет пакет, по номерам коробок;
@@ -173,30 +154,53 @@ impl Document {
             return None;
         }
         let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
-        let targets = cache.targets(&probe, changed, &mutated)?;
+        let mut targets = cache.targets(&probe, changed, &mutated)?;
+        // Unwrapped `html`/`body` (`document::unwrap_document`) fold their
+        // values into the cascades of their children's boxes: the probe
+        // folds them the same way.
+        let unwrapped = fold::Unwrapped::add(&self.nodes, &input.dom.document, &mut targets)?;
         let before = cache.styles(&probe, input, values, &targets).ok()?;
         batch.write();
         let after = cache.styles(&probe, input, values, &targets);
         batch.undo();
         let after = after.ok()?;
+        let vcx = self.state.values();
+        let parent = match &unwrapped {
+            Some(u) => Some(u.parent(|i| before[i].as_ref().map(|p| &*p.style), vcx)?),
+            None => None,
+        };
         let ids = super::adopt::element_ids(&values.traversal.elements(), targets.iter());
         let mut out = HashMap::new();
-        for (((target, id), old), new) in targets.iter().zip(ids).zip(before).zip(after) {
-            let (id, old, new) = (id?, old?, new?);
+        let entries = targets.iter().zip(ids).zip(before).zip(after).enumerate();
+        for (i, (((target, id), old), new)) in entries {
+            let (old, new) = (old?, new?);
             if old.rest != new.rest {
                 return None;
             }
             if *old.style == *new.style {
                 continue;
             }
+            // A batch that restyles an unwrapped wrapper rebuilds: its values
+            // reach every top-level box and the text of the page.
+            if unwrapped.as_ref().is_some_and(|u| u.folds(i)) {
+                return None;
+            }
+            let id = id?;
+            let (old, new) = match &parent {
+                Some(p) => (
+                    p.fold(target, old.style, vcx),
+                    p.fold(target, new.style, vcx),
+                ),
+                None => (old.style, new.style),
+            };
             // The frame may only repaint: layout reads the same values.
-            if !old.style.same_layout(&new.style) {
+            if !old.same_layout(&new) {
                 return None;
             }
             let restyle = Restyle {
                 tag: super::adopt::tag_of(target),
-                old: old.style,
-                new: new.style,
+                old,
+                new,
             };
             // The canvas takes its background from the root element or from
             // `body` (css-backgrounds-3 §2.11.2): document preparation

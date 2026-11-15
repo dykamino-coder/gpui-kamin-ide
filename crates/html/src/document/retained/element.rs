@@ -172,7 +172,7 @@ impl Element for Retained {
             if self.tree.is_none()
                 && root
                 && !self.slot.unreplayable.get()
-                && let Some(record) = record
+                && let Some(record) = record.filter(|_| self.builder.repaint_boxes(window, cx))
             {
                 self.replay = true;
                 self.builder.store.forget_replays();
@@ -232,7 +232,7 @@ impl Element for Retained {
                 return ((), record);
             };
             let before = window.next_frame_callback_count();
-            let (_, paint) = window.record_retained_paint(|window| tree.paint(window, cx));
+            let paint = self.builder.record_paint(window, |w| tree.paint(w, cx));
             if let Some(flow) = &self.flow {
                 flow.finish();
             }

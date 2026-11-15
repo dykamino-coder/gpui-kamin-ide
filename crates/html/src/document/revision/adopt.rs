@@ -28,12 +28,14 @@ use std::rc::Rc;
 impl Document {
     /// Дерево коробок после пакета `batch` без каскада, если ни одна правка не
     /// меняет каскад (`Plan`); `sheets` — тексты всех `<style>` документа, если
-    /// уже известны. Ничего в ревизии не меняется.
+    /// уже известны; `changed` — имена и номера узлов пакета (`invalidation`),
+    /// посчитанные один раз на пакет. Ничего в ревизии не меняется.
     pub(super) fn plan(
         &self,
         batch: &Batch,
         theme_css: &str,
         sheets: Option<&[String]>,
+        changed: Option<&crate::dom::invalidation::Changed>,
         revision: &crate::budget::RevisionBudget,
     ) -> Option<Plan> {
         let values = &self.state.values;
@@ -63,8 +65,13 @@ impl Document {
                 all.push(crate::style::ua::QUIRKS_CSS);
             }
             all.extend(sheets.iter().map(String::as_str));
-            let handles = batch.elements.iter().map(|change| &change.element);
-            let ids = element_ids(&values.traversal.elements(), handles);
+            let ids = match changed {
+                Some(changed) => changed.elements.iter().copied().map(Some).collect(),
+                None => {
+                    let handles = batch.elements.iter().map(|change| &change.element);
+                    element_ids(&values.traversal.elements(), handles)
+                }
+            };
             for (change, id) in batch.elements.iter().zip(ids) {
                 match id {
                     Some(id) if open(&change.element, &root) && neutral(change, &all) => {
@@ -80,7 +87,7 @@ impl Document {
                     // A class the sheets read: its restyle may still reach
                     // only inherited paint values (`repaint`).
                     Some(_) if open(&change.element, &root) => {
-                        return self.repaint_plan(batch, theme_css);
+                        return self.repaint_plan(batch, changed?, theme_css);
                     }
                     _ => return None,
                 }
@@ -103,7 +110,10 @@ impl Document {
         }
         // Пути к правкам ищутся в текущем дереве; без единого пути дерево
         // коробок после пакета то же самое, и копировать нечего.
-        let attrs = attr_paths(&self.nodes, &targets)?;
+        let attrs = match targets.is_empty() {
+            true => Vec::new(),
+            false => attr_paths(&self.nodes, &*self.boxes()?, &targets)?,
+        };
         let found = text_paths(&self.nodes, &texts)?;
         if attrs.is_empty() && found.is_empty() {
             return Some(Plan::Clean(None));
@@ -147,6 +157,22 @@ fn find_sources<'a>(
     id: impl Fn(&Handle, u64) -> u64,
 ) -> Vec<Option<u64>> {
     let wanted: Vec<_> = handles.collect();
+    // A few addresses (one edit): comparisons instead of a hash per slot.
+    if wanted.len() <= 8 {
+        let mut found = vec![(0u64, 0u8); wanted.len()];
+        for (slot, address) in list.iter().enumerate() {
+            for (at, handle) in found.iter_mut().zip(&wanted) {
+                if Rc::as_ptr(handle) as usize == *address {
+                    *at = (slot as u64 + 1, at.1.saturating_add(1));
+                }
+            }
+        }
+        return found
+            .iter()
+            .zip(&wanted)
+            .map(|(&(ordinal, n), handle)| (n == 1).then(|| id(handle, ordinal)))
+            .collect();
+    }
     let mut found: HashMap<usize, Option<u64>> = wanted
         .iter()
         .map(|handle| (Rc::as_ptr(handle) as usize, None))

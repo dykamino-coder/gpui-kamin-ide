@@ -23,6 +23,56 @@ pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui:
     styled_div_with(e, &BoxStyle::shared(e.style.used()), cx)
 }
 
+/// Whether the box of `e` paints nothing but its own painter's commands
+/// (`Style::paint_box`) under `styled_div`: no hover layer, no decoration
+/// painted as a child element, no alternate painter (clone or geometry
+/// fragments), not the root's canvas, not hidden, no filter or backdrop
+/// layer. Only such a box records its own paint again in the document's
+/// scene layer (`document::retained::box_repaint`).
+pub(crate) fn paints_only_own_box(
+    doc: &std::rc::Rc<crate::document::state::DocState>,
+    e: &Element,
+) -> bool {
+    own_box_refusal(doc, e).is_none()
+}
+
+/// Why the box of `e` does not paint its own commands only
+/// (`paints_only_own_box`); `None` when it does.
+pub(crate) fn own_box_refusal(
+    doc: &std::rc::Rc<crate::document::state::DocState>,
+    e: &Element,
+) -> Option<&'static str> {
+    if matches!(e.tag.as_str(), "html" | "body") {
+        return Some("root_canvas");
+    }
+    if e.hover.is_some() {
+        return Some("hover");
+    }
+    let style = BoxStyle::shared(e.style.used());
+    // An inline box paints as fragments of its lines, not by its own painter.
+    if style.reset_box_layout.display.is_none() && e.inline {
+        return Some("inline");
+    }
+    let c = &style;
+    let reason = if c.inh.ui.hidden == Some(true) {
+        "hidden"
+    } else if c.reset_fragmentation.bdb_clone {
+        "clone"
+    } else if c.reset_effects.filter_ref.is_some() || c.reset_effects.backdrop_color.is_some() {
+        "filter"
+    } else if c.reset_transforms.transform.is_some() || c.reset_transforms.transform_ancestor {
+        "transform"
+    } else {
+        let cx = crate::layout::cx::LayoutCx::default()
+            .with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
+        let empty = !e.children.iter().any(|n| !is_blank(n));
+        if decorations(c, empty, cx.frame(), Some(&cx)).is_empty() {
+            return None;
+        }
+        "decoration"
+    };
+    Some(reason)
+}
 pub(crate) fn styled_div_with(
     e: &Element,
     style: &BoxStyle,
@@ -36,6 +86,24 @@ pub(crate) fn styled_div_with_dimensions(
     style: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
     dimensions: Option<BoxDimensions>,
+) -> gpui::Div {
+    built_div(e, style, cx, dimensions, true)
+}
+
+/// The `Div` of `styled_div` without its children (probes, decorations):
+/// what its own painter (`Style::paint_box`) reads, for a box that records
+/// its own commands again (`document::retained::box_repaint`). Children only
+/// add elements; none changes the style of the box.
+pub(crate) fn own_paint_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
+    built_div(e, &BoxStyle::shared(e.style.used()), cx, None, false)
+}
+
+fn built_div(
+    e: &Element,
+    style: &BoxStyle,
+    cx: &crate::layout::cx::LayoutCx,
+    dimensions: Option<BoxDimensions>,
+    children: bool,
 ) -> gpui::Div {
     let (frame, vcx) = (cx.frame(), cx.vcx());
     // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
@@ -89,6 +157,10 @@ pub(crate) fn styled_div_with_dimensions(
             Some(crate::paint::apply::intrinsic_size::keywords_with_dimensions(c, &dimensions));
     }
     d = super::scroll::attach(d, e, c, cx);
+    if !children {
+        let d = clamp::apply(d, e, c, cx);
+        return d.paint_owner(u32::try_from(e.node_id).unwrap_or(0));
+    }
     if let Some(probe) = crate::interactive::scroll_extent::probe(
         cx.scroll.frame.as_ref(),
         e.node_id,
@@ -156,5 +228,8 @@ pub(crate) fn styled_div_with_dimensions(
             d = d.child(extra);
         }
     }
+    // The box's own fill binds to its number in the document's scene layer
+    // (`document::revision::layer_write`).
+    let d = d.paint_owner(u32::try_from(e.node_id).unwrap_or(0));
     super::container_units::observe(d, e, style)
 }

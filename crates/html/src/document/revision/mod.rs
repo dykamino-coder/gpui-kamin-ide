@@ -2,10 +2,15 @@
 
 mod adopt;
 mod apply;
+mod boxes;
 mod build;
 mod commit;
+mod kept;
+mod layer_write;
+pub(super) use layer_write::at;
 mod mentions;
 mod mutation;
+mod paint_damage;
 mod patch;
 mod repaint;
 mod restyle;
@@ -88,7 +93,15 @@ impl Document {
         {
             #[cfg(feature = "engine-bench")]
             let started = crate::work::Clock::now();
-            if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
+            // Read from the source DOM before it is taken and the batch written.
+            let invalidation = self.invalidation(&batch, theme_css);
+            if let Some(plan) = self.plan(
+                &batch,
+                theme_css,
+                Some(&shape.sheets),
+                invalidation.as_ref(),
+                &revision,
+            ) {
                 batch.write();
                 self.commit(
                     plan,
@@ -105,7 +118,7 @@ impl Document {
             #[cfg(feature = "engine-bench")]
             let parse = source.parse;
             drop(source);
-            let report = self.rebuild(&batch, theme_css, key, revision)?;
+            let report = self.rebuild(&batch, invalidation, theme_css, key, revision)?;
             #[cfg(feature = "engine-bench")]
             {
                 self.timings.parse = parse;
@@ -182,4 +195,9 @@ impl Document {
     pub fn embedded_failure(&self) -> Option<DocumentFailure> {
         self.state.values.embedded_failure()
     }
+}
+
+/// The controls a restyle of paint values does not reach (paint_damage::CONTROLS).
+pub(super) fn paint_damage_controls() -> &'static [&'static str; 6] {
+    &paint_damage::CONTROLS
 }

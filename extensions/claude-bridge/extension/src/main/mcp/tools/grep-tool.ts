@@ -297,6 +297,13 @@ function paginate(lines: string[], offset: number, headLimit: number): string[] 
   return headLimit > 0 ? from.slice(0, headLimit) : from
 }
 
+/** Native Grep's marker for a result cut by head_limit, so a partial list is
+ *  never read as the whole one (INC-2026-0121). */
+export function paginationNotice(available: number, offset: number, headLimit: number): string {
+  if (headLimit <= 0 || available - offset <= headLimit) return ''
+  return `\n\n[Showing results with pagination = limit: ${headLimit}${offset > 0 ? `, offset: ${offset}` : ''}]`
+}
+
 // 9 min for rg — leaves 1-min headroom under the bridge's 10-min MCP cap.
 const RIPGREP_TIMEOUT_MS = 540_000
 
@@ -323,7 +330,8 @@ export async function grepSearch(input: Record<string, unknown>, context?: ToolC
         await ripgrepStream(args.slice(0, -1), args[args.length - 1]!, controller.signal, (lines) => {
           for (const line of lines) {
             collected.push(line)
-            if (collected.length >= options.headLimit) {
+            // One line past the limit tells a cut result from an exact fit.
+            if (collected.length > options.headLimit) {
               controller.abort()
               return
             }
@@ -337,7 +345,9 @@ export async function grepSearch(input: Record<string, unknown>, context?: ToolC
       if (!streamErr) {
         const result = collected.slice(0, options.headLimit).join('\n')
         if (timedOut && !result.trim()) return timeoutError()
-        const suffix = timedOut ? `\n[Search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s — partial results above]` : ''
+        const suffix =
+          paginationNotice(collected.length, 0, options.headLimit) +
+          (timedOut ? `\n[Search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s — partial results above]` : '')
         return textResult((result || 'No matches found.') + suffix)
       }
     }
@@ -362,6 +372,7 @@ export async function grepSearch(input: Record<string, unknown>, context?: ToolC
 
     if (res.timedOut && !result.trim()) return timeoutError()
     const suffix = [
+      paginationNotice(lines.length, options.offset, options.headLimit),
       res.truncated ? `\n[Output truncated at ${MAX_GREP_BYTES / 1024 / 1024} MB — narrow the path/pattern for full results]` : '',
       res.timedOut ? `\n[Search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s — partial results above; try a narrower path or pattern]` : '',
       res.code !== null && res.code > 1 ? `\n[ripgrep reported errors: ${res.stderr.trim().split('\n')[0]?.slice(0, 300)}]` : '',
@@ -437,7 +448,7 @@ async function grepFallback(o: GrepOptions): Promise<McpResult> {
     const results = matches === null ? [] : o.outputMode === 'content' ? matches : [matches[0]!]
     return fallbackResult(results, o.offset, o.headLimit, false, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE)
   }
-  const walk = await walkFallback(regex, o.searchPath, o.outputMode, o.headLimit + o.offset, FALLBACK_TIMEOUT_MS, o.globs, o.showLineNumbers)
+  const walk = await walkFallback(regex, o.searchPath, o.outputMode, o.headLimit > 0 ? o.headLimit + o.offset + 1 : 0, FALLBACK_TIMEOUT_MS, o.globs, o.showLineNumbers)
   const results = o.outputMode === 'files_with_matches' ? await sortByMtime(walk.results) : walk.results
   return fallbackResult(results, o.offset, o.headLimit, walk.timedOut, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE)
 }
@@ -542,6 +553,8 @@ export function fallbackResult(
         `Try narrowing the path or pattern, or pass glob to scope the file set.`,
     )
   }
-  const suffix = timedOut ? `\n[Search timed out after ${seconds}s — partial results above; try a narrower path or pattern]` : ''
+  const suffix =
+    paginationNotice(results.length, offset, headLimit) +
+    (timedOut ? `\n[Search timed out after ${seconds}s — partial results above; try a narrower path or pattern]` : '')
   return textResult((output || 'No matches found.') + suffix + notice)
 }
