@@ -125,6 +125,12 @@ function preserveQuoteStyle(
 
 const MAX_LINE_LENGTH = 2000
 
+/** Native Read's size format: one decimal, a trailing `.0` dropped. */
+function formatKb(bytes: number): string {
+  const [value, unit] = bytes >= 1024 * 1024 ? [bytes / 1024 / 1024, 'MB'] : [bytes / 1024, 'KB']
+  return `${value.toFixed(1).replace(/\.0$/, '')}${unit}`
+}
+
 export async function readFile(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   if (!input.file_path) return errorResult('file_path is required')
   const filePath = resolveToolPath(input.file_path as string, context?.cwd)
@@ -160,6 +166,16 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
       return { content: [{ type: 'image', data: base64, mimeType }] }
     }
 
+    const ranged = input.offset !== undefined || input.limit !== undefined
+    if (!ranged && stat.size > WARN_READ_BYTES) {
+      return errorResult(
+        // Native Read's wording, without its allow_large escape: this Read has
+        // no such parameter, and the server's result limit would cut the file.
+        `File content (${formatKb(stat.size)}) exceeds maximum allowed size (${formatKb(WARN_READ_BYTES)}). ` +
+          `Use offset and limit parameters to read specific portions of the file, ` +
+          `or search for specific content instead of reading the whole file.`,
+      )
+    }
     const file = await readTextCached(filePath, stat)
     if (file.binary) {
       return errorResult(
@@ -173,8 +189,8 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
       return textResult('<system-reminder>Warning: File exists but has empty contents.</system-reminder>')
     }
 
+    // As native Read: a final line break opens one more, empty, numbered line.
     const allLines = raw.split('\n')
-    if (allLines.length > 1 && allLines[allLines.length - 1] === '') allLines.pop()
     const offset = typeof input.offset === 'number' ? Math.max(0, Math.floor(input.offset) - 1) : 0
     const limit = typeof input.limit === 'number' && input.limit > 0 ? Math.floor(input.limit) : 2000
     if (offset >= allLines.length) {
@@ -190,9 +206,19 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
         // CRLF files: the line ending is not content; Edit restores it.
         const text = line.endsWith('\r') ? line.slice(0, -1) : line
         const shown = text.length > MAX_LINE_LENGTH ? text.slice(0, MAX_LINE_LENGTH) + '... [truncated]' : text
-        return `${String(offset + i + 1).padStart(6, ' ')}\t${shown}`
+        return `${offset + i + 1}\t${shown}`
       })
       .join('\n')
+
+    // Same bound for a range as for a whole file (native Read: 256 KB): a
+    // larger result would only be cut by the server's result limit
+    // (INC-2026-0121), so ask for a smaller range instead.
+    if (formatted.length > WARN_READ_BYTES) {
+      return errorResult(
+        `Lines ${offset + 1}-${offset + slice.length} are ${formatKb(formatted.length)} of text, more than ${formatKb(WARN_READ_BYTES)} per read. ` +
+          `Read fewer lines with a smaller limit, or use Grep to find the part you need.`,
+      )
+    }
 
     let suffix = ''
     const end = offset + slice.length
@@ -200,10 +226,6 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
       suffix =
         `\n\n<system-reminder>Showing lines ${offset + 1}-${end} of ${allLines.length}. ` +
         `Use offset/limit to read the rest.</system-reminder>`
-    } else if (stat.size > WARN_READ_BYTES && input.offset === undefined && input.limit === undefined) {
-      suffix =
-        `\n\n<system-reminder>File is ${Math.round(stat.size / 1024)} KB (${allLines.length} lines). ` +
-        `Consider using offset/limit for targeted reads.</system-reminder>`
     }
 
     return textResult(formatted + suffix)
@@ -408,7 +430,9 @@ export async function globSearch(input: Record<string, unknown>, context?: ToolC
     // Like native Glob, return at most GLOB_SHOWN paths, but newest first and
     // with the number of the rest, so a broad pattern costs ~100 lines of
     // context instead of thousands.
-    const shown = sorted.slice(0, GLOB_SHOWN)
+    // Paths are matched with '/', and shown with the platform separator as
+    // native Glob shows them, so they read the same as Grep and Read paths.
+    const shown = sorted.slice(0, GLOB_SHOWN).map((p) => path.normalize(p))
     const total = capped ? `more than ${MAX_GLOB_LISTED}` : String(sorted.length)
     const suffix =
       sorted.length > GLOB_SHOWN
@@ -416,7 +440,7 @@ export async function globSearch(input: Record<string, unknown>, context?: ToolC
           ? `\n(Showing the ${GLOB_SHOWN} most recently modified of the first ${MAX_GLOB_LISTED} matching files listed; more exist. Use a more specific pattern or path.)`
           : `\n(Showing the ${GLOB_SHOWN} most recently modified of ${total} matching files. Use a more specific pattern or path for the rest.)`
         : ''
-    return textResult((shown.join('\n') || 'No files matched the pattern.') + suffix)
+    return textResult((shown.join('\n') || 'No files found') + suffix)
   } catch (err: unknown) {
     return errorResult(err instanceof Error ? err.message : String(err))
   }

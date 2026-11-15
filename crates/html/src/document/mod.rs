@@ -50,6 +50,7 @@ mod prepare;
 #[cfg(test)]
 mod resource_tests;
 mod retained;
+pub use retained::UpdatePhase;
 mod scope;
 mod source;
 use prepare::parse_document;

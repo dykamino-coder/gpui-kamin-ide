@@ -56,7 +56,7 @@ pub(super) async fn finish(
     fonts: &FontContext,
     args: &Args,
     capture: &CaptureSession,
-    luid: (i32, u32),
+    luid: &super::work::Adapter,
 ) -> Result<Value> {
     let page = idle(cx, capture, args.memory_settle_ms).await?;
     window.update(cx, |view, _, _| -> Result<()> {

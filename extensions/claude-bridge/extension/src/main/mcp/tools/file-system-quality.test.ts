@@ -80,7 +80,7 @@ describe('Edit', () => {
 describe('Read', () => {
   it('decodes UTF-16 and strips CR from CRLF lines', async () => {
     const p = file('u16.txt', Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('héllo\r\nмир\r\n', 'utf16le')]))
-    expect(text(await readFile({ file_path: p }))).toBe('     1\théllo\n     2\tмир')
+    expect(text(await readFile({ file_path: p }))).toBe('1\théllo\n2\tмир\n3\t')
   })
 
   it('refuses binary files and reports missing files as errors', async () => {

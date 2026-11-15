@@ -24,6 +24,7 @@ mod retained;
 // KaminIDE patch: equal node styles of a tree share one allocation.
 mod style_share;
 mod final_geometry;
+mod subtree_bounds;
 pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};
 pub use measured_box::MeasuredBox;
 pub use measured_content::{MeasuredContent, MeasuredStaticPosition};

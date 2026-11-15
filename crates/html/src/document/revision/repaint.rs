@@ -20,6 +20,7 @@
 //! (`Plan::Patched`), и каждый перерассчитанный элемент кадр может только
 //! перекрасить (`Plan::Restyled`).
 
+mod fold;
 mod paths;
 
 use super::commit::Plan;
@@ -28,7 +29,7 @@ use super::patch::{Target, apply, attr_paths, patch};
 use crate::document::Document;
 use crate::dom::Node;
 use crate::style::computed::Computed;
-use paths::{style_paths, wrapped};
+use paths::style_paths;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -90,11 +91,6 @@ impl Document {
     pub(super) fn repaint_plan(&self, batch: &Batch, theme_css: &str) -> Option<Plan> {
         let values = &self.state.values;
         if !batch.texts.is_empty() || values.quirks() {
-            return None;
-        }
-        // Unwrapped `html`/`body` (`document::unwrap_document`) fold their
-        // values into the cascaded styles of the top-level boxes.
-        if !wrapped(&self.nodes) {
             return None;
         }
         let changed = self.invalidation(batch, theme_css)?;
@@ -173,30 +169,53 @@ impl Document {
             return None;
         }
         let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
-        let targets = cache.targets(&probe, changed, &mutated)?;
+        let mut targets = cache.targets(&probe, changed, &mutated)?;
+        // Unwrapped `html`/`body` (`document::unwrap_document`) fold their
+        // values into the cascades of their children's boxes: the probe
+        // folds them the same way.
+        let unwrapped = fold::Unwrapped::add(&self.nodes, &input.dom.document, &mut targets)?;
         let before = cache.styles(&probe, input, values, &targets).ok()?;
         batch.write();
         let after = cache.styles(&probe, input, values, &targets);
         batch.undo();
         let after = after.ok()?;
+        let vcx = self.state.values();
+        let parent = match &unwrapped {
+            Some(u) => Some(u.parent(|i| before[i].as_ref().map(|p| &*p.style), vcx)?),
+            None => None,
+        };
         let ids = super::adopt::element_ids(&values.traversal.elements(), targets.iter());
         let mut out = HashMap::new();
-        for (((target, id), old), new) in targets.iter().zip(ids).zip(before).zip(after) {
-            let (id, old, new) = (id?, old?, new?);
+        let entries = targets.iter().zip(ids).zip(before).zip(after).enumerate();
+        for (i, (((target, id), old), new)) in entries {
+            let (old, new) = (old?, new?);
             if old.rest != new.rest {
                 return None;
             }
             if *old.style == *new.style {
                 continue;
             }
+            // A batch that restyles an unwrapped wrapper rebuilds: its values
+            // reach every top-level box and the text of the page.
+            if unwrapped.as_ref().is_some_and(|u| u.folds(i)) {
+                return None;
+            }
+            let id = id?;
+            let (old, new) = match &parent {
+                Some(p) => (
+                    p.fold(target, old.style, vcx),
+                    p.fold(target, new.style, vcx),
+                ),
+                None => (old.style, new.style),
+            };
             // The frame may only repaint: layout reads the same values.
-            if !old.style.same_layout(&new.style) {
+            if !old.same_layout(&new) {
                 return None;
             }
             let restyle = Restyle {
                 tag: super::adopt::tag_of(target),
-                old: old.style,
-                new: new.style,
+                old,
+                new,
             };
             // The canvas takes its background from the root element or from
             // `body` (css-backgrounds-3 §2.11.2): document preparation
