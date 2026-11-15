@@ -14,7 +14,7 @@ use std::cell::RefCell;
 #[derive(Default)]
 pub(crate) struct Kept {
     layer: RefCell<Option<gpui::LayerHandle>>,
-    repaints: RefCell<Vec<u64>>,
+    repaints: RefCell<Vec<(Vec<usize>, u64)>>,
 }
 
 impl Store {
@@ -71,17 +71,21 @@ impl Store {
         self.layer.layer.borrow().clone()
     }
 
-    /// Queue the boxes `ids` to record their own commands again into the
-    /// layer before the next frame replays (`document::retained`).
-    pub(crate) fn queue_repaints(&self, ids: Vec<u64>) {
+    /// Queue the boxes at `paths` (child indices from the root, with their
+    /// box numbers) to record their own commands again into the layer before
+    /// the next frame replays (`document::retained`). The edits that queue
+    /// them keep the tree's shape, so a path addresses its box until the next
+    /// frame; the replay checks the box number at it.
+    pub(crate) fn queue_repaints(&self, paths: Vec<(Vec<usize>, u64)>) {
         let mut queued = self.layer.repaints.borrow_mut();
-        queued.extend(ids);
-        queued.sort_unstable();
+        queued.extend(paths);
+        // Fragments of one element are adjacent: they repaint together.
+        queued.sort_unstable_by(|a, b| (a.1, &a.0).cmp(&(b.1, &b.0)));
         queued.dedup();
     }
 
-    /// Take the queued boxes.
-    pub(crate) fn take_repaints(&self) -> Vec<u64> {
+    /// Take the queued boxes, grouped by box number.
+    pub(crate) fn take_repaints(&self) -> Vec<(Vec<usize>, u64)> {
         std::mem::take(&mut *self.layer.repaints.borrow_mut())
     }
 }

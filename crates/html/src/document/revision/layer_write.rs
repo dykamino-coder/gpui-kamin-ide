@@ -15,6 +15,7 @@
 //! and the document builds its frame as before.
 
 use super::paint_damage::{PaintDamage, PaintValue, classify};
+use super::patch::Path;
 use crate::dom::{Element, Node};
 use crate::style::computed::BoxStyle;
 use gpui::{Hsla, LayerHandle};
@@ -22,31 +23,27 @@ use gpui::{Hsla, LayerHandle};
 /// An owner's fill before and after.
 type Write = (u32, Option<Hsla>, Option<Hsla>);
 
-/// What the layer takes for the restyled elements `ids` (box numbers) from
-/// the tree `old` to the tree `new`: `None` when an element's change is not
-/// own paint; otherwise the values are written and the boxes whose own
-/// commands the next frame records again are returned.
+/// What the layer takes for the restyled boxes at `paths` (in tree order,
+/// with their box numbers) from the tree `old` to the tree `new`, which share
+/// their shape: `None` when a box's change is not own paint; otherwise the
+/// values are written and the boxes whose own commands the next frame records
+/// again are returned. Each box is reached along its path, without a walk of
+/// either tree.
 pub(super) fn write_paint_values(
     old: &[Node],
     new: &[Node],
-    ids: &[u64],
+    paths: &[(Path, u64)],
     layer: &LayerHandle,
     plain: impl Fn(&Element, &Element) -> bool,
-) -> Option<Vec<u64>> {
-    let mut ids = ids.to_vec();
-    ids.sort_unstable();
-    ids.dedup();
-    if ids.is_empty() {
+) -> Option<Vec<(Path, u64)>> {
+    if paths.is_empty() {
         // No element's style changed: the frame stands as it is.
         return Some(Vec::new());
     }
-    let (before, after) = (boxes(old, &ids)?, boxes(new, &ids)?);
-    if before.len() != after.len() {
-        return None;
-    }
-    let mut writes: Vec<Write> = Vec::with_capacity(ids.len());
-    let mut records = Vec::new();
-    for (a, b) in before.iter().zip(&after) {
+    let mut writes: Vec<Write> = Vec::with_capacity(paths.len());
+    let mut records: Vec<(Path, u64)> = Vec::new();
+    for (path, id) in paths {
+        let (a, b) = (at(old, path, *id)?, at(new, path, *id)?);
         let damage = classify(a, b);
         if damage == PaintDamage::Rebuild {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
@@ -72,63 +69,43 @@ pub(super) fn write_paint_values(
                     writes.push((owner, Some(from), Some(to)));
                 }
             }
-            _ => records.push(a.node_id),
+            _ => records.push((path.clone(), a.node_id)),
         }
     }
     // A box the layer cannot record again builds the frame as before;
     // nothing is written then.
-    let held = |ids: &[u64]| {
-        ids.iter()
-            .all(|&id| u32::try_from(id).is_ok_and(|o| layer.holds_box(o)))
-    };
-    if !held(&records) {
+    let held = |id: u64| u32::try_from(id).is_ok_and(|o| layer.holds_box(o));
+    if !records.iter().all(|r| held(r.1)) {
         crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
         return None;
     }
+    let mut values = writes.len();
     if layer.set_backgrounds(&writes).is_none() {
         // A fill the layer does not hold as painted: its box records again.
-        let owners: Vec<u64> = writes.iter().map(|w| u64::from(w.0)).collect();
-        if !held(&owners) {
+        let owners = writes.iter().map(|w| u64::from(w.0));
+        if !owners.clone().all(held) {
             crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
             return None;
         }
-        records.extend(owners);
+        let written = paths
+            .iter()
+            .filter(|(_, id)| owners.clone().any(|o| o == *id));
+        records.extend(written.cloned());
+        values = 0;
     }
-    records.sort_unstable();
-    records.dedup();
     crate::paint_path::add(&crate::paint_path::RECORDS, records.len() as u64);
-    crate::paint_path::add(
-        &crate::paint_path::VALUES,
-        (writes.len()
-            - writes
-                .iter()
-                .filter(|w| records.binary_search(&u64::from(w.0)).is_ok())
-                .count()) as u64,
-    );
+    crate::paint_path::add(&crate::paint_path::VALUES, values as u64);
     Some(records)
 }
 
-/// The boxes of the elements `ids` (sorted), in tree order; `None` unless
-/// every element has one in `nodes`.
-pub(in crate::document) fn boxes<'a>(nodes: &'a [Node], ids: &[u64]) -> Option<Vec<&'a Element>> {
-    let (low, high) = (*ids.first()?, *ids.last()?);
-    let mut found = Vec::new();
-    // Pre-order without recursion: the tree's depth is bounded only by the
-    // representation's limit.
-    let mut stack: Vec<std::slice::Iter<'a, Node>> = vec![nodes.iter()];
-    while let Some(list) = stack.last_mut() {
-        let Some(node) = list.next() else {
-            stack.pop();
-            continue;
-        };
-        let Node::Element(e) = node else { continue };
-        if (low..=high).contains(&e.node_id) && ids.binary_search(&e.node_id).is_ok() {
-            found.push(e);
-        }
-        stack.push(e.children.iter());
-    }
-    let every = ids.iter().all(|id| found.iter().any(|e| e.node_id == *id));
-    every.then_some(found)
+/// The box numbered `id` at `path` in `nodes`; `None` when the path leads
+/// elsewhere (the trees do not share their shape).
+pub(in crate::document) fn at<'a>(
+    nodes: &'a [Node],
+    path: &[usize],
+    id: u64,
+) -> Option<&'a Element> {
+    super::patch::element_at(nodes, path).filter(|e| e.node_id == id)
 }
 
 /// The plain colour the box's background paints (`Some(None)`: no fill);

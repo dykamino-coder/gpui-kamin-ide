@@ -33,12 +33,13 @@ impl Builder {
         let Some(layer) = self.store.scene_layer() else {
             return false;
         };
-        let Some(elements) = crate::document::revision::boxes(&self.nodes, &ids) else {
-            return false;
-        };
         let mut moved = false;
         let mut last = None;
-        for e in elements {
+        for (path, id) in &ids {
+            // The box at its path, without a walk of the tree.
+            let Some(e) = crate::document::revision::at(&self.nodes, path, *id) else {
+                return false;
+            };
             // Fragments of one element share an owner and are repainted together.
             if last == Some(e.node_id) {
                 continue;

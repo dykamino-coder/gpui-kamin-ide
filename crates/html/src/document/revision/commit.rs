@@ -31,8 +31,10 @@ pub(super) enum Plan {
     Patched(Vec<Node>),
     /// Copied paths to restyled boxes (`repaint_plan`), with the node ids of
     /// the elements whose cascaded values changed: the block records are
-    /// compared as at a rebuild (`layout::reuse::Store::restyle`).
-    Restyled(Vec<Node>, Vec<u64>),
+    /// compared as at a rebuild (`layout::reuse::Store::restyle`). The paths
+    /// to every box of those elements, in tree order, address them in both
+    /// trees: the restyle does not change the tree's shape.
+    Restyled(Vec<Node>, Vec<u64>, Vec<(super::patch::Path, u64)>),
 }
 
 impl Document {
@@ -64,7 +66,7 @@ impl Document {
             }
             // Only values the scene layer takes changed: they are written
             // into it, and the recorded frame (`Slot`) replays with them.
-            Plan::Restyled(nodes, restyled) if self.write_paint_values(&nodes, &restyled) => {
+            Plan::Restyled(nodes, restyled, paths) if self.write_paint_values(&nodes, &paths) => {
                 self.reuse.restyle(&self.nodes, &nodes, &restyled);
                 self.nodes = Rc::new(nodes);
                 self.keep_frame(
@@ -84,7 +86,7 @@ impl Document {
                     timings,
                 );
             }
-            Plan::Restyled(nodes, restyled) => {
+            Plan::Restyled(nodes, restyled, _) => {
                 *self = self.adopted(
                     nodes,
                     Some(&restyled),
@@ -116,11 +118,11 @@ impl Document {
         }
     }
 
-    /// Write the paint values `restyled` changed from the current tree to
-    /// `nodes` into the scene layer of the last recorded frame; `false`, with
-    /// nothing written, when there is no such layer or a change is not a
-    /// layer write (`layer_write`).
-    fn write_paint_values(&self, nodes: &[Node], restyled: &[u64]) -> bool {
+    /// Write the paint values the restyle of the boxes at `paths` changed
+    /// from the current tree to `nodes` into the scene layer of the last
+    /// recorded frame; `false`, with nothing written, when there is no such
+    /// layer or a change is not a layer write (`layer_write`).
+    fn write_paint_values(&self, nodes: &[Node], paths: &[(super::patch::Path, u64)]) -> bool {
         let _timer = crate::paint_path::Timer::start();
         let (Some(layer), true) = (self.reuse.scene_layer(), self.frame_recorded()) else {
             // A frame replays only from a settled record of this tree.
@@ -132,7 +134,7 @@ impl Document {
                 && crate::paint::box_tree::styled::paints_only_own_box(&self.state, b)
         };
         let Some(repaints) =
-            super::layer_write::write_paint_values(&self.nodes, nodes, restyled, &layer, plain)
+            super::layer_write::write_paint_values(&self.nodes, nodes, paths, &layer, plain)
         else {
             return false;
         };

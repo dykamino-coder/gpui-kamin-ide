@@ -5,7 +5,7 @@ mod apply;
 mod build;
 mod commit;
 mod layer_write;
-pub(super) use layer_write::boxes;
+pub(super) use layer_write::at;
 mod mentions;
 mod mutation;
 mod paint_damage;
