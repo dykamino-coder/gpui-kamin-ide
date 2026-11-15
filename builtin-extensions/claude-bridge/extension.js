@@ -20418,7 +20418,8 @@ function preserveQuoteStyle(oldString, actualOldString, newString) {
   return out;
 }
 function formatKb(bytes) {
-  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : `${Math.round(bytes / 1024)}KB`;
+  const [value, unit] = bytes >= 1024 * 1024 ? [bytes / 1024 / 1024, "MB"] : [bytes / 1024, "KB"];
+  return `${value.toFixed(1).replace(/\.0$/, "")}${unit}`;
 }
 async function readFile(input, context) {
   if (!input.file_path) return errorResult4("file_path is required");
@@ -20450,7 +20451,9 @@ async function readFile(input, context) {
     const ranged = input.offset !== void 0 || input.limit !== void 0;
     if (!ranged && stat.size > WARN_READ_BYTES) {
       return errorResult4(
-        `File content (${formatKb(stat.size)}) exceeds the maximum size for a whole-file read (${formatKb(WARN_READ_BYTES)}). Use offset and limit to read specific portions of the file, or Grep to search for specific content.`
+        // Native Read's wording, without its allow_large escape: this Read has
+        // no such parameter, and the server's result limit would cut the file.
+        `File content (${formatKb(stat.size)}) exceeds maximum allowed size (${formatKb(WARN_READ_BYTES)}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`
       );
     }
     const file = await readTextCached(filePath, stat);

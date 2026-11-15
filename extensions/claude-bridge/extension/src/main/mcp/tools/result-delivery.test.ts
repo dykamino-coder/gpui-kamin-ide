@@ -26,7 +26,19 @@ describe('Read size limits', () => {
     fs.writeFileSync(p, Array.from({ length: 4000 }, (_, i) => line(i)).join(''))
     const r = await readFile({ file_path: p })
     expect(r.isError).toBe(true)
-    expect(text(r)).toMatch(/^Error: File content \(\d+KB\) exceeds the maximum size for a whole-file read \(256KB\)\. Use offset and limit/)
+    expect(text(r)).toMatch(/^Error: File content \(\d+(\.\d)?KB\) exceeds maximum allowed size \(256KB\)\. Use offset and limit parameters/)
+  })
+
+  it('formats the size like native Read (281KB, 976.6KB, 5.6MB)', async () => {
+    for (const [bytes, shown] of [
+      [287_744, '281KB'],
+      [1_000_000, '976.6KB'],
+      [5_872_026, '5.6MB'],
+    ] as const) {
+      const p = path.join(dir, `size-${bytes}.txt`)
+      fs.writeFileSync(p, 'a'.repeat(bytes))
+      expect(text(await readFile({ file_path: p }))).toContain(`File content (${shown}) exceeds maximum allowed size (256KB)`)
+    }
   })
 
   it('still reads a range of the same file', async () => {
