@@ -8,6 +8,9 @@
 //! composites then address an integer rectangle of a shared surface, and
 //! independent groups can be drawn as instances of one draw call.
 
+mod shelves;
+pub(super) use shelves::Shelves;
+
 /// Largest page side the packer opens on its own (a single larger region
 /// still gets a page of its own size).
 pub(super) const PAGE_LIMIT: u32 = 4096;

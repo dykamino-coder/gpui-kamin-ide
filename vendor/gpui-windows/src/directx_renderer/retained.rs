@@ -39,6 +39,11 @@ pub(super) struct Retained {
     scissor: Option<ID3D11RasterizerState>,
     /// A pass of this frame failed and was skipped: the frame is incomplete.
     pub(super) failed: bool,
+    /// The group images kept in the group atlas between frames.
+    pub(super) groups: group_cache::GroupCache,
+    /// This frame continues the last one: `Some(true)` the same scene again,
+    /// `Some(false)` compared with it (`Scene::group_base`).
+    pub(super) chain: Option<(bool, u64)>,
 }
 
 /// How the current frame reaches the target.
@@ -82,6 +87,11 @@ impl DirectXRenderer {
             epoch: self.atlas.epoch(),
         };
         let comparable = id != 0 && size == target.size && !self.atlas.samples_external(scene);
+        self.retained.chain = match self.retained.last {
+            Some((last, t)) if comparable && t == target && last == id => Some((true, id)),
+            Some((last, t)) if comparable && t == target && last == base => Some((false, base)),
+            _ => None,
+        };
         let frame = match self.retained.last {
             Some((last, t)) if comparable && t == target && last == id => SceneDamage::Unchanged,
             Some((last, t)) if comparable && t == target && last == base => damage,
@@ -140,6 +150,8 @@ impl DirectXRenderer {
     /// No buffer holds a known frame (resize, device loss, a failed or foreign draw).
     pub(super) fn forget_frames(&mut self) {
         self.retained.last = None;
+        self.retained.chain = None;
+        self.retained.groups.valid.clear();
         self.retained.pending = [SceneDamage::Unknown; BUFFER_COUNT];
     }
 

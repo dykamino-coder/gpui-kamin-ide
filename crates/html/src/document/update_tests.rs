@@ -37,8 +37,8 @@ fn update_reloads_resources_and_matches_a_fresh_document() {
     assert_eq!(updated.salt(), fresh.salt());
     assert_eq!(updated.node_count(), fresh.node_count());
     assert_eq!(
-        format!("{:?}", updated.nodes()),
-        format!("{:?}", fresh.nodes())
+        super::test_tree::tree(&updated),
+        super::test_tree::tree(&fresh)
     );
     assert_eq!(
         format!("{:?}", updated.root_style()),
@@ -61,7 +61,7 @@ fn update_preserves_xml_parsing() {
         .path(std::path::Path::new("update.svg"))
         .build()
         .unwrap();
-    assert_eq!(format!("{:?}", doc.nodes()), format!("{:?}", fresh.nodes()));
+    assert_eq!(super::test_tree::tree(&doc), super::test_tree::tree(&fresh));
 }
 
 #[test]
@@ -89,5 +89,5 @@ fn update_carries_paragraph_measurements_but_not_tree_facts() {
         &measures,
         &fresh.state.paragraph.paragraphs
     ));
-    assert_eq!(format!("{:?}", doc.nodes()), format!("{:?}", fresh.nodes()));
+    assert_eq!(super::test_tree::tree(&doc), super::test_tree::tree(&fresh));
 }

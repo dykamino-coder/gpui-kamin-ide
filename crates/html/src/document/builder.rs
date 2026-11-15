@@ -113,10 +113,9 @@ mod tests {
         assert_eq!(a.xml, b.xml);
         assert_eq!(a.salt(), b.salt());
         assert_eq!(a.is_print(), b.is_print());
-        assert_eq!(format!("{:?}", a.nodes()), format!("{:?}", b.nodes()));
         assert_eq!(
-            format!("{:?}", a.root_style()),
-            format!("{:?}", b.root_style())
+            super::super::test_tree::tree(a),
+            super::super::test_tree::tree(b)
         );
     }
 
