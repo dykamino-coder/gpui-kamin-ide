@@ -106,6 +106,7 @@ impl BoxTree {
             level.append(self, id);
             if let Some(record) = self.arena.record_mut(id) {
                 record.external = epochs::external_contribution(e, level.owner);
+                record.distributes = epochs::distributes(e);
             }
             let mut inherited = level.inherited;
             let prev = match level.prev {
@@ -218,6 +219,7 @@ impl BoxTree {
             prepared: None,
             epochs: Default::default(),
             external: false,
+            distributes: false,
             layout_slot: None,
             flow: None,
         });

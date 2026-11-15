@@ -56,29 +56,81 @@ fn an_edit_in_one_cell_replays_the_contents_of_the_others(cx: &mut TestAppContex
     );
 }
 
-/// The same table with the rule `rule` for `[data-x]`.
-fn page_with(edited: Option<usize>, rule: &str) -> String {
-    page(edited).replace("[data-x]{background:#ccc}", rule)
+/// Nine blocks in a wrapper (not the root flow); the block `edited` carries
+/// the attribute `data-x`, which `rule` styles.
+fn blocks(edited: Option<usize>, rule: &str) -> String {
+    let items: String = (0..9)
+        .map(|i| {
+            let mark = if Some(i) == edited { " data-x" } else { "" };
+            format!("<div class=item{mark}><span>block {i}</span> <b>bold</b></div>")
+        })
+        .collect();
+    format!(
+        "<!doctype html><html><head><style>body{{margin:0}} .item{{padding:2px;border:1px solid #333}} \
+         {rule}</style></head><body><div id=wrap>{items}</div></body></html>"
+    )
 }
 
 #[gpui::test]
-fn contents_below_a_grown_cell_replay_at_their_new_place(cx: &mut TestAppContext) {
+fn contents_below_a_grown_block_replay_at_their_new_place(cx: &mut TestAppContext) {
     let tall = "[data-x]{height:40px}";
-    let (view, vcx) = open(cx, &page_with(None, tall));
+    let (view, vcx) = open(cx, &blocks(None, tall));
     frame(vcx);
-    update(&view, vcx, &page_with(Some(8), tall));
+    update(&view, vcx, &blocks(Some(8), tall));
     let start = replayed(&view, vcx);
-    // The first cell grows: its row and every row below it move down.
-    update(&view, vcx, &page_with(Some(0), tall));
+    // The first block grows: every block below it moves down.
+    update(&view, vcx, &blocks(Some(0), tall));
     let replays = replayed(&view, vcx) - start;
     let after = scene(vcx);
-    let (_, fresh) = open(cx, &page_with(Some(0), tall));
+    let (_, fresh) = open(cx, &blocks(Some(0), tall));
     frame(fresh);
-    // Cells 0 and 8 changed; the moved and the unmoved others replay.
-    assert!(replays >= 7, "clean cell contents replayed: {replays}");
+    // Blocks 0 and 8 changed; the moved and the unmoved others replay.
+    assert!(replays >= 7, "clean block contents replayed: {replays}");
     assert_eq!(
         after,
         scene(fresh),
         "the moved replay differs from a fresh build"
     );
+}
+
+/// A table whose last cell, under `html.alt`, sets the width of its column.
+fn columns(alt: bool) -> String {
+    let mut cells = String::new();
+    for r in 0..4 {
+        cells.push_str("<tr>");
+        for c in 0..4 {
+            let deep = if r == 3 && c == 3 { " data-deep" } else { "" };
+            cells.push_str(&format!("<td><span{deep}>{r}-{c} a b c</span></td>"));
+        }
+        cells.push_str("</tr>");
+    }
+    let class = if alt { " class=alt" } else { "" };
+    format!(
+        "<!doctype html><html{class}><head><style>body{{margin:0}} table{{width:300px}} \
+         span{{display:inline-block}} html.alt [data-deep]{{display:block;width:200px}}\
+         </style></head><body><div><table>{cells}</table></div></body></html>"
+    )
+}
+
+#[gpui::test]
+fn cells_of_a_table_whose_columns_change_are_built(cx: &mut TestAppContext) {
+    let (view, vcx) = open(cx, &columns(false));
+    frame(vcx);
+    update(&view, vcx, &columns(true));
+    update(&view, vcx, &columns(false));
+    let rebuilt = |vcx: &mut VisualTestContext| cx_rebuilt(&view, vcx);
+    let (start, again) = (replayed(&view, vcx), rebuilt(vcx));
+    // One cell widens its column: every cell may get another width, so none
+    // is replayed (and refused after layout, which would build the frame twice).
+    update(&view, vcx, &columns(true));
+    assert_eq!(replayed(&view, vcx), start);
+    assert_eq!(rebuilt(vcx), again, "no frame was built again");
+    let after = scene(vcx);
+    let (_, fresh) = open(cx, &columns(true));
+    frame(fresh);
+    assert_eq!(after, scene(fresh));
+}
+/// Frames built again after their check refused a replay.
+fn cx_rebuilt(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
+    cx.update(|_, cx| view.read(cx).doc.reused_blocks().2)
 }

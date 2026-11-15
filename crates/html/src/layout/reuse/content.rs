@@ -187,7 +187,11 @@ impl FlowReuse {
         let clean = {
             let boxes = opts.cx.doc().boxes.borrow();
             let epoch = boxes.build_epoch(content.owner)?;
-            epoch <= record.at && record.at <= boxes.clock()
+            // Its width may follow a changed sibling (a table column): the
+            // replay would be refused after layout, and the frame built twice.
+            epoch <= record.at
+                && record.at <= boxes.clock()
+                && !boxes.resized_by_siblings(content.owner, record.at)
         };
         if !clean || !record.key.same(&content.key) {
             return None;

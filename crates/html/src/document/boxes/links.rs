@@ -141,6 +141,21 @@ impl BoxTree {
         }
     }
 
+    /// Whether the size of box `id` may follow its siblings' content
+    /// changed after publication `at`: an ancestor that sizes its
+    /// children from their intrinsic contributions (`BoxRecord::distributes`)
+    /// got a newer intrinsic epoch.
+    pub(crate) fn resized_by_siblings(&self, id: BoxId, at: u32) -> bool {
+        let mut parent = self.get(id).map_or(BoxId::NONE, |r| r.parent);
+        while let Some(record) = self.get(parent) {
+            if record.distributes && record.epochs.intrinsic > at {
+                return true;
+            }
+            parent = record.parent;
+        }
+        false
+    }
+
     /// `paint` коробки и её предков до первого, уже получившего эту эпоху.
     fn mark_paint(&mut self, id: BoxId, clock: u32) {
         let mut at = id;

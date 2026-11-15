@@ -49,6 +49,9 @@ pub(crate) struct BoxRecord {
     pub(crate) epochs: Epochs,
     /// Вклад в intrinsic-размеры предка не зависит от содержимого.
     external: bool,
+    /// The box sizes its children from all their intrinsic contributions
+    /// (table, flex, grid): a child's width follows its siblings' content.
+    distributes: bool,
     /// Удерживаемый результат раскладки коробки; им владеет раскладка.
     layout_slot: Option<Box<crate::layout::retained::LayoutSlot>>,
     /// Снимок детей, которым коробка опубликовала свой поток (`flows`).

@@ -155,6 +155,7 @@ mod tests {
             prepared: None,
             epochs: Default::default(),
             external: false,
+            distributes: false,
             layout_slot: None,
             flow: None,
         }

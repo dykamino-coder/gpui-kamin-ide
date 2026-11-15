@@ -108,6 +108,23 @@ pub(super) fn external_contribution(e: &Element, parent: Option<&Element>) -> bo
         && sides(&style.reset_border.border_width)
 }
 
+/// The box sizes its children from all their intrinsic contributions: a
+/// table's columns, a flex line, grid tracks (Blink lays out every child of
+/// such a box again when one child's intrinsic sizes change).
+pub(super) fn distributes(e: &Element) -> bool {
+    crate::layout::fragment::table_bands::table_box(e)
+        || matches!(
+            e.style.used().reset_box_layout.display,
+            Some(
+                Display::Flex
+                    | Display::InlineFlex
+                    | Display::Grid
+                    | Display::InlineGrid
+                    | Display::GridLanes
+            )
+        )
+}
+
 /// Атрибуты, которые раскладка не читает: класс и стиль доходят через
 /// used-стиль, остальные — только для каскада, ссылок и доступности.
 fn layout_reads(name: &str) -> bool {
