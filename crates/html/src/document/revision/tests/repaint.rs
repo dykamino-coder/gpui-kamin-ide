@@ -55,10 +55,10 @@ fn layout_values_backgrounds_and_unfollowed_selectors_rebuild() {
 }
 
 #[test]
-fn an_unwrapped_body_folds_its_colour_into_the_top_boxes_and_rebuilds() {
+fn a_top_box_under_an_unwrapped_body_is_recoloured_in_place() {
     let old = page(".box.hot{color:red}", "").replace(";background:#fff", "");
     let new = old.replace("class=box", "class=\"box hot\"");
-    assert_eq!(both(&old, &new), (false, false));
+    assert_eq!(both(&old, &new), (true, true));
 }
 
 #[test]

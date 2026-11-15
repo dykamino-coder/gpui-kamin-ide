@@ -1,5 +1,19 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.104 delivery: large tool results reach the model — 2026-11-15
+
+Delivery reconciliation 2026-11-15, source `origin/main`
+`41099983f57815c0963389a5deea129bd6188cb1` (release #945):
+[KaminIDE 1.0.104](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.104)
+/ server 6.3.181 is published. The ancestry of #943 (`2f7b0c22`) in the tag and the
+published Release were checked; the image is
+`docker.io/dykamino/open-claude-bridge:6.3.181@sha256:ca75abffe54c10e66b2fa511b4f4e1428d69e1b62f39440560152fb38883fdf1`.
+[INC-0121](runtime-issues/INC-2026-0121.md) is resolved for its accepted scope.
+The exact-head live run on `7a0c80de` read a 200 KB file inline, got head, tail
+and a client path for `seq 1 200000` and read that path back, and saw the Grep
+pagination marker ([private evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/201)).
+Codex sessions were not exercised live. Publication is not acceptance in the
+owner's environment.
 ## KaminIDE 1.0.103 delivery: message sent during reconnect — 2026-11-15
 
 Delivery reconciliation 2026-11-15, source `origin/main`

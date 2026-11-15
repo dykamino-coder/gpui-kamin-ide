@@ -21,13 +21,21 @@ mod far_tests;
 #[cfg(test)]
 mod invalidation_tests;
 #[cfg(test)]
+mod l0_memory_tests;
+#[cfg(test)]
+mod l0_resource_tests;
+#[cfg(test)]
+mod l0_tests;
+#[cfg(test)]
 mod layered_replay_tests;
 #[cfg(test)]
 mod paint_damage_tests;
+mod prepared;
 #[cfg(test)]
 mod rebuild_key_tests;
 #[cfg(test)]
 mod recolour_layout_tests;
+pub use prepared::UpdatePhase;
 mod record;
 #[cfg(test)]
 mod replay_tests;
@@ -62,6 +70,10 @@ pub(super) struct Slot {
     /// Сборки и повторы кадра — наблюдение для тестов и стенда.
     builds: Cell<u64>,
     replays: Cell<u64>,
+    /// Кадр, собранный и разложенный шагом документа (`prepared`).
+    prepared: std::cell::RefCell<Option<prepared::Prepared>>,
+    /// Сборки внутри `Window::draw` — наблюдение для тестов и стенда.
+    inside_draw: Cell<u64>,
 }
 
 /// Опции хоста, от которых зависит кадр. Остальные поля `RenderOpts` хосту
@@ -137,16 +149,10 @@ impl Document {
         let candidate = key.is_some()
             && *self.retained.recorded.borrow() == key
             && self.state.values.resources_unchanged();
-        let builder = Builder {
-            state: self.state.clone(),
-            nodes: self.nodes.clone(),
-            // The frame builds into this document: the host's empty one is never made.
-            opts: opts.with_doc(self.state.clone()),
-            store: self.reuse.clone(),
-            counters: Cell::new(None),
-            layout_keys: key.is_some() && self.state.values.resources_unchanged(),
-        };
-        element::Retained::new(self.retained.clone(), key, builder, candidate).into_any_element()
+        let prepared = self.retained.take_prepared(&key);
+        let builder = self.frame_builder(opts, &key);
+        element::Retained::new(self.retained.clone(), key, builder, candidate, prepared)
+            .into_any_element()
     }
 
     /// Сколько раз кадр собран и сколько раз повторён (`render_viewport`).

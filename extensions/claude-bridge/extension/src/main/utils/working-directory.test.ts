@@ -66,7 +66,7 @@ describe('file tools in the session working directory', () => {
     fs.writeFileSync(path.join(project, 'nested', 'found.kaminwd'), 'needle-kaminwd\n')
 
     const globbed = text(await globSearch({ pattern: '**/*.kaminwd' }, { cwd: project }))
-    expect(globbed).toContain(path.join(project, 'nested', 'found.kaminwd').replace(/\\/g, '/'))
+    expect(globbed).toContain(path.join(project, 'nested', 'found.kaminwd'))
 
     const relativeGlob = text(await globSearch({ pattern: '*.kaminwd', path: 'nested' }, { cwd: project }))
     expect(relativeGlob).toContain('found.kaminwd')
