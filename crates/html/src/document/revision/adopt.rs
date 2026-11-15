@@ -51,10 +51,10 @@ impl Document {
         let mut targets = HashMap::new();
         if !batch.elements.is_empty() {
             let collected;
-            let sheets = match sheets {
+            let sheets: &[String] = match sheets {
                 Some(sheets) => sheets,
                 None => {
-                    collected = super::shape::sheets(&root);
+                    collected = self.kept_sheets(&root);
                     &collected
                 }
             };
