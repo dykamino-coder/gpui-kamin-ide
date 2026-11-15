@@ -1,7 +1,7 @@
 // Runs inside Claude Code's mod sandbox: all effects go through the engine.
 /** @typedef {{id: number, rejected?: boolean}} Ack */
 /** @typedef {{turnId: string | null}} Turn */
-/** @typedef {{turnId: string | null, active: boolean, polling: boolean, reporting: boolean, socketPath: string, session: string, instance: string, version: string, acks: Ack[], turns: Turn[], reads: {submissionId: string, uuid: string}[], submitting: (string | null)[], composer: {submissionId: string | null}[], armed: string | null, conditionEnabled: boolean, conditionSeen: string | null, conditionSequence: number, conditionAgents: Map<string, Set<{agentId?: string}>>, conditionLocal: {marker?: string, value: string} | null}} State */
+/** @typedef {{turnId: string | null, active: boolean, polling: boolean, waiting: boolean, reporting: boolean, emptyPolls: number, socketPath: string, session: string, instance: string, version: string, acks: Ack[], turns: Turn[], reads: {submissionId: string, uuid: string}[], submitting: (string | null)[], composer: {submissionId: string | null}[], armed: string | null, conditionEnabled: boolean, conditionSeen: string | null, conditionSequence: number, conditionAgents: Map<string, Set<{agentId?: string}>>, conditionLocal: {marker?: string, value: string} | null}} State */
 
 /** @param {import('claude-code').EngineInterface} $ @param {State} state @param {string} route @param {boolean} [wait] */
 async function exchange($, state, route, wait = false) {
@@ -37,29 +37,39 @@ async function exchange($, state, route, wait = false) {
   }
 }
 
-/** One period: keep one long poll open for commands, and report acks, turns
- * and reads at once on a second request instead of waiting for that poll.
+/** Empty answers in a row after which the module stops asking every period
+ * and lets the server hold its poll open (long poll). */
+const IDLE_POLLS = 5
+
+/** One period, one exchange, as before; once idle the exchange is a long poll.
+ * Acks, turns and reads raised while that poll is held go out at once on a
+ * second request instead of waiting behind it.
  * @param {import('claude-code').EngineInterface} $ @param {State} state */
 function tick($, state) {
   if (!state.active) return
-  if (!state.reporting && state.acks.length + state.turns.length + state.reads.length) {
+  const news = state.acks.length + state.turns.length + state.reads.length > 0
+  if (state.polling) {
+    if (!state.waiting || state.reporting || !news) return
     state.reporting = true
-    void poll($, state, false).finally(() => {
+    return poll($, state, false).finally(() => {
       state.reporting = false
     })
   }
-  if (!state.polling) {
-    state.polling = true
-    void poll($, state, true).finally(() => {
-      state.polling = false
-    })
-  }
+  state.polling = true
+  state.waiting = !news && state.emptyPolls >= IDLE_POLLS
+  return poll($, state, state.waiting).finally(() => {
+    state.polling = false
+    state.waiting = false
+  })
 }
 
 /** @param {import('claude-code').EngineInterface} $ @param {State} state @param {boolean} wait */
 async function poll($, state, wait) {
+  if (state.acks.length + state.turns.length + state.reads.length) state.emptyPolls = 0
   try {
     const { commands } = await exchange($, state, '/poll', wait)
+    if (commands.length) state.emptyPolls = 0
+    else if (!wait) state.emptyPolls++
     for (const command of commands) {
       if (command.kind === 'submit' && typeof command.text === 'string') {
         state.submitting.push(command.submissionId ?? null)
@@ -196,7 +206,9 @@ export const register = (on) => {
     turnId: null,
     active: false,
     polling: false,
+    waiting: false,
     reporting: false,
+    emptyPolls: 0,
     socketPath: '',
     session: '',
     instance: '',
