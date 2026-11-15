@@ -118,8 +118,11 @@ fn layout_reads(name: &str) -> bool {
 
 /// Одинаковые собственные входы раскладки у коробки двух публикаций (без детей).
 /// В отличие от `dom::same_layout_box` (ключ повтора записей, который повторяет
-/// и краску SVG-разметки), здесь важна только раскладка.
-pub(super) fn same_layout_inputs(a: &Element, b: &Element) -> bool {
+/// и краску SVG-разметки), здесь важна только раскладка. `inherited`: у
+/// родителей те же вычисленные стили (все предки прошли это сравнение), и
+/// стиль ещё не вычисленной пересборки сравнивается по каскаду
+/// (`dom::same_cascaded_layout_stages`, Blink `StyleDifference` до раскладки).
+pub(super) fn same_layout_inputs(a: &Element, b: &Element, inherited: bool) -> bool {
     let read = |(name, _): &&(String, String)| layout_reads(name);
     a.node_id == b.node_id
         && a.tag == b.tag
@@ -132,5 +135,9 @@ pub(super) fn same_layout_inputs(a: &Element, b: &Element) -> bool {
         }
         && a.marks == b.marks
         && (a.attrs == b.attrs || a.attrs.iter().filter(read).eq(b.attrs.iter().filter(read)))
-        && crate::dom::same_layout_stages(a, b)
+        && if inherited {
+            crate::dom::same_cascaded_layout_stages(a, b)
+        } else {
+            crate::dom::same_layout_stages(a, b)
+        }
 }

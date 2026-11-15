@@ -164,6 +164,26 @@ fn capture_in<R>(
 /// и позиционированные задания встают в очереди открытого кадра, вне него
 /// рисуются на месте. Ответ — та же краска этого кадра.
 pub(crate) fn replay(window: &mut Window, record: &LineCapture) -> Rc<LineCapture> {
+    replay_moved(window, record, gpui::Point::default())
+}
+
+/// `replay` of a block that lies `offset` from where it painted: its lines
+/// move with it. A record with positioned jobs does not move (they keep the
+/// window positions of their stacking context).
+pub(crate) fn replay_moved(
+    window: &mut Window,
+    record: &LineCapture,
+    offset: gpui::Point<gpui::Pixels>,
+) -> Rc<LineCapture> {
     debug_assert!(record.complete(), "incomplete deferred paint record");
-    capture(window, |window| jobs::readmit(window, record)).1
+    debug_assert!(
+        offset == gpui::Point::default() || record.jobs.borrow().is_empty(),
+        "a moved replay with positioned jobs"
+    );
+    capture(window, |window| jobs::readmit(window, record, offset)).1
+}
+
+/// The deferred paint of `record` moves with its block (`replay_moved`).
+pub(crate) fn movable(record: &LineCapture) -> bool {
+    record.jobs.borrow().is_empty()
 }

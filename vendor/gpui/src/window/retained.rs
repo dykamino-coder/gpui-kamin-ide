@@ -95,6 +95,28 @@ impl Window {
         RetainedPrepaint(start..self.prepaint_index())
     }
 
+    /// `replay_retained_prepaint` of a movable record (`retained_movable`)
+    /// whose subtree now lies `offset` from where it was prepainted: its
+    /// hitboxes move by the offset, their masks clipped by the current one.
+    pub fn replay_retained_prepaint_moved(
+        &mut self,
+        record: &RetainedPrepaint,
+        offset: Point<Pixels>,
+    ) -> RetainedPrepaint {
+        let start = self.prepaint_index();
+        self.reuse_prepaint(record.0.clone());
+        if offset != Point::default() {
+            let clip = self.content_mask().bounds;
+            for hitbox in &mut self.next_frame.hitboxes[start.hitboxes_index..] {
+                hitbox.bounds.origin += offset;
+                let mask = &mut hitbox.content_mask.bounds;
+                mask.origin += offset;
+                *mask = mask.intersect(&clip);
+            }
+        }
+        RetainedPrepaint(start..self.prepaint_index())
+    }
+
     /// Whether a record made in the rendered frame can be replayed into this
     /// one. Deferred draws paint after the whole tree, outside the subtree's
     /// paint range, and nested deferred draws are appended after their owner;
@@ -138,6 +160,63 @@ impl Window {
     }
 }
 
+impl Window {
+    /// Whether a record made in this frame draws the same pixels moved
+    /// by any offset (`replay_retained_paint_moved`): its prepaint left no
+    /// tooltip, deferred draw or element state, and no hitbox clipped by its
+    /// content mask (a moved one is moved, `replay_retained_prepaint_moved`);
+    /// its paint no listener, input handler, cursor style or tab stop. Those
+    /// carry window positions or identities a moved copy would not update.
+    pub fn retained_movable(&self, prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> bool {
+        let (p, q) = (&prepaint.0.start, &prepaint.0.end);
+        let (a, b) = (&paint.range.start, &paint.range.end);
+        let hitboxes = &self.next_frame.hitboxes[p.hitboxes_index..q.hitboxes_index];
+        paint.replayable
+            && hitboxes
+                .iter()
+                .all(|h| h.content_mask.bounds.intersect(&h.bounds) == h.bounds)
+            && p.tooltips_index == q.tooltips_index
+            && p.deferred_draws_index == q.deferred_draws_index
+            && p.accessed_element_states_index == q.accessed_element_states_index
+            && a.mouse_listeners_index == b.mouse_listeners_index
+            && a.input_handlers_index == b.input_handlers_index
+            && a.cursor_styles_index == b.cursor_styles_index
+            && a.accessed_element_states_index == b.accessed_element_states_index
+            && a.tab_handle_index == b.tab_handle_index
+    }
+
+    /// `replay_retained_paint` of a record whose subtree now lies `offset`
+    /// (window pixels) from where it painted: every command is moved by the
+    /// offset and clipped by the current content mask, as a paint record is
+    /// placed (`Scene::replay_placed`). The caller guarantees the record is
+    /// movable (`retained_movable`) and that nothing it painted was clipped
+    /// where it was recorded (its ink lay inside its content mask): a moved
+    /// copy cannot restore what the old mask cut off.
+    pub fn replay_retained_paint_moved(
+        &mut self,
+        record: &RetainedPaint,
+        offset: Point<Pixels>,
+    ) -> RetainedPaint {
+        if offset == Point::default() {
+            return self.replay_retained_paint(record);
+        }
+        debug_assert!(record.replayable, "non-replayable paint record");
+        let start = self.paint_index();
+        let scale = self.scale_factor();
+        let offset = point(ScaledPixels(offset.x.0 * scale), ScaledPixels(offset.y.0 * scale));
+        let clip = self.content_mask().scale(scale).bounds;
+        let range = record.range.clone();
+        self.text_system
+            .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
+        self.next_frame.scene.replay_moved(
+            range.start.scene_index..range.end.scene_index,
+            &self.rendered_frame.scene,
+            offset,
+            clip,
+        );
+        RetainedPaint { range: start..self.paint_index(), replayable: true }
+    }
+}
 /// KaminIDE patch: placed bounds of everything a retained subtree offered to
 /// the scene in one frame, culled primitives included, in device pixels.
 ///
@@ -650,6 +729,14 @@ impl Window {
         };
         bounds.origin += offset;
         Some(bounds)
+    }
+
+    /// Whether this pass measured a leaf of `layout` with a function kept
+    /// from an earlier pass (`keep_retained_measures`).
+    pub fn retained_remeasured(&self, layout: &RetainedSubtree) -> bool {
+        self.layout_engine
+            .as_ref()
+            .is_none_or(|engine| engine.remeasured(layout))
     }
 
     /// Whether this pass measured a leaf of a subtree claimed whole.

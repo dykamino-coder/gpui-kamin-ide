@@ -42,6 +42,9 @@ pub(super) struct Ranges {
     serial: u64,
     /// Строки блока в фазе строк контекста (`paint::coordinator::capture`).
     lines: Rc<LineCapture>,
+    /// The output draws the same pixels moved with its block
+    /// (`Window::retained_movable`), and nothing of it was clipped.
+    movable: bool,
 }
 
 /// Запись повтора: вход сборки блока и диапазоны его последнего кадра.
@@ -104,6 +107,8 @@ pub(super) struct PendingReplay {
     env: Cell<Option<(f32, u64)>>,
     mask: RefCell<Option<ContentMask<Pixels>>>,
     lines: RefCell<Option<Rc<LineCapture>>>,
+    /// The output moves with the block (`Ranges::movable`) but for its ink.
+    movable: Cell<bool>,
     /// The block's ink sink in its build's list (`FlowReuse::ink`).
     sink: (Rc<InkSinkList>, u32),
 }
@@ -131,6 +136,7 @@ impl PendingReplay {
             env: Cell::new(None),
             mask: RefCell::new(None),
             lines: RefCell::new(None),
+            movable: Cell::new(false),
             sink: (ink.clone(), ink.open()),
         }
     }
@@ -159,6 +165,10 @@ impl PendingReplay {
             return None;
         }
         let mask = self.mask.take()?;
+        // A command clipped where it was recorded cannot be restored by a
+        // moved copy: only a record whose ink lies inside its mask moves.
+        let clip = mask.bounds.scale(scale);
+        let movable = self.movable.get() && bounds.is_none_or(|ink| clip.intersect(&ink) == ink);
         let lines = self.lines.take().filter(|lines| lines.complete())?;
         Some(ReplayRecord {
             fills: self.fills,
@@ -178,6 +188,7 @@ impl PendingReplay {
                 scale,
                 serial,
                 lines,
+                movable,
             })),
         })
     }

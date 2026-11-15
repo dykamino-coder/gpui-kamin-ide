@@ -55,3 +55,30 @@ fn an_edit_in_one_cell_replays_the_contents_of_the_others(cx: &mut TestAppContex
         "the replayed frame differs from a fresh one"
     );
 }
+
+/// The same table with the rule `rule` for `[data-x]`.
+fn page_with(edited: Option<usize>, rule: &str) -> String {
+    page(edited).replace("[data-x]{background:#ccc}", rule)
+}
+
+#[gpui::test]
+fn contents_below_a_grown_cell_replay_at_their_new_place(cx: &mut TestAppContext) {
+    let tall = "[data-x]{height:40px}";
+    let (view, vcx) = open(cx, &page_with(None, tall));
+    frame(vcx);
+    update(&view, vcx, &page_with(Some(8), tall));
+    let start = replayed(&view, vcx);
+    // The first cell grows: its row and every row below it move down.
+    update(&view, vcx, &page_with(Some(0), tall));
+    let replays = replayed(&view, vcx) - start;
+    let after = scene(vcx);
+    let (_, fresh) = open(cx, &page_with(Some(0), tall));
+    frame(fresh);
+    // Cells 0 and 8 changed; the moved and the unmoved others replay.
+    assert!(replays >= 7, "clean cell contents replayed: {replays}");
+    assert_eq!(
+        after,
+        scene(fresh),
+        "the moved replay differs from a fresh build"
+    );
+}

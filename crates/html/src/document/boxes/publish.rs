@@ -76,7 +76,7 @@ impl BoxTree {
         if !root.is_some() {
             self.first = BoxId::NONE;
         }
-        let mut pending = vec![Level::new(nodes, root, None, prev, first_old)];
+        let mut pending = vec![Level::new(nodes, root, None, prev, true, first_old)];
         while let Some(level) = pending.last_mut() {
             let Some(node) = level.next_node() else {
                 let done = pending.pop().expect("level");
@@ -107,12 +107,18 @@ impl BoxTree {
             if let Some(record) = self.arena.record_mut(id) {
                 record.external = epochs::external_contribution(e, level.owner);
             }
+            let mut inherited = level.inherited;
             let prev = match level.prev {
                 Prev::Clean => Prev::Clean,
                 Prev::Fresh => Prev::Fresh,
                 Prev::Old(old) => match paired(old, len, at, e.node_id) {
-                    Some(o) if epochs::same_layout_inputs(o, e) => {
-                        if !crate::dom::same_box(o, e) {
+                    Some(o) if epochs::same_layout_inputs(o, e, inherited) => {
+                        let same = if inherited {
+                            crate::dom::same_cascaded_values(o, e)
+                        } else {
+                            crate::dom::same_box(o, e)
+                        };
+                        if !same {
                             changed.push((id, Change::Paint));
                         }
                         if o.children.identity() == e.children.identity() {
@@ -125,6 +131,7 @@ impl BoxTree {
                         }
                     }
                     Some(o) => {
+                        inherited = false;
                         changed.push((id, Change::Own));
                         Prev::Old(&o.children)
                     }
@@ -154,7 +161,14 @@ impl BoxTree {
                 visited.insert(id, (style, e.style.slot().published().is_some()));
             }
             inline.enter(id, e);
-            pending.push(Level::new(&e.children, id, Some(e), prev, old_children));
+            pending.push(Level::new(
+                &e.children,
+                id,
+                Some(e),
+                prev,
+                inherited,
+                old_children,
+            ));
         }
         for (id, content) in inline.finished {
             if self.arena.inline(id, content) {

@@ -23,6 +23,9 @@ pub(super) struct Level<'a> {
     pub(super) parent: BoxId,
     pub(super) owner: Option<&'a Element>,
     pub(super) prev: Prev<'a>,
+    /// Предки уровня прошли `epochs::same_layout_inputs`: у родителя те же
+    /// вычисленные стили.
+    pub(super) inherited: bool,
     last: BoxId,
     /// Следующая прежняя коробка-ребёнок по порядку.
     cursor: BoxId,
@@ -37,6 +40,7 @@ impl<'a> Level<'a> {
         parent: BoxId,
         owner: Option<&'a Element>,
         prev: Prev<'a>,
+        inherited: bool,
         old_first: BoxId,
     ) -> Self {
         Self {
@@ -45,6 +49,7 @@ impl<'a> Level<'a> {
             parent,
             owner,
             prev,
+            inherited,
             last: BoxId::NONE,
             cursor: old_first,
             rest: None,

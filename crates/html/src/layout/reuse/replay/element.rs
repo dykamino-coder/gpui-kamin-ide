@@ -2,7 +2,7 @@
 //! который повторяет его раскладку, prepaint и краску (`super`).
 
 use super::{PendingReplay, ReplaySlot, plain_environment};
-use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred};
+use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred_moved};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use std::rc::Rc;
 /// Прозрачная обёртка блока: снимает узлы раскладки, диапазоны prepaint и
@@ -72,9 +72,23 @@ impl Wrap for ReplayRecorder {
             .as_ref()
             .map(|(p, _, _)| p.clone());
         let replayable = prepaint
-            .is_some_and(|prepaint| window.retained_replayable(&prepaint, &paint))
+            .as_ref()
+            .is_some_and(|prepaint| window.retained_replayable(prepaint, &paint))
             && callbacks == window.next_frame_callback_count();
         if replayable {
+            let movable = prepaint
+                .as_ref()
+                .is_some_and(|prepaint| window.retained_movable(prepaint, &paint))
+                && crate::hooks::deferred_movable(&lines);
+            self.pending.movable.set(movable);
+            // A box's content keeps the measure functions of its leaves: a
+            // replay laid out at new constraints measures as a build would,
+            // and the frame check refuses only that replay (`ReplaySlot`).
+            if self.pending.key.is_none()
+                && let Some((layout, _)) = self.pending.layout.borrow().as_ref()
+            {
+                window.keep_retained_measures(layout, false);
+            }
             self.pending.paint.replace(Some(paint));
             self.pending.lines.replace(Some(lines));
             self.pending
@@ -121,9 +135,10 @@ impl Hooks for Replay {
     }
 
     fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, _: &mut App) {
-        self.slot
-            .record
-            .ranges(|r| r.prepaint = window.replay_retained_prepaint(&r.prepaint));
+        let offset = self.slot.offset.get();
+        self.slot.record.ranges(|r| {
+            r.prepaint = window.replay_retained_prepaint_moved(&r.prepaint, offset);
+        });
     }
 
     fn paint(
@@ -134,15 +149,22 @@ impl Hooks for Replay {
         window: &mut Window,
         _: &mut App,
     ) {
+        let offset = self.slot.offset.get();
         self.slot.record.ranges(|r| {
             // Строки вне открытого кадра рисуются на месте: в выводе блока.
             let (lines, paint) = window.record_retained_paint(|window| {
-                window.replay_retained_paint(&r.paint);
-                replay_deferred(window, &r.lines)
+                window.replay_retained_paint_moved(&r.paint, offset);
+                replay_deferred_moved(window, &r.lines, offset)
             });
             r.paint = paint;
             r.lines = lines;
+            r.origin += offset;
             r.serial = window.frame_serial();
         });
+        if self.slot.record.key.is_none() {
+            self.slot
+                .record
+                .ranges(|r| window.keep_retained_measures(&r.layout, true));
+        }
     }
 }
