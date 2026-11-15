@@ -23,6 +23,8 @@ mod float_root_replay_tests;
 #[cfg(test)]
 mod invalidation_tests;
 #[cfg(test)]
+mod key_reuse_tests;
+#[cfg(test)]
 mod l0_memory_tests;
 #[cfg(test)]
 mod l0_resource_tests;

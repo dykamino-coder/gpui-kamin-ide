@@ -21,6 +21,7 @@ pub(super) fn collapsed_cell_edge(
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
     shared: &EdgeStyles,
     px_of: &impl Fn(Option<Len>) -> f32,
+    order: u32,
 ) -> Option<(
     [f32; 4],
     [crate::style::values::value::Color; 4],
@@ -103,17 +104,14 @@ pub(super) fn collapsed_cell_edge(
     };
     // The cell's own border goes to the edge layer with these writes.
     shared.apply(cell, win.map(|width| width / 2.0), padding);
-    (widths.iter().any(|w| *w > 0.0) || styles.contains(&1)).then_some((
-        widths,
-        colors,
-        styles,
-        cell.node_id as u32,
-    ))
+    (widths.iter().any(|w| *w > 0.0) || styles.contains(&1))
+        .then_some((widths, colors, styles, order))
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn collapsed_group_edges(
     g: &Element,
+    order: u32,
     rules_groups: bool,
     col_ix: usize,
     span_cols: u16,
@@ -188,7 +186,7 @@ pub(super) fn collapsed_group_edges(
             colors,
             styles,
             3,
-            g.node_id as u32,
+            order,
             [0.0; 4],
         ));
     }

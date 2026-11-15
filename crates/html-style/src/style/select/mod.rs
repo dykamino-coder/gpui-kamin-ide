@@ -19,7 +19,7 @@ pub mod rule_index;
 /// Цепочка предков для сопоставления `.card .title`: тег + классы + id.
 #[derive(Clone)]
 pub struct Ancestor {
-    pub key: crate::dom::tree_index::NodeKey,
+    pub key: crate::dom::tree_index::HandleKey,
     pub matching: Rc<cache::MatchCaches>,
     pub ancestor_bloom: Option<bloom::Bloom>,
     /// Computed counter directives follow DOM inheritance, even without a box.

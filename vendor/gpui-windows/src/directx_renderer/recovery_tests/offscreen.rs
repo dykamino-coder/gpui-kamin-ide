@@ -12,16 +12,6 @@ fn desc(texture: &ID3D11Texture2D) -> D3D11_TEXTURE2D_DESC {
     desc
 }
 
-fn offscreen(device: &DirectXDevices, width: u32, height: u32) -> DirectXRenderer {
-    let mut r = renderer(device);
-    let devices = r.devices.clone().unwrap();
-    r.resources = Some(DirectXResources::new_offscreen(&devices, width, height).unwrap());
-    r.disable_direct_composition = true;
-    r.offscreen = true;
-    (r.width, r.height) = (width, height);
-    r
-}
-
 #[test]
 fn offscreen_target_matches_the_swap_chain_back_buffer() {
     let device = DirectXDevices::new().unwrap();

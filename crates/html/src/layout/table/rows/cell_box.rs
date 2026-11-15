@@ -50,7 +50,14 @@ pub(super) fn prepare_cell_box(
     // (см. paint::table::EdgePainter): кромка соседей ОДНА, рисуется
     // поверх фонов, и «шире побеждает» решается наложением.
     let cell_edge = if geom.collapse_cells {
-        collapsed_cell_edge(cell, cm, &geom.win_edges, &geom.edge_styles, &px_of)
+        collapsed_cell_edge(
+            cell,
+            cm,
+            &geom.win_edges,
+            &geom.edge_styles,
+            &px_of,
+            cursor.cell_order,
+        )
     } else {
         None
     };
