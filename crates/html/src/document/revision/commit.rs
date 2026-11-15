@@ -122,6 +122,7 @@ impl Document {
             base_url: self.base_url.clone(),
             xml: self.xml,
             last_failure: None,
+            media_reads: self.media_reads.clone(),
             #[cfg(feature = "engine-bench")]
             timings,
         }

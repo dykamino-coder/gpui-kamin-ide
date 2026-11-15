@@ -116,10 +116,11 @@ impl Media {
         // `(100px < width < 200px)`. Двусторонняя форма — это И двух
         // односторонних.
         if s.contains('<') || s.contains('>') || (s.contains('=') && !s.contains(':')) {
-            return self.mq_range(s, vcx);
+            return super::reads::leaf(s, || self.mq_range(s, vcx));
         }
         if let Some((name, value)) = s.split_once(':') {
-            return self.mq_feature(name.trim(), value.trim(), MqCmp::Eq, vcx);
+            let feature = || self.mq_feature(name.trim(), value.trim(), MqCmp::Eq, vcx);
+            return super::reads::leaf(s, feature);
         }
         // `(--имя)` — ссылка на `@custom-media` (mediaqueries-5 §5.1).
         if s.starts_with("--") {
@@ -128,7 +129,7 @@ impl Media {
         // Булева форма `<mf-boolean>`: голое имя истинно, когда значение
         // фичи не «ноль/none» (§2.4.2).
         if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-            return self.mq_boolean(s);
+            return super::reads::leaf(s, || self.mq_boolean(s));
         }
         // `<general-enclosed>` — «неизвестно» (§3.1): пустые скобки, мусор,
         // сломанный диапазон.

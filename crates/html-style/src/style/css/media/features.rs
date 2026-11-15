@@ -53,6 +53,17 @@ impl Media {
     /// Числовое значение фичи этого носителя как отношение (числитель,
     /// знаменатель). `None` — фича не наша, то есть `<general-enclosed>`.
     pub fn mq_numeric(&self, name: &str) -> Option<(f32, f32)> {
+        if matches!(
+            name,
+            "width"
+                | "device-width"
+                | "height"
+                | "device-height"
+                | "aspect-ratio"
+                | "device-aspect-ratio"
+        ) {
+            super::reads::note();
+        }
         Some(match name {
             "width" | "device-width" => (self.width, 1.0),
             "height" | "device-height" => (self.height, 1.0),
@@ -68,6 +79,7 @@ impl Media {
     pub fn mq_keyword(&self, name: &str) -> &'static str {
         match name {
             "orientation" => {
+                super::reads::note();
                 if self.width >= self.height {
                     "landscape"
                 } else {

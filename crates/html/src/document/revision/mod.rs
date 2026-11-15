@@ -4,6 +4,7 @@ mod adopt;
 mod apply;
 mod build;
 mod commit;
+mod media;
 mod mentions;
 mod mutation;
 mod patch;

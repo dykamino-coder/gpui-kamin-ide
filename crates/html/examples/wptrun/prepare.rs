@@ -44,15 +44,20 @@ impl Stage {
             if let Ok(page) = view.downcast::<Page>() {
                 page.update(cx, |page, cx| {
                     let fonts = page.doc.font_context();
+                    // The window is the screen medium of the page (`Document::set_viewport`).
+                    let size = window.viewport_size();
+                    let viewport = (f32::from(size.width), f32::from(size.height));
                     let candidate = match source {
                         Some(path) => Document::builder(html, BROWSER_CSS)
                             .fonts(&fonts)
                             .path(std::path::Path::new(path))
                             .print(print)
+                            .viewport(viewport)
                             .build(),
                         None => Document::builder(html, BROWSER_CSS)
                             .fonts(&fonts)
                             .print(print)
+                            .viewport(viewport)
                             .build(),
                     };
                     match candidate {
