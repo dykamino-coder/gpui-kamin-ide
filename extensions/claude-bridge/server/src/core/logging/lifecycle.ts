@@ -27,6 +27,9 @@ const EVENTS = new Set([
   'conversation_id',
   // INC-2026-0072: a session read another conversation of its project.
   'project_session_access',
+  // Idle hibernation: the CLI process stops, the chat stays; a message wakes it.
+  'session_hibernate',
+  'session_wake',
 ])
 const REQUEST_KINDS = new Set(['create', 'resume'])
 // How createSession chose the settings directory: `found` = lookup located the
@@ -62,6 +65,7 @@ const REASONS = new Set([
   'startup_timeout',
   'idle_timeout',
   'max_lifetime',
+  'hibernate',
   'session-end',
   'pty-exit',
   'timeout',
@@ -82,6 +86,7 @@ export type DestroyReason =
   | 'startup_timeout'
   | 'idle_timeout'
   | 'max_lifetime'
+  | 'hibernate'
 
 /** Stable pseudonym of a CLI conversation id (INC-2026-0070). Unkeyed on
  *  purpose: the same id must map to the same ref across container recreations
@@ -111,11 +116,30 @@ export function lifecycleLog(event: string, fields: Record<string, unknown> = {}
     // Stable across boots so access by one token can be correlated; not reversible.
     record.tokenRef = createHash('sha256').update(`kamin-token-ref-v1:${fields.tokenId}`).digest('hex').slice(0, 12)
   }
-  for (const name of ['ageMs', 'idleMs', 'graceMs', 'waitedMs', 'exitCode', 'bytes', 'entries']) {
+  for (const name of [
+    'ageMs',
+    'idleMs',
+    'graceMs',
+    'waitedMs',
+    'slotMs',
+    'startMs',
+    'bootMs',
+    'exitCode',
+    'bytes',
+    'entries',
+  ]) {
     const value = fields[name]
     if (typeof value === 'number' && Number.isSafeInteger(value)) record[name] = value
   }
-  for (const name of ['isSubAgent', 'suppressed', 'resumeRequested', 'resumeNotFound', 'settingsDirFound', 'self']) {
+  for (const name of [
+    'isSubAgent',
+    'suppressed',
+    'resumeRequested',
+    'resumeNotFound',
+    'settingsDirFound',
+    'self',
+    'urgent',
+  ]) {
     if (typeof fields[name] === 'boolean') record[name] = fields[name]
   }
   // Raw conversation ids never enter the file — only their stable refs.

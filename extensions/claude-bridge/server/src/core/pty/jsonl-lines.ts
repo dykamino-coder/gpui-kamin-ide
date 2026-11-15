@@ -65,10 +65,12 @@ export async function* readJsonlLines(filePath: string, opts: ReadJsonlLinesOpti
     let carryLen = 0
     let lineStart = pos
     let sinceYield = 0
-    const buf = Buffer.allocUnsafe(chunkBytes)
+    // Sized to the range: the live tail reads a few hundred bytes per pass,
+    // and a fixed 1 MiB buffer per pass (per chat, per write) was pure GC load.
+    const buf = Buffer.allocUnsafe(Math.max(1, Math.min(chunkBytes, end - pos)))
     while (pos < end) {
       signal?.throwIfAborted()
-      const want = Math.min(chunkBytes, end - pos)
+      const want = Math.min(buf.length, end - pos)
       const { bytesRead } = await fd.read(buf, 0, want, pos)
       signal?.throwIfAborted()
       if (bytesRead === 0) break

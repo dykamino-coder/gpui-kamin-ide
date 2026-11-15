@@ -33,6 +33,19 @@ export const pendingAttachments = signal<FileAttachment[]>([])
 
 export const tabActivity = signal<Map<string, { rawTitle: string; isWorking: boolean }>>(new Map())
 
+/** Tabs whose server stopped the idle CLI (`asleep`) or is starting it again
+ *  (`waking`); absent = awake. Typing into an asleep chat warms it up. */
+export const tabHibernation = signal<Map<string, 'asleep' | 'waking'>>(new Map())
+
+export function setTabHibernation(tabId: string, state: 'asleep' | 'waking' | null): void {
+  const current = tabHibernation.peek()
+  if ((current.get(tabId) ?? null) === state) return
+  const next = new Map(current)
+  if (state) next.set(tabId, state)
+  else next.delete(tabId)
+  tabHibernation.value = next
+}
+
 /** УЗКИЙ срез tabActivity: только boolean «работает». Читатели, которым не
  *  нужен текст спиннера (InputBar/QueueWidget/SessionItem/TabsBar), раньше
  *  ререндерились на каждый косметический тик rawTitle (~1Гц на рабочую
