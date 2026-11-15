@@ -86,7 +86,17 @@ impl Arena {
         if slot.generation == id.generation
             && let Some(record) = slot.value.as_mut()
         {
-            record.prepared = prepared;
+            record.prepared = prepared.map(Box::new);
+        }
+    }
+
+    pub(super) fn prepared_ready(&mut self, id: BoxId, ready: bool) {
+        if let Some(slot) = self.slots.get_mut(id.slot as usize)
+            && slot.generation == id.generation
+            && let Some(record) = slot.value.as_mut()
+            && let Some(prepared) = record.prepared.as_mut()
+        {
+            prepared.ready = ready;
         }
     }
 

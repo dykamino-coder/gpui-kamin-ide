@@ -1,5 +1,10 @@
-//! Normalize text-only IFC after materialization, before GPUI build.
+//! Normalize IFC text across inline boundaries after materialization, before GPUI build.
 
+mod mixed;
+#[cfg(test)]
+mod mixed_tests;
+#[cfg(test)]
+mod sharing_tests;
 #[cfg(test)]
 mod tests;
 
@@ -14,8 +19,10 @@ use std::rc::Rc;
 
 #[derive(Debug)]
 pub(super) struct Prepared {
+    pub(super) ready: bool,
     source: Rc<InlineContent>,
     inputs: Inputs,
+    dependencies: Vec<(BoxId, Inputs)>,
     pub(super) text: Rc<InlineContent>,
 }
 
@@ -35,12 +42,17 @@ impl BoxTree {
             return;
         }
         self.finished = Some((self.epoch, Inputs::of(root)));
-        self.finish_flow(nodes, root);
+        let mut styles = std::collections::HashMap::new();
         let mut pending = vec![nodes.iter()];
         while let Some(siblings) = pending.last_mut() {
             match siblings.next() {
                 Some(Node::Element(e)) => {
-                    self.finish_flow(&e.children, &e.style.used());
+                    if let Some(&id) = self.flows.get(&slice_key(&e.children)) {
+                        styles.insert(
+                            id,
+                            (e.style.used().style, e.style.slot().published().is_some()),
+                        );
+                    }
                     pending.push(e.children.iter());
                 }
                 Some(Node::Text(_)) => {}
@@ -49,25 +61,24 @@ impl BoxTree {
                 }
             }
         }
-    }
-
-    fn finish_flow(&mut self, nodes: &[Node], style: &Computed) {
-        let Some(&id) = self.flows.get(&slice_key(nodes)) else {
-            return;
-        };
-        if nodes.iter().any(|node| matches!(node, Node::Element(_))) {
-            self.arena.prepared(id, None);
-            return;
+        if let Some(&id) = self.flows.get(&slice_key(nodes)) {
+            self.prepare_with(id, root, &styles);
         }
-        self.prepare(id, style);
+        for (&id, (style, _)) in &styles {
+            self.prepare_with(id, style, &styles);
+        }
     }
 
     /// A synthetic or changed layout parent must use its own normalization inputs.
     pub(crate) fn normalized(&self, nodes: &[Node], style: &Computed) -> Option<Rc<InlineContent>> {
-        self.normalized_inline(*self.flows.get(&slice_key(nodes))?, style)
+        let text = self.normalized_inline(*self.flows.get(&slice_key(nodes))?, style)?;
+        text.items
+            .iter()
+            .all(|item| matches!(item.kind, ItemKind::Text { .. }))
+            .then_some(text)
     }
 
-    /// Stable T3 input for layout: offsets address this UTF-8 buffer and retain leaf BoxIds.
+    /// Stable T3 input: offsets address this UTF-8 buffer; BoxIds identify enclosing boxes.
     pub(crate) fn normalized_inline(
         &self,
         id: BoxId,
@@ -75,41 +86,56 @@ impl BoxTree {
     ) -> Option<Rc<InlineContent>> {
         let record = self.get(id)?;
         let prepared = record.prepared.as_ref()?;
-        (prepared.inputs.matches(style)).then(|| prepared.text.clone())
+        (prepared.ready && prepared.inputs.matches(style)).then(|| prepared.text.clone())
     }
 }
 
 impl BoxTree {
+    #[cfg(test)]
     pub(super) fn prepare(&mut self, id: BoxId, style: &Computed) {
+        self.prepare_with(id, style, &Default::default());
+    }
+
+    fn prepare_with(&mut self, id: BoxId, style: &Computed, styles: &mixed::Styles) {
         let Some(record) = self.get(id) else { return };
         let Some(source) = record.inline.as_ref() else {
             self.arena.prepared(id, None);
             return;
         };
-        // Mixed flows need inline-box paint/edge/atom lowering, handled by the adapter.
-        if !source
-            .items
-            .iter()
-            .all(|item| matches!(item.kind, ItemKind::Text { .. }))
-        {
+        // Opaque leaves need their separate atom/ruby lowering before normalization.
+        if !source.items.iter().all(|item| {
+            matches!(
+                item.kind,
+                ItemKind::Text { .. } | ItemKind::Open | ItemKind::Close
+            )
+        }) {
             self.arena.prepared(id, None);
             return;
         }
-        let inputs = Inputs::of(style);
-        if record
-            .prepared
-            .as_ref()
-            .is_some_and(|p| Rc::ptr_eq(&p.source, source) && p.inputs == inputs)
-        {
+        if record.prepared.as_ref().is_some_and(|p| {
+            Rc::ptr_eq(&p.source, source)
+                && p.inputs.matches(style)
+                && mixed::matches(&p.dependencies, styles)
+        }) {
+            self.arena.prepared_ready(id, true);
             return;
         }
         let mut normalizer = Normalizer::default();
         let mut text = InlineContent::default();
+        let mut dependencies = Vec::new();
         for item in &source.items {
             let ItemKind::Text { start, end } = item.kind else {
+                text.items.push(item.clone());
                 continue;
             };
-            let run = normalizer.text(&source.text[start..end], style);
+            let Some(input) = mixed::input(id, item.box_id, style, styles, &mut dependencies)
+            else {
+                // Keep the previous immutable owner while computed descendants
+                // are pending, but never expose it as the current IFC input.
+                self.arena.prepared_ready(id, false);
+                return;
+            };
+            let run = normalizer.text(&source.text[start..end], input);
             if run.is_empty() {
                 continue;
             }
@@ -124,9 +150,15 @@ impl BoxTree {
             });
         }
         let prepared = Prepared {
+            ready: true,
             source: source.clone(),
-            inputs,
-            text: Rc::new(text),
+            inputs: Inputs::of(style),
+            dependencies,
+            text: if text == **source {
+                source.clone()
+            } else {
+                Rc::new(text)
+            },
         };
         self.arena.prepared(id, Some(prepared));
     }
@@ -135,6 +167,14 @@ impl BoxTree {
 #[cfg(feature = "heap-report")]
 impl kamin_heap::HeapSize for Prepared {
     fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
-        self.source.heap_size(ops) + self.inputs.flow_heap_size(ops) + self.text.heap_size(ops)
+        self.source.heap_size(ops)
+            + self.inputs.flow_heap_size(ops)
+            + self.text.heap_size(ops)
+            + ops.buffer(self.dependencies.as_ptr(), self.dependencies.capacity())
+            + self
+                .dependencies
+                .iter()
+                .map(|(_, input)| input.flow_heap_size(ops))
+                .sum::<usize>()
     }
 }

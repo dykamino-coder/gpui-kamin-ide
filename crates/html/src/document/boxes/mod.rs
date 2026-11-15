@@ -32,7 +32,7 @@ pub(crate) struct BoxRecord {
     source: u64,
     origin: Source,
     pub(crate) inline: Option<Rc<inline::InlineContent>>,
-    prepared: Option<finish::Prepared>,
+    prepared: Option<Box<finish::Prepared>>,
     epoch: u64,
 }
 
