@@ -50,7 +50,7 @@ pub(super) async fn sample(
     args: &Args,
     step: Step<'_>,
     capture: &CaptureSession,
-    luid: (i32, u32),
+    luid: &super::work::Adapter,
 ) -> Result<(Measured, kamin_html::host::capture::Frame, work::Sample)> {
     let (started, before, seq, resources_time, build_time, timings, phases, work) = window
         .update(cx, |view, window, cx| -> Result<_> {
@@ -61,9 +61,12 @@ pub(super) async fn sample(
                 Step::Edit(html) => Some((html, view.doc.mutations(html))),
                 _ => None,
             };
-            let started = Instant::now();
+            // Захват счётчиков открывается до начала кадра: его цена — диагностика
+            // observer_setup, а не часть first_frame_total.
+            let setup = Instant::now();
             let work = work::Capture::begin(luid)?;
-            let observer_setup = started.elapsed();
+            let observer_setup = setup.elapsed();
+            let started = Instant::now();
             let before = Counters::read(capture);
             let seq = capture.sequence();
             let mut resources_time = None;
@@ -123,7 +126,8 @@ pub(super) async fn sample(
             ))
         })??;
     let completed = wait(cx, seq, capture).await?;
-    let total = started.elapsed();
+    let resumed = Instant::now();
+    let total = resumed - started;
     let work = window.read_with(cx, |view, _| {
         // Document phases ran in cold and in edit (`Document::update`) samples.
         work.finish(!matches!(step, Step::Warm), &view.doc)
@@ -170,6 +174,9 @@ pub(super) async fn sample(
                 .checked_sub(before.readback)
                 .ok_or("readback counter regressed")?,
             total,
+            // Конец кадра у браузеров — сообщение после обновления отрисовки; наш
+            // отсчёт ждёт ещё пробуждения задачи после readback: оно выносится отдельно.
+            readback_to_resume: resumed.saturating_duration_since(frame.completed_at),
         },
         &phases.borrow(),
     )?;
@@ -195,7 +202,8 @@ pub(super) async fn run(
     startup_timings.settle(cx).await;
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
-    let luid = (identity.luid_high_part, identity.luid_low_part);
+    let adapter = work::Adapter::open((identity.luid_high_part, identity.luid_low_part));
+    let luid = &adapter;
     gpu["requested"] = json!(args.gpu);
     gpu["device_name"] = json!(identity.device_name);
     gpu["driver_version"] = json!(identity.driver_version);

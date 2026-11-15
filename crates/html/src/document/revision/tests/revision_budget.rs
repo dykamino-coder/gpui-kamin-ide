@@ -6,7 +6,7 @@ use crate::budget::{BudgetError, BudgetKind, BudgetScope, DocumentLimits, Resour
 use crate::document::{ApplyError, BuildReport, Document, FailureReason};
 use std::rc::Rc;
 
-const PAGE: &str = "<!doctype html><style>.on{color:red}[data-n]{color:blue}</style>\
+const PAGE: &str = "<!doctype html><style>.on{color:red;margin:1px}[data-n]{color:blue;margin:2px}</style>\
     <p dir=auto>a</p>";
 
 fn css_cost() -> u64 {

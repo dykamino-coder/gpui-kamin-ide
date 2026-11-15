@@ -1,4 +1,5 @@
 // Spawn only synthetic Node programs. Never load a user shell or profile.
+import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { runForegroundCommand } from './shell-foreground'
 
@@ -45,7 +46,11 @@ describe('foreground shell local process acceptance', () => {
     const result = await runForegroundCommand(program, process.execPath, 3000, ['-e'], {})
     const text = result.content.map(item => item.text).join('')
     expect(Buffer.byteLength(text)).toBeLessThan(206 * 1024)
-    expect(text).toContain('Output truncated')
+    // INC-2026-0121: both streams stay whole in files on this machine.
+    const saved = [...text.matchAll(/Full output saved to (.+?); read it/g)].map((m) => m[1]!)
+    expect(saved).toHaveLength(2)
+    expect(saved.map((file) => fs.statSync(file).size)).toEqual([2 * 1024 * 1024, 2 * 1024 * 1024])
+    for (const file of saved) fs.rmSync(file)
     expect(text).not.toContain('timed out')
   })
 })
