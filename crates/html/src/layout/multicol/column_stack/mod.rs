@@ -80,6 +80,9 @@ pub struct ColumnStack {
     /// Куски детей можно рисовать записью главной копии (`element::replay`): стопка не
     /// в листах печати — их копии представлены матрицей листа.
     pub(crate) replay: bool,
+    /// The engine of the columns taken from the measure (`Recipe::take_measured`):
+    /// prepaint and paint of the children run in it.
+    pub(crate) measured_layout: Option<gpui::RetainedLayout>,
 }
 
 impl ColumnStack {
@@ -147,6 +150,7 @@ impl ColumnStack {
             lead_report: None,
             discard: false,
             replay: false,
+            measured_layout: None,
         }
     }
 

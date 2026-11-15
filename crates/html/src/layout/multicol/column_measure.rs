@@ -154,6 +154,13 @@ impl ColumnStack {
         let lead_report = self.lead_report.clone();
         let discard = self.discard;
         let replay = self.replay;
+        // A deferred horizontal stack keeps the columns of its measure at a
+        // definite width for prepaint (`Recipe::take_measured`): built in the
+        // stack's own place, they are the columns prepaint would build. A
+        // stack with a column rule end prepares them otherwise (`rule_to`
+        // reaches pagination, the measure probe has none).
+        let keep = (self.deferred.is_some() && !axis.is_vertical() && self.rule_to.is_none())
+            .then(|| window.element_layout_context());
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {
@@ -186,6 +193,7 @@ impl ColumnStack {
                     spans_plan: std::cell::RefCell::new(Vec::new()),
                     nest_report: None,
                     lead_report: lead_report.clone(),
+                    measured_layout: None,
                 };
                 // Вертикальное письмо: место под прогрессию колонок — по
                 // СТРОЧНОЙ оси, то есть высота коробки (css-multicol-1 §2), а
@@ -203,7 +211,7 @@ impl ColumnStack {
                         .col_w
                         .set(((inline - gap * (count as f32 - 1.)) / count as f32).max(1.));
                     let block = if let Some(recipe) = &deferred {
-                        recipe.measure(&mut probe, inline, window, cx).0
+                        recipe.measure(&mut probe, inline, None, window, cx).0
                     } else {
                         probe.balance(&heights).0
                     };
@@ -219,7 +227,10 @@ impl ColumnStack {
                     })
                     .unwrap_or(0.0);
                 if let Some(recipe) = &deferred {
-                    let (height, first, last) = recipe.measure(&mut probe, w, window, cx);
+                    let definite = known.width.is_some()
+                        || matches!(available.width, gpui::AvailableSpace::Definite(_));
+                    let keep = keep.as_ref().filter(|_| definite);
+                    let (height, first, last) = recipe.measure(&mut probe, w, keep, window, cx);
                     return (size(px(w), px(height)), first, last);
                 }
                 probe
