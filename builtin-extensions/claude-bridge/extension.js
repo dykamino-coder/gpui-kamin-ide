@@ -44141,8 +44141,10 @@ function handleServerMessage(msg, ctx) {
         hookDriven,
         ...typeof m.promptReady === "boolean" ? { promptReady: m.promptReady } : {},
         ...typeof m.waiting === "boolean" ? { waiting: m.waiting } : {},
-        ...typeof m.lastMessage === "string" ? { lastMessage: m.lastMessage } : {}
+        ...typeof m.lastMessage === "string" ? { lastMessage: m.lastMessage } : {},
+        ...typeof m.hibernation === "string" ? { hibernation: m.hibernation } : {}
       });
+      if (typeof m.hibernation === "string") break;
       ctx.trackActivityForIdle(rawTitle, isWorking, hookDriven);
       ctx.notifyActivity(isWorking, hookDriven);
       break;
@@ -44993,6 +44995,10 @@ var ConnectionManager = class _ConnectionManager {
   /** Stop: abort the in-flight upstream stream on the server AND SIGINT the CLI. */
   interruptSession() {
     this.send({ type: "session:interrupt" });
+  }
+  /** The user is typing in a chat the server put to sleep: start its CLI. */
+  warmSession() {
+    this.send({ type: "session:warm" });
   }
   /** Submit a full user message — server wraps it in bracketed paste and
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
@@ -46635,6 +46641,9 @@ var TabManager = class {
   interruptSession(tabId) {
     this.tabs.get(tabId)?.connection.interruptSession();
   }
+  warmSession(tabId) {
+    this.tabs.get(tabId)?.connection.warmSession();
+  }
   sendInput(tabId, data) {
     this.tabs.get(tabId)?.connection.sendInput(data);
   }
@@ -47182,6 +47191,9 @@ function registerSessionsIPC(ctx) {
   });
   ipcMain.on("session:interrupt", (_event, tabId) => {
     tm()?.interruptSession(tabId);
+  });
+  ipcMain.on("session:warm", (_event, tabId) => {
+    tm()?.warmSession(tabId);
   });
   ipcMain.on("pty-input", (_event, tabId, data) => {
     tm()?.sendInput(tabId, data);

@@ -106,6 +106,14 @@ export function sendToClient(ws: WS, msg: Record<string, unknown>): boolean {
  *  that redeliver must split or replace it instead of retrying. */
 export type { SendOutcome } from './jsonl-replay'
 
+const UNCOMPRESSED_TYPES: ReadonlySet<string> = new Set([
+  'session:output',
+  'streaming:delta',
+  'streaming:status',
+  'session:activity',
+  'session:submission',
+])
+
 export function trySendToClient(ws: WS, msg: Record<string, unknown>): SendOutcome {
   if (ws.readyState !== 1 /* WS.OPEN */) return 'closed'
   // Checked BEFORE serialising: a congested socket costs no JSON.stringify.
@@ -126,7 +134,11 @@ export function trySendToClient(ws: WS, msg: Record<string, unknown>): SendOutco
   if (bytes > WS_SEND_MAX_BUFFER) return 'oversized'
   if ((ws.bufferedAmount ?? 0) + bytes > WS_SEND_MAX_BUFFER) return 'backpressured'
   try {
-    ws.send(frame)
+    // Live terminal and token-stream frames are frequent and short-lived:
+    // compressing them cost the main thread more than any other WS work
+    // under load (permessage-deflate). One-shot payloads (transcript entries,
+    // snapshots, replays) stay compressed.
+    ws.send(frame, { compress: !UNCOMPRESSED_TYPES.has(msg.type as string) })
     return 'sent'
   } catch {
     return 'closed'

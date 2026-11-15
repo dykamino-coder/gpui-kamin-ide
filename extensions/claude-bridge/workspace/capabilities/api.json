@@ -72,6 +72,7 @@
   {"id":"api:installLocalPlugin","status":"supported-in-browser-host","provider":"routes","routes":["invoke:plugins:install-local"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:installPlugin","status":"supported-in-browser-host","provider":"routes","routes":["invoke:plugins:install"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:interruptSession","status":"supported-in-browser-host","provider":"routes","routes":["send:session:interrupt"],"sources":{"webview/shared/types.ts":1}},
+  {"id":"api:warmSession","status":"supported-in-browser-host","provider":"routes","routes":["send:session:warm"],"sources":{"webview/shared/types.ts":1}},
   {"id":"api:invoke","status":"supported-in-browser-host","provider":"routes","routes":["invoke:*"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:isVscodeAvailable","status":"supported-in-browser-host","provider":"routes","routes":["invoke:vscode:is-available"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:listAgents","status":"supported-in-browser-host","provider":"routes","routes":["invoke:agents:list"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},

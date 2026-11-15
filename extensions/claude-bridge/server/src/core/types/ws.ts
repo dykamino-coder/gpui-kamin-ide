@@ -235,6 +235,9 @@ export type ClientToServerMsg =
   | WsMsgSessionInput
   | WsMsgSessionInterrupt
   | { type: 'session:submission-action'; id: string; action: 'cancel' | 'push' | 'interrupt' }
+  /** The user started typing in a chat reported `hibernation: 'asleep'`:
+   *  start its CLI now (behind wakes that already carry a message). */
+  | { type: 'session:warm' }
   | WsMsgSessionSubmitText
   | WsMsgSessionResize
   | WsMsgMcpResponse
@@ -401,6 +404,9 @@ export interface WsMsgSessionActivity {
   lastMessage?: string
   /** Notification hook: the message the CLI is waiting on. */
   notificationMessage?: string
+  /** Idle hibernation: `asleep` — the CLI is stopped and the next message
+   *  resumes it; `waking` — it is starting; `awake` — the new CLI is up. */
+  hibernation?: 'asleep' | 'waking' | 'awake'
 }
 
 /** Server sends raw JSONL file content for download */
