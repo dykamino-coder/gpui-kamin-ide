@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { register } from '../../cli-mod/hooks/bridge.js'
+import { register } from '../../cli-mod/hooks/bridge-conditions.js'
 
 type Handler = ($: any, e: any, next: any) => any
 function moduleHandlers() {

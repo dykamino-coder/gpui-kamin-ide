@@ -13,6 +13,8 @@ type Command =
   | { id: number; kind: 'arm'; submissionId: string }
 type Pending = { command: Command; claimed: boolean; fallback: () => void; accepted?: () => void }
 export const CLI_MOD_PLUGIN = fileURLToPath(new URL('../../cli-mod', import.meta.url))
+/** The module files of the entry with hook handler conditions (hooks/bridge-conditions.js and what it imports). */
+const CONDITION_MODULES = ['bridge-conditions.js', 'conditions.js', 'transport.js']
 export const CLI_MOD_VERSION = '2.1.322'
 /** How long an idle /poll is held open. Below the 3 s lease, so a module that
  * stops polling still expires on time. */
@@ -152,6 +154,28 @@ export class CliModTransport {
     })
   }
 
+  private created: string[] = []
+
+  /** Plugin root for a session with hook handler conditions. The CLI dispatches
+   * every tool call through each handler a module registers, so the default
+   * root loads only the transport; this one, in the private directory, loads the
+   * same plugin with the condition gates added. */
+  conditionsPlugin(): string {
+    const root = path.join(this.directory, 'plugin')
+    if (this.created.length) return root
+    const write = (relative: string, data: string | Buffer) => {
+      const file = path.join(root, relative)
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+      fs.writeFileSync(file, data, { mode: 0o600, flag: 'wx' })
+      this.created.push(file)
+    }
+    write('.claude-plugin/plugin.json', fs.readFileSync(path.join(CLI_MOD_PLUGIN, '.claude-plugin', 'plugin.json')))
+    write('hooks/hooks.json', JSON.stringify({ modules: ['./bridge-conditions.js'] }))
+    for (const name of CONDITION_MODULES)
+      write(`hooks/${name}`, fs.readFileSync(path.join(CLI_MOD_PLUGIN, 'hooks', name)))
+    return root
+  }
+
   private takeCommands(): Command[] {
     const commands: Command[] = []
     for (const pending of this.pending.values()) {
@@ -282,6 +306,21 @@ export class CliModTransport {
       fs.unlinkSync(this.socketPath)
     } catch {
       /* already closed */
+    }
+    for (const file of this.created.splice(0)) {
+      try {
+        fs.unlinkSync(file)
+      } catch {
+        /* already removed */
+      }
+    }
+    const root = path.join(this.directory, 'plugin')
+    for (const dir of [path.join(root, 'hooks'), path.join(root, '.claude-plugin'), root]) {
+      try {
+        fs.rmdirSync(dir)
+      } catch {
+        /* not created */
+      }
     }
     try {
       fs.rmdirSync(this.directory)
