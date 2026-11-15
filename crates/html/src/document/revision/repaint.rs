@@ -23,6 +23,7 @@
 mod fold;
 mod paths;
 
+use super::boxes::Boxes;
 use super::commit::Plan;
 use super::mutation::Batch;
 use super::patch::{Target, apply, attr_paths, patch};
@@ -53,14 +54,16 @@ impl Restyle {
     }
 }
 
-/// What the edits of one document keep between them: the texts of its sheets
-/// and the probe of its restyles. The sheets of a document do not change in
-/// place (a build reads the text of a `<style>`, and an edit of a read text
-/// rebuilds), and a rebuilt document starts over.
+/// What the edits of one document keep between them: the texts of its sheets,
+/// the probe of its restyles and the index of its boxes. The sheets of a
+/// document do not change in place (a build reads the text of a `<style>`,
+/// and an edit of a read text rebuilds), an edit in place keeps the shape of
+/// the box tree (`commit::Plan`), and a rebuilt document starts over.
 #[derive(Default)]
 pub(in crate::document) struct Kept {
     sheets: Option<Rc<Vec<String>>>,
     cache: crate::dom::restyle_probe::RestyleCache,
+    boxes: Option<Rc<Boxes>>,
 }
 
 impl Kept {
@@ -71,8 +74,17 @@ impl Kept {
         let kept = Self {
             sheets: None,
             cache,
+            boxes: None,
         };
         Rc::new(std::cell::Cell::new(Some(Box::new(kept))))
+    }
+
+    /// The index of the boxes of `nodes`, built on the first edit in place.
+    fn boxes(&mut self, nodes: &[Node]) -> Option<Rc<Boxes>> {
+        if self.boxes.is_none() {
+            self.boxes = Some(Rc::new(Boxes::of(nodes)?));
+        }
+        self.boxes.clone()
     }
 }
 
@@ -86,38 +98,54 @@ impl Document {
         sheets
     }
 
+    /// The index of the boxes of this tree, built on the first edit in place.
+    pub(super) fn boxes(&self) -> Option<Rc<Boxes>> {
+        let mut kept = self.restyle.take().unwrap_or_default();
+        let boxes = kept.boxes(&self.nodes);
+        self.restyle.set(Some(kept));
+        boxes
+    }
+
     /// План пакета смен `class` и `data-*`, если перерасчёт стиля меняет у
     /// найденных элементов только значения краски; `None` — нужна сборка.
-    pub(super) fn repaint_plan(&self, batch: &Batch, theme_css: &str) -> Option<Plan> {
+    /// `changed` — the names and node ids of the batch (`invalidation`).
+    pub(super) fn repaint_plan(
+        &self,
+        batch: &Batch,
+        changed: &crate::dom::invalidation::Changed,
+        theme_css: &str,
+    ) -> Option<Plan> {
         let values = &self.state.values;
         if !batch.texts.is_empty() || values.quirks() {
             return None;
         }
-        let changed = self.invalidation(batch, theme_css)?;
         let input = values.traversal.take_source()?;
         // The probes leave the cache in the state of the DOM after the
         // batch: it goes back only with a plan (otherwise the document is
         // rebuilt, and a fresh cache starts from its DOM).
         let mut kept = self.restyle.take().unwrap_or_default();
-        let restyles = self.restyles(batch, &changed, &input, theme_css, &mut kept.cache);
+        let restyles = self.restyles(batch, changed, &input, theme_css, &mut kept.cache);
         values.traversal.retain(input);
-        let plan = self.restyled(batch, restyles?)?;
+        let boxes = kept.boxes(&self.nodes)?;
+        let plan = self.restyled(batch, &changed.elements, &boxes, restyles?)?;
         self.restyle.set(Some(kept));
         Some(plan)
     }
 
     /// The box tree with the attributes of `batch` and the paint values of
     /// `restyles` written along copied paths.
-    fn restyled(&self, batch: &Batch, restyles: HashMap<u64, Restyle>) -> Option<Plan> {
-        let values = &self.state.values;
-        let ids = super::adopt::source_ids(
-            &values.traversal.elements(),
-            batch.elements.iter().map(|c| &c.element),
-        );
+    /// `ids` — the node ids of the elements of `batch`, in its order.
+    fn restyled(
+        &self,
+        batch: &Batch,
+        ids: &[u64],
+        boxes: &Boxes,
+        restyles: HashMap<u64, Restyle>,
+    ) -> Option<Plan> {
         let mut attrs = HashMap::new();
-        for (change, id) in batch.elements.iter().zip(ids) {
+        for (change, &id) in batch.elements.iter().zip(ids) {
             attrs.insert(
-                id?,
+                id,
                 Target {
                     tag: super::adopt::tag_of(&change.element),
                     old: crate::dom::element_attrs(&change.old),
@@ -125,8 +153,8 @@ impl Document {
                 },
             );
         }
-        let attr_paths = attr_paths(&self.nodes, &attrs)?;
-        let style_paths = style_paths(&self.nodes, &restyles)?;
+        let attr_paths = attr_paths(&self.nodes, boxes, &attrs)?;
+        let style_paths = style_paths(&self.nodes, boxes, &restyles)?;
         let mut nodes = (*self.nodes).clone();
         if !patch(&mut nodes, attr_paths, &attrs) {
             return None;

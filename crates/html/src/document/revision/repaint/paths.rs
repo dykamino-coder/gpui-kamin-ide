@@ -2,7 +2,8 @@
 //! их поддеревья принимают новые значения краски на месте.
 
 use super::Restyle;
-use crate::document::revision::patch::{Path, elements, span, within};
+use crate::document::revision::boxes::{Boxes, at};
+use crate::document::revision::patch::{Path, elements};
 use crate::dom::{Element, Node};
 use std::collections::HashMap;
 
@@ -25,29 +26,31 @@ pub(super) fn wrapped(nodes: &[Node]) -> bool {
 }
 
 /// Пути к коробкам перерассчитанных элементов (с их тегом и прежними
-/// значениями краски), если каждая принимает новые значения на месте
-/// (`takes`); у каждого элемента — хотя бы одна коробка.
+/// значениями краски) по индексу `boxes`, если каждая принимает новые
+/// значения на месте (`takes`); у каждого элемента — хотя бы одна коробка.
 pub(super) fn style_paths(
     nodes: &[Node],
+    boxes: &Boxes,
     restyles: &HashMap<u64, Restyle>,
 ) -> Option<Vec<(Path, u64)>> {
     let mut paths = Vec::new();
-    let mut fits = true;
-    if !restyles.is_empty() {
-        let span = span(restyles);
-        elements(nodes, |e, path| {
-            match within(&span, e).then(|| restyles.get(&e.node_id)).flatten() {
-                Some(r) if e.tag == r.tag => {
-                    fits &= e.style.cascaded().same_paint_groups(&r.old) && takes(e, r);
-                    paths.push((path.to_vec(), e.node_id));
-                }
-                _ => {}
+    for (&id, r) in restyles {
+        let before = paths.len();
+        for path in boxes.paths(id) {
+            let e = at(nodes, &path)?;
+            if e.tag != r.tag {
+                continue;
             }
-            fits
-        });
+            if !(e.style.cascaded().same_paint_groups(&r.old) && takes(e, r)) {
+                return None;
+            }
+            paths.push((path, id));
+        }
+        if paths.len() == before {
+            return None;
+        }
     }
-    let found = |id: &u64| paths.iter().any(|(_, at)| at == id);
-    (fits && restyles.keys().all(found)).then_some(paths)
+    Some(paths)
 }
 
 /// The box `e` and its subtree take the restyle `r` of its element in place.

@@ -2,6 +2,7 @@
 
 mod adopt;
 mod apply;
+mod boxes;
 mod build;
 mod commit;
 mod mentions;
@@ -86,7 +87,13 @@ impl Document {
             let started = crate::work::Clock::now();
             same_shape = true;
             invalidation = self.invalidation(&batch, theme_css);
-            if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
+            if let Some(plan) = self.plan(
+                &batch,
+                theme_css,
+                Some(&shape.sheets),
+                invalidation.as_ref(),
+                &revision,
+            ) {
                 batch.write();
                 self.commit(
                     plan,
