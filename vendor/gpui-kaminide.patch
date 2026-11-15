@@ -11684,7 +11684,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..1cd4915af541d4f5c2ca4669233c54f04f513880
+index 160587a4ad924f80c2dd01b90a8300febbc13105..c581acc89553700b345d61e60c86ef0f58a750bc
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,36 @@
@@ -11785,11 +11785,11 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..1cd4915af541d4f5c2ca4669233c54f0
 +
 @@ -41,0 +136,8 @@
 +    /// KaminIDE patch: a scene layer recording, whose box runs take orders
-+    /// `key + 1 + n` of their key's bucket (`scene::layer::boxes`): the other
-+    /// primitives take the top of their bucket, so that within a bucket box
-+    /// commands draw before them as a frame without layers draws quads before
-+    /// sprites of one order, and no box command passes over the ink of a
-+    /// neighbour that only its bounds tree entry does not overlap.
++    /// `key + 1 + n` of their key's bucket (`scene::layer::boxes`). Layers
++    /// pushed in it (a line's glyphs) take the top of their bucket: a frame
++    /// without layers draws quads before sprites of one order, so the box
++    /// fills of a bucket draw before the glyphs, whose ink may pass their
++    /// line's bounds onto a neighbour the bounds tree sees no overlap with.
 +    pub(crate) keyed: bool,
 +    pub(crate) segment_capture: Option<Box<segments::Capture>>,
 @@ -43 +145,14 @@
@@ -12050,14 +12050,14 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..1cd4915af541d4f5c2ca4669233c54f0
 +        crate::window::reset_ink_scopes();
 @@ -76 +422 @@
 -        let order = self.primitive_bounds.insert(bounds);
-+        let order = self.tree_mut().insert(bounds) * ORDER_STEP + self.plain_offset();
++        let order = self.tree_mut().insert(bounds) * ORDER_STEP + self.layer_offset();
 @@ -79 +425,6 @@
 -            .push(PaintOperation::StartLayer(bounds));
 +            .push(PaintOperation::StartLayer(bounds, order));
 +    }
 +
-+    /// The offset of a plain primitive's order in its bucket (`keyed`).
-+    fn plain_offset(&self) -> DrawOrder {
++    /// The offset of a layer's order in its bucket (`keyed`).
++    fn layer_offset(&self) -> DrawOrder {
 +        if self.keyed { ORDER_STEP - 1 } else { 0 }
 @@ -86,0 +438,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
@@ -12106,7 +12106,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..1cd4915af541d4f5c2ca4669233c54f0
 +            // KaminIDE patch: a box's own command waits for the box's key
 +            // (`scene::layer::boxes`).
 +            None if self.open_box.is_some() => 0,
-+            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP + self.plain_offset(),
++            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
 +        };
 @@ -136,0 +515,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
