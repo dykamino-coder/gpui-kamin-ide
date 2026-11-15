@@ -107,6 +107,7 @@ impl Document {
             parse: source.parse,
             ..Default::default()
         };
+        let mut kept = crate::dom::restyle_probe::RestyleCache::default();
         let built = parse_document(
             &source.input,
             theme_css,
@@ -115,6 +116,7 @@ impl Document {
             fonts,
             revision,
             invalidation,
+            &mut kept,
             #[cfg(feature = "engine-bench")]
             &mut timings,
         );
@@ -139,7 +141,7 @@ impl Document {
             nodes: Rc::new(nodes),
             retained: Default::default(),
             reuse: Default::default(),
-            restyle: Default::default(),
+            restyle: super::Kept::built(kept),
             root,
             key,
             theme_css: theme_css.into(),

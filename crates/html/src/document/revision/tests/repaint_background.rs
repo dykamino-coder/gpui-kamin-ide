@@ -113,24 +113,48 @@ fn the_canvas_background_layout_values_and_hover_layers_rebuild() {
     }
 }
 
-/// The probe keeps the rules of the document between its edits: after the
-/// first edit (which builds them) a steady edit parses no sheet.
+/// Sheets parsed by `edit`.
+#[cfg(feature = "work-counters")]
+fn sheets_parsed(edit: impl FnOnce()) -> u64 {
+    use crate::work::{Counter, Session};
+    let session = Session::begin();
+    edit();
+    let work = session.finish();
+    work.0
+        .iter()
+        .map(|phase| phase[Counter::SheetsParsed as usize])
+        .sum()
+}
+
+/// The probe of a document is the rules of its build, kept between its
+/// edits: neither the first edit after a build nor a steady one parses a
+/// sheet.
 #[cfg(feature = "work-counters")]
 #[test]
 fn a_steady_edit_parses_no_sheet() {
-    use crate::work::{Counter, Session};
     let old = page("html.alt [data-deep]{background:#eee}");
     let new = old.replace("<html>", "<html class=\"alt\">");
     let mut doc = Document::builder(&old, "").build().unwrap();
-    assert!(doc.update(&new, "").unwrap().changed());
-    let session = Session::begin();
-    assert!(doc.update(&old, "").unwrap().changed());
-    assert!(doc.update(&new, "").unwrap().changed());
-    let work = session.finish();
-    let parsed: u64 = work
-        .0
-        .iter()
-        .map(|phase| phase[Counter::SheetsParsed as usize])
-        .sum();
+    let parsed = sheets_parsed(|| {
+        assert!(doc.update(&new, "").unwrap().changed());
+        assert!(doc.update(&old, "").unwrap().changed());
+        assert!(doc.update(&new, "").unwrap().changed());
+    });
+    assert_eq!(parsed, 0);
+}
+
+/// An edit that reaches layout rebuilds: it parses the sheets of one build
+/// (agent, theme and the page's `<style>`), not a probe's copy as well, and
+/// the next paint-only edit parses none.
+#[cfg(feature = "work-counters")]
+#[test]
+fn a_rebuilding_edit_parses_the_sheets_once() {
+    let old = page("html.alt [data-deep]{padding:1px}.box.hot{background:#ff0}");
+    let new = old.replace("<html>", "<html class=\"alt\">");
+    let mut doc = Document::builder(&old, "").build().unwrap();
+    let parsed = sheets_parsed(|| assert!(doc.update(&new, "").unwrap().changed()));
+    assert_eq!(parsed, 3);
+    let hot = new.replace("class=box", "class=\"box hot\"");
+    let parsed = sheets_parsed(|| assert!(doc.update(&hot, "").unwrap().changed()));
     assert_eq!(parsed, 0);
 }

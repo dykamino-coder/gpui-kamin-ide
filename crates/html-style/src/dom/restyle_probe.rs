@@ -47,6 +47,17 @@ pub struct RestyleCache {
 const SETS: usize = 16;
 
 impl RestyleCache {
+    /// Кэш, чья проба — правила только что собранного документа: первая
+    /// правка не разбирает листы заново. Так Blink и Stylo держат индекс
+    /// правил документа (`RuleSet`, `CascadeData`) между перерасчётами, а
+    /// не строят его на мутацию.
+    pub(super) fn with_probe(probe: RestyleProbe) -> Self {
+        Self {
+            probe: Some(Rc::new(probe)),
+            ..Self::default()
+        }
+    }
+
     /// Проба документа значений `values`: правила собираются при первой
     /// правке и служат следующим, пока тема и носитель те же. Blink так же
     /// строит признаки правил один раз на лист (`RuleInvalidationData`,
@@ -139,18 +150,33 @@ impl RestyleProbe {
         let vcx = values.values().with_scheme(scheme(media));
         let rules =
             super::document_rules::document_rules(input, extra_css, media, &admission, vcx)?;
-        let sheets =
-            super::style_sources::document_style_tags(document, &admission, &values.traversal)?;
-        let reads_attr =
-            sheets.iter().any(|css| css.contains("attr(")) || extra_css.contains("attr(");
-        Ok(Some(Self {
-            doc: rules.doc,
-            has_args: rules.has_args,
+        Ok(Some(Self::built(
+            rules.doc,
+            rules.has_args,
+            rules.reads_attr,
+            (media, asked),
+            extra_css,
+        )))
+    }
+
+    /// Проба из правил сборки документа без теней (`convert_restyling`):
+    /// `media` — носитель со схемой страницы и носитель, с которым звали
+    /// сборку.
+    pub(super) fn built(
+        doc: Rc<Scope>,
+        has_args: Vec<HasArg>,
+        reads_attr: bool,
+        (media, asked): (Media, Media),
+        extra_css: &str,
+    ) -> Self {
+        Self {
+            doc,
+            has_args,
             media,
             asked,
             extra_css: extra_css.into(),
             reads_attr,
-        }))
+        }
     }
 
     /// Лист документа или тема читают атрибуты элементов вне селекторов.
