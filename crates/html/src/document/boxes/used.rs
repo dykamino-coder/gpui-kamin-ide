@@ -7,9 +7,10 @@
 //! used style, so the tree keeps one value per pair, as Gecko keeps the
 //! inheriting anonymous-box styles on their parent style.
 //!
-//! Keys are the address of the computed value, kept alive by the entry itself
-//! (no address reuse while the entry exists). Entries whose computed value no
-//! one else holds any more are dropped when the table is full.
+//! Keys are the computed values themselves, compared by identity (`Base`):
+//! the key owns its value, so no other value can take its place while the
+//! entry exists. Entries whose computed value no one else holds any more are
+//! dropped when the table is full.
 
 use crate::style::computed::Computed;
 use std::cell::RefCell;
@@ -47,19 +48,31 @@ pub(crate) struct CellUsed {
 
 const CAPACITY: usize = 4096;
 
-struct Entry {
-    base: Rc<Computed>,
-    used: Rc<Computed>,
+/// A computed value as a key: the same allocation, held by the key.
+struct Base(Rc<Computed>);
+
+impl PartialEq for Base {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for Base {}
+
+impl std::hash::Hash for Base {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::ptr::hash(Rc::as_ptr(&self.0), state);
+    }
 }
 
 #[derive(Default)]
-pub(crate) struct UsedStyles(RefCell<HashMap<(usize, UsedRole), Entry>>);
+pub(crate) struct UsedStyles(RefCell<HashMap<(Base, UsedRole), Rc<Computed>>>);
 
 impl UsedStyles {
     /// The used style of `role` already derived over `base`, if any.
     pub(crate) fn find(&self, base: &Rc<Computed>, role: UsedRole) -> Option<Rc<Computed>> {
-        let key = (Rc::as_ptr(base) as usize, role);
-        self.0.borrow().get(&key).map(|entry| entry.used.clone())
+        let key = (Base(base.clone()), role);
+        self.0.borrow().get(&key).cloned()
     }
 
     /// Keep `used`, derived for `role` over `base` by its owner (layout or
@@ -67,13 +80,12 @@ impl UsedStyles {
     pub(crate) fn insert(&self, base: &Rc<Computed>, role: UsedRole, used: Rc<Computed>) {
         let mut table = self.0.borrow_mut();
         if table.len() >= CAPACITY {
-            table.retain(|_, entry| Rc::strong_count(&entry.base) > 1);
+            table.retain(|(base, _), _| Rc::strong_count(&base.0) > 1);
             if table.len() >= CAPACITY {
                 table.clear();
             }
         }
-        let base = base.clone();
-        table.insert((Rc::as_ptr(&base) as usize, role), Entry { base, used });
+        table.insert((Base(base.clone()), role), used);
     }
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
@@ -85,7 +97,7 @@ impl UsedStyles {
         // The table and one header per used value; their groups are shared
         // with the computed styles (written groups are the few the role sets).
         let table = self.0.borrow();
-        table.capacity() * size_of::<((usize, UsedRole), Entry)>()
+        table.capacity() * size_of::<((Base, UsedRole), Rc<Computed>)>()
             + table.len() * size_of::<Computed>()
     }
 }
