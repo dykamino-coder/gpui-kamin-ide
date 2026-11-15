@@ -129,13 +129,16 @@ pub(super) fn cell_edge_probes(
     if geom.collapse_cells {
         // Rowspan is already clipped to its row group by cell_spans.
         let last_row = (span_rows > 1).then(|| {
+            let ix = cursor.row_ix + span_rows as usize - 1;
             geom.row_elements
-                .get(cursor.row_ix + span_rows as usize - 2)
+                .get(ix - 1)
                 .copied()
-                .unwrap_or(row_state.row)
+                .map(|row| (row, ix))
+                .unwrap_or((row_state.row, cursor.row_ix))
         });
         d = collapsed_row_edges(
             row_state.row,
+            cursor.row_ix,
             cursor.col_ix,
             span_cols,
             geom.cols,
@@ -159,6 +162,7 @@ pub(super) fn cell_edge_probes(
     {
         d = collapsed_group_edges(
             g,
+            cursor.row_ix as u64,
             layers.rules_groups,
             cursor.col_ix,
             span_cols,

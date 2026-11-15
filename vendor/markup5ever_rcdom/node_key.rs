@@ -78,7 +78,7 @@ impl NodeRegistry {
             index
         } else {
             let index = u32::try_from(slots.values.len()).map_err(|_| policy.overflow())?;
-            // NONE is reserved for the intrusive free-list terminator.
+            // NONE зарезервирован как конец списка свободных слотов.
             if index == NONE {
                 return Err(policy.overflow());
             }

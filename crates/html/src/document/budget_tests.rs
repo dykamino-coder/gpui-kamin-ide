@@ -82,7 +82,8 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
     assert!(doc.update("<p>b</p>", "").unwrap().changed());
     assert_eq!(doc.revision_budget().used(BudgetKind::SourceBytes), 8);
     assert_eq!(old_revision.used(BudgetKind::SourceBytes), 8);
-    assert!(doc.budget().used(BudgetKind::LiveBytes) > before + 8);
+    // Прежние узлы переиспользуются; дополнительная резервация остаётся живой.
+    assert!(doc.budget().used(BudgetKind::LiveBytes) >= before + 8);
     assert_eq!(governor.used(BudgetKind::Documents), 1);
     drop(doc);
     drop(old_revision);
@@ -111,7 +112,13 @@ fn parser_refusal_retains_keep_and_releases_every_partial_reservation() {
     assert_eq!(doc.salt(), key);
     assert!(Rc::ptr_eq(&state, &doc.state));
     assert!(Rc::ptr_eq(&dom, &doc.source_dom()));
-    assert_eq!(doc.budget().used(BudgetKind::LiveBytes), live);
+    // Реестр удерживает оплаченную ёмкость свободных слотов, но не узлы кандидата.
+    let retained = doc.budget().used(BudgetKind::LiveBytes);
+    assert!(retained >= live);
+    let nodes = doc.budget().used(BudgetKind::DomNodes);
+    assert!(doc.update("<p>KEEP</p><p>LOST</p>", "").is_err());
+    assert_eq!(doc.budget().used(BudgetKind::LiveBytes), retained);
+    assert_eq!(doc.budget().used(BudgetKind::DomNodes), nodes);
     let mut text = String::new();
     crate::dom::text_content::gather_text(doc.nodes(), &mut text);
     assert_eq!(text, "KEEP");

@@ -161,9 +161,16 @@ impl Admission<RcDom> for &Policy {
     }
 }
 
-pub(super) fn parse(source: &str, policy: &Policy) -> Result<RcDom, FailureReason> {
+pub(super) fn parse(
+    source: &str,
+    policy: &Policy,
+    registry: Option<std::rc::Rc<markup5ever_rcdom::NodeRegistry>>,
+) -> Result<RcDom, FailureReason> {
     let _queues = policy.storage(QUEUE_OVERHEAD)?;
-    let dom = RcDom::try_new(policy)?;
+    let dom = match registry {
+        Some(registry) => RcDom::try_new_in(policy, registry)?,
+        None => RcDom::try_new(policy)?,
+    };
     let mut parser = html5ever::admission::parse_document(dom, policy, Default::default());
     parser.process_str(source)?;
     parser.finish()

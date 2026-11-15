@@ -31,7 +31,7 @@ impl Document {
             return None;
         }
         let handles = batch.elements.iter().map(|change| &change.element);
-        let ids = super::adopt::source_ids(&values.traversal.elements(), handles);
+        let ids = super::adopt::element_ids(&values.traversal.elements(), handles);
         let mut changed = Changed::default();
         for (change, id) in batch.elements.iter().zip(ids) {
             if !open(&change.element, &root) {

@@ -64,7 +64,7 @@ impl Document {
             }
             all.extend(sheets.iter().map(String::as_str));
             let handles = batch.elements.iter().map(|change| &change.element);
-            let ids = source_ids(&values.traversal.elements(), handles);
+            let ids = element_ids(&values.traversal.elements(), handles);
             for (change, id) in batch.elements.iter().zip(ids) {
                 match id {
                     Some(id) if open(&change.element, &root) && neutral(change, &all) => {
@@ -130,8 +130,27 @@ pub(super) fn source_ids<'a>(
     list: &[usize],
     handles: impl Iterator<Item = &'a Handle>,
 ) -> Vec<Option<u64>> {
-    let wanted: Vec<usize> = handles.map(|h| Rc::as_ptr(h) as usize).collect();
-    let mut found: HashMap<usize, Option<u64>> = wanted.iter().map(|&a| (a, None)).collect();
+    find_sources(list, handles, |_, ordinal| ordinal)
+}
+
+/// Ключи исходных элементов, без зависимости от позиции адреса в списке.
+pub(super) fn element_ids<'a>(
+    list: &[usize],
+    handles: impl Iterator<Item = &'a Handle>,
+) -> Vec<Option<u64>> {
+    find_sources(list, handles, |handle, _| handle.key().packed())
+}
+
+fn find_sources<'a>(
+    list: &[usize],
+    handles: impl Iterator<Item = &'a Handle>,
+    id: impl Fn(&Handle, u64) -> u64,
+) -> Vec<Option<u64>> {
+    let wanted: Vec<_> = handles.collect();
+    let mut found: HashMap<usize, Option<u64>> = wanted
+        .iter()
+        .map(|handle| (Rc::as_ptr(handle) as usize, None))
+        .collect();
     let mut seen = std::collections::HashSet::with_capacity(wanted.len());
     for (slot, address) in list.iter().enumerate() {
         if let Some(id) = found.get_mut(address) {
@@ -139,7 +158,10 @@ pub(super) fn source_ids<'a>(
             *id = seen.insert(*address).then_some(slot as u64 + 1);
         }
     }
-    wanted.iter().map(|a| found[a]).collect()
+    wanted
+        .iter()
+        .map(|handle| found[&(Rc::as_ptr(handle) as usize)].map(|ordinal| id(handle, ordinal)))
+        .collect()
 }
 
 /// Тег коробки элемента HTML: локальное имя (обход снимает только префикс).

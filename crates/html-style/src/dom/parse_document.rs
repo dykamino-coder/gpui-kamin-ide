@@ -11,7 +11,7 @@ use super::Node;
 use super::input::Admitted;
 use crate::dom::outcome::DocumentFailure;
 use crate::dom::shadow::*;
-use crate::dom::tree_index::{NodeKey, TreeIndex};
+use crate::dom::tree_index::{HandleKey, TreeIndex};
 use crate::dom::walk::*;
 use crate::style::css::{Media, VarMap};
 use crate::style::select::has::mark_has;
@@ -96,7 +96,7 @@ pub fn convert_restyling(
         invalidation.prepare(&doc.rules, shadows);
     }
     if shadows {
-        let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
+        let mut drafts: HashMap<HandleKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
         let prepared = prepare(
             &dom.document,
@@ -119,7 +119,6 @@ pub fn convert_restyling(
     } else if !has_args.is_empty() {
         mark_has(&dom.document, &has_args, &mut vec![], &mut tree)?;
     }
-    let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
     let mut counters = crate::style::generated::counters::Counters::default();
@@ -128,7 +127,6 @@ pub fn convert_restyling(
         &tree,
         &doc,
         &vars,
-        &mut counter,
         &mut counters,
         &mut Vec::new(),
         false,

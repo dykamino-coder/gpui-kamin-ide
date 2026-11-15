@@ -56,6 +56,8 @@ pub(super) struct TableLayers<'a> {
 pub(super) struct RowCursor {
     pub row_ix: usize,
     pub col_ix: usize,
+    /// Порядок ячеек в сетке, независимо от стабильного ключа DOM.
+    pub cell_order: u64,
     pub group_refs: HashMap<u64, RefBox>,
     pub group_bands: HashMap<u64, RowRects>,
 }
@@ -93,7 +95,7 @@ pub(super) struct CellEdge {
     pub widths: [f32; 4],
     pub colors: [Color; 4],
     pub styles: [u8; 4],
-    pub doc_ix: u32,
+    pub doc_ix: u64,
 }
 
 impl TableGeom<'_> {

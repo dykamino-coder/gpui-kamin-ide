@@ -1171,7 +1171,7 @@ index 0000000000000000000000000000000000000000..6a37e5ca289081fefe10a3423590ca4e
 +        .unwrap();
 +}
 diff --git a/vendor/markup5ever_rcdom/lib.rs b/vendor/markup5ever_rcdom/lib.rs
-index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54d04a0df8
+index 3cd9c2a93fee730db545c66ba9b4252714335aec..8efab39fa61847b8f8c9ac215f9b42b8da3accb7
 --- a/vendor/markup5ever_rcdom/lib.rs
 +++ b/vendor/markup5ever_rcdom/lib.rs
 @@ -49,0 +50,5 @@
@@ -1183,10 +1183,12 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 @@ -52 +57 @@
 -use std::collections::{HashSet, VecDeque};
 +use std::collections::VecDeque;
-@@ -69,2 +73,0 @@
+@@ -61 +65,0 @@
+-use markup5ever::interface::tree_builder;
+@@ -69,2 +72,0 @@
 -use xml5ever::interface::ElemName;
 -use xml5ever::local_name;
-@@ -124,0 +128,9 @@
+@@ -124,0 +127,9 @@
 +    // Used only while destroying uniquely owned nodes, without allocating.
 +    drop_next: RefCell<Option<Handle>>,
 +    // Storage owners follow the data they cover in declaration/drop order.
@@ -1196,7 +1198,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 +    _logical_node: admission::Lease,
 +    _node_lease: admission::Lease,
 +    identity: node_key::Identity,
-@@ -130,54 +142,5 @@
+@@ -130,54 +141,5 @@
 -        Rc::new(Node {
 -            data,
 -            parent: Cell::new(None),
@@ -1256,7 +1258,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 +    }
 +
 +    fn parent(&self) -> Option<WeakHandle> {
-@@ -188,77 +151,29 @@
+@@ -188,77 +150,29 @@
 -
 -    /// <https://html.spec.whatwg.org/#select-enabled-selectedcontent>
 -    fn get_a_selects_enabled_selectedcontent(&self) -> Option<Rc<Self>> {
@@ -1363,7 +1365,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 +        }
 +        lease(sink, &self._logical_node);
 +        lease(sink, &self._node_lease);
-@@ -270,4 +185,12 @@
+@@ -270,4 +184,12 @@
 -        let mut nodes = mem::take(&mut *self.children.borrow_mut());
 -        while let Some(node) = nodes.pop() {
 -            let children = mem::take(&mut *node.children.borrow_mut());
@@ -1380,18 +1382,18 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 +            for child in mem::take(&mut *node.children.borrow_mut()) {
 +                enqueue(child, pending);
 +            }
-@@ -275,3 +198,2 @@
+@@ -275,3 +197,2 @@
 -                ref template_contents,
 -                ..
 -            } = node.data
 +                template_contents, ..
 +            } = &node.data
-@@ -279,2 +201,2 @@
+@@ -279,2 +200,2 @@
 -                if let Some(template_contents) = template_contents.borrow_mut().take() {
 -                    nodes.push(template_contents);
 +                if let Some(fragment) = template_contents.borrow_mut().take() {
 +                    enqueue(fragment, pending);
-@@ -284,2 +206,14 @@
+@@ -284,2 +205,14 @@
 -    }
 -}
 +        let mut pending = None;
@@ -1408,7 +1410,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 +#[cfg(test)]
 +#[path = "drop_tests.rs"]
 +mod drop_tests;
-@@ -300 +234,18 @@
+@@ -300 +233,18 @@
 -pub type WeakHandle = Weak<Node>;
 +#[derive(Clone)]
 +pub struct WeakHandle {
@@ -1428,10 +1430,10 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 +        self.weak.upgrade()
 +    }
 +}
-@@ -304 +255 @@
+@@ -304 +254 @@
 -    let previous_parent = child.parent.replace(Some(Rc::downgrade(new_parent)));
 +    let previous_parent = child.parent.replace(Some(WeakHandle::new(new_parent)));
-@@ -311,30 +261,0 @@
+@@ -311,30 +260,0 @@
 -fn get_parent_and_index(target: &Handle) -> Option<(Handle, usize)> {
 -    if let Some(weak) = target.parent.take() {
 -        let parent = weak.upgrade().expect("dangling weak pointer");
@@ -1462,22 +1464,22 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 -    }
 -}
 -
-@@ -342,4 +263 @@
+@@ -342,4 +262 @@
 -    if let Some((parent, i)) = get_parent_and_index(target) {
 -        parent.children.borrow_mut().remove(i);
 -        target.parent.set(None);
 -    }
 +    admission::infallible(admission::remove(target, &admission::Unbounded));
-@@ -357,0 +276,2 @@
+@@ -357,0 +275,2 @@
 +    errors_lease: RefCell<admission::Lease>,
 +    errors_owned: RefCell<admission::Work<admission::Lease>>,
-@@ -363 +283 @@
+@@ -363 +282 @@
 -        self
 +        admission::infallible(self.try_finish(&admission::Unbounded))
-@@ -374 +294 @@
+@@ -374 +293 @@
 -        self.errors.borrow_mut().push(msg);
 +        admission::infallible(self.try_parse_error(msg, &admission::Unbounded))
-@@ -413,10 +333 @@
+@@ -413,10 +332 @@
 -        Node::new(NodeData::Element {
 -            name,
 -            attrs: RefCell::new(attrs),
@@ -1489,16 +1491,16 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 -            mathml_annotation_xml_integration_point: flags.mathml_annotation_xml_integration_point,
 -        })
 +        admission::infallible(self.try_create_element(name, attrs, flags, &admission::Unbounded))
-@@ -426 +337 @@
+@@ -426 +336 @@
 -        Node::new(NodeData::Comment { contents: text })
 +        admission::infallible(self.try_create_comment(text, &admission::Unbounded))
-@@ -430,4 +341 @@
+@@ -430,4 +340 @@
 -        Node::new(NodeData::ProcessingInstruction {
 -            target,
 -            contents: data,
 -        })
 +        admission::infallible(self.try_create_pi(target, data, &admission::Unbounded))
-@@ -437,18 +345 @@
+@@ -437,18 +344 @@
 -        // Append to an existing Text node if we have one.
 -        if let NodeOrText::AppendText(text) = &child {
 -            if let Some(h) = parent.children.borrow().last() {
@@ -1518,7 +1520,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 -            },
 -        );
 +        admission::infallible(self.try_append(parent, child, &admission::Unbounded))
-@@ -458,32 +349 @@
+@@ -458,32 +348 @@
 -        let (parent, i) = get_parent_and_index(sibling)
 -            .expect("append_before_sibling called on node without parent");
 -
@@ -1552,7 +1554,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 -        child.parent.set(Some(Rc::downgrade(&parent)));
 -        parent.children.borrow_mut().insert(i, child);
 +        admission::infallible(self.try_before_sibling(sibling, child, &admission::Unbounded))
-@@ -498,9 +358,6 @@
+@@ -498,9 +357,6 @@
 -        let parent = element.parent.take();
 -        let has_parent = parent.is_some();
 -        element.parent.set(parent);
@@ -1568,7 +1570,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 +            child,
 +            &admission::Unbounded,
 +        ))
-@@ -515,8 +372 @@
+@@ -515,8 +371 @@
 -        append(
 -            &self.document,
 -            Node::new(NodeData::Doctype {
@@ -1578,7 +1580,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 -            }),
 -        );
 +        admission::infallible(self.try_doctype(name, public_id, system_id, &admission::Unbounded))
-@@ -526,15 +376 @@
+@@ -526,15 +375 @@
 -        let mut existing = if let NodeData::Element { ref attrs, .. } = target.data {
 -            attrs.borrow_mut()
 -        } else {
@@ -1595,7 +1597,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 -                .filter(|attr| !existing_names.contains(&attr.name)),
 -        );
 +        admission::infallible(self.try_attributes(target, attrs, &admission::Unbounded))
-@@ -548,10 +384 @@
+@@ -548,10 +383 @@
 -        let mut children = node.children.borrow_mut();
 -        let mut new_children = new_parent.children.borrow_mut();
 -        for child in children.iter() {
@@ -1607,7 +1609,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 -        }
 -        new_children.extend(mem::take(&mut *children));
 +        admission::infallible(self.try_reparent(node, new_parent, &admission::Unbounded))
-@@ -571,0 +399,11 @@
+@@ -571,0 +398,11 @@
 +    /// KaminIDE patch: снятие узла со стека открытых элементов.
 +    ///
 +    /// Спецификация требует переносить содержимое выбранного `<option>` в
@@ -1619,7 +1621,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 +        admission::infallible(self.try_pop(node, &admission::Unbounded))
 +    }
 +
-@@ -573,24 +411 @@
+@@ -573,24 +410 @@
 -        let NodeData::Element { name, attrs, .. } = &option.data else {
 -            panic!("\"maybe clone an option into selectedcontent\" called with non-element node");
 -        };
@@ -1645,22 +1647,22 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..4963776e3b570a8101b7eb944428da54
 -            }
 -        }
 +        admission::infallible(self.try_selectedcontent(option, &admission::Unbounded))
-@@ -602,5 +417 @@
+@@ -602,5 +416 @@
 -        RcDom {
 -            document: Node::new(NodeData::Document),
 -            errors: Default::default(),
 -            quirks_mode: Cell::new(tree_builder::NoQuirks),
 -        }
 +        admission::infallible(Self::try_new(&admission::Unbounded))
-@@ -659 +470 @@
+@@ -659 +469 @@
 -                    },
 +                    }
-@@ -677 +488 @@
+@@ -677 +487 @@
 -                },
 +                }
 diff --git a/vendor/markup5ever_rcdom/node_key.rs b/vendor/markup5ever_rcdom/node_key.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8530272375545b3585f5c96655ce0042a9334735
+index 0000000000000000000000000000000000000000..5dd96ed020b1d25b3bfb653752c0296c88f7da00
 --- /dev/null
 +++ b/vendor/markup5ever_rcdom/node_key.rs
 @@ -0,0 +1,197 @@
@@ -1744,7 +1746,7 @@ index 0000000000000000000000000000000000000000..8530272375545b3585f5c96655ce0042
 +            index
 +        } else {
 +            let index = u32::try_from(slots.values.len()).map_err(|_| policy.overflow())?;
-+            // NONE is reserved for the intrusive free-list terminator.
++            // NONE зарезервирован как конец списка свободных слотов.
 +            if index == NONE {
 +                return Err(policy.overflow());
 +            }
@@ -1863,25 +1865,24 @@ index 0000000000000000000000000000000000000000..8530272375545b3585f5c96655ce0042
 +mod tests;
 diff --git a/vendor/markup5ever_rcdom/node_key/tests.rs b/vendor/markup5ever_rcdom/node_key/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fda11b46b920fb87d4e2b7e903be621ed987d0b1
+index 0000000000000000000000000000000000000000..3ca2939b358feb590792ddfecb169b48156c0a1c
 --- /dev/null
 +++ b/vendor/markup5ever_rcdom/node_key/tests.rs
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,151 @@
 +//! Ключ живёт с узлом, в том числе вне документа и без коробок стиля.
 +
 +use super::*;
 +use crate::{NodeData, RcDom};
 +use markup5ever::interface::tree_builder::{ElementFlags, NodeOrText, TreeSink};
-+use markup5ever::{local_name, namespace_url, ns, QualName};
++use markup5ever::{local_name, ns, QualName};
 +
 +fn element(dom: &RcDom, template: bool) -> Handle {
++    let mut flags = ElementFlags::default();
++    flags.template = template;
 +    dom.create_element(
 +        QualName::new(None, ns!(html), local_name!("div")),
 +        vec![],
-+        ElementFlags {
-+            template,
-+            ..Default::default()
-+        },
++        flags,
 +    )
 +}
 +

@@ -50,7 +50,7 @@ impl Document {
         let restyles = self.restyles(batch, &changed, &input, theme_css);
         values.traversal.retain(input);
         let restyles = restyles?;
-        let ids = super::adopt::source_ids(
+        let ids = super::adopt::element_ids(
             &values.traversal.elements(),
             batch.elements.iter().map(|c| &c.element),
         );
@@ -120,7 +120,7 @@ impl Document {
         let after = probe.styles(input, values, &targets);
         batch.undo();
         let after = after.ok()?;
-        let ids = super::adopt::source_ids(&values.traversal.elements(), targets.iter());
+        let ids = super::adopt::element_ids(&values.traversal.elements(), targets.iter());
         let mut out = HashMap::new();
         for (((target, id), old), new) in targets.iter().zip(ids).zip(before).zip(after) {
             let (id, old, new) = (id?, old?, new?);

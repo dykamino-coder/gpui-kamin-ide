@@ -55,6 +55,8 @@ mod source;
 use prepare::parse_document;
 pub mod state;
 #[cfg(test)]
+mod test_tree;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod update_tests;

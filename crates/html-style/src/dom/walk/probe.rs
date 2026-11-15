@@ -81,7 +81,6 @@ pub fn probe(
     }
     let mut found: Vec<Option<Probed>> = targets.iter().map(|_| None).collect();
     let sharing = super::element_sharing::ElementSharing::default();
-    let mut counter = 0u64;
     let mut counters = crate::style::generated::counters::Counters::default();
     let mut path = Vec::new();
     let mut scratch = super::kids::Kids::default();
@@ -113,15 +112,7 @@ pub fn probe(
                 if target.is_none() && !on_chain {
                     continue;
                 }
-                let Some(p) = enter(
-                    v,
-                    tree,
-                    &sharing,
-                    &mut counter,
-                    &mut counters,
-                    &path,
-                    &mut scratch,
-                ) else {
+                let Some(p) = enter(v, tree, &sharing, &mut counters, &path, &mut scratch) else {
                     continue;
                 };
                 if let Some(at) = target {

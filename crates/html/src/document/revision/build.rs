@@ -24,12 +24,28 @@ impl Document {
         xml: bool,
         revision: &crate::budget::RevisionBudget,
     ) -> Result<Source, DocumentFailure> {
+        Self::admit_in(html, theme_css, base_url, xml, revision, None)
+    }
+
+    pub(super) fn admit_in(
+        html: &str,
+        theme_css: &str,
+        base_url: Option<&url::Url>,
+        xml: bool,
+        revision: &crate::budget::RevisionBudget,
+        root: Option<&markup5ever_rcdom::Handle>,
+    ) -> Result<Source, DocumentFailure> {
         let key = base_url::key(html, theme_css, base_url);
         #[cfg(feature = "engine-bench")]
         let parse_started = crate::work::Clock::now();
         let input = {
             crate::work::phase!(_phase, Parse);
-            crate::dom::input::Admitted::with_budget(html, xml, revision.clone()).map_err(
+            let context = crate::dom::input::Context::new(revision.clone());
+            let context = match root {
+                Some(root) => context.in_document(root),
+                None => context,
+            };
+            crate::dom::input::Admitted::with_context(html, xml, context).map_err(
                 |mut failure| {
                     failure.report.revision = Some(key);
                     failure

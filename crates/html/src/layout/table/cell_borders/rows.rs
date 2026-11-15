@@ -13,12 +13,13 @@ use gpui::ParentElement;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn collapsed_row_edges(
     row: &Element,
+    row_ix: usize,
     col_ix: usize,
     span_cols: u16,
     cols: u16,
     row_style: &Computed,
     table_style: &BoxStyle,
-    last_row: Option<&Element>,
+    last_row: Option<(&Element, usize)>,
     table_edges: &crate::layout::table::probes::CellEdges,
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
@@ -31,9 +32,9 @@ pub(crate) fn collapsed_row_edges(
         last_row.is_none(),
         col_ix == span_cols as usize,
     ];
-    let candidates = std::iter::once((row, first))
-        .chain(last_row.map(|last| (last, [false, false, true, false])));
-    for (source, active) in candidates {
+    let candidates = std::iter::once((row, row_ix, first))
+        .chain(last_row.map(|(last, ix)| (last, ix, [false, false, true, false])));
+    for (source, order, active) in candidates {
         let b = source.style.used().borders();
         let widths = axes.mask(
             [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)],
@@ -74,7 +75,7 @@ pub(crate) fn collapsed_row_edges(
             colors,
             styles,
             4,
-            source.node_id as u32,
+            order as u64,
             [0.0; 4],
         ));
     }

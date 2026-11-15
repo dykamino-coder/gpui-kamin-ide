@@ -99,6 +99,7 @@ pub(super) async fn table_rows(
         for slot in &geom.grid.rows[cursor.row_ix - 1].cells {
             cursor.col_ix = slot.column;
             table_cell(stk, geom, layers, cursor, out, opts, &row_state, *slot).await;
+            cursor.cell_order += 1;
         }
     }
 

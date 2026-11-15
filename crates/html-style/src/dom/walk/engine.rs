@@ -128,7 +128,6 @@ pub fn walk_children(
     tree: &TreeIndex,
     scope: &Rc<Scope>,
     vars: &VarMap,
-    counter: &mut u64,
     counters: &mut Counters,
     path: &mut Vec<Ancestor>,
     preserve: bool,
@@ -163,7 +162,6 @@ pub fn walk_children(
                 leave(
                     p,
                     path,
-                    counter,
                     counters,
                     children,
                     output.last_mut().expect("parent output"),
@@ -198,7 +196,6 @@ pub fn walk_children(
                             v,
                             tree,
                             &sharing,
-                            counter,
                             counters,
                             path,
                             output.last_mut().expect("output"),

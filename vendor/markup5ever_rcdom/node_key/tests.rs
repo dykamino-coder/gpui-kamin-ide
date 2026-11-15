@@ -3,16 +3,15 @@
 use super::*;
 use crate::{NodeData, RcDom};
 use markup5ever::interface::tree_builder::{ElementFlags, NodeOrText, TreeSink};
-use markup5ever::{local_name, namespace_url, ns, QualName};
+use markup5ever::{local_name, ns, QualName};
 
 fn element(dom: &RcDom, template: bool) -> Handle {
+    let mut flags = ElementFlags::default();
+    flags.template = template;
     dom.create_element(
         QualName::new(None, ns!(html), local_name!("div")),
         vec![],
-        ElementFlags {
-            template,
-            ..Default::default()
-        },
+        flags,
     )
 }
 
