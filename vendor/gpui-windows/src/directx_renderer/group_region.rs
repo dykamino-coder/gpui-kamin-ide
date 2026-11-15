@@ -155,6 +155,7 @@ impl DirectXRenderer {
             .collect();
         let (places, pages) = group_atlas::pack(&sizes);
         self.blur.group_place = places;
+        self.blur.pages_changed = self.blur.groups.len() != pages.len();
         for (k, &need) in pages.iter().enumerate() {
             if self
                 .blur
@@ -166,6 +167,7 @@ impl DirectXRenderer {
             }
             let (w, h) = group_atlas::page_size(need);
             let page = create_blur_texture(&device, w, h, true)?;
+            self.blur.pages_changed = true;
             if k < self.blur.groups.len() {
                 self.blur.groups[k] = page;
             } else {

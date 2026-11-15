@@ -91,6 +91,8 @@ pub(crate) struct DamageIndex {
     backdrop: bool,
     /// Повреждение этого кадра и номера кадров (`Window::frame_serial`).
     pub(crate) damage: SceneDamage,
+    /// Равна ли группа с тем же номером группе прошлого кадра.
+    groups_same: Vec<bool>,
     pub(crate) id: u64,
     pub(crate) base: u64,
 }
@@ -255,6 +257,7 @@ impl DamageIndex {
         self.spans.clear();
         self.backdrop = false;
         self.damage = SceneDamage::Unknown;
+        self.groups_same.clear();
         self.id = 0;
         self.base = 0;
     }
@@ -463,7 +466,26 @@ impl Scene {
         index.id = id;
         index.base = previous.damage.id;
         index.damage = self.damage_against(&index, previous);
+        // Группа с тем же номером, что рисует ту же картинку, — её буфер прошлого
+        // кадра годится и этому (кэш групп рендерера).
+        index.groups_same.clear();
+        if index.base != 0 {
+            let mut cmp = Compare {
+                new: self,
+                old: previous,
+                groups: FxHashMap::default(),
+            };
+            let n = self.groups.len().min(previous.groups.len()) as u32;
+            index.groups_same.extend((0..n).map(|g| cmp.same_group(g, g)));
+        }
         *self.damage = index;
+    }
+
+    /// KaminIDE patch: группа `g` рисует ту же картинку, что группа `g` кадра
+    /// `frame_damage().1` (с которым сравнивали этот).
+    #[doc(hidden)]
+    pub fn group_same_as_base(&self, g: usize) -> bool {
+        self.damage.groups_same.get(g).copied().unwrap_or(false)
     }
 
     fn damage_against(&self, index: &DamageIndex, previous: &Scene) -> SceneDamage {

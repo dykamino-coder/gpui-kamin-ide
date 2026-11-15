@@ -133,6 +133,9 @@ struct BlurScratch {
     /// KaminIDE patch: viewport size last written to the frame parameter buffer.
     frame_globals: Option<[f32; 2]>,
     stage_rasterizer: Option<ID3D11RasterizerState>,
+    /// KaminIDE patch: `prepare_group_targets` created or dropped an atlas page
+    /// this frame (the images kept there are gone, `retained::GroupCache`).
+    pages_changed: bool,
     copy: Option<BlurTexture>,
     blend_copy: Option<BlurTexture>,
     down: Vec<BlurTexture>,
@@ -988,6 +991,10 @@ impl DirectXRenderer {
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
         self.prepare_group_targets(scene)?;
+        // KaminIDE patch: images kept from the last frame (`retained::GroupCache`).
+        let reuse = self.reusable_groups(scene);
+        let mut valid = reuse.clone();
+        self.retained.groups.valid.clear();
         // A pass that failed last frame may have left its rectangles in the stage.
         self.clear_group_stage()?;
         self.blur.group_slots.clear();
@@ -1066,9 +1073,10 @@ impl DirectXRenderer {
         for (i, group) in scene.groups.iter().enumerate() {
             // KaminIDE patch: a frame drawn within a rectangle skips groups no
             // composite in it needs (`Scene::groups_needed`).
-            if needed.is_some_and(|n| !n.get(i).copied().unwrap_or(true)) {
+            if reuse[i] || needed.is_some_and(|n| !n.get(i).copied().unwrap_or(true)) {
                 continue;
             }
+            valid[i] = true;
             if group_batch::joins_layer(group) {
                 segment.push(i);
                 continue;
@@ -1088,6 +1096,7 @@ impl DirectXRenderer {
             self.clear_group_stage()?;
         }
         self.draw_group_layers(&scene.groups, &mut segment)?;
+        self.groups_kept(scene, valid);
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
         unsafe {
