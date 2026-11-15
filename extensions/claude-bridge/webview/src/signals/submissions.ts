@@ -8,6 +8,7 @@ import type { JsonlEntryData } from '../types/jsonl'
 import { enqueueLocal, reconcileQueueWithEntries, removeLocalQueueItem } from './queue'
 import { jsonlEntriesByTab } from './jsonl'
 import { withoutBridgeContext } from '../utils/bridge-context'
+import { restoreRejectedInputDraft } from '../lib/rejected-input-draft'
 
 export interface Submission extends SubmissionUpdate {
   text: string
@@ -31,6 +32,12 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   if (typeof data.text === 'string') data = { ...data, text: withoutBridgeContext(data.text) }
   const current = submissions.value.get(tabId) ?? []
   const existing = current.find(item => item.id === data.id)
+  if (data.rejected) {
+    // Duplicate IPC must neither duplicate draft text nor revive a cancelled send.
+    if (!existing?.rejected && existing?.state !== 'cancelled')
+      restoreRejectedInputDraft(tabId, data.text ?? existing?.text ?? '')
+    removeLocalQueueItem(tabId, data.id)
+  }
   const item: Submission = { text: '', timestamp: new Date().toISOString(), ...existing, ...data, warning: data.warning,
     afterOrd: existing?.afterOrd ?? queueWatermark(jsonlEntriesByTab.peek().get(tabId) ?? []) }
   if (existing?.committed) item.committed = true
