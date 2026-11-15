@@ -62,6 +62,7 @@ mod records;
 mod repaint;
 mod repaint_background;
 mod repaint_borders;
+mod repaint_has;
 mod repaint_sequence;
 mod revision_budget;
 mod text_edits;

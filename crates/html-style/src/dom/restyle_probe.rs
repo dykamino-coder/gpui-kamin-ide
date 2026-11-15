@@ -10,7 +10,7 @@ use super::input::Admitted;
 use super::invalidation::{Changed, Features, features};
 use super::outcome::DocumentFailure;
 use super::shadow::Scope;
-use super::tree_index::TreeIndex;
+use super::tree_index::{HasMarks, TreeIndex};
 use super::walk::{self, Chains, Probed};
 use crate::style::css::{Media, Rule};
 use crate::style::select::has::{HasArg, mark_has};
@@ -51,6 +51,15 @@ pub struct RestyleCache {
     /// probed after the batch (`invalidation::targets` finds them all) and
     /// goes with the cache when a batch rebuilds the document.
     last: HashMap<usize, (Handle, Option<Probed>)>,
+    /// The `:has()` marks of the source DOM, marked by the first probe that
+    /// needs them. A batch probed here changes no value a `:has()` argument
+    /// reads: `invalidation::targets` does not follow a name inside a
+    /// selector argument, so such a batch rebuilds; a batch that edits texts
+    /// drops them (`forget_has`). Blink likewise re-marks only for the
+    /// features of `:has()` arguments (`StyleEngine::InvalidateAncestorsOrSiblingsAffectedByHas`,
+    /// `style_engine.cc:1676`);
+    /// here the marks of the build hold until such a feature changes.
+    has: Option<HasMarks>,
 }
 
 /// Наборов признаков больше этого числа — начинаются заново.
@@ -92,6 +101,7 @@ impl RestyleCache {
         self.chains = Chains::default();
         self.sets.clear();
         self.last.clear();
+        self.has = None;
         self.probe = RestyleProbe::new(input, extra_css, media, values)?.map(Rc::new);
         Ok(self.probe.clone())
     }
@@ -135,11 +145,17 @@ impl RestyleCache {
         let mut tree = TreeIndex::new(values.clone(), input.xhtml);
         let document = &input.dom.document;
         if !probe.has_args.is_empty() {
-            mark_has(document, &probe.has_args, &mut vec![], &mut tree)?;
+            match self.has.take() {
+                Some(has) => tree.put_has(has),
+                None => mark_has(document, &probe.has_args, &mut vec![], &mut tree)?,
+            }
         }
         let vcx = values.values().with_scheme(scheme(probe.media));
         let chains = &mut self.chains;
         let found = walk::probe(document, &tree, &probe.doc, targets, chains, vcx)?;
+        if !probe.has_args.is_empty() {
+            self.has = Some(tree.take_has());
+        }
         if self.last.len() + targets.len() > LAST {
             self.last.clear();
         }
@@ -148,6 +164,12 @@ impl RestyleCache {
             self.last.insert(address, (target.clone(), probed.clone()));
         }
         Ok(found)
+    }
+
+    /// Drop the kept `:has()` marks: a batch edited texts, which `:empty`
+    /// and other arguments may read.
+    pub fn forget_has(&mut self) {
+        self.has = None;
     }
 
     /// The entries of `targets` at the current state of the source DOM, as

@@ -70,6 +70,14 @@ impl Document {
         boxes
     }
 
+    /// Drop the kept `:has()` marks of the probe (`RestyleCache::forget_has`).
+    pub(super) fn forget_has(&self) {
+        if let Some(mut kept) = self.restyle.take() {
+            kept.cache.forget_has();
+            self.restyle.set(Some(kept));
+        }
+    }
+
     /// The box numbers of the source elements of this build (`SourceIndex`).
     pub(super) fn source_index(&self) -> Option<Rc<SourceIndex>> {
         let mut kept = self.restyle.take().unwrap_or_default();

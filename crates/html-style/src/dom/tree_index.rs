@@ -44,6 +44,13 @@ impl Hash for NodeKey {
     }
 }
 
+/// The `:has()` marks of one marking of a DOM (`TreeIndex::take_has`).
+#[derive(Default)]
+pub struct HasMarks {
+    marks: HashMap<NodeKey, Vec<u64>>,
+    leases: crate::budget::admission::Buffer<Option<crate::budget::LiveReservation>>,
+}
+
 /// Everything the style walk reads about a node besides the node itself.
 pub struct TreeIndex {
     pub(crate) style_sharing: crate::style::cascade::sharing::StyleSharing,
@@ -104,6 +111,22 @@ impl TreeIndex {
         self.has_leases.push(lease, &admission)?;
         marks.push(id);
         Ok(())
+    }
+
+    /// The `:has()` marks of this index with their storage leases, for an
+    /// index of the same DOM whose `:has()` arguments read the same values
+    /// (`put_has`).
+    pub fn take_has(&mut self) -> HasMarks {
+        HasMarks {
+            marks: std::mem::take(&mut self.has_marks),
+            leases: std::mem::take(&mut self.has_leases),
+        }
+    }
+
+    /// Marks taken from an index of the same DOM (`take_has`).
+    pub fn put_has(&mut self, has: HasMarks) {
+        self.has_marks = has.marks;
+        self.has_leases = has.leases;
     }
 
     pub fn has_marks_of(&self, handle: &Handle) -> Vec<u64> {
