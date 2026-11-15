@@ -41,6 +41,10 @@ impl Scene {
             mapping.push(copies);
         }
         let (mut scene, _) = self.segment_commands(id, None, scale, &mapping, extent, None);
+        // The box runs of the record, moved with their commands into the segment.
+        if let (Some(runs), Some(map)) = (self.record_runs.as_deref(), scene.placed_map.take()) {
+            scene.record_runs = Some(Box::new(runs.carry(&map, &scene)));
+        }
         scene.groups = groups;
         scene.finish_frozen();
         scene

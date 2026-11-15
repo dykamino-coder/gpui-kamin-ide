@@ -21,6 +21,7 @@
 mod boxes;
 mod frame;
 mod order;
+mod placed;
 mod reorder;
 mod splice;
 mod write;
@@ -28,6 +29,7 @@ mod write;
 use super::{Bounds, ScaledPixels, Scene};
 pub(crate) use boxes::{BoxEnv, BoxRange, OpenBox, ink_of};
 pub(crate) use frame::{LayerOp, LayerSlot};
+pub(crate) use placed::{Placed, PlacedMap, RecordRuns, place_run};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};

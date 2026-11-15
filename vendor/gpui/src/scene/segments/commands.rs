@@ -9,6 +9,10 @@ impl Scene {
     ) -> (Scene, Option<PaintSegment>) {
         let mut output = Scene { in_group: self.in_group, ..Scene::default() };
         let Some(capture) = &self.segment_capture else { return (output, None); };
+        // Where each command of a record with box runs lands in this segment.
+        if self.record_runs.is_some() && self.groups.is_empty() {
+            output.placed_map = Some(crate::scene::layer::PlacedMap::new(None, self.paint_operations.len()));
+        }
         let admits = |route: &&PaintSegment| route.id == id && ordinal.is_none_or(|ordinal| route.ordinal == ordinal);
         let entry = capture.entry.scopes.iter().find(admits).copied();
         let mut first = None;
@@ -16,7 +20,7 @@ impl Scene {
             .find_map(|tag| tag.routes.iter().find(admits).copied()));
         let mut tags = capture.primitives.iter();
         let mut primitive_index = 0;
-        for operation in &self.paint_operations {
+        for (source, operation) in self.paint_operations.iter().enumerate() {
             match operation {
                 PaintOperation::Primitive(primitive) => {
                     let tag = tags.next().expect("captured primitive tag");
@@ -49,8 +53,15 @@ impl Scene {
                         let mut primitive = primitive.clone();
                         let clip = Tag::clip_chain(tag.clips.as_ref(), excluded, route, scale, extent);
                         let clip = tag.admission(route, scale, clip);
-                        record::geometry::primitive(&mut primitive, (route.destination - route.source).scale(scale), Some(clip));
+                        let offset = (route.destination - route.source).scale(scale);
+                        record::geometry::primitive(&mut primitive, offset, Some(clip));
+                        let (at, quads) = (output.paint_operations.len(), output.quads.len());
                         output.insert_primitive(primitive);
+                        if output.paint_operations.len() > at {
+                            let quad = (output.quads.len() > quads).then_some(quads);
+                            let placed = crate::scene::layer::Placed { offset, clip: Some(clip) };
+                            crate::scene::layer::PlacedMap::set(&mut output.placed_map, source, at, quad, placed);
+                        }
                         first.get_or_insert(route);
                     }
                 }
