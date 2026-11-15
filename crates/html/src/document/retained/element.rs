@@ -30,8 +30,8 @@ pub(super) struct Retained {
     scheduled: usize,
     replay: bool,
     /// Дерево собрано и разложено шагом документа до кадра (`prepared`) для
-    /// элемента документа под этим местом в кадре: кадр берёт узел его корня
-    /// в своё дерево, как берёт узел дерева, запрошенного в кадре.
+    /// элемента документа под этим местом в кадре: коробка области просмотра
+    /// — лист её размера.
     laid_out: Option<gpui::ElementPlace>,
 }
 
@@ -119,19 +119,15 @@ impl Element for Retained {
     ) -> (LayoutId, ()) {
         self.check_place(window);
         let before = window.next_frame_callback_count();
-        // Разложено шагом: узел корня дерева входит в дерево кадра там, где
-        // его поставил бы запрос в кадре.
-        let prepared = self
-            .laid_out
-            .as_ref()
-            .and(self.tree.as_ref().and_then(AnyElement::requested_layout_id));
-        let id = match (prepared, self.tree.as_mut()) {
-            (Some(id), _) => id,
-            (None, Some(tree)) => {
+        let id = match self.tree.as_mut() {
+            Some(_) if self.laid_out.is_some() => {
+                window.request_layout(self.viewport_style(), None, cx)
+            }
+            Some(tree) => {
                 let keys = self.builder.layout_keys;
                 window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
             }
-            (None, None) => window.request_layout(self.viewport_style(), None, cx),
+            None => window.request_layout(self.viewport_style(), None, cx),
         };
         self.scheduled += window.next_frame_callback_count().saturating_sub(before);
         (id, ())
@@ -182,6 +178,14 @@ impl Element for Retained {
                 self.tree = None;
             }
             let prepaint = match self.tree.as_mut() {
+                // Разложено корнем до кадра: на место, как в `build_in`.
+                Some(tree) if self.laid_out.is_some() => {
+                    window
+                        .record_retained_prepaint(|window| {
+                            tree.prepaint_at(bounds.origin, window, cx)
+                        })
+                        .1
+                }
                 Some(tree) => {
                     window
                         .record_retained_prepaint(|window| tree.prepaint(window, cx))
