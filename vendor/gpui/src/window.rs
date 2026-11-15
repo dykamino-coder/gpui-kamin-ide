@@ -1301,6 +1301,9 @@ pub struct Window {
     /// KaminIDE patch: the scene layer being recorded (`window::scene_layer`)
     /// and the binding scope of the paint (`with_paint_owner`, `with_paint_value`).
     pub(crate) layer_recording: Option<Box<scene_layer::LayerRecording>>,
+    /// KaminIDE patch: tests paint without scene layers (set_scene_layers).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) scene_layers_off: bool,
     /// The source layer of content painted into the frame (`RecordedLayer::Painted`).
     pub(crate) layer_source: Option<Rc<crate::SceneLayer>>,
     /// The platform showed a frame of this window (`present_unneeded`).
@@ -2264,6 +2267,8 @@ impl Window {
             element_opacity: 1.0,
             box_fill: None,
             layer_recording: None,
+            #[cfg(any(test, feature = "test-support"))]
+            scene_layers_off: false,
             layer_source: None,
             frame_presented: false,
             presentation_required: false,
@@ -2993,6 +2998,25 @@ impl Window {
         underlines
     }
 
+    /// KaminIDE patch: paint later frames into scene layers (`true`, the
+    /// default) or straight into the frame, as without retained layers: the
+    /// draw sequences of both must agree (`painted_sequence`).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_scene_layers(&mut self, on: bool) {
+        self.scene_layers_off = !on;
+    }
+
+    /// KaminIDE patch: the primitives of the most recently rendered frame in
+    /// the order they are drawn, a retained layer's in its place, without
+    /// their draw orders, each with its bounds within its content mask: a frame
+    /// painted into a scene layer and one painted straight into the frame draw
+    /// every two overlapping primitives in the same order.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_sequence(&self) -> Vec<(String, Bounds<ScaledPixels>)> {
+        let mut out = Vec::new();
+        crate::scene::draw_sequence(&self.rendered_frame.scene, &mut out);
+        out
+    }
     /// Set the content size of the window.
     pub fn resize(&mut self, size: Size<Pixels>) {
         self.platform_window.resize(size);

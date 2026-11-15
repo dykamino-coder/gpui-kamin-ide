@@ -130,6 +130,13 @@ pub struct PaintGroup {
 #[derive(Default)]
 #[expect(missing_docs)]
 pub struct Scene {
+    /// KaminIDE patch: a scene layer recording, whose box runs take orders
+    /// `key + 1 + n` of their key's bucket (`scene::layer::boxes`): the other
+    /// primitives take the top of their bucket, so that within a bucket box
+    /// commands draw before them as a frame without layers draws quads before
+    /// sprites of one order, and no box command passes over the ink of a
+    /// neighbour that only its bounds tree entry does not overlap.
+    pub(crate) keyed: bool,
     pub(crate) segment_capture: Option<Box<segments::Capture>>,
     pub(crate) paint_operations: Vec<PaintOperation>,
     /// KaminIDE patch: группы, нарисованные в отдельные буферы.
@@ -406,10 +413,15 @@ impl Scene {
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
+        let order = self.tree_mut().insert(bounds) * ORDER_STEP + self.plain_offset();
         self.layer_stack.push(order);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds, order));
+    }
+
+    /// The offset of a plain primitive's order in its bucket (`keyed`).
+    fn plain_offset(&self) -> DrawOrder {
+        if self.keyed { ORDER_STEP - 1 } else { 0 }
     }
 
     pub fn pop_layer(&mut self) {
@@ -457,7 +469,7 @@ impl Scene {
             // KaminIDE patch: a box's own command waits for the box's key
             // (`scene::layer::boxes`).
             None if self.open_box.is_some() => 0,
-            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
+            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP + self.plain_offset(),
         };
         match &mut primitive {
             Primitive::Shadow(shadow) => {
@@ -1977,6 +1989,61 @@ impl PathVertex<Pixels> {
             xy_position: self.xy_position.scale(factor),
             st_position: self.st_position,
             content_mask: self.content_mask.scale(factor),
+        }
+    }
+}
+
+/// KaminIDE patch: the primitives of `scene` in the order its batches draw
+/// them, a retained layer's in its place (`Window::painted_sequence`): each
+/// as its debug form without its draw order, with its bounds within its
+/// content mask.
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) fn draw_sequence(scene: &Scene, out: &mut Vec<(String, Bounds<ScaledPixels>)>) {
+    fn push(out: &mut Vec<(String, Bounds<ScaledPixels>)>, kind: &str, p: Primitive) {
+        let text = match &p {
+            Primitive::Shadow(x) => format!("{x:?}"),
+            Primitive::Quad(x) => format!("{x:?}"),
+            Primitive::Path(x) => format!("{x:?}"),
+            Primitive::Underline(x) => format!("{x:?}"),
+            Primitive::MonochromeSprite(x) => format!("{x:?}"),
+            Primitive::SubpixelSprite(x) => format!("{x:?}"),
+            Primitive::PolychromeSprite(x) => format!("{x:?}"),
+            Primitive::Surface(x) => format!("{x:?}"),
+        };
+        let text = match text.find("order: ") {
+            Some(at) => {
+                let rest = &text[at..];
+                let end = rest.find(", ").map_or(rest.len(), |e| e + 2);
+                format!("{}{}", &text[..at], &rest[end..])
+            }
+            None => text,
+        };
+        let ink = placed_bounds(&p).intersect(&p.content_mask().bounds);
+        out.push((format!("{kind} {text}"), ink));
+    }
+    for batch in scene.batches() {
+        match batch {
+            PrimitiveBatch::Shadows(r) => scene.shadows[r].iter().for_each(|p| push(out, "shadow", (*p).into())),
+            PrimitiveBatch::Quads(r) => scene.quads[r].iter().for_each(|p| push(out, "quad", (*p).into())),
+            PrimitiveBatch::Paths(r) => scene.paths[r].iter().for_each(|p| push(out, "path", p.clone().into())),
+            PrimitiveBatch::Underlines(r) => scene.underlines[r].iter().for_each(|p| push(out, "underline", p.clone().into())),
+            PrimitiveBatch::MonochromeSprites { range, .. } => {
+                scene.monochrome_sprites[range].iter().for_each(|p| push(out, "glyph", p.clone().into()))
+            }
+            PrimitiveBatch::SubpixelSprites { range, .. } => {
+                scene.subpixel_sprites[range].iter().for_each(|p| push(out, "subpixel", p.clone().into()))
+            }
+            PrimitiveBatch::PolychromeSprites { range, .. } => {
+                scene.polychrome_sprites[range].iter().for_each(|p| push(out, "image", p.clone().into()))
+            }
+            PrimitiveBatch::Surfaces(r) => scene.surfaces[r].iter().for_each(|p| push(out, "surface", p.clone().into())),
+            PrimitiveBatch::Layer(at) => {
+                if let Some(layer) = scene.layer(at) {
+                    out.push(("layer".into(), Bounds::default()));
+                    draw_sequence(layer.scene(), out);
+                    out.push(("end layer".into(), Bounds::default()));
+                }
+            }
         }
     }
 }

@@ -48,6 +48,7 @@ impl Window {
             || !scene.ink.is_empty()
             || scene.ink_scope != 0
             || self.layer_recording.is_some()
+            || self.scene_layers_disabled()
         {
             let previous = mem::replace(&mut self.layer_source, source);
             let (result, _) = self.with_restore(previous, |window, previous| {
@@ -58,6 +59,7 @@ impl Window {
         // The content painted again is about the size of its last recording:
         // its lists start at that size instead of growing by copies.
         let mut scene = Scene::default();
+        scene.keyed = true;
         let (mut bindings, mut boxes) = (Vec::new(), Vec::new());
         if let Some(last) = &source {
             scene.reserve_like(&last.scene);
@@ -82,6 +84,14 @@ impl Window {
             return (result, RecordedLayer::Spliced);
         }
         (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))))
+    }
+
+    /// Tests paint without scene layers (`Window::set_scene_layers`).
+    fn scene_layers_disabled(&self) -> bool {
+        #[cfg(any(test, feature = "test-support"))]
+        return self.scene_layers_off;
+        #[cfg(not(any(test, feature = "test-support")))]
+        false
     }
 
     /// Draw `layer` here: one command in the frame, ordered like one

@@ -30,6 +30,8 @@ mod l0_resource_tests;
 #[cfg(test)]
 mod l0_tests;
 #[cfg(test)]
+mod layer_order_tests;
+#[cfg(test)]
 mod layered_replay_tests;
 #[cfg(test)]
 mod paint_damage_tests;
