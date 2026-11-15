@@ -8,7 +8,8 @@ use super::{DocState, Node, Rc, base_url, viewport};
 /// ширины пойдёт по подстановке), разметка (XML — своим разборщиком,
 /// `dom::xml`), правка адресов от действующей базы.
 /// `invalidation`: a rebuild for attribute mutations collects the elements
-/// they restyle (`dom::convert_restyling`).
+/// they restyle (`dom::convert_restyling`); `keep` receives the rules of the
+/// build for the restyles of the document.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn parse_document(
     input: &crate::dom::input::Admitted,
@@ -18,6 +19,7 @@ pub(super) fn parse_document(
     fonts: &crate::text::metrics::FontContext,
     revision: crate::budget::RevisionBudget,
     invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
+    keep: &mut crate::dom::restyle_probe::RestyleCache,
     #[cfg(feature = "engine-bench")] timings: &mut super::BuildTimings,
 ) -> Result<(Rc<DocState>, Vec<Node>, crate::style::computed::Computed), super::DocumentFailure> {
     let media = state.media();
@@ -32,7 +34,14 @@ pub(super) fn parse_document(
     let style_started = crate::work::Clock::now();
     let styled = {
         crate::work::phase!(_phase, Style);
-        crate::dom::convert_restyling(input, theme_css, media, &state.values, invalidation)?
+        crate::dom::convert_restyling(
+            input,
+            theme_css,
+            media,
+            &state.values,
+            invalidation,
+            Some(keep),
+        )?
     };
     #[cfg(feature = "engine-bench")]
     {

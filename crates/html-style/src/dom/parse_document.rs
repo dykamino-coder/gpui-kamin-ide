@@ -52,21 +52,24 @@ pub fn convert(
     media: Media,
     doc: &Rc<crate::values::DocumentValues>,
 ) -> Result<Vec<Node>, DocumentFailure> {
-    convert_restyling(input, extra_css, media, doc, None)
+    convert_restyling(input, extra_css, media, doc, None, None)
 }
 
 /// [`convert`] of a rebuild for a batch of attribute mutations: the walk
 /// collects in `invalidation` the elements the batch restyles. Like Blink's
 /// pending invalidations, which live for one style recalc and not with the
 /// document, it is the caller's for this one build: a document pays nothing
-/// for it.
+/// for it. `keep` receives the rules of the build as the probe of the next
+/// restyles of a document without shadows (`RestyleCache::with_probe`).
 pub fn convert_restyling(
     input: &Admitted,
     extra_css: &str,
     mut media: Media,
     doc: &Rc<crate::values::DocumentValues>,
     mut invalidation: Option<&mut super::invalidation::Invalidation>,
+    keep: Option<&mut super::restyle_probe::RestyleCache>,
 ) -> Result<Vec<Node>, DocumentFailure> {
+    let asked = media;
     let vcx = doc.values();
     vcx.doc.reset_font_alternates();
     let dom = &input.dom;
@@ -87,6 +90,7 @@ pub fn convert_restyling(
         doc,
         mut has_args,
         mut layers,
+        reads_attr,
     } = super::document_rules::document_rules(input, extra_css, media, &admission, vcx)?;
     let vars = VarMap::new();
     let mut out = vec![];
@@ -116,8 +120,20 @@ pub fn convert_restyling(
             &mut tree,
         )?;
         finish_slots(drafts, &mut tree)?;
-    } else if !has_args.is_empty() {
-        mark_has(&dom.document, &has_args, &mut vec![], &mut tree)?;
+    } else {
+        if !has_args.is_empty() {
+            mark_has(&dom.document, &has_args, &mut vec![], &mut tree)?;
+        }
+        if let Some(keep) = keep {
+            let probe = super::restyle_probe::RestyleProbe::built(
+                doc.clone(),
+                has_args,
+                reads_attr,
+                (media, asked),
+                extra_css,
+            );
+            *keep = super::restyle_probe::RestyleCache::with_probe(probe);
+        }
     }
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.

@@ -18210,10 +18210,10 @@ index 0000000000000000000000000000000000000000..1876f1fdae49e27efa7c57b04228f0ae
 +}
 diff --git a/vendor/gpui/src/taffy/retained.rs b/vendor/gpui/src/taffy/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..264b7f306ecdabecd10d474084c3aecd0ab3044d
+index 0000000000000000000000000000000000000000..1d7c88c310d5978c0249844a1603b06327503591
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained.rs
-@@ -0,0 +1,607 @@
+@@ -0,0 +1,612 @@
 +//! KaminIDE patch: the window's frame tree survives frames.
 +//!
 +//! A frame used to drop its Taffy tree, so every node lost its layout cache
@@ -18579,7 +18579,12 @@ index 0000000000000000000000000000000000000000..264b7f306ecdabecd10d474084c3aecd
 +                let _ = self.taffy.set_style(node, style);
 +            }
 +        }
-+        self.taffy.retain_nodes(|node| live.contains(&node));
++        // A pass only adds nodes, so this pass's nodes are in the tree: when
++        // they are all of it there is nothing to sweep, and the sweep would
++        // visit every slot the tree ever had (its storage never shrinks).
++        if live.len() != self.taffy.total_node_count() {
++            self.taffy.retain_nodes(|node| live.contains(&node));
++        }
 +        retained.memos.retain(|node, _| live.contains(node));
 +        // A kept leaf is measured again only by the function of the request
 +        // that claims it, so the old function and everything it captured (a
@@ -18823,10 +18828,10 @@ index 0000000000000000000000000000000000000000..264b7f306ecdabecd10d474084c3aecd
 +}
 diff --git a/vendor/gpui/src/taffy/retained_tests.rs b/vendor/gpui/src/taffy/retained_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ad3a86c1be74abebd627fd7f0794f1d177ff9b5f
+index 0000000000000000000000000000000000000000..eb9ec9893f479dc8c7230187efa449387b8c19de
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/retained_tests.rs
-@@ -0,0 +1,360 @@
+@@ -0,0 +1,387 @@
 +//! KaminIDE patch: the frame tree keeps nodes whose inputs did not change.
 +
 +use super::{LayoutId, TaffyLayoutEngine};
@@ -19187,6 +19192,34 @@ index 0000000000000000000000000000000000000000..ad3a86c1be74abebd627fd7f0794f1d1
 +    assert_eq!(after[1][0], before[1][0]);
 +    assert_eq!(engine.claimed_nodes(), 10);
 +}
++
++#[test]
++fn a_tree_that_shrank_keeps_its_nodes_while_its_passes_request_all_of_them() {
++    let mut engine = TaffyLayoutEngine::new();
++    let wide: Vec<_> = (0..64).map(|i| leaf(&mut engine, i as f32)).collect();
++    parent(&mut engine, &wide);
++    engine.clear();
++    // The document became one leaf: the sweep drops the 65 old nodes, and the
++    // storage keeps their slots.
++    let one = leaf(&mut engine, 500.);
++    engine.clear();
++    assert_eq!(engine.taffy.total_node_count(), 1);
++    // Unchanged passes request every node of the tree: nothing is swept.
++    for _ in 0..3 {
++        assert_eq!(leaf(&mut engine, 500.), one);
++        engine.clear();
++        assert_eq!(engine.taffy.total_node_count(), 1);
++    }
++    // A pass that leaves a node out sweeps it again.
++    let kept = leaf(&mut engine, 500.);
++    leaf(&mut engine, 600.);
++    engine.clear();
++    assert_eq!(engine.taffy.total_node_count(), 2);
++    assert_eq!(leaf(&mut engine, 500.), kept);
++    engine.clear();
++    assert_eq!(engine.taffy.total_node_count(), 1);
++}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/taffy/root_origin_tests.rs b/vendor/gpui/src/taffy/root_origin_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..fb19083af0f432d1dd961edd14fe95e5795e2640

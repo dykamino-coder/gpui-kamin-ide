@@ -4,6 +4,7 @@
 // committed the bracketed paste. These drive a fake PTY through the two timings.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { submitTextToSession } from './session-io'
+import { setSessionPromptReady } from './session-input-coordinator'
 import type { PtySession } from './types'
 
 const CLEAR_SETTLE_MS = 50
@@ -12,11 +13,23 @@ function fakePty() {
   const writes: string[] = []
   let onDataCb: ((d: string) => void) | null = null
   const pty = {
-    write: (d: string) => { writes.push(d) },
-    onData: (cb: (d: string) => void) => { onDataCb = cb; return { dispose: () => { onDataCb = null } } },
+    write: (d: string) => {
+      writes.push(d)
+    },
+    onData: (cb: (d: string) => void) => {
+      onDataCb = cb
+      return {
+        dispose: () => {
+          onDataCb = null
+        },
+      }
+    },
   }
+  const session = { id: 's', state: 'running', pty, lastActivityAt: new Date() } as unknown as PtySession
+  // These Enter-timing tests model an already-started CLI.
+  setSessionPromptReady(session, true)
   return {
-    session: { id: 's', state: 'running', pty, lastActivityAt: new Date() } as unknown as PtySession,
+    session,
     writes,
     echo: (d: string) => onDataCb?.(d),
     enterCount: () => writes.filter((w) => w === '\r').length,
@@ -24,8 +37,12 @@ function fakePty() {
   }
 }
 
-beforeEach(() => { vi.useFakeTimers() })
-afterEach(() => { vi.useRealTimers() })
+beforeEach(() => {
+  vi.useFakeTimers()
+})
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('submitTextToSession — Enter timing', () => {
   it('clears first, then writes the bracketed paste after Ink settles', () => {
@@ -61,9 +78,12 @@ describe('submitTextToSession — Enter timing', () => {
     const f = fakePty()
     submitTextToSession(f.session, 'a long message rendered in chunks')
     vi.advanceTimersByTime(CLEAR_SETTLE_MS)
-    f.echo('a long '); vi.advanceTimersByTime(50)
-    f.echo('message '); vi.advanceTimersByTime(50)
-    f.echo('rendered'); vi.advanceTimersByTime(50)
+    f.echo('a long ')
+    vi.advanceTimersByTime(50)
+    f.echo('message ')
+    vi.advanceTimersByTime(50)
+    f.echo('rendered')
+    vi.advanceTimersByTime(50)
     expect(f.enterCount()).toBe(0) // never quiet for a full 80ms yet
     vi.advanceTimersByTime(80)
     expect(f.enterCount()).toBe(1) // now it settled
