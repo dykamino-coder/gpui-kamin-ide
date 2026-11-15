@@ -1,4 +1,4 @@
-//! A stack whose width the layout decides (a flex item) lays its columns out
+//! A stack whose width the layout decides (in a float) lays its columns out
 //! once per frame: prepaint takes the columns of the final measure.
 //! Counted with `crate::work`; run with `--features work-counters`.
 
@@ -45,7 +45,7 @@ fn frame(cx: &mut gpui::TestAppContext, html: &str) -> (u64, u64) {
 }
 
 #[gpui::test]
-fn a_flex_item_stack_lays_its_columns_out_once_per_frame(cx: &mut gpui::TestAppContext) {
+fn a_shrink_to_fit_stack_prepares_its_columns_once_per_width(cx: &mut gpui::TestAppContext) {
     let items = 12;
     let (layouts, reuses) = frame(cx, &page(items));
     // The float asks the stack at its width three times, then prepaint: one
