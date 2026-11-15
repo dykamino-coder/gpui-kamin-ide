@@ -15,3 +15,5 @@ pub mod gap_rules;
 pub mod measure;
 pub mod spanner;
 pub(crate) mod stack_child;
+#[cfg(all(test, feature = "work-counters"))]
+pub(crate) mod work_frame;

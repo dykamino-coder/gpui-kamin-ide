@@ -130,6 +130,7 @@ impl Document {
         Builder {
             state: self.state.clone(),
             nodes: self.nodes.clone(),
+            tree: self.tree,
             // The frame builds into this document: the host's empty one is never made.
             opts: opts.with_doc(self.state.clone()),
             store: self.reuse.clone(),

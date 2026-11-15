@@ -47,7 +47,9 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
         crate::style::cascade::materialize::materialize_changed(nodes, root.style_rc(), vcx);
     // Прежние вычисленные группы отпущены: выведенные из них группы больше не нужны.
     vcx.doc.derived.release_unowned();
-    let prepared = opts.cx.layout().preparation.get(nodes, stable, changed);
+    // Подготовка переживает кадры только по номеру дерева документа.
+    let tree = opts.cx.contracts.document_tree.filter(|_| stable);
+    let prepared = opts.cx.layout().preparation.get(nodes, tree, changed);
     let opts = &*opts.inner(|cx| {
         cx.values.inert_clear = !prepared.clearance_possible;
         cx.contracts.subtrees = std::rc::Rc::new(std::cell::RefCell::new(

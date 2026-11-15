@@ -13,6 +13,9 @@ mod children;
 #[cfg(test)]
 mod clip_tests;
 mod geometry;
+#[cfg(all(test, feature = "work-counters"))]
+mod measure_reuse_tests;
+mod measured;
 #[cfg(test)]
 mod oof_tests;
 #[cfg(test)]
@@ -38,6 +41,8 @@ pub(crate) struct Recipe {
     pub(crate) intrinsic_builds: std::cell::Cell<usize>,
     /// The row extents of the spanner flow this stack is a row of.
     row: Option<std::rc::Rc<crate::layout::multicol::spanner::RowSlot>>,
+    /// The columns the last final measure prepared, kept for prepaint.
+    measured: std::cell::RefCell<Option<measured::Measured>>,
 }
 
 impl Recipe {
@@ -70,6 +75,7 @@ impl Recipe {
             #[cfg(test)]
             intrinsic_builds: Default::default(),
             row,
+            measured: Default::default(),
         }))
     }
 
@@ -139,10 +145,16 @@ impl Recipe {
         stack.report_lead();
     }
 
+    /// `keep`: the measure is at a definite width, with the layout context
+    /// of the stack's own place. Its prepared columns are kept for prepaint
+    /// (`take_measured`), built in that context so that their elements are
+    /// the ones prepaint would build; a measure at another width replaces
+    /// them.
     pub(crate) fn measure(
         &self,
         stack: &mut ColumnStack,
         width: f32,
+        keep: Option<&gpui::ElementLayoutContext>,
         window: &mut Window,
         cx: &mut App,
     ) -> (f32, Option<Pixels>, Option<Pixels>) {
@@ -150,15 +162,21 @@ impl Recipe {
             crate::work::add!(SpannerRowReuses, 1);
             return extent;
         }
-        let extent = gpui::with_temporary_element_arena(|| {
-            window.with_nested_layout(|window| {
-                let col_width = ((width - stack.gap * (stack.count as f32 - 1.0))
-                    / stack.count as f32)
-                    .max(1.0);
-                self.prepare(stack, col_width, window, cx);
-                self.measured_extent(stack, width, window, cx)
-            })
-        });
+        let col_width =
+            ((width - stack.gap * (stack.count as f32 - 1.0)) / stack.count as f32).max(1.0);
+        let extent = match keep {
+            Some(context) => self.measure_kept(stack, (width, col_width), context, window, cx),
+            None => gpui::with_temporary_element_arena(|| {
+                window.with_nested_layout(|window| {
+                    self.prepare(stack, col_width, window, cx);
+                    let extent = self.measured_extent(stack, width, window, cx);
+                    // Элементы с LayoutId вложенного движка не переживают этот вызов.
+                    stack.children.clear();
+                    stack.oof.geometry = Default::default();
+                    extent
+                })
+            }),
+        };
         if let Some(row) = &self.row {
             row.put(width, extent);
         }
@@ -187,9 +205,6 @@ impl Recipe {
                 super::column_baselines::Measurements::new(&mut stack.children, window, cx);
             baselines.measure(stack, &kids, width, &lines, &plan, &spans, window, cx)
         };
-        // Элементы с LayoutId вложенного движка не переживают этот вызов.
-        stack.children.clear();
-        stack.oof.geometry = Default::default();
         (height, first, last)
     }
 }
