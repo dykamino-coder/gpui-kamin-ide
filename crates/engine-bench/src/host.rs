@@ -93,7 +93,9 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let offscreen = args.surface == super::args::Surface::Offscreen;
     platform.set_offscreen_windows(offscreen);
     // Сверка RGB: каждый кадр ещё раз целиком, расхождение — ошибкой в stderr.
-    gpui_windows::set_damage_audit(std::env::var_os("ENGINE_BENCH_DAMAGE_AUDIT").is_some_and(|v| v == "1"));
+    gpui_windows::set_damage_audit(
+        std::env::var_os("ENGINE_BENCH_DAMAGE_AUDIT").is_some_and(|v| v == "1"),
+    );
     startup.mark("platform_device_text_and_host_setup");
     let application =
         gpui::Application::with_platform(platform.clone()).with_instrumentation(instrumentation);

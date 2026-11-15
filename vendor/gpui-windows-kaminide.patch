@@ -9360,10 +9360,10 @@ index 0000000000000000000000000000000000000000..6d21abaab80a8f220bd3bba5c283da0d
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/damage_audit.rs b/vendor/gpui-windows/src/directx_renderer/damage_audit.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..627588e2209edc16423d75b6c32ebed6c0229727
+index 0000000000000000000000000000000000000000..c49be4fa651ee122c07e5e3ba446dc1133dce7c0
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/damage_audit.rs
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,104 @@
 +//! KaminIDE patch: сверка кадра, нарисованного по плану (повреждение, кэш
 +//! групп), с тем же кадром, нарисованным целиком без кэша групп.
 +//!
@@ -9403,7 +9403,10 @@ index 0000000000000000000000000000000000000000..627588e2209edc16423d75b6c32ebed6
 +        within: Option<Region>,
 +    ) -> Result<()> {
 +        let planned = self.read_target()?;
-+        let (kept, drawn) = (self.retained.groups.counts.kept, self.retained.groups.counts.drawn);
++        let (kept, drawn) = (
++            self.retained.groups.counts.kept,
++            self.retained.groups.counts.drawn,
++        );
 +        // Целый кадр без картинок групп прошлого кадра.
 +        self.retained.chain = None;
 +        self.retained.groups.valid.clear();
@@ -9412,7 +9415,11 @@ index 0000000000000000000000000000000000000000..627588e2209edc16423d75b6c32ebed6
 +        let w = self.width as usize;
 +        let mut count = 0usize;
 +        let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
-+        for (i, (a, b)) in planned.chunks_exact(4).zip(whole.chunks_exact(4)).enumerate() {
++        for (i, (a, b)) in planned
++            .chunks_exact(4)
++            .zip(whole.chunks_exact(4))
++            .enumerate()
++        {
 +            if a[..3] != b[..3] {
 +                count += 1;
 +                let (x, y) = (i % w, i / w);
@@ -9435,7 +9442,11 @@ index 0000000000000000000000000000000000000000..627588e2209edc16423d75b6c32ebed6
 +        let (w, h) = (self.width, self.height);
 +        let staging = self.capture_staging()?;
 +        let ctx = self.dev().device_context.clone();
-+        let target = self.res().render_target.as_ref().context("render target missing")?;
++        let target = self
++            .res()
++            .render_target
++            .as_ref()
++            .context("render target missing")?;
 +        unsafe { ctx.CopyResource(&staging, target) };
 +        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
 +        unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
@@ -9446,7 +9457,10 @@ index 0000000000000000000000000000000000000000..627588e2209edc16423d75b6c32ebed6
 +            // BGRA8; each of its rows has RowPitch >= w * 4 readable bytes
 +            // until Unmap below.
 +            let src = unsafe {
-+                std::slice::from_raw_parts((mapped.pData as *const u8).add(y * mapped.RowPitch as usize), row)
++                std::slice::from_raw_parts(
++                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
++                    row,
++                )
 +            };
 +            out[y * row..(y + 1) * row].copy_from_slice(src);
 +        }
@@ -11062,10 +11076,10 @@ index 0000000000000000000000000000000000000000..4c8bb22564e56f10749141a0beb1559d
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_scrub.rs b/vendor/gpui-windows/src/directx_renderer/group_scrub.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..52873cb3d2e67aeb8eaa33b228c0ca717e9b5510
+index 0000000000000000000000000000000000000000..555eb84f7c7fe94641489aafcee817952d6bf41e
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_scrub.rs
-@@ -0,0 +1,168 @@
+@@ -0,0 +1,203 @@
 +//! KaminIDE patch: протирка удержанных картинок групп (`group_cache`).
 +//!
 +//! Удержанная картинка верна, пока верна та отрисовка, которой её получили.
@@ -11149,8 +11163,15 @@ index 0000000000000000000000000000000000000000..52873cb3d2e67aeb8eaa33b228c0ca71
 +            return Ok(());
 +        };
 +        let ctx = self.dev().device_context.clone();
-+        let flags = if wait { 0 } else { D3D11_MAP_FLAG_DO_NOT_WAIT.0 as u32 };
-+        let (mut a, mut b) = (D3D11_MAPPED_SUBRESOURCE::default(), D3D11_MAPPED_SUBRESOURCE::default());
++        let flags = if wait {
++            0
++        } else {
++            D3D11_MAP_FLAG_DO_NOT_WAIT.0 as u32
++        };
++        let (mut a, mut b) = (
++            D3D11_MAPPED_SUBRESOURCE::default(),
++            D3D11_MAPPED_SUBRESOURCE::default(),
++        );
 +        if unsafe { ctx.Map(&old, 0, D3D11_MAP_READ, flags, Some(&mut a)) }.is_err() {
 +            return Ok(());
 +        }
@@ -11166,11 +11187,21 @@ index 0000000000000000000000000000000000000000..52873cb3d2e67aeb8eaa33b228c0ca71
 +            // RowPitch >= w * 4 readable bytes.
 +            let (x, z) = unsafe {
 +                (
-+                    std::slice::from_raw_parts((a.pData as *const u8).add(y * a.RowPitch as usize), row),
-+                    std::slice::from_raw_parts((b.pData as *const u8).add(y * b.RowPitch as usize), row),
++                    std::slice::from_raw_parts(
++                        (a.pData as *const u8).add(y * a.RowPitch as usize),
++                        row,
++                    ),
++                    std::slice::from_raw_parts(
++                        (b.pData as *const u8).add(y * b.RowPitch as usize),
++                        row,
++                    ),
 +                )
 +            };
-+            differ += x.chunks_exact(4).zip(z.chunks_exact(4)).filter(|(p, q)| p != q).count();
++            differ += x
++                .chunks_exact(4)
++                .zip(z.chunks_exact(4))
++                .filter(|(p, q)| p != q)
++                .count();
 +        }
 +        unsafe {
 +            ctx.Unmap(&new, 0);
@@ -11180,7 +11211,9 @@ index 0000000000000000000000000000000000000000..52873cb3d2e67aeb8eaa33b228c0ca71
 +        if differ > 0 {
 +            MISMATCHES.fetch_add(1, Ordering::Relaxed);
 +            self.retained.groups.scrub.mismatches += 1;
-+            log::error!("GROUP_SCRUB_MISMATCH: kept image of group {group} (frame {frame}, {w}x{h}) differs from its redraw in {differ} px; replaced");
++            log::error!(
++                "GROUP_SCRUB_MISMATCH: kept image of group {group} (frame {frame}, {w}x{h}) differs from its redraw in {differ} px; replaced"
++            );
 +        }
 +        Ok(())
 +    }
@@ -11196,7 +11229,11 @@ index 0000000000000000000000000000000000000000..52873cb3d2e67aeb8eaa33b228c0ca71
 +            back: 1,
 +        };
 +        let page = &self.blur.groups[place.page].texture;
-+        unsafe { self.dev().device_context.CopySubresourceRegion(dst, 0, 0, 0, 0, page, 0, Some(&area)) };
++        unsafe {
++            self.dev()
++                .device_context
++                .CopySubresourceRegion(dst, 0, 0, 0, 0, page, 0, Some(&area))
++        };
 +    }
 +
 +    /// The staging pair, at least `w` x `h`, in the format of the atlas pages.
@@ -11207,8 +11244,17 @@ index 0000000000000000000000000000000000000000..52873cb3d2e67aeb8eaa33b228c0ca71
 +        {
 +            return Ok((a.clone(), b.clone()));
 +        }
-+        let old = self.retained.groups.scrub.staging.as_ref().map_or((0, 0), |s| (s.0, s.1));
-+        let (sw, sh) = (w.max(old.0).next_multiple_of(64), h.max(old.1).next_multiple_of(64));
++        let old = self
++            .retained
++            .groups
++            .scrub
++            .staging
++            .as_ref()
++            .map_or((0, 0), |s| (s.0, s.1));
++        let (sw, sh) = (
++            w.max(old.0).next_multiple_of(64),
++            h.max(old.1).next_multiple_of(64),
++        );
 +        let mut page = D3D11_TEXTURE2D_DESC::default();
 +        unsafe { self.blur.groups[0].texture.GetDesc(&mut page) };
 +        let desc = D3D11_TEXTURE2D_DESC {
@@ -11217,7 +11263,10 @@ index 0000000000000000000000000000000000000000..52873cb3d2e67aeb8eaa33b228c0ca71
 +            MipLevels: 1,
 +            ArraySize: 1,
 +            Format: page.Format,
-+            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
++            SampleDesc: DXGI_SAMPLE_DESC {
++                Count: 1,
++                Quality: 0,
++            },
 +            Usage: D3D11_USAGE_STAGING,
 +            BindFlags: 0,
 +            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,

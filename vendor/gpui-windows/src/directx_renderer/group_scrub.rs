@@ -81,8 +81,15 @@ impl DirectXRenderer {
             return Ok(());
         };
         let ctx = self.dev().device_context.clone();
-        let flags = if wait { 0 } else { D3D11_MAP_FLAG_DO_NOT_WAIT.0 as u32 };
-        let (mut a, mut b) = (D3D11_MAPPED_SUBRESOURCE::default(), D3D11_MAPPED_SUBRESOURCE::default());
+        let flags = if wait {
+            0
+        } else {
+            D3D11_MAP_FLAG_DO_NOT_WAIT.0 as u32
+        };
+        let (mut a, mut b) = (
+            D3D11_MAPPED_SUBRESOURCE::default(),
+            D3D11_MAPPED_SUBRESOURCE::default(),
+        );
         if unsafe { ctx.Map(&old, 0, D3D11_MAP_READ, flags, Some(&mut a)) }.is_err() {
             return Ok(());
         }
@@ -98,11 +105,21 @@ impl DirectXRenderer {
             // RowPitch >= w * 4 readable bytes.
             let (x, z) = unsafe {
                 (
-                    std::slice::from_raw_parts((a.pData as *const u8).add(y * a.RowPitch as usize), row),
-                    std::slice::from_raw_parts((b.pData as *const u8).add(y * b.RowPitch as usize), row),
+                    std::slice::from_raw_parts(
+                        (a.pData as *const u8).add(y * a.RowPitch as usize),
+                        row,
+                    ),
+                    std::slice::from_raw_parts(
+                        (b.pData as *const u8).add(y * b.RowPitch as usize),
+                        row,
+                    ),
                 )
             };
-            differ += x.chunks_exact(4).zip(z.chunks_exact(4)).filter(|(p, q)| p != q).count();
+            differ += x
+                .chunks_exact(4)
+                .zip(z.chunks_exact(4))
+                .filter(|(p, q)| p != q)
+                .count();
         }
         unsafe {
             ctx.Unmap(&new, 0);
@@ -112,7 +129,9 @@ impl DirectXRenderer {
         if differ > 0 {
             MISMATCHES.fetch_add(1, Ordering::Relaxed);
             self.retained.groups.scrub.mismatches += 1;
-            log::error!("GROUP_SCRUB_MISMATCH: kept image of group {group} (frame {frame}, {w}x{h}) differs from its redraw in {differ} px; replaced");
+            log::error!(
+                "GROUP_SCRUB_MISMATCH: kept image of group {group} (frame {frame}, {w}x{h}) differs from its redraw in {differ} px; replaced"
+            );
         }
         Ok(())
     }
@@ -128,7 +147,11 @@ impl DirectXRenderer {
             back: 1,
         };
         let page = &self.blur.groups[place.page].texture;
-        unsafe { self.dev().device_context.CopySubresourceRegion(dst, 0, 0, 0, 0, page, 0, Some(&area)) };
+        unsafe {
+            self.dev()
+                .device_context
+                .CopySubresourceRegion(dst, 0, 0, 0, 0, page, 0, Some(&area))
+        };
     }
 
     /// The staging pair, at least `w` x `h`, in the format of the atlas pages.
@@ -139,8 +162,17 @@ impl DirectXRenderer {
         {
             return Ok((a.clone(), b.clone()));
         }
-        let old = self.retained.groups.scrub.staging.as_ref().map_or((0, 0), |s| (s.0, s.1));
-        let (sw, sh) = (w.max(old.0).next_multiple_of(64), h.max(old.1).next_multiple_of(64));
+        let old = self
+            .retained
+            .groups
+            .scrub
+            .staging
+            .as_ref()
+            .map_or((0, 0), |s| (s.0, s.1));
+        let (sw, sh) = (
+            w.max(old.0).next_multiple_of(64),
+            h.max(old.1).next_multiple_of(64),
+        );
         let mut page = D3D11_TEXTURE2D_DESC::default();
         unsafe { self.blur.groups[0].texture.GetDesc(&mut page) };
         let desc = D3D11_TEXTURE2D_DESC {
@@ -149,7 +181,10 @@ impl DirectXRenderer {
             MipLevels: 1,
             ArraySize: 1,
             Format: page.Format,
-            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
             Usage: D3D11_USAGE_STAGING,
             BindFlags: 0,
             CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,

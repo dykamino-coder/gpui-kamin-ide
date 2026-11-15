@@ -37,7 +37,10 @@ impl DirectXRenderer {
         within: Option<Region>,
     ) -> Result<()> {
         let planned = self.read_target()?;
-        let (kept, drawn) = (self.retained.groups.counts.kept, self.retained.groups.counts.drawn);
+        let (kept, drawn) = (
+            self.retained.groups.counts.kept,
+            self.retained.groups.counts.drawn,
+        );
         // Целый кадр без картинок групп прошлого кадра.
         self.retained.chain = None;
         self.retained.groups.valid.clear();
@@ -46,7 +49,11 @@ impl DirectXRenderer {
         let w = self.width as usize;
         let mut count = 0usize;
         let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
-        for (i, (a, b)) in planned.chunks_exact(4).zip(whole.chunks_exact(4)).enumerate() {
+        for (i, (a, b)) in planned
+            .chunks_exact(4)
+            .zip(whole.chunks_exact(4))
+            .enumerate()
+        {
             if a[..3] != b[..3] {
                 count += 1;
                 let (x, y) = (i % w, i / w);
@@ -69,7 +76,11 @@ impl DirectXRenderer {
         let (w, h) = (self.width, self.height);
         let staging = self.capture_staging()?;
         let ctx = self.dev().device_context.clone();
-        let target = self.res().render_target.as_ref().context("render target missing")?;
+        let target = self
+            .res()
+            .render_target
+            .as_ref()
+            .context("render target missing")?;
         unsafe { ctx.CopyResource(&staging, target) };
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
         unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
@@ -80,7 +91,10 @@ impl DirectXRenderer {
             // BGRA8; each of its rows has RowPitch >= w * 4 readable bytes
             // until Unmap below.
             let src = unsafe {
-                std::slice::from_raw_parts((mapped.pData as *const u8).add(y * mapped.RowPitch as usize), row)
+                std::slice::from_raw_parts(
+                    (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
+                    row,
+                )
             };
             out[y * row..(y + 1) * row].copy_from_slice(src);
         }
