@@ -50,7 +50,7 @@ pub(crate) fn add(counter: &AtomicU64, n: u64) {
 }
 
 /// The counters in the order of the names `NAMES`.
-pub fn read() -> [u64; 6] {
+pub fn read() -> [u64; NAMES.len()] {
     [
         &VALUES,
         &RECORDS,
@@ -58,6 +58,10 @@ pub fn read() -> [u64; 6] {
         &REFUSED_NOT_OWN,
         &REFUSED_NO_LAYER,
         &REFUSED_BY_LAYER,
+        &PLAN_CLEAN,
+        &PLAN_PATCHED,
+        &PLAN_RESTYLED,
+        &WRITE_NS,
     ]
     .map(|c| c.load(Relaxed))
 }
