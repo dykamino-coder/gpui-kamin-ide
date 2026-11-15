@@ -101,7 +101,11 @@ pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
 }
 
 fn floating(e: &Element) -> bool {
-    e.style.used().reset_box_layout.float.is_some_and(|f| f != 0)
+    e.style
+        .used()
+        .reset_box_layout
+        .float
+        .is_some_and(|f| f != 0)
 }
 
 /// В поддереве `e` есть флоат, который выходит за его край: сам `e` или
@@ -112,26 +116,39 @@ fn floating(e: &Element) -> bool {
 /// контекста). Так Blink держит exclusion space внутри результата корня BFC
 /// (`LayoutResult`, layout_box_hot.cc:152), а снаружи его не видно.
 pub(super) fn escaping_floats(e: &Element) -> bool {
+    use crate::layout::box_kind::own_context;
     if floating(e) {
         return true;
     }
-    let mut pending = vec![e];
-    while let Some(b) = pending.pop() {
-        if crate::layout::box_kind::own_context(b) {
-            continue;
-        }
-        for child in b.children.iter() {
-            if let Node::Element(c) = child {
+    if own_context(e) {
+        return false;
+    }
+    // As `all_elements`: the children of `e` in place, a level per open
+    // descendant, so a block of text and empty boxes allocates nothing.
+    let mut top = e.children.iter();
+    let mut open: Vec<std::slice::Iter<'_, Node>> = Vec::new();
+    loop {
+        let next = match open.last_mut() {
+            Some(level) => level.next(),
+            None => top.next(),
+        };
+        match next {
+            Some(Node::Element(c)) => {
                 if floating(c) {
                     return true;
                 }
-                if !c.children.is_empty() {
-                    pending.push(c);
+                if !c.children.is_empty() && !own_context(c) {
+                    open.push(c.children.iter());
+                }
+            }
+            Some(_) => {}
+            None => {
+                if open.pop().is_none() {
+                    return false;
                 }
             }
         }
     }
-    false
 }
 
 /// Элемент `e` сам по себе не мешает повтору поддерева (`replayable`), а

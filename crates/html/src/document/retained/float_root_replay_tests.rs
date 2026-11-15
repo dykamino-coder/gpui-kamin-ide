@@ -26,7 +26,10 @@ fn sheet(items: usize) -> String {
             )
         })
         .collect();
-    format!("{PAD}<div style='width:780px;columns:4;column-gap:12px'>{items}</div>")
+    format!(
+        "{PAD}<div style='width:780px;columns:4;column-gap:12px'>\
+         <h2 style='column-span:all;margin:2px'>Section</h2>{items}</div>"
+    )
 }
 
 #[gpui::test]
