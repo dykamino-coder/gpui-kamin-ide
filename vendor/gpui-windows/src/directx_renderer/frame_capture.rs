@@ -7,34 +7,14 @@ impl DirectXRenderer {
     pub(super) fn capture_frame(&mut self) -> Result<()> {
         let started = std::time::Instant::now();
         let (w, h) = (self.width, self.height);
-        let desc = D3D11_TEXTURE2D_DESC {
-            Width: w,
-            Height: h,
-            MipLevels: 1,
-            ArraySize: 1,
-            Format: RENDER_TARGET_FORMAT,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            Usage: D3D11_USAGE_STAGING,
-            BindFlags: 0,
-            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
-            MiscFlags: 0,
-        };
+        // KaminIDE patch: one staging texture per size (`retained.rs`).
+        let staging = self.capture_staging()?;
         let devices = self.dev();
         let render_target = self
             .res()
             .render_target
             .as_ref()
             .context("render target missing")?;
-        let mut staging: Option<ID3D11Texture2D> = None;
-        unsafe {
-            devices
-                .device
-                .CreateTexture2D(&desc, None, Some(&mut staging))?
-        };
-        let staging = staging.context("staging texture")?;
         let ctx = &devices.device_context;
         unsafe { ctx.CopyResource(&staging, render_target) };
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
