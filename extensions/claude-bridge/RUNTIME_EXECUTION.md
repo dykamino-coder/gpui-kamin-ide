@@ -166,12 +166,14 @@ BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа �
 
 ### Дополнение 2026-11-14: слитые после 1.0.99 fixes
 
-Оба PR приняты `kmaint2` после выпуска 1.0.99 и ждут следующего релиза.
+Сверка 2026-11-15: принятые `kmaint2` fixes #869/#917 опубликованы в 1.0.100,
+#923 — в 1.0.101 (#926, `bfbf43f4`); ancestry и GitHub Release проверены.
+Ранее записанное ожидание следующего релиза для этих задач завершено.
 
 | ID | PR | Статус | Остаточный gate / следующий шаг |
 | --- | --- | --- | --- |
-| [INC-0107](runtime-issues/INC-2026-0107.md) | [#869](https://github.com/dykamino-coder/gpui-kamin-ide/pull/869) (`ce1e7954`), [#917](https://github.com/dykamino-coder/gpui-kamin-ide/pull/917) (`410fd289`) | verify: обе части опубликованы в 1.0.100 после своих Windows gates (priv #193, #194) | закрывается публикацией fix INC-0118 — kmaint2 |
-| [INC-0118](runtime-issues/INC-2026-0118.md) | [#923](https://github.com/dykamino-coder/gpui-kamin-ide/pull/923) (`6aa64804`) | verify: fix слит; Windows gate на `ebf11d7e` пройден — шаг mcp_tool ×3, паузы CLI 5 и 30 с (priv #196) | публикация в следующем релизе — kmaint2 |
+| [INC-0107](runtime-issues/INC-2026-0107.md) | [#869](https://github.com/dykamino-coder/gpui-kamin-ide/pull/869) (`ce1e7954`), [#917](https://github.com/dykamino-coder/gpui-kamin-ide/pull/917) (`410fd289`) | done: #869/#917 опубликованы в 1.0.100 после своих Windows gates; follow-up #923 — в 1.0.101 | нет остаточного gate принятой области; исторические ограничения — в карточке |
+| [INC-0118](runtime-issues/INC-2026-0118.md) | [#923](https://github.com/dykamino-coder/gpui-kamin-ide/pull/923) (`6aa64804`) | done: #923 опубликован в 1.0.101 / server 6.3.178; Windows gate на `ebf11d7e` и релизном кандидате пройден (priv #196, #197) | нет остаточного gate lease recovery; причина первоначальной паузы CLI неизвестна |
 | [INC-0117](runtime-issues/INC-2026-0117.md) | [#895](https://github.com/dykamino-coder/gpui-kamin-ide/pull/895) (`5458767b`) | verify: fix слит, CI зелёный на объединённой голове | exact-RGB на `main` в пачке после merge — лид; чистый прогон закрывает карточку |
 
 ### Вне пачки (backlog следующего запуска)
