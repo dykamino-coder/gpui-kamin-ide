@@ -166,6 +166,7 @@ impl Recorder {
                 .push(json!({"frame_index": self.index, "mode": mode,
                 "sample_index": sample, "capture_sequence": sequence, "baseline_frame_index": 1,
                 "different_rgb_pixels": diff.pixels, "bounds_xywh": diff.bounds,
+                "frame_bgr_fnv1a64": fingerprint(&frame),
                 "artifacts": artifacts}));
         }
         Ok(())

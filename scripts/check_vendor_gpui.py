@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build every target of the vendored GPUI forks standalone and run their tests.
 
-`vendor/gpui`, `vendor/gpui-base` and `vendor/gpui-component` are excluded
+`vendor/gpui`, `vendor/gpui-windows`, `vendor/gpui-base` and `vendor/gpui-component` are excluded
 from the root workspace (docs/VENDORING.md), so `cargo clippy/test
 --workspace` never compiles their unit tests, integration tests, benches or
 examples, and Cargo resolves dev-dependencies only for the root package of a
@@ -38,7 +38,17 @@ def crate_features(manifest: dict) -> dict[str, str]:
         "gpui": "stacker,test-support",
         "gpui-base": "gpui/stacker",
         "gpui-component": ",".join(["gpui/stacker", *component]),
+        "gpui-windows": "test-support,gpui/stacker",
     }
+
+
+# Forks checked by named test modules only: the rest of the gpui-windows suite
+# needs an interactive desktop (keyboard layout, clipboard). The renderer
+# tests are headless and draw on the default D3D11 adapter (WARP on CI).
+# A filter skips the all-targets build, which the full fork check owns.
+TEST_FILTERS = {
+    "gpui-windows": ["directx_renderer::recovery_tests::damage"],
+}
 
 
 def patch_configs(manifest: dict) -> list[str]:
@@ -62,13 +72,19 @@ def check(crate: str, features: str, options, patches: list[str]) -> None:
         raise SystemExit(f"{lock} exists; the check must not overwrite a lockfile it did not create")
     common = [
         "--manifest-path", str(directory / "Cargo.toml"),
-        "--features", features,
+        *(["--features", features] if features else []),
         "--target-dir", options.target_dir,
         "-j", options.jobs,
         *patches,
     ]
     shutil.copyfile(ROOT / "Cargo.lock", lock)
     try:
+        filters = TEST_FILTERS.get(crate)
+        if filters:
+            if not options.no_test:
+                for name in filters:
+                    cargo("test", "--lib", *common, "--", name)
+            return
         cargo("check", "--all-targets", "--keep-going", *common)
         if not options.no_test:
             cargo("test", "--lib", "--tests", *common)

@@ -54,6 +54,7 @@ mod shader_identity;
 mod shader_compilation;
 mod present_gate;
 mod quad_clear;
+mod retained;
 use group_region::Region;
 
 pub(crate) struct DirectXRenderer {
@@ -113,6 +114,8 @@ pub(crate) struct DirectXRenderer {
     /// KaminIDE patch (BR-31A): the last frame was not handed to the
     /// compositor, so the next paint must present (`present_gate`).
     unpresented: bool,
+    /// KaminIDE patch: the frame the target keeps and the damage of each buffer (`retained`).
+    retained: retained::Retained,
 }
 
 /// KaminIDE patch: ресурсы backdrop blur. Копия бэкбуфера (сэмплить
@@ -586,6 +589,7 @@ impl DirectXRenderer {
             backdrop: None,
             skip_draws: false,
             unpresented: false,
+            retained: Default::default(),
         })
     }
 
@@ -627,7 +631,7 @@ impl DirectXRenderer {
         self.atlas.clone()
     }
 
-    fn pre_draw(&mut self, clear_color: &[f32; 4]) -> Result<()> {
+    fn pre_draw(&mut self, clear_color: &[f32; 4], clear: bool) -> Result<()> {
         let clear_color = *self.backdrop.as_ref().unwrap_or(clear_color);
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
@@ -660,6 +664,11 @@ impl DirectXRenderer {
                 .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
             device_context
                 .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
+        }
+        // KaminIDE patch: a frame drawn within a rectangle clears it later,
+        // under the scissor (`render`).
+        if !clear {
+            return Ok(());
         }
         self.clear_frame(clear_color)
     }
@@ -773,6 +782,21 @@ impl DirectXRenderer {
             return Ok(());
         }
         self.ensure_drawable_resources()?;
+        // KaminIDE patch (retained.rs): unite this frame's damage into every
+        // buffer first, so a skipped frame still leaves what the buffers lack.
+        // A frame the target and the screen already show is neither drawn nor
+        // presented, and takes nothing from the latency gate.
+        let plan = self.plan_frame(scene, background_appearance);
+        let keep = matches!(plan, retained::Plan::Keep);
+        if keep && !self.unpresented {
+            self.frame_drawn(&plan);
+            if self.capture.is_some()
+                && let Err(e) = self.capture_frame()
+            {
+                log::warn!("frame capture failed: {e}");
+            }
+            return Ok(());
+        }
         // KaminIDE patch (#76): буфер свапчейна занят компоузером (DWM/RDP
         // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
         // пропускаем кадр и просим низкоприоритетный WM_PAINT — он придёт
@@ -790,7 +814,18 @@ impl DirectXRenderer {
             self.drop_frame();
             return Ok(());
         }
-        self.render(scene, background_appearance)?;
+        let drawn = match plan {
+            retained::Plan::Keep => Ok(()),
+            retained::Plan::Full => self.render(scene, background_appearance, None),
+            retained::Plan::Within(region) => {
+                self.render(scene, background_appearance, Some(region))
+            }
+        };
+        if let Err(e) = drawn {
+            self.forget_frames();
+            return Err(e);
+        }
+        self.frame_drawn(&plan);
         if self.capture.is_some() {
             if let Err(e) = self.capture_frame() {
                 log::warn!("frame capture failed: {e}");
@@ -804,28 +839,36 @@ impl DirectXRenderer {
     /// [`draw`](Self::draw) (which then presents) and
     /// [`render_to_image`](Self::render_to_image) (which reads the target back
     /// instead), so the two cannot drift.
+    ///
+    /// KaminIDE patch: with `within`, the target keeps the last frame and only
+    /// that rectangle is cleared and drawn (scissor, `retained.rs`); groups
+    /// whose composite cannot reach it are not drawn.
     fn render(
         &mut self,
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
+        within: Option<Region>,
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
         self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
         self.backdrop_pending = self.backdrop.is_some();
         self.layer_cache.begin_frame();
-        self.pre_draw(&match background_appearance {
+        let clear_color = match background_appearance {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
-        })?;
+        };
+        self.pre_draw(&clear_color, within.is_none())?;
         // KaminIDE patch: pre_draw wrote the frame parameters for the viewport size.
         let viewport = self.res().viewport;
         self.blur.frame_globals = Some([viewport.Width, viewport.Height]);
         let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
         self.gpu_timer.begin(&device, &ctx);
+        let needed = within.map(|r| scene.groups_needed([r.x, r.y, r.width, r.height]));
         // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
         // от них остаётся метка, по которой готовый буфер и композитится.
-        if let Err(e) = self.render_groups(scene) {
+        if let Err(e) = self.render_groups(scene, needed.as_deref()) {
             log::warn!("paint group failed: {e}");
+            self.retained.failed = true;
         }
         if !scene.groups.is_empty() {
             self.gpu_timer.instrumentation.batches.count(8, scene.groups.len(), 0.0);
@@ -837,10 +880,24 @@ impl DirectXRenderer {
                 .device_context
                 .OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), None);
         }
+        // KaminIDE patch: the scissor goes on only now: the group passes and
+        // their blurs write other targets in their own coordinates.
+        let restore = match within {
+            Some(region) => {
+                let state = self.begin_scissor(region)?;
+                let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
+                self.clear_frame(clear)?;
+                Some(state)
+            }
+            None => None,
+        };
         self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
         self.timing_main = true;
         let drawn = self.draw_scene(scene);
         self.timing_main = false;
+        if let Some(state) = restore {
+            unsafe { ctx.RSSetState(&state) };
+        }
         self.gpu_timer.end(&ctx);
         drawn
     }
@@ -930,7 +987,7 @@ impl DirectXRenderer {
     /// Эффектам вроде размытия поддерева нужна готовая картинка целиком,
     /// поэтому дети группы идут в текстуру её области с полем размытия.
     /// Общий staging сохраняет viewport и точность интерполяции исходного кадра.
-    fn render_groups(&mut self, scene: &Scene) -> Result<()> {
+    fn render_groups(&mut self, scene: &Scene, needed: Option<&[bool]>) -> Result<()> {
         if scene.groups.is_empty() {
             self.blur.groups.clear();
             self.blur.group_place.clear();
@@ -1024,6 +1081,11 @@ impl DirectXRenderer {
         self.blur.layer.clear();
         let mut segment = Vec::new();
         for (i, group) in scene.groups.iter().enumerate() {
+            // KaminIDE patch: a frame drawn within a rectangle skips groups no
+            // composite in it needs (`Scene::groups_needed`).
+            if needed.is_some_and(|n| !n.get(i).copied().unwrap_or(true)) {
+                continue;
+            }
             if group_batch::joins_layer(group) {
                 segment.push(i);
                 continue;
@@ -1332,7 +1394,10 @@ impl DirectXRenderer {
             !self.skip_draws,
             "render_to_image unavailable while recovering from a lost device"
         );
-        self.render(scene, background_appearance)?;
+        // KaminIDE patch: the target now holds a frame outside the window's
+        // sequence of compared scenes (`retained.rs`).
+        self.forget_frames();
+        self.render(scene, background_appearance, None)?;
 
         let devices = self.devices.as_ref().context("devices missing")?;
         let device = &devices.device;
@@ -1424,6 +1489,8 @@ impl DirectXRenderer {
         &mut self,
         recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
     ) -> Result<()> {
+        // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
+        self.forget_frames();
         let devices = self.devices.as_ref().context("devices missing")?;
         unsafe { devices.device_context.OMSetRenderTargets(None, None) };
         let resources = self.resources.as_mut().context("resources missing")?;
@@ -1763,6 +1830,7 @@ impl DirectXRenderer {
             }
             if let Err(e) = self.draw_composite_run(&run) {
                 log::warn!("surface pass failed: {e}");
+                self.retained.failed = true;
             }
             run.clear();
             // KaminIDE patch: метка группы (`Window::paint_group`) — не
@@ -1776,10 +1844,12 @@ impl DirectXRenderer {
             };
             if let Err(e) = drawn {
                 log::warn!("surface pass failed: {e}");
+                self.retained.failed = true;
             }
         }
         if let Err(e) = self.draw_composite_run(&run) {
             log::warn!("surface pass failed: {e}");
+            self.retained.failed = true;
         }
         // Вернуть состояние кадра (проходы меняли RTV/вьюпорт/globals).
         self.restore_frame_globals()?;
