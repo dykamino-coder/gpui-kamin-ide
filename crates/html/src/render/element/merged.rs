@@ -7,7 +7,6 @@
 
 use super::{orthogonal_limit, quirks};
 use crate::dom::Element;
-use crate::dom::text_content::gather_text;
 use crate::layout::box_tree::pseudo_line_layers;
 use crate::layout::options::RenderOpts;
 use crate::layout::writing_mode::orthogonal_inline;
@@ -28,8 +27,7 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
     // прижим текста читают `rtl` из стиля, и без этого шага блок с арабским
     // текстом прижимался влево.
     if e.attr("dir") == Some("auto") && e.style.cascaded().inh.writing.rtl.is_none() {
-        let mut text = String::new();
-        gather_text(&e.children, &mut text);
+        let text = crate::text::content::raw(&e.children, &opts.cx);
         let strong = text.chars().find_map(|ch| {
             use unicode_bidi::BidiClass::*;
             match unicode_bidi::bidi_class(ch) {

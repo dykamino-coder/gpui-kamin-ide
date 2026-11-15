@@ -4,6 +4,8 @@ mod mixed;
 #[cfg(test)]
 mod mixed_tests;
 #[cfg(test)]
+mod raw_text_tests;
+#[cfg(test)]
 mod sharing_tests;
 #[cfg(test)]
 mod tests;

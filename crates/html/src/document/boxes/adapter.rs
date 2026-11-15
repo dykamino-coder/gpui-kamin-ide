@@ -4,6 +4,19 @@ use super::{BoxTree, finish::slice_key, source::Source};
 use crate::dom::{BoxId, Node};
 
 impl BoxTree {
+    /// Raw text is distinct from CSS Text normalization (direction, shadows, hashing).
+    pub(crate) fn raw_text(
+        &self,
+        nodes: &[Node],
+    ) -> Option<std::rc::Rc<super::inline::InlineContent>> {
+        let record = self.get(*self.flows.get(&slice_key(nodes))?)?;
+        let text = record.inline.as_ref()?;
+        text.items
+            .iter()
+            .all(|item| matches!(item.kind, super::inline::ItemKind::Text { .. }))
+            .then(|| text.clone())
+    }
+
     /// Clean commits preserve topology and all inputs read by IFC preparation.
     /// Only the adapter allocation changes; neither slots nor prepared runs do.
     pub(crate) fn rebind(&mut self, nodes: &[Node]) {
