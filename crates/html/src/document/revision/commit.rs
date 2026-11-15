@@ -45,6 +45,11 @@ impl Document {
         revision: &crate::budget::RevisionBudget,
         #[cfg(feature = "engine-bench")] timings: crate::document::BuildTimings,
     ) {
+        crate::paint_path::note_plan(match &plan {
+            Plan::Clean(_) => &crate::paint_path::PLAN_CLEAN,
+            Plan::Patched(_) => &crate::paint_path::PLAN_PATCHED,
+            Plan::Restyled(..) => &crate::paint_path::PLAN_RESTYLED,
+        });
         match plan {
             Plan::Clean(nodes) => {
                 if let Some(nodes) = nodes {
@@ -116,6 +121,7 @@ impl Document {
     /// nothing written, when there is no such layer or a change is not a
     /// layer write (`layer_write`).
     fn write_paint_values(&self, nodes: &[Node], restyled: &[u64]) -> bool {
+        let _timer = crate::paint_path::Timer::start();
         let (Some(layer), true) = (self.reuse.scene_layer(), self.frame_recorded()) else {
             // A frame replays only from a settled record of this tree.
             crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);

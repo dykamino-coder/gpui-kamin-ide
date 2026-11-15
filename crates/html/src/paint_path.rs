@@ -18,6 +18,33 @@ pub static REFUSED_NO_LAYER: AtomicU64 = AtomicU64::new(0);
 /// Boxes the layer refused to record again (no run, order, transform, sprites).
 pub static REFUSED_BY_LAYER: AtomicU64 = AtomicU64::new(0);
 
+/// Revisions committed by plan (`document::revision::commit`): a rebuild
+/// of the document is none of them.
+pub static PLAN_CLEAN: AtomicU64 = AtomicU64::new(0);
+pub static PLAN_PATCHED: AtomicU64 = AtomicU64::new(0);
+pub static PLAN_RESTYLED: AtomicU64 = AtomicU64::new(0);
+/// Nanoseconds spent deciding and writing the paint-only path.
+pub static WRITE_NS: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn note_plan(counter: &AtomicU64) {
+    add(counter, 1);
+}
+
+/// Adds its lifetime to `WRITE_NS`.
+pub(crate) struct Timer(std::time::Instant);
+
+impl Timer {
+    pub(crate) fn start() -> Self {
+        Self(std::time::Instant::now())
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        add(&WRITE_NS, self.0.elapsed().as_nanos() as u64);
+    }
+}
+
 pub(crate) fn add(counter: &AtomicU64, n: u64) {
     counter.fetch_add(n, Relaxed);
 }
@@ -36,13 +63,17 @@ pub fn read() -> [u64; 6] {
 }
 
 /// Names of `read`'s counters.
-pub const NAMES: [&str; 6] = [
+pub const NAMES: [&str; 10] = [
     "values",
     "records",
     "refused_not_paint",
     "refused_not_own",
     "refused_no_layer",
     "refused_by_layer",
+    "plan_clean",
+    "plan_patched",
+    "plan_restyled",
+    "write_ns",
 ];
 
 /// Census of a document's boxes for the paint-only path: how many paint only

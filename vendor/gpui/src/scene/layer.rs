@@ -78,6 +78,9 @@ pub mod layer_counters {
     pub static PRIMITIVES_COPIED: AtomicU64 = AtomicU64::new(0);
     /// Frames neither rastered nor presented: nothing changed on screen.
     pub static PRESENTS_SKIPPED: AtomicU64 = AtomicU64::new(0);
+    /// When the last frame skipped its presentation (`PRESENTS_SKIPPED`):
+    /// the end of that frame for a bench.
+    pub static LAST_SKIP: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 }
 
 /// The host's layer: its current content, which a write replaces.

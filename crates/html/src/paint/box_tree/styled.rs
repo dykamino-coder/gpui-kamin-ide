@@ -49,6 +49,10 @@ pub(crate) fn own_box_refusal(
         return Some("hover");
     }
     let style = BoxStyle::shared(e.style.used());
+    // An inline box paints as fragments of its lines, not by its own painter.
+    if style.reset_box_layout.display.is_none() && e.inline {
+        return Some("inline");
+    }
     let c = &style;
     let reason = if c.inh.ui.hidden == Some(true) {
         "hidden"

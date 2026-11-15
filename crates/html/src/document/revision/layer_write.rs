@@ -36,6 +36,10 @@ pub(super) fn write_paint_values(
     let mut ids = ids.to_vec();
     ids.sort_unstable();
     ids.dedup();
+    if ids.is_empty() {
+        // No element's style changed: the frame stands as it is.
+        return Some(Vec::new());
+    }
     let (before, after) = (boxes(old, &ids)?, boxes(new, &ids)?);
     if before.len() != after.len() {
         return None;

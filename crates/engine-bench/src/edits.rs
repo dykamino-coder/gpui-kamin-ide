@@ -43,6 +43,9 @@ pub(super) async fn run(
     let mut work = Vec::with_capacity(args.runs);
     let mut last = [None, None];
     let mut layer = Vec::with_capacity(args.runs);
+    // ENGINE_BENCH_PRESENT_SKIP: the edits may skip presentation (a change
+    // off screen); such samples end where the frame decided it.
+    let present = std::env::var_os("ENGINE_BENCH_PRESENT_SKIP").is_none();
     for index in 1..=args.runs {
         let variant = index % 2;
         let path_before = kamin_html::paint_path::read();
@@ -50,7 +53,7 @@ pub(super) async fn run(
             layer_work(),
             window.read_with(cx, |view, _| view.doc.retained_frames())?,
         );
-        let (measured, frame, counts) = sample(
+        let (measured, frame, counts) = super::run::sample_with(
             cx,
             window,
             fonts,
@@ -58,12 +61,15 @@ pub(super) async fn run(
             Step::Edit(variants[variant]),
             capture,
             luid,
+            present,
         )
         .await?;
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         work.push(counts);
-        last[variant] = Some(frame.pixels);
+        if let Some(frame) = frame {
+            last[variant] = Some(frame.pixels);
+        }
         let after = (
             layer_work(),
             window.read_with(cx, |view, _| view.doc.retained_frames())?,
@@ -146,6 +152,7 @@ pub(super) async fn run(
     } else {
         "document_update"
     });
+    mode["presentation_required"] = json!(present);
     mode["scene_layer"] = json!({"samples": layer, "census": census});
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);

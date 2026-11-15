@@ -146,6 +146,9 @@ impl Window {
         let required = required || std::mem::take(&mut self.presentation_required);
         if !required && self.present_unneeded() {
             crate::scene::layer_counters::PRESENTS_SKIPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if let Ok(mut at) = crate::scene::layer_counters::LAST_SKIP.lock() {
+                *at = Some(std::time::Instant::now());
+            }
             self.needs_present.set(false);
             return;
         }
