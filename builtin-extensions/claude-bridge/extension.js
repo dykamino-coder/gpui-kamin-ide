@@ -12440,6 +12440,15 @@ var init_script_file = __esm({
   }
 });
 
+// src/main/mcp/tools/powershell-output.ts
+var POWERSHELL_OUTPUT_SETUP;
+var init_powershell_output = __esm({
+  "src/main/mcp/tools/powershell-output.ts"() {
+    "use strict";
+    POWERSHELL_OUTPUT_SETUP = "if ($null -eq $__kaminOut) { $__kaminOut = [System.IO.TextWriter]::Synchronized((New-Object System.IO.StreamWriter([Console]::OpenStandardOutput(), [Console]::OutputEncoding, 65536))); [Console]::SetOut($__kaminOut); [Console]::SetError($__kaminOut); $__kaminX = [System.Linq.Expressions.Expression]; [AppDomain]::CurrentDomain.add_ProcessExit($__kaminX::Lambda([EventHandler], $__kaminX::Call($__kaminX::Constant($__kaminOut), [System.IO.TextWriter].GetMethod('Flush', [Type[]]@())), [System.Linq.Expressions.ParameterExpression[]]@($__kaminX::Parameter([object]), $__kaminX::Parameter([EventArgs]))).Compile()); Remove-Variable __kaminX }; ";
+  }
+});
+
 // src/main/mcp/tools/warm-shell.ts
 function acceptorCommand(kind) {
   const start = "IFS= read -r __ocb_d && IFS= read -r REPLY || exit 0; ";
@@ -12448,7 +12457,8 @@ function acceptorCommand(kind) {
   return kind === "bash" ? start + "exec 0</dev/null; " + enter : (
     // Encoding setup and a first Invoke-Expression run while waiting: they
     // are the slow first-use part of every PowerShell command script.
-    "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false; Invoke-Expression '$null = Get-Location'; $__ocb_d = [Console]::In.ReadLine(); if ($null -eq $__ocb_d) { exit 0 }; Set-Location -LiteralPath $__ocb_d; [System.IO.Directory]::SetCurrentDirectory($__ocb_d); Remove-Variable __ocb_d; Invoke-Expression ([System.IO.File]::ReadAllText([Console]::In.ReadLine()))"
+    "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false; Invoke-Expression '$null = Get-Location'; " + // So is the output writer of the command runner (bufferedOutputRunner).
+    POWERSHELL_OUTPUT_SETUP + "$__ocb_d = [Console]::In.ReadLine(); if ($null -eq $__ocb_d) { exit 0 }; Set-Location -LiteralPath $__ocb_d; [System.IO.Directory]::SetCurrentDirectory($__ocb_d); Remove-Variable __ocb_d; Invoke-Expression ([System.IO.File]::ReadAllText([Console]::In.ReadLine()))"
   );
 }
 function warmKey(shell2, flags, env4) {
@@ -12525,6 +12535,7 @@ var init_warm_shell = __esm({
     import_node_child_process4 = require("node:child_process");
     import_node_os5 = __toESM(require("node:os"), 1);
     init_windows_job_runner();
+    init_powershell_output();
     IDLE_MS = 10 * 6e4;
     MAX_WAITING_HOOKS = 4;
     waiting = /* @__PURE__ */ new Map();
@@ -12579,7 +12590,7 @@ function warmShell(kind, shell2, flags, env4, cwd, scriptPath) {
   };
 }
 function bufferedOutputRunner(commandFile) {
-  return `$__kaminOut = [System.IO.TextWriter]::Synchronized((New-Object System.IO.StreamWriter([Console]::OpenStandardOutput(), [Console]::OutputEncoding, 65536))); [Console]::SetOut($__kaminOut); [Console]::SetError($__kaminOut); $__kaminX = [System.Linq.Expressions.Expression]; [AppDomain]::CurrentDomain.add_ProcessExit($__kaminX::Lambda([EventHandler], $__kaminX::Call($__kaminX::Constant($__kaminOut), [System.IO.TextWriter].GetMethod('Flush', [Type[]]@())), [System.Linq.Expressions.ParameterExpression[]]@($__kaminX::Parameter([object]), $__kaminX::Parameter([EventArgs]))).Compile()); $__kaminFlushed = [System.Diagnostics.Stopwatch]::StartNew(); $__kaminIdle = [System.Diagnostics.Stopwatch]::StartNew(); try { Invoke-Expression ([System.IO.File]::ReadAllText(${powerShellSingleQuote(commandFile)})) | Microsoft.PowerShell.Utility\\Out-String -Stream | Microsoft.PowerShell.Core\\ForEach-Object { $__kaminOut.WriteLine($_); if ($__kaminIdle.ElapsedMilliseconds -ge 2 -or $__kaminFlushed.ElapsedMilliseconds -ge 50) { $__kaminOut.Flush(); $__kaminFlushed.Restart() }; $__kaminIdle.Restart() } } finally { $__kaminOut.Flush() }`;
+  return POWERSHELL_OUTPUT_SETUP + `$__kaminFlushed = [System.Diagnostics.Stopwatch]::StartNew(); $__kaminIdle = [System.Diagnostics.Stopwatch]::StartNew(); try { Invoke-Expression ([System.IO.File]::ReadAllText(${powerShellSingleQuote(commandFile)})) | Microsoft.PowerShell.Utility\\Out-String -Stream | Microsoft.PowerShell.Core\\ForEach-Object { $__kaminOut.WriteLine($_); if ($__kaminIdle.ElapsedMilliseconds -ge 2 -or $__kaminFlushed.ElapsedMilliseconds -ge 50) { $__kaminOut.Flush(); $__kaminFlushed.Restart() }; $__kaminIdle.Restart() } } finally { $__kaminOut.Flush() }`;
 }
 function powerShellFlags(env4) {
   const flags = ["-NoLogo", "-NoProfile", "-NonInteractive"];
@@ -12940,6 +12951,7 @@ var init_shell = __esm({
     init_script_file();
     init_command_runtime();
     init_warm_shell();
+    init_powershell_output();
     WINDOWS_MODAL_SHIM = process.platform === "win32" ? `nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-interactive shells \u2014 use fnm, volta, or a direct Node installer" >&2; return 127; }
 ` : "";
     backgroundProcesses = /* @__PURE__ */ new Map();

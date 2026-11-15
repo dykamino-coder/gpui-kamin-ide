@@ -14,6 +14,7 @@ import {
 } from '../../utils/script-file'
 import { powerShellSingleQuote, toPosixShellPath } from '../../utils/command-runtime'
 import { startWarmShell, takeWarmShell, warmKey, type WarmKind } from './warm-shell'
+import { POWERSHELL_OUTPUT_SETUP } from './powershell-output'
 
 async function shellEnv(): Promise<NodeJS.ProcessEnv> {
   const binDirs = await listEnabledPluginBinDirs()
@@ -174,16 +175,7 @@ function warmShell(
  */
 export function bufferedOutputRunner(commandFile: string): string {
   return (
-    '$__kaminOut = [System.IO.TextWriter]::Synchronized((New-Object System.IO.StreamWriter([Console]::OpenStandardOutput(), [Console]::OutputEncoding, 65536))); ' +
-    // Errors share the writer, so stdout and stderr keep their order in one
-    // stream, as in the native shell tools.
-    '[Console]::SetOut($__kaminOut); [Console]::SetError($__kaminOut); ' +
-    // Every way out of the process, including [Environment]::Exit() and the
-    // host's report of an uncaught error, raises ProcessExit. The handler is
-    // a compiled delegate, so it runs without a PowerShell runspace.
-    '$__kaminX = [System.Linq.Expressions.Expression]; ' +
-    '[AppDomain]::CurrentDomain.add_ProcessExit($__kaminX::Lambda([EventHandler], $__kaminX::Call($__kaminX::Constant($__kaminOut), [System.IO.TextWriter].GetMethod(\'Flush\', [Type[]]@())), ' +
-    '[System.Linq.Expressions.ParameterExpression[]]@($__kaminX::Parameter([object]), $__kaminX::Parameter([EventArgs]))).Compile()); ' +
+    POWERSHELL_OUTPUT_SETUP +
     '$__kaminFlushed = [System.Diagnostics.Stopwatch]::StartNew(); $__kaminIdle = [System.Diagnostics.Stopwatch]::StartNew(); ' +
     // No catch: an uncaught error reaches the host and keeps its native view.
     `try { Invoke-Expression ([System.IO.File]::ReadAllText(${powerShellSingleQuote(commandFile)})) | ` +
