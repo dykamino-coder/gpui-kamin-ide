@@ -165,7 +165,7 @@ fn subparses_share_names_work_and_live_structural_counts() {
 fn retained_dom_keeps_storage_alive_and_independent_documents_do_not_share_it() {
     let a = context(BudgetKind::DomNodes, 6);
     let b = context(BudgetKind::DomNodes, 6);
-    let dom = html::parse("<p>KEEP</p>", &Policy::new(a.budget().clone()), None).unwrap();
+    let dom = html::parse("<p>KEEP</p>", &Policy::new(a.budget().clone()), 1).unwrap();
     let other = Admitted::with_context("<p>LOST</p>", false, b.clone()).unwrap();
     assert!(a.budget().document().used(BudgetKind::LiveBytes) > 0);
     drop(dom);

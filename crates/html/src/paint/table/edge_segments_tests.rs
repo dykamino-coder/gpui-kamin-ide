@@ -20,7 +20,7 @@ fn nan_widths_and_lines_keep_a_total_order() {
                 w: if nan { f32::NAN } else { 1.0 + (i % 4) as f32 },
                 style: 9,
                 source: 0,
-                doc_ix: u64::from(i),
+                doc_ix: i,
                 colour: Color {
                     r: 0.0,
                     g: 0.0,

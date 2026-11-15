@@ -108,13 +108,13 @@ fn rewrite(mut base: Url, html: String) -> Result<String> {
                 }
                 let mut style_name = name.clone();
                 style_name.local = "style".into();
-                let style = dom.document.new_in(NodeData::Element {
+                let style = dom.new_node(NodeData::Element {
                     name: style_name,
                     attrs: Default::default(),
                     template_contents: Default::default(),
                     mathml_annotation_xml_integration_point: false,
                 });
-                let text = dom.document.new_in(NodeData::Text {
+                let text = dom.new_node(NodeData::Text {
                     contents: RefCell::new(css.into()),
                 });
                 dom.append(&style, NodeOrText::AppendNode(text));

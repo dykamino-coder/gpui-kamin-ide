@@ -182,14 +182,13 @@ impl Node {
         data: NodeData,
         attrs_lease: Lease,
         policy: &A,
-        registry: &Rc<crate::NodeRegistry>,
+        key: crate::NodeKey,
     ) -> Result<Handle, A::Error> {
         let logical_node = policy.node_count()?;
         let node_lease = policy.node(mem::size_of::<Node>() + 2 * mem::size_of::<usize>())?;
         let (text, attributes) = payload(&data, policy)?;
         let payload_lease = policy.payload(text, attributes)?;
-        let identity = registry.allocate(policy)?;
-        let node = Rc::new(Node {
+        Ok(Rc::new(Node {
             parent: Cell::new(None),
             children: RefCell::new(Vec::new()),
             data,
@@ -199,10 +198,8 @@ impl Node {
             attrs_lease: RefCell::new(attrs_lease),
             payload_lease: RefCell::new(payload_lease),
             _node_lease: node_lease,
-            identity,
-        });
-        registry.bind(&node);
-        Ok(node)
+            key: Cell::new(key),
+        }))
     }
     pub(crate) fn reserve_children<A: Admission>(
         &self,
@@ -221,16 +218,15 @@ impl Node {
 impl RcDom {
     /// The document node is admitted before Rc allocation.
     pub fn try_new<A: Admission>(policy: &A) -> Result<Self, A::Error> {
-        Self::try_new_in(policy, crate::NodeRegistry::new(policy)?)
+        Self::try_new_from(policy, 1)
     }
 
-    /// Повторный разбор разделяет реестр с ещё живыми узлами документа.
-    pub fn try_new_in<A: Admission>(
-        policy: &A,
-        registry: Rc<crate::NodeRegistry>,
-    ) -> Result<Self, A::Error> {
+    /// Повторный разбор продолжает номера ключей прежнего DOM (`next_key`).
+    pub fn try_new_from<A: Admission>(policy: &A, first_key: u64) -> Result<Self, A::Error> {
+        let keys = crate::node_key::Keys::starting_at(first_key);
         Ok(Self {
-            document: Node::try_new(NodeData::Document, None, policy, &registry)?,
+            document: Node::try_new(NodeData::Document, None, policy, keys.issue(policy)?)?,
+            keys,
             errors: RefCell::new(Vec::new()),
             quirks_mode: Cell::new(markup5ever::interface::tree_builder::NoQuirks),
             errors_lease: RefCell::new(None),

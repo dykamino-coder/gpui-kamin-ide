@@ -14,13 +14,13 @@ pub(super) struct Cand {
     pub(super) w: f32,
     pub(super) style: u8,
     pub(super) source: u8,
-    pub(super) doc_ix: u64,
+    pub(super) doc_ix: u32,
     pub(super) colour: crate::style::values::value::Color,
     /// Наружная сторона крайней линии таблицы (-1/1); 0 — центр.
     pub(super) outward: i8,
 }
 
-pub(super) type SegKey = (f32, u8, u8, u64);
+pub(super) type SegKey = (f32, u8, u8, u32);
 
 /// Total order of segment keys: width first (`f32::total_cmp`, so a NaN
 /// width cannot break the sort), then style, source and document order.
@@ -31,7 +31,7 @@ pub(super) fn key_order(p: &SegKey, q: &SegKey) -> std::cmp::Ordering {
 
 impl Cand {
     fn key(&self) -> SegKey {
-        (self.w, self.style, self.source, u64::MAX - self.doc_ix)
+        (self.w, self.style, self.source, u32::MAX - self.doc_ix)
     }
 }
 

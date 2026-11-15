@@ -168,6 +168,15 @@ impl DocumentValues {
             .map(|s| s.dom.document.clone())
     }
 
+    /// Номер ключа, с которого продолжит повторный разбор этого документа.
+    pub fn next_node_key(&self) -> Option<u64> {
+        self.traversal
+            .source
+            .borrow()
+            .as_ref()
+            .map(|s| s.dom.next_key())
+    }
+
     /// Первый достигнутый предел этой revision, сохраняемый между кадрами.
     pub fn traversal_limit(&self) -> Option<TraversalLimit> {
         self.traversal.first_limit.get()

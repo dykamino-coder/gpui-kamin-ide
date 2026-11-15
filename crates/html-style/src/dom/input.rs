@@ -16,19 +16,17 @@ use std::rc::Rc;
 
 /// Подразборы одной ревизии разделяют work, имена и structural admission.
 #[derive(Clone)]
-pub struct Context(
-    Rc<policy::Policy>,
-    std::rc::Weak<markup5ever_rcdom::NodeRegistry>,
-);
+pub struct Context(Rc<policy::Policy>, u64);
 
 impl Context {
     pub fn new(budget: crate::budget::RevisionBudget) -> Self {
-        Self(Rc::new(policy::Policy::new(budget)), Default::default())
+        Self(Rc::new(policy::Policy::new(budget)), 1)
     }
 
-    /// Новый revision policy, но прежнее пространство ключей исходного DOM.
-    pub fn in_document(mut self, root: &markup5ever_rcdom::Handle) -> Self {
-        self.1 = Rc::downgrade(&root.registry());
+    /// Новый revision policy, но ключи продолжают номера прежнего исходного DOM:
+    /// его ещё удерживаемые узлы не совпадут по ключу с новыми.
+    pub fn in_document(mut self, first_key: u64) -> Self {
+        self.1 = first_key;
         self
     }
 
@@ -38,7 +36,7 @@ impl Context {
 
     /// Новый work scope сохраняет учёт живого исходного DOM.
     pub fn continuing(&self, budget: crate::budget::RevisionBudget) -> Self {
-        Self(Rc::new(self.0.continuing(budget)), self.1.clone())
+        Self(Rc::new(self.0.continuing(budget)), self.1)
     }
 }
 
@@ -90,7 +88,7 @@ impl Admitted {
         let mut dom = if xml {
             xml::parse(source, &context).map_err(DocumentFailure::new)?
         } else {
-            html::parse(source, policy, context.1.upgrade()).map_err(DocumentFailure::new)?
+            html::parse(source, policy, context.1).map_err(DocumentFailure::new)?
         };
         let xhtml = xml
             || super::content::is_xhtml(&dom.document, &policy.budget)
@@ -100,13 +98,12 @@ impl Admitted {
                 super::xhtml::expand_xhtml_self_closing(source, &policy.budget)
                     .map_err(DocumentFailure::new)?;
             if let std::borrow::Cow::Owned(expanded) = expanded {
-                let registry = dom.document.registry();
+                let first_key = dom.next_key();
                 drop(dom);
-                dom =
-                    html::parse(&expanded, policy, Some(registry)).map_err(DocumentFailure::new)?;
+                dom = html::parse(&expanded, policy, first_key).map_err(DocumentFailure::new)?;
             }
         }
-        context.1 = Rc::downgrade(&dom.document.registry());
+        context.1 = dom.next_key();
         Ok(Self {
             dom,
             xhtml,

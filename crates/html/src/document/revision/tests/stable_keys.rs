@@ -107,12 +107,9 @@ fn detach_restyle_and_reinsert_keep_the_original_subtree_keys() {
     let tail = named(&input.dom.document, "c");
     input.dom.remove_from_parent(&retained);
     doc.state.values.traversal.retain(input);
+    let keys = (retained.key(), child.key());
     doc.apply(&[], "p {color:red}").unwrap();
-    assert!(std::rc::Rc::ptr_eq(
-        &retained,
-        &doc.source_dom().resolve_key(retained.key()).unwrap()
-    ));
-    assert!(doc.source_dom().resolve_key(child.key()).is_some());
+    assert_eq!((retained.key(), child.key()), keys);
     let input = doc.state.values.traversal.take_source().unwrap();
     input
         .dom
@@ -128,15 +125,11 @@ fn replacing_a_document_does_not_alias_an_externally_retained_old_node() {
     let old = named(&doc.source_dom(), "old");
     let key = old.key();
     doc.update("<main><p id=new>new</p></main>", "").unwrap();
-    let registry = doc.source_dom().registry();
-    assert!(std::rc::Rc::ptr_eq(&old, &registry.resolve(key).unwrap()));
-    assert_ne!(named(&doc.source_dom(), "new").key(), key);
-    drop(old);
-    assert!(registry.resolve(key).is_none());
-    let reused = doc.source_dom().new_in(NodeData::Comment {
-        contents: "reuse".into(),
-    });
-    assert_eq!(reused.key().slot, key.slot);
-    assert_eq!(reused.key().generation, key.generation + 1);
-    assert!(registry.resolve(key).is_none());
+    assert!(!std::rc::Rc::ptr_eq(&old, &named(&doc.source_dom(), "new")));
+    let mut pending = vec![doc.source_dom()];
+    while let Some(node) = pending.pop() {
+        assert_ne!(node.key(), key, "the new DOM reissued a retained key");
+        pending.extend(node.children.borrow().iter().cloned());
+    }
+    assert_eq!(old.key(), key);
 }

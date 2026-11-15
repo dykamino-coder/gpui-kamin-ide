@@ -48,7 +48,7 @@ pub fn edge_probe(
     colors: [crate::style::values::value::Color; 4],
     styles: [u8; 4],
     source: u8,
-    doc_ix: u64,
+    doc_ix: u32,
     inset: [f32; 4],
 ) -> AnyElement {
     // Exact (unrounded) layout bounds: each collapsed border band is snapped
