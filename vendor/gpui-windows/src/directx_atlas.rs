@@ -13,7 +13,14 @@ use gpui::{
     AtlasTile, Bounds, DevicePixels, PlatformAtlas, Point, Size,
 };
 
-pub(crate) struct DirectXAtlas(Mutex<AtlasState<DirectXAtlasTextures>>);
+/// KaminIDE patch: the second field counts changes that alter the pixels of
+/// tiles a scene may still reference (removed tiles, replaced or forgotten
+/// external textures, device loss): a renderer keeping its last frame must
+/// not reuse pixels drawn before such a change.
+pub(crate) struct DirectXAtlas(
+    Mutex<AtlasState<DirectXAtlasTextures>>,
+    std::sync::atomic::AtomicU64,
+);
 
 struct DirectXAtlasTextures {
     device: ID3D11Device,
@@ -30,17 +37,44 @@ struct DirectXAtlasTexture {
     texture: ID3D11Texture2D,
     view: [Option<ID3D11ShaderResourceView>; 1],
     live_atlas_keys: u32,
+    /// KaminIDE patch: a texture of another producer (`register_external`),
+    /// whose pixels change without the atlas knowing.
+    external: bool,
 }
 
 impl DirectXAtlas {
     pub(crate) fn new(device: &ID3D11Device, device_context: &ID3D11DeviceContext) -> Self {
-        DirectXAtlas(Mutex::new(AtlasState::new(DirectXAtlasTextures {
+        let state = Mutex::new(AtlasState::new(DirectXAtlasTextures {
             device: device.clone(),
             device_context: device_context.clone(),
             monochrome_textures: Default::default(),
             polychrome_textures: Default::default(),
             subpixel_textures: Default::default(),
-        })))
+        }));
+        DirectXAtlas(state, std::sync::atomic::AtomicU64::new(0))
+    }
+
+    /// KaminIDE patch: see the second field of `DirectXAtlas`.
+    pub(crate) fn epoch(&self) -> u64 {
+        self.1.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn bump(&self) {
+        self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// KaminIDE patch: whether a sprite of `scene` (or of its groups) samples an
+    /// external texture, whose content may differ from the last frame's.
+    pub(crate) fn samples_external(&self, scene: &gpui::Scene) -> bool {
+        let lock = self.0.lock();
+        let external = |s: &gpui::Scene| {
+            s.polychrome_sprites.iter().any(|sprite| {
+                lock.backend
+                    .texture(sprite.tile.texture_id)
+                    .is_some_and(|t| t.external)
+            })
+        };
+        external(scene) || scene.groups.iter().any(|g| external(&g.scene))
     }
 
     /// Returns the view backing `id`, or `None` once every tile in it has been
@@ -96,6 +130,7 @@ impl DirectXAtlas {
             texture,
             view,
             live_atlas_keys: 0,
+            external: true,
         };
         list.textures.push(Some(atlas_texture));
         Some(AtlasTile {
@@ -142,6 +177,8 @@ impl DirectXAtlas {
         };
         slot.texture = texture;
         slot.view = view;
+        drop(lock);
+        self.bump();
         true
     }
 
@@ -155,6 +192,8 @@ impl DirectXAtlas {
         if lock.backend.polychrome_textures.textures.get(ix).is_some() {
             lock.backend.polychrome_textures.textures[ix] = None;
         }
+        drop(lock);
+        self.bump();
     }
 
     pub(crate) fn handle_device_lost(
@@ -170,6 +209,8 @@ impl DirectXAtlas {
             textures.polychrome_textures = AtlasTextureList::default();
             textures.subpixel_textures = AtlasTextureList::default();
         });
+        drop(lock);
+        self.bump();
     }
 }
 
@@ -210,6 +251,7 @@ impl PlatformAtlas for DirectXAtlas {
 
     fn remove(&self, key: &AtlasKey) {
         self.0.lock().remove(key);
+        self.bump();
     }
 }
 
@@ -369,6 +411,7 @@ impl DirectXAtlasTextures {
             texture,
             view,
             live_atlas_keys: 0,
+            external: false,
         };
         if let Some(ix) = index {
             texture_list.textures[ix] = Some(atlas_texture);
