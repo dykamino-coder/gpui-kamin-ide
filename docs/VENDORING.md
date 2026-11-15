@@ -110,7 +110,11 @@ StackSafe. Для component передавать также список tree-si
 `python scripts/check_vendor_gpui.py [crate ...]`: сборка всех целей
 (`--all-targets`: tests, benches, примеры) и unit/integration tests с этими
 features и корневыми patches, на копии корневого `Cargo.lock`, которую скрипт
-удаляет. CI запускает его отдельным job `vendor GPUI forks standalone targets`
+удаляет. У gpui-windows остальной набор тестов требует интерактивного рабочего
+стола (раскладка клавиатуры, буфер обмена), поэтому скрипт запускает только
+перечисленные в `TEST_FILTERS` headless-тесты рендерера (на CI — WARP): сейчас
+инвариант «кадр, перерисованный по повреждению, побайтно равен полному».
+CI запускает его отдельным job `vendor GPUI forks standalone targets`
 при изменениях этих форков, платформы и зависимых форков. Архив crates.io
 `gpui-pre` 0.3.8 не содержит upstream `[dev-dependencies]` (они были
 path-зависимостями монорепозитория), хотя сохраняет примеры; форк
