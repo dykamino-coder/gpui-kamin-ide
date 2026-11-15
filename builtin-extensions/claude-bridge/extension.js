@@ -3978,20 +3978,42 @@ var init_windows_job_runner = __esm({
 function outputDirectory() {
   return import_node_path4.default.join(import_node_os3.default.tmpdir(), "kamin-bridge-output");
 }
-function sweepStale(directory) {
-  if (swept) return;
-  swept = true;
+function sweepOutputDirectory(directory = outputDirectory(), now = Date.now(), capBytes = DIRECTORY_CAP_BYTES) {
+  let names;
   try {
-    const now = Date.now();
-    for (const name of import_node_fs4.default.readdirSync(directory)) {
-      const file = import_node_path4.default.join(directory, name);
-      try {
-        if (now - import_node_fs4.default.statSync(file).mtimeMs > STALE_MS) import_node_fs4.default.unlinkSync(file);
-      } catch {
-      }
-    }
+    names = import_node_fs4.default.readdirSync(directory);
   } catch {
+    return 0;
   }
+  let removed = 0;
+  const kept = [];
+  for (const name of names) {
+    const file = import_node_path4.default.join(directory, name);
+    if (activeFiles.has(file)) continue;
+    try {
+      const stat = import_node_fs4.default.statSync(file);
+      if (!stat.isFile()) continue;
+      if (now - stat.mtimeMs > STALE_MS) {
+        import_node_fs4.default.unlinkSync(file);
+        removed++;
+      } else {
+        kept.push({ file, size: stat.size, mtime: stat.mtimeMs });
+      }
+    } catch {
+    }
+  }
+  let total = kept.reduce((sum, entry) => sum + entry.size, 0);
+  kept.sort((a, b) => a.mtime - b.mtime);
+  for (const entry of kept) {
+    if (total <= capBytes) break;
+    try {
+      import_node_fs4.default.unlinkSync(entry.file);
+      total -= entry.size;
+      removed++;
+    } catch {
+    }
+  }
+  return removed;
 }
 function formatSize(bytes) {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
@@ -4004,7 +4026,7 @@ function decodeTail(tail) {
   while (start < tail.length && start < 4 && (tail[start] & 192) === 128) start++;
   return tail.subarray(start).toString("utf8");
 }
-var import_node_crypto, import_node_fs4, import_node_os3, import_node_path4, import_node_string_decoder, INLINE_BYTES, HEAD_BYTES, TAIL_BYTES, FILE_CAP_BYTES, STALE_MS, swept, StreamCapture;
+var import_node_crypto, import_node_fs4, import_node_os3, import_node_path4, import_node_string_decoder, INLINE_BYTES, HEAD_BYTES, TAIL_BYTES, FILE_CAP_BYTES, STALE_MS, DIRECTORY_CAP_BYTES, activeFiles, StreamCapture;
 var init_shell_output = __esm({
   "src/main/mcp/tools/shell-output.ts"() {
     "use strict";
@@ -4018,7 +4040,8 @@ var init_shell_output = __esm({
     TAIL_BYTES = 40 * 1024;
     FILE_CAP_BYTES = 256 * 1024 * 1024;
     STALE_MS = 24 * 36e5;
-    swept = false;
+    DIRECTORY_CAP_BYTES = 1024 * 1024 * 1024;
+    activeFiles = /* @__PURE__ */ new Set();
     StreamCapture = class {
       constructor(label, directory = outputDirectory()) {
         this.label = label;
@@ -4054,9 +4077,10 @@ var init_shell_output = __esm({
         this.head = all.subarray(0, HEAD_BYTES);
         try {
           import_node_fs4.default.mkdirSync(this.directory, { recursive: true, mode: 448 });
-          sweepStale(this.directory);
+          sweepOutputDirectory(this.directory);
           this.file = import_node_path4.default.join(this.directory, `${this.label}-${process.pid}-${(0, import_node_crypto.randomBytes)(6).toString("hex")}.txt`);
           this.fd = import_node_fs4.default.openSync(this.file, "wx", 384);
+          activeFiles.add(this.file);
         } catch (err) {
           this.saveError = err instanceof Error ? err.message : String(err);
           this.file = null;
@@ -4091,6 +4115,7 @@ var init_shell_output = __esm({
         } catch {
         }
         this.fd = null;
+        if (this.file) activeFiles.delete(this.file);
       }
       /** The text returned to the model. Closes the file. */
       finish() {
@@ -4133,13 +4158,13 @@ function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env
       signal?.removeEventListener("abort", abort);
       child.stdout?.destroy();
       child.stderr?.destroy();
+      const stdout = stdoutCapture.finish();
+      const stderr = stderrCapture.finish();
       if (failure) {
         resolve(errorResult(failure));
         return;
       }
       const parts = [];
-      const stdout = stdoutCapture.finish();
-      const stderr = stderrCapture.finish();
       if (stdout) parts.push(stdout);
       if (stderr) parts.push(`
 --- stderr ---
@@ -12337,9 +12362,9 @@ var init_command_runtime = __esm({
 function scriptDirectory() {
   return import_node_path6.default.join(import_node_os4.default.tmpdir(), "kamin-bridge-scripts");
 }
-function sweepStale2(directory) {
-  if (swept2) return;
-  swept2 = true;
+function sweepStale(directory) {
+  if (swept) return;
+  swept = true;
   try {
     const now = Date.now();
     for (const name of import_node_fs6.default.readdirSync(directory)) {
@@ -12365,7 +12390,7 @@ function remove(file, retry) {
 function writeScriptFile(content, extension2) {
   const directory = scriptDirectory();
   import_node_fs6.default.mkdirSync(directory, { recursive: true, mode: 448 });
-  sweepStale2(directory);
+  sweepStale(directory);
   const file = import_node_path6.default.join(directory, `${PREFIX}${process.pid}-${(0, import_node_crypto2.randomBytes)(8).toString("hex")}${extension2}`);
   import_node_fs6.default.writeFileSync(file, content, { encoding: "utf8", flag: "wx", mode: 384 });
   let disposed = false;
@@ -12398,7 +12423,7 @@ function assertCmdLineFits(command, args = [], platform = process.platform, coms
     );
   }
 }
-var import_node_crypto2, import_node_fs6, import_node_os4, import_node_path6, PREFIX, STALE_MS2, RETRY_MS, swept2, POWERSHELL_STATUS_TRAILER, CMD_LINE_LIMIT;
+var import_node_crypto2, import_node_fs6, import_node_os4, import_node_path6, PREFIX, STALE_MS2, RETRY_MS, swept, POWERSHELL_STATUS_TRAILER, CMD_LINE_LIMIT;
 var init_script_file = __esm({
   "src/main/utils/script-file.ts"() {
     "use strict";
@@ -12410,7 +12435,7 @@ var init_script_file = __esm({
     PREFIX = "cmd-";
     STALE_MS2 = 24 * 36e5;
     RETRY_MS = 2e3;
-    swept2 = false;
+    swept = false;
     POWERSHELL_STATUS_TRAILER = "\nif (-not $?) { exit 1 }\n";
     CMD_LINE_LIMIT = 8191;
   }
@@ -55468,6 +55493,7 @@ function relayToolUsage(name, broadcast2) {
 
 // src/index.ts
 init_toast_window();
+init_shell_output();
 var CHAT_VIEW_ID = "claudeBridgeChat";
 var TOOLS_VIEW_IDS = ["claudeBridgePlanView", "claudeBridgeTodosView", "claudeBridgeAgentsView", "claudeBridgeConsoleView", "claudeBridgeToolsUsageView"];
 var CUSTOMIZE_VIEW_IDS = [
@@ -55483,6 +55509,7 @@ var CUSTOMIZE_VIEW_IDS = [
   "claudeBridgeCzStats"
 ];
 function activate(context) {
+  setTimeout(() => sweepOutputDirectory(), 0).unref?.();
   const kWindow = kaminide2.window;
   if (typeof kWindow?.showTransientMessage === "function") {
     configureTransientNotice((message, options, ...items) => kWindow.showTransientMessage(message, options, ...items));

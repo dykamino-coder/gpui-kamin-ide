@@ -14,29 +14,63 @@ export const HEAD_BYTES = 40 * 1024
 export const TAIL_BYTES = 40 * 1024
 /** A runaway command cannot fill the disk: the file stops growing here. */
 export const FILE_CAP_BYTES = 256 * 1024 * 1024
-const STALE_MS = 24 * 3600_000
-let swept = false
+/** Saved outputs older than this are removed. */
+export const STALE_MS = 24 * 3600_000
+/** All saved outputs together stay under this; the oldest go first. */
+export const DIRECTORY_CAP_BYTES = 1024 * 1024 * 1024
+/** Files a running command is still writing; never removed by a sweep. */
+const activeFiles = new Set<string>()
 
 export function outputDirectory(): string {
   return path.join(os.tmpdir(), 'kamin-bridge-output')
 }
 
-function sweepStale(directory: string): void {
-  if (swept) return
-  swept = true
+/** Removes saved outputs older than STALE_MS, then the oldest ones until the
+ *  rest fit in DIRECTORY_CAP_BYTES. Runs when the extension starts and before
+ *  each new file, so the directory stays bounded however long the host runs.
+ *  Returns the number of files removed. */
+export function sweepOutputDirectory(
+  directory: string = outputDirectory(),
+  now: number = Date.now(),
+  capBytes: number = DIRECTORY_CAP_BYTES,
+): number {
+  let names: string[]
   try {
-    const now = Date.now()
-    for (const name of fs.readdirSync(directory)) {
-      const file = path.join(directory, name)
-      try {
-        if (now - fs.statSync(file).mtimeMs > STALE_MS) fs.unlinkSync(file)
-      } catch {
-        /* in use or already gone */
-      }
-    }
+    names = fs.readdirSync(directory)
   } catch {
-    /* best effort */
+    return 0
   }
+  let removed = 0
+  const kept: Array<{ file: string; size: number; mtime: number }> = []
+  for (const name of names) {
+    const file = path.join(directory, name)
+    if (activeFiles.has(file)) continue
+    try {
+      const stat = fs.statSync(file)
+      if (!stat.isFile()) continue
+      if (now - stat.mtimeMs > STALE_MS) {
+        fs.unlinkSync(file)
+        removed++
+      } else {
+        kept.push({ file, size: stat.size, mtime: stat.mtimeMs })
+      }
+    } catch {
+      /* in use or already gone */
+    }
+  }
+  let total = kept.reduce((sum, entry) => sum + entry.size, 0)
+  kept.sort((a, b) => a.mtime - b.mtime)
+  for (const entry of kept) {
+    if (total <= capBytes) break
+    try {
+      fs.unlinkSync(entry.file)
+      total -= entry.size
+      removed++
+    } catch {
+      /* in use or already gone */
+    }
+  }
+  return removed
 }
 
 function formatSize(bytes: number): string {
@@ -92,9 +126,10 @@ export class StreamCapture {
     this.head = all.subarray(0, HEAD_BYTES)
     try {
       fs.mkdirSync(this.directory, { recursive: true, mode: 0o700 })
-      sweepStale(this.directory)
+      sweepOutputDirectory(this.directory)
       this.file = path.join(this.directory, `${this.label}-${process.pid}-${randomBytes(6).toString('hex')}.txt`)
       this.fd = fs.openSync(this.file, 'wx', 0o600)
+      activeFiles.add(this.file)
     } catch (err) {
       this.saveError = err instanceof Error ? err.message : String(err)
       this.file = null
@@ -133,6 +168,7 @@ export class StreamCapture {
       /* already closed */
     }
     this.fd = null
+    if (this.file) activeFiles.delete(this.file)
   }
 
   /** The text returned to the model. Closes the file. */

@@ -48,13 +48,14 @@ export function runForegroundCommand(
       signal?.removeEventListener('abort', abort)
       child.stdout?.destroy()
       child.stderr?.destroy()
+      // finish() also closes a saved-output file, so it runs on every path.
+      const stdout = stdoutCapture.finish()
+      const stderr = stderrCapture.finish()
       if (failure) {
         resolve(errorResult(failure))
         return
       }
       const parts: string[] = []
-      const stdout = stdoutCapture.finish()
-      const stderr = stderrCapture.finish()
       if (stdout) parts.push(stdout)
       if (stderr) parts.push(`\n--- stderr ---\n${stderr}`)
       if (cancelled) parts.push('\n[Command cancelled; termination requested]')

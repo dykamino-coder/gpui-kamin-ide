@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { readFile } from './file-system'
 import { fallbackResult, grepSearch, paginationNotice } from './grep-tool'
-import { HEAD_BYTES, INLINE_BYTES, StreamCapture, TAIL_BYTES } from './shell-output'
+import { HEAD_BYTES, INLINE_BYTES, STALE_MS, StreamCapture, TAIL_BYTES, outputDirectory, sweepOutputDirectory } from './shell-output'
 import { clearFileCache } from '../../utils/file-read-cache'
 
 // INC-2026-0121: a result the model cannot use whole must say so and keep the
@@ -69,6 +69,60 @@ describe('shell output capture', () => {
     expect(path.dirname(saved)).toBe(out)
     expect(fs.readFileSync(saved, 'utf8')).toBe(lines)
     expect(result.length).toBeLessThan(HEAD_BYTES + TAIL_BYTES + 1024)
+  })
+
+  it('saves the full output where the client-side Read opens it', async () => {
+    const c = new StreamCapture('stdout')
+    const lines = Array.from({ length: 200_000 }, (_, i) => `${i + 1}\n`).join('')
+    c.push(Buffer.from(lines))
+    const saved = /Full output saved to (.+?); read it with Read/.exec(c.finish())![1]!
+    try {
+      expect(path.dirname(saved)).toBe(outputDirectory())
+      const r = await readFile({ file_path: saved, offset: 100_000, limit: 2 })
+      expect(r.isError).toBeFalsy()
+      expect(text(r)).toBe('100000\t100000\n100001\t100001')
+    } finally {
+      fs.rmSync(saved, { force: true })
+    }
+  })
+
+  it('removes saved outputs older than a day and keeps fresh ones', () => {
+    const out = path.join(dir, 'out')
+    fs.mkdirSync(out)
+    const old = path.join(out, 'stdout-old.txt')
+    const fresh = path.join(out, 'stdout-fresh.txt')
+    fs.writeFileSync(old, 'old')
+    fs.writeFileSync(fresh, 'fresh')
+    const dayAgo = (Date.now() - STALE_MS - 60_000) / 1000
+    fs.utimesSync(old, dayAgo, dayAgo)
+    expect(sweepOutputDirectory(out)).toBe(1)
+    expect(fs.existsSync(old)).toBe(false)
+    expect(fs.existsSync(fresh)).toBe(true)
+  })
+
+  it('drops the oldest saved outputs once the directory exceeds its total cap', () => {
+    const out = path.join(dir, 'out')
+    fs.mkdirSync(out)
+    const now = Date.now()
+    for (let i = 0; i < 4; i++) {
+      const file = path.join(out, `stdout-${i}.txt`)
+      fs.writeFileSync(file, 'x'.repeat(1000))
+      const t = (now - (4 - i) * 60_000) / 1000
+      fs.utimesSync(file, t, t)
+    }
+    expect(sweepOutputDirectory(out, now, 2500)).toBe(2)
+    expect(fs.readdirSync(out).sort()).toEqual(['stdout-2.txt', 'stdout-3.txt'])
+  })
+
+  it('never removes the file a running command is still writing', () => {
+    const out = path.join(dir, 'out')
+    const c = new StreamCapture('stdout', out)
+    c.push(Buffer.alloc(INLINE_BYTES + 1, 0x61))
+    const [live] = fs.readdirSync(out)
+    expect(sweepOutputDirectory(out, Date.now() + 2 * STALE_MS, 0)).toBe(0)
+    expect(fs.existsSync(path.join(out, live!))).toBe(true)
+    c.finish()
+    expect(sweepOutputDirectory(out, Date.now() + 2 * STALE_MS, 0)).toBe(1)
   })
 
   it('never splits a UTF-8 character at the head or tail boundary', () => {
