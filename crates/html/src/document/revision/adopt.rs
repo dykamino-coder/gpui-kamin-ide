@@ -124,6 +124,9 @@ impl Document {
         }
         // Цели атрибутов — только `class` и `data-*` (`neutral`): их читают
         // лишь селекторы и `attr()` каскада, а не сборка кадра.
+        if !texts.is_empty() {
+            self.forget_has();
+        }
         Some(if texts.is_empty() {
             Plan::Clean(Some(nodes))
         } else {
