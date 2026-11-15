@@ -154,3 +154,67 @@ fn flex_items_in_order_modified_order_draw_as_without_a_layer(cx: &mut TestAppCo
     let item = "<div style='display:flex'><div class=b style='order:1'>b</div><div style='order:-1'>I</div><div class=a style='order:-1'>a</div></div>";
     check(cx, "flex order", &repeat(item));
 }
+
+#[gpui::test]
+fn stacked_boxes_around_the_root_background_draw_as_without_a_layer(cx: &mut TestAppContext) {
+    // Negative z-index content paints just above the root background
+    // (CSS 2.1 §9.9.1 step 3), positive z-index content above the flow.
+    let items: String = (0..N)
+        .map(|i| {
+            let z = if i % 2 == 0 { -1 } else { 1 };
+            format!(
+                "<div class={} style='position:relative;z-index:{z};width:60px;height:20px;margin-top:-6px'>ab</div>",
+                ["a", "b", "c"][i % 3]
+            )
+        })
+        .collect();
+    check(
+        cx,
+        "z-index",
+        &format!("<div class=c style='height:10px'></div>{items}"),
+    );
+}
+
+#[gpui::test]
+fn fragmented_flex_columns_draw_as_without_a_layer(cx: &mut TestAppContext) {
+    let item = "<div class=a style='height:30px'>ab</div><div class=b style='height:30px;position:relative;z-index:-1;margin-top:-10px'>cd</div>";
+    check(
+        cx,
+        "flex columns",
+        &format!(
+            "<div style='columns:3;column-gap:4px;height:60px'><div style='display:flex;flex-flow:column wrap'>{}</div></div>",
+            repeat(item)
+        ),
+    );
+}
+
+#[gpui::test]
+fn grid_gap_decorations_draw_as_without_a_layer(cx: &mut TestAppContext) {
+    // Rules over translucent items that leave no gaps (css-gaps grid 042).
+    let spans = [
+        "1/3;grid-row:1/2",
+        "3/4;grid-row:1/3",
+        "auto;grid-row:2/4",
+        "2/4;grid-row:3/4",
+        "2/3;grid-row:2/3",
+        "4/5;grid-row:1/4",
+        "1/4;grid-row:4/5",
+        "4/5;grid-row:4/5",
+    ];
+    let items: String = spans
+        .iter()
+        .map(|s| format!("<div style='background:#888;opacity:0.5;border:1px solid #000;grid-column:{s}'></div>"))
+        .collect();
+    check(
+        cx,
+        "gap decorations",
+        &format!(
+            "<div style='display:grid;grid-template-columns:repeat(4,1fr);width:200px;height:200px;column-rule:5px solid #00f;row-rule:5px solid #f00'>{items}</div>"
+        ),
+    );
+}
+#[gpui::test]
+fn wrapped_words_over_stacked_boxes_draw_as_without_a_layer(cx: &mut TestAppContext) {
+    let item = "<div class=b style='position:relative;z-index:-1;height:16px;margin-bottom:-12px'></div><div class=a style='width:40px;overflow-wrap:break-word'>longunbrokenword</div>";
+    check(cx, "overflow-wrap", &repeat(item));
+}
