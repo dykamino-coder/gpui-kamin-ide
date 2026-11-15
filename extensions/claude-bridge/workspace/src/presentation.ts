@@ -20,7 +20,8 @@ export class WorkspacePresentation {
 
   constructor(private publish: (channel: string, ...args: unknown[]) => void,
     private entries: (tabId: string) => readonly QueueEntry[] = () => [],
-    private storage?: SubmissionStorage) {}
+    private storage?: SubmissionStorage,
+    private restoreRejected?: (tabId: string, text: string) => void) {}
 
   restore(tabIds: Set<string>): void {
     const state = this.storage?.load()
@@ -73,6 +74,9 @@ export class WorkspacePresentation {
       if ((previous?.[1] as SubmissionUpdate)?.committed) receipt.committed = true
       receipt.fallbackQueue = mergeFallbackQueue((previous?.[1] as SubmissionUpdate)?.fallbackQueue, args[1].fallbackQueue)
       this.submissions.set(key, { ...frame, args: [args[0], receipt] })
+      if (receipt.rejected && !(previous?.[1] as SubmissionUpdate)?.rejected &&
+          (previous?.[1] as SubmissionUpdate)?.state !== 'cancelled')
+        this.restoreRejected?.(args[0], receipt.text ?? '')
       if (!receipt.committed) this.reconcileCommitted(args[0], this.entries(args[0]))
       if (args[1].state === 'fallback') this.reconcileFallback(args[0], this.entries(args[0]))
       if (!receipt.committed) this.reconcileTranscript(args[0], this.entries(args[0]))

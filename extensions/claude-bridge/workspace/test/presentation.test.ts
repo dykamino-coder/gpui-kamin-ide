@@ -2,6 +2,21 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { WorkspacePresentation } from '../src/presentation.js'
 
+test('rejected input restores the host draft once, independently of attached pages and snapshots', () => {
+  const restored: unknown[] = []
+  const state = new WorkspacePresentation(() => {}, undefined, undefined,
+    (tab, text) => restored.push([tab, text]))
+  const refusal = { kind: 'event', channel: 'session:submission',
+    args: ['tab', { id: 'rejected', text: 'one\ntwo\nthree\nfour', state: 'cancelled', rejected: true }] } as const
+  state.observe({ ...refusal, args: [...refusal.args] })
+  state.observe({ ...refusal, args: [...refusal.args] })
+  state.snapshot(); state.snapshot()
+  assert.deepEqual(restored, [['tab', 'one\ntwo\nthree\nfour']])
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'cancelled', state: 'cancelled' }] })
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { ...refusal.args[1], id: 'cancelled' }] })
+  assert.equal(restored.length, 1, 'Cancel must not restore a later refusal')
+})
+
 test('INC-2026-0077 clears a resolved permission across views before transport acknowledgement', () => {
   const events: any[] = []
   const state = new WorkspacePresentation((channel, ...args) => events.push({ channel, args }))

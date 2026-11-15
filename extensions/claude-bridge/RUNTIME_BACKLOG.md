@@ -1,5 +1,60 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.103 delivery: message sent during reconnect — 2026-11-15
+
+Delivery reconciliation 2026-11-15, source `origin/main`
+`5a7919a3c29ee76b9c340d06592705bd988914be` (release #941):
+[KaminIDE 1.0.103](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.103)
+/ server 6.3.180 is published. The ancestry of #938 in the tag and the published
+Release were checked; the image is
+`docker.io/dykamino/open-claude-bridge:6.3.180@sha256:b61ee7b41f76ca18ecc7c19616f0f20869bc8f8e4ef1d42791b8c6917cb8cf2b`.
+[INC-0120](runtime-issues/INC-2026-0120.md) is resolved for its accepted scope.
+The exact-head gate on `eaa6d51f` showed red on 1.0.102 ("Queued", no answer)
+and green on the candidate (text restored to the message box, a single answer
+after resend). The release candidate `ba850cbf` repeated it against a server
+built from the release commit ([private gate evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/5c9d20d9078b0171cb546fdaffaaea1cf075fba3/incidents/INC-2026-0120/evidence/2026-11-15-pr938-gate-eaa6d51f)).
+The browser-workspace part is covered by automated tests only. Publication is
+not acceptance in the owner's environment.
+## KaminIDE 1.0.102 delivery: first message after a server restart — 2026-11-15
+
+Delivery reconciliation 2026-11-15, source `origin/main`
+`92aadd0be167d5180cf670abed741b4894695329` (release #937):
+[KaminIDE 1.0.102](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.102)
+/ server 6.3.179 is published. The ancestry of #934 in the tag and the published
+Release were checked; the image is
+`docker.io/dykamino/open-claude-bridge:6.3.179@sha256:0a81327d19735fc70fdf104c9ede2e9a044a7feb63d795d37b3f35cc9612cba5`.
+[INC-0119](runtime-issues/INC-2026-0119.md) is resolved for its accepted scope.
+The exact-head Windows gate showed a red result on 6.3.178 (clipped in 2 of 2
+runs) and a green result on the fix head (intact in 2 of 2 runs, plus a second
+request). The release candidate `bd1943e3` and the release commit have the same
+tree ([private gate evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/9230a76c5360dc93bb3619d83b46d14b950c93e6/incidents/INC-2026-0119/evidence/2026-11-15-pr934-gate-046d53fa)).
+Publication is not acceptance in the owner's environment.
+
+Open: [INC-0120](runtime-issues/INC-2026-0120.md). A message sent while the chat
+reconnects is dropped by the extension and stays "Queued"; it is a known issue
+of 1.0.102. Fix PR #938 is open. Its first gate was withdrawn because the
+committed bundles did not match a build from source. Next artifact: a head with
+rebuilt bundles, then a repeated Windows gate by `kacc`.
+## KaminIDE 1.0.101 delivery: hook-condition lease recovery — 2026-11-15
+
+Delivery reconciliation 2026-11-15, source `origin/main`
+`f89e0db6338767c7cf3bee7a3598725b88243bbc`; release #926
+`bfbf43f480098c9687d11ec4244f2d659b5076b4`:
+[KaminIDE 1.0.101](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.101)
+/ server 6.3.178 is published. Git ancestry of #869, #917 and #923 in the tag
+and the published Release were checked. [INC-0118](runtime-issues/INC-2026-0118.md)
+and its parent [INC-0107](runtime-issues/INC-2026-0107.md) are resolved for their
+accepted scope: the exact-candidate Windows gates already passed, including
+lease recovery after forced 5 s and 30 s CLI pauses. The release candidate and
+release commit have the same tree ([private gate evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/ccf4e8a19a8db6a47b1221ccf56ef80a323a5a6a/incidents/INC-2026-0118/evidence/2026-11-15-release-1.0.101-gate)).
+No remaining gate is claimed completed merely by publication. The original CLI
+stall remains unattributed. First-message truncation after a server restart and
+the gate script's history-reload/count error are separate investigations owned
+by `cxstats`; next artifact: corrected wait-condition regression and a single
+prompt replay, with a new incident only if the product defect is confirmed.
+
+The dated sections below preserve their historical delivery snapshots.
+
 ## KaminIDE 1.0.100 delivery: native hook conditions and the frame clear — 2026-11-14
 
 Delivery reconciliation 2026-11-14, source `origin/main`

@@ -3,7 +3,7 @@ import * as vscode from 'vscode'
 import { randomUUID } from 'node:crypto'
 import { appendStreamingText } from '../../shared/streaming-delta'
 import type { BrowserWindow } from '@kaminide/host-compat'
-import type { AgentEngine, ConnectionConfig, ConnectionRefusal, ConnectionState, PermissionDecision } from '../../shared/types'
+import type { AgentEngine, ConnectionConfig, ConnectionRefusal, ConnectionState, PermissionDecision, SubmissionUpdate } from '../../shared/types'
 import { engineOfModelId } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
@@ -1031,8 +1031,29 @@ export class ConnectionManager {
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
    *  paste+retry dance. */
   submitText(text: string, submissionId?: string): void {
+    if (this.disposed) return
+    // An OPEN transport alone does not identify the destination CLI. Never
+    // retain a new prompt across resume/identity recovery or session handoff.
+    const reject = (): void => {
+      const update: SubmissionUpdate = {
+        id: submissionId ?? randomUUID(), text, state: 'cancelled', rejected: true,
+        cancelable: false, retryable: false,
+        warning: 'Message not sent: the chat is reconnecting. Your text was returned to the composer.',
+      }
+      this.submissions.receive(update)
+      this.window.webContents.send('session:submission', this.tabId, update)
+    }
+    if (this.identityHold || this.handoffWait || this.state.status !== 'authenticated' || this.ws?.readyState !== WebSocket.OPEN) {
+      reject()
+      return
+    }
+    try {
+      this.ws.send(JSON.stringify({ type: 'session:submitText', data: text, submissionId }))
+    } catch {
+      reject()
+      return
+    }
     if (submissionId) this.submissions.remember(submissionId, text)
-    this.send({ type: 'session:submitText', data: text, submissionId })
   }
 
   submissionAction(id: string, action: 'cancel' | 'push' | 'interrupt'): void {
