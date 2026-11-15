@@ -116,11 +116,30 @@ export function lifecycleLog(event: string, fields: Record<string, unknown> = {}
     // Stable across boots so access by one token can be correlated; not reversible.
     record.tokenRef = createHash('sha256').update(`kamin-token-ref-v1:${fields.tokenId}`).digest('hex').slice(0, 12)
   }
-  for (const name of ['ageMs', 'idleMs', 'graceMs', 'waitedMs', 'exitCode', 'bytes', 'entries']) {
+  for (const name of [
+    'ageMs',
+    'idleMs',
+    'graceMs',
+    'waitedMs',
+    'slotMs',
+    'startMs',
+    'bootMs',
+    'exitCode',
+    'bytes',
+    'entries',
+  ]) {
     const value = fields[name]
     if (typeof value === 'number' && Number.isSafeInteger(value)) record[name] = value
   }
-  for (const name of ['isSubAgent', 'suppressed', 'resumeRequested', 'resumeNotFound', 'settingsDirFound', 'self']) {
+  for (const name of [
+    'isSubAgent',
+    'suppressed',
+    'resumeRequested',
+    'resumeNotFound',
+    'settingsDirFound',
+    'self',
+    'urgent',
+  ]) {
     if (typeof fields[name] === 'boolean') record[name] = fields[name]
   }
   // Raw conversation ids never enter the file — only their stable refs.
