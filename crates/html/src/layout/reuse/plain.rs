@@ -90,16 +90,65 @@ pub(super) fn flow_kind(e: &Element) -> bool {
 }
 
 /// Поддерево `e` можно повторить на экране (`replay`): коробки потока без
-/// флоатов, единиц области просмотра, вертикального письма, гибких и
-/// сеточных коробок (их сборка читает размеры окна напрямую, а не через
-/// ограничения, чьи чтения записываются). Позиционирование и свои слои —
-/// только оставаясь внутри поддерева (`layered::contained`).
+/// единиц области просмотра, вертикального письма, гибких и сеточных коробок
+/// (их сборка читает размеры окна напрямую, а не через ограничения, чьи
+/// чтения записываются). Флоаты — только внутри корня своего контекста
+/// форматирования в поддереве (`escaping_floats`). Позиционирование и свои
+/// слои — только оставаясь внутри поддерева (`layered::contained`).
 pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
-    let node = |e: &Element| {
-        let float = e.style.used().reset_box_layout.float;
-        flow_kind(e) && float.is_none_or(|f| f == 0) && layout_reads_outside_nothing(e, vcx)
-    };
-    all_elements(e, node) && super::layered::contained(e)
+    let node = |e: &Element| flow_kind(e) && layout_reads_outside_nothing(e, vcx);
+    all_elements(e, node) && !escaping_floats(e) && super::layered::contained(e)
+}
+
+fn floating(e: &Element) -> bool {
+    e.style
+        .used()
+        .reset_box_layout
+        .float
+        .is_some_and(|f| f != 0)
+}
+
+/// В поддереве `e` есть флоат, который выходит за его край: сам `e` или
+/// флоат, у которого между ним и `e` (включая `e`) нет коробки со своим
+/// контекстом форматирования. Флоат внутри такой коробки остаётся в ней: ни
+/// строки, ни блоки снаружи его не обходят, а коробка вмещает его по высоте
+/// (CSS 2.1 §9.4.1, §10.6.7; css-multicol-1 §2: многоколоночник — корень
+/// контекста). Так Blink держит exclusion space внутри результата корня BFC
+/// (`LayoutResult`, layout_box_hot.cc:152), а снаружи его не видно.
+pub(super) fn escaping_floats(e: &Element) -> bool {
+    use crate::layout::box_kind::own_context;
+    if floating(e) {
+        return true;
+    }
+    if own_context(e) {
+        return false;
+    }
+    // As `all_elements`: the children of `e` in place, a level per open
+    // descendant, so a block of text and empty boxes allocates nothing.
+    let mut top = e.children.iter();
+    let mut open: Vec<std::slice::Iter<'_, Node>> = Vec::new();
+    loop {
+        let next = match open.last_mut() {
+            Some(level) => level.next(),
+            None => top.next(),
+        };
+        match next {
+            Some(Node::Element(c)) => {
+                if floating(c) {
+                    return true;
+                }
+                if !c.children.is_empty() && !own_context(c) {
+                    open.push(c.children.iter());
+                }
+            }
+            Some(_) => {}
+            None => {
+                if open.pop().is_none() {
+                    return false;
+                }
+            }
+        }
+    }
 }
 
 /// Элемент `e` сам по себе не мешает повтору поддерева (`replayable`), а
@@ -141,13 +190,6 @@ pub(super) fn fills_width(e: &Element) -> bool {
         && layout.max_width.is_none()
 }
 
-/// В поддереве `e` есть флоат.
-pub(super) fn floats(e: &Element) -> bool {
-    !all_elements(e, |e| {
-        e.style.used().reset_box_layout.float.is_none_or(|f| f == 0)
-    })
-}
-
 /// Every element of the subtree of `e`, in document order, passes `f`; the
 /// walk stops at the first that does not. The stack holds one child iterator
 /// per open level, so a block of thousands of inline children costs a few
@@ -185,41 +227,7 @@ pub(super) fn all_elements(e: &Element, mut f: impl FnMut(&Element) -> bool) -> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::dom::{Marks, Text};
-    use crate::style::computed::Computed;
-
-    fn el(tag: &str, children: Vec<Node>) -> Element {
-        Element::synthetic(tag, Computed::default(), Marks::default(), children)
-    }
-
-    #[test]
-    fn text_blocks_are_plain_and_replaced_or_positioned_descendants_are_not() {
-        let text = Node::Text(Text::from_source("a".into(), None));
-        assert!(plain(&el(
-            "p",
-            vec![text.clone(), Node::Element(el("b", vec![]))]
-        )));
-        assert!(!plain(&el("div", vec![Node::Element(el("img", vec![]))])));
-        let mut moved = el("span", vec![text]);
-        moved.style.used_mut().reset_positioned.position = Some(Position::Absolute);
-        assert!(!plain(&el("div", vec![Node::Element(moved.clone())])));
-        assert!(!floats(&el("div", vec![Node::Element(moved)])));
-        let mut floated = el("span", vec![]);
-        floated.style.used_mut().reset_box_layout.float = Some(1);
-        assert!(floats(&el("div", vec![Node::Element(floated)])));
-    }
-
-    #[test]
-    fn inert_verdict_is_computed_once_per_child_build() {
-        let inert = Inert::default();
-        assert!(inert.of(&el("p", vec![])));
-        // The second question is answered from the first walk, not a new one.
-        assert!(inert.of(&el("img", vec![])));
-        assert!(!Inert::default().of(&el("img", vec![])));
-    }
-}
+mod tests;
 
 /// Обёртка `html`/`body` (или её отсутствие) не читает базовых линий и
 /// строк крайних детей потока: блочная коробка без псевдоэлементов первой

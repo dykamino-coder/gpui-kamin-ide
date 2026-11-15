@@ -545,18 +545,19 @@ impl Window {
     /// state records, and state that is at its default. Open ink sinks then
     /// allow those effects; otherwise they are tainted.
     pub fn offscreen_inert<R>(&mut self, f: impl FnOnce(&mut Self) -> (R, bool)) -> R {
-        if self.next_frame.scene.ink.is_empty() && self.next_frame.scene.ink_scope == 0 {
-            return f(self).0;
-        }
         let start = self.paint_index();
         let (result, inert) = f(self);
         let end = self.paint_index();
         let scene = &mut self.next_frame.scene;
+        // Allowed effects count even where no sink is open: paint in an
+        // isolated scene (`with_isolated_scene`, a multicol column copy) has
+        // none, and the ink probe of the paint around it (`InkProbe`)
+        // compares these counts.
         if inert {
             scene.ink_allowed.0 += (end.mouse_listeners_index - start.mouse_listeners_index) as u32;
             scene.ink_allowed.1 +=
                 (end.accessed_element_states_index - start.accessed_element_states_index) as u32;
-        } else {
+        } else if !scene.ink.is_empty() || scene.ink_scope != 0 {
             ink_taint(&scene.ink, scene.ink_scope);
             scoped_ink(scene.ink_scope, |sink| sink.taint_in(scene.ink_scope));
         }
