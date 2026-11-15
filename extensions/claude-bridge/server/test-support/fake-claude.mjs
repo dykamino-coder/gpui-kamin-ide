@@ -160,6 +160,13 @@ async function agents(count = 800, team) {
 // per real CLI. No API traffic, no prompt content: synthetic only.
 const LOAD_K = Number(process.env.BRIDGE_FAKE_LOAD_K ?? 0)
 const LOAD_THINK_MS = Number(process.env.BRIDGE_FAKE_LOAD_THINK_MS ?? 2000)
+// CPU a real CLI spends per step (rendering, parsing the stream); calibrated
+// so the container's CPU contention matches real CLIs at the same load.
+const LOAD_BURN_MS = Number(process.env.BRIDGE_FAKE_LOAD_BURN_MS ?? 0)
+const burn = () => {
+  const end = Date.now() + LOAD_BURN_MS
+  while (Date.now() < end);
+}
 const LOAD_TOOLS = [
   ['Read', { file_path: process.env.BRIDGE_FAKE_LOAD_FILE ?? '/tmp/work/f1.txt' }],
   ['Grep', { pattern: 'needle', path: process.env.BRIDGE_FAKE_LOAD_DIR ?? '/tmp/work' }],
@@ -189,6 +196,7 @@ async function loadTurn() {
     const text = String(response?.result?.content?.[0]?.text ?? '')
     emit(rec.result(call.message.content[0].id, text.slice(0, 4000)))
     process.stdout.write(text.slice(0, 1500).replace(/\n/g, '\r\n'))
+    burn()
   }
   await pause(LOAD_THINK_MS)
   emit(rec.assistant([{ type: 'text', text: 'Synthetic load turn complete' }]))

@@ -149,12 +149,7 @@ interface Candidate {
   session: PtySession
 }
 
-function candidates(
-  now: number,
-  minIdleMs: number,
-  deps: BlockerDeps,
-  blocked?: Map<string, number>,
-): Candidate[] {
+function candidates(now: number, minIdleMs: number, deps: BlockerDeps, blocked?: Map<string, number>): Candidate[] {
   const out: Candidate[] = []
   for (const handle of handles) {
     const id = handle.awakeSessionId()
