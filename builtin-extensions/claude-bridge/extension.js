@@ -44795,8 +44795,31 @@ var ConnectionManager = class _ConnectionManager {
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
    *  paste+retry dance. */
   submitText(text, submissionId) {
+    if (this.disposed) return;
+    const reject = () => {
+      const update = {
+        id: submissionId ?? (0, import_node_crypto5.randomUUID)(),
+        text,
+        state: "cancelled",
+        rejected: true,
+        cancelable: false,
+        retryable: false,
+        warning: "Message not sent: the chat is reconnecting. Your text was returned to the composer."
+      };
+      this.submissions.receive(update);
+      this.window.webContents.send("session:submission", this.tabId, update);
+    };
+    if (this.identityHold || this.handoffWait || this.state.status !== "authenticated" || this.ws?.readyState !== wrapper_default.OPEN) {
+      reject();
+      return;
+    }
+    try {
+      this.ws.send(JSON.stringify({ type: "session:submitText", data: text, submissionId }));
+    } catch {
+      reject();
+      return;
+    }
     if (submissionId) this.submissions.remember(submissionId, text);
-    this.send({ type: "session:submitText", data: text, submissionId });
   }
   submissionAction(id, action) {
     if (this.submissions.action(id, action, this.state.status === "authenticated", (text, id2) => this.submitText(text, id2))) return;

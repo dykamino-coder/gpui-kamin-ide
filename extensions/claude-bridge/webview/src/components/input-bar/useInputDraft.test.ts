@@ -29,6 +29,7 @@ vi.mock('../../signals/ui', async () => {
 })
 
 const { useInputDraft } = await import('./useInputDraft')
+const { restoreRejectedInputDraft } = await import('../../lib/rejected-input-draft')
 
 beforeEach(() => {
   // Unmount the previous test's hook (its attachment subscription stays live otherwise).
@@ -44,6 +45,25 @@ beforeEach(() => {
 })
 
 describe('useInputDraft', () => {
+  it('restores a refused message beside newer typing, and saves a background tab separately', () => {
+    mocked.setItem.mockImplementation((k: string, v: string) => { mocked.values.set(k, v) })
+    const textarea = { value: '', addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(() => true) } as unknown as HTMLTextAreaElement
+    const setHasText = vi.fn()
+    useInputDraft({ tabId: 'tab-1', textareaRef: { current: textarea }, setHasText })
+    textarea.value = 'new typing'
+    restoreRejectedInputDraft('tab-1', 'one\ntwo\nthree\nfour')
+    expect(textarea.value).toBe('new typing\none\ntwo\nthree\nfour')
+    expect(mocked.values.get('input-draft:tab-1')).toBe(textarea.value)
+    expect(setHasText).toHaveBeenLastCalledWith(true)
+    mocked.cleanup?.()
+    useInputDraft({ tabId: 'tab-2', textareaRef: { current: textarea }, setHasText })
+    restoreRejectedInputDraft('tab-1', 'second refused message')
+    expect(textarea.value).toBe('')
+    mocked.cleanup?.()
+    useInputDraft({ tabId: 'tab-1', textareaRef: { current: textarea }, setHasText })
+    expect(textarea.value).toBe('new typing\none\ntwo\nthree\nfour\nsecond refused message')
+  })
   it('restores a per-tab draft without any PTY or bridge dependency', () => {
     mocked.values.set('input-draft:tab-1', 'unsent chat draft')
     const listeners = new Map<string, EventListener>()

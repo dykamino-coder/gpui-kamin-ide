@@ -33,13 +33,23 @@ beforeEach(() => {
 })
 
 describe('sendMessageToTab', () => {
+  it('gives identical native reconnect attempts distinct identities without a separate visual queue', () => {
+    mocked.tabPromptReady.value.set('tab-1', false)
+    const bridge = fakeBridge()
+    sendMessageToTab(bridge, 'tab-1', 'same text')
+    sendMessageToTab(bridge, 'tab-1', 'same text')
+    const calls = vi.mocked(bridge.submitText).mock.calls
+    expect(calls[0][2]).toBeTypeOf('string')
+    expect(calls[1][2]).not.toBe(calls[0][2])
+    expect(mocked.enqueueLocal).not.toHaveBeenCalled()
+  })
   it('sends one semantic submit frame and leaves Ctrl+U to the server', () => {
     const bridge = fakeBridge()
     sendMessageToTab(bridge, 'tab-1', 'hello')
 
     expect(bridge.sendInput).not.toHaveBeenCalled()
     expect(bridge.submitText).toHaveBeenCalledTimes(1)
-    expect(bridge.submitText).toHaveBeenCalledWith('tab-1', 'hello')
+    expect(bridge.submitText).toHaveBeenCalledWith('tab-1', 'hello', expect.any(String))
     expect(mocked.tabPromptReady.value.get('tab-1')).toBe(false)
   })
 

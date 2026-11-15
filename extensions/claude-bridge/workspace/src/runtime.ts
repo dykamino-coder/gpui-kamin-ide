@@ -10,6 +10,7 @@ import { WORKSPACE_HOST_PLACE, projectDirectory, workspaceSessionInstructions } 
 import { WorkspaceSessionState } from './session-state.js'
 import { WorkspaceDrafts } from './draft-state.js'
 import { WorkspaceSubmissionState } from './submission-state.js'
+import { withoutBridgeContext } from '../../webview/src/utils/bridge-context.js'
 
 export interface SharedBackendOptions {
   root: string
@@ -63,7 +64,15 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   }
   const attachments = new Set<HostAttachment>()
   const presentation = new WorkspacePresentation((channel, ...args) => host.broadcast(channel, ...args),
-    tabId => host.getTabManager().getConnection(tabId)?.getViewSnapshot().entries ?? [], submissionState)
+    tabId => host.getTabManager().getConnection(tabId)?.getViewSnapshot().entries ?? [], submissionState,
+    (tabId, text) => {
+      if (!manager.getTab(tabId)) return
+      const before = drafts.get(tabId)
+      const prompt = withoutBridgeContext(text)
+      const result = drafts.update(tabId, before.revision, { ...before.value,
+        text: before.value.text ? `${before.value.text}\n${prompt}` : prompt })
+      host.broadcast('workspace:draft:state', tabId, result.state)
+    })
   // This observer belongs to the process, not to a browser socket. Keep prompt,
   // activity and receipt state while no browser exists. Large history stays in
   // the shared connection caches and disk mirror.
