@@ -57,6 +57,16 @@ impl LayerCache {
         self.frame += 1;
     }
 
+    /// The buffers of a layer the last frame drew and this one has not yet,
+    /// emptied for another layer to fill.
+    fn take_stale(&mut self) -> Option<LayerBuffers> {
+        let frame = self.frame;
+        let id = *self.layers.iter().find(|(_, layer)| layer.frame != frame)?.0;
+        let mut buffers = self.layers.remove(&id)?;
+        buffers.version = None;
+        Some(buffers)
+    }
+
     /// The device was lost: every buffer with it.
     pub(super) fn clear(&mut self) {
         self.layers.clear();
@@ -98,7 +108,13 @@ impl DirectXRenderer {
         };
         let mut buffers = match self.layer_cache.layers.remove(&layer.id()) {
             Some(buffers) => buffers,
-            None => self.new_layer_buffers()?,
+            // A layer recorded again in place of one the last frame drew takes
+            // over that layer's buffers, already grown to its size: a rebuilt
+            // document costs an upload, not new device buffers.
+            None => match self.layer_cache.take_stale() {
+                Some(buffers) => buffers,
+                None => self.new_layer_buffers()?,
+            },
         };
         self.swap_layer_buffers(&mut buffers.sets);
         let fresh = buffers.version == Some(layer.version());
