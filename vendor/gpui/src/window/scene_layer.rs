@@ -125,6 +125,9 @@ impl Window {
     /// (`Scene::damage`), and the platform shows that frame already. Then it
     /// needs neither raster nor present.
     pub(crate) fn present_unneeded(&self) -> bool {
+        if self.frame_readback && !self.unpresented_readback {
+            return false;
+        }
         let Some(damage) = self.rendered_frame.scene.damage() else {
             return false;
         };

@@ -46,6 +46,8 @@ pub(super) async fn run(
     // ENGINE_BENCH_PRESENT_SKIP: the edits may skip presentation (a change
     // off screen); such samples end where the frame decided it.
     let present = std::env::var_os("ENGINE_BENCH_PRESENT_SKIP").is_none();
+    // The bench asks for every frame it reads (`require_presentation`).
+    window.update(cx, |_, window, _| window.allow_unpresented_readback(true))?;
     for index in 1..=args.runs {
         let variant = index % 2;
         let path_before = kamin_html::paint_path::read();
