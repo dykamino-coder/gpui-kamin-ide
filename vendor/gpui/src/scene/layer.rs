@@ -92,6 +92,11 @@ pub mod layer_counters {
     pub static VALUES_WRITTEN: AtomicU64 = AtomicU64::new(0);
     /// Runs of boxes' own commands recorded again (`Window::rerecord_layer_box`).
     pub static BOXES_RERECORDED: AtomicU64 = AtomicU64::new(0);
+    /// Bindings not made because the quad was painted into a group's scene.
+    pub static GROUP_BINDS_SKIPPED: AtomicU64 = AtomicU64::new(0);
+    /// Layers whose bindings or runs named another scene (`SceneLayer::finish`):
+    /// they take no writes. Zero on every page, or a recording is wrong.
+    pub static RECORDS_REFUSED: AtomicU64 = AtomicU64::new(0);
     /// Primitives frames copied from earlier scenes (`Scene::replay` and
     /// the record replays): what a layer saves.
     pub static PRIMITIVES_COPIED: AtomicU64 = AtomicU64::new(0);
@@ -133,7 +138,26 @@ impl SceneLayer {
     /// Finish `scene`, painted with `bindings` (quad indices in paint order)
     /// and the runs of its boxes, into a layer: the scene is sorted once and
     /// the bindings follow their quads.
-    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>, boxes: Vec<BoxRange>) -> Self {
+    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>, mut boxes: Vec<BoxRange>) -> Self {
+        // Every binding names a quad of this scene and its command, every
+        // run a range of its commands; one that does not was recorded in
+        // another scene. The layer then takes no value writes and records no
+        // box again (the host paints it anew), counted, never a wrong write.
+        let quads = scene.quads.len();
+        let operations = scene.paint_operations.len();
+        let valid = bindings.iter().all(|b| {
+            (b.quad as usize) < quads
+                && matches!(
+                    scene.paint_operations.get(b.op as usize),
+                    Some(super::PaintOperation::Primitive(super::Primitive::Quad(_)))
+                )
+        }) && boxes.iter().all(|b| b.ops.end as usize <= operations);
+        if !valid {
+            debug_assert!(false, "a layer binding or run names another scene");
+            layer_counters::RECORDS_REFUSED.fetch_add(1, Relaxed);
+            bindings.clear();
+            boxes.clear();
+        }
         let moved = scene.finish_tracking_quads();
         for binding in &mut bindings {
             binding.quad = moved[binding.quad as usize];

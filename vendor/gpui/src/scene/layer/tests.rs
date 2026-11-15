@@ -449,3 +449,30 @@ fn a_border_that_appears_and_goes_replaces_only_its_boxs_run() {
     assert_eq!((gone[0].clone(), gone[2].clone()), (before[0].clone(), before[2].clone()));
     assert!(layer.content().scene().quads.iter().all(|q| q.border_widths.top == ScaledPixels(0.)));
 }
+
+#[test]
+fn a_group_scene_holds_no_box_run() {
+    // A group paints into a scene of its own, composited into the layer as
+    // one result: a run there would name commands of another scene.
+    let mut scene = Scene::default();
+    scene.in_group = true;
+    assert!(!scene.open_box(7, rect(0., 0., 10., 10.), env(), None));
+    scene.in_group = false;
+    assert!(scene.open_box(7, rect(0., 0., 10., 10.), env(), None));
+}
+
+#[test]
+fn a_layer_whose_bindings_name_another_scene_takes_no_writes() {
+    // A binding to quad 1 of a scene with one quad (recorded in another
+    // scene). Release builds refuse the layer's values instead of indexing.
+    if cfg!(debug_assertions) {
+        return;
+    }
+    let mut scene = Scene::default();
+    scene.insert_primitive(quad(rect(0., 0., 10., 10.), red(), 1.));
+    let bindings = vec![Binding { owner: 7, value: LayerValue::Background, quad: 1, op: 0, opacity: 1. }];
+    let before = layer_counters::RECORDS_REFUSED.load(Relaxed);
+    let layer = LayerHandle::new(SceneLayer::finish(scene, bindings, Vec::new()));
+    assert_eq!(layer_counters::RECORDS_REFUSED.load(Relaxed), before + 1);
+    assert_eq!(layer.set_background(7, red(), blue()), None);
+}

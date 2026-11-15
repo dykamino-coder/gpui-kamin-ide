@@ -12929,10 +12929,10 @@ index 0000000000000000000000000000000000000000..ce8acb35ac9cf0333bc961c32a10b181
 +}
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9bc2e76f13bb1aaab0c9f4e6ae37108c27f4e403
+index 0000000000000000000000000000000000000000..edf3ef2b81759f48a65f0e1fc4b2f3b25437bc74
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
-@@ -0,0 +1,220 @@
+@@ -0,0 +1,244 @@
 +//! KaminIDE patch: a retained scene layer.
 +//!
 +//! A host paints content once into a layer (`Window::record_scene_layer`),
@@ -13027,6 +13027,11 @@ index 0000000000000000000000000000000000000000..9bc2e76f13bb1aaab0c9f4e6ae37108c
 +    pub static VALUES_WRITTEN: AtomicU64 = AtomicU64::new(0);
 +    /// Runs of boxes' own commands recorded again (`Window::rerecord_layer_box`).
 +    pub static BOXES_RERECORDED: AtomicU64 = AtomicU64::new(0);
++    /// Bindings not made because the quad was painted into a group's scene.
++    pub static GROUP_BINDS_SKIPPED: AtomicU64 = AtomicU64::new(0);
++    /// Layers whose bindings or runs named another scene (`SceneLayer::finish`):
++    /// they take no writes. Zero on every page, or a recording is wrong.
++    pub static RECORDS_REFUSED: AtomicU64 = AtomicU64::new(0);
 +    /// Primitives frames copied from earlier scenes (`Scene::replay` and
 +    /// the record replays): what a layer saves.
 +    pub static PRIMITIVES_COPIED: AtomicU64 = AtomicU64::new(0);
@@ -13068,7 +13073,26 @@ index 0000000000000000000000000000000000000000..9bc2e76f13bb1aaab0c9f4e6ae37108c
 +    /// Finish `scene`, painted with `bindings` (quad indices in paint order)
 +    /// and the runs of its boxes, into a layer: the scene is sorted once and
 +    /// the bindings follow their quads.
-+    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>, boxes: Vec<BoxRange>) -> Self {
++    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>, mut boxes: Vec<BoxRange>) -> Self {
++        // Every binding names a quad of this scene and its command, every
++        // run a range of its commands; one that does not was recorded in
++        // another scene. The layer then takes no value writes and records no
++        // box again (the host paints it anew), counted, never a wrong write.
++        let quads = scene.quads.len();
++        let operations = scene.paint_operations.len();
++        let valid = bindings.iter().all(|b| {
++            (b.quad as usize) < quads
++                && matches!(
++                    scene.paint_operations.get(b.op as usize),
++                    Some(super::PaintOperation::Primitive(super::Primitive::Quad(_)))
++                )
++        }) && boxes.iter().all(|b| b.ops.end as usize <= operations);
++        if !valid {
++            debug_assert!(false, "a layer binding or run names another scene");
++            layer_counters::RECORDS_REFUSED.fetch_add(1, Relaxed);
++            bindings.clear();
++            boxes.clear();
++        }
 +        let moved = scene.finish_tracking_quads();
 +        for binding in &mut bindings {
 +            binding.quad = moved[binding.quad as usize];
@@ -13155,10 +13179,10 @@ index 0000000000000000000000000000000000000000..9bc2e76f13bb1aaab0c9f4e6ae37108c
 +mod tests;
 diff --git a/vendor/gpui/src/scene/layer/boxes.rs b/vendor/gpui/src/scene/layer/boxes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..115295f0daab1658223f5d81b228c482d295becd
+index 0000000000000000000000000000000000000000..badb4aee463456845972812b620f195e3aa83931
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/boxes.rs
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,228 @@
 +//! KaminIDE patch: the paint ranges of boxes in a scene layer.
 +//!
 +//! While a layer is recorded, the own paint of a box (its shadows, fill,
@@ -13241,7 +13265,10 @@ index 0000000000000000000000000000000000000000..115295f0daab1658223f5d81b228c482
 +        env: BoxEnv,
 +        key: Option<DrawOrder>,
 +    ) -> bool {
++        // A group's scene (`in_group`) is composited into the layer as one
++        // result: a run of its commands is no run of the layer.
 +        if self.open_box.is_some()
++            || self.in_group
 +            || !self.layer_stack.is_empty()
 +            || !self.depth.plane_stack.is_empty()
 +        {
@@ -13862,10 +13889,10 @@ index 0000000000000000000000000000000000000000..31de4dc5c8bf8adae45979f8807223ad
 +}
 diff --git a/vendor/gpui/src/scene/layer/tests.rs b/vendor/gpui/src/scene/layer/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9eadfd9c6538f9d60a96d4b3e98c34ce1bcfc8b2
+index 0000000000000000000000000000000000000000..f76820447296b46089eb1ae30064a6f93fa7b70c
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/tests.rs
-@@ -0,0 +1,451 @@
+@@ -0,0 +1,478 @@
 +//! Scene layers: value writes, copy on write, batching and replay.
 +
 +use super::{Binding, LayerHandle, LayerValue, SceneLayer, layer_counters};
@@ -14317,7 +14344,33 @@ index 0000000000000000000000000000000000000000..9eadfd9c6538f9d60a96d4b3e98c34ce
 +    assert_eq!((gone[0].clone(), gone[2].clone()), (before[0].clone(), before[2].clone()));
 +    assert!(layer.content().scene().quads.iter().all(|q| q.border_widths.top == ScaledPixels(0.)));
 +}
-\ No newline at end of file
++
++#[test]
++fn a_group_scene_holds_no_box_run() {
++    // A group paints into a scene of its own, composited into the layer as
++    // one result: a run there would name commands of another scene.
++    let mut scene = Scene::default();
++    scene.in_group = true;
++    assert!(!scene.open_box(7, rect(0., 0., 10., 10.), env(), None));
++    scene.in_group = false;
++    assert!(scene.open_box(7, rect(0., 0., 10., 10.), env(), None));
++}
++
++#[test]
++fn a_layer_whose_bindings_name_another_scene_takes_no_writes() {
++    // A binding to quad 1 of a scene with one quad (recorded in another
++    // scene). Release builds refuse the layer's values instead of indexing.
++    if cfg!(debug_assertions) {
++        return;
++    }
++    let mut scene = Scene::default();
++    scene.insert_primitive(quad(rect(0., 0., 10., 10.), red(), 1.));
++    let bindings = vec![Binding { owner: 7, value: LayerValue::Background, quad: 1, op: 0, opacity: 1. }];
++    let before = layer_counters::RECORDS_REFUSED.load(Relaxed);
++    let layer = LayerHandle::new(SceneLayer::finish(scene, bindings, Vec::new()));
++    assert_eq!(layer_counters::RECORDS_REFUSED.load(Relaxed), before + 1);
++    assert_eq!(layer.set_background(7, red(), blue()), None);
++}
 diff --git a/vendor/gpui/src/scene/layer/write.rs b/vendor/gpui/src/scene/layer/write.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..194c59c7ed5f6586aec505d38afbbd640b64a735
@@ -30810,10 +30863,10 @@ index 0000000000000000000000000000000000000000..f86b14fa0513bf4b384e11a27c3cc61a
 +}
 diff --git a/vendor/gpui/src/window/scene_layer.rs b/vendor/gpui/src/window/scene_layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f55948c5755b13a7dfbbd25624e1bb9790ea09ee
+index 0000000000000000000000000000000000000000..2cbbfada1f69dd9c89380f8cc7bd4d33caed5718
 --- /dev/null
 +++ b/vendor/gpui/src/window/scene_layer.rs
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,188 @@
 +//! KaminIDE patch: recording retained scene layers (`scene::layer`) and
 +//! binding the values a host may write into them.
 +//!
@@ -30935,6 +30988,15 @@ index 0000000000000000000000000000000000000000..f55948c5755b13a7dfbbd25624e1bb97
 +        };
 +        let scene = &self.next_frame.scene;
 +        if self.paint_owner == 0 || scene.quads.len() != before + 1 {
++            return;
++        }
++        // A group paints into a scene of its own (`with_isolated_scene`, the
++        // groups of a paint plan), composited into the layer as one result:
++        // its quads are not the layer's, and a binding to one would index
++        // another scene's list.
++        if scene.in_group {
++            crate::scene::layer_counters::GROUP_BINDS_SKIPPED
++                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +            return;
 +        }
 +        recording.bindings.push(Binding {

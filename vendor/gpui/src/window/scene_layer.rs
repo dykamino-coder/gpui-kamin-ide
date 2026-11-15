@@ -121,6 +121,15 @@ impl Window {
         if self.paint_owner == 0 || scene.quads.len() != before + 1 {
             return;
         }
+        // A group paints into a scene of its own (`with_isolated_scene`, the
+        // groups of a paint plan), composited into the layer as one result:
+        // its quads are not the layer's, and a binding to one would index
+        // another scene's list.
+        if scene.in_group {
+            crate::scene::layer_counters::GROUP_BINDS_SKIPPED
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            return;
+        }
         recording.bindings.push(Binding {
             owner: self.paint_owner,
             value,

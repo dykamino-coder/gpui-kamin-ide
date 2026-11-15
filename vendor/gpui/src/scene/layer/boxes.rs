@@ -80,7 +80,10 @@ impl Scene {
         env: BoxEnv,
         key: Option<DrawOrder>,
     ) -> bool {
+        // A group's scene (`in_group`) is composited into the layer as one
+        // result: a run of its commands is no run of the layer.
         if self.open_box.is_some()
+            || self.in_group
             || !self.layer_stack.is_empty()
             || !self.depth.plane_stack.is_empty()
         {
