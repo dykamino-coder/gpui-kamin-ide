@@ -76,8 +76,7 @@ impl ColumnStack {
             .intrinsic
             .filter(|_| !axis.is_vertical())
             .map(|Intrinsic(col_w)| {
-                // A deferred stack builds its children for this only: an
-                // unmeasured container never needs them.
+                // A deferred stack builds its children only for this.
                 let mut intrinsic_children = self
                     .deferred
                     .as_ref()
@@ -154,11 +153,8 @@ impl ColumnStack {
         let lead_report = self.lead_report.clone();
         let discard = self.discard;
         let replay = self.replay;
-        // A deferred horizontal stack keeps the columns of its measure at a
-        // definite width for prepaint (`Recipe::take_measured`): built in the
-        // stack's own place, they are the columns prepaint would build. A
-        // stack with a column rule end prepares them otherwise (`rule_to`
-        // reaches pagination, the measure probe has none).
+        // Columns measured at a definite width go to prepaint
+        // (`Recipe::take_measured`); `rule_to` reaches only prepaint's pagination.
         let keep = (self.deferred.is_some() && !axis.is_vertical() && self.rule_to.is_none())
             .then(|| window.element_layout_context());
         let id = window.request_measured_layout_with_baselines(
