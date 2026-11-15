@@ -98,7 +98,11 @@ impl Document {
         state.values.admit_revision(revision.clone(), base.as_ref());
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
-        crate::document::boxes::BoxTree::edit(&state.boxes).publish_document(&nodes, &state.values);
+        crate::document::boxes::BoxTree::edit(&state.boxes).publish_document(
+            &nodes,
+            Some(&self.nodes),
+            &state.values,
+        );
         match restyled {
             // A restyle reaches the records as a rebuild's does.
             Some(ids) => self.reuse.restyle(&self.nodes, &nodes, ids),

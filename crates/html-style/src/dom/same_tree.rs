@@ -67,6 +67,12 @@ fn same_layout_styles(a: &Element, b: &Element) -> bool {
     a.marks == b.marks && BoxStyles::same_layout_as(&a.style, layers(a), b)
 }
 
+/// Whether the style stages of two elements (style and pseudo-element layers)
+/// are equal but for paint-only values (`Computed::same_layout`).
+pub fn same_layout_stages(a: &Element, b: &Element) -> bool {
+    BoxStyles::same_layout_as(&a.style, layers(a), b)
+}
+
 /// Whether two elements carry the same values apart from their children,
 /// node ids and style stages: boxes of one kind in a flow share these.
 pub fn same_shell(a: &Element, b: &Element) -> bool {

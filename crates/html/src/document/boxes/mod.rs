@@ -7,6 +7,10 @@ mod adapter;
 mod arena;
 #[cfg(test)]
 mod box_of_tests;
+mod epochs;
+pub(crate) use epochs::Epochs;
+#[cfg(test)]
+mod epochs_tests;
 mod finish;
 pub(crate) use finish::MixedText;
 #[cfg(feature = "heap-report")]
@@ -14,6 +18,7 @@ mod heap;
 pub(crate) mod inline;
 #[cfg(test)]
 mod key_tests;
+mod links;
 mod publish;
 mod reuse;
 mod source;
@@ -38,6 +43,12 @@ pub(crate) struct BoxRecord {
     pub(crate) inline: Option<Rc<inline::InlineContent>>,
     prepared: Option<Box<finish::Prepared>>,
     epoch: u64,
+    /// Номера публикаций, на которых изменились входы раскладки.
+    pub(crate) epochs: Epochs,
+    /// Вклад в intrinsic-размеры предка не зависит от содержимого.
+    external: bool,
+    /// Удерживаемый результат раскладки коробки; им владеет раскладка.
+    layout_slot: Option<Box<crate::layout::retained::LayoutSlot>>,
 }
 
 #[derive(Default)]
@@ -49,6 +60,8 @@ pub(crate) struct BoxTree {
     by_node: std::collections::HashMap<u64, BoxId>,
     first: BoxId,
     epoch: u64,
+    /// Номер публикации для эпох раскладки (`Epochs`).
+    clock: u32,
     finished: Option<(u64, crate::text::inline::normalization::Inputs)>,
     /// Used styles derived from computed ones, shared by the boxes of one style.
     pub(crate) used: used::UsedStyles,
@@ -94,19 +107,22 @@ impl BoxTree {
         self.publish_sources(nodes, &[]);
     }
 
+    /// `previous` — вход прежней публикации, ещё живой: по нему ставятся эпохи
+    /// раскладки; без него все коробки считаются изменёнными.
     pub(crate) fn publish_document(
         &mut self,
         nodes: &[Node],
+        previous: Option<&[Node]>,
         values: &crate::values::DocumentValues,
     ) {
-        self.publish_keyed(nodes, &values.traversal.text_keys(), &|id| {
+        self.publish_keyed(nodes, previous, &values.traversal.text_keys(), &|id| {
             Some(crate::dom::NodeKey::from_packed(id))
         });
     }
 
     #[cfg(test)]
     fn publish_sources(&mut self, nodes: &[Node], text_keys: &[crate::dom::NodeKey]) {
-        self.publish_keyed(nodes, text_keys, &|id| {
+        self.publish_keyed(nodes, None, text_keys, &|id| {
             Some(crate::dom::NodeKey::from_packed(id))
         });
     }
@@ -119,6 +135,6 @@ impl BoxTree {
             self.arena.remove(id);
         }
         self.first = BoxId::NONE;
-        self.publish_document(nodes, values);
+        self.publish_document(nodes, None, values);
     }
 }

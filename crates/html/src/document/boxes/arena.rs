@@ -129,25 +129,32 @@ impl Arena {
         true
     }
 
+    /// Новое строчное содержимое коробки; `true`, если оно изменилось.
     pub(super) fn inline(
         &mut self,
         id: BoxId,
         content: Option<std::rc::Rc<super::inline::InlineContent>>,
-    ) {
-        let Some(slot) = self.slots.get_mut(id.slot as usize) else {
-            return;
+    ) -> bool {
+        let Some(record) = self.get_mut(id) else {
+            return false;
         };
-        if slot.generation != id.generation {
-            return;
+        // Неизменный вход сохраняет Rc: потребитель может удержать его
+        // через commit, а resize не требует повторного сбора текста.
+        let changed = record.inline != content;
+        if changed {
+            record.inline = content;
+            record.prepared = None;
         }
-        if let Some(record) = slot.value.as_mut() {
-            // Неизменный вход сохраняет Rc: потребитель может удержать его
-            // через commit, а resize не требует повторного сбора текста.
-            if record.inline != content {
-                record.inline = content;
-                record.prepared = None;
-            }
-        }
+        changed
+    }
+
+    /// Запись по живому ключу: только для полей, которыми владеет само дерево
+    /// (эпохи, признак вклада, слот раскладки), без смены топологии.
+    pub(super) fn get_mut(&mut self, id: BoxId) -> Option<&mut BoxRecord> {
+        let slot = self.slots.get_mut(id.slot as usize)?;
+        (slot.generation == id.generation)
+            .then_some(slot.value.as_mut())
+            .flatten()
     }
 
     pub(super) fn remove(&mut self, id: BoxId) -> Option<BoxRecord> {
@@ -181,6 +188,9 @@ mod tests {
             inline: None,
             prepared: None,
             epoch: 0,
+            epochs: Default::default(),
+            external: false,
+            layout_slot: None,
         }
     }
 

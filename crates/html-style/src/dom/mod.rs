@@ -17,7 +17,7 @@ mod children;
 mod same_tree;
 pub use same_tree::{
     BoxStyles, CascadedMemo, paints_without_color, same_box, same_cascaded_box, same_cascaded_tree,
-    same_layout_box, same_layout_tree_as, same_shell, same_tree, same_tree_as,
+    same_layout_box, same_layout_stages, same_layout_tree_as, same_shell, same_tree, same_tree_as,
     same_unread_color_tree_as, same_values,
 };
 mod intrinsic;
