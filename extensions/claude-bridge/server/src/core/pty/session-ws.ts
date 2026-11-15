@@ -161,6 +161,19 @@ function sleepingChat(s: PtySession): SleepingChat {
     registeredPrompts: s.registeredPrompts,
   }
 }
+const WAKE_INPUT_READY_MS = 10_000
+
+/** Resolves once the CLI accepts input (or after `limitMs`: delivery then
+ *  takes the ordinary fallback path rather than waiting forever). */
+async function untilInputReady(session: PtySession, limitMs: number): Promise<void> {
+  const deadline = Date.now() + limitMs
+  while (Date.now() < deadline && session.state === 'running') {
+    const control = sessionCliControl(session)
+    if (!control || control.inputReady()) return
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+}
+
 const IDLE_COMMANDS_REQUEST_MS = 10_000
 
 export function sleepAction(type: string): 'wake' | 'pass' | 'ignore' | 'release' {
@@ -384,6 +397,15 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             return false
           }
           fresh.streamProtocol = old.streamProtocol ?? 0
+          // The slot is held until the CLI takes input: a CLI boot is CPU-bound
+          // well past the spawn, and twenty at once would all finish late.
+          // Messages that woke the chat wait until the CLI takes input the normal
+          // way; delivered earlier they would fall back to terminal typing.
+          await untilInputReady(fresh, WAKE_INPUT_READY_MS)
+          if (!ownsStartup(operation)) {
+            releaseLateSession(fresh, operation)
+            return false
+          }
           asleep = null
           authenticatedSessionId = fresh.id
           sessionWsMap.set(fresh.id, ws)

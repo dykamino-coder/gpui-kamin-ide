@@ -135,6 +135,8 @@ vi.mock('./transcript-archive', () => ({ archiveTranscriptForSession: vi.fn(), d
 import { WebSocket } from 'ws'
 import { attachSessionWebSocket, getSessionWs, sleepAction } from './session-ws'
 import { sendToClient } from './session-io'
+import { SessionCliControl } from './session-cli-control'
+import { setSessionPromptReady } from './session-input-coordinator'
 
 class Socket extends EventEmitter {
   readyState: number = WebSocket.OPEN
@@ -285,6 +287,19 @@ describe('idle hibernation on the session socket', () => {
     ])
   })
 
+  it('holds the waking message until the new CLI takes input', async () => {
+    await asleepChat()
+    const fresh = makeSession('s-new', socket, { state: 'running' })
+    new SessionCliControl(fresh as any)
+    h.create.mockResolvedValueOnce(fresh)
+    const pending = socket.message({ type: 'session:submitText', data: 'x', submissionId: 'x' })
+    await vi.advanceTimersByTimeAsync(500)
+    expect(h.submit).not.toHaveBeenCalled()
+    setSessionPromptReady(fresh as any, true)
+    await vi.advanceTimersByTimeAsync(50)
+    await pending
+    expect(h.submit).toHaveBeenCalledWith('s-new', 'x', 'x')
+  })
   it('waits for the stopped CLI to finish before resuming its transcript', async () => {
     let finished!: () => void
     h.hibernate.mockReset().mockReturnValue(new Promise<void>((resolve) => (finished = resolve)))

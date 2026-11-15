@@ -115,6 +115,13 @@ export class SessionCliControl {
     return null
   }
 
+  /** Typed input can be delivered as intended: through the mod when this CLI
+   *  has one (otherwise it would fall back to terminal typing with a warning),
+   *  or at a visible prompt without it. */
+  inputReady(): boolean {
+    return this.mod ? this.mod.healthy() : getSessionInputSnapshot(this.session).promptReady
+  }
+
   authoritative(): boolean {
     return !!(this.mod?.healthy() && this.modReady) || this.osc !== undefined
   }
