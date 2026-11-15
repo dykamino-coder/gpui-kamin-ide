@@ -37,7 +37,19 @@ pub(super) fn open<'a>(
     cx: &'a mut TestAppContext,
     html: &str,
 ) -> (gpui::Entity<View>, &'a mut VisualTestContext) {
-    let (view, cx) = open_without_step(cx, html);
+    open_document(cx, Document::builder(html, "").build().unwrap())
+}
+
+/// The host with the document step over an already built document.
+pub(super) fn open_document(
+    cx: &mut TestAppContext,
+    doc: Document,
+) -> (gpui::Entity<View>, &mut VisualTestContext) {
+    let (view, cx) = cx.add_window_view(|_, _| View {
+        doc,
+        viewport: (400., 300.),
+        step: None,
+    });
     let stepped = view.clone();
     let parent = gpui::ElementPlace::of_view(view.entity_id());
     cx.update(|window, app| {

@@ -2,7 +2,8 @@
 //! применённой записями мутаций DOM (`Document::apply`), а когда правка меняет
 //! форму дерева (вставка, удаление узла) — `Document::update`, по очереди правка и
 //! возврат, затем проверка, что каждый вариант совпадает по пикселям со свежим
-//! документом той же разметки.
+//! документом той же разметки. Отчёт режима несёт работу документа каждого
+//! кадра правки (`document_frame_samples`: сборки, повторы, сборки внутри draw).
 
 use super::{
     args::Args,
@@ -40,8 +41,10 @@ pub(super) async fn run(
     let mut diagnostics = Vec::with_capacity(args.runs);
     let mut work = Vec::with_capacity(args.runs);
     let mut last = [None, None];
+    let mut frame_samples = Vec::with_capacity(args.runs);
     for index in 1..=args.runs {
         let variant = index % 2;
+        let before = window.read_with(cx, counters)?;
         let (measured, frame, counts) = sample(
             cx,
             window,
@@ -52,6 +55,8 @@ pub(super) async fn run(
             luid,
         )
         .await?;
+        let after = window.read_with(cx, counters)?;
+        frame_samples.push(frame_sample(index, before, after)?);
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         work.push(counts);
@@ -130,5 +135,21 @@ pub(super) async fn run(
     });
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
+    mode["document_frame_samples"] = json!(frame_samples);
     Ok((mode, work))
+}
+
+/// Сборки, повторы и сборки внутри `Window::draw` документа на эту минуту.
+fn counters(view: &View, _: &gpui::App) -> (u64, u64, u64) {
+    let (builds, replays) = view.doc.retained_frames();
+    (builds, replays, view.doc.builds_inside_draw())
+}
+
+/// Работа документа за кадр правки; сброс счётчика не выдаётся за ноль работы.
+fn frame_sample(index: usize, before: (u64, u64, u64), after: (u64, u64, u64)) -> Result<Value> {
+    let regressed = || format!("document frame counters regressed: {before:?} -> {after:?}");
+    Ok(json!({"mode": "edit", "sample_index": index,
+        "builds": after.0.checked_sub(before.0).ok_or_else(regressed)?,
+        "replays": after.1.checked_sub(before.1).ok_or_else(regressed)?,
+        "builds_inside_draw": after.2.checked_sub(before.2).ok_or_else(regressed)?}))
 }
