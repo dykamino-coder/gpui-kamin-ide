@@ -5,7 +5,10 @@ use super::*;
 #[test]
 fn unchanged_text_owns_one_buffer_and_transformed_text_keeps_the_source_intact() {
     let mut tree = BoxTree::default();
-    let nodes = [Node::Text("plain text".into())];
+    let nodes = [Node::Text(crate::dom::Text::from_source(
+        "plain text".into(),
+        crate::dom::TextId::new(1),
+    ))];
     tree.publish(&nodes);
     let id = tree.flow(&nodes).unwrap();
     let source = tree.get(id).unwrap().inline.as_ref().unwrap().clone();

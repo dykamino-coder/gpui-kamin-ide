@@ -9,7 +9,7 @@ impl BoxTree {
         &self,
         nodes: &[Node],
     ) -> Option<std::rc::Rc<super::inline::InlineContent>> {
-        let record = self.get(self.flows.get(nodes)?)?;
+        let record = self.get(self.flow_of(nodes)?)?;
         let text = record.inline.as_ref()?;
         text.items
             .iter()
@@ -25,7 +25,7 @@ impl BoxTree {
             .get(self.first)
             .is_some_and(|record| record.origin == Source::Root);
         let first = if root {
-            self.set_flow(nodes, self.first);
+            self.set_root_flow(nodes, self.first);
             self.get(self.first).map_or(BoxId::NONE, |r| r.first)
         } else {
             self.first

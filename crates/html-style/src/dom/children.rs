@@ -20,6 +20,14 @@ impl ChildrenMark {
     pub fn is_alive(&self) -> bool {
         self.0.strong_count() != 0
     }
+
+    /// The marked snapshot is alive and holds exactly the nodes `nodes`: a
+    /// live slice is compared with a live snapshot only.
+    pub fn holds(&self, nodes: &[Node]) -> bool {
+        self.0
+            .upgrade()
+            .is_some_and(|snapshot| std::ptr::eq(snapshot.nodes.as_slice(), nodes))
+    }
 }
 
 #[derive(Debug, Default)]

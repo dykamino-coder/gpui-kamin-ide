@@ -156,7 +156,7 @@ mod tests {
             epochs: Default::default(),
             external: false,
             layout_slot: None,
-            flow: 0,
+            flow: None,
         }
     }
 

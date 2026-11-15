@@ -25,7 +25,7 @@ impl BoxTree {
         let mut inline = inline::Collection::default();
         let mut visited = finish::Visited::default();
         let prev = match previous {
-            Some(p) if finish::slice_key(p) == finish::slice_key(nodes) => Prev::Clean,
+            Some(p) if std::ptr::eq(p, nodes) => Prev::Clean,
             Some(p) => Prev::Old(p),
             None => Prev::Fresh,
         };
@@ -48,7 +48,7 @@ impl BoxTree {
             let root = self.record(Source::Root, BoxId::NONE, 0, reused, &mut changed);
             if root.is_some() {
                 inline.root(root);
-                self.set_flow(nodes, root);
+                self.set_root_flow(nodes, root);
                 if let Prev::Old(p) = prev
                     && texts_differ(p, nodes)
                 {
@@ -219,7 +219,7 @@ impl BoxTree {
             epochs: Default::default(),
             external: false,
             layout_slot: None,
-            flow: 0,
+            flow: None,
         });
         let Some(id) = id else { return BoxId::NONE };
         changed.push((id, Change::Own));
@@ -233,7 +233,6 @@ impl BoxTree {
             let Some(record) = self.arena.remove(id) else {
                 continue;
             };
-            self.flows.forget(record.flow, id);
             if record.source != 0 {
                 self.by_node.remove_if(record.source, id);
             }

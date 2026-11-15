@@ -50,6 +50,16 @@ impl ByNode {
         }
     }
 
+    /// Записать коробку ключа поверх прежней.
+    pub(super) fn set(&mut self, key: u64, id: BoxId) {
+        if let Some(at) = self.index(key) {
+            self.dense[at] = id;
+            return;
+        }
+        self.more.remove(&key);
+        self.insert_first(key, id);
+    }
+
     /// Забыть ключ, если его первая коробка — `id`.
     pub(super) fn remove_if(&mut self, key: u64, id: BoxId) {
         match self.index(key) {
