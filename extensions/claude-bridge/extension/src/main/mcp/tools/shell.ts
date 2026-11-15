@@ -174,18 +174,22 @@ function warmShell(
  */
 export function bufferedOutputRunner(commandFile: string): string {
   return (
-    '$__kaminOut = New-Object System.IO.StreamWriter([Console]::OpenStandardOutput(), [Console]::OutputEncoding, 65536); ' +
-    '[Console]::SetOut($__kaminOut); ' +
-    '$null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action { $__kaminOut.Flush() }; ' +
+    '$__kaminOut = [System.IO.TextWriter]::Synchronized((New-Object System.IO.StreamWriter([Console]::OpenStandardOutput(), [Console]::OutputEncoding, 65536))); ' +
+    // Errors share the writer, so stdout and stderr keep their order in one
+    // stream, as in the native shell tools.
+    '[Console]::SetOut($__kaminOut); [Console]::SetError($__kaminOut); ' +
+    // Every way out of the process, including [Environment]::Exit() and the
+    // host's report of an uncaught error, raises ProcessExit. The handler is
+    // a compiled delegate, so it runs without a PowerShell runspace.
+    '$__kaminX = [System.Linq.Expressions.Expression]; ' +
+    '[AppDomain]::CurrentDomain.add_ProcessExit($__kaminX::Lambda([EventHandler], $__kaminX::Call($__kaminX::Constant($__kaminOut), [System.IO.TextWriter].GetMethod(\'Flush\', [Type[]]@())), ' +
+    '[System.Linq.Expressions.ParameterExpression[]]@($__kaminX::Parameter([object]), $__kaminX::Parameter([EventArgs]))).Compile()); ' +
     '$__kaminFlushed = [System.Diagnostics.Stopwatch]::StartNew(); $__kaminIdle = [System.Diagnostics.Stopwatch]::StartNew(); ' +
+    // No catch: an uncaught error reaches the host and keeps its native view.
     `try { Invoke-Expression ([System.IO.File]::ReadAllText(${powerShellSingleQuote(commandFile)})) | ` +
     'Microsoft.PowerShell.Utility\\Out-String -Stream | Microsoft.PowerShell.Core\\ForEach-Object { $__kaminOut.WriteLine($_); ' +
     'if ($__kaminIdle.ElapsedMilliseconds -ge 2 -or $__kaminFlushed.ElapsedMilliseconds -ge 50) { $__kaminOut.Flush(); $__kaminFlushed.Restart() }; ' +
-    '$__kaminIdle.Restart() } } ' +
-    // A terminating error inside the pipeline loses the host's source excerpt;
-    // print the message and its position (the command's own line numbers).
-    'catch { $__kaminOut.Flush(); [Console]::Error.Write(($_ | Microsoft.PowerShell.Utility\\Out-String)); ' +
-    '[Console]::Error.WriteLine($_.InvocationInfo.PositionMessage); exit 1 } finally { $__kaminOut.Flush() }'
+    '$__kaminIdle.Restart() } } finally { $__kaminOut.Flush() }'
   )
 }
 
@@ -258,6 +262,7 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
       context?.onOutput,
       context?.cwd,
       warmShell('powershell', pwshPath, flags, env, context?.cwd, script.file.path),
+      'PowerShell',
     )
   } finally {
     script.file.dispose()
@@ -290,7 +295,11 @@ export async function bashExecute(input: Record<string, unknown>, context?: Tool
   // no `-i` support), fall back to a login shell flag so profile init
   // still runs, at the cost of re-sourcing per call.
   const snapshot = await getOrCreateSnapshot(shell)
-  const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + command, snapshot)
+  // A foreground command writes stderr into stdout, so the two keep their
+  // order in one stream as in the native Bash tool; on the command's own line,
+  // so its line numbers do not move.
+  const merge = runInBackground ? '' : 'exec 2>&1; '
+  const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + merge + command, snapshot)
   const shellFlags = shouldUseLoginShell(snapshot) ? ['-lc'] : ['-c']
   const env = await shellEnv()
   if (context?.signal?.aborted) return errorResult('Command cancelled')
@@ -326,6 +335,7 @@ export async function bashExecute(input: Record<string, unknown>, context?: Tool
       context?.onOutput,
       context?.cwd,
       warmShell('bash', shell, shellFlags, env, context?.cwd, script.file.path),
+      'Bash',
     )
   } finally {
     script.file.dispose()

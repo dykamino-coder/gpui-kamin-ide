@@ -24,7 +24,7 @@ describe('warm shell pool', () => {
       for (const [i, out] of outputs.entries()) {
         expect(out).toContain(`run${i}\nargs=0\n`)
         expect(out).toContain(path.basename(cwd))
-        expect(out).toContain('--- stderr ---\nerr')
+        expect(out).toMatch(/\nerr$/)
       }
     } finally {
       disposeWarmShells()

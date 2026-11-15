@@ -62,7 +62,7 @@ for (const [name, executable] of engines) {
       const exit = await powerShellExecute({
         command: 'cmd /d /c exit 7; Write-Output $LASTEXITCODE; exit $LASTEXITCODE',
       })
-      expect(exit.content[0].text).toMatch(/7[\s\S]*\[Exit code: 7\]/)
+      expect(exit.content[0].text).toBe('Exit code 7\n7')
       await powerShellExecute(
         { command: 'cmd /d /c exit 7; Write-Output $LASTEXITCODE; exit $LASTEXITCODE', run_in_background: true },
         { tabId: name },
@@ -75,7 +75,7 @@ for (const [name, executable] of engines) {
       expect(status).toMatch(/exited \(code 7\)[\s\S]*7/)
       const failure = await powerShellExecute({ command: "throw 'Ошибка'; Write-Output 'unreachable'" })
       expect(failure.content[0].text).toContain('Ошибка')
-      expect(failure.content[0].text).toContain('[Exit code: 1]')
+      expect(failure.content[0].text).toMatch(/^Exit code 1\n/)
       expect(failure.content[0].text).not.toContain('unreachable\r\n')
     },
     30000,
@@ -113,6 +113,27 @@ for (const [name, executable] of engines) {
       // Host output and pipeline output keep their order.
       const mixed = await powerShellExecute({ command: "1..3 | ForEach-Object { $_; Write-Host ('h' + $_) }" })
       expect(mixed.content[0].text.replace(/\r/g, '')).toContain('1\nh1\n2\nh2\n3\nh3')
+
+      // [Environment]::Exit() right after the output still delivers all of it.
+      const exited = await powerShellExecute({ command: '1..2000; [Environment]::Exit(4)' })
+      expect(exited.exitCode).toBe(4)
+      expect(exited.content[0].text).toBe('Exit code 4\n' + Array.from({ length: 2000 }, (_, i) => i + 1).join('\r\n'))
+      const quick = await powerShellExecute({ command: '1..3; [Environment]::Exit(0)' })
+      expect(quick.content[0].text).toBe('1\r\n2\r\n3')
+
+      // stderr and stdout share one stream in their order, as in native PowerShell.
+      const ordered = await powerShellExecute({
+        command: "[Console]::Error.WriteLine('e1'); Write-Output 'o1'; [Console]::Error.WriteLine('e2'); exit 2",
+      })
+      expect(ordered.content[0].text).toBe('Exit code 2\ne1\r\no1\r\ne2')
+      expect((await powerShellExecute({ command: '$null' })).content[0].text).toBe('(PowerShell completed with no output)')
+      if (name === 'PowerShell 7') {
+        // The host's own error view, byte for byte as native PowerShell 2.1.322 returns it.
+        expect((await powerShellExecute({ command: "throw 'boom'" })).content[0].text).toBe('Exit code 1\nException: boom')
+        expect((await powerShellExecute({ command: "Write-Output before\nthrow \"boom two\"" })).content[0].text).toBe(
+          'Exit code 1\nbefore\r\nException: \r\nLine |\r\n   2 |  throw "boom two"\r\n     |  ~~~~~~~~~~~~~~~~\r\n     | boom two',
+        )
+      }
     },
     60000,
   )
