@@ -11460,10 +11460,10 @@ index 0000000000000000000000000000000000000000..1d2eb6d45ef4e76ab852118dab607406
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..17e62a7bb72ff6666a715825d704d33d6270bb24
+index 0000000000000000000000000000000000000000..d64139b6db28bae1923da4718bb80e13065f68f2
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,89 @@
 +//! Headless renderer and populated device-bound effect fixtures.
 +
 +use super::*;
@@ -11513,6 +11513,7 @@ index 0000000000000000000000000000000000000000..17e62a7bb72ff6666a715825d704d33d
 +        capture: None,
 +        timing_main: false,
 +        unpresented: false,
++        retained: Default::default(),
 +    }
 +}
 +
