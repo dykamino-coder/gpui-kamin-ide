@@ -23,6 +23,11 @@ impl NodeKey {
     pub fn of(handle: &Handle) -> Self {
         Self(handle.clone())
     }
+
+    /// The node.
+    pub fn handle(&self) -> &Handle {
+        &self.0
+    }
 }
 
 impl PartialEq for NodeKey {

@@ -125,6 +125,7 @@ pub fn parse_document_sheet(
     layers: &mut LayerRegistry,
     vcx: ValueCx<'_>,
 ) -> Result<Vec<Rule>, crate::budget::admission::Error> {
+    crate::count_work!(SheetsParsed, 1);
     let (prefixes, default_ns) = declared_prefixes(css);
     let mut cx = SheetCx {
         doc: vcx.doc,
