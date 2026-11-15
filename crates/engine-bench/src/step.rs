@@ -41,7 +41,8 @@ pub(super) fn register(view: &Entity<View>, window: &mut Window) -> Subscription
                             kamin_html::work::switch!(Layout);
                         }
                         UpdatePhase::LaidOut => {
-                            phases.step_layout += spent;
+                            // Часть раскладки кадра; остаток добавит `Timed`.
+                            phases.layout = Some(phases.layout.unwrap_or_default() + spent);
                             kamin_html::work::switch!(BuildElements);
                         }
                     }

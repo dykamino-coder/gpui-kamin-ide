@@ -16,8 +16,6 @@ pub(super) struct Phases {
     pub(super) build: Duration,
     pub(super) request_layout: Duration,
     pub(super) layout: Option<Duration>,
-    /// Раскладка шага документа до кадра (`step`): часть `layout` кадра.
-    pub(super) step_layout: Duration,
     pub(super) prepaint: Duration,
     pub(super) paint: Duration,
     pub(super) renders: usize,
@@ -156,7 +154,7 @@ impl Element for Timed {
             // Между callback выполняются root layout и обвязка GPUI; вложенные
             // layout внутри prepaint остаются в prepaint, не считаясь повторно.
             // Раскладка шага до кадра — часть той же фазы.
-            let step = std::mem::take(&mut phases.step_layout);
+            let step = phases.layout.take().unwrap_or_default();
             phases.layout = phases
                 .request_finished
                 .take()
