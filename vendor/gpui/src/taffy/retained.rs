@@ -173,6 +173,13 @@ impl Retained {
 
     fn note(&mut self, node: NodeId) {
         self.live.insert(node);
+        // A pass requests about as many nodes as the previous one: one
+        // allocation at its first request instead of a doubling series. The
+        // sequence is reserved only while the pass runs, so between passes the
+        // tree holds no more than the previous sequence.
+        if self.seq.capacity() == 0 && !self.prev.is_empty() {
+            self.seq.reserve(self.prev.len());
+        }
         self.seq.push(node);
         self.cursor += 1;
     }

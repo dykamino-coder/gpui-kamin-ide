@@ -161,7 +161,7 @@ impl Document {
             Some(u) => Some(u.parent(|i| before[i].as_ref().map(|p| &*p.style), vcx)?),
             None => None,
         };
-        let ids = super::adopt::source_ids(&values.traversal.elements(), targets.iter());
+        let ids = super::adopt::element_ids(&values.traversal.elements(), targets.iter());
         let mut out = HashMap::new();
         let entries = targets.iter().zip(ids).zip(before).zip(after).enumerate();
         for (i, (((target, id), old), new)) in entries {

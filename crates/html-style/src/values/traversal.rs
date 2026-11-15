@@ -14,8 +14,8 @@ pub const MAX_DEPTH: usize = crate::budget::DocumentLimits::BOX_DEPTH;
 #[derive(Default)]
 pub struct TraversalState {
     source: RefCell<Option<Admitted>>,
-    /// Адрес исходного узла элемента по его `node_id - 1`; ноль — не записан.
-    /// Адреса узлов удерживаемого `source` устойчивы, пока он удерживается.
+    /// Адреса построенных элементов; порядок списка не является идентичностью.
+    /// Ключ хранится в самом исходном узле и не зависит от style walk.
     elements: RefCell<Vec<usize>>,
     /// Адрес исходного текстового узла по его `TextId - 1`.
     texts: RefCell<Vec<usize>>,
@@ -78,22 +78,14 @@ impl TraversalState {
         self.read.borrow()
     }
 
-    /// Обход вышел из исходного элемента `handle` с узлом коробок `node_id`.
-    pub fn record_element(&self, handle: &Handle, node_id: u64) {
-        let Some(slot) = usize::try_from(node_id)
-            .ok()
-            .and_then(|id| id.checked_sub(1))
-        else {
-            return;
-        };
-        let mut elements = self.elements.borrow_mut();
-        if elements.len() <= slot {
-            elements.resize(slot + 1, 0);
-        }
-        elements[slot] = std::rc::Rc::as_ptr(handle) as usize;
+    /// Обход построил коробку исходного элемента; его ключ выдан при создании.
+    pub fn record_element(&self, handle: &Handle) {
+        self.elements
+            .borrow_mut()
+            .push(std::rc::Rc::as_ptr(handle) as usize);
     }
 
-    /// Адреса исходных элементов удерживаемого DOM по `node_id - 1`.
+    /// Адреса построенных исходных элементов удерживаемого DOM.
     pub fn elements(&self) -> std::cell::Ref<'_, Vec<usize>> {
         self.elements.borrow()
     }
@@ -174,6 +166,15 @@ impl DocumentValues {
             .borrow()
             .as_ref()
             .map(|s| s.dom.document.clone())
+    }
+
+    /// Номер ключа, с которого продолжит повторный разбор этого документа.
+    pub fn next_node_key(&self) -> Option<u64> {
+        self.traversal
+            .source
+            .borrow()
+            .as_ref()
+            .map(|s| s.dom.next_key())
     }
 
     /// Первый достигнутый предел этой revision, сохраняемый между кадрами.

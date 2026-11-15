@@ -85,7 +85,7 @@ impl Document {
     }
 
     /// Записать пакет в исходный DOM и собрать его заново в свежем состоянии.
-    fn rebuild(
+    pub(super) fn rebuild(
         &mut self,
         batch: &Batch,
         invalidation: Option<crate::dom::invalidation::Changed>,

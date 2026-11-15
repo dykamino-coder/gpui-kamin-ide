@@ -82,7 +82,6 @@ struct Run<'t> {
     /// The target was entered, or the walk passed it by.
     done: Vec<bool>,
     sharing: super::element_sharing::ElementSharing,
-    counter: u64,
     counters: crate::style::generated::counters::Counters,
     scratch: super::kids::Kids,
 }
@@ -107,7 +106,6 @@ pub fn probe(
         found: targets.iter().map(|_| None).collect(),
         done: vec![false; targets.len()],
         sharing: Default::default(),
-        counter: 0,
         counters: Default::default(),
         scratch: Default::default(),
     };
@@ -154,7 +152,6 @@ pub fn probe(
             visit,
             tree,
             &run.sharing,
-            &mut run.counter,
             &mut run.counters,
             path,
             &mut run.scratch,

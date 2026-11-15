@@ -660,6 +660,11 @@ impl WindowTextSystem {
         self.line_layout_cache.layout_index()
     }
 
+    /// KaminIDE patch: line layouts the frame caches hold.
+    pub fn cached_line_layouts(&self) -> usize {
+        self.line_layout_cache.cached_layouts()
+    }
+
     pub(crate) fn reuse_layouts(&self, index: Range<LineLayoutIndex>) {
         self.line_layout_cache.reuse_layouts(index)
     }

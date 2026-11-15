@@ -25,7 +25,7 @@ pub(super) fn level(
         };
         let marks = tree
             .has_marks
-            .get(&crate::dom::tree_index::NodeKey::of(child))
+            .get(&crate::dom::tree_index::HandleKey::of(child))
             .map_or(0, Vec::len);
         let marks = marks
             .checked_mul(size_of::<u64>())

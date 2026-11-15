@@ -82,7 +82,6 @@ pub(super) fn walk<'a>(
                     v,
                     tree,
                     &run.sharing,
-                    &mut run.counter,
                     &mut run.counters,
                     &path,
                     &mut run.scratch,
