@@ -51,6 +51,17 @@ pub(super) fn renderer(device: &DirectXDevices) -> DirectXRenderer {
     }
 }
 
+/// A headless renderer drawing into an offscreen texture of `width` x `height`.
+pub(super) fn offscreen(device: &DirectXDevices, width: u32, height: u32) -> DirectXRenderer {
+    let mut r = renderer(device);
+    let devices = r.devices.clone().unwrap();
+    r.resources = Some(DirectXResources::new_offscreen(&devices, width, height).unwrap());
+    r.disable_direct_composition = true;
+    r.offscreen = true;
+    (r.width, r.height) = (width, height);
+    r
+}
+
 pub(super) fn populate_effects(r: &mut DirectXRenderer) {
     let device = r.dev().device.clone();
     r.blur.copy = Some(create_blur_texture(&device, r.width, r.height, false).unwrap());

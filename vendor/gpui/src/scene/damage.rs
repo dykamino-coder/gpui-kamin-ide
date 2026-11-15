@@ -455,7 +455,9 @@ impl Compare<'_> {
 impl Scene {
     /// KaminIDE patch: повреждение этого кадра (`size` device px, номер
     /// `id`) относительно `previous` — кадра `previous.damage_index.id` того же окна.
-    pub(crate) fn note_frame_damage(&mut self, previous: &Scene, id: u64, size: (u32, u32)) {
+    /// `pub` + `doc(hidden)`: тесты рендерера (`gpui_windows`) строят цепочку кадров.
+    #[doc(hidden)]
+    pub fn note_frame_damage(&mut self, previous: &Scene, id: u64, size: (u32, u32)) {
         let mut index = std::mem::take(&mut *self.damage_index);
         index.build(self, size);
         index.id = id;
