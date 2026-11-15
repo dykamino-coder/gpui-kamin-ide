@@ -20,14 +20,12 @@ type Intrinsic = dyn Fn(Size<AvailableSpace>, &mut Window, &mut App) -> f32;
 
 /// The measure build of a spanner flow that prepaint may paint as it is.
 ///
-/// Such a measure is built with the document's own paint collectors (the
-/// flow has no absolute, fixed or sticky boxes inside and records no
-/// fragmentation), in the layout context of the flow's place and in its own
-/// retained engine. The only order a build fixes is that of its step-8
-/// wrappers (`PaintLast`), by the paint keys it takes: the measure runs in
-/// the layout phase, earlier deferred siblings build in prepaint, so a
-/// measure that built a step-8 wrapper or held one for the root flow is never
-/// painted (Blink propagates a child's out-of-flow candidates and paint order
+/// Such a measure is built with the document's own paint collectors, in the
+/// layout context of the flow's place and in its own retained engine. The
+/// flow has nothing inside whose paint order or place its build time decides
+/// (`spanners::adopt::adoptable`: no positioned box, no stacking context, no
+/// fragmentation recorder), so the measure is the tree the final build would
+/// make (Blink propagates a child's out-of-flow candidates and paint order
 /// only when it takes its layout result,
 /// `BoxFragmentBuilder::PropagateFromLayoutResult`).
 pub(crate) struct Adopt {
@@ -123,12 +121,7 @@ impl Hooks for SpannerFlow {
                     return content;
                 }
                 let mut engine = RetainedLayout::default();
-                let registered = adopt.as_ref().map(|a| {
-                    (
-                        crate::paint::coordinator::PaintLast::built(),
-                        a.paint.held_paint_last.get(),
-                    )
-                });
+                let held = adopt.as_ref().map(|a| a.paint.held_paint_last.get());
                 let (child, content) = window.with_retained_layout(&mut engine, |window| {
                     let mut measure = |window: &mut Window| {
                         let mut child = build(available, SpannerPass::Measure, window, cx);
@@ -141,12 +134,11 @@ impl Hooks for SpannerFlow {
                         None => measure(window),
                     }
                 });
-                let unregistered = adopt.as_ref().zip(registered).is_some_and(|(a, before)| {
-                    (
-                        crate::paint::coordinator::PaintLast::built(),
-                        a.paint.held_paint_last.get(),
-                    ) == before
-                });
+                // A root-flow record asked for a wrapper inside: build again.
+                let unregistered = adopt
+                    .as_ref()
+                    .zip(held)
+                    .is_some_and(|(a, before)| a.paint.held_paint_last.get() == before);
                 kept.replace(unregistered.then(|| (available, child, engine)));
                 measured.set(Some((available, content.clone())));
                 content
