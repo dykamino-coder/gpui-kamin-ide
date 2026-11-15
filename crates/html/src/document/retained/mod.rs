@@ -19,6 +19,8 @@ mod escaped_replay_tests;
 #[cfg(test)]
 mod far_tests;
 #[cfg(test)]
+mod float_root_replay_tests;
+#[cfg(test)]
 mod invalidation_tests;
 #[cfg(test)]
 mod l0_memory_tests;

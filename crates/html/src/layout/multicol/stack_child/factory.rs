@@ -39,6 +39,13 @@ pub(super) fn new(
     let copy = copy.clone();
     std::rc::Rc::new(move |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
+        // The column box is the containing block of the copy (css-multicol-1
+        // §2): its widths are the column's own, not reads of the widths
+        // outside the multicol container (`BoxConstraints::track_widths`).
+        if let Some(w) = kid_w {
+            opts.cx.constraints.set_cb_width(Some(w));
+            opts.cx.constraints.set_avail_w(Some(w));
+        }
         // A repeated header/footer band clones its monolithic content, absolute
         // boxes included: they repeat with the band instead of continuing.
         opts.cx
