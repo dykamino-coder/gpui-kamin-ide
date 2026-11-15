@@ -1,10 +1,10 @@
 // Runs inside Claude Code's mod sandbox: all effects go through the engine.
 /** @typedef {{id: number, rejected?: boolean}} Ack */
 /** @typedef {{turnId: string | null}} Turn */
-/** @typedef {{turnId: string | null, active: boolean, polling: boolean, socketPath: string, session: string, instance: string, version: string, acks: Ack[], turns: Turn[], reads: {submissionId: string, uuid: string}[], submitting: (string | null)[], composer: {submissionId: string | null}[], armed: string | null, conditionEnabled: boolean, conditionSeen: string | null, conditionSequence: number, conditionAgents: Map<string, Set<{agentId?: string}>>, conditionLocal: {marker?: string, value: string} | null}} State */
+/** @typedef {{turnId: string | null, active: boolean, polling: boolean, reporting: boolean, socketPath: string, session: string, instance: string, version: string, acks: Ack[], turns: Turn[], reads: {submissionId: string, uuid: string}[], submitting: (string | null)[], composer: {submissionId: string | null}[], armed: string | null, conditionEnabled: boolean, conditionSeen: string | null, conditionSequence: number, conditionAgents: Map<string, Set<{agentId?: string}>>, conditionLocal: {marker?: string, value: string} | null}} State */
 
-/** @param {import('claude-code').EngineInterface} $ @param {State} state @param {string} route */
-async function exchange($, state, route) {
+/** @param {import('claude-code').EngineInterface} $ @param {State} state @param {string} route @param {boolean} [wait] */
+async function exchange($, state, route, wait = false) {
   const acks = state.acks.splice(0)
   const turns = state.turns.splice(0)
   const reads = state.reads.splice(0)
@@ -22,6 +22,8 @@ async function exchange($, state, route) {
         acks,
         turns,
         reads,
+        // The server holds an idle poll open until a command arrives (long poll).
+        ...(wait ? { wait: true } : {}),
       }),
     })
     if (!response.ok) throw new Error('Bridge transport unavailable')
@@ -35,12 +37,29 @@ async function exchange($, state, route) {
   }
 }
 
-/** @param {import('claude-code').EngineInterface} $ @param {State} state */
-async function poll($, state) {
-  if (!state.active || state.polling) return
-  state.polling = true
+/** One period: keep one long poll open for commands, and report acks, turns
+ * and reads at once on a second request instead of waiting for that poll.
+ * @param {import('claude-code').EngineInterface} $ @param {State} state */
+function tick($, state) {
+  if (!state.active) return
+  if (!state.reporting && state.acks.length + state.turns.length + state.reads.length) {
+    state.reporting = true
+    void poll($, state, false).finally(() => {
+      state.reporting = false
+    })
+  }
+  if (!state.polling) {
+    state.polling = true
+    void poll($, state, true).finally(() => {
+      state.polling = false
+    })
+  }
+}
+
+/** @param {import('claude-code').EngineInterface} $ @param {State} state @param {boolean} wait */
+async function poll($, state, wait) {
   try {
-    const { commands } = await exchange($, state, '/poll')
+    const { commands } = await exchange($, state, '/poll', wait)
     for (const command of commands) {
       if (command.kind === 'submit' && typeof command.text === 'string') {
         state.submitting.push(command.submissionId ?? null)
@@ -71,8 +90,6 @@ async function poll($, state) {
     }
   } catch {
     // PTY remains alive. Lease expiry on the server activates the legacy path.
-  } finally {
-    state.polling = false
   }
 }
 
@@ -179,6 +196,7 @@ export const register = (on) => {
     turnId: null,
     active: false,
     polling: false,
+    reporting: false,
     socketPath: '',
     session: '',
     instance: '',
@@ -306,7 +324,7 @@ export const register = (on) => {
       await exchange($, state, '/hello')
       state.active = true
       state.conditionEnabled = (await $.env.get('BRIDGE_CLI_MOD_HOOK_CONDITIONS')) === '1'
-      $.clock.every(100, () => poll($, state))
+      $.clock.every(100, () => tick($, state))
     } catch {
       // Missing listener, incompatible protocol or policy refusal: fail open.
     }

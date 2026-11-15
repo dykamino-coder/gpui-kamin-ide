@@ -46,6 +46,33 @@ test('interactive transport queues submit without blocking polls or abort', asyn
   expect(polls).toBeGreaterThanOrEqual(2)
 })
 
+test('idle transport long-polls and reports acks without waiting for the held poll', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.env(on, { BRIDGE_CLI_MOD_SOCKET: '/tmp/probe.sock', BRIDGE_CLI_MOD_SESSION: 'probe' })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.version', () => ({ value: { version: '2.1.322' } }))
+  let waits = 0
+  const reports: { acks: unknown[]; wait?: boolean }[] = []
+  on('http.fetch', async (_, e) => {
+    const body = JSON.parse(String(e.init?.body ?? '{}'))
+    let commands: unknown[] = []
+    if (e.url.endsWith('/hello')) commands = []
+    else if (body.wait) {
+      if (++waits === 1) commands = [{ id: 1, kind: 'submit', text: 'held' }]
+      else await clock.sleep(2000)
+    } else reports.push(body)
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ commands }) } }
+  })
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.advance(1000)
+  // One poll answered with the command, the next one still held: no 100 ms polling.
+  expect(waits).toBe(2)
+  expect(reports.length).toBeGreaterThanOrEqual(1)
+  expect(reports[0]).toMatchObject({ acks: [{ id: 1 }] })
+  expect(reports[0].wait).toBeUndefined()
+})
+
 test('unsupported CLI version stays on the legacy path', async ($, on) => {
   mock.env(on, { BRIDGE_CLI_MOD_SOCKET: '/tmp/probe.sock', BRIDGE_CLI_MOD_SESSION: 'probe' })
   let calls = 0
