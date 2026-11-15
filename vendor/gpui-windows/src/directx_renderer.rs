@@ -56,6 +56,8 @@ mod present_gate;
 mod quad_clear;
 mod retained;
 mod group_cache;
+mod group_scrub;
+pub use group_scrub::group_scrub_mismatches;
 use group_region::Region;
 
 pub(crate) struct DirectXRenderer {
@@ -1080,20 +1082,12 @@ impl DirectXRenderer {
                 continue;
             }
             self.draw_group_layers(&scene.groups, &mut segment)?;
-            self.draw_group_content(group, Region::for_group(group, self.width, self.height)[0], None)?;
             // KaminIDE patch: a direct Gaussian writes the atlas rectangle itself.
-            match gaussian::direct_radius(group.blur_radius) {
-                Some(r) => self.gaussian_group(i, group.blur_radius, r)?,
-                None => {
-                    if group.blur_radius > 0.0 {
-                        self.blur_group(i, group)?;
-                    }
-                    self.save_group_stage(i);
-                }
-            }
-            self.clear_group_stage()?;
+            self.draw_group_alone(i, group)?;
         }
         self.draw_group_layers(&scene.groups, &mut segment)?;
+        // KaminIDE patch: one kept image per frame is drawn again (group_scrub).
+        self.scrub_kept_group(scene, &reuse)?;
         self.groups_kept(scene, valid, kept);
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
