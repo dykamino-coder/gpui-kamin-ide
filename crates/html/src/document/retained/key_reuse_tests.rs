@@ -1,5 +1,6 @@
-//! In-place restyle after a removed node's key slot is reused elsewhere: node
-//! keys stop following document order, yet each edit equals a fresh document.
+//! In-place restyle after a removal and an insertion before existing nodes: the
+//! inserted node's key is new and sorts after every later node, so node keys stop
+//! following document order, yet each edit equals a fresh document.
 
 use super::tests::{View, frame, open};
 use crate::dom::Node;
@@ -119,7 +120,7 @@ fn styles(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> Vec<String> 
 fn restyle_in_place_after_key_reuse_matches_a_fresh_document(cx: &mut TestAppContext) {
     let (view, vcx) = open(cx, ORIGINAL);
     frame(vcx);
-    // Remove `b` from the middle: its subtree's slots are freed on drop.
+    // Remove `b` from the middle: its subtree's keys die with it.
     let freed = vcx.update(|_, cx| {
         view.update(cx, |v, _| {
             let input = v.doc.state.values.traversal.take_source().unwrap();
@@ -138,8 +139,8 @@ fn restyle_in_place_after_key_reuse_matches_a_fresh_document(cx: &mut TestAppCon
         })
     });
     frame(vcx);
-    // Insert `em` first in `main`: it takes a freed slot with a newer
-    // generation, so its key sorts after the keys of every later node.
+    // Insert `em` first in `main`: it gets a key never issued before, so its
+    // key sorts after the keys of every later node.
     let new_key = vcx.update(|_, cx| {
         view.update(cx, |v, _| {
             let input = v.doc.state.values.traversal.take_source().unwrap();
@@ -169,11 +170,10 @@ fn restyle_in_place_after_key_reuse_matches_a_fresh_document(cx: &mut TestAppCon
         })
     });
     frame(vcx);
-    let old = freed
-        .iter()
-        .find(|k| k.slot == new_key.slot)
-        .expect("the new element did not reuse a freed slot");
-    assert!(new_key.generation > old.generation);
+    assert!(
+        !freed.contains(&new_key),
+        "a key of a dropped node was reissued"
+    );
     let d_key = vcx.update(|_, cx| named(&view.read(cx).doc.source_dom(), "d").key());
     assert!(
         new_key.packed() > d_key.packed(),

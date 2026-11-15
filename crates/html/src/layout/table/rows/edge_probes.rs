@@ -162,7 +162,7 @@ pub(super) fn cell_edge_probes(
     {
         d = collapsed_group_edges(
             g,
-            cursor.row_ix as u64,
+            u32::try_from(cursor.row_ix).unwrap_or(u32::MAX),
             layers.rules_groups,
             cursor.col_ix,
             span_cols,

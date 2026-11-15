@@ -50,7 +50,7 @@ extern crate tendril;
 pub mod admission;
 mod node_key;
 mod selection;
-pub use node_key::{NodeKey, NodeRegistry};
+pub use node_key::NodeKey;
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
@@ -132,14 +132,19 @@ pub struct Node {
     payload_lease: RefCell<admission::Lease>,
     _logical_node: admission::Lease,
     _node_lease: admission::Lease,
-    identity: node_key::Identity,
+    // Номер, выданный документом; ноль у узла вне документа (node_key.rs).
+    key: Cell<NodeKey>,
 }
 
 impl Node {
     /// Create a new node from its contents
     pub fn new(data: NodeData) -> Rc<Self> {
-        let registry = admission::infallible(NodeRegistry::new(&admission::Unbounded));
-        admission::infallible(Self::try_new(data, None, &admission::Unbounded, &registry))
+        admission::infallible(Self::try_new(
+            data,
+            None,
+            &admission::Unbounded,
+            NodeKey::NONE,
+        ))
     }
 
     fn parent(&self) -> Option<WeakHandle> {
@@ -159,8 +164,16 @@ impl Node {
                 sink(items.as_ptr().cast(), capacity * mem::size_of::<T>());
             }
         }
-        use node_key::lease_block as lease;
-        self.identity.registry.heap_blocks(sink);
+        fn lease(sink: &mut dyn FnMut(*const u8, usize), lease: &admission::Lease) {
+            if let Some(value) = lease {
+                let value: &(dyn std::any::Any + Send + Sync) = &**value;
+                let align = mem::align_of_val(value).max(mem::align_of::<usize>());
+                let header = (2 * mem::size_of::<usize>()).next_multiple_of(align);
+                let bytes = (header + mem::size_of_val(value)).next_multiple_of(align);
+                let start = (value as *const dyn std::any::Any).cast::<u8>();
+                sink(start.wrapping_sub(header), bytes);
+            }
+        }
         if let Ok(children) = self.children.try_borrow() {
             list(sink, &children, children.capacity());
         }
@@ -274,6 +287,7 @@ pub struct RcDom {
     pub quirks_mode: Cell<QuirksMode>,
     errors_lease: RefCell<admission::Lease>,
     errors_owned: RefCell<admission::Work<admission::Lease>>,
+    keys: node_key::Keys,
 }
 
 impl TreeSink for RcDom {

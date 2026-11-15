@@ -33,7 +33,7 @@ impl Document {
         base_url: Option<&url::Url>,
         xml: bool,
         revision: &crate::budget::RevisionBudget,
-        root: Option<&markup5ever_rcdom::Handle>,
+        first_key: Option<u64>,
     ) -> Result<Source, DocumentFailure> {
         let key = base_url::key(html, theme_css, base_url);
         #[cfg(feature = "engine-bench")]
@@ -41,8 +41,8 @@ impl Document {
         let input = {
             crate::work::phase!(_phase, Parse);
             let context = crate::dom::input::Context::new(revision.clone());
-            let context = match root {
-                Some(root) => context.in_document(root),
+            let context = match first_key {
+                Some(first_key) => context.in_document(first_key),
                 None => context,
             };
             crate::dom::input::Admitted::with_context(html, xml, context).map_err(

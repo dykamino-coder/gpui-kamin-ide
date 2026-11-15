@@ -75,7 +75,7 @@ impl Document {
             self.base_url.as_ref(),
             self.xml,
             &revision,
-            Some(&self.source_dom()),
+            self.state.values.next_node_key(),
         ) {
             Ok(source) => source,
             Err(failure) => return Err(record(failure, self)),

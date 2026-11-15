@@ -21,12 +21,12 @@ pub(super) fn collapsed_cell_edge(
     win_edges: &std::collections::HashMap<u64, [f32; 4]>,
     shared: &EdgeStyles,
     px_of: &impl Fn(Option<Len>) -> f32,
-    order: u64,
+    order: u32,
 ) -> Option<(
     [f32; 4],
     [crate::style::values::value::Color; 4],
     [u8; 4],
-    u64,
+    u32,
 )> {
     // Толщина в кегельных единицах — из СЛИТОГО стиля, где `em`
     // уже разрешён кеглем ячейки (то же правило, что у `box_style`
@@ -111,7 +111,7 @@ pub(super) fn collapsed_cell_edge(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn collapsed_group_edges(
     g: &Element,
-    order: u64,
+    order: u32,
     rules_groups: bool,
     col_ix: usize,
     span_cols: u16,

@@ -75,7 +75,7 @@ pub(crate) fn collapsed_row_edges(
             colors,
             styles,
             4,
-            order as u64,
+            u32::try_from(order).unwrap_or(u32::MAX),
             [0.0; 4],
         ));
     }
