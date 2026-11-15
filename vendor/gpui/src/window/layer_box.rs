@@ -104,13 +104,7 @@ impl Window {
         }
         let runs: Vec<usize> = {
             let content = layer.0.content.borrow();
-            content
-                .boxes
-                .iter()
-                .enumerate()
-                .filter(|(_, b)| b.owner == owner)
-                .map(|(at, _)| at)
-                .collect()
+            content.runs_of(owner).collect()
         };
         if runs.is_empty() {
             return None;

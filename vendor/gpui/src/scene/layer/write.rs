@@ -43,7 +43,7 @@ impl LayerHandle {
     /// primitives under no transformation.
     pub fn holds_box(&self, owner: u32) -> bool {
         let content = self.0.content.borrow();
-        let mut runs = content.boxes.iter().filter(|b| b.owner == owner).peekable();
+        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
         runs.peek().is_some()
             && runs.all(|b| b.replaceable && b.env.transformation == crate::TransformationMatrix::unit())
     }

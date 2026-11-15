@@ -5,8 +5,8 @@
 //! paints its own commands again from its new style into its run of the
 //! layer (`gpui::Window::rerecord_layer_box`), without its descendants,
 //! layout or the element tree. Its style comes from the one `Div` the box
-//! would build (`paint::box_tree::styled_div`), the interim painter until
-//! the boxes own their used style (B1). A box the layer refuses voids the
+//! would build, without its children (`paint::box_tree::styled::own_paint_div`),
+//! the interim painter until the boxes own their used style (B1). A box the layer refuses voids the
 //! replay and the layer: the frame is built and paints a new one.
 
 use super::Builder;
@@ -48,7 +48,7 @@ impl Builder {
             let Ok(owner) = u32::try_from(e.node_id) else {
                 return false;
             };
-            let mut div = crate::paint::box_tree::styled::styled_div(e, &self.opts.cx);
+            let mut div = crate::paint::box_tree::styled::own_paint_div(e, &self.opts.cx);
             let mut style = gpui::Style::default();
             style.refine(div.style());
             let painted = window.rerecord_layer_box(&layer, owner, cx, |window, cx, bounds| {

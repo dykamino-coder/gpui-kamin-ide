@@ -60,6 +60,9 @@ pub struct SceneLayer {
     bindings: Vec<Binding>,
     /// The runs of the boxes' own commands, in paint order.
     pub(crate) boxes: Vec<BoxRange>,
+    /// `(owner, index into boxes)`, sorted: a box's runs by bisection
+    /// (`runs_of`), not a scan of every run of the layer.
+    by_owner: Vec<(u32, u32)>,
 }
 
 /// Process-wide counters of layer work (`frame_perf`-style, read by benches).
@@ -105,6 +108,7 @@ impl Clone for SceneLayer {
             bounds: self.bounds,
             bindings: self.bindings.clone(),
             boxes: self.boxes.clone(),
+            by_owner: self.by_owner.clone(),
         }
     }
 }
@@ -132,7 +136,19 @@ impl SceneLayer {
             .reduce(|a, b| a.union(&b));
         static NEXT: AtomicU64 = AtomicU64::new(1);
         layer_counters::RECORDS.fetch_add(1, Relaxed);
-        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, boxes }
+        let mut by_owner: Vec<(u32, u32)> =
+            boxes.iter().enumerate().map(|(at, b)| (b.owner, at as u32)).collect();
+        by_owner.sort_unstable();
+        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, boxes, by_owner }
+    }
+
+    /// The indices of `owner`'s runs in `boxes`, in paint order.
+    pub(crate) fn runs_of(&self, owner: u32) -> impl Iterator<Item = usize> + '_ {
+        let from = self.by_owner.partition_point(|&(o, _)| o < owner);
+        self.by_owner[from..]
+            .iter()
+            .take_while(move |&&(o, _)| o == owner)
+            .map(|&(_, at)| at as usize)
     }
 
     /// Union of the primitives' bounds within their content masks; `None`

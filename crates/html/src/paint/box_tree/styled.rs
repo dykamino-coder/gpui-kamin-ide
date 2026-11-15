@@ -87,6 +87,24 @@ pub(crate) fn styled_div_with_dimensions(
     cx: &crate::layout::cx::LayoutCx,
     dimensions: Option<BoxDimensions>,
 ) -> gpui::Div {
+    built_div(e, style, cx, dimensions, true)
+}
+
+/// The `Div` of `styled_div` without its children (probes, decorations):
+/// what its own painter (`Style::paint_box`) reads, for a box that records
+/// its own commands again (`document::retained::box_repaint`). Children only
+/// add elements; none changes the style of the box.
+pub(crate) fn own_paint_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
+    built_div(e, &BoxStyle::shared(e.style.used()), cx, None, false)
+}
+
+fn built_div(
+    e: &Element,
+    style: &BoxStyle,
+    cx: &crate::layout::cx::LayoutCx,
+    dimensions: Option<BoxDimensions>,
+    children: bool,
+) -> gpui::Div {
     let (frame, vcx) = (cx.frame(), cx.vcx());
     // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
     // же, гаснет только СВОЯ краска — иначе ранний возврат из отрисовки
@@ -139,6 +157,10 @@ pub(crate) fn styled_div_with_dimensions(
             Some(crate::paint::apply::intrinsic_size::keywords_with_dimensions(c, &dimensions));
     }
     d = super::scroll::attach(d, e, c, cx);
+    if !children {
+        let d = clamp::apply(d, e, c, cx);
+        return d.paint_owner(u32::try_from(e.node_id).unwrap_or(0));
+    }
     if let Some(probe) = crate::interactive::scroll_extent::probe(
         cx.scroll.frame.as_ref(),
         e.node_id,
