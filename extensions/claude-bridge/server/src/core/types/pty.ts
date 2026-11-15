@@ -197,6 +197,16 @@ export interface PtySession {
    *  boundary snapshots; 0/undefined → legacy full-snapshot every tick).
    *  Refreshed on reattach so a resumed client gets the mode it just asked for. */
   streamProtocol?: number
+  /** The create/resume config this session was started from. Idle hibernation
+   *  respawns the CLI from it, so a woken chat keeps its prompt, mirror dir,
+   *  host declaration and engine exactly as the client asked for them. */
+  launchConfig?: SessionConfig
+  /** Set by hibernateSession(): the PTY is being stopped on purpose; the
+   *  client keeps the chat and must not see a session:exit. */
+  hibernating?: boolean
+  /** ms timestamp of a pending ScheduleWakeup seen in the transcript. The
+   *  session never hibernates before it fires (plus a margin). */
+  scheduledWakeupAt?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +297,13 @@ export interface SessionConfig {
   segmentStart?: { settingsDir: string }
   /** Engine switch (server-set): attach the transcript later (attachTranscript). */
   deferTranscript?: boolean
+  /** Server-set on a respawn of the same chat (hibernation wake, effort/model
+   *  restart): the client's MCP registrations carry over before the CLI asks
+   *  for its tool list, so the respawned CLI sees the same tools. */
+  carryRegistrations?: Pick<
+    PtySession,
+    'registeredTools' | 'registeredResources' | 'registeredResourceTemplates' | 'registeredPrompts'
+  >
 }
 
 // ---------------------------------------------------------------------------

@@ -19,6 +19,7 @@ export type ClientMessage =
   | { type: 'codex:models' }
   | { type: 'session:input'; data: string }
   | { type: 'session:interrupt' }
+  | { type: 'session:warm' }
   | { type: 'session:submitText'; data: string; submissionId?: string }
   | {
       type: 'session:submission-action'
