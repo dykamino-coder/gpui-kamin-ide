@@ -26,13 +26,24 @@ pub(crate) struct PaintInline {
     child: Option<AnyElement>,
 }
 
+thread_local! {
+    static BUILT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 impl PaintLast {
     pub(crate) fn new(child: AnyElement) -> Self {
+        BUILT.with(|built| built.set(built.get().wrapping_add(1)));
         Self {
             child: Some(child),
             key: 0,
         }
     }
+    /// Step-8 wrappers built on this thread so far: a build that adds none
+    /// registers nothing whose paint order its build time decides.
+    pub(crate) fn built() -> u64 {
+        BUILT.with(std::cell::Cell::get)
+    }
+
     pub(crate) fn key(mut self, key: u64) -> Self {
         self.key = key;
         self

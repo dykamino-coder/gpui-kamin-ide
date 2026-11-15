@@ -10,7 +10,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::multicol::measure::{SpannerRow, row_plan_in, tail_rest_height};
 use crate::layout::multicol::spanner::{
-    RowMeasures, RowSlot, SpannerFlow, SpannerPass, hoist_spanners, spanner_box,
+    Adopt, RowMeasures, RowSlot, SpannerFlow, SpannerPass, hoist_spanners, spanner_box,
 };
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed};
@@ -30,6 +30,10 @@ pub(super) fn deferred(
     let (e, merged, inherited) = (e.clone(), merged.clone(), inherited.clone());
     let (intrinsic_e, intrinsic_style, intrinsic_opts) = (e.clone(), merged.clone(), opts.clone());
     let row_measures = Rc::new(RowMeasures::default());
+    let adopt = adoptable(&e, &opts).then(|| Adopt {
+        paint: opts.cx.deferred.paint.clone(),
+    });
+    let measure_paint = adopt.is_some().then(|| opts.cx.deferred.clone());
     SpannerFlow::deferred(
         move |available, pass, window, cx| {
             let AvailableSpace::Definite(width) = available.width else {
@@ -184,6 +188,10 @@ pub(super) fn deferred(
             } else {
                 probe_opts.clone()
             };
+            // A measure prepaint may adopt paints into the document's collectors.
+            if let (SpannerPass::Measure, Some(paint)) = (pass, &measure_paint) {
+                final_opts.cx.deferred = paint.clone();
+            }
             final_opts.cx.position.geometry = probe_opts.cx.position.geometry;
             final_opts.cx.position.row_geometry = row_geometry;
             final_opts.cx.fragmentation.spanner_rows = RowSlot::build(
@@ -213,7 +221,34 @@ pub(super) fn deferred(
                 cx,
             )
         },
+        adopt,
     )
+}
+
+/// Whether a measure build of the flow of `e` can be painted as it is
+/// (`Adopt`): no fragmentation recorder, no gap collector of an outer
+/// container, and no box inside that a containing block or the scroll port
+/// places (`absolute`, `fixed`, `sticky`), since the measure positions
+/// with a fresh collector.
+fn adoptable(e: &Element, opts: &RenderOpts) -> bool {
+    use crate::style::computed::Position;
+    if opts.frag.watch.is_some() || opts.cx.deferred.gap_items.is_some() {
+        return false;
+    }
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        if matches!(
+            e.style.used().reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed | Position::Sticky)
+        ) {
+            return false;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(k) => Some(k),
+            _ => None,
+        }));
+    }
+    true
 }
 
 fn is_span(n: &Node) -> bool {

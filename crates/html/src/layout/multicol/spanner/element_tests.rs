@@ -53,3 +53,18 @@ fn spanner_rows_plan_each_float_host_at_most_twice(cx: &mut gpui::TestAppContext
     let (more, _, _, _) = work(cx, &sheet(sections, 24));
     assert_eq!(more, plans, "plans depend on the item count");
 }
+
+#[gpui::test]
+fn prepaint_paints_the_measure_of_the_rows(cx: &mut gpui::TestAppContext) {
+    let (sections, items) = (3, 12);
+    let work = frame_work(cx, &sheet(sections, items));
+    let adoptions = total(&work, Counter::SpannerMeasureAdoptions);
+    let layouts = total(&work, Counter::MulticolChildLayouts);
+    assert_eq!(adoptions, 1, "the final build rebuilt the rows");
+    // One layout of every row child per frame: the measure's, painted.
+    assert!(
+        layouts <= (sections * items) as u64,
+        "{layouts} child layouts for {} children",
+        sections * items
+    );
+}

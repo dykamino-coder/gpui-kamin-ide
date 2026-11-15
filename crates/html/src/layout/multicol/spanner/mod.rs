@@ -9,7 +9,7 @@ use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod element;
 mod fragment;
-pub(crate) use element::{SpannerFlow, SpannerPass};
+pub(crate) use element::{Adopt, SpannerFlow, SpannerPass};
 mod rows;
 pub(crate) use rows::{RowMeasures, RowSlot};
 mod parent;
