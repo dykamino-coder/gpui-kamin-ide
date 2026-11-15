@@ -161,10 +161,13 @@ impl Hooks for Replay {
             r.origin += offset;
             r.serial = window.frame_serial();
         });
+        // Not compacted: a box's content is laid out again at every relayout
+        // of its container (a table's columns), and the compacted form of a
+        // paragraph measure shapes its text anew at each measure.
         if self.slot.record.key.is_none() {
             self.slot
                 .record
-                .ranges(|r| window.keep_retained_measures(&r.layout, true));
+                .ranges(|r| window.keep_retained_measures(&r.layout, false));
         }
     }
 }
