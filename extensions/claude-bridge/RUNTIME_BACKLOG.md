@@ -1,5 +1,25 @@
 # Runtime backlog: что осталось и как продолжать
 
+## KaminIDE 1.0.102 delivery: first message after a server restart — 2026-11-15
+
+Delivery reconciliation 2026-11-15, source `origin/main`
+`92aadd0be167d5180cf670abed741b4894695329` (release #937):
+[KaminIDE 1.0.102](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.102)
+/ server 6.3.179 is published. The ancestry of #934 in the tag and the published
+Release were checked; the image is
+`docker.io/dykamino/open-claude-bridge:6.3.179@sha256:0a81327d19735fc70fdf104c9ede2e9a044a7feb63d795d37b3f35cc9612cba5`.
+[INC-0119](runtime-issues/INC-2026-0119.md) is resolved for its accepted scope.
+The exact-head Windows gate showed a red result on 6.3.178 (clipped in 2 of 2
+runs) and a green result on the fix head (intact in 2 of 2 runs, plus a second
+request). The release candidate `bd1943e3` and the release commit have the same
+tree ([private gate evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/9230a76c5360dc93bb3619d83b46d14b950c93e6/incidents/INC-2026-0119/evidence/2026-11-15-pr934-gate-046d53fa)).
+Publication is not acceptance in the owner's environment.
+
+Open: [INC-0120](runtime-issues/INC-2026-0120.md). A message sent while the chat
+reconnects is dropped by the extension and stays "Queued"; it is a known issue
+of 1.0.102. Fix PR #938 is open. Its first gate was withdrawn because the
+committed bundles did not match a build from source. Next artifact: a head with
+rebuilt bundles, then a repeated Windows gate by `kacc`.
 ## KaminIDE 1.0.101 delivery: hook-condition lease recovery — 2026-11-15
 
 Delivery reconciliation 2026-11-15, source `origin/main`

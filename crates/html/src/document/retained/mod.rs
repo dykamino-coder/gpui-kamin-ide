@@ -21,6 +21,8 @@ mod far_tests;
 #[cfg(test)]
 mod invalidation_tests;
 #[cfg(test)]
+mod key_reuse_tests;
+#[cfg(test)]
 mod layered_replay_tests;
 #[cfg(test)]
 mod paint_damage_tests;

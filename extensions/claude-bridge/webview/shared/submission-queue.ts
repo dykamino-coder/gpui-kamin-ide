@@ -1,4 +1,6 @@
 export interface SubmissionUpdate {
+  /** Local transport refused this prompt before sending it; restore its draft. */
+  rejected?: boolean
   /** Host observed the stored UUID; survives eviction from replay windows. */
   committed?: boolean
   /** Browser host сохраняет курсор legacy queue независимо от страниц. */

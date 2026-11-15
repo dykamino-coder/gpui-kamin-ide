@@ -32,6 +32,7 @@ import { pendingAttachments, type FileAttachment } from '../../signals/ui'
 import { inputDraftPort } from '../../lib/input-draft-port'
 import { emptyDraft } from '../../../shared/workspace-draft'
 import { bindWorkspaceDraft } from './workspace-draft-binding'
+import { appendDraftText, bindRejectedInputDraft } from '../../lib/rejected-input-draft'
 
 const DRAFT_PREFIX = 'input-draft:'
 const ATTACH_PREFIX = 'input-attachments:'
@@ -93,7 +94,9 @@ export function useInputDraft({ tabId, textareaRef, setHasText }: Args): { clear
     })
 
     const flush = (): void => {
-      const v = textareaRef.current?.value ?? ''
+      const current = textareaRef.current
+      if (!current) return
+      const v = current.value
       if (v.trim()) storage.setItem(key(tabId), v)
       else storage.removeItem(key(tabId))
     }
@@ -101,9 +104,16 @@ export function useInputDraft({ tabId, textareaRef, setHasText }: Args): { clear
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(flush, SAVE_DEBOUNCE_MS)
     }
+    const unbindRejection = el ? bindRejectedInputDraft(tabId, text => {
+      el.value = appendDraftText(el.value, text)
+      setHasText(!!el.value.trim())
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      flush()
+    }) : () => {}
     el?.addEventListener('input', onInput)
 
     return () => {
+      unbindRejection()
       unsubscribe()
       saveAttachments(tabId, pendingAttachments.value)
       el?.removeEventListener('input', onInput)

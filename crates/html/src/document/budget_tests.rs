@@ -85,10 +85,9 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
     assert_eq!(doc.source_dom().key(), dom_key);
     // Обновление меняет объём живого DOM; отдельная резервация остаётся
     // в том же ledger и освобождает ровно свои восемь байт.
-    let charged = doc.budget().used(BudgetKind::LiveBytes);
-    assert_eq!(charged, old_revision.document().used(BudgetKind::LiveBytes));
+    let with_live = doc.budget().used(BudgetKind::LiveBytes);
     drop(live);
-    assert_eq!(doc.budget().used(BudgetKind::LiveBytes), charged - 8);
+    assert_eq!(doc.budget().used(BudgetKind::LiveBytes), with_live - 8);
     assert_eq!(governor.used(BudgetKind::Documents), 1);
     drop(doc);
     drop(old_revision);

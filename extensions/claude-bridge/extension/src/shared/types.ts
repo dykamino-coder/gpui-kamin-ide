@@ -1015,6 +1015,8 @@ export interface KaminBridgeApi {
 
 
 export interface SubmissionUpdate {
+  /** Local transport refused this prompt before sending it; restore its draft. */
+  rejected?: boolean
   id: string
   text?: string
   state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'

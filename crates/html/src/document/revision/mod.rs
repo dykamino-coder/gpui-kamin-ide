@@ -16,6 +16,7 @@ mod text;
 
 pub use apply::ApplyError;
 pub use mutation::Mutation;
+pub(super) use repaint::Kept;
 
 use super::{BuildReport, Document, DocumentFailure, RevisionStatus, base_url};
 

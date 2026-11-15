@@ -20,6 +20,7 @@ use std::rc::Rc;
 
 mod container_input;
 mod inherited;
+pub(crate) use inherited::inherits_reset;
 mod recompute;
 mod sharing;
 mod used;
