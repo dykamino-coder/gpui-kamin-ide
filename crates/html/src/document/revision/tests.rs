@@ -102,7 +102,7 @@ fn mentioned_names_and_other_changes_rebuild_the_cascade() {
             d("data-n=5"),
             "p::after{content:attr(data-n)}",
         ),
-        (PAGE.to_string(), d("data-n=5"), "[DATA-N]{color:red}"),
+        (PAGE.to_string(), d("data-n=5"), "[DATA-N]{margin:1px}"),
         (d(attr_style), d(&format!("{attr_style} data-n=5")), ""),
         // Атрибут, который каскад читает сам, дети и комментарии.
         (PAGE.to_string(), PAGE.replace("<p id=x>", "<p id=y>"), ""),
@@ -125,6 +125,9 @@ fn mentioned_names_and_other_changes_rebuild_the_cascade() {
     for (old, new, theme) in &rebuilt {
         assert!(!update(old, new, theme), "{new} {theme}");
     }
+    // A mentioned attribute that changes only a paint value of a box under
+    // the unwrapped `body` is restyled in place (`repaint`).
+    assert!(update(PAGE, &d("data-n=5"), "[DATA-N]{color:red}"));
     // Тема ревизии другая: каскад зависит от неё.
     let mut doc = Document::builder(PAGE, "").build().unwrap();
     let values = doc.state.values.clone();

@@ -8,7 +8,7 @@ vi.mock('./ripgrep-path', async (importOriginal) => ({
   ripgrepPath: vi.fn(async () => null),
 }))
 import { findRipgrep, ripgrepPath } from './ripgrep-path'
-import { grepOptions, grepSearch, ripgrepArgs, splitGlobs } from './grep-tool'
+import { grepOptions, grepSearch, presentMatches, ripgrepArgs, splitGlobs } from './grep-tool'
 
 const text = (r: { content: Array<{ text?: string }> }): string => r.content.map((c) => c.text ?? '').join('')
 
@@ -87,5 +87,22 @@ describe('fallback without ripgrep', () => {
   it('reports a missing path as an error', async () => {
     const r = await grepSearch({ pattern: 'x', path: path.join(dir, 'missing') })
     expect(r.isError).toBe(true)
+  })
+})
+
+describe('presentMatches', () => {
+  const cwd = path.join(os.tmpdir(), 'proj')
+  it('heads files_with_matches with the native count line', () => {
+    expect(presentMatches(['a', 'b'], { outputMode: 'files_with_matches', cwd })).toBe('Found 2 files\na\nb')
+    expect(presentMatches(['a'], { outputMode: 'files_with_matches', cwd })).toBe('Found 1 file\na')
+    expect(presentMatches([], { outputMode: 'files_with_matches', cwd })).toBe('')
+  })
+  it('names content and count paths under the working directory relative to it', () => {
+    const inside = path.join(cwd, 'src', 'x.ts')
+    const outside = path.join(os.tmpdir(), 'other', 'y.ts')
+    expect(presentMatches([`${inside}:3:hit`, `${outside}:4:hit`], { outputMode: 'content', cwd })).toBe(
+      `${path.join('src', 'x.ts')}:3:hit\n${outside}:4:hit`,
+    )
+    expect(presentMatches([`${inside}:2`], { outputMode: 'count', cwd: '' })).toBe(`${inside}:2`)
   })
 })
