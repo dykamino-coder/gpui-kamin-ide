@@ -58,6 +58,8 @@ mod retained;
 mod group_cache;
 mod group_scrub;
 pub use group_scrub::group_scrub_mismatches;
+mod damage_audit;
+pub use damage_audit::{damage_audit_mismatches, set_damage_audit};
 use group_region::Region;
 
 pub(crate) struct DirectXRenderer {
@@ -818,6 +820,16 @@ impl DirectXRenderer {
         if let Err(e) = drawn {
             self.forget_frames();
             return Err(e);
+        }
+        // KaminIDE patch: stand-only check against a whole redraw (`damage_audit`).
+        if damage_audit::enabled() && !keep {
+            let within = match plan {
+                retained::Plan::Within(region) => Some(region),
+                _ => None,
+            };
+            if let Err(e) = self.audit_frame(scene, background_appearance, within) {
+                log::warn!("damage audit failed: {e}");
+            }
         }
         self.frame_drawn(&plan);
         if self.capture.is_some() {

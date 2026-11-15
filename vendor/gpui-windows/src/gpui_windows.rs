@@ -50,6 +50,8 @@ pub use platform::WindowsPlatform;
 pub use events::RESIZE_PRESENTATION_BOOST;
 // KaminIDE patch: kept group images that differed from their redraw.
 pub use directx_renderer::group_scrub_mismatches;
+// KaminIDE patch: stand-only whole-frame check of damage redraw.
+pub use directx_renderer::{damage_audit_mismatches, set_damage_audit};
 pub use gpu_adapter::{GpuAdapterInfo, GpuAdapterPreference, gpu_adapters};
 
 pub(crate) use windows::Win32::Foundation::HWND;
