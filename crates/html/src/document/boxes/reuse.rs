@@ -41,6 +41,17 @@ impl Reuse {
             Slots::Fragments(ids) => ids.pop_front(),
         }
     }
+
+    /// Прежние коробки, не взятые ни одним источником.
+    pub(super) fn into_ids(self) -> impl Iterator<Item = BoxId> {
+        self.sources
+            .into_values()
+            .flat_map(|slots| match slots {
+                Slots::One(id) => vec![id],
+                Slots::Fragments(ids) => ids.into(),
+            })
+            .filter(|id| id.is_some())
+    }
 }
 
 #[cfg(test)]

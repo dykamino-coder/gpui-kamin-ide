@@ -18,6 +18,7 @@ mod heap;
 pub(crate) mod inline;
 #[cfg(test)]
 mod key_tests;
+mod level;
 mod links;
 mod publish;
 mod reuse;
@@ -63,6 +64,8 @@ pub(crate) struct BoxTree {
     /// Номер публикации для эпох раскладки (`Epochs`).
     clock: u32,
     finished: Option<(u64, crate::text::inline::normalization::Inputs)>,
+    /// Потоки, обойдённые последней публикацией, до подготовки кадром.
+    visited: finish::Visited,
     /// Used styles derived from computed ones, shared by the boxes of one style.
     pub(crate) used: used::UsedStyles,
 }
@@ -115,16 +118,23 @@ impl BoxTree {
         previous: Option<&[Node]>,
         values: &crate::values::DocumentValues,
     ) {
-        self.publish_keyed(nodes, previous, &values.traversal.text_keys(), &|id| {
-            Some(crate::dom::NodeKey::from_packed(id))
-        });
+        let text = values.traversal.text_keys();
+        let element = |id| Some(crate::dom::NodeKey::from_packed(id));
+        let keys = publish::Keys {
+            text: &text,
+            element: &element,
+        };
+        self.publish_keyed(nodes, previous, &keys);
     }
 
     #[cfg(test)]
     fn publish_sources(&mut self, nodes: &[Node], text_keys: &[crate::dom::NodeKey]) {
-        self.publish_keyed(nodes, None, text_keys, &|id| {
-            Some(crate::dom::NodeKey::from_packed(id))
-        });
+        let element = |id| Some(crate::dom::NodeKey::from_packed(id));
+        let keys = publish::Keys {
+            text: text_keys,
+            element: &element,
+        };
+        self.publish_keyed(nodes, None, &keys);
     }
 
     /// Полная смена формы до появления постоянных ключей DOM: старые ключи
@@ -135,6 +145,8 @@ impl BoxTree {
             self.arena.remove(id);
         }
         self.first = BoxId::NONE;
+        self.by_node.clear();
+        self.flows.clear();
         self.publish_document(nodes, None, values);
     }
 }

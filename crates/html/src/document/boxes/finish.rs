@@ -40,6 +40,9 @@ pub(crate) struct MixedText {
     pub(crate) inputs: Rc<[(BoxId, Inputs)]>,
 }
 
+/// Стили потоков, которые публикация обошла: только их подготовка может устареть.
+pub(super) type Visited = mixed::Styles;
+
 pub(super) fn slice_key(nodes: &[Node]) -> (usize, usize) {
     (nodes.as_ptr() as usize, nodes.len())
 }
@@ -55,7 +58,18 @@ impl BoxTree {
         {
             return;
         }
+        let same_root = self
+            .finished
+            .as_ref()
+            .is_some_and(|(_, old)| old.matches(root));
         self.finished = Some((self.epoch, Inputs::of(root)));
+        let visited = std::mem::take(&mut self.visited);
+        if !changed && same_root {
+            // Новая публикация при тех же вычисленных стилях: устареть могла
+            // только подготовка обойдённых ею потоков.
+            self.prepare_visited(nodes, root, &visited);
+            return;
+        }
         let mut styles = std::collections::HashMap::new();
         let mut pending = vec![nodes.iter()];
         while let Some(siblings) = pending.last_mut() {
@@ -80,6 +94,16 @@ impl BoxTree {
         }
         for (&id, (style, _)) in &styles {
             self.prepare_with(id, style, &styles);
+        }
+    }
+
+    /// Подготовить корневой поток (стилем `root`) и обойдённые потоки.
+    pub(super) fn prepare_visited(&mut self, nodes: &[Node], root: &BoxStyle, styles: &Visited) {
+        if let Some(&id) = self.flows.get(&slice_key(nodes)) {
+            self.prepare_with(id, root, styles);
+        }
+        for (&id, (style, _)) in styles {
+            self.prepare_with(id, style, styles);
         }
     }
 

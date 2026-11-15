@@ -49,6 +49,13 @@ struct Frame {
     content: Option<InlineContent>,
 }
 
+struct Class {
+    kind: Option<ItemKind>,
+    inline: bool,
+    contents: bool,
+    suppressed: bool,
+}
+
 #[derive(Default)]
 pub(super) struct Collection {
     frames: Vec<Frame>,
@@ -77,6 +84,47 @@ impl Collection {
     }
 
     pub(super) fn enter(&mut self, id: BoxId, element: &Element) {
+        let Class {
+            kind,
+            inline,
+            contents,
+            suppressed,
+        } = self.classify(element);
+        if let Some(kind) = kind {
+            self.item(id, kind);
+        }
+        let inherited = if inline {
+            self.frames.last().and_then(|frame| frame.owner)
+        } else {
+            None
+        };
+        let owner = inherited.unwrap_or(self.frames.len());
+        self.frames.push(Frame {
+            id,
+            closes: inline && !contents && !suppressed,
+            owner: (!suppressed).then_some(owner),
+            content: (!suppressed && inherited.is_none()).then(InlineContent::default),
+        });
+    }
+
+    /// Элемент отдаёт свой текст в IFC предка (строчная коробка, contents).
+    pub(super) fn feeds_owner(&self, element: &Element) -> bool {
+        let class = self.classify(element);
+        class.inline
+            && self
+                .frames
+                .last()
+                .is_some_and(|frame| frame.owner.is_some())
+    }
+
+    /// Неизменное поддерево: предок получает только элемент строки коробки.
+    pub(super) fn skip(&mut self, id: BoxId, element: &Element) {
+        if let Some(kind) = self.classify(element).kind {
+            self.item(id, kind);
+        }
+    }
+
+    fn classify(&self, element: &Element) -> Class {
         let style = element.style.used();
         let contents = style.reset_box_layout.display == Some(Display::Contents);
         let special = matches!(element.tag.as_str(), "br" | "wbr");
@@ -113,21 +161,12 @@ impl Collection {
         } else {
             Some(ItemKind::Block)
         };
-        if let Some(kind) = kind {
-            self.item(id, kind);
+        Class {
+            kind,
+            inline,
+            contents,
+            suppressed,
         }
-        let inherited = if inline {
-            self.frames.last().and_then(|frame| frame.owner)
-        } else {
-            None
-        };
-        let owner = inherited.unwrap_or(self.frames.len());
-        self.frames.push(Frame {
-            id,
-            closes: inline && !contents && !suppressed,
-            owner: (!suppressed).then_some(owner),
-            content: (!suppressed && inherited.is_none()).then(InlineContent::default),
-        });
     }
 
     pub(super) fn text(&mut self, text: &str) {

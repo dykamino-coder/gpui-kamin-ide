@@ -14,18 +14,6 @@ pub(super) struct Arena {
     free: Vec<u32>,
 }
 
-/// Публикация меняет только топологию: наружу не выдаётся изменяемая запись.
-pub(super) enum Link {
-    Reset {
-        parent: BoxId,
-        source: u64,
-        epoch: u64,
-    },
-    First(BoxId),
-    Next(BoxId),
-    Epoch(u64),
-}
-
 impl Arena {
     #[cfg(feature = "heap-report")]
     pub(super) fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
@@ -100,35 +88,6 @@ impl Arena {
         }
     }
 
-    pub(super) fn link(&mut self, id: BoxId, change: Link) -> bool {
-        let Some(slot) = self.slots.get_mut(id.slot as usize) else {
-            return false;
-        };
-        if slot.generation != id.generation {
-            return false;
-        }
-        let Some(record) = slot.value.as_mut() else {
-            return false;
-        };
-        match change {
-            Link::Reset {
-                parent,
-                source,
-                epoch,
-            } => {
-                record.parent = parent;
-                record.source = source;
-                record.first = BoxId::NONE;
-                record.next = BoxId::NONE;
-                record.epoch = epoch;
-            }
-            Link::First(first) => record.first = first,
-            Link::Next(next) => record.next = next,
-            Link::Epoch(epoch) => record.epoch = epoch,
-        }
-        true
-    }
-
     /// Новое строчное содержимое коробки; `true`, если оно изменилось.
     pub(super) fn inline(
         &mut self,
@@ -146,6 +105,13 @@ impl Arena {
             record.prepared = None;
         }
         changed
+    }
+
+    /// Отцепить детей коробки перед повторной сборкой её списка.
+    pub(super) fn unlink_first(&mut self, id: BoxId) {
+        if let Some(record) = self.get_mut(id) {
+            record.first = BoxId::NONE;
+        }
     }
 
     /// Запись по живому ключу: только для полей, которыми владеет само дерево
@@ -198,14 +164,14 @@ mod tests {
     fn mutation_keeps_the_slot_and_stale_keys_never_resolve() {
         let mut arena = Arena::default();
         let first = arena.insert(record(1)).expect("slot");
-        assert!(arena.link(first, Link::Epoch(7)));
+        arena.get_mut(first).expect("live").epoch = 7;
         assert_eq!(arena.get(first).map(|r| r.epoch), Some(7));
         assert_eq!(arena.remove(first).map(|r| r.source), Some(1));
         let next = arena.insert(record(2)).expect("reused slot");
         assert_eq!(first.slot, next.slot);
         assert_ne!(first.generation, next.generation);
         assert!(arena.get(first).is_none());
-        assert!(!arena.link(first, Link::Epoch(9)));
+        assert!(arena.get_mut(first).is_none());
         assert!(arena.remove(first).is_none());
         assert_eq!(arena.get(next).map(|r| (r.source, r.epoch)), Some((2, 0)));
     }
