@@ -68,6 +68,7 @@ import {
 import { acquireWakeSlot, promoteWake, registerHibernationHandle, type WakeTicket } from './session-hibernation'
 import { hasInflightMcpCall, settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
+import { isTerminalResponseInput } from './session-input-coordinator'
 import { sessionCliControl } from './session-cli-control'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
@@ -509,6 +510,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
       if (asleep) {
         // Before waiting on a wake: a message is confirmed at once (it waits in
         // order for the new CLI), and a warm-up it lands on goes to the front.
+        // Focus and cursor reports from the client's terminal answer the stopped
+        // CLI; they are not input and must not wake the chat.
+        if (msg.type === 'session:input' && isTerminalResponseInput(msg.data)) return
         const action = sleepAction(msg.type)
         if (action === 'wake' && msg.type === 'session:submitText' && msg.submissionId)
           sendToClient(ws, {

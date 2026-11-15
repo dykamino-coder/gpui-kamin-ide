@@ -380,6 +380,21 @@ describe('idle hibernation on the session socket', () => {
     expect(h.submit).toHaveBeenCalledWith('s-new', 'go', 'u-1')
   })
 
+  it('does not wake for focus reports of the client terminal', async () => {
+    await asleepChat()
+    await socket.message({ type: 'session:input', data: '\x1b[O' })
+    await socket.message({ type: 'session:input', data: '\x1b[I' })
+    expect(h.create).toHaveBeenCalledTimes(1)
+    const fresh = makeSession('s-new', socket)
+    h.create.mockImplementationOnce(async () => {
+      h.sessions.set(fresh.id, fresh)
+      return fresh
+    })
+    await socket.message({ type: 'session:input', data: 'y' })
+    expect(h.create).toHaveBeenCalledTimes(2)
+    expect(h.acquire).toHaveBeenLastCalledWith({ urgent: true })
+  })
+
   it('ignores a warm-up for a chat that is awake', async () => {
     const session = makeSession('s-awake', socket)
     h.sessions.set(session.id, session)
