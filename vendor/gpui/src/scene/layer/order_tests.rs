@@ -142,4 +142,3 @@ fn a_box_with_a_fill_and_a_border_over_it_keeps_the_orders_of_both() {
         Step::Box(2, rect(30., 12., 20., 10.), vec![(rect(31., 12., 19., 10.), hsla(0.1, 1., 0.5, 1.))]),
     ]);
 }
-

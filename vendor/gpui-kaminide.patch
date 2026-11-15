@@ -14561,10 +14561,10 @@ index 0000000000000000000000000000000000000000..94451323f200d3a0712e3f8f369bbe91
 +}
 diff --git a/vendor/gpui/src/scene/layer/order_tests.rs b/vendor/gpui/src/scene/layer/order_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..08bc03dacb72bbebadc47230ceb38f1176b35eb2
+index 0000000000000000000000000000000000000000..3aad3fc224a47d4125ac6644fe308433daaaef88
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/order_tests.rs
-@@ -0,0 +1,145 @@
+@@ -0,0 +1,144 @@
 +//! Scene layers: a layer's scene draws its commands in the order the scene
 +//! without layers draws them, as recorded and as a box's run is recorded
 +//! again.
@@ -14709,7 +14709,6 @@ index 0000000000000000000000000000000000000000..08bc03dacb72bbebadc47230ceb38f11
 +        Step::Box(2, rect(30., 12., 20., 10.), vec![(rect(31., 12., 19., 10.), hsla(0.1, 1., 0.5, 1.))]),
 +    ]);
 +}
-+
 diff --git a/vendor/gpui/src/scene/layer/reorder.rs b/vendor/gpui/src/scene/layer/reorder.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..4d9064f4d525daba356fd07db0b277f7cb5b33d9
