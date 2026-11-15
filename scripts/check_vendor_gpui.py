@@ -47,7 +47,10 @@ def crate_features(manifest: dict) -> dict[str, str]:
 # tests are headless and draw on the default D3D11 adapter (WARP on CI).
 # A filter skips the all-targets build, which the full fork check owns.
 TEST_FILTERS = {
-    "gpui-windows": ["directx_renderer::recovery_tests::damage"],
+    "gpui-windows": [
+        "directx_renderer::recovery_tests::damage",
+        "directx_renderer::group_atlas",
+    ],
 }
 
 
