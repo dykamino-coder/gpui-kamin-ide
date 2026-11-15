@@ -278,6 +278,33 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
     })
     expect((await (await request('tasks/get', { taskId: id })).json()).result).toMatchObject({ status: 'cancelled' })
   })
+  it('answers BashOutput and KillShell for a background task id here, never as a client shell id', async () => {
+    const id = await create()
+    await vi.waitFor(() =>
+      expect(mock.send).toHaveBeenCalledWith(session.ws, expect.objectContaining({ type: 'mcp:call', requestId: id })),
+    )
+    mock.call.mockClear()
+
+    const output = rpcResult(
+      await (await request('tools/call', { name: 'BashOutput', arguments: { bash_id: id } })).text(),
+    )
+    expect(output.content[0].text).toContain(`Bash task ${id} is still running`)
+    const kill = rpcResult(
+      await (await request('tools/call', { name: 'KillShell', arguments: { bash_id: id } })).text(),
+    )
+    expect(kill.content[0].text).toBe(`Stopped Bash task ${id}.`)
+    await vi.waitFor(() =>
+      expect(mock.send).toHaveBeenCalledWith(session.ws, {
+        type: 'mcp:cancel',
+        requestId: id,
+        taskOwner: session.mcpEndpoint!.id,
+      }),
+    )
+    expect(mock.call).not.toHaveBeenCalled()
+    // A numeric id is a client shell and still goes to the client.
+    await request('tools/call', { name: 'KillShell', arguments: { bash_id: '3' } })
+    expect(mock.call).toHaveBeenCalled()
+  })
   it('cancels an undelivered task without ever executing it', async () => {
     session.ws = { readyState: 0 } as PtySession['ws']
     const id = await create()
