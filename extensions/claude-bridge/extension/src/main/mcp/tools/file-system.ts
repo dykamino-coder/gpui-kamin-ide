@@ -4,6 +4,7 @@ import path from 'node:path'
 import { notebookRead } from './notebook'
 import { readTextCached, invalidateFileCache } from '../../utils/file-read-cache'
 import { detectEncoding, encodeText, type TextEncoding } from './text-codec'
+import { lineWindow, readUtf8LineWindow, type LineWindow } from './read-range'
 import { globQuery, listGlob, MAX_GLOB_LISTED, newestFirst } from './glob-tool'
 import { resolveToolPath, resolveWorkingDirectory } from '../../utils/working-directory'
 import type { ToolCallContext } from '../executor'
@@ -131,6 +132,10 @@ function formatKb(bytes: number): string {
   return `${value.toFixed(1).replace(/\.0$/, '')}${unit}`
 }
 
+/** Above this size a ranged Read streams the file (the read cache keeps files
+ *  up to 2 MB, see file-read-cache.ts). */
+const STREAMED_RANGE_BYTES = 2 * 1024 * 1024
+
 export async function readFile(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   if (!input.file_path) return errorResult('file_path is required')
   const filePath = resolveToolPath(input.file_path as string, context?.cwd)
@@ -176,30 +181,34 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
           `or search for specific content instead of reading the whole file.`,
       )
     }
-    const file = await readTextCached(filePath, stat)
-    if (file.binary) {
-      return errorResult(
-        `This tool cannot read binary files. ${filePath} appears to be binary (it contains NUL bytes). ` +
-          `Use Bash (for example \`xxd | head\` or \`file\`) to inspect it.`,
-      )
-    }
-    const raw = file.content
-
-    if (raw.length === 0 || raw.trim().length === 0) {
-      return textResult('<system-reminder>Warning: File exists but has empty contents.</system-reminder>')
-    }
-
-    // As native Read: a final line break opens one more, empty, numbered line.
-    const allLines = raw.split('\n')
     const offset = typeof input.offset === 'number' ? Math.max(0, Math.floor(input.offset) - 1) : 0
     const limit = typeof input.limit === 'number' && input.limit > 0 ? Math.floor(input.limit) : 2000
-    if (offset >= allLines.length) {
+    // A range of a file too large for the read cache: read only up to it.
+    let view: LineWindow | null =
+      ranged && stat.size > STREAMED_RANGE_BYTES
+        ? await readUtf8LineWindow(filePath, offset, limit, input.limit === undefined)
+        : null
+    if (!view) {
+      const file = await readTextCached(filePath, stat)
+      if (file.binary) {
+        return errorResult(
+          `This tool cannot read binary files. ${filePath} appears to be binary (it contains NUL bytes). ` +
+            `Use Bash (for example \`xxd | head\` or \`file\`) to inspect it.`,
+        )
+      }
+      const raw = file.content
+      if (raw.length === 0 || raw.trim().length === 0) {
+        return textResult('<system-reminder>Warning: File exists but has empty contents.</system-reminder>')
+      }
+      view = lineWindow(raw, offset, limit)
+    }
+    if (view.lines.length === 0) {
       return textResult(
         `<system-reminder>Warning: the file exists but is shorter than the provided offset (${offset + 1}). ` +
-          `The file has ${allLines.length} lines.</system-reminder>`,
+          `The file has ${view.total()} lines.</system-reminder>`,
       )
     }
-    const slice = allLines.slice(offset, offset + limit)
+    const slice = view.lines
 
     const formatted = slice
       .map((line, i) => {
@@ -222,9 +231,9 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
 
     let suffix = ''
     const end = offset + slice.length
-    if (input.limit === undefined && end < allLines.length) {
+    if (input.limit === undefined && view.more) {
       suffix =
-        `\n\n<system-reminder>Showing lines ${offset + 1}-${end} of ${allLines.length}. ` +
+        `\n\n<system-reminder>Showing lines ${offset + 1}-${end} of ${view.total()}. ` +
         `Use offset/limit to read the rest.</system-reminder>`
     }
 
