@@ -9,10 +9,12 @@
 //! ink, layers by their bounds at any depth (`Scene::push_layer`), retained
 //! layers outside layers by theirs; the bottom layer adds none. A box's new
 //! run takes, command by command, the bucket the tree gives it after the
-//! commands before the run, as a paint from scratch does. The run is refused
-//! when it changes the bucket of a later rectangle, which a paint from
-//! scratch would then give: an accepted run keeps the layer's orders those of
-//! that paint, so each later run is planned from exact orders again.
+//! commands before the run, as a paint from scratch does. A later rectangle
+//! the change reaches takes the bucket that paint gives it: above a moved
+//! rectangle it meets that went higher, or, held by one that went or went
+//! lower, one above the highest it meets before it; the others keep theirs
+//! (`scene::layer::reorder` moves them). The layer keeps the orders of that
+//! paint, so each later run is planned from exact orders again.
 
 use super::SceneLayer;
 use super::boxes::{BoxRange, ink_of};
@@ -29,8 +31,19 @@ pub(crate) struct Plan {
     /// or new run painted before the run (each sorted list holds an order's
     /// entries in paint order).
     before: Vec<(u8, DrawOrder, usize)>,
-    /// Whether an ink or order of the run changed.
+    /// Whether an ink or order of the run, or a later order, changed.
     pub(crate) changed: bool,
+    /// `(command, bucket)`: later commands (primitives outside layers and
+    /// layers) a paint from scratch gives another bucket, in paint order.
+    pub(crate) later: Vec<(usize, DrawOrder)>,
+}
+
+/// A rectangle of the tree whose bucket the new run moves: `was` before,
+/// `now` after (`None`: not there).
+struct Moved {
+    rect: Bounds<ScaledPixels>,
+    was: Option<DrawOrder>,
+    now: Option<DrawOrder>,
 }
 
 impl Plan {
@@ -138,23 +151,34 @@ impl SceneLayer {
             let inside = max_meeting(&rects[..j], &buckets, n);
             buckets.push(below[j].max(inside) + 1);
         }
-        // Every later rectangle keeps its bucket.
-        let mut kept = true;
+        // The rectangles whose bucket moved: the old run's (gone), the new
+        // run's, and each later one the change moves, in paint order.
+        let mut moved: Vec<Moved> = old.iter().map(|&(rect, t)| Moved { rect, was: Some(t), now: None }).collect();
+        moved.extend(rects.iter().zip(&buckets).map(|(&rect, &t)| Moved { rect, was: None, now: Some(t) }));
+        let mut later: Vec<(usize, DrawOrder)> = Vec::new();
+        let mut layers_moved = false;
         tree_rects(ops, |at, r, x| {
-            if !kept || at < run.end {
+            if at < run.end {
                 return;
             }
-            let over = max_meeting(&rects, &buckets, &r);
-            if over >= x {
-                kept = false;
-            } else if over + 1 < x
-                && old.iter().any(|(o, t)| t + 1 == x && o.intersects(&r))
-                && self.highest_below(at, &run, &r).max(over) + 1 < x
-            {
-                kept = false;
+            let meeting = moved.iter().filter(|m| m.rect.intersects(&r));
+            let up = meeting.clone().filter_map(|m| m.now).max().unwrap_or(0);
+            // Held by a rectangle that went or went down: it may go down too.
+            let held = meeting.clone().any(|m| m.was == Some(x - 1) && m.now.is_none_or(|n| n + 1 < x));
+            let now = if up + 1 > x {
+                up + 1
+            } else if held && up + 1 < x {
+                self.highest_below(at, &run, &later, &moved, &r) + 1
+            } else {
+                x
+            };
+            if now != x {
+                layers_moved |= matches!(ops[at], PaintOperation::Layer(_));
+                moved.push(Moved { rect: r, was: Some(x), now: Some(now) });
+                later.push((at, now));
             }
         });
-        if !kept {
+        if layers_moved {
             return None;
         }
         let orders: Vec<DrawOrder> = buckets.iter().map(|t| t * ORDER_STEP).collect();
@@ -177,18 +201,33 @@ impl SceneLayer {
                 b.2 += 1;
             }
         }
-        let changed = old.len() != rects.len()
+        let changed = !later.is_empty()
+            || old.len() != rects.len()
             || old.iter().zip(rects.iter().zip(&buckets)).any(|((o, t), (n, u))| o != n || t != u);
         let ink = rects.iter().copied().reduce(|a, b| a.union(&b));
-        Some(Plan { ink, orders, before, changed })
+        Some(Plan { ink, orders, before, changed, later })
     }
 
-    /// The highest bucket of the rectangles of commands before `at`, outside
-    /// `run`, meeting `r`.
-    fn highest_below(&self, at: usize, run: &std::ops::Range<usize>, r: &Bounds<ScaledPixels>) -> DrawOrder {
-        let mut high = 0;
+    /// The highest bucket meeting `r` of the rectangles before command `at`:
+    /// those of the commands outside `run` (with the buckets `later` gave)
+    /// and of the new run.
+    fn highest_below(
+        &self,
+        at: usize,
+        run: &std::ops::Range<usize>,
+        later: &[(usize, DrawOrder)],
+        moved: &[Moved],
+        r: &Bounds<ScaledPixels>,
+    ) -> DrawOrder {
+        let mut high = moved
+            .iter()
+            .filter(|m| m.was.is_none() && m.rect.intersects(r))
+            .filter_map(|m| m.now)
+            .max()
+            .unwrap_or(0);
         tree_rects(&self.scene.paint_operations[..at], |i, n, t| {
             if !run.contains(&i) && n.intersects(r) {
+                let t = later.binary_search_by_key(&i, |l| l.0).map_or(t, |k| later[k].1);
                 high = high.max(t);
             }
         });

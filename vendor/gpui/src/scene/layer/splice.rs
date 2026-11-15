@@ -76,7 +76,10 @@ impl SceneLayer {
         if !new.paint_operations.iter().all(plain) {
             return None;
         }
-        let Some(plan) = self.plan_box(b, &new.paint_operations) else {
+        let plan = self
+            .plan_box(b, &new.paint_operations)
+            .filter(|plan| plan.later.is_empty() || self.lists_follow_commands());
+        let Some(plan) = plan else {
             layer_counters::RUNS_REORDERED.fetch_add(1, Relaxed);
             return None;
         };
@@ -144,10 +147,18 @@ impl SceneLayer {
         for other in &mut self.boxes[at + 1..] {
             other.ops = shift(other.ops.start)..shift(other.ops.end);
         }
-        let damage = match (b.ink, plan.ink) {
+        let mut damage = match (b.ink, plan.ink) {
             (Some(a), Some(n)) => Some(a.union(&n)),
             (a, n) => a.or(n),
         };
+        if !plan.later.is_empty() {
+            let later: Vec<(usize, DrawOrder)> =
+                plan.later.iter().map(|&(i, t)| (shift(i as u32) as usize, t)).collect();
+            if let Some(ink) = self.move_later(&later) {
+                damage = Some(damage.map_or(ink, |d| d.union(&ink)));
+            }
+            layer_counters::RUNS_MOVED_LATER.fetch_add(1, Relaxed);
+        }
         let this = &mut self.boxes[at];
         this.ink = plan.ink;
         this.ops = op_start..op_start + op_new;

@@ -378,18 +378,22 @@ fn a_box_run_is_replaced_one_to_many_many_to_none_and_none_to_one() {
 }
 
 #[test]
-fn a_run_whose_new_ink_would_raise_a_later_box_is_refused() {
+fn a_run_whose_new_ink_raises_a_later_box_moves_it_above() {
     let layer = boxes_layer();
-    let version = layer.content().version();
-    let refused = layer_counters::RUNS_REORDERED.load(Relaxed);
+    let before = painted(&layer);
+    let moves = layer_counters::RUNS_MOVED_LATER.load(Relaxed);
     // Over box 3's fill, of the new fill's bucket: a paint from scratch
     // raises box 3 above it.
-    assert_eq!(
-        rerecord(&layer, 1, &[(rect(0., 20., 100., 30.), red())]),
-        None
-    );
-    assert_eq!(layer.content().version(), version, "nothing was replaced");
-    assert!(layer_counters::RUNS_REORDERED.load(Relaxed) > refused);
+    assert!(rerecord(&layer, 1, &[(rect(0., 20., 100., 30.), red())]).is_some());
+    assert!(layer_counters::RUNS_MOVED_LATER.load(Relaxed) > moves);
+    let after = painted(&layer);
+    assert_eq!((after[0].clone(), after[2].clone()), (before[0].clone(), before[2].clone()));
+    let content = layer.content();
+    let order = |b: Bounds<ScaledPixels>| content.scene().quads.iter().find(|q| q.bounds == b).map(|q| q.order);
+    assert!(order(rect(0., 40., 100., 20.)) > order(rect(0., 20., 100., 30.)));
+    // The value binding of box 3 follows its moved quad.
+    drop(content);
+    assert!(layer.set_background(3, blue(), red()).is_some());
 }
 
 /// The run of box 2 (`boxes_layer`) replaced by one quad painted with a
