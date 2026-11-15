@@ -81,7 +81,7 @@ pub(super) async fn sample(
     args: &Args,
     step: Step<'_>,
     capture: &CaptureSession,
-    luid: (i32, u32),
+    luid: &super::work::Adapter,
 ) -> Result<(Measured, kamin_html::host::capture::Frame, work::Sample)> {
     let (measured, frame, work) =
         sample_with(cx, window, fonts, args, step, capture, luid, true).await?;
@@ -102,7 +102,7 @@ pub(super) async fn sample_with(
     args: &Args,
     step: Step<'_>,
     capture: &CaptureSession,
-    luid: (i32, u32),
+    luid: &super::work::Adapter,
     present: bool,
 ) -> Result<(
     Measured,
@@ -119,9 +119,12 @@ pub(super) async fn sample_with(
                 Step::Edit(html) => Some((html, view.doc.mutations(html))),
                 _ => None,
             };
-            let started = Instant::now();
+            // Захват счётчиков открывается до начала кадра: его цена — диагностика
+            // observer_setup, а не часть first_frame_total.
+            let setup = Instant::now();
             let work = work::Capture::begin(luid)?;
-            let observer_setup = started.elapsed();
+            let observer_setup = setup.elapsed();
+            let started = Instant::now();
             let before = Counters::read(capture);
             let seq = capture.sequence();
             let mut resources_time = None;
@@ -190,8 +193,9 @@ pub(super) async fn sample_with(
     } else {
         wait_or_skip(cx, seq, capture, skipped).await?
     };
+    let resumed = Instant::now();
     let total = match completed {
-        Ok(_) => started.elapsed(),
+        Ok(_) => resumed - started,
         Err(at) => at.duration_since(started),
     };
     let work = window.read_with(cx, |view, _| {
@@ -214,6 +218,7 @@ pub(super) async fn sample_with(
                 present: Duration::ZERO,
                 readback: Duration::ZERO,
                 total,
+                readback_to_resume: Duration::ZERO,
             },
             &phases.borrow(),
         )?;
@@ -260,6 +265,9 @@ pub(super) async fn sample_with(
                 .checked_sub(before.readback)
                 .ok_or("readback counter regressed")?,
             total,
+            // Конец кадра у браузеров — сообщение после обновления отрисовки; наш
+            // отсчёт ждёт ещё пробуждения задачи после readback: оно выносится отдельно.
+            readback_to_resume: resumed.saturating_duration_since(frame.completed_at),
         },
         &phases.borrow(),
     )?;
@@ -288,7 +296,8 @@ pub(super) async fn run(
     startup_timings.settle(cx).await;
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
-    let luid = (identity.luid_high_part, identity.luid_low_part);
+    let adapter = work::Adapter::open((identity.luid_high_part, identity.luid_low_part));
+    let luid = &adapter;
     gpu["requested"] = json!(args.gpu);
     gpu["device_name"] = json!(identity.device_name);
     gpu["driver_version"] = json!(identity.driver_version);
