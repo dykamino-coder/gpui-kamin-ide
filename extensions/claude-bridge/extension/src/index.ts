@@ -17,6 +17,7 @@ import { SessionsBridge } from "./sessions-bridge"
 import { ipcMain } from "@kaminide/host-compat"
 import { relayToolUsage } from './tool-usage-relay'
 import { configureTransientNotice } from "./main/notifications/toast-window"
+import { sweepOutputDirectory } from "./main/mcp/tools/shell-output"
 
 const CHAT_VIEW_ID = "claudeBridgeChat"
 // Plan / Todos / Agents / Console are SEPARATE tools (own auxiliarybar container
@@ -35,6 +36,9 @@ const CUSTOMIZE_VIEW_IDS = [
 ]
 
 export function activate(context: vscode.ExtensionContext): void {
+  // Saved Bash/PowerShell outputs from earlier runs are bounded by age and
+  // total size; clear the leftovers off the startup path.
+  setTimeout(() => sweepOutputDirectory(), 0).unref?.()
   // Self-closing completion notices need the host's explicit transient
   // contract; an older host (no `kaminide.window`) keeps the sticky toast.
   const kWindow = (kaminide as { window?: kaminide.WindowApi }).window

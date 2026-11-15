@@ -39,24 +39,26 @@ export { MCP_TOOLS } from './mcp-tools-defs'
 
 const MCP_LOG_MAX = 50 // keep last N entries per session
 
-// Claude CLI's MAX_MCP_OUTPUT_TOKENS is set to 200k in session-manager.ts.
-// We truncate ~10% below that (≈180k tokens ≈ 720 KB, 4 chars/token) so the
-// CLI never triggers its spill-to-file behavior. The spill file is written
-// inside the CLI's process (our container) using the container's cwd — the
-// model would then Read() it, which runs on the *client* VSIX bridge host and
-// can't see /home/bridge/... paths. Truncating on our side keeps the whole
-// result inline and preserves client-server separation.
-const MCP_RESULT_HARD_CAP_BYTES = 720_000
+// Claude CLI writes any MCP result longer than the tool's result size limit
+// (50,000 characters by default in 2.1.322) to a tool-results file next to its
+// transcript and hands the model a 2 KB preview. That file lives in this
+// container; the model's Read runs on the client host and cannot open it, so
+// the rest of the result is lost. Every tool in tools/list therefore declares
+// `_meta["anthropic/maxResultSizeChars"]` at the CLI's 500K ceiling (see
+// withResultSize), and results are truncated below that same ceiling here, so
+// no result is ever spilled.
+const MCP_PER_RESULT_CEILING = 500_000
 // Reserve space for the [Output truncated…] marker so the notice itself
 // never pushes us past the cap. Budget is generous — marker lines are ~400
 // chars, 2 KB leaves headroom for tool-name formatting and future notes.
 const TRUNCATION_NOTICE_RESERVE = 2_048
-const DEFAULT_TRUNCATION_BUDGET = MCP_RESULT_HARD_CAP_BYTES - TRUNCATION_NOTICE_RESERVE
-// Per MCP 2.1.91 a tool can opt into a higher per-result cap by attaching
-// `_meta["anthropic/maxResultSizeChars"]` (max 500K) to the result. We honor
-// it up to MCP_PER_RESULT_CEILING (matching CLI's 500K limit) for tools like
-// DB-schema dumps that want to pass full output through.
-const MCP_PER_RESULT_CEILING = 500_000
+const DEFAULT_TRUNCATION_BUDGET = MCP_PER_RESULT_CEILING - TRUNCATION_NOTICE_RESERVE
+
+/** A tools/list entry that lets the CLI keep results up to the ceiling inline. */
+export function withResultSize<T extends object>(tool: T): T & { _meta: Record<string, unknown> } {
+  const meta = (tool as { _meta?: Record<string, unknown> })._meta
+  return { ...tool, _meta: { ...meta, 'anthropic/maxResultSizeChars': MCP_PER_RESULT_CEILING } }
+}
 export function truncateMcpResult(result: Record<string, unknown>, toolName: string): Record<string, unknown> {
   const content = result.content as Array<Record<string, unknown>> | undefined
   if (!Array.isArray(content)) return result
@@ -590,7 +592,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       // Built-in tools are the ones the client host declared it can execute
       // (INC-2026-0097); a session without a declaration gets the full list.
       const builtinTools = mcpToolsFor(session.host)
-      const toolList = [...builtinTools, ...serverTools, ...externalTools]
+      const toolList = [...builtinTools, ...serverTools, ...externalTools].map(withResultSize)
       observeMcpCatalog(session, toolList)
 
       logMcpRequest(session, 'tools/list', 'ok', undefined, Date.now() - reqStart)
