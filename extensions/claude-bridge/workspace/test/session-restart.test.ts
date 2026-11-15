@@ -78,7 +78,15 @@ test('real host restores open conversations, titles and active selection from di
   await waitFrame(view.frames, view.events, f => f.channel === 'connection-state-changed' && f.args[0] === firstTab && f.args[1].status === 'connected' && f.args[1].sessionId === first)
   sockets.get(first)!.send(JSON.stringify({ type: 'session:title', title: 'Named persistent conversation' }))
   await waitFrame(view.frames, view.events, f => f.channel === 'tab:list-changed' && f.args[0].some((t: any) => t.sessionTitle === 'Named persistent conversation'))
-  await view.invoke('tab:create', { cwd: root }) // Empty tabs have no conversation identity yet.
+  const emptyTab = await view.invoke('tab:create', { cwd: root }) // No session:created from this fixture.
+  const refused = 'one\ntwo\nthree\nfour'
+  view.send('pty-submit-text', emptyTab, refused, 'offline-identity')
+  await waitFrame(view.frames, view.events, f => f.channel === 'session:submission' &&
+    f.args[0] === emptyTab && f.args[1].id === 'offline-identity' && f.args[1].rejected)
+  view.send('pty-submit-text', emptyTab, refused, 'offline-identity')
+  assert.deepEqual(await view.invoke('workspace:draft:get', emptyTab),
+    { revision: 1, value: { text: refused, attachments: [] } })
+  assert.equal(upstreamFrames.filter(f => f.type === 'session:submitText' && f.submissionId === 'offline-identity').length, 0)
   const secondTab = await view.invoke('session:resume', { cwd: root, conversationId: second })
   view.send('tab:switch', firstTab)
   const before = await view.invoke('tab:list')

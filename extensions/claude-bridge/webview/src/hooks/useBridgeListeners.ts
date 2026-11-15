@@ -599,8 +599,9 @@ export function useBridgeListeners(
     })
 
     const unsubSubmission = bridge.onSubmission((tabId, data) => {
+      if (data.rejected && !tabs.peek().some(tab => tab.id === tabId)) return
       receiveSubmission(tabId, data)
-      if (data.warning && (data.state === 'fallback' || data.capable === false))
+      if (data.warning && (data.rejected || data.state === 'fallback' || data.capable === false))
         showToast({ type: 'info', title: 'Message delivery', message: data.warning })
     })
 

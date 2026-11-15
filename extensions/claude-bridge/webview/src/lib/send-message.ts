@@ -4,10 +4,7 @@
 // proves nothing about the button.
 import type { KaminBridgeApi } from '../../shared/types'
 import { tabPromptReady, lastSendAt } from '../signals/connection'
-import { tabActivity } from '../signals/ui'
-import { modCapabilities, optimisticSubmission } from '../signals/submissions'
-import { enqueueLocal } from '../signals/queue'
-import { vscodeApi } from './webview-api'
+import { optimisticSubmission } from '../signals/submissions'
 
 /** Ship `message` to `tabId`'s PTY.
  *
@@ -16,16 +13,10 @@ import { vscodeApi } from './webview-api'
  *  between separate clear and submit frames. `promptReady` still flips
  *  optimistically so Send becomes Stop without waiting for the server. */
 export function sendMessageToTab(bridge: KaminBridgeApi, tabId: string, message: string): void {
-  // Mirror it into the visual queue when the CLI is mid-turn. The message goes
-  // to the CLI either way — the CLI queues it itself — so this only decides
-  // whether the user SEES it pending. Lives here rather than in the composer so
-  // a scripted send queues exactly like a click; while it sat in `InputBar` a
-  // command-driven send silently skipped the queue.
-  const busy = (tabActivity.value.get(tabId)?.isWorking ?? false) || !(tabPromptReady.value.get(tabId) ?? false)
-  // Browser ingress is acknowledged/deduplicated by the workspace host even
-  // when the upstream CLI uses native terminal delivery instead of its mod.
-  const submissionId = (vscodeApi.onHostMessage || modCapabilities.value.get(tabId)) ? optimisticSubmission(tabId, message) : undefined
-  if (busy && !submissionId) enqueueLocal(tabId, message)
+  // Every prompt needs an identity, including before capabilities arrive: a
+  // local refusal must remove exactly its optimistic row. Native CLI delivery
+  // already reports receipts/fallback with this same ID.
+  const submissionId = optimisticSubmission(tabId, message)
 
   const nextSend = new Map(lastSendAt.value)
   nextSend.set(tabId, Date.now())
@@ -34,6 +25,5 @@ export function sendMessageToTab(bridge: KaminBridgeApi, tabId: string, message:
   next.set(tabId, false)
   tabPromptReady.value = next
 
-  if (submissionId) bridge.submitText(tabId, message, submissionId)
-  else bridge.submitText(tabId, message)
+  bridge.submitText(tabId, message, submissionId)
 }

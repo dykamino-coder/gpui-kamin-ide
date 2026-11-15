@@ -2,10 +2,33 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { jsonlEntriesByTab } from './jsonl'
 import { forgetModCapability, modCapabilities, noteSubmissionRows, pendingSubmissionRows, receiveSubmission, submissions } from './submissions'
 import type { JsonlEntryData } from '../types/jsonl'
-import { clearLocalQueue, localQueue, reconcileQueueWithEntries, sweepStaleQueue } from './queue'
+import { clearLocalQueue, enqueueLocal, localQueue, reconcileQueueWithEntries, sweepStaleQueue } from './queue'
+import { storage } from '../lib/storage'
 
 beforeEach(() => { clearLocalQueue('tab'); submissions.value = new Map(); jsonlEntriesByTab.value = new Map(); modCapabilities.value = new Map() })
 describe('submission transcript identity', () => {
+  it('does not restore a cancelled prompt on a later transport refusal', () => {
+    storage.removeItem('input-draft:tab')
+    receiveSubmission('tab', { id: 'cancelled', text: 'cancelled text', state: 'cancelled' })
+    receiveSubmission('tab', { id: 'cancelled', text: 'cancelled text', state: 'cancelled', rejected: true })
+    expect(storage.getItem('input-draft:tab')).toBeNull()
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!)).toEqual([])
+  })
+  it('settles a local refusal, removes only its queued ID, and restores the full text once', () => {
+    storage.removeItem('input-draft:tab')
+    for (const id of ['one', 'two']) {
+      receiveSubmission('tab', { id, text: 'same text', state: 'queued' })
+      enqueueLocal('tab', 'same text', { id })
+    }
+    const refusal = { id: 'one', text: 'one\ntwo\nthree\nfour', state: 'cancelled' as const, rejected: true }
+    receiveSubmission('tab', refusal)
+    receiveSubmission('tab', refusal)
+    expect(storage.getItem('input-draft:tab')).toBe(refusal.text)
+    expect(localQueue.value.get('tab')?.map(item => item.id)).toEqual(['two'])
+    expect(pendingSubmissionRows([], submissions.value.get('tab')!).map(row => row.submissionId)).toEqual(['two'])
+    receiveSubmission('tab', { id: '', known: [] })
+    expect(submissions.value.get('tab')![0].state).toBe('cancelled')
+  })
   it('adds no row for a codex read receipt after the chat moved from Claude to ChatGPT', () => {
     receiveSubmission('tab', { id: '', capable: true })
     receiveSubmission('tab', { id: 'claude', text: 'on claude', state: 'queued' })
