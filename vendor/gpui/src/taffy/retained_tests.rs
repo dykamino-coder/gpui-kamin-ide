@@ -358,3 +358,30 @@ fn a_leaf_whose_new_key_a_later_leaf_has_takes_no_node_of_a_later_request() {
     assert_eq!(after[1][0], before[1][0]);
     assert_eq!(engine.claimed_nodes(), 10);
 }
+
+#[test]
+fn a_tree_that_shrank_keeps_its_nodes_while_its_passes_request_all_of_them() {
+    let mut engine = TaffyLayoutEngine::new();
+    let wide: Vec<_> = (0..64).map(|i| leaf(&mut engine, i as f32)).collect();
+    parent(&mut engine, &wide);
+    engine.clear();
+    // The document became one leaf: the sweep drops the 65 old nodes, and the
+    // storage keeps their slots.
+    let one = leaf(&mut engine, 500.);
+    engine.clear();
+    assert_eq!(engine.taffy.total_node_count(), 1);
+    // Unchanged passes request every node of the tree: nothing is swept.
+    for _ in 0..3 {
+        assert_eq!(leaf(&mut engine, 500.), one);
+        engine.clear();
+        assert_eq!(engine.taffy.total_node_count(), 1);
+    }
+    // A pass that leaves a node out sweeps it again.
+    let kept = leaf(&mut engine, 500.);
+    leaf(&mut engine, 600.);
+    engine.clear();
+    assert_eq!(engine.taffy.total_node_count(), 2);
+    assert_eq!(leaf(&mut engine, 500.), kept);
+    engine.clear();
+    assert_eq!(engine.taffy.total_node_count(), 1);
+}
