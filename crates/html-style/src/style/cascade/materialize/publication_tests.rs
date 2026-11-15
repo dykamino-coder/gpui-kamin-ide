@@ -103,7 +103,7 @@ fn parent_edit_rematerializes_descendants_and_retains_the_unchanged_branch() {
 #[test]
 fn inherited_explicit_and_environment_inputs_control_cache_misses() {
     let parsed = crate::dom::parse(
-        r#"<body style="font-size:20px;padding-left:3px"><p>x</p><span style="padding-left:inherit">x</span></body>"#,
+        r#"<body style="font-size:20px;padding-left:3px"><p>x</p><span style="padding-left:inherit">x</span><i style="font-size:2vw">x</i></body>"#,
         "",
     );
     let vcx = parsed.values();
@@ -128,9 +128,14 @@ fn inherited_explicit_and_environment_inputs_control_cache_misses() {
     other.inh.font.font_size = Some(Len::Px(30.0));
     assert!(get(&p.style, &other, generation).is_none());
     assert!(get(&p.style, &parent, (generation.0 + 1, generation.1)).is_none());
+    // A new viewport size misses only a style whose values read it.
     let mut viewport = generation.1;
     viewport[0] = (vcx.viewport.0 + 1.0).to_bits();
-    assert!(get(&p.style, &parent, (generation.0, viewport)).is_none());
+    assert!(get(&p.style, &parent, (generation.0, viewport)).is_some());
+    let i = element(&parsed.nodes, "i");
+    let (_, body) = i.style.slot().with_parent().unwrap();
+    assert!(get(&i.style, &body, generation).is_some());
+    assert!(get(&i.style, &body, (generation.0, viewport)).is_none());
     assert_eq!(held.inh.font.font_size, Some(Len::Px(20.0)));
     assert_eq!(
         span.style
@@ -168,7 +173,7 @@ fn container_input_is_published_before_handle_and_legacy_are_shared() {
 
 #[test]
 fn changed_signal_tracks_publication_not_parent_pointer_rebinding() {
-    let parsed = crate::dom::parse("<p>x</p>", "");
+    let parsed = crate::dom::parse("<p style=font-size:10vw>x</p>", "");
     let vcx = parsed.values();
     let root = Rc::new(Computed::default());
     assert!(materialize_changed(&parsed.nodes, &root, vcx));
@@ -192,4 +197,27 @@ fn changed_signal_tracks_publication_not_parent_pointer_rebinding() {
     );
     assert!(materialize_changed(&parsed.nodes, &root, viewport));
     assert!(!materialize_changed(&parsed.nodes, &root, viewport));
+}
+
+#[test]
+fn a_new_viewport_size_republishes_only_styles_that_read_it() {
+    // `vw` in a margin is resolved by the box tree (`resolve_viewport`), not
+    // at the computed stage: only the font size and container units fold here.
+    let parsed = crate::dom::parse(
+        "<div><p>a</p><em style=margin-left:5vw>b</em><b style=font-size:calc(1em+1vmin)>c</b>\
+         <s style=width:10cqw>d</s></div>",
+        "",
+    );
+    let root = Rc::new(Computed::default());
+    let at = |w: f32| parsed.values().with_viewport((w, 600.));
+    let published = |tag| element(&parsed.nodes, tag).style.published().unwrap();
+    materialize(&parsed.nodes, &root, at(800.));
+    let tags = ["div", "p", "em", "b", "s"];
+    let before: Vec<_> = tags.iter().map(|tag| published(tag)).collect();
+    assert!(materialize_changed(&parsed.nodes, &root, at(801.)));
+    for (n, tag) in tags.iter().enumerate() {
+        let kept = before[n].ptr_eq(&published(tag));
+        assert_eq!(kept, n < 3, "{tag}");
+    }
+    assert!(!materialize_changed(&parsed.nodes, &root, at(801.)));
 }

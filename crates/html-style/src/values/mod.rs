@@ -23,6 +23,7 @@ pub mod traversal;
 pub use traversal::MAX_DEPTH;
 mod style_storage;
 mod value_cx;
+pub mod viewport_reads;
 
 use crate::style::css::{DeclBlock, Media, PageRule};
 use crate::style::generated::counter_style_rules::CounterStyles;

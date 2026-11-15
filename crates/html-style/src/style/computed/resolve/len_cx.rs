@@ -90,8 +90,14 @@ impl<'a> LenCx<'a> {
                 };
                 if k == 0.0 { add } else { pct(k)? + add }
             }
-            Len::Vw(k) => k * self.viewport?.size.0,
-            Len::Vh(k) => k * self.viewport?.size.1,
+            Len::Vw(k) => {
+                crate::values::viewport_reads::note();
+                k * self.viewport?.size.0
+            }
+            Len::Vh(k) => {
+                crate::values::viewport_reads::note();
+                k * self.viewport?.size.1
+            }
             Len::Em(_)
             | Len::EmPx(..)
             | Len::Ch(_)
@@ -153,6 +159,8 @@ impl Len {
         if let Len::Calc(i) = self {
             let mut sum = calc_get(i, vcx);
             if sum.fold_container(vp.container.unwrap_or(vp.size), vp.vertical) {
+                // An axis without a query container is the viewport's.
+                crate::values::viewport_reads::note();
                 return sum.collapse_mixed(vcx).unwrap_or(self);
             }
         }
@@ -165,8 +173,14 @@ impl Len {
     /// append-only, а `collapse` стёр бы процентную смесь.
     pub fn fold_viewport(self, vp: ViewportCx, vcx: ValueCx<'_>) -> Len {
         match self {
-            Len::Vw(k) => Len::Px(k * vp.size.0),
-            Len::Vh(k) => Len::Px(k * vp.size.1),
+            Len::Vw(k) => {
+                crate::values::viewport_reads::note();
+                Len::Px(k * vp.size.0)
+            }
+            Len::Vh(k) => {
+                crate::values::viewport_reads::note();
+                Len::Px(k * vp.size.1)
+            }
             Len::Calc(i) => {
                 let mut sum = calc_get(i, vcx);
                 if sum.fold_viewport(vp.size, vp.vertical, vp.container) {
