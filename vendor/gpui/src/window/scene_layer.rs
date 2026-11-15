@@ -134,9 +134,16 @@ impl Window {
         unseen && self.frame_presented && self.platform_window.last_frame_presented()
     }
 
+    /// Present the next drawn frame whatever it changed on screen: a reader of
+    /// the presented pixels (a capture, a readback) waits for it.
+    pub fn require_presentation(&mut self) {
+        self.presentation_required = true;
+    }
+
     /// Present the frame just drawn, unless it changed nothing on screen and
     /// the platform did not ask for a presentation (`present_unneeded`).
     pub(crate) fn present_drawn(&mut self, required: bool) {
+        let required = required || std::mem::take(&mut self.presentation_required);
         if !required && self.present_unneeded() {
             crate::scene::layer_counters::PRESENTS_SKIPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.needs_present.set(false);

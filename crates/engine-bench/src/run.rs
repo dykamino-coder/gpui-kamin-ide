@@ -110,6 +110,9 @@ pub(super) async fn sample(
             view.phases = Rc::new(RefCell::new(Phases::requested(observer_setup)));
             capture.arm_first();
             cx.notify();
+            // The capture reads the presented frame: present it even when a
+            // write into the scene layer changed nothing on screen.
+            window.require_presentation();
             window.refresh();
             Ok((
                 started,
@@ -188,7 +191,10 @@ pub(super) async fn run(
     startup_timings.mark("async_entry");
     // Пустой стартовый кадр и инициализация GPU не входят в document-cold.
     let seq = capture.sequence();
-    window.update(cx, |_, window, _| window.refresh())?;
+    window.update(cx, |_, window, _| {
+        window.require_presentation();
+        window.refresh()
+    })?;
     wait(cx, seq, capture).await?;
     startup_timings.mark("initial_empty_gpu_frame");
     // Замер начинается в покое платформы (без презентов буста после WM_SIZE).

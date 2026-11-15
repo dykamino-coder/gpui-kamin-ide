@@ -1303,6 +1303,9 @@ pub struct Window {
     pub(crate) layer_source: Option<Rc<crate::SceneLayer>>,
     /// The platform showed a frame of this window (`present_unneeded`).
     pub(crate) frame_presented: bool,
+    /// The next drawn frame is presented even if it changed nothing on screen
+    /// (Window::require_presentation).
+    pub(crate) presentation_required: bool,
     pub(crate) paint_owner: u32,
     pub(crate) paint_value: Option<crate::LayerValue>,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
@@ -2252,6 +2255,7 @@ impl Window {
             layer_recording: None,
             layer_source: None,
             frame_presented: false,
+            presentation_required: false,
             paint_owner: 0,
             paint_value: None,
             requested_autoscroll: None,
