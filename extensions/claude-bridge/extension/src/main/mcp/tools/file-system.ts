@@ -125,6 +125,10 @@ function preserveQuoteStyle(
 
 const MAX_LINE_LENGTH = 2000
 
+function formatKb(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : `${Math.round(bytes / 1024)}KB`
+}
+
 export async function readFile(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   if (!input.file_path) return errorResult('file_path is required')
   const filePath = resolveToolPath(input.file_path as string, context?.cwd)
@@ -160,6 +164,13 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
       return { content: [{ type: 'image', data: base64, mimeType }] }
     }
 
+    const ranged = input.offset !== undefined || input.limit !== undefined
+    if (!ranged && stat.size > WARN_READ_BYTES) {
+      return errorResult(
+        `File content (${formatKb(stat.size)}) exceeds the maximum size for a whole-file read (${formatKb(WARN_READ_BYTES)}). ` +
+          `Use offset and limit to read specific portions of the file, or Grep to search for specific content.`,
+      )
+    }
     const file = await readTextCached(filePath, stat)
     if (file.binary) {
       return errorResult(
@@ -194,16 +205,22 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
       })
       .join('\n')
 
+    // Same bound for a range as for a whole file (native Read: 256 KB): a
+    // larger result would only be cut by the server's result limit
+    // (INC-2026-0121), so ask for a smaller range instead.
+    if (formatted.length > WARN_READ_BYTES) {
+      return errorResult(
+        `Lines ${offset + 1}-${offset + slice.length} are ${formatKb(formatted.length)} of text, more than ${formatKb(WARN_READ_BYTES)} per read. ` +
+          `Read fewer lines with a smaller limit, or use Grep to find the part you need.`,
+      )
+    }
+
     let suffix = ''
     const end = offset + slice.length
     if (input.limit === undefined && end < allLines.length) {
       suffix =
         `\n\n<system-reminder>Showing lines ${offset + 1}-${end} of ${allLines.length}. ` +
         `Use offset/limit to read the rest.</system-reminder>`
-    } else if (stat.size > WARN_READ_BYTES && input.offset === undefined && input.limit === undefined) {
-      suffix =
-        `\n\n<system-reminder>File is ${Math.round(stat.size / 1024)} KB (${allLines.length} lines). ` +
-        `Consider using offset/limit for targeted reads.</system-reminder>`
     }
 
     return textResult(formatted + suffix)
