@@ -11682,7 +11682,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7cf5fc1403
+index 160587a4ad924f80c2dd01b90a8300febbc13105..255dfde8ecf4145d8ac704fddf05a5489dfe193e
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,33 @@
@@ -11801,7 +11801,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    open_box: Option<OpenBox>,
 +    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
 +    bottom_seq: DrawOrder,
-@@ -52,0 +162,60 @@
+@@ -52,0 +162,65 @@
 +    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
 +    pub(crate) in_group: bool,
 +    /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
@@ -11834,6 +11834,11 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    pub(crate) fresh: u32,
 +    pub(crate) layer_damage: Option<Bounds<ScaledPixels>>,
 +    damage: Option<Option<Bounds<ScaledPixels>>>,
++    /// KaminIDE patch: union of the placed bounds within their content masks
++    /// of every primitive command, kept where a command is added: the bounds
++    /// of a layer finished from this scene (`SceneLayer::finish`) without a
++    /// second pass over its commands.
++    pub(crate) primitive_ink: Option<Bounds<ScaledPixels>>,
 +}
 +
 +/// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -11862,7 +11867,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    outer_plane: Option<u32>,
 +    plane_depth: usize,
 +    union: Option<Bounds<ScaledPixels>>,
-@@ -56,0 +226,140 @@
+@@ -56,0 +231,140 @@
 +    /// KaminIDE patch: начать объёмный контекст.
 +    pub fn push_depth_context(&mut self) {
 +        self.paint_operations.push(PaintOperation::StartDepthContext);
@@ -12003,9 +12008,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +        }
 +    }
 +
-@@ -57,0 +367 @@
+@@ -57,0 +372 @@
 +        self.segment_capture = None;
-@@ -59 +369,6 @@
+@@ -59 +374,6 @@
 -        self.primitive_bounds.clear();
 +        self.groups.clear();
 +        match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
@@ -12013,27 +12018,28 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +            None => self.primitive_bounds = Default::default(),
 +        }
 +        self.blocks.clear();
-@@ -60,0 +376 @@
+@@ -60,0 +381 @@
 +        self.bottom_seq = 0;
-@@ -68,0 +385,11 @@
+@@ -68,0 +390,12 @@
 +        self.layers.clear();
 +        self.layer_order.clear();
 +        self.fresh = 0;
 +        self.layer_damage = None;
 +        self.damage = None;
++        self.primitive_ink = None;
 +        self.hoisted_backdrops.clear();
 +        self.depth = DepthSort::default();
 +        self.ink.clear();
 +        self.ink_scope = 0;
 +        self.ink_allowed = (0, 0);
 +        crate::window::reset_ink_scopes();
-@@ -76 +403 @@
+@@ -76 +409 @@
 -        let order = self.primitive_bounds.insert(bounds);
 +        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
-@@ -79 +406 @@
+@@ -79 +412 @@
 -            .push(PaintOperation::StartLayer(bounds));
 +            .push(PaintOperation::StartLayer(bounds, order));
-@@ -86,0 +414,15 @@
+@@ -86,0 +420,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
 +    ///
 +    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
@@ -12049,9 +12055,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -87,0 +430 @@
+@@ -87,0 +436 @@
 +        self.fresh += 1;
-@@ -89,3 +432,5 @@
+@@ -89,3 +438,5 @@
 -        let clipped_bounds = primitive
 -            .bounds()
 -            .intersect(&primitive.content_mask().bounds);
@@ -12060,12 +12066,15 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +        crate::window::ink_add(&self.ink, self.ink_scope, placed_bounds);
 +        crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
 +        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -97,5 +442,13 @@
+@@ -96,6 +447,15 @@
+-
 -        let order = self
 -            .layer_stack
 -            .last()
 -            .copied()
 -            .unwrap_or_else(|| self.primitive_bounds.insert(clipped_bounds));
++        self.add_primitive_ink(clipped_bounds);
++
 +        let order = match self.layer_stack.last().copied() {
 +            // Above the root background (tree order 1), below everything that
 +            // overlaps it, in paint order.
@@ -12079,7 +12088,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +            None if self.open_box.is_some() => 0,
 +            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
 +        };
-@@ -136,0 +490,16 @@
+@@ -136,0 +497,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
 +            let (kind, index) = match &primitive {
 +                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
@@ -12096,7 +12105,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -139,2 +508,40 @@
+@@ -139,2 +515,40 @@
 -    }
 -
 +        if let Some(capture) = self.segment_capture.as_mut() {
@@ -12139,7 +12148,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +549,77 @@
+@@ -142 +556,77 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let operations = &prev_scene.paint_operations[range.clone()];
 +        // A block whose borrowed tree died with its record is packed again.
@@ -12218,7 +12227,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +627,233 @@
+@@ -144,4 +634,243 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -12325,10 +12334,11 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +            }
 +            match &mut operation {
 +                PaintOperation::Primitive(primitive) => {
++                    let placed = placed_bounds(primitive);
 +                    if !self.ink.is_empty() || self.ink_scope != 0 {
-+                        let placed = placed_bounds(primitive);
 +                        ink = Some(ink.map_or(placed, |ink| ink.union(&placed)));
 +                    }
++                    self.add_primitive_ink(placed.intersect(&primitive.content_mask().bounds));
 +                    *primitive.order_mut() += shift;
 +                    self.push_ordered(primitive);
 +                    copied += 1;
@@ -12372,6 +12382,14 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +            index,
 +        });
 +        true
++    }
++
++    /// KaminIDE patch: count the clipped bounds of a primitive command added
++    /// to this scene in `primitive_ink`; empty bounds paint nothing.
++    fn add_primitive_ink(&mut self, clipped: Bounds<ScaledPixels>) {
++        if !clipped.is_empty() {
++            self.primitive_ink = Some(self.primitive_ink.map_or(clipped, |u| u.union(&clipped)));
++        }
 +    }
 +
 +    /// KaminIDE patch: add an ordered primitive to its kind's list.
@@ -12418,6 +12436,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +                if clipped.is_empty() {
 +                    continue;
 +                }
++                scene.add_primitive_ink(clipped);
 +                scene.push_ordered(primitive);
 +            }
 +            scene.paint_operations.push(operation);
@@ -12456,9 +12475,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -162,0 +875 @@
+@@ -162,0 +892 @@
 +        self.finish_layers();
-@@ -190,2 +903,96 @@
+@@ -190,2 +920,96 @@
 -        }
 -    }
 +            layers: &self.layers,
@@ -12557,7 +12576,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1019,5 @@
+@@ -212,2 +1036,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -12565,20 +12584,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1026,4 @@
+@@ -216 +1043,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1031,6 @@
+@@ -217,0 +1048,6 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
 +    /// KaminIDE patch: a retained layer (`scene::layer`), ordered like one primitive.
 +    Layer(LayerOp),
-@@ -259,0 +1079,55 @@
+@@ -259,0 +1096,55 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -12634,22 +12653,22 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1160,2 @@
+@@ -285,0 +1177,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1195,4 @@
+@@ -318,0 +1212,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1344 @@
+@@ -463,0 +1361 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1377,2 @@
+@@ -495,0 +1394,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -527,0 +1411 @@
+@@ -527,0 +1428 @@
 +            Self::Layer(index) => format!("layer {index}"),
-@@ -543,0 +1428,10 @@
+@@ -543,0 +1445,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -12660,19 +12679,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +1475,5 @@
+@@ -580,0 +1492,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1502,5 @@
+@@ -602,0 +1519,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1554,12 @@
+@@ -649,0 +1571,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -12685,10 +12704,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1667 @@
+@@ -751 +1684 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1674,54 @@
+@@ -757,0 +1691,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -12743,7 +12762,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1744,23 @@
+@@ -773,0 +1761,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -12767,12 +12786,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..75b7490fd404742a5793e7d532104d7c
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1789,2 @@
+@@ -795,0 +1806,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1811 @@
+@@ -815,0 +1828 @@
 +            color_mapping: None,
-@@ -835,0 +1832,6 @@
+@@ -835,0 +1849,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
@@ -12895,10 +12914,10 @@ index 0000000000000000000000000000000000000000..ce8acb35ac9cf0333bc961c32a10b181
 +}
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..418620cda906eeae8e3a0b7be31dfcf956d6851a
+index 0000000000000000000000000000000000000000..33f409b83075d438fd5366e4de92677d1e8b76fc
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,215 @@
 +//! KaminIDE patch: a retained scene layer.
 +//!
 +//! A host paints content once into a layer (`Window::record_scene_layer`),
@@ -12924,7 +12943,7 @@ index 0000000000000000000000000000000000000000..418620cda906eeae8e3a0b7be31dfcf9
 +mod splice;
 +mod write;
 +
-+use super::{Bounds, PaintOperation, ScaledPixels, Scene};
++use super::{Bounds, ScaledPixels, Scene};
 +pub(crate) use boxes::{BoxEnv, BoxRange, OpenBox, ink_of};
 +pub(crate) use frame::{LayerOp, LayerSlot};
 +use std::cell::{Cell, RefCell};
@@ -12962,8 +12981,24 @@ index 0000000000000000000000000000000000000000..418620cda906eeae8e3a0b7be31dfcf9
 +    /// The runs of the boxes' own commands, in paint order.
 +    pub(crate) boxes: Vec<BoxRange>,
 +    /// `(owner, index into boxes)`, sorted: a box's runs by bisection
-+    /// (`runs_of`), not a scan of every run of the layer.
-+    by_owner: Vec<(u32, u32)>,
++    /// (`runs_of`), not a scan of every run of the layer. Built lazily.
++    by_owner: std::cell::OnceCell<Vec<(u32, u32)>>,
++}
++
++/// Union of the placed bounds within their content masks of `operations`'
++/// primitives, in command order: what `Scene::primitive_ink` keeps.
++#[cfg(debug_assertions)]
++fn ink_of_commands(operations: &[super::PaintOperation]) -> Option<Bounds<ScaledPixels>> {
++    operations
++        .iter()
++        .filter_map(|operation| match operation {
++            super::PaintOperation::Primitive(p) => {
++                Some(super::placed_bounds(p).intersect(&p.content_mask().bounds))
++            }
++            _ => None,
++        })
++        .filter(|b| !b.is_empty())
++        .reduce(|a, b| a.union(&b))
 +}
 +
 +/// Process-wide counters of layer work (`frame_perf`-style, read by benches).
@@ -13024,29 +13059,35 @@ index 0000000000000000000000000000000000000000..418620cda906eeae8e3a0b7be31dfcf9
 +            binding.quad = moved[binding.quad as usize];
 +        }
 +        bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
-+        let bounds = scene
-+            .paint_operations
-+            .iter()
-+            .filter_map(|operation| match operation {
-+                PaintOperation::Primitive(p) => {
-+                    Some(super::placed_bounds(p).intersect(&p.content_mask().bounds))
-+                }
-+                _ => None,
-+            })
-+            .filter(|b| !b.is_empty())
-+            .reduce(|a, b| a.union(&b));
++        // Kept while the scene was painted: no second pass over the commands.
++        let bounds = scene.primitive_ink;
++        #[cfg(debug_assertions)]
++        assert!(
++            bounds == ink_of_commands(&scene.paint_operations),
++            "the scene's kept ink differs from its commands"
++        );
 +        static NEXT: AtomicU64 = AtomicU64::new(1);
 +        layer_counters::RECORDS.fetch_add(1, Relaxed);
-+        let mut by_owner: Vec<(u32, u32)> =
-+            boxes.iter().enumerate().map(|(at, b)| (b.owner, at as u32)).collect();
-+        by_owner.sort_unstable();
++        let by_owner = std::cell::OnceCell::new();
 +        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, boxes, by_owner }
++    }
++
++    /// `(owner, index into boxes)` sorted, built at the first lookup: a layer
++    /// no host repaints a box of never builds it.
++    fn by_owner(&self) -> &[(u32, u32)] {
++        self.by_owner.get_or_init(|| {
++            let mut by_owner: Vec<(u32, u32)> =
++                self.boxes.iter().enumerate().map(|(at, b)| (b.owner, at as u32)).collect();
++            by_owner.sort_unstable();
++            by_owner
++        })
 +    }
 +
 +    /// The indices of `owner`'s runs in `boxes`, in paint order.
 +    pub(crate) fn runs_of(&self, owner: u32) -> impl Iterator<Item = usize> + '_ {
-+        let from = self.by_owner.partition_point(|&(o, _)| o < owner);
-+        self.by_owner[from..]
++        let by_owner = self.by_owner();
++        let from = by_owner.partition_point(|&(o, _)| o < owner);
++        by_owner[from..]
 +            .iter()
 +            .take_while(move |&&(o, _)| o == owner)
 +            .map(|&(_, at)| at as usize)
