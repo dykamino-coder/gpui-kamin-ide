@@ -19,6 +19,8 @@ use super::{PaintGroup, PaintSurface, Path, Primitive, Scene, TransformationMatr
 use crate::{Bounds, ScaledPixels};
 use collections::FxHashMap;
 
+mod group_match;
+
 /// Сторона клетки повреждения, device px.
 pub const DAMAGE_TILE: u32 = 64;
 
@@ -91,6 +93,9 @@ pub(crate) struct DamageIndex {
     backdrop: bool,
     /// Повреждение этого кадра и номера кадров (`Window::frame_serial`).
     pub(crate) damage: SceneDamage,
+    /// Группа прошлого кадра, рисующая ту же картинку, что группа `g`, плюс один
+    /// (0 — нет), `group_match`.
+    group_base: Vec<u32>,
     pub(crate) id: u64,
     pub(crate) base: u64,
 }
@@ -255,6 +260,7 @@ impl DamageIndex {
         self.spans.clear();
         self.backdrop = false;
         self.damage = SceneDamage::Unknown;
+        self.group_base.clear();
         self.id = 0;
         self.base = 0;
     }
@@ -463,7 +469,28 @@ impl Scene {
         index.id = id;
         index.base = previous.damage_index.id;
         index.damage = self.damage_against(&index, previous);
+        // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
+        // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
+        index.group_base.clear();
+        if index.base != 0 {
+            let mut cmp = Compare {
+                new: self,
+                old: previous,
+                groups: FxHashMap::default(),
+            };
+            group_match::match_groups(&mut cmp, &mut index.group_base);
+        }
         *self.damage_index = index;
+    }
+
+    /// KaminIDE patch: группа кадра `frame_damage().1` (с которым сравнивали
+    /// этот), что рисует ту же картинку, что группа `g` этого кадра.
+    #[doc(hidden)]
+    pub fn group_base(&self, g: usize) -> Option<usize> {
+        match self.damage_index.group_base.get(g).copied().unwrap_or(0) {
+            0 => None,
+            o => Some(o as usize - 1),
+        }
     }
 
     fn damage_against(&self, index: &DamageIndex, previous: &Scene) -> SceneDamage {

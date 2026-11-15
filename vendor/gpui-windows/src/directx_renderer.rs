@@ -55,6 +55,7 @@ mod shader_compilation;
 mod present_gate;
 mod quad_clear;
 mod retained;
+mod group_cache;
 use group_region::Region;
 
 pub(crate) struct DirectXRenderer {
@@ -1004,7 +1005,11 @@ impl DirectXRenderer {
         }
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
-        self.prepare_group_targets(scene)?;
+        // KaminIDE patch: images kept from the last frame (`group_cache`).
+        let reuse = self.prepare_group_targets(scene)?;
+        let kept = reuse.iter().filter(|&&k| k).count();
+        let mut valid = reuse.clone();
+        self.retained.groups.valid.clear();
         // A pass that failed last frame may have left its rectangles in the stage.
         self.clear_group_stage()?;
         self.blur.group_slots.clear();
@@ -1083,9 +1088,10 @@ impl DirectXRenderer {
         for (i, group) in scene.groups.iter().enumerate() {
             // KaminIDE patch: a frame drawn within a rectangle skips groups no
             // composite in it needs (`Scene::groups_needed`).
-            if needed.is_some_and(|n| !n.get(i).copied().unwrap_or(true)) {
+            if reuse[i] || needed.is_some_and(|n| !n.get(i).copied().unwrap_or(true)) {
                 continue;
             }
+            valid[i] = true;
             if group_batch::joins_layer(group) {
                 segment.push(i);
                 continue;
@@ -1105,6 +1111,7 @@ impl DirectXRenderer {
             self.clear_group_stage()?;
         }
         self.draw_group_layers(&scene.groups, &mut segment)?;
+        self.groups_kept(scene, valid, kept);
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
         unsafe {

@@ -42,6 +42,7 @@ pub use kamin_style::work;
 pub(crate) mod hooks;
 pub mod host;
 pub use crate::document::dom;
+pub use dom::NodeKey;
 pub use dom::encoding;
 pub use kamin_font_facts::font_facts;
 pub(crate) use kamin_style::box_facts;
