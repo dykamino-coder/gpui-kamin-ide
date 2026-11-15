@@ -9,10 +9,12 @@ use gpui::{
 pub(super) struct View {
     pub(super) doc: Document,
     pub(super) viewport: (f32, f32),
+    /// The document step before every draw (`Document::update_rendering`).
+    step: Option<gpui::Subscription>,
 }
 
-impl Render for View {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+impl View {
+    fn opts(&self) -> RenderOpts {
         let mut opts = RenderOpts {
             text: gpui::TextStyle::default(),
             viewport: self.viewport,
@@ -21,7 +23,13 @@ impl Render for View {
             frag: Default::default(),
         };
         opts.cx.deferred.freeze_scrollbars = true;
-        self.doc.render_viewport(&opts)
+        opts
+    }
+}
+
+impl Render for View {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        self.doc.render_viewport(&self.opts())
     }
 }
 
@@ -29,10 +37,44 @@ pub(super) fn open<'a>(
     cx: &'a mut TestAppContext,
     html: &str,
 ) -> (gpui::Entity<View>, &'a mut VisualTestContext) {
+    open_document(cx, Document::builder(html, "").build().unwrap())
+}
+
+/// The host with the document step over an already built document.
+pub(super) fn open_document(
+    cx: &mut TestAppContext,
+    doc: Document,
+) -> (gpui::Entity<View>, &mut VisualTestContext) {
+    let (view, cx) = cx.add_window_view(|_, _| View {
+        doc,
+        viewport: (400., 300.),
+        step: None,
+    });
+    let stepped = view.clone();
+    let parent = gpui::ElementPlace::of_view(view.entity_id());
+    cx.update(|window, app| {
+        let step = window.on_update_rendering(move |window, app| {
+            stepped.update(app, |view, cx| {
+                view.doc
+                    .update_rendering(&view.opts(), &parent, window, cx, |_| {})
+            })
+        });
+        view.update(app, |view, _| view.step = Some(step));
+    });
+    (view, cx)
+}
+
+/// The host without the document step: every frame builds inside the draw
+/// (the frame path before `Document::update_rendering`).
+pub(super) fn open_without_step<'a>(
+    cx: &'a mut TestAppContext,
+    html: &str,
+) -> (gpui::Entity<View>, &'a mut VisualTestContext) {
     let doc = Document::builder(html, "").build().unwrap();
     cx.add_window_view(|_, _| View {
         doc,
         viewport: (400., 300.),
+        step: None,
     })
 }
 

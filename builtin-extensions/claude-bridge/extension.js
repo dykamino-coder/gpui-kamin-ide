@@ -4137,7 +4137,10 @@ ${decodeTail(tail)}
 });
 
 // src/main/mcp/tools/shell-foreground.ts
-function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env, signal, onOutput, cwd, prestarted) {
+function normalizeOutput(text) {
+  return text.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();
+}
+function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env, signal, onOutput, cwd, prestarted, label = "Command") {
   if (signal?.aborted)
     return Promise.resolve({
       ...errorResult("Command cancelled"),
@@ -4165,19 +4168,15 @@ function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env
         return;
       }
       const parts = [];
-      if (stdout) parts.push(stdout);
-      if (stderr) parts.push(`
---- stderr ---
-${stderr}`);
-      if (cancelled) parts.push("\n[Command cancelled; termination requested]");
+      const output = normalizeOutput(stdout + stderr);
+      if (code !== null && code !== 0) parts.push(`Exit code ${code}`);
+      if (output) parts.push(output);
+      if (cancelled) parts.push("[Command cancelled; termination requested]");
       if (timedOut)
         parts.push(
-          `
-[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`
+          `[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`
         );
-      if (code !== null && code !== 0) parts.push(`
-[Exit code: ${code}]`);
-      const result = textResult(parts.join("") || `Command completed with exit code ${code ?? 0}`);
+      const result = textResult(parts.join("\n") || `(${label} completed with no output)`);
       result.exitCode = code;
       if (timedOut || cancelled || code !== 0) result.isError = true;
       resolve(result);
@@ -12441,6 +12440,15 @@ var init_script_file = __esm({
   }
 });
 
+// src/main/mcp/tools/powershell-output.ts
+var POWERSHELL_OUTPUT_SETUP;
+var init_powershell_output = __esm({
+  "src/main/mcp/tools/powershell-output.ts"() {
+    "use strict";
+    POWERSHELL_OUTPUT_SETUP = "if ($null -eq $__kaminOut) { $__kaminOut = [System.IO.TextWriter]::Synchronized((New-Object System.IO.StreamWriter([Console]::OpenStandardOutput(), [Console]::OutputEncoding, 65536))); [Console]::SetOut($__kaminOut); [Console]::SetError($__kaminOut); $__kaminX = [System.Linq.Expressions.Expression]; [AppDomain]::CurrentDomain.add_ProcessExit($__kaminX::Lambda([EventHandler], $__kaminX::Call($__kaminX::Constant($__kaminOut), [System.IO.TextWriter].GetMethod('Flush', [Type[]]@())), [System.Linq.Expressions.ParameterExpression[]]@($__kaminX::Parameter([object]), $__kaminX::Parameter([EventArgs]))).Compile()); Remove-Variable __kaminX }; ";
+  }
+});
+
 // src/main/mcp/tools/warm-shell.ts
 function acceptorCommand(kind) {
   const start = "IFS= read -r __ocb_d && IFS= read -r REPLY || exit 0; ";
@@ -12449,7 +12457,8 @@ function acceptorCommand(kind) {
   return kind === "bash" ? start + "exec 0</dev/null; " + enter : (
     // Encoding setup and a first Invoke-Expression run while waiting: they
     // are the slow first-use part of every PowerShell command script.
-    "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false; Invoke-Expression '$null = Get-Location'; $__ocb_d = [Console]::In.ReadLine(); if ($null -eq $__ocb_d) { exit 0 }; Set-Location -LiteralPath $__ocb_d; [System.IO.Directory]::SetCurrentDirectory($__ocb_d); Remove-Variable __ocb_d; Invoke-Expression ([System.IO.File]::ReadAllText([Console]::In.ReadLine()))"
+    "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false; Invoke-Expression '$null = Get-Location'; " + // So is the output writer of the command runner (bufferedOutputRunner).
+    POWERSHELL_OUTPUT_SETUP + "$__ocb_d = [Console]::In.ReadLine(); if ($null -eq $__ocb_d) { exit 0 }; Set-Location -LiteralPath $__ocb_d; [System.IO.Directory]::SetCurrentDirectory($__ocb_d); Remove-Variable __ocb_d; Invoke-Expression ([System.IO.File]::ReadAllText([Console]::In.ReadLine()))"
   );
 }
 function warmKey(shell2, flags, env4) {
@@ -12526,6 +12535,7 @@ var init_warm_shell = __esm({
     import_node_child_process4 = require("node:child_process");
     import_node_os5 = __toESM(require("node:os"), 1);
     init_windows_job_runner();
+    init_powershell_output();
     IDLE_MS = 10 * 6e4;
     MAX_WAITING_HOOKS = 4;
     waiting = /* @__PURE__ */ new Map();
@@ -12579,6 +12589,9 @@ function warmShell(kind, shell2, flags, env4, cwd, scriptPath) {
     return kind === "bash" ? startWarmShell(child, toPosixShellPath(folder), toPosixShellPath(scriptPath)) : startWarmShell(child, folder, scriptPath);
   };
 }
+function bufferedOutputRunner(commandFile) {
+  return POWERSHELL_OUTPUT_SETUP + `$__kaminFlushed = [System.Diagnostics.Stopwatch]::StartNew(); $__kaminIdle = [System.Diagnostics.Stopwatch]::StartNew(); try { Invoke-Expression ([System.IO.File]::ReadAllText(${powerShellSingleQuote(commandFile)})) | Microsoft.PowerShell.Utility\\Out-String -Stream | Microsoft.PowerShell.Core\\ForEach-Object { $__kaminOut.WriteLine($_); if ($__kaminIdle.ElapsedMilliseconds -ge 2 -or $__kaminFlushed.ElapsedMilliseconds -ge 50) { $__kaminOut.Flush(); $__kaminFlushed.Restart() }; $__kaminIdle.Restart() } } finally { $__kaminOut.Flush() }`;
+}
 function powerShellFlags(env4) {
   const flags = ["-NoLogo", "-NoProfile", "-NonInteractive"];
   const respect = env4.CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY;
@@ -12597,15 +12610,23 @@ async function powerShellExecute(input, context) {
   }
   const env4 = await shellEnv();
   if (context?.signal?.aborted) return errorResult2("Command cancelled");
-  const wrapped = "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n" + command;
+  const encoding = "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;";
+  const background = input.run_in_background === true && context?.taskDeadlineMs === void 0;
+  let commandFile;
   let script;
   try {
-    script = scriptInvocation("powershell", powerShellFlags(process.env), wrapped);
+    if (!background) {
+      commandFile = writeScriptFile(command + POWERSHELL_STATUS_TRAILER, ".ps1");
+      script = scriptInvocation("powershell", powerShellFlags(process.env), encoding + " " + bufferedOutputRunner(commandFile.path));
+    } else {
+      script = scriptInvocation("powershell", powerShellFlags(process.env), encoding + "\n" + command);
+    }
   } catch (err) {
+    commandFile?.dispose();
     return errorResult2(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`);
   }
   const flags = script.args.slice(0, -1);
-  if (input.run_in_background === true && context?.taskDeadlineMs === void 0) {
+  if (background) {
     return runBackgroundCommand(
       script.loader,
       pwshPath,
@@ -12628,10 +12649,12 @@ async function powerShellExecute(input, context) {
       context?.signal,
       context?.onOutput,
       context?.cwd,
-      warmShell("powershell", pwshPath, flags, env4, context?.cwd, script.file.path)
+      warmShell("powershell", pwshPath, flags, env4, context?.cwd, script.file.path),
+      "PowerShell"
     );
   } finally {
     script.file.dispose();
+    commandFile?.dispose();
   }
 }
 async function bashExecute(input, context) {
@@ -12647,7 +12670,8 @@ async function bashExecute(input, context) {
     return errorResult2(err instanceof Error ? err.message : String(err));
   }
   const snapshot2 = await getOrCreateSnapshot(shell2);
-  const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + command, snapshot2);
+  const merge = runInBackground ? "" : "exec 2>&1; ";
+  const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + merge + command, snapshot2);
   const shellFlags = shouldUseLoginShell(snapshot2) ? ["-lc"] : ["-c"];
   const env4 = await shellEnv();
   if (context?.signal?.aborted) return errorResult2("Command cancelled");
@@ -12680,7 +12704,8 @@ async function bashExecute(input, context) {
       context?.signal,
       context?.onOutput,
       context?.cwd,
-      warmShell("bash", shell2, shellFlags, env4, context?.cwd, script.file.path)
+      warmShell("bash", shell2, shellFlags, env4, context?.cwd, script.file.path),
+      "Bash"
     );
   } finally {
     script.file.dispose();
@@ -12926,6 +12951,7 @@ var init_shell = __esm({
     init_script_file();
     init_command_runtime();
     init_warm_shell();
+    init_powershell_output();
     WINDOWS_MODAL_SHIM = process.platform === "win32" ? `nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-interactive shells \u2014 use fnm, volta, or a direct Node installer" >&2; return 127; }
 ` : "";
     backgroundProcesses = /* @__PURE__ */ new Map();
@@ -20094,6 +20120,7 @@ function grepOptions(input, cwd) {
   return {
     pattern,
     searchPath: input.path ? resolveToolPath(input.path, cwd) : resolveWorkingDirectory(cwd),
+    cwd: cwd ? resolveWorkingDirectory(cwd) : "",
     outputMode: mode,
     globs: typeof input.glob === "string" ? splitGlobs(input.glob) : [],
     fileType: typeof input.type === "string" && input.type ? input.type : void 0,
@@ -20183,7 +20210,7 @@ async function grepSearch(input, context) {
         clearTimeout(timeoutId);
       }
       if (!streamErr) {
-        const result2 = collected.slice(0, options.headLimit).join("\n");
+        const result2 = presentMatches(collected.slice(0, options.headLimit), options);
         if (timedOut && !result2.trim()) return timeoutError();
         const suffix2 = paginationNotice(collected.length, 0, options.headLimit) + (timedOut ? `
 [Search timed out after ${RIPGREP_TIMEOUT_MS / 1e3}s \u2014 partial results above]` : "");
@@ -20201,7 +20228,7 @@ async function grepSearch(input, context) {
     if (lines[lines.length - 1] === "") lines.pop();
     if ((res.truncated || res.timedOut) && lines.length > 1) lines.pop();
     if (options.outputMode === "files_with_matches") lines = await sortByMtime(lines);
-    const result = paginate(lines, options.offset, options.headLimit).join("\n");
+    const result = presentMatches(paginate(lines, options.offset, options.headLimit), options);
     if (res.timedOut && !result.trim()) return timeoutError();
     const suffix = [
       paginationNotice(lines.length, options.offset, options.headLimit),
@@ -20259,11 +20286,11 @@ async function grepFallback(o) {
   if (isFile) {
     const matches = await matchFile(regex, o.searchPath, o.outputMode, o.showLineNumbers, false);
     const results2 = matches === null ? [] : o.outputMode === "content" ? matches : [matches[0]];
-    return fallbackResult(results2, o.offset, o.headLimit, false, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE);
+    return fallbackResult(results2, o.offset, o.headLimit, false, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE, o);
   }
   const walk = await walkFallback(regex, o.searchPath, o.outputMode, o.headLimit > 0 ? o.headLimit + o.offset + 1 : 0, FALLBACK_TIMEOUT_MS, o.globs, o.showLineNumbers);
   const results = o.outputMode === "files_with_matches" ? await sortByMtime(walk.results) : walk.results;
-  return fallbackResult(results, o.offset, o.headLimit, walk.timedOut, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE);
+  return fallbackResult(results, o.offset, o.headLimit, walk.timedOut, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE, o);
 }
 async function matchFile(regex, file, outputMode, lineNumbers, withPath) {
   try {
@@ -20327,8 +20354,22 @@ async function walkFallback(regex, searchPath, outputMode, limit, timeoutMs, glo
   }
   return { results, timedOut };
 }
-function fallbackResult(results, offset, headLimit, timedOut, timeoutMs, notice = "") {
-  const output = paginate(results, offset, headLimit).join("\n");
+function presentMatches(lines, o) {
+  if (lines.length === 0) return "";
+  if (o.outputMode === "files_with_matches") {
+    return `Found ${lines.length} file${lines.length === 1 ? "" : "s"}
+${lines.join("\n")}`;
+  }
+  if (!o.cwd) return lines.join("\n");
+  const prefix = o.cwd.endsWith(import_node_path12.default.sep) ? o.cwd : o.cwd + import_node_path12.default.sep;
+  const fold = process.platform === "win32";
+  const head = fold ? prefix.toLowerCase() : prefix;
+  const under = (line) => (fold ? line.slice(0, head.length).toLowerCase() : line.slice(0, head.length)) === head;
+  return lines.map((line) => under(line) ? line.slice(head.length) : line).join("\n");
+}
+function fallbackResult(results, offset, headLimit, timedOut, timeoutMs, notice = "", present) {
+  const page = paginate(results, offset, headLimit);
+  const output = present ? presentMatches(page, present) : page.join("\n");
   const seconds = Math.round(timeoutMs / 1e3);
   if (timedOut && !output.trim()) {
     return errorResult4(
@@ -20467,7 +20508,6 @@ async function readFile(input, context) {
       return textResult4("<system-reminder>Warning: File exists but has empty contents.</system-reminder>");
     }
     const allLines = raw.split("\n");
-    if (allLines.length > 1 && allLines[allLines.length - 1] === "") allLines.pop();
     const offset = typeof input.offset === "number" ? Math.max(0, Math.floor(input.offset) - 1) : 0;
     const limit = typeof input.limit === "number" && input.limit > 0 ? Math.floor(input.limit) : 2e3;
     if (offset >= allLines.length) {
@@ -20479,7 +20519,7 @@ async function readFile(input, context) {
     const formatted = slice.map((line, i) => {
       const text = line.endsWith("\r") ? line.slice(0, -1) : line;
       const shown = text.length > MAX_LINE_LENGTH ? text.slice(0, MAX_LINE_LENGTH) + "... [truncated]" : text;
-      return `${String(offset + i + 1).padStart(6, " ")}	${shown}`;
+      return `${offset + i + 1}	${shown}`;
     }).join("\n");
     if (formatted.length > WARN_READ_BYTES) {
       return errorResult4(
@@ -20646,12 +20686,12 @@ async function globSearch(input, context) {
   try {
     const { files, capped } = await listGlob(query, MAX_GLOB_LISTED, context?.signal);
     const sorted = await newestFirst(files);
-    const shown = sorted.slice(0, GLOB_SHOWN);
+    const shown = sorted.slice(0, GLOB_SHOWN).map((p) => import_node_path13.default.normalize(p));
     const total = capped ? `more than ${MAX_GLOB_LISTED}` : String(sorted.length);
     const suffix = sorted.length > GLOB_SHOWN ? capped ? `
 (Showing the ${GLOB_SHOWN} most recently modified of the first ${MAX_GLOB_LISTED} matching files listed; more exist. Use a more specific pattern or path.)` : `
 (Showing the ${GLOB_SHOWN} most recently modified of ${total} matching files. Use a more specific pattern or path for the rest.)` : "";
-    return textResult4((shown.join("\n") || "No files matched the pattern.") + suffix);
+    return textResult4((shown.join("\n") || "No files found") + suffix);
   } catch (err) {
     return errorResult4(err instanceof Error ? err.message : String(err));
   }

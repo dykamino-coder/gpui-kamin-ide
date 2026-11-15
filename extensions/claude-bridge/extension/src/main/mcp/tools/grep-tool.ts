@@ -208,6 +208,8 @@ export function splitGlobs(glob: string): string[] {
 export interface GrepOptions {
   pattern: string
   searchPath: string
+  /** The session's working directory ('' when none); content and count paths under it are shown relative to it. */
+  cwd: string
   outputMode: 'content' | 'files_with_matches' | 'count'
   globs: string[]
   fileType?: string
@@ -238,6 +240,7 @@ export function grepOptions(input: GrepInput, cwd?: string): GrepOptions | strin
   return {
     pattern,
     searchPath: input.path ? resolveToolPath(input.path as string, cwd) : resolveWorkingDirectory(cwd),
+    cwd: cwd ? resolveWorkingDirectory(cwd) : '',
     outputMode: mode,
     globs: typeof input.glob === 'string' ? splitGlobs(input.glob) : [],
     fileType: typeof input.type === 'string' && input.type ? input.type : undefined,
@@ -343,7 +346,7 @@ export async function grepSearch(input: Record<string, unknown>, context?: ToolC
         clearTimeout(timeoutId)
       }
       if (!streamErr) {
-        const result = collected.slice(0, options.headLimit).join('\n')
+        const result = presentMatches(collected.slice(0, options.headLimit), options)
         if (timedOut && !result.trim()) return timeoutError()
         const suffix =
           paginationNotice(collected.length, 0, options.headLimit) +
@@ -368,7 +371,7 @@ export async function grepSearch(input: Record<string, unknown>, context?: ToolC
     // mid-line, so the trailing fragment is unreliable.
     if ((res.truncated || res.timedOut) && lines.length > 1) lines.pop()
     if (options.outputMode === 'files_with_matches') lines = await sortByMtime(lines)
-    const result = paginate(lines, options.offset, options.headLimit).join('\n')
+    const result = presentMatches(paginate(lines, options.offset, options.headLimit), options)
 
     if (res.timedOut && !result.trim()) return timeoutError()
     const suffix = [
@@ -446,11 +449,11 @@ async function grepFallback(o: GrepOptions): Promise<McpResult> {
   if (isFile) {
     const matches = await matchFile(regex, o.searchPath, o.outputMode, o.showLineNumbers, false)
     const results = matches === null ? [] : o.outputMode === 'content' ? matches : [matches[0]!]
-    return fallbackResult(results, o.offset, o.headLimit, false, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE)
+    return fallbackResult(results, o.offset, o.headLimit, false, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE, o)
   }
   const walk = await walkFallback(regex, o.searchPath, o.outputMode, o.headLimit > 0 ? o.headLimit + o.offset + 1 : 0, FALLBACK_TIMEOUT_MS, o.globs, o.showLineNumbers)
   const results = o.outputMode === 'files_with_matches' ? await sortByMtime(walk.results) : walk.results
-  return fallbackResult(results, o.offset, o.headLimit, walk.timedOut, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE)
+  return fallbackResult(results, o.offset, o.headLimit, walk.timedOut, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE, o)
 }
 
 /** Matches of one file in ripgrep's non-tty format; null when none or unreadable. */
@@ -537,6 +540,24 @@ export async function walkFallback(
 }
 
 /** Final fallback text; a deadline-cut walk is reported, never passed off as complete. */
+/**
+ * The shown lines in native Grep's form: files_with_matches is headed by
+ * "Found N files"; content and count lines of files under the working
+ * directory name them relative to it.
+ */
+export function presentMatches(lines: string[], o: Pick<GrepOptions, 'outputMode' | 'cwd'>): string {
+  if (lines.length === 0) return ''
+  if (o.outputMode === 'files_with_matches') {
+    return `Found ${lines.length} file${lines.length === 1 ? '' : 's'}\n${lines.join('\n')}`
+  }
+  if (!o.cwd) return lines.join('\n')
+  const prefix = o.cwd.endsWith(path.sep) ? o.cwd : o.cwd + path.sep
+  const fold = process.platform === 'win32'
+  const head = fold ? prefix.toLowerCase() : prefix
+  const under = (line: string): boolean => (fold ? line.slice(0, head.length).toLowerCase() : line.slice(0, head.length)) === head
+  return lines.map((line) => (under(line) ? line.slice(head.length) : line)).join('\n')
+}
+
 export function fallbackResult(
   results: string[],
   offset: number,
@@ -544,8 +565,10 @@ export function fallbackResult(
   timedOut: boolean,
   timeoutMs: number,
   notice = '',
+  present?: Pick<GrepOptions, 'outputMode' | 'cwd'>,
 ): McpResult {
-  const output = paginate(results, offset, headLimit).join('\n')
+  const page = paginate(results, offset, headLimit)
+  const output = present ? presentMatches(page, present) : page.join('\n')
   const seconds = Math.round(timeoutMs / 1000)
   if (timedOut && !output.trim()) {
     return errorResult(

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { runForegroundCommand } from './shell-foreground'
+import { normalizeOutput, runForegroundCommand } from './shell-foreground'
 
 const spawn = vi.hoisted(() => vi.fn())
 const windowsJobRunner = vi.hoisted(() => vi.fn<() => string | null>(() => null))
@@ -93,5 +93,13 @@ describe('foreground shell deadline', () => {
     const result = await pending
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toContain('Command cancelled')
+  })
+})
+
+describe('normalizeOutput', () => {
+  it('drops leading blank lines and trailing whitespace and keeps the rest, CRLF included', () => {
+    expect(normalizeOutput('\r\n\n  indented\r\ntail  \r\n\r\n')).toBe('  indented\r\ntail')
+    expect(normalizeOutput('hi\n')).toBe('hi')
+    expect(normalizeOutput('\n \n')).toBe('')
   })
 })

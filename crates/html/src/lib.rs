@@ -92,7 +92,7 @@ pub use layout::fragment::probe::diagnostics::{FragmentProbe, FragmentProbes};
 pub use document::parsed::{Parsed, try_parse as parse, try_parse_media, try_parse_xml};
 pub use document::{
     ApplyError, BuildReport, Document, DocumentBuilder, DocumentFailure, FailureReason,
-    FailureScope, Mutation, RevisionStatus, TraversalKind, TraversalLimit,
+    FailureScope, Mutation, RevisionStatus, TraversalKind, TraversalLimit, UpdatePhase,
 };
 pub use dom::{Element, Node};
 pub use render::{RenderOpts, render, render_block};

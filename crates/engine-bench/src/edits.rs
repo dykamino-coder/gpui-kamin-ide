@@ -2,7 +2,8 @@
 //! применённой записями мутаций DOM (`Document::apply`), а когда правка меняет
 //! форму дерева (вставка, удаление узла) — `Document::update`, по очереди правка и
 //! возврат, затем проверка, что каждый вариант совпадает по пикселям со свежим
-//! документом той же разметки.
+//! документом той же разметки. Отчёт режима несёт работу документа каждого
+//! кадра правки (`document_frame_samples`: сборки, повторы, сборки внутри draw).
 
 use super::{
     args::Args,
@@ -48,6 +49,7 @@ pub(super) async fn run(
     let present = std::env::var_os("ENGINE_BENCH_PRESENT_SKIP").is_none();
     // The bench asks for every frame it reads (`require_presentation`).
     window.update(cx, |_, window, _| window.allow_unpresented_readback(true))?;
+    let mut frame_samples = Vec::with_capacity(args.runs);
     for index in 1..=args.runs {
         let variant = index % 2;
         let path_before = kamin_html::paint_path::read();
@@ -66,6 +68,9 @@ pub(super) async fn run(
             present,
         )
         .await?;
+        // Each edit commits a new revision whose frame slot counts from zero:
+        // its counters after the frame are the work of this frame.
+        frame_samples.push(window.read_with(cx, counters)?);
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         work.push(counts);
@@ -158,6 +163,11 @@ pub(super) async fn run(
     mode["scene_layer"] = json!({"samples": layer, "census": census});
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
+    mode["document_frame_samples"] = frame_samples
+        .iter()
+        .enumerate()
+        .map(|(i, &counts)| frame_sample(i + 1, counts))
+        .collect::<Result<Value>>()?;
     Ok((mode, work))
 }
 
@@ -190,4 +200,22 @@ fn layer_delta(before: ([u64; 6], (u64, u64)), after: ([u64; 6], (u64, u64))) ->
         "frame_builds": since(after.1.0, before.1.0),
         "frame_replays": since(after.1.1, before.1.1),
     })
+}
+
+/// Сборки, повторы и сборки внутри `Window::draw` документа на эту минуту.
+fn counters(view: &View, _: &gpui::App) -> (u64, u64, u64) {
+    let (builds, replays) = view.doc.retained_frames();
+    (builds, replays, view.doc.builds_inside_draw())
+}
+
+/// Работа документа за кадр правки; кадр без сборки и без повтора значит, что
+/// счётчики не начались с ревизии правки, и не выдаётся за ноль работы.
+fn frame_sample(index: usize, (builds, replays, inside): (u64, u64, u64)) -> Result<Value> {
+    if builds + replays == 0 {
+        return Err(format!("edit frame {index} neither built nor replayed the document").into());
+    }
+    Ok(
+        json!({"mode": "edit", "sample_index": index, "builds": builds, "replays": replays,
+        "builds_inside_draw": inside}),
+    )
 }
