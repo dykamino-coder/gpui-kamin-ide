@@ -19,6 +19,7 @@
 //! ключей краски и якорей. Запись не копирует поддерево: элемент делит детей
 //! и стили с деревом кадра, а лист — несколько чисел.
 
+mod content;
 mod far;
 mod flow;
 mod frame;
@@ -94,6 +95,10 @@ pub(crate) struct FlowReuse {
     next_replays: RefCell<HashMap<u64, Rc<replay::ReplayRecord>>>,
     pending_replays: RefCell<Vec<(Rc<replay::PendingReplay>, Source)>>,
     replay_slots: Cell<Vec<Rc<replay::ReplaySlot>>>,
+    /// Content records replayed by this build (`content`), by owner node.
+    next_contents: RefCell<HashMap<u64, Rc<content::ContentRecord>>>,
+    /// Content this build wraps for recording (`content`).
+    pending_contents: RefCell<Vec<content::PendingContent>>,
     /// Far state of this build (`far`): the document's, or made with the
     /// build's first far record or claim.
     far: Cell<Option<Box<far::FrameFar>>>,
@@ -176,6 +181,8 @@ impl FlowReuse {
             next_replays: Default::default(),
             pending_replays: Default::default(),
             replay_slots: Default::default(),
+            next_contents: Default::default(),
+            pending_contents: Default::default(),
             far: Default::default(),
             far_widths: Cell::new(false),
             far_recorders: Cell::new(0),

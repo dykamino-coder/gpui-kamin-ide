@@ -50,16 +50,24 @@ fn page(inner: &str, mid: &str) -> String {
 }
 
 #[test]
-fn a_paint_only_edit_leaves_every_epoch() {
+fn a_paint_only_edit_leaves_every_layout_epoch() {
+    let ids = ["root", "float", "wrap", "p", "side", "other"];
+    let layout = |e: Epochs| (e.layout, e.child, e.intrinsic);
     let mut doc = Document::builder(&page("text", ""), "").build().unwrap();
-    let before: Vec<_> = ["root", "float", "wrap", "p", "side", "other"]
-        .map(|id| epochs(&doc, id))
-        .into();
+    let before: Vec<_> = ids.map(|id| epochs(&doc, id)).into();
     doc.update(&page("text", "style='color:red'"), "").unwrap();
-    let after: Vec<_> = ["root", "float", "wrap", "p", "side", "other"]
-        .map(|id| epochs(&doc, id))
-        .into();
-    assert_eq!(before, after);
+    let after: Vec<_> = ids.map(|id| epochs(&doc, id)).into();
+    let now = clock(&doc);
+    for (i, id) in ids.into_iter().enumerate() {
+        assert_eq!(layout(before[i]), layout(after[i]), "{id}");
+        // The edited box and the builds of its ancestors read the colour;
+        // `side` does not. `p` inherits it, which its content key compares
+        // (`layout::reuse::content`), not its epoch: kept as it is.
+        if id != "p" {
+            let painted = !matches!(id, "side" | "other");
+            assert_eq!(after[i].paint == now, painted, "{id}");
+        }
+    }
 }
 
 #[test]

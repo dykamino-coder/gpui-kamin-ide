@@ -13,6 +13,8 @@
 //! том числе краска отложенных отрисовок (`Window::retained_replayable`).
 //! Иначе кадр собирается заново, как `Document::render`.
 
+#[cfg(test)]
+mod content_replay_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;
@@ -192,6 +194,12 @@ impl Document {
     #[cfg(test)]
     pub(crate) fn replayed_subtrees(&self) -> u64 {
         self.reuse.stats.get().subtrees
+    }
+
+    /// Elements of box contents replayed at any depth (`layout::reuse::content`).
+    #[cfg(test)]
+    pub(crate) fn replayed_contents(&self) -> u64 {
+        self.reuse.stats.get().contents
     }
 
     /// Far blocks laid out from their kept layout subtree (`layout::reuse::far`).

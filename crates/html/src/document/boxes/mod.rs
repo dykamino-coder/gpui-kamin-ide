@@ -85,13 +85,6 @@ impl BoxTree {
     }
 
     /// The box of the source element with key `node_id` (its first fragment).
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the per-box layout cache lands before its consumers"
-        )
-    )]
     pub(crate) fn box_of(&self, node_id: u64) -> Option<BoxId> {
         self.by_node.get(node_id)
     }

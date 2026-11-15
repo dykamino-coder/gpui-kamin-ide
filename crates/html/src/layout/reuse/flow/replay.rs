@@ -74,7 +74,7 @@ impl FlowCx {
         }
         let Some(child) = out.pop() else { return };
         let pending = Rc::new(PendingReplay::new(
-            self.key.clone(),
+            Some(self.key.clone()),
             mark.start,
             end,
             widths,

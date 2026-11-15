@@ -19,7 +19,7 @@ impl BoxTree {
     }
 
     /// Номер последней публикации; эпохи коробок не больше него. Номер меньше
-    /// сохранённого потребителем значит, что счёт начался заново (	ick):
+    /// сохранённого потребителем значит, что счёт начался заново (`tick`):
     /// изменено всё.
     pub(crate) fn clock(&self) -> u32 {
         self.clock
@@ -59,6 +59,31 @@ impl BoxTree {
 }
 
 impl BoxTree {
+    /// Эпоха сборки (`Epochs::paint`) коробки `id`: номер
+    /// последней публикации, изменившей что-либо, что читает сборка её
+    /// поддерева. `None` — у источника нет коробки.
+    pub(crate) fn build_epoch(&self, id: BoxId) -> Option<u32> {
+        Some(self.get(id)?.epochs.paint)
+    }
+
+    /// The one box whose children the boxes of `nodes` are: the parent of
+    /// the box of every keyed element of `nodes`. `None` when they have
+    /// no keyed element, or their boxes have different parents (an
+    /// anonymous wrapper holds part of them), so no box answers for all.
+    pub(crate) fn owner_of(&self, nodes: &[crate::dom::Node]) -> Option<BoxId> {
+        let mut owner = None;
+        for node in nodes {
+            let crate::dom::Node::Element(e) = node else {
+                continue;
+            };
+            let parent = self.get(self.box_of(e.node_id)?)?.parent;
+            if *owner.get_or_insert(parent) != parent {
+                return None;
+            }
+        }
+        owner.filter(|id: &BoxId| self.get(*id).is_some())
+    }
+
     /// Следующий номер публикации. При переполнении все коробки получают
     /// эпохи 1 и номер 1: потребитель с прежним номером видит их изменёнными.
     pub(super) fn tick(&mut self) -> u32 {
@@ -70,6 +95,7 @@ impl BoxTree {
                         layout: 1,
                         child: 1,
                         intrinsic: 1,
+                        paint: 1,
                     };
                 }
             }
@@ -87,6 +113,10 @@ impl BoxTree {
             let Some(record) = self.arena.record_mut(id) else {
                 continue;
             };
+            if change == Change::Paint {
+                self.mark_paint(id, clock);
+                continue;
+            }
             record.epochs.layout = clock;
             // Вклад меняется у самой коробки; дальше — если он не внешний.
             let own = change == Change::Own;
@@ -107,6 +137,19 @@ impl BoxTree {
                 }
                 at = parent.parent;
             }
+            self.mark_paint(id, clock);
+        }
+    }
+
+    /// `paint` коробки и её предков до первого, уже получившего эту эпоху.
+    fn mark_paint(&mut self, id: BoxId, clock: u32) {
+        let mut at = id;
+        while let Some(record) = self.arena.record_mut(at) {
+            if record.epochs.paint == clock {
+                break;
+            }
+            record.epochs.paint = clock;
+            at = record.parent;
         }
     }
 }

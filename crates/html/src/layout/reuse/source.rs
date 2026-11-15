@@ -30,6 +30,15 @@ struct Tree {
 }
 
 impl Source {
+    /// Only the node id: equal to no subtree. A content record (`content`)
+    /// answers by the box tree's epochs, not by comparing values.
+    pub(super) fn bare(id: u64) -> Self {
+        Self {
+            id,
+            tree: std::cell::Cell::new(None),
+        }
+    }
+
     pub(super) fn id(&self) -> u64 {
         self.id
     }

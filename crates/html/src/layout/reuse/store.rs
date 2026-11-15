@@ -15,6 +15,9 @@ pub(crate) struct Store {
     /// Records of blocks replayed on screen with their layout subtree
     /// (`replay`), by node id.
     pub(super) replays: RefCell<HashMap<u64, Rc<ReplayRecord>>>,
+    /// Records of box contents replayed at any depth (`content`), by the
+    /// node of their container.
+    pub(super) contents: RefCell<HashMap<u64, Rc<super::content::ContentRecord>>>,
     /// Records of far blocks laid out from their kept layout subtree
     /// (`far`), with the storage of the build that claims them; allocated
     /// while there are any. A build holds it while it runs (`FlowReuse::far`).
@@ -85,6 +88,7 @@ impl Store {
     /// nodes either, so no kept layout subtree is left (`far`).
     pub(crate) fn forget_replays(&self) {
         self.replays.take();
+        self.contents.take();
         self.far.take();
     }
 
@@ -246,4 +250,7 @@ pub struct ReuseStats {
     /// Far blocks laid out from their kept layout subtree without a build
     /// (`far`).
     pub far: u64,
+    /// Elements of box contents replayed at any depth (`content`), apart
+    /// from the root flow's blocks.
+    pub contents: u64,
 }

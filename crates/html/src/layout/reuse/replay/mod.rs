@@ -48,7 +48,9 @@ pub(super) struct Ranges {
 pub(crate) struct ReplayRecord {
     /// С чем сравнивается следующая сборка блока (`source`).
     pub(super) source: Source,
-    pub(super) key: Rc<FlowKey>,
+    /// Ключ корневого потока; у записи содержимого (`content`) его нет:
+    /// она сверяет свой ключ сама.
+    pub(super) key: Option<Rc<FlowKey>>,
     /// Сборка прочла ширину снаружи: запись годится только при тех же ширинах.
     pub(super) widths: bool,
     /// Блок заполняет ширину потока (`plain::fills_width`): при другой ширине
@@ -76,9 +78,9 @@ impl ReplayRecord {
     /// тем же или отличным только `color`, которым ни одна его коробка не
     /// рисует (`Source::same_unread_color`, `super::unread_color`).
     pub(super) fn fits(&self, key: &FlowKey, start: Counters, e: &Element) -> bool {
-        self.key.same_outside_widths(key)
-            && (!(self.widths || self.fills) || self.key.same_widths(key))
-            && self.start == start
+        self.key.as_ref().is_some_and(|own| {
+            own.same_outside_widths(key) && (!(self.widths || self.fills) || own.same_widths(key))
+        }) && self.start == start
             && (self.source.same(e) || self.source.same_unread_color(e))
     }
 }
@@ -88,7 +90,7 @@ type PlacedPrepaint = (RetainedPrepaint, Point<Pixels>, Size<Pixels>);
 
 /// Запись, которая завершится после краски кадра (`FlowReuse::finish`).
 pub(super) struct PendingReplay {
-    key: Rc<FlowKey>,
+    key: Option<Rc<FlowKey>>,
     start: Counters,
     end: Counters,
     /// Чтения ширин снаружи за сборку и меры кадра записи.
@@ -108,7 +110,7 @@ pub(super) struct PendingReplay {
 
 impl PendingReplay {
     pub(super) fn new(
-        key: Rc<FlowKey>,
+        key: Option<Rc<FlowKey>>,
         start: Counters,
         end: Counters,
         widths: Rc<Cell<bool>>,
@@ -139,7 +141,7 @@ impl PendingReplay {
     pub(super) fn finish(
         &self,
         source: Source,
-        screen: Bounds<ScaledPixels>,
+        screen: Option<Bounds<ScaledPixels>>,
     ) -> Option<ReplayRecord> {
         let (list, at) = &self.sink;
         let (bounds, tainted) = list.with(*at, |sink| (sink.bounds(), sink.tainted()))?;
@@ -151,7 +153,9 @@ impl PendingReplay {
         let paint = self.paint.take()?;
         let (scale, serial) = self.env.get()?;
         let ink = bounds.unwrap_or(Bounds { origin, size }.scale(scale));
-        if super::recorder::far(Some(ink), Point::default(), screen) {
+        // Дальний блок корневого потока пропускает запись повтора: его
+        // заместитель дешевле (`screen`); содержимое пишется везде.
+        if screen.is_some_and(|screen| super::recorder::far(Some(ink), Point::default(), screen)) {
             return None;
         }
         let mask = self.mask.take()?;
@@ -209,8 +213,11 @@ impl super::FlowReuse {
         }
         if !slots.is_empty() {
             let mut stats = self.store.stats.get();
-            stats.replayed += slots.len() as u64;
-            stats.subtrees += slots.len() as u64;
+            let contents = slots.iter().filter(|s| s.record.key.is_none()).count() as u64;
+            let blocks = slots.len() as u64 - contents;
+            stats.replayed += blocks;
+            stats.subtrees += blocks;
+            stats.contents += contents;
             self.store.stats.set(stats);
         }
         true
@@ -231,7 +238,7 @@ impl super::FlowReuse {
             } else {
                 reads.remove(&node);
             }
-            if let Some(record) = pending.finish(source, screen) {
+            if let Some(record) = pending.finish(source, Some(screen)) {
                 replays.insert(node, Rc::new(record));
             }
         }

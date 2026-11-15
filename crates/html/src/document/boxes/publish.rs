@@ -112,6 +112,9 @@ impl BoxTree {
                 Prev::Fresh => Prev::Fresh,
                 Prev::Old(old) => match paired(old, len, at, e.node_id) {
                     Some(o) if epochs::same_layout_inputs(o, e) => {
+                        if !crate::dom::same_box(o, e) {
+                            changed.push((id, Change::Paint));
+                        }
                         if o.children.identity() == e.children.identity() {
                             Prev::Clean
                         } else {

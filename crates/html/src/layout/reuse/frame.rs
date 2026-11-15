@@ -134,6 +134,7 @@ impl FlowReuse {
         self.store.unrecorded.replace(unrecorded);
         self.learn_wraps();
         self.finish_replays(screen);
+        self.finish_contents();
         self.finish_far();
         // The frame's ink measures are read: the sinks go with the frame.
         self.ink.release();
