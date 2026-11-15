@@ -16,6 +16,7 @@ use crate::style::css::{Media, Rule};
 use crate::style::select::has::{HasArg, mark_has};
 use crate::values::DocumentValues;
 use markup5ever_rcdom::Handle;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Правила документа одной ревизии для проб его элементов.
@@ -41,10 +42,22 @@ pub struct RestyleCache {
     /// держит такой набор на каждое имя листа, здесь он строится при первой
     /// правке имени.
     sets: Vec<(Changed, Option<Rc<Features>>)>,
+    /// The last probe of each element probed since the rules were built, by
+    /// address (the handle keeps the address taken): the style an element
+    /// has now. Blink keeps it on the element (`Element::GetComputedStyle`,
+    /// `element.cc:5594` reads it as the old style of a recalc) and Stylo in
+    /// its data (`ElementData::styles`, `data.rs:310`); here only edited
+    /// elements have one. It holds while every style a batch changes is
+    /// probed after the batch (`invalidation::targets` finds them all) and
+    /// goes with the cache when a batch rebuilds the document.
+    last: HashMap<usize, (Handle, Option<Probed>)>,
 }
 
 /// Наборов признаков больше этого числа — начинаются заново.
 const SETS: usize = 16;
+
+/// More kept probes than this start over.
+const LAST: usize = 4096;
 
 impl RestyleCache {
     /// Кэш, чья проба — правила только что собранного документа: первая
@@ -78,6 +91,7 @@ impl RestyleCache {
         }
         self.chains = Chains::default();
         self.sets.clear();
+        self.last.clear();
         self.probe = RestyleProbe::new(input, extra_css, media, values)?.map(Rc::new);
         Ok(self.probe.clone())
     }
@@ -125,9 +139,38 @@ impl RestyleCache {
         }
         let vcx = values.values().with_scheme(scheme(probe.media));
         let chains = &mut self.chains;
-        Ok(walk::probe(
-            document, &tree, &probe.doc, targets, chains, vcx,
-        )?)
+        let found = walk::probe(document, &tree, &probe.doc, targets, chains, vcx)?;
+        if self.last.len() + targets.len() > LAST {
+            self.last.clear();
+        }
+        for (target, probed) in targets.iter().zip(&found) {
+            let address = Rc::as_ptr(target) as usize;
+            self.last.insert(address, (target.clone(), probed.clone()));
+        }
+        Ok(found)
+    }
+
+    /// The entries of `targets` at the current state of the source DOM, as
+    /// `styles` gives them: the kept probes if every target has one, else a
+    /// probe of them all. A list item probes again: the entries of one probe
+    /// count list items in the order of its targets (`walk::probe`), so its
+    /// number compares only between probes of the same targets.
+    pub fn kept_styles(
+        &mut self,
+        probe: &RestyleProbe,
+        input: &Admitted,
+        values: &Rc<DocumentValues>,
+        targets: &[Handle],
+    ) -> Result<Vec<Option<Probed>>, DocumentFailure> {
+        let kept = |t: &Handle| match self.last.get(&(Rc::as_ptr(t) as usize)) {
+            Some((_, Some(p))) if p.rest.list_item.is_some() => None,
+            Some((_, p)) => Some(p.clone()),
+            None => None,
+        };
+        match targets.iter().map(kept).collect::<Option<Vec<_>>>() {
+            Some(kept) => Ok(kept),
+            None => self.styles(probe, input, values, targets),
+        }
     }
 }
 

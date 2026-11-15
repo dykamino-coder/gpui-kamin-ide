@@ -31,7 +31,7 @@ use crate::values::ValueCx;
 use markup5ever_rcdom::Handle;
 use std::rc::Rc;
 /// What the walk's entry produced for one target element.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Probed {
     /// The cascaded style of the element as the walk leaves its entry.
     pub style: Box<Computed>,
@@ -41,7 +41,7 @@ pub struct Probed {
 }
 
 /// The entry's outputs beside the element's own style.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ProbedRest {
     pub vars: Rc<VarMap>,
     pub hover: Option<Box<Computed>>,

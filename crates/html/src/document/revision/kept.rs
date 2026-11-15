@@ -1,12 +1,14 @@
 //! What the edits in place of one document keep between them (`Kept`).
 
 use super::boxes::Boxes;
+use super::source_index::SourceIndex;
 use crate::document::Document;
 use crate::dom::Node;
 use std::rc::Rc;
 
 /// What the edits of one document keep between them: the texts of its sheets,
-/// the probe of its restyles and the index of its boxes. The sheets of a
+/// the probe of its restyles, the index of its boxes and the numbers of its
+/// source elements. The sheets of a
 /// document do not change in place (a build reads the text of a `<style>`,
 /// and an edit of a read text rebuilds), an edit in place keeps the shape of
 /// the box tree (`commit::Plan`), and a rebuilt document starts over.
@@ -15,6 +17,7 @@ pub(in crate::document) struct Kept {
     sheets: Option<Rc<Vec<String>>>,
     pub(super) cache: crate::dom::restyle_probe::RestyleCache,
     boxes: Option<Rc<Boxes>>,
+    ids: Option<Rc<SourceIndex>>,
 }
 
 impl Kept {
@@ -26,6 +29,7 @@ impl Kept {
             sheets: None,
             cache,
             boxes: None,
+            ids: None,
         };
         Rc::new(std::cell::Cell::new(Some(Box::new(kept))))
     }
@@ -36,6 +40,15 @@ impl Kept {
             self.boxes = Some(Rc::new(Boxes::of(nodes)?));
         }
         self.boxes.clone()
+    }
+
+    /// The box numbers of the source elements `list` of the build, indexed on
+    /// the first edit in place.
+    pub(super) fn ids(&mut self, list: &[usize]) -> Option<Rc<SourceIndex>> {
+        if self.ids.is_none() {
+            self.ids = Some(Rc::new(SourceIndex::of(list)?));
+        }
+        self.ids.clone()
     }
 }
 
@@ -55,5 +68,13 @@ impl Document {
         let boxes = kept.boxes(&self.nodes);
         self.restyle.set(Some(kept));
         boxes
+    }
+
+    /// The box numbers of the source elements of this build (`SourceIndex`).
+    pub(super) fn source_index(&self) -> Option<Rc<SourceIndex>> {
+        let mut kept = self.restyle.take().unwrap_or_default();
+        let ids = kept.ids(&self.state.values.traversal.elements());
+        self.restyle.set(Some(kept));
+        ids
     }
 }

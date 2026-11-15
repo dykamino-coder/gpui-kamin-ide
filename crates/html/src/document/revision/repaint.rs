@@ -28,6 +28,7 @@ use super::commit::Plan;
 pub(in crate::document) use super::kept::Kept;
 use super::mutation::Batch;
 use super::patch::{Target, apply, attr_paths, patch};
+use super::source_index::SourceIndex;
 use crate::document::Document;
 use crate::dom::Node;
 use crate::style::computed::Computed;
@@ -73,7 +74,10 @@ impl Document {
         // batch: it goes back only with a plan (otherwise the document is
         // rebuilt, and a fresh cache starts from its DOM).
         let mut kept = self.restyle.take().unwrap_or_default();
-        let restyles = self.restyles(batch, changed, &input, theme_css, &mut kept.cache);
+        let index = kept.ids(&values.traversal.elements());
+        let restyles = index.and_then(|index| {
+            self.restyles(batch, changed, (&input, &index), theme_css, &mut kept.cache)
+        });
         values.traversal.retain(input);
         let boxes = kept.boxes(&self.nodes)?;
         let plan = self.restyled(batch, &changed.elements, &boxes, restyles?)?;
@@ -128,7 +132,7 @@ impl Document {
         &self,
         batch: &Batch,
         changed: &crate::dom::invalidation::Changed,
-        input: &crate::dom::input::Admitted,
+        (input, index): (&crate::dom::input::Admitted, &SourceIndex),
         theme_css: &str,
         cache: &mut crate::dom::restyle_probe::RestyleCache,
     ) -> Option<HashMap<u64, Restyle>> {
@@ -151,7 +155,10 @@ impl Document {
         // values into the cascades of their children's boxes: the probe
         // folds them the same way.
         let unwrapped = fold::Unwrapped::add(&self.nodes, &input.dom.document, &mut targets)?;
-        let before = cache.styles(&probe, input, values, &targets).ok()?;
+        // The styles before the batch are those the last probe of each
+        // target left (Blink and Stylo keep the old style on the element);
+        // only targets no edit has probed yet are cascaded.
+        let before = cache.kept_styles(&probe, input, values, &targets).ok()?;
         batch.write();
         let after = cache.styles(&probe, input, values, &targets);
         batch.undo();
@@ -161,7 +168,7 @@ impl Document {
             Some(u) => Some(u.parent(|i| before[i].as_ref().map(|p| &*p.style), vcx)?),
             None => None,
         };
-        let ids = super::adopt::source_ids(&values.traversal.elements(), targets.iter());
+        let ids = targets.iter().map(|target| index.id(target));
         let mut out = HashMap::new();
         let entries = targets.iter().zip(ids).zip(before).zip(after).enumerate();
         for (i, (((target, id), old), new)) in entries {
