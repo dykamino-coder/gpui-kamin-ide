@@ -27,6 +27,17 @@ pub(super) enum Link {
 }
 
 impl Arena {
+    #[cfg(feature = "heap-report")]
+    pub(super) fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
+        use kamin_heap::HeapSize;
+        ops.buffer(self.slots.as_ptr(), self.slots.capacity())
+            + self.free.heap_size(ops)
+            + self
+                .iter()
+                .map(|(_, value)| value.heap_size(ops))
+                .sum::<usize>()
+    }
+
     pub(super) fn iter(&self) -> impl Iterator<Item = (BoxId, &BoxRecord)> {
         self.slots.iter().enumerate().filter_map(|(slot, entry)| {
             entry.value.as_ref().map(|value| {

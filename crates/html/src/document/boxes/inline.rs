@@ -10,6 +10,8 @@ use std::rc::Rc;
 use std::string::String;
 
 #[cfg(test)]
+mod leaves;
+#[cfg(test)]
 mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -21,6 +23,7 @@ pub(crate) enum ItemKind {
     Opportunity,
     Atom,
     RubyAnnotation,
+    Float,
     OutOfFlow,
     Block,
 }
@@ -77,6 +80,11 @@ impl Collection {
         let style = element.style.used();
         let contents = style.reset_box_layout.display == Some(Display::Contents);
         let special = matches!(element.tag.as_str(), "br" | "wbr");
+        let suppressed = self
+            .frames
+            .last()
+            .is_some_and(|frame| frame.owner.is_none())
+            || (!contents && (special || box_kind::replaced_tag(element)));
         let out_of_flow = !contents && box_kind::out_of_flow(&style);
         let ruby = crate::text::ruby::ruby_role(element);
         let annotation = matches!(ruby, Some(RubyRole::Text | RubyRole::TextContainer));
@@ -88,8 +96,10 @@ impl Collection {
                 && !annotation);
         let kind = if contents {
             None
-        } else if out_of_flow {
+        } else if crate::style::flow::absolutely_positioned(style.reset_positioned.position) {
             Some(ItemKind::OutOfFlow)
+        } else if out_of_flow {
+            Some(ItemKind::Float)
         } else if element.tag == "br" {
             Some(ItemKind::HardBreak)
         } else if element.tag == "wbr" {
@@ -114,9 +124,9 @@ impl Collection {
         let owner = inherited.unwrap_or(self.frames.len());
         self.frames.push(Frame {
             id,
-            closes: inline && !contents,
-            owner: Some(owner),
-            content: inherited.is_none().then(InlineContent::default),
+            closes: inline && !contents && !suppressed,
+            owner: (!suppressed).then_some(owner),
+            content: (!suppressed && inherited.is_none()).then(InlineContent::default),
         });
     }
 

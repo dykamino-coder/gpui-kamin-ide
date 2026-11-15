@@ -48,10 +48,16 @@ fn commit_and_rebuild_keep_the_same_arena_and_box_keys() {
     let mut doc = Document::builder(html, theme).build().unwrap();
     let arena = doc.state.boxes.clone();
     let initial = ids(&arena.borrow());
+    let epoch = arena.borrow().epoch;
     let clean = html.replace("<p>a", "<p class=unmentioned>a");
     doc.update(&clean, theme).unwrap();
     assert!(Rc::ptr_eq(&arena, &doc.state.boxes));
     assert_eq!(ids(&arena.borrow()), initial);
+    assert_eq!(
+        arena.borrow().epoch,
+        epoch,
+        "clean commit must not republish"
+    );
     let restyled = clean.replace("class=unmentioned", "class=on");
     doc.update(&restyled, theme).unwrap();
     assert!(Rc::ptr_eq(&arena, &doc.state.boxes));
@@ -94,6 +100,10 @@ fn full_restyles_publish_the_accepted_box_topology() {
         let mut doc = Document::builder(before, theme).build().unwrap();
         let arena = doc.state.boxes.clone();
         let old = ids(&arena.borrow());
+        let old_origins: Vec<_> = old
+            .iter()
+            .map(|&id| arena.borrow().get(id).unwrap().origin.clone())
+            .collect();
         let old_sources = sources(&doc.nodes);
         if records {
             let mutations = doc.mutations(&after).unwrap();
@@ -108,11 +118,15 @@ fn full_restyles_publish_the_accepted_box_topology() {
             .map(|&id| tree.get(id).unwrap().source)
             .collect();
         let accepted = sources(&doc.nodes);
+        let accepted_origins: Vec<_> = ids(&tree)
+            .iter()
+            .map(|&id| tree.get(id).unwrap().origin.clone())
+            .collect();
         assert_ne!(accepted, old_sources, "the restyle changes the box tree");
         assert_eq!(actual, accepted, "records={records}");
-        for (id, source) in old.into_iter().zip(old_sources) {
-            if !accepted.contains(&source) {
-                assert!(tree.get(id).is_none(), "removed box {source}");
+        for (id, origin) in old.into_iter().zip(old_origins) {
+            if !accepted_origins.contains(&origin) {
+                assert!(tree.get(id).is_none(), "removed box {origin:?}");
             }
         }
     }
@@ -154,20 +168,39 @@ fn hiding_a_sibling(records: bool) {
             .expect("authored box")
     };
     let mut doc = Document::builder(before, theme).build().unwrap();
+    let root = doc.source_dom();
     let left = key(&doc.state.boxes.borrow(), source(&doc.nodes, "left"));
     let right = key(&doc.state.boxes.borrow(), source(&doc.nodes, "right"));
+    let right_flow = doc.state.boxes.borrow().get(right).unwrap().inline.clone();
+    let right_key = crate::dom::NodeKey::from_packed(source(&doc.nodes, "right"));
     if records {
         doc.apply(&doc.mutations(&after).unwrap(), theme).unwrap();
     } else {
         doc.update(&after, theme).unwrap();
     }
+    assert!(Rc::ptr_eq(&root, &doc.source_dom()), "same live DOM");
     let tree = doc.state.boxes.borrow();
     assert_eq!(
         key(&tree, source(&doc.nodes, "right")),
         right,
         "unchanged sibling must retain its own key, records={records}"
     );
+    assert_eq!(tree.get(right).unwrap().origin, Source::Node(right_key));
+    assert!(Rc::ptr_eq(
+        right_flow.as_ref().unwrap(),
+        tree.get(right).unwrap().inline.as_ref().unwrap()
+    ));
     assert!(tree.get(left).is_none(), "hidden box must be retired");
+    drop(tree);
+    if records {
+        doc.apply(&doc.mutations(before).unwrap(), theme).unwrap();
+    } else {
+        doc.update(before, theme).unwrap();
+    }
+    let tree = doc.state.boxes.borrow();
+    assert_eq!(key(&tree, source(&doc.nodes, "right")), right);
+    assert_ne!(key(&tree, source(&doc.nodes, "left")), left);
+    assert!(tree.get(left).is_none(), "old hidden key stays stale");
 }
 
 #[test]

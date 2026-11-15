@@ -149,7 +149,10 @@ impl Document {
         }
         state.values.traversal.retain(source.input);
         if state.boxes.borrow().is_empty() {
-            state.boxes.borrow_mut().publish(&nodes);
+            state
+                .boxes
+                .borrow_mut()
+                .publish_document(&nodes, &state.values);
         }
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
