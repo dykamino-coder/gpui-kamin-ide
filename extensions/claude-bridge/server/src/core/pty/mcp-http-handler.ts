@@ -680,7 +680,13 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         }
         let handle: Record<string, unknown> | undefined
         try {
-          handle = await createMcpTask(session, toolName, toolInput)
+          // A foreground command stays in memory: most settle within the grace
+          // window, and writing (and fsyncing) their records cost more than the
+          // command itself. It is written to disk only when it turns into a
+          // background task below.
+          handle = await createMcpTask(session, toolName, toolInput, {
+            durable: toolInput.run_in_background === true,
+          })
         } catch (error) {
           // A negotiated client accepts either a Task or an ordinary result.
           // Never fall back after uncertain persistence or an active-limit refusal.
@@ -718,6 +724,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
               )
               if (task?.status === 'completed' && task.result) {
                 const response = jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+                void mcpTasks.release(owner, taskId).catch(() => {})
                 logMcpRequest(
                   session,
                   `tools/call:${toolName}`,
@@ -740,11 +747,15 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
                   isError: true,
                 })
               }
-              if (task?.status === 'working')
-                await mcpTasks.update(owner, task.taskId, (record) => {
-                  record.background = true
-                })
-              return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
+              // From here the CLI holds a task handle, so the record must
+              // survive a server restart like any background task.
+              const background =
+                task?.status === 'working'
+                  ? await mcpTasks.persist(owner, task.taskId, (record) => {
+                      record.background = true
+                    })
+                  : task
+              return jsonRpcResponse(body.id, background ? { ...taskView(background), resultType: 'task' } : handle)
             } finally {
               traceEnd(taskId)
               release()
