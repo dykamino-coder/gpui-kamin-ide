@@ -55,6 +55,7 @@ mod shader_compilation;
 mod present_gate;
 mod quad_clear;
 mod retained;
+mod group_cache;
 use group_region::Region;
 
 pub(crate) struct DirectXRenderer {
@@ -133,9 +134,6 @@ struct BlurScratch {
     /// KaminIDE patch: viewport size last written to the frame parameter buffer.
     frame_globals: Option<[f32; 2]>,
     stage_rasterizer: Option<ID3D11RasterizerState>,
-    /// KaminIDE patch: `prepare_group_targets` created or dropped an atlas page
-    /// this frame (the images kept there are gone, `retained::GroupCache`).
-    pages_changed: bool,
     copy: Option<BlurTexture>,
     blend_copy: Option<BlurTexture>,
     down: Vec<BlurTexture>,
@@ -990,9 +988,9 @@ impl DirectXRenderer {
         }
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
-        self.prepare_group_targets(scene)?;
-        // KaminIDE patch: images kept from the last frame (`retained::GroupCache`).
-        let reuse = self.reusable_groups(scene);
+        // KaminIDE patch: images kept from the last frame (`group_cache`).
+        let reuse = self.prepare_group_targets(scene)?;
+        let kept = reuse.iter().filter(|&&k| k).count();
         let mut valid = reuse.clone();
         self.retained.groups.valid.clear();
         // A pass that failed last frame may have left its rectangles in the stage.
@@ -1096,7 +1094,7 @@ impl DirectXRenderer {
             self.clear_group_stage()?;
         }
         self.draw_group_layers(&scene.groups, &mut segment)?;
-        self.groups_kept(scene, valid);
+        self.groups_kept(scene, valid, kept);
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
         unsafe {

@@ -40,28 +40,10 @@ pub(super) struct Retained {
     /// A pass of this frame failed and was skipped: the frame is incomplete.
     pub(super) failed: bool,
     /// The group images kept in the group atlas between frames.
-    pub(super) groups: GroupCache,
+    pub(super) groups: group_cache::GroupCache,
     /// This frame continues the last one: `Some(true)` the same scene again,
-    /// `Some(false)` compared with it (`Scene::group_same_as_base`).
+    /// `Some(false)` compared with it (`Scene::group_base`).
     pub(super) chain: Option<(bool, u64)>,
-}
-
-/// KaminIDE patch: group images of the last frame that are still in the group
-/// atlas. The atlas layout is a function of the region sizes (`group_atlas::pack`),
-/// so when the sizes and pages are the same, group `i` keeps its rectangle, and
-/// an image is reused when the group paints what it painted (Chromium caches an
-/// unchanged render surface the same way, `RenderSurfaceImpl::ShouldCacheRenderSurface`;
-/// WebRender keeps render-task results by key). The cache costs no memory: it is
-/// the atlas the frame needs anyway, so its budget is that atlas, and an image
-/// whose group died or moved is overwritten by the next layout.
-#[derive(Default)]
-pub(super) struct GroupCache {
-    /// Scene number whose groups `valid` describes.
-    pub(super) id: u64,
-    pub(super) places: Vec<group_atlas::Place>,
-    pub(super) regions: Vec<Region>,
-    /// The atlas rectangle of group `i` holds its finished image.
-    pub(super) valid: Vec<bool>,
 }
 
 /// How the current frame reaches the target.
@@ -238,34 +220,5 @@ impl DirectXRenderer {
         let staging = staging.context("staging texture")?;
         self.retained.staging = Some((w, h, staging.clone()));
         Ok(staging)
-    }
-
-    /// Groups whose image from the last frame is still in the atlas and valid
-    /// for `scene` (after `prepare_group_targets` laid the atlas out).
-    pub(super) fn reusable_groups(&self, scene: &Scene) -> Vec<bool> {
-        let c = &self.retained.groups;
-        let layout = !self.blur.pages_changed
-            && c.places == self.blur.group_place
-            && c.regions == self.blur.group_regions;
-        let ok = match self.retained.chain {
-            Some((_, base)) => layout && c.id == base,
-            None => false,
-        };
-        let same = matches!(self.retained.chain, Some((true, _)));
-        (0..scene.groups.len())
-            .map(|g| {
-                ok && c.valid.get(g).copied().unwrap_or(false)
-                    && (same || scene.group_same_as_base(g))
-            })
-            .collect()
-    }
-
-    /// The atlas now holds the images of `scene`'s groups marked in `valid`.
-    pub(super) fn groups_kept(&mut self, scene: &Scene, valid: Vec<bool>) {
-        let c = &mut self.retained.groups;
-        c.id = scene.frame_damage().2;
-        c.places.clone_from(&self.blur.group_place);
-        c.regions.clone_from(&self.blur.group_regions);
-        c.valid = valid;
     }
 }
