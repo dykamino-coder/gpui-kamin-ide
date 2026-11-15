@@ -13,13 +13,14 @@ use super::Builder;
 use gpui::{App, Refineable, Styled, Window};
 
 impl Builder {
-    /// Record the queued boxes again; `false` when the frame must be built.
+    /// Record the queued boxes again before the frame replays; `false` when
+    /// the frame must be built.
     pub(super) fn repaint_boxes(&self, window: &mut Window, cx: &mut App) -> bool {
         let done = self.repaint_queued(window, cx);
         if !done {
             // Runs already replaced leave the layer neither old nor new.
             self.store.void_frame_records();
-            self.store.layer.replace(None);
+            self.store.drop_layer();
         }
         done
     }
@@ -65,5 +66,16 @@ impl Builder {
             self.store.void_frame_records();
         }
         true
+    }
+
+    /// The document's paint, recorded into its scene layer; a frame that
+    /// builds paints every box anew, so no queued box is recorded again.
+    pub(super) fn record_paint(
+        &self,
+        window: &mut Window,
+        f: impl FnOnce(&mut Window),
+    ) -> gpui::RetainedPaint {
+        self.store.take_repaints();
+        self.store.record_layered(window, f)
     }
 }

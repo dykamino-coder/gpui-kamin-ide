@@ -7,6 +7,15 @@
 //! into it (`document::revision::layer_write`) instead of a new frame.
 
 use super::store::Store;
+use std::cell::RefCell;
+
+/// The document's scene layer of the last recorded frame, and the boxes whose
+/// own commands the next frame records again into it (`queue_repaints`).
+#[derive(Default)]
+pub(crate) struct Kept {
+    layer: RefCell<Option<gpui::LayerHandle>>,
+    repaints: RefCell<Vec<u64>>,
+}
 
 impl Store {
     /// The paint of the frame being drawn did not stay at its recorded
@@ -38,7 +47,7 @@ impl Store {
             }
             gpui::RecordedLayer::Painted => None,
         };
-        self.layer.replace(layer);
+        self.layer.layer.replace(layer);
     }
 
     /// `paint_layered` as the document's retained paint record.
@@ -52,15 +61,20 @@ impl Store {
             .1
     }
 
+    /// Drop the layer: the next frame paints a new one.
+    pub(crate) fn drop_layer(&self) {
+        self.layer.layer.replace(None);
+    }
+
     /// The layer of the last recorded frame, if it painted into one.
     pub(crate) fn scene_layer(&self) -> Option<gpui::LayerHandle> {
-        self.layer.borrow().clone()
+        self.layer.layer.borrow().clone()
     }
 
     /// Queue the boxes `ids` to record their own commands again into the
     /// layer before the next frame replays (`document::retained`).
     pub(crate) fn queue_repaints(&self, ids: Vec<u64>) {
-        let mut queued = self.repaints.borrow_mut();
+        let mut queued = self.layer.repaints.borrow_mut();
         queued.extend(ids);
         queued.sort_unstable();
         queued.dedup();
@@ -68,6 +82,6 @@ impl Store {
 
     /// Take the queued boxes.
     pub(crate) fn take_repaints(&self) -> Vec<u64> {
-        std::mem::take(&mut *self.repaints.borrow_mut())
+        std::mem::take(&mut *self.layer.repaints.borrow_mut())
     }
 }

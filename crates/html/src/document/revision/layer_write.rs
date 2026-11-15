@@ -71,9 +71,24 @@ pub(super) fn write_paint_values(
             _ => records.push(a.node_id),
         }
     }
+    // A box the layer cannot record again builds the frame as before;
+    // nothing is written then.
+    let held = |ids: &[u64]| {
+        ids.iter()
+            .all(|&id| u32::try_from(id).is_ok_and(|o| layer.holds_box(o)))
+    };
+    if !held(&records) {
+        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+        return None;
+    }
     if layer.set_backgrounds(&writes).is_none() {
         // A fill the layer does not hold as painted: its box records again.
-        records.extend(writes.iter().map(|w| u64::from(w.0)));
+        let owners: Vec<u64> = writes.iter().map(|w| u64::from(w.0)).collect();
+        if !held(&owners) {
+            crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+            return None;
+        }
+        records.extend(owners);
     }
     records.sort_unstable();
     records.dedup();

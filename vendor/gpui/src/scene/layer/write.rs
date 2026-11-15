@@ -38,6 +38,16 @@ impl SceneLayer {
 }
 
 impl LayerHandle {
+    /// Whether box `owner` painted runs this layer can record again
+    /// (`Window::rerecord_layer_box`): at least one, each of plain
+    /// primitives under no transformation.
+    pub fn holds_box(&self, owner: u32) -> bool {
+        let content = self.0.content.borrow();
+        let mut runs = content.boxes.iter().filter(|b| b.owner == owner).peekable();
+        runs.peek().is_some()
+            && runs.all(|b| b.replaceable && b.env.transformation == crate::TransformationMatrix::unit())
+    }
+
     /// Write the background of `owner` from `from` to `to`.
     /// `set_backgrounds` of one write.
     pub fn set_background(&self, owner: u32, from: Hsla, to: Hsla) -> Option<Bounds<ScaledPixels>> {

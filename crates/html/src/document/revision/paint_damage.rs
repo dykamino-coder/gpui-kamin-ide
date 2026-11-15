@@ -11,7 +11,7 @@
 //! derives it from the old and new styles of `Plan::Restyled`.
 
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 
 /// Painted values of one element that changed, as bits.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -69,18 +69,17 @@ pub(crate) fn classify(a: &Element, b: &Element) -> PaintDamage {
     if a.node_id != b.node_id || a.tag != b.tag || CONTROLS.contains(&a.tag.as_str()) {
         return PaintDamage::Rebuild;
     }
-    let Some(bits) = own_paint_only(a.style.cascaded(), b.style.cascaded()) else {
+    // The used style is the cascaded one unless layout edited it: then both
+    // must differ the same way.
+    let (Some(bits), Some(_)) = (
+        own_paint_only(a.style.cascaded(), b.style.cascaded()),
+        own_paint_only(
+            &BoxStyle::shared(a.style.used()),
+            &BoxStyle::shared(b.style.used()),
+        ),
+    ) else {
         return PaintDamage::Rebuild;
     };
-    // Layout's used layer (when it edited the style) must differ the same way.
-    let used = match (a.style.used_rc(), b.style.used_rc()) {
-        (None, None) => true,
-        (Some(x), Some(y)) => own_paint_only(&x, &y).is_some(),
-        _ => false,
-    };
-    if !used {
-        return PaintDamage::Rebuild;
-    }
     if bits.layer_writable() {
         PaintDamage::Value(bits)
     } else {
@@ -89,31 +88,19 @@ pub(crate) fn classify(a: &Element, b: &Element) -> PaintDamage {
 }
 
 /// The values of the box's own paint `new` changed from `old` when nothing
-/// else differs: the background colour (and whether the author declared a
-/// background) and the border colours. `None` for any other difference.
+/// else differs: its background (`Computed::with_paint_of`, the paint groups
+/// of a restyle). `None` for any other difference, a new inherited UI group
+/// (`color` paints the text of descendants) included.
 fn own_paint_only(old: &Computed, new: &Computed) -> Option<PaintValue> {
-    let (a, b) = (&old.reset_background, &new.reset_background);
-    let (x, y) = (&old.reset_border, &new.reset_border);
+    if old.inh.ui != new.inh.ui || old.with_paint_of(new) != *new {
+        return None;
+    }
     let mut bits = PaintValue::default();
-    if a.background != b.background
-        || a.background_color != b.background_color
-        || a.bg_explicit != b.bg_explicit
-    {
+    if old.reset_background != new.reset_background {
         bits = bits.union(PaintValue::BACKGROUND_COLOR);
     }
-    if x.border_colors != y.border_colors {
-        bits = bits.union(PaintValue::BORDER_COLORS);
-    }
-
-    let mut probe = old.clone();
-    let group = &mut probe.reset_background;
-    group.background = b.background;
-    group.background_color = b.background_color.clone();
-    group.bg_explicit = b.bg_explicit;
-    probe.reset_border.border_colors = y.border_colors.clone();
-    (probe == *new).then_some(bits)
+    Some(bits)
 }
-
 #[cfg(test)]
 mod tests {
     use super::PaintValue;
