@@ -14,6 +14,8 @@ pub(super) fn register(view: &Entity<View>, window: &mut Window) -> Subscription
     let view = view.downgrade();
     window.on_update_rendering(move |window, cx| {
         let _ = view.update(cx, |view, cx| {
+            // Опции кадра строятся в шаге, как прежде в render: в фазе сборки.
+            kamin_html::work::phase!(_work, BuildElements);
             let opts = view.opts(window);
             let phases = view.phases.clone();
             {
@@ -23,7 +25,6 @@ pub(super) fn register(view: &Entity<View>, window: &mut Window) -> Subscription
                     .requested
                     .map(|request| started.duration_since(request));
             }
-            kamin_html::work::phase!(_work, BuildElements);
             let mut mark = Clock::now();
             view.doc
                 .update_rendering(&opts, &parent, window, cx, |phase| {

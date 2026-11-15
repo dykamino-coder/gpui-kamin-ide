@@ -19,8 +19,9 @@ use std::rc::Rc;
 /// Дерево кадра, собранное и разложенное шагом документа.
 pub(super) struct Prepared {
     pub(super) key: FrameKey,
-    /// Сборка шага: повторная сборка в кадре продолжает её счётчики.
-    pub(super) builder: Builder,
+    /// Счётчики до сборки шага: повторная сборка в кадре начинает с них, как
+    /// шаг (сборщик кадр делает свой — опции того же ключа).
+    pub(super) counters: Option<crate::layout::reuse::Counters>,
     pub(super) tree: AnyElement,
     pub(super) flow: Option<Rc<FlowReuse>>,
     /// Кадры, заказанные сборкой и раскладкой шага.
@@ -106,7 +107,7 @@ impl Document {
                 let scheduled = window.next_frame_callback_count().saturating_sub(before);
                 self.retained.prepared.replace(Some(Prepared {
                     key,
-                    builder,
+                    counters: builder.counters.get(),
                     tree,
                     flow,
                     scheduled,

@@ -47,7 +47,10 @@ impl Retained {
             return Self {
                 slot,
                 key,
-                builder: prepared.builder,
+                builder: {
+                    builder.counters.set(prepared.counters);
+                    builder
+                },
                 tree: Some(prepared.tree),
                 flow: prepared.flow,
                 scheduled: prepared.scheduled,
