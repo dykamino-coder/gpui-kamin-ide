@@ -399,3 +399,53 @@ fn a_run_whose_new_ink_crosses_a_box_of_the_same_key_is_refused() {
     );
     assert_eq!(layer.content().version(), version, "nothing was replaced");
 }
+
+/// The run of box 2 (`boxes_layer`) replaced by one quad painted with a
+/// border of width `width` and no fill, as a border that appears.
+fn rerecord_border(layer: &LayerHandle, width: f32) -> Option<bool> {
+    let (owner, key, area) = {
+        let content = layer.content();
+        let b = &content.boxes[1];
+        (b.owner, b.key, b.area)
+    };
+    let mut scene = Scene::default();
+    assert!(scene.open_box(owner, area, env(), Some(key)));
+    if width > 0. {
+        let mut bordered = quad(rect(0., 20., 100., 20.), hsla(0., 0., 0., 0.), 1.);
+        bordered.border_color = blue();
+        bordered.border_widths = crate::Edges::all(ScaledPixels(width));
+        scene.insert_primitive(bordered);
+    }
+    scene.close_box().expect("the box was open");
+    let mut current = layer.0.content.borrow_mut();
+    let ink = current.check_box(1, &scene)?;
+    let (_, moved) = std::rc::Rc::make_mut(&mut current).replace_box(1, scene, Vec::new(), ink);
+    Some(moved)
+}
+
+#[test]
+fn a_border_that_appears_and_goes_replaces_only_its_boxs_run() {
+    let layer = boxes_layer();
+    let before = painted(&layer);
+    // 1 → 0: the fill goes; 0 → 1: a border appears; 1 → 0: it goes.
+    assert!(rerecord_border(&layer, 0.).is_some());
+    assert!(painted(&layer)[1].1.is_empty());
+    assert!(rerecord_border(&layer, 2.).is_some());
+    let bordered = painted(&layer);
+    assert_eq!(bordered[1].1, vec![rect(0., 20., 100., 20.)]);
+    let content = layer.content();
+    let border = content
+        .scene()
+        .quads
+        .iter()
+        .find(|q| q.border_widths.top == ScaledPixels(2.))
+        .expect("the border quad is in the sorted list");
+    assert_eq!(border.border_color, blue());
+    drop(content);
+    assert_eq!((bordered[0].clone(), bordered[2].clone()), (before[0].clone(), before[2].clone()));
+    assert!(rerecord_border(&layer, 0.).is_some());
+    let gone = painted(&layer);
+    assert!(gone[1].1.is_empty());
+    assert_eq!((gone[0].clone(), gone[2].clone()), (before[0].clone(), before[2].clone()));
+    assert!(layer.content().scene().quads.iter().all(|q| q.border_widths.top == ScaledPixels(0.)));
+}
