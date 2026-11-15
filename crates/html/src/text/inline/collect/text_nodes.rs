@@ -36,9 +36,14 @@ pub(super) fn collect_text(
     t: &str,
     inherited: &BoxStyle,
     case: &mut text_case::Context,
+    runs: Option<&mut super::retained::Runs>,
     out: &mut Vec<Piece>,
 ) {
-    let text = normalize_text(t, inherited, case, ends_with_zwsp(out));
+    // A run the box tree prepared for this node replaces its normalization.
+    let retained = runs
+        .filter(|_| !t.is_empty())
+        .and_then(|runs| runs.next(t, inherited).map(str::to_owned));
+    let text = retained.unwrap_or_else(|| normalize_text(t, inherited, case, ends_with_zwsp(out)));
     if !text.is_empty() {
         out.push(Piece::Text {
             text,

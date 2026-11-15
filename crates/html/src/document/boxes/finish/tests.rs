@@ -8,7 +8,7 @@ use crate::style::computed::TextTransform;
 use crate::style::values::value::Len;
 use crate::text::inline::{self, Piece};
 
-fn paragraph(nodes: &[Node]) -> &Element {
+pub(super) fn paragraph(nodes: &[Node]) -> &Element {
     let mut pending = vec![nodes.iter()];
     while let Some(siblings) = pending.last_mut() {
         match siblings.next() {

@@ -2,6 +2,8 @@
 
 mod mixed;
 #[cfg(test)]
+mod mixed_adapter_tests;
+#[cfg(test)]
 mod mixed_tests;
 #[cfg(test)]
 mod raw_text_tests;
@@ -24,8 +26,18 @@ pub(super) struct Prepared {
     pub(super) ready: bool,
     source: Rc<InlineContent>,
     inputs: Inputs,
-    dependencies: Vec<(BoxId, Inputs)>,
+    dependencies: Rc<[(BoxId, Inputs)]>,
     pub(super) text: Rc<InlineContent>,
+}
+
+/// A prepared flow with inline boxes: one normalized run per source text item
+/// (empty runs kept), so the paragraph adapter can take each text node's run in
+/// document order. `inputs` are those of the descendant boxes the runs read.
+pub(crate) struct MixedText {
+    pub(crate) owner: BoxId,
+    pub(crate) source: Rc<InlineContent>,
+    pub(crate) text: Rc<InlineContent>,
+    pub(crate) inputs: Rc<[(BoxId, Inputs)]>,
 }
 
 pub(super) fn slice_key(nodes: &[Node]) -> (usize, usize) {
@@ -78,6 +90,22 @@ impl BoxTree {
             .iter()
             .all(|item| matches!(item.kind, ItemKind::Text { .. }))
             .then_some(text)
+    }
+
+    /// The prepared runs of a flow with inline boxes (`normalized` covers flat text).
+    pub(crate) fn mixed_text(&self, nodes: &[Node], style: &Computed) -> Option<MixedText> {
+        let owner = *self.flows.get(&slice_key(nodes))?;
+        let prepared = self.get(owner)?.prepared.as_ref()?;
+        let text = self.normalized_inline(owner, style)?;
+        text.items
+            .iter()
+            .any(|item| !matches!(item.kind, ItemKind::Text { .. }))
+            .then(|| MixedText {
+                owner,
+                source: prepared.source.clone(),
+                text,
+                inputs: prepared.dependencies.clone(),
+            })
     }
 
     /// Stable T3 input: offsets address this UTF-8 buffer; BoxIds identify enclosing boxes.
@@ -138,9 +166,6 @@ impl BoxTree {
                 return;
             };
             let run = normalizer.text(&source.text[start..end], input);
-            if run.is_empty() {
-                continue;
-            }
             let start = text.text.len();
             text.text.push_str(&run);
             text.items.push(Item {
@@ -155,7 +180,7 @@ impl BoxTree {
             ready: true,
             source: source.clone(),
             inputs: Inputs::of(style),
-            dependencies,
+            dependencies: dependencies.into(),
             text: if text == **source {
                 source.clone()
             } else {
@@ -172,7 +197,7 @@ impl kamin_heap::HeapSize for Prepared {
         self.source.heap_size(ops)
             + self.inputs.flow_heap_size(ops)
             + self.text.heap_size(ops)
-            + ops.buffer(self.dependencies.as_ptr(), self.dependencies.capacity())
+            + ops.buffer(self.dependencies.as_ptr(), self.dependencies.len())
             + self
                 .dependencies
                 .iter()

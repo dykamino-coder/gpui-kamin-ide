@@ -58,6 +58,13 @@ use crate::dom::{Element, Node};
 use gpui::{AnyElement, IntoElement};
 pub(crate) mod atom_parent;
 pub(super) mod collect;
+#[cfg(test)]
+pub(crate) use collect::retained::Runs;
+#[cfg(test)]
+thread_local! {
+    /// Paragraphs whose retained runs were dropped for a fresh lowering.
+    pub(crate) static RETAINED_FALLBACKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 pub(crate) use crate::text::inline::collect::to_rotated_frame;
 use crate::text::inline::collect::*;
 pub(super) mod hyphenate;
@@ -180,31 +187,41 @@ pub fn collect(
         let mut pieces = text
             .items
             .iter()
-            .map(|item| {
+            .filter_map(|item| {
                 let crate::document::boxes::inline::ItemKind::Text { start, end } = item.kind
                 else {
                     unreachable!("text-only prepared IFC")
                 };
-                Piece::Text {
+                (start != end).then(|| Piece::Text {
                     text: text.text[start..end].to_owned(),
                     style: inherited.clone(),
-                }
+                })
             })
             .collect::<Vec<_>>();
         collect::set_boundary_spacing(&mut pieces, None);
         return pieces;
     }
-    collect_with_empty_metrics(
-        children,
-        inherited,
-        atom,
-        empty_inline::has_text(children),
-        &mut collect::CollectCx {
-            case: text_case::Context::default(),
-            layout: cx.clone(),
-            inline_parents: Vec::new(),
-            inline_cb_depth: 0,
-            ruby_space: false,
-        },
-    )
+    let mixed = cx.doc().boxes.borrow().mixed_text(children, inherited);
+    let has_text = empty_inline::has_text(children);
+    let fresh = |runs| collect::CollectCx {
+        case: text_case::Context::default(),
+        layout: cx.clone(),
+        inline_parents: Vec::new(),
+        inline_cb_depth: 0,
+        ruby_space: false,
+        runs,
+    };
+    let mut first = fresh(mixed.map(collect::retained::Runs::new));
+    let pieces = collect_with_empty_metrics(children, inherited, atom, has_text, &mut first);
+    if first
+        .runs
+        .as_ref()
+        .is_none_or(collect::retained::Runs::complete)
+    {
+        return pieces;
+    }
+    // The box tree saw other text or inputs: lower the paragraph as before.
+    #[cfg(test)]
+    RETAINED_FALLBACKS.with(|n| n.set(n.get() + 1));
+    collect_with_empty_metrics(children, inherited, atom, has_text, &mut fresh(None))
 }

@@ -6,6 +6,7 @@
 mod adapter;
 mod arena;
 mod finish;
+pub(crate) use finish::MixedText;
 #[cfg(feature = "heap-report")]
 mod heap;
 pub(crate) mod inline;

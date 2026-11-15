@@ -1,26 +1,12 @@
 //! Raw subtree text borrows the retained IFC buffer of a flat text flow.
 
+use super::tests::paragraph;
 use crate::document::Document;
-use crate::dom::{Element, Node};
+use crate::dom::Node;
 use crate::layout::cx::{BuildDoc, LayoutCx, ValueContext};
 use crate::style::computed::BoxStyle;
 use crate::text::content::{Content, raw};
 use std::rc::Rc;
-
-fn paragraph(nodes: &[Node]) -> &Element {
-    let mut pending = vec![nodes.iter()];
-    while let Some(siblings) = pending.last_mut() {
-        match siblings.next() {
-            Some(Node::Element(e)) if e.tag == "p" => return e,
-            Some(Node::Element(e)) => pending.push(e.children.iter()),
-            Some(Node::Text(_)) => {}
-            None => {
-                pending.pop();
-            }
-        }
-    }
-    panic!("paragraph");
-}
 
 /// The layout context of `doc` after its box tree is finished.
 fn finished(doc: &Document) -> LayoutCx {
