@@ -86,6 +86,7 @@ impl Arena {
         if slot.generation == id.generation
             && let Some(record) = slot.value.as_mut()
         {
+            record.text_results.keep(prepared.as_ref().map(|p| &p.text));
             record.prepared = prepared.map(Box::new);
         }
     }
@@ -146,6 +147,7 @@ impl Arena {
             if record.inline != content {
                 record.inline = content;
                 record.prepared = None;
+                record.text_results.keep(None);
             }
         }
     }
@@ -181,6 +183,7 @@ mod tests {
             }),
             inline: None,
             prepared: None,
+            text_results: Default::default(),
             epoch: 0,
         }
     }

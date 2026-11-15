@@ -16,15 +16,20 @@ pub(super) fn text(body: &str, runs: &mut [TextRun], rtl: bool) -> SharedString 
     // unmirrored.
     let open = if rtl { '\u{202e}' } else { '\u{202d}' };
     const CLOSE: char = '\u{202c}';
-    if let Some(first) = runs.first_mut() {
-        first.len += open.len_utf8();
-    }
-    if let Some(last) = runs.last_mut() {
-        last.len += CLOSE.len_utf8();
-    }
+    pad_runs(runs);
     let mut out = String::with_capacity(body.len() + 6);
     out.push(open);
     out.push_str(body);
     out.push(CLOSE);
     out.into()
+}
+
+/// Обрамление уже удерживаемого текста теми же управляющими знаками.
+pub(super) fn pad_runs(runs: &mut [TextRun]) {
+    if let Some(first) = runs.first_mut() {
+        first.len += '\u{202d}'.len_utf8();
+    }
+    if let Some(last) = runs.last_mut() {
+        last.len += '\u{202c}'.len_utf8();
+    }
 }

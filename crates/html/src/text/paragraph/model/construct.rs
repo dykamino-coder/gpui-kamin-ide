@@ -24,6 +24,7 @@ impl Paragraph {
             inline_measure: None,
             clamp_rows: Default::default(),
             measures: Default::default(),
+            retained: None,
             scroll_owner: None,
             ruby_base_sink: None,
             ruby_layers: None,

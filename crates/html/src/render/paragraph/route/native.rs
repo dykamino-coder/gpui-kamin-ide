@@ -31,6 +31,7 @@ pub(crate) fn native_paragraph(
     clamp_budget: Option<usize>,
     clamp_tag: Option<(u64, u32)>,
     line_atoms: LineAtoms,
+    retained: Option<std::rc::Rc<crate::text::paragraph::retained::Retained>>,
 ) -> AnyElement {
     let native_request = native_request.filter(|_| native);
     let inherited = native_request.map_or(inherited, |request| request.style);
@@ -77,6 +78,7 @@ pub(crate) fn native_paragraph(
         super::alignment::first(inherited, opts),
         wrap,
     )
+    .retained(retained)
     .measure_context(&opts.cx)
     .ruby_context(&opts.cx);
     let para = paragraph_spans(para, inherited, opts, &pieces, &edges, biggest, line)

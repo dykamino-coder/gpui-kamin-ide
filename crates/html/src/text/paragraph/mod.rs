@@ -57,6 +57,7 @@ mod break_spaces_tests {
 mod line_types;
 mod model;
 mod prepared;
+pub(crate) mod retained;
 #[cfg(test)]
 mod tests {
     //! Tests for paragraph.

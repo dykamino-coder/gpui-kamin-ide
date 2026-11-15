@@ -243,5 +243,6 @@ pub(crate) fn paragraph_pieces_routed(
         clamp_budget,
         clamp_tag,
         line_atoms,
+        opts.cx.doc().boxes.borrow().text_results(nodes, inherited),
     )
 }

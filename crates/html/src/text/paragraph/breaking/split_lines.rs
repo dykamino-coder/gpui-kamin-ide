@@ -29,6 +29,19 @@ impl Paragraph {
         {
             return self.split_uncached(limit, window);
         }
+        if let Some(owner) = self.retained_lines() {
+            if let Some(lines) = owner.lines(self, limit, window) {
+                crate::work::add!(LayoutCacheHits, 1);
+                return lines;
+            }
+            #[cfg(test)]
+            self.measures
+                .split_misses
+                .set(self.measures.split_misses.get() + 1);
+            let lines = self.split_uncached(limit, window);
+            owner.remember_lines(self, limit, &lines);
+            return lines;
+        }
         let key = self.split_key(limit);
         if let Some(hit) = self.measures.splits.borrow_mut().get(&key).cloned() {
             crate::work::add!(LayoutCacheHits, 1);

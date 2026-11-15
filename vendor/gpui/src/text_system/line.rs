@@ -63,6 +63,50 @@ pub struct ShapedLine {
 }
 
 impl ShapedLine {
+    /// KaminIDE patch: геометрия строки для удержания владельцем абзаца.
+    pub fn retained_layout(&self) -> Arc<LineLayout> {
+        self.layout.clone()
+    }
+
+    /// KaminIDE patch: оформить уже набранную строку текущими красками.
+    /// Вызывающий проверяет текст, шрифты, трекинг и поколение текстовой системы.
+    /// Диапазоны прогонов относятся к переданному тексту в логическом порядке.
+    pub fn from_retained_layout(
+        layout: Arc<LineLayout>,
+        text: SharedString,
+        runs: &[crate::TextRun],
+    ) -> Self {
+        let mut decoration_runs = SmallVec::<[DecorationRun; 32]>::new();
+        for run in runs {
+            if let Some(last_run) = decoration_runs.last_mut()
+                && last_run.color == run.color
+                && last_run.underline == run.underline
+                && last_run.strikethrough == run.strikethrough
+                && last_run.background_color == run.background_color
+            {
+                last_run.len += run.len as u32;
+                continue;
+            }
+            decoration_runs.push(DecorationRun {
+                len: run.len as u32,
+                color: run.color,
+                background_color: run.background_color,
+                background_pad: run.background_pad,
+                background_radius: run.background_radius,
+                background_line_gap: run.background_line_gap,
+                background_border: run.background_border,
+                underline: run.underline,
+                strikethrough: run.strikethrough,
+            });
+        }
+
+        Self {
+            layout,
+            text,
+            decoration_runs,
+        }
+    }
+
     /// Returns a forward-only cursor for this shaped line.
     pub fn cursor(&self) -> ShapedLineCursor<'_> {
         assert_eq!(
@@ -961,16 +1005,16 @@ fn paint_line_background(
     );
     line_bounds.origin.y -= bleed.0;
     line_bounds.size.height += bleed.0 + bleed.1;
-        // KaminIDE patch: выключка по ширине — остаток строки раздаётся её
-        // межсловным промежуткам (см. `justify_extras`).
-        let justify = (align == TextAlign::Justify).then(|| {
-            justify_extras(
-                text,
-                layout,
-                wrap_boundaries,
-                align_width.unwrap_or(layout.width),
-            )
-        });
+    // KaminIDE patch: выключка по ширине — остаток строки раздаётся её
+    // межсловным промежуткам (см. `justify_extras`).
+    let justify = (align == TextAlign::Justify).then(|| {
+        justify_extras(
+            text,
+            layout,
+            wrap_boundaries,
+            align_width.unwrap_or(layout.width),
+        )
+    });
     window.paint_layer(line_bounds, |window| {
         let all_style_runs = decoration_runs;
         let mut decoration_runs = decoration_runs.iter();
@@ -1008,23 +1052,24 @@ fn paint_line_background(
         // Полоса нужна только для заливки: добавление `background_border`
         // в условие ниже дублирует рамку строчной коробки.
         if layout.runs.iter().all(|r| r.glyphs.is_empty())
-            && let Some(style_run) = all_style_runs
-                .iter()
-                .find(|r| r.background_color.is_some())
+            && let Some(style_run) = all_style_runs.iter().find(|r| r.background_color.is_some())
             && let Some(bg) = style_run.background_color
         {
-            window.paint_quad(snap_band(run_background_quad(
-                glyph_origin,
-                layout.width,
-                line_height,
-                content_height,
-                bg,
-                style_run.background_pad,
-                style_run.background_radius,
-                true,
-                true,
-                style_run.background_border,
-            ), window));
+            window.paint_quad(snap_band(
+                run_background_quad(
+                    glyph_origin,
+                    layout.width,
+                    line_height,
+                    content_height,
+                    bg,
+                    style_run.background_pad,
+                    style_run.background_radius,
+                    true,
+                    true,
+                    style_run.background_border,
+                ),
+                window,
+            ));
         }
         for (run_ix, run) in layout.runs.iter().enumerate() {
             max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
@@ -1068,20 +1113,24 @@ fn paint_line_background(
                                     other => break other,
                                 }
                             };
-                            !next_run.is_some_and(|r| r.background_color == Some(background_color.0))
+                            !next_run
+                                .is_some_and(|r| r.background_color == Some(background_color.0))
                         };
-                        window.paint_quad(snap_band(run_background_quad(
-                            *background_origin,
-                            glyph_origin.x - background_origin.x,
-                            line_height,
-                            content_height,
-                            background_color.0,
-                            background_color.1,
-                            background_color.2,
-                            background_color.3,
-                            run_ends_here,
-                            background_color.4,
-                        ), window));
+                        window.paint_quad(snap_band(
+                            run_background_quad(
+                                *background_origin,
+                                glyph_origin.x - background_origin.x,
+                                line_height,
+                                content_height,
+                                background_color.0,
+                                background_color.1,
+                                background_color.2,
+                                background_color.3,
+                                run_ends_here,
+                                background_color.4,
+                            ),
+                            window,
+                        ));
                         if !run_ends_here {
                             background_color.3 = false;
                             background_origin.x = origin.x;
@@ -1151,18 +1200,21 @@ fn paint_line_background(
                     if background_origin.x == glyph_origin.x {
                         background_origin.x -= max_glyph_size.width.half();
                     };
-                    window.paint_quad(snap_band(run_background_quad(
-                        background_origin,
-                        width,
-                        line_height,
-                        content_height,
-                        background_color.0,
-                        background_color.1,
-                        background_color.2,
-                        background_color.3,
-                        true,
-                        background_color.4,
-                    ), window));
+                    window.paint_quad(snap_band(
+                        run_background_quad(
+                            background_origin,
+                            width,
+                            line_height,
+                            content_height,
+                            background_color.0,
+                            background_color.1,
+                            background_color.2,
+                            background_color.3,
+                            true,
+                            background_color.4,
+                        ),
+                        window,
+                    ));
                 }
             }
         }
@@ -1178,18 +1230,21 @@ fn paint_line_background(
             if last_line_end_x == background_origin.x {
                 background_origin.x -= max_glyph_size.width.half()
             };
-            window.paint_quad(snap_band(run_background_quad(
-                background_origin,
-                last_line_end_x - background_origin.x,
-                line_height,
-                content_height,
-                background_color.0,
-                background_color.1,
-                background_color.2,
-                background_color.3,
-                true,
-                background_color.4,
-            ), window));
+            window.paint_quad(snap_band(
+                run_background_quad(
+                    background_origin,
+                    last_line_end_x - background_origin.x,
+                    line_height,
+                    content_height,
+                    background_color.0,
+                    background_color.1,
+                    background_color.2,
+                    background_color.3,
+                    true,
+                    background_color.4,
+                ),
+                window,
+            ));
         }
 
         Ok(())

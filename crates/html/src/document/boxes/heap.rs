@@ -20,6 +20,7 @@ impl HeapSize for BoxRecord {
             + ops.at("text/box-ifc", |ops| {
                 self.inline.heap_size(ops) + self.prepared.heap_size(ops)
             })
+            + ops.at("text/box-results", |ops| self.text_results.heap_size(ops))
     }
 }
 

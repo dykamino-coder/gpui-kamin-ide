@@ -245,6 +245,12 @@ pub struct TextSystem {
 }
 
 impl TextSystem {
+    /// Generation of font selection and fallback data, advanced after adding fonts.
+    /// Retained clients must invalidate glyph geometry when this changes.
+    pub fn font_generation(&self) -> usize {
+        self.font_generation.load(Ordering::Acquire)
+    }
+
     /// Create a new TextSystem with the given platform text system.
     pub fn new(platform_text_system: Arc<dyn PlatformTextSystem>) -> Self {
         let (sender, receiver) = async_channel::bounded(MAX_REPORTED_MISSING_GLYPHS);
@@ -699,37 +705,8 @@ impl WindowTextSystem {
             "text argument should not contain newlines"
         );
 
-        let mut decoration_runs = SmallVec::<[DecorationRun; 32]>::new();
-        for run in runs {
-            if let Some(last_run) = decoration_runs.last_mut()
-                && last_run.color == run.color
-                && last_run.underline == run.underline
-                && last_run.strikethrough == run.strikethrough
-                && last_run.background_color == run.background_color
-            {
-                last_run.len += run.len as u32;
-                continue;
-            }
-            decoration_runs.push(DecorationRun {
-                len: run.len as u32,
-                color: run.color,
-                background_color: run.background_color,
-                background_pad: run.background_pad,
-                background_radius: run.background_radius,
-                background_line_gap: run.background_line_gap,
-                background_border: run.background_border,
-                underline: run.underline,
-                strikethrough: run.strikethrough,
-            });
-        }
-
         let layout = self.layout_line_spaced(&text, font_size, runs, force_width, letter_spacing);
-
-        ShapedLine {
-            layout,
-            text,
-            decoration_runs,
-        }
+        ShapedLine::from_retained_layout(layout, text, runs)
     }
 
     /// KaminIDE patch: строка справа налево — набор тот же, порядок глифов

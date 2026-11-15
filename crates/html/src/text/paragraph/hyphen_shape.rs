@@ -48,6 +48,13 @@ impl Paragraph {
         if piece.is_empty() {
             return None;
         }
+        let owner = self.retained.as_ref().filter(|_| !rtl && suffix.is_empty());
+        if let Some(owner) = owner
+            && let Some(hit) = owner.painted(self, range, &piece, window)
+        {
+            return Some(hit);
+        }
+        let retained_runs = owner.map(|_| retained::inputs::font_fields(&piece));
         // CSS Text 3 §5.4: an inserted hyphen inherits the soft hyphen's
         // style even when that otherwise invisible run has no painted glyphs.
         let hyphen_run = (suffix == self.hyphen.as_ref()
@@ -109,6 +116,9 @@ impl Paragraph {
                     },
                 );
             self.space_shaped(range, &mut shaped);
+            if let Some((owner, runs)) = owner.zip(retained_runs) {
+                owner.remember_paint(self, range.clone(), runs, &shaped);
+            }
             return Some(shaped);
         }
         Some(

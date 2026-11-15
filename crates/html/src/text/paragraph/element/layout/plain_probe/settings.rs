@@ -20,6 +20,7 @@ pub(in crate::text::paragraph::element::layout) struct Settings {
     clamp: Option<usize>,
     clamp_force: bool,
     measures: Rc<MeasureCache>,
+    retained: Option<Rc<crate::text::paragraph::retained::Retained>>,
     paint_context: Rc<crate::text::vertical::VerticalPaint>,
     inline_measure: Option<crate::text::vertical::InlineMeasure>,
     lines_reversed: bool,
@@ -56,6 +57,7 @@ impl Settings {
             clamp: p.clamp,
             clamp_force: p.clamp_force,
             measures: p.measures.clone(),
+            retained: p.retained.clone(),
             paint_context: p.paint_context.clone(),
             inline_measure: p.inline_measure.clone(),
             lines_reversed: p.lines_reversed,
@@ -91,6 +93,7 @@ impl Settings {
             clamp: p.clamp,
             clamp_force: p.clamp_force,
             measures: p.measures,
+            retained: p.retained,
             paint_context: p.paint_context,
             inline_measure: p.inline_measure,
             lines_reversed: p.lines_reversed,
@@ -131,6 +134,7 @@ impl Settings {
         p.clamp = self.clamp;
         p.clamp_force = self.clamp_force;
         p.measures = self.measures;
+        p.retained = self.retained;
         p.paint_context = self.paint_context;
         p.inline_measure = self.inline_measure;
         p.lines_reversed = self.lines_reversed;

@@ -18,6 +18,7 @@ mod source_tests;
 mod sources;
 #[cfg(test)]
 mod tests;
+mod text_results;
 
 use crate::dom::{BoxId, Node};
 use arena::{Arena, Link};
@@ -33,6 +34,7 @@ pub(crate) struct BoxRecord {
     origin: Source,
     pub(crate) inline: Option<Rc<inline::InlineContent>>,
     prepared: Option<Box<finish::Prepared>>,
+    text_results: text_results::TextResults,
     epoch: u64,
 }
 
@@ -196,6 +198,7 @@ impl BoxTree {
                 origin,
                 inline: None,
                 prepared: None,
+                text_results: Default::default(),
                 epoch: self.epoch,
             })
         })?;

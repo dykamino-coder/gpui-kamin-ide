@@ -16,6 +16,7 @@ pub struct Paragraph {
     pub(super) paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
     pub(super) clamp_rows: Option<crate::text::clamp::ClampMeasure>,
     pub(super) measures: std::rc::Rc<super::MeasureCache>,
+    pub(super) retained: Option<std::rc::Rc<super::retained::Retained>>,
     /// Scroll owner and the shift chain the paragraph is built in.
     pub(super) scroll_owner: Option<super::scroll_overflow::ScrollOwner>,
     pub(super) text: SharedString,
