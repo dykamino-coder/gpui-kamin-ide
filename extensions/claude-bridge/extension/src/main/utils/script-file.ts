@@ -92,7 +92,7 @@ export function writeScriptFile(content: string, extension: '.sh' | '.ps1'): Scr
 // -Command sets exit code 1 when the last statement failed; Invoke-Expression
 // itself succeeds, so the script reports that status explicitly. The newline
 // ends a trailing comment of the user's script.
-const POWERSHELL_STATUS_TRAILER = '\nif (-not $?) { exit 1 }\n'
+export const POWERSHELL_STATUS_TRAILER = '\nif (-not $?) { exit 1 }\n'
 
 /**
  * Writes `script` to a file and returns the arguments that run it.

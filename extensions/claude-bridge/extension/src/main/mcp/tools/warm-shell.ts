@@ -9,6 +9,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import os from 'node:os'
 import { windowsJobRunner } from './windows-job-runner'
+import { POWERSHELL_OUTPUT_SETUP } from './powershell-output'
 
 /** A started shell has not proven anything until it is used, so it is kept
  *  only briefly: after this idle time it is ended and the next call starts cold. */
@@ -38,6 +39,8 @@ export function acceptorCommand(kind: WarmKind): string {
       // are the slow first-use part of every PowerShell command script.
       '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false; ' +
         "Invoke-Expression '$null = Get-Location'; " +
+        // So is the output writer of the command runner (bufferedOutputRunner).
+        POWERSHELL_OUTPUT_SETUP +
         '$__ocb_d = [Console]::In.ReadLine(); if ($null -eq $__ocb_d) { exit 0 }; Set-Location -LiteralPath $__ocb_d; ' +
         '[System.IO.Directory]::SetCurrentDirectory($__ocb_d); Remove-Variable __ocb_d; ' +
         'Invoke-Expression ([System.IO.File]::ReadAllText([Console]::In.ReadLine()))'
