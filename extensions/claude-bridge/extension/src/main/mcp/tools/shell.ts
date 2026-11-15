@@ -5,8 +5,14 @@ import type { ToolCallContext } from '../executor'
 import { getOrCreateSnapshot, wrapCommandWithSnapshot, shouldUseLoginShell } from './shell-snapshot'
 import { listEnabledPluginBinDirs } from '../../plugin-helpers'
 import { findBashExecutable, findPowerShellExecutable } from '../../utils/command-runtime'
-import { scriptInvocation, type ScriptInvocation } from '../../utils/script-file'
-import { toPosixShellPath } from '../../utils/command-runtime'
+import {
+  POWERSHELL_STATUS_TRAILER,
+  scriptInvocation,
+  writeScriptFile,
+  type ScriptFile,
+  type ScriptInvocation,
+} from '../../utils/script-file'
+import { powerShellSingleQuote, toPosixShellPath } from '../../utils/command-runtime'
 import { startWarmShell, takeWarmShell, warmKey, type WarmKind } from './warm-shell'
 
 async function shellEnv(): Promise<NodeJS.ProcessEnv> {
@@ -155,6 +161,34 @@ function warmShell(
   }
 }
 
+/**
+ * PowerShell writes every output line to a redirected stdout with its own
+ * flush: `1..100000` took 70 s or more where formatting it takes about 2 s.
+ * The runner gives stdout one buffered writer (host output such as Write-Host
+ * goes through it too, so the order is kept) and pipes the command's output
+ * through a single `Out-String -Stream`, so tables keep one header. It flushes
+ * at the first line after a pause, every 50 ms while output streams, at the
+ * end, and when PowerShell exits, so live output stays live. The command runs
+ * through Invoke-Expression in the global scope as before, so `exit`,
+ * `$LASTEXITCODE` and the final-status exit code are unchanged.
+ */
+export function bufferedOutputRunner(commandFile: string): string {
+  return (
+    '$__kaminOut = New-Object System.IO.StreamWriter([Console]::OpenStandardOutput(), [Console]::OutputEncoding, 65536); ' +
+    '[Console]::SetOut($__kaminOut); ' +
+    '$null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action { $__kaminOut.Flush() }; ' +
+    '$__kaminFlushed = [System.Diagnostics.Stopwatch]::StartNew(); $__kaminIdle = [System.Diagnostics.Stopwatch]::StartNew(); ' +
+    `try { Invoke-Expression ([System.IO.File]::ReadAllText(${powerShellSingleQuote(commandFile)})) | ` +
+    'Microsoft.PowerShell.Utility\\Out-String -Stream | Microsoft.PowerShell.Core\\ForEach-Object { $__kaminOut.WriteLine($_); ' +
+    'if ($__kaminIdle.ElapsedMilliseconds -ge 2 -or $__kaminFlushed.ElapsedMilliseconds -ge 50) { $__kaminOut.Flush(); $__kaminFlushed.Restart() }; ' +
+    '$__kaminIdle.Restart() } } ' +
+    // A terminating error inside the pipeline loses the host's source excerpt;
+    // print the message and its position (the command's own line numbers).
+    'catch { $__kaminOut.Flush(); [Console]::Error.Write(($_ | Microsoft.PowerShell.Utility\\Out-String)); ' +
+    '[Console]::Error.WriteLine($_.InvocationInfo.PositionMessage); exit 1 } finally { $__kaminOut.Flush() }'
+  )
+}
+
 export function powerShellFlags(env: NodeJS.ProcessEnv): string[] {
   const flags = ['-NoLogo', '-NoProfile', '-NonInteractive']
   const respect = env.CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY
@@ -184,16 +218,23 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
   // Console encoding also controls native programs (cmd/git); $OutputEncoding
   // controls PowerShell pipelines into them. Keep the user's command last and
   // in the same scope so exit, $LASTEXITCODE and error handling retain their meaning.
-  const wrapped =
-    '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n' + command
+  const encoding = '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;'
+  const background = input.run_in_background === true && context?.taskDeadlineMs === undefined
+  let commandFile: ScriptFile | undefined
   let script: ScriptInvocation
   try {
-    script = scriptInvocation('powershell', powerShellFlags(process.env), wrapped)
+    if (!background) {
+      commandFile = writeScriptFile(command + POWERSHELL_STATUS_TRAILER, '.ps1')
+      script = scriptInvocation('powershell', powerShellFlags(process.env), encoding + ' ' + bufferedOutputRunner(commandFile.path))
+    } else {
+      script = scriptInvocation('powershell', powerShellFlags(process.env), encoding + '\n' + command)
+    }
   } catch (err) {
+    commandFile?.dispose()
     return errorResult(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`)
   }
   const flags = script.args.slice(0, -1)
-  if (input.run_in_background === true && context?.taskDeadlineMs === undefined) {
+  if (background) {
     return runBackgroundCommand(
       script.loader,
       pwshPath,
@@ -220,6 +261,7 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
     )
   } finally {
     script.file.dispose()
+    commandFile?.dispose()
   }
 }
 

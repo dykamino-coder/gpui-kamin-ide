@@ -80,4 +80,40 @@ for (const [name, executable] of engines) {
     },
     30000,
   )
+
+  it.skipIf(process.platform !== 'win32' || !fs.existsSync(executable))(
+    `${name}: buffered output keeps every line, one table header, live streaming and host order`,
+    async () => {
+      fixture.executable = executable
+      const { powerShellExecute } = await import('./shell')
+      const many = await powerShellExecute({ command: '1..10000' })
+      const lines = many.content[0].text.split(/\r?\n/).filter(Boolean)
+      expect(lines).toHaveLength(10000)
+      expect(lines.at(-1)).toBe('10000')
+
+      // One formatter for the whole output: a table split across flushes keeps one header.
+      const table = await powerShellExecute({
+        command: "1..400 | ForEach-Object { [pscustomobject]@{ Index = $_; Name = 'n' + $_ } }",
+      })
+      expect(table.content[0].text.match(/Index Name/g)).toHaveLength(1)
+
+      // Output written before a pause reaches the live stream before the command ends.
+      const stamps: Array<[string, number]> = []
+      const started = Date.now()
+      const slow = await powerShellExecute(
+        { command: "Write-Output 'first'; Start-Sleep -Milliseconds 1500; Write-Output 'second'" },
+        { onOutput: (s) => stamps.push([s, Date.now() - started]) },
+      )
+      const first = stamps.find(([s]) => s.includes('first'))
+      const second = stamps.find(([s]) => s.includes('second'))
+      expect(first).toBeDefined()
+      expect(second![1] - first![1]).toBeGreaterThan(1000)
+      expect(slow.content[0].text).toMatch(/first\r?\nsecond/)
+
+      // Host output and pipeline output keep their order.
+      const mixed = await powerShellExecute({ command: "1..3 | ForEach-Object { $_; Write-Host ('h' + $_) }" })
+      expect(mixed.content[0].text.replace(/\r/g, '')).toContain('1\nh1\n2\nh2\n3\nh3')
+    },
+    60000,
+  )
 }

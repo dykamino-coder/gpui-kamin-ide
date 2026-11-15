@@ -12579,6 +12579,9 @@ function warmShell(kind, shell2, flags, env4, cwd, scriptPath) {
     return kind === "bash" ? startWarmShell(child, toPosixShellPath(folder), toPosixShellPath(scriptPath)) : startWarmShell(child, folder, scriptPath);
   };
 }
+function bufferedOutputRunner(commandFile) {
+  return `$__kaminOut = New-Object System.IO.StreamWriter([Console]::OpenStandardOutput(), [Console]::OutputEncoding, 65536); [Console]::SetOut($__kaminOut); $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action { $__kaminOut.Flush() }; $__kaminFlushed = [System.Diagnostics.Stopwatch]::StartNew(); $__kaminIdle = [System.Diagnostics.Stopwatch]::StartNew(); try { Invoke-Expression ([System.IO.File]::ReadAllText(${powerShellSingleQuote(commandFile)})) | Microsoft.PowerShell.Utility\\Out-String -Stream | Microsoft.PowerShell.Core\\ForEach-Object { $__kaminOut.WriteLine($_); if ($__kaminIdle.ElapsedMilliseconds -ge 2 -or $__kaminFlushed.ElapsedMilliseconds -ge 50) { $__kaminOut.Flush(); $__kaminFlushed.Restart() }; $__kaminIdle.Restart() } } catch { $__kaminOut.Flush(); [Console]::Error.Write(($_ | Microsoft.PowerShell.Utility\\Out-String)); [Console]::Error.WriteLine($_.InvocationInfo.PositionMessage); exit 1 } finally { $__kaminOut.Flush() }`;
+}
 function powerShellFlags(env4) {
   const flags = ["-NoLogo", "-NoProfile", "-NonInteractive"];
   const respect = env4.CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY;
@@ -12597,15 +12600,23 @@ async function powerShellExecute(input, context) {
   }
   const env4 = await shellEnv();
   if (context?.signal?.aborted) return errorResult2("Command cancelled");
-  const wrapped = "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;\n" + command;
+  const encoding = "[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false;";
+  const background = input.run_in_background === true && context?.taskDeadlineMs === void 0;
+  let commandFile;
   let script;
   try {
-    script = scriptInvocation("powershell", powerShellFlags(process.env), wrapped);
+    if (!background) {
+      commandFile = writeScriptFile(command + POWERSHELL_STATUS_TRAILER, ".ps1");
+      script = scriptInvocation("powershell", powerShellFlags(process.env), encoding + " " + bufferedOutputRunner(commandFile.path));
+    } else {
+      script = scriptInvocation("powershell", powerShellFlags(process.env), encoding + "\n" + command);
+    }
   } catch (err) {
+    commandFile?.dispose();
     return errorResult2(`Cannot write the command script: ${err instanceof Error ? err.message : String(err)}`);
   }
   const flags = script.args.slice(0, -1);
-  if (input.run_in_background === true && context?.taskDeadlineMs === void 0) {
+  if (background) {
     return runBackgroundCommand(
       script.loader,
       pwshPath,
@@ -12632,6 +12643,7 @@ async function powerShellExecute(input, context) {
     );
   } finally {
     script.file.dispose();
+    commandFile?.dispose();
   }
 }
 async function bashExecute(input, context) {
