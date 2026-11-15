@@ -11,7 +11,7 @@
 //! derives it from the old and new styles of `Plan::Restyled`.
 
 use crate::dom::Element;
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::Computed;
 
 /// Painted values of one element that changed, as bits.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -69,15 +69,9 @@ pub(crate) fn classify(a: &Element, b: &Element) -> PaintDamage {
     if a.node_id != b.node_id || a.tag != b.tag || CONTROLS.contains(&a.tag.as_str()) {
         return PaintDamage::Rebuild;
     }
-    // The used style is the cascaded one unless layout edited it: then both
-    // must differ the same way.
-    let (Some(bits), Some(_)) = (
-        own_paint_only(a.style.cascaded(), b.style.cascaded()),
-        own_paint_only(
-            &BoxStyle::shared(a.style.used()),
-            &BoxStyle::shared(b.style.used()),
-        ),
-    ) else {
+    // The restyle (`Plan::Restyled`) wrote the new paint groups into the
+    // boxes in place: the cascaded styles carry the whole difference.
+    let Some(bits) = own_paint_only(a.style.cascaded(), b.style.cascaded()) else {
         return PaintDamage::Rebuild;
     };
     if bits.layer_writable() {
