@@ -65,7 +65,7 @@ fn failure(error: Failure<FailureReason>) -> FailureReason {
 
 pub(super) fn parse(source: &str, context: &Context) -> Result<RcDom, FailureReason> {
     let policy = &*context.0;
-    let dom = RcDom::try_new(policy)?;
+    let dom = RcDom::try_new_from(policy, context.1)?;
     // Вход уже декодирован загрузчиком. Legacy resource caps заменены общей
     // B2 policy; entity expansion итеративна и расходует work/storage ревизии.
     let reader = AbortableReader::new(

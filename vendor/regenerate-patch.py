@@ -159,6 +159,7 @@ FIXES = {
         "Preserve the tokenizer/tree-builder state and insertion rules for those tokens.",
     ],
     "markup5ever_rcdom": [
+        "Identity: document-scoped POD slot/generation keys are assigned at node creation; weak lookup and allocation-free retirement on actual Drop preserve detached JS-owned nodes without ABA.",
         "Admission: fallible canonical sink mutations retain storage leases, bound payload/work and release partial trees iteratively, including selectedcontent and weak parent owners.",
         "Compatibility: use the shared html5ever/markup5ever/xml5ever 0.40 tree interfaces.",
         "Populate selectedcontent from the selected option during parsing and at finish.",

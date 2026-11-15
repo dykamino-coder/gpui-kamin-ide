@@ -6,7 +6,7 @@
 //! регистрирует правила `::slotted` (`slotted::register_all`).
 
 use super::{FlatCtx, SlotInfo, is_slot};
-use crate::dom::tree_index::{NodeKey, TreeIndex};
+use crate::dom::tree_index::{HandleKey, TreeIndex};
 use crate::style::select::census_of;
 use markup5ever_rcdom::NodeData;
 use std::collections::HashMap;
@@ -15,14 +15,14 @@ use std::rc::Rc;
 /// Раскрытие слотов в порядке дерева без зависимости от стека потока.
 /// Распределение следует потомкам DOM, поэтому циклов здесь нет.
 pub(super) fn flatten_slot(
-    key: &NodeKey,
-    drafts: &HashMap<NodeKey, SlotInfo>,
+    key: &HandleKey,
+    drafts: &HashMap<HandleKey, SlotInfo>,
     tree: &TreeIndex,
     out: &mut Vec<Option<FlatCtx>>,
 ) -> Result<(), crate::budget::admission::Error> {
     let admission = tree.admission();
     enum Work {
-        Expand(NodeKey),
+        Expand(HandleKey),
         Emit(Box<Option<FlatCtx>>),
     }
     fn emit(ctx: Option<FlatCtx>) -> Work {
@@ -44,7 +44,7 @@ pub(super) fn flatten_slot(
         if !info.assigned.is_empty() {
             admission.work(info.assigned.len())?;
             for s in info.assigned.iter().rev() {
-                let nested = NodeKey::of(&s.node);
+                let nested = HandleKey::of(&s.node);
                 if is_slot(&s.node) && drafts.contains_key(&nested) {
                     work.push(Work::Expand(nested));
                 } else {
@@ -68,7 +68,7 @@ pub(super) fn flatten_slot(
             match &kid.data {
                 NodeData::Element { .. } => {
                     pos -= 1;
-                    let nested = NodeKey::of(kid);
+                    let nested = HandleKey::of(kid);
                     if is_slot(kid) && drafts.contains_key(&nested) {
                         work.push(Work::Expand(nested));
                     } else {
@@ -91,12 +91,12 @@ pub(super) fn flatten_slot(
 
 /// Досчитать плоские списки и выложить слоты на склад.
 pub fn finish_slots(
-    mut drafts: HashMap<NodeKey, SlotInfo>,
+    mut drafts: HashMap<HandleKey, SlotInfo>,
     tree: &mut TreeIndex,
 ) -> Result<(), crate::budget::admission::Error> {
     tree.admission().work(drafts.len())?;
-    let keys: Vec<NodeKey> = drafts.keys().cloned().collect();
-    let mut flats: HashMap<NodeKey, Vec<Option<FlatCtx>>> = HashMap::new();
+    let keys: Vec<HandleKey> = drafts.keys().cloned().collect();
+    let mut flats: HashMap<HandleKey, Vec<Option<FlatCtx>>> = HashMap::new();
     for key in &keys {
         let mut flat = vec![];
         flatten_slot(key, &drafts, tree, &mut flat)?;

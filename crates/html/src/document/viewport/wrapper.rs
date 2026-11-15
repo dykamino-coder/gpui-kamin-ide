@@ -9,19 +9,7 @@ pub(in crate::document) fn wrap(
     canvas: Option<crate::style::values::value::Color>,
 ) -> Vec<Node> {
     let Some(c) = policy else { return nodes };
-    fn maximum_id(nodes: &[Node]) -> u64 {
-        nodes
-            .iter()
-            .filter_map(|node| match node {
-                Node::Element(e) => Some(e.node_id.max(maximum_id(&e.children))),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0)
-    }
-    let id = maximum_id(&nodes) + 1;
     let mut viewport = crate::layout::table::anon::anon_element("html-viewport", nodes);
-    viewport.node_id = id;
     let (rtl, writing_mode) = (c.inh.writing.rtl, c.inh.writing.writing_mode);
     viewport.style = {
         let mut with_inherited = Computed {

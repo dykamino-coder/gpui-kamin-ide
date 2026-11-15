@@ -43,8 +43,7 @@ fn a_batch_names_its_classes_and_data_attributes_and_their_elements() {
     assert_eq!(found.attrs, ["class", "data-k"]);
     let ids: Vec<u64> = found.elements;
     assert_eq!(ids.len(), 2);
-    // The walk leaves `html` last: its id is the count of elements.
-    assert_eq!(ids[0], doc.state.values.traversal.elements().len() as u64);
+    assert_eq!(ids[0], html.key().packed());
     for other in ["id", "style", "lang", "data-kamin-x"] {
         assert_eq!(changed(&doc, &[set(&p, other, "x")]), None, "{other}");
     }
@@ -68,11 +67,16 @@ fn a_rebuild_restyles_the_elements_of_the_rules_that_read_a_changed_class() {
     let html = element(&doc.source_dom(), "html").unwrap();
     let changed = changed(&doc, &[set(&html, "class", "alt")]).unwrap();
     let state = crate::document::state::DocState::continuing(doc.state.media(), &doc.state);
-    let mut invalidation = crate::dom::invalidation::Invalidation::new(changed.clone());
+    let mut invalidation = crate::dom::invalidation::Invalidation::new(changed);
     let fonts = doc.state.text.metrics.font_context();
-    let html_text = page.replace("<html>", "<html class=\"alt\">");
     let revision = doc.budget().revision();
-    let source = Document::admit(&html_text, "", None, false, &revision).unwrap();
+    let batch = Batch::new(&[set(&html, "class", "alt")]).unwrap();
+    batch.write();
+    let mut input = doc.state.values.traversal.take_source().unwrap();
+    input.replace_context(input.context().continuing(revision.clone()));
+    let body = element(&input.dom.document, "body").unwrap().key().packed();
+    let source = Document::readmit(input, "", None, false, doc.key, &revision)
+        .unwrap_or_else(|_| panic!("source admission failed"));
     let next = Document::try_source(
         source,
         "",
@@ -85,6 +89,5 @@ fn a_rebuild_restyles_the_elements_of_the_rules_that_read_a_changed_class() {
     );
     assert!(next.is_ok());
     let restyled = invalidation.finish().expect("known");
-    // `body` is left just before `html`.
-    assert_eq!(restyled, [changed.elements[0], changed.elements[0] - 1]);
+    assert_eq!(restyled, [html.key().packed(), body]);
 }
