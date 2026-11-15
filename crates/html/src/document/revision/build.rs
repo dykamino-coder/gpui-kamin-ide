@@ -139,6 +139,7 @@ impl Document {
             nodes: Rc::new(nodes),
             retained: Default::default(),
             reuse: Default::default(),
+            restyle: Default::default(),
             root,
             key,
             theme_css: theme_css.into(),
