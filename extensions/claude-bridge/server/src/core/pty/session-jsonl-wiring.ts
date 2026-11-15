@@ -2,6 +2,7 @@
 // JSONL itself; a codex session writes Bridge's normalized projection into the
 // same slug directory, so both are tailed, replayed, paged and indexed by the
 // one JsonlWatcher. Moved verbatim from createAdmittedSession (session-core).
+import { noteScheduledWakeups } from './scheduled-wakeup'
 import type { AgentEngineId } from '../../shared/agent-events'
 import { debugLog, warnLog } from '../logging'
 import { lifecycleLog } from '../logging/lifecycle'
@@ -62,12 +63,14 @@ function startJsonlWatcher(
     startTime,
     // `replay: true` — батч истории/превью вне файла-порядка: клиент не должен
     // двигать по нему курсор зеркала (прод-дыра «сообщение не отрисовалось»).
-    (entries, replay) =>
-      trySendToClient(session.ws, {
+    (entries, replay) => {
+      if (!replay) noteScheduledWakeups(session, entries)
+      return trySendToClient(session.ws, {
         type: 'jsonl:entries',
         entries: leanEntries(entries),
         ...(replay ? { replay: true } : {}),
-      }),
+      })
+    },
     (status) => sendToClient(session.ws, { type: 'jsonl:status', ...status }),
     (entry) => handleJsonlUserEntry(session, entry),
     settingsDir,

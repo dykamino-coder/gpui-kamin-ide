@@ -55,7 +55,9 @@ it('does not replay 20 MiB of detached output from the private debounce buffer',
   vi.advanceTimersByTime(32)
   const bytes = ws.send.mock.calls.reduce((sum, [raw]) => sum + Buffer.byteLength(raw), 0)
   expect(bytes).toBeLessThan(100_000)
-  expect(ws.send).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: 'session:output', data: 'new' }))
+  expect(ws.send).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: 'session:output', data: 'new' }), {
+    compress: false,
+  })
 })
 it('bounds a synchronous output burst even before timers can run', () => {
   const chunk = 'я'.repeat(4095) + '😀'
@@ -68,7 +70,9 @@ it('preserves normal debounce order', () => {
   emit('hello')
   emit(' world')
   vi.advanceTimersByTime(8)
-  expect(ws.send).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: 'session:output', data: 'hello world' }))
+  expect(ws.send).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: 'session:output', data: 'hello world' }), {
+    compress: false,
+  })
 })
 it('clears pending debounce on detach and uses ring replay plus resize on reattach', () => {
   emit('before detach')

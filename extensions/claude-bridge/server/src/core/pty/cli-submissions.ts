@@ -64,6 +64,12 @@ export class CliSubmissions {
     for (const item of this.items.values()) this.emit(item)
   }
 
+  /** A submission the CLI has not read yet: the session still owes it a turn. */
+  pending(): boolean {
+    for (const item of this.items.values()) if (item.state === 'queued' || item.state === 'sending') return true
+    return false
+  }
+
   /** Every id still tracked; a client drops pending receipts missing from it. */
   ids(): string[] {
     return [...this.items.keys()]
