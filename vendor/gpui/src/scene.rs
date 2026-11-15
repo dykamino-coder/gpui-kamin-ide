@@ -4,7 +4,10 @@
 mod layer;
 pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
 pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of};
+mod damage;
 mod record;
+#[doc(hidden)]
+pub use damage::{DAMAGE_TILE, SceneDamage};
 mod vector_transform;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
@@ -196,6 +199,8 @@ pub struct Scene {
     /// of a layer finished from this scene (`SceneLayer::finish`) without a
     /// second pass over its commands.
     pub(crate) primitive_ink: Option<Bounds<ScaledPixels>>,
+    /// KaminIDE patch: клетки кадра и повреждение против прошлого кадра (`damage`).
+    pub(crate) damage_index: Box<damage::DamageIndex>,
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -398,6 +403,7 @@ impl Scene {
         self.ink.clear();
         self.ink_scope = 0;
         self.ink_allowed = (0, 0);
+        self.clear_damage_index();
         crate::window::reset_ink_scopes();
     }
 
@@ -1444,7 +1450,7 @@ impl PrimitiveBatch {
     }
 }
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct Quad {
@@ -1474,7 +1480,7 @@ impl From<Quad> for Primitive {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct Underline {
@@ -1493,7 +1499,7 @@ impl From<Underline> for Primitive {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct Shadow {
@@ -1652,7 +1658,7 @@ impl Default for TransformationMatrix {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct MonochromeSprite {
@@ -1671,7 +1677,7 @@ impl From<MonochromeSprite> for Primitive {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct SubpixelSprite {
@@ -1690,7 +1696,7 @@ impl From<SubpixelSprite> for Primitive {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct PolychromeSprite {

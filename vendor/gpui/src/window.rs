@@ -3727,6 +3727,16 @@ impl Window {
         self.layout_engine.as_mut().unwrap().clear();
         self.text_system().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
+        // KaminIDE patch: where the new scene paints otherwise than the one this
+        // window drew last (scene/damage.rs); a renderer that keeps its target
+        // redraws only there.
+        let device = (
+            (self.viewport_size.width.0 * self.scale_factor).ceil().max(0.0) as u32,
+            (self.viewport_size.height.0 * self.scale_factor).ceil().max(0.0) as u32,
+        );
+        self.next_frame
+            .scene
+            .note_frame_damage(&self.rendered_frame.scene, self.frame_serial + 1, device);
 
         self.invalidator.set_phase(DrawPhase::Focus);
         let previous_focus_path = self.rendered_frame.focus_path();
