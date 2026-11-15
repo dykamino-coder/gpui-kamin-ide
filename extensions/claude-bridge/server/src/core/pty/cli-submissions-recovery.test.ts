@@ -9,6 +9,7 @@ import {
   clearSessionInputState,
   getSessionInputSnapshot,
   requestMaintenanceSubmission,
+  setSessionPromptReady,
 } from './session-input-coordinator'
 import type { PtySession } from './types'
 
@@ -70,6 +71,9 @@ async function fixture(sessionId = 'recovery') {
       },
     },
   } as unknown as PtySession
+  // Recovery tests start during an existing turn, after the first real prompt.
+  setSessionPromptReady(session, true)
+  setSessionPromptReady(session, false)
   cleanup.push(() => clearSessionInputState(session))
   const queue = new CliSubmissions(
     session,

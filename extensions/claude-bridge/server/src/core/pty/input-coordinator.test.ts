@@ -37,6 +37,8 @@ function fakePty() {
     lastActivityAt: new Date(),
     detachedAt: null,
   } as unknown as PtySession
+  // These cases exercise transactions in an already-started CLI.
+  setSessionPromptReady(session, true)
   return {
     session,
     writes,
