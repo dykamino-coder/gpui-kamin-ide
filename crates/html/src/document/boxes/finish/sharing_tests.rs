@@ -7,7 +7,7 @@ fn unchanged_text_owns_one_buffer_and_transformed_text_keeps_the_source_intact()
     let mut tree = BoxTree::default();
     let nodes = [Node::Text("plain text".into())];
     tree.publish(&nodes);
-    let id = tree.flows[&slice_key(&nodes)];
+    let id = tree.flow(&nodes).unwrap();
     let source = tree.get(id).unwrap().inline.as_ref().unwrap().clone();
     let style = BoxStyle::default();
     let text = tree.normalized_inline(id, &style).unwrap();

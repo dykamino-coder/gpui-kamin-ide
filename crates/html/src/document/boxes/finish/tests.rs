@@ -125,7 +125,7 @@ fn a_style_commit_replaces_normalization_but_keeps_box_identity() {
         let tree = doc.state.boxes.borrow();
         let p = paragraph(&doc.nodes);
         (
-            *tree.flows.get(&slice_key(&p.children)).unwrap(),
+            tree.flow(&p.children).unwrap(),
             tree.normalized(&p.children, &p.style.used()).unwrap(),
         )
     };
@@ -138,7 +138,7 @@ fn a_style_commit_replaces_normalization_but_keeps_box_identity() {
         .finish(&doc.nodes, &BoxStyle::default(), false);
     let tree = doc.state.boxes.borrow();
     let p = paragraph(&doc.nodes);
-    assert_eq!(tree.flows[&slice_key(&p.children)], id);
+    assert_eq!(tree.flow(&p.children).unwrap(), id);
     let next = tree.normalized(&p.children, &p.style.used()).unwrap();
     assert_eq!(next.text, "hello world");
     assert!(!Rc::ptr_eq(&text, &next));

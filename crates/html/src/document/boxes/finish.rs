@@ -75,7 +75,7 @@ impl BoxTree {
         while let Some(siblings) = pending.last_mut() {
             match siblings.next() {
                 Some(Node::Element(e)) => {
-                    if let Some(&id) = self.flows.get(&slice_key(&e.children)) {
+                    if let Some(id) = self.flows.get(&e.children) {
                         styles.insert(
                             id,
                             (e.style.used().style, e.style.slot().published().is_some()),
@@ -89,7 +89,7 @@ impl BoxTree {
                 }
             }
         }
-        if let Some(&id) = self.flows.get(&slice_key(nodes)) {
+        if let Some(id) = self.flows.get(nodes) {
             self.prepare_with(id, root, &styles);
         }
         for (&id, (style, _)) in &styles {
@@ -99,7 +99,7 @@ impl BoxTree {
 
     /// Подготовить корневой поток (стилем `root`) и обойдённые потоки.
     pub(super) fn prepare_visited(&mut self, nodes: &[Node], root: &BoxStyle, styles: &Visited) {
-        if let Some(&id) = self.flows.get(&slice_key(nodes)) {
+        if let Some(id) = self.flows.get(nodes) {
             self.prepare_with(id, root, styles);
         }
         for (&id, (style, _)) in styles {
@@ -109,7 +109,7 @@ impl BoxTree {
 
     /// A synthetic or changed layout parent must use its own normalization inputs.
     pub(crate) fn normalized(&self, nodes: &[Node], style: &Computed) -> Option<Rc<InlineContent>> {
-        let text = self.normalized_inline(*self.flows.get(&slice_key(nodes))?, style)?;
+        let text = self.normalized_inline(self.flows.get(nodes)?, style)?;
         text.items
             .iter()
             .all(|item| matches!(item.kind, ItemKind::Text { .. }))
@@ -118,7 +118,7 @@ impl BoxTree {
 
     /// The prepared runs of a flow with inline boxes (`normalized` covers flat text).
     pub(crate) fn mixed_text(&self, nodes: &[Node], style: &Computed) -> Option<MixedText> {
-        let owner = *self.flows.get(&slice_key(nodes))?;
+        let owner = self.flows.get(nodes)?;
         let prepared = self.get(owner)?.prepared.as_ref()?;
         let text = self.normalized_inline(owner, style)?;
         text.items

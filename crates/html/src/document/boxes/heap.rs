@@ -6,7 +6,7 @@ use kamin_heap::{HeapSize, Ops};
 impl HeapSize for BoxTree {
     fn heap_size(&self, ops: &mut Ops) -> usize {
         self.arena.heap_size(ops)
-            + ops.table::<((usize, usize), crate::dom::BoxId)>(self.flows.capacity())
+            + ops.table::<(usize, (usize, crate::dom::BoxId))>(self.flows.capacity())
             + self.by_node.heap_size(ops)
             + self
                 .finished

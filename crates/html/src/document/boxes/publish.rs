@@ -48,7 +48,7 @@ impl BoxTree {
             let root = self.record(Source::Root, BoxId::NONE, 0, reused, &mut changed);
             if root.is_some() {
                 inline.root(root);
-                self.flows.insert(finish::slice_key(nodes), root);
+                self.set_flow(nodes, root);
                 if let Prev::Old(p) = prev
                     && texts_differ(p, nodes)
                 {
@@ -145,9 +145,7 @@ impl BoxTree {
                 .and_then(|r| self.get(r))
                 .map_or(BoxId::NONE, |r| r.first);
             self.arena.unlink_first(id);
-            if !e.children.is_empty() {
-                self.flows.insert(finish::slice_key(&e.children), id);
-            }
+            self.set_flow(&e.children, id);
             if !e.children.is_empty() {
                 let style = e.style.used().style;
                 visited.insert(id, (style, e.style.slot().published().is_some()));
@@ -204,6 +202,7 @@ impl BoxTree {
             epochs: Default::default(),
             external: false,
             layout_slot: None,
+            flow: 0,
         });
         let Some(id) = id else { return BoxId::NONE };
         changed.push((id, Change::Own));
@@ -217,6 +216,7 @@ impl BoxTree {
             let Some(record) = self.arena.remove(id) else {
                 continue;
             };
+            self.flows.forget(record.flow, id);
             if record.source != 0 {
                 self.by_node.remove_if(record.source, id);
             }

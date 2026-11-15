@@ -30,7 +30,7 @@ fn content(doc: &Document) -> (BoxId, Rc<InlineContent>) {
         .finish(&doc.nodes, &BoxStyle::default(), true);
     let p = paragraph(doc);
     let tree = doc.state.boxes.borrow();
-    let id = tree.flows[&slice_key(&p.children)];
+    let id = tree.flow(&p.children).unwrap();
     (id, tree.normalized_inline(id, &p.style.used()).unwrap())
 }
 
@@ -46,7 +46,7 @@ fn mixed_text_preserves_cross_box_word_context_and_utf8_boundaries() {
     {
         let p = paragraph(&doc);
         let tree = doc.state.boxes.borrow();
-        let id = tree.flows[&slice_key(&p.children)];
+        let id = tree.flow(&p.children).unwrap();
         assert!(tree.normalized_inline(id, &p.style.used()).is_none());
     }
     let (_, text) = content(&doc);

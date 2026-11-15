@@ -13,6 +13,7 @@ pub(crate) use epochs::Epochs;
 #[cfg(test)]
 mod epochs_tests;
 mod finish;
+mod flows;
 pub(crate) use finish::MixedText;
 #[cfg(feature = "heap-report")]
 mod heap;
@@ -50,12 +51,14 @@ pub(crate) struct BoxRecord {
     external: bool,
     /// Удерживаемый результат раскладки коробки; им владеет раскладка.
     layout_slot: Option<Box<crate::layout::retained::LayoutSlot>>,
+    /// Адрес среза, которым коробка опубликовала свой поток (0 — нет).
+    flow: usize,
 }
 
 #[derive(Default)]
 pub(crate) struct BoxTree {
     arena: Arena,
-    flows: std::collections::HashMap<(usize, usize), BoxId>,
+    flows: flows::Flows,
     /// The first box of each keyed source element (`Element::node_id`):
     /// layout finds its box in O(1); fragment copies share it.
     by_node: by_node::ByNode,
