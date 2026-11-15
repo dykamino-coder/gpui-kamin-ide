@@ -83,8 +83,8 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
     assert_eq!(doc.revision_budget().used(BudgetKind::SourceBytes), 8);
     assert_eq!(old_revision.used(BudgetKind::SourceBytes), 8);
     assert_eq!(doc.source_dom().key(), dom_key);
-    // Перестройка сохраняет исходный DOM, поэтому второй комплект его
-    // storage не появляется. Старый ticket по-прежнему списан с того же ledger.
+    // Обновление меняет объём живого DOM; отдельная резервация остаётся
+    // в том же ledger и освобождает ровно свои восемь байт.
     let charged = doc.budget().used(BudgetKind::LiveBytes);
     assert_eq!(charged, old_revision.document().used(BudgetKind::LiveBytes));
     drop(live);
@@ -95,6 +95,7 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
     assert_eq!(governor.used(BudgetKind::Documents), 1);
     drop(old_state);
     assert_eq!(governor.used(BudgetKind::Documents), 0);
+    assert_eq!(governor.used(BudgetKind::LiveBytes), 0);
 }
 
 #[test]
