@@ -161,4 +161,29 @@ describe('interactive CLI control', () => {
       }),
     ])
   })
+  it('sends attachment paths and commands through the terminal without a delivery warning', () => {
+    const f = fixture()
+    for (const [id, text] of <[string, string][]>[
+      ['att', 'what is in it?\n/tmp/bridge-upload-x/attach.txt'],
+      ['win', 'and this?\nC:\\Users\\u\\AppData\\Local\\Temp\\bridge-upload-y\\attach.txt'],
+      ['cmd', '/model'],
+    ]) {
+      f.frames.length = 0
+      submitTextToSession(f.session, text, id)
+      const receipt = f.frames.find((frame) => frame.type === 'session:submission')
+      expect(receipt).toMatchObject({ id, state: 'fallback' })
+      expect(receipt).not.toHaveProperty('warning')
+    }
+    expect(f.mod.submit).not.toHaveBeenCalled()
+  })
+  it('still warns when an ordinary message falls back to the terminal', () => {
+    const f = fixture()
+    ;(f.mod as { healthy: () => boolean }).healthy = () => false
+    submitTextToSession(f.session, 'plain words', 'plain-id')
+    expect(f.frames.find((frame) => frame.type === 'session:submission')).toMatchObject({
+      id: 'plain-id',
+      state: 'fallback',
+      warning: 'Using native terminal delivery for this message.',
+    })
+  })
 })
