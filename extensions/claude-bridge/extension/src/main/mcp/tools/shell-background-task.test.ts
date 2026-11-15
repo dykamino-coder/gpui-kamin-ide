@@ -3,6 +3,7 @@ import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import {
   bashExecute,
+  killBackgroundShell,
   powerShellExecute,
   backgroundShellSnapshot,
   localBackgroundShellSnapshot,
@@ -156,4 +157,40 @@ describe('background task execution policy', () => {
       vi.restoreAllMocks()
     },
   )
+})
+
+describe('background shell ids', () => {
+  it('accepts only whole-number ids', async () => {
+    for (const bash_id of ['7fc6f8ec-cb02-4157-a260-dd46360b64da', '1.5', 1.5, '', '-1']) {
+      const r = await readBackgroundOutput({ bash_id })
+      expect(r.content[0]!.text).toContain('bash_id is required')
+    }
+    expect((await readBackgroundOutput({ bash_id: ' 999999 ' })).content[0]!.text).toContain('No background shell with bash_id 999999')
+  })
+
+  it('never reads or stops a running shell for a task id that starts with its number', async () => {
+    const proc = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      pid: 7654323,
+      unref: vi.fn(),
+      kill: vi.fn(),
+    })
+    mock.spawn.mockReturnValue(proc)
+    const processKill = vi.spyOn(process, 'kill').mockImplementation(() => true)
+    try {
+      await bashExecute({ command: 'server', run_in_background: true }, { tabId: 'id-tab' })
+      const id = localBackgroundShellSnapshot('id-tab').at(-1)!.id.slice(6)
+      const taskId = `${id}06b7b05-599e-4b6c-929d-69ff3066d3b8`
+      for (const call of [killBackgroundShell, readBackgroundOutput]) {
+        const r = await call({ bash_id: taskId })
+        expect(r.content[0]!.text).toContain('MCP task is tracked by the CLI')
+      }
+      expect(proc.kill).not.toHaveBeenCalled()
+      expect(processKill).not.toHaveBeenCalled()
+      expect((await readBackgroundOutput({ bash_id: id })).content[0]!.text).toContain('Status: running')
+    } finally {
+      processKill.mockRestore()
+    }
+  })
 })

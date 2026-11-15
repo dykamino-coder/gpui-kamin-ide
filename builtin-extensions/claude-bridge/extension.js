@@ -12805,10 +12805,15 @@ function registerBackground(child, bgId, description, context, tool, displayComm
 ` : "") + `The command is running in the background. Read its output with BashOutput (bash_id: ${bgId}) and stop it with KillShell.`
   );
 }
-async function readBackgroundOutput(input) {
+function backgroundShellId(input) {
   const raw = input.bash_id ?? input.shell_id ?? input.id;
-  const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult2("bash_id is required (the numeric id from run_in_background)");
+  if (typeof raw === "number") return Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
+  const text = typeof raw === "string" ? raw.trim() : "";
+  return /^\d{1,15}$/.test(text) ? Number(text) : null;
+}
+async function readBackgroundOutput(input) {
+  const bgId = backgroundShellId(input);
+  if (bgId === null) return errorResult2(BASH_ID_REQUIRED);
   const out = backgroundOutput.get(bgId);
   if (!out) return errorResult2(`No background shell with bash_id ${bgId} (it may have been evicted).`);
   const stdoutPart = unread(out.stdout, out.stdoutDropped, out.stdoutCursor);
@@ -12843,9 +12848,8 @@ ${newStderr}
   return textResult2(parts.join(""));
 }
 async function killBackgroundShell(input) {
-  const raw = input.bash_id ?? input.shell_id ?? input.id;
-  const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult2("bash_id is required (the numeric id from run_in_background)");
+  const bgId = backgroundShellId(input);
+  if (bgId === null) return errorResult2(BASH_ID_REQUIRED);
   const child = backgroundProcesses.get(bgId);
   const out = backgroundOutput.get(bgId);
   if (!child && !out) return errorResult2(`No background shell with bash_id ${bgId}.`);
@@ -12938,7 +12942,7 @@ async function stopBackgroundShellForOwner(tabId, owner, id) {
   if (out?.tabId !== tabId || out.owner !== owner) return;
   await stopLocalBackgroundShell(tabId, id);
 }
-var import_node_child_process5, import_node_path7, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
+var import_node_child_process5, import_node_path7, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, BASH_ID_REQUIRED, cachedPwsh, pwshLookupInFlight;
 var init_shell = __esm({
   "src/main/mcp/tools/shell.ts"() {
     "use strict";
@@ -12961,6 +12965,7 @@ var init_shell = __esm({
     cachedBash = null;
     bashLookupInFlight = null;
     BG_OUTPUT_CAP = 100 * 1024;
+    BASH_ID_REQUIRED = "bash_id is required: the numeric id from a legacy run_in_background result. A background command that returned an MCP task is tracked by the CLI, which reports its completion.";
     cachedPwsh = null;
     pwshLookupInFlight = null;
   }

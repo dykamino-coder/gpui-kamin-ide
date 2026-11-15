@@ -264,11 +264,14 @@ Restrictions:
   },
   {
     name: 'BashOutput',
-    description: `Read output from a legacy background shell started without MCP Tasks support by Bash/PowerShell run_in_background:true. Returns the stdout/stderr produced SINCE THE LAST BashOutput call (a per-shell cursor), plus the shell's status (running or exited with code). Call repeatedly to follow a long-running command (dev server, build, watcher). Use the bash_id from the run_in_background result — NOT TaskOutput, which cannot see these client-side background shells.`,
+    description: `Read output from a legacy background shell started without MCP Tasks support by Bash/PowerShell run_in_background:true. Returns the stdout/stderr produced SINCE THE LAST BashOutput call (a per-shell cursor), plus the shell's status (running or exited with code). Call repeatedly to follow a long-running command (dev server, build, watcher). Use the bash_id from the run_in_background result — NOT TaskOutput, which cannot see these client-side background shells. Given the task id of a background MCP task instead, it reports the task's status and, once finished, its output.`,
     inputSchema: {
       type: 'object',
       properties: {
-        bash_id: { type: 'string', description: 'The background shell id returned by run_in_background.' },
+        bash_id: {
+          type: 'string',
+          description: 'The background shell id returned by run_in_background, or a background MCP task id.',
+        },
         filter: { type: 'string', description: 'Optional regex — only stdout lines matching it are returned.' },
       },
       required: ['bash_id'],
@@ -276,11 +279,15 @@ Restrictions:
   },
   {
     name: 'KillShell',
-    description: `Terminate a legacy background shell started without MCP Tasks support by Bash/PowerShell run_in_background:true, by its bash_id. On POSIX, sends SIGTERM to the process group; on Windows, terminates the shell process. Use this to stop a server/watcher you started earlier.`,
+    description: `Terminate a legacy background shell started without MCP Tasks support by Bash/PowerShell run_in_background:true, by its bash_id. On POSIX, sends SIGTERM to the process group; on Windows, terminates the shell process. Use this to stop a server/watcher you started earlier. Given the task id of a background MCP task instead, it stops that task.`,
     inputSchema: {
       type: 'object',
       properties: {
-        bash_id: { type: 'string', description: 'The bash_id returned by run_in_background, for Bash or PowerShell.' },
+        bash_id: {
+          type: 'string',
+          description:
+            'The bash_id returned by run_in_background, for Bash or PowerShell, or a background MCP task id.',
+        },
       },
       required: ['bash_id'],
     },

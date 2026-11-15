@@ -471,13 +471,25 @@ function registerBackground(
   )
 }
 
+const BASH_ID_REQUIRED =
+  'bash_id is required: the numeric id from a legacy run_in_background result. A background command that returned an MCP task is tracked by the CLI, which reports its completion.'
+
+/** The numeric legacy shell id of a BashOutput/KillShell call, or null. Only a
+ *  whole number counts: `parseInt` read the leading digit of a task id such as
+ *  "7fc6…" as shell 7, so KillShell could stop an unrelated shell. */
+function backgroundShellId(input: Record<string, unknown>): number | null {
+  const raw = input.bash_id ?? input.shell_id ?? input.id
+  if (typeof raw === 'number') return Number.isSafeInteger(raw) && raw >= 0 ? raw : null
+  const text = typeof raw === 'string' ? raw.trim() : ''
+  return /^\d{1,15}$/.test(text) ? Number(text) : null
+}
+
 /** BashOutput — return output produced since the last read (per-stream cursor,
  *  native-CLI parity) plus the shell's live status. `filter` (optional regex)
  *  keeps only stdout lines that match. */
 export async function readBackgroundOutput(input: Record<string, unknown>): Promise<McpResult> {
-  const raw = input.bash_id ?? input.shell_id ?? input.id
-  const bgId = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10)
-  if (!Number.isFinite(bgId)) return errorResult('bash_id is required (the numeric id from run_in_background)')
+  const bgId = backgroundShellId(input)
+  if (bgId === null) return errorResult(BASH_ID_REQUIRED)
   const out = backgroundOutput.get(bgId)
   if (!out) return errorResult(`No background shell with bash_id ${bgId} (it may have been evicted).`)
 
@@ -517,9 +529,8 @@ export async function readBackgroundOutput(input: Record<string, unknown>): Prom
 
 /** KillShell — terminate a background shell by bash_id. */
 export async function killBackgroundShell(input: Record<string, unknown>): Promise<McpResult> {
-  const raw = input.bash_id ?? input.shell_id ?? input.id
-  const bgId = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10)
-  if (!Number.isFinite(bgId)) return errorResult('bash_id is required (the numeric id from run_in_background)')
+  const bgId = backgroundShellId(input)
+  if (bgId === null) return errorResult(BASH_ID_REQUIRED)
   const child = backgroundProcesses.get(bgId)
   const out = backgroundOutput.get(bgId)
   if (!child && !out) return errorResult(`No background shell with bash_id ${bgId}.`)
