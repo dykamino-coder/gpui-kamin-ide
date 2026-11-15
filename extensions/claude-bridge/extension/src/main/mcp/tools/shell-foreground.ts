@@ -14,6 +14,14 @@ const errorResult = (message: string): McpResult => ({
   isError: true,
 })
 
+/**
+ * The native shell tools drop leading blank lines and trailing whitespace of
+ * the output and keep everything between, line endings included.
+ */
+export function normalizeOutput(text: string): string {
+  return text.replace(/^(?:[ \t]*\r?\n)+/, '').trimEnd()
+}
+
 export function runForegroundCommand(
   command: string,
   shell: string,
@@ -26,6 +34,8 @@ export function runForegroundCommand(
   /** A shell started ahead of time (warm-shell.ts); it already carries the
    *  same runner, flags, environment and folder as the spawn below. */
   prestarted?: () => ChildProcess | null,
+  /** The tool name in the empty-output notice, as the native tools word it. */
+  label = 'Command',
 ): Promise<McpResult> {
   if (signal?.aborted)
     return Promise.resolve({
@@ -56,15 +66,15 @@ export function runForegroundCommand(
         return
       }
       const parts: string[] = []
-      if (stdout) parts.push(stdout)
-      if (stderr) parts.push(`\n--- stderr ---\n${stderr}`)
-      if (cancelled) parts.push('\n[Command cancelled; termination requested]')
+      const output = normalizeOutput(stdout + stderr)
+      if (code !== null && code !== 0) parts.push(`Exit code ${code}`)
+      if (output) parts.push(output)
+      if (cancelled) parts.push('[Command cancelled; termination requested]')
       if (timedOut)
         parts.push(
-          `\n[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`,
+          `[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`,
         )
-      if (code !== null && code !== 0) parts.push(`\n[Exit code: ${code}]`)
-      const result = textResult(parts.join('') || `Command completed with exit code ${code ?? 0}`)
+      const result = textResult(parts.join('\n') || `(${label} completed with no output)`)
       result.exitCode = code
       if (timedOut || cancelled || code !== 0) result.isError = true
       resolve(result)

@@ -9,6 +9,6 @@ disallowed-methods = [
 # partial_cmp(...).unwrap() cannot be expressed as a method ban without also
 # rejecting valid Option handling; scripts/check_conventions.py checks it.
 
-# `NodeKey` hashes and compares a DOM node by identity (pointer), never by its
-# mutable content: its interior mutability cannot change a key.
-ignore-interior-mutability = ["kamin_style::dom::tree_index::NodeKey"]
+# `HandleKey` сравнивает и хеширует адрес удерживаемого узла DOM.
+# Изменяемое содержимое узла не влияет на равенство и хеш ключа.
+ignore-interior-mutability = ["kamin_style::dom::tree_index::HandleKey"]

@@ -1,6 +1,9 @@
 //! Ресурсы кадра: CPU между границами фаз и выборочные пики памяти через 5 мс.
 
+mod adapter;
+
 use super::process::{Snapshot, gpu::Memory};
+pub(crate) use adapter::Adapter;
 use kamin_html::work::Phase;
 use serde_json::{Value, json};
 use std::{
@@ -123,7 +126,7 @@ impl Boundaries {
 /// только у этого потока, без соперника), запись под коротким замком State.
 struct Boundary {
     state: Arc<Mutex<State>>,
-    gpu: Mutex<Option<Memory>>,
+    gpu: Arc<Mutex<Option<Memory>>>,
     boundaries: Arc<Boundaries>,
 }
 impl Boundary {
@@ -143,15 +146,11 @@ pub(super) struct Capture {
     worker: Option<JoinHandle<()>>,
 }
 impl Capture {
-    pub(super) fn begin(luid: (i32, u32)) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(super) fn begin(adapter: &Adapter) -> Result<Self, Box<dyn std::error::Error>> {
         let start = Snapshot::read()?;
         super::profile_state::frame();
-        let open = || Memory::open(luid.0, luid.1);
-        let (sampler_gpu, gpu_error) = match open() {
-            Ok(gpu) => (Some(gpu), None),
-            Err(error) => (None, Some(error.to_string())),
-        };
-        let boundary_gpu = sampler_gpu.as_ref().and_then(|_| open().ok());
+        let gpu_error = adapter.error.clone();
+        let sampler_gpu = adapter.sampler.clone();
         let state = Arc::new(Mutex::new(State {
             phases: std::array::from_fn(|_| PhaseUsage::default()),
             phase: Phase::PipelineOther as usize,
@@ -169,7 +168,10 @@ impl Capture {
                 let Some(epoch) = epochs.quiet() else {
                     continue;
                 };
-                let reading = Reading::take(sampler_gpu.as_ref());
+                let reading = {
+                    let gpu = sampler_gpu.lock().unwrap_or_else(|e| e.into_inner());
+                    Reading::take(gpu.as_ref())
+                };
                 let mut state = shared.lock().unwrap_or_else(|e| e.into_inner());
                 if state.stopped {
                     break;
@@ -182,7 +184,7 @@ impl Capture {
         Ok(Self {
             boundary: Arc::new(Boundary {
                 state,
-                gpu: Mutex::new(boundary_gpu),
+                gpu: adapter.boundary.clone(),
                 boundaries,
             }),
             worker: Some(worker),

@@ -10,12 +10,12 @@ use crate::style::select::Ancestor;
 pub(super) fn leave(
     mut p: Box<Pending<'_>>,
     path: &[Ancestor],
-    counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,
     mut children: Vec<Node>,
     out: &mut super::kids::Kids,
     invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
 ) -> Result<(), crate::budget::admission::Error> {
+    let node_id = p.visit.handle().key().packed();
     let rules = &p.visit.scope.rules;
     let frames = &p.visit.scope.frames;
     let vars = &p.vars;
@@ -26,15 +26,14 @@ pub(super) fn leave(
         children
             .retain(|n| matches!(n, Node::Element(c) if c.style.cascaded().reset_context.col_role == Some(0)));
         counters.leave();
-        *counter += 1;
-        vcx.doc.traversal.record_element(p.visit.handle(), *counter);
+        vcx.doc.traversal.record_element(p.visit.handle());
         if let Some(invalidation) = invalidation {
-            invalidation.visit(&p.visit.scope.rules, &p.tag, &p.attrs, *counter);
+            invalidation.visit(&p.visit.scope.rules, &p.tag, &p.attrs, node_id);
         }
         out.push(Node::Element(Element {
             marks: Default::default(),
             list_item: None,
-            node_id: *counter,
+            node_id,
             anim: None,
             inline: false,
             tag: p.tag,
@@ -105,18 +104,17 @@ pub(super) fn leave(
     if p.box_level {
         counters.leave();
     }
-    *counter += 1;
-    vcx.doc.traversal.record_element(p.visit.handle(), *counter);
+    vcx.doc.traversal.record_element(p.visit.handle());
     // A rebuild for attribute mutations collects the restyled elements as
     // the walk leaves them (`dom::invalidation`).
     if let Some(invalidation) = invalidation {
-        invalidation.visit(&p.visit.scope.rules, &p.tag, &p.attrs, *counter);
+        invalidation.visit(&p.visit.scope.rules, &p.tag, &p.attrs, node_id);
     }
     for kid in &mut children {
         if let Node::Element(c) = kid
             && c.tag.starts_with("::")
         {
-            c.style.cascaded_mut().reset_positioned.implicit_anchor = Some(*counter);
+            c.style.cascaded_mut().reset_positioned.implicit_anchor = Some(node_id);
         }
     }
     if p.tag == "details" {
@@ -130,7 +128,7 @@ pub(super) fn leave(
         p.attrs,
         anim,
         p.list_item,
-        *counter,
+        node_id,
         p.hover,
         p.first_letter,
         p.first_line,

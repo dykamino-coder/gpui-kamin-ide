@@ -19,6 +19,8 @@ mod fixtures;
 use fixtures::*;
 // KaminIDE patch: offscreen targets share these headless fixtures.
 mod offscreen;
+// KaminIDE patch (R4): a frame redrawn within its damage equals the whole frame.
+mod damage;
 // KaminIDE patch (BR-31A): dropped frames are presented by the next paint.
 mod present;
 

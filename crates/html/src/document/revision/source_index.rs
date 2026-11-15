@@ -1,6 +1,7 @@
-//! The box numbers of the source elements of a build, by address
-//! (`SourceIndex`): what an edit in place reads for each mutated or
-//! restyled element instead of a scan of the build's address list.
+//! The addressable source elements of a build, by address (`SourceIndex`):
+//! what an edit in place reads for each mutated or restyled element instead
+//! of a scan of the build's address list. An addressed element is named by
+//! its stable node key (`Handle::key`), as its boxes are.
 //!
 //! Blink reaches the layout object of a node through a pointer on the node
 //! (`Node::GetLayoutObject`, `node.h:866`) and Stylo the data of an element
@@ -40,13 +41,12 @@ impl SourceIndex {
         Some(Self { pairs: out })
     }
 
-    /// The box number of the source node `handle`: `None` if no box was built
+    /// The node key of the source node `handle`: `None` if no box was built
     /// for it or its address has two numbers.
     pub(in crate::document) fn id(&self, handle: &markup5ever_rcdom::Handle) -> Option<u64> {
         let address = Rc::as_ptr(handle) as usize;
         let at = self.pairs.binary_search_by_key(&address, |p| p.0).ok()?;
-        let id = self.pairs[at].1;
-        (id != TWICE).then_some(u64::from(id))
+        (self.pairs[at].1 != TWICE).then(|| handle.key().packed())
     }
 }
 
@@ -73,7 +73,7 @@ mod tests {
         let mut pending = vec![root];
         let mut seen = 0;
         while let Some(node) = pending.pop() {
-            let scan = super::super::adopt::source_ids(&list, std::iter::once(&node));
+            let scan = super::super::adopt::element_ids(&list, std::iter::once(&node));
             assert_eq!(index.id(&node), scan[0]);
             seen += usize::from(scan[0].is_some());
             pending.extend(node.children.borrow().iter().cloned());

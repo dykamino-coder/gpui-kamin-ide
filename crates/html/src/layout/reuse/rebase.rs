@@ -178,7 +178,6 @@ fn invalidated<'a>(
     }
     let mut roots = true;
     let mut blocks = HashMap::new();
-    let flow = b.last()?.node_id;
     for &id in ids {
         if let Some(at) = b.iter().position(|e| e.node_id == id) {
             if !same_cascaded_box(a[at], b[at], false, memo) {
@@ -189,11 +188,6 @@ fn invalidated<'a>(
                 }
                 roots = false;
             }
-            continue;
-        }
-        // Ids count elements as the walk leaves them: a descendant of the
-        // flow has a smaller one than the flow, an element after it larger.
-        if id > flow {
             continue;
         }
         let at = holder(now, id)?;
@@ -212,18 +206,10 @@ fn invalidated<'a>(
     Some((Some(roots), blocks))
 }
 
-/// The position of the flow child of `flow` that holds the element `id`:
-/// the first with an id not smaller (ids grow as the walk leaves elements),
-/// or an anonymous one before it.
+/// Позиция блока, содержащего ключ: числового порядка у NodeKey нет.
 fn holder(flow: &[Node], id: u64) -> Option<usize> {
-    let first = flow
-        .iter()
-        .position(|n| block(n).is_some_and(|e| e.node_id >= id))?;
-    let start = flow[..first]
-        .iter()
-        .rposition(|n| block(n).is_some_and(|e| e.node_id != 0))
-        .map_or(0, |at| at + 1);
-    (start..=first).find(|&at| block(&flow[at]).is_some_and(|e| holds(e, id)))
+    flow.iter()
+        .position(|n| block(n).is_some_and(|e| holds(e, id)))
 }
 
 /// The element `n`, if it is one.

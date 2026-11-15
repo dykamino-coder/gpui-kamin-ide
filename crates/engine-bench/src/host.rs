@@ -131,11 +131,16 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                     window
                         .set_frame_capture(Some(sink))
                         .expect("Windows GPU readback");
-                    cx.new(|_| View {
+                    let view = cx.new(|_| View {
                         doc: empty,
                         phases: Rc::new(RefCell::new(Phases::default())),
                         viewport: None,
-                    })
+                        step: None,
+                        step_opts: None,
+                    });
+                    let step = super::step::register(&view, window);
+                    view.update(cx, |view, _| view.step = Some(step));
+                    view
                 },
             )?;
             startup.mark("window_surface_pipeline");

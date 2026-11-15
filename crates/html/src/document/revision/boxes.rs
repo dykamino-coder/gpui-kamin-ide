@@ -19,8 +19,11 @@ pub(in crate::document) struct Boxes {
     parent: Vec<u32>,
     /// Номер коробки в списке детей родителя (с текстами).
     index: Vec<u32>,
-    /// Первая коробка по `node_id`.
+    /// Первая коробка по `node_id - base`. Ключи узлов документа идут подряд
+    /// из его счётчика: плотный вектор от наименьшего ключа дерева, а при
+    /// разреженных ключах (долгая череда правок) — только `more`.
     first: Vec<u32>,
+    base: u64,
     /// Остальные коробки номеров с копиями коробки.
     more: HashMap<u64, Vec<u32>>,
 }
@@ -31,13 +34,11 @@ impl Boxes {
         let mut boxes = Self::default();
         let mut chain: Vec<u32> = Vec::new();
         let mut fits = true;
+        let mut keyed: Vec<(u64, u32)> = Vec::new();
         elements(nodes, |e, path| {
             let at = boxes.parent.len();
-            let (Ok(at), Ok(index), Ok(id)) = (
-                u32::try_from(at),
-                u32::try_from(path[path.len() - 1]),
-                usize::try_from(e.node_id),
-            ) else {
+            let (Ok(at), Ok(index)) = (u32::try_from(at), u32::try_from(path[path.len() - 1]))
+            else {
                 fits = false;
                 return false;
             };
@@ -46,23 +47,38 @@ impl Boxes {
             boxes.index.push(index);
             chain.push(at);
             if e.node_id != 0 {
-                if boxes.first.len() <= id {
-                    boxes.first.resize(id + 1, NONE);
-                }
-                match boxes.first[id] {
-                    NONE => boxes.first[id] = at,
-                    _ => boxes.more.entry(e.node_id).or_default().push(at),
-                }
+                keyed.push((e.node_id, at));
             }
             true
         });
-        fits.then_some(boxes)
+        fits.then(|| boxes.keyed(keyed))
+    }
+
+    fn keyed(mut self, keyed: Vec<(u64, u32)>) -> Self {
+        let (min, max) = keyed
+            .iter()
+            .fold((u64::MAX, 0), |(lo, hi), &(id, _)| (lo.min(id), hi.max(id)));
+        let span = max.saturating_sub(min).saturating_add(1);
+        let dense = !keyed.is_empty() && span <= 4 * keyed.len() as u64 + 64;
+        if dense {
+            self.base = min;
+            self.first = vec![NONE; span as usize];
+        }
+        for (id, at) in keyed {
+            let first = dense.then(|| &mut self.first[(id - min) as usize]);
+            match first {
+                Some(first) if *first == NONE => *first = at,
+                _ => self.more.entry(id).or_default().push(at),
+            }
+        }
+        self
     }
 
     /// Пути ко всем коробкам номера `id` за O(глубины) на коробку.
     pub(super) fn paths(&self, id: u64) -> impl Iterator<Item = Path> + '_ {
-        let first = usize::try_from(id)
-            .ok()
+        let first = id
+            .checked_sub(self.base)
+            .and_then(|i| usize::try_from(i).ok())
             .and_then(|i| self.first.get(i).copied())
             .filter(|&at| at != NONE && id != 0);
         let more = self.more.get(&id).into_iter().flatten().copied();
@@ -139,5 +155,33 @@ mod tests {
     #[test]
     fn boxes_under_unwrapped_wrappers_are_found_too() {
         same_as_walk("<!doctype html><p>a</p><div><p>b<i>c</i></p></div>text<p>d</p>");
+    }
+
+    /// Node keys keep growing across a document's edits: the index is dense
+    /// from the smallest key of the tree and falls back to the map when sparse.
+    #[test]
+    fn keys_far_from_zero_or_far_apart_do_not_size_the_index() {
+        let flat = |ids: &[u64]| {
+            Boxes {
+                parent: vec![NONE; ids.len()],
+                index: (0..ids.len() as u32).collect(),
+                ..Default::default()
+            }
+            .keyed(ids.iter().zip(0..).map(|(&id, at)| (id, at)).collect())
+        };
+        let paths = |boxes: &Boxes, id| {
+            let mut found: Vec<Path> = boxes.paths(id).collect();
+            found.sort();
+            found
+        };
+        let dense = flat(&[1_000_000, 1_000_001, 1_000_000]);
+        assert_eq!(dense.first.len(), 2);
+        assert_eq!(paths(&dense, 1_000_000), vec![vec![0], vec![2]]);
+        assert_eq!(paths(&dense, 1_000_001), vec![vec![1]]);
+        assert!(paths(&dense, 999_999).is_empty());
+        let sparse = flat(&[3, u64::MAX / 2]);
+        assert!(sparse.first.is_empty());
+        assert_eq!(paths(&sparse, u64::MAX / 2), vec![vec![1]]);
+        assert_eq!(paths(&sparse, 3), vec![vec![0]]);
     }
 }

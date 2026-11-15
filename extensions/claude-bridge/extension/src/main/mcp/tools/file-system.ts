@@ -189,8 +189,8 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
       return textResult('<system-reminder>Warning: File exists but has empty contents.</system-reminder>')
     }
 
+    // As native Read: a final line break opens one more, empty, numbered line.
     const allLines = raw.split('\n')
-    if (allLines.length > 1 && allLines[allLines.length - 1] === '') allLines.pop()
     const offset = typeof input.offset === 'number' ? Math.max(0, Math.floor(input.offset) - 1) : 0
     const limit = typeof input.limit === 'number' && input.limit > 0 ? Math.floor(input.limit) : 2000
     if (offset >= allLines.length) {
@@ -206,7 +206,7 @@ export async function readFile(input: Record<string, unknown>, context?: ToolCal
         // CRLF files: the line ending is not content; Edit restores it.
         const text = line.endsWith('\r') ? line.slice(0, -1) : line
         const shown = text.length > MAX_LINE_LENGTH ? text.slice(0, MAX_LINE_LENGTH) + '... [truncated]' : text
-        return `${String(offset + i + 1).padStart(6, ' ')}\t${shown}`
+        return `${offset + i + 1}\t${shown}`
       })
       .join('\n')
 
@@ -430,7 +430,9 @@ export async function globSearch(input: Record<string, unknown>, context?: ToolC
     // Like native Glob, return at most GLOB_SHOWN paths, but newest first and
     // with the number of the rest, so a broad pattern costs ~100 lines of
     // context instead of thousands.
-    const shown = sorted.slice(0, GLOB_SHOWN)
+    // Paths are matched with '/', and shown with the platform separator as
+    // native Glob shows them, so they read the same as Grep and Read paths.
+    const shown = sorted.slice(0, GLOB_SHOWN).map((p) => path.normalize(p))
     const total = capped ? `more than ${MAX_GLOB_LISTED}` : String(sorted.length)
     const suffix =
       sorted.length > GLOB_SHOWN
@@ -438,7 +440,7 @@ export async function globSearch(input: Record<string, unknown>, context?: ToolC
           ? `\n(Showing the ${GLOB_SHOWN} most recently modified of the first ${MAX_GLOB_LISTED} matching files listed; more exist. Use a more specific pattern or path.)`
           : `\n(Showing the ${GLOB_SHOWN} most recently modified of ${total} matching files. Use a more specific pattern or path for the rest.)`
         : ''
-    return textResult((shown.join('\n') || 'No files matched the pattern.') + suffix)
+    return textResult((shown.join('\n') || 'No files found') + suffix)
   } catch (err: unknown) {
     return errorResult(err instanceof Error ? err.message : String(err))
   }

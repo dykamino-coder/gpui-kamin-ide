@@ -14,6 +14,9 @@ type Command =
 type Pending = { command: Command; claimed: boolean; fallback: () => void; accepted?: () => void }
 export const CLI_MOD_PLUGIN = fileURLToPath(new URL('../../cli-mod', import.meta.url))
 export const CLI_MOD_VERSION = '2.1.322'
+/** How long an idle /poll is held open. Below the 3 s lease, so a module that
+ * stops polling still expires on time. */
+export const POLL_HOLD_MS = 2000
 
 export class CliModTransport {
   readonly directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-mod-'))
@@ -25,6 +28,7 @@ export class CliModTransport {
   private pending = new Map<number, Pending>()
   private closed = false
   private turnId: string | null = null
+  private held: { res: http.ServerResponse; timer: ReturnType<typeof setTimeout> } | undefined
   private timer: ReturnType<typeof setInterval>
   onTurn: (turnId: string | null) => void = () => {}
   onUnavailable: () => void = () => {}
@@ -121,15 +125,10 @@ export class CliModTransport {
               else pending.accepted?.()
             }
           }
-          const commands: Command[] = []
-          for (const pending of this.pending.values()) {
-            // An arm only tags the next serialized PTY transaction. Until its
-            // ack reaches us no text has been written, so repeating the same
-            // command/id repairs a lost poll response without replaying input.
-            if (!pending.claimed || pending.command.kind === 'arm') {
-              pending.claimed = true
-              commands.push(pending.command)
-            }
+          const commands = this.takeCommands()
+          if (!commands.length && data.wait === true && !this.held) {
+            this.hold(res)
+            return
           }
           res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ commands }))
         } catch {
@@ -153,14 +152,54 @@ export class CliModTransport {
     })
   }
 
+  private takeCommands(): Command[] {
+    const commands: Command[] = []
+    for (const pending of this.pending.values()) {
+      // An arm only tags the next serialized PTY transaction. Until its
+      // ack reaches us no text has been written, so repeating the same
+      // command/id repairs a lost poll response without replaying input.
+      if (!pending.claimed || pending.command.kind === 'arm') {
+        pending.claimed = true
+        commands.push(pending.command)
+      }
+    }
+    return commands
+  }
+
+  /** Long poll: an idle module waits here instead of asking ten times a second.
+   * The held request is the heartbeat; a new command answers it at once. */
+  private hold(res: http.ServerResponse): void {
+    const held = { res, timer: setTimeout(() => this.answerHeld(), POLL_HOLD_MS) }
+    this.held = held
+    res.once('close', () => {
+      if (this.held !== held) return
+      clearTimeout(held.timer)
+      this.held = undefined
+      if (!res.writableEnded) this.heartbeat = Date.now()
+    })
+  }
+
+  /** claim: false answers empty: teardown must not hand out commands it is about to fall back on. */
+  private answerHeld(claim = true): void {
+    const held = this.held
+    if (!held) return
+    this.held = undefined
+    clearTimeout(held.timer)
+    this.heartbeat = Date.now()
+    const commands = claim && !this.closed ? this.takeCommands() : []
+    held.res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ commands }))
+  }
+
   healthy(): boolean {
     if (this.closed || !this.heartbeat) return false
+    if (this.held) return true
     if (Date.now() - this.heartbeat <= 3000) return true
     this.expire()
     return false
   }
 
   private expire(): void {
+    this.answerHeld(false)
     this.heartbeat = 0
     this.instance = ''
     this.turnId = null
@@ -192,6 +231,7 @@ export class CliModTransport {
     if (!this.healthy() || this.pending.size >= 64 || Buffer.byteLength(text) > 131_072) return false
     const command: Command = { id: ++this.sequence, kind: 'submit', text, ...(submissionId ? { submissionId } : {}) }
     this.pending.set(command.id, { command, claimed: false, fallback })
+    this.answerHeld()
     return true
   }
 
@@ -199,6 +239,7 @@ export class CliModTransport {
     if (!this.healthy() || this.pending.size >= 64) return false
     const command: Command = { id: ++this.sequence, kind: 'arm', submissionId }
     this.pending.set(command.id, { command, claimed: false, fallback, accepted })
+    this.answerHeld()
     return true
   }
 
@@ -206,6 +247,7 @@ export class CliModTransport {
     if (!this.healthy() || this.pending.size >= 64) return false
     const command: Command = { id: ++this.sequence, kind: 'abort', turnId }
     this.pending.set(command.id, { command, claimed: false, fallback })
+    this.answerHeld()
     return true
   }
 
@@ -226,6 +268,7 @@ export class CliModTransport {
     if (this.closed) return
     this.closed = true
     clearInterval(this.timer)
+    this.answerHeld(false)
     this.pending.clear()
     try {
       this.hookConditions?.dispose()

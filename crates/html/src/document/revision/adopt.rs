@@ -69,7 +69,7 @@ impl Document {
                 Some(changed) => changed.elements.iter().copied().map(Some).collect(),
                 None => {
                     let handles = batch.elements.iter().map(|change| &change.element);
-                    source_ids(&values.traversal.elements(), handles)
+                    element_ids(&values.traversal.elements(), handles)
                 }
             };
             for (change, id) in batch.elements.iter().zip(ids) {
@@ -143,23 +143,27 @@ pub(super) fn source_ids<'a>(
     list: &[usize],
     handles: impl Iterator<Item = &'a Handle>,
 ) -> Vec<Option<u64>> {
-    let wanted: Vec<usize> = handles.map(|h| Rc::as_ptr(h) as usize).collect();
-    // A few addresses (one edit): comparisons instead of a hash per slot.
-    if wanted.len() <= 8 {
-        let mut found = vec![(0u64, 0u8); wanted.len()];
-        for (slot, address) in list.iter().enumerate() {
-            for (at, w) in found.iter_mut().zip(&wanted) {
-                if w == address {
-                    *at = (slot as u64 + 1, at.1.saturating_add(1));
-                }
-            }
-        }
-        return found
-            .iter()
-            .map(|&(id, n)| (n == 1).then_some(id))
-            .collect();
-    }
-    let mut found: HashMap<usize, Option<u64>> = wanted.iter().map(|&a| (a, None)).collect();
+    find_sources(list, handles, |_, ordinal| ordinal)
+}
+
+/// Ключи исходных элементов, без зависимости от позиции адреса в списке.
+pub(super) fn element_ids<'a>(
+    list: &[usize],
+    handles: impl Iterator<Item = &'a Handle>,
+) -> Vec<Option<u64>> {
+    find_sources(list, handles, |handle, _| handle.key().packed())
+}
+
+fn find_sources<'a>(
+    list: &[usize],
+    handles: impl Iterator<Item = &'a Handle>,
+    id: impl Fn(&Handle, u64) -> u64,
+) -> Vec<Option<u64>> {
+    let wanted: Vec<_> = handles.collect();
+    let mut found: HashMap<usize, Option<u64>> = wanted
+        .iter()
+        .map(|handle| (Rc::as_ptr(handle) as usize, None))
+        .collect();
     let mut seen = std::collections::HashSet::with_capacity(wanted.len());
     for (slot, address) in list.iter().enumerate() {
         if let Some(id) = found.get_mut(address) {
@@ -167,7 +171,10 @@ pub(super) fn source_ids<'a>(
             *id = seen.insert(*address).then_some(slot as u64 + 1);
         }
     }
-    wanted.iter().map(|a| found[a]).collect()
+    wanted
+        .iter()
+        .map(|handle| found[&(Rc::as_ptr(handle) as usize)].map(|ordinal| id(handle, ordinal)))
+        .collect()
 }
 
 /// Тег коробки элемента HTML: локальное имя (обход снимает только префикс).

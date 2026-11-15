@@ -149,9 +149,10 @@ export async function createMcpTask(
   session: PtySession,
   toolName: string,
   input: Record<string, unknown>,
+  options: { durable?: boolean } = {},
 ): Promise<Record<string, unknown>> {
   if (!session.mcpEndpoint) throw new Error('Task identity unavailable')
-  const task = await mcpTasks.create(session.mcpEndpoint.id, toolName, input)
+  const task = await mcpTasks.create(session.mcpEndpoint.id, toolName, input, options)
   void drainTasks()
   return { ...taskView(task), resultType: 'task' }
 }
