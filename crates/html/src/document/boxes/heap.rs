@@ -11,6 +11,7 @@ impl HeapSize for BoxTree {
                 .finished
                 .as_ref()
                 .map_or(0, |(_, inputs)| inputs.flow_heap_size(ops))
+            + ops.at("layout/used-styles", |_| self.used.heap_size())
     }
 }
 

@@ -43,6 +43,8 @@ mod reuse_tests;
 mod tests;
 #[cfg(test)]
 mod unread_color_tests;
+#[cfg(test)]
+mod used_style_tests;
 mod window_key;
 
 use super::Document;

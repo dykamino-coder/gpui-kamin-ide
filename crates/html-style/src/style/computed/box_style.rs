@@ -202,6 +202,12 @@ impl BoxStyle {
     pub fn style_rc(&self) -> &Rc<Computed> {
         &self.style
     }
+
+    /// Подменить стиль коробки готовым общим значением (used-стиль из таблицы
+    /// документа) вместо записи через DerefMut, которая копирует Computed.
+    pub fn set_style_rc(&mut self, style: Rc<Computed>) {
+        self.style = style;
+    }
 }
 
 impl BoxStyle {

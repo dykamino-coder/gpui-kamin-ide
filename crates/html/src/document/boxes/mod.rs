@@ -18,6 +18,7 @@ mod source_tests;
 mod sources;
 #[cfg(test)]
 mod tests;
+pub(crate) mod used;
 
 use crate::dom::{BoxId, Node};
 use arena::{Arena, Link};
@@ -43,6 +44,8 @@ pub(crate) struct BoxTree {
     first: BoxId,
     epoch: u64,
     finished: Option<(u64, crate::text::inline::normalization::Inputs)>,
+    /// Used styles derived from computed ones, shared by the boxes of one style.
+    pub(crate) used: used::UsedStyles,
 }
 
 impl BoxTree {

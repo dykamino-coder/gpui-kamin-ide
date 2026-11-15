@@ -206,8 +206,16 @@ pub(crate) fn paragraph_pieces_routed(
         let mut at = 0usize;
         let mut out = Vec::with_capacity(pieces.len() + 2 * atom_count);
         let mut mark = inherited.clone();
-        mark.inh.text_flow.word_space_char = None;
-        mark.inh.text_flow.letter_spacing = Some(Len::Px(0.0));
+        // One spacer style per computed style, kept by the box tree.
+        let spacer = opts.cx.doc().boxes.borrow().used.get(
+            inherited.style_rc(),
+            crate::document::boxes::used::UsedRole::AtomSpacer,
+            |style| {
+                style.inh.text_flow.word_space_char = None;
+                style.inh.text_flow.letter_spacing = Some(Len::Px(0.0));
+            },
+        );
+        mark.set_style_rc(spacer);
         mark.inline_decoration.band_color = None;
         mark.inline_decoration.border_stroke = None;
         for p in pieces {
