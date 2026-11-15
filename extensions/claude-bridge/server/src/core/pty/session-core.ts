@@ -567,7 +567,7 @@ async function createAdmittedSession(
   try {
     fs.writeFileSync(cliSettingsFile, cliSettings, { mode: 0o600, flag: 'wx' })
     const args = buildSessionClaudeArgs(config, settingsDir, cliSettingsFile)
-    if (cliMod) args.push('--plugin-dir', CLI_MOD_PLUGIN)
+    if (cliMod) args.push('--plugin-dir', cliMod.hookConditions ? cliMod.conditionsPlugin() : CLI_MOD_PLUGIN)
     pty = nodePty.spawn(claudeCmd, [...(developmentCli?.prefix ?? []), ...args], {
       name: 'xterm-256color',
       cols: config.cols ?? 120,
