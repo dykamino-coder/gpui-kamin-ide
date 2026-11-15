@@ -172,7 +172,7 @@ pub(super) fn paint_table_border(
             colors,
             styles,
             0,
-            e.node_id as u32,
+            0,
             half,
         ));
     }

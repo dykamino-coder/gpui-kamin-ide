@@ -11,14 +11,14 @@ use super::{
     Scope,
     assignment::{declarative_shadow, shadow_scope},
 };
-use crate::dom::tree_index::{NodeKey, TreeIndex};
+use crate::dom::tree_index::{HandleKey, TreeIndex};
 use crate::style::css::{LayerRegistry, Media};
 use crate::style::select::has::{HasArg, mark_has};
 use crate::values::ValueCx;
 use markup5ever_rcdom::Handle;
 use std::{collections::HashMap, rc::Rc};
 
-pub type Prepared = HashMap<NodeKey, (Handle, Rc<Scope>)>;
+pub type Prepared = HashMap<HandleKey, (Handle, Rc<Scope>)>;
 
 /// Arguments from a shadow sheet can inspect the host's ordinary DOM tree.
 /// Discover all sheets first, then mark all trees before census snapshots exist.
@@ -70,7 +70,7 @@ fn collect(
                     args.push(arg);
                 }
             }
-            scopes.insert(NodeKey::of(&node), (root.clone(), scope));
+            scopes.insert(HandleKey::of(&node), (root.clone(), scope));
             pending.push(root);
         }
     }

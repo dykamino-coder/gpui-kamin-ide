@@ -8,7 +8,7 @@
 //! (`slotted_rules_of`); fallback-дети слота своим `::slotted` не выбираются.
 
 use super::{Ancestor, FlatCtx, Scope};
-use crate::dom::tree_index::{NodeKey, TreeIndex};
+use crate::dom::tree_index::{HandleKey, TreeIndex};
 use crate::style::css::{Rule, Selector};
 use crate::style::select::{Sibs, matching::matches};
 use std::rc::Rc;
@@ -100,7 +100,7 @@ pub(super) fn register_all(tree: &mut TreeIndex) -> Result<(), crate::budget::ad
                 .map(|r| r.rule.clone())
                 .collect();
             if !found.is_empty() {
-                let entry = tree.slotted.entry(NodeKey::of(node)).or_default();
+                let entry = tree.slotted.entry(HandleKey::of(node)).or_default();
                 Rc::make_mut(entry).extend(found);
             }
         }

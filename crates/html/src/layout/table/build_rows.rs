@@ -71,6 +71,7 @@ pub(super) async fn table_rows_with_bands(
     let mut cursor = RowCursor {
         row_ix,
         col_ix: 0,
+        cell_order: 0,
         group_refs,
         group_bands: Default::default(),
     };

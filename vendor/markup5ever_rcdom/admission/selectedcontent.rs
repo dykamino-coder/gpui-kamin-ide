@@ -69,7 +69,7 @@ impl Node {
         Ok(None)
     }
 
-    fn try_clone_shallow<A: Admission>(&self, policy: &A) -> Result<Handle, A::Error> {
+    fn try_clone_shallow<A: Admission>(&self, policy: &A, dom: &RcDom) -> Result<Handle, A::Error> {
         let mut attrs_lease = None;
         let data = match &self.data {
             NodeData::Element {
@@ -93,18 +93,22 @@ impl Node {
             // Tendril clones retain their physical storage owner's lease.
             other => other.clone(),
         };
-        Node::try_new(data, attrs_lease, policy)
+        dom.try_new_node(data, attrs_lease, policy)
     }
 
-    fn try_clone_subtree<A: Admission>(self: &Rc<Self>, policy: &A) -> Result<Handle, A::Error> {
-        let root = self.try_clone_shallow(policy)?;
+    fn try_clone_subtree<A: Admission>(
+        self: &Rc<Self>,
+        policy: &A,
+        dom: &RcDom,
+    ) -> Result<Handle, A::Error> {
+        let root = self.try_clone_shallow(policy, dom)?;
         let mut remaining = Work::new();
         remaining.push((self.clone(), root.clone()), policy)?;
         while let Some((source, target)) = remaining.pop() {
             policy.visit()?;
             for child in source.children.borrow().iter() {
                 policy.visit()?;
-                let copied = child.try_clone_shallow(policy)?;
+                let copied = child.try_clone_shallow(policy, dom)?;
                 target.reserve_children(1, policy)?;
                 append(&target, copied.clone());
                 remaining.push((child.clone(), copied), policy)?;
@@ -121,7 +125,7 @@ impl Node {
             ) = (&source.data, &target.data)
             {
                 if let Some(fragment) = source.borrow().as_ref() {
-                    let copied = fragment.try_clone_shallow(policy)?;
+                    let copied = fragment.try_clone_shallow(policy, dom)?;
                     *target.borrow_mut() = Some(copied.clone());
                     remaining.push((fragment.clone(), copied), policy)?;
                 }
@@ -130,11 +134,16 @@ impl Node {
         Ok(root)
     }
 
-    fn try_clone_into<A: Admission>(&self, target: &Handle, policy: &A) -> Result<(), A::Error> {
-        let fragment = Node::try_new(NodeData::Document, None, policy)?;
+    fn try_clone_into<A: Admission>(
+        &self,
+        target: &Handle,
+        policy: &A,
+        dom: &RcDom,
+    ) -> Result<(), A::Error> {
+        let fragment = dom.try_new_node(NodeData::Document, None, policy)?;
         for child in self.children.borrow().iter() {
             policy.visit()?;
-            let copied = child.try_clone_subtree(policy)?;
+            let copied = child.try_clone_subtree(policy, dom)?;
             fragment.reserve_children(1, policy)?;
             append(&fragment, copied);
         }
@@ -165,7 +174,7 @@ impl RcDom {
         };
         if let Some(target) = select.try_selectedcontent(policy)? {
             if option.try_is_selected_option(policy)? {
-                option.try_clone_into(&target, policy)?;
+                option.try_clone_into(&target, policy, self)?;
             }
         }
         Ok(())
@@ -189,7 +198,7 @@ impl RcDom {
                 if name.local_name() == &local_name!("select") {
                     if let Some(target) = node.try_selectedcontent(policy)? {
                         if let Some(option) = node.try_selected_option(policy)? {
-                            option.try_clone_into(&target, policy)?;
+                            option.try_clone_into(&target, policy, &self)?;
                         } else {
                             let previous = mem::take(&mut *target.children.borrow_mut());
                             policy.work(previous.len())?;

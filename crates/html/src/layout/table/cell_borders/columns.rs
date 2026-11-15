@@ -130,7 +130,7 @@ fn collapsed_column_edges(
             colors,
             styles,
             origin,
-            el.node_id as u32,
+            u32::try_from(i).unwrap_or(u32::MAX),
             [0.0; 4],
         ));
     }

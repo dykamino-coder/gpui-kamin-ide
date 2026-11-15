@@ -4,20 +4,7 @@
 use crate::document::Document;
 use std::rc::Rc;
 
-/// Дерево коробок и стиль корня; ручки арен сравниваются без номера области,
-/// который у каждого `DocumentValues` свой.
-fn tree(doc: &Document) -> String {
-    let text = format!("{:?}\n{:?}", doc.nodes(), doc.root_style());
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text.as_str();
-    while let Some(i) = rest.find("owner: ") {
-        out.push_str(&rest[..i + 7]);
-        rest = rest[i + 7..].trim_start_matches(|c: char| c.is_ascii_digit());
-        out.push('_');
-    }
-    out.push_str(rest);
-    out
-}
+use crate::document::test_tree::tree;
 
 /// Обновить `old` до `new`: принята ли ревизия без каскада, и равна ли она свежей сборке.
 fn update(old: &str, new: &str, theme: &str) -> bool {
@@ -63,6 +50,7 @@ mod repaint;
 mod repaint_background;
 mod repaint_sequence;
 mod revision_budget;
+mod stable_keys;
 mod text_edits;
 
 const PAGE: &str = "<!doctype html><html><head><style>p{color:#123}td{padding:1px}\
@@ -175,9 +163,9 @@ fn data_k(node: &markup5ever_rcdom::Handle) -> Option<String> {
 }
 
 #[test]
-fn root_class_skips_the_viewport_box_that_shares_the_root_number() {
-    // Политика прокрутки корня даёт коробку `html-viewport` с номером, следующим
-    // за наибольшим номером дерева, — номером развёрнутого `html`.
+fn root_class_skips_the_synthetic_viewport_box() {
+    // Политика прокрутки корня даёт synthetic `html-viewport`; его состояние
+    // не использует ключ исходного html-узла.
     let page = "<!doctype html><html><head><style>html{scrollbar-color:red blue}\
         </style></head><body><div><div>a</div></div></body></html>";
     let classed = page.replace("<html>", "<html class=\"zz-alt\">");
