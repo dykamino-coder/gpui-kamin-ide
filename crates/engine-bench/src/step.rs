@@ -17,6 +17,13 @@ pub(super) fn register(view: &Entity<View>, window: &mut Window) -> Subscription
             // Опции кадра строятся в шаге, как прежде в render: в фазе сборки.
             kamin_html::work::phase!(_work, BuildElements);
             let opts = view.opts(window);
+            {
+                // The viewport is the screen medium (`Document::set_viewport`).
+                kamin_html::work::phase!(_style, Style);
+                if let Err(error) = view.doc.set_viewport(opts.viewport) {
+                    eprintln!("engine_bench: restyle for the viewport failed: {error:?}");
+                }
+            }
             let phases = view.phases.clone();
             {
                 let mut phases = phases.borrow_mut();

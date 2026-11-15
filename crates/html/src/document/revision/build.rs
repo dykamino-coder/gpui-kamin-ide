@@ -124,18 +124,20 @@ impl Document {
             ..Default::default()
         };
         let mut kept = crate::dom::restyle_probe::RestyleCache::default();
-        let built = parse_document(
-            &source.input,
-            theme_css,
-            source.base.as_ref(),
-            state,
-            fonts,
-            revision,
-            invalidation,
-            &mut kept,
-            #[cfg(feature = "engine-bench")]
-            &mut timings,
-        );
+        let (built, media_reads) = crate::style::css::reads::record(|| {
+            parse_document(
+                &source.input,
+                theme_css,
+                source.base.as_ref(),
+                state,
+                fonts,
+                revision,
+                invalidation,
+                &mut kept,
+                #[cfg(feature = "engine-bench")]
+                &mut timings,
+            )
+        });
         let (state, nodes, root) = match built {
             Ok(built) => built,
             Err(mut failure) => {
@@ -171,6 +173,7 @@ impl Document {
             base_url,
             xml,
             last_failure: None,
+            media_reads: Rc::new(media_reads),
             #[cfg(feature = "engine-bench")]
             timings,
         })

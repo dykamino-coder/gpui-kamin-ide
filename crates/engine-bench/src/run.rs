@@ -102,6 +102,7 @@ pub(super) async fn sample(
                 let doc = Document::builder(&html, BROWSER_CSS)
                     .path(&args.path)
                     .fonts(fonts)
+                    .viewport((args.viewport.0 as f32, args.viewport.1 as f32))
                     .build()?;
                 build_time = Some(t.elapsed());
                 if let Some(limit) = doc.traversal_limit() {
