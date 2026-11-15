@@ -110,6 +110,8 @@ impl FrameKey {
 struct Builder {
     state: Rc<DocState>,
     nodes: Rc<Vec<Node>>,
+    /// Номер дерева `nodes` (`Document::tree`).
+    tree: u64,
     opts: crate::RenderOpts,
     store: Rc<crate::layout::reuse::Store>,
     /// Счётчики сборки до первой сборки кадра: повторная (после отказа
@@ -144,7 +146,11 @@ impl Builder {
             .bg(rgb(0xffffff))
             .text_size(self.opts.text.font_size)
             .font_family(self.opts.text.font_family.clone())
-            .children(super::scope::render(&self.state, &self.nodes, &opts))
+            .children(super::scope::render(
+                &self.state,
+                (&self.nodes, self.tree),
+                &opts,
+            ))
             .into_any_element();
         (tree, flow)
     }

@@ -5,11 +5,8 @@
 //! paint, not from spare copies built once per column.
 //! Counted with `crate::work`; run with `--features work-counters`.
 
-use crate::work::{Counter, Session, Snapshot};
-
-fn total(snapshot: &Snapshot, counter: Counter) -> u64 {
-    snapshot.0.iter().map(|phase| phase[counter as usize]).sum()
-}
+use crate::layout::multicol::work_frame::{frame_work, total};
+use crate::work::Counter;
 
 const ITEM: &str = "<p class=item><span class=float></span>One two three four five six seven eight nine ten eleven twelve.</p>";
 
@@ -28,25 +25,7 @@ fn sheet(sections: usize, items: usize) -> String {
 /// Float-host plans, measure-pass reuses, float-host probes and row-extent
 /// reuses of one frame.
 fn work(cx: &mut gpui::TestAppContext, html: &str) -> (u64, u64, u64, u64) {
-    use gpui::{IntoElement, ParentElement, point, px, size};
-    let document = crate::Document::builder(html, crate::BROWSER_CSS)
-        .build()
-        .expect("test document");
-    let options = crate::layout::options::RenderOpts {
-        text: gpui::TextStyle::default(),
-        viewport: (800., 600.),
-        normal_line_height: 1.2,
-        cx: Default::default(),
-        frag: Default::default(),
-    };
-    let session = Session::begin();
-    cx.add_empty_window()
-        .draw(point(px(0.), px(0.)), size(px(800.), px(600.)), |_, _| {
-            gpui::div()
-                .children(document.render(&options))
-                .into_any_element()
-        });
-    let work = session.finish();
+    let work = frame_work(cx, html);
     (
         total(&work, Counter::FloatPlans),
         total(&work, Counter::SpannerMeasureReuses),

@@ -104,7 +104,6 @@ fn the_canvas_background_layout_values_and_hover_layers_rebuild() {
         "html.alt{background:#eee}",
         "html.alt [data-deep]{background:#eee;padding:1px}",
         "html.alt [data-deep]{background:url(a.png)}",
-        "html.alt [data-deep]{border-color:red}",
         "html.alt [data-deep]{background:#eee}[data-deep]:hover{color:red}",
     ] {
         let old = page(style);
@@ -230,4 +229,16 @@ fn a_matching_rule_that_changes_no_value_keeps_the_frame() {
         assert!(doc.update(&new, "").unwrap().changed());
         assert!(Rc::ptr_eq(&state, &doc.state), "{old}");
     }
+}
+
+#[test]
+fn a_gradient_replaced_by_a_colour_is_restyled_in_place() {
+    // wide-16000 D: `background:#eee` replaces a row's gradient.
+    let page = "<!doctype html><html><head><style>html,body{margin:0;color:#000;background:#fff}\
+        .row{height:20px;background:linear-gradient(90deg,#def,#fff)}[data-edit]{background:#eee}\
+        </style></head><body><div class=row>a</div><div class=row>b</div></body></html>";
+    let edited = page.replace("<div class=row>b", "<div class=row data-edit=\"1\">b");
+    assert_eq!(both(page, &edited), (true, true));
+    materialized(page, &edited);
+    materialized(&edited, page);
 }

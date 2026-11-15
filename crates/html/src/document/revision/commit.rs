@@ -56,6 +56,7 @@ impl Document {
             Plan::Clean(nodes) => {
                 if let Some(nodes) = nodes {
                     self.nodes = Rc::new(nodes);
+                    self.tree = crate::document::scope::next_tree();
                 }
                 self.keep_frame(
                     key,
@@ -167,6 +168,7 @@ impl Document {
         Document {
             state,
             nodes: Rc::new(nodes),
+            tree: crate::document::scope::next_tree(),
             retained: Default::default(),
             reuse: self.reuse.clone(),
             restyle: self.restyle.clone(),
