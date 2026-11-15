@@ -1,9 +1,17 @@
 //! Absolute rounding origin for independently laid out element trees.
 
 use super::AnyElement;
-use crate::{App, AvailableSpace, Pixels, Point, Size, Window};
+use crate::{App, AvailableSpace, LayoutId, Pixels, Point, Size, Window};
 
 impl AnyElement {
+    /// The layout node of this element once its layout was requested or
+    /// computed, until it is prepainted. A tree laid out before the draw
+    /// (`Window::with_layout_outside_draw`) enters the frame's tree by this
+    /// node, where a frame request would have placed it.
+    pub fn requested_layout_id(&self) -> Option<LayoutId> {
+        self.0.root_layout_id()
+    }
+
     /// Prepare an independently cached measurement tree without laying out or painting it.
     pub fn snapshot_layout_measurement(
         &mut self,
