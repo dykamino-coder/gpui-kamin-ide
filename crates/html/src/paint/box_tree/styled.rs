@@ -23,6 +23,32 @@ pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui:
     styled_div_with(e, &BoxStyle::shared(e.style.used()), cx)
 }
 
+/// Whether the box of `e` paints nothing but its own painter's commands
+/// (`Style::paint_box`) under `styled_div`: no hover layer, no decoration
+/// painted as a child element, no alternate painter (clone or geometry
+/// fragments), not the root's canvas, not hidden, no filter or backdrop
+/// layer. Only such a box records its own paint again in the document's
+/// scene layer (`document::retained::box_repaint`).
+pub(crate) fn paints_only_own_box(doc: &std::rc::Rc<crate::document::state::DocState>, e: &Element) -> bool {
+    if matches!(e.tag.as_str(), "html" | "body") || e.hover.is_some() {
+        return false;
+    }
+    let style = BoxStyle::shared(e.style.used());
+    let c = &style;
+    if c.inh.ui.hidden == Some(true)
+        || c.reset_fragmentation.bdb_clone
+        || c.reset_effects.filter_ref.is_some()
+        || c.reset_effects.backdrop_color.is_some()
+        || c.reset_transforms.transform.is_some()
+        || c.reset_transforms.transform_ancestor
+    {
+        return false;
+    }
+    let cx = crate::layout::cx::LayoutCx::default().with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
+    let empty = !e.children.iter().any(|n| !is_blank(n));
+    decorations(c, empty, cx.frame(), Some(&cx)).is_empty()
+}
+
 pub(crate) fn styled_div_with(
     e: &Element,
     style: &BoxStyle,

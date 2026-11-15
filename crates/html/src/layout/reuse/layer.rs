@@ -50,4 +50,18 @@ impl Store {
     pub(crate) fn scene_layer(&self) -> Option<gpui::LayerHandle> {
         self.layer.borrow().clone()
     }
+
+    /// Queue the boxes `ids` to record their own commands again into the
+    /// layer before the next frame replays (`document::retained`).
+    pub(crate) fn queue_repaints(&self, ids: Vec<u64>) {
+        let mut queued = self.repaints.borrow_mut();
+        queued.extend(ids);
+        queued.sort_unstable();
+        queued.dedup();
+    }
+
+    /// Take the queued boxes.
+    pub(crate) fn take_repaints(&self) -> Vec<u64> {
+        std::mem::take(&mut *self.repaints.borrow_mut())
+    }
 }

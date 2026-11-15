@@ -71,6 +71,7 @@ mod absolute_transformation;
 pub(crate) mod vector_transform;
 mod scene_capture;
 mod scene_layer;
+mod layer_box;
 pub use scene_layer::RecordedLayer;
 mod frame_capture;
 mod paint_scope;
@@ -316,6 +317,11 @@ impl WindowInvalidator {
 
     pub fn not_drawing(&self) -> bool {
         self.inner.borrow().draw_phase == DrawPhase::None
+    }
+
+    /// KaminIDE patch: the current draw phase (`Window::rerecord_layer_box`).
+    pub(crate) fn phase(&self) -> DrawPhase {
+        self.inner.borrow().draw_phase
     }
 
     #[track_caller]
@@ -1288,6 +1294,8 @@ pub struct Window {
     /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
     pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
     pub(crate) element_opacity: f32,
+    /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
+    pub(crate) box_fill: Option<Bounds<Pixels>>,
     /// KaminIDE patch: the scene layer being recorded (`window::scene_layer`)
     /// and the binding scope of the paint (`with_paint_owner`, `with_paint_value`).
     pub(crate) layer_recording: Option<Box<scene_layer::LayerRecording>>,
@@ -2240,6 +2248,7 @@ impl Window {
             content_mask_stack: Vec::new(),
             hit_scope: None,
             element_opacity: 1.0,
+            box_fill: None,
             layer_recording: None,
             layer_source: None,
             frame_presented: false,

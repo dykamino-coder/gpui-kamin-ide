@@ -8,13 +8,13 @@
 //! recording names that layer as its `source`, from which `reuse_paint` copies.
 
 use super::*;
-use crate::scene::{Binding, LayerHandle, LayerValue, Reserved, SceneLayer};
+use crate::scene::{Binding, BoxRange, LayerHandle, LayerValue, SceneLayer};
 
 /// A layer being recorded: the bindings its scopes painted and the layer
 /// the previous recording of the same content made.
 pub(crate) struct LayerRecording {
-    bindings: Vec<Binding>,
-    reserved: Vec<Reserved>,
+    pub(crate) bindings: Vec<Binding>,
+    pub(crate) boxes: Vec<BoxRange>,
     pub(crate) source: Option<Rc<SceneLayer>>,
 }
 
@@ -55,7 +55,7 @@ impl Window {
             }, f);
             return (result, RecordedLayer::Painted);
         }
-        let recording = Box::new(LayerRecording { bindings: Vec::new(), reserved: Vec::new(), source });
+        let recording = Box::new(LayerRecording { bindings: Vec::new(), boxes: Vec::new(), source });
         // The frame's scene and no recording wait in `state` while `f`
         // paints into a new scene; restoring swaps them back, on unwind too.
         let mut state = (Scene::default(), Some(recording));
@@ -65,13 +65,13 @@ impl Window {
             mem::swap(&mut window.next_frame.scene, &mut state.0);
             mem::swap(&mut window.layer_recording, &mut state.1);
         }, f);
-        let (bindings, reserved) = recording.map_or_else(Default::default, |r| (r.bindings, r.reserved));
+        let (bindings, boxes) = recording.map_or_else(Default::default, |r| (r.bindings, r.boxes));
         if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
             let scene = self.adopt_scene(scene);
             self.next_frame.scene.replay_record(&scene);
             return (result, RecordedLayer::Spliced);
         }
-        (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, reserved))))
+        (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))))
     }
 
     /// Draw `layer` here: one command in the frame, ordered like one
@@ -118,38 +118,6 @@ impl Window {
             op: (scene.paint_operations.len() - 1) as u32,
             opacity,
         });
-    }
-
-    /// Reserve the place of `quad`, a fill the painter does not paint (no
-    /// colour), inside a binding scope of a layer recording: a later write
-    /// puts the quad there with the order it would have had if painted.
-    /// `quad` builds the fill only when a place is reserved.
-    pub(crate) fn reserve_painted_quad(&mut self, quad: impl FnOnce(&mut Self) -> PaintQuad) {
-        if self.paint_value.is_none() || self.paint_owner == 0 || self.layer_recording.is_none() {
-            return;
-        }
-        let quad = quad(self);
-        let opacity = self.element_opacity();
-        let scale = self.scale_factor();
-        let mut quad = Quad {
-            transformation: self.current_transformation(),
-            order: 0,
-            bounds: quad.bounds.scale(scale),
-            content_mask: self.content_mask().scale(scale),
-            background: quad.background.opacity(opacity),
-            border_color: quad.border_color.opacity(opacity),
-            corner_radii: quad.corner_radii.scale(scale),
-            border_widths: quad.border_widths.scale(scale),
-            border_style: quad.border_style,
-        };
-        let Some(order) = self.next_frame.scene.reserve_order(&crate::scene::Primitive::Quad(quad)) else {
-            return;
-        };
-        quad.order = order;
-        let (Some(value), Some(recording)) = (self.paint_value, self.layer_recording.as_mut()) else {
-            return;
-        };
-        recording.reserved.push(Reserved { owner: self.paint_owner, value, quad, op: u32::MAX, opacity });
     }
 
     /// Whether the rendered frame shows nothing new on screen: it repeats the

@@ -10,17 +10,21 @@
 //! Between frames the host writes values into the layer through bindings
 //! (`LayerHandle::set_backgrounds`, `write`): a binding scope
 //! (`Window::with_paint_owner` and the value scope of the painter) names the
-//! primitives it painted, and the place of the ones it did not paint (a box
-//! without a background), so a write finds them by bisection, raises the
-//! version and returns the damaged rectangle. A frame holds the content it draws strongly only from its draw
+//! primitives it painted, so a write finds them by bisection, raises the
+//! version and returns the damaged rectangle. A box whose own paint changes
+//! otherwise records its run of commands again under its key (`boxes`,
+//! `splice`). A frame holds the content it draws strongly only from its draw
 //! to its present, and the host's handle weakly after: a write copies the
 //! content only while a frame or snapshot still holds it, and a frame that
 //! replays the layer's command later reads the host's current content.
 
+mod boxes;
 mod frame;
+mod splice;
 mod write;
 
 use super::{Bounds, PaintOperation, ScaledPixels, Scene};
+pub(crate) use boxes::{BoxEnv, BoxRange, OpenBox, ink_of};
 pub(crate) use frame::{LayerOp, LayerSlot};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -45,18 +49,6 @@ pub(crate) struct Binding {
     pub(crate) opacity: f32,
 }
 
-/// The place of a quad a binding scope did not paint (no fill): the quad it
-/// would have painted, transparent, with its order in the scene, and the
-/// command that painted it before a write took it out (`u32::MAX`: none).
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Reserved {
-    pub(crate) owner: u32,
-    pub(crate) value: LayerValue,
-    pub(crate) quad: crate::Quad,
-    pub(crate) op: u32,
-    pub(crate) opacity: f32,
-}
-
 /// A finished scene with its version and bindings.
 pub struct SceneLayer {
     pub(crate) scene: Scene,
@@ -66,8 +58,8 @@ pub struct SceneLayer {
     bounds: Option<Bounds<ScaledPixels>>,
     /// By owner, then value, then quad: a write finds its range by bisection.
     bindings: Vec<Binding>,
-    /// By owner, then value: the places of unpainted fills.
-    reserved: Vec<Reserved>,
+    /// The runs of the boxes' own commands, in paint order.
+    pub(crate) boxes: Vec<BoxRange>,
 }
 
 /// Process-wide counters of layer work (`frame_perf`-style, read by benches).
@@ -79,6 +71,8 @@ pub mod layer_counters {
     pub static COW_CLONES: AtomicU64 = AtomicU64::new(0);
     /// Primitive values written into layers.
     pub static VALUES_WRITTEN: AtomicU64 = AtomicU64::new(0);
+    /// Runs of boxes' own commands recorded again (`Window::rerecord_layer_box`).
+    pub static BOXES_RERECORDED: AtomicU64 = AtomicU64::new(0);
     /// Primitives frames copied from earlier scenes (`Scene::replay` and
     /// the record replays): what a layer saves.
     pub static PRIMITIVES_COPIED: AtomicU64 = AtomicU64::new(0);
@@ -107,22 +101,21 @@ impl Clone for SceneLayer {
             version: self.version,
             bounds: self.bounds,
             bindings: self.bindings.clone(),
-            reserved: self.reserved.clone(),
+            boxes: self.boxes.clone(),
         }
     }
 }
 
 impl SceneLayer {
     /// Finish `scene`, painted with `bindings` (quad indices in paint order)
-    /// and `reserved` places, into a layer: the scene is sorted once and the
-    /// bindings follow their quads.
-    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>, mut reserved: Vec<Reserved>) -> Self {
+    /// and the runs of its boxes, into a layer: the scene is sorted once and
+    /// the bindings follow their quads.
+    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>, boxes: Vec<BoxRange>) -> Self {
         let moved = scene.finish_tracking_quads();
         for binding in &mut bindings {
             binding.quad = moved[binding.quad as usize];
         }
         bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
-        reserved.sort_by_key(|r| (r.owner, r.value, r.quad.order));
         let bounds = scene
             .paint_operations
             .iter()
@@ -136,7 +129,7 @@ impl SceneLayer {
             .reduce(|a, b| a.union(&b));
         static NEXT: AtomicU64 = AtomicU64::new(1);
         layer_counters::RECORDS.fetch_add(1, Relaxed);
-        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, reserved }
+        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, boxes }
     }
 
     /// Union of the primitives' bounds within their content masks; `None`

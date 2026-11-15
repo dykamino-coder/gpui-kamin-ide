@@ -52,24 +52,6 @@ impl Scene {
         self.layers.push(LayerSlot { order, cell, held: Some(layer.content()) });
     }
 
-    /// The order `primitive` would take if inserted now, taken as if it
-    /// were (`insert_primitive`), without inserting it; `None` when it would
-    /// be culled or lies in a 3D context, whose orders are assigned later.
-    pub(crate) fn reserve_order(&mut self, primitive: &crate::scene::Primitive) -> Option<DrawOrder> {
-        let clipped = crate::scene::placed_bounds(primitive).intersect(&primitive.content_mask().bounds);
-        if clipped.is_empty() || !self.depth.plane_stack.is_empty() {
-            return None;
-        }
-        Some(match self.layer_stack.last().copied() {
-            Some(BOTTOM_LAYER) => {
-                self.bottom_seq = (self.bottom_seq + 1).min(ORDER_STEP - 1);
-                ORDER_STEP + self.bottom_seq
-            }
-            Some(order) => order,
-            None => self.tree_mut().insert(clipped) * ORDER_STEP,
-        })
-    }
-
     /// Add the slot of a replayed layer command (its order already set);
     /// `false` when the host dropped the layer, which then draws nothing.
     pub(crate) fn push_layer_slot(&mut self, op: &LayerOp) -> bool {

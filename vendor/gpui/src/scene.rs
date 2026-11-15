@@ -3,7 +3,7 @@
 
 mod layer;
 pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-pub(crate) use layer::{Binding, LayerOp, LayerSlot, Reserved};
+pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of};
 mod record;
 mod vector_transform;
 pub(crate) mod affine_transform;
@@ -147,6 +147,8 @@ pub struct Scene {
     /// later frame replaying the same range grafts it again.
     blocks: Vec<ReplayedBlock>,
     layer_stack: Vec<DrawOrder>,
+    /// KaminIDE patch: the box whose own paint is being recorded into a layer.
+    open_box: Option<OpenBox>,
     /// KaminIDE patch: bottom-layer primitives painted so far this frame.
     bottom_seq: DrawOrder,
     pub shadows: Vec<Shadow>,
@@ -445,6 +447,9 @@ impl Scene {
                 ORDER_STEP + self.bottom_seq
             }
             Some(o) => o,
+            // KaminIDE patch: a box's own command waits for the box's key
+            // (`scene::layer::boxes`).
+            None if self.open_box.is_some() => 0,
             None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
         };
         match &mut primitive {

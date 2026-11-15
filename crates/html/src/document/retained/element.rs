@@ -173,6 +173,8 @@ impl Element for Retained {
                 && root
                 && !self.slot.unreplayable.get()
                 && let Some(record) = record
+                // Boxes whose own paint changed record it into the layer first.
+                && self.builder.repaint_boxes(window, cx)
             {
                 self.replay = true;
                 self.builder.store.forget_replays();
@@ -180,6 +182,8 @@ impl Element for Retained {
                 let prepaint = window.replay_retained_prepaint(&record.prepaint);
                 return ((), Record { prepaint, ..record });
             }
+            // A frame that builds paints every box anew.
+            self.builder.store.take_repaints();
             // Заместитель, оказавшийся у экрана, отменяет пропуск: кадр
             // собирается заново без заместителей (`layout::reuse`).
             if let Some(flow) = self.flow.as_ref()

@@ -123,7 +123,15 @@ impl Document {
         if !self.frame_recorded() {
             return false;
         }
-        super::layer_write::write_paint_values(&self.nodes, nodes, restyled, &layer).is_some()
+        let plain = |a: &crate::dom::Element, b: &crate::dom::Element| {
+            crate::paint::box_tree::styled::paints_only_own_box(&self.state, a)
+                && crate::paint::box_tree::styled::paints_only_own_box(&self.state, b)
+        };
+        let Some(repaints) = super::layer_write::write_paint_values(&self.nodes, nodes, restyled, &layer, plain) else {
+            return false;
+        };
+        self.reuse.queue_repaints(repaints);
+        true
     }
 
     /// Следующая ревизия с деревом `nodes` и прежними значениями документа;

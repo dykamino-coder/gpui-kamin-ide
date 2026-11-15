@@ -1,0 +1,66 @@
+//! Boxes whose own paint a restyle changed, recorded again into the document's
+//! scene layer before the recorded frame replays (`Store::take_repaints`).
+//!
+//! The revision kept the frame (`revision::layer_write`); each queued box
+//! paints its own commands again from its new style into its run of the
+//! layer (`gpui::Window::rerecord_layer_box`), without its descendants,
+//! layout or the element tree. Its style comes from the one `Div` the box
+//! would build (`paint::box_tree::styled_div`), the interim painter until
+//! the boxes own their used style (B1). A box the layer refuses voids the
+//! replay and the layer: the frame is built and paints a new one.
+
+use super::Builder;
+use gpui::{App, Refineable, Styled, Window};
+
+impl Builder {
+    /// Record the queued boxes again; `false` when the frame must be built.
+    pub(super) fn repaint_boxes(&self, window: &mut Window, cx: &mut App) -> bool {
+        let done = self.repaint_queued(window, cx);
+        if !done {
+            // Runs already replaced leave the layer neither old nor new.
+            self.store.void_frame_records();
+            self.store.layer.replace(None);
+        }
+        done
+    }
+
+    fn repaint_queued(&self, window: &mut Window, cx: &mut App) -> bool {
+        let ids = self.store.take_repaints();
+        if ids.is_empty() {
+            return true;
+        }
+        let Some(layer) = self.store.scene_layer() else {
+            return false;
+        };
+        let Some(elements) = crate::document::revision::boxes(&self.nodes, &ids) else {
+            return false;
+        };
+        let mut moved = false;
+        let mut last = None;
+        for e in elements {
+            // Fragments of one element share an owner and are repainted together.
+            if last == Some(e.node_id) {
+                continue;
+            }
+            last = Some(e.node_id);
+            let Ok(owner) = u32::try_from(e.node_id) else {
+                return false;
+            };
+            let mut div = crate::paint::box_tree::styled::styled_div(e, &self.opts.cx);
+            let mut style = gpui::Style::default();
+            style.refine(div.style());
+            let painted = window.rerecord_layer_box(&layer, owner, cx, |window, cx, bounds| {
+                style.paint_box(bounds, window, cx)
+            });
+            match painted {
+                Some(shifted) => moved |= shifted,
+                None => return false,
+            }
+        }
+        if moved {
+            // Ranges recorded in the layer moved with the new commands.
+            self.store.void_frame_records();
+        }
+        true
+    }
+}

@@ -2905,7 +2905,7 @@ impl Interactivity {
         }
 
         window.with_element_opacity(style.opacity, |window| {
-            window.with_paint_owner(self.paint_owner, |window| {
+            window.with_box_paint(self.paint_owner, bounds, |window| {
                 style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx)
             });
             style.paint_after_box(window, cx, |window: &mut Window, cx: &mut App| {

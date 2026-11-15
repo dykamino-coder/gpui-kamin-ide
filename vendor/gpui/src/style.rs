@@ -999,6 +999,9 @@ impl Style {
         window.paint_drop_shadows(bounds, corner_radii, &self.box_shadow);
 
         let background_color = self.background.as_ref().and_then(Fill::color);
+        // KaminIDE patch: a box without fill keeps where its fill would lie,
+        // for a later recording of its run in a scene layer.
+        window.note_box_fill(self, bounds);
         if background_color.is_some_and(|color| !color.is_transparent()) {
             let mut border_color = match background_color {
                 Some(color) => match color.tag {
@@ -1021,9 +1024,10 @@ impl Style {
                 None => Hsla::default(),
             };
             border_color.a = 0.;
+            // KaminIDE patch: a box recorded again into a scene layer fills
+            // the bounds its first recording placed (`Window::box_fill_bounds`).
             let fill = quad(
-                window.render_context::<crate::PaintTraversal>()
-                    .map_or(bounds, |host| (host.fill_bounds)(self, bounds, window)),
+                window.box_fill_bounds(self, bounds),
                 corner_radii,
                 background_color.unwrap_or_default(),
                 Edges::default(),
@@ -1032,17 +1036,6 @@ impl Style {
             );
             // KaminIDE patch: a scene layer may rewrite this fill in place.
             window.with_paint_value(crate::LayerValue::Background, |window| window.paint_quad(fill));
-        } else {
-            // KaminIDE patch: no fill — a scene layer keeps its place, where a
-            // write may put one (`scene::layer::write`).
-            window.with_paint_value(crate::LayerValue::Background, |window| {
-                window.reserve_painted_quad(|window| {
-                    let bounds = window
-                        .render_context::<crate::PaintTraversal>()
-                        .map_or(bounds, |host| (host.fill_bounds)(self, bounds, window));
-                    quad(bounds, corner_radii, Hsla::transparent_black(), Edges::default(), Hsla::transparent_black(), self.border_style)
-                })
-            });
         }
 
         // Upstream's own inset shadows (`BoxShadow::inset` in `box_shadow`),

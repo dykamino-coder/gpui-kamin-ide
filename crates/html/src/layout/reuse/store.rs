@@ -69,6 +69,8 @@ pub(crate) struct Store {
     /// (`FlowKey::strip_boxes`) found them different in paint-only values.
     pub(super) repainted_roots: Cell<bool>,
     pub(crate) layer: RefCell<Option<gpui::LayerHandle>>,
+    /// Boxes whose own commands the next frame records again into layer.
+    pub(super) repaints: RefCell<Vec<u64>>,
 }
 
 impl Store {
