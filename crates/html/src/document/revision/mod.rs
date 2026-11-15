@@ -5,6 +5,7 @@ mod apply;
 mod boxes;
 mod build;
 mod commit;
+mod kept;
 mod mentions;
 mod mutation;
 mod patch;
