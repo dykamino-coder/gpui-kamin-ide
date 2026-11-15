@@ -14,7 +14,7 @@ import {
   writeCoordinatedInput,
 } from './session-input-coordinator'
 import type { SendOutcome } from './jsonl-replay'
-import { sessionCliControl } from './session-cli-control'
+import { needsTerminalDelivery, sessionCliControl } from './session-cli-control'
 import { takeTurnContext } from '../conversation/conversation'
 import { withContextBlock } from '../engine/handoff'
 
@@ -270,6 +270,8 @@ function deliverText(session: PtySession, text: string, submissionId?: string): 
   if (session.state !== 'running') return submitTextToSession(session, text, submissionId)
   if (session.agentInput) return session.agentInput.submit(text, submissionId)
   if (sessionCliControl(session)?.submit(text, submissionId)) return
+  // A command, mention or attachment path goes through the terminal by design;
+  // the client warns only when delivery fell back for another reason.
   if (submissionId)
     sendToClient(session.ws, {
       type: 'session:submission',
@@ -278,7 +280,7 @@ function deliverText(session: PtySession, text: string, submissionId?: string): 
       text,
       state: 'fallback',
       cancelable: false,
-      warning: 'Using native terminal delivery for this message.',
+      ...(needsTerminalDelivery(text) ? {} : { warning: 'Using native terminal delivery for this message.' }),
       createdAt: Date.now(),
     })
   submitCoordinatedText(session, text)

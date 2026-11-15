@@ -1,6 +1,7 @@
 //! The paint-only delta of a restyle as a unit: the two style groups whose
 //! values `Computed::same_layout` lets differ, the inherited UI group
-//! (`color`) and the box's own background.
+//! (`color`) and the box's own background, and the colours of its borders
+//! (`Computed::same_layout_but_border_colors`).
 //!
 //! Blink turns the difference of two computed styles into the work of the
 //! frame (`ComputedStyle::VisualInvalidationDiff`): a paint-only difference
@@ -22,12 +23,18 @@ impl Computed {
             self.with_inherited_ui(new.inh.ui.clone())
         };
         out.reset_background = new.reset_background.clone();
+        if out.reset_border.border_colors != new.reset_border.border_colors {
+            out.reset_border.border_colors = new.reset_border.border_colors.clone();
+            out.reset_cascade.side_order.border[2] = new.reset_cascade.side_order.border[2];
+        }
         out
     }
 
     /// The paint-only groups hold the same values in both styles.
     pub fn same_paint_groups(&self, other: &Computed) -> bool {
-        self.inh.ui == other.inh.ui && self.reset_background == other.reset_background
+        self.inh.ui == other.inh.ui
+            && self.reset_background == other.reset_background
+            && self.reset_border.border_colors == other.reset_border.border_colors
     }
 }
 
