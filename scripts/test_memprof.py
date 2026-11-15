@@ -184,6 +184,22 @@ class Folding(unittest.TestCase):
         self.assertEqual(report["unreported_sites"], [])
         json.dumps(report)
 
+    def test_renderer_textures_are_folded_by_owner_path_and_diffed(self):
+        header = "# engine_bench alloc stacks v3 base=0 filter=* until=- sample=0"
+        cand = self.run_of(["a 1 layout 100 10 1 2", "g gpu/atlas/monochrome 1048576 4096",
+                            "g gpu/atlas/monochrome 1048576 0", "g gpu/target/frame 1920000 1920000"], header=header)
+        base = self.run_of(["a 1 layout 100 10 1 2", "g gpu/target/frame 1920000 1920000",
+                            "g gpu/blur/copy 64 64"], header=header)
+        self.assertEqual(cand.gpu["gpu/atlas/monochrome"], [2, 2097152, 4096])
+        self.assertEqual(cand.lines, 1)
+        report = memprof.build_report(cand, base, True, 8, 10)
+        self.assertEqual([(r["owner"], r["delta_bytes"]) for r in report["gpu_owners"]],
+                         [("gpu/atlas/monochrome", 2097152), ("gpu/blur/copy", -64), ("gpu/target/frame", 0)])
+        out = io.StringIO()
+        memprof.render_gpu(report, out)
+        self.assertIn("gpu/atlas/monochrome (2 textures, 0% in use)", out.getvalue())
+        json.dumps(report)
+
 
 class FoldedSymbols(FakeSymbols):
     """Symbols of an image whose linker folded NAMES[2] with two other functions."""
@@ -261,6 +277,18 @@ class RunCommand(unittest.TestCase):
         report = json.loads((self.out / "report.json").read_text(encoding="utf-8"))
         self.assertEqual(report["subsystems"][0]["cand_bytes"], 100)
         self.assertIn("by subsystem", (self.out / "report.txt").read_text(encoding="utf-8"))
+
+    def test_differently_built_sides_do_not_run_unless_allowed(self):
+        import bench_build
+        builds = {"c.exe": {"features": ["allocation-audit"], "profile": "release"},
+                  "b.exe": {"features": ["heap-profile"], "profile": "release"}}
+        with unittest.mock.patch.object(bench_build, "of_exe", lambda exe: builds[str(exe)]):
+            with self.assertRaises(SystemExit) as stopped:
+                self.run_memprof()
+            self.assertIn("heap-profile", str(stopped.exception))
+            self.assertEqual(self.seen, [])
+            self.run_memprof("--allow-feature-mismatch")
+        self.assertEqual(self.seen, [[], []])
 
     def test_keep_stacks_leaves_the_probe_files(self):
         self.run_memprof("--keep-stacks")

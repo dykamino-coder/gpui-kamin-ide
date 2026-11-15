@@ -167,7 +167,9 @@ export function writeInputToSession(session: PtySession, data: string): boolean 
   // button never clear). Push an authoritative idle so the chat activity
   // indicator AND the native session-row dot both clear immediately on interrupt.
   if (data.includes('\x03') && !sessionCliControl(session)?.authoritative()) {
-    setSessionPromptReady(session, true)
+    // An interrupt restores idle UI, but cannot establish that a starting CLI
+    // has installed its input handler. Only a real prompt can open that gate.
+    if (getSessionInputSnapshot(session).promptObserved) setSessionPromptReady(session, true)
     sendToClient(session.ws, {
       type: 'session:activity',
       sessionId: session.id,

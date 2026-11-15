@@ -73,6 +73,10 @@ fn layout_limit_is_delivered_at_the_frame_boundary_once_per_key() {
 }
 
 #[test]
+#[cfg_attr(
+    kamin_unoptimized,
+    ignore = "unoptimized float painting exceeds the fixed stack; covered by optimized CI"
+)]
 fn beyond_box_limit_paints_the_remainder_and_keeps_the_whole_dom() {
     regression::on_eight_mib(|| {
         for source in [
@@ -103,6 +107,10 @@ fn beyond_box_limit_paints_the_remainder_and_keeps_the_whole_dom() {
 /// укладываются в 7,5 МиБ. До выноса тяжёлых нерекурсивных частей из кадров
 /// Taffy этот сценарий занимал ~7,9 МиБ и переполнял такой поток.
 #[test]
+#[cfg_attr(
+    kamin_unoptimized,
+    ignore = "unoptimized float painting exceeds the fixed stack; covered by optimized CI"
+)]
 fn nested_floats_up_to_box_limit_lay_out_on_seven_and_a_half_mib() {
     regression::on_stack(15 * 512 * 1024, || {
         let source = format!(
