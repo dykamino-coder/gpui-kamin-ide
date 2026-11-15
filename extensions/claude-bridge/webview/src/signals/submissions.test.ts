@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { jsonlEntriesByTab } from './jsonl'
-import { forgetModCapability, modCapabilities, noteSubmissionRows, pendingSubmissionRows, receiveSubmission, submissions } from './submissions'
+import { forgetModCapability, modCapabilities, noteSubmissionRows, pendingSubmissionRows, receiveSubmission, shouldToastDelivery, submissions } from './submissions'
 import type { JsonlEntryData } from '../types/jsonl'
 import { clearLocalQueue, enqueueLocal, localQueue, reconcileQueueWithEntries, sweepStaleQueue } from './queue'
 import { storage } from '../lib/storage'
@@ -37,6 +37,18 @@ describe('submission transcript identity', () => {
     receiveSubmission('tab', { id: 'gpt', text: 'on gpt', state: 'queued' })
     receiveSubmission('tab', { id: 'gpt', state: 'read' })
     expect(pendingSubmissionRows([], submissions.value.get('tab')!).map(row => row.submissionId)).toEqual(['claude'])
+  })
+  it('toasts a delivery warning only for a message this view sent, once', () => {
+    const warning = 'Bridge mod unavailable; using native terminal delivery.'
+    const shownFor = (id: string) => submissions.peek().get('tab')?.find(item => item.id === id)
+    const fallback = { id: 'mine', text: 'hello', state: 'fallback' as const, warning }
+    receiveSubmission('tab', { id: 'mine', text: 'hello', state: 'queued', cancelable: true })
+    expect(shouldToastDelivery(fallback, shownFor('mine'))).toBe(true)
+    receiveSubmission('tab', fallback)
+    expect(shouldToastDelivery(fallback, shownFor('mine'))).toBe(false) // duplicate frame
+    // Replayed after a page reload: the view never held this receipt.
+    expect(shouldToastDelivery({ ...fallback, id: 'replayed' }, shownFor('replayed'))).toBe(false)
+    expect(shouldToastDelivery({ id: '', capable: false, warning }, undefined)).toBe(true)
   })
   it('clears a composer warning when a later receipt no longer carries it', () => {
     receiveSubmission('tab', { id: 'id', text: 'sent', state: 'queued', warning: 'Draft exists' })
