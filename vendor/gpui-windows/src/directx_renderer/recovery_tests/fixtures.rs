@@ -47,6 +47,7 @@ pub(super) fn renderer(device: &DirectXDevices) -> DirectXRenderer {
         capture: None,
         timing_main: false,
         unpresented: false,
+        retained: Default::default(),
     }
 }
 
