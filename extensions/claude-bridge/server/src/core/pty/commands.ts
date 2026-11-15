@@ -73,6 +73,11 @@ export async function acceptCommandReport(session: PtySession, report: CommandRe
   while (reports.size > MAX_RETAINED) reports.delete(reports.keys().next().value!)
   for (const shell of shells) retain(session, shell.id, shell.output)
 }
+/** Background shells the client still runs for this session, per its last
+ *  report. They belong to the session's MCP owner and die with it for the CLI. */
+export function runningShellCount(session: PtySession): number {
+  return reports.get(owner(session))?.report.shells.filter((shell) => shell.running).length ?? 0
+}
 export async function commandSnapshot(session: PtySession): Promise<CommandSnapshot> {
   const commands: CommandSnapshot['commands'] = []
   for (const [id, call] of pendingMcpCalls) {

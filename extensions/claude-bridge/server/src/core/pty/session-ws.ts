@@ -4,13 +4,14 @@
 
 import {
   acceptCommandReport,
+  runningShellCount,
   commandSnapshot,
   commandOutput,
   stopCommand,
   clearCompletedCommands,
   rememberCommandResult,
 } from './commands'
-import { settleMcpTask } from './mcp-tasks'
+import { mcpTasks, settleMcpTask } from './mcp-tasks'
 import { traceAnswered } from './mcp-trace'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
@@ -62,8 +63,10 @@ import {
   switchSessionEngine,
   getSessionTree,
   deleteSessionByConversationId,
+  hibernateSession,
 } from './session-manager'
-import { settleMcpResult } from './session-mcp-call'
+import { acquireWakeSlot, registerHibernationHandle } from './session-hibernation'
+import { hasInflightMcpCall, settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
 import { sessionCliControl } from './session-cli-control'
 import { eventBus } from '../events/bus'
@@ -114,6 +117,38 @@ eventBus.on('codex:account-updated', pushAgentAuth)
 /**
  * Get the WS client for a session (used by mcp-http-handler).
  */
+/** What a message does to a chat whose CLI hibernates: `wake` respawns it
+ *  first, `pass` needs no CLI, `ignore` has nothing to act on (its effect, if
+ *  any, is kept for the wake), `release` drops the sleeping chat from this
+ *  socket (a new chat, or an explicit end). */
+const IDLE_COMMANDS_REQUEST_MS = 10_000
+
+export function sleepAction(type: string): 'wake' | 'pass' | 'ignore' | 'release' {
+  switch (type) {
+    case 'session:create':
+    case 'session:resume':
+    case 'session:end':
+      return 'release'
+    case 'session:resize':
+    case 'session:interrupt':
+    case 'session:submission-action':
+    case 'mcp:response':
+    case 'mcp:denied':
+    case 'hook:response':
+    case 'elicitation:response':
+    case 'jsonl:subagent-select':
+    case 'mcp:register-external-tools':
+    case 'mcp:register-external-content':
+      return 'ignore'
+    case 'agent:set-default-engine':
+    case 'codex:models':
+    case 'session:delete-data':
+      return 'pass'
+    default:
+      return type.startsWith('commands:') ? 'pass' : 'wake'
+  }
+}
+
 export function getSessionWs(sessionId: string): WS | undefined {
   return sessionWsMap.get(sessionId)
 }
@@ -216,12 +251,136 @@ export function attachSessionWebSocket(_server: HttpServer): void {
       }
     }, 15_000)
 
+    // The client's command report drives redelivery of lost calls and the
+    // running-commands view. It is only time-critical while something runs:
+    // a call in flight, an MCP task, or a background shell. An idle chat is
+    // asked every 10 s instead of every second (200 chats × 2 frames/s was a
+    // steady share of the main thread).
+    let lastCommandsRequest = 0
     const commandsTimer = setInterval(() => {
-      if (authenticatedSessionId && sessionWsMap.get(authenticatedSessionId) === ws)
-        sendToClient(ws, { type: 'commands:request' })
+      if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
+      const session = getSession(authenticatedSessionId)
+      const now = Date.now()
+      const live =
+        !!session &&
+        (hasInflightMcpCall(session.id) ||
+          runningShellCount(session) > 0 ||
+          (!!session.mcpEndpoint && mcpTasks.hasWorkingOwner(session.mcpEndpoint.id)))
+      if (!live && now - lastCommandsRequest < IDLE_COMMANDS_REQUEST_MS) return
+      lastCommandsRequest = now
+      sendToClient(ws, { type: 'commands:request' })
     }, 1000)
     commandsTimer.unref?.()
     ws.once('close', () => clearInterval(commandsTimer))
+
+    // ── Idle hibernation (session-hibernation.ts) ──────────────────────────
+    // While asleep the chat has no CLI: `asleep` keeps the stopped session's
+    // object (launch config, model, effort, registrations) and `done` settles
+    // once its teardown finished. The next message that needs the CLI wakes it.
+    let asleep: { session: PtySession; done: Promise<void>; cols: number; rows: number } | null = null
+    const unregisterHibernation = registerHibernationHandle({
+      awakeSessionId: () =>
+        !asleep &&
+        !startup &&
+        !engineSwitch &&
+        authenticatedSessionId &&
+        sessionWsMap.get(authenticatedSessionId) === ws
+          ? authenticatedSessionId
+          : null,
+      hibernate: () => {
+        const id = authenticatedSessionId
+        const session = id ? getSession(id) : undefined
+        if (!id || !session || asleep || startup || engineSwitch || socketGone || sessionWsMap.get(id) !== ws)
+          return false
+        lifecycleLog('session_hibernate', {
+          sessionId: id,
+          idleMs: Date.now() - session.lastActivityAt.getTime(),
+          conversationId: session.cliConversationId ?? undefined,
+        })
+        sessionWsMap.delete(id)
+        asleep = { session, done: hibernateSession(id), cols: session.pty.cols, rows: session.pty.rows }
+        return true
+      },
+    })
+    ws.once('close', unregisterHibernation)
+
+    const wake = (): Promise<boolean> => {
+      const sleeping = asleep!
+      const old = sleeping.session
+      const operation = beginStartup('replace_resume')
+      const started = Date.now()
+      const run = (async (): Promise<boolean> => {
+        const release = await acquireWakeSlot()
+        try {
+          await sleeping.done
+          if (!ownsStartup(operation)) return false
+          // Another socket may have resumed this chat meanwhile (reconnect on
+          // a new connection): never run two CLIs on one transcript.
+          if (old.cliConversationId && findSessionByConversation(old.tokenId, old.cliConversationId))
+            throw new Error('chat already running elsewhere')
+          const launch = old.launchConfig ?? {}
+          const fresh = await createSession(ws, authenticatedUser!, old.tokenId, {
+            ...launch,
+            cols: sleeping.cols,
+            rows: sleeping.rows,
+            effort: old.effort || undefined,
+            model: old.model || undefined,
+            protocolVersion: old.streamProtocol ?? 0,
+            host: old.host,
+            bearerHash: old.bearerHash,
+            carryRegistrations: old,
+            history: undefined,
+            noSpawnOnNotFound: undefined,
+            segmentStart: undefined,
+            deferTranscript: undefined,
+            // An empty chat had nothing to resume: it starts fresh, same cwd/model.
+            resumeConversationId: old.cliConversationId ?? undefined,
+            reuseSettingsDir: old.cliConversationId ? old.settingsDir : undefined,
+            conversation: old.conversation,
+          })
+          if (!ownsStartup(operation)) {
+            releaseLateSession(fresh, operation)
+            return false
+          }
+          fresh.streamProtocol = old.streamProtocol ?? 0
+          asleep = null
+          authenticatedSessionId = fresh.id
+          sessionWsMap.set(fresh.id, ws)
+          authenticatedTokenId = old.tokenId
+          if (!tokenWsMap.has(old.tokenId)) tokenWsMap.set(old.tokenId, new Set())
+          tokenWsMap.get(old.tokenId)!.add(ws)
+          ws.send(
+            JSON.stringify({
+              type: 'session:restarted',
+              sessionId: fresh.id,
+              mcpTaskOwner: fresh.mcpEndpoint?.id,
+              effort: fresh.effort,
+              model: fresh.model,
+            }),
+          )
+          lifecycleLog('session_wake', { sessionId: fresh.id, waitedMs: Date.now() - started })
+          return true
+        } catch (err) {
+          if (!ownsStartup(operation)) return false
+          const error = err instanceof Error ? err.message : String(err)
+          errorLog('Session wake failed', { sessionId: old.id, error })
+          asleep = null
+          authenticatedSessionId = null
+          // The client's ordinary path for a dead CLI: it resumes the chat.
+          sendToClient(ws, { type: 'session:exit', code: -1, sessionId: old.id })
+          return false
+        } finally {
+          release()
+          if (startup === operation) startup = undefined
+        }
+      })()
+      engineSwitch = run
+      void run.finally(() => {
+        if (engineSwitch === run) engineSwitch = null
+      })
+      return run
+    }
+
     ws.on('message', async (raw: Buffer | string) => {
       if (socketGone || ws.readyState !== WS.OPEN) return
       let msg: ClientToServerMsg
@@ -235,7 +394,41 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         await engineSwitch.catch(() => {})
         if (socketGone || ws.readyState !== WS.OPEN) return
       }
-
+      if (asleep) {
+        const sleeping = asleep
+        switch (sleepAction(msg.type)) {
+          case 'ignore':
+            if (msg.type === 'session:resize' && msg.cols > 0 && msg.rows > 0) {
+              sleeping.cols = msg.cols
+              sleeping.rows = msg.rows
+            } else if (msg.type === 'mcp:register-external-tools' && Array.isArray((msg as any).tools)) {
+              sleeping.session.registeredTools = (msg as any).tools
+            } else if (msg.type === 'mcp:register-external-content') {
+              sleeping.session.registeredResources = Array.isArray(msg.resources) ? msg.resources : []
+              sleeping.session.registeredResourceTemplates = Array.isArray(msg.resourceTemplates)
+                ? msg.resourceTemplates
+                : []
+              sleeping.session.registeredPrompts = Array.isArray(msg.prompts) ? msg.prompts : []
+            }
+            return
+          case 'pass':
+            break
+          case 'release':
+            // A new chat or an explicit end on this socket: the sleeping one is
+            // simply left stopped (its transcript stays resumable).
+            await sleeping.done
+            if (asleep === sleeping) {
+              asleep = null
+              authenticatedSessionId = null
+            }
+            if (socketGone || ws.readyState !== WS.OPEN) return
+            break
+          case 'wake':
+            if (!(await (engineSwitch ?? wake()))) return
+            if (socketGone || ws.readyState !== WS.OPEN) return
+            break
+        }
+      }
       switch (msg.type) {
         case 'session:create': {
           // INC-2026-0070: a create carries no conversation id by definition —

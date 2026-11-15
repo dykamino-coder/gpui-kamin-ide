@@ -104,6 +104,15 @@ export class SessionCliControl {
     return this.modTurnWorking() || this.osc === 'working' || this.osc === 'blocked'
   }
 
+  /** Why this CLI must keep running, or null when it sits idle at its prompt.
+   *  Unknown turn state counts as work: hibernation never guesses. */
+  liveWork(): 'turn' | 'submission' | 'status-unknown' | null {
+    if (!this.authoritative()) return 'status-unknown'
+    if (this.busy()) return 'turn'
+    if (this.submissions?.pending()) return 'submission'
+    return null
+  }
+
   authoritative(): boolean {
     return !!(this.mod?.healthy() && this.modReady) || this.osc !== undefined
   }
