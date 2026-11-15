@@ -45,6 +45,7 @@ pub(super) fn register(view: &Entity<View>, window: &mut Window) -> Subscription
                         }
                     }
                 });
+            view.step_opts = Some(opts);
         });
     })
 }

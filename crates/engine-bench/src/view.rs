@@ -43,6 +43,9 @@ pub(super) struct View {
     pub(super) viewport: Option<(u32, u32)>,
     /// Шаг документа перед каждым кадром окна (`step::register`).
     pub(super) step: Option<gpui::Subscription>,
+    /// Опции, с которыми шаг этого кадра подготовил документ: кадр берёт их
+    /// же, а не строит вторые (каждые опции — свои контексты раскладки).
+    pub(super) step_opts: Option<RenderOpts>,
 }
 
 impl View {
@@ -85,7 +88,7 @@ impl Render for View {
                 .map(|request| rendered.duration_since(request));
         }
         drop(phases);
-        let opts = self.opts(window);
+        let opts = self.step_opts.take().unwrap_or_else(|| self.opts(window));
         // Коробка области просмотра принадлежит документу: неизменный кадр
         // он повторяет без сборки и раскладки (`Document::render_viewport`).
         let root = self.doc.render_viewport(&opts);
