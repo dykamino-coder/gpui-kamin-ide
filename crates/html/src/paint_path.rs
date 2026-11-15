@@ -44,3 +44,29 @@ pub const NAMES: [&str; 6] = [
     "refused_no_layer",
     "refused_by_layer",
 ];
+
+/// Census of a document's boxes for the paint-only path: how many paint only
+/// their own commands (`own`), and how many would refuse it, by reason
+/// (`paint::box_tree::styled::own_box_refusal`, controls).
+pub fn census(doc: &crate::Document) -> std::collections::BTreeMap<&'static str, u64> {
+    let mut out = std::collections::BTreeMap::new();
+    let state = doc.state_rc();
+    let mut stack: Vec<std::slice::Iter<'_, crate::dom::Node>> = vec![doc.nodes().iter()];
+    while let Some(list) = stack.last_mut() {
+        let Some(node) = list.next() else {
+            stack.pop();
+            continue;
+        };
+        let crate::dom::Node::Element(e) = node else {
+            continue;
+        };
+        let reason = if crate::document::paint_controls().contains(&e.tag.as_str()) {
+            Some("control")
+        } else {
+            crate::paint::box_tree::styled::own_box_refusal(&state, e)
+        };
+        *out.entry(reason.unwrap_or("own")).or_insert(0) += 1;
+        stack.push(e.children.iter());
+    }
+    out
+}

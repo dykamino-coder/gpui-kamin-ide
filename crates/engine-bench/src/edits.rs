@@ -35,6 +35,8 @@ pub(super) async fn run(
     let variants = [base.as_str(), edited.as_str()];
     // Документ сейчас держит вход: форма правки видна до первого замера.
     let same_shape = window.read_with(cx, |view, _| view.doc.mutations(&edited).is_some())?;
+    // Boxes of the input that paint only their own commands, and refusals by reason.
+    let census = window.read_with(cx, |view, _| kamin_html::paint_path::census(&view.doc))?;
     super::memory::steady(cx, capture).await?;
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
@@ -144,7 +146,7 @@ pub(super) async fn run(
     } else {
         "document_update"
     });
-    mode["scene_layer"] = json!({"samples": layer});
+    mode["scene_layer"] = json!({"samples": layer, "census": census});
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
     Ok((mode, work))

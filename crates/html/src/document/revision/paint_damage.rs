@@ -61,7 +61,8 @@ pub(crate) enum PaintDamage {
 
 /// Elements `paint::controls` paints with UA defaults: a declared
 /// background or border colour is new paint around them.
-const CONTROLS: [&str; 6] = ["input", "button", "select", "textarea", "meter", "progress"];
+pub(super) const CONTROLS: [&str; 6] =
+    ["input", "button", "select", "textarea", "meter", "progress"];
 
 /// The damage from `a` (old box) to `b` (new box of the same element).
 pub(crate) fn classify(a: &Element, b: &Element) -> PaintDamage {

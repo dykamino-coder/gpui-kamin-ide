@@ -33,26 +33,42 @@ pub(crate) fn paints_only_own_box(
     doc: &std::rc::Rc<crate::document::state::DocState>,
     e: &Element,
 ) -> bool {
-    if matches!(e.tag.as_str(), "html" | "body") || e.hover.is_some() {
-        return false;
+    own_box_refusal(doc, e).is_none()
+}
+
+/// Why the box of `e` does not paint its own commands only
+/// (`paints_only_own_box`); `None` when it does.
+pub(crate) fn own_box_refusal(
+    doc: &std::rc::Rc<crate::document::state::DocState>,
+    e: &Element,
+) -> Option<&'static str> {
+    if matches!(e.tag.as_str(), "html" | "body") {
+        return Some("root_canvas");
+    }
+    if e.hover.is_some() {
+        return Some("hover");
     }
     let style = BoxStyle::shared(e.style.used());
     let c = &style;
-    if c.inh.ui.hidden == Some(true)
-        || c.reset_fragmentation.bdb_clone
-        || c.reset_effects.filter_ref.is_some()
-        || c.reset_effects.backdrop_color.is_some()
-        || c.reset_transforms.transform.is_some()
-        || c.reset_transforms.transform_ancestor
-    {
-        return false;
-    }
-    let cx = crate::layout::cx::LayoutCx::default()
-        .with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
-    let empty = !e.children.iter().any(|n| !is_blank(n));
-    decorations(c, empty, cx.frame(), Some(&cx)).is_empty()
+    let reason = if c.inh.ui.hidden == Some(true) {
+        "hidden"
+    } else if c.reset_fragmentation.bdb_clone {
+        "clone"
+    } else if c.reset_effects.filter_ref.is_some() || c.reset_effects.backdrop_color.is_some() {
+        "filter"
+    } else if c.reset_transforms.transform.is_some() || c.reset_transforms.transform_ancestor {
+        "transform"
+    } else {
+        let cx = crate::layout::cx::LayoutCx::default()
+            .with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
+        let empty = !e.children.iter().any(|n| !is_blank(n));
+        if decorations(c, empty, cx.frame(), Some(&cx)).is_empty() {
+            return None;
+        }
+        "decoration"
+    };
+    Some(reason)
 }
-
 pub(crate) fn styled_div_with(
     e: &Element,
     style: &BoxStyle,

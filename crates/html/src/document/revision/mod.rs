@@ -192,3 +192,8 @@ impl Document {
         self.state.values.embedded_failure()
     }
 }
+
+/// The controls a restyle of paint values does not reach (paint_damage::CONTROLS).
+pub(super) fn paint_damage_controls() -> &'static [&'static str; 6] {
+    &paint_damage::CONTROLS
+}
