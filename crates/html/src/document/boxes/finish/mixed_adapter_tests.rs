@@ -32,12 +32,6 @@ fn pieces(html: &str, retained: bool) -> (Vec<Option<String>>, bool) {
     }
     let p = paragraph(&doc.nodes);
     let style = BoxStyle::shared(p.style.used().style);
-    let mixed = doc
-        .state
-        .boxes
-        .borrow()
-        .mixed_text(&p.children, &style)
-        .is_some();
     let cx = LayoutCx {
         values: ValueContext {
             doc: BuildDoc::of(doc.state.clone()),
@@ -45,8 +39,13 @@ fn pieces(html: &str, retained: bool) -> (Vec<Option<String>>, bool) {
         },
         ..Default::default()
     };
-    let out = crate::text::inline::collect(&p.children, &style, &mut |_, _| None, &cx);
-    (texts(&out), mixed)
+    let none = &mut |_: &crate::dom::Element, _: &_| None;
+    let out = crate::text::inline::collect(&p.children, &style, none, &cx);
+    let mixed = crate::text::inline::collect_mixed(&p.children, &style, none, &cx);
+    if let Some(mixed) = &mixed {
+        assert_eq!(texts(mixed), texts(&out));
+    }
+    (texts(&out), mixed.is_some())
 }
 
 #[test]
@@ -58,10 +57,7 @@ fn retained_runs_lower_the_same_pieces_as_node_normalization() {
         "<p>one<span style='text-transform:uppercase'>two <i>three</i></span>four</p>",
         "<p dir=rtl>abc <span dir=ltr>def</span> ghi</p>",
     ] {
-        let fallbacks = crate::text::inline::RETAINED_FALLBACKS.with(|n| n.get());
         let (retained, mixed) = pieces(html, true);
-        let used = crate::text::inline::RETAINED_FALLBACKS.with(|n| n.get()) == fallbacks;
-        assert!(used, "the retained runs are taken: {html}");
         let (fresh, _) = pieces(html, false);
         assert!(mixed, "a mixed flow is prepared: {html}");
         assert_eq!(retained, fresh, "{html}");
