@@ -75,6 +75,10 @@ export class McpTaskStore {
   private queued = 0
   private loaded = false
   private inlineOwners = new Map<string, string>()
+  /** Full records kept only in memory: a foreground command that settles
+   *  within the grace window never touches the disk. `persist` writes one when
+   *  it becomes a background task. */
+  private memory = new Map<string, TaskRecord>()
   /** Waiters for a record leaving `working`, woken right after the record is saved. */
   private settledWaiters = new Map<string, Set<() => void>>()
   constructor(
@@ -145,9 +149,10 @@ export class McpTaskStore {
     }
   }
   private async remove(id: string): Promise<void> {
-    await fs.unlink(path.join(this.directory, `${id}.json`)).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') throw error
-    })
+    if (!this.memory.delete(id))
+      await fs.unlink(path.join(this.directory, `${id}.json`)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error
+      })
     this.records.delete(id)
     this.bytes -= this.sizes.get(id) ?? 0
     this.sizes.delete(id)
@@ -161,6 +166,8 @@ export class McpTaskStore {
     }
   }
   private async read(task: TaskRecord): Promise<TaskRecord> {
+    const held = this.memory.get(task.taskId)
+    if (held) return structuredClone(held)
     if (task.status !== 'completed' || !task.result) return structuredClone(task)
     return JSON.parse(await fs.readFile(path.join(this.directory, `${task.taskId}.json`), 'utf8')) as TaskRecord
   }
@@ -196,14 +203,34 @@ export class McpTaskStore {
       }
     })
   }
-  private async save(task: TaskRecord): Promise<void> {
-    const text = JSON.stringify(task)
+  /** Byte size of `task`, checked against the retained-bytes limit. */
+  private admit(task: TaskRecord, text: string): number {
     const size = Buffer.byteLength(text)
-    const growth = size - (this.sizes.get(task.taskId) ?? 0)
     const previous = this.records.get(task.taskId)
     const previousCost = previous ? this.cost(previous, this.sizes.get(task.taskId)!) : 0
     if (this.accountedBytes() - previousCost + this.cost(task, size) > TASK_LIMITS.bytes)
       throw new TaskAdmissionError('retained_bytes')
+    return size
+  }
+  private index(task: TaskRecord, size: number): void {
+    this.records.set(task.taskId, this.metadata(task))
+    this.bytes += size - (this.sizes.get(task.taskId) ?? 0)
+    this.sizes.set(task.taskId, size)
+    if (task.status !== 'working') this.wake(task.taskId)
+  }
+  /** Keeps a record that is not on disk in memory; any other goes to disk. */
+  private async store(task: TaskRecord): Promise<void> {
+    if (this.memory.has(task.taskId)) this.hold(task)
+    else await this.save(task)
+  }
+  private hold(task: TaskRecord): void {
+    const size = this.admit(task, JSON.stringify(task))
+    this.memory.set(task.taskId, task)
+    this.index(task, size)
+  }
+  private async save(task: TaskRecord): Promise<void> {
+    const text = JSON.stringify(task)
+    const size = this.admit(task, text)
     const file = path.join(this.directory, `${task.taskId}.json`)
     const temporary = file + '.tmp'
     try {
@@ -229,10 +256,7 @@ export class McpTaskStore {
         if (error.code !== 'ENOENT') throw error
       })
     }
-    this.records.set(task.taskId, this.metadata(task))
-    this.bytes += growth
-    this.sizes.set(task.taskId, size)
-    if (task.status !== 'working') this.wake(task.taskId)
+    this.index(task, size)
   }
   private wake(id: string): void {
     const waiters = this.settledWaiters.get(id)
@@ -251,7 +275,14 @@ export class McpTaskStore {
       if (waiters!.size === 0 && this.settledWaiters.get(id) === waiters) this.settledWaiters.delete(id)
     }
   }
-  create(owner: string, toolName: string, input: Record<string, unknown>): Promise<TaskRecord> {
+  /** Admits a task. A non-durable one lives in memory until `persist`; a
+   *  server restart forgets it, as it forgets an ordinary inline call. */
+  create(
+    owner: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    options: { durable?: boolean } = {},
+  ): Promise<TaskRecord> {
     return this.run(async () => {
       const inputBytes = Buffer.byteLength(JSON.stringify(input))
       if (inputBytes > TASK_LIMITS.inputBytes) throw new TaskAdmissionError('input_bytes')
@@ -277,9 +308,43 @@ export class McpTaskStore {
         executionDeadlineMs:
           this.now() + (input.run_in_background === true ? TASK_LIMITS.backgroundExecutionMs : TASK_LIMITS.executionMs),
       }
-      await this.save(task)
+      if (options.durable === false) this.hold(task)
+      else await this.save(task)
       return structuredClone(task)
     })
+  }
+  /** Writes an in-memory task to disk after applying `change`, so it survives a
+   *  server restart from then on. A task already on disk is just updated. */
+  persist(owner: string, id: string, change: (task: TaskRecord) => void): Promise<TaskRecord | undefined> {
+    return this.run(async () => {
+      const held = this.memory.get(id)
+      if (!held || held.owner !== owner) return this.change(owner, id, change)
+      const task = structuredClone(held)
+      if (task.status === 'working') {
+        change(task)
+        task.lastUpdatedAt = new Date(this.now()).toISOString()
+      }
+      this.memory.delete(id)
+      try {
+        await this.save(task)
+      } catch (error) {
+        this.memory.set(id, held)
+        throw error
+      }
+      return structuredClone(task)
+    })
+  }
+  /** Drops the result body of a settled in-memory task once it was returned
+   *  inline; its metadata stays listed until the record expires. */
+  release(owner: string, id: string): Promise<void> {
+    return this.run(async () => {
+      const held = this.memory.get(id)
+      if (held?.owner === owner && held.status !== 'working') this.memory.set(id, this.metadata(held))
+    })
+  }
+  /** Whether the task's record is on disk (false for an in-memory or unknown task). */
+  isDurable(id: string): boolean {
+    return this.records.has(id) && !this.memory.has(id)
   }
   get(owner: string, id: string): Promise<TaskRecord | undefined> {
     return this.run(async () => {
@@ -312,7 +377,7 @@ export class McpTaskStore {
     return this.run(async () => {
       for (const task of this.records.values()) {
         if (task.owner !== owner || task.status === 'working' || task.hiddenFromCommands) continue
-        await this.save({
+        await this.store({
           ...(await this.read(task)),
           hiddenFromCommands: true,
         })
@@ -320,18 +385,19 @@ export class McpTaskStore {
     })
   }
   update(owner: string, id: string, change: (task: TaskRecord) => void): Promise<TaskRecord | undefined> {
-    return this.run(async () => {
-      const previous = this.records.get(id)
-      if (!previous || previous.owner !== owner) return undefined
-      if (previous.status !== 'working') return this.read(previous)
-      const task = structuredClone(previous)
-      change(task)
-      // Every terminal path releases input, including execution deadlines.
-      if (task.status !== 'working' && typeof previous.input.command === 'string') task.command = previous.input.command
-      task.lastUpdatedAt = new Date(this.now()).toISOString()
-      await this.save(task)
-      return structuredClone(task)
-    })
+    return this.run(() => this.change(owner, id, change))
+  }
+  private async change(owner: string, id: string, change: (task: TaskRecord) => void): Promise<TaskRecord | undefined> {
+    const previous = this.records.get(id)
+    if (!previous || previous.owner !== owner) return undefined
+    if (previous.status !== 'working') return this.read(previous)
+    const task = structuredClone(this.memory.get(id) ?? previous)
+    change(task)
+    // Every terminal path releases input, including execution deadlines.
+    if (task.status !== 'working' && typeof previous.input.command === 'string') task.command = previous.input.command
+    task.lastUpdatedAt = new Date(this.now()).toISOString()
+    await this.store(task)
+    return structuredClone(task)
   }
   settle(owner: string, id: string, result: unknown, denied?: string): Promise<TaskRecord | undefined> {
     return this.update(owner, id, (task) => {

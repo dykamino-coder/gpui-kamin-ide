@@ -3,8 +3,8 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 import type { McpResult } from './shell'
 import { windowsJobRunner } from './windows-job-runner'
+import { StreamCapture } from './shell-output'
 
-const MAX_OUTPUT_BYTES = 100 * 1024
 const TERMINATION_GRACE_MS = 1000
 const textResult = (text: string): McpResult => ({
   content: [{ type: 'text', text }],
@@ -13,6 +13,14 @@ const errorResult = (message: string): McpResult => ({
   ...textResult(`Error: ${message}`),
   isError: true,
 })
+
+/**
+ * The native shell tools drop leading blank lines and trailing whitespace of
+ * the output and keep everything between, line endings included.
+ */
+export function normalizeOutput(text: string): string {
+  return text.replace(/^(?:[ \t]*\r?\n)+/, '').trimEnd()
+}
 
 export function runForegroundCommand(
   command: string,
@@ -26,6 +34,8 @@ export function runForegroundCommand(
   /** A shell started ahead of time (warm-shell.ts); it already carries the
    *  same runner, flags, environment and folder as the spawn below. */
   prestarted?: () => ChildProcess | null,
+  /** The tool name in the empty-output notice, as the native tools word it. */
+  label = 'Command',
 ): Promise<McpResult> {
   if (signal?.aborted)
     return Promise.resolve({
@@ -33,11 +43,8 @@ export function runForegroundCommand(
       isError: true,
     })
   return new Promise((resolve) => {
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
-    let totalBytes = 0
-    let stderrBytes = 0
-    let truncated = false
+    const stdoutCapture = new StreamCapture('stdout')
+    const stderrCapture = new StreamCapture('stderr')
     let timedOut = false
     let cancelled = false
     let settled = false
@@ -51,24 +58,23 @@ export function runForegroundCommand(
       signal?.removeEventListener('abort', abort)
       child.stdout?.destroy()
       child.stderr?.destroy()
+      // finish() also closes a saved-output file, so it runs on every path.
+      const stdout = stdoutCapture.finish()
+      const stderr = stderrCapture.finish()
       if (failure) {
         resolve(errorResult(failure))
         return
       }
       const parts: string[] = []
-      const stdout = Buffer.concat(stdoutChunks).toString('utf8')
-      const stderr = Buffer.concat(stderrChunks).toString('utf8')
-      if (stdout) parts.push(stdout)
-      if (stderr) parts.push(`\n--- stderr ---\n${stderr}`)
-      if (truncated || stderrBytes > MAX_OUTPUT_BYTES)
-        parts.push(`\n[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB per stream]`)
-      if (cancelled) parts.push('\n[Command cancelled; termination requested]')
+      const output = normalizeOutput(stdout + stderr)
+      if (code !== null && code !== 0) parts.push(`Exit code ${code}`)
+      if (output) parts.push(output)
+      if (cancelled) parts.push('[Command cancelled; termination requested]')
       if (timedOut)
         parts.push(
-          `\n[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`,
+          `[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`,
         )
-      if (code !== null && code !== 0) parts.push(`\n[Exit code: ${code}]`)
-      const result = textResult(parts.join('') || `Command completed with exit code ${code ?? 0}`)
+      const result = textResult(parts.join('\n') || `(${label} completed with no output)`)
       result.exitCode = code
       if (timedOut || cancelled || code !== 0) result.isError = true
       resolve(result)
@@ -164,18 +170,7 @@ export function runForegroundCommand(
         const text = liveStdout.write(chunk)
         if (text) onOutput(text)
       }
-      if (truncated) return
-      totalBytes += chunk.length
-      if (totalBytes > MAX_OUTPUT_BYTES) {
-        truncated = true
-        // Take only what fits
-        const remaining = MAX_OUTPUT_BYTES - (totalBytes - chunk.length)
-        if (remaining > 0) {
-          stdoutChunks.push(chunk.subarray(0, remaining))
-        }
-      } else {
-        stdoutChunks.push(chunk)
-      }
+      stdoutCapture.push(chunk)
     })
 
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -183,13 +178,8 @@ export function runForegroundCommand(
         const text = liveStderr.write(chunk)
         if (text) onOutput(text)
       }
-      // Cap stderr on its OWN byte counter — the old check gated on the stdout
-      // counter but never incremented for stderr, so a command with tiny stdout
-      // and huge stderr (a noisy compiler, `yes 1>&2`) buffered without bound.
-      if (stderrBytes >= MAX_OUTPUT_BYTES) return
-      const remaining = MAX_OUTPUT_BYTES - stderrBytes
-      stderrChunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk)
-      stderrBytes += chunk.length
+      // Each stream keeps its own bounded memory (head + tail) and its own file.
+      stderrCapture.push(chunk)
     })
 
     child.on('error', (err) => finish(null, `Failed to execute command: ${err.message}`))

@@ -203,6 +203,49 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
     expect(result).toMatchObject({ resultType: 'complete', content: [{ text: 'quick output' }] })
     expect(result.taskId).toBeUndefined()
   })
+  it('never writes a foreground command that settles within the grace window to disk', async () => {
+    const open = vi.spyOn(fs, 'open')
+    const rename = vi.spyOn(fs, 'rename')
+    try {
+      const pending = request('tools/call', { name: 'Bash', arguments: { command: 'quick-memory' } })
+      let frame: { requestId: string } | undefined
+      await vi.waitFor(() => {
+        frame = mock.send.mock.calls
+          .map(([, f]) => f)
+          .find((f) => f.type === 'mcp:call' && f.input?.command === 'quick-memory')
+        expect(frame).toBeDefined()
+      })
+      await tasks.settleMcpTask(session, {
+        type: 'mcp:response',
+        requestId: frame!.requestId,
+        taskOwner: session.mcpEndpoint!.id,
+        result: 'memory output',
+      })
+      expect(rpcResult(await (await pending).text())).toMatchObject({ content: [{ text: 'memory output' }] })
+      expect(open).not.toHaveBeenCalled()
+      expect(rename).not.toHaveBeenCalled()
+      expect(tasks.mcpTasks.isDurable(frame!.requestId)).toBe(false)
+      await expect(
+        fs.stat(path.join(mock.home, '.claude', 'bridge-mcp', 'tasks', `${frame!.requestId}.json`)),
+      ).rejects.toThrow()
+    } finally {
+      open.mockRestore()
+      rename.mockRestore()
+    }
+  })
+  it('writes a foreground command to disk when it turns into a background task, so a restarted server resumes it', async () => {
+    const id = await create('outlives grace')
+    expect(tasks.mcpTasks.isDurable(id)).toBe(true)
+    const { McpTaskStore } = await import('./mcp-task-store')
+    const restarted = new McpTaskStore(path.join(mock.home, '.claude', 'bridge-mcp', 'tasks'))
+    const owner = session.mcpEndpoint!.id
+    expect(await restarted.get(owner, id)).toMatchObject({ status: 'working', background: true })
+    expect((await restarted.working()).some((task) => task.taskId === id)).toBe(true)
+    expect(await restarted.settle(owner, id, 'after restart')).toMatchObject({
+      status: 'completed',
+      result: { content: [{ text: 'after restart' }] },
+    })
+  })
   it('preserves synchronous calls when the client omits task opt-in', async () => {
     const response = await request('tools/call', { name: 'Bash', arguments: { command: 'short' } }, false)
     expect(await response.text()).toContain('ordinary result')
@@ -395,7 +438,12 @@ describe('retention overload through the actual HTTP handler', () => {
       TASK_LIMITS.perOwner++
       vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('synthetic disk failure with a private path'))
     }
-    const response = await request('tools/call', { name: 'Bash', arguments: {} })
+    // A foreground call is admitted in memory, so a disk failure only refuses
+    // the tasks that are written at admission: explicit background ones.
+    const response = await request('tools/call', {
+      name: 'Bash',
+      arguments: kind === 'write' ? { run_in_background: true } : {},
+    })
     expect(response.status).toBe(503)
     const body = await response.json()
     expect(body.error.data).toEqual({
