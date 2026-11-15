@@ -12805,10 +12805,15 @@ function registerBackground(child, bgId, description, context, tool, displayComm
 ` : "") + `The command is running in the background. Read its output with BashOutput (bash_id: ${bgId}) and stop it with KillShell.`
   );
 }
-async function readBackgroundOutput(input) {
+function backgroundShellId(input) {
   const raw = input.bash_id ?? input.shell_id ?? input.id;
-  const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult2("bash_id is required (the numeric id from run_in_background)");
+  if (typeof raw === "number") return Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
+  const text = typeof raw === "string" ? raw.trim() : "";
+  return /^\d{1,15}$/.test(text) ? Number(text) : null;
+}
+async function readBackgroundOutput(input) {
+  const bgId = backgroundShellId(input);
+  if (bgId === null) return errorResult2(BASH_ID_REQUIRED);
   const out = backgroundOutput.get(bgId);
   if (!out) return errorResult2(`No background shell with bash_id ${bgId} (it may have been evicted).`);
   const stdoutPart = unread(out.stdout, out.stdoutDropped, out.stdoutCursor);
@@ -12843,9 +12848,8 @@ ${newStderr}
   return textResult2(parts.join(""));
 }
 async function killBackgroundShell(input) {
-  const raw = input.bash_id ?? input.shell_id ?? input.id;
-  const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult2("bash_id is required (the numeric id from run_in_background)");
+  const bgId = backgroundShellId(input);
+  if (bgId === null) return errorResult2(BASH_ID_REQUIRED);
   const child = backgroundProcesses.get(bgId);
   const out = backgroundOutput.get(bgId);
   if (!child && !out) return errorResult2(`No background shell with bash_id ${bgId}.`);
@@ -12938,7 +12942,7 @@ async function stopBackgroundShellForOwner(tabId, owner, id) {
   if (out?.tabId !== tabId || out.owner !== owner) return;
   await stopLocalBackgroundShell(tabId, id);
 }
-var import_node_child_process5, import_node_path7, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
+var import_node_child_process5, import_node_path7, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, BASH_ID_REQUIRED, cachedPwsh, pwshLookupInFlight;
 var init_shell = __esm({
   "src/main/mcp/tools/shell.ts"() {
     "use strict";
@@ -12961,6 +12965,7 @@ var init_shell = __esm({
     cachedBash = null;
     bashLookupInFlight = null;
     BG_OUTPUT_CAP = 100 * 1024;
+    BASH_ID_REQUIRED = "bash_id is required: the numeric id from a legacy run_in_background result. For a background command that returned an MCP task, pass the MCP task id (a UUID such as 56ad45d4-ce5a-\u2026), not the short task name the CLI shows.";
     cachedPwsh = null;
     pwshLookupInFlight = null;
   }
@@ -14037,6 +14042,109 @@ var init_file_read_cache = __esm({
     MAX_CACHEABLE_FILE_BYTES = 2 * 1024 * 1024;
     cache = /* @__PURE__ */ new Map();
     cacheBytes = 0;
+  }
+});
+
+// src/main/mcp/tools/read-range.ts
+function lineWindow(text, offset, limit) {
+  let pos = 0;
+  for (let skipped = 0; skipped < offset; skipped++) {
+    const nl = text.indexOf("\n", pos);
+    if (nl < 0) return { lines: [], more: false, total: () => skipped + 1 };
+    pos = nl + 1;
+  }
+  const lines = [];
+  while (lines.length < limit) {
+    const nl = text.indexOf("\n", pos);
+    if (nl < 0) {
+      lines.push(text.slice(pos));
+      const count = offset + lines.length;
+      return { lines, more: false, total: () => count };
+    }
+    lines.push(text.slice(pos, nl));
+    pos = nl + 1;
+  }
+  const rest = pos;
+  const shown = offset + lines.length;
+  return {
+    lines,
+    more: true,
+    total: () => {
+      let count = shown + 1;
+      for (let at = text.indexOf("\n", rest); at >= 0; at = text.indexOf("\n", at + 1)) count++;
+      return count;
+    }
+  };
+}
+async function readUtf8LineWindow(filePath, offset, limit, countAll) {
+  const file = await import_promises3.default.open(filePath, "r");
+  try {
+    let first = true;
+    let index = 0;
+    const kept = [];
+    let collected = 0;
+    const decodeWindow = () => {
+      const text = Buffer.concat(kept).toString("utf8");
+      return text.split("\n");
+    };
+    for (; ; ) {
+      const buffer = Buffer.allocUnsafe(CHUNK);
+      const { bytesRead } = await file.read(buffer, 0, CHUNK, null);
+      let bytes = buffer.subarray(0, bytesRead);
+      if (first) {
+        first = false;
+        const encoding = detectEncoding(bytes);
+        if (encoding !== "utf8" && encoding !== "utf8bom" || looksBinary(bytes, encoding)) return null;
+        if (encoding === "utf8bom") bytes = bytes.subarray(3);
+      }
+      if (bytesRead === 0) {
+        if (index < offset) return { lines: [], more: false, total: () => index + 1 };
+        const lines = decodeWindow();
+        const count = offset + lines.length;
+        return { lines, more: false, total: () => count };
+      }
+      let pos = 0;
+      while (pos <= bytes.length) {
+        const nl = bytes.indexOf(NEWLINE, pos);
+        if (nl < 0) {
+          if (index >= offset) kept.push(bytes.subarray(pos));
+          break;
+        }
+        if (index >= offset) {
+          kept.push(bytes.subarray(pos, collected + 1 === limit ? nl : nl + 1));
+          collected++;
+        }
+        index++;
+        pos = nl + 1;
+        if (collected === limit) {
+          const lines = decodeWindow();
+          let count = offset + lines.length + 1;
+          if (countAll) {
+            for (let at = bytes.indexOf(NEWLINE, pos); at >= 0; at = bytes.indexOf(NEWLINE, at + 1)) count++;
+            for (; ; ) {
+              const more = Buffer.allocUnsafe(CHUNK);
+              const read = (await file.read(more, 0, CHUNK, null)).bytesRead;
+              if (read === 0) break;
+              const view = more.subarray(0, read);
+              for (let at = view.indexOf(NEWLINE); at >= 0; at = view.indexOf(NEWLINE, at + 1)) count++;
+            }
+          }
+          return { lines, more: true, total: () => count };
+        }
+      }
+    }
+  } finally {
+    await file.close();
+  }
+}
+var import_promises3, CHUNK, NEWLINE;
+var init_read_range = __esm({
+  "src/main/mcp/tools/read-range.ts"() {
+    "use strict";
+    import_promises3 = __toESM(require("node:fs/promises"), 1);
+    init_text_codec();
+    CHUNK = 1024 * 1024;
+    NEWLINE = 10;
   }
 });
 
@@ -19952,7 +20060,7 @@ async function newestFirst(files) {
   if (process.platform === "win32") {
     for (let i = 0; i < files.length; i += STAT_CONCURRENCY * 2) {
       const batch = files.slice(i, i + STAT_CONCURRENCY * 2);
-      const stats = await Promise.all(batch.map((f) => import_promises3.default.stat(f).then((s) => s.mtimeMs, () => 0)));
+      const stats = await Promise.all(batch.map((f) => import_promises4.default.stat(f).then((s) => s.mtimeMs, () => 0)));
       mtimes.set(stats, i);
     }
   } else {
@@ -19969,13 +20077,13 @@ async function newestFirst(files) {
   order.sort((a, b) => mtimes[b] - mtimes[a] || (files[a] < files[b] ? -1 : files[a] > files[b] ? 1 : 0));
   return order.map((i) => files[i]);
 }
-var import_node_child_process7, import_node_fs10, import_promises3, import_node_path11, import_fast_glob, MAX_GLOB_LISTED, SKIPPED_DIRECTORIES, GLOB_CHARS;
+var import_node_child_process7, import_node_fs10, import_promises4, import_node_path11, import_fast_glob, MAX_GLOB_LISTED, SKIPPED_DIRECTORIES, GLOB_CHARS;
 var init_glob_tool = __esm({
   "src/main/mcp/tools/glob-tool.ts"() {
     "use strict";
     import_node_child_process7 = require("node:child_process");
     import_node_fs10 = __toESM(require("node:fs"), 1);
-    import_promises3 = __toESM(require("node:fs/promises"), 1);
+    import_promises4 = __toESM(require("node:fs/promises"), 1);
     import_node_path11 = __toESM(require("node:path"), 1);
     import_fast_glob = __toESM(require_out4(), 1);
     init_fs_shared();
@@ -20160,7 +20268,7 @@ async function sortByMtime(files) {
     await Promise.all(
       files.slice(i, i + STAT_CONCURRENCY).map(async (f) => {
         try {
-          times.set(f, (await import_promises4.default.stat(f)).mtimeMs);
+          times.set(f, (await import_promises5.default.stat(f)).mtimeMs);
         } catch {
           times.set(f, 0);
         }
@@ -20279,7 +20387,7 @@ async function grepFallback(o) {
   }
   let isFile = false;
   try {
-    isFile = (await import_promises4.default.stat(o.searchPath)).isFile();
+    isFile = (await import_promises5.default.stat(o.searchPath)).isFile();
   } catch {
     return errorResult4(`Path does not exist: ${o.searchPath}`);
   }
@@ -20294,9 +20402,9 @@ async function grepFallback(o) {
 }
 async function matchFile(regex, file, outputMode, lineNumbers, withPath) {
   try {
-    const stat = await import_promises4.default.stat(file);
+    const stat = await import_promises5.default.stat(file);
     if (stat.size > MAX_READ_BYTES) return null;
-    const buffer = await import_promises4.default.readFile(file);
+    const buffer = await import_promises5.default.readFile(file);
     if (buffer.subarray(0, 8192).includes(0)) return null;
     const lines = buffer.toString("utf8").split("\n");
     const out = [];
@@ -20380,11 +20488,11 @@ function fallbackResult(results, offset, headLimit, timedOut, timeoutMs, notice 
 [Search timed out after ${seconds}s \u2014 partial results above; try a narrower path or pattern]` : "");
   return textResult4((output || "No matches found.") + suffix + notice);
 }
-var import_promises4, import_node_path12, import_node_child_process8, import_fast_glob2, VCS_DIRECTORIES, MAX_COLUMNS, RIPGREP_TIMEOUT_MS, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE;
+var import_promises5, import_node_path12, import_node_child_process8, import_fast_glob2, VCS_DIRECTORIES, MAX_COLUMNS, RIPGREP_TIMEOUT_MS, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
-    import_promises4 = __toESM(require("node:fs/promises"), 1);
+    import_promises5 = __toESM(require("node:fs/promises"), 1);
     import_node_path12 = __toESM(require("node:path"), 1);
     import_node_child_process8 = require("node:child_process");
     import_fast_glob2 = __toESM(require_out4(), 1);
@@ -20476,7 +20584,7 @@ async function readFile(input, context) {
     if (ext === ".ipynb") {
       return notebookRead({ file_path: filePath });
     }
-    const stat = await import_promises5.default.stat(filePath);
+    const stat = await import_promises6.default.stat(filePath);
     if (!stat.isFile()) return errorResult4(`Not a file: ${filePath}`);
     if (stat.size > MAX_READ_BYTES) {
       return errorResult4(
@@ -20484,8 +20592,8 @@ async function readFile(input, context) {
       );
     }
     if (IMAGE_EXTENSIONS.has(ext)) {
-      const raw2 = await import_promises5.default.readFile(filePath);
-      const base64 = raw2.toString("base64");
+      const raw = await import_promises6.default.readFile(filePath);
+      const base64 = raw.toString("base64");
       const mimeType = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : `image/${ext.slice(1)}`;
       return { content: [{ type: "image", data: base64, mimeType }] };
     }
@@ -20497,25 +20605,28 @@ async function readFile(input, context) {
         `File content (${formatKb(stat.size)}) exceeds maximum allowed size (${formatKb(WARN_READ_BYTES)}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`
       );
     }
-    const file = await readTextCached(filePath, stat);
-    if (file.binary) {
-      return errorResult4(
-        `This tool cannot read binary files. ${filePath} appears to be binary (it contains NUL bytes). Use Bash (for example \`xxd | head\` or \`file\`) to inspect it.`
-      );
-    }
-    const raw = file.content;
-    if (raw.length === 0 || raw.trim().length === 0) {
-      return textResult4("<system-reminder>Warning: File exists but has empty contents.</system-reminder>");
-    }
-    const allLines = raw.split("\n");
     const offset = typeof input.offset === "number" ? Math.max(0, Math.floor(input.offset) - 1) : 0;
     const limit = typeof input.limit === "number" && input.limit > 0 ? Math.floor(input.limit) : 2e3;
-    if (offset >= allLines.length) {
+    let view = ranged && stat.size > STREAMED_RANGE_BYTES ? await readUtf8LineWindow(filePath, offset, limit, input.limit === void 0) : null;
+    if (!view) {
+      const file = await readTextCached(filePath, stat);
+      if (file.binary) {
+        return errorResult4(
+          `This tool cannot read binary files. ${filePath} appears to be binary (it contains NUL bytes). Use Bash (for example \`xxd | head\` or \`file\`) to inspect it.`
+        );
+      }
+      const raw = file.content;
+      if (raw.length === 0 || raw.trim().length === 0) {
+        return textResult4("<system-reminder>Warning: File exists but has empty contents.</system-reminder>");
+      }
+      view = lineWindow(raw, offset, limit);
+    }
+    if (view.lines.length === 0) {
       return textResult4(
-        `<system-reminder>Warning: the file exists but is shorter than the provided offset (${offset + 1}). The file has ${allLines.length} lines.</system-reminder>`
+        `<system-reminder>Warning: the file exists but is shorter than the provided offset (${offset + 1}). The file has ${view.total()} lines.</system-reminder>`
       );
     }
-    const slice = allLines.slice(offset, offset + limit);
+    const slice = view.lines;
     const formatted = slice.map((line, i) => {
       const text = line.endsWith("\r") ? line.slice(0, -1) : line;
       const shown = text.length > MAX_LINE_LENGTH ? text.slice(0, MAX_LINE_LENGTH) + "... [truncated]" : text;
@@ -20528,10 +20639,10 @@ async function readFile(input, context) {
     }
     let suffix = "";
     const end = offset + slice.length;
-    if (input.limit === void 0 && end < allLines.length) {
+    if (input.limit === void 0 && view.more) {
       suffix = `
 
-<system-reminder>Showing lines ${offset + 1}-${end} of ${allLines.length}. Use offset/limit to read the rest.</system-reminder>`;
+<system-reminder>Showing lines ${offset + 1}-${end} of ${view.total()}. Use offset/limit to read the rest.</system-reminder>`;
     }
     return textResult4(formatted + suffix);
   } catch (err) {
@@ -20548,7 +20659,7 @@ function fsError(err, filePath) {
 }
 async function existingEncoding(filePath) {
   try {
-    const handle = await import_promises5.default.open(filePath, "r");
+    const handle = await import_promises6.default.open(filePath, "r");
     try {
       const head = Buffer.alloc(3);
       const { bytesRead } = await handle.read(head, 0, 3, 0);
@@ -20566,9 +20677,9 @@ async function writeFile(input, context) {
   const filePath = resolveToolPath(input.file_path, context?.cwd);
   if (typeof content !== "string") return errorResult4("content is required");
   try {
-    await import_promises5.default.mkdir(import_node_path13.default.dirname(filePath), { recursive: true });
+    await import_promises6.default.mkdir(import_node_path13.default.dirname(filePath), { recursive: true });
     const bytes = encodeText(content, await existingEncoding(filePath));
-    await import_promises5.default.writeFile(filePath, bytes);
+    await import_promises6.default.writeFile(filePath, bytes);
     invalidateFileCache(filePath);
     return textResult4(`Successfully wrote ${bytes.length} bytes to ${filePath}`);
   } catch (err) {
@@ -20615,11 +20726,11 @@ async function editFile(input, context) {
   try {
     let stat;
     try {
-      stat = await import_promises5.default.stat(filePath);
+      stat = await import_promises6.default.stat(filePath);
     } catch (err) {
       if (err?.code === "ENOENT" && oldString === "") {
-        await import_promises5.default.mkdir(import_node_path13.default.dirname(filePath), { recursive: true });
-        await import_promises5.default.writeFile(filePath, newString, "utf8");
+        await import_promises6.default.mkdir(import_node_path13.default.dirname(filePath), { recursive: true });
+        await import_promises6.default.writeFile(filePath, newString, "utf8");
         invalidateFileCache(filePath);
         return textResult4(`The file ${filePath} has been created successfully.`);
       }
@@ -20660,7 +20771,7 @@ String: ${oldString}`
       const replacement = preserveQuoteStyle(toEol(oldString), old, toEol(newString));
       result = replaceAll ? content.replaceAll(old, () => replacement) : content.replace(old, () => replacement);
     }
-    await import_promises5.default.writeFile(filePath, encodeText(result, file.encoding));
+    await import_promises6.default.writeFile(filePath, encodeText(result, file.encoding));
     invalidateFileCache(filePath);
     return textResult4(`The file ${filePath} has been updated successfully.`);
   } catch (err) {
@@ -20679,7 +20790,7 @@ async function globSearch(input, context) {
     return errorResult4("Refusing an unbounded glob from a filesystem root \u2014 scope `path` to a project or narrow the pattern.");
   }
   try {
-    if (!(await import_promises5.default.stat(query.base)).isDirectory()) return errorResult4(`Path is not a directory: ${query.base}`);
+    if (!(await import_promises6.default.stat(query.base)).isDirectory()) return errorResult4(`Path is not a directory: ${query.base}`);
   } catch (err) {
     return fsError(err, query.base);
   }
@@ -20696,15 +20807,16 @@ async function globSearch(input, context) {
     return errorResult4(err instanceof Error ? err.message : String(err));
   }
 }
-var import_promises5, import_node_path13, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_LINE_LENGTH, GLOB_SHOWN;
+var import_promises6, import_node_path13, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_LINE_LENGTH, STREAMED_RANGE_BYTES, GLOB_SHOWN;
 var init_file_system = __esm({
   "src/main/mcp/tools/file-system.ts"() {
     "use strict";
-    import_promises5 = __toESM(require("node:fs/promises"), 1);
+    import_promises6 = __toESM(require("node:fs/promises"), 1);
     import_node_path13 = __toESM(require("node:path"), 1);
     init_notebook();
     init_file_read_cache();
     init_text_codec();
+    init_read_range();
     init_glob_tool();
     init_working_directory();
     init_fs_shared();
@@ -20714,6 +20826,7 @@ var init_file_system = __esm({
     LEFT_DOUBLE_CURLY_QUOTE = "\u201C";
     RIGHT_DOUBLE_CURLY_QUOTE = "\u201D";
     MAX_LINE_LENGTH = 2e3;
+    STREAMED_RANGE_BYTES = 2 * 1024 * 1024;
     GLOB_SHOWN = 100;
   }
 });
@@ -38131,7 +38244,7 @@ async function resolvesToPrivate(hostname) {
   const asInt = decodeIntHost(host);
   if (asInt) return ipv4IsPrivate(asInt);
   try {
-    const addrs = await (0, import_promises6.lookup)(host, { all: true });
+    const addrs = await (0, import_promises7.lookup)(host, { all: true });
     if (!addrs.length) return true;
     return addrs.some((a) => a.family === 4 ? ipv4IsPrivate(a.address) : ipv6IsPrivate(a.address));
   } catch {
@@ -38256,12 +38369,12 @@ ${content}`
     return errorResult5(`Failed to fetch ${url}: ${msg}`);
   }
 }
-var import_turndown, import_promises6, import_node_net, MAX_CONTENT_BYTES, MAX_RAW_HTML_BYTES, MAX_REDIRECTS;
+var import_turndown, import_promises7, import_node_net, MAX_CONTENT_BYTES, MAX_RAW_HTML_BYTES, MAX_REDIRECTS;
 var init_web = __esm({
   "src/main/mcp/tools/web.ts"() {
     "use strict";
     import_turndown = __toESM(require_turndown_cjs(), 1);
-    import_promises6 = require("node:dns/promises");
+    import_promises7 = require("node:dns/promises");
     import_node_net = __toESM(require("node:net"), 1);
     MAX_CONTENT_BYTES = 500 * 1024;
     MAX_RAW_HTML_BYTES = 5 * 1024 * 1024;
@@ -43103,7 +43216,7 @@ var SubmissionHandoff = class {
 
 // src/main/ws/transcript-mirror.ts
 var import_fs4 = require("fs");
-var import_promises7 = __toESM(require("fs/promises"), 1);
+var import_promises8 = __toESM(require("fs/promises"), 1);
 var import_path5 = __toESM(require("path"), 1);
 var MAX_APPEND_GAP_BYTES = 256 * 1024;
 var TranscriptMirror = class {
@@ -43121,10 +43234,10 @@ var TranscriptMirror = class {
   async readCursor() {
     if (this.cursor) return this.cursor;
     try {
-      const raw = await import_promises7.default.readFile(this.sidecar, "utf8");
+      const raw = await import_promises8.default.readFile(this.sidecar, "utf8");
       const parsed = JSON.parse(raw);
       if (parsed.v !== 3 || typeof parsed.pos !== "number" || !parsed.head) return null;
-      const stat = await import_promises7.default.stat(this.file);
+      const stat = await import_promises8.default.stat(this.file);
       if (stat.size === 0) return null;
       if (typeof parsed.size === "number" && stat.size < parsed.size) return null;
       this.cursor = { head: parsed.head, pos: parsed.pos, lastUuid: parsed.lastUuid, lastPos: parsed.lastPos };
@@ -43157,7 +43270,7 @@ var TranscriptMirror = class {
     const start = localEnd - window10;
     let text;
     try {
-      const fh = await import_promises7.default.open(this.file, "r");
+      const fh = await import_promises8.default.open(this.file, "r");
       try {
         const buf = Buffer.alloc(window10);
         const { bytesRead } = await fh.read(buf, 0, window10, start);
@@ -43192,7 +43305,7 @@ var TranscriptMirror = class {
   async readTail(maxRecords) {
     let size;
     try {
-      size = (await import_promises7.default.stat(this.file)).size;
+      size = (await import_promises8.default.stat(this.file)).size;
     } catch {
       return [];
     }
@@ -43201,7 +43314,7 @@ var TranscriptMirror = class {
     const start = size - window10;
     let text;
     try {
-      const fh = await import_promises7.default.open(this.file, "r");
+      const fh = await import_promises8.default.open(this.file, "r");
       try {
         const buf = Buffer.alloc(window10);
         const { bytesRead } = await fh.read(buf, 0, window10, start);
@@ -43284,7 +43397,7 @@ var TranscriptMirror = class {
         const fresh = ordered.filter((r) => r._pos >= Math.max(existing.pos, (existing.lastPos ?? -1) + 1));
         if (fresh.length === 0) return;
         await this.close();
-        await import_promises7.default.appendFile(this.file, fresh.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
+        await import_promises8.default.appendFile(this.file, fresh.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
         const last2 = fresh.at(-1);
         this.cursor = { head, pos: last2._posEnd ?? existing.pos, lastUuid: last2.uuid, lastPos: last2._pos };
         await this.writeSidecar();
@@ -43292,7 +43405,7 @@ var TranscriptMirror = class {
       }
       await this.close();
       const payload = ordered.map((r) => JSON.stringify(r)).join("\n") + "\n";
-      await import_promises7.default.writeFile(this.file, payload, "utf8");
+      await import_promises8.default.writeFile(this.file, payload, "utf8");
       const last = ordered[ordered.length - 1];
       this.cursor = { head, pos: last._posEnd ?? 0, lastUuid: last.uuid, lastPos: last._pos };
       await this.writeSidecar();
@@ -43306,8 +43419,8 @@ var TranscriptMirror = class {
     this.queue = this.queue.then(async () => {
       await this.close();
       this.cursor = null;
-      await import_promises7.default.rm(this.file, { force: true });
-      await import_promises7.default.rm(this.sidecar, { force: true });
+      await import_promises8.default.rm(this.file, { force: true });
+      await import_promises8.default.rm(this.sidecar, { force: true });
     }).catch(() => {
     });
     return this.queue;
@@ -43332,7 +43445,7 @@ var TranscriptMirror = class {
   /** Server offsets address the original JSONL, not JSON.stringify's mirror.
    * Locate their local byte position without parsing the entire disk cache. */
   async localPosition(beforePos) {
-    const fh = await import_promises7.default.open(this.file, "r").catch(() => null);
+    const fh = await import_promises8.default.open(this.file, "r").catch(() => null);
     if (!fh) return 0;
     try {
       let low = 0;
@@ -43386,11 +43499,11 @@ var TranscriptMirror = class {
   }
   async writeSidecar() {
     if (!this.cursor) return;
-    const st = await import_promises7.default.stat(this.file).catch(() => null);
+    const st = await import_promises8.default.stat(this.file).catch(() => null);
     const body = { v: 3, ...this.cursor, ...st ? { size: st.size } : {} };
     const tmp = `${this.sidecar}.tmp`;
-    await import_promises7.default.writeFile(tmp, JSON.stringify(body), "utf8");
-    await import_promises7.default.rename(tmp, this.sidecar);
+    await import_promises8.default.writeFile(tmp, JSON.stringify(body), "utf8");
+    await import_promises8.default.rename(tmp, this.sidecar);
   }
 };
 
@@ -54054,7 +54167,7 @@ var import_fs35 = __toESM(require("fs"), 1);
 var import_path35 = __toESM(require("path"), 1);
 
 // src/attachments.ts
-var import_promises8 = __toESM(require("node:fs/promises"), 1);
+var import_promises9 = __toESM(require("node:fs/promises"), 1);
 var import_node_os10 = __toESM(require("node:os"), 1);
 var import_node_path18 = __toESM(require("node:path"), 1);
 async function saveAttachment(base64, name, root = import_node_os10.default.tmpdir()) {
@@ -54062,10 +54175,10 @@ async function saveAttachment(base64, name, root = import_node_os10.default.tmpd
     throw new Error("Invalid attachment encoding");
   }
   const safe = String(name || "attachment").replace(/[/\\\x00-\x1f<>:"|?*]/g, "_").slice(-120);
-  await import_promises8.default.mkdir(root, { recursive: true });
-  const directory = await import_promises8.default.mkdtemp(import_node_path18.default.join(root, "bridge-upload-"));
+  await import_promises9.default.mkdir(root, { recursive: true });
+  const directory = await import_promises9.default.mkdtemp(import_node_path18.default.join(root, "bridge-upload-"));
   const file = import_node_path18.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
-  await import_promises8.default.writeFile(file, Buffer.from(base64, "base64"), { flag: "wx", mode: 384 });
+  await import_promises9.default.writeFile(file, Buffer.from(base64, "base64"), { flag: "wx", mode: 384 });
   return file;
 }
 
