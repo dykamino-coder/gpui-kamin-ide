@@ -98,6 +98,8 @@ mod box_edges;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;
 mod retained_layout;
+mod update_rendering;
+pub use update_rendering::ElementPlace;
 pub use retained_layout::{ElementIdContext, ElementLayoutContext, RetainedLayout};
 use layout_inputs::PrepaintRoots;
 pub use layout_inputs::LayoutInputId;
@@ -1314,6 +1316,10 @@ pub struct Window {
     appearance: WindowAppearance,
     pub(crate) appearance_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) button_layout_observers: SubscriberSet<(), AnyObserver>,
+    /// KaminIDE patch: the hosts' steps before a draw (`update_rendering`).
+    pub(crate) update_rendering_observers: SubscriberSet<(), AnyObserver>,
+    /// KaminIDE patch: element states of layout reads (`update_rendering`).
+    pub(crate) read_states: update_rendering::ReadStates,
     active: Rc<Cell<bool>>,
     visibility: WindowVisibility,
     pub(crate) visibility_observers:
@@ -2248,6 +2254,8 @@ impl Window {
             appearance,
             appearance_observers: SubscriberSet::new(),
             button_layout_observers: SubscriberSet::new(),
+            update_rendering_observers: SubscriberSet::new(),
+            read_states: Default::default(),
             active,
             visibility,
             visibility_observers: SubscriberSet::new(),
@@ -3581,7 +3589,12 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // KaminIDE patch: the hosts lay out before the paint pass (`update_rendering`).
+        self.update_rendering(cx);
         let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
+        // A frame takes what reads set aside; the rest is stale, like the
+        // states a frame does not access.
+        self.read_states.states.clear();
         // KaminIDE patch: the empty base style new elements share must not outlive them.
         crate::elements::refinement_share::release_empty();
         drawn
@@ -4898,8 +4911,8 @@ impl Window {
     where
         S: 'static,
     {
-        self.invalidator.debug_assert_paint_or_prepaint();
-
+        // KaminIDE patch: without an id nothing is read or written, so an
+        // element without one lays out in any phase (`update_rendering`).
         if let Some(global_id) = global_id {
             self.with_element_state(global_id, |state, cx| {
                 let (result, state) = f(Some(state), cx);
@@ -8592,11 +8605,23 @@ impl Window {
         state_type: TypeId,
     ) -> ((GlobalElementId, TypeId), Option<ElementStateBox>) {
         let key = (global_id.clone(), state_type);
+        // KaminIDE patch: a read sets states aside for the next frame, which
+        // takes them before those of the drawn frame (`update_rendering`).
+        if self.read_states.active {
+            let state = self
+                .read_states
+                .states
+                .remove(&key)
+                .or_else(|| self.next_frame.element_states.remove(&key))
+                .or_else(|| self.rendered_frame.element_states.remove(&key));
+            return (key, state);
+        }
         self.next_frame.accessed_element_states.push(key.clone());
         let state = self
             .next_frame
             .element_states
             .remove(&key)
+            .or_else(|| self.read_states.states.remove(&key))
             .or_else(|| self.rendered_frame.element_states.remove(&key));
         (key, state)
     }
@@ -8607,6 +8632,9 @@ impl Window {
         key: (GlobalElementId, TypeId),
         state: ElementStateBox,
     ) -> Option<ElementStateBox> {
+        if self.read_states.active {
+            return self.read_states.states.insert(key, state);
+        }
         self.next_frame.element_states.insert(key, state)
     }
 

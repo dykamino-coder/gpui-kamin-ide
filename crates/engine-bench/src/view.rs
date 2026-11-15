@@ -20,7 +20,7 @@ pub(super) struct Phases {
     pub(super) paint: Duration,
     pub(super) renders: usize,
     pub(super) observer_setup: Duration,
-    requested: Option<Instant>,
+    pub(super) requested: Option<Instant>,
     pub(super) request_to_render: Option<Duration>,
     request_finished: Option<Clock>,
 }
@@ -39,18 +39,16 @@ pub(super) struct View {
     pub(super) doc: Document,
     pub(super) phases: Rc<RefCell<Phases>>,
     pub(super) viewport: Option<(u32, u32)>,
+    /// Шаг документа перед каждым кадром окна (`step::register`).
+    pub(super) step: Option<gpui::Subscription>,
+    /// Опции, с которыми шаг этого кадра подготовил документ: кадр берёт их
+    /// же, а не строит вторые (каждые опции — свои контексты раскладки).
+    pub(super) step_opts: Option<RenderOpts>,
 }
 
-impl Render for View {
-    fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        kamin_html::work::phase!(_work, BuildElements);
-        let started = Clock::now();
-        let mut phases = self.phases.borrow_mut();
-        let rendered = Instant::now();
-        phases.request_to_render = phases
-            .requested
-            .map(|request| rendered.duration_since(request));
-        drop(phases);
+impl View {
+    /// Опции кадра документа: те же у шага и у кадра.
+    pub(super) fn opts(&self, window: &Window) -> RenderOpts {
         let mut text = window.text_style();
         text.color = rgb(0).into();
         text.font_family = "Times New Roman".into();
@@ -71,6 +69,24 @@ impl Render for View {
             frag: Default::default(),
         };
         opts.cx.deferred.freeze_scrollbars = true;
+        opts
+    }
+}
+
+impl Render for View {
+    fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        kamin_html::work::phase!(_work, BuildElements);
+        let started = Clock::now();
+        let mut phases = self.phases.borrow_mut();
+        // Шаг документа (`step`) уже отметил начало кадра.
+        if phases.request_to_render.is_none() {
+            let rendered = Instant::now();
+            phases.request_to_render = phases
+                .requested
+                .map(|request| rendered.duration_since(request));
+        }
+        drop(phases);
+        let opts = self.step_opts.take().unwrap_or_else(|| self.opts(window));
         // Коробка области просмотра принадлежит документу: неизменный кадр
         // он повторяет без сборки и раскладки (`Document::render_viewport`).
         let root = self.doc.render_viewport(&opts);
@@ -137,10 +153,12 @@ impl Element for Timed {
             let mut phases = self.phases.borrow_mut();
             // Между callback выполняются root layout и обвязка GPUI; вложенные
             // layout внутри prepaint остаются в prepaint, не считаясь повторно.
+            // Раскладка шага до кадра — часть той же фазы.
+            let step = phases.layout.take().unwrap_or_default();
             phases.layout = phases
                 .request_finished
                 .take()
-                .map(|end| started.duration_since(end));
+                .map(|end| started.duration_since(end) + step);
         }
         kamin_html::work::switch!(Prepaint);
         self.root.prepaint(window, cx);
