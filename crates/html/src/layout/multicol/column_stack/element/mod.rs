@@ -44,7 +44,13 @@ impl ColumnStack {
 
     /// План колонок и prepaint кусков, спаннеров и линеек по мерам детей.
     #[inline(never)]
-    fn place_columns(&mut self, bounds: Bounds<Pixels>, col_w: f32, window: &mut Window, cx: &mut App) {
+    fn place_columns(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        col_w: f32,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let planned = self.plan_columns(bounds, col_w);
         let step = col_w + self.gap;
         self.prepaint_frags(window, cx, bounds, col_w, &planned.0, step);
@@ -120,9 +126,8 @@ impl Hooks for ColumnStack {
             return;
         }
         match self.measured_layout.clone() {
-            Some(mut engine) => {
-                window.with_retained_layout(&mut engine, |window| self.paint_columns(bounds, window, cx))
-            }
+            Some(mut engine) => window
+                .with_retained_layout(&mut engine, |window| self.paint_columns(bounds, window, cx)),
             None => self.paint_columns(bounds, window, cx),
         }
     }

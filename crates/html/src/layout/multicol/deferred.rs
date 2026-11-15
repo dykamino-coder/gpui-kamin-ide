@@ -13,6 +13,9 @@ mod children;
 #[cfg(test)]
 mod clip_tests;
 mod geometry;
+#[cfg(all(test, feature = "work-counters"))]
+mod measure_reuse_tests;
+mod measured;
 #[cfg(test)]
 mod oof_tests;
 #[cfg(test)]
@@ -39,35 +42,7 @@ pub(crate) struct Recipe {
     /// The row extents of the spanner flow this stack is a row of.
     row: Option<std::rc::Rc<crate::layout::multicol::spanner::RowSlot>>,
     /// The columns the last final measure prepared, kept for prepaint.
-    measured: std::cell::RefCell<Option<Measured>>,
-}
-
-/// Columns prepared by a measure at a definite width, in their own layout
-/// engine: prepaint at the same column width takes them instead of
-/// preparing the columns again (Blink keeps the `LayoutResult` of its
-/// column layout and paints its fragments; the measure and the paint of a
-/// column set are one layout).
-pub(crate) struct Measured {
-    col_w: u32,
-    children: Vec<crate::layout::fragment::types::StackChild>,
-    geometry: std::rc::Rc<crate::layout::positioned::containing_block::metrics::Snapshot>,
-    copies: usize,
-    forced_h: Option<f32>,
-    balance_failure: Option<crate::layout::fragment::token::Error>,
-    pub(crate) engine: gpui::RetainedLayout,
-}
-
-impl Measured {
-    /// Put the prepared columns into `stack`, as `Recipe::prepare` would.
-    pub(crate) fn install(self, stack: &mut ColumnStack) -> gpui::RetainedLayout {
-        stack.col_w.set(f32::from_bits(self.col_w));
-        stack.children = self.children;
-        stack.oof.geometry = self.geometry;
-        stack.copies = self.copies;
-        stack.forced_h = self.forced_h;
-        stack.balance_failure = self.balance_failure;
-        self.engine
-    }
+    measured: std::cell::RefCell<Option<measured::Measured>>,
 }
 
 impl Recipe {
@@ -190,30 +165,7 @@ impl Recipe {
         let col_width =
             ((width - stack.gap * (stack.count as f32 - 1.0)) / stack.count as f32).max(1.0);
         let extent = match keep {
-            Some(context) => {
-                let mut engine = gpui::RetainedLayout::default();
-                let extent = window.with_retained_layout(&mut engine, |window| {
-                    window.with_element_layout_context(context, |window| {
-                        self.prepare(stack, col_width, window, cx);
-                        self.measured_extent(stack, width, window, cx)
-                    })
-                });
-                let children = std::mem::take(&mut stack.children);
-                let geometry = std::mem::take(&mut stack.oof.geometry);
-                // Repeated table bands were requested, not laid out, by the
-                // baseline measure: prepaint builds those columns again.
-                let kept = !children.iter().any(|c| c.repeat.is_some()).then(|| Measured {
-                    col_w: col_width.to_bits(),
-                    children,
-                    geometry,
-                    copies: stack.copies,
-                    forced_h: stack.forced_h,
-                    balance_failure: stack.balance_failure,
-                    engine,
-                });
-                self.measured.replace(kept);
-                extent
-            }
+            Some(context) => self.measure_kept(stack, (width, col_width), context, window, cx),
             None => gpui::with_temporary_element_arena(|| {
                 window.with_nested_layout(|window| {
                     self.prepare(stack, col_width, window, cx);
@@ -254,11 +206,6 @@ impl Recipe {
             baselines.measure(stack, &kids, width, &lines, &plan, &spans, window, cx)
         };
         (height, first, last)
-    }
-
-    /// The columns the last kept measure prepared at column width `col_w`.
-    pub(crate) fn take_measured(&self, col_w: f32) -> Option<Measured> {
-        self.measured.take().filter(|m| m.col_w == col_w.to_bits())
     }
 }
 
