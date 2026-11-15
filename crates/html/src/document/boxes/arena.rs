@@ -79,6 +79,17 @@ impl Arena {
             .flatten()
     }
 
+    pub(super) fn prepared(&mut self, id: BoxId, prepared: Option<super::finish::Prepared>) {
+        let Some(slot) = self.slots.get_mut(id.slot as usize) else {
+            return;
+        };
+        if slot.generation == id.generation
+            && let Some(record) = slot.value.as_mut()
+        {
+            record.prepared = prepared;
+        }
+    }
+
     pub(super) fn link(&mut self, id: BoxId, change: Link) -> bool {
         let Some(slot) = self.slots.get_mut(id.slot as usize) else {
             return false;
@@ -124,6 +135,7 @@ impl Arena {
             // через commit, а resize не требует повторного сбора текста.
             if record.inline != content {
                 record.inline = content;
+                record.prepared = None;
             }
         }
     }
@@ -158,6 +170,7 @@ mod tests {
                 generation: 1,
             }),
             inline: None,
+            prepared: None,
             epoch: 0,
         }
     }

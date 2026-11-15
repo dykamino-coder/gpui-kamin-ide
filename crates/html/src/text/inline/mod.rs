@@ -51,6 +51,7 @@ mod tabs;
 pub use crate::text::inline::bidi_controls::bidi_marks;
 pub use crate::text::inline::tabs::tab_stops;
 
+pub(crate) mod normalization;
 mod text_case;
 
 use crate::dom::{Element, Node};
@@ -174,6 +175,25 @@ pub fn collect(
     atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Vec<Piece> {
+    let prepared = cx.doc().boxes.borrow().normalized(children, inherited);
+    if let Some(text) = prepared {
+        let mut pieces = text
+            .items
+            .iter()
+            .map(|item| {
+                let crate::document::boxes::inline::ItemKind::Text { start, end } = item.kind
+                else {
+                    unreachable!("text-only prepared IFC")
+                };
+                Piece::Text {
+                    text: text.text[start..end].to_owned(),
+                    style: inherited.clone(),
+                }
+            })
+            .collect::<Vec<_>>();
+        collect::set_boundary_spacing(&mut pieces, None);
+        return pieces;
+    }
     collect_with_empty_metrics(
         children,
         inherited,

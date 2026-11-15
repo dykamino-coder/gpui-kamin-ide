@@ -3,7 +3,9 @@
 //! Входное Vec<Node> пока служит адаптером подготовки. Арена не хранит его снимков:
 //! публикация меняет существующие записи, а удаление увеличивает поколение слота.
 
+mod adapter;
 mod arena;
+mod finish;
 #[cfg(feature = "heap-report")]
 mod heap;
 pub(crate) mod inline;
@@ -30,14 +32,17 @@ pub(crate) struct BoxRecord {
     source: u64,
     origin: Source,
     pub(crate) inline: Option<Rc<inline::InlineContent>>,
+    prepared: Option<finish::Prepared>,
     epoch: u64,
 }
 
 #[derive(Default)]
 pub(crate) struct BoxTree {
     arena: Arena,
+    flows: std::collections::HashMap<(usize, usize), BoxId>,
     first: BoxId,
     epoch: u64,
+    finished: Option<(u64, crate::text::inline::normalization::Inputs)>,
 }
 
 impl BoxTree {
@@ -107,6 +112,7 @@ impl BoxTree {
         self.epoch += 1;
         let epoch = self.epoch;
         self.first = BoxId::NONE;
+        self.flows.clear();
         let mut inline = inline::Collection::default();
         // Фрагмент может состоять из текста или соседних inline без Element-
         // родителя. Его IFC принадлежит документной коробке, а не первому span.
@@ -126,6 +132,7 @@ impl BoxTree {
         if root.is_some() {
             self.first = root;
             inline.root(root);
+            self.flows.insert(finish::slice_key(nodes), root);
         }
         let mut pending = vec![(nodes.iter(), root, BoxId::NONE)];
         while let Some((siblings, parent, last)) = pending.last_mut() {
@@ -151,6 +158,9 @@ impl BoxTree {
                 self.first = id;
             }
             *last = id;
+            if !e.children.is_empty() {
+                self.flows.insert(finish::slice_key(&e.children), id);
+            }
             inline.enter(id, e);
             pending.push((e.children.iter(), id, BoxId::NONE));
         }
@@ -162,6 +172,9 @@ impl BoxTree {
                 self.arena.remove(id);
             }
         }
+        // CSS text preparation belongs to publication. Frame materialization
+        // rechecks only its actual inputs (not colors, fonts or viewport size).
+        self.finish(nodes, &crate::style::computed::BoxStyle::default(), true);
     }
 
     fn record(
@@ -182,6 +195,7 @@ impl BoxTree {
                 source,
                 origin,
                 inline: None,
+                prepared: None,
                 epoch: self.epoch,
             })
         })?;

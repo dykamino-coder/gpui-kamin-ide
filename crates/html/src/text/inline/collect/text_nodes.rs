@@ -38,6 +38,22 @@ pub(super) fn collect_text(
     case: &mut text_case::Context,
     out: &mut Vec<Piece>,
 ) {
+    let text = normalize_text(t, inherited, case, ends_with_zwsp(out));
+    if !text.is_empty() {
+        out.push(Piece::Text {
+            text,
+            style: inherited.clone(),
+        });
+    }
+}
+
+/// CSS Text input preparation, independent of GPUI pieces and line geometry.
+pub(crate) fn normalize_text(
+    t: &str,
+    inherited: &crate::style::computed::Computed,
+    case: &mut text_case::Context,
+    previous_zwsp: bool,
+) -> String {
     let ruby_text;
     let t = if inherited.reset_text_box.ruby_suppress_breaks && t.contains('\n') {
         ruby_text = t.replace('\n', " ");
@@ -87,15 +103,10 @@ pub(super) fn collect_text(
     // узла, а нулевой пробел — последний знак предыдущего куска.
     if inherited.inh.text_flow.preserve_newlines != Some(true)
         && leading_segment_break(t)
-        && ends_with_zwsp(&out)
+        && previous_zwsp
         && text.starts_with(' ')
     {
         text.remove(0);
     }
-    if !text.is_empty() {
-        out.push(Piece::Text {
-            text,
-            style: inherited.clone(),
-        });
-    }
+    text
 }

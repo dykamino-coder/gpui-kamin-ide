@@ -6,13 +6,20 @@ use kamin_heap::{HeapSize, Ops};
 impl HeapSize for BoxTree {
     fn heap_size(&self, ops: &mut Ops) -> usize {
         self.arena.heap_size(ops)
+            + ops.table::<((usize, usize), crate::dom::BoxId)>(self.flows.capacity())
+            + self
+                .finished
+                .as_ref()
+                .map_or(0, |(_, inputs)| inputs.flow_heap_size(ops))
     }
 }
 
 impl HeapSize for BoxRecord {
     fn heap_size(&self, ops: &mut Ops) -> usize {
         ops.at("document/box-sources", |ops| self.origin.heap_size(ops))
-            + ops.at("text/box-ifc", |ops| self.inline.heap_size(ops))
+            + ops.at("text/box-ifc", |ops| {
+                self.inline.heap_size(ops) + self.prepared.heap_size(ops)
+            })
     }
 }
 

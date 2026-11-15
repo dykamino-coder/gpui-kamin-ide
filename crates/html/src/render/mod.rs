@@ -45,6 +45,10 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // проход только сверяет входы.
     let changed =
         crate::style::cascade::materialize::materialize_changed(nodes, root.style_rc(), vcx);
+    if stable {
+        let boxes: &std::cell::RefCell<crate::document::boxes::BoxTree> = &opts.cx.doc().boxes;
+        boxes.borrow_mut().finish(nodes, &root, changed);
+    }
     // Прежние вычисленные группы отпущены: выведенные из них группы больше не нужны.
     vcx.doc.derived.release_unowned();
     let prepared = opts.cx.layout().preparation.get(nodes, stable, changed);

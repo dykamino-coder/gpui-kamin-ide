@@ -46,6 +46,7 @@ impl Document {
                 if let Some(nodes) = nodes {
                     // Plan::Clean доказывает неизменность всех прочитанных
                     // входов: обновляются только непрочитанные атрибуты.
+                    self.state.boxes.borrow_mut().rebind(&nodes);
                     self.nodes = Rc::new(nodes);
                 }
                 let base = self.state.values.images.borrow().base().cloned();
