@@ -20,6 +20,7 @@
 
 mod boxes;
 mod frame;
+mod order;
 mod splice;
 mod write;
 
@@ -92,6 +93,10 @@ pub mod layer_counters {
     pub static VALUES_WRITTEN: AtomicU64 = AtomicU64::new(0);
     /// Runs of boxes' own commands recorded again (`Window::rerecord_layer_box`).
     pub static BOXES_RERECORDED: AtomicU64 = AtomicU64::new(0);
+    /// Runs recorded again but refused: a paint from scratch would order a
+    /// later command otherwise (or the layer is 3D), so the host paints the
+    /// layer again (`SceneLayer::plan_box`).
+    pub static RUNS_REORDERED: AtomicU64 = AtomicU64::new(0);
     /// Bindings not made because the quad was painted into a group's scene.
     pub static GROUP_BINDS_SKIPPED: AtomicU64 = AtomicU64::new(0);
     /// Layers whose bindings or runs named another scene (`SceneLayer::finish`):
@@ -242,3 +247,5 @@ impl LayerHandle {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod order_tests;

@@ -3,7 +3,7 @@
 //!
 //! A host repaints a box whose painted values changed and whose layout did
 //! not by painting only the box's own commands again, in the paint state the
-//! first recording saved, under the box's key; the layer replaces the box's
+//! first recording saved; the layer replaces the box's
 //! run with them (`SceneLayer::replace_box`). Neither the box's descendants
 //! nor its neighbours paint again, and the frame that shows the layer copies
 //! none of its primitives.
@@ -15,7 +15,7 @@ use crate::{PaintTraversal, Style};
 
 impl Window {
     /// The own paint `f` of box `owner` with border box `bounds`: inside a
-    /// layer recording it takes one key and keeps its paint state for a later
+    /// layer recording it notes its run and keeps its paint state for a later
     /// recording of the box; elsewhere it only names the owner of its values.
     pub(crate) fn with_box_paint<R>(
         &mut self,
@@ -35,7 +35,7 @@ impl Window {
             fill: None,
         };
         let area = self.box_area(&env);
-        if !self.next_frame.scene.open_box(owner, area, env, None) {
+        if !self.next_frame.scene.open_box(owner, area, env) {
             return self.with_paint_owner(owner, f);
         }
         let result = self.with_paint_owner(owner, f);
@@ -86,8 +86,8 @@ impl Window {
     }
 
     /// Paint the own commands of box `owner` in `layer` again with `paint`
-    /// (given the border box), in the paint state of its recording and under
-    /// its key, and replace its runs with them. `None`, with the layer as it
+    /// (given the border box), in the paint state of its recording, and
+    /// replace its runs with them, ordered as a paint from scratch orders them. `None`, with the layer as it
     /// was for the box's runs not yet replaced, when the box has no
     /// replaceable run or the new commands would need another order; then
     /// the host paints the layer again. `Some(moved)`: whether paint
@@ -111,19 +111,19 @@ impl Window {
         }
         let mut moved = false;
         for at in runs {
-            let (key, area, env) = {
+            let (area, env) = {
                 let content = layer.0.content.borrow();
                 let b = &content.boxes[at];
-                (b.key, b.area, b.env)
+                (b.area, b.env)
             };
             if env.transformation != TransformationMatrix::unit() {
                 return None;
             }
-            let (scene, bindings) = self.paint_box_run(owner, key, area, env, cx, &mut paint);
+            let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);
             let mut current = layer.0.content.borrow_mut();
-            let ink = current.check_box(at, &scene)?;
+            let plan = current.check_box(at, &scene)?;
             let content = Rc::make_mut(&mut *current);
-            let (damage, shifted) = content.replace_box(at, scene, bindings, ink);
+            let (damage, shifted) = content.replace_box(at, scene, bindings, plan);
             moved |= shifted;
             if let Some(rect) = damage {
                 let old = layer.0.damage.get();
@@ -138,11 +138,10 @@ impl Window {
         Some(moved)
     }
 
-    /// Paint one run of box `owner` into a scratch scene, in `env`, under `key`.
+    /// Paint one run of box `owner` into a scratch scene, in `env`.
     fn paint_box_run(
         &mut self,
         owner: u32,
-        key: crate::scene::DrawOrder,
         area: Bounds<ScaledPixels>,
         env: BoxEnv,
         cx: &mut App,
@@ -161,7 +160,7 @@ impl Window {
         self.content_mask_stack.push(env.mask);
         let opacity = mem::replace(&mut self.element_opacity, env.opacity);
         self.box_fill = env.fill;
-        self.next_frame.scene.open_box(owner, area, env, Some(key));
+        self.next_frame.scene.open_box(owner, area, env);
         self.with_rem_size(Some(env.rem_size), |window| {
             window.with_paint_owner(owner, |window| paint(window, cx, env.bounds))
         });

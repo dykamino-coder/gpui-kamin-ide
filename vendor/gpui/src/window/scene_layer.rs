@@ -59,7 +59,6 @@ impl Window {
         // The content painted again is about the size of its last recording:
         // its lists start at that size instead of growing by copies.
         let mut scene = Scene::default();
-        scene.keyed = true;
         let (mut bindings, mut boxes) = (Vec::new(), Vec::new());
         if let Some(last) = &source {
             scene.reserve_like(&last.scene);

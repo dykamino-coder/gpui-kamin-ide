@@ -199,17 +199,15 @@ fn env() -> super::BoxEnv {
 }
 
 /// Paint box `owner` of `area` as the quads `fills` (the first bound as its
-/// background, the others as borders would be) into `scene`, under `key`
-/// when given.
+/// background, the others as borders would be) into `scene`.
 fn paint_box(
     scene: &mut Scene,
     bindings: &mut Vec<Binding>,
     owner: u32,
     area: Bounds<ScaledPixels>,
     fills: &[(Bounds<ScaledPixels>, Hsla)],
-    key: Option<crate::scene::DrawOrder>,
 ) -> super::BoxRange {
-    assert!(scene.open_box(owner, area, env(), key));
+    assert!(scene.open_box(owner, area, env()));
     for (n, &(b, color)) in fills.iter().enumerate() {
         let at = scene.quads.len() as u32;
         scene.insert_primitive(quad(b, color, 1.));
@@ -228,8 +226,7 @@ fn paint_box(
     scene.close_box().expect("the box was open")
 }
 
-/// Boxes 1, 2 and 3 side by side (one key: they do not overlap) with 2, 1
-/// and 2 quads, and a quad of no box over all of them.
+/// Boxes 1, 2 and 3 side by side with 2, 1 and 2 quads, and a quad of no box over all of them.
 fn boxes_layer() -> LayerHandle {
     let (mut scene, mut bindings, mut boxes) = (Scene::default(), Vec::new(), Vec::new());
     let one = rect(0., 0., 100., 20.);
@@ -239,7 +236,6 @@ fn boxes_layer() -> LayerHandle {
         1,
         one,
         &[(one, red()), (rect(0., 0., 100., 2.), blue())],
-        None,
     ));
     let two = rect(0., 20., 100., 20.);
     boxes.push(paint_box(
@@ -248,7 +244,6 @@ fn boxes_layer() -> LayerHandle {
         2,
         two,
         &[(two, red())],
-        None,
     ));
     let three = rect(0., 40., 100., 20.);
     boxes.push(paint_box(
@@ -257,7 +252,6 @@ fn boxes_layer() -> LayerHandle {
         3,
         three,
         &[(three, blue()), (rect(0., 40., 100., 2.), red())],
-        None,
     ));
     scene.insert_primitive(quad(rect(0., 0., 100., 60.), hsla(0., 0., 0., 0.5), 1.));
     LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))
@@ -269,16 +263,16 @@ fn rerecord(
     at: usize,
     fills: &[(Bounds<ScaledPixels>, Hsla)],
 ) -> Option<bool> {
-    let (owner, key, area) = {
+    let (owner, area) = {
         let content = layer.content();
         let b = &content.boxes[at];
-        (b.owner, b.key, b.area)
+        (b.owner, b.area)
     };
     let (mut scene, mut bindings) = (Scene::default(), Vec::new());
-    paint_box(&mut scene, &mut bindings, owner, area, fills, Some(key));
+    paint_box(&mut scene, &mut bindings, owner, area, fills);
     let mut current = layer.0.content.borrow_mut();
-    let ink = current.check_box(at, &scene)?;
-    let (_, moved) = std::rc::Rc::make_mut(&mut current).replace_box(at, scene, bindings, ink);
+    let plan = current.check_box(at, &scene)?;
+    let (_, moved) = std::rc::Rc::make_mut(&mut current).replace_box(at, scene, bindings, plan);
     Some(moved)
 }
 
@@ -336,13 +330,8 @@ fn painted(layer: &LayerHandle) -> Vec<(u32, Vec<Bounds<ScaledPixels>>)> {
 }
 
 #[test]
-fn boxes_that_do_not_overlap_share_a_key_and_keep_their_runs_apart() {
+fn boxes_keep_their_runs_apart() {
     let layer = boxes_layer();
-    let content = layer.content();
-    let keys: Vec<_> = content.boxes.iter().map(|b| b.key).collect();
-    assert_eq!(keys[0], keys[1]);
-    assert_eq!(keys[1], keys[2]);
-    drop(content);
     assert_eq!(painted(&layer)[1], (2, vec![rect(0., 20., 100., 20.)]));
 }
 
@@ -389,27 +378,30 @@ fn a_box_run_is_replaced_one_to_many_many_to_none_and_none_to_one() {
 }
 
 #[test]
-fn a_run_whose_new_ink_crosses_a_box_of_the_same_key_is_refused() {
+fn a_run_whose_new_ink_would_raise_a_later_box_is_refused() {
     let layer = boxes_layer();
     let version = layer.content().version();
-    // Over box 3: the earlier key would paint it under box 3, out of paint order.
+    let refused = layer_counters::RUNS_REORDERED.load(Relaxed);
+    // Over box 3's fill, of the new fill's bucket: a paint from scratch
+    // raises box 3 above it.
     assert_eq!(
         rerecord(&layer, 1, &[(rect(0., 20., 100., 30.), red())]),
         None
     );
     assert_eq!(layer.content().version(), version, "nothing was replaced");
+    assert!(layer_counters::RUNS_REORDERED.load(Relaxed) > refused);
 }
 
 /// The run of box 2 (`boxes_layer`) replaced by one quad painted with a
 /// border of width `width` and no fill, as a border that appears.
 fn rerecord_border(layer: &LayerHandle, width: f32) -> Option<bool> {
-    let (owner, key, area) = {
+    let (owner, area) = {
         let content = layer.content();
         let b = &content.boxes[1];
-        (b.owner, b.key, b.area)
+        (b.owner, b.area)
     };
     let mut scene = Scene::default();
-    assert!(scene.open_box(owner, area, env(), Some(key)));
+    assert!(scene.open_box(owner, area, env()));
     if width > 0. {
         let mut bordered = quad(rect(0., 20., 100., 20.), hsla(0., 0., 0., 0.), 1.);
         bordered.border_color = blue();
@@ -418,8 +410,8 @@ fn rerecord_border(layer: &LayerHandle, width: f32) -> Option<bool> {
     }
     scene.close_box().expect("the box was open");
     let mut current = layer.0.content.borrow_mut();
-    let ink = current.check_box(1, &scene)?;
-    let (_, moved) = std::rc::Rc::make_mut(&mut current).replace_box(1, scene, Vec::new(), ink);
+    let plan = current.check_box(1, &scene)?;
+    let (_, moved) = std::rc::Rc::make_mut(&mut current).replace_box(1, scene, Vec::new(), plan);
     Some(moved)
 }
 
@@ -456,9 +448,9 @@ fn a_group_scene_holds_no_box_run() {
     // one result: a run there would name commands of another scene.
     let mut scene = Scene::default();
     scene.in_group = true;
-    assert!(!scene.open_box(7, rect(0., 0., 10., 10.), env(), None));
+    assert!(!scene.open_box(7, rect(0., 0., 10., 10.), env()));
     scene.in_group = false;
-    assert!(scene.open_box(7, rect(0., 0., 10., 10.), env(), None));
+    assert!(scene.open_box(7, rect(0., 0., 10., 10.), env()));
 }
 
 #[test]

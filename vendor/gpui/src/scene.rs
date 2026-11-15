@@ -133,13 +133,6 @@ pub struct PaintGroup {
 #[derive(Default)]
 #[expect(missing_docs)]
 pub struct Scene {
-    /// KaminIDE patch: a scene layer recording, whose box runs take orders
-    /// `key + 1 + n` of their key's bucket (`scene::layer::boxes`). Layers
-    /// pushed in it (a line's glyphs) take the top of their bucket: a frame
-    /// without layers draws quads before sprites of one order, so the box
-    /// fills of a bucket draw before the glyphs, whose ink may pass their
-    /// line's bounds onto a neighbour the bounds tree sees no overlap with.
-    pub(crate) keyed: bool,
     pub(crate) segment_capture: Option<Box<segments::Capture>>,
     pub(crate) paint_operations: Vec<PaintOperation>,
     /// KaminIDE patch: группы, нарисованные в отдельные буферы.
@@ -419,15 +412,10 @@ impl Scene {
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        let order = self.tree_mut().insert(bounds) * ORDER_STEP + self.layer_offset();
+        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
         self.layer_stack.push(order);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds, order));
-    }
-
-    /// The offset of a layer's order in its bucket (`keyed`).
-    fn layer_offset(&self) -> DrawOrder {
-        if self.keyed { ORDER_STEP - 1 } else { 0 }
     }
 
     pub fn pop_layer(&mut self) {
@@ -472,10 +460,7 @@ impl Scene {
                 ORDER_STEP + self.bottom_seq
             }
             Some(o) => o,
-            // KaminIDE patch: a box's own command waits for the box's key
-            // (`scene::layer::boxes`).
-            None if self.open_box.is_some() => 0,
-            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
+            None =>self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
         };
         match &mut primitive {
             Primitive::Shadow(shadow) => {
