@@ -2,7 +2,7 @@
 #
 # 1. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
 # 2. Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.
-# 3. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
+# 3. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen (counted also where no sink is open and carried out of an isolated scene, for the ink probes of the paint around it); exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
 # 4. Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.
 # 5. Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.
 # 6. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
@@ -30120,10 +30120,10 @@ index 0000000000000000000000000000000000000000..034695032ea9996211c1dca22dbdc9d2
 +}
 diff --git a/vendor/gpui/src/window/paint_scope.rs b/vendor/gpui/src/window/paint_scope.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ea39641835bab004bb51e7bef5393ff4f9ea7b2b
+index 0000000000000000000000000000000000000000..414ac343a27afcf935e5176721d3d4f94eefd3c4
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_scope.rs
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,159 @@
 +//! Живая идентичность прохода и композиционных областей одного окна.
 +
 +use super::*;
@@ -30274,6 +30274,12 @@ index 0000000000000000000000000000000000000000..ea39641835bab004bb51e7bef5393ff4
 +        mem::swap(&mut self.next_frame.scene, &mut scene);
 +        self.with_restore(scene, |window, scene| {
 +            mem::swap(&mut window.next_frame.scene, scene);
++            // Listeners and state reads go to the window, not the scene: the
++            // effects the isolated paint allowed (`Window::offscreen_inert`)
++            // stay allowed for the ink probes of the paint around it.
++            let inner = scene.ink_allowed;
++            let outer = &mut window.next_frame.scene.ink_allowed;
++            *outer = (outer.0 + inner.0, outer.1 + inner.1);
 +        }, |window| window.with_paint_scope(f))
 +    }
 +}
@@ -31503,10 +31509,10 @@ index 0000000000000000000000000000000000000000..9d92561b810c8a95400783f1054dbeed
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c67fb2a4f889ca9b52263640e499bad2529de662
+index 0000000000000000000000000000000000000000..16572a407655f604b6e7e5dea9ab578ff4dd2e4a
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,671 @@
+@@ -0,0 +1,672 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -32054,18 +32060,19 @@ index 0000000000000000000000000000000000000000..c67fb2a4f889ca9b52263640e499bad2
 +    /// state records, and state that is at its default. Open ink sinks then
 +    /// allow those effects; otherwise they are tainted.
 +    pub fn offscreen_inert<R>(&mut self, f: impl FnOnce(&mut Self) -> (R, bool)) -> R {
-+        if self.next_frame.scene.ink.is_empty() && self.next_frame.scene.ink_scope == 0 {
-+            return f(self).0;
-+        }
 +        let start = self.paint_index();
 +        let (result, inert) = f(self);
 +        let end = self.paint_index();
 +        let scene = &mut self.next_frame.scene;
++        // Allowed effects count even where no sink is open: paint in an
++        // isolated scene (`with_isolated_scene`, a multicol column copy) has
++        // none, and the ink probe of the paint around it (`InkProbe`)
++        // compares these counts.
 +        if inert {
 +            scene.ink_allowed.0 += (end.mouse_listeners_index - start.mouse_listeners_index) as u32;
 +            scene.ink_allowed.1 +=
 +                (end.accessed_element_states_index - start.accessed_element_states_index) as u32;
-+        } else {
++        } else if !scene.ink.is_empty() || scene.ink_scope != 0 {
 +            ink_taint(&scene.ink, scene.ink_scope);
 +            scoped_ink(scene.ink_scope, |sink| sink.taint_in(scene.ink_scope));
 +        }

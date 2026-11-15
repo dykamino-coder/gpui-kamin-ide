@@ -1026,6 +1026,10 @@ export class ConnectionManager {
   interruptSession(): void {
     this.send({ type: 'session:interrupt' })
   }
+  /** The user is typing in a chat the server put to sleep: start its CLI. */
+  warmSession(): void {
+    this.send({ type: 'session:warm' })
+  }
 
   /** Submit a full user message — server wraps it in bracketed paste and
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual

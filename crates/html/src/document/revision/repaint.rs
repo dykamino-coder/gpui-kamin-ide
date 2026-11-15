@@ -23,7 +23,9 @@
 mod fold;
 mod paths;
 
+use super::boxes::Boxes;
 use super::commit::Plan;
+pub(in crate::document) use super::kept::Kept;
 use super::mutation::Batch;
 use super::patch::{Target, apply, attr_paths, patch};
 use crate::document::Document;
@@ -31,7 +33,6 @@ use crate::dom::Node;
 use crate::style::computed::Computed;
 use paths::style_paths;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 /// Перерасчёт одного элемента: тег его коробок и каскадный стиль до и после
 /// пакета; стили раскладываются одинаково.
@@ -53,71 +54,47 @@ impl Restyle {
     }
 }
 
-/// What the edits of one document keep between them: the texts of its sheets
-/// and the probe of its restyles. The sheets of a document do not change in
-/// place (a build reads the text of a `<style>`, and an edit of a read text
-/// rebuilds), and a rebuilt document starts over.
-#[derive(Default)]
-pub(in crate::document) struct Kept {
-    sheets: Option<Rc<Vec<String>>>,
-    cache: crate::dom::restyle_probe::RestyleCache,
-}
-
-impl Kept {
-    /// What a built document keeps: the rules of its build as the probe.
-    pub(in crate::document) fn built(
-        cache: crate::dom::restyle_probe::RestyleCache,
-    ) -> std::rc::Rc<std::cell::Cell<Option<Box<Self>>>> {
-        let kept = Self {
-            sheets: None,
-            cache,
-        };
-        Rc::new(std::cell::Cell::new(Some(Box::new(kept))))
-    }
-}
-
 impl Document {
-    /// The texts of the `<style>` sheets under `root`, collected once.
-    pub(super) fn kept_sheets(&self, root: &markup5ever_rcdom::Handle) -> Rc<Vec<String>> {
-        let mut kept = self.restyle.take().unwrap_or_default();
-        let collect = || Rc::new(super::shape::sheets(root));
-        let sheets = kept.sheets.get_or_insert_with(collect).clone();
-        self.restyle.set(Some(kept));
-        sheets
-    }
-
     /// План пакета смен `class` и `data-*`, если перерасчёт стиля меняет у
     /// найденных элементов только значения краски; `None` — нужна сборка.
-    pub(super) fn repaint_plan(&self, batch: &Batch, theme_css: &str) -> Option<Plan> {
+    /// `changed` — the names and node ids of the batch (`invalidation`).
+    pub(super) fn repaint_plan(
+        &self,
+        batch: &Batch,
+        changed: &crate::dom::invalidation::Changed,
+        theme_css: &str,
+    ) -> Option<Plan> {
         let values = &self.state.values;
         if !batch.texts.is_empty() || values.quirks() {
             return None;
         }
-        let changed = self.invalidation(batch, theme_css)?;
         let input = values.traversal.take_source()?;
         // The probes leave the cache in the state of the DOM after the
         // batch: it goes back only with a plan (otherwise the document is
         // rebuilt, and a fresh cache starts from its DOM).
         let mut kept = self.restyle.take().unwrap_or_default();
-        let restyles = self.restyles(batch, &changed, &input, theme_css, &mut kept.cache);
+        let restyles = self.restyles(batch, changed, &input, theme_css, &mut kept.cache);
         values.traversal.retain(input);
-        let plan = self.restyled(batch, restyles?)?;
+        let boxes = kept.boxes(&self.nodes)?;
+        let plan = self.restyled(batch, &changed.elements, &boxes, restyles?)?;
         self.restyle.set(Some(kept));
         Some(plan)
     }
 
     /// The box tree with the attributes of `batch` and the paint values of
     /// `restyles` written along copied paths.
-    fn restyled(&self, batch: &Batch, restyles: HashMap<u64, Restyle>) -> Option<Plan> {
-        let values = &self.state.values;
-        let ids = super::adopt::element_ids(
-            &values.traversal.elements(),
-            batch.elements.iter().map(|c| &c.element),
-        );
+    /// `ids` — the node ids of the elements of `batch`, in its order.
+    fn restyled(
+        &self,
+        batch: &Batch,
+        ids: &[u64],
+        boxes: &Boxes,
+        restyles: HashMap<u64, Restyle>,
+    ) -> Option<Plan> {
         let mut attrs = HashMap::new();
-        for (change, id) in batch.elements.iter().zip(ids) {
+        for (change, &id) in batch.elements.iter().zip(ids) {
             attrs.insert(
-                id?,
+                id,
                 Target {
                     tag: super::adopt::tag_of(&change.element),
                     old: crate::dom::element_attrs(&change.old),
@@ -125,7 +102,7 @@ impl Document {
                 },
             );
         }
-        let attr_paths = attr_paths(&self.nodes, &attrs)?;
+        let attr_paths = attr_paths(&self.nodes, boxes, &attrs)?;
         // Matching rules that change no cascaded value (an inline style or a
         // more specific rule wins): the batch only writes `class`/`data-*`,
         // which the frame build does not read, so the frame is the recorded
@@ -137,7 +114,7 @@ impl Document {
             let mut nodes = (*self.nodes).clone();
             return patch(&mut nodes, attr_paths, &attrs).then_some(Plan::Clean(Some(nodes)));
         }
-        let style_paths = style_paths(&self.nodes, &restyles)?;
+        let style_paths = style_paths(&self.nodes, boxes, &restyles)?;
         let mut nodes = (*self.nodes).clone();
         if !patch(&mut nodes, attr_paths, &attrs) {
             return None;

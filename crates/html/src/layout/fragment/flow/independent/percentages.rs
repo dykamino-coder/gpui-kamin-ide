@@ -66,12 +66,15 @@ pub(crate) fn column_percentages(
     ordinary.resolve_viewport(opts.viewport, opts.cx.vcx());
     ordinary.reset_fragmentation.column_count = None;
     ordinary.reset_fragmentation.column_width = None;
-    let height = available_height::inner(
-        &ordinary,
-        opts.cx.constraints.avail_h,
-        opts.cx.constraints.avail_w(),
-        opts.viewport.1,
-    );
+    // The outer width is read only when the height depends on it.
+    let height = opts.cx.constraints.with_avail_w(|avail_w| {
+        available_height::inner(
+            &ordinary,
+            opts.cx.constraints.avail_h,
+            avail_w,
+            opts.viewport.1,
+        )
+    });
     column_percentages_in(nodes, parent, height, width, opts)
 }
 
