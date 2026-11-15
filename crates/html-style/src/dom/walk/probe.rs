@@ -1,31 +1,35 @@
 //! Restyle probe: the cascade of a few target elements through the walk's own
 //! entry (`enter`), without building boxes for the rest of the document.
 //!
-//! A batch of class mutations restyles only the elements its invalidation
+//! A batch of attribute mutations restyles only the elements its invalidation
 //! finds (`dom::invalidation::targets`). Blink recalculates exactly those
 //! (`StyleInvalidator::Invalidate` marks them, `style_engine.cc`
-//! `RecalcStyle` visits only marked subtrees); Stylo restyles from the
-//! dirty roots down (`traversal.rs`). Here the walk descends only the
-//! ancestor chain of each target, so every target is cascaded in its real
-//! context (ancestor path for matching, inherited custom properties, scopes)
-//! by the same code as a full build, and stops at the target: its subtree
+//! `RecalcStyle` visits only marked subtrees) under the styles their parents
+//! already have; Stylo restyles from the dirty roots down (`traversal.rs`).
+//! Here every target is cascaded in its real context (ancestor path for
+//! matching, inherited custom properties, scopes) by the same code as a full
+//! build. The first probe below a parent walks the ancestor chain once and
+//! keeps the context its children are entered with (`Chains`); later probes
+//! enter the target alone. The walk stops at the target: its subtree
 //! inherits by rematerialization (`style::cascade::materialize`), not by a
 //! second cascade.
 
-use super::engine::{descend, visits};
+mod chains;
+mod walk;
+pub use chains::Chains;
+use walk::walk;
+
+use super::engine::keeps;
 use super::enter::enter;
-use super::pending::Restore;
-use super::sibling_survey::{Survey, Visit};
-use crate::budget::admission::{Buffer, Error};
+use super::pending::Pending;
+use crate::budget::admission::Error;
 use crate::dom::shadow::Scope;
 use crate::dom::tree_index::TreeIndex;
 use crate::style::computed::Computed;
 use crate::style::css::VarMap;
 use crate::values::ValueCx;
-use markup5ever_rcdom::{Handle, NodeData};
-use std::collections::HashSet;
+use markup5ever_rcdom::Handle;
 use std::rc::Rc;
-
 /// What the walk's entry produced for one target element.
 #[derive(Debug)]
 pub struct Probed {
@@ -51,129 +55,120 @@ pub struct ProbedRest {
     pub shadow: bool,
 }
 
-enum Work<'a> {
-    Visit(Visit<'a>),
-    Leave(Restore),
+impl Probed {
+    fn of(p: &Pending<'_>) -> Self {
+        Self {
+            style: p.style.clone(),
+            rest: ProbedRest {
+                vars: p.vars.clone(),
+                hover: p.hover.clone(),
+                first_letter: p.first_letter.clone(),
+                first_line: p.first_line.clone(),
+                list_item: p.list_item,
+                hidden: p.hidden,
+                box_level: p.box_level,
+                before: !p.children.is_empty(),
+                shadow: p.shadow.is_some(),
+            },
+        }
+    }
+}
+
+/// The state of one probe: its targets and what the entries share.
+struct Run<'t> {
+    targets: &'t [Handle],
+    parents: Vec<Option<Handle>>,
+    found: Vec<Option<Probed>>,
+    /// The target was entered, or the walk passed it by.
+    done: Vec<bool>,
+    sharing: super::element_sharing::ElementSharing,
+    counter: u64,
+    counters: crate::style::generated::counters::Counters,
+    scratch: super::kids::Kids,
 }
 
 /// The entries of `targets` (element handles of the document under `root`),
 /// in their order; `None` for a target the walk does not enter (dropped tag,
 /// `display: none` subtree, inside a hidden or shadow-hosting ancestor).
+/// `chains` keeps the contexts of the parents between the probes of one
+/// document.
 pub fn probe(
     root: &Handle,
     tree: &TreeIndex,
     scope: &Rc<Scope>,
     targets: &[Handle],
+    chains: &mut Chains,
     vcx: ValueCx<'_>,
 ) -> Result<Vec<Option<Probed>>, Error> {
+    chains.root(root, tree);
+    let mut run = Run {
+        targets,
+        parents: targets.iter().map(parent).collect(),
+        found: targets.iter().map(|_| None).collect(),
+        done: vec![false; targets.len()],
+        sharing: Default::default(),
+        counter: 0,
+        counters: Default::default(),
+        scratch: Default::default(),
+    };
+    let known = |i: usize, run: &Run<'_>, chains: &Chains| {
+        run.parents[i].as_ref().is_some_and(|p| chains.knows(p))
+    };
+    let cold: Vec<usize> = (0..targets.len())
+        .filter(|&i| !known(i, &run, chains))
+        .collect();
+    if !cold.is_empty() {
+        walk(root, tree, scope, &cold, Some(chains), &mut run, vcx)?;
+        // A target the walk gave a context enters again under it: both
+        // probes of a batch then enter it alike (the counters of an entry
+        // under a context do not pass through its ancestors).
+        for i in 0..targets.len() {
+            if known(i, &run, chains) {
+                run.done[i] = false;
+                run.found[i] = None;
+            }
+        }
+        run.counters = Default::default();
+    }
+    // Targets enter under the kept contexts, ancestors first: a target on
+    // the path of another gives it its new record (`Chains::entered`).
+    let mut warm: Vec<(usize, usize)> = (0..targets.len())
+        .filter(|&i| !run.done[i])
+        .map(|i| (depth(&targets[i]), i))
+        .collect();
+    warm.sort_unstable();
     let admission = tree.admission();
-    let address = |h: &Handle| Rc::as_ptr(h) as usize;
-    let wanted: Vec<usize> = targets.iter().map(address).collect();
-    let mut chain = HashSet::new();
-    for target in targets {
-        let mut at = parent(target);
-        while let Some(node) = at {
-            if !chain.insert(address(&node)) {
-                break;
-            }
-            at = parent(&node);
-        }
-    }
-    let mut found: Vec<Option<Probed>> = targets.iter().map(|_| None).collect();
-    let sharing = super::element_sharing::ElementSharing::default();
-    let mut counter = 0u64;
-    let mut counters = crate::style::generated::counters::Counters::default();
-    let mut path = Vec::new();
-    let mut scratch = super::kids::Kids::default();
-    let mut work: Buffer<Work<'_>> = Buffer::default();
-    let start = visits(
-        Survey::children(root, tree),
-        scope.clone(),
-        Rc::new(VarMap::new()),
-        false,
-        1,
-        vcx,
-        0,
-    )?;
-    push_visits(start, &mut work, &admission)?;
-    while let Some(next) = work.pop() {
+    let mut left = Vec::new();
+    for (_, i) in warm {
         admission.work(1)?;
-        let v = match next {
-            Work::Leave(restore) => {
-                restore.apply(&mut path);
-                continue;
-            }
-            Work::Visit(v) => v,
+        let entry = run.parents[i]
+            .as_ref()
+            .and_then(|p| chains.visit(p, &targets[i], scope, vcx));
+        // The walk above made room for its own contexts.
+        let Some((visit, path)) = entry else {
+            left.push(i);
+            continue;
         };
-        let here = address(v.handle());
-        let on_chain = chain.contains(&here);
-        match &v.handle().data {
-            NodeData::Element { .. } => {
-                let target = wanted.iter().position(|&w| w == here);
-                if target.is_none() && !on_chain {
-                    continue;
-                }
-                let Some(p) = enter(
-                    v,
-                    tree,
-                    &sharing,
-                    &mut counter,
-                    &mut counters,
-                    &path,
-                    &mut scratch,
-                ) else {
-                    continue;
-                };
-                if let Some(at) = target {
-                    found[at] = Some(Probed {
-                        style: p.style.clone(),
-                        rest: ProbedRest {
-                            vars: p.vars.clone(),
-                            hover: p.hover.clone(),
-                            first_letter: p.first_letter.clone(),
-                            first_line: p.first_line.clone(),
-                            list_item: p.list_item,
-                            hidden: p.hidden,
-                            box_level: p.box_level,
-                            before: !p.children.is_empty(),
-                            shadow: p.shadow.is_some(),
-                        },
-                    });
-                }
-                if on_chain {
-                    let (children, restore) = descend(&p, tree, &mut path)?;
-                    work.push(Work::Leave(restore), &admission)?;
-                    push_visits(children, &mut work, &admission)?;
-                }
-            }
-            NodeData::Text { .. } => {}
-            _ if on_chain => {
-                let jobs = visits(
-                    Survey::children(v.handle(), tree),
-                    v.scope.clone(),
-                    v.vars.clone(),
-                    v.preserve,
-                    v.depth,
-                    v.vcx,
-                    0,
-                )?;
-                push_visits(jobs, &mut work, &admission)?;
-            }
-            _ => {}
+        let above = path.len();
+        let entered = enter(
+            visit,
+            tree,
+            &run.sharing,
+            &mut run.counter,
+            &mut run.counters,
+            path,
+            &mut run.scratch,
+        );
+        run.done[i] = true;
+        if let Some(p) = entered {
+            run.found[i] = Some(Probed::of(&p));
+            chains.entered(above, &p.me, &p.vars, keeps(&p));
         }
     }
-    Ok(found)
-}
-
-fn push_visits<'a>(
-    mut jobs: Buffer<Visit<'a>>,
-    work: &mut Buffer<Work<'a>>,
-    admission: &crate::budget::admission::Admission,
-) -> Result<(), Error> {
-    while let Some(job) = jobs.pop() {
-        work.push(Work::Visit(job), admission)?;
+    if !left.is_empty() {
+        walk(root, tree, scope, &left, None, &mut run, vcx)?;
     }
-    Ok(())
+    Ok(run.found)
 }
 
 fn parent(node: &Handle) -> Option<Handle> {
@@ -183,4 +178,15 @@ fn parent(node: &Handle) -> Option<Handle> {
         .and_then(markup5ever_rcdom::WeakHandle::upgrade);
     node.parent.set(weak);
     parent
+}
+
+/// The number of ancestors of `node` up to the document node.
+fn depth(node: &Handle) -> usize {
+    let mut depth = 0;
+    let mut at = parent(node);
+    while let Some(node) = at {
+        depth += 1;
+        at = parent(&node);
+    }
+    depth
 }
