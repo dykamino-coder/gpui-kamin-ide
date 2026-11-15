@@ -20,7 +20,7 @@ pub(super) type Run<'a, 'b> = (
     &'b FontContext,
     &'b Args,
     &'b CaptureSession,
-    (i32, u32),
+    &'b super::work::Adapter,
 );
 
 fn viewport(base: (u32, u32), alternate: bool) -> (u32, u32) {

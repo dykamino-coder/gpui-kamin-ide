@@ -24,7 +24,7 @@ pub(super) async fn run(
     fonts: &FontContext,
     args: &Args,
     capture: &CaptureSession,
-    luid: (i32, u32),
+    luid: &super::work::Adapter,
 ) -> Result<(Value, Vec<work::Sample>)> {
     let base = resources::read(&args.path)?;
     let edited = match super::edit::markup_file() {
