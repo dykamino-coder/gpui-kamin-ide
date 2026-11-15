@@ -2,8 +2,8 @@
 //! их поддеревья принимают новые значения краски на месте.
 
 use super::Restyle;
-use crate::document::revision::boxes::{Boxes, at};
-use crate::document::revision::patch::{Path, elements};
+use crate::document::revision::boxes::Boxes;
+use crate::document::revision::patch::{Path, element_at, elements};
 use crate::dom::{Element, Node};
 use std::collections::HashMap;
 
@@ -37,7 +37,7 @@ pub(super) fn style_paths(
     for (&id, r) in restyles {
         let before = paths.len();
         for path in boxes.paths(id) {
-            let e = at(nodes, &path)?;
+            let e = element_at(nodes, &path).filter(|e| e.node_id == id)?;
             if e.tag != r.tag {
                 continue;
             }

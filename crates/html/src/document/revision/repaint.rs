@@ -103,23 +103,31 @@ impl Document {
             );
         }
         let attr_paths = attr_paths(&self.nodes, boxes, &attrs)?;
+        // Matching rules that change no cascaded value (an inline style or a
+        // more specific rule wins): the batch only writes `class`/`data-*`,
+        // which the frame build does not read, so the frame is the recorded
+        // one (`Plan::Clean`), as when no sheet mentions the names.
+        if restyles.is_empty() {
+            if attr_paths.is_empty() {
+                return Some(Plan::Clean(None));
+            }
+            let mut nodes = (*self.nodes).clone();
+            return patch(&mut nodes, attr_paths, &attrs).then_some(Plan::Clean(Some(nodes)));
+        }
         let style_paths = style_paths(&self.nodes, boxes, &restyles)?;
         let mut nodes = (*self.nodes).clone();
         if !patch(&mut nodes, attr_paths, &attrs) {
             return None;
         }
-        for (path, id) in style_paths {
-            match (apply(&mut nodes, &path), restyles.get(&id)) {
+        for (path, id) in &style_paths {
+            match (apply(&mut nodes, path), restyles.get(id)) {
                 (Some(Node::Element(e)), Some(r)) => e.style.set_cascaded_paint(&r.new),
                 _ => return None,
             }
         }
-        if restyles.is_empty() {
-            return Some(Plan::Patched(nodes));
-        }
         let mut restyled: Vec<u64> = restyles.into_keys().collect();
         restyled.sort_unstable();
-        Some(Plan::Restyled(nodes, restyled))
+        Some(Plan::Restyled(nodes, restyled, style_paths))
     }
 
     /// Перерасчёты элементов, чей стиль меняет пакет, по номерам коробок;

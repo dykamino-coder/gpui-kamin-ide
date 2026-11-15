@@ -1,7 +1,7 @@
 //! Правка атрибутов коробок адресуемых элементов в разделяемом дереве: копия
 //! пути (`Children` копируется при записи) только до каждой правки.
 
-use super::boxes::{Boxes, at};
+use super::boxes::Boxes;
 use crate::dom::{Element, Node};
 use std::collections::HashMap;
 
@@ -31,7 +31,7 @@ pub(super) fn attr_paths(
     let mut paths = Vec::new();
     for (&id, target) in targets {
         for path in boxes.paths(id) {
-            let e = at(nodes, &path)?;
+            let e = element_at(nodes, &path).filter(|e| e.node_id == id)?;
             if e.tag == target.tag && e.attrs == target.old {
                 paths.push((path, id));
             } else if e.tag == target.tag || !e.attrs.is_empty() {
@@ -71,6 +71,26 @@ pub(super) fn apply<'a>(nodes: &'a mut Vec<Node>, path: &[usize]) -> Option<&'a 
         list = &mut e.children;
     }
     list.iter_mut().nth(*last)
+}
+
+/// Коробка по пути `path` за O(глубины), без обхода дерева; `None`, если там
+/// не элемент.
+pub(in crate::document) fn element_at<'a>(
+    nodes: &'a [Node],
+    path: &[usize],
+) -> Option<&'a Element> {
+    let (last, parents) = path.split_last()?;
+    let mut list: &[Node] = nodes;
+    for &i in parents {
+        let Some(Node::Element(e)) = list.get(i) else {
+            return None;
+        };
+        list = &e.children;
+    }
+    match list.get(*last)? {
+        Node::Element(e) => Some(e),
+        _ => None,
+    }
 }
 
 /// Обход коробок в прямом порядке с путём к каждой (без рекурсии: глубина

@@ -144,6 +144,11 @@ impl Document {
         self.key
     }
 
+    /// The document's state, shared (paint_path::census).
+    pub(crate) fn state_rc(&self) -> Rc<DocState> {
+        self.state.clone()
+    }
+
     pub fn nodes(&self) -> &[Node] {
         &self.nodes
     }
@@ -174,3 +179,8 @@ impl Document {
 mod image_values;
 
 pub mod dom;
+
+/// Elements painted with UA control defaults (`revision::paint_damage`).
+pub(crate) fn paint_controls() -> &'static [&'static str] {
+    revision::paint_damage_controls()
+}

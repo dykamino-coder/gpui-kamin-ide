@@ -35,6 +35,7 @@ mod depth_tests;
 pub use kamin_style::budget;
 #[cfg(test)]
 pub mod coverage;
+pub mod paint_path;
 pub(crate) use kamin_style::defaults;
 pub use kamin_style::diagnostics;
 pub use kamin_style::work;

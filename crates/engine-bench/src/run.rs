@@ -43,6 +43,37 @@ async fn wait(cx: &AsyncApp, sequence: u64, capture: &CaptureSession) -> Result<
     }
 }
 
+/// Wait for the frame after `sequence`: its readback, or its decision to
+/// skip presentation (`gpui::layer_counters::PRESENTS_SKIPPED`), then
+/// `None` and the moment it decided.
+async fn wait_or_skip(
+    cx: &AsyncApp,
+    sequence: u64,
+    capture: &CaptureSession,
+    skipped: u64,
+) -> Result<std::result::Result<u64, Instant>> {
+    use gpui::layer_counters as c;
+    use std::sync::atomic::Ordering::Relaxed;
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while Instant::now() < deadline {
+        if capture.sequence() > sequence {
+            return wait(cx, sequence, capture).await.map(Ok);
+        }
+        if c::PRESENTS_SKIPPED.load(Relaxed) > skipped {
+            let at = c::LAST_SKIP
+                .lock()
+                .ok()
+                .and_then(|at| *at)
+                .ok_or("skip without time")?;
+            return Ok(Err(at));
+        }
+        cx.background_executor()
+            .timer(Duration::from_micros(500))
+            .await;
+    }
+    Err("neither a readback nor a skipped presentation within 60 seconds".into())
+}
+
 pub(super) async fn sample(
     cx: &mut AsyncApp,
     window: WindowHandle<View>,
@@ -52,6 +83,33 @@ pub(super) async fn sample(
     capture: &CaptureSession,
     luid: (i32, u32),
 ) -> Result<(Measured, kamin_html::host::capture::Frame, work::Sample)> {
+    let (measured, frame, work) =
+        sample_with(cx, window, fonts, args, step, capture, luid, true).await?;
+    Ok((
+        measured,
+        frame.ok_or("armed first frame was not captured")?,
+        work,
+    ))
+}
+
+/// `sample`; without `present` the frame may skip its presentation (an
+/// edit that changed nothing on screen), and then no frame is captured.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn sample_with(
+    cx: &mut AsyncApp,
+    window: WindowHandle<View>,
+    fonts: &FontContext,
+    args: &Args,
+    step: Step<'_>,
+    capture: &CaptureSession,
+    luid: (i32, u32),
+    present: bool,
+) -> Result<(
+    Measured,
+    Option<kamin_html::host::capture::Frame>,
+    work::Sample,
+)> {
+    let skipped = gpui::layer_counters::PRESENTS_SKIPPED.load(std::sync::atomic::Ordering::Relaxed);
     let (started, before, seq, resources_time, build_time, timings, phases, work) = window
         .update(cx, |view, window, cx| -> Result<_> {
             // Разметка той же формы сводится к записям мутаций до начала замера.
@@ -110,6 +168,11 @@ pub(super) async fn sample(
             view.phases = Rc::new(RefCell::new(Phases::requested(observer_setup)));
             capture.arm_first();
             cx.notify();
+            // The capture reads the presented frame: present it even when a
+            // write into the scene layer changed nothing on screen.
+            if present {
+                window.require_presentation();
+            }
             window.refresh();
             Ok((
                 started,
@@ -122,13 +185,40 @@ pub(super) async fn sample(
                 work,
             ))
         })??;
-    let completed = wait(cx, seq, capture).await?;
-    let total = started.elapsed();
+    let completed = if present {
+        Ok(wait(cx, seq, capture).await?)
+    } else {
+        wait_or_skip(cx, seq, capture, skipped).await?
+    };
+    let total = match completed {
+        Ok(_) => started.elapsed(),
+        Err(at) => at.duration_since(started),
+    };
     let work = window.read_with(cx, |view, _| {
         // Document phases ran in cold and in edit (`Document::update`) samples.
         work.finish(!matches!(step, Step::Warm), &view.doc)
     })?;
     let after = Counters::read(capture);
+    let Ok(completed) = completed else {
+        // A skipped presentation: no frame to read, the draw was the frame.
+        if phases.borrow().renders != 1 {
+            return Err("a skipped presentation without exactly one render".into());
+        }
+        let out = accounting::partition(
+            Input {
+                resources: resources_time,
+                document: build_time,
+                timings,
+                layout: Counters::delta(after.layout, before.layout),
+                draw: Counters::delta(after.draw, before.draw),
+                present: Duration::ZERO,
+                readback: Duration::ZERO,
+                total,
+            },
+            &phases.borrow(),
+        )?;
+        return Ok((out, None, work));
+    };
     let frame = capture
         .take_first()
         .ok_or("armed first frame was not captured")?;
@@ -173,7 +263,7 @@ pub(super) async fn sample(
         },
         &phases.borrow(),
     )?;
-    Ok((out, frame, work))
+    Ok((out, Some(frame), work))
 }
 
 pub(super) async fn run(
@@ -188,7 +278,10 @@ pub(super) async fn run(
     startup_timings.mark("async_entry");
     // Пустой стартовый кадр и инициализация GPU не входят в document-cold.
     let seq = capture.sequence();
-    window.update(cx, |_, window, _| window.refresh())?;
+    window.update(cx, |_, window, _| {
+        window.require_presentation();
+        window.refresh()
+    })?;
     wait(cx, seq, capture).await?;
     startup_timings.mark("initial_empty_gpu_frame");
     // Замер начинается в покое платформы (без презентов буста после WM_SIZE).

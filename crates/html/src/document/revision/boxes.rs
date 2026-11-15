@@ -6,7 +6,7 @@
 //! стили и тексты коробок, а сборка даёт документ с новым индексом.
 
 use super::patch::{Path, elements};
-use crate::dom::{Element, Node};
+use crate::dom::Node;
 use std::collections::HashMap;
 
 /// Нет коробки (родителя у коробки верхнего уровня, коробки у номера).
@@ -80,22 +80,6 @@ impl Boxes {
     }
 }
 
-/// Коробка по пути `path` (без копирования).
-pub(super) fn at<'a>(nodes: &'a [Node], path: &[usize]) -> Option<&'a Element> {
-    let (last, parents) = path.split_last()?;
-    let mut list = nodes;
-    for &i in parents {
-        let Some(Node::Element(e)) = list.get(i) else {
-            return None;
-        };
-        list = &e.children;
-    }
-    match list.get(*last) {
-        Some(Node::Element(e)) => Some(e),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,7 +105,10 @@ mod tests {
             paths.sort();
             assert_eq!(found, paths, "{id}");
             for path in &found {
-                assert_eq!(at(doc.nodes(), path).map(|e| e.node_id), Some(*id));
+                assert_eq!(
+                    super::super::patch::element_at(doc.nodes(), path).map(|e| e.node_id),
+                    Some(*id)
+                );
             }
         }
         assert_eq!(boxes.paths(0).count(), 0);

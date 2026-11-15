@@ -13,6 +13,9 @@
 //! том числе краска отложенных отрисовок (`Window::retained_replayable`).
 //! Иначе кадр собирается заново, как `Document::render`.
 
+mod box_repaint;
+#[cfg(test)]
+mod box_repaint_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;
@@ -147,6 +150,12 @@ impl Document {
             layout_keys: key.is_some() && self.state.values.resources_unchanged(),
         };
         element::Retained::new(self.retained.clone(), key, builder, candidate).into_any_element()
+    }
+
+    /// Есть записанный устоявшийся кадр этого дерева: следующий кадр с теми же
+    /// опциями хоста может его повторить.
+    pub(super) fn frame_recorded(&self) -> bool {
+        self.retained.recorded.borrow().is_some()
     }
 
     /// Сколько раз кадр собран и сколько раз повторён (`render_viewport`).
