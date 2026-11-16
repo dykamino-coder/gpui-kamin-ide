@@ -77,6 +77,9 @@ pub(crate) struct BoxTree {
     pub(crate) used: used::UsedStyles,
     /// The parent box style of the latest atoms (`atom_styles`).
     atom_parent: Option<Rc<crate::style::computed::BoxStyle>>,
+    /// The latest distinct paint results of atoms, most recent first
+    /// (`atom_styles`).
+    atom_paints: std::collections::VecDeque<Rc<crate::style::decoration_paint::DecorationPaint>>,
 }
 
 impl BoxTree {
