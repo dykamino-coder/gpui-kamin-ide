@@ -11695,14 +11695,14 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff908dc4f3
+index 160587a4ad924f80c2dd01b90a8300febbc13105..aa9dfcd85fbbe24b92f83998cd50b2f42497bb00
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,36 @@
 +
 +mod layer;
 +pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-+pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of};
++pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
 +mod damage;
 +mod record;
 +#[doc(hidden)]
@@ -11815,7 +11815,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 @@ -44,0 +153,2 @@
 +    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
 +    bottom_seq: DrawOrder,
-@@ -52,0 +163,79 @@
+@@ -52,0 +163,85 @@
 +    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
 +    pub(crate) in_group: bool,
 +    /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
@@ -11867,6 +11867,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +    /// layer finished from this scene (`SceneLayer::finish`) without a second
 +    /// pass over its commands.
 +    pub(crate) primitive_ink: Option<Bounds<ScaledPixels>>,
++    /// The box runs and bindings of a paint record painted while a layer
++    /// records (`scene::layer::placed`).
++    pub(crate) record_runs: Option<Box<layer::RecordRuns>>,
++    /// Where the commands of a scene being placed here land
++    /// (`scene::layer::placed`), one entry per placed command.
++    pub(crate) placed_map: Option<layer::PlacedMap>,
 +}
 +
 +/// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -11895,7 +11901,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +    outer_plane: Option<u32>,
 +    plane_depth: usize,
 +    union: Option<Bounds<ScaledPixels>>,
-@@ -56,0 +246,140 @@
+@@ -56,0 +252,140 @@
 +    /// KaminIDE patch: начать объёмный контекст.
 +    pub fn push_depth_context(&mut self) {
 +        self.paint_operations.push(PaintOperation::StartDepthContext);
@@ -12036,9 +12042,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +        }
 +    }
 +
-@@ -57,0 +387 @@
+@@ -57,0 +393 @@
 +        self.segment_capture = None;
-@@ -59 +389,6 @@
+@@ -59 +395,6 @@
 -        self.primitive_bounds.clear();
 +        self.groups.clear();
 +        match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
@@ -12046,9 +12052,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +            None => self.primitive_bounds = Default::default(),
 +        }
 +        self.blocks.clear();
-@@ -60,0 +396 @@
+@@ -60,0 +402 @@
 +        self.bottom_seq = 0;
-@@ -68,0 +405,13 @@
+@@ -68,0 +411,13 @@
 +        self.book.layers.clear();
 +        self.book.layer_order.clear();
 +        self.book.fresh = 0;
@@ -12062,13 +12068,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +        self.ink_allowed = (0, 0);
 +        self.clear_damage_index();
 +        crate::window::reset_ink_scopes();
-@@ -76 +425 @@
+@@ -76 +431 @@
 -        let order = self.primitive_bounds.insert(bounds);
 +        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
-@@ -79 +428 @@
+@@ -79 +434 @@
 -            .push(PaintOperation::StartLayer(bounds));
 +            .push(PaintOperation::StartLayer(bounds, order));
-@@ -86,0 +436,15 @@
+@@ -86,0 +442,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
 +    ///
 +    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
@@ -12084,9 +12090,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -87,0 +452 @@
+@@ -87,0 +458 @@
 +        self.book.fresh += 1;
-@@ -89,3 +454,5 @@
+@@ -89,3 +460,5 @@
 -        let clipped_bounds = primitive
 -            .bounds()
 -            .intersect(&primitive.content_mask().bounds);
@@ -12095,7 +12101,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +        crate::window::ink_add(&self.ink, self.ink_scope, placed_bounds);
 +        crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
 +        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -96,6 +463,12 @@
+@@ -96,6 +469,12 @@
 -
 -        let order = self
 -            .layer_stack
@@ -12114,7 +12120,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +            Some(o) => o,
 +            None =>self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
 +        };
-@@ -136,0 +510,16 @@
+@@ -136,0 +516,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
 +            let (kind, index) = match &primitive {
 +                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
@@ -12131,7 +12137,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -139,2 +528,40 @@
+@@ -139,2 +534,40 @@
 -    }
 -
 +        if let Some(capture) = self.segment_capture.as_mut() {
@@ -12174,7 +12180,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +569,77 @@
+@@ -142 +575,77 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let operations = &prev_scene.paint_operations[range.clone()];
 +        // A block whose borrowed tree died with its record is packed again.
@@ -12253,7 +12259,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +647,257 @@
+@@ -144,4 +653,265 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -12356,8 +12362,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +        for operation in operations {
 +            let mut operation = operation.clone();
 +            if !place(&mut operation) {
++                layer::PlacedMap::skip(&mut self.book.placed_map);
 +                continue;
 +            }
++            let mut quad = None;
 +            match &mut operation {
 +                PaintOperation::Primitive(primitive) => {
 +                    let placed = placed_bounds(primitive);
@@ -12366,6 +12374,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +                    }
 +                    self.add_primitive_ink(placed.intersect(&primitive.content_mask().bounds));
 +                    *primitive.order_mut() += shift;
++                    if matches!(primitive, Primitive::Quad(_)) {
++                        quad = Some(self.quads.len());
++                    }
 +                    self.push_ordered(primitive);
 +                    copied += 1;
 +                    if let Some(capture) = self.segment_capture.as_mut() {
@@ -12379,11 +12390,14 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +                    }
 +                    layer.order += shift;
 +                    if !self.push_layer_slot(layer) {
++                        layer::PlacedMap::skip(&mut self.book.placed_map);
 +                        continue;
 +                    }
 +                }
 +                _ => {}
 +            }
++            let at = self.paint_operations.len();
++            layer::PlacedMap::land(&mut self.book.placed_map, at, quad);
 +            self.paint_operations.push(operation);
 +        }
 +        Self::count_copied(copied);
@@ -12515,9 +12529,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -162,0 +919 @@
+@@ -162,0 +933 @@
 +        self.finish_layers();
-@@ -190,2 +947,96 @@
+@@ -190,2 +961,96 @@
 -        }
 -    }
 +            layers: &self.book.layers,
@@ -12616,7 +12630,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1063,5 @@
+@@ -212,2 +1077,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -12624,20 +12638,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1070,4 @@
+@@ -216 +1084,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1075,6 @@
+@@ -217,0 +1089,6 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
 +    /// KaminIDE patch: a retained layer (`scene::layer`), ordered like one primitive.
 +    Layer(LayerOp),
-@@ -259,0 +1123,55 @@
+@@ -259,0 +1137,55 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -12693,20 +12707,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1204,2 @@
+@@ -285,0 +1218,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1239,4 @@
+@@ -318,0 +1253,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1388 @@
+@@ -463,0 +1402 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1421,2 @@
+@@ -495,0 +1435,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -528,5 +1455,6 @@
+@@ -528,5 +1469,6 @@
 -        }
 -    }
 -}
@@ -12718,7 +12732,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +}
 +
 +#[derive(Default, Debug, Copy, Clone, PartialEq)]
-@@ -543,0 +1472,10 @@
+@@ -543,0 +1486,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -12729,25 +12743,25 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -552 +1490 @@
+@@ -552 +1504 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -571 +1509 @@
+@@ -571 +1523 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -580,0 +1519,5 @@
+@@ -580,0 +1533,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1546,5 @@
+@@ -602,0 +1560,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1598,12 @@
+@@ -649,0 +1612,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -12760,19 +12774,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -708 +1668 @@
+@@ -708 +1682 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -727 +1687 @@
+@@ -727 +1701 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -746 +1706 @@
+@@ -746 +1720 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -751 +1711 @@
+@@ -751 +1725 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1718,54 @@
+@@ -757,0 +1732,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -12827,7 +12841,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1788,23 @@
+@@ -773,0 +1802,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -12851,19 +12865,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..965eda629688ac0bfe06d2eacb93d2ff
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1833,2 @@
+@@ -795,0 +1847,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1855 @@
+@@ -815,0 +1869 @@
 +            color_mapping: None,
-@@ -835,0 +1876,6 @@
+@@ -835,0 +1890,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
 +                matrix.translation[1] *= factor;
 +                (bounds.scale(factor), matrix)
 +            }),
-@@ -949,0 +1996,55 @@
+@@ -949,0 +2010,55 @@
 +
 +/// KaminIDE patch: the primitives of `scene` in the order its batches draw
 +/// them, a retained layer's in its place (`Window::painted_sequence`): each
@@ -13929,10 +13943,10 @@ index 0000000000000000000000000000000000000000..c59cd109e3a6d1f0aec1f0a5ef4a1820
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5747e5016ee233d0558d11b448405464d77513f0
+index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355c45960e2
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,264 @@
 +//! KaminIDE patch: a retained scene layer.
 +//!
 +//! A host paints content once into a layer (`Window::record_scene_layer`),
@@ -13956,6 +13970,7 @@ index 0000000000000000000000000000000000000000..5747e5016ee233d0558d11b448405464
 +mod boxes;
 +mod frame;
 +mod order;
++mod placed;
 +mod reorder;
 +mod splice;
 +mod write;
@@ -13963,6 +13978,7 @@ index 0000000000000000000000000000000000000000..5747e5016ee233d0558d11b448405464
 +use super::{Bounds, ScaledPixels, Scene};
 +pub(crate) use boxes::{BoxEnv, BoxRange, OpenBox, ink_of};
 +pub(crate) use frame::{LayerOp, LayerSlot};
++pub(crate) use placed::{Placed, PlacedMap, RecordRuns, place_run, release_unheld};
 +use std::cell::{Cell, RefCell};
 +use std::rc::Rc;
 +use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
@@ -14038,6 +14054,9 @@ index 0000000000000000000000000000000000000000..5747e5016ee233d0558d11b448405464
 +    pub static RUNS_MOVED_LATER: AtomicU64 = AtomicU64::new(0);
 +    /// Bindings not made because the quad was painted into a group's scene.
 +    pub static GROUP_BINDS_SKIPPED: AtomicU64 = AtomicU64::new(0);
++    /// Box runs of a paint record that could not be placed by one shift and
++    /// clip (`scene::layer::placed`): their boxes paint the layer anew.
++    pub static RUNS_UNPLACED: AtomicU64 = AtomicU64::new(0);
 +    /// Layers whose bindings or runs named another scene (`SceneLayer::finish`):
 +    /// they take no writes. Zero on every page, or a recording is wrong.
 +    pub static RECORDS_REFUSED: AtomicU64 = AtomicU64::new(0);
@@ -14190,12 +14209,14 @@ index 0000000000000000000000000000000000000000..5747e5016ee233d0558d11b448405464
 +mod order_tests;
 +#[cfg(test)]
 +mod rerecord_tests;
++#[cfg(test)]
++mod placed_tests;
 diff --git a/vendor/gpui/src/scene/layer/boxes.rs b/vendor/gpui/src/scene/layer/boxes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e672108ea
+index 0000000000000000000000000000000000000000..4d8e5b6157cf8b67c4797720e4deba3a57e63acb
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/boxes.rs
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,141 @@
 +//! KaminIDE patch: the paint ranges of boxes in a scene layer.
 +//!
 +//! While a layer is recorded, the own paint of a box (its shadows, fill,
@@ -14236,6 +14257,9 @@ index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e
 +    pub(crate) env: BoxEnv,
 +    /// The run is plain primitives, which a recording replaces.
 +    pub(crate) replaceable: bool,
++    /// How the run's commands came here from the paint record its box painted
++    /// in (`super::placed`); a recording of the box is placed the same way.
++    pub(crate) placed: Option<super::Placed>,
 +}
 +
 +/// A box's own paint being recorded: where its commands start.
@@ -14244,6 +14268,10 @@ index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e
 +    ops: usize,
 +    area: Bounds<ScaledPixels>,
 +    env: BoxEnv,
++    /// The box placed more than one fill (painted per fragment of its
++    /// admission): its `env` restores none of them, so the run is not
++    /// replaceable and an edit of the box paints the layer anew.
++    split: bool,
 +}
 +
 +/// The clipped placed bounds of a primitive.
@@ -14265,8 +14293,9 @@ index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e
 +    pub(crate) fn open_box(&mut self, owner: u32, area: Bounds<ScaledPixels>, env: BoxEnv) -> bool {
 +        // A group's scene (`in_group`) is composited into the layer as one
 +        // result: a run of its commands is no run of the layer.
++        // A paint record that keeps box runs (`super::placed`) is no group.
 +        if self.book.open_box.is_some()
-+            || self.in_group
++            || (self.in_group && self.book.record_runs.is_none())
 +            || !self.layer_stack.is_empty()
 +            || !self.depth.plane_stack.is_empty()
 +            || !self.depth.contexts.is_empty()
@@ -14278,6 +14307,7 @@ index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e
 +            ops: self.paint_operations.len(),
 +            area,
 +            env,
++            split: false,
 +        });
 +        true
 +    }
@@ -14287,14 +14317,14 @@ index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e
 +        self.book.open_box.is_some()
 +    }
 +
-+    /// The fill bounds the open box's paint placed.
-+    pub(crate) fn open_box_fill(&self) -> Option<Bounds<Pixels>> {
-+        self.book.open_box.as_ref()?.env.fill
-+    }
-+
-+    pub(crate) fn set_open_box_fill(&mut self, fill: Bounds<Pixels>) {
++    /// Note a fill the open box's paint places: the first is its fill, a
++    /// second splits it (`OpenBox::split`).
++    pub(crate) fn note_open_box_fill(&mut self, fill: Bounds<Pixels>) {
 +        if let Some(open) = self.book.open_box.as_mut() {
-+            open.env.fill = Some(fill);
++            match open.env.fill {
++                None => open.env.fill = Some(fill),
++                Some(_) => open.split = true,
++            }
 +        }
 +    }
 +
@@ -14323,7 +14353,8 @@ index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e
 +            ink,
 +            ops: ops.start as u32..ops.end as u32,
 +            env: open.env,
-+            replaceable: plain,
++            replaceable: plain && !open.split,
++            placed: None,
 +        })
 +    }
 +}
@@ -14917,6 +14948,566 @@ index 0000000000000000000000000000000000000000..3aad3fc224a47d4125ac6644fe308433
 +        Step::Box(2, rect(30., 12., 20., 10.), vec![(rect(31., 12., 19., 10.), hsla(0.1, 1., 0.5, 1.))]),
 +    ]);
 +}
+diff --git a/vendor/gpui/src/scene/layer/placed.rs b/vendor/gpui/src/scene/layer/placed.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..df54c0f9ee7966bd14ca2d8d6b85a245bef40370
+--- /dev/null
++++ b/vendor/gpui/src/scene/layer/placed.rs
+@@ -0,0 +1,303 @@
++//! KaminIDE patch: the box runs and value bindings a paint record carries
++//! into the scenes it is placed in.
++//!
++//! The paint of a fragmented child (the columns of a multicol) is recorded
++//! once in a scene of its own (`Window::record_paint_segments`) and placed in
++//! each fragment by a shift and a clip (`Scene::replay_placed`). Without the
++//! runs the record's commands reach a layer as anonymous copies: no box owns
++//! them, and a paint-only edit of a box inside paints the frame again. A
++//! record painted while a layer records keeps the runs of its boxes and the
++//! quads their values bind (`Scene::record_runs`); every placement moves them
++//! with the commands into the scene it lands in, down to the layer. A box in
++//! N fragments then has N runs, each placed by its fragment's shift and clip,
++//! and a later recording of the box is placed the same way (`place_run`), so
++//! the layer keeps the commands a paint from scratch makes (Blink keeps
++//! display items per client and fragment, `ScopedDisplayItemFragment`). A
++//! record with composition groups or hoisted backdrops is placed through an
++//! adopted copy (`Window::adopt_scene`) and carries nothing: its boxes are
++//! not the layer's, as before.
++
++use super::super::{PaintOperation, ScaledPixels, Scene, record};
++use super::{Binding, BoxRange, ink_of};
++use crate::{Bounds, Point, Window};
++use std::sync::atomic::Ordering::Relaxed;
++
++/// No command landed for this source command.
++const NONE: u32 = u32::MAX;
++/// More than one placement of the source command landed in one scene.
++const MANY: u32 = u32::MAX - 1;
++
++/// How commands came to a scene from the scene they were painted in: moved
++/// by `offset`, then cut by `clip` (device pixels).
++#[derive(Clone, Copy, Debug, Default, PartialEq)]
++pub(crate) struct Placed {
++    pub(crate) offset: Point<ScaledPixels>,
++    pub(crate) clip: Option<Bounds<ScaledPixels>>,
++}
++
++impl Placed {
++    /// This placement, then `next`.
++    pub(crate) fn then(self, next: Placed) -> Placed {
++        let moved = self.clip.map(|c| record::geometry::bounds(c, next.offset));
++        let clip = match (moved, next.clip) {
++            (Some(a), Some(b)) => Some(a.intersect(&b)),
++            (a, b) => a.or(b),
++        };
++        let offset = Point {
++            x: ScaledPixels(self.offset.x.0 + next.offset.x.0),
++            y: ScaledPixels(self.offset.y.0 + next.offset.y.0),
++        };
++        Placed { offset, clip }
++    }
++
++    fn bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
++        let moved = record::geometry::bounds(bounds, self.offset);
++        self.clip.map_or(moved, |clip| moved.intersect(&clip))
++    }
++}
++
++/// Where one source command landed: its command, its quad (paint order) and
++/// how it was placed.
++#[derive(Clone, Copy, Debug)]
++pub(crate) struct PlacedOp {
++    op: u32,
++    quad: u32,
++    placed: Placed,
++}
++
++/// Where the commands of a scene being placed land, by source command.
++pub(crate) struct PlacedMap {
++    /// The one placement of a replay; `None` while freezing segments, whose
++    /// commands each take their route's placement.
++    at: Option<Placed>,
++    ops: Vec<PlacedOp>,
++}
++
++impl PlacedMap {
++    /// A map for a replay (`at`) or for `len` commands of a draft (`None`).
++    pub(crate) fn new(at: Option<Placed>, len: usize) -> Self {
++        let none = PlacedOp { op: NONE, quad: NONE, placed: Placed::default() };
++        let ops = if at.is_some() { Vec::new() } else { vec![none; len] };
++        Self { at, ops }
++    }
++
++    /// The next source command of a replay landed nowhere.
++    pub(crate) fn skip(map: &mut Option<Self>) {
++        if let Some(map) = map {
++            let placed = map.at.unwrap_or_default();
++            map.ops.push(PlacedOp { op: NONE, quad: NONE, placed });
++        }
++    }
++
++    /// The next source command of a replay landed as command `op`.
++    pub(crate) fn land(map: &mut Option<Self>, op: usize, quad: Option<usize>) {
++        if let Some(map) = map {
++            let placed = map.at.unwrap_or_default();
++            let quad = quad.map_or(NONE, |q| q as u32);
++            map.ops.push(PlacedOp { op: op as u32, quad, placed });
++        }
++    }
++
++    /// Source command `source` of a draft landed as command `op`.
++    pub(crate) fn set(map: &mut Option<Self>, source: usize, op: usize, quad: Option<usize>, placed: Placed) {
++        let Some(entry) = map.as_mut().and_then(|m| m.ops.get_mut(source)) else {
++            return;
++        };
++        *entry = if entry.op == NONE {
++            PlacedOp { op: op as u32, quad: quad.map_or(NONE, |q| q as u32), placed }
++        } else {
++            PlacedOp { op: MANY, quad: MANY, placed }
++        };
++    }
++}
++
++/// The box runs and bindings of a paint record, in its commands.
++#[derive(Clone, Debug, Default)]
++pub(crate) struct RecordRuns {
++    pub(crate) boxes: Vec<BoxRange>,
++    pub(crate) bindings: Vec<Binding>,
++    /// Owners whose paint reached this scene outside their runs (a run or
++    /// binding that could not be placed, a record placed as an adopted
++    /// copy): the layer holds none of their runs and bindings
++    /// (`SceneLayer::finish`), so an edit of such a box paints the layer
++    /// anew instead of writing some of its copies and leaving the others.
++    pub(crate) unheld: Vec<u32>,
++}
++
++impl RecordRuns {
++    /// These runs where `map` placed their commands in `dest`. A run whose
++    /// commands landed nowhere (clipped away in this fragment) is not there;
++    /// the owner of one placed twice or by different placements is unheld.
++    pub(crate) fn carry(&self, map: &PlacedMap, dest: &Scene) -> RecordRuns {
++        let mut out = RecordRuns { unheld: self.unheld.clone(), ..RecordRuns::default() };
++        for run in &self.boxes {
++            let mut span: Option<(u32, u32)> = None;
++            let mut placed: Option<Placed> = None;
++            let mut whole = true;
++            for source in run.ops.clone() {
++                let Some(m) = map.ops.get(source as usize) else {
++                    whole = false;
++                    break;
++                };
++                if m.op == NONE {
++                    continue;
++                }
++                whole &= m.op != MANY && placed.is_none_or(|p| p == m.placed);
++                placed = Some(m.placed);
++                span = Some(span.map_or((m.op, m.op), |(a, _)| (a, m.op)));
++            }
++            let (Some((first, last)), Some(placed), true) = (span, placed, whole) else {
++                if !whole {
++                    super::layer_counters::RUNS_UNPLACED.fetch_add(1, Relaxed);
++                    out.unheld.push(run.owner);
++                }
++                continue;
++            };
++            let ops = first..last + 1;
++            let ink = dest.paint_operations[first as usize..=last as usize]
++                .iter()
++                .filter_map(|op| match op {
++                    PaintOperation::Primitive(p) => Some(ink_of(p)),
++                    _ => None,
++                })
++                .filter(|b| !b.is_empty())
++                .reduce(|a, b| a.union(&b));
++            let moved = placed.bounds(run.area);
++            out.boxes.push(BoxRange {
++                owner: run.owner,
++                area: ink.map_or(moved, |ink| ink.union(&moved)),
++                ink,
++                ops,
++                env: run.env,
++                replaceable: run.replaceable,
++                placed: Some(run.placed.map_or(placed, |p| p.then(placed))),
++            });
++        }
++        for binding in &self.bindings {
++            match map.ops.get(binding.op as usize) {
++                Some(m) if m.op == NONE => {}
++                Some(m) if m.op < MANY && m.quad < MANY => {
++                    out.bindings.push(Binding { op: m.op, quad: m.quad, ..*binding });
++                }
++                _ => out.unheld.push(binding.owner),
++            }
++        }
++        out
++    }
++
++    /// These runs placed as one copy, not by a shift and clip: every owner
++    /// they hold is unheld.
++    pub(crate) fn dropped(&self) -> RecordRuns {
++        super::layer_counters::RUNS_UNPLACED.fetch_add(self.boxes.len() as u64, Relaxed);
++        let owners = self.boxes.iter().map(|b| b.owner).chain(self.bindings.iter().map(|b| b.owner));
++        let mut unheld: Vec<u32> = self.unheld.iter().copied().chain(owners).collect();
++        unheld.sort_unstable();
++        unheld.dedup();
++        RecordRuns { unheld, ..RecordRuns::default() }
++    }
++
++    /// Append `other`.
++    pub(crate) fn extend(&mut self, other: RecordRuns) {
++        self.boxes.extend(other.boxes);
++        self.bindings.extend(other.bindings);
++        self.unheld.extend(other.unheld);
++    }
++}
++
++impl Scene {
++    /// A record with groups or hoisted backdrops carries no runs: it is
++    /// placed as one adopted copy, and the owners of the runs it kept
++    /// before the group are unheld.
++    pub(crate) fn end_record_runs(&mut self) {
++        if !self.groups.is_empty() || !self.hoisted_backdrops.is_empty() {
++            if let Some(runs) = self.book.record_runs.as_mut() {
++                **runs = runs.dropped();
++            }
++        }
++    }
++}
++
++/// The runs and bindings of a layer without those of the `unheld` owners,
++/// whose paint reached the layer outside their runs: the layer holds no copy
++/// of such a box (`LayerHandle::holds_box` is false, a value write refuses),
++/// so its edit paints the layer anew instead of writing some copies.
++pub(crate) fn release_unheld(bindings: &mut Vec<Binding>, boxes: &mut Vec<BoxRange>, mut unheld: Vec<u32>) {
++    if unheld.is_empty() {
++        return;
++    }
++    unheld.sort_unstable();
++    let held = |owner: u32| unheld.binary_search(&owner).is_err();
++    bindings.retain(|b| held(b.owner));
++    boxes.retain(|b| held(b.owner));
++}
++
++/// The commands `scene` (a recording of one run's box, with its `bindings`)
++/// would have where the run was placed: placed by `placed` into a new scene.
++/// `None` when they cannot be placed by a shift (the box paints anew).
++pub(crate) fn place_run(
++    scene: Scene,
++    bindings: Vec<Binding>,
++    placed: Placed,
++) -> Option<(Scene, Vec<Binding>)> {
++    let mut out = Scene::default();
++    out.book.placed_map = Some(PlacedMap::new(Some(placed), 0));
++    if !out.replay_placed(&scene, placed.offset, placed.clip) {
++        return None;
++    }
++    let map = out.book.placed_map.take()?;
++    let bindings = bindings
++        .into_iter()
++        .filter_map(|b| {
++            let m = map.ops.get(b.op as usize)?;
++            (m.op < MANY && m.quad < MANY).then_some(Binding { op: m.op, quad: m.quad, ..b })
++        })
++        .collect();
++    Some((out, bindings))
++}
++
++impl Window {
++    /// Keep the box runs of the record painting into the current scene, when
++    /// a layer records.
++    pub(crate) fn begin_record_runs(&mut self) {
++        if self.layer_recording.is_some() {
++            self.next_frame.scene.book.record_runs = Some(Box::default());
++        }
++    }
++
++    /// `Scene::replay_placed` of `scene` into the current scene, carrying the
++    /// record's box runs and bindings to the record being painted here or to
++    /// the layer being recorded. Where they cannot be carried (the record is
++    /// not placed by a shift, or lands in a group's scene, composited as one
++    /// result) its owners are unheld there instead.
++    pub(crate) fn replay_placed_carrying(
++        &mut self,
++        scene: &Scene,
++        offset: Point<ScaledPixels>,
++        clip: Option<Bounds<ScaledPixels>>,
++    ) -> bool {
++        let here = &self.next_frame.scene;
++        let into = here.book.record_runs.is_some() || self.layer_recording.is_some();
++        let takes = scene.book.record_runs.is_some()
++            && if here.in_group { here.book.record_runs.is_some() } else { self.layer_recording.is_some() };
++        if takes {
++            self.next_frame.scene.book.placed_map = Some(PlacedMap::new(Some(Placed { offset, clip }), 0));
++        }
++        let done = self.next_frame.scene.replay_placed(scene, offset, clip);
++        let map = self.next_frame.scene.book.placed_map.take();
++        let Some(runs) = scene.book.record_runs.as_deref().filter(|_| into) else {
++            return done;
++        };
++        let carried = match (done, map) {
++            (true, Some(map)) => runs.carry(&map, &self.next_frame.scene),
++            _ => runs.dropped(),
++        };
++        if let Some(own) = self.next_frame.scene.book.record_runs.as_mut() {
++            own.extend(carried);
++        } else if let Some(recording) = self.layer_recording.as_mut() {
++            recording.boxes.extend(carried.boxes);
++            recording.bindings.extend(carried.bindings);
++            recording.unheld.extend(carried.unheld);
++        }
++        done
++    }
++}
+\ No newline at end of file
+diff --git a/vendor/gpui/src/scene/layer/placed_tests.rs b/vendor/gpui/src/scene/layer/placed_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..2f1f70c4e7de16dcce45ba7d6b883e494810bcfc
+--- /dev/null
++++ b/vendor/gpui/src/scene/layer/placed_tests.rs
+@@ -0,0 +1,244 @@
++//! Scene layers: the box runs a paint record carries into the scenes it is
++//! placed in. A box in N placements has N runs; each recorded again where it
++//! was placed (`place_run`) leaves the layer drawing what a paint from
++//! scratch of the record with the box's new commands draws.
++
++use super::order_tests::{drawn, env, quad, rect};
++use super::{Binding, LayerHandle, LayerValue, Placed, PlacedMap, SceneLayer, layer_counters, place_run};
++use crate::scene::{PaintGroup, draw_sequence};
++use crate::{Hsla, Scene, ScaledPixels, hsla, point};
++use std::sync::atomic::Ordering::Relaxed;
++
++fn grey() -> Hsla { hsla(0., 0., 0.9, 1.) }
++fn blue() -> Hsla { hsla(0.6, 1., 0.5, 1.) }
++fn red() -> Hsla { hsla(0., 1., 0.5, 1.) }
++
++/// Two columns of a child 100 tall, 50 per column, 60 apart.
++fn columns() -> [Placed; 2] {
++    let at = |x: f32, y: f32| point(ScaledPixels(x), ScaledPixels(y));
++    [
++        Placed { offset: at(0., 0.), clip: Some(rect(0., 0., 40., 50.)) },
++        Placed { offset: at(60., -50.), clip: Some(rect(60., 0., 40., 50.)) },
++    ]
++}
++
++/// A child's paint record: its fill, box 1 in the second column, box 2
++/// split over both, a quad after them; box 2's fill `fill` is bound.
++fn record(fill: Hsla, layered: bool) -> Scene {
++    let mut s = Scene { in_group: true, ..Scene::default() };
++    if layered {
++        s.book.record_runs = Some(Box::default());
++    }
++    s.insert_primitive(quad(rect(0., 0., 40., 100.), grey()));
++    for (owner, area, color) in [(1, rect(0., 60., 40., 30.), blue()), (2, rect(0., 40., 40., 20.), fill)] {
++        let open = s.open_box(owner, area, env());
++        assert_eq!(open, layered, "a record that keeps runs holds its boxes");
++        if owner == 2 && layered {
++            let (op, quad) = (s.paint_operations.len() as u32, s.quads.len() as u32);
++            let binding = Binding { owner, value: LayerValue::Background, quad, op, opacity: 1. };
++            s.book.record_runs.as_mut().unwrap().bindings.push(binding);
++        }
++        s.insert_primitive(quad(area, color));
++        if open {
++            let run = s.close_box().unwrap();
++            s.book.record_runs.as_mut().unwrap().boxes.push(run);
++        }
++    }
++    s.insert_primitive(quad(rect(0., 95., 40., 5.), red()));
++    s.end_record_runs();
++    s.finish();
++    s
++}
++
++/// The record placed in both columns of a page, with the runs and bindings
++/// it carried (`layered`).
++fn page(record: &Scene, layered: bool) -> (Scene, super::RecordRuns) {
++    let mut s = Scene::default();
++    s.insert_primitive(quad(rect(0., 0., 100., 50.), hsla(0., 0., 1., 1.)));
++    let mut carried = super::RecordRuns::default();
++    for placed in columns() {
++        if layered {
++            s.book.placed_map = Some(PlacedMap::new(Some(placed), 0));
++        }
++        assert!(s.replay_placed(record, placed.offset, placed.clip));
++        if let (Some(map), Some(runs)) = (s.book.placed_map.take(), record.book.record_runs.as_deref()) {
++            let c = runs.carry(&map, &s);
++            carried.boxes.extend(c.boxes);
++            carried.bindings.extend(c.bindings);
++        }
++    }
++    (s, carried)
++}
++
++fn layer(fill: Hsla) -> LayerHandle {
++    let (scene, carried) = page(&record(fill, true), true);
++    LayerHandle::new(SceneLayer::finish(scene, carried.bindings, carried.boxes))
++}
++
++/// Box `owner`'s runs recorded again with `fill` as `Window::rerecord_layer_box`
++/// does: painted in the record's coordinates, placed as each run was.
++fn rerecord(layer: &LayerHandle, owner: u32, fill: Hsla) -> usize {
++    let runs: Vec<usize> = layer.0.content.borrow().runs_of(owner).collect();
++    for &at in &runs {
++        let b = layer.0.content.borrow().boxes[at].clone();
++        let mut again = Scene::default();
++        assert!(again.open_box(owner, b.area, b.env));
++        again.insert_primitive(quad(rect(0., 40., 40., 20.), fill));
++        again.close_box();
++        let (again, bindings) = place_run(again, Vec::new(), b.placed.expect("a carried run is placed")).unwrap();
++        let plan = layer.0.content.borrow().check_box(at, &again).expect("the run is replaced");
++        let mut current = layer.0.content.borrow_mut();
++        std::rc::Rc::make_mut(&mut current).replace_box(at, again, bindings, plan);
++    }
++    runs.len()
++}
++
++fn draws(layer: &LayerHandle) -> Vec<(String, crate::Bounds<ScaledPixels>)> {
++    let mut out = Vec::new();
++    draw_sequence(layer.content().scene(), &mut out);
++    out
++}
++
++#[test]
++fn a_record_placed_in_two_columns_draws_as_without_runs() {
++    let (mut plain, _) = page(&record(blue(), false), false);
++    assert_eq!(draws(&layer(blue())), drawn(&mut plain));
++}
++
++#[test]
++fn a_box_in_two_columns_has_a_run_in_each_and_one_where_it_shows() {
++    let layer = layer(blue());
++    let content = layer.content();
++    assert_eq!(content.runs_of(2).count(), 2, "box 2 shows in both columns");
++    assert_eq!(content.runs_of(1).count(), 1, "box 1 shows in the second column only");
++    let placed: Vec<_> = content.runs_of(2).map(|at| content.boxes[at].placed).collect();
++    assert_eq!(placed, columns().map(Some).to_vec());
++}
++
++#[test]
++fn a_box_recorded_again_in_every_column_draws_as_a_paint_from_scratch() {
++    let layer = layer(blue());
++    for fill in [red(), grey(), blue()] {
++        assert_eq!(rerecord(&layer, 2, fill), 2);
++        let (mut plain, _) = page(&record(fill, false), false);
++        assert_eq!(draws(&layer), drawn(&mut plain), "box 2 recorded again as {fill:?}");
++    }
++}
++
++#[test]
++fn a_bound_fill_binds_its_quad_in_each_column() {
++    let layer = layer(blue());
++    let content = layer.content();
++    let at = |q: &crate::Quad| crate::scene::placed_bounds(&crate::scene::Primitive::Quad(*q));
++    let ours: Vec<_> = content.bindings.iter().filter(|b| b.owner == 2).collect();
++    let mut bound: Vec<_> = ours.iter().map(|b| at(&content.scene.quads[b.quad as usize])).collect();
++    bound.sort_by(|a, b| a.origin.x.0.total_cmp(&b.origin.x.0));
++    // Box 2's fill as placed in each column (moved by the placement's transform).
++    let expected = [rect(0., 40., 40., 20.), rect(60., -10., 40., 20.)];
++    assert_eq!(bound, expected.to_vec());
++    for binding in ours {
++        let quad = at(&content.scene.quads[binding.quad as usize]);
++        let op = &content.scene.paint_operations[binding.op as usize];
++        let same = matches!(op, crate::scene::PaintOperation::Primitive(crate::scene::Primitive::Quad(q)) if at(q) == quad);
++        assert!(same, "the binding's command is its quad");
++    }
++}
++
++#[test]
++fn a_group_in_a_record_drops_the_runs_it_kept() {
++    let dropped = layer_counters::RUNS_UNPLACED.load(Relaxed);
++    let mut s = Scene { in_group: true, ..Scene::default() };
++    s.book.record_runs = Some(Box::default());
++    assert!(s.open_box(1, rect(0., 0., 10., 10.), env()));
++    s.insert_primitive(quad(rect(0., 0., 10., 10.), blue()));
++    let run = s.close_box().unwrap();
++    s.book.record_runs.as_mut().unwrap().boxes.push(run);
++    s.groups.push(PaintGroup { scene: Scene::default(), bounds: rect(0., 0., 1., 1.), ..Default::default() });
++    s.end_record_runs();
++    let runs = s.book.record_runs.as_deref().expect("the record says whom it does not hold");
++    assert!(runs.boxes.is_empty() && runs.bindings.is_empty(), "a record with a group carries no runs");
++    assert_eq!(runs.unheld, vec![1], "the owner of the run kept before the group is unheld");
++    assert!(layer_counters::RUNS_UNPLACED.load(Relaxed) > dropped, "the dropped run is counted");
++}
++
++#[test]
++fn a_box_painted_per_fragment_keeps_no_fill_and_is_not_replaceable() {
++    let fill = |x: f32| crate::Bounds { origin: point(crate::px(x), crate::px(0.)), size: crate::size(crate::px(12.), crate::px(10.)) };
++    let mut s = Scene { in_group: true, ..Scene::default() };
++    s.book.record_runs = Some(Box::default());
++    assert!(s.open_box(1, rect(0., 0., 30., 10.), env()));
++    s.note_open_box_fill(fill(0.));
++    s.insert_primitive(quad(rect(0., 0., 12., 10.), blue()));
++    let one = s.close_box().unwrap();
++    assert!(one.replaceable && one.env.fill == Some(fill(0.)), "one fill is the box's fill");
++    assert!(s.open_box(2, rect(0., 0., 30., 10.), env()));
++    s.note_open_box_fill(fill(0.));
++    s.insert_primitive(quad(rect(0., 0., 12., 10.), blue()));
++    s.note_open_box_fill(fill(13.));
++    s.insert_primitive(quad(rect(13., 0., 12., 10.), blue()));
++    let split = s.close_box().unwrap();
++    assert!(!split.replaceable, "a box with a fill per fragment has no one fill to restore");
++}
++
++/// Box 2's command placed twice in one scene (op 2 lands as ops 2 and 3).
++fn twice(record: &Scene) -> super::RecordRuns {
++    let [one, two] = columns();
++    let mut map = Some(PlacedMap::new(None, record.paint_operations.len()));
++    PlacedMap::set(&mut map, 2, 2, Some(2), one);
++    PlacedMap::set(&mut map, 2, 3, Some(3), two);
++    let mut dest = Scene::default();
++    for _ in 0..4 {
++        dest.insert_primitive(quad_at());
++    }
++    record.book.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest)
++}
++
++#[test]
++fn a_box_placed_twice_in_one_scene_and_once_in_another_is_not_held() {
++    let record = record(blue(), true);
++    let unheld = twice(&record).unheld;
++    assert_eq!(unheld, vec![2, 2], "its run and its binding are unheld");
++    let finish = |release: bool| {
++        let (scene, mut carried) = page(&record, true);
++        if release {
++            super::release_unheld(&mut carried.bindings, &mut carried.boxes, unheld.clone());
++        }
++        LayerHandle::new(SceneLayer::finish(scene, carried.bindings, carried.boxes))
++    };
++    // Without the release the copies in the other scene would take the write.
++    let kept = finish(false);
++    assert!(kept.holds_box(2) && kept.set_background(2, blue(), red()).is_some());
++    let layer = finish(true);
++    assert!(!layer.holds_box(2), "no run of box 2 is recorded again");
++    assert!(layer.set_background(2, blue(), red()).is_none(), "the write refuses: the layer paints anew");
++    assert!(layer.holds_box(1), "box 1 stays held");
++}
++
++#[test]
++fn a_record_placed_as_one_copy_unholds_every_owner_it_kept() {
++    let record = record(blue(), true);
++    let mut owners = record.book.record_runs.as_deref().unwrap().dropped().unheld;
++    owners.sort_unstable();
++    assert_eq!(owners, vec![1, 2]);
++}
++
++#[test]
++fn a_run_placed_twice_in_one_scene_is_dropped_and_counted() {
++    let record = record(blue(), true);
++    let [one, two] = columns();
++    // Box 2's command (op 2) landed twice: once by each placement.
++    let mut map = Some(PlacedMap::new(None, record.paint_operations.len()));
++    PlacedMap::set(&mut map, 2, 2, Some(2), one);
++    PlacedMap::set(&mut map, 2, 3, Some(3), two);
++    let dropped = layer_counters::RUNS_UNPLACED.load(Relaxed);
++    let mut dest = Scene::default();
++    for _ in 0..4 {
++        dest.insert_primitive(quad_at());
++    }
++    let carried = record.book.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest);
++    assert!(carried.boxes.iter().all(|b| b.owner != 2), "a run placed twice is not the layer's");
++    assert!(carried.unheld.contains(&2), "its owner is unheld");
++    assert!(layer_counters::RUNS_UNPLACED.load(Relaxed) > dropped);
++}
++
++fn quad_at() -> crate::Quad { quad(rect(0., 0., 1., 1.), grey()) }
 diff --git a/vendor/gpui/src/scene/layer/reorder.rs b/vendor/gpui/src/scene/layer/reorder.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..00bb513ff0f4ba8b006f17593bd975c5b90fbb34
@@ -16634,10 +17225,10 @@ index 0000000000000000000000000000000000000000..a7cd3de1e23cc00cc05ab0a0cc4fbf87
 +}
 diff --git a/vendor/gpui/src/scene/segments/commands.rs b/vendor/gpui/src/scene/segments/commands.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..356ef06f6f2057d9f85f42882b30cf3474dd200d
+index 0000000000000000000000000000000000000000..999c75f6ff3157719b14815031f4d5eb8b7ca946
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments/commands.rs
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,80 @@
 +//! Проекция каждого допуска выполняется до композиции неизменяемого сегмента.
 +
 +use super::*;
@@ -16649,6 +17240,10 @@ index 0000000000000000000000000000000000000000..356ef06f6f2057d9f85f42882b30cf34
 +    ) -> (Scene, Option<PaintSegment>) {
 +        let mut output = Scene { in_group: self.in_group, ..Scene::default() };
 +        let Some(capture) = &self.segment_capture else { return (output, None); };
++        // Where each command of a record with box runs lands in this segment.
++        if self.book.record_runs.is_some() && self.groups.is_empty() {
++            output.book.placed_map = Some(crate::scene::layer::PlacedMap::new(None, self.paint_operations.len()));
++        }
 +        let admits = |route: &&PaintSegment| route.id == id && ordinal.is_none_or(|ordinal| route.ordinal == ordinal);
 +        let entry = capture.entry.scopes.iter().find(admits).copied();
 +        let mut first = None;
@@ -16656,7 +17251,7 @@ index 0000000000000000000000000000000000000000..356ef06f6f2057d9f85f42882b30cf34
 +            .find_map(|tag| tag.routes.iter().find(admits).copied()));
 +        let mut tags = capture.primitives.iter();
 +        let mut primitive_index = 0;
-+        for operation in &self.paint_operations {
++        for (source, operation) in self.paint_operations.iter().enumerate() {
 +            match operation {
 +                PaintOperation::Primitive(primitive) => {
 +                    let tag = tags.next().expect("captured primitive tag");
@@ -16689,8 +17284,15 @@ index 0000000000000000000000000000000000000000..356ef06f6f2057d9f85f42882b30cf34
 +                        let mut primitive = primitive.clone();
 +                        let clip = Tag::clip_chain(tag.clips.as_ref(), excluded, route, scale, extent);
 +                        let clip = tag.admission(route, scale, clip);
-+                        record::geometry::primitive(&mut primitive, (route.destination - route.source).scale(scale), Some(clip));
++                        let offset = (route.destination - route.source).scale(scale);
++                        record::geometry::primitive(&mut primitive, offset, Some(clip));
++                        let (at, quads) = (output.paint_operations.len(), output.quads.len());
 +                        output.insert_primitive(primitive);
++                        if output.paint_operations.len() > at {
++                            let quad = (output.quads.len() > quads).then_some(quads);
++                            let placed = crate::scene::layer::Placed { offset, clip: Some(clip) };
++                            crate::scene::layer::PlacedMap::set(&mut output.book.placed_map, source, at, quad, placed);
++                        }
 +                        first.get_or_insert(route);
 +                    }
 +                }
@@ -16709,10 +17311,10 @@ index 0000000000000000000000000000000000000000..356ef06f6f2057d9f85f42882b30cf34
 +}
 diff --git a/vendor/gpui/src/scene/segments/freeze.rs b/vendor/gpui/src/scene/segments/freeze.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e5aa691fbb6bac6e6066cb3ba2bc2475f06a7615
+index 0000000000000000000000000000000000000000..d00b0c4290c5039416ae5436581559dfe37720a1
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments/freeze.rs
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,56 @@
 +//! Экземпляры исходной группы сохраняют общий эффект и явные повторные размещения.
 +
 +use super::*;
@@ -16756,6 +17358,14 @@ index 0000000000000000000000000000000000000000..e5aa691fbb6bac6e6066cb3ba2bc2475
 +            mapping.push(copies);
 +        }
 +        let (mut scene, _) = self.segment_commands(id, None, scale, &mapping, extent, None);
++        // The box runs of the record, moved with their commands into the
++        // segment; without a map (groups) its owners are unheld.
++        if let Some(runs) = self.book.record_runs.as_deref() {
++            scene.book.record_runs = Some(Box::new(match scene.book.placed_map.take() {
++                Some(map) => runs.carry(&map, &scene),
++                None => runs.dropped(),
++            }));
++        }
 +        scene.groups = groups;
 +        scene.finish_frozen();
 +        scene
@@ -28606,10 +29216,10 @@ index 0000000000000000000000000000000000000000..466fb22a1859060d509375a341b69402
 +}
 diff --git a/vendor/gpui/src/window/layer_box.rs b/vendor/gpui/src/window/layer_box.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..78ad7e6eca5247d644d731f8350d64fe02db0440
+index 0000000000000000000000000000000000000000..0a25c62b166000ea95924ead8819b556c22ff448
 --- /dev/null
 +++ b/vendor/gpui/src/window/layer_box.rs
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,182 @@
 +//! KaminIDE patch: the own paint of a box in a scene layer, and its later
 +//! recording into the box's run (`scene::layer::boxes`).
 +//!
@@ -28651,10 +29261,11 @@ index 0000000000000000000000000000000000000000..78ad7e6eca5247d644d731f8350d64fe
 +            return self.with_paint_owner(owner, f);
 +        }
 +        let result = self.with_paint_owner(owner, f);
-+        if let (Some(range), Some(recording)) = (
-+            self.next_frame.scene.close_box(),
-+            self.layer_recording.as_mut(),
-+        ) {
++        let range = self.next_frame.scene.close_box();
++        // A paint record keeps the run for its placements (`scene::layer::placed`).
++        if let (Some(range), Some(runs)) = (&range, self.next_frame.scene.book.record_runs.as_mut()) {
++            runs.boxes.push(range.clone());
++        } else if let (Some(range), Some(recording)) = (range, self.layer_recording.as_mut()) {
 +            recording.boxes.push(range);
 +        }
 +        result
@@ -28663,25 +29274,23 @@ index 0000000000000000000000000000000000000000..78ad7e6eca5247d644d731f8350d64fe
 +    /// Where the host places the fill of `style` in `bounds`; a box recorded
 +    /// again takes the bounds its first recording placed, the host's raster
 +    /// frame of that paint being gone.
++    /// A first recording places every fill on its own bounds: a box painted
++    /// per fragment (`BoxPainter`) has one fill per fragment.
 +    pub(crate) fn box_fill_bounds(&self, style: &Style, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
-+        if let Some(fill) = self
-+            .box_fill
-+            .or_else(|| self.next_frame.scene.open_box_fill())
-+        {
++        if let Some(fill) = self.box_fill {
 +            return fill;
 +        }
 +        self.render_context::<PaintTraversal>()
 +            .map_or(bounds, |host| (host.fill_bounds)(style, bounds, self))
 +    }
 +
-+    /// Keep the fill bounds of the box whose own paint is open, painted or not.
++    /// Keep the fill bounds of the box whose own paint is open, painted or
++    /// not. A second fill (the box painted per fragment) is no one fill a
++    /// later recording could restore: the run is then not replaceable.
 +    pub(crate) fn note_box_fill(&mut self, style: &Style, bounds: Bounds<Pixels>) {
-+        if self.box_fill.is_none()
-+            && self.next_frame.scene.box_open()
-+            && self.next_frame.scene.open_box_fill().is_none()
-+        {
++        if self.box_fill.is_none() && self.next_frame.scene.box_open() {
 +            let fill = self.box_fill_bounds(style, bounds);
-+            self.next_frame.scene.set_open_box_fill(fill);
++            self.next_frame.scene.note_open_box_fill(fill);
 +        }
 +    }
 +
@@ -28723,15 +29332,20 @@ index 0000000000000000000000000000000000000000..78ad7e6eca5247d644d731f8350d64fe
 +        }
 +        let mut moved = false;
 +        for at in runs {
-+            let (area, env) = {
++            let (area, env, placed) = {
 +                let content = layer.0.content.borrow();
 +                let b = &content.boxes[at];
-+                (b.area, b.env)
++                (b.area, b.env, b.placed)
 +            };
 +            if env.transformation != TransformationMatrix::unit() {
 +                return None;
 +            }
 +            let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);
++            // A run placed from a paint record: the new commands are placed the same way.
++            let (scene, bindings) = match placed {
++                Some(placed) => crate::scene::place_run(scene, bindings, placed)?,
++                None => (scene, bindings),
++            };
 +            let mut current = layer.0.content.borrow_mut();
 +            let plan = current.check_box(at, &scene)?;
 +            let content = Rc::make_mut(&mut *current);
@@ -28762,6 +29376,7 @@ index 0000000000000000000000000000000000000000..78ad7e6eca5247d644d731f8350d64fe
 +        let recording = Box::new(LayerRecording {
 +            bindings: Vec::new(),
 +            boxes: Vec::new(),
++            unheld: Vec::new(),
 +            source: None,
 +        });
 +        let mut state = (Scene::default(), Some(recording));
@@ -29325,10 +29940,10 @@ index 0000000000000000000000000000000000000000..6a1794918b3be567d1fad54d7a61bb09
 +or unwind; an abort invalidates the draw rather than granting replay rights.
 diff --git a/vendor/gpui/src/window/paint_record/invocation.rs b/vendor/gpui/src/window/paint_record/invocation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c7204329ff323b9a819fd92a96a68fc29e51607c
+index 0000000000000000000000000000000000000000..51ce95f62dd3e55904bd2fdc7fc0e43b0110b0cf
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/invocation.rs
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,121 @@
 +//! Запись один раз и атомарный вызов плана в свежей композиционной области.
 +
 +use super::*;
@@ -29406,6 +30021,7 @@ index 0000000000000000000000000000000000000000..c7204329ff323b9a819fd92a96a68fc2
 +            // его собственные эффекты разрешены до привязки к сегментам.
 +            let _recording = self.render_contexts.enter::<segments::Recording>(None);
 +            self.record_scene(extent, true, |window| {
++                window.begin_record_runs();
 +                let id = window.paint_scope_id();
 +                plan.paint(window, presentation);
 +                id
@@ -29413,7 +30029,9 @@ index 0000000000000000000000000000000000000000..c7204329ff323b9a819fd92a96a68fc2
 +        };
 +        // No destination writes occur until the complete invocation has succeeded.
 +        paint_scope::Identity::capture(self).check_pass(self)?;
-+        if !self.next_frame.scene.replay_placed(&scene, scaled, Some(clip)) {
++        let mut scene = scene;
++        scene.end_record_runs();
++        if !self.replay_placed_carrying(&scene, scaled, Some(clip)) {
 +            let scene = scene.copy_record(scaled, Some(clip));
 +            let scene = self.adopt_scene(scene);
 +            self.next_frame.scene.replay_record(&scene);
@@ -29529,7 +30147,7 @@ index 0000000000000000000000000000000000000000..b9c7e7e5f83f911dd60361b302882086
 +}
 diff --git a/vendor/gpui/src/window/paint_record/plan.rs b/vendor/gpui/src/window/paint_record/plan.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6355f3b0ca4369d50f56030d469a6b47efc8aa2d
+index 0000000000000000000000000000000000000000..a63df45921c08d337f3aac81a46f4f9b52286be8
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/plan.rs
 @@ -0,0 +1,185 @@
@@ -29660,7 +30278,7 @@ index 0000000000000000000000000000000000000000..6355f3b0ca4369d50f56030d469a6b47
 +                Command::Record(record) => {
 +                    let mask = window.content_mask().scale(window.scale_factor());
 +                    if presentation.is_none()
-+                        && window.next_frame.scene.replay_placed(&record.0.scene, Point::default(), Some(mask.bounds))
++                        && window.replay_placed_carrying(&record.0.scene, Point::default(), Some(mask.bounds))
 +                    {
 +                        continue;
 +                    }
@@ -29720,10 +30338,10 @@ index 0000000000000000000000000000000000000000..6355f3b0ca4369d50f56030d469a6b47
 +}
 diff --git a/vendor/gpui/src/window/paint_record/segments.rs b/vendor/gpui/src/window/paint_record/segments.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e7f0b2c1b76eb79ef8d5f7c294915e5c7ce93777
+index 0000000000000000000000000000000000000000..804025c529c278caa2cb9aa9afda78f7ae0f0d36
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/segments.rs
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,171 @@
 +//! Границы сегментов до публикации immutable record; CSS выбирает размещения.
 +
 +use super::*;
@@ -29845,13 +30463,18 @@ index 0000000000000000000000000000000000000000..e7f0b2c1b76eb79ef8d5f7c294915e5c
 +            clips: contexts.get::<crate::scene::segments::Clip>(),
 +            slices: contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
 +        });
-+        let (result, draft, identity, scale) = self.capture_paint_commands(source_clip, cx, |window, cx| {
++        let (result, mut draft, identity, scale) = self.capture_paint_commands(source_clip, cx, |window, cx| {
 +            let _recording = window.render_contexts.enter(Some(Rc::new(Recording)));
 +            let _clips = window.render_contexts.enter::<crate::scene::segments::Clip>(None);
 +            let _slices = window.render_contexts.enter::<admission::Slices>(None);
 +            window.next_frame.scene.begin_segments(read);
++            // Under a layer the record keeps the runs of its boxes for its
++            // placements (`scene::layer::placed`).
++            window.begin_record_runs();
 +            paint(window, cx)
 +        })?;
++        // Groups and hoisted backdrops place through an adopted copy: no runs.
++        draft.end_record_runs();
 +        let mut records = Vec::with_capacity(segments.len());
 +        for (index, segment) in segments.iter().enumerate() {
 +            if segments[..index].iter().any(|prior| prior.id == segment.id) { continue; }
@@ -32465,10 +33088,10 @@ index 0000000000000000000000000000000000000000..f86b14fa0513bf4b384e11a27c3cc61a
 +}
 diff --git a/vendor/gpui/src/window/scene_layer.rs b/vendor/gpui/src/window/scene_layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e4daae476b4bd68156074bc61a3386148f5d8309
+index 0000000000000000000000000000000000000000..e82c61e1afa50006f7a2190ee1b903c3a789e705
 --- /dev/null
 +++ b/vendor/gpui/src/window/scene_layer.rs
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,207 @@
 +//! KaminIDE patch: recording retained scene layers (`scene::layer`) and
 +//! binding the values a host may write into them.
 +//!
@@ -32486,6 +33109,9 @@ index 0000000000000000000000000000000000000000..e4daae476b4bd68156074bc61a338614
 +pub(crate) struct LayerRecording {
 +    pub(crate) bindings: Vec<Binding>,
 +    pub(crate) boxes: Vec<BoxRange>,
++    /// Owners whose paint reached the layer outside their runs
++    /// (`scene::layer::placed`): the layer holds none of their runs.
++    pub(crate) unheld: Vec<u32>,
 +    pub(crate) source: Option<Rc<SceneLayer>>,
 +}
 +
@@ -32537,7 +33163,7 @@ index 0000000000000000000000000000000000000000..e4daae476b4bd68156074bc61a338614
 +            bindings.reserve_exact(bound);
 +            boxes.reserve_exact(runs);
 +        }
-+        let recording = Box::new(LayerRecording { bindings, boxes, source });
++        let recording = Box::new(LayerRecording { bindings, boxes, unheld: Vec::new(), source });
 +        // The frame's scene and no recording wait in `state` while `f`
 +        // paints into a new scene; restoring swaps them back, on unwind too.
 +        let mut state = (scene, Some(recording));
@@ -32547,7 +33173,9 @@ index 0000000000000000000000000000000000000000..e4daae476b4bd68156074bc61a338614
 +            mem::swap(&mut window.next_frame.scene, &mut state.0);
 +            mem::swap(&mut window.layer_recording, &mut state.1);
 +        }, f);
-+        let (bindings, boxes) = recording.map_or_else(Default::default, |r| (r.bindings, r.boxes));
++        let (mut bindings, mut boxes, unheld) =
++            recording.map_or_else(Default::default, |r| (r.bindings, r.boxes, r.unheld));
++        crate::scene::release_unheld(&mut bindings, &mut boxes, unheld);
 +        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
 +            let scene = self.adopt_scene(scene);
 +            self.next_frame.scene.replay_record(&scene);
@@ -32605,18 +33233,23 @@ index 0000000000000000000000000000000000000000..e4daae476b4bd68156074bc61a338614
 +        // groups of a paint plan), composited into the layer as one result:
 +        // its quads are not the layer's, and a binding to one would index
 +        // another scene's list.
-+        if scene.in_group {
++        if scene.in_group && scene.book.record_runs.is_none() {
 +            crate::scene::layer_counters::GROUP_BINDS_SKIPPED
 +                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +            return;
 +        }
-+        recording.bindings.push(Binding {
++        let binding = Binding {
 +            owner: self.paint_owner,
 +            value,
 +            quad: before as u32,
 +            op: (scene.paint_operations.len() - 1) as u32,
 +            opacity,
-+        });
++        };
++        // A paint record keeps the binding for its placements (`scene::layer::placed`).
++        match self.next_frame.scene.book.record_runs.as_mut() {
++            Some(runs) => runs.bindings.push(binding),
++            None => recording.bindings.push(binding),
++        }
 +    }
 +
 +    /// Whether the rendered frame shows nothing new on screen: it repeats the
