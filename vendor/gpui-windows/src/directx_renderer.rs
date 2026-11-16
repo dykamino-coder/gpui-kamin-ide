@@ -868,6 +868,12 @@ impl DirectXRenderer {
         let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
         self.gpu_timer.begin(&device, &ctx);
         let needed = within.map(|r| scene.groups_needed([r.x, r.y, r.width, r.height]));
+        log::debug!(
+            target: "gpui::frame",
+            "plan within {within:?} groups {} needed {:?}",
+            scene.groups.len(),
+            needed.as_ref().map(|n| n.iter().filter(|&&v| v).count())
+        );
         // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
         // от них остаётся метка, по которой готовый буфер и композитится.
         if let Err(e) = self.render_groups(scene, needed.as_deref()) {
@@ -1081,6 +1087,12 @@ impl DirectXRenderer {
         // layer by layer (`group_batch::draw_group_layers`); any other group ends
         // the segment, so its nested groups are in the atlas before it is drawn.
         self.blur.layer.clear();
+        log::debug!(
+            target: "gpui::frame",
+            "groups {} reused {}",
+            scene.groups.len(),
+            reuse.iter().filter(|&&r| r).count()
+        );
         let mut segment = Vec::new();
         for (i, group) in scene.groups.iter().enumerate() {
             // KaminIDE patch: a frame drawn within a rectangle skips groups no

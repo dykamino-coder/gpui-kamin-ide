@@ -20,6 +20,7 @@ use crate::{Bounds, ScaledPixels};
 use collections::FxHashMap;
 
 mod group_match;
+mod trace;
 
 /// Сторона клетки повреждения, device px.
 pub const DAMAGE_TILE: u32 = 64;
@@ -471,6 +472,7 @@ impl Scene {
         index.id = id;
         index.base = previous.damage.id;
         index.damage = self.damage_against(&index, previous);
+        trace::log_damage(self, &index, previous);
         // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
         // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
         index.group_base.clear();
