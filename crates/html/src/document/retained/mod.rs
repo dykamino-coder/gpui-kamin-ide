@@ -33,6 +33,8 @@ mod l0_tests;
 #[cfg(test)]
 mod layered_replay_tests;
 #[cfg(test)]
+mod moved_rows_tests;
+#[cfg(test)]
 mod paint_damage_tests;
 mod prepared;
 #[cfg(test)]
