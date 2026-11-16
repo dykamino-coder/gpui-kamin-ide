@@ -77,7 +77,7 @@ impl FlowCx {
         let pending = Rc::new(PendingReplay::new(
             Some(self.key.clone()),
             (mark.start, end),
-            super::super::plain::inert_tree(e, opts.cx.vcx()),
+            super::super::content::inert_tree(e, opts.cx.vcx()),
             widths,
             super::super::plain::fills_width(e),
             &self.reuse.ink,

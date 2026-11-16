@@ -16,57 +16,20 @@
 //! LayoutNG берёт кэшированный `LayoutResult` чистой коробки, а Blink
 //! `PaintController` — подпоследовательность краски чистого поддерева.
 
+mod key;
+
+pub(super) use key::inert_tree;
+
 use super::replay::{PendingReplay, Replay, ReplayRecord, ReplayRecorder, ReplaySlot};
 use super::{Counters, FlowReuse, Source};
 use crate::dom::{BoxId, Node};
 use crate::hooks::IntoHooked;
-use crate::layout::cx::BoxConstraints;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
+use key::{ContentKey, key, plain};
 use std::cell::Cell;
 use std::rc::Rc;
-
-/// Вход содержимого снаружи поддерева контейнера.
-pub(crate) struct ContentKey {
-    inherited: BoxStyle,
-    constraints: BoxConstraints,
-    cell_bfc: bool,
-    fresh: bool,
-    len: usize,
-    root: BoxStyle,
-    viewport: (f32, f32),
-    text: gpui::TextStyle,
-    normal_line_height: f32,
-    fonts: u64,
-}
-
-impl ContentKey {
-    fn same(&self, other: &Self) -> bool {
-        let (a, b) = (&self.inherited, &other.inherited);
-        a.same_box_values(b)
-            && a.self_node == b.self_node
-            && a.cb_node == b.cb_node
-            && a.fixed_cb_node == b.fixed_cb_node
-            && a.decor_box == b.decor_box
-            && self.constraints == other.constraints
-            && self.constraints.key_widths() == other.constraints.key_widths()
-            && self.cell_bfc == other.cell_bfc
-            && self.fresh == other.fresh
-            && self.len == other.len
-            && *self.root == *other.root
-            && self.viewport == other.viewport
-            && self.text == other.text
-            && self.normal_line_height == other.normal_line_height
-            && self.fonts == other.fonts
-    }
-}
-
-/// The key of the records and bans of the content of box `id`: apart from
-/// the node ids that key the root flow's records (the top bit).
-fn key(id: BoxId) -> u64 {
-    1 << 63 | u64::from(id.generation) << 32 | u64::from(id.slot)
-}
 
 /// Запись содержимого: вход, номер публикации и элементы последнего кадра.
 pub(crate) struct ContentRecord {
@@ -91,21 +54,6 @@ pub(crate) struct Content {
     key: ContentKey,
     at: u32,
     start: Counters,
-}
-
-/// Сборка без фрагментации, обрезки строк, руби и отложенных внепоточных
-/// сборок; поддерево инертно (`plain::inert_tree`).
-fn plain(nodes: &[Node], opts: &RenderOpts) -> bool {
-    let cx = &opts.cx;
-    cx.fragmentation.lines.is_none()
-        && cx.clamp.input.is_none()
-        && cx.ruby.base.is_none()
-        && cx.inline.trim_requests.is_empty()
-        && cx.position.oof_identities.is_none()
-        && nodes.iter().all(|n| match n {
-            Node::Element(e) => super::plain::inert_tree(e, cx.vcx()),
-            Node::Text(_) => true,
-        })
 }
 
 impl FlowReuse {

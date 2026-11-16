@@ -228,24 +228,6 @@ impl BoxTree {
         id
     }
 
-    /// Убрать коробку со всем поддеревом; ключи их слотов больше не разрешаются.
-    pub(super) fn remove_subtree(&mut self, id: BoxId) {
-        let mut pending = vec![id];
-        while let Some(id) = pending.pop() {
-            let Some(record) = self.arena.remove(id) else {
-                continue;
-            };
-            if record.source != 0 {
-                self.by_node.remove_if(record.source, id);
-            }
-            let mut child = record.first;
-            while let Some(next) = self.get(child).map(|r| r.next) {
-                pending.push(child);
-                child = next;
-            }
-        }
-    }
-
     /// Границы анонимного фрагмента: первый и последний ключ источника внутри
     /// (авторский элемент даёт свой ключ, не заходя внутрь).
     fn extent(&self, e: &Element, keys: &Keys) -> super::sources::Extent {

@@ -102,17 +102,6 @@ pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
     all_elements(e, node) && super::layered::contained(e)
 }
 
-/// Every box of the subtree of `e` is inert (`replayable_node`): no box
-/// positions, floats, transforms, blends or takes a paint key or anchor its
-/// output keeps, so its content replays with moved counters (`content`).
-pub(super) fn inert_tree(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
-    all_elements(e, |e| {
-        replayable_node(e, vcx)
-            && e.style.used().reset_positioned.anchor_name.is_none()
-            && e.style.used().reset_positioned.implicit_anchor.is_none()
-    })
-}
-
 /// Элемент `e` сам по себе не мешает повтору поддерева (`replayable`), а
 /// в далёком блоке — и без позиционирования и слоёв (`far`).
 pub(super) fn replayable_node(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {

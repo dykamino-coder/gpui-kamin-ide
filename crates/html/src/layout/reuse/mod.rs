@@ -34,6 +34,7 @@ mod record;
 mod recorder;
 mod replay;
 mod source;
+mod stats;
 mod store;
 #[cfg(test)]
 mod tests;

@@ -2,6 +2,7 @@
 //! inside one table cell builds that cell's content, and the clean cells
 //! replay theirs; the frame equals a fresh document's.
 
+use super::layered_replay_tests::scene;
 use super::reuse_tests::update;
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext};
@@ -23,17 +24,6 @@ fn page(edited: Option<usize>) -> String {
 
 fn replayed(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
     cx.update(|_, cx| view.read(cx).doc.replayed_contents())
-}
-
-fn scene(cx: &mut VisualTestContext) -> Vec<String> {
-    cx.update(|window, _| {
-        let quads = window.painted_quads().into_iter().map(|q| format!("{q:?}"));
-        let lines = window
-            .painted_underlines()
-            .into_iter()
-            .map(|u| format!("{u:?}"));
-        quads.chain(lines).collect()
-    })
 }
 
 #[gpui::test]
