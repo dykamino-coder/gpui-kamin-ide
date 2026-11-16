@@ -27,7 +27,7 @@ fn columns() -> [Placed; 2] {
 fn record(fill: Hsla, layered: bool) -> Scene {
     let mut s = Scene { in_group: true, ..Scene::default() };
     if layered {
-        s.record_runs = Some(Box::default());
+        s.book.record_runs = Some(Box::default());
     }
     s.insert_primitive(quad(rect(0., 0., 40., 100.), grey()));
     for (owner, area, color) in [(1, rect(0., 60., 40., 30.), blue()), (2, rect(0., 40., 40., 20.), fill)] {
@@ -36,12 +36,12 @@ fn record(fill: Hsla, layered: bool) -> Scene {
         if owner == 2 && layered {
             let (op, quad) = (s.paint_operations.len() as u32, s.quads.len() as u32);
             let binding = Binding { owner, value: LayerValue::Background, quad, op, opacity: 1. };
-            s.record_runs.as_mut().unwrap().bindings.push(binding);
+            s.book.record_runs.as_mut().unwrap().bindings.push(binding);
         }
         s.insert_primitive(quad(area, color));
         if open {
             let run = s.close_box().unwrap();
-            s.record_runs.as_mut().unwrap().boxes.push(run);
+            s.book.record_runs.as_mut().unwrap().boxes.push(run);
         }
     }
     s.insert_primitive(quad(rect(0., 95., 40., 5.), red()));
@@ -58,10 +58,10 @@ fn page(record: &Scene, layered: bool) -> (Scene, super::RecordRuns) {
     let mut carried = super::RecordRuns::default();
     for placed in columns() {
         if layered {
-            s.placed_map = Some(PlacedMap::new(Some(placed), 0));
+            s.book.placed_map = Some(PlacedMap::new(Some(placed), 0));
         }
         assert!(s.replay_placed(record, placed.offset, placed.clip));
-        if let (Some(map), Some(runs)) = (s.placed_map.take(), record.record_runs.as_deref()) {
+        if let (Some(map), Some(runs)) = (s.book.placed_map.take(), record.book.record_runs.as_deref()) {
             let c = runs.carry(&map, &s);
             carried.boxes.extend(c.boxes);
             carried.bindings.extend(c.bindings);
@@ -147,14 +147,15 @@ fn a_bound_fill_binds_its_quad_in_each_column() {
 #[test]
 fn a_group_in_a_record_drops_the_runs_it_kept() {
     let dropped = layer_counters::RUNS_UNPLACED.load(Relaxed);
-    let mut s = Scene { in_group: true, record_runs: Some(Box::default()), ..Scene::default() };
+    let mut s = Scene { in_group: true, ..Scene::default() };
+    s.book.record_runs = Some(Box::default());
     assert!(s.open_box(1, rect(0., 0., 10., 10.), env()));
     s.insert_primitive(quad(rect(0., 0., 10., 10.), blue()));
     let run = s.close_box().unwrap();
-    s.record_runs.as_mut().unwrap().boxes.push(run);
+    s.book.record_runs.as_mut().unwrap().boxes.push(run);
     s.groups.push(PaintGroup { scene: Scene::default(), bounds: rect(0., 0., 1., 1.), ..Default::default() });
     s.end_record_runs();
-    let runs = s.record_runs.as_deref().expect("the record says whom it does not hold");
+    let runs = s.book.record_runs.as_deref().expect("the record says whom it does not hold");
     assert!(runs.boxes.is_empty() && runs.bindings.is_empty(), "a record with a group carries no runs");
     assert_eq!(runs.unheld, vec![1], "the owner of the run kept before the group is unheld");
     assert!(layer_counters::RUNS_UNPLACED.load(Relaxed) > dropped, "the dropped run is counted");
@@ -170,7 +171,7 @@ fn twice(record: &Scene) -> super::RecordRuns {
     for _ in 0..4 {
         dest.insert_primitive(quad_at());
     }
-    record.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest)
+    record.book.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest)
 }
 
 #[test]
@@ -197,7 +198,7 @@ fn a_box_placed_twice_in_one_scene_and_once_in_another_is_not_held() {
 #[test]
 fn a_record_placed_as_one_copy_unholds_every_owner_it_kept() {
     let record = record(blue(), true);
-    let mut owners = record.record_runs.as_deref().unwrap().dropped().unheld;
+    let mut owners = record.book.record_runs.as_deref().unwrap().dropped().unheld;
     owners.sort_unstable();
     assert_eq!(owners, vec![1, 2]);
 }
@@ -215,7 +216,7 @@ fn a_run_placed_twice_in_one_scene_is_dropped_and_counted() {
     for _ in 0..4 {
         dest.insert_primitive(quad_at());
     }
-    let carried = record.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest);
+    let carried = record.book.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest);
     assert!(carried.boxes.iter().all(|b| b.owner != 2), "a run placed twice is not the layer's");
     assert!(carried.unheld.contains(&2), "its owner is unheld");
     assert!(layer_counters::RUNS_UNPLACED.load(Relaxed) > dropped);

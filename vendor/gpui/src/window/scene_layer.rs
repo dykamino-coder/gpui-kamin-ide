@@ -139,7 +139,7 @@ impl Window {
         // groups of a paint plan), composited into the layer as one result:
         // its quads are not the layer's, and a binding to one would index
         // another scene's list.
-        if scene.in_group && scene.record_runs.is_none() {
+        if scene.in_group && scene.book.record_runs.is_none() {
             crate::scene::layer_counters::GROUP_BINDS_SKIPPED
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return;
@@ -152,7 +152,7 @@ impl Window {
             opacity,
         };
         // A paint record keeps the binding for its placements (`scene::layer::placed`).
-        match self.next_frame.scene.record_runs.as_mut() {
+        match self.next_frame.scene.book.record_runs.as_mut() {
             Some(runs) => runs.bindings.push(binding),
             None => recording.bindings.push(binding),
         }

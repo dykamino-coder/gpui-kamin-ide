@@ -29,8 +29,8 @@ impl Scene {
         vec(sink, path, &self.subpixel_sprites);
         vec(sink, path, &self.polychrome_sprites);
         vec(sink, path, &self.surfaces);
-        vec(sink, path, &self.layers);
-        vec(sink, path, &self.layer_order);
+        vec(sink, path, &self.book.layers);
+        vec(sink, path, &self.book.layer_order);
     }
 }
 
@@ -150,14 +150,6 @@ pub struct Scene {
     /// later frame replaying the same range grafts it again.
     blocks: Vec<ReplayedBlock>,
     layer_stack: Vec<DrawOrder>,
-    /// KaminIDE patch: the box whose own paint is being recorded into a layer.
-    open_box: Option<OpenBox>,
-    /// KaminIDE patch: the box runs and bindings of a paint record painted
-    /// while a layer records (`scene::layer::placed`).
-    pub(crate) record_runs: Option<Box<layer::RecordRuns>>,
-    /// KaminIDE patch: where the commands of a scene being placed here land
-    /// (`scene::layer::placed`), one entry per placed command.
-    pub(crate) placed_map: Option<layer::PlacedMap>,
     /// KaminIDE patch: bottom-layer primitives painted so far this frame.
     bottom_seq: DrawOrder,
     pub shadows: Vec<Shadow>,
@@ -189,24 +181,42 @@ pub struct Scene {
     /// Counters of one frame, 32 bits each: with `ink_scope` the scene (two
     /// in every `Window`) stays the size it had without scopes.
     pub(crate) ink_allowed: (u32, u32),
-    /// KaminIDE patch: retained layers this scene draws (`scene::layer`), in
-    /// insertion order, and their indices by order for batching.
+    /// KaminIDE patch: the frame's damage and retained layers (`SceneBook`).
+    pub(crate) book: Box<SceneBook>,
+}
+
+/// KaminIDE patch: what a scene keeps for its damage and its retained layers,
+/// behind one box: scenes are held by value in paint frames that recurse with
+/// the tree depth (`Window::record_scene`, `with_isolated_scene`), so the
+/// scene keeps the size it had with only the damage index boxed.
+#[derive(Default)]
+pub(crate) struct SceneBook {
+    /// Клетки кадра и повреждение против прошлого кадра (`damage`).
+    pub(crate) index: damage::DamageIndex,
+    /// The box whose own paint is being recorded into a layer.
+    pub(crate) open_box: Option<OpenBox>,
+    /// Retained layers this scene draws (`scene::layer`), in insertion order,
+    /// and their indices by order for batching.
     pub(crate) layers: Vec<LayerSlot>,
-    layer_order: Vec<u32>,
-    /// KaminIDE patch: primitives and layers painted into this scene rather
-    /// than replayed from another, and the rectangles written into the
-    /// replayed layers since they were last drawn: with no fresh paint, the
-    /// frame differs from the one it replays only there (`Scene::damage`).
+    pub(crate) layer_order: Vec<u32>,
+    /// Primitives and layers painted into this scene rather than replayed
+    /// from another, and the rectangles written into the replayed layers
+    /// since they were last drawn: with no fresh paint, the frame differs
+    /// from the one it replays only there (`Scene::damage`).
     pub(crate) fresh: u32,
     pub(crate) layer_damage: Option<Bounds<ScaledPixels>>,
-    damage: Option<Option<Bounds<ScaledPixels>>>,
-    /// KaminIDE patch: union of the placed bounds within their content masks
-    /// of every primitive command, kept where a command is added: the bounds
-    /// of a layer finished from this scene (`SceneLayer::finish`) without a
-    /// second pass over its commands.
+    pub(crate) damage: Option<Option<Bounds<ScaledPixels>>>,
+    /// Union of the placed bounds within their content masks of every
+    /// primitive command, kept where a command is added: the bounds of a
+    /// layer finished from this scene (`SceneLayer::finish`) without a second
+    /// pass over its commands.
     pub(crate) primitive_ink: Option<Bounds<ScaledPixels>>,
-    /// KaminIDE patch: клетки кадра и повреждение против прошлого кадра (`damage`).
-    pub(crate) damage_index: Box<damage::DamageIndex>,
+    /// The box runs and bindings of a paint record painted while a layer
+    /// records (`scene::layer::placed`).
+    pub(crate) record_runs: Option<Box<layer::RecordRuns>>,
+    /// Where the commands of a scene being placed here land
+    /// (`scene::layer::placed`), one entry per placed command.
+    pub(crate) placed_map: Option<layer::PlacedMap>,
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -398,12 +408,12 @@ impl Scene {
         self.subpixel_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
-        self.layers.clear();
-        self.layer_order.clear();
-        self.fresh = 0;
-        self.layer_damage = None;
-        self.damage = None;
-        self.primitive_ink = None;
+        self.book.layers.clear();
+        self.book.layer_order.clear();
+        self.book.fresh = 0;
+        self.book.layer_damage = None;
+        self.book.damage = None;
+        self.book.primitive_ink = None;
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();
         self.ink.clear();
@@ -445,7 +455,7 @@ impl Scene {
     }
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
-        self.fresh += 1;
+        self.book.fresh += 1;
         let mut primitive = primitive.into();
         let placed_bounds = placed_bounds(&primitive);
         // KaminIDE patch: ink of open retained subtrees, culled or not.
@@ -613,7 +623,7 @@ impl Scene {
         clip: Option<Bounds<ScaledPixels>>,
     ) -> bool {
         // A layer is drawn where it was recorded: it cannot be moved.
-        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() || !scene.layers.is_empty() {
+        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() || !scene.book.layers.is_empty() {
             return false;
         }
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0);
@@ -738,7 +748,7 @@ impl Scene {
         for operation in operations {
             let mut operation = operation.clone();
             if !place(&mut operation) {
-                layer::PlacedMap::skip(&mut self.placed_map);
+                layer::PlacedMap::skip(&mut self.book.placed_map);
                 continue;
             }
             let mut quad = None;
@@ -766,14 +776,14 @@ impl Scene {
                     }
                     layer.order += shift;
                     if !self.push_layer_slot(layer) {
-                        layer::PlacedMap::skip(&mut self.placed_map);
+                        layer::PlacedMap::skip(&mut self.book.placed_map);
                         continue;
                     }
                 }
                 _ => {}
             }
             let at = self.paint_operations.len();
-            layer::PlacedMap::land(&mut self.placed_map, at, quad);
+            layer::PlacedMap::land(&mut self.book.placed_map, at, quad);
             self.paint_operations.push(operation);
         }
         Self::count_copied(copied);
@@ -818,7 +828,7 @@ impl Scene {
     /// to this scene in `primitive_ink`; empty bounds paint nothing.
     fn add_primitive_ink(&mut self, clipped: Bounds<ScaledPixels>) {
         if !clipped.is_empty() {
-            self.primitive_ink = Some(self.primitive_ink.map_or(clipped, |u| u.union(&clipped)));
+            self.book.primitive_ink = Some(self.book.primitive_ink.map_or(clipped, |u| u.union(&clipped)));
         }
     }
 
@@ -850,7 +860,7 @@ impl Scene {
         mut place: impl FnMut(&mut PaintOperation),
     ) -> Self {
         // Layers are recorded only in the root environment, never in a record.
-        debug_assert!(self.layers.is_empty(), "a paint record with a scene layer");
+        debug_assert!(self.book.layers.is_empty(), "a paint record with a scene layer");
         let mut scene = Self { in_group: self.in_group, ..Self::default() };
         // Without an output clip every command is kept (a composition
         // group's copy, which the frame keeps): reserve exactly. With one,
@@ -884,17 +894,17 @@ impl Scene {
         match operation {
             PaintOperation::Primitive(primitive) => {
                 Self::count_copied(1);
-                let fresh = self.fresh;
+                let fresh = self.book.fresh;
                 self.insert_primitive(primitive);
-                self.fresh = fresh;
+                self.book.fresh = fresh;
             }
             PaintOperation::Layer(layer) => {
                 if let Some(cell) = layer.cell.upgrade() {
-                    let (fresh, damage) = (self.fresh, cell.damage.take());
+                    let (fresh, damage) = (self.book.fresh, cell.damage.take());
                     self.insert_layer(&LayerHandle(cell), layer.bounds);
-                    self.fresh = fresh;
+                    self.book.fresh = fresh;
                     if let Some(rect) = damage {
-                        self.layer_damage = Some(self.layer_damage.map_or(rect, |d| d.union(&rect)));
+                        self.book.layer_damage = Some(self.book.layer_damage.map_or(rect, |d| d.union(&rect)));
                     }
                 }
             }
@@ -948,8 +958,8 @@ impl Scene {
             polychrome_sprites_iter: self.polychrome_sprites.iter().peekable(),
             surfaces_start: 0,
             surfaces_iter: self.surfaces.iter().peekable(),
-            layers: &self.layers,
-            layers_iter: self.layer_order.iter().peekable(),
+            layers: &self.book.layers,
+            layers_iter: self.book.layer_order.iter().peekable(),
         }
     }
 }

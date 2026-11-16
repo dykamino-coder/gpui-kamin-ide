@@ -71,15 +71,15 @@ impl Scene {
         // A group's scene (`in_group`) is composited into the layer as one
         // result: a run of its commands is no run of the layer.
         // A paint record that keeps box runs (`super::placed`) is no group.
-        if self.open_box.is_some()
-            || (self.in_group && self.record_runs.is_none())
+        if self.book.open_box.is_some()
+            || (self.in_group && self.book.record_runs.is_none())
             || !self.layer_stack.is_empty()
             || !self.depth.plane_stack.is_empty()
             || !self.depth.contexts.is_empty()
         {
             return false;
         }
-        self.open_box = Some(OpenBox {
+        self.book.open_box = Some(OpenBox {
             owner,
             ops: self.paint_operations.len(),
             area,
@@ -90,23 +90,23 @@ impl Scene {
 
     /// Whether a box's own paint is open.
     pub(crate) fn box_open(&self) -> bool {
-        self.open_box.is_some()
+        self.book.open_box.is_some()
     }
 
     /// The fill bounds the open box's paint placed.
     pub(crate) fn open_box_fill(&self) -> Option<Bounds<Pixels>> {
-        self.open_box.as_ref()?.env.fill
+        self.book.open_box.as_ref()?.env.fill
     }
 
     pub(crate) fn set_open_box_fill(&mut self, fill: Bounds<Pixels>) {
-        if let Some(open) = self.open_box.as_mut() {
+        if let Some(open) = self.book.open_box.as_mut() {
             open.env.fill = Some(fill);
         }
     }
 
     /// Finish the open box: its run of commands and their ink.
     pub(crate) fn close_box(&mut self) -> Option<BoxRange> {
-        let open = self.open_box.take()?;
+        let open = self.book.open_box.take()?;
         let ops = open.ops..self.paint_operations.len();
         let mut ink = None;
         let mut plain = true;

@@ -210,7 +210,7 @@ impl Scene {
     /// before the group are unheld.
     pub(crate) fn end_record_runs(&mut self) {
         if !self.groups.is_empty() || !self.hoisted_backdrops.is_empty() {
-            if let Some(runs) = self.record_runs.as_mut() {
+            if let Some(runs) = self.book.record_runs.as_mut() {
                 **runs = runs.dropped();
             }
         }
@@ -240,11 +240,11 @@ pub(crate) fn place_run(
     placed: Placed,
 ) -> Option<(Scene, Vec<Binding>)> {
     let mut out = Scene::default();
-    out.placed_map = Some(PlacedMap::new(Some(placed), 0));
+    out.book.placed_map = Some(PlacedMap::new(Some(placed), 0));
     if !out.replay_placed(&scene, placed.offset, placed.clip) {
         return None;
     }
-    let map = out.placed_map.take()?;
+    let map = out.book.placed_map.take()?;
     let bindings = bindings
         .into_iter()
         .filter_map(|b| {
@@ -260,7 +260,7 @@ impl Window {
     /// a layer records.
     pub(crate) fn begin_record_runs(&mut self) {
         if self.layer_recording.is_some() {
-            self.next_frame.scene.record_runs = Some(Box::default());
+            self.next_frame.scene.book.record_runs = Some(Box::default());
         }
     }
 
@@ -276,22 +276,22 @@ impl Window {
         clip: Option<Bounds<ScaledPixels>>,
     ) -> bool {
         let here = &self.next_frame.scene;
-        let into = here.record_runs.is_some() || self.layer_recording.is_some();
-        let takes = scene.record_runs.is_some()
-            && if here.in_group { here.record_runs.is_some() } else { self.layer_recording.is_some() };
+        let into = here.book.record_runs.is_some() || self.layer_recording.is_some();
+        let takes = scene.book.record_runs.is_some()
+            && if here.in_group { here.book.record_runs.is_some() } else { self.layer_recording.is_some() };
         if takes {
-            self.next_frame.scene.placed_map = Some(PlacedMap::new(Some(Placed { offset, clip }), 0));
+            self.next_frame.scene.book.placed_map = Some(PlacedMap::new(Some(Placed { offset, clip }), 0));
         }
         let done = self.next_frame.scene.replay_placed(scene, offset, clip);
-        let map = self.next_frame.scene.placed_map.take();
-        let Some(runs) = scene.record_runs.as_deref().filter(|_| into) else {
+        let map = self.next_frame.scene.book.placed_map.take();
+        let Some(runs) = scene.book.record_runs.as_deref().filter(|_| into) else {
             return done;
         };
         let carried = match (done, map) {
             (true, Some(map)) => runs.carry(&map, &self.next_frame.scene),
             _ => runs.dropped(),
         };
-        if let Some(own) = self.next_frame.scene.record_runs.as_mut() {
+        if let Some(own) = self.next_frame.scene.book.record_runs.as_mut() {
             own.extend(carried);
         } else if let Some(recording) = self.layer_recording.as_mut() {
             recording.boxes.extend(carried.boxes);

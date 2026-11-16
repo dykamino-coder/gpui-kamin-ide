@@ -41,7 +41,7 @@ impl Window {
         let result = self.with_paint_owner(owner, f);
         let range = self.next_frame.scene.close_box();
         // A paint record keeps the run for its placements (`scene::layer::placed`).
-        if let (Some(range), Some(runs)) = (&range, self.next_frame.scene.record_runs.as_mut()) {
+        if let (Some(range), Some(runs)) = (&range, self.next_frame.scene.book.record_runs.as_mut()) {
             runs.boxes.push(range.clone());
         } else if let (Some(range), Some(recording)) = (range, self.layer_recording.as_mut()) {
             recording.boxes.push(range);
