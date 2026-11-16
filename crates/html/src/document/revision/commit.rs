@@ -142,17 +142,21 @@ impl Document {
                         .is_some_and(|e| self.reuse.unpainted(e.node_id))
                 })
         };
-        let Some(repaints) = super::layer_write::write_paint_values(
+        // A box whose runs showed no pixel of the layer's frame.
+        let off = |id: u64| self.reuse.off_screen(&layer, id);
+        let Some(taken) = super::layer_write::write_paint_values(
             &self.nodes,
             nodes,
             paths,
             &layer,
             plain,
             unseen,
+            off,
         ) else {
             return false;
         };
-        self.reuse.queue_repaints(repaints);
+        self.reuse.queue_repaints(taken.records);
+        self.reuse.defer_repaints(taken.deferred);
         true
     }
 

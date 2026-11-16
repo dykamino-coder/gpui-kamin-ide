@@ -19,6 +19,14 @@ pub(crate) struct Kept {
     /// The root-flow blocks the layer's frame skipped off the screen
     /// (`FlowReuse::finish`): no box of theirs is in the layer.
     unpainted: RefCell<HashSet<u64>>,
+    /// Records of boxes off the screen, waiting for a frame that shows them.
+    deferred: super::deferred::Deferred,
+}
+
+impl Kept {
+    pub(super) fn deferred(&self) -> &super::deferred::Deferred {
+        &self.deferred
+    }
 }
 
 impl Store {
@@ -41,6 +49,8 @@ impl Store {
         let source = self.scene_layer();
         // The frame painting now names its skipped blocks when it finishes.
         self.layer.unpainted.take();
+        let shown = window.content_mask().bounds.scale(window.scale_factor());
+        self.layer.deferred.start(Some(shown));
         let (_, layer) = window.record_scene_layer(source.as_ref(), f);
         let layer = match layer {
             gpui::RecordedLayer::Layer(layer) => {
@@ -70,6 +80,7 @@ impl Store {
     /// Drop the layer: the next frame paints a new one.
     pub(crate) fn drop_layer(&self) {
         self.layer.layer.replace(None);
+        self.layer.deferred.start(None);
     }
 
     /// The layer of the last recorded frame, if it painted into one.

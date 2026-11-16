@@ -12,6 +12,9 @@ pub static RECORDS: AtomicU64 = AtomicU64::new(0);
 /// Boxes under a block the frame skipped off the screen: neither written nor
 /// recorded, their block's record takes the change.
 pub static UNSEEN: AtomicU64 = AtomicU64::new(0);
+/// Boxes in the layer whose runs showed no pixel of its frame: their records
+/// wait for a frame that shows them (`layout::reuse::deferred`).
+pub static DEFERRED: AtomicU64 = AtomicU64::new(0);
 /// Boxes whose change is not own paint (layout, other values, controls).
 pub static REFUSED_NOT_PAINT: AtomicU64 = AtomicU64::new(0);
 /// Boxes whose paint is not their own commands (hover, decorations, root canvas...).
@@ -20,6 +23,31 @@ pub static REFUSED_NOT_OWN: AtomicU64 = AtomicU64::new(0);
 pub static REFUSED_NO_LAYER: AtomicU64 = AtomicU64::new(0);
 /// Boxes the layer refused to record again (no run, order, transform, sprites).
 pub static REFUSED_BY_LAYER: AtomicU64 = AtomicU64::new(0);
+
+/// Batches with no plan (`document::revision::plan`): the document is
+/// rebuilt. Each takes one reason below.
+pub static REFUSED_REBUILT: AtomicU64 = AtomicU64::new(0);
+/// The revision is not quiet (diagnostics, failures, limits), the theme or
+/// the source changed.
+pub static REFUSED_PLAN_STATE: AtomicU64 = AtomicU64::new(0);
+/// An edited element the box tree does not hold, or an attribute the frame
+/// build reads (not `class` or `data-*` the sheets read).
+pub static REFUSED_PLAN_ELEMENT: AtomicU64 = AtomicU64::new(0);
+/// A text edit the boxes cannot take in place, or one beside a restyle.
+pub static REFUSED_PLAN_TEXT: AtomicU64 = AtomicU64::new(0);
+/// The restyle probe, its targets or their cascades did not resolve.
+pub static REFUSED_RESTYLE_PROBE: AtomicU64 = AtomicU64::new(0);
+/// `attr()` reads attributes outside selectors.
+pub static REFUSED_RESTYLE_ATTR: AtomicU64 = AtomicU64::new(0);
+/// A target's values outside its style struct changed (pseudo-elements, counters...).
+pub static REFUSED_RESTYLE_REST: AtomicU64 = AtomicU64::new(0);
+/// A target's change reaches layout.
+pub static REFUSED_RESTYLE_LAYOUT: AtomicU64 = AtomicU64::new(0);
+/// A restyle of `html`, of the canvas background of `body` or of an
+/// unwrapped wrapper.
+pub static REFUSED_RESTYLE_ROOT: AtomicU64 = AtomicU64::new(0);
+/// The boxes of the batch were not found along paths, or a patch failed.
+pub static REFUSED_PLAN_PATHS: AtomicU64 = AtomicU64::new(0);
 
 /// Revisions committed by plan (`document::revision::commit`): a rebuild
 /// of the document is none of them.
@@ -52,16 +80,41 @@ pub(crate) fn add(counter: &AtomicU64, n: u64) {
     counter.fetch_add(n, Relaxed);
 }
 
+/// `value`, counting `reason` when it is `None`.
+pub(crate) fn why<T>(value: Option<T>, reason: &AtomicU64) -> Option<T> {
+    if value.is_none() {
+        add(reason, 1);
+    }
+    value
+}
+
+/// `None`, counting `reason`.
+pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
+    add(reason, 1);
+    None
+}
+
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
     [
         &VALUES,
         &RECORDS,
         &UNSEEN,
+        &DEFERRED,
         &REFUSED_NOT_PAINT,
         &REFUSED_NOT_OWN,
         &REFUSED_NO_LAYER,
         &REFUSED_BY_LAYER,
+        &REFUSED_REBUILT,
+        &REFUSED_PLAN_STATE,
+        &REFUSED_PLAN_ELEMENT,
+        &REFUSED_PLAN_TEXT,
+        &REFUSED_RESTYLE_PROBE,
+        &REFUSED_RESTYLE_ATTR,
+        &REFUSED_RESTYLE_REST,
+        &REFUSED_RESTYLE_LAYOUT,
+        &REFUSED_RESTYLE_ROOT,
+        &REFUSED_PLAN_PATHS,
         &PLAN_CLEAN,
         &PLAN_PATCHED,
         &PLAN_RESTYLED,
@@ -71,14 +124,25 @@ pub fn read() -> [u64; NAMES.len()] {
 }
 
 /// Names of `read`'s counters.
-pub const NAMES: [&str; 11] = [
+pub const NAMES: [&str; 22] = [
     "values",
     "records",
     "unseen",
+    "deferred",
     "refused_not_paint",
     "refused_not_own",
     "refused_no_layer",
     "refused_by_layer",
+    "refused_rebuilt",
+    "refused_plan_state",
+    "refused_plan_element",
+    "refused_plan_text",
+    "refused_restyle_probe",
+    "refused_restyle_attr",
+    "refused_restyle_rest",
+    "refused_restyle_layout",
+    "refused_restyle_root",
+    "refused_plan_paths",
     "plan_clean",
     "plan_patched",
     "plan_restyled",
