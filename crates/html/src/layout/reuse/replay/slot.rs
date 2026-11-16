@@ -45,9 +45,10 @@ impl ReplaySlot {
             window.scale_factor(),
             window.content_mask(),
         );
-        // A box's content (`content`, no flow key) may lie elsewhere: its
-        // movable output replays moved. A root-flow block keeps its place.
+        // A box's content (`content`, no flow key) or an inert root-flow
+        // block may lie elsewhere: its movable output replays moved.
         let content = self.record.key.is_none();
+        let moves = content || self.record.inert;
         let placed = self.record.ranges(|r| {
             // Its leaves keep their functions: one measured again may lie or
             // draw otherwise (`Window::retained_remeasured`).
@@ -59,7 +60,7 @@ impl ReplaySlot {
                 && r.scale == scale
                 && r.mask == mask
                 && r.size == size
-                && (!moved || content && r.movable);
+                && (!moved || moves && r.movable);
             (fits, origin - r.origin)
         });
         match placed {

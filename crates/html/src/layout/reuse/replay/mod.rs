@@ -61,6 +61,10 @@ pub(crate) struct ReplayRecord {
     fills: bool,
     pub(super) start: Counters,
     pub(super) end: Counters,
+    /// The subtree takes no anchor and no step-8 key (`plain::inert_tree`):
+    /// it replays after any build that advanced the counters, advancing them
+    /// by as many (`Counters::advanced`), and may lie elsewhere.
+    pub(super) inert: bool,
     /// The paint key of the block's step-8 wrapper, which goes on outside
     /// the records (`flow::held`).
     pub(super) paint_last: Option<u64>,
@@ -83,7 +87,7 @@ impl ReplayRecord {
     pub(super) fn fits(&self, key: &FlowKey, start: Counters, e: &Element) -> bool {
         self.key.as_ref().is_some_and(|own| {
             own.same_outside_widths(key) && (!(self.widths || self.fills) || own.same_widths(key))
-        }) && self.start == start
+        }) && (self.start == start || self.inert)
             && (self.source.same(e) || self.source.same_unread_color(e))
     }
 }
@@ -96,6 +100,7 @@ pub(super) struct PendingReplay {
     key: Option<Rc<FlowKey>>,
     start: Counters,
     end: Counters,
+    inert: bool,
     /// Чтения ширин снаружи за сборку и меры кадра записи.
     pub(super) widths: Rc<Cell<bool>>,
     /// Блок заполняет ширину потока (`plain::fills_width`).
@@ -116,8 +121,8 @@ pub(super) struct PendingReplay {
 impl PendingReplay {
     pub(super) fn new(
         key: Option<Rc<FlowKey>>,
-        start: Counters,
-        end: Counters,
+        (start, end): (Counters, Counters),
+        inert: bool,
         widths: Rc<Cell<bool>>,
         fills: bool,
         ink: &Rc<InkSinkList>,
@@ -127,6 +132,7 @@ impl PendingReplay {
             key,
             start,
             end,
+            inert: inert && paint_last.is_none(),
             widths,
             fills,
             paint_last,
@@ -177,6 +183,7 @@ impl PendingReplay {
             widths: self.widths.get(),
             start: self.start,
             end: self.end,
+            inert: self.inert,
             paint_last: self.paint_last,
             ranges: Cell::new(Some(Ranges {
                 layout,

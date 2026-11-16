@@ -227,8 +227,8 @@ impl FlowReuse {
         for child in std::mem::take(out) {
             let pending = Rc::new(PendingReplay::new(
                 None,
-                content.start,
-                end,
+                (content.start, end),
+                true,
                 Rc::new(Cell::new(false)),
                 false,
                 &self.ink,
