@@ -24,7 +24,7 @@ fn g(x: f32, y: f32, c: Hsla, blend: u32) -> G {
     G {
         quads: vec![([x, y, 40., 30.], c), ([x + 12., y + 10., 30., 24.], hsla(0.55, 0.6, 0.5, 0.7))],
         blend,
-        opacity: 0.8,
+        opacity: 1.,
         blur: 0.,
     }
 }
@@ -223,7 +223,7 @@ fn merger_series_interleaved_with_copy_modes_keep_document_order() {
 }
 
 #[test]
-fn blurred_and_translucent_groups_join_the_series() {
+fn blurred_groups_join_the_series_and_translucent_ones_keep_the_copy_path() {
     let device = DirectXDevices::new().unwrap();
     let mut groups = chain(&[1; 5]);
     groups[1].blur = 2.;

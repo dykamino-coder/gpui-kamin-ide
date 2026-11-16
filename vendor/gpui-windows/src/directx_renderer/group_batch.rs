@@ -255,9 +255,15 @@ impl DirectXRenderer {
         let merger: Vec<bool> = run
             .iter()
             .map(|s| {
-                let g = s.group as usize - 1;
+                let masked = self
+                    .blur
+                    .group_mask
+                    .get(s.group as usize - 1)
+                    .is_some_and(|m| m.is_some());
                 self.blend_series
-                    && group_series::merger_mode(self.blur.group_blend.get(g).copied().unwrap_or(0))
+                    && self
+                        .group_composite_quad(s)
+                        .is_some_and(|(q, _)| group_series::joins_series(&q, s, masked))
             })
             .collect();
         let mut k = 0;

@@ -34,6 +34,27 @@ pub(super) fn merger_mode(mode: u32) -> bool {
     matches!(mode, 0 | 1 | 2 | 11 | 16)
 }
 
+/// Composite `q` of surface `s` joins a series: a merger mode, and a source
+/// the merger receives exactly. The merger takes its inputs at the target's
+/// 8-bit precision (D3D11 §17.5 permits it; WARP does), so a source that is
+/// not a whole code — the retained image times a fractional opacity, an
+/// antialiased rounded or polygon edge, a mask image — would be rounded
+/// before the blend and the error would add up along overlapping chains
+/// (a 0.35-opacity blurred chain: up to 2 codes off the shader path). The
+/// retained image itself holds whole codes, and with coverage 0 or 1 the
+/// blender's sum differs from the shader's float formula only on ties.
+pub(super) fn joins_series(q: &BlurQuad, s: &PaintSurface, masked: bool) -> bool {
+    let r = s.corner_radii;
+    let hard_poly = (q.poly_count & 15) < 3 || q.proj[0][3] > 0.5;
+    merger_mode(q.blend_mode)
+        && q.pad == 1.0
+        && !masked
+        && hard_poly
+        && [r.top_left, r.top_right, r.bottom_right, r.bottom_left]
+            .iter()
+            .all(|v| v.0 == 0.0)
+}
+
 /// Output-merger states of the series modes, made on first use.
 #[derive(Default)]
 pub(super) struct SeriesBlends {
