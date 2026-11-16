@@ -139,7 +139,17 @@ impl Hooks for SpannerFlow {
                     .as_ref()
                     .zip(held)
                     .is_some_and(|(a, before)| a.paint.held_paint_last.get() == before);
-                kept.replace(unregistered.then(|| (available, child, engine)));
+                let keep = unregistered.then(|| (available, child, engine));
+                let scheduled = keep.is_some() && kept.borrow().is_none();
+                kept.replace(keep);
+                // The measure build lives for its frame only: what prepaint
+                // did not adopt is dropped when the frame ends, so no build
+                // outlives it inside this closure (the retained engine keeps
+                // the closure across frames).
+                if scheduled {
+                    let kept = kept.clone();
+                    window.defer(cx, move |_, _| drop(kept.take()));
+                }
                 measured.set(Some((available, content.clone())));
                 content
             },
