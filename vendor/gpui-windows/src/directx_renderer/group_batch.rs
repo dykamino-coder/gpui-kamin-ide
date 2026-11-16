@@ -266,12 +266,7 @@ impl DirectXRenderer {
                         .is_some_and(|(q, _)| group_series::joins_series(&q, s, masked))
             })
             .collect();
-        log::debug!(
-            target: "gpui::frame",
-            "composite run {} in series {}",
-            run.len(),
-            merger.iter().filter(|&&m| m).count()
-        );
+        self.log_series_share(run);
         let mut k = 0;
         while k < run.len() {
             let m = merger[k];

@@ -44,15 +44,26 @@ pub(super) fn merger_mode(mode: u32) -> bool {
 /// retained image itself holds whole codes, and with coverage 0 or 1 the
 /// blender's sum differs from the shader's float formula only on ties.
 pub(super) fn joins_series(q: &BlurQuad, s: &PaintSurface, masked: bool) -> bool {
+    kept_out(q, s, masked).is_none()
+}
+
+/// Why composite `q` keeps the copy path (`None`: it joins the series).
+pub(super) fn kept_out(q: &BlurQuad, s: &PaintSurface, masked: bool) -> Option<&'static str> {
     let r = s.corner_radii;
-    let hard_poly = (q.poly_count & 15) < 3 || q.proj[0][3] > 0.5;
-    merger_mode(q.blend_mode)
-        && q.pad == 1.0
-        && !masked
-        && hard_poly
-        && [r.top_left, r.top_right, r.bottom_right, r.bottom_left]
-            .iter()
-            .all(|v| v.0 == 0.0)
+    let radii = [r.top_left, r.top_right, r.bottom_right, r.bottom_left];
+    if !merger_mode(q.blend_mode) {
+        Some("mode")
+    } else if q.pad != 1.0 {
+        Some("opacity")
+    } else if masked {
+        Some("mask")
+    } else if (q.poly_count & 15) >= 3 && q.proj[0][3] <= 0.5 {
+        Some("aa-polygon")
+    } else if radii.iter().any(|v| v.0 != 0.0) {
+        Some("radii")
+    } else {
+        None
+    }
 }
 
 /// Output-merger states of the series modes, made on first use.
@@ -86,6 +97,41 @@ fn series_blend_desc(mode: u32) -> D3D11_BLEND_DESC {
 }
 
 impl DirectXRenderer {
+    /// Debug log: how many composites of `run` join the series, and why the
+    /// others keep the copy path.
+    pub(super) fn log_series_share(&self, run: &[&PaintSurface]) {
+        if !log::log_enabled!(target: "gpui::frame", log::Level::Debug) {
+            return;
+        }
+        let mut out: Vec<(&str, usize)> = Vec::new();
+        for s in run {
+            let masked = self
+                .blur
+                .group_mask
+                .get(s.group as usize - 1)
+                .is_some_and(|m| m.is_some());
+            let why = match self.group_composite_quad(s) {
+                Some((q, _)) => kept_out(&q, s, masked),
+                None => Some("no-quad"),
+            };
+            let why = if self.blend_series { why } else { Some("off") };
+            if let Some(w) = why {
+                match out.iter_mut().find(|e| e.0 == w) {
+                    Some(e) => e.1 += 1,
+                    None => out.push((w, 1)),
+                }
+            }
+        }
+        let kept: usize = out.iter().map(|e| e.1).sum();
+        log::debug!(
+            target: "gpui::frame",
+            "composite run {} in series {} kept out {:?}",
+            run.len(),
+            run.len() - kept,
+            out
+        );
+    }
+
     fn series_blend(&mut self, mode: u32) -> Result<ID3D11BlendState> {
         if let Some((_, s)) = self.series_blends.states.iter().find(|(m, _)| *m == mode) {
             return Ok(s.clone());

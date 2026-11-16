@@ -5,11 +5,13 @@
 //! its premultiplied source image; the backdrop drawn alone gives the first
 //! destination. The expected frame applies the formula of each mode to those
 //! images in document order, rounding to 8 bits after every step, as the
-//! target does. Up to one code of difference per channel is allowed (float
-//! order of the blender against the oracle in f64); every case also reports
-//! how many channels are off by one.
+//! target does (oracle). The series must equal the formula exactly on every
+//! adapter the tests reach (hardware and WARP); the shader path's distance
+//! to it is reported for comparison.
 
 use super::*;
+mod oracle;
+use oracle::{expect, off};
 
 /// One group: its quads (frame coordinates, colour), blend mode, opacity and blur.
 #[derive(Clone)]
@@ -121,56 +123,7 @@ fn compare(name: &str, got: &[u8], copies: &[u8], want: &[u8]) {
     );
     assert_eq!(big, 0, "{name}: series off the shader path by more than one");
     assert!(gb <= cb, "{name}: series further from the formula than the shader path");
-}
-
-/// Premultiplied Compositing 1/2 result of mode `m` for one pixel (0..1).
-fn mix(m: u32, s: [f64; 4], d: [f64; 4]) -> [f64; 4] {
-    let (sa, da) = (s[3], d[3]);
-    let a = if m == 16 { (sa + da).min(1.) } else { sa + da * (1. - sa) };
-    let mut o = [0.; 4];
-    for k in 0..3 {
-        let (cs, cd) = (s[k], d[k]);
-        o[k] = match m {
-            0 => cs + cd * (1. - sa),
-            1 => cs * (1. - da) + cd * (1. - sa) + cs * cd,
-            2 => cs + cd - cs * cd,
-            11 => cs + cd - 2. * cs * cd,
-            16 => (cs + cd).min(1.),
-            _ => {
-                let (us, ud) = (if sa > 0. { cs / sa } else { 0. }, if da > 0. { cd / da } else { 0. });
-                // difference (10): the copy path's shader formula.
-                let bl = (ud - us).abs();
-                (1. - da) * sa * us + da * sa * bl + (1. - sa) * da * ud
-            }
-        };
-    }
-    o[3] = a;
-    o
-}
-
-/// Expected frame: `images[k]` (group k alone at opacity 1: its retained
-/// image, premultiplied) faded by its opacity and blended in order over `dst`
-/// with each group's mode.
-fn expect(mut dst: Vec<u8>, images: &[Vec<u8>], modes: &[u32], opacity: &[f32]) -> Vec<u8> {
-    for ((img, &m), &op) in images.iter().zip(modes).zip(opacity) {
-        for (d, s) in dst.chunks_mut(4).zip(img.chunks(4)) {
-            let f = |v: &[u8]| [v[0], v[1], v[2], v[3]].map(|c| c as f64 / 255.);
-            let s = f(s).map(|c| c * op as f64);
-            let o = mix(m, s, f(d));
-            for k in 0..4 {
-                d[k] = (o[k].clamp(0., 1.) * 255.).round() as u8;
-            }
-        }
-    }
-    dst
-}
-
-/// (channels off by more than one, channels off by exactly one).
-fn off(a: &[u8], b: &[u8]) -> (usize, usize) {
-    let d = |x: &u8, y: &u8| x.abs_diff(*y);
-    let big = a.iter().zip(b).filter(|(x, y)| d(x, y) > 1).count();
-    let one = a.iter().zip(b).filter(|(x, y)| d(x, y) == 1).count();
-    (big, one)
+    assert_eq!((gb, go), (0, 0), "{name}: series off the formula");
 }
 
 fn backdrop() -> Vec<([f32; 4], Hsla)> {
@@ -206,52 +159,75 @@ fn chain(modes: &[u32]) -> Vec<G> {
         .collect()
 }
 
+/// Every adapter the tests can reach: the default one (hardware when the
+/// machine has it), the high-performance one if it differs, and WARP.
+fn devices() -> Vec<(String, DirectXDevices)> {
+    use crate::GpuAdapterPreference as P;
+    let mut out: Vec<(String, DirectXDevices)> = Vec::new();
+    for p in [P::Default, P::HighPerformance, P::Software] {
+        let Ok(d) = DirectXDevices::with_instrumentation(p, gpui::Instrumentation::default()) else {
+            continue;
+        };
+        let desc = unsafe { d.adapter.GetDesc1() }.unwrap();
+        let name = String::from_utf16_lossy(&desc.Description).trim_matches('\0').to_string();
+        if out.iter().all(|(n, _)| *n != name) {
+            out.push((name, d));
+        }
+    }
+    assert!(out.len() >= 2, "a hardware adapter and WARP");
+    out
+}
+
 #[test]
 fn merger_modes_equal_their_formulas_over_opaque_and_transparent_backdrops() {
-    let device = DirectXDevices::new().unwrap();
-    for bg in [WindowBackgroundAppearance::Opaque, WindowBackgroundAppearance::Transparent] {
-        check(&device, &format!("multiply chain {bg:?}"), &chain(&[1; 6]), bg);
-        check(&device, &format!("mixed series {bg:?}"), &chain(&[2, 11, 16, 0, 1, 2]), bg);
+    for (gpu, device) in devices() {
+        for bg in [WindowBackgroundAppearance::Opaque, WindowBackgroundAppearance::Transparent] {
+            check(&device, &format!("{gpu}: multiply chain {bg:?}"), &chain(&[1; 6]), bg);
+            check(&device, &format!("{gpu}: mixed series {bg:?}"), &chain(&[2, 11, 16, 0, 1, 2]), bg);
+        }
     }
 }
 
 #[test]
 fn merger_series_interleaved_with_copy_modes_keep_document_order() {
-    let device = DirectXDevices::new().unwrap();
-    let bg = WindowBackgroundAppearance::Opaque;
-    check(&device, "multiply/difference", &chain(&[1, 10, 1, 0, 10, 1]), bg);
+    for (gpu, device) in devices() {
+        let bg = WindowBackgroundAppearance::Opaque;
+        check(&device, &format!("{gpu}: multiply/difference"), &chain(&[1, 10, 1, 0, 10, 1]), bg);
+    }
 }
 
 #[test]
 fn blurred_groups_join_the_series_and_translucent_ones_keep_the_copy_path() {
-    let device = DirectXDevices::new().unwrap();
-    let mut groups = chain(&[1; 5]);
-    groups[1].blur = 2.;
-    groups[3].blur = 1.;
-    groups[2].opacity = 0.35;
-    check(&device, "blurred multiply", &groups, WindowBackgroundAppearance::Opaque);
+    for (gpu, device) in devices() {
+        let mut groups = chain(&[1; 5]);
+        groups[1].blur = 2.;
+        groups[3].blur = 1.;
+        groups[2].opacity = 0.35;
+        check(&device, &format!("{gpu}: blurred multiply"), &groups, WindowBackgroundAppearance::Opaque);
+    }
 }
 
 #[test]
 fn children_of_an_isolated_group_blend_with_its_buffer_not_the_frame() {
-    let device = DirectXDevices::new().unwrap();
-    let bg = WindowBackgroundAppearance::Opaque;
-    let children = chain(&[1, 1, 2, 1]);
-    let frame = scene(&backdrop(), &children, Some(0.9));
-    let got = draw(&device, &frame, bg);
-    let copies = draw_path(&device, &frame, bg, false);
-    // The isolated buffer starts transparent: the children blend with it alone.
-    let images: Vec<Vec<u8>> = children
-        .iter()
-        .map(|c| {
-            let alone = G { blend: 0, opacity: 1., ..c.clone() };
-            draw(&device, &scene(&[], &[alone], None), WindowBackgroundAppearance::Transparent)
-        })
-        .collect();
-    let modes: Vec<u32> = children.iter().map(|c| c.blend).collect();
-    let opacity: Vec<f32> = children.iter().map(|c| c.opacity).collect();
-    let isolated = expect(vec![0; (W * H * 4) as usize], &images, &modes, &opacity);
-    let base = draw(&device, &scene(&backdrop(), &[], None), bg);
-    let want = expect(base, &[isolated], &[0], &[0.9]);
-    compare("isolated", &got, &copies, &want);
+    for (gpu, device) in devices() {
+        let bg = WindowBackgroundAppearance::Opaque;
+        let children = chain(&[1, 1, 2, 1]);
+        let frame = scene(&backdrop(), &children, Some(1.));
+        let got = draw(&device, &frame, bg);
+        let copies = draw_path(&device, &frame, bg, false);
+        // The isolated buffer starts transparent: the children blend with it alone.
+        let images: Vec<Vec<u8>> = children
+            .iter()
+            .map(|c| {
+                let alone = G { blend: 0, opacity: 1., ..c.clone() };
+                draw(&device, &scene(&[], &[alone], None), WindowBackgroundAppearance::Transparent)
+            })
+            .collect();
+        let modes: Vec<u32> = children.iter().map(|c| c.blend).collect();
+        let opacity: Vec<f32> = children.iter().map(|c| c.opacity).collect();
+        let isolated = expect(vec![0; (W * H * 4) as usize], &images, &modes, &opacity);
+        let base = draw(&device, &scene(&backdrop(), &[], None), bg);
+        let want = expect(base, &[isolated], &[0], &[1.]);
+        compare(&format!("{gpu}: isolated"), &got, &copies, &want);
+    }
 }
