@@ -36,7 +36,7 @@ impl SceneLayer {
             s.subpixel_sprites.len(),
             s.polychrome_sprites.len(),
             s.surfaces.len(),
-        ] && s.layers.is_empty()
+        ] && s.book.layers.is_empty()
     }
 
     /// Give the commands `later` (`(command, bucket)`: primitives outside

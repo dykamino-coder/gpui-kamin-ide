@@ -173,7 +173,7 @@ impl SceneLayer {
         }
         bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
         // Kept while the scene was painted: no second pass over the commands.
-        let bounds = scene.primitive_ink;
+        let bounds = scene.book.primitive_ink;
         #[cfg(debug_assertions)]
         assert!(
             bounds == ink_of_commands(&scene.paint_operations),
