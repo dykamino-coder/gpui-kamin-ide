@@ -39,6 +39,14 @@ fn native_color(style: &Computed, role: SystemColor) -> gpui::Hsla {
     system_color(role, style.reset_cascade.dark_color_scheme).to_hsla()
 }
 
+/// Whether `element` draws `e` (a form control tag).
+pub fn is_control(e: &Element) -> bool {
+    matches!(
+        e.tag.as_str(),
+        "input" | "textarea" | "select" | "progress" | "meter"
+    )
+}
+
 /// Отрисовать элемент формы. `None` — тег не относится к формам.
 pub fn element(
     e: &Element,

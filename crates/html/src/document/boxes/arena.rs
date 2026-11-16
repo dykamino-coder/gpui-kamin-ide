@@ -157,6 +157,7 @@ mod tests {
             external: false,
             distributes: false,
             layout_slot: None,
+            atom_style: None,
         }
     }
 

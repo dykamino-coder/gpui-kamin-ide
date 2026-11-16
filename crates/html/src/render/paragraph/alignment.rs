@@ -149,7 +149,12 @@ pub(crate) fn atom_line_align(
     }
     // Сдвиги — как у текстового куска (`inline::shift_spans`), но от кегля
     // САМОГО атома; ось подъёма смотрит вверх.
-    let merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
+    let merged = crate::document::boxes::atom_styles::atom_style(
+        e,
+        inherited,
+        opts,
+        crate::document::boxes::atom_styles::Stage::Merged,
+    );
     let size = match merged.inh.font.font_size {
         Some(Len::Px(v)) => v,
         _ => own_size(inherited, opts),

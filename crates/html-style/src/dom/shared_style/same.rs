@@ -33,6 +33,16 @@ impl SharedStyle {
             && same_ptr(&self.decoration, &other.decoration)
     }
 
+    /// Every stage of `same` is the same allocation in both: `same` without
+    /// comparing values, so a miss costs a few pointer comparisons.
+    pub fn identical(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.cascaded, &other.cascaded)
+            && same_ptr(&self.used, &other.used)
+            && same_ptr(&self.computed.any(), &other.computed.any())
+            && same_ptr(&self.box_facts, &other.box_facts)
+            && same_ptr(&self.decoration, &other.decoration)
+    }
+
     /// `same` by the cascaded style, the derived stages compared only where
     /// both styles have them (see `same_cascaded_layout`). The decoration
     /// input of a rebuilt tree is its own: by value.

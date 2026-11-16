@@ -221,6 +221,7 @@ impl BoxTree {
             external: false,
             distributes: false,
             layout_slot: None,
+            atom_style: None,
         });
         let Some(id) = id else { return BoxId::NONE };
         changed.push((id, Change::Own));
