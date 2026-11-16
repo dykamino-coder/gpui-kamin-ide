@@ -49,16 +49,6 @@ impl<T> Arena<T> {
     }
 }
 
-impl DocumentValues {
-    /// The frame region and how many records it holds. A computation that
-    /// leaves this unchanged wrote no frame handle (`store` on a frame build),
-    /// so what it returns stays readable after the frame region is reset.
-    pub fn frame_records(&self) -> (u32, usize) {
-        let len = self.calc.frame.borrow().len() + self.anchor.frame.borrow().len();
-        (self.frame_owner.get(), len)
-    }
-}
-
 static NEXT_OWNER: AtomicU32 = AtomicU32::new(1);
 
 /// Новый номер области.

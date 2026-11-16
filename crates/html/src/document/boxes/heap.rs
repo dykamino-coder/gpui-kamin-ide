@@ -2,7 +2,6 @@
 
 use super::{BoxRecord, BoxTree, inline::InlineContent};
 use kamin_heap::{HeapSize, Ops};
-use std::rc::Rc;
 
 impl HeapSize for BoxTree {
     fn heap_size(&self, ops: &mut Ops) -> usize {
@@ -23,11 +22,7 @@ impl HeapSize for BoxRecord {
             + ops.at("text/box-ifc", |ops| {
                 self.inline.heap_size(ops) + self.prepared.heap_size(ops)
             })
-            + ops.at("layout/atom-styles", |ops| {
-                (self.atom_style.as_ref()).map_or(0, |kept| {
-                    ops.shallow(Rc::as_ptr(kept)) + kept.heap_size(ops)
-                })
-            })
+
     }
 }
 

@@ -1,9 +1,10 @@
 //! Строчный кусок со своей коробкой (фон, рамка, отступы) или своим письмом.
 
-use crate::document::boxes::atom_styles::{Stage, atom_style};
 use crate::dom::{Element, Node};
+use crate::layout::box_tree::pseudo_line_layers;
 use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Align, BoxStyle, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::{has_text, line_height_px};
@@ -14,26 +15,24 @@ pub(super) fn own_box_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let frame = opts.cx.frame();
-    // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
-    // but not ordinary inline boxes, in the pseudo-line scope.
-    let pseudo_lines = e.style.used().reset_box_layout.display == Some(Display::InlineBlock)
-        && e.style.used().reset_context.inline_display != Some(true);
-    // Viewport units resolve against the viewport (css-values-4 §6.1.2), as in
-    // `element()`: the atom path skipped it and `height: 350vh` on an
-    // `inline-block` with `vertical-align: top` collapsed to its content
-    // (`monolithic-overflow-014/015-print`). The record of the atom's box
-    // keeps the result across frames (`atom_styles`).
-    let stage = if pseudo_lines {
-        Stage::PseudoLines
-    } else {
-        Stage::Resolved
-    };
-    let mut merged = (*atom_style(e, inherited, opts, stage)).clone();
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
+    let mut merged = box_style(inherited, &e.style, vcx);
     // Atomic containers publish the same node/order keys as block containers.
     merged.self_node = e.node_id;
     merged.anchor_seq = opts.cx.anchor_seq_for(e);
     merged.anchor_key = crate::layout::positioned::anchor::key_of(e);
+    // Viewport units resolve against the viewport (css-values-4 §6.1.2), as in
+    // `element()`: the atom path skipped it and `height: 350vh` on an
+    // `inline-block` with `vertical-align: top` collapsed to its content
+    // (`monolithic-overflow-014/015-print`).
+    merged.resolve_viewport(opts.viewport, vcx);
+    // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
+    // but not ordinary inline boxes, in the pseudo-line scope.
+    if e.style.used().reset_box_layout.display == Some(Display::InlineBlock)
+        && e.style.used().reset_context.inline_display != Some(true)
+    {
+        pseudo_line_layers::install(e, &mut merged, vcx);
+    }
     let mut box_ = opts.cx.contracts.build.styled_box(e, &merged, &opts.cx);
     // Writing Modes 4 §4.3: orthogonal content has no baseline in the line's
     // axis. As in Blink LogicalBoxFragment::LastBaseline, let the line

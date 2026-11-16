@@ -5,7 +5,6 @@
 
 mod adapter;
 mod arena;
-pub(crate) mod atom_styles;
 #[cfg(test)]
 mod box_of_tests;
 mod by_node;
@@ -55,8 +54,6 @@ pub(crate) struct BoxRecord {
     distributes: bool,
     /// Удерживаемый результат раскладки коробки; им владеет раскладка.
     layout_slot: Option<Box<crate::layout::retained::LayoutSlot>>,
-    /// Box style of the atomic inline of this box from an earlier frame (`atom_styles`).
-    atom_style: Option<Rc<atom_styles::AtomStyle>>,
 }
 
 #[derive(Default)]
@@ -75,8 +72,6 @@ pub(crate) struct BoxTree {
     visited: finish::Visited,
     /// Used styles derived from computed ones, shared by the boxes of one style.
     pub(crate) used: used::UsedStyles,
-    /// The parent box style of the latest atoms (`atom_styles`).
-    atom_parent: Option<Rc<crate::style::computed::BoxStyle>>,
 }
 
 impl BoxTree {
