@@ -16,14 +16,14 @@
 
 use super::store::Store;
 use gpui::{Bounds, LayerHandle, ScaledPixels};
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 
 /// The area the layer's frame showed and the boxes whose own commands wait.
 #[derive(Default)]
 pub(crate) struct Deferred {
     /// The content mask of the frame that recorded the layer, device pixels.
     shown: Cell<Option<Bounds<ScaledPixels>>>,
-    paths: RefCell<Vec<(Vec<usize>, u64)>>,
+    paths: Cell<Vec<(Vec<usize>, u64)>>,
 }
 
 /// Margin of the area shown for the rounding of edges, device pixels.
@@ -73,10 +73,12 @@ impl Store {
         if paths.is_empty() {
             return;
         }
-        let mut kept = self.layer.deferred().paths.borrow_mut();
+        let deferred = self.layer.deferred();
+        let mut kept = deferred.paths.take();
         kept.extend(paths);
         kept.sort_unstable_by(|a, b| (a.1, &a.0).cmp(&(b.1, &b.0)));
         kept.dedup();
+        deferred.paths.set(kept);
     }
 
     /// The deferred boxes whose runs reach `shown`, the area a replay of the
@@ -86,21 +88,25 @@ impl Store {
         layer: &LayerHandle,
         shown: Bounds<ScaledPixels>,
     ) -> Vec<(Vec<usize>, u64)> {
-        let mut kept = self.layer.deferred().paths.borrow_mut();
+        let deferred = self.layer.deferred();
+        let kept = deferred.paths.take();
         if kept.is_empty() {
-            return Vec::new();
+            return kept;
         }
         let (wait, due) = kept
-            .drain(..)
+            .into_iter()
             .partition(|(_, id)| misses(layer, *id, shown));
-        *kept = wait;
+        deferred.paths.set(wait);
         due
     }
 
     /// The number of boxes whose records wait.
     #[cfg(test)]
     pub(crate) fn deferred_repaints(&self) -> usize {
-        self.layer.deferred().paths.borrow().len()
+        let paths = self.layer.deferred().paths.take();
+        let n = paths.len();
+        self.layer.deferred().paths.set(paths);
+        n
     }
 }
 
