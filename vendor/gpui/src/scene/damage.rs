@@ -425,6 +425,8 @@ impl Compare<'_> {
             && a.polygon_inverse == b.polygon_inverse
             && match (&a.mask, &b.mask) {
                 (None, None) => true,
+                // A RenderImage is immutable and its id is unique per image
+                // (`RenderImage::new`): an equal id is equal mask bytes.
                 (Some(x), Some(y)) => x.id == y.id,
                 _ => false,
             }
