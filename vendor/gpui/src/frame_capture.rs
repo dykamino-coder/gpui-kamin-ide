@@ -77,4 +77,9 @@ pub struct FrameContext {
 pub trait FrameCaptureSink {
     /// Доставить завершённый readback и его длительность.
     fn completed(&mut self, frame: CapturedFrame, readback: Duration);
+
+    /// Часть readback после готовности кадра на GPU: копия цели в память.
+    /// Вызывается перед `completed` того же кадра; backend без разделения
+    /// её не сообщает.
+    fn copied(&mut self, _copy: Duration) {}
 }

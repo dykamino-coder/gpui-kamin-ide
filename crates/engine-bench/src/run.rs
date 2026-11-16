@@ -173,6 +173,10 @@ pub(super) async fn sample(
                 .readback
                 .checked_sub(before.readback)
                 .ok_or("readback counter regressed")?,
+            copy: after
+                .copy
+                .checked_sub(before.copy)
+                .ok_or("capture copy counter regressed")?,
             total,
             // Конец кадра у браузеров — сообщение после обновления отрисовки; наш
             // отсчёт ждёт ещё пробуждения задачи после readback: оно выносится отдельно.
