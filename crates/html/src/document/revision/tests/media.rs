@@ -90,3 +90,76 @@ fn a_printed_document_keeps_its_page() {
     assert!(!doc.set_viewport((300., 300.)).unwrap());
     assert!(Rc::ptr_eq(&values, &doc.state.values));
 }
+
+const SHEET: &str = "<!doctype html><style>p{color:#123}</style>\
+    <style id=s media='(max-width: 500px)'>p{color:#456}</style><p>a</p>";
+
+fn with_media(media: Option<&str>) -> String {
+    let media = media.map_or(String::new(), |m| format!(" media='{m}'"));
+    format!(
+        "<!doctype html><style>p{{color:#123}}</style>\
+         <style id=s{media}>p{{color:#456}}</style><p>a</p>"
+    )
+}
+
+#[test]
+fn a_style_element_applies_only_while_its_media_list_matches() {
+    let plain = "<!doctype html><style>p{color:#123}</style><p>a</p>";
+    let always = with_media(None);
+    assert_eq!(
+        tree(&at(SHEET, (800., 300.))),
+        tree(&at(plain, (800., 300.)))
+    );
+    assert_eq!(
+        tree(&at(SHEET, (400., 300.))),
+        tree(&at(&always, (400., 300.)))
+    );
+    assert_ne!(
+        tree(&at(SHEET, (400., 300.))),
+        tree(&at(SHEET, (800., 300.)))
+    );
+    // An empty list is `all` (mediaqueries-4 §2.1); `print` never matches a screen.
+    let empty = with_media(Some(""));
+    assert_eq!(
+        tree(&at(&empty, (800., 300.))),
+        tree(&at(&always, (800., 300.)))
+    );
+    let print = with_media(Some("print"));
+    assert_eq!(
+        tree(&at(&print, (800., 300.))),
+        tree(&at(plain, (800., 300.)))
+    );
+}
+
+#[test]
+fn a_resize_that_flips_a_style_media_list_restyles() {
+    let mut doc = at(SHEET, (800., 300.));
+    assert!(resize(&mut doc, SHEET, (400., 300.)));
+    assert!(!resize(&mut doc, SHEET, (450., 300.)));
+    assert!(resize(&mut doc, SHEET, (900., 300.)));
+}
+
+#[test]
+fn a_new_media_list_of_a_style_element_restyles() {
+    use markup5ever_rcdom::{Handle, NodeData};
+    fn find(node: &Handle) -> Option<Handle> {
+        let hit = matches!(&node.data, NodeData::Element { attrs, .. }
+            if attrs.borrow().iter().any(|a| &*a.name.local == "id" && &*a.value == "s"));
+        if hit {
+            return Some(node.clone());
+        }
+        node.children.borrow().iter().find_map(find)
+    }
+    let mut doc = at(SHEET, (800., 300.));
+    let style = find(&doc.source_dom()).expect("style#s");
+    let media = Some("(min-width: 600px)");
+    let record = super::super::Mutation::Attribute {
+        element: style,
+        name: html5ever::QualName::new(None, html5ever::ns!(), "media".into()),
+        value: media.map(Into::into),
+    };
+    doc.apply(&[record], "").unwrap();
+    let fresh = at(&with_media(media), (800., 300.));
+    assert_eq!(tree(&doc), tree(&fresh));
+    assert_ne!(tree(&doc), tree(&at(SHEET, (800., 300.))));
+}
