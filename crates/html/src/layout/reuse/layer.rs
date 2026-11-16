@@ -8,6 +8,7 @@
 
 use super::store::Store;
 use std::cell::RefCell;
+use std::collections::HashSet;
 
 /// The document's scene layer of the last recorded frame, and the boxes whose
 /// own commands the next frame records again into it (`queue_repaints`).
@@ -15,6 +16,9 @@ use std::cell::RefCell;
 pub(crate) struct Kept {
     layer: RefCell<Option<gpui::LayerHandle>>,
     repaints: RefCell<Vec<(Vec<usize>, u64)>>,
+    /// The root-flow blocks the layer's frame skipped off the screen
+    /// (`FlowReuse::finish`): no box of theirs is in the layer.
+    unpainted: RefCell<HashSet<u64>>,
 }
 
 impl Store {
@@ -35,6 +39,8 @@ impl Store {
         f: impl FnOnce(&mut gpui::Window),
     ) {
         let source = self.scene_layer();
+        // The frame painting now names its skipped blocks when it finishes.
+        self.layer.unpainted.take();
         let (_, layer) = window.record_scene_layer(source.as_ref(), f);
         let layer = match layer {
             gpui::RecordedLayer::Layer(layer) => {
@@ -87,5 +93,26 @@ impl Store {
     /// Take the queued boxes, grouped by box number.
     pub(crate) fn take_repaints(&self) -> Vec<(Vec<usize>, u64)> {
         std::mem::take(&mut *self.layer.repaints.borrow_mut())
+    }
+
+    /// The blocks the frame of the layer skipped off the screen, even with
+    /// their boxes repainted (`FlowReuse::validate`).
+    pub(crate) fn set_unpainted(&self, blocks: HashSet<u64>) {
+        self.layer.unpainted.replace(blocks);
+    }
+
+    /// Whether the layer's frame skipped block `id` off the screen: a
+    /// paint-only change of a box in it shows no pixel there. The block's
+    /// record takes the change (`Store::restyle`): a frame that brings it
+    /// near the screen builds or validates it with its new paint, as the
+    /// edit of a skipped block in Blink only marks it for paint when the cull
+    /// rect reaches it (`cull_rect_updater.cc`).
+    pub(crate) fn unpainted(&self, id: u64) -> bool {
+        self.layer.unpainted.borrow().contains(&id)
+    }
+
+    /// Whether the layer's frame skipped any block.
+    pub(crate) fn skipped_any(&self) -> bool {
+        !self.layer.unpainted.borrow().is_empty()
     }
 }

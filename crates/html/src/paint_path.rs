@@ -9,6 +9,9 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 pub static VALUES: AtomicU64 = AtomicU64::new(0);
 /// Boxes queued to record their own paint again.
 pub static RECORDS: AtomicU64 = AtomicU64::new(0);
+/// Boxes under a block the frame skipped off the screen: neither written nor
+/// recorded, their block's record takes the change.
+pub static UNSEEN: AtomicU64 = AtomicU64::new(0);
 /// Boxes whose change is not own paint (layout, other values, controls).
 pub static REFUSED_NOT_PAINT: AtomicU64 = AtomicU64::new(0);
 /// Boxes whose paint is not their own commands (hover, decorations, root canvas...).
@@ -54,6 +57,7 @@ pub fn read() -> [u64; NAMES.len()] {
     [
         &VALUES,
         &RECORDS,
+        &UNSEEN,
         &REFUSED_NOT_PAINT,
         &REFUSED_NOT_OWN,
         &REFUSED_NO_LAYER,
@@ -67,9 +71,10 @@ pub fn read() -> [u64; NAMES.len()] {
 }
 
 /// Names of `read`'s counters.
-pub const NAMES: [&str; 10] = [
+pub const NAMES: [&str; 11] = [
     "values",
     "records",
+    "unseen",
     "refused_not_paint",
     "refused_not_own",
     "refused_no_layer",

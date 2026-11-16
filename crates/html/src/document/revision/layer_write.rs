@@ -28,13 +28,17 @@ type Write = (u32, Option<Hsla>, Option<Hsla>);
 /// their shape: `None` when a box's change is not own paint; otherwise the
 /// values are written and the boxes whose own commands the next frame records
 /// again are returned. Each box is reached along its path, without a walk of
-/// either tree.
+/// either tree. A box under a block the frame skipped off the screen
+/// (`unseen`) is in no run of the layer and shows no pixel of the frame: it
+/// takes neither a write nor a record, and its block's record takes the
+/// change for the frames that bring it near the screen (`Store::restyle`).
 pub(super) fn write_paint_values(
     old: &[Node],
     new: &[Node],
     paths: &[(Path, u64)],
     layer: &LayerHandle,
     plain: impl Fn(&Element, &Element) -> bool,
+    unseen: impl Fn(&Path) -> bool,
 ) -> Option<Vec<(Path, u64)>> {
     if paths.is_empty() {
         // No element's style changed: the frame stands as it is.
@@ -48,6 +52,10 @@ pub(super) fn write_paint_values(
         if damage == PaintDamage::Rebuild {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
+        }
+        if unseen(path) {
+            crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
+            continue;
         }
         if !plain(a, b) {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
