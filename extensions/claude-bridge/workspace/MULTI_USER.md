@@ -1,5 +1,7 @@
 # Several users on one workspace host: state boundaries (INC-2026-0094)
 
+> Research not taken to implementation, see [INC-2026-0094](../runtime-issues/INC-2026-0094.md) (owner decision 2026-11-16).
+
 Research result for [INC-2026-0094](../runtime-issues/INC-2026-0094.md).
 Source baseline: `origin/main` `81ed673f` (2026-11-13). No behavior change is
 part of this document; it fixes the per-item decision, the policy API and the
