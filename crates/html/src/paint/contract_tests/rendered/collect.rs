@@ -27,7 +27,10 @@ pub(super) fn collect(
     scale: f32,
     out: &mut Vec<(Bounds<Pixels>, gpui::Hsla, usize)>,
 ) {
+    // The document paints into a scene layer the frame draws by one command.
+    let layers = scene.layer_contents();
     let mut pending = vec![(scene, 0)];
+    pending.extend(layers.iter().map(|layer| (layer.scene(), 0)));
     let mut groups = 0;
     while let Some((scene, group)) = pending.pop() {
         for quad in &scene.quads {

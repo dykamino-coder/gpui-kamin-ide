@@ -63,18 +63,23 @@ impl DirectXAtlas {
         self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// KaminIDE patch: whether a sprite of `scene` (or of its groups) samples an
-    /// external texture, whose content may differ from the last frame's.
+    /// KaminIDE patch: whether a sprite of `scene` (of its groups, or of the
+    /// retained layers it draws) samples an external texture, whose content
+    /// may differ from the last frame's.
     pub(crate) fn samples_external(&self, scene: &gpui::Scene) -> bool {
         let lock = self.0.lock();
-        let external = |s: &gpui::Scene| {
+        let lock = &*lock;
+        fn external(lock: &AtlasState<DirectXAtlasTextures>, s: &gpui::Scene) -> bool {
             s.polychrome_sprites.iter().any(|sprite| {
                 lock.backend
                     .texture(sprite.tile.texture_id)
                     .is_some_and(|t| t.external)
-            })
-        };
-        external(scene) || scene.groups.iter().any(|g| external(&g.scene))
+            }) || s.groups.iter().any(|g| external(lock, &g.scene))
+                || (0..s.layer_count())
+                    .filter_map(|i| s.layer(i))
+                    .any(|layer| external(lock, layer.scene()))
+        }
+        external(lock, scene)
     }
 
     /// Returns the view backing `id`, or `None` once every tile in it has been
