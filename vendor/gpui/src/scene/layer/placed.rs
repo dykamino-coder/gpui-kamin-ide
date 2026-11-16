@@ -20,6 +20,7 @@
 use super::super::{PaintOperation, ScaledPixels, Scene, record};
 use super::{Binding, BoxRange, ink_of};
 use crate::{Bounds, Point, Window};
+use std::sync::atomic::Ordering::Relaxed;
 
 /// No command landed for this source command.
 const NONE: u32 = u32::MAX;
@@ -141,6 +142,9 @@ impl RecordRuns {
                 span = Some(span.map_or((m.op, m.op), |(a, _)| (a, m.op)));
             }
             let (Some((first, last)), Some(placed), true) = (span, placed, whole) else {
+                if !whole {
+                    super::layer_counters::RUNS_UNPLACED.fetch_add(1, Relaxed);
+                }
                 continue;
             };
             let ops = first..last + 1;
@@ -179,7 +183,11 @@ impl Scene {
     /// A record with groups or hoisted backdrops carries no runs.
     pub(crate) fn end_record_runs(&mut self) {
         if !self.groups.is_empty() || !self.hoisted_backdrops.is_empty() {
-            self.record_runs = None;
+            // Runs kept before the group are dropped too: the record is placed
+            // as one adopted copy.
+            if let Some(runs) = self.record_runs.take() {
+                super::layer_counters::RUNS_UNPLACED.fetch_add(runs.boxes.len() as u64, Relaxed);
+            }
         }
     }
 }

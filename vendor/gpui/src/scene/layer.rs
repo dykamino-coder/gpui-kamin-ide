@@ -105,6 +105,9 @@ pub mod layer_counters {
     pub static RUNS_MOVED_LATER: AtomicU64 = AtomicU64::new(0);
     /// Bindings not made because the quad was painted into a group's scene.
     pub static GROUP_BINDS_SKIPPED: AtomicU64 = AtomicU64::new(0);
+    /// Box runs of a paint record that could not be placed by one shift and
+    /// clip (`scene::layer::placed`): their boxes paint the layer anew.
+    pub static RUNS_UNPLACED: AtomicU64 = AtomicU64::new(0);
     /// Layers whose bindings or runs named another scene (`SceneLayer::finish`):
     /// they take no writes. Zero on every page, or a recording is wrong.
     pub static RECORDS_REFUSED: AtomicU64 = AtomicU64::new(0);
@@ -257,3 +260,5 @@ mod tests;
 mod order_tests;
 #[cfg(test)]
 mod rerecord_tests;
+#[cfg(test)]
+mod placed_tests;
