@@ -49,6 +49,10 @@ pub(crate) struct OpenBox {
     ops: usize,
     area: Bounds<ScaledPixels>,
     env: BoxEnv,
+    /// The box placed more than one fill (painted per fragment of its
+    /// admission): its `env` restores none of them, so the run is not
+    /// replaceable and an edit of the box paints the layer anew.
+    split: bool,
 }
 
 /// The clipped placed bounds of a primitive.
@@ -84,6 +88,7 @@ impl Scene {
             ops: self.paint_operations.len(),
             area,
             env,
+            split: false,
         });
         true
     }
@@ -93,14 +98,14 @@ impl Scene {
         self.book.open_box.is_some()
     }
 
-    /// The fill bounds the open box's paint placed.
-    pub(crate) fn open_box_fill(&self) -> Option<Bounds<Pixels>> {
-        self.book.open_box.as_ref()?.env.fill
-    }
-
-    pub(crate) fn set_open_box_fill(&mut self, fill: Bounds<Pixels>) {
+    /// Note a fill the open box's paint places: the first is its fill, a
+    /// second splits it (`OpenBox::split`).
+    pub(crate) fn note_open_box_fill(&mut self, fill: Bounds<Pixels>) {
         if let Some(open) = self.book.open_box.as_mut() {
-            open.env.fill = Some(fill);
+            match open.env.fill {
+                None => open.env.fill = Some(fill),
+                Some(_) => open.split = true,
+            }
         }
     }
 
@@ -129,7 +134,7 @@ impl Scene {
             ink,
             ops: ops.start as u32..ops.end as u32,
             env: open.env,
-            replaceable: plain,
+            replaceable: plain && !open.split,
             placed: None,
         })
     }

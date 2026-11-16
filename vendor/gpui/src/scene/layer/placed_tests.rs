@@ -161,6 +161,25 @@ fn a_group_in_a_record_drops_the_runs_it_kept() {
     assert!(layer_counters::RUNS_UNPLACED.load(Relaxed) > dropped, "the dropped run is counted");
 }
 
+#[test]
+fn a_box_painted_per_fragment_keeps_no_fill_and_is_not_replaceable() {
+    let fill = |x: f32| crate::Bounds { origin: point(crate::px(x), crate::px(0.)), size: crate::size(crate::px(12.), crate::px(10.)) };
+    let mut s = Scene { in_group: true, ..Scene::default() };
+    s.book.record_runs = Some(Box::default());
+    assert!(s.open_box(1, rect(0., 0., 30., 10.), env()));
+    s.note_open_box_fill(fill(0.));
+    s.insert_primitive(quad(rect(0., 0., 12., 10.), blue()));
+    let one = s.close_box().unwrap();
+    assert!(one.replaceable && one.env.fill == Some(fill(0.)), "one fill is the box's fill");
+    assert!(s.open_box(2, rect(0., 0., 30., 10.), env()));
+    s.note_open_box_fill(fill(0.));
+    s.insert_primitive(quad(rect(0., 0., 12., 10.), blue()));
+    s.note_open_box_fill(fill(13.));
+    s.insert_primitive(quad(rect(13., 0., 12., 10.), blue()));
+    let split = s.close_box().unwrap();
+    assert!(!split.replaceable, "a box with a fill per fragment has no one fill to restore");
+}
+
 /// Box 2's command placed twice in one scene (op 2 lands as ops 2 and 3).
 fn twice(record: &Scene) -> super::RecordRuns {
     let [one, two] = columns();
