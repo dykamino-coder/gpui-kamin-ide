@@ -249,33 +249,23 @@ impl DirectXRenderer {
 
     /// Draw a run of consecutive group composites level by level.
     pub(super) fn draw_composite_run(&mut self, run: &[&PaintSurface]) -> Result<()> {
-        // KaminIDE patch: consecutive composites of output-merger modes form a
-        // series without copies (`group_series`); the rest keep the levels.
+        // KaminIDE patch: composites the tile pass takes are drawn in passes of
+        // one copy and one draw (`group_tiles`); the rest keep the levels.
         // Segments are drawn in document order, each before the next.
-        let merger: Vec<bool> = run
-            .iter()
-            .map(|s| {
-                let masked = self
-                    .blur
-                    .group_mask
-                    .get(s.group as usize - 1)
-                    .is_some_and(|m| m.is_some());
-                self.blend_series
-                    && self
-                        .group_composite_quad(s)
-                        .is_some_and(|(q, _)| group_series::joins_series(&q, s, masked))
-            })
-            .collect();
-        self.log_series_share(run);
         let mut k = 0;
         while k < run.len() {
-            let m = merger[k];
-            let end = k + merger[k..].iter().take_while(|&&v| v == m).count();
-            if m {
-                self.draw_composite_series(&run[k..end])?;
-            } else {
-                self.draw_composite_levels_run(&run[k..end])?;
+            if self.tiles_take(run[k]) {
+                let n = self.draw_composite_tiles(&run[k..])?;
+                if n > 0 {
+                    k += n;
+                    continue;
+                }
+                self.draw_composite_levels_run(&run[k..k + 1])?;
+                k += 1;
+                continue;
             }
+            let end = k + 1 + run[k + 1..].iter().take_while(|s| !self.tiles_take(s)).count();
+            self.draw_composite_levels_run(&run[k..end])?;
             k = end;
         }
         Ok(())
@@ -394,7 +384,7 @@ impl DirectXRenderer {
     /// Copy the backdrop under the blended composites of one level into the
     /// frame-sized level backdrop at the same coordinates: one copy of their
     /// bounding box when it is compact, otherwise one copy per composite.
-    fn copy_level_backdrop(&mut self, rects: &[Region]) -> Result<()> {
+    pub(super) fn copy_level_backdrop(&mut self, rects: &[Region]) -> Result<()> {
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
         let (w, h) = (self.width, self.height);

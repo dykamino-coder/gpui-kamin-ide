@@ -43,7 +43,7 @@ mod shader_compilation {
             // KaminIDE patch: frame clear drawn with blending off (Intel)
             "clear",
             // KaminIDE patch: group composites blended by the output merger
-            "group_blend",
+            "group_tiles",
         ];
 
         let rust_binding_path = format!("{}/shaders_bytes.rs", out_dir);

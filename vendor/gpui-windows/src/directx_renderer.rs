@@ -46,7 +46,7 @@ mod group_stage;
 mod gaussian;
 mod group_atlas;
 mod group_batch;
-mod group_series;
+mod group_tiles;
 mod texture_pool;
 mod gpu_memory;
 pub(crate) use gpu_memory::texture_bytes;
@@ -95,13 +95,9 @@ pub(crate) struct DirectXRenderer {
     /// KaminIDE patch: блендер «писать поверх» — для групп, у которых
     /// смешивание с кадром посчитано в шейдере.
     blend_replace: Option<ID3D11BlendState>,
-    /// KaminIDE patch: output-merger states of the blend modes it computes
-    /// (`group_series`), made on first use.
-    series_blends: group_series::SeriesBlends,
-    /// KaminIDE patch: output-merger series on (`GPUI_BLEND_SERIES=0` keeps
-    /// every blend mode on the shader path with backdrop copies, for
-    /// comparison runs).
-    blend_series: bool,
+    /// KaminIDE patch: composite runs drawn in one pass (`group_tiles`;
+    /// `GPUI_GROUP_TILES=0` keeps the composite levels, for comparison runs).
+    group_tiles: bool,
 
     width: u32,
     height: u32,
@@ -157,6 +153,8 @@ struct BlurScratch {
     groups: Vec<BlurTexture>,
     group_place: Vec<group_atlas::Place>,
     group_regions: Vec<Region>,
+    /// KaminIDE patch: tile lists of the composite run in one pass (`group_tiles`).
+    tile_lists: group_tiles::TileLists,
     pool: texture_pool::Pool,
     /// Готовый буфер каждой группы: сырой или размытый.
     group_slots: Vec<usize>,
@@ -452,9 +450,8 @@ struct DirectXRenderPipelines {
     blur_pipeline: PipelineState<BlurQuad>,
     /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
     clear_pipeline: PipelineState<quad_clear::ClearColor>,
-    /// KaminIDE patch: group composites blended by the output merger
-    /// (`group_series`).
-    group_blend_pipeline: PipelineState<BlurQuad>,
+    /// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
+    group_tiles_pipeline: PipelineState<BlurQuad>,
 }
 
 struct DirectXGlobalElements {
@@ -593,8 +590,7 @@ impl DirectXRenderer {
             group_target_tex: None,
             blend_premultiplied: None,
             blend_replace: None,
-            series_blends: Default::default(),
-            blend_series: group_series::enabled(),
+            group_tiles: group_tiles::enabled(),
             width: 1,
             height: 1,
             backdrop: None,
@@ -2485,16 +2481,16 @@ impl DirectXRenderPipelines {
             1,
             create_blend_state_replace(device)?,
         )?;
-        let group_blend_pipeline = PipelineState::new(
+        let group_tiles_pipeline = PipelineState::new(
             device,
-            "group_blend_pipeline",
-            ShaderModule::GroupBlend,
+            "group_tiles_pipeline",
+            ShaderModule::GroupTiles,
             4,
-            create_blend_state_premultiplied(device)?,
+            create_blend_state_replace(device)?,
         )?;
 
         Ok(Self {
-            group_blend_pipeline,
+            group_tiles_pipeline,
             shadow_pipeline,
             quad_pipeline,
             path_rasterization_pipeline,
@@ -3328,7 +3324,7 @@ pub(crate) mod shader_resources {
         /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
         Clear,
         /// KaminIDE patch: group composites blended by the output merger.
-        GroupBlend,
+        GroupTiles,
     }
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -3414,9 +3410,9 @@ pub(crate) mod shader_resources {
                     ShaderTarget::Vertex => CLEAR_VERTEX_BYTES,
                     ShaderTarget::Fragment => CLEAR_FRAGMENT_BYTES,
                 },
-                ShaderModule::GroupBlend => match target {
-                    ShaderTarget::Vertex => GROUP_BLEND_VERTEX_BYTES,
-                    ShaderTarget::Fragment => GROUP_BLEND_FRAGMENT_BYTES,
+                ShaderModule::GroupTiles => match target {
+                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
+                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
                 },
             };
             Self { inner: bytes }
@@ -3445,7 +3441,7 @@ pub(crate) mod shader_resources {
                 ShaderModule::EmojiRasterization => "emoji_rasterization",
                 ShaderModule::Blur => "blur",
                 ShaderModule::Clear => "clear",
-                ShaderModule::GroupBlend => "group_blend",
+                ShaderModule::GroupTiles => "group_tiles",
             }
         }
     }

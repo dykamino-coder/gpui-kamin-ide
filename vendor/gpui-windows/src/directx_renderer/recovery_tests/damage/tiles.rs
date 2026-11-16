@@ -1,16 +1,18 @@
-//! KaminIDE patch: group composites blended by the output merger
-//! (`group_series`) equal the Compositing formulas of their modes.
+//! KaminIDE patch: a composite run drawn in one pass (`group_tiles`) equals
+//! the canonical group arithmetic: the Compositing formulas of its modes in
+//! document order, rounded to 8 bits after every step.
 //!
 //! Oracle: every group drawn alone, normal, over a transparent frame gives
 //! its premultiplied source image; the backdrop drawn alone gives the first
-//! destination. The expected frame applies the formula of each mode to those
-//! images in document order, rounding to 8 bits after every step, as the
-//! target does (oracle). The series must equal the formula exactly on every
-//! adapter the tests reach (hardware and WARP); the shader path's distance
-//! to it is reported for comparison.
+//! destination; `oracle` applies the formulas to those images. The pass must
+//! equal it exactly on every adapter the tests reach (hardware and WARP): the
+//! steps run in the shader, not in the adapter's blender. The composite
+//! levels' distance to it is reported for comparison.
 
 use super::*;
+mod adapters;
 mod oracle;
+use adapters::devices;
 use oracle::{expect, off};
 
 /// One group: its quads (frame coordinates, colour), blend mode, opacity and blur.
@@ -103,27 +105,34 @@ fn draw(device: &DirectXDevices, s: &Scene, bg: WindowBackgroundAppearance) -> V
     draw_path(device, s, bg, true)
 }
 
-/// `series` false: every blend mode on the shader path with backdrop copies.
-fn draw_path(device: &DirectXDevices, s: &Scene, bg: WindowBackgroundAppearance, series: bool) -> Vec<u8> {
+/// `tiles` false: the composite levels (one backdrop copy per level).
+fn draw_path(device: &DirectXDevices, s: &Scene, bg: WindowBackgroundAppearance, tiles: bool) -> Vec<u8> {
     let mut r = offscreen(device, W, H);
-    r.blend_series = series;
+    r.group_tiles = tiles;
     r.draw(s, bg).unwrap();
     target_bytes(&mut r)
 }
 
-/// The series frame against the shader path's frame and both against the
-/// formula: the series differs from the shader path by at most one code and
-/// is not further from the formula than the shader path is.
-fn compare(name: &str, got: &[u8], copies: &[u8], want: &[u8]) {
-    let (big, one) = off(got, copies);
+/// The frame with its composite runs in tile passes (at least one drawn).
+fn draw_tiles(device: &DirectXDevices, s: &Scene, bg: WindowBackgroundAppearance) -> Vec<u8> {
+    let mut r = offscreen(device, W, H);
+    r.draw(s, bg).unwrap();
+    assert!(r.blur.tile_lists.passes > 0, "no tile pass drawn");
+    target_bytes(&mut r)
+}
+
+/// The tile pass's frame against the levels' frame and both against the
+/// formula: the pass equals the formula exactly and differs from the levels
+/// by at most one code.
+fn compare(name: &str, got: &[u8], levels: &[u8], want: &[u8]) {
+    let (big, one) = off(got, levels);
     let (gb, go) = off(got, want);
-    let (cb, co) = off(copies, want);
+    let (lb, lo) = off(levels, want);
     eprintln!(
-        "{name}: series vs shader path {one} channels off by one; vs formula: series {gb}/{go}, shader path {cb}/{co} (>1 / =1)"
+        "{name}: tiles vs levels {one} channels off by one; vs formula: tiles {gb}/{go}, levels {lb}/{lo} (>1 / =1)"
     );
-    assert_eq!(big, 0, "{name}: series off the shader path by more than one");
-    assert!(gb <= cb, "{name}: series further from the formula than the shader path");
-    assert_eq!((gb, go), (0, 0), "{name}: series off the formula");
+    assert_eq!(big, 0, "{name}: tiles off the levels by more than one");
+    assert_eq!((gb, go), (0, 0), "{name}: tiles off the formula");
 }
 
 fn backdrop() -> Vec<([f32; 4], Hsla)> {
@@ -135,7 +144,7 @@ fn backdrop() -> Vec<([f32; 4], Hsla)> {
 
 fn check(device: &DirectXDevices, name: &str, groups: &[G], bg: WindowBackgroundAppearance) {
     let frame = scene(&backdrop(), groups, None);
-    let got = draw(device, &frame, bg);
+    let got = draw_tiles(device, &frame, bg);
     let copies = draw_path(device, &frame, bg, false);
     let base = draw(device, &scene(&backdrop(), &[], None), bg);
     let images: Vec<Vec<u8>> = groups
@@ -159,45 +168,43 @@ fn chain(modes: &[u32]) -> Vec<G> {
         .collect()
 }
 
-/// Every adapter the tests can reach: the default one (hardware when the
-/// machine has it), the high-performance one if it differs, and WARP.
-fn devices() -> Vec<(String, DirectXDevices)> {
-    use crate::GpuAdapterPreference as P;
-    let mut out: Vec<(String, DirectXDevices)> = Vec::new();
-    for p in [P::Default, P::HighPerformance, P::Software] {
-        let Ok(d) = DirectXDevices::with_instrumentation(p, gpui::Instrumentation::default()) else {
-            continue;
-        };
-        let desc = unsafe { d.adapter.GetDesc1() }.unwrap();
-        let name = String::from_utf16_lossy(&desc.Description).trim_matches('\0').to_string();
-        if out.iter().all(|(n, _)| *n != name) {
-            out.push((name, d));
-        }
-    }
-    assert!(out.len() >= 2, "a hardware adapter and WARP");
-    out
-}
-
 #[test]
-fn merger_modes_equal_their_formulas_over_opaque_and_transparent_backdrops() {
+fn runs_equal_their_formulas_over_opaque_and_transparent_backdrops() {
     for (gpu, device) in devices() {
         for bg in [WindowBackgroundAppearance::Opaque, WindowBackgroundAppearance::Transparent] {
             check(&device, &format!("{gpu}: multiply chain {bg:?}"), &chain(&[1; 6]), bg);
-            check(&device, &format!("{gpu}: mixed series {bg:?}"), &chain(&[2, 11, 16, 0, 1, 2]), bg);
+            check(&device, &format!("{gpu}: mixed run {bg:?}"), &chain(&[2, 11, 16, 0, 1, 2]), bg);
         }
     }
 }
 
 #[test]
-fn merger_series_interleaved_with_copy_modes_keep_document_order() {
+fn modes_of_one_run_interleave_in_document_order() {
     for (gpu, device) in devices() {
         let bg = WindowBackgroundAppearance::Opaque;
         check(&device, &format!("{gpu}: multiply/difference"), &chain(&[1, 10, 1, 0, 10, 1]), bg);
     }
 }
 
+/// Modes the oracle has no formula for: the pass takes the same steps as the
+/// levels (`composite_mix`, rounded), so the frames are equal.
 #[test]
-fn blurred_groups_join_the_series_and_translucent_ones_keep_the_copy_path() {
+fn every_blend_mode_equals_the_composite_levels() {
+    for (gpu, device) in devices() {
+        let bg = WindowBackgroundAppearance::Opaque;
+        for m in 1..=15 {
+            let mut groups = chain(&[m, m, 3, m, 9, m]);
+            groups[2].opacity = 0.6;
+            let frame = scene(&backdrop(), &groups, None);
+            let got = draw_tiles(&device, &frame, bg);
+            let levels = draw_path(&device, &frame, bg, false);
+            assert_eq!(off(&got, &levels), (0, 0), "{gpu}: mode {m}");
+        }
+    }
+}
+
+#[test]
+fn blurred_and_translucent_groups_equal_their_formulas() {
     for (gpu, device) in devices() {
         let mut groups = chain(&[1; 5]);
         groups[1].blur = 2.;
@@ -213,7 +220,7 @@ fn children_of_an_isolated_group_blend_with_its_buffer_not_the_frame() {
         let bg = WindowBackgroundAppearance::Opaque;
         let children = chain(&[1, 1, 2, 1]);
         let frame = scene(&backdrop(), &children, Some(1.));
-        let got = draw(&device, &frame, bg);
+        let got = draw_tiles(&device, &frame, bg);
         let copies = draw_path(&device, &frame, bg, false);
         // The isolated buffer starts transparent: the children blend with it alone.
         let images: Vec<Vec<u8>> = children

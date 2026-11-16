@@ -123,7 +123,6 @@ impl DirectXRenderer {
         self.group_target_tex = None;
         self.blend_premultiplied = None;
         self.blend_replace = None;
-        self.series_blends = Default::default();
     }
 
     pub(super) fn ensure_drawable_resources(&self) -> Result<()> {

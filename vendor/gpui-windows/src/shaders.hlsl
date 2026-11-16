@@ -1664,8 +1664,10 @@ float4 group_texel(BlurQuad q, float2 p) {
 // the retained image (or its plane through H^-1) under the rounded, polygon,
 // clip and mask-image coverage and the group opacity. Shared by blur_fragment
 // (blend modes mixed in the shader against a backdrop copy) and
-// group_blend_fragment (modes the output merger computes, no copy).
-float4 group_source(BlurQuad q, float2 p) {
+// group_tiles_fragment (a run of composites in one pass, no copies).
+// `image_mask` false (a literal): the caller never has a mask image, and no
+// gradient sample is compiled (group_tiles_fragment runs it in a loop).
+float4 group_source_with(BlurQuad q, float2 p, bool image_mask) {
     float4 src;
     // KaminIDE patch: plane of a 3D rendering context — map the frame
     // pixel back through the inverse homography (perspective-correct
@@ -1724,7 +1726,7 @@ float4 group_source(BlurQuad q, float2 p) {
         p.y >= q.mask_clip.y + q.mask_clip.w)) {
         mask = 0.0;
     }
-    if (q.pad2.x > 0.5) {
+    if (image_mask && q.pad2.x > 0.5) {
         float2 mt = (p - q.mask_rect.xy) / q.mask_rect.zw;
         uint norep = uint(q.pad2.y + 0.5);
         uint turn = (norep >> 3u) & 3u;
@@ -1744,6 +1746,38 @@ float4 group_source(BlurQuad q, float2 p) {
     }
     src *= mask;
     return src;
+}
+
+float4 group_source(BlurQuad q, float2 p) {
+    return group_source_with(q, p, true);
+}
+
+// KaminIDE patch: premultiplied source `src` of blend mode `mode` (not normal)
+// composited over the premultiplied destination `dst` (Compositing 1 §5.8:
+// the mixed colour shows only where both sides are opaque). The CSS formulas
+// take colour that is not multiplied, so both sides are divided by their alpha
+// first and the result is multiplied back as a whole.
+float4 composite_mix(uint mode, float4 src, float4 dst) {
+    // Compositing 2 §9.1.15: plus-lighter adds premultiplied RGBA.
+    // This Porter-Duff operator does not use the source-over blend formula.
+    if (mode == 16u) {
+        return saturate(src + dst);
+    }
+    float3 cs = src.a > 0.0 ? src.rgb / src.a : float3(0.0, 0.0, 0.0);
+    float3 cb = dst.a > 0.0 ? dst.rgb / dst.a : float3(0.0, 0.0, 0.0);
+    float3 mixed;
+    if (mode >= 12u) {
+        mixed = blend_nonseparable(mode, cb, cs);
+    } else {
+        mixed = float3(
+            blend_channel(mode, cb.r, cs.r),
+            blend_channel(mode, cb.g, cs.g),
+            blend_channel(mode, cb.b, cs.b));
+    }
+    float3 co = (1.0 - dst.a) * src.a * cs
+              + dst.a * src.a * mixed
+              + (1.0 - src.a) * dst.a * cb;
+    return float4(co, src.a + dst.a * (1.0 - src.a));
 }
 
 float4 blur_fragment(BlurFragmentInput input): SV_Target {
@@ -1819,32 +1853,9 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         if (q.blend_mode == 0u) {
             return src;
         }
-        // Цвет назначения — копия кадра под группой. Формулы CSS работают с
-        // НЕумноженным цветом, поэтому обе стороны сначала делятся на свою
-        // прозрачность, а результат умножается обратно уже целиком.
+        // Цвет назначения — копия кадра под группой.
         float4 dst = t_backdrop.Load(int3(int2(floor(input.position.xy) - q.backdrop_rect.xy), 0));
-        // Compositing 2 §9.1.15: plus-lighter adds premultiplied RGBA.
-        // This Porter-Duff operator does not use the source-over blend formula.
-        if (q.blend_mode == 16u) {
-            return saturate(src + dst);
-        }
-        float3 cs = src.a > 0.0 ? src.rgb / src.a : float3(0.0, 0.0, 0.0);
-        float3 cb = dst.a > 0.0 ? dst.rgb / dst.a : float3(0.0, 0.0, 0.0);
-        float3 mixed;
-        if (q.blend_mode >= 12u) {
-            mixed = blend_nonseparable(q.blend_mode, cb, cs);
-        } else {
-            mixed = float3(
-                blend_channel(q.blend_mode, cb.r, cs.r),
-                blend_channel(q.blend_mode, cb.g, cs.g),
-                blend_channel(q.blend_mode, cb.b, cs.b));
-        }
-        // Формула композита из спецификации: смешанный цвет виден только там,
-        // где обе стороны непрозрачны.
-        float3 co = (1.0 - dst.a) * src.a * cs
-                  + dst.a * src.a * mixed
-                  + (1.0 - src.a) * dst.a * cb;
-        return float4(co, src.a + dst.a * (1.0 - src.a));
+        return composite_mix(q.blend_mode, src, dst);
     }
     // Tent 3x3: с билинейкой и каскадом /2 → мягкое размытие без колец.
     float4 c = blur_tap(q, input.uv, float2(0.0, 0.0)) * 0.25;
@@ -1909,26 +1920,56 @@ float4 clear_fragment(ClearVertexOutput input): SV_Target {
     return input.color;
 }
 
-// KaminIDE patch: group composite blended by the output merger (WebRender
-// renderer::BlendMode::from_mix_blend_mode). Target 0 is the premultiplied
-// source; target 1 is As - Cs, so multiply = Cs*(1-Ad) + Cd*(1-(As-Cs)) with
-// D3D11_BLEND_INV_DEST_ALPHA / D3D11_BLEND_INV_SRC1_COLOR. The other modes of
-// the series (normal, screen, exclusion, plus-lighter) ignore target 1.
-struct GroupBlendFragmentOutput {
-    float4 color: SV_Target0;
-    float4 src1: SV_Target1;
-};
+// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
+//
+// blur_quads[0] is the cover: bounds = the run's rectangle, src_origin = the
+// tile grid's corner, poly_count = tiles per row. Composites are
+// blur_quads[1..]. tile_lists holds the first entry of every tile (one more
+// than the tiles, the last is the end), then composite indices, each tile's in
+// document order. Every pixel starts from the backdrop copy and applies the
+// composites covering it in order, rounding to the 8-bit target after every
+// step: the canonical group arithmetic (design.md), the frame the copy path
+// writes composite by composite.
+#define GROUP_TILE 16.0
+StructuredBuffer<uint> tile_lists: register(t4);
 
-BlurVertexOutput group_blend_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_InstanceID) {
-    return blur_vertex(vertex_id, quad_id);
+// The pixels the composite's own draw covers: its rectangle with vertices on
+// the rasterizer's 1/256 grid (D3D11 §15.13: top-left rule) and the content
+// mask the clip distances keep (§15.4: kept at distance >= 0).
+bool composite_covers(BlurQuad q, float2 c) {
+    float2 lo = round(q.bounds.origin * 256.0) / 256.0;
+    float2 hi = round((q.bounds.origin + q.bounds.size) * 256.0) / 256.0;
+    float2 mlo = q.content_mask.origin;
+    float2 mhi = mlo + q.content_mask.size;
+    return all(c >= lo) && all(c < hi) && all(c >= mlo) && all(c <= mhi);
 }
 
-GroupBlendFragmentOutput group_blend_fragment(BlurFragmentInput input) {
-    input.position.xy += global_origin;
-    BlurQuad q = blur_quads[input.quad_id];
-    float4 src = group_source(q, input.position.xy);
-    GroupBlendFragmentOutput output;
-    output.color = src;
-    output.src1 = float4(src.aaa - src.rgb, src.a);
+BlurVertexOutput group_tiles_vertex(uint vertex_id: SV_VertexID) {
+    float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
+    BlurVertexOutput output;
+    output.position = to_device_position(unit_vertex, blur_quads[0].bounds);
+    output.uv = unit_vertex;
+    output.quad_id = 0u;
+    output.clip_distance = float4(1.0, 1.0, 1.0, 1.0);
     return output;
+}
+
+float4 group_tiles_fragment(BlurFragmentInput input): SV_Target {
+    float2 c = input.position.xy;
+    BlurQuad cover = blur_quads[0];
+    float4 dst = t_backdrop.Load(int3(int2(floor(c)), 0));
+    uint2 tile = uint2(floor((c - cover.src_origin) / GROUP_TILE));
+    uint t = tile.y * cover.poly_count + tile.x;
+    uint end = tile_lists[t + 1u];
+    float2 p = c + global_origin;
+    for (uint i = tile_lists[t]; i < end; i++) {
+        BlurQuad q = blur_quads[tile_lists[i]];
+        if (!composite_covers(q, c)) {
+            continue;
+        }
+        float4 src = group_source_with(q, p, false);
+        float4 o = q.blend_mode == 0u ? src + dst * (1.0 - src.a) : composite_mix(q.blend_mode, src, dst);
+        dst = round(saturate(o) * 255.0) / 255.0;
+    }
+    return dst;
 }

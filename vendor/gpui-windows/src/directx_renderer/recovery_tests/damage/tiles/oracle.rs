@@ -1,4 +1,4 @@
-//! KaminIDE patch: the Compositing formulas the series tests compare against,
+//! KaminIDE patch: the Compositing formulas the tile pass tests compare against,
 //! in f64 over 8-bit premultiplied frames.
 
 /// Premultiplied Compositing 1/2 result of mode `m` for one pixel (0..1).
