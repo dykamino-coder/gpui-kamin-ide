@@ -96,6 +96,10 @@ pub fn convert_restyling(
     let mut out = vec![];
     let mut tree = TreeIndex::new(values.clone(), xhtml);
     let shadows = has_declarative_shadow(&dom.document, &admission)?;
+    // The cache that takes the rules of this build also takes its `:has()`
+    // marks after the walk: the first restyle then reads them instead of
+    // marking the whole document again (`RestyleCache::keep_has`).
+    let mut marked = None;
     if let Some(invalidation) = invalidation.as_deref_mut() {
         invalidation.prepare(&doc.rules, shadows);
     }
@@ -125,6 +129,7 @@ pub fn convert_restyling(
             mark_has(&dom.document, &has_args, &mut vec![], &mut tree)?;
         }
         if let Some(keep) = keep {
+            let marks = !has_args.is_empty();
             let probe = super::restyle_probe::RestyleProbe::built(
                 doc.clone(),
                 has_args,
@@ -133,6 +138,7 @@ pub fn convert_restyling(
                 extra_css,
             );
             *keep = super::restyle_probe::RestyleCache::with_probe(probe);
+            marked = marks.then_some(keep);
         }
     }
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
@@ -150,5 +156,9 @@ pub fn convert_restyling(
         vcx,
         invalidation,
     )?;
-    super::finish_document::finish(&tree, &admission, out, vcx)
+    let nodes = super::finish_document::finish(&tree, &admission, out, vcx)?;
+    if let Some(keep) = marked {
+        keep.keep_has(tree.take_has());
+    }
+    Ok(nodes)
 }

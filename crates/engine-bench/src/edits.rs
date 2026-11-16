@@ -36,15 +36,28 @@ pub(super) async fn run(
     let variants = [base.as_str(), edited.as_str()];
     // Документ сейчас держит вход: форма правки видна до первого замера.
     let same_shape = window.read_with(cx, |view, _| view.doc.mutations(&edited).is_some())?;
+    // Boxes of the input that paint only their own commands, and refusals by reason.
+    let census = window.read_with(cx, |view, _| kamin_html::paint_path::census(&view.doc))?;
     super::memory::steady(cx, capture).await?;
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
     let mut work = Vec::with_capacity(args.runs);
     let mut last = [None, None];
+    let mut layer = Vec::with_capacity(args.runs);
+    // ENGINE_BENCH_PRESENT_SKIP: the edits may skip presentation (a change
+    // off screen); such samples end where the frame decided it.
+    let present = std::env::var_os("ENGINE_BENCH_PRESENT_SKIP").is_none();
+    // The bench asks for every frame it reads (`require_presentation`).
+    window.update(cx, |_, window, _| window.allow_unpresented_readback(true))?;
     let mut frame_samples = Vec::with_capacity(args.runs);
     for index in 1..=args.runs {
         let variant = index % 2;
-        let (measured, frame, counts) = sample(
+        let path_before = kamin_html::paint_path::read();
+        let before = (
+            layer_work(),
+            window.read_with(cx, |view, _| view.doc.retained_frames())?,
+        );
+        let (measured, frame, counts) = super::run::sample_with(
             cx,
             window,
             fonts,
@@ -52,6 +65,7 @@ pub(super) async fn run(
             Step::Edit(variants[variant]),
             capture,
             luid,
+            present,
         )
         .await?;
         // Each edit commits a new revision whose frame slot counts from zero:
@@ -60,7 +74,19 @@ pub(super) async fn run(
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         work.push(counts);
-        last[variant] = Some(frame.pixels);
+        if let Some(frame) = frame {
+            last[variant] = Some(frame.pixels);
+        }
+        let after = (
+            layer_work(),
+            window.read_with(cx, |view, _| view.doc.retained_frames())?,
+        );
+        let mut delta = layer_delta(before, after);
+        let path_after = kamin_html::paint_path::read();
+        for (i, name) in kamin_html::paint_path::NAMES.iter().enumerate() {
+            delta[format!("path_{name}")] = json!(path_after[i].wrapping_sub(path_before[i]));
+        }
+        layer.push(delta);
     }
     let mut checks = Vec::new();
     for (variant, incremental) in last.iter().enumerate() {
@@ -133,6 +159,8 @@ pub(super) async fn run(
     } else {
         "document_update"
     });
+    mode["presentation_required"] = json!(present);
+    mode["scene_layer"] = json!({"samples": layer, "census": census});
     mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
     mode["fresh_checks"] = json!(checks);
     mode["document_frame_samples"] = frame_samples
@@ -141,6 +169,37 @@ pub(super) async fn run(
         .map(|(i, &counts)| frame_sample(i + 1, counts))
         .collect::<Result<Value>>()?;
     Ok((mode, work))
+}
+
+/// The scene layer's process-wide work counters (`gpui::layer_counters`).
+fn layer_work() -> [u64; 6] {
+    use gpui::layer_counters as c;
+    use std::sync::atomic::Ordering::Relaxed;
+    [
+        c::RECORDS.load(Relaxed),
+        c::COW_CLONES.load(Relaxed),
+        c::VALUES_WRITTEN.load(Relaxed),
+        c::BOXES_RERECORDED.load(Relaxed),
+        c::PRIMITIVES_COPIED.load(Relaxed),
+        c::PRESENTS_SKIPPED.load(Relaxed),
+    ]
+}
+
+/// One sample's layer work and frame builds/replays of the document's
+/// retained frame (a rebuilt document counts from zero again).
+fn layer_delta(before: ([u64; 6], (u64, u64)), after: ([u64; 6], (u64, u64))) -> Value {
+    let d = |i: usize| after.0[i].wrapping_sub(before.0[i]);
+    let since = |a: u64, b: u64| a.checked_sub(b).unwrap_or(a);
+    json!({
+        "layers_recorded": d(0),
+        "cow_clones": d(1),
+        "values_written": d(2),
+        "boxes_rerecorded": d(3),
+        "primitives_copied": d(4),
+        "presents_skipped": d(5),
+        "frame_builds": since(after.1.0, before.1.0),
+        "frame_replays": since(after.1.1, before.1.1),
+    })
 }
 
 /// Сборки, повторы и сборки внутри `Window::draw` документа на эту минуту.

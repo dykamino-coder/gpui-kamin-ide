@@ -15,7 +15,56 @@ export interface ResolvedShell {
   kind: 'bash' | 'powershell' | 'sh' | 'zsh'
 }
 
+/** What `where <command>` prints first, found without starting it: the current
+ *  directory, then each `PATH` entry in order, trying the `PATHEXT` extensions
+ *  in order (a command that already has one of them is also tried as is).
+ *
+ *  Starting `where.exe` took 130–250 ms per lookup with a 70-entry `PATH`, and
+ *  a slow start hit its 5 s cap, which the first session waited for. One stat
+ *  per candidate is no better on such a machine (~2.5 ms each under file
+ *  system filters), so each directory is listed once, all in parallel
+ *  (~5 ms for 70 entries), and the names are matched in memory. */
+export async function whereOnPath(
+  command: string,
+  env: NodeJS.ProcessEnv = process.env,
+  list: (dir: string) => Promise<string[]> = listFiles,
+  cwd: string = process.cwd(),
+): Promise<string | null> {
+  if (!command || /[\\/:*?"<>|]/.test(command)) return null
+  const pathext = (envValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .map((ext) => ext.trim().toLowerCase())
+    .filter(Boolean)
+  const lower = command.toLowerCase()
+  const names = [...(pathext.some((ext) => lower.endsWith(ext)) ? [lower] : []), ...pathext.map((ext) => lower + ext)]
+  const dirs = [cwd, ...(envValue(env, 'PATH') ?? '').split(';')]
+    .map((dir) => dir.trim().replace(/^"(.*)"$/, '$1'))
+    .filter(Boolean)
+  const listings = await Promise.all(dirs.map((dir) => list(dir).catch(() => [] as string[])))
+  for (let i = 0; i < dirs.length; i++) {
+    const byName = new Map(listings[i]!.map((name) => [name.toLowerCase(), name]))
+    for (const name of names) {
+      const actual = byName.get(name)
+      if (actual !== undefined) return path.win32.join(dirs[i]!, actual)
+    }
+  }
+  return null
+}
+
+/** Windows environment names are case-insensitive (`Path` vs `PATH`). */
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  if (env[name] !== undefined) return env[name]
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name)
+  return key === undefined ? undefined : env[key]
+}
+
+/** Names of the files (and links) in `dir`; `where` never prints a directory. */
+async function listFiles(dir: string): Promise<string[]> {
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true })
+  return entries.filter((e) => !e.isDirectory()).map((e) => e.name)
+}
 export function whichExecutable(command: string, platform: NodeJS.Platform = process.platform, timeoutMs = 5000): Promise<string | null> {
+  if (platform === 'win32' && process.platform === 'win32') return whereOnPath(command)
   return new Promise((resolve) => {
     const finder = platform === 'win32' ? 'where' : 'which'
     const child = spawn(finder, [command], {
