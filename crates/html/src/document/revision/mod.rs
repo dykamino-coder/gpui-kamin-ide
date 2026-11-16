@@ -6,8 +6,11 @@ mod boxes;
 mod build;
 mod commit;
 mod kept;
+mod layer_write;
+pub(super) use layer_write::at;
 mod mentions;
 mod mutation;
+mod paint_damage;
 mod patch;
 mod repaint;
 mod restyle;
@@ -192,4 +195,9 @@ impl Document {
     pub fn embedded_failure(&self) -> Option<DocumentFailure> {
         self.state.values.embedded_failure()
     }
+}
+
+/// The controls a restyle of paint values does not reach (paint_damage::CONTROLS).
+pub(super) fn paint_damage_controls() -> &'static [&'static str; 6] {
+    &paint_damage::CONTROLS
 }

@@ -111,6 +111,11 @@ pub(crate) struct DirectXRenderer {
     capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
     /// Идёт основная сцена кадра (не буфер группы) — её пачки и меряются.
     timing_main: bool,
+    /// KaminIDE patch: instance buffers of retained scene layers (`layer_cache`).
+    layer_cache: layer_cache::LayerCache,
+    /// KaminIDE patch: the window background quad (`backdrop`) is still to be
+    /// skipped: the first quad batch of the frame, possibly inside a layer.
+    backdrop_pending: bool,
     /// KaminIDE patch (BR-31A): the last frame was not handed to the
     /// compositor, so the next paint must present (`present_gate`).
     unpresented: bool,
@@ -578,6 +583,8 @@ impl DirectXRenderer {
             gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
             capture: None,
             timing_main: false,
+            layer_cache: Default::default(),
+            backdrop_pending: false,
             group_target: None,
             group_target_tex: None,
             blend_premultiplied: None,
@@ -726,6 +733,8 @@ impl DirectXRenderer {
     }
 
     pub(crate) fn handle_device_lost(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
+        // KaminIDE patch: layer buffers die with the device.
+        self.layer_cache.clear();
         try_to_recover_from_device_lost(|| {
             self.handle_device_lost_impl(directx_devices)
                 .context("DirectXRenderer handling device lost")
@@ -857,6 +866,8 @@ impl DirectXRenderer {
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
         self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
+        self.backdrop_pending = self.backdrop.is_some();
+        self.layer_cache.begin_frame();
         let clear_color = match background_appearance {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
@@ -933,6 +944,11 @@ impl DirectXRenderer {
             .and_then(|devices| devices.annotation.clone())
             .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
         for batch in scene.batches() {
+            // KaminIDE patch: a layer draws its own batches from its buffers.
+            if let PrimitiveBatch::Layer(index) = batch {
+                self.draw_layer(scene, index)?;
+                continue;
+            }
             let cost = self.timing_main.then(|| batch_area(scene, &batch));
             let _annotation = annotation
                 .as_ref()
@@ -956,6 +972,7 @@ impl DirectXRenderer {
                     self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
                 }
                 PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
+                PrimitiveBatch::Layer(_) => Ok(()),
             }
             .with_context(|| {
                 format!(
@@ -1576,11 +1593,11 @@ impl DirectXRenderer {
     fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
         // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
         // групп очищаются прозрачным — там первый квад рисуется как есть.
-        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
-            (1, len.saturating_sub(1))
-        } else {
-            (start, len)
-        };
+        let skip = start == 0 && self.backdrop_pending && self.group_target.is_none();
+        if self.group_target.is_none() {
+            self.backdrop_pending = false;
+        }
+        let (start, len) = if skip { (1, len.saturating_sub(1)) } else { (start, len) };
         if len == 0 {
             return Ok(());
         }
@@ -3578,6 +3595,7 @@ mod amd {
 
 
 mod backdrop;
+mod layer_cache;
 mod recovery;
 mod batch_cost;
 
@@ -3604,6 +3622,7 @@ fn batch_area(scene: &Scene, batch: &PrimitiveBatch) -> (usize, usize, f64) {
         PrimitiveBatch::SubpixelSprites { range: r, .. } => (5, r.len(), sum(&scene.subpixel_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
         PrimitiveBatch::PolychromeSprites { range: r, .. } => (6, r.len(), sum(&scene.polychrome_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
         PrimitiveBatch::Surfaces(r) => (7, r.len(), sum(&scene.surfaces[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+        PrimitiveBatch::Layer(_) => (8, 0, 0.0),
     }
 }
 

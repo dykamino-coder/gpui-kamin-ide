@@ -48,6 +48,8 @@ pub(super) fn renderer(device: &DirectXDevices) -> DirectXRenderer {
         timing_main: false,
         unpresented: false,
         retained: Default::default(),
+        layer_cache: Default::default(),
+        backdrop_pending: false,
     }
 }
 
