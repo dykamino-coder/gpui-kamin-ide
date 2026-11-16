@@ -122,8 +122,12 @@ pub(super) fn kernel_quad(
 }
 
 impl DirectXRenderer {
-    /// Blur group `index` (raw image in the stage) into its atlas rectangle.
-    pub(super) fn gaussian_group(&mut self, index: usize, sigma: f32, r: usize) -> Result<()> {
+    /// Blur group `index` (raw image in the stage within `raw`) into its atlas rectangle.
+    ///
+    /// KaminIDE patch: taps outside the group's own raw region read transparent
+    /// black, as in a layer (`group_batch`): a kept image (`group_cache`) never
+    /// depends on what other passes left in the stage.
+    pub(super) fn gaussian_group(&mut self, index: usize, sigma: f32, r: usize, raw: Region) -> Result<()> {
         let region = self.blur.group_regions[index];
         let place = self.blur.group_place[index];
         let (w, h) = (region.width, region.height);
@@ -135,7 +139,7 @@ impl DirectXRenderer {
             .context("group stage missing")?
             .srv
             .clone();
-        let frame = [0.0, 0.0, self.width as f32, self.height as f32];
+        let frame = raw.floats();
         let dst = [place.x as f32, place.y as f32, w as f32, h as f32];
         let to_stage = [
             region.x as f32 - place.x as f32,
