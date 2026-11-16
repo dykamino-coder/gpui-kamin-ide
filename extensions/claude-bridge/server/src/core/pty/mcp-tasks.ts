@@ -173,6 +173,25 @@ export async function cancelMcpTask(session: PtySession, taskId: string): Promis
   if (task?.status === 'working') sendToClient(session.ws, { type: 'mcp:cancel', requestId: taskId, taskOwner: owner })
 }
 
+/** Settles every working task of a session the client ended explicitly
+ *  (Disconnect, tab close, handoff). That client aborts each call it still
+ *  runs and drops its unsent results, so no outcome can arrive any more. The
+ *  owner outlives the PTY, and a task left `working` until its deadline kept
+ *  the resumed session awake for that whole time. */
+export async function cancelEndedSessionTasks(session: PtySession): Promise<void> {
+  const owner = session.mcpEndpoint?.id
+  if (!owner) return
+  for (const task of await mcpTasks.working()) {
+    if (task.owner !== owner) continue
+    const ended = await mcpTasks.update(owner, task.taskId, (record) => {
+      record.cancelRequested = true
+      record.status = 'cancelled'
+      record.input = {}
+    })
+    if (ended) notifyTaskChanged(session.id, taskView(ended))
+  }
+}
+
 /** Safety re-read of a waiting task in case a wake-up was missed. */
 const AWAIT_RECHECK_MS = 5_000
 
