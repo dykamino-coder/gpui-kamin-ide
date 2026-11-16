@@ -26,6 +26,12 @@ impl Builder {
     }
 
     fn repaint_queued(&self, window: &mut Window, cx: &mut App) -> bool {
+        // Deferred boxes this replay shows are recorded with the queued ones.
+        if let Some(layer) = self.store.scene_layer() {
+            let shown = window.content_mask().bounds.scale(window.scale_factor());
+            self.store
+                .queue_repaints(self.store.due_repaints(&layer, shown));
+        }
         let ids = self.store.take_repaints();
         if ids.is_empty() {
             return true;
