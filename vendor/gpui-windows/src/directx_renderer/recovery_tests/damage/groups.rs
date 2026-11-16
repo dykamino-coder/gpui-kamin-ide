@@ -85,3 +85,42 @@ fn group_images_follow_content_across_removal_insertion_and_reordering() {
         );
     }
 }
+
+/// A kept image spoiled after it was drawn is drawn again within one round
+/// of the scrub, and the comparison counts it once.
+#[test]
+fn a_spoiled_kept_image_is_redrawn_within_a_scrub_round_and_counted() {
+    use windows::Win32::Graphics::Direct3D11::ID3D11DeviceContext1;
+    use windows::core::Interface;
+    let device = DirectXDevices::new().unwrap();
+    let base: Vec<(usize, Hsla)> = (0..12).map(|i| (i, color(i))).collect();
+    let mut recolored = base.clone();
+    recolored[6].1 = hsla(0.95, 0.9, 0.4, 1.);
+    let mut r = offscreen(&device, W, H);
+    let first = {
+        let mut s = groups(&base);
+        s.note_damage(&Scene::default(), 1, (W, H));
+        r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
+        s
+    };
+    // Garbage over the atlas rectangle of group 0, as a failed draw would leave.
+    let (place, region) = (r.blur.group_place[0], r.blur.group_regions[0]);
+    let rect = windows::Win32::Foundation::RECT {
+        left: place.x as i32,
+        top: place.y as i32,
+        right: (place.x + region.width) as i32,
+        bottom: (place.y + region.height) as i32,
+    };
+    let dc: ID3D11DeviceContext1 = r.dev().device_context.cast().unwrap();
+    let view = r.blur.groups[place.page].rtv[0].clone().unwrap();
+    unsafe { dc.ClearView(&view, &[1.0, 0.0, 1.0, 1.0], Some(&[rect])) };
+    let mut s = groups(&recolored);
+    s.note_damage(&first, 2, (W, H));
+    r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
+    assert_eq!(r.retained.groups.counts, GroupCounts { kept: 11, drawn: 1 });
+    r.finish_scrub(true).unwrap();
+    assert_eq!(r.retained.groups.scrub.mismatches, 1, "the spoiled image is counted once");
+    let got = target_bytes(&mut r);
+    let (want, _) = chain(&device, &[recolored]);
+    assert!(got == want, "{} pixels differ from the whole frame", differing(&got, &want));
+}
