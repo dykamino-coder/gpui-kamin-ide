@@ -33,10 +33,8 @@ impl Wrap for ReplayRecorder {
         let start = window.layout_request_position();
         let id = self.child.request_layout(window, cx);
         let layout = window.capture_layout(start, id);
-        match layout {
-            Some(layout) => self.pending.capture(|c| c.layout = Some((layout, id))),
-            None => drop(self.pending.captured.take()),
-        }
+        self.pending
+            .capture(|c| c.layout = layout.map(|layout| (layout, id)));
         id
     }
 
@@ -83,11 +81,11 @@ impl Wrap for ReplayRecorder {
                 .as_ref()
                 .is_some_and(|prepaint| window.retained_movable(prepaint, &paint))
                 && crate::hooks::deferred_movable(&lines);
-            self.pending.movable.set(movable);
+            self.pending.capture(|c| c.movable = movable);
             // A box's content keeps the measure functions of its leaves: a
             // replay laid out at new constraints measures as a build would,
             // and the frame check refuses only that replay (`ReplaySlot`).
-            if self.pending.key.is_none() {
+            if self.pending.captured(|c| Some(c.key.is_none())) == Some(true) {
                 self.pending.captured(|c| {
                     let (layout, _) = c.layout.as_ref()?;
                     window.keep_retained_measures(layout, false);
@@ -98,9 +96,8 @@ impl Wrap for ReplayRecorder {
                 c.paint = Some(paint);
                 c.lines = Some(lines);
             });
-            self.pending
-                .env
-                .set(Some((window.scale_factor(), window.frame_serial())));
+            let env = (window.scale_factor(), window.frame_serial());
+            self.pending.capture(|c| c.env = Some(env));
         }
     }
 }

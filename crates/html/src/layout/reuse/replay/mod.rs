@@ -98,29 +98,28 @@ type PlacedPrepaint = (RetainedPrepaint, Point<Pixels>, Size<Pixels>);
 
 /// Запись, которая завершится после краски кадра (`FlowReuse::finish`).
 pub(super) struct PendingReplay {
-    key: Option<Rc<FlowKey>>,
-    start: Counters,
-    end: Counters,
-    inert: bool,
     /// Чтения ширин снаружи за сборку и меры кадра записи.
     pub(super) widths: Rc<Cell<bool>>,
-    /// Блок заполняет ширину потока (`plain::fills_width`).
-    fills: bool,
-    paint_last: Option<u64>,
-    /// What the frame captured, boxed apart: the element tree keeps the
-    /// pending record until the next frame, but its capture goes to the
-    /// record at `finish`.
+    /// The build and what the frame captured, boxed apart: the element tree
+    /// keeps the pending record until the next frame, but all of this goes
+    /// to the record at `finish`.
     captured: Cell<Option<Box<Captured>>>,
-    env: Cell<Option<(f32, u64)>>,
-    /// The output moves with the block (`Ranges::movable`) but for its ink.
-    movable: Cell<bool>,
     /// The block's ink sink in its build's list (`FlowReuse::ink`).
     sink: (Rc<InkSinkList>, u32),
 }
 
 /// The output of a recorded block in its frame, as it is captured.
-#[derive(Default)]
 pub(super) struct Captured {
+    pub(super) key: Option<Rc<FlowKey>>,
+    start: Counters,
+    end: Counters,
+    inert: bool,
+    /// Блок заполняет ширину потока (`plain::fills_width`).
+    fills: bool,
+    paint_last: Option<u64>,
+    pub(super) env: Option<(f32, u64)>,
+    /// The output moves with the block (`Ranges::movable`) but for its ink.
+    pub(super) movable: bool,
     pub(super) layout: Option<(RetainedSubtree, LayoutId)>,
     pub(super) prepaint: Option<PlacedPrepaint>,
     pub(super) paint: Option<RetainedPaint>,
@@ -129,12 +128,12 @@ pub(super) struct Captured {
 }
 
 impl PendingReplay {
-    /// `f` over the capture, allocated at its first part.
-    pub(super) fn capture<R>(&self, f: impl FnOnce(&mut Captured) -> R) -> R {
-        let mut captured = self.captured.take().unwrap_or_default();
-        let out = f(&mut captured);
-        self.captured.set(Some(captured));
-        out
+    /// `f` over the capture, while the record is not made.
+    pub(super) fn capture(&self, f: impl FnOnce(&mut Captured)) {
+        if let Some(mut captured) = self.captured.take() {
+            f(&mut captured);
+            self.captured.set(Some(captured));
+        }
     }
 
     /// `f` over the capture so far, if anything was captured.
@@ -155,16 +154,22 @@ impl PendingReplay {
         paint_last: Option<u64>,
     ) -> Self {
         Self {
-            key,
-            start,
-            end,
-            inert: inert && paint_last.is_none(),
             widths,
-            fills,
-            paint_last,
-            captured: Cell::new(None),
-            env: Cell::new(None),
-            movable: Cell::new(false),
+            captured: Cell::new(Some(Box::new(Captured {
+                key,
+                start,
+                end,
+                inert: inert && paint_last.is_none(),
+                fills,
+                paint_last,
+                env: None,
+                movable: false,
+                layout: None,
+                prepaint: None,
+                paint: None,
+                mask: None,
+                lines: None,
+            }))),
             sink: (ink.clone(), ink.open()),
         }
     }
@@ -186,7 +191,7 @@ impl PendingReplay {
         let (layout, _) = captured.layout?;
         let (prepaint, origin, size) = captured.prepaint?;
         let paint = captured.paint?;
-        let (scale, serial) = self.env.get()?;
+        let (scale, serial) = captured.env?;
         let ink = bounds.unwrap_or(Bounds { origin, size }.scale(scale));
         // Дальний блок корневого потока пропускает запись повтора: его
         // заместитель дешевле (`screen`); содержимое пишется везде.
@@ -197,17 +202,17 @@ impl PendingReplay {
         // A command clipped where it was recorded cannot be restored by a
         // moved copy: only a record whose ink lies inside its mask moves.
         let clip = mask.bounds.scale(scale);
-        let movable = self.movable.get() && bounds.is_none_or(|ink| clip.intersect(&ink) == ink);
+        let movable = captured.movable && bounds.is_none_or(|ink| clip.intersect(&ink) == ink);
         let lines = captured.lines.filter(|lines| lines.complete())?;
         Some(ReplayRecord {
-            fills: self.fills,
+            fills: captured.fills,
             source,
-            key: self.key.clone(),
+            key: captured.key,
             widths: self.widths.get(),
-            start: self.start,
-            end: self.end,
-            inert: self.inert,
-            paint_last: self.paint_last,
+            start: captured.start,
+            end: captured.end,
+            inert: captured.inert,
+            paint_last: captured.paint_last,
             ranges: Cell::new(Some(Ranges {
                 layout,
                 prepaint,
