@@ -7984,7 +7984,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b58d881605
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..40e18d479866aae3b293c7f037e8edf7b94cd549
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -8812,7 +8812,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b5
 -            || self.tooltip_builder.is_some()
 +            || self.rare().is_some_and(InteractivityRare::need_hitbox)
 +            || self.listeners.as_deref().is_some_and(InteractivityListeners::need_hitbox)
-@@ -2518,113 +2841,111 @@
+@@ -2518,113 +2841,109 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -8993,9 +8993,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b5
 +        }
 +
 +        window.with_element_opacity(style.opacity, |window| {
-+            window.with_box_paint(self.paint_owner, bounds, |window| {
-+                style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx)
-+            });
++            self.paint_own_box(&style, bounds, window, cx);
 +            style.paint_after_box(window, cx, |window: &mut Window, cx: &mut App| {
 +                window.with_child_style(&style, bounds, |window| {
 +                    window.with_tab_group(tab_group, |window| {
@@ -9037,7 +9035,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b5
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +2953,28 @@
+@@ -2632,2 +2951,28 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -9068,54 +9066,54 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b5
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +2982,2 @@
+@@ -2635,4 +2980,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -2789 +3134,3 @@
+@@ -2789 +3132,3 @@
 -        for listener in self.mouse_down_listeners.drain(..) {
 +        let mut no_listeners = InteractivityListeners::default();
 +        let listeners = self.listeners.as_deref_mut().unwrap_or(&mut no_listeners);
 +        for listener in listeners.mouse_down_listeners.drain(..) {
-@@ -2796 +3143 @@
+@@ -2796 +3141 @@
 -        for listener in self.mouse_up_listeners.drain(..) {
 +        for listener in listeners.mouse_up_listeners.drain(..) {
-@@ -2803 +3150 @@
+@@ -2803 +3148 @@
 -        for listener in self.mouse_pressure_listeners.drain(..) {
 +        for listener in listeners.mouse_pressure_listeners.drain(..) {
-@@ -2810 +3157 @@
+@@ -2810 +3155 @@
 -        for listener in self.mouse_move_listeners.drain(..) {
 +        for listener in listeners.mouse_move_listeners.drain(..) {
-@@ -2817 +3164 @@
+@@ -2817 +3162 @@
 -        for listener in self.mouse_exit_listeners.drain(..) {
 +        for listener in listeners.mouse_exit_listeners.drain(..) {
-@@ -2824 +3171 @@
+@@ -2824 +3169 @@
 -        for listener in self.file_drop_exit_listeners.drain(..) {
 +        for listener in listeners.file_drop_exit_listeners.drain(..) {
-@@ -2831 +3178 @@
+@@ -2831 +3176 @@
 -        for listener in self.scroll_wheel_listeners.drain(..) {
 +        for listener in listeners.scroll_wheel_listeners.drain(..) {
-@@ -2838 +3185 @@
+@@ -2838 +3183 @@
 -        for listener in self.pinch_listeners.drain(..) {
 +        for listener in listeners.pinch_listeners.drain(..) {
-@@ -2845 +3192,2 @@
+@@ -2845 +3190,2 @@
 -        if self.hover_style.is_some()
 +        let has_hover_style = self.rare.as_deref().is_some_and(|rare| rare.hover_style.is_some());
 +        if has_hover_style
-@@ -2847 +3195,2 @@
+@@ -2847 +3193,2 @@
 -            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
 +            || cx.active_drag.is_some()
 +                && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
-@@ -2850 +3199 @@
+@@ -2850 +3197 @@
 -            let hover_state = self.hover_style.as_ref().and_then(|_| {
 +            let hover_state = has_hover_style.then_some(()).and_then(|_| {
-@@ -2872 +3221 @@
+@@ -2872 +3219 @@
 -        if let Some(group_hover) = self.group_hover_style.as_ref() {
 +        if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -2897,5 +3246,5 @@
+@@ -2897,5 +3244,5 @@
 -        let mut drag_listener = mem::take(&mut self.drag_listener);
 -        let drop_listeners = mem::take(&mut self.drop_listeners);
 -        let click_listeners = mem::take(&mut self.click_listeners);
@@ -9126,25 +9124,25 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b5
 +        let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
 +        let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
 +        let can_drop_predicate = self.rare.as_deref_mut().and_then(|rare| rare.can_drop_predicate.take());
-@@ -3133 +3482 @@
+@@ -3133 +3480 @@
 -            if let Some(hover_listener) = self.hover_listener.take() {
 +            if let Some(hover_listener) = self.take_hover_listener() {
-@@ -3152 +3501 @@
+@@ -3152 +3499 @@
 -                let hover_listener_mode = self.hover_listener_mode;
 +                let hover_listener_mode = self.rare().map(|rare| rare.hover_listener_mode).unwrap_or_default();
-@@ -3187 +3536 @@
+@@ -3187 +3534 @@
 -            if let Some(tooltip_builder) = self.tooltip_builder.take() {
 +            if let Some(tooltip_builder) = self.take_tooltip_builder() {
-@@ -3228 +3577 @@
+@@ -3228 +3575 @@
 -                    self.tooltip_show_delay,
 +                    self.rare().and_then(|rare| rare.tooltip_show_delay),
-@@ -3252,2 +3601,3 @@
+@@ -3252,2 +3599,3 @@
 -                    .group_active_style
 -                    .as_ref()
 +                    .rare
 +                    .as_deref()
 +                    .and_then(|rare| rare.group_active_style.as_ref())
-@@ -3275,4 +3625,4 @@
+@@ -3275,4 +3623,4 @@
 -        let key_down_listeners = mem::take(&mut self.key_down_listeners);
 -        let key_up_listeners = mem::take(&mut self.key_up_listeners);
 -        let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
@@ -9153,12 +9151,25 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b5
 +        let key_up_listeners = self.take_listeners(|l| &mut l.key_up_listeners);
 +        let modifiers_changed_listeners = self.take_listeners(|l| &mut l.modifiers_changed_listeners);
 +        let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
-@@ -3308,2 +3658,2 @@
+@@ -3305,0 +3654,12 @@
++    /// KaminIDE patch: the box's own paint (shadows, fill, borders, host
++    /// painter) under its scene-layer run (`Window::with_box_paint`). A leaf
++    /// of the paint recursion: its paint state and painter stay out of the
++    /// recursive frame of `paint_with_state`, which every nesting level of a
++    /// deep tree lays out again.
++    #[inline(never)]
++    fn paint_own_box(&self, style: &Style, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
++        window.with_box_paint(self.paint_owner, bounds, |window| {
++            style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx)
++        });
++    }
++
+@@ -3308,2 +3668,2 @@
 -            .group_hover_style
 -            .as_ref()
 +            .rare()
 +            .and_then(|rare| rare.group_hover_style.as_ref())
-@@ -3404,0 +3755,28 @@
+@@ -3404,0 +3765,28 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -9187,43 +9198,43 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b5
 +        )))
 +    }
 +
-@@ -3414,0 +3793 @@
+@@ -3414,0 +3803 @@
 +        let rare = self.rare.as_deref();
-@@ -3417 +3796 @@
+@@ -3417 +3806 @@
 -            if let Some(in_focus_style) = self.in_focus_style.as_ref()
 +            if let Some(in_focus_style) = rare.and_then(|rare| rare.in_focus_style.as_ref())
-@@ -3423 +3802 @@
+@@ -3423 +3812 @@
 -            if let Some(focus_style) = self.focus_style.as_ref()
 +            if let Some(focus_style) = rare.and_then(|rare| rare.focus_style.as_ref())
-@@ -3429 +3808 @@
+@@ -3429 +3818 @@
 -            if let Some(focus_visible_style) = self.focus_visible_style.as_ref()
 +            if let Some(focus_visible_style) = rare.and_then(|rare| rare.focus_visible_style.as_ref())
-@@ -3438 +3817 @@
+@@ -3438 +3827 @@
 -            if let Some(group_hover) = self.group_hover_style.as_ref() {
 +            if let Some(group_hover) = rare.and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -3458 +3837 @@
+@@ -3458 +3847 @@
 -            if let Some(hover_style) = self.hover_style.as_ref() {
 +            if let Some(hover_style) = rare.and_then(|rare| rare.hover_style.as_ref()) {
-@@ -3481 +3860 @@
+@@ -3481 +3870 @@
 -                if let Some(can_drop_predicate) = &self.can_drop_predicate {
 +                if let Some(can_drop_predicate) = rare.and_then(|rare| rare.can_drop_predicate.as_ref()) {
-@@ -3486 +3865 @@
+@@ -3486 +3875 @@
 -                    for (state_type, group_drag_style) in &self.group_drag_over_styles {
 +                    for (state_type, group_drag_style) in self.listeners.iter().flat_map(|l| &l.group_drag_over_styles) {
-@@ -3496 +3875 @@
+@@ -3496 +3885 @@
 -                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
 +                    for (state_type, build_drag_over_style) in self.listeners.iter().flat_map(|l| &l.drag_over_styles) {
-@@ -3499 +3878,2 @@
+@@ -3499 +3888,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -3515 +3895 @@
+@@ -3515 +3905 @@
 -                && let Some(group) = self.group_active_style.as_ref()
 +                && let Some(group) = rare.and_then(|rare| rare.group_active_style.as_ref())
-@@ -3520 +3900 @@
+@@ -3520 +3910 @@
 -            if let Some(active_style) = self.active_style.as_ref()
 +            if let Some(active_style) = rare.and_then(|rare| rare.active_style.as_ref())
-@@ -3531,64 +3911,66 @@
+@@ -3531,64 +3921,66 @@
 -        if let Some(id) = &self.aria.author_id {
 -            node.set_author_id(id.to_string());
 -        }
@@ -9354,14 +9365,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b5
 +            }
 +        }
 +        if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
-@@ -3600 +3982 @@
+@@ -3600 +3992 @@
 -        for (action, _) in &self.a11y_action_listeners {
 +        for (action, _) in self.listeners.iter().flat_map(|l| &l.a11y_action_listeners) {
-@@ -4102,0 +4485,3 @@
+@@ -4102,0 +4495,3 @@
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
 +
-@@ -4448,0 +4834,21 @@
+@@ -4448,0 +4844,21 @@
 +
 +    #[test]
 +    fn listener_lists_are_allocated_by_the_first_registration() {
@@ -9383,7 +9394,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..c7c19728adf4e494d17ad722608817b5
 +                >= 18 * std::mem::size_of::<Vec<()>>()
 +        );
 +    }
-@@ -5268,8 +5674,8 @@
+@@ -5268,8 +5684,8 @@
 -        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
 -        interactivity.aria.label = Some("Buffer Font Size".into());
 -        interactivity.aria.value = Some("15".into());
