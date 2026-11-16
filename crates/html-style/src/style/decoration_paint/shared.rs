@@ -8,7 +8,7 @@
 //! candidates, compared by value, with the found one moved to the front.
 
 use super::DecorationPaint;
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// Candidates kept, as many as Gecko's style sharing cache holds about.
@@ -16,25 +16,24 @@ const KEPT: usize = 16;
 
 #[derive(Default)]
 pub struct SharedPaints {
-    latest: RefCell<Vec<Rc<DecorationPaint>>>,
+    latest: Cell<Vec<Rc<DecorationPaint>>>,
 }
 
 impl SharedPaints {
     /// A paint equal to `paint`: a kept one when there is one, else `paint`,
     /// kept from now on.
     pub fn share(&self, paint: DecorationPaint) -> Rc<DecorationPaint> {
-        let mut latest = self.latest.borrow_mut();
-        if let Some(i) = latest.iter().position(|p| **p == paint) {
-            let found = latest.remove(i);
-            latest.insert(0, found.clone());
-            return found;
-        }
-        let paint = Rc::new(paint);
-        if latest.len() == KEPT {
-            latest.pop();
-        }
-        latest.insert(0, paint.clone());
-        paint
+        let mut latest = self.latest.take();
+        let shared = match latest.iter().position(|p| **p == paint) {
+            Some(i) => latest.remove(i),
+            None => {
+                latest.truncate(KEPT - 1);
+                Rc::new(paint)
+            }
+        };
+        latest.insert(0, shared.clone());
+        self.latest.set(latest);
+        shared
     }
 }
 
@@ -53,7 +52,9 @@ mod tests {
         let again = shared.share(DecorationPaint::from_computed(&Computed::default()));
         assert!(Rc::ptr_eq(&a, &again));
         assert!(!Rc::ptr_eq(&a, &b));
-        assert!(Rc::ptr_eq(&shared.latest.borrow()[0], &a));
+        let latest = shared.latest.take();
+        assert!(Rc::ptr_eq(&latest[0], &a));
+        shared.latest.set(latest);
         assert!(Rc::ptr_eq(&shared.share(other), &b));
     }
 
@@ -65,6 +66,8 @@ mod tests {
             paint.filter_ops = vec![crate::style::computed::Filter::neutral(); n];
             shared.share(paint);
         }
-        assert_eq!(shared.latest.borrow().len(), KEPT);
+        let latest = shared.latest.take();
+        assert_eq!(latest.len(), KEPT);
+        shared.latest.set(latest);
     }
 }

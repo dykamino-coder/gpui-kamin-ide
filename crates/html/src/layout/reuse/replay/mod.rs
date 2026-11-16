@@ -27,7 +27,7 @@ use gpui::{
     Bounds, ContentMask, InkSinkList, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint,
     RetainedSubtree, ScaledPixels, Size, Window, point, px,
 };
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// Где и как блок лёг и нарисовался в кадре `serial`.
@@ -107,19 +107,44 @@ pub(super) struct PendingReplay {
     /// Блок заполняет ширину потока (`plain::fills_width`).
     fills: bool,
     paint_last: Option<u64>,
-    layout: RefCell<Option<(RetainedSubtree, LayoutId)>>,
-    prepaint: RefCell<Option<PlacedPrepaint>>,
-    paint: RefCell<Option<RetainedPaint>>,
+    /// What the frame captured, boxed apart: the element tree keeps the
+    /// pending record until the next frame, but its capture goes to the
+    /// record at `finish`.
+    captured: Cell<Option<Box<Captured>>>,
     env: Cell<Option<(f32, u64)>>,
-    mask: RefCell<Option<ContentMask<Pixels>>>,
-    lines: RefCell<Option<Rc<LineCapture>>>,
     /// The output moves with the block (`Ranges::movable`) but for its ink.
     movable: Cell<bool>,
     /// The block's ink sink in its build's list (`FlowReuse::ink`).
     sink: (Rc<InkSinkList>, u32),
 }
 
+/// The output of a recorded block in its frame, as it is captured.
+#[derive(Default)]
+pub(super) struct Captured {
+    pub(super) layout: Option<(RetainedSubtree, LayoutId)>,
+    pub(super) prepaint: Option<PlacedPrepaint>,
+    pub(super) paint: Option<RetainedPaint>,
+    pub(super) mask: Option<ContentMask<Pixels>>,
+    pub(super) lines: Option<Rc<LineCapture>>,
+}
+
 impl PendingReplay {
+    /// `f` over the capture, allocated at its first part.
+    pub(super) fn capture<R>(&self, f: impl FnOnce(&mut Captured) -> R) -> R {
+        let mut captured = self.captured.take().unwrap_or_default();
+        let out = f(&mut captured);
+        self.captured.set(Some(captured));
+        out
+    }
+
+    /// `f` over the capture so far, if anything was captured.
+    pub(super) fn captured<R>(&self, f: impl FnOnce(&Captured) -> Option<R>) -> Option<R> {
+        let captured = self.captured.take()?;
+        let out = f(&captured);
+        self.captured.set(Some(captured));
+        out
+    }
+
     pub(super) fn new(
         key: Option<Rc<FlowKey>>,
         (start, end): (Counters, Counters),
@@ -137,12 +162,8 @@ impl PendingReplay {
             widths,
             fills,
             paint_last,
-            layout: RefCell::new(None),
-            prepaint: RefCell::new(None),
-            paint: RefCell::new(None),
+            captured: Cell::new(None),
             env: Cell::new(None),
-            mask: RefCell::new(None),
-            lines: RefCell::new(None),
             movable: Cell::new(false),
             sink: (ink.clone(), ink.open()),
         }
@@ -161,9 +182,10 @@ impl PendingReplay {
         if tainted {
             return None;
         }
-        let (layout, _) = self.layout.take()?;
-        let (prepaint, origin, size) = self.prepaint.take()?;
-        let paint = self.paint.take()?;
+        let captured = *self.captured.take()?;
+        let (layout, _) = captured.layout?;
+        let (prepaint, origin, size) = captured.prepaint?;
+        let paint = captured.paint?;
         let (scale, serial) = self.env.get()?;
         let ink = bounds.unwrap_or(Bounds { origin, size }.scale(scale));
         // Дальний блок корневого потока пропускает запись повтора: его
@@ -171,12 +193,12 @@ impl PendingReplay {
         if screen.is_some_and(|screen| super::recorder::far(Some(ink), Point::default(), screen)) {
             return None;
         }
-        let mask = self.mask.take()?;
+        let mask = captured.mask?;
         // A command clipped where it was recorded cannot be restored by a
         // moved copy: only a record whose ink lies inside its mask moves.
         let clip = mask.bounds.scale(scale);
         let movable = self.movable.get() && bounds.is_none_or(|ink| clip.intersect(&ink) == ink);
-        let lines = self.lines.take().filter(|lines| lines.complete())?;
+        let lines = captured.lines.filter(|lines| lines.complete())?;
         Some(ReplayRecord {
             fills: self.fills,
             source,

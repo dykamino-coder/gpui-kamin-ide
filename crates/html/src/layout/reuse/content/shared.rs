@@ -7,33 +7,34 @@
 //! (Gecko `StyleSharingCache`, Blink `StyleSharingList`).
 
 use crate::style::computed::BoxStyle;
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// Candidates kept per input.
 const KEPT: usize = 8;
 
 /// The latest distinct values of one input, the found one first.
-struct Latest<T>(RefCell<Vec<Rc<T>>>);
+struct Latest<T>(Cell<Vec<Rc<T>>>);
 
 impl<T> Default for Latest<T> {
     fn default() -> Self {
-        Self(RefCell::default())
+        Self(Cell::default())
     }
 }
 
 impl<T: Clone> Latest<T> {
     fn share(&self, value: &T, same: impl Fn(&T, &T) -> bool) -> Rc<T> {
-        let mut latest = self.0.borrow_mut();
-        if let Some(i) = latest.iter().position(|v| same(v, value)) {
-            let found = latest.remove(i);
-            latest.insert(0, found.clone());
-            return found;
-        }
-        let value = Rc::new(value.clone());
-        latest.truncate(KEPT - 1);
-        latest.insert(0, value.clone());
-        value
+        let mut latest = self.0.take();
+        let shared = match latest.iter().position(|v| same(v, value)) {
+            Some(i) => latest.remove(i),
+            None => {
+                latest.truncate(KEPT - 1);
+                Rc::new(value.clone())
+            }
+        };
+        latest.insert(0, shared.clone());
+        self.0.set(latest);
+        shared
     }
 }
 
@@ -77,7 +78,9 @@ mod tests {
             };
             inputs.text(&text);
         }
-        assert_eq!(inputs.texts.0.borrow().len(), KEPT);
+        let texts = inputs.texts.0.take();
+        assert_eq!(texts.len(), KEPT);
+        inputs.texts.0.set(texts);
         assert!(!Rc::ptr_eq(&a, &inputs.text(&gpui::TextStyle::default())));
     }
 }

@@ -14,6 +14,8 @@ pub(in crate::layout::reuse) struct ReplayRecorder {
 
 impl ReplayRecorder {
     pub(in crate::layout::reuse) fn new(child: AnyElement, pending: Rc<PendingReplay>) -> Self {
+        // The wrapper lays out as its child: no node of its own.
+        gpui::note_layoutless_element();
         Self { child, pending }
     }
 }
@@ -31,9 +33,10 @@ impl Wrap for ReplayRecorder {
         let start = window.layout_request_position();
         let id = self.child.request_layout(window, cx);
         let layout = window.capture_layout(start, id);
-        self.pending
-            .layout
-            .replace(layout.map(|layout| (layout, id)));
+        match layout {
+            Some(layout) => self.pending.capture(|c| c.layout = Some((layout, id))),
+            None => drop(self.pending.captured.take()),
+        }
         id
     }
 
@@ -45,14 +48,17 @@ impl Wrap for ReplayRecorder {
         });
         let quiet =
             range.quiet(window).is_some() && callbacks == window.next_frame_callback_count();
-        let Some(id) = self.pending.layout.borrow().as_ref().map(|(_, id)| *id) else {
+        let Some(id) = self.pending.captured(|c| c.layout.as_ref().map(|(_, id)| *id)) else {
             return;
         };
         if plain && quiet {
             let origin = window.layout_origin_unrounded(id);
             let size = window.layout_size_unrounded(id);
-            self.pending.prepaint.replace(Some((range, origin, size)));
-            self.pending.mask.replace(Some(window.content_mask()));
+            let mask = window.content_mask();
+            self.pending.capture(|c| {
+                c.prepaint = Some((range, origin, size));
+                c.mask = Some(mask);
+            });
         }
     }
 
@@ -67,10 +73,7 @@ impl Wrap for ReplayRecorder {
         });
         let prepaint = self
             .pending
-            .prepaint
-            .borrow()
-            .as_ref()
-            .map(|(p, _, _)| p.clone());
+            .captured(|c| c.prepaint.as_ref().map(|(p, _, _)| p.clone()));
         let replayable = prepaint
             .as_ref()
             .is_some_and(|prepaint| window.retained_replayable(prepaint, &paint))
@@ -84,13 +87,17 @@ impl Wrap for ReplayRecorder {
             // A box's content keeps the measure functions of its leaves: a
             // replay laid out at new constraints measures as a build would,
             // and the frame check refuses only that replay (`ReplaySlot`).
-            if self.pending.key.is_none()
-                && let Some((layout, _)) = self.pending.layout.borrow().as_ref()
-            {
-                window.keep_retained_measures(layout, false);
+            if self.pending.key.is_none() {
+                self.pending.captured(|c| {
+                    let (layout, _) = c.layout.as_ref()?;
+                    window.keep_retained_measures(layout, false);
+                    Some(())
+                });
             }
-            self.pending.paint.replace(Some(paint));
-            self.pending.lines.replace(Some(lines));
+            self.pending.capture(|c| {
+                c.paint = Some(paint);
+                c.lines = Some(lines);
+            });
             self.pending
                 .env
                 .set(Some((window.scale_factor(), window.frame_serial())));
