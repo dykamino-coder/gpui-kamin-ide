@@ -402,6 +402,12 @@ fn draw_in_progress() -> bool {
     CURRENT_ELEMENT_ARENA.with(|current| current.get().is_some())
 }
 
+/// KaminIDE patch: the element just built lays out as its child and takes no
+/// node of the layout tree (a wrapper that only records or hooks its child).
+pub fn note_layoutless_element() {
+    with_element_arena(|arena| arena.note_layoutless());
+}
+
 /// Allocates an element in the current arena. Uses the app-specific arena if one
 /// is active (during draw), otherwise falls back to the thread-local ELEMENT_ARENA.
 #[inline(always)]
@@ -6084,12 +6090,14 @@ impl Window {
         self.request_layout_ref(&style, children, cx)
     }
 
-    /// KaminIDE patch: the frame's element count is the size hint of its layout tree.
+    /// KaminIDE patch: the frame's count of elements that may take a layout
+    /// node is the size hint of its layout tree; an element that lays out as
+    /// its child (`note_layoutless_element`) takes none.
     fn reserve_layout_nodes(&mut self) {
         self.layout_engine
             .as_mut()
             .unwrap()
-            .reserve_nodes_when_full(|| with_element_arena(|arena| arena.allocations()));
+            .reserve_nodes_when_full(|| with_element_arena(|arena| arena.layout_elements()));
     }
 
     /// KaminIDE patch: `request_layout_ref` for a style that is `refinement` applied to the
