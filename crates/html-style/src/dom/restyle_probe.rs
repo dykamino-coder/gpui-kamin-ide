@@ -53,8 +53,8 @@ pub struct RestyleCache {
     /// probed after the batch (`invalidation::targets` finds them all) and
     /// goes with the cache when a batch rebuilds the document.
     last: HashMap<usize, (Handle, Option<Probed>)>,
-    /// The `:has()` marks of the source DOM, marked by the first probe that
-    /// needs them. A batch probed here changes no value a `:has()` argument
+    /// The `:has()` marks of the source DOM, those of the build that gave
+    /// the probe (`keep_has`) or of the first probe that needs them. A batch probed here changes no value a `:has()` argument
     /// reads: `invalidation::targets` does not follow a name inside a
     /// selector argument, so such a batch rebuilds, and `targets` drops the
     /// marks for a name any `:has()` argument reads (`has_reads`); a batch
@@ -183,6 +183,15 @@ impl RestyleCache {
         self.has = None;
     }
 
+    /// Keep the `:has()` marks of the build that gave this cache its probe
+    /// (`with_probe`): they mark the source DOM as the build found it, with
+    /// the arguments of the probe, as a first probe would mark it again.
+    /// Blink likewise keeps the `:has()` flags its first recalc set on the
+    /// elements (`ComputedStyle::AffectedBySubjectHas`).
+    pub(super) fn keep_has(&mut self, has: HasMarks) {
+        self.has = Some(has);
+    }
+
     /// The entries of `targets` at the current state of the source DOM, as
     /// `styles` gives them: the kept probes if every target has one, else a
     /// probe of them all. A list item probes again: the entries of one probe
@@ -210,3 +219,6 @@ impl RestyleCache {
 fn scheme(media: Media) -> crate::style::values::value::Scheme {
     crate::style::values::value::Scheme::new(media.dark)
 }
+
+#[cfg(test)]
+mod tests;
