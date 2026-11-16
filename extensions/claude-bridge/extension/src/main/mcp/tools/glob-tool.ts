@@ -12,6 +12,7 @@ import path from 'node:path'
 import fg from 'fast-glob'
 import { STAT_CONCURRENCY } from './fs-shared'
 import { ripgrepPath } from './ripgrep-path'
+import { localGlobFiles } from './local-search/local-glob'
 
 /** Paths listed before the newest are chosen; a broader pattern is reported
  *  as capped instead of being stat'ed without bound. */
@@ -129,8 +130,11 @@ async function listWithFastGlob(q: GlobQuery, limit: number): Promise<Listing> {
   return { files, capped }
 }
 
-/** Lists the files matching `q`: ripgrep when available, fast-glob otherwise. */
+/** Lists the files matching `q`: a small tree in-process with ripgrep's file
+ *  set, otherwise ripgrep when available and fast-glob without it. */
 export async function listGlob(q: GlobQuery, limit = MAX_GLOB_LISTED, signal?: AbortSignal): Promise<Listing> {
+  const local = localGlobFiles(q)
+  if (local && local.length < limit) return { files: local, capped: false }
   const rg = await ripgrepPath()
   return rg ? listWithRipgrep(rg, q, limit, signal) : listWithFastGlob(q, limit)
 }
