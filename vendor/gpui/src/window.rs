@@ -1107,6 +1107,93 @@ pub(crate) struct PaintIndex {
     line_layout_index: LineLayoutIndex,
 }
 
+/// KaminIDE patch: a frame list index in a 32-bit word (`PackedPaintIndex`).
+pub(crate) fn pack_index(index: usize) -> u32 {
+    u32::try_from(index).expect("frame list index fits 32 bits")
+}
+
+/// KaminIDE patch: `PrepaintStateIndex` in 32-bit words: a retained range
+/// (`RetainedPrepaint`) is kept per recorded subtree.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PackedPrepaintIndex([u32; 5], [u32; 5]);
+
+impl PrepaintStateIndex {
+    pub(crate) fn pack(&self) -> PackedPrepaintIndex {
+        PackedPrepaintIndex(
+            [
+                self.hitboxes_index,
+                self.tooltips_index,
+                self.deferred_draws_index,
+                self.dispatch_tree_index,
+                self.accessed_element_states_index,
+            ]
+            .map(pack_index),
+            self.line_layout_index.pack(),
+        )
+    }
+}
+
+impl PackedPrepaintIndex {
+    pub(crate) fn unpack(&self) -> PrepaintStateIndex {
+        let [hitboxes_index, tooltips_index, deferred_draws_index, dispatch_tree_index, accessed_element_states_index] =
+            self.0.map(|w| w as usize);
+        PrepaintStateIndex {
+            hitboxes_index,
+            tooltips_index,
+            deferred_draws_index,
+            dispatch_tree_index,
+            accessed_element_states_index,
+            line_layout_index: LineLayoutIndex::unpack(self.1),
+        }
+    }
+}
+
+/// KaminIDE patch: `PaintIndex` in 32-bit words (`RetainedPaint`).
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PackedPaintIndex {
+    words: [u32; 6],
+    #[cfg(any(test, feature = "test-support"))]
+    debug_bounds_index: u32,
+    line: [u32; 5],
+}
+
+impl PaintIndex {
+    pub(crate) fn pack(&self) -> PackedPaintIndex {
+        PackedPaintIndex {
+            words: [
+                self.scene_index,
+                self.mouse_listeners_index,
+                self.input_handlers_index,
+                self.cursor_styles_index,
+                self.accessed_element_states_index,
+                self.tab_handle_index,
+            ]
+            .map(pack_index),
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: pack_index(self.debug_bounds_index),
+            line: self.line_layout_index.pack(),
+        }
+    }
+}
+
+impl PackedPaintIndex {
+    pub(crate) fn unpack(&self) -> PaintIndex {
+        let [scene_index, mouse_listeners_index, input_handlers_index, cursor_styles_index, accessed_element_states_index, tab_handle_index] =
+            self.words.map(|w| w as usize);
+        PaintIndex {
+            scene_index,
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: self.debug_bounds_index as usize,
+            mouse_listeners_index,
+            input_handlers_index,
+            cursor_styles_index,
+            accessed_element_states_index,
+            tab_handle_index,
+            line_layout_index: LineLayoutIndex::unpack(self.line),
+        }
+    }
+}
+
 impl Frame {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn record_debug_bounds(&mut self, selector: String, bounds: Bounds<Pixels>) {

@@ -10,18 +10,37 @@
 
 use super::*;
 
-/// Prepaint output of a subtree in the frame that recorded it.
+/// Prepaint output of a subtree in the frame that recorded it, its bounds
+/// packed in 32-bit words (KaminIDE patch: a host keeps one per record).
 #[derive(Clone, Default)]
-pub struct RetainedPrepaint(Range<PrepaintStateIndex>);
+pub struct RetainedPrepaint(Range<PackedPrepaintIndex>);
 
 /// Paint output of a subtree in the frame that recorded it.
 #[derive(Clone, Default)]
 pub struct RetainedPaint {
-    range: Range<PaintIndex>,
+    range: Range<PackedPaintIndex>,
     replayable: bool,
 }
 
+impl RetainedPrepaint {
+    fn of(range: Range<PrepaintStateIndex>) -> Self {
+        Self(range.start.pack()..range.end.pack())
+    }
+
+    fn range(&self) -> Range<PrepaintStateIndex> {
+        self.0.start.unpack()..self.0.end.unpack()
+    }
+}
+
 impl RetainedPaint {
+    fn of(range: Range<PaintIndex>, replayable: bool) -> Self {
+        Self { range: range.start.pack()..range.end.pack(), replayable }
+    }
+
+    fn range(&self) -> Range<PaintIndex> {
+        self.range.start.unpack()..self.range.end.unpack()
+    }
+
     /// Whether these commands can be copied into a later frame unchanged.
     /// Composition groups live outside the command list (`Scene::groups`) and
     /// isolated scenes are discarded by their owner, so neither replays.
@@ -37,7 +56,7 @@ impl RetainedPaint {
         if self.range.end != next.range.start {
             return false;
         }
-        self.range.end = next.range.end.clone();
+        self.range.end = next.range.end;
         self.replayable &= next.replayable;
         true
     }
@@ -84,15 +103,15 @@ impl Window {
     ) -> (R, RetainedPrepaint) {
         let start = self.prepaint_index();
         let result = f(self);
-        (result, RetainedPrepaint(start..self.prepaint_index()))
+        (result, RetainedPrepaint::of(start..self.prepaint_index()))
     }
 
     /// Copy the prepaint output recorded in the previous frame into this one.
     /// The caller guarantees the record comes from the rendered frame.
     pub fn replay_retained_prepaint(&mut self, record: &RetainedPrepaint) -> RetainedPrepaint {
         let start = self.prepaint_index();
-        self.reuse_prepaint(record.0.clone());
-        RetainedPrepaint(start..self.prepaint_index())
+        self.reuse_prepaint(record.range());
+        RetainedPrepaint::of(start..self.prepaint_index())
     }
 
     /// `replay_retained_prepaint` of a movable record (`retained_movable`)
@@ -104,7 +123,7 @@ impl Window {
         offset: Point<Pixels>,
     ) -> RetainedPrepaint {
         let start = self.prepaint_index();
-        self.reuse_prepaint(record.0.clone());
+        self.reuse_prepaint(record.range());
         if offset != Point::default() {
             let clip = self.content_mask().bounds;
             for hitbox in &mut self.next_frame.hitboxes[start.hitboxes_index..] {
@@ -114,7 +133,7 @@ impl Window {
                 *mask = mask.intersect(&clip);
             }
         }
-        RetainedPrepaint(start..self.prepaint_index())
+        RetainedPrepaint::of(start..self.prepaint_index())
     }
 
     /// Whether a record made in the rendered frame can be replayed into this
@@ -128,7 +147,8 @@ impl Window {
         // A range recorded inside a scene layer is in its scene (`reuse_paint`).
         let source = self.replay_source();
         let scene = source.as_deref().map_or(&frame.scene, |layer| layer.scene());
-        let first = prepaint.0.start.deferred_draws_index;
+        let prepaint = prepaint.range();
+        let first = prepaint.start.deferred_draws_index;
         let groups = |draw: &DeferredDraw| {
             let range = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
             scene.paint_operations[range].iter().any(|operation| {
@@ -139,7 +159,7 @@ impl Window {
             })
         };
         paint.replayable
-            && (first == prepaint.0.end.deferred_draws_index
+            && (first == prepaint.end.deferred_draws_index
                 || !frame.deferred_draws[first..].iter().any(groups))
     }
 
@@ -150,7 +170,7 @@ impl Window {
         let start = self.paint_index();
         let result = f(self);
         let replayable = root && groups == self.next_frame.scene.groups.len();
-        (result, RetainedPaint { range: start..self.paint_index(), replayable })
+        (result, RetainedPaint::of(start..self.paint_index(), replayable))
     }
 
     /// Copy replayable paint output recorded in the previous frame into this one.
@@ -158,8 +178,8 @@ impl Window {
     pub fn replay_retained_paint(&mut self, record: &RetainedPaint) -> RetainedPaint {
         debug_assert!(record.replayable, "non-replayable paint record");
         let start = self.paint_index();
-        self.reuse_paint(record.range.clone());
-        RetainedPaint { range: start..self.paint_index(), replayable: true }
+        self.reuse_paint(record.range());
+        RetainedPaint::of(start..self.paint_index(), true)
     }
 }
 
@@ -171,8 +191,9 @@ impl Window {
     /// its paint no listener, input handler, cursor style or tab stop. Those
     /// carry window positions or identities a moved copy would not update.
     pub fn retained_movable(&self, prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> bool {
-        let (p, q) = (&prepaint.0.start, &prepaint.0.end);
-        let (a, b) = (&paint.range.start, &paint.range.end);
+        let (prepaint, paint) = (prepaint.range(), paint.range());
+        let (p, q) = (&prepaint.start, &prepaint.end);
+        let (a, b) = (&paint.start, &paint.end);
         let hitboxes = &self.next_frame.hitboxes[p.hitboxes_index..q.hitboxes_index];
         paint.replayable
             && hitboxes
@@ -208,7 +229,7 @@ impl Window {
         let scale = self.scale_factor();
         let offset = point(ScaledPixels(offset.x.0 * scale), ScaledPixels(offset.y.0 * scale));
         let clip = self.content_mask().scale(scale).bounds;
-        let range = record.range.clone();
+        let range = record.range();
         self.text_system
             .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
         // A range recorded inside a scene layer is in its scene (`reuse_paint`).
@@ -217,7 +238,7 @@ impl Window {
             Some(source) => self.next_frame.scene.replay_moved(scenes, source.scene(), offset, clip),
             None => self.next_frame.scene.replay_moved(scenes, &self.rendered_frame.scene, offset, clip),
         }
-        RetainedPaint { range: start..self.paint_index(), replayable: true }
+        RetainedPaint::of(start..self.paint_index(), true)
     }
 }
 /// KaminIDE patch: placed bounds of everything a retained subtree offered to
@@ -474,7 +495,8 @@ impl RetainedPrepaint {
     /// a frame that skips the subtree misses them only where they lie outside
     /// the content mask, where they could not be hit.
     pub fn quiet(&self, window: &Window) -> Option<Option<Bounds<Pixels>>> {
-        let (start, end) = (&self.0.start, &self.0.end);
+        let range = self.range();
+        let (start, end) = (&range.start, &range.end);
         let frame = &window.next_frame;
         let hitboxes = frame.hitboxes.get(start.hitboxes_index..end.hitboxes_index)?;
         let plain = hitboxes.iter().zip(start.hitboxes_index..).all(|(hitbox, index)| {
