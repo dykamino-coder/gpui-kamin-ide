@@ -217,6 +217,7 @@ pub(super) async fn sample_with(
                 draw: Counters::delta(after.draw, before.draw),
                 present: Duration::ZERO,
                 readback: Duration::ZERO,
+                copy: Duration::ZERO,
                 total,
                 readback_to_resume: Duration::ZERO,
             },
