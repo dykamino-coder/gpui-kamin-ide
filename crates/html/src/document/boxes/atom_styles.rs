@@ -113,7 +113,7 @@ pub(crate) fn atom_style(
         entry: &entry,
         viewport,
     };
-    let (style, _, frame_free) = staged.style(stage);
+    let (style, _, frame_free) = staged.style(stage, true);
     if frame_free {
         store(&doc.boxes, id, &entry);
     }
@@ -148,15 +148,16 @@ struct Staged<'a> {
 
 impl Staged<'_> {
     /// The style of `stage`, whether it read the viewport and whether it wrote
-    /// no frame handle. A later stage continues the kept earlier one, so the
-    /// stages of an atom share what that step leaves alone (the paint result).
-    fn style(&self, stage: Stage) -> (Rc<BoxStyle>, bool, bool) {
+    /// no frame handle. A later stage continues the earlier one, kept if a
+    /// caller asked for it; only a stage asked for (keep) is kept, so an atom
+    /// holds the styles its callers read and no steps between them.
+    fn style(&self, stage: Stage, keep: bool) -> (Rc<BoxStyle>, bool, bool) {
         if let Some(kept) = (self.entry.slot(stage).borrow().as_ref())
             .filter(|k| k.viewport.is_none_or(|v| v == self.viewport))
         {
             return (kept.style.clone(), kept.viewport.is_some(), true);
         }
-        let from = stage.before().map(|before| self.style(before));
+        let from = stage.before().map(|before| self.style(before, false));
         let (mut style, read, frame_free) = compute(
             self.e,
             self.parent,
@@ -164,13 +165,11 @@ impl Staged<'_> {
             stage,
             from.as_ref().map(|(style, _, _)| &**style),
         );
-        if from.is_none() {
-            share_paint(&self.opts.cx.doc().boxes, &mut style);
-        }
+        share_paint(&self.opts.cx.doc().boxes, &mut style);
         let read = read || from.as_ref().is_some_and(|(_, read, _)| *read);
         let frame_free = frame_free && from.as_ref().is_none_or(|(_, _, free)| *free);
         let style = Rc::new(style);
-        if frame_free {
+        if keep && frame_free {
             *self.entry.slot(stage).borrow_mut() = Some(Kept {
                 viewport: read.then_some(self.viewport),
                 style: style.clone(),
