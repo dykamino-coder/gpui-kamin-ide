@@ -8,6 +8,9 @@ use std::rc::Rc;
 pub(crate) struct Preparation {
     pub(crate) unkeyed: Rc<Unkeyed>,
     pub(crate) clearance_possible: bool,
+    /// The preparation walked the whole tree (`new`), not only copied lists.
+    #[cfg(test)]
+    full: bool,
 }
 
 type Snapshot = (u64, Rc<Preparation>);
@@ -61,6 +64,23 @@ impl PreparationCache {
         }
         prepared
     }
+
+    /// The preparation of the last document tree, and whether it was a full walk.
+    #[cfg(test)]
+    pub(crate) fn last(&self) -> Option<(Rc<Preparation>, bool)> {
+        let snapshot = self.snapshot.take();
+        let last = snapshot.as_ref().map(|(_, p)| (p.clone(), p.full));
+        self.snapshot.set(snapshot);
+        last
+    }
+}
+
+#[cfg(test)]
+impl Preparation {
+    /// A full preparation of `nodes`, as a new tree gets it.
+    pub(crate) fn fresh(nodes: &[Node]) -> Self {
+        Self::new(nodes)
+    }
 }
 
 impl Preparation {
@@ -72,6 +92,8 @@ impl Preparation {
         Self {
             unkeyed: base.unkeyed.clone(),
             clearance_possible,
+            #[cfg(test)]
+            full: false,
         }
     }
 
@@ -117,6 +139,8 @@ impl Preparation {
         Self {
             unkeyed: Rc::new((map, last)),
             clearance_possible,
+            #[cfg(test)]
+            full: true,
         }
     }
 }

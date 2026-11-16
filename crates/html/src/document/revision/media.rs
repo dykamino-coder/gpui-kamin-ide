@@ -36,7 +36,8 @@ impl Document {
         let batch = Batch::new(&[]).expect("an empty batch addresses no node");
         let theme_css = self.theme_css.clone();
         let revision = self.budget().revision();
-        self.rebuild(&batch, &theme_css, self.key, revision)?;
+        // A flipped query restyles everything it may reach: no known change set.
+        self.rebuild(&batch, None, &theme_css, self.key, revision)?;
         Ok(true)
     }
 }
