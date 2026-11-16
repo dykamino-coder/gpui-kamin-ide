@@ -3,7 +3,8 @@
 use super::*;
 
 /// Every adapter the tests can reach: the default one (hardware when the
-/// machine has it), the high-performance one if it differs, and WARP.
+/// machine has it), the high-performance one if it differs, and WARP; one at
+/// least.
 pub(super) fn devices() -> Vec<(String, DirectXDevices)> {
     use crate::GpuAdapterPreference as P;
     let mut out: Vec<(String, DirectXDevices)> = Vec::new();
@@ -17,6 +18,8 @@ pub(super) fn devices() -> Vec<(String, DirectXDevices)> {
             out.push((name, d));
         }
     }
-    assert!(out.len() >= 2, "a hardware adapter and WARP");
+    // CI runners have WARP only; machines with a GPU also run it.
+    assert!(!out.is_empty(), "no adapter");
+    eprintln!("adapters: {:?}", out.iter().map(|(n, _)| n).collect::<Vec<_>>());
     out
 }
