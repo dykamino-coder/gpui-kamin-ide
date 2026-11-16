@@ -12191,7 +12191,33 @@ var init_plugin_helpers = __esm({
 });
 
 // src/main/utils/command-runtime.ts
+async function whereOnPath(command, env4 = process.env, list = listFiles, cwd = process.cwd()) {
+  if (!command || /[\\/:*?"<>|]/.test(command)) return null;
+  const pathext = (envValue(env4, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").map((ext) => ext.trim().toLowerCase()).filter(Boolean);
+  const lower = command.toLowerCase();
+  const names = [...pathext.some((ext) => lower.endsWith(ext)) ? [lower] : [], ...pathext.map((ext) => lower + ext)];
+  const dirs = [cwd, ...(envValue(env4, "PATH") ?? "").split(";")].map((dir) => dir.trim().replace(/^"(.*)"$/, "$1")).filter(Boolean);
+  const listings = await Promise.all(dirs.map((dir) => list(dir).catch(() => [])));
+  for (let i = 0; i < dirs.length; i++) {
+    const byName = new Map(listings[i].map((name) => [name.toLowerCase(), name]));
+    for (const name of names) {
+      const actual = byName.get(name);
+      if (actual !== void 0) return import_node_path5.default.win32.join(dirs[i], actual);
+    }
+  }
+  return null;
+}
+function envValue(env4, name) {
+  if (env4[name] !== void 0) return env4[name];
+  const key2 = Object.keys(env4).find((k) => k.toUpperCase() === name);
+  return key2 === void 0 ? void 0 : env4[key2];
+}
+async function listFiles(dir) {
+  const entries2 = await import_node_fs5.default.promises.readdir(dir, { withFileTypes: true });
+  return entries2.filter((e) => !e.isDirectory()).map((e) => e.name);
+}
 function whichExecutable(command, platform = process.platform, timeoutMs = 5e3) {
+  if (platform === "win32" && process.platform === "win32") return whereOnPath(command);
   return new Promise((resolve) => {
     const finder = platform === "win32" ? "where" : "which";
     const child = (0, import_node_child_process3.spawn)(finder, [command], {
@@ -53531,13 +53557,13 @@ var import_child_process4 = require("child_process");
 var import_node_fs20 = __toESM(require("node:fs"), 1);
 var import_node_path22 = __toESM(require("node:path"), 1);
 init_script_file();
-function envValue(env4, name) {
+function envValue2(env4, name) {
   const key2 = Object.keys(env4).find((key3) => key3.toLowerCase() === name.toLowerCase());
   return key2 === void 0 ? void 0 : env4[key2];
 }
 function windowsCommand(command, cwd, env4) {
-  const directories = /[\\/]/.test(command) ? [""] : [cwd, ...(envValue(env4, "PATH") ?? "").split(";")];
-  const extensions = import_node_path22.default.win32.extname(command) ? [""] : (envValue(env4, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";");
+  const directories = /[\\/]/.test(command) ? [""] : [cwd, ...(envValue2(env4, "PATH") ?? "").split(";")];
+  const extensions = import_node_path22.default.win32.extname(command) ? [""] : (envValue2(env4, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";");
   for (const directory of directories) {
     const base = import_node_path22.default.win32.resolve(cwd, directory.replace(/^"(.*)"$/, "$1"), command);
     for (const extension2 of extensions) {
@@ -53571,7 +53597,7 @@ function stdioLaunch(command, args, cwd, env4) {
   if (process.platform !== "win32") return { command, args };
   const file = windowsCommand(command, cwd, env4);
   if (!/\.(cmd|bat)$/i.test(file)) return { command: file, args };
-  const shell2 = envValue(env4, "ComSpec") ?? "cmd.exe";
+  const shell2 = envValue2(env4, "ComSpec") ?? "cmd.exe";
   const escapedCommand = escapeCmd(file);
   const escapedArgs = args.map(batchArgument);
   assertCmdLineFits(escapedCommand, escapedArgs, "win32", shell2);
