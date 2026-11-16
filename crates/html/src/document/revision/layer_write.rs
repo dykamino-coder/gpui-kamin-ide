@@ -15,7 +15,7 @@
 //! and the document builds its frame as before.
 
 use super::paint_damage::{PaintDamage, PaintValue, classify};
-use super::patch::Path;
+use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
 use crate::style::computed::BoxStyle;
 use gpui::{Hsla, LayerHandle};
@@ -44,7 +44,11 @@ pub(super) fn write_paint_values(
     let mut records: Vec<(Path, u64)> = Vec::new();
     for (path, id) in paths {
         let (a, b) = (at(old, path, *id)?, at(new, path, *id)?);
-        let damage = classify(a, b);
+        // A box in an `svg` subtree: an `svg` element on its path.
+        let in_svg = || {
+            (1..=path.len()).any(|k| element_at(old, &path[..k]).is_some_and(|e| e.tag == "svg"))
+        };
+        let damage = classify(a, b, in_svg);
         if damage == PaintDamage::Rebuild {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
