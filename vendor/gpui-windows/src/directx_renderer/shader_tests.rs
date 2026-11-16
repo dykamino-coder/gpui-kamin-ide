@@ -17,6 +17,7 @@ fn debug_shader_bytecode_is_independent_of_the_source_directory() {
         ShaderModule::EmojiRasterization,
         ShaderModule::Blur,
         ShaderModule::Clear,
+        ShaderModule::GroupTiles,
     ];
     for module in modules {
         for target in [ShaderTarget::Vertex, ShaderTarget::Fragment] {
