@@ -12810,10 +12810,10 @@ index 0000000000000000000000000000000000000000..ce8acb35ac9cf0333bc961c32a10b181
 +}
 diff --git a/vendor/gpui/src/scene/damage.rs b/vendor/gpui/src/scene/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..843f32a4dc2f315e78ec335c6bd82de5dcb53dde
+index 0000000000000000000000000000000000000000..4fa2e0ded1e1d45b61f7cedfa4ed7d56487e3f8f
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage.rs
-@@ -0,0 +1,701 @@
+@@ -0,0 +1,703 @@
 +//! KaminIDE patch: повреждение кадра — где новая сцена рисует иначе, чем та,
 +//! что окно рисовало прошлым кадром.
 +//!
@@ -13241,6 +13241,8 @@ index 0000000000000000000000000000000000000000..843f32a4dc2f315e78ec335c6bd82de5
 +            && a.polygon_inverse == b.polygon_inverse
 +            && match (&a.mask, &b.mask) {
 +                (None, None) => true,
++                // A RenderImage is immutable and its id is unique per image
++                // (`RenderImage::new`): an equal id is equal mask bytes.
 +                (Some(x), Some(y)) => x.id == y.id,
 +                _ => false,
 +            }
