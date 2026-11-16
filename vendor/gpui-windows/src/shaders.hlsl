@@ -1968,20 +1968,12 @@ float4 group_tiles_fragment(BlurFragmentInput input): SV_Target {
     uint t = tile.y * cover.poly_count + tile.x;
     uint end = tile_lists[t + 1u];
     float2 p = c + global_origin;
-    uint dbg = asuint(cover.pad); // DIAGNOSTIC (raster4 r6d), removed before review
     for (uint i = tile_lists[t]; i < end; i++) {
         BlurQuad q = blur_quads[tile_lists[i]];
-        if ((dbg & 4u) == 0u && !composite_covers(q, c)) {
+        if (!composite_covers(q, c)) {
             continue;
         }
-        if ((dbg & 2u) != 0u) {
-            q.pad2.x = 0.0;
-        }
-        float4 src = (dbg & 1u) != 0u ? float4(0.25, 0.25, 0.25, 0.5) : group_source_with(q, p, true);
-        if ((dbg & 8u) != 0u) {
-            dst = src;
-            continue;
-        }
+        float4 src = group_source_with(q, p, true);
         float4 o = q.blend_mode == 0u ? src + dst * (1.0 - src.a) : composite_mix(q.blend_mode, src, dst);
         dst = round(saturate(o) * 255.0) / 255.0;
     }

@@ -918,12 +918,6 @@ impl DirectXRenderer {
             unsafe { ctx.RSSetState(&state) };
         }
         self.gpu_timer.end(&ctx);
-        // DIAGNOSTIC (raster4 r6e), removed before review.
-        if self.gpu_timer.instrumentation.config().gpu_timing
-            && let Some(line) = self.gpu_timer.instrumentation.batches.take_line()
-        {
-            log::debug!(target: "gpui::frame", "{line}");
-        }
         drawn
     }
 
