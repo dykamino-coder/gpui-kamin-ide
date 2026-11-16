@@ -93,9 +93,9 @@ mod tests {
 
     fn bases(old: &[(f32, f32)], new: &[(f32, f32)]) -> Vec<Option<usize>> {
         let mut a = scene(old);
-        a.note_damage(&Scene::default(), 1, (256, 64));
+        a.note_frame_damage(&Scene::default(), 1, (256, 64));
         let mut s = scene(new);
-        s.note_damage(&a, 2, (256, 64));
+        s.note_frame_damage(&a, 2, (256, 64));
         (0..new.len()).map(|g| s.group_base(g)).collect()
     }
 
@@ -115,5 +115,31 @@ mod tests {
         // Two equal groups each take one old group, never the same one.
         let twins = [(0., 0.1), (0., 0.1)];
         assert_eq!(bases(&twins[..1], &twins), [Some(0), None]);
+    }
+
+    /// A group whose scene draws a retained layer (a replayed range) paints
+    /// what the layer holds now, which its primitive lists do not show: it
+    /// keeps no image of the last frame, whatever the lists say.
+    #[test]
+    fn a_group_drawing_a_retained_layer_matches_no_group() {
+        use crate::scene::layer::{LayerHandle, SceneLayer};
+        let layered = |hue: f32| {
+            let mut content = Scene::default();
+            content.insert_primitive(Quad {
+                bounds: b(0.),
+                content_mask: ContentMask { bounds: b(0.) },
+                background: Background::from(hsla(hue, 0.5, 0.5, 1.)),
+                ..Default::default()
+            });
+            let handle = LayerHandle::new(SceneLayer::finish(content, Vec::new(), Vec::new()));
+            let mut s = scene(&[(0., 0.1)]);
+            s.groups[0].scene.insert_layer(&handle, b(0.));
+            (s, handle)
+        };
+        let (mut a, _keep_a) = layered(0.2);
+        a.note_frame_damage(&Scene::default(), 1, (256, 64));
+        let (mut s, _keep_s) = layered(0.7);
+        s.note_frame_damage(&a, 2, (256, 64));
+        assert_eq!(s.group_base(0), None);
     }
 }
