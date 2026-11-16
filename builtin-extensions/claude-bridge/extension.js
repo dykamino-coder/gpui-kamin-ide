@@ -4342,11 +4342,11 @@ function plainShellPath(bashPath) {
 }
 async function captureSnapshot(bashPath) {
   const plain = plainShellPath(bashPath);
-  const captured = await captureLoginShell(bashPath);
-  if (!captured) return null;
+  const captured2 = await captureLoginShell(bashPath);
+  if (!captured2) return null;
   const tmpFile = import_path.default.join(import_os.default.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`);
   try {
-    import_fs.default.writeFileSync(tmpFile, renderSnapshot(captured, process.env, process.platform, await plain), "utf-8");
+    import_fs.default.writeFileSync(tmpFile, renderSnapshot(captured2, process.env, process.platform, await plain), "utf-8");
   } catch {
     return null;
   }
@@ -12452,7 +12452,7 @@ var init_powershell_output = __esm({
 // src/main/mcp/tools/warm-shell.ts
 function acceptorCommand(kind) {
   const start = "IFS= read -r __ocb_d && IFS= read -r REPLY || exit 0; ";
-  const enter = '__ocb_o=${OLDPWD-}; cd -- "$__ocb_d" || exit 1; OLDPWD=$__ocb_o; unset __ocb_d __ocb_o; . "$REPLY"';
+  const enter = '__ocb_s=${OLDPWD+x}; __ocb_o=${OLDPWD-}; cd -- "$__ocb_d" || exit 1; if [ -n "$__ocb_s" ]; then OLDPWD=$__ocb_o; else unset OLDPWD; fi; unset __ocb_d __ocb_o __ocb_s; . "$REPLY"';
   if (kind === "bash-hook") return start + enter;
   return kind === "bash" ? start + "exec 0</dev/null; " + enter : (
     // Encoding setup and a first Invoke-Expression run while waiting: they
@@ -13487,6 +13487,83 @@ var init_plugin_monitors = __esm({
   }
 });
 
+// src/main/hooks/direct-node.ts
+function simpleNodeArgs(command, platform = process.platform) {
+  const src = command.trim();
+  const words = [];
+  let i = 0;
+  while (i < src.length) {
+    while (src[i] === " " || src[i] === "	") i++;
+    if (i >= src.length) break;
+    let word = "";
+    while (i < src.length && src[i] !== " " && src[i] !== "	") {
+      const c = src[i];
+      if (c === "'") {
+        const end = src.indexOf("'", i + 1);
+        if (end === -1) return null;
+        word += src.slice(i + 1, end);
+        i = end + 1;
+      } else if (c === '"') {
+        i++;
+        for (; ; ) {
+          const d = src[i];
+          if (d === void 0 || d === "$" || d === "`" || d === "!" || d === "\n") return null;
+          if (d === '"') break;
+          if (d === "\\" && /[$`"\\\n]/.test(src[i + 1] ?? "")) return null;
+          word += d;
+          i++;
+        }
+        i++;
+      } else if (c === "\\" || !PLAIN.test(c)) return null;
+      else {
+        word += c;
+        i++;
+      }
+    }
+    words.push(word);
+  }
+  const [program, ...args] = words;
+  if (program !== "node" && program !== "node.exe") return null;
+  if (!/^node(\.exe)?(\s|$)/.test(src)) return null;
+  return platform !== "win32" || args.every(msysUnchanged) ? args : null;
+}
+function msysUnchanged(arg) {
+  if (/^[A-Za-z]:[\\/][^:;=]*$/.test(arg)) return true;
+  if (/[:;=]/.test(arg)) return false;
+  return !arg.startsWith("/") && !(arg.startsWith("-") && arg.includes("/")) && !arg.includes("//");
+}
+function capturedEnv(key2) {
+  const env4 = captured.get(key2);
+  return env4 === "unusable" ? void 0 : env4;
+}
+function captureEnv(key2, probe) {
+  if (captured.has(key2) || pending.has(key2)) return;
+  const p = probe().then((r) => {
+    let env4 = "unusable";
+    if (r.outcome === "success" && r.exitCode === 0) {
+      try {
+        const parsed = JSON.parse(r.stdout);
+        if (parsed && typeof parsed === "object") env4 = parsed;
+      } catch {
+      }
+    }
+    captured.set(key2, env4);
+    if (captured.size > CAPTURED_MAX) captured.delete(captured.keys().next().value);
+  }).catch(() => void captured.set(key2, "unusable")).finally(() => pending.delete(key2));
+  pending.set(key2, p);
+}
+var PLAIN, ENV_PROBE_COMMAND, CAPTURED_MAX, captured, pending;
+var init_direct_node = __esm({
+  "src/main/hooks/direct-node.ts"() {
+    "use strict";
+    PLAIN = /^[A-Za-z0-9_.\/:@%+,=-]$/;
+    ENV_PROBE_COMMAND = `node -e "process.stdout.write(JSON.stringify(process.env))"`;
+    CAPTURED_MAX = 16;
+    captured = /* @__PURE__ */ new Map();
+    pending = /* @__PURE__ */ new Map();
+  }
+});
+
 // src/main/hooks/executor.ts
 var executor_exports = {};
 __export(executor_exports, {
@@ -13569,7 +13646,7 @@ function warmHookShell(shell2, scriptPath, cwd, env4) {
   const child = takeWarmShell(warmKey(shell2.bin, shell2.args, env4), shell2.bin, shell2.args, "bash-hook", env4);
   return child && startWarmShell(child, toPosixShellPath(cwd), toPosixShellPath(scriptPath), true);
 }
-async function executeHook(req, fallbackCwd) {
+async function executeHook(req, fallbackCwd, options = {}) {
   const start = Date.now();
   const timeoutMs = req.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const cwd = resolveHookCwd(req.cwd, fallbackCwd);
@@ -13609,7 +13686,7 @@ async function executeHook(req, fallbackCwd) {
         durationMs: Date.now() - start
       };
     }
-    const options = loadPluginOptions(req.pluginId);
+    const options2 = loadPluginOptions(req.pluginId);
     const dataDir = import_node_path9.default.join(import_node_os7.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
     try {
       import_node_fs8.default.mkdirSync(dataDir, { recursive: true });
@@ -13625,10 +13702,10 @@ async function executeHook(req, fallbackCwd) {
       };
     }
     if (execForm) {
-      command = substituteUserConfig(command, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd);
-      args = args?.map((arg) => substituteUserConfig(arg, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd));
+      command = substituteUserConfig(command, options2).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd);
+      args = args?.map((arg) => substituteUserConfig(arg, options2).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd));
     }
-    for (const [key2, value] of Object.entries(options)) {
+    for (const [key2, value] of Object.entries(options2)) {
       pluginEnv[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
     }
     pluginEnv.CLAUDE_PLUGIN_ROOT = shell2 ? shellPluginEnvValue(pluginRoot, shell2) : pluginRoot;
@@ -13637,6 +13714,16 @@ async function executeHook(req, fallbackCwd) {
     if (import_node_fs8.default.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${import_node_path9.default.delimiter}${process.env.PATH ?? ""}`;
   }
   pluginEnv.CLAUDE_PROJECT_DIR = shell2 ? shellPluginEnvValue(cwd, shell2) : cwd;
+  const hookEnv = { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" };
+  let direct;
+  const directWanted = process.env.KAMIN_HOOK_DIRECT_NODE === "1" || process.platform === "win32" && process.env.KAMIN_HOOK_DIRECT_NODE !== "0";
+  const nodeArgs = !execForm && !options.shellOnly && shell2.kind === "bash" && directWanted ? simpleNodeArgs(req.command) : null;
+  if (nodeArgs) {
+    const key2 = JSON.stringify([warmKey(shell2.bin, shell2.args, hookEnv), cwd]);
+    const env4 = capturedEnv(key2);
+    if (env4) direct = { args: nodeArgs, env: env4 };
+    else captureEnv(key2, () => executeHook({ ...req, command: ENV_PROBE_COMMAND, payload: {} }, fallbackCwd, { shellOnly: true }));
+  }
   if (execForm) command = nativeNodeCommand(command);
   else command = shellNodeShim(shell2) + command;
   const payload = {
@@ -13653,20 +13740,15 @@ async function executeHook(req, fallbackCwd) {
       resolve(result);
     };
     try {
-      if (!execForm) script = scriptInvocation(shell2.kind, shell2.args, command);
-      proc = execForm ? (0, import_node_child_process6.spawn)(command, args ?? [], {
+      if (!execForm && !direct) script = scriptInvocation(shell2.kind, shell2.args, command);
+      const spawnOptions = (env4) => ({
         cwd,
-        env: { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" },
-        windowsHide: true,
-        stdio: ["pipe", "pipe", "pipe"],
-        detached: process.platform !== "win32"
-      }) : warmHookShell(shell2, script.file.path, cwd, { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" }) ?? (0, import_node_child_process6.spawn)(shell2.bin, script.args, {
-        cwd,
-        env: { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" },
+        env: env4,
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
         detached: process.platform !== "win32"
       });
+      proc = direct ? (0, import_node_child_process6.spawn)(process.execPath, direct.args, spawnOptions(direct.env)) : execForm ? (0, import_node_child_process6.spawn)(command, args ?? [], spawnOptions(hookEnv)) : warmHookShell(shell2, script.file.path, cwd, hookEnv) ?? (0, import_node_child_process6.spawn)(shell2.bin, script.args, spawnOptions(hookEnv));
     } catch (err) {
       script?.file.dispose();
       finish({
@@ -13772,6 +13854,7 @@ var init_executor = __esm({
     init_working_directory();
     init_script_file();
     init_warm_shell();
+    init_direct_node();
     DEFAULT_TIMEOUT_MS = 10 * 60 * 1e3;
     HOOK_OUTPUT_CAP = 1024 * 1024;
     HOOK_OUTPUT_DRAIN_MS = 1e3;
@@ -18035,15 +18118,15 @@ var require_run_parallel = __commonJS({
     module2.exports = runParallel;
     var queueMicrotask2 = require_queue_microtask();
     function runParallel(tasks, cb) {
-      let results, pending, keys;
+      let results, pending2, keys;
       let isSync = true;
       if (Array.isArray(tasks)) {
         results = [];
-        pending = tasks.length;
+        pending2 = tasks.length;
       } else {
         keys = Object.keys(tasks);
         results = {};
-        pending = keys.length;
+        pending2 = keys.length;
       }
       function done(err) {
         function end() {
@@ -18055,11 +18138,11 @@ var require_run_parallel = __commonJS({
       }
       function each(i, err, result) {
         results[i] = result;
-        if (--pending === 0 || err) {
+        if (--pending2 === 0 || err) {
           done(err);
         }
       }
-      if (!pending) {
+      if (!pending2) {
         done(null);
       } else if (keys) {
         keys.forEach(function(key2) {
@@ -38595,18 +38678,18 @@ function setupUiTools(win, _getActiveTabId, ptySender) {
   activeTabId = null;
   if (ptySender) sendToPty = ptySender;
   ipcMain.on("ask-user-response", (_event, requestId, answer) => {
-    const pending = pendingQuestions.get(requestId);
-    if (!pending) return;
+    const pending2 = pendingQuestions.get(requestId);
+    if (!pending2) return;
     pendingQuestions.delete(requestId);
-    if (pending.tabId && sendToPty) {
+    if (pending2.tabId && sendToPty) {
       const clean = (answer ?? "").trim();
       const text = clean.length > 0 ? clean : "[User dismissed the question]";
       if (text.length < 400 && !text.includes("\n")) {
-        sendToPty(pending.tabId, text);
-        sendToPty(pending.tabId, "\r");
+        sendToPty(pending2.tabId, text);
+        sendToPty(pending2.tabId, "\r");
       } else {
-        sendToPty(pending.tabId, `\x1B[200~${text}\x1B[201~`);
-        sendToPty(pending.tabId, "\r");
+        sendToPty(pending2.tabId, `\x1B[200~${text}\x1B[201~`);
+        sendToPty(pending2.tabId, "\r");
       }
     }
   });
@@ -39224,12 +39307,12 @@ var init_plugin_lsp = __esm({
       }
       onMessage(message) {
         if (message.id !== void 0 && !message.method) {
-          const pending = this.pending.get(message.id);
-          if (!pending) return;
-          clearTimeout(pending.timer);
+          const pending2 = this.pending.get(message.id);
+          if (!pending2) return;
+          clearTimeout(pending2.timer);
           this.pending.delete(message.id);
-          if (message.error) pending.reject(new Error(String(message.error.message ?? JSON.stringify(message.error))));
-          else pending.resolve(message.result);
+          if (message.error) pending2.reject(new Error(String(message.error.message ?? JSON.stringify(message.error))));
+          else pending2.resolve(message.result);
           return;
         }
         if (message.method === "textDocument/publishDiagnostics") {
@@ -39269,9 +39352,9 @@ var init_plugin_lsp = __esm({
         return uri;
       }
       failAll(err) {
-        for (const pending of this.pending.values()) {
-          clearTimeout(pending.timer);
-          pending.reject(err);
+        for (const pending2 of this.pending.values()) {
+          clearTimeout(pending2.timer);
+          pending2.reject(err);
         }
         this.pending.clear();
       }
@@ -46444,10 +46527,10 @@ function syncUserData(serverUrl, token) {
   const key2 = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}`;
   const existing = userSyncInFlight.get(key2);
   if (existing) return existing;
-  const pending = syncUserDataOnce(serverUrl, token);
-  userSyncInFlight.set(key2, pending);
-  return pending.finally(() => {
-    if (userSyncInFlight.get(key2) === pending) userSyncInFlight.delete(key2);
+  const pending2 = syncUserDataOnce(serverUrl, token);
+  userSyncInFlight.set(key2, pending2);
+  return pending2.finally(() => {
+    if (userSyncInFlight.get(key2) === pending2) userSyncInFlight.delete(key2);
   });
 }
 async function syncProjectDataOnce(serverUrl, token, projectPath) {
@@ -46512,10 +46595,10 @@ function syncProjectData(serverUrl, token, projectPath) {
   const key2 = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}\0${projectPath}`;
   const existing = projectSyncInFlight.get(key2);
   if (existing) return existing;
-  const pending = syncProjectDataOnce(serverUrl, token, projectPath);
-  projectSyncInFlight.set(key2, pending);
-  return pending.finally(() => {
-    if (projectSyncInFlight.get(key2) === pending) projectSyncInFlight.delete(key2);
+  const pending2 = syncProjectDataOnce(serverUrl, token, projectPath);
+  projectSyncInFlight.set(key2, pending2);
+  return pending2.finally(() => {
+    if (projectSyncInFlight.get(key2) === pending2) projectSyncInFlight.delete(key2);
   });
 }
 function resetSyncTimers() {
@@ -48795,14 +48878,14 @@ async function getHookApprovalReviewMarker(pluginId) {
   return hookReviewMarker(approval.hooks.map((hook) => hook.hash));
 }
 async function listPendingHookApprovals() {
-  const pending = await Promise.all((await listEnabledInstalledPlugins()).map((plugin) => getPendingHookApproval(plugin.key, plugin.installPath)));
-  return pending.filter((entry) => entry !== null);
+  const pending2 = await Promise.all((await listEnabledInstalledPlugins()).map((plugin) => getPendingHookApproval(plugin.key, plugin.installPath)));
+  return pending2.filter((entry) => entry !== null);
 }
 async function requestHookApproval(pluginId, pluginRoot) {
-  const pending = await getPendingHookApproval(pluginId, pluginRoot);
-  if (!pending) return;
+  const pending2 = await getPendingHookApproval(pluginId, pluginRoot);
+  if (!pending2) return;
   for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send("plugin-hooks:awaiting-approval", pending);
+    if (!win.isDestroyed()) win.webContents.send("plugin-hooks:awaiting-approval", pending2);
   }
 }
 async function requestDependencyHookApprovals(data, dependencyIds) {
@@ -52026,12 +52109,12 @@ function awaitMcpReply(state, requestId, options) {
   });
 }
 function noteMcpActivity(state) {
-  for (const pending of [...state.pendingRequests.values()]) pending.onProgress?.();
+  for (const pending2 of [...state.pendingRequests.values()]) pending2.onProgress?.();
 }
 function noteMcpProgress(state, progressToken) {
   if (typeof progressToken !== "number") return;
-  const pending = state.pendingRequests.get(progressToken);
-  if (pending?.progressToken === progressToken) pending.onProgress?.();
+  const pending2 = state.pendingRequests.get(progressToken);
+  if (pending2?.progressToken === progressToken) pending2.onProgress?.();
 }
 
 // src/main/mcp/transports/ws.ts
@@ -52250,11 +52333,11 @@ async function sseReaderLoop(ctx, id, res) {
         try {
           const msg = JSON.parse(data);
           if (typeof msg.id === "number" && state.pendingRequests.has(msg.id)) {
-            const pending = state.pendingRequests.get(msg.id);
-            if (pending.timer) clearTimeout(pending.timer);
+            const pending2 = state.pendingRequests.get(msg.id);
+            if (pending2.timer) clearTimeout(pending2.timer);
             state.pendingRequests.delete(msg.id);
-            if (msg.error) pending.reject(new Error(msg.error.message));
-            else pending.resolve(msg.result);
+            if (msg.error) pending2.reject(new Error(msg.error.message));
+            else pending2.resolve(msg.result);
           } else {
             ctx.handleServerMessage(id, msg, () => {
             });
@@ -52871,9 +52954,9 @@ function teardownServer(state) {
     state.sseAbort = void 0;
     state.sseMessageEndpoint = void 0;
   }
-  for (const pending of state.pendingRequests.values()) {
-    if (pending.timer) clearTimeout(pending.timer);
-    pending.reject(new Error("Server disconnected"));
+  for (const pending2 of state.pendingRequests.values()) {
+    if (pending2.timer) clearTimeout(pending2.timer);
+    pending2.reject(new Error("Server disconnected"));
   }
   state.pendingRequests.clear();
   state.status = "disconnected";
@@ -52916,11 +52999,11 @@ function handleServerMessage2(ctx, serverId, msg, sendResponse) {
     return;
   }
   if (msg.id !== void 0) {
-    const pending = state.pendingRequests.get(msg.id);
-    if (pending) {
+    const pending2 = state.pendingRequests.get(msg.id);
+    if (pending2) {
       state.pendingRequests.delete(msg.id);
-      if (pending.timer) clearTimeout(pending.timer);
-      pending.resolve(msg);
+      if (pending2.timer) clearTimeout(pending2.timer);
+      pending2.resolve(msg);
     }
   }
 }
@@ -55025,16 +55108,16 @@ var BridgeHost = class {
   /** Send the invoke replies this view refused while it was hidden, oldest
    *  first. A reply the view still refuses stays held for the next reveal. */
   async flushDeferredReplies(webview) {
-    const pending = this.deferredReplies.take(webview);
-    for (let i = 0; i < pending.length; i++) {
+    const pending2 = this.deferredReplies.take(webview);
+    for (let i = 0; i < pending2.length; i++) {
       let accepted = false;
       try {
-        accepted = await webview.postMessage(pending[i].frame);
+        accepted = await webview.postMessage(pending2[i].frame);
       } catch {
       }
-      pending[i].flushed(accepted);
+      pending2[i].flushed(accepted);
       if (!accepted) {
-        this.deferredReplies.restore(webview, pending.slice(i));
+        this.deferredReplies.restore(webview, pending2.slice(i));
         return;
       }
     }
@@ -55243,9 +55326,9 @@ function readBridgeMeta(metadata) {
     ...typeof meta.model === "string" && meta.model ? { model: meta.model } : {}
   };
 }
-function agentForNewChat(meta, pending, defaultEngine) {
+function agentForNewChat(meta, pending2, defaultEngine) {
   if (meta?.engine) return { engine: meta.engine, ...meta.model ? { model: meta.model } : {} };
-  if (pending) return pending;
+  if (pending2) return pending2;
   return { engine: defaultEngine };
 }
 function bridgeMetaFor(conversationId, cwd, engine) {
