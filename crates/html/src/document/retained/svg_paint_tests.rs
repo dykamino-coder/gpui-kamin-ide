@@ -72,7 +72,8 @@ fn fill_and_stroke_of_a_shape_build_its_frame_as_fresh(cx: &mut TestAppContext) 
 
 #[gpui::test]
 fn fill_on_an_html_box_alone_keeps_the_frame(cx: &mut TestAppContext) {
-    let html = |class: &str| page(class).replace("<rect class='", "<rect data-c='");
+    // The `rect` keeps every attribute: a change of one rasters its `svg`.
+    let html = |class: &str| page(class).replace(&format!("<rect class='{class}'"), "<rect ");
     let (view, vcx) = settled(cx, &html(""), &html("x"));
     update(&view, vcx, &html(""));
     update(&view, vcx, &html(""));
