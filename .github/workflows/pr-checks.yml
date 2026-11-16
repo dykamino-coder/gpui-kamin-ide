@@ -239,6 +239,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
+      # The in-process Glob/Grep is tested against the real ripgrep.
+      - name: Install ripgrep for the differential search test
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep && rg --version
       - run: npm test
       - run: npm run build
       - name: Verify the committed extension bundle

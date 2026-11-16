@@ -12,6 +12,7 @@ import path from 'node:path'
 import fg from 'fast-glob'
 import { STAT_CONCURRENCY } from './fs-shared'
 import { ripgrepPath } from './ripgrep-path'
+import { localGlobFiles } from './local-search/local-glob'
 import { warmSearch } from './warm-search'
 
 /** Paths listed before the newest are chosen; a broader pattern is reported
@@ -130,7 +131,6 @@ async function listWithFastGlob(q: GlobQuery, limit: number): Promise<Listing> {
   return { files, capped }
 }
 
-/** Lists the files matching `q`: ripgrep when available, fast-glob otherwise. */
 /** The listing from the host's search process (warm-search.ts), or null. */
 async function listWarm(q: GlobQuery, limit: number, signal?: AbortSignal): Promise<Listing | null> {
   const warm = await warmSearch().run(ripgrepListArgs(q), { cwd: q.base, timeoutMs: 540_000, maxRecords: limit, signal })
@@ -143,7 +143,12 @@ async function listWarm(q: GlobQuery, limit: number, signal?: AbortSignal): Prom
   return { files: files.slice(0, limit).map(toPath), capped: warm.truncated || files.length >= limit }
 }
 
+/** Lists the files matching `q`: a small tree in-process with ripgrep's file
+ *  set, then the host's search process, otherwise ripgrep when available and
+ *  fast-glob without it. */
 export async function listGlob(q: GlobQuery, limit = MAX_GLOB_LISTED, signal?: AbortSignal): Promise<Listing> {
+  const local = localGlobFiles(q)
+  if (local && local.length < limit) return { files: local, capped: false }
   const warm = await listWarm(q, limit, signal)
   if (warm) return warm
   const rg = await ripgrepPath()
