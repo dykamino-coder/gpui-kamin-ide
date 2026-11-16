@@ -12,6 +12,7 @@ import path from 'node:path'
 import fg from 'fast-glob'
 import { STAT_CONCURRENCY } from './fs-shared'
 import { ripgrepPath } from './ripgrep-path'
+import { warmSearch } from './warm-search'
 
 /** Paths listed before the newest are chosen; a broader pattern is reported
  *  as capped instead of being stat'ed without bound. */
@@ -130,7 +131,21 @@ async function listWithFastGlob(q: GlobQuery, limit: number): Promise<Listing> {
 }
 
 /** Lists the files matching `q`: ripgrep when available, fast-glob otherwise. */
+/** The listing from the host's search process (warm-search.ts), or null. */
+async function listWarm(q: GlobQuery, limit: number, signal?: AbortSignal): Promise<Listing | null> {
+  const warm = await warmSearch().run(ripgrepListArgs(q), { cwd: q.base, timeoutMs: 540_000, maxRecords: limit, signal })
+  if (!warm) return null
+  const files = warm.stdout.toString('utf8').split('\0').filter(Boolean)
+  // 1: nothing matched. 2: some entries were unreadable; the rest is valid.
+  if (!warm.truncated && warm.code > 1 && files.length === 0) return null
+  const toPath = process.platform === 'win32' ? (p: string) => p.replace(/\\/g, '/') : (p: string) => p
+  // As the ripgrep listing below: reaching the limit counts as capped.
+  return { files: files.slice(0, limit).map(toPath), capped: warm.truncated || files.length >= limit }
+}
+
 export async function listGlob(q: GlobQuery, limit = MAX_GLOB_LISTED, signal?: AbortSignal): Promise<Listing> {
+  const warm = await listWarm(q, limit, signal)
+  if (warm) return warm
   const rg = await ripgrepPath()
   return rg ? listWithRipgrep(rg, q, limit, signal) : listWithFastGlob(q, limit)
 }
