@@ -26,6 +26,7 @@ vi.mock('./mcp-tasks', () => ({
   mcpIdentity: async () => ({ id: 'durable-endpoint', token: 'durable-credential' }),
   startMcpTaskDelivery: vi.fn(),
   settleMcpTask: vi.fn(async () => false),
+  cancelEndedSessionTasks: vi.fn(async () => undefined),
   mcpTasks: { hasWorkingOwner: () => false },
 }))
 vi.mock('./session-resume-helpers', () => ({

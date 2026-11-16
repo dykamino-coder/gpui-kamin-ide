@@ -77,6 +77,7 @@ vi.mock('./mcp-tasks', () => ({
   mcpIdentity: async () => ({ id: 'synthetic-endpoint', token: 'synthetic-endpoint-token' }),
   startMcpTaskDelivery: vi.fn(),
   settleMcpTask: vi.fn(async () => false),
+  cancelEndedSessionTasks: vi.fn(async () => undefined),
   mcpTasks: { hasWorkingOwner: () => false },
 }))
 vi.mock('./session-settings', () => ({
@@ -126,6 +127,7 @@ import { SessionAdmissionError } from './session-admission'
 import { attachSessionWebSocket, getSessionWs } from './session-ws'
 import { SessionCliControl } from './session-cli-control'
 import { sendToClient } from './session-io'
+import { cancelEndedSessionTasks } from './mcp-tasks'
 class Socket extends EventEmitter {
   readyState: number = WebSocket.OPEN
   send = vi.fn()
@@ -183,6 +185,7 @@ describe('INC-2026-0013 actual WebSocket startup ownership', () => {
     const handoff = vi.spyOn(control, 'handoff').mockReturnValue(['one', 'two'])
     await socket.message({ type: 'session:create', token: 'synthetic' })
     vi.mocked(sendToClient).mockClear()
+    vi.mocked(cancelEndedSessionTasks).mockClear()
     h.destroy.mockImplementationOnce(() => {
       expect(handoff).toHaveBeenCalledOnce()
       expect(sendToClient).toHaveBeenCalledWith(socket, {
@@ -194,6 +197,11 @@ describe('INC-2026-0013 actual WebSocket startup ownership', () => {
     await socket.message({ type: 'session:end', handoff: true })
     expect(h.destroy).toHaveBeenCalledWith('handoff', 'explicit_end')
     expect(getSessionWs('handoff')).toBeUndefined()
+    // The ending client aborts its calls, so their tasks are settled here.
+    expect(cancelEndedSessionTasks).toHaveBeenCalledExactlyOnceWith(session)
+    // A repeated end from the same socket no longer owns a session.
+    await socket.message({ type: 'session:end' })
+    expect(cancelEndedSessionTasks).toHaveBeenCalledOnce()
   })
   it('INC-0074 sends a no-session result and accepts an explicit create on the same socket', async () => {
     h.create.mockRejectedValueOnce(new ResumeNotFoundError())

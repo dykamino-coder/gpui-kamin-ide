@@ -18,6 +18,7 @@ import {
 import { resolveWorkingDirectory } from '../utils/working-directory'
 import { scriptInvocation, type ScriptInvocation } from '../utils/script-file'
 import { startWarmShell, takeWarmShell, warmKey } from '../mcp/tools/warm-shell'
+import { captureEnv, capturedEnv, ENV_PROBE_COMMAND, simpleNodeArgs } from './direct-node'
 
 export interface HookExecuteRequest {
   type: 'hook:execute'
@@ -158,6 +159,7 @@ function warmHookShell(shell: ResolvedShell, scriptPath: string, cwd: string, en
 export async function executeHook(
   req: HookExecuteRequest,
   fallbackCwd?: string,
+  options: { shellOnly?: boolean } = {},
 ): Promise<HookExecuteResponse['result']> {
   const start = Date.now()
   const timeoutMs = req.timeoutMs ?? DEFAULT_TIMEOUT_MS
@@ -228,6 +230,24 @@ export async function executeHook(
     if (fs.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${path.delimiter}${process.env.PATH ?? ''}`
   }
   pluginEnv.CLAUDE_PROJECT_DIR = shell ? shellPluginEnvValue(cwd, shell) : cwd
+  const hookEnv: NodeJS.ProcessEnv = { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' }
+  // A provably simple `node …` Bash hook runs node directly with the
+  // environment the shell path gave it (direct-node.ts).
+  let direct: { args: string[]; env: NodeJS.ProcessEnv } | undefined
+  // Windows only: there Git Bash costs ~50 ms per hook; elsewhere bash starts
+  // in a few milliseconds, and a hook killed by a signal gets a message from
+  // bash (`Terminated`) that a direct run would not print.
+  // KAMIN_HOOK_DIRECT_NODE=0 turns it off, =1 on (tests on other systems).
+  const directWanted = process.env.KAMIN_HOOK_DIRECT_NODE === '1' || (process.platform === 'win32' && process.env.KAMIN_HOOK_DIRECT_NODE !== '0')
+  const nodeArgs = !execForm && !options.shellOnly && shell!.kind === 'bash' && directWanted
+    ? simpleNodeArgs(req.command)
+    : null
+  if (nodeArgs) {
+    const key = JSON.stringify([warmKey(shell!.bin, shell!.args, hookEnv), cwd])
+    const env = capturedEnv(key)
+    if (env) direct = { args: nodeArgs, env }
+    else captureEnv(key, () => executeHook({ ...req, command: ENV_PROBE_COMMAND, payload: {} }, fallbackCwd, { shellOnly: true }))
+  }
   if (execForm) command = nativeNodeCommand(command)
   else command = shellNodeShim(shell!) + command
 
@@ -248,23 +268,19 @@ export async function executeHook(
     try {
       // A shell-form command of any length runs from a file: Git Bash cuts
       // long command-line arguments without an error.
-      if (!execForm) script = scriptInvocation(shell!.kind, shell!.args, command)
-      proc = execForm
-        ? spawn(command, args ?? [], {
-          cwd,
-          env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
-          windowsHide: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          detached: process.platform !== 'win32',
-        })
-        : warmHookShell(shell!, script!.file.path, cwd, { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' }) ??
-          spawn(shell!.bin, script!.args, {
-            cwd,
-            env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
-            windowsHide: true,
-            stdio: ['pipe', 'pipe', 'pipe'],
-            detached: process.platform !== 'win32',
-          })
+      if (!execForm && !direct) script = scriptInvocation(shell!.kind, shell!.args, command)
+      const spawnOptions = (env: NodeJS.ProcessEnv) => ({
+        cwd,
+        env,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
+      })
+      proc = direct
+        ? spawn(process.execPath, direct.args, spawnOptions(direct.env))
+        : execForm
+          ? spawn(command, args ?? [], spawnOptions(hookEnv))
+          : warmHookShell(shell!, script!.file.path, cwd, hookEnv) ?? spawn(shell!.bin, script!.args, spawnOptions(hookEnv))
     } catch (err) {
       script?.file.dispose()
       finish({
