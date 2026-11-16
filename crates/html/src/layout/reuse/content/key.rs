@@ -4,17 +4,27 @@ use crate::dom::{BoxId, Element, Node};
 use crate::layout::cx::BoxConstraints;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
+use std::rc::Rc;
 
-/// Вход содержимого снаружи поддерева контейнера.
+/// The container's own identity in a content key (ContentKey::ids).
+pub(super) fn ids(s: &BoxStyle) -> [u64; 4] {
+    [s.self_node, s.cb_node, s.fixed_cb_node, s.decor_box]
+}
+
+/// Вход содержимого снаружи поддерева контейнера. The styles are shared by
+/// the keys of equal containers (`KeyInputs`); the container's own identity
+/// is kept apart (`ids`).
 pub(crate) struct ContentKey {
-    pub(super) inherited: BoxStyle,
+    pub(super) inherited: Rc<BoxStyle>,
+    /// `self_node`, `cb_node`, `fixed_cb_node` and `decor_box` of the container.
+    pub(super) ids: [u64; 4],
     pub(super) constraints: BoxConstraints,
     pub(super) cell_bfc: bool,
     pub(super) fresh: bool,
     pub(super) len: usize,
-    pub(super) root: BoxStyle,
+    pub(super) root: Rc<BoxStyle>,
     pub(super) viewport: (f32, f32),
-    pub(super) text: gpui::TextStyle,
+    pub(super) text: Rc<gpui::TextStyle>,
     pub(super) normal_line_height: f32,
     pub(super) fonts: u64,
 }
@@ -22,19 +32,16 @@ pub(crate) struct ContentKey {
 impl ContentKey {
     pub(super) fn same(&self, other: &Self) -> bool {
         let (a, b) = (&self.inherited, &other.inherited);
-        a.same_box_values(b)
-            && a.self_node == b.self_node
-            && a.cb_node == b.cb_node
-            && a.fixed_cb_node == b.fixed_cb_node
-            && a.decor_box == b.decor_box
+        (Rc::ptr_eq(a, b) || a.same_box_values(b))
+            && self.ids == other.ids
             && self.constraints == other.constraints
             && self.constraints.key_widths() == other.constraints.key_widths()
             && self.cell_bfc == other.cell_bfc
             && self.fresh == other.fresh
             && self.len == other.len
-            && *self.root == *other.root
+            && (Rc::ptr_eq(&self.root, &other.root) || **self.root == **other.root)
             && self.viewport == other.viewport
-            && self.text == other.text
+            && (Rc::ptr_eq(&self.text, &other.text) || *self.text == *other.text)
             && self.normal_line_height == other.normal_line_height
             && self.fonts == other.fonts
     }

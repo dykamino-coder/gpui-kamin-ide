@@ -1,0 +1,83 @@
+//! Equal key inputs shared by the content records of a document (`KeyInputs`).
+//!
+//! Containers of one look (the cells of a table) record equal styles and
+//! text styles from outside their content; each record kept its own copy, so
+//! a key cost a kilobyte. The store keeps the latest distinct ones and hands
+//! out an equal one, as a style sharing cache offers a recent sibling's style
+//! (Gecko `StyleSharingCache`, Blink `StyleSharingList`).
+
+use crate::style::computed::BoxStyle;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+/// Candidates kept per input.
+const KEPT: usize = 8;
+
+/// The latest distinct values of one input, the found one first.
+struct Latest<T>(RefCell<Vec<Rc<T>>>);
+
+impl<T> Default for Latest<T> {
+    fn default() -> Self {
+        Self(RefCell::default())
+    }
+}
+
+impl<T: Clone> Latest<T> {
+    fn share(&self, value: &T, same: impl Fn(&T, &T) -> bool) -> Rc<T> {
+        let mut latest = self.0.borrow_mut();
+        if let Some(i) = latest.iter().position(|v| same(v, value)) {
+            let found = latest.remove(i);
+            latest.insert(0, found.clone());
+            return found;
+        }
+        let value = Rc::new(value.clone());
+        latest.truncate(KEPT - 1);
+        latest.insert(0, value.clone());
+        value
+    }
+}
+
+/// Shared inputs of content keys from outside the containers.
+#[derive(Default)]
+pub(crate) struct KeyInputs {
+    styles: Latest<BoxStyle>,
+    roots: Latest<BoxStyle>,
+    texts: Latest<gpui::TextStyle>,
+}
+
+impl KeyInputs {
+    /// A container style with the box values of `style` (`same_box_values`,
+    /// which leaves out the box's own identity: the key keeps that apart).
+    pub(super) fn style(&self, style: &BoxStyle) -> Rc<BoxStyle> {
+        self.styles.share(style, BoxStyle::same_box_values)
+    }
+
+    pub(super) fn root(&self, root: &BoxStyle) -> Rc<BoxStyle> {
+        self.roots.share(root, |a, b| **a == **b)
+    }
+
+    pub(super) fn text(&self, text: &gpui::TextStyle) -> Rc<gpui::TextStyle> {
+        self.texts.share(text, |a, b| a == b)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn equal_inputs_are_one_and_only_the_latest_are_kept() {
+        let inputs = KeyInputs::default();
+        let a = inputs.text(&gpui::TextStyle::default());
+        assert!(Rc::ptr_eq(&a, &inputs.text(&gpui::TextStyle::default())));
+        for n in 0..KEPT + 2 {
+            let text = gpui::TextStyle {
+                line_clamp: Some(n + 1),
+                ..Default::default()
+            };
+            inputs.text(&text);
+        }
+        assert_eq!(inputs.texts.0.borrow().len(), KEPT);
+        assert!(!Rc::ptr_eq(&a, &inputs.text(&gpui::TextStyle::default())));
+    }
+}

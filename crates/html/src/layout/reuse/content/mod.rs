@@ -17,6 +17,7 @@
 //! `PaintController` — подпоследовательность краски чистого поддерева.
 
 mod key;
+pub(crate) mod shared;
 
 pub(super) use key::inert_tree;
 
@@ -102,14 +103,15 @@ impl FlowReuse {
             at,
             start: Counters::read(cx),
             key: ContentKey {
-                inherited: inherited.clone(),
+                inherited: self.store.inputs.style(inherited),
+                ids: key::ids(inherited),
                 constraints: cx.constraints.clone(),
                 cell_bfc: outer.cx.constraints.cell_bfc,
                 fresh,
                 len: nodes.len(),
-                root: inner.root_style(),
+                root: self.store.inputs.root(&inner.root_style()),
                 viewport: inner.viewport,
-                text: inner.text.clone(),
+                text: self.store.inputs.text(&inner.text),
                 normal_line_height: inner.normal_line_height,
                 fonts: cx.doc().values.font_generation(),
             },

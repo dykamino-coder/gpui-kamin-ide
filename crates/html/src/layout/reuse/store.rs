@@ -19,6 +19,8 @@ pub(crate) struct Store {
     /// Records of box contents replayed at any depth (`content`), by the
     /// node of their container.
     pub(super) contents: RefCell<HashMap<u64, Rc<super::content::ContentRecord>>>,
+    /// Inputs shared by the keys of the content records (`KeyInputs`).
+    pub(super) inputs: super::content::shared::KeyInputs,
     /// Records of far blocks laid out from their kept layout subtree
     /// (`far`), with the storage of the build that claims them; allocated
     /// while there are any. A build holds it while it runs (`FlowReuse::far`).
