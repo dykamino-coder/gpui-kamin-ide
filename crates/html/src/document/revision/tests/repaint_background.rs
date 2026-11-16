@@ -211,6 +211,26 @@ fn a_rebuilding_edit_parses_the_sheets_once() {
     assert_eq!(parsed, 0);
 }
 
+/// A matching rule that changes no cascaded value — a later rule of the same
+/// specificity or the element's own `style` wins — leaves the frame as
+/// recorded: the revision keeps its state, and its tree equals a fresh build.
+#[test]
+fn a_matching_rule_that_changes_no_value_keeps_the_frame() {
+    let later = page("[data-edit]{background:#eee}.own{background:#9ab}");
+    let inline = page("[data-edit]{background:#eee}").replace(
+        "<p class=own>",
+        "<p class=own style=\"background:#9ab;opacity:.5\">",
+    );
+    for old in [later, inline] {
+        let new = old.replace("<p class=own", "<p data-edit class=own");
+        assert!(update(&old, &new, ""), "{old}");
+        let mut doc = Document::builder(&old, "").build().unwrap();
+        let state = doc.state.clone();
+        assert!(doc.update(&new, "").unwrap().changed());
+        assert!(Rc::ptr_eq(&state, &doc.state), "{old}");
+    }
+}
+
 #[test]
 fn a_gradient_replaced_by_a_colour_is_restyled_in_place() {
     // wide-16000 D: `background:#eee` replaces a row's gradient.

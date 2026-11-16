@@ -1186,6 +1186,10 @@ impl PlatformWindow for WindowsWindow {
             .render_to_image(scene, self.state.background_appearance.get())
     }
 
+    fn last_frame_presented(&self) -> bool {
+        self.state.renderer.try_borrow().is_ok_and(|renderer| !renderer.needs_presentation())
+    }
+
     fn rasterize_scene(&self, scene: &Scene, size: Size<DevicePixels>) -> anyhow::Result<image::RgbaImage> {
         self.state.renderer.borrow_mut().rasterize_scene(scene, size)
     }
