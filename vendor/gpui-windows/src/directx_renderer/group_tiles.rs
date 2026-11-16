@@ -84,9 +84,7 @@ pub(super) fn bin(regions: &[Region], width: u32, height: u32, cap: u32, lists: 
     data.push(at);
     data.resize(at as usize, 0);
     // counts become each tile's write position.
-    for t in 0..tiles {
-        counts[t] = data[t];
-    }
+    counts.copy_from_slice(&data[..tiles]);
     for (k, &r) in regions[..taken].iter().enumerate() {
         let (x0, y0, x1, y1) = tile_span(r);
         for y in y0..=y1 {
