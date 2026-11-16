@@ -25,7 +25,9 @@ impl BoxTree {
         let mut inline = inline::Collection::default();
         let mut visited = finish::Visited::default();
         let prev = match previous {
-            Some(p) if std::ptr::eq(p, nodes) => Prev::Clean,
+            // The document level is compared node by node: a slice carries no
+            // identity of its contents (the levels below compare their
+            // children snapshots).
             Some(p) => Prev::Old(p),
             None => Prev::Fresh,
         };
