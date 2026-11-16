@@ -1,4 +1,4 @@
-import { receiveSubmission, noteSubmissionRows, forgetSubmissions, forgetModCapability } from '../signals/submissions'
+import { receiveSubmission, noteSubmissionRows, forgetSubmissions, forgetModCapability, shouldToastDelivery, submissions } from '../signals/submissions'
 import { forgetCompaction, noteCompactionRows } from '../signals/compaction'
 import { setTabUsage } from '../signals/session-usage'
 import { receiveAgentPreferences, receiveCodexAuth, receiveCodexModels } from '../signals/agent'
@@ -15,7 +15,7 @@ import { markOpen } from '../signals/open-timeline'
 import { scheduleSaveTabsState, ghostifyClosedPinned, reclaimGhostIfMatch } from '../lib/tabs-persist'
 import { mcpLoading, tabPromptReady, lastSendAt, reconnectNonce } from '../signals/connection'
 import { mcpServers } from '../signals/customize'
-import { tabActivity, tabWaiting, sidebarMode, activeCustomizePanel } from '../signals/ui'
+import { tabActivity, tabWaiting, sidebarMode, activeCustomizePanel, setTabHibernation } from '../signals/ui'
 import { hostEditorSelection } from '../signals/file-viewer'
 import { showToast } from '../signals/toasts'
 import { activeWidgets } from '../signals/widgets'
@@ -600,8 +600,9 @@ export function useBridgeListeners(
 
     const unsubSubmission = bridge.onSubmission((tabId, data) => {
       if (data.rejected && !tabs.peek().some(tab => tab.id === tabId)) return
+      const shown = data.id ? submissions.peek().get(tabId)?.find(item => item.id === data.id) : undefined
       receiveSubmission(tabId, data)
-      if (data.warning && (data.rejected || data.state === 'fallback' || data.capable === false))
+      if (data.warning && (data.rejected || data.state === 'fallback' || data.capable === false) && shouldToastDelivery(data, shown))
         showToast({ type: 'info', title: 'Message delivery', message: data.warning })
     })
 
@@ -609,7 +610,10 @@ export function useBridgeListeners(
       const d = data as {
         rawTitle?: string; isWorking?: boolean
         hookDriven?: boolean; promptReady?: boolean; waiting?: boolean
+        hibernation?: 'asleep' | 'waking' | 'awake'
       }
+      // Any frame from a live CLI means it is awake again.
+      setTabHibernation(tabId, d.hibernation === 'asleep' || d.hibernation === 'waking' ? d.hibernation : null)
 
       // Deterministic path — the CLI's own lifecycle hooks (UserPromptSubmit /
       // Stop / SessionStart / Notification). These beat the OSC-spinner + prompt-

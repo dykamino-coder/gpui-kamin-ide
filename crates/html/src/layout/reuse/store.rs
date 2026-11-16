@@ -77,6 +77,7 @@ pub(crate) struct Store {
     /// The rebuild that stripped the last flow key's boxes
     /// (`FlowKey::strip_boxes`) found them different in paint-only values.
     pub(super) repainted_roots: Cell<bool>,
+    pub(super) layer: super::layer::Kept,
 }
 
 impl Store {

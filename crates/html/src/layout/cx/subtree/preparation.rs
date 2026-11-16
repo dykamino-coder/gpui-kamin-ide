@@ -10,11 +10,12 @@ pub(crate) struct Preparation {
     pub(crate) clearance_possible: bool,
 }
 
-type Snapshot = ((usize, usize), Rc<Preparation>);
+type Snapshot = (u64, Rc<Preparation>);
 
-/// Ключ снимка-основы (`continuing`): адрес корневого списка не бывает нулевым,
-/// поэтому основа не совпадает ни с одним деревом и не требует своего поля.
-const BASE: (usize, usize) = (0, 0);
+/// Ключ снимка-основы (`continuing`): номер дерева документа не бывает нулевым
+/// (`Document::tree`), поэтому основа не совпадает ни с одним деревом и не
+/// требует своего поля.
+const BASE: u64 = 0;
 
 #[derive(Default)]
 pub(crate) struct PreparationCache {
@@ -41,18 +42,21 @@ impl PreparationCache {
         }
     }
 
-    /// Только Document гарантирует неизменность корневого списка. Для raw
-    /// render адрес не доказывает неизменность элементов и кэш не применяется.
-    pub(crate) fn get(&self, nodes: &[Node], stable: bool, changed: bool) -> Rc<Preparation> {
-        let key = (nodes.as_ptr() as usize, nodes.len());
+    /// `tree`: номер дерева документа (`Document::tree`), новый у каждого
+    /// дерева; только Document гарантирует неизменность дерева под номером.
+    /// Адрес корневого списка ключом не годится: правка текста, давшая новое
+    /// дерево, может положить его корень по адресу прошлого. Для raw render
+    /// (`None`) кэш не применяется.
+    pub(crate) fn get(&self, nodes: &[Node], tree: Option<u64>, changed: bool) -> Rc<Preparation> {
         let snapshot = self.snapshot.take();
-        let fresh = stable && !changed;
+        let fresh = tree.is_some() && !changed;
+        let key = tree.unwrap_or(BASE);
         let prepared = match snapshot {
             Some((old, prepared)) if fresh && old == key => prepared,
             Some((BASE, base)) if fresh => Rc::new(Preparation::continued(&base, nodes)),
             _ => Rc::new(Preparation::new(nodes)),
         };
-        if stable {
+        if tree.is_some() {
             self.snapshot.set(Some((key, prepared.clone())));
         }
         prepared

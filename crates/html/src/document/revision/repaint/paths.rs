@@ -2,7 +2,8 @@
 //! их поддеревья принимают новые значения краски на месте.
 
 use super::Restyle;
-use crate::document::revision::patch::{Path, elements, span, within};
+use crate::document::revision::boxes::{Boxes, at};
+use crate::document::revision::patch::{Path, elements};
 use crate::dom::{Element, Node};
 use std::collections::HashMap;
 
@@ -25,45 +26,53 @@ pub(super) fn wrapped(nodes: &[Node]) -> bool {
 }
 
 /// Пути к коробкам перерассчитанных элементов (с их тегом и прежними
-/// значениями краски), если каждая принимает новые значения на месте
-/// (`takes`); у каждого элемента — хотя бы одна коробка.
+/// значениями краски) по индексу `boxes`, если каждая принимает новые
+/// значения на месте (`takes`); у каждого элемента — хотя бы одна коробка.
 pub(super) fn style_paths(
     nodes: &[Node],
+    boxes: &Boxes,
     restyles: &HashMap<u64, Restyle>,
 ) -> Option<Vec<(Path, u64)>> {
     let mut paths = Vec::new();
-    let mut fits = true;
-    if !restyles.is_empty() {
-        let span = span(restyles);
-        elements(nodes, |e, path| {
-            match within(&span, e).then(|| restyles.get(&e.node_id)).flatten() {
-                Some(r) if e.tag == r.tag => {
-                    fits &= e.style.cascaded().same_paint_groups(&r.old) && takes(e, r);
-                    paths.push((path.to_vec(), e.node_id));
-                }
-                _ => {}
+    for (&id, r) in restyles {
+        let before = paths.len();
+        for path in boxes.paths(id) {
+            let e = at(nodes, &path)?;
+            if e.tag != r.tag {
+                continue;
             }
-            fits
-        });
+            if !(e.style.cascaded().same_paint_groups(&r.old) && takes(e, r)) {
+                return None;
+            }
+            paths.push((path, id));
+        }
+        if paths.len() == before {
+            return None;
+        }
     }
-    let found = |id: &u64| paths.iter().any(|(_, at)| at == id);
-    (fits && restyles.keys().all(found)).then_some(paths)
+    Some(paths)
 }
 
 /// The box `e` and its subtree take the restyle `r` of its element in place.
 /// The box itself keeps no animation frames or copies of its computed values
 /// outside the cascaded stage (for a new background, no decoration inputs
-/// either). Its subtree follows by rematerialization: under new inherited
+/// either; for new border colours, no inline box). Its subtree follows by
+/// rematerialization: under new inherited
 /// values no box keeps a hover or first-letter/-line layer, animation frames
 /// or such copies; under a new background alone only a style that inherits
 /// reset values explicitly reads it (css-cascade-5 §7.3.1), and no such style
 /// is a layer or keeps copies.
 fn takes(e: &Element, r: &Restyle) -> bool {
-    let (inherited, background) = (r.inherited(), r.background());
+    let (inherited, background, borders) = (r.inherited(), r.background(), r.borders());
     if e.anim.is_some() || e.style.holds_inherited_copies() {
         return false;
     }
-    if background && e.style.holds_decoration() {
+    if (background || borders) && e.style.holds_decoration() {
+        return false;
+    }
+    // The sides of an inline box and the collapsed borders of a table are
+    // layout results with their colours.
+    if borders && (e.inline || TABLE_PARTS.contains(&e.tag.as_str())) {
         return false;
     }
     elements(std::slice::from_ref(&Node::Element(e.clone())), |b, _| {
@@ -76,6 +85,11 @@ fn takes(e: &Element, r: &Restyle) -> bool {
         }
     })
 }
+
+/// The tags of the HTML table parts (HTML §15.3.8 gives them table displays).
+const TABLE_PARTS: &[&str] = &[
+    "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th",
+];
 
 /// The hover and first-letter/-line layers of a box.
 fn layers(b: &Element) -> impl Iterator<Item = &Option<crate::dom::SharedStyle>> {

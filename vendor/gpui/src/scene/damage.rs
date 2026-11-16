@@ -19,6 +19,8 @@ use super::{PaintGroup, PaintSurface, Path, Primitive, Scene, TransformationMatr
 use crate::{Bounds, ScaledPixels};
 use collections::FxHashMap;
 
+mod group_match;
+
 /// Сторона клетки повреждения, device px.
 pub const DAMAGE_TILE: u32 = 64;
 
@@ -91,6 +93,9 @@ pub(crate) struct DamageIndex {
     backdrop: bool,
     /// Повреждение этого кадра и номера кадров (`Window::frame_serial`).
     pub(crate) damage: SceneDamage,
+    /// Группа прошлого кадра, рисующая ту же картинку, что группа `g`, плюс один
+    /// (0 — нет), `group_match`.
+    group_base: Vec<u32>,
     pub(crate) id: u64,
     pub(crate) base: u64,
 }
@@ -255,6 +260,7 @@ impl DamageIndex {
         self.spans.clear();
         self.backdrop = false;
         self.damage = SceneDamage::Unknown;
+        self.group_base.clear();
         self.id = 0;
         self.base = 0;
     }
@@ -419,6 +425,8 @@ impl Compare<'_> {
             && a.polygon_inverse == b.polygon_inverse
             && match (&a.mask, &b.mask) {
                 (None, None) => true,
+                // A RenderImage is immutable and its id is unique per image
+                // (`RenderImage::new`): an equal id is equal mask bytes.
                 (Some(x), Some(y)) => x.id == y.id,
                 _ => false,
             }
@@ -431,7 +439,13 @@ impl Compare<'_> {
     }
 
     /// Сцены группы рисуют одно и то же: равные примитивы в равном порядке.
+    /// Сцена с удерживаемым слоем (`scene::layer`, попавшим в группу повтором
+    /// диапазона) не равна никакой: слой меняется на месте, его примитивов
+    /// нет в списках сцены, и равные списки не значат равную картинку.
     fn same_scene(&mut self, a: &Scene, b: &Scene) -> bool {
+        if !a.book.layers.is_empty() || !b.book.layers.is_empty() {
+            return false;
+        }
         if a.shadows.len() != b.shadows.len()
             || a.quads.len() != b.quads.len()
             || a.paths.len() != b.paths.len()
@@ -454,24 +468,71 @@ impl Compare<'_> {
 
 impl Scene {
     /// KaminIDE patch: повреждение этого кадра (`size` device px, номер
-    /// `id`) относительно `previous` — кадра `previous.damage.id` того же окна.
+    /// `id`) относительно `previous` — кадра `previous.book.index.id` того же окна.
     /// `pub` + `doc(hidden)`: тесты рендерера (`gpui_windows`) строят цепочку кадров.
     #[doc(hidden)]
-    pub fn note_damage(&mut self, previous: &Scene, id: u64, size: (u32, u32)) {
-        let mut index = std::mem::take(&mut *self.damage);
+    pub fn note_frame_damage(&mut self, previous: &Scene, id: u64, size: (u32, u32)) {
+        let mut index = std::mem::take(&mut self.book.index);
         index.build(self, size);
         index.id = id;
-        index.base = previous.damage.id;
+        index.base = previous.book.index.id;
         index.damage = self.damage_against(&index, previous);
-        *self.damage = index;
+        // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
+        // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
+        index.group_base.clear();
+        if index.base != 0 {
+            let mut cmp = Compare {
+                new: self,
+                old: previous,
+                groups: FxHashMap::default(),
+            };
+            group_match::match_groups(&mut cmp, &mut index.group_base);
+        }
+        self.book.index = index;
+    }
+
+    /// KaminIDE patch: группа кадра `frame_damage().1` (с которым сравнивали
+    /// этот), что рисует ту же картинку, что группа `g` этого кадра.
+    #[doc(hidden)]
+    pub fn group_base(&self, g: usize) -> Option<usize> {
+        match self.book.index.group_base.get(g).copied().unwrap_or(0) {
+            0 => None,
+            o => Some(o as usize - 1),
+        }
     }
 
     fn damage_against(&self, index: &DamageIndex, previous: &Scene) -> SceneDamage {
-        let old = &*previous.damage;
+        let old = &previous.book.index;
         if index.backdrop || old.backdrop || old.size != index.size || old.size.is_none() {
             return SceneDamage::Unknown;
         }
         let (w, h) = index.size.unwrap_or_default();
+        // Retained layers (`scene::layer`) draw primitives the tiles do not
+        // hold; their frame is compared by the layer bookkeeping
+        // (`Scene::damage`, set by `Scene::note_damage` before this), which
+        // knows the rectangles written into them since the last frame.
+        if !self.book.layers.is_empty() || !previous.book.layers.is_empty() {
+            return match self.damage() {
+                Some(None) => SceneDamage::Unchanged,
+                Some(Some(r)) => {
+                    let x0 = r.origin.x.0.max(0.).floor() as u32;
+                    let y0 = r.origin.y.0.max(0.).floor() as u32;
+                    let x1 = ((r.origin.x.0 + r.size.width.0).ceil().max(0.) as u32).min(w);
+                    let y1 = ((r.origin.y.0 + r.size.height.0).ceil().max(0.) as u32).min(h);
+                    if x1 <= x0 || y1 <= y0 {
+                        SceneDamage::Unchanged
+                    } else {
+                        SceneDamage::Rect {
+                            x: x0,
+                            y: y0,
+                            width: x1 - x0,
+                            height: y1 - y0,
+                        }
+                    }
+                }
+                None => SceneDamage::Unknown,
+            };
+        }
         let mut cmp = Compare {
             new: self,
             old: previous,
@@ -506,10 +567,10 @@ impl Scene {
     #[doc(hidden)]
     pub fn frame_damage(&self) -> (SceneDamage, u64, u64, (u32, u32)) {
         (
-            self.damage.damage,
-            self.damage.base,
-            self.damage.id,
-            self.damage.size.unwrap_or_default(),
+            self.book.index.damage,
+            self.book.index.base,
+            self.book.index.id,
+            self.book.index.size.unwrap_or_default(),
         )
     }
 
@@ -553,8 +614,8 @@ impl Scene {
         needed
     }
 
-    pub(crate) fn clear_damage(&mut self) {
-        self.damage.clear();
+    pub(crate) fn clear_damage_index(&mut self) {
+        self.book.index.clear();
     }
 }
 
@@ -593,9 +654,9 @@ mod tests {
 
     fn damage(old: &[Quad], new: &[Quad]) -> SceneDamage {
         let mut a = scene(old);
-        a.note_damage(&Scene::default(), 1, (256, 256));
+        a.note_frame_damage(&Scene::default(), 1, (256, 256));
         let mut b = scene(new);
-        b.note_damage(&a, 2, (256, 256));
+        b.note_frame_damage(&a, 2, (256, 256));
         b.frame_damage().0
     }
 
@@ -603,10 +664,10 @@ mod tests {
     fn equal_scenes_are_unchanged_even_with_other_orders() {
         let red = red();
         let mut s = scene(&[quad(5.0, 5.0, red)]);
-        s.note_damage(&Scene::default(), 1, (256, 256));
+        s.note_frame_damage(&Scene::default(), 1, (256, 256));
         let mut t = scene(&[quad(5.0, 5.0, red)]);
         t.quads[0].order = 77;
-        t.note_damage(&s, 2, (256, 256));
+        t.note_frame_damage(&s, 2, (256, 256));
         assert_eq!(t.frame_damage(), (SceneDamage::Unchanged, 1, 2, (256, 256)));
     }
 
@@ -638,10 +699,10 @@ mod tests {
     fn size_change_and_first_frame_are_unknown() {
         let q = [quad(5.0, 5.0, red())];
         let mut a = scene(&q);
-        a.note_damage(&Scene::default(), 1, (256, 256));
+        a.note_frame_damage(&Scene::default(), 1, (256, 256));
         assert_eq!(a.frame_damage().0, SceneDamage::Unknown);
         let mut b = scene(&q);
-        b.note_damage(&a, 2, (257, 256));
+        b.note_frame_damage(&a, 2, (257, 256));
         assert_eq!(b.frame_damage().0, SceneDamage::Unknown);
     }
 

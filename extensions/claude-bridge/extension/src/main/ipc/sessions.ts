@@ -157,6 +157,10 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     tm()?.interruptSession(tabId)
   })
 
+  ipcMain.on('session:warm', (_event: IpcMainEvent, tabId: string) => {
+    tm()?.warmSession(tabId)
+  })
+
   ipcMain.on('pty-input', (_event: IpcMainEvent, tabId: string, data: string) => {
     tm()?.sendInput(tabId, data)
   })

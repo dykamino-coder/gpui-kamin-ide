@@ -147,6 +147,7 @@ export const SEND: Record<string, string> = {
   disconnect: 'disconnect',
   sendInput: 'pty-input',
   interruptSession: 'session:interrupt',
+  warmSession: 'session:warm',
   submitText: 'pty-submit-text',
   resize: 'pty-resize',
   respondPermission: 'permission-response',

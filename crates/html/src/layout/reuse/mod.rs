@@ -24,6 +24,7 @@ mod far;
 mod flow;
 mod frame;
 mod key;
+mod layer;
 mod layered;
 pub(crate) mod lines;
 mod narrow;

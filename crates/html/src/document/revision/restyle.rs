@@ -35,14 +35,13 @@ impl Document {
         {
             return None;
         }
-        let handles = batch.elements.iter().map(|change| &change.element);
-        let ids = super::adopt::element_ids(&values.traversal.elements(), handles);
+        let index = self.source_index()?;
         let mut changed = Changed::default();
-        for (change, id) in batch.elements.iter().zip(ids) {
+        for change in &batch.elements {
             if !open(&change.element, &root) {
                 return None;
             }
-            changed.elements.push(id?);
+            changed.elements.push(index.id(&change.element)?);
             let mut seen = Vec::new();
             for attr in change.old.iter().chain(&change.new) {
                 let (was, is) = (

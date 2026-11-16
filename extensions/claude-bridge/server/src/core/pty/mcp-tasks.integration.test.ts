@@ -278,6 +278,69 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
     })
     expect((await (await request('tasks/get', { taskId: id })).json()).result).toMatchObject({ status: 'cancelled' })
   })
+  it('answers BashOutput and KillShell for a background task id here, never as a client shell id', async () => {
+    const id = await create()
+    await vi.waitFor(() =>
+      expect(mock.send).toHaveBeenCalledWith(session.ws, expect.objectContaining({ type: 'mcp:call', requestId: id })),
+    )
+    mock.call.mockClear()
+
+    const output = rpcResult(
+      await (await request('tools/call', { name: 'BashOutput', arguments: { bash_id: id } })).text(),
+    )
+    expect(output.content[0].text).toContain(`Bash task ${id} is still running`)
+    const kill = rpcResult(
+      await (await request('tools/call', { name: 'KillShell', arguments: { bash_id: id } })).text(),
+    )
+    expect(kill.content[0].text).toBe(`Stopped Bash task ${id}.`)
+    await vi.waitFor(() =>
+      expect(mock.send).toHaveBeenCalledWith(session.ws, {
+        type: 'mcp:cancel',
+        requestId: id,
+        taskOwner: session.mcpEndpoint!.id,
+      }),
+    )
+    expect(mock.call).not.toHaveBeenCalled()
+    // A numeric id is a client shell and still goes to the client.
+    await request('tools/call', { name: 'KillShell', arguments: { bash_id: '3' } })
+    expect(mock.call).toHaveBeenCalled()
+  })
+  it('settles the tasks of an explicitly ended session so the resumed session can sleep', async () => {
+    const delivered = await create()
+    await vi.waitFor(() =>
+      expect(mock.send).toHaveBeenCalledWith(
+        session.ws,
+        expect.objectContaining({ type: 'mcp:call', requestId: delivered }),
+      ),
+    )
+    session.ws = { readyState: 0 } as PtySession['ws']
+    const undelivered = await create()
+    const other = await tasks.mcpIdentity('synthetic-user', '/synthetic/other-conversation')
+    const foreign = await tasks.mcpTasks.create(other.id, 'Bash', { command: 'other session' })
+    expect(tasks.mcpTasks.hasWorkingOwner(session.mcpEndpoint!.id)).toBe(true)
+
+    await tasks.cancelEndedSessionTasks(session)
+
+    expect(tasks.mcpTasks.hasWorkingOwner(session.mcpEndpoint!.id)).toBe(false)
+    for (const id of [delivered, undelivered])
+      expect(await tasks.mcpTasks.get(session.mcpEndpoint!.id, id)).toMatchObject({ status: 'cancelled', input: {} })
+    expect((await tasks.mcpTasks.get(other.id, foreign.taskId))?.status).toBe('working')
+    // The ended client dropped its result; a late one cannot revive the task.
+    await tasks.settleMcpTask(session, {
+      type: 'mcp:response',
+      requestId: delivered,
+      taskOwner: session.mcpEndpoint!.id,
+      result: 'too late',
+    })
+    expect((await tasks.mcpTasks.get(session.mcpEndpoint!.id, delivered))?.status).toBe('cancelled')
+    expect(mock.send.mock.calls.some(([, frame]) => frame.type === 'mcp:call' && frame.requestId === undelivered)).toBe(
+      false,
+    )
+    await tasks.mcpTasks.update(other.id, foreign.taskId, (t) => {
+      t.status = 'cancelled'
+    })
+    session.ws = { readyState: 1 } as PtySession['ws']
+  })
   it('cancels an undelivered task without ever executing it', async () => {
     session.ws = { readyState: 0 } as PtySession['ws']
     const id = await create()

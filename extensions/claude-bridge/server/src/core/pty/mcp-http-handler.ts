@@ -18,6 +18,7 @@ import { awaitMcpTask, cancelMcpTask, createMcpTask, mcpTasks, resolveMcpEndpoin
 import { cancelForegroundCalls, trackForegroundCall } from './mcp-foreground-calls'
 import { McpCallInterrupted } from './session-mcp-call'
 import { TASK_LIMITS, taskView } from './mcp-task-store'
+import { runTaskShellTool } from './mcp-task-shell-tools'
 import { TaskAdmissionError, TaskPersistenceQueueError, isTaskRetentionPressure } from './mcp-task-admission'
 import { debugLog, warnLog, errorLog } from '../logging'
 import { getSession, sendMcpCall } from './session-manager'
@@ -655,6 +656,20 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         return jsonResponse(jsonRpcError(body.id, -32602, `Unknown tool: ${toolName}`), 400)
       }
       observeMcpCall(session, toolName)
+
+      // BashOutput/KillShell naming a background MCP task: the task lives here.
+      const taskShell = await runTaskShellTool(session, toolName, toolInput).catch(() => null)
+      if (taskShell) {
+        logMcpRequest(
+          session,
+          `tools/call:${toolName}`,
+          taskShell.isError ? 'error' : 'ok',
+          undefined,
+          Date.now() - reqStart,
+          false,
+        )
+        return jsonResponse(jsonRpcResponse(body.id, truncateMcpResult({ ...taskShell }, toolName)))
+      }
 
       let releaseInline: (() => void) | undefined
       if (modern && supportsTasks(body.params) && ['Bash', 'PowerShell'].includes(toolName)) {

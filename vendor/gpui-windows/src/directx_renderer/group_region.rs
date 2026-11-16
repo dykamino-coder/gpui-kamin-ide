@@ -137,7 +137,9 @@ impl DirectXRenderer {
         Ok(region.floats())
     }
 
-    pub(super) fn prepare_group_targets(&mut self, scene: &Scene) -> Result<()> {
+    /// Lay out the group atlas for `scene`; returns which groups already have
+    /// their image in it (`group_cache`).
+    pub(super) fn prepare_group_targets(&mut self, scene: &Scene) -> Result<Vec<bool>> {
         let device = self.dev().device.clone();
         self.blur.group_regions.clear();
         for group in &scene.groups {
@@ -145,6 +147,10 @@ impl DirectXRenderer {
             self.blur
                 .group_regions
                 .push(regions[usize::from(group.blur_radius > 0.0)]);
+        }
+        if let Some((places, keep)) = self.keep_group_places(scene) {
+            self.blur.group_place = places;
+            return Ok(keep);
         }
         // KaminIDE patch: the retained images share atlas pages (`groups`).
         let sizes: Vec<(u32, u32)> = self
@@ -173,7 +179,12 @@ impl DirectXRenderer {
             }
         }
         self.blur.groups.truncate(pages.len());
-        Ok(())
+        let textures: Vec<(u32, u32)> = self.blur.groups.iter().map(|t| (t.width, t.height)).collect();
+        self.retained.groups.layout = Some((
+            group_atlas::Shelves::of_layout(&self.blur.group_place, &textures),
+            textures.len(),
+        ));
+        Ok(vec![false; scene.groups.len()])
     }
 }
 
