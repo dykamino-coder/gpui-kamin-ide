@@ -29,8 +29,10 @@ fn channel(m: u32, cb: f64, cs: f64) -> f64 {
 
 type C3 = [f64; 3];
 
+/// Lum of Compositing 1 §9.2 (0.3 R + 0.59 G + 0.11 B). The frames are BGRA,
+/// so `c` is (B, G, R).
 fn lum(c: C3) -> f64 {
-    0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]
+    0.11 * c[0] + 0.59 * c[1] + 0.3 * c[2]
 }
 
 fn set_lum(c: C3, l: f64) -> C3 {
@@ -102,4 +104,19 @@ pub(super) fn off(a: &[u8], b: &[u8]) -> (usize, usize) {
     let big = a.iter().zip(b).filter(|(x, y)| d(x, y) > 1).count();
     let one = a.iter().zip(b).filter(|(x, y)| d(x, y) == 1).count();
     (big, one)
+}
+
+/// The tile pass's frame against the levels' frame and both against the
+/// formula: the pass equals the formula (exactly, or within one code) and
+/// differs from the levels by at most one code.
+pub(super) fn compare(name: &str, got: &[u8], levels: &[u8], want: &[u8], exact: bool) {
+    let (big, one) = off(got, levels);
+    let (gb, go) = off(got, want);
+    let (lb, lo) = off(levels, want);
+    eprintln!(
+        "{name}: tiles vs levels {one} channels off by one; vs formula: tiles {gb}/{go}, levels {lb}/{lo} (>1 / =1)"
+    );
+    assert_eq!(big, 0, "{name}: tiles off the levels by more than one");
+    let off_by_one = if exact { go } else { 0 };
+    assert_eq!((gb, off_by_one), (0, 0), "{name}: tiles off the formula");
 }

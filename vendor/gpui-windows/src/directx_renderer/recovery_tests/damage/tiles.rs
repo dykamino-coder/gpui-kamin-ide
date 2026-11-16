@@ -13,7 +13,7 @@ use super::*;
 mod adapters;
 mod oracle;
 use adapters::devices;
-use oracle::{expect, off};
+use oracle::{compare, expect};
 
 /// One group: its quads (frame coordinates, colour), blend mode, opacity and blur.
 #[derive(Clone)]
@@ -121,20 +121,6 @@ fn draw_tiles(device: &DirectXDevices, s: &Scene, bg: WindowBackgroundAppearance
     target_bytes(&mut r)
 }
 
-/// The tile pass's frame against the levels' frame and both against the
-/// formula: the pass equals the formula exactly and differs from the levels
-/// by at most one code.
-fn compare(name: &str, got: &[u8], levels: &[u8], want: &[u8]) {
-    let (big, one) = off(got, levels);
-    let (gb, go) = off(got, want);
-    let (lb, lo) = off(levels, want);
-    eprintln!(
-        "{name}: tiles vs levels {one} channels off by one; vs formula: tiles {gb}/{go}, levels {lb}/{lo} (>1 / =1)"
-    );
-    assert_eq!(big, 0, "{name}: tiles off the levels by more than one");
-    assert_eq!((gb, go), (0, 0), "{name}: tiles off the formula");
-}
-
 fn backdrop() -> Vec<([f32; 4], Hsla)> {
     vec![
         ([0., 0., 128., 192.], hsla(0.1, 0.8, 0.6, 1.)),
@@ -143,6 +129,12 @@ fn backdrop() -> Vec<([f32; 4], Hsla)> {
 }
 
 fn check(device: &DirectXDevices, name: &str, groups: &[G], bg: WindowBackgroundAppearance) {
+    check_with(device, name, groups, bg, true);
+}
+
+/// `exact` false: the formula's f32 steps may land one code off the f64
+/// oracle (the non-separable modes divide: ClipColor, SetSat).
+fn check_with(device: &DirectXDevices, name: &str, groups: &[G], bg: WindowBackgroundAppearance, exact: bool) {
     let frame = scene(&backdrop(), groups, None);
     let got = draw_tiles(device, &frame, bg);
     let copies = draw_path(device, &frame, bg, false);
@@ -157,7 +149,7 @@ fn check(device: &DirectXDevices, name: &str, groups: &[G], bg: WindowBackground
     let modes: Vec<u32> = groups.iter().map(|g| g.blend).collect();
     let opacity: Vec<f32> = groups.iter().map(|g| g.opacity).collect();
     let want = expect(base, &images, &modes, &opacity);
-    compare(name, &got, &copies, &want);
+    compare(name, &got, &copies, &want, exact);
 }
 
 fn chain(modes: &[u32]) -> Vec<G> {
@@ -202,22 +194,17 @@ fn every_separable_mode_equals_its_formula() {
     }
 }
 
-/// Non-separable modes: the pass takes the copy path's steps (`composite_mix`).
-/// Both paths are off the f64 oracle here (11-16: hue, 10472 channels > 1 on
-/// Iris Xe, equal in both), an open finding outside the tile pass; the distance
-/// is reported.
+/// Every non-separable mode (hue, saturation, color, luminosity), with a
+/// translucent group in the run, within one code of the formula: its steps
+/// divide (SetSat, ClipColor), and WARP's f32 division lands color and
+/// luminosity one code off the f64 oracle in about 1250 channels each (11-17,
+/// on both paths; Iris Xe and RTX 4080: exact).
 #[test]
-fn non_separable_modes_equal_the_composite_levels() {
+fn every_non_separable_mode_equals_its_formula() {
     for (gpu, device) in devices() {
-        let bg = WindowBackgroundAppearance::Opaque;
         for m in 12..=15 {
-            let groups = mode_chain(m);
-            let frame = scene(&backdrop(), &groups, None);
-            let got = draw_tiles(&device, &frame, bg);
-            let levels = draw_path(&device, &frame, bg, false);
-            let (big, one) = off(&got, &levels);
-            eprintln!("{gpu}: mode {m}: tiles vs levels {big}/{one} (>1 / =1)");
-            assert_eq!(big, 0, "{gpu}: mode {m}");
+            let name = format!("{gpu}: mode {m}");
+            check_with(&device, &name, &mode_chain(m), WindowBackgroundAppearance::Opaque, false);
         }
     }
 }
@@ -254,6 +241,6 @@ fn children_of_an_isolated_group_blend_with_its_buffer_not_the_frame() {
         let isolated = expect(vec![0; (W * H * 4) as usize], &images, &modes, &opacity);
         let base = draw(&device, &scene(&backdrop(), &[], None), bg);
         let want = expect(base, &[isolated], &[0], &[1.]);
-        compare(&format!("{gpu}: isolated"), &got, &copies, &want);
+        compare(&format!("{gpu}: isolated"), &got, &copies, &want, true);
     }
 }
