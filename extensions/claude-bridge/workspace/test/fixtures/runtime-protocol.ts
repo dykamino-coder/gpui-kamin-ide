@@ -2,12 +2,19 @@ import assert from 'node:assert/strict'
 import { once, type EventEmitter } from 'node:events'
 import type { WebSocket } from 'ws'
 
-export async function waitFrame(frames: any[], events: EventEmitter, predicate: (value: any) => boolean) {
+/** The first frame matching `predicate`, waiting up to 5 s. A timeout names
+ *  `label` and the time waited, so a CI failure says which step stalled. */
+export async function waitFrame(frames: any[], events: EventEmitter, predicate: (value: any) => boolean, label = 'frame') {
+  const started = Date.now()
   const signal = AbortSignal.timeout(5000)
   while (true) {
     const result = frames.find(predicate)
     if (result) return result
-    await once(events, 'frame', { signal })
+    try {
+      await once(events, 'frame', { signal })
+    } catch (error) {
+      throw new Error(`Timed out waiting for ${label} after ${Date.now() - started} ms`, { cause: error })
+    }
   }
 }
 

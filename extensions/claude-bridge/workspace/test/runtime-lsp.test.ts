@@ -74,7 +74,7 @@ test('shared browser host discovers plugin LSP, routes four tools and owns proje
   async function invoke(channel: string, args: unknown[] = []) {
     const requestId = ++id
     page.send(JSON.stringify({ kind: 'invoke', id: requestId, generation: 'lsp-fixture', channel, args }))
-    const reply = await waitFrame(pageFrames, pageEvents, frame => frame.kind === 'invoke-reply' && frame.id === requestId)
+    const reply = await waitFrame(pageFrames, pageEvents, frame => frame.kind === 'invoke-reply' && frame.id === requestId, `reply to ${channel}`)
     assert.equal(reply.ok, true, `Invoke ${channel} failed`)
     return reply.result
   }
@@ -83,14 +83,15 @@ test('shared browser host discovers plugin LSP, routes four tools and owns proje
   async function session(cwd: string) {
     const start = frames.length
     const tab = await invoke('tab:create', [{ cwd }])
-    await waitFrame(frames, events, frame => frames.indexOf(frame) >= start && frame.type === 'session:create' && frame.cwd === cwd)
+    await waitFrame(frames, events, frame => frames.indexOf(frame) >= start && frame.type === 'session:create' && frame.cwd === cwd,
+      'session:create of a new tab')
     const socket = [...peers.entries()].reverse().find(([key]) => key.startsWith(cwd + ':'))![1]
     return { tab, socket }
   }
   async function tool(socket: WebSocket, toolName: string, file: string) {
     const requestId = `lsp-tool-${++id}`
     socket.send(JSON.stringify({ type: 'mcp:call', requestId, toolName, input: { file, line: 1, character: 2 } }))
-    const response = await waitFrame(frames, events, frame => frame.type === 'mcp:response' && frame.requestId === requestId)
+    const response = await waitFrame(frames, events, frame => frame.type === 'mcp:response' && frame.requestId === requestId, `${toolName} response`)
       .catch(error => { throw new Error(`Missing ${toolName} response for request ${requestId}`, { cause: error }) })
     return response.result.content.map((entry: any) => entry.text).join('\n')
   }

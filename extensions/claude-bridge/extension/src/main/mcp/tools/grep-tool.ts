@@ -14,6 +14,7 @@ import type { ToolCallContext } from '../executor'
 import { type McpResult, textResult, errorResult, MAX_GREP_BYTES, MAX_READ_BYTES, STAT_CONCURRENCY } from './fs-shared'
 import { ripgrepPath } from './ripgrep-path'
 import { localGrep, type LocalGrepOutput } from './local-search/local-grep'
+import { warmSearch } from './warm-search'
 
 /** Directories of version control systems never searched (native Grep parity). */
 const VCS_DIRECTORIES = ['.git', '.svn', '.hg', '.bzr', '.jj', '.sl']
@@ -121,6 +122,10 @@ async function spawnRipgrep(
   timeoutMs: number,
   singleThread = false,
 ): Promise<{ stdout: string; stderr: string; truncated: boolean; timedOut: boolean; code: number | null }> {
+  // The host's search process prints what this ripgrep would (warm-search.ts);
+  // ripgrep inherits this process's working directory, and so does it.
+  const warm = await warmSearch().run(singleThread ? ['-j', '1', ...args] : args, { cwd: process.cwd(), timeoutMs, maxBytes: MAX_GREP_BYTES })
+  if (warm) return { stdout: warm.stdout.toString('utf8'), stderr: warm.stderr, truncated: warm.truncated, timedOut: warm.timedOut, code: warm.code }
   const rg = await rgBinary()
   return new Promise((resolve, reject) => {
     const extraArgs = singleThread ? ['-j', '1'] : []
@@ -334,8 +339,16 @@ export async function grepSearch(input: Record<string, unknown>, context?: ToolC
         controller.abort()
       }, RIPGREP_TIMEOUT_MS)
       let streamErr: unknown
+      // One record past the limit tells a cut result from an exact fit.
+      const warm = await warmSearch().run(args, { cwd: process.cwd(), timeoutMs: RIPGREP_TIMEOUT_MS, maxBytes: MAX_GREP_BYTES, maxRecords: options.headLimit + 1 })
+      if (warm) {
+        const lines = warm.stdout.toString('utf8').split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l))
+        if (lines[lines.length - 1] === '') lines.pop()
+        collected.push(...lines.slice(0, options.headLimit + 1))
+        if (warm.timedOut) timedOut = true
+      }
       try {
-        await ripgrepStream(args.slice(0, -1), args[args.length - 1]!, controller.signal, (lines) => {
+        if (!warm) await ripgrepStream(args.slice(0, -1), args[args.length - 1]!, controller.signal, (lines) => {
           for (const line of lines) {
             collected.push(line)
             // One line past the limit tells a cut result from an exact fit.
