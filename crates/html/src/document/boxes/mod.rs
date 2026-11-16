@@ -54,8 +54,6 @@ pub(crate) struct BoxRecord {
     distributes: bool,
     /// Удерживаемый результат раскладки коробки; им владеет раскладка.
     layout_slot: Option<Box<crate::layout::retained::LayoutSlot>>,
-    /// Снимок детей, которым коробка опубликовала свой поток (`flows`).
-    flow: Option<crate::dom::ChildrenMark>,
 }
 
 #[derive(Default)]

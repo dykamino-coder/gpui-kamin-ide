@@ -12,12 +12,15 @@
 use super::BoxTree;
 use super::by_node::ByNode;
 use super::source::Source;
-use crate::dom::{BoxId, Children, Node};
+use crate::dom::{BoxId, Children, ChildrenMark, Node};
 
-/// Владелец потока по исходному тексту, с которого начинается его текст.
+/// Владелец потока по исходному тексту, с которого начинается его текст, и
+/// метки опубликованных потоков по слотам коробок.
 #[derive(Default)]
 pub(super) struct Flows {
     texts: ByNode,
+    /// Снимок детей, которым коробка слота (её поколения) опубликовала поток.
+    marks: Vec<Option<(u32, ChildrenMark)>>,
     /// Число узлов корневого потока коробки `Source::Root`.
     root: usize,
 }
@@ -25,12 +28,36 @@ pub(super) struct Flows {
 impl Flows {
     pub(super) fn clear(&mut self) {
         self.texts.clear();
+        self.marks.clear();
         self.root = 0;
+    }
+
+    fn set_mark(&mut self, id: BoxId, mark: Option<ChildrenMark>) {
+        let slot = id.slot as usize;
+        if slot >= self.marks.len() {
+            if mark.is_none() {
+                return;
+            }
+            self.marks.resize_with(slot + 1, || None);
+        }
+        self.marks[slot] = mark.map(|mark| (id.generation, mark));
+    }
+
+    fn mark(&self, id: BoxId) -> Option<&ChildrenMark> {
+        match self.marks.get(id.slot as usize)? {
+            Some((generation, mark)) if *generation == id.generation => Some(mark),
+            _ => None,
+        }
+    }
+
+    /// Коробка `id` удалена: её метка не держит снимок.
+    pub(super) fn forget(&mut self, id: BoxId) {
+        self.set_mark(id, None);
     }
 
     #[cfg(feature = "heap-report")]
     pub(super) fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
-        self.texts.heap_size(ops)
+        self.texts.heap_size(ops) + self.marks.capacity() * size_of::<Option<(u32, ChildrenMark)>>()
     }
 
     fn own_texts(&mut self, nodes: &[Node], id: BoxId) {
@@ -47,18 +74,17 @@ impl Flows {
 impl BoxTree {
     /// Коробка `id` публикует поток детьми `children` (пустые — без потока).
     pub(super) fn set_flow(&mut self, children: &Children, id: BoxId) {
-        let Some(record) = self.arena.record_mut(id) else {
+        if self.get(id).is_none() {
             return;
-        };
-        record.flow = (!children.is_empty()).then(|| children.mark());
+        }
+        let mark = (!children.is_empty()).then(|| children.mark());
+        self.flows.set_mark(id, mark);
         self.flows.own_texts(children, id);
     }
 
     /// Корневая коробка `root` публикует поток документа `nodes`.
     pub(super) fn set_root_flow(&mut self, nodes: &[Node], root: BoxId) {
-        if let Some(record) = self.arena.record_mut(root) {
-            record.flow = None;
-        }
+        self.flows.set_mark(root, None);
         self.flows.root = nodes.len();
         self.flows.own_texts(nodes, root);
     }
@@ -83,7 +109,7 @@ impl BoxTree {
     pub(crate) fn flow_of(&self, nodes: &[Node]) -> Option<BoxId> {
         let owner = nodes.iter().find_map(|node| self.owner(node))??;
         let record = self.get(owner)?;
-        let published = match &record.flow {
+        let published = match self.flows.mark(owner) {
             Some(mark) => mark.holds(nodes),
             None => {
                 record.origin == Source::Root

@@ -157,9 +157,9 @@ impl FlowReuse {
                 Replay::new(slot).hooked()
             })
             .collect();
-        self.next_contents
-            .borrow_mut()
-            .insert(key(content.owner), record);
+        let mut next = self.next_contents.take();
+        next.insert(key(content.owner), record);
+        self.next_contents.replace(next);
         Some(out)
     }
 
@@ -185,7 +185,8 @@ impl FlowReuse {
             items.push(pending.clone());
             out.push(ReplayRecorder::new(child, pending).hooked());
         }
-        self.pending_contents.borrow_mut().push(PendingContent {
+        let mut pending = self.pending_contents.take();
+        pending.push(PendingContent {
             owner: content.owner,
             record: ContentRecord {
                 key: content.key,
@@ -196,6 +197,7 @@ impl FlowReuse {
             },
             items,
         });
+        self.pending_contents.replace(pending);
     }
 
     /// Записи содержимого этого кадра: повторённые и завершённые.

@@ -175,6 +175,7 @@ impl BoxTree {
             let Some(record) = self.arena.remove(id) else {
                 continue;
             };
+            self.flows.forget(id);
             if record.source != 0 {
                 self.by_node.remove_if(record.source, id);
             }
