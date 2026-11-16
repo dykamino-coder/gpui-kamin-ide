@@ -72,6 +72,17 @@ function byFile(stdout: string): string {
   return lines.map((l, i) => [key(l), i, l] as const).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1])).map((x) => x[2]).join('\n')
 }
 
+/** Runs n with this process (and so ripgrep) in dir; null keeps the current one. */
+function inDir<T>(dir: string | null, fn: () => T): T {
+  const saved = process.cwd()
+  if (dir) process.chdir(dir)
+  try {
+    return fn()
+  } finally {
+    process.chdir(saved)
+  }
+}
+
 function checkGlob(pattern: string, base: string, label: string): boolean {
   const q = globQuery(pattern, base)
   const local = localGlobFiles(q, unlimited())
@@ -130,8 +141,17 @@ for (const repo of [true, false]) {
     it('answers Grep exactly as ripgrep', () => {
       if (!rg) return
       const c: Counts = { local: 0, delegated: 0 }
+      let slashLocal = 0
       for (const pattern of GREP_PATTERNS) {
         for (const mode of ['content', 'files_with_matches', 'count']) {
+          // Globs with a slash are rooted at ripgrep's working directory (this
+          // process's): outside it they see whole paths, under it relative ones.
+          for (const g of ['src/**', '!**/deep/**', '**/src/*.ts', 'src/*.ts', '/src/**/*.tsx', '{src,docs}/**']) {
+            for (const under of [false, true]) {
+              const input = { pattern, output_mode: mode, path: root, glob: g }
+              if (inDir(under ? root : null, () => checkGrep(input, JSON.stringify({ ...input, under })))) slashLocal++
+            }
+          }
           for (const extra of [{}, { '-i': true }, { '-n': false }, { glob: '*.ts' }, { glob: '!*.ts' }, { glob: '*.{ts,tsx}' }, { path: path.join(root, 'src') }, { path: path.join(root, 'unicode.txt') }, { path: path.join(root, 'app.log') }]) {
             const input = { pattern, output_mode: mode, path: root, ...extra }
             if (checkGrep(input, JSON.stringify(input))) c.local++
@@ -141,7 +161,8 @@ for (const repo of [true, false]) {
       }
       // The common shapes must stay in-process, or the test proves nothing.
       expect(c.local).toBeGreaterThan(c.delegated)
-    }, 120_000)
+      expect(slashLocal).toBeGreaterThan(GREP_PATTERNS.length * 3 * 6)
+    }, 300_000)
 
     it('answers Glob exactly as ripgrep', () => {
       if (!rg) return
@@ -154,6 +175,31 @@ for (const repo of [true, false]) {
   })
 }
 
+describe('in-process search equals ripgrep on escaped ignore lines', () => {
+  it('reads backslash escapes, trailing spaces, \\# and \\! as ripgrep does', () => {
+    if (!rg) return
+    const root = path.join(tmp, 'escapes')
+    const posix = process.platform !== 'win32'
+    fs.mkdirSync(path.join(root, '.git'), { recursive: true })
+    const lines = ['\\#hash.txt', '\\!bang.txt', 'trail.txt   ', '\\[br].txt', '[]x]y.txt', '\\{c,d\\}.txt', 'lit\\*.md', 'e\\scaped.txt', '!\\#keep*.txt', '\\#keep*.txt', 'sp\\ ', 'two\\\\.txt', 'crlf.txt\r', '[!a-c]z.txt']
+    put(root, '.gitignore', lines.join('\n') + '\n')
+    put(root, 'sub/.ignore', '\\#*\r\n!\\#hash.txt\r\n')
+    const files = ['#hash.txt', '!bang.txt', 'trail.txt', '[br].txt', 'br.txt', ']y.txt', 'xy.txt', '{c,d}.txt', 'c.txt', 'litx.md', 'escaped.txt', '#keep1.txt', 'crlf.txt', 'dz.txt', 'az.txt', 'sub/#hash.txt', 'sub/#other.txt', 'plain.txt']
+    if (posix) files.push('lit*.md', 'sp ', 'two\\.txt', 'tw.txt')
+    for (const f of files) put(root, f, 'hit\n')
+    let local = 0
+    for (const mode of ['content', 'files_with_matches']) {
+      for (const extra of [{}, { glob: '\\#*' }, { glob: '!\\[*' }, { glob: '*\\.txt' }]) {
+        const input = { pattern: 'hit', output_mode: mode, path: root, ...extra }
+        if (checkGrep(input, JSON.stringify(input))) local++
+      }
+    }
+    expect(local).toBe(8)
+    // The Glob tool reads a backslash as a path separator on Windows.
+    for (const g of [...(posix ? ['\\#*', '\\[br].txt', '*\\.md', '\\{c,d\\}.txt'] : []), '[]x]*', '[!a-c]z.txt', '{c,d}.txt']) expect(checkGlob(g, root, g)).toBe(true)
+  }, 60_000)
+})
+
 describe('in-process search equals ripgrep with a global git excludes file', () => {
   let saved: string | undefined
   beforeAll(() => {
@@ -165,11 +211,11 @@ describe('in-process search equals ripgrep with a global git excludes file', () 
   it('applies unanchored lines everywhere and anchored ones under the working directory only', () => {
     if (!rg) return
     const xdg = path.join(tmp, 'xdg')
-    put(xdg, 'git/ignore', 'sub/x.txt\n/top.txt\n*.zz\nskipdir/\n')
+    put(xdg, 'git/ignore', 'sub/x.txt\n/top.txt\n*.zz\nskipdir/\n\\#g.txt\nesc\\aped.txt\n*.b\\ak\n')
     process.env.XDG_CONFIG_HOME = xdg
     const root = path.join(tmp, 'global-repo')
     fs.mkdirSync(path.join(root, '.git'), { recursive: true })
-    for (const f of ['top.txt', 'a.zz', 'sub/x.txt', 'sub/top.txt', 'skipdir/y.txt', 'keep.txt']) put(root, f, 'hit\n')
+    for (const f of ['top.txt', 'a.zz', 'sub/x.txt', 'sub/top.txt', 'skipdir/y.txt', 'keep.txt', '#g.txt', 'escaped.txt', 'f.bak', 'f.b']) put(root, f, 'hit\n')
     let local = 0
     for (const mode of ['content', 'files_with_matches']) if (checkGrep({ pattern: 'hit', output_mode: mode, path: root }, `global ${mode}`)) local++
     expect(local).toBe(2)
@@ -195,9 +241,9 @@ describe('in-process search equals ripgrep on random trees', () => {
     console.log(`local-search differential seed: ${seed}`)
     const r = prng(seed)
     const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)]!
-    const names = ['a', 'b', 'ab', 'x.ts', 'y.tsx', 'z.js', '.dot', 'Ä.txt', 'gen-1.ts', 'n m.md', 'c.log', 'd', 'build', 'src']
+    const names = ['a', 'b', 'ab', 'x.ts', 'y.tsx', 'z.js', '.dot', 'Ä.txt', 'gen-1.ts', 'n m.md', 'c.log', 'd', 'build', 'src', '#c', '!c.log', '[ab]', '{a,b}', 'a,b', 'é']
     const words = ['export', 'function', 'const', 'alpha', 'Beta', '42', 'слово', 'x_1', '(', ')', '{', '}', '-', '  ', 'café', 'ß', 'end$']
-    const globAtoms = ['*.ts', '*.log', 'build/', '/a', 'src/**', '!*.log', '**/b', 'a*', '?.ts', '*.{ts,js}', '[ab]*', '!gen-*', 'd/', '# c', 'x.ts']
+    const globAtoms = ['*.ts', '*.log', 'build/', '/a', 'src/**', '!*.log', '**/b', 'a*', '?.ts', '*.{ts,js}', '[ab]*', '!gen-*', 'd/', '# c', 'x.ts', '\\#c', '\\!c.log', '!\\#*', 'a\\*', '\\a', 'x\\.ts', '\\[ab]', '[ab\\]*', 'c.log\\ ', '*.ts  ', '[]a]*', '\\{a,b}', '{a,b}*', 'a**', '**/**', 'x\\ts', '?', '[!a]', 'a\\,b', 'd\\/', '[a-]*', '\\', '{a,{b}}']
     const regexAtoms = ['export', 'a', 'B', '\\w', '\\d+', '.', '\\s', '[a-f]', '[^ ]', 'é', '\\b', 'x_\\d', '(a|b)', 'c?', 'o{1,2}', '^', '$', 'ß', '\\(']
     let local = 0
     for (let t = 0; t < 40; t++) {
@@ -226,9 +272,10 @@ describe('in-process search equals ripgrep on random trees', () => {
         const pattern = Array.from({ length: 1 + Math.floor(r() * 3) }, () => pick(regexAtoms)).join('')
         const input: Record<string, unknown> = { pattern, output_mode: pick(['content', 'files_with_matches', 'count']), path: root }
         if (r() < 0.3) input['-i'] = true
-        if (r() < 0.3) input.glob = pick(['*.ts', '!*.log', '*.{ts,js}', 'x*'])
-        if (checkGrep(input, `seed ${seed} tree ${t} ${JSON.stringify(input)}`)) local++
-        const g = pick(['*.ts', '**/*', '**/a/*', 'src/**/*.ts', '*.{ts,tsx}', '?.ts', '[a-c]*', 'b*/**', '.*'])
+        if (r() < 0.4) input.glob = pick(['*.ts', '!*.log', '*.{ts,js}', 'x*', '\\#*', '!\\!*', '*\\.ts', '\\[ab]', '[]a]*', '?', 'src/**', '!**/build/**', '**/a/*', 'd/*.ts', '/a/**', '!src/*'])
+        const under = r() < 0.5
+        if (inDir(under ? root : null, () => checkGrep(input, `seed ${seed} tree ${t} under ${under} ${JSON.stringify(input)}`))) local++
+        const g = pick(['*.ts', '**/*', '**/a/*', 'src/**/*.ts', '*.{ts,tsx}', '?.ts', '[a-c]*', 'b*/**', '.*', 'x\\.ts', '\\[ab]', '\\{a,b}', '\\#*', '?', '[!a]*'])
         checkGlob(g, root, `seed ${seed} tree ${t} glob ${g}`)
       }
     }

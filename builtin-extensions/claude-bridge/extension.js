@@ -750,7 +750,7 @@ var require_permessage_deflate = __commonJS({
 var require_validation = __commonJS({
   "node_modules/ws/lib/validation.js"(exports2, module2) {
     "use strict";
-    var { isUtf8: isUtf82 } = require("buffer");
+    var { isUtf8: isUtf83 } = require("buffer");
     var { hasBlob } = require_constants();
     var tokenChars = [
       0,
@@ -931,9 +931,9 @@ var require_validation = __commonJS({
       isValidUTF8: _isValidUTF8,
       tokenChars
     };
-    if (isUtf82) {
+    if (isUtf83) {
       module2.exports.isValidUTF8 = function(buf) {
-        return buf.length < 24 ? _isValidUTF8(buf) : isUtf82(buf);
+        return buf.length < 24 ? _isValidUTF8(buf) : isUtf83(buf);
       };
     } else if (!process.env.WS_NO_UTF_8_VALIDATE) {
       try {
@@ -14863,7 +14863,7 @@ var require_fill_range = __commonJS({
       let stop = String.fromCharCode(b);
       return `[${start}-${stop}]`;
     };
-    var toRegex = (start, end, options) => {
+    var toRegex2 = (start, end, options) => {
       if (Array.isArray(start)) {
         let wrap = options.wrap === true;
         let prefix = options.capture ? "" : "?:";
@@ -14919,7 +14919,7 @@ var require_fill_range = __commonJS({
         index++;
       }
       if (options.toRegex === true) {
-        return step > 1 ? toSequence(parts, options, maxLen) : toRegex(range, null, { wrap: false, ...options });
+        return step > 1 ? toSequence(parts, options, maxLen) : toRegex2(range, null, { wrap: false, ...options });
       }
       return range;
     };
@@ -14944,7 +14944,7 @@ var require_fill_range = __commonJS({
         index++;
       }
       if (options.toRegex === true) {
-        return toRegex(range, null, { wrap: false, options });
+        return toRegex2(range, null, { wrap: false, options });
       }
       return range;
     };
@@ -19288,7 +19288,7 @@ var require_matcher = __commonJS({
         });
       }
       _splitSegmentsIntoSections(segments) {
-        return utils.array.splitWhen(segments, (segment2) => segment2.dynamic && utils.pattern.hasGlobStar(segment2.pattern));
+        return utils.array.splitWhen(segments, (segment) => segment.dynamic && utils.pattern.hasGlobStar(segment.pattern));
       }
     };
     exports2.default = Matcher;
@@ -19312,11 +19312,11 @@ var require_partial = __commonJS({
             return true;
           }
           const match = parts.every((part, index) => {
-            const segment2 = pattern.segments[index];
-            if (segment2.dynamic && segment2.patternRe.test(part)) {
+            const segment = pattern.segments[index];
+            if (segment.dynamic && segment.patternRe.test(part)) {
               return true;
             }
-            if (!segment2.dynamic && segment2.pattern === part) {
+            if (!segment.dynamic && segment.pattern === part) {
               return true;
             }
             return false;
@@ -19971,82 +19971,264 @@ var init_ripgrep_path = __esm({
 });
 
 // src/main/mcp/tools/local-search/rg-glob.ts
-function segment(seg) {
-  if (seg.includes("**")) return null;
-  let out = "";
-  for (let i = 0; i < seg.length; i++) {
-    const c = seg[i];
-    if (c === "*") out += "[^/]*";
-    else if (c === "?") out += "[^/]";
-    else if (c === "[") {
-      const end = seg.indexOf("]", i + 2);
-      if (end === -1) return null;
-      let body = seg.slice(i + 1, end);
-      let negated = false;
-      if (body.startsWith("!") || body.startsWith("^")) {
-        negated = true;
-        body = body.slice(1);
+function tokenize(glob) {
+  const chars = Array.from(glob);
+  let pos = 0;
+  let cur;
+  let prev;
+  const bump = () => {
+    prev = cur;
+    cur = chars[pos++];
+    return cur;
+  };
+  const peek = () => chars[pos];
+  const branches = [[]];
+  const altStack = [];
+  const push = (t) => void branches[branches.length - 1].push(t);
+  const inAlt = () => altStack.length > 0;
+  const star = () => {
+    const before = prev;
+    if (peek() !== "*") return push({ k: "star" });
+    bump();
+    if (inAlt()) throw new Refused();
+    const last = branches[branches.length - 1];
+    if (last.length === 0) {
+      if (peek() !== void 0 && peek() !== "/") {
+        push({ k: "star" });
+        push({ k: "star" });
+      } else {
+        push({ k: "rprefix" });
+        bump();
       }
-      if (!body || /[[\]\\/]/.test(body)) return null;
-      out += `[${negated ? "^/" : ""}${body.replace(/[\^]/g, "\\^")}]`;
-      i = end;
-    } else if (c === "{") {
-      const end = seg.indexOf("}", i);
-      if (end === -1) return null;
-      const alts = seg.slice(i + 1, end).split(",");
-      if (alts.length < 2) return null;
-      const parts = [];
-      for (const alt of alts) {
-        if (!SEGMENT_CHARS.test(alt)) return null;
-        const p = segment(alt);
-        if (p === null) return null;
-        parts.push(p);
-      }
-      out += `(?:${parts.join("|")})`;
-      i = end;
-    } else if (c === "]" || c === "}" || c === "\\") return null;
-    else out += c.replace(/[.+^$()|]/g, "\\$&");
-  }
-  return out;
-}
-function compileRgGlob(raw) {
-  let glob = raw;
-  const dirOnly = glob.endsWith("/");
-  if (dirOnly) glob = glob.slice(0, -1);
-  if (!glob || glob.includes("//")) return null;
-  const anchored = glob.includes("/");
-  if (glob.startsWith("/")) glob = glob.slice(1);
-  if (!glob) return null;
-  const segs = glob.split("/");
-  if (segs.some((s, i) => s === "**" && segs[i + 1] === "**")) return null;
-  let re = anchored ? "" : "(?:.*/)?";
-  for (let i = 0; i < segs.length; i++) {
-    const seg = segs[i];
-    const last = i === segs.length - 1;
-    if (seg === "**") {
-      if (segs.length === 1) re += ".*";
-      else if (i === 0) re += "(?:.*/)?";
-      else if (last) re += "/.*";
-      else re += "(?:/.*)?/";
-      continue;
+      return;
     }
-    const s = segment(seg);
-    if (s === null) return null;
-    const prevStar = i > 0 && segs[i - 1] === "**";
-    if (i > 0 && !prevStar) re += "/";
-    re += s;
+    if (before !== "/") {
+      push({ k: "star" });
+      push({ k: "star" });
+      return;
+    }
+    let suffix;
+    if (peek() === void 0) {
+      bump();
+      suffix = true;
+    } else if (peek() === "/") {
+      bump();
+      suffix = false;
+    } else {
+      push({ k: "star" });
+      push({ k: "star" });
+      return;
+    }
+    const popped = last.pop();
+    if (popped.k === "rprefix" || popped.k === "rsuffix") push(popped);
+    else push({ k: suffix ? "rsuffix" : "rzom" });
+  };
+  const cls = () => {
+    let negated = false;
+    if (peek() === "!" || peek() === "^") {
+      bump();
+      negated = true;
+    }
+    const ranges = [];
+    let first = true;
+    let inRange = false;
+    const extend = (c) => {
+      const r = ranges[ranges.length - 1];
+      r[1] = c;
+      if (r[1].codePointAt(0) < r[0].codePointAt(0)) throw new Refused();
+    };
+    for (; ; ) {
+      const c = bump();
+      if (c === void 0) throw new Refused();
+      if (c === "]" && !first) break;
+      if (c === "]") ranges.push(["]", "]"]);
+      else if (c === "-") {
+        if (first) ranges.push(["-", "-"]);
+        else if (inRange) {
+          extend("-");
+          inRange = false;
+        } else inRange = true;
+      } else {
+        if (inRange) extend(c);
+        else ranges.push([c, c]);
+        inRange = false;
+      }
+      first = false;
+    }
+    if (inRange) ranges.push(["-", "-"]);
+    if (ranges.some(([a, b]) => a > "\x7F" || b > "\x7F")) throw new Refused();
+    push({ k: "class", negated, ranges });
+  };
+  for (let c = bump(); c !== void 0; c = bump()) {
+    if (c === "?") push({ k: "any" });
+    else if (c === "*") star();
+    else if (c === "[") cls();
+    else if (c === "{") {
+      if (inAlt()) throw new Refused();
+      altStack.push(branches.length);
+      branches.push([]);
+    } else if (c === "}") {
+      const start = altStack.pop();
+      if (start === void 0) throw new Refused();
+      const alts = branches.splice(start);
+      if (alts.some((b) => b.length === 0)) throw new Refused();
+      push({ k: "alt", branches: alts });
+    } else if (c === ",") {
+      if (inAlt()) branches.push([]);
+      else push({ k: "lit", c });
+    } else if (c === "\\") {
+      const n = bump();
+      if (n === void 0) throw new Refused();
+      push({ k: "lit", c: n });
+    } else push({ k: "lit", c });
   }
+  if (inAlt()) throw new Refused();
+  return branches[0];
+}
+function toRegex(tokens) {
+  let re = "";
+  for (const t of tokens) {
+    if (t.k === "lit") re += escLit(t.c);
+    else if (t.k === "any") re += "[^/]";
+    else if (t.k === "star") re += "[^/]*";
+    else if (t.k === "rprefix") re += `(?:/?|${ANY}*/)`;
+    else if (t.k === "rsuffix") re += `/${ANY}*`;
+    else if (t.k === "rzom") re += `(?:/|/${ANY}*/)`;
+    else if (t.k === "class") {
+      re += `[${t.negated ? "^" : ""}${t.ranges.map(([a, b]) => a === b ? escClass(a) : `${escClass(a)}-${escClass(b)}`).join("")}]`;
+    } else re += `(?:${t.branches.map(toRegex).join("|")})`;
+  }
+  return re;
+}
+function buildGlob(actual, dirOnly) {
+  let tokens;
   try {
-    return { regex: new RegExp(`^${re}$`, "u"), dirOnly };
+    tokens = tokenize(actual);
+  } catch (err) {
+    if (err instanceof Refused) return null;
+    throw err;
+  }
+  const body = tokens.length === 1 && tokens[0].k === "rprefix" ? `${ANY}*` : toRegex(tokens);
+  try {
+    return { regex: new RegExp(`^${body}$`, "u"), dirOnly, asciiOnly: byteSensitive(tokens) };
   } catch {
     return null;
   }
 }
-var SEGMENT_CHARS;
+function parseRgGlobLine(raw) {
+  let line = raw;
+  if (line.startsWith("#")) return "skip";
+  if (!line.endsWith("\\ ")) line = line.replace(TRAILING_WS, "");
+  if (!line) return "skip";
+  let bang = false;
+  let absolute = false;
+  if (line.startsWith("\\!") || line.startsWith("\\#")) {
+    line = line.slice(1);
+    absolute = line.startsWith("/");
+  } else {
+    if (line.startsWith("!")) {
+      bang = true;
+      line = line.slice(1);
+    }
+    if (line.startsWith("/")) {
+      line = line.slice(1);
+      absolute = true;
+    }
+  }
+  let dirOnly = false;
+  if (line.endsWith("/")) {
+    dirOnly = true;
+    line = line.slice(0, -1);
+    if (line.endsWith("\\")) return null;
+  }
+  let actual = line;
+  if (!absolute && !line.includes("/") && !(actual.startsWith("**/") || actual === "**")) actual = `**/${actual}`;
+  if (actual.endsWith("/**")) actual += "/*";
+  const glob = buildGlob(actual, dirOnly);
+  return glob ? { glob, bang } : null;
+}
+function rgGlobMatch(g, rel) {
+  if (g.asciiOnly && /[^\x00-\x7f]/.test(rel)) return void 0;
+  return g.regex.test(rel);
+}
+var Refused, escLit, escClass, ANY, byteSensitive, TRAILING_WS;
 var init_rg_glob = __esm({
   "src/main/mcp/tools/local-search/rg-glob.ts"() {
     "use strict";
-    SEGMENT_CHARS = /^[^\\{}[\]]*$/;
+    Refused = class extends Error {
+    };
+    escLit = (c) => c.replace(/[\\^$.*+?()[\]{}|/]/g, "\\$&");
+    escClass = (c) => c.replace(/[\\\]\[^-]/g, "\\$&");
+    ANY = "[\\s\\S]";
+    byteSensitive = (tokens) => tokens.some((t) => t.k === "any" || t.k === "class" || t.k === "alt" && t.branches.some(byteSensitive));
+    TRAILING_WS = new RegExp("\\p{White_Space}+$", "u");
+  }
+});
+
+// src/main/mcp/tools/local-search/walk.ts
+function defaultBudget(now = performance.now()) {
+  return { entries: 4e3, bytes: 4 * 1024 * 1024, deadline: now + (process.platform === "win32" ? 25 : 6) };
+}
+function coveredByTooBig(root, now) {
+  for (const [p, until] of tooBig) {
+    if (until <= now) tooBig.delete(p);
+    else if (p === root || p.startsWith(root.endsWith(import_node_path11.default.sep) ? root : root + import_node_path11.default.sep)) return true;
+  }
+  return false;
+}
+function rememberTooBig(root, now) {
+  tooBig.delete(root);
+  tooBig.set(root, now + TOO_BIG_TTL_MS);
+  if (tooBig.size > TOO_BIG_MAX) tooBig.delete(tooBig.keys().next().value);
+}
+function joinShown(base, name, sep = import_node_path11.default.sep) {
+  return base.endsWith(sep) || base.endsWith("/") ? base + name : base + sep + name;
+}
+function walk(root, budget, visitor) {
+  let entries2 = 0;
+  const visit = (dir, relDir) => {
+    let list;
+    try {
+      list = import_node_fs10.default.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      throw new WalkAbort();
+    }
+    entries2 += list.length;
+    if (entries2 > budget.entries || performance.now() > budget.deadline) throw new WalkBudgetExceeded();
+    visitor.enter?.(dir, relDir, list.map((d) => d.name));
+    for (const d of list) {
+      const abs = joinShown(dir, d.name);
+      const rel = relDir ? `${relDir}/${d.name}` : d.name;
+      if (d.isSymbolicLink()) throw new WalkAbort();
+      if (d.isDirectory()) {
+        if (visitor.dir(abs, rel)) visit(abs, rel);
+      } else if (d.isFile()) visitor.file(abs, rel);
+    }
+    visitor.leave?.(dir);
+  };
+  if (coveredByTooBig(root, performance.now())) return false;
+  try {
+    visit(root, "");
+    return true;
+  } catch (err) {
+    if (err instanceof WalkBudgetExceeded) rememberTooBig(root, performance.now());
+    if (err instanceof WalkAbort) return false;
+    throw err;
+  }
+}
+var import_node_fs10, import_node_path11, WalkAbort, WalkBudgetExceeded, TOO_BIG_TTL_MS, TOO_BIG_MAX, tooBig;
+var init_walk = __esm({
+  "src/main/mcp/tools/local-search/walk.ts"() {
+    "use strict";
+    import_node_fs10 = __toESM(require("node:fs"), 1);
+    import_node_path11 = __toESM(require("node:path"), 1);
+    WalkAbort = class extends Error {
+    };
+    WalkBudgetExceeded = class extends WalkAbort {
+    };
+    TOO_BIG_TTL_MS = 5 * 6e4;
+    TOO_BIG_MAX = 64;
+    tooBig = /* @__PURE__ */ new Map();
   }
 });
 
@@ -20055,31 +20237,34 @@ function matchRules(rules, rel, isDir) {
   for (let i = rules.length - 1; i >= 0; i--) {
     const r = rules[i];
     if (r.glob.dirOnly && !isDir) continue;
-    if (r.glob.regex.test(rel)) return r.negate ? "whitelist" : "ignore";
+    const m = rgGlobMatch(r.glob, rel);
+    if (m === void 0) throw new WalkAbort();
+    if (m) return r.negate ? "whitelist" : "ignore";
   }
   return null;
 }
 function parseIgnoreFile(text) {
-  if (text.includes("\r")) return null;
+  if (text.startsWith("\uFEFF")) return null;
   const rules = [];
-  for (const line of text.split("\n")) {
-    if (line === "" || line.startsWith("#")) continue;
-    if (/\s$/.test(line) || line.startsWith("\\")) return null;
-    const negate = line.startsWith("!");
-    const glob = compileRgGlob(negate ? line.slice(1) : line);
-    if (!glob) return null;
-    rules.push({ glob, negate });
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    if (i < lines.length - 1 && line.endsWith("\r")) line = line.slice(0, -1);
+    const r = parseRgGlobLine(line);
+    if (r === null) return null;
+    if (r !== "skip") rules.push({ glob: r.glob, negate: r.bang });
   }
   return rules;
 }
 function readRules(file) {
-  let text;
+  let buf;
   try {
-    text = import_node_fs10.default.readFileSync(file, "utf8");
+    buf = import_node_fs11.default.readFileSync(file);
   } catch (err) {
     return err.code === "ENOENT" ? null : void 0;
   }
-  return parseIgnoreFile(text) ?? void 0;
+  if (!(0, import_node_buffer.isUtf8)(buf)) return void 0;
+  return parseIgnoreFile(buf.toString("utf8")) ?? void 0;
 }
 function dirRules(dir, useGit, names) {
   const kinds = [];
@@ -20088,25 +20273,25 @@ function dirRules(dir, useGit, names) {
       kinds.push(null);
       continue;
     }
-    const r = readRules(import_node_path11.default.join(dir, name));
+    const r = readRules(import_node_path12.default.join(dir, name));
     if (r === void 0) return void 0;
     kinds.push(r);
   }
   return { dir, kinds };
 }
 function exists(p) {
-  return import_node_fs10.default.existsSync(p);
+  return import_node_fs11.default.existsSync(p);
 }
 function globalExcludes() {
   const home = import_node_os8.default.homedir();
-  const xdg = process.env.XDG_CONFIG_HOME || import_node_path11.default.join(home, ".config");
-  for (const cfg of [import_node_path11.default.join(home, ".gitconfig"), import_node_path11.default.join(xdg, "git", "config")]) {
+  const xdg = process.env.XDG_CONFIG_HOME || import_node_path12.default.join(home, ".config");
+  for (const cfg of [import_node_path12.default.join(home, ".gitconfig"), import_node_path12.default.join(xdg, "git", "config")]) {
     try {
-      if (/excludesfile/i.test(import_node_fs10.default.readFileSync(cfg, "utf8"))) return void 0;
+      if (/excludesfile/i.test(import_node_fs11.default.readFileSync(cfg, "utf8"))) return void 0;
     } catch {
     }
   }
-  const rules = readRules(import_node_path11.default.join(xdg, "git", "ignore"));
+  const rules = readRules(import_node_path12.default.join(xdg, "git", "ignore"));
   if (rules === void 0) return void 0;
   return rules ?? [];
 }
@@ -20114,21 +20299,21 @@ function ignoreContext(root) {
   const chain = [];
   for (let d = root; ; ) {
     chain.push(d);
-    const up = import_node_path11.default.dirname(d);
+    const up = import_node_path12.default.dirname(d);
     if (up === d) break;
     d = up;
   }
-  const repoIdx = chain.findIndex((d) => exists(import_node_path11.default.join(d, ".git")));
+  const repoIdx = chain.findIndex((d) => exists(import_node_path12.default.join(d, ".git")));
   if (repoIdx !== -1) {
     try {
-      if (!import_node_fs10.default.statSync(import_node_path11.default.join(chain[repoIdx], ".git")).isDirectory()) return null;
+      if (!import_node_fs11.default.statSync(import_node_path12.default.join(chain[repoIdx], ".git")).isDirectory()) return null;
     } catch {
       return null;
     }
   }
   const useGit = repoIdx !== -1;
   for (const d of chain.slice(useGit ? repoIdx + 1 : 1)) {
-    if (KINDS.some((k) => exists(import_node_path11.default.join(d, k)))) return null;
+    if (KINDS.some((k) => exists(import_node_path12.default.join(d, k)))) return null;
   }
   const global2 = useGit ? globalExcludes() : [];
   if (global2 === void 0) return null;
@@ -20141,19 +20326,21 @@ function ignoreContext(root) {
   let exclude = null;
   if (useGit) {
     const repo = chain[repoIdx];
-    const rules = readRules(import_node_path11.default.join(repo, ".git", "info", "exclude"));
+    const rules = readRules(import_node_path12.default.join(repo, ".git", "info", "exclude"));
     if (rules === void 0) return null;
     if (rules && rules.length) exclude = { dir: repo, rules };
   }
   return { useGit, parents, exclude, global: global2 };
 }
-function globalRel(abs) {
+function cwdRel(abs) {
   const cwd = process.cwd();
-  const under = abs.startsWith(cwd.endsWith(import_node_path11.default.sep) ? cwd : cwd + import_node_path11.default.sep);
-  return (under ? import_node_path11.default.relative(cwd, abs) : abs).split(import_node_path11.default.sep).join("/");
+  const prefix = cwd.endsWith(import_node_path12.default.sep) ? cwd : cwd + import_node_path12.default.sep;
+  const under = abs.startsWith(prefix);
+  if (!under && abs.toLowerCase().startsWith(prefix.toLowerCase())) throw new WalkAbort();
+  return (under ? abs.slice(prefix.length) : abs).split(import_node_path12.default.sep).join("/");
 }
 function relTo(dir, abs) {
-  return import_node_path11.default.relative(dir, abs).split(import_node_path11.default.sep).join("/");
+  return import_node_path12.default.relative(dir, abs).split(import_node_path12.default.sep).join("/");
 }
 function ignoreVerdict(chain, ctx, abs, isDir) {
   for (let k = 0; k < KINDS.length; k++) {
@@ -20165,16 +20352,18 @@ function ignoreVerdict(chain, ctx, abs, isDir) {
     }
   }
   const exclude = ctx.exclude ? matchRules(ctx.exclude.rules, relTo(ctx.exclude.dir, abs), isDir) : null;
-  return exclude ?? (ctx.global.length ? matchRules(ctx.global, globalRel(abs), isDir) : null);
+  return exclude ?? (ctx.global.length ? matchRules(ctx.global, cwdRel(abs), isDir) : null);
 }
-var import_node_fs10, import_node_os8, import_node_path11, Overrides, KINDS;
+var import_node_fs11, import_node_os8, import_node_path12, import_node_buffer, Overrides, KINDS;
 var init_rg_ignore = __esm({
   "src/main/mcp/tools/local-search/rg-ignore.ts"() {
     "use strict";
-    import_node_fs10 = __toESM(require("node:fs"), 1);
+    import_node_fs11 = __toESM(require("node:fs"), 1);
     import_node_os8 = __toESM(require("node:os"), 1);
-    import_node_path11 = __toESM(require("node:path"), 1);
+    import_node_path12 = __toESM(require("node:path"), 1);
+    import_node_buffer = require("node:buffer");
     init_rg_glob();
+    init_walk();
     Overrides = class _Overrides {
       constructor(rules, whitelists) {
         this.rules = rules;
@@ -20186,11 +20375,11 @@ var init_rg_ignore = __esm({
         const rules = [];
         let whitelists = 0;
         for (const g of globs) {
-          const negate = !g.startsWith("!");
-          const glob = compileRgGlob(negate ? g : g.slice(1));
-          if (!glob || glob.dirOnly) return null;
+          const line = parseRgGlobLine(g);
+          if (!line || line === "skip" || line.glob.dirOnly) return null;
+          const negate = !line.bang;
           if (negate) whitelists++;
-          rules.push({ glob, negate });
+          rules.push({ glob: line.glob, negate });
         }
         return new _Overrides(rules, whitelists);
       }
@@ -20201,54 +20390,6 @@ var init_rg_ignore = __esm({
       }
     };
     KINDS = [".rgignore", ".ignore", ".gitignore"];
-  }
-});
-
-// src/main/mcp/tools/local-search/walk.ts
-function defaultBudget(now = performance.now()) {
-  return { entries: 4e3, bytes: 4 * 1024 * 1024, deadline: now + (process.platform === "win32" ? 25 : 6) };
-}
-function joinShown(base, name, sep = import_node_path12.default.sep) {
-  return base.endsWith(sep) || base.endsWith("/") ? base + name : base + sep + name;
-}
-function walk(root, budget, visitor) {
-  let entries2 = 0;
-  const visit = (dir, relDir) => {
-    let list;
-    try {
-      list = import_node_fs11.default.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      throw new WalkAbort();
-    }
-    entries2 += list.length;
-    if (entries2 > budget.entries || performance.now() > budget.deadline) throw new WalkAbort();
-    visitor.enter?.(dir, relDir, list.map((d) => d.name));
-    for (const d of list) {
-      const abs = joinShown(dir, d.name);
-      const rel = relDir ? `${relDir}/${d.name}` : d.name;
-      if (d.isSymbolicLink()) throw new WalkAbort();
-      if (d.isDirectory()) {
-        if (visitor.dir(abs, rel)) visit(abs, rel);
-      } else if (d.isFile()) visitor.file(abs, rel);
-    }
-    visitor.leave?.(dir);
-  };
-  try {
-    visit(root, "");
-    return true;
-  } catch (err) {
-    if (err instanceof WalkAbort) return false;
-    throw err;
-  }
-}
-var import_node_fs11, import_node_path12, WalkAbort;
-var init_walk = __esm({
-  "src/main/mcp/tools/local-search/walk.ts"() {
-    "use strict";
-    import_node_fs11 = __toESM(require("node:fs"), 1);
-    import_node_path12 = __toESM(require("node:path"), 1);
-    WalkAbort = class extends Error {
-    };
   }
 });
 
@@ -20563,8 +20704,7 @@ var init_rg_regex = __esm({
 function supported(o) {
   if (o.fileType || o.multiline) return false;
   if (o.contextLines !== void 0 || o.afterContext !== void 0 || o.beforeContext !== void 0) return false;
-  if (process.env.RIPGREP_CONFIG_PATH) return false;
-  return o.globs.every((g) => !g.replace(/^!/, "").replace(/\/$/, "").includes("/"));
+  return !process.env.RIPGREP_CONFIG_PATH;
 }
 function hasBom(b) {
   return b[0] === 239 && b[1] === 187 && b[2] === 191 || b[0] === 255 && b[1] === 254 || b[0] === 254 && b[1] === 255;
@@ -20577,12 +20717,12 @@ function searchFile(o, re, file, withName, budget) {
     throw new WalkAbort();
   }
   budget.bytes -= buf.length;
-  if (budget.bytes < 0) throw new WalkAbort();
+  if (budget.bytes < 0) throw new WalkBudgetExceeded();
   const text = buf.toString("utf8");
   const lines = text.split("\n");
   const terminated = lines[lines.length - 1] === "";
   if (terminated) lines.pop();
-  const exact = !hasBom(buf) && !buf.includes(0) && (0, import_node_buffer.isUtf8)(buf);
+  const exact = !hasBom(buf) && !buf.includes(0) && (0, import_node_buffer2.isUtf8)(buf);
   let out = "";
   let count = 0;
   const prefix = withName ? `${file}:` : "";
@@ -20636,16 +20776,16 @@ function localGrep(o, budget = defaultBudget()) {
         chain.push(r);
       },
       leave: () => void chain.pop(),
-      dir: (abs, rel) => {
-        const ov = overrides.verdict(rel, true);
+      dir: (abs) => {
+        const ov = overrides.verdict(cwdRel(abs), true);
         if (ov) return ov === "whitelist";
         return ignoreVerdict(chain, ctx, abs, true) !== "ignore";
       },
-      file: (abs, rel) => {
-        const ov = overrides.verdict(rel, false);
+      file: (abs) => {
+        const ov = overrides.verdict(cwdRel(abs), false);
         if (ov === "ignore" || ov === null && ignoreVerdict(chain, ctx, abs, false) === "ignore") return;
         stdout += searchFile(o, re, abs, true, bytes);
-        if (performance.now() > budget.deadline) throw new WalkAbort();
+        if (performance.now() > budget.deadline) throw new WalkBudgetExceeded();
       }
     });
     if (!done) return null;
@@ -20655,13 +20795,13 @@ function localGrep(o, budget = defaultBudget()) {
     throw err;
   }
 }
-var import_node_fs14, import_node_path15, import_node_buffer;
+var import_node_fs14, import_node_path15, import_node_buffer2;
 var init_local_grep = __esm({
   "src/main/mcp/tools/local-search/local-grep.ts"() {
     "use strict";
     import_node_fs14 = __toESM(require("node:fs"), 1);
     import_node_path15 = __toESM(require("node:path"), 1);
-    import_node_buffer = require("node:buffer");
+    import_node_buffer2 = require("node:buffer");
     init_rg_ignore();
     init_rg_regex();
     init_walk();
@@ -26478,9 +26618,9 @@ var require_URL = __commonJS({
               path57 = "/" + path57.substring(4);
               output = output.replace(/\/?[^\/]*$/, "");
             } else {
-              var segment2 = path57.match(/(\/?([^\/]*))/)[0];
-              output += segment2;
-              path57 = path57.substring(segment2.length);
+              var segment = path57.match(/(\/?([^\/]*))/)[0];
+              output += segment;
+              path57 = path57.substring(segment.length);
             }
           }
           return output;
@@ -41872,10 +42012,10 @@ var require_range = __commonJS({
 var require_comparator = __commonJS({
   "node_modules/semver/classes/comparator.js"(exports2, module2) {
     "use strict";
-    var ANY = /* @__PURE__ */ Symbol("SemVer ANY");
+    var ANY2 = /* @__PURE__ */ Symbol("SemVer ANY");
     var Comparator = class _Comparator {
       static get ANY() {
-        return ANY;
+        return ANY2;
       }
       constructor(comp, options) {
         options = parseOptions(options);
@@ -41891,7 +42031,7 @@ var require_comparator = __commonJS({
         this.options = options;
         this.loose = !!options.loose;
         this.parse(comp);
-        if (this.semver === ANY) {
+        if (this.semver === ANY2) {
           this.value = "";
         } else {
           this.value = this.operator + this.semver.version;
@@ -41909,7 +42049,7 @@ var require_comparator = __commonJS({
           this.operator = "";
         }
         if (!m[2]) {
-          this.semver = ANY;
+          this.semver = ANY2;
         } else {
           this.semver = new SemVer(m[2], this.options.loose);
         }
@@ -41919,7 +42059,7 @@ var require_comparator = __commonJS({
       }
       test(version) {
         debug("Comparator.test", version, this.options.loose);
-        if (this.semver === ANY || version === ANY) {
+        if (this.semver === ANY2 || version === ANY2) {
           return true;
         }
         if (typeof version === "string") {
@@ -42147,7 +42287,7 @@ var require_outside = __commonJS({
     "use strict";
     var SemVer = require_semver();
     var Comparator = require_comparator();
-    var { ANY } = Comparator;
+    var { ANY: ANY2 } = Comparator;
     var Range = require_range();
     var satisfies = require_satisfies();
     var gt = require_gt();
@@ -42184,7 +42324,7 @@ var require_outside = __commonJS({
         let high = null;
         let low = null;
         comparators.forEach((comparator) => {
-          if (comparator.semver === ANY) {
+          if (comparator.semver === ANY2) {
             comparator = new Comparator(">=0.0.0");
           }
           high = high || comparator;
@@ -42300,7 +42440,7 @@ var require_subset = __commonJS({
     "use strict";
     var Range = require_range();
     var Comparator = require_comparator();
-    var { ANY } = Comparator;
+    var { ANY: ANY2 } = Comparator;
     var satisfies = require_satisfies();
     var compare = require_compare();
     var subset = (sub, dom, options = {}) => {
@@ -42330,8 +42470,8 @@ var require_subset = __commonJS({
       if (sub === dom) {
         return true;
       }
-      if (sub.length === 1 && sub[0].semver === ANY) {
-        if (dom.length === 1 && dom[0].semver === ANY) {
+      if (sub.length === 1 && sub[0].semver === ANY2) {
+        if (dom.length === 1 && dom[0].semver === ANY2) {
           return true;
         } else if (options.includePrerelease) {
           sub = minimumVersionWithPreRelease;
@@ -42339,7 +42479,7 @@ var require_subset = __commonJS({
           sub = minimumVersion;
         }
       }
-      if (dom.length === 1 && dom[0].semver === ANY) {
+      if (dom.length === 1 && dom[0].semver === ANY2) {
         if (options.includePrerelease) {
           return true;
         } else {

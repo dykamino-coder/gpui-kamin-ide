@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compileRgGlob } from './rg-glob'
+import { compileRgGlob, parseRgGlobLine, rgGlobMatch } from './rg-glob'
 import { lineMatcher, translateRustRegex } from './rg-regex'
 import { Overrides, parseIgnoreFile } from './rg-ignore'
 
@@ -28,8 +28,40 @@ describe('gitignore-style globs', () => {
     expect(compileRgGlob('build/')!.dirOnly).toBe(true)
   })
 
-  it('leaves syntax outside the replicated subset to ripgrep', () => {
-    for (const g of ['a**', '**/**', 'a\\*', '[]a]', '{a,{b,c}}', '{a/b,c}', '[[:alpha:]]', '']) expect(compileRgGlob(g)).toBeNull()
+  it('reads globset syntax: escapes, classes and stars', () => {
+    expect(globMatches('a\\*', 'a*')).toBe(true)
+    expect(globMatches('a\\*', 'ab')).toBe(false)
+    expect(globMatches('\\[x]', '[x]')).toBe(true)
+    expect(globMatches('[]a]', ']')).toBe(true)
+    expect(globMatches('[a-]', '-')).toBe(true)
+    expect(globMatches('[\\]', '\\')).toBe(true)
+    expect(globMatches('a**', 'xa/ab')).toBe(true)
+    expect(globMatches('a**', 'a/b')).toBe(false)
+    expect(globMatches('**/**', 'a/b')).toBe(true)
+    expect(globMatches('**', 'a/b')).toBe(true)
+    expect(globMatches('x,y', 'x,y')).toBe(true)
+  })
+
+  it('reads ignore lines as the ignore crate does', () => {
+    const line = (l: string) => parseRgGlobLine(l)
+    expect(line('# c')).toBe('skip')
+    expect(line('   ')).toBe('skip')
+    expect(line('\\#x')).toMatchObject({ bang: false })
+    expect(compileRgGlob('\\#x')!.regex.test('#x')).toBe(true)
+    expect(compileRgGlob('\\!x')!.regex.test('!x')).toBe(true)
+    expect(line('!x')).toMatchObject({ bang: true })
+    expect(compileRgGlob('a\\ ')!.regex.test('a ')).toBe(true)
+    expect(compileRgGlob('a  ')!.regex.test('a')).toBe(true)
+    expect(compileRgGlob('a\\\\b')!.regex.test('a\\b')).toBe(true)
+  })
+
+  it('leaves to ripgrep what its versions read differently or reject', () => {
+    for (const g of ['{a,{b,c}}', '{a,}', '{}', 'a{**,b}', '[abc', 'a\\', '[b-a]', 'x}', '{a', 'a\\/', '[é]', '']) expect(compileRgGlob(g)).toBeNull()
+  })
+
+  it('leaves a byte-wise match on a non-ASCII path to ripgrep', () => {
+    expect(rgGlobMatch(compileRgGlob('?.txt')!, 'é.txt')).toBeUndefined()
+    expect(rgGlobMatch(compileRgGlob('*.txt')!, 'é.txt')).toBe(true)
   })
 
   it('applies overrides last-match-first and excludes unmatched files under a whitelist', () => {
@@ -42,9 +74,9 @@ describe('gitignore-style globs', () => {
 
   it('reads ignore files and refuses lines it does not replicate', () => {
     expect(parseIgnoreFile('# c\n\n*.log\n!keep.log\n')).toHaveLength(2)
-    expect(parseIgnoreFile('a \n')).toBeNull()
-    expect(parseIgnoreFile('\\#x\n')).toBeNull()
-    expect(parseIgnoreFile('a\r\n')).toBeNull()
+    expect(parseIgnoreFile('a \n\\#x\na\r\n')).toHaveLength(3)
+    expect(parseIgnoreFile('\uFEFFa\n')).toBeNull()
+    expect(parseIgnoreFile('ok\n[abc\n')).toBeNull()
   })
 })
 

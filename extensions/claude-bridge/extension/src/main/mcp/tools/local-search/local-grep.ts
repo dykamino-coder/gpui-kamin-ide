@@ -2,8 +2,9 @@
 // Grep tool's ripgrep command (`ripgrepArgs`) would, so the rest of the tool
 // treats both the same. Exactness rules:
 // - only arguments with a replicated meaning (no type, multiline or context,
-//   slashless globs, no ripgrep config file); the regex inside the subset of
-//   rg-regex.ts; ignore files through rg-ignore.ts;
+//   no ripgrep config file); the regex inside the subset of rg-regex.ts;
+//   ignore files through rg-ignore.ts; `--glob` overrides rooted, as in
+//   ripgrep, at the working directory of this process, which ripgrep inherits;
 // - a file whose bytes ripgrep reads differently (a BOM, a NUL byte, invalid
 //   UTF-8) is decided in-process only when the JS regex matches none of its
 //   lines: ripgrep's matches on such bytes are a subset of the JS ones, so
@@ -14,9 +15,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { isUtf8 } from 'node:buffer'
-import { ignoreContext, ignoreVerdict, Overrides, dirRules, type DirRules } from './rg-ignore'
+import { cwdRel, ignoreContext, ignoreVerdict, Overrides, dirRules, type DirRules } from './rg-ignore'
 import { lineMatcher } from './rg-regex'
-import { defaultBudget, walk, WalkAbort, type WalkBudget } from './walk'
+import { defaultBudget, walk, WalkAbort, WalkBudgetExceeded, type WalkBudget } from './walk'
 
 export interface LocalGrepOptions {
   pattern: string
@@ -43,8 +44,7 @@ export interface LocalGrepOutput {
 function supported(o: LocalGrepOptions): boolean {
   if (o.fileType || o.multiline) return false
   if (o.contextLines !== undefined || o.afterContext !== undefined || o.beforeContext !== undefined) return false
-  if (process.env.RIPGREP_CONFIG_PATH) return false
-  return o.globs.every((g) => !g.replace(/^!/, '').replace(/\/$/, '').includes('/'))
+  return !process.env.RIPGREP_CONFIG_PATH
 }
 
 function hasBom(b: Buffer): boolean {
@@ -60,7 +60,7 @@ function searchFile(o: LocalGrepOptions, re: RegExp, file: string, withName: boo
     throw new WalkAbort()
   }
   budget.bytes -= buf.length
-  if (budget.bytes < 0) throw new WalkAbort()
+  if (budget.bytes < 0) throw new WalkBudgetExceeded()
   const text = buf.toString('utf8')
   const lines = text.split('\n')
   const terminated = lines[lines.length - 1] === ''
@@ -121,16 +121,16 @@ export function localGrep(o: LocalGrepOptions, budget: WalkBudget = defaultBudge
         chain.push(r)
       },
       leave: () => void chain.pop(),
-      dir: (abs, rel) => {
-        const ov = overrides.verdict(rel, true)
+      dir: (abs) => {
+        const ov = overrides.verdict(cwdRel(abs), true)
         if (ov) return ov === 'whitelist'
         return ignoreVerdict(chain, ctx, abs, true) !== 'ignore'
       },
-      file: (abs, rel) => {
-        const ov = overrides.verdict(rel, false)
+      file: (abs) => {
+        const ov = overrides.verdict(cwdRel(abs), false)
         if (ov === 'ignore' || (ov === null && ignoreVerdict(chain, ctx, abs, false) === 'ignore')) return
         stdout += searchFile(o, re, abs, true, bytes)
-        if (performance.now() > budget.deadline) throw new WalkAbort()
+        if (performance.now() > budget.deadline) throw new WalkBudgetExceeded()
       },
     })
     if (!done) return null

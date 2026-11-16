@@ -4,12 +4,14 @@
 // and within a kind the deepest directory with a decisive match; within one
 // file the last matching line. A configuration whose meaning is not certain
 // (an ignore file above the repository, a nested repository, a configured
-// core.excludesFile, an unsupported line) returns null: the caller hands the
+// core.excludesFile, a line ripgrep versions read differently) returns null: the caller hands the
 // search to ripgrep.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { compileRgGlob, type RgGlob } from './rg-glob'
+import { isUtf8 } from 'node:buffer'
+import { parseRgGlobLine, rgGlobMatch, type RgGlob } from './rg-glob'
+import { WalkAbort } from './walk'
 
 export type Verdict = 'ignore' | 'whitelist' | null
 
@@ -18,12 +20,15 @@ interface Rule {
   negate: boolean
 }
 
-/** Last matching rule of one list; `negate` rules re-include. */
+/** Last matching rule of one list; `negate` rules re-include. Throws
+ *  WalkAbort when a rule's match on this path is ripgrep's to decide. */
 function matchRules(rules: Rule[], rel: string, isDir: boolean): Verdict {
   for (let i = rules.length - 1; i >= 0; i--) {
     const r = rules[i]!
     if (r.glob.dirOnly && !isDir) continue
-    if (r.glob.regex.test(rel)) return r.negate ? 'whitelist' : 'ignore'
+    const m = rgGlobMatch(r.glob, rel)
+    if (m === undefined) throw new WalkAbort()
+    if (m) return r.negate ? 'whitelist' : 'ignore'
   }
   return null
 }
@@ -40,11 +45,11 @@ export class Overrides {
     const rules: Rule[] = []
     let whitelists = 0
     for (const g of globs) {
-      const negate = !g.startsWith('!')
-      const glob = compileRgGlob(negate ? g : g.slice(1))
-      if (!glob || glob.dirOnly) return null
+      const line = parseRgGlobLine(g)
+      if (!line || line === 'skip' || line.glob.dirOnly) return null
+      const negate = !line.bang
       if (negate) whitelists++
-      rules.push({ glob, negate })
+      rules.push({ glob: line.glob, negate })
     }
     return new Overrides(rules, whitelists)
   }
@@ -56,17 +61,19 @@ export class Overrides {
   }
 }
 
-/** Lines of one ignore file, or null when a line is outside the subset. */
+/** Lines of one ignore file as the `ignore` crate reads them (a line ends at
+ *  `\n` or `\r\n`), or null when a line is ripgrep's to decide. */
 export function parseIgnoreFile(text: string): Rule[] | null {
-  if (text.includes('\r')) return null
+  // Older ripgrep does not strip a byte order mark.
+  if (text.startsWith('\uFEFF')) return null
   const rules: Rule[] = []
-  for (const line of text.split('\n')) {
-    if (line === '' || line.startsWith('#')) continue
-    if (/\s$/.test(line) || line.startsWith('\\')) return null
-    const negate = line.startsWith('!')
-    const glob = compileRgGlob(negate ? line.slice(1) : line)
-    if (!glob) return null
-    rules.push({ glob, negate })
+  const lines = text.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i]!
+    if (i < lines.length - 1 && line.endsWith('\r')) line = line.slice(0, -1)
+    const r = parseRgGlobLine(line)
+    if (r === null) return null
+    if (r !== 'skip') rules.push({ glob: r.glob, negate: r.bang })
   }
   return rules
 }
@@ -80,13 +87,14 @@ export interface DirRules {
 }
 
 function readRules(file: string): Rule[] | null | undefined {
-  let text: string
+  let buf: Buffer
   try {
-    text = fs.readFileSync(file, 'utf8')
+    buf = fs.readFileSync(file)
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === 'ENOENT' ? null : undefined
   }
-  return parseIgnoreFile(text) ?? undefined
+  if (!isUtf8(buf)) return undefined
+  return parseIgnoreFile(buf.toString('utf8')) ?? undefined
 }
 
 /** The rules of `dir`; undefined when one of its files cannot be used.
@@ -180,12 +188,17 @@ export function ignoreContext(root: string): IgnoreContext | null {
   return { useGit, parents, exclude, global }
 }
 
-/** A path as the global excludes see it: relative to the working directory
- *  when under it, otherwise whole, so an anchored line matches nothing there. */
-function globalRel(abs: string): string {
+/** A path as ripgrep's matchers rooted at its working directory (`--glob`
+ *  overrides, the global excludes) see it: relative to the working directory
+ *  when under it, otherwise whole, so an anchored glob matches nothing there.
+ *  Throws WalkAbort when the prefix differs only in case (Windows), where
+ *  whether ripgrep strips it is not replicated. */
+export function cwdRel(abs: string): string {
   const cwd = process.cwd()
-  const under = abs.startsWith(cwd.endsWith(path.sep) ? cwd : cwd + path.sep)
-  return (under ? path.relative(cwd, abs) : abs).split(path.sep).join('/')
+  const prefix = cwd.endsWith(path.sep) ? cwd : cwd + path.sep
+  const under = abs.startsWith(prefix)
+  if (!under && abs.toLowerCase().startsWith(prefix.toLowerCase())) throw new WalkAbort()
+  return (under ? abs.slice(prefix.length) : abs).split(path.sep).join('/')
 }
 
 function relTo(dir: string, abs: string): string {
@@ -203,5 +216,5 @@ export function ignoreVerdict(chain: DirRules[], ctx: Pick<IgnoreContext, 'exclu
     }
   }
   const exclude = ctx.exclude ? matchRules(ctx.exclude.rules, relTo(ctx.exclude.dir, abs), isDir) : null
-  return exclude ?? (ctx.global.length ? matchRules(ctx.global, globalRel(abs), isDir) : null)
+  return exclude ?? (ctx.global.length ? matchRules(ctx.global, cwdRel(abs), isDir) : null)
 }
