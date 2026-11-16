@@ -198,11 +198,16 @@ impl Hooks for SpannerFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let Some(child) = &mut self.child else {
+        // The flow's tree and its engine serve this frame's paint only: every
+        // frame prepaints before it paints, so a retained element keeps no
+        // built tree between frames (`reuse::FlowCx` keeps recorded flows).
+        let Some(mut child) = self.child.take() else {
             return;
         };
-        match &mut self.engine {
-            Some(engine) => window.with_retained_layout(engine, |window| child.paint(window, cx)),
+        match self.engine.take() {
+            Some(mut engine) => {
+                window.with_retained_layout(&mut engine, |window| child.paint(window, cx))
+            }
             None => child.paint(window, cx),
         }
     }
