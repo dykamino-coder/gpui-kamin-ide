@@ -172,6 +172,10 @@ impl DirectXRenderer {
         quads.truncate(regions.len() + 1);
         quads[0].bounds = cover.floats();
         quads[0].poly_count = self.width.div_ceil(TILE);
+        // DIAGNOSTIC (raster4 r6d), removed before review.
+        quads[0].pad = f32::from_bits(
+            std::env::var("GPUI_TILE_DEBUG").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
+        );
         log::debug!(
             target: "gpui::frame",
             "tile pass {} composites cover {}x{} lists {} entries",
