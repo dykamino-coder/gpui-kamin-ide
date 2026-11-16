@@ -13,6 +13,7 @@ import { resolveToolPath, resolveWorkingDirectory } from '../../utils/working-di
 import type { ToolCallContext } from '../executor'
 import { type McpResult, textResult, errorResult, MAX_GREP_BYTES, MAX_READ_BYTES, STAT_CONCURRENCY } from './fs-shared'
 import { ripgrepPath } from './ripgrep-path'
+import { localGrep, type LocalGrepOutput } from './local-search/local-grep'
 
 /** Directories of version control systems never searched (native Grep parity). */
 const VCS_DIRECTORIES = ['.git', '.svn', '.hg', '.bzr', '.jj', '.sl']
@@ -313,6 +314,10 @@ const RIPGREP_TIMEOUT_MS = 540_000
 export async function grepSearch(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const options = grepOptions(input, context?.cwd)
   if (typeof options === 'string') return errorResult(options)
+  // A small tree is searched in-process with ripgrep's exact output: no
+  // process start, which costs more than the whole search there.
+  const local = localGrep({ ...options, vcsDirectories: VCS_DIRECTORIES, maxColumns: MAX_COLUMNS })
+  if (local) return ripgrepResult({ ...local, stderr: '', truncated: false, timedOut: false }, options)
   if (!(await ripgrepPath())) return grepFallback(options)
   const args = ripgrepArgs(options)
 
@@ -359,31 +364,38 @@ export async function grepSearch(input: Record<string, unknown>, context?: ToolC
     if (res.code !== null && res.code > 1 && isEagainError(res.stderr)) {
       res = await spawnRipgrep(args, RIPGREP_TIMEOUT_MS, true)
     }
-    // rg exits 0 = matches, 1 = no matches; 2 = an error such as a bad regex or
-    // a missing path. Report it instead of re-running the search another way.
-    if (res.code !== null && res.code > 1 && !res.truncated && !res.timedOut && !res.stdout.trim()) {
-      return errorResult(`ripgrep failed (exit ${res.code}): ${res.stderr.trim().slice(0, 2000) || 'no error text'}`)
-    }
-
-    let lines = res.stdout.replace(/\r$/gm, '').split('\n')
-    if (lines[lines.length - 1] === '') lines.pop()
-    // Drop the final line when output was cut off — rg may have been killed
-    // mid-line, so the trailing fragment is unreliable.
-    if ((res.truncated || res.timedOut) && lines.length > 1) lines.pop()
-    if (options.outputMode === 'files_with_matches') lines = await sortByMtime(lines)
-    const result = presentMatches(paginate(lines, options.offset, options.headLimit), options)
-
-    if (res.timedOut && !result.trim()) return timeoutError()
-    const suffix = [
-      paginationNotice(lines.length, options.offset, options.headLimit),
-      res.truncated ? `\n[Output truncated at ${MAX_GREP_BYTES / 1024 / 1024} MB — narrow the path/pattern for full results]` : '',
-      res.timedOut ? `\n[Search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s — partial results above; try a narrower path or pattern]` : '',
-      res.code !== null && res.code > 1 ? `\n[ripgrep reported errors: ${res.stderr.trim().split('\n')[0]?.slice(0, 300)}]` : '',
-    ].join('')
-    return textResult((result || 'No matches found.') + suffix)
+    return await ripgrepResult(res, options)
   } catch {
     return grepFallback(options)
   }
+}
+
+type RipgrepRun = Pick<LocalGrepOutput, 'stdout'> & { stderr: string; truncated: boolean; timedOut: boolean; code: number | null }
+
+/** The tool result of one ripgrep run (or its in-process equivalent). */
+async function ripgrepResult(res: RipgrepRun, options: GrepOptions): Promise<McpResult> {
+  // rg exits 0 = matches, 1 = no matches; 2 = an error such as a bad regex or
+  // a missing path. Report it instead of re-running the search another way.
+  if (res.code !== null && res.code > 1 && !res.truncated && !res.timedOut && !res.stdout.trim()) {
+    return errorResult(`ripgrep failed (exit ${res.code}): ${res.stderr.trim().slice(0, 2000) || 'no error text'}`)
+  }
+
+  let lines = res.stdout.replace(/\r$/gm, '').split('\n')
+  if (lines[lines.length - 1] === '') lines.pop()
+  // Drop the final line when output was cut off — rg may have been killed
+  // mid-line, so the trailing fragment is unreliable.
+  if ((res.truncated || res.timedOut) && lines.length > 1) lines.pop()
+  if (options.outputMode === 'files_with_matches') lines = await sortByMtime(lines)
+  const result = presentMatches(paginate(lines, options.offset, options.headLimit), options)
+
+  if (res.timedOut && !result.trim()) return timeoutError()
+  const suffix = [
+    paginationNotice(lines.length, options.offset, options.headLimit),
+    res.truncated ? `\n[Output truncated at ${MAX_GREP_BYTES / 1024 / 1024} MB — narrow the path/pattern for full results]` : '',
+    res.timedOut ? `\n[Search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s — partial results above; try a narrower path or pattern]` : '',
+    res.code !== null && res.code > 1 ? `\n[ripgrep reported errors: ${res.stderr.trim().split('\n')[0]?.slice(0, 300)}]` : '',
+  ].join('')
+  return textResult((result || 'No matches found.') + suffix)
 }
 
 function timeoutError(): McpResult {
