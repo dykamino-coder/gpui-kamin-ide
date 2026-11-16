@@ -156,6 +156,7 @@ impl Window {
         let recording = Box::new(LayerRecording {
             bindings: Vec::new(),
             boxes: Vec::new(),
+            unheld: Vec::new(),
             source: None,
         });
         let mut state = (Scene::default(), Some(recording));

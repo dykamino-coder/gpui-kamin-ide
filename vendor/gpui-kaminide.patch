@@ -11684,14 +11684,14 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..604442051ec146cb799386ffa1ac3aa46b3e569c
+index 160587a4ad924f80c2dd01b90a8300febbc13105..f047eaa2481259df101f41c0ddc854b1e132eac6
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,36 @@
 +
 +mod layer;
 +pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-+pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run};
++pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
 +mod damage;
 +mod record;
 +#[doc(hidden)]
@@ -13920,7 +13920,7 @@ index 0000000000000000000000000000000000000000..c59cd109e3a6d1f0aec1f0a5ef4a1820
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..94556840695cabb4c1c3cb4151890793aa5a6f0a
+index 0000000000000000000000000000000000000000..da4a5a3ff9b2fbf4a4b44debd26839acce6cf4a9
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
 @@ -0,0 +1,264 @@
@@ -13955,7 +13955,7 @@ index 0000000000000000000000000000000000000000..94556840695cabb4c1c3cb4151890793
 +use super::{Bounds, ScaledPixels, Scene};
 +pub(crate) use boxes::{BoxEnv, BoxRange, OpenBox, ink_of};
 +pub(crate) use frame::{LayerOp, LayerSlot};
-+pub(crate) use placed::{Placed, PlacedMap, RecordRuns, place_run};
++pub(crate) use placed::{Placed, PlacedMap, RecordRuns, place_run, release_unheld};
 +use std::cell::{Cell, RefCell};
 +use std::rc::Rc;
 +use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
@@ -14922,10 +14922,10 @@ index 0000000000000000000000000000000000000000..3aad3fc224a47d4125ac6644fe308433
 +}
 diff --git a/vendor/gpui/src/scene/layer/placed.rs b/vendor/gpui/src/scene/layer/placed.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ae154b12f62ca7bfc1d1cf17d45285e754b6eb6e
+index 0000000000000000000000000000000000000000..e4950823be987b48f2b0921feb0a82a1216848ef
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/placed.rs
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,303 @@
 +//! KaminIDE patch: the box runs and value bindings a paint record carries
 +//! into the scenes it is placed in.
 +//!
@@ -15044,15 +15044,20 @@ index 0000000000000000000000000000000000000000..ae154b12f62ca7bfc1d1cf17d45285e7
 +pub(crate) struct RecordRuns {
 +    pub(crate) boxes: Vec<BoxRange>,
 +    pub(crate) bindings: Vec<Binding>,
++    /// Owners whose paint reached this scene outside their runs (a run or
++    /// binding that could not be placed, a record placed as an adopted
++    /// copy): the layer holds none of their runs and bindings
++    /// (`SceneLayer::finish`), so an edit of such a box paints the layer
++    /// anew instead of writing some of its copies and leaving the others.
++    pub(crate) unheld: Vec<u32>,
 +}
 +
 +impl RecordRuns {
 +    /// These runs where `map` placed their commands in `dest`. A run whose
 +    /// commands landed nowhere (clipped away in this fragment) is not there;
-+    /// one placed twice or by different placements is dropped, so its box
-+    /// paints the layer anew instead of a run being recorded wrongly.
++    /// the owner of one placed twice or by different placements is unheld.
 +    pub(crate) fn carry(&self, map: &PlacedMap, dest: &Scene) -> RecordRuns {
-+        let mut out = RecordRuns::default();
++        let mut out = RecordRuns { unheld: self.unheld.clone(), ..RecordRuns::default() };
 +        for run in &self.boxes {
 +            let mut span: Option<(u32, u32)> = None;
 +            let mut placed: Option<Placed> = None;
@@ -15072,6 +15077,7 @@ index 0000000000000000000000000000000000000000..ae154b12f62ca7bfc1d1cf17d45285e7
 +            let (Some((first, last)), Some(placed), true) = (span, placed, whole) else {
 +                if !whole {
 +                    super::layer_counters::RUNS_UNPLACED.fetch_add(1, Relaxed);
++                    out.unheld.push(run.owner);
 +                }
 +                continue;
 +            };
@@ -15096,28 +15102,61 @@ index 0000000000000000000000000000000000000000..ae154b12f62ca7bfc1d1cf17d45285e7
 +            });
 +        }
 +        for binding in &self.bindings {
-+            let Some(m) = map.ops.get(binding.op as usize) else {
-+                continue;
-+            };
-+            if m.op < MANY && m.quad < MANY {
-+                out.bindings.push(Binding { op: m.op, quad: m.quad, ..*binding });
++            match map.ops.get(binding.op as usize) {
++                Some(m) if m.op == NONE => {}
++                Some(m) if m.op < MANY && m.quad < MANY => {
++                    out.bindings.push(Binding { op: m.op, quad: m.quad, ..*binding });
++                }
++                _ => out.unheld.push(binding.owner),
 +            }
 +        }
 +        out
 +    }
++
++    /// These runs placed as one copy, not by a shift and clip: every owner
++    /// they hold is unheld.
++    pub(crate) fn dropped(&self) -> RecordRuns {
++        super::layer_counters::RUNS_UNPLACED.fetch_add(self.boxes.len() as u64, Relaxed);
++        let owners = self.boxes.iter().map(|b| b.owner).chain(self.bindings.iter().map(|b| b.owner));
++        let mut unheld: Vec<u32> = self.unheld.iter().copied().chain(owners).collect();
++        unheld.sort_unstable();
++        unheld.dedup();
++        RecordRuns { unheld, ..RecordRuns::default() }
++    }
++
++    /// Append `other`.
++    pub(crate) fn extend(&mut self, other: RecordRuns) {
++        self.boxes.extend(other.boxes);
++        self.bindings.extend(other.bindings);
++        self.unheld.extend(other.unheld);
++    }
 +}
 +
 +impl Scene {
-+    /// A record with groups or hoisted backdrops carries no runs.
++    /// A record with groups or hoisted backdrops carries no runs: it is
++    /// placed as one adopted copy, and the owners of the runs it kept
++    /// before the group are unheld.
 +    pub(crate) fn end_record_runs(&mut self) {
 +        if !self.groups.is_empty() || !self.hoisted_backdrops.is_empty() {
-+            // Runs kept before the group are dropped too: the record is placed
-+            // as one adopted copy.
-+            if let Some(runs) = self.record_runs.take() {
-+                super::layer_counters::RUNS_UNPLACED.fetch_add(runs.boxes.len() as u64, Relaxed);
++            if let Some(runs) = self.record_runs.as_mut() {
++                **runs = runs.dropped();
 +            }
 +        }
 +    }
++}
++
++/// The runs and bindings of a layer without those of the `unheld` owners,
++/// whose paint reached the layer outside their runs: the layer holds no copy
++/// of such a box (`LayerHandle::holds_box` is false, a value write refuses),
++/// so its edit paints the layer anew instead of writing some copies.
++pub(crate) fn release_unheld(bindings: &mut Vec<Binding>, boxes: &mut Vec<BoxRange>, mut unheld: Vec<u32>) {
++    if unheld.is_empty() {
++        return;
++    }
++    unheld.sort_unstable();
++    let held = |owner: u32| unheld.binary_search(&owner).is_err();
++    bindings.retain(|b| held(b.owner));
++    boxes.retain(|b| held(b.owner));
 +}
 +
 +/// The commands `scene` (a recording of one run's box, with its `bindings`)
@@ -15155,7 +15194,9 @@ index 0000000000000000000000000000000000000000..ae154b12f62ca7bfc1d1cf17d45285e7
 +
 +    /// `Scene::replay_placed` of `scene` into the current scene, carrying the
 +    /// record's box runs and bindings to the record being painted here or to
-+    /// the layer being recorded.
++    /// the layer being recorded. Where they cannot be carried (the record is
++    /// not placed by a shift, or lands in a group's scene, composited as one
++    /// result) its owners are unheld there instead.
 +    pub(crate) fn replay_placed_carrying(
 +        &mut self,
 +        scene: &Scene,
@@ -15163,6 +15204,7 @@ index 0000000000000000000000000000000000000000..ae154b12f62ca7bfc1d1cf17d45285e7
 +        clip: Option<Bounds<ScaledPixels>>,
 +    ) -> bool {
 +        let here = &self.next_frame.scene;
++        let into = here.record_runs.is_some() || self.layer_recording.is_some();
 +        let takes = scene.record_runs.is_some()
 +            && if here.in_group { here.record_runs.is_some() } else { self.layer_recording.is_some() };
 +        if takes {
@@ -15170,25 +15212,30 @@ index 0000000000000000000000000000000000000000..ae154b12f62ca7bfc1d1cf17d45285e7
 +        }
 +        let done = self.next_frame.scene.replay_placed(scene, offset, clip);
 +        let map = self.next_frame.scene.placed_map.take();
-+        if let (true, Some(map), Some(runs)) = (done, map, scene.record_runs.as_deref()) {
-+            let carried = runs.carry(&map, &self.next_frame.scene);
-+            if let Some(own) = self.next_frame.scene.record_runs.as_mut() {
-+                own.boxes.extend(carried.boxes);
-+                own.bindings.extend(carried.bindings);
-+            } else if let Some(recording) = self.layer_recording.as_mut() {
-+                recording.boxes.extend(carried.boxes);
-+                recording.bindings.extend(carried.bindings);
-+            }
++        let Some(runs) = scene.record_runs.as_deref().filter(|_| into) else {
++            return done;
++        };
++        let carried = match (done, map) {
++            (true, Some(map)) => runs.carry(&map, &self.next_frame.scene),
++            _ => runs.dropped(),
++        };
++        if let Some(own) = self.next_frame.scene.record_runs.as_mut() {
++            own.extend(carried);
++        } else if let Some(recording) = self.layer_recording.as_mut() {
++            recording.boxes.extend(carried.boxes);
++            recording.bindings.extend(carried.bindings);
++            recording.unheld.extend(carried.unheld);
 +        }
 +        done
 +    }
 +}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/scene/layer/placed_tests.rs b/vendor/gpui/src/scene/layer/placed_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a872f381a9c479fd3cd976e64a46a44969010153
+index 0000000000000000000000000000000000000000..391aaaaab735fd2d7300c6e3e68602e8c9b345ff
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/placed_tests.rs
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,224 @@
 +//! Scene layers: the box runs a paint record carries into the scenes it is
 +//! placed in. A box in N placements has N runs; each recorded again where it
 +//! was placed (`place_run`) leaves the layer drawing what a paint from
@@ -15345,8 +15392,52 @@ index 0000000000000000000000000000000000000000..a872f381a9c479fd3cd976e64a46a449
 +    s.record_runs.as_mut().unwrap().boxes.push(run);
 +    s.groups.push(PaintGroup { scene: Scene::default(), bounds: rect(0., 0., 1., 1.), ..Default::default() });
 +    s.end_record_runs();
-+    assert!(s.record_runs.is_none(), "a record with a group carries no runs");
++    let runs = s.record_runs.as_deref().expect("the record says whom it does not hold");
++    assert!(runs.boxes.is_empty() && runs.bindings.is_empty(), "a record with a group carries no runs");
++    assert_eq!(runs.unheld, vec![1], "the owner of the run kept before the group is unheld");
 +    assert!(layer_counters::RUNS_UNPLACED.load(Relaxed) > dropped, "the dropped run is counted");
++}
++
++/// Box 2's command placed twice in one scene (op 2 lands as ops 2 and 3).
++fn twice(record: &Scene) -> super::RecordRuns {
++    let [one, two] = columns();
++    let mut map = Some(PlacedMap::new(None, record.paint_operations.len()));
++    PlacedMap::set(&mut map, 2, 2, Some(2), one);
++    PlacedMap::set(&mut map, 2, 3, Some(3), two);
++    let mut dest = Scene::default();
++    for _ in 0..4 {
++        dest.insert_primitive(quad_at());
++    }
++    record.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest)
++}
++
++#[test]
++fn a_box_placed_twice_in_one_scene_and_once_in_another_is_not_held() {
++    let record = record(blue(), true);
++    let unheld = twice(&record).unheld;
++    assert_eq!(unheld, vec![2, 2], "its run and its binding are unheld");
++    let finish = |release: bool| {
++        let (scene, mut carried) = page(&record, true);
++        if release {
++            super::release_unheld(&mut carried.bindings, &mut carried.boxes, unheld.clone());
++        }
++        LayerHandle::new(SceneLayer::finish(scene, carried.bindings, carried.boxes))
++    };
++    // Without the release the copies in the other scene would take the write.
++    let kept = finish(false);
++    assert!(kept.holds_box(2) && kept.set_background(2, blue(), red()).is_some());
++    let layer = finish(true);
++    assert!(!layer.holds_box(2), "no run of box 2 is recorded again");
++    assert!(layer.set_background(2, blue(), red()).is_none(), "the write refuses: the layer paints anew");
++    assert!(layer.holds_box(1), "box 1 stays held");
++}
++
++#[test]
++fn a_record_placed_as_one_copy_unholds_every_owner_it_kept() {
++    let record = record(blue(), true);
++    let mut owners = record.record_runs.as_deref().unwrap().dropped().unheld;
++    owners.sort_unstable();
++    assert_eq!(owners, vec![1, 2]);
 +}
 +
 +#[test]
@@ -15364,6 +15455,7 @@ index 0000000000000000000000000000000000000000..a872f381a9c479fd3cd976e64a46a449
 +    }
 +    let carried = record.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest);
 +    assert!(carried.boxes.iter().all(|b| b.owner != 2), "a run placed twice is not the layer's");
++    assert!(carried.unheld.contains(&2), "its owner is unheld");
 +    assert!(layer_counters::RUNS_UNPLACED.load(Relaxed) > dropped);
 +}
 +
@@ -17171,10 +17263,10 @@ index 0000000000000000000000000000000000000000..141d32c6164784ea2d0f7c3c22ceb23a
 +}
 diff --git a/vendor/gpui/src/scene/segments/freeze.rs b/vendor/gpui/src/scene/segments/freeze.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e2894b3f9a325fdf864fb1ebae2c687014c3e3cd
+index 0000000000000000000000000000000000000000..59d9a5cc1650990fdcd8e317e5f396e417c158f9
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments/freeze.rs
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,56 @@
 +//! Экземпляры исходной группы сохраняют общий эффект и явные повторные размещения.
 +
 +use super::*;
@@ -17218,9 +17310,13 @@ index 0000000000000000000000000000000000000000..e2894b3f9a325fdf864fb1ebae2c6870
 +            mapping.push(copies);
 +        }
 +        let (mut scene, _) = self.segment_commands(id, None, scale, &mapping, extent, None);
-+        // The box runs of the record, moved with their commands into the segment.
-+        if let (Some(runs), Some(map)) = (self.record_runs.as_deref(), scene.placed_map.take()) {
-+            scene.record_runs = Some(Box::new(runs.carry(&map, &scene)));
++        // The box runs of the record, moved with their commands into the
++        // segment; without a map (groups) its owners are unheld.
++        if let Some(runs) = self.record_runs.as_deref() {
++            scene.record_runs = Some(Box::new(match scene.placed_map.take() {
++                Some(map) => runs.carry(&map, &scene),
++                None => runs.dropped(),
++            }));
 +        }
 +        scene.groups = groups;
 +        scene.finish_frozen();
@@ -29072,10 +29168,10 @@ index 0000000000000000000000000000000000000000..466fb22a1859060d509375a341b69402
 +}
 diff --git a/vendor/gpui/src/window/layer_box.rs b/vendor/gpui/src/window/layer_box.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0e339548245c06bbff8854d82f1edcb7cd5699b1
+index 0000000000000000000000000000000000000000..26df7e05f5a79a026506cb5ba7401ee17d87ed78
 --- /dev/null
 +++ b/vendor/gpui/src/window/layer_box.rs
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,184 @@
 +//! KaminIDE patch: the own paint of a box in a scene layer, and its later
 +//! recording into the box's run (`scene::layer::boxes`).
 +//!
@@ -29234,6 +29330,7 @@ index 0000000000000000000000000000000000000000..0e339548245c06bbff8854d82f1edcb7
 +        let recording = Box::new(LayerRecording {
 +            bindings: Vec::new(),
 +            boxes: Vec::new(),
++            unheld: Vec::new(),
 +            source: None,
 +        });
 +        let mut state = (Scene::default(), Some(recording));
@@ -32945,10 +33042,10 @@ index 0000000000000000000000000000000000000000..f86b14fa0513bf4b384e11a27c3cc61a
 +}
 diff --git a/vendor/gpui/src/window/scene_layer.rs b/vendor/gpui/src/window/scene_layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..afe4b39f16c77bb8e51de5e0d0a2604da670f38e
+index 0000000000000000000000000000000000000000..f6ab0d3807b1021995228ba36f162729c5223e15
 --- /dev/null
 +++ b/vendor/gpui/src/window/scene_layer.rs
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,207 @@
 +//! KaminIDE patch: recording retained scene layers (`scene::layer`) and
 +//! binding the values a host may write into them.
 +//!
@@ -32966,6 +33063,9 @@ index 0000000000000000000000000000000000000000..afe4b39f16c77bb8e51de5e0d0a2604d
 +pub(crate) struct LayerRecording {
 +    pub(crate) bindings: Vec<Binding>,
 +    pub(crate) boxes: Vec<BoxRange>,
++    /// Owners whose paint reached the layer outside their runs
++    /// (`scene::layer::placed`): the layer holds none of their runs.
++    pub(crate) unheld: Vec<u32>,
 +    pub(crate) source: Option<Rc<SceneLayer>>,
 +}
 +
@@ -33017,7 +33117,7 @@ index 0000000000000000000000000000000000000000..afe4b39f16c77bb8e51de5e0d0a2604d
 +            bindings.reserve_exact(bound);
 +            boxes.reserve_exact(runs);
 +        }
-+        let recording = Box::new(LayerRecording { bindings, boxes, source });
++        let recording = Box::new(LayerRecording { bindings, boxes, unheld: Vec::new(), source });
 +        // The frame's scene and no recording wait in `state` while `f`
 +        // paints into a new scene; restoring swaps them back, on unwind too.
 +        let mut state = (scene, Some(recording));
@@ -33027,7 +33127,9 @@ index 0000000000000000000000000000000000000000..afe4b39f16c77bb8e51de5e0d0a2604d
 +            mem::swap(&mut window.next_frame.scene, &mut state.0);
 +            mem::swap(&mut window.layer_recording, &mut state.1);
 +        }, f);
-+        let (bindings, boxes) = recording.map_or_else(Default::default, |r| (r.bindings, r.boxes));
++        let (mut bindings, mut boxes, unheld) =
++            recording.map_or_else(Default::default, |r| (r.bindings, r.boxes, r.unheld));
++        crate::scene::release_unheld(&mut bindings, &mut boxes, unheld);
 +        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
 +            let scene = self.adopt_scene(scene);
 +            self.next_frame.scene.replay_record(&scene);

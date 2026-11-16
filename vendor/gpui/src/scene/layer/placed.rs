@@ -116,15 +116,20 @@ impl PlacedMap {
 pub(crate) struct RecordRuns {
     pub(crate) boxes: Vec<BoxRange>,
     pub(crate) bindings: Vec<Binding>,
+    /// Owners whose paint reached this scene outside their runs (a run or
+    /// binding that could not be placed, a record placed as an adopted
+    /// copy): the layer holds none of their runs and bindings
+    /// (`SceneLayer::finish`), so an edit of such a box paints the layer
+    /// anew instead of writing some of its copies and leaving the others.
+    pub(crate) unheld: Vec<u32>,
 }
 
 impl RecordRuns {
     /// These runs where `map` placed their commands in `dest`. A run whose
     /// commands landed nowhere (clipped away in this fragment) is not there;
-    /// one placed twice or by different placements is dropped, so its box
-    /// paints the layer anew instead of a run being recorded wrongly.
+    /// the owner of one placed twice or by different placements is unheld.
     pub(crate) fn carry(&self, map: &PlacedMap, dest: &Scene) -> RecordRuns {
-        let mut out = RecordRuns::default();
+        let mut out = RecordRuns { unheld: self.unheld.clone(), ..RecordRuns::default() };
         for run in &self.boxes {
             let mut span: Option<(u32, u32)> = None;
             let mut placed: Option<Placed> = None;
@@ -144,6 +149,7 @@ impl RecordRuns {
             let (Some((first, last)), Some(placed), true) = (span, placed, whole) else {
                 if !whole {
                     super::layer_counters::RUNS_UNPLACED.fetch_add(1, Relaxed);
+                    out.unheld.push(run.owner);
                 }
                 continue;
             };
@@ -168,28 +174,61 @@ impl RecordRuns {
             });
         }
         for binding in &self.bindings {
-            let Some(m) = map.ops.get(binding.op as usize) else {
-                continue;
-            };
-            if m.op < MANY && m.quad < MANY {
-                out.bindings.push(Binding { op: m.op, quad: m.quad, ..*binding });
+            match map.ops.get(binding.op as usize) {
+                Some(m) if m.op == NONE => {}
+                Some(m) if m.op < MANY && m.quad < MANY => {
+                    out.bindings.push(Binding { op: m.op, quad: m.quad, ..*binding });
+                }
+                _ => out.unheld.push(binding.owner),
             }
         }
         out
     }
+
+    /// These runs placed as one copy, not by a shift and clip: every owner
+    /// they hold is unheld.
+    pub(crate) fn dropped(&self) -> RecordRuns {
+        super::layer_counters::RUNS_UNPLACED.fetch_add(self.boxes.len() as u64, Relaxed);
+        let owners = self.boxes.iter().map(|b| b.owner).chain(self.bindings.iter().map(|b| b.owner));
+        let mut unheld: Vec<u32> = self.unheld.iter().copied().chain(owners).collect();
+        unheld.sort_unstable();
+        unheld.dedup();
+        RecordRuns { unheld, ..RecordRuns::default() }
+    }
+
+    /// Append `other`.
+    pub(crate) fn extend(&mut self, other: RecordRuns) {
+        self.boxes.extend(other.boxes);
+        self.bindings.extend(other.bindings);
+        self.unheld.extend(other.unheld);
+    }
 }
 
 impl Scene {
-    /// A record with groups or hoisted backdrops carries no runs.
+    /// A record with groups or hoisted backdrops carries no runs: it is
+    /// placed as one adopted copy, and the owners of the runs it kept
+    /// before the group are unheld.
     pub(crate) fn end_record_runs(&mut self) {
         if !self.groups.is_empty() || !self.hoisted_backdrops.is_empty() {
-            // Runs kept before the group are dropped too: the record is placed
-            // as one adopted copy.
-            if let Some(runs) = self.record_runs.take() {
-                super::layer_counters::RUNS_UNPLACED.fetch_add(runs.boxes.len() as u64, Relaxed);
+            if let Some(runs) = self.record_runs.as_mut() {
+                **runs = runs.dropped();
             }
         }
     }
+}
+
+/// The runs and bindings of a layer without those of the `unheld` owners,
+/// whose paint reached the layer outside their runs: the layer holds no copy
+/// of such a box (`LayerHandle::holds_box` is false, a value write refuses),
+/// so its edit paints the layer anew instead of writing some copies.
+pub(crate) fn release_unheld(bindings: &mut Vec<Binding>, boxes: &mut Vec<BoxRange>, mut unheld: Vec<u32>) {
+    if unheld.is_empty() {
+        return;
+    }
+    unheld.sort_unstable();
+    let held = |owner: u32| unheld.binary_search(&owner).is_err();
+    bindings.retain(|b| held(b.owner));
+    boxes.retain(|b| held(b.owner));
 }
 
 /// The commands `scene` (a recording of one run's box, with its `bindings`)
@@ -227,7 +266,9 @@ impl Window {
 
     /// `Scene::replay_placed` of `scene` into the current scene, carrying the
     /// record's box runs and bindings to the record being painted here or to
-    /// the layer being recorded.
+    /// the layer being recorded. Where they cannot be carried (the record is
+    /// not placed by a shift, or lands in a group's scene, composited as one
+    /// result) its owners are unheld there instead.
     pub(crate) fn replay_placed_carrying(
         &mut self,
         scene: &Scene,
@@ -235,6 +276,7 @@ impl Window {
         clip: Option<Bounds<ScaledPixels>>,
     ) -> bool {
         let here = &self.next_frame.scene;
+        let into = here.record_runs.is_some() || self.layer_recording.is_some();
         let takes = scene.record_runs.is_some()
             && if here.in_group { here.record_runs.is_some() } else { self.layer_recording.is_some() };
         if takes {
@@ -242,15 +284,19 @@ impl Window {
         }
         let done = self.next_frame.scene.replay_placed(scene, offset, clip);
         let map = self.next_frame.scene.placed_map.take();
-        if let (true, Some(map), Some(runs)) = (done, map, scene.record_runs.as_deref()) {
-            let carried = runs.carry(&map, &self.next_frame.scene);
-            if let Some(own) = self.next_frame.scene.record_runs.as_mut() {
-                own.boxes.extend(carried.boxes);
-                own.bindings.extend(carried.bindings);
-            } else if let Some(recording) = self.layer_recording.as_mut() {
-                recording.boxes.extend(carried.boxes);
-                recording.bindings.extend(carried.bindings);
-            }
+        let Some(runs) = scene.record_runs.as_deref().filter(|_| into) else {
+            return done;
+        };
+        let carried = match (done, map) {
+            (true, Some(map)) => runs.carry(&map, &self.next_frame.scene),
+            _ => runs.dropped(),
+        };
+        if let Some(own) = self.next_frame.scene.record_runs.as_mut() {
+            own.extend(carried);
+        } else if let Some(recording) = self.layer_recording.as_mut() {
+            recording.boxes.extend(carried.boxes);
+            recording.bindings.extend(carried.bindings);
+            recording.unheld.extend(carried.unheld);
         }
         done
     }

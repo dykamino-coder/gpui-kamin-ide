@@ -154,8 +154,52 @@ fn a_group_in_a_record_drops_the_runs_it_kept() {
     s.record_runs.as_mut().unwrap().boxes.push(run);
     s.groups.push(PaintGroup { scene: Scene::default(), bounds: rect(0., 0., 1., 1.), ..Default::default() });
     s.end_record_runs();
-    assert!(s.record_runs.is_none(), "a record with a group carries no runs");
+    let runs = s.record_runs.as_deref().expect("the record says whom it does not hold");
+    assert!(runs.boxes.is_empty() && runs.bindings.is_empty(), "a record with a group carries no runs");
+    assert_eq!(runs.unheld, vec![1], "the owner of the run kept before the group is unheld");
     assert!(layer_counters::RUNS_UNPLACED.load(Relaxed) > dropped, "the dropped run is counted");
+}
+
+/// Box 2's command placed twice in one scene (op 2 lands as ops 2 and 3).
+fn twice(record: &Scene) -> super::RecordRuns {
+    let [one, two] = columns();
+    let mut map = Some(PlacedMap::new(None, record.paint_operations.len()));
+    PlacedMap::set(&mut map, 2, 2, Some(2), one);
+    PlacedMap::set(&mut map, 2, 3, Some(3), two);
+    let mut dest = Scene::default();
+    for _ in 0..4 {
+        dest.insert_primitive(quad_at());
+    }
+    record.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest)
+}
+
+#[test]
+fn a_box_placed_twice_in_one_scene_and_once_in_another_is_not_held() {
+    let record = record(blue(), true);
+    let unheld = twice(&record).unheld;
+    assert_eq!(unheld, vec![2, 2], "its run and its binding are unheld");
+    let finish = |release: bool| {
+        let (scene, mut carried) = page(&record, true);
+        if release {
+            super::release_unheld(&mut carried.bindings, &mut carried.boxes, unheld.clone());
+        }
+        LayerHandle::new(SceneLayer::finish(scene, carried.bindings, carried.boxes))
+    };
+    // Without the release the copies in the other scene would take the write.
+    let kept = finish(false);
+    assert!(kept.holds_box(2) && kept.set_background(2, blue(), red()).is_some());
+    let layer = finish(true);
+    assert!(!layer.holds_box(2), "no run of box 2 is recorded again");
+    assert!(layer.set_background(2, blue(), red()).is_none(), "the write refuses: the layer paints anew");
+    assert!(layer.holds_box(1), "box 1 stays held");
+}
+
+#[test]
+fn a_record_placed_as_one_copy_unholds_every_owner_it_kept() {
+    let record = record(blue(), true);
+    let mut owners = record.record_runs.as_deref().unwrap().dropped().unheld;
+    owners.sort_unstable();
+    assert_eq!(owners, vec![1, 2]);
 }
 
 #[test]
@@ -173,6 +217,7 @@ fn a_run_placed_twice_in_one_scene_is_dropped_and_counted() {
     }
     let carried = record.record_runs.as_deref().unwrap().carry(map.as_ref().unwrap(), &dest);
     assert!(carried.boxes.iter().all(|b| b.owner != 2), "a run placed twice is not the layer's");
+    assert!(carried.unheld.contains(&2), "its owner is unheld");
     assert!(layer_counters::RUNS_UNPLACED.load(Relaxed) > dropped);
 }
 
