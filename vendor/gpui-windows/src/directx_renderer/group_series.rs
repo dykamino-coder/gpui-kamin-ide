@@ -133,7 +133,7 @@ impl DirectXRenderer {
         )?;
         let target = self.current_target().to_vec();
         let mut quads = Vec::new();
-        let mut k = 0;
+        let (mut k, mut draws) = (0, 0);
         while k < items.len() {
             let (_, page, view) = &items[k];
             let mode = items[k].0.blend_mode;
@@ -161,7 +161,9 @@ impl DirectXRenderer {
                 Some(&blend),
             )?;
             k = end;
+            draws += 1;
         }
+        log::debug!(target: "gpui::frame", "series {} composites {} draws", items.len(), draws);
         Ok(())
     }
 }
