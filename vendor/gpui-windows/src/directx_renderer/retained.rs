@@ -160,6 +160,7 @@ impl DirectXRenderer {
         self.forget_frames();
         self.retained.staging = None;
         self.retained.scissor = None;
+        self.retained.groups.scrub = Default::default();
         self.retained.failed = false;
     }
 
