@@ -177,10 +177,13 @@ impl BoxStyle {
 
     /// `Computed::resolve_viewport` без копии общего стиля, когда решать нечего.
     pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: crate::values::ValueCx<'_>) {
-        if let Some(paint) = &mut self.paint {
-            Rc::make_mut(paint)
-                .background
-                .resolve_viewport(&self.style, viewport, vcx);
+        // A paint with no lengths to resolve stays shared (`SharedPaints`).
+        if let Some(paint) = &mut self.paint
+            && paint.background.has_lengths()
+        {
+            let mut own = (**paint).clone();
+            own.background.resolve_viewport(&self.style, viewport, vcx);
+            *paint = vcx.doc.traversal.paints.share(own);
         }
         if self.style.has_viewport_lengths(vcx) {
             Rc::make_mut(&mut self.style).resolve_viewport(viewport, vcx);

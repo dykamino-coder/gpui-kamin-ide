@@ -35,6 +35,8 @@ pub struct TraversalState {
     /// The viewport-dependent media queries of the build being recorded
     /// (`style::css::reads::record`).
     pub media_record: RefCell<Option<crate::style::css::reads::MediaReads>>,
+    /// Equal paints of this document's boxes, shared (SharedPaints).
+    pub paints: crate::style::decoration_paint::SharedPaints,
 }
 
 impl TraversalState {
