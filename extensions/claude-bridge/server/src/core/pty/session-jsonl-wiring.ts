@@ -7,6 +7,7 @@ import type { AgentEngineId } from '../../shared/agent-events'
 import { debugLog, warnLog } from '../logging'
 import { lifecycleLog } from '../logging/lifecycle'
 import { JsonlWatcher } from './jsonl-watcher'
+import { sessionCliControl } from './session-cli-control'
 import { segmentSubagentsDir, startSegmentPump } from '../conversation/conversation'
 import { leanEntries } from './jsonl-projection'
 import { sendToClient, socketWritable, trySendToClient } from './session-io'
@@ -160,6 +161,8 @@ function startJsonlWatcher(
   )
   // Sub-agents of the running engine live under its native session.
   if (conversation) jsonlWatcher.subagentsDirOf = () => segmentSubagentsDir(conversation)
+  // Read receipts: the server finds the stored prompt row itself.
+  jsonlWatcher.onEntries = (entries) => sessionCliControl(session)?.transcript(entries)
   session.jsonlWatcher = jsonlWatcher
   jsonlWatcher.start()
   return jsonlWatcher

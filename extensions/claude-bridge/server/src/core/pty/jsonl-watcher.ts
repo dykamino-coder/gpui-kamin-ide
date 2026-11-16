@@ -196,6 +196,11 @@ export class JsonlWatcher {
    *  multi-engine conversation tails its unified log, while the running
    *  engine writes sub-agents under its own native session. */
   subagentsDirOf?: () => string | null
+  /** Every record on its way to the client (live tail, the first read of a new
+   *  file, history pages), before it waits for a writable socket: server-side
+   *  consumers (read receipts) do not stall while no client is attached. A
+   *  retried or split delivery repeats records here. */
+  onEntries?: (entries: readonly JsonlEntry[]) => void
 
   private discoveryTimer: ReturnType<typeof setInterval> | null = null
   private discoveryTimeout: ReturnType<typeof setTimeout> | null = null
@@ -967,6 +972,7 @@ export class JsonlWatcher {
    *  can never fit is replaced by an explicit stub — never retried forever. */
   private async deliver(entries: JsonlEntry[], replay: boolean, live: () => boolean): Promise<boolean> {
     if (entries.length === 0) return true
+    this.onEntries?.(entries)
     for (;;) {
       if (!(await this.waitWritable(live))) return false
       const r = normalizeOutcome(this.sendEntries(entries, replay))

@@ -24,6 +24,9 @@ function fixture() {
   } as unknown as CliModTransport
   return { frames, write, session, mod, control: new SessionCliControl(session, mod) }
 }
+const storedPrompt = (content: string, uuid: string) =>
+  ({ type: 'user', uuid, timestamp: new Date().toISOString(), message: { role: 'user', content } }) as any
+
 describe('interactive CLI control', () => {
   it('silently retains native delivery and OSC when the mod is unavailable', () => {
     vi.useFakeTimers()
@@ -93,9 +96,9 @@ describe('interactive CLI control', () => {
 
       expect(f.control.submit('first follow-up', 'first')).toBe(true)
       expect(f.control.submit('second follow-up', 'second')).toBe(true)
-      f.mod.onRead('first', 'first-row')
+      f.control.transcript([storedPrompt('first follow-up', 'first-row')])
       vi.advanceTimersByTime(100)
-      f.mod.onRead('second', 'second-row')
+      f.control.transcript([storedPrompt('second follow-up', 'second-row')])
       vi.advanceTimersByTime(100)
       expect(vi.mocked(f.mod.submit).mock.calls.map(([prompt, , id]) => [prompt, id])).toEqual([
         ['first follow-up', 'first'],
