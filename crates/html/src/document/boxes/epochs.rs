@@ -110,11 +110,21 @@ pub(super) fn external_contribution(e: &Element, parent: Option<&Element>) -> bo
 
 /// The box sizes its children from all their intrinsic contributions: a
 /// table's columns, a flex line, grid tracks (Blink lays out every child of
-/// such a box again when one child's intrinsic sizes change).
+/// such a box again when one child's intrinsic sizes change). A table of fixed
+/// layout takes its columns from its width and its first row's styles, not
+/// from the content of its cells (CSS 2.1 §17.5.2.1; fixed layout applies
+/// only under a non-auto width, css-tables-3 §table-layout-property), as in
+/// Blink's `ComputeColumnInlineConstraints` for a fixed table.
 pub(super) fn distributes(e: &Element) -> bool {
-    crate::layout::fragment::table_bands::table_box(e)
+    let style = e.style.used();
+    let fixed = style.reset_context.table_fixed == Some(true)
+        && matches!(
+            style.reset_box_layout.width,
+            Some(Len::Px(_) | Len::Pct(_) | Len::Em(_) | Len::EmPx(..))
+        );
+    (crate::layout::fragment::table_bands::table_box(e) && !fixed)
         || matches!(
-            e.style.used().reset_box_layout.display,
+            style.reset_box_layout.display,
             Some(
                 Display::Flex
                     | Display::InlineFlex

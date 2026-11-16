@@ -125,10 +125,13 @@ impl Window {
     pub fn retained_replayable(&self, prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> bool {
         use crate::scene::{PaintOperation, Primitive};
         let frame = &self.rendered_frame;
+        // A range recorded inside a scene layer is in its scene (`reuse_paint`).
+        let source = self.replay_source();
+        let scene = source.as_deref().map_or(&frame.scene, |layer| layer.scene());
         let first = prepaint.0.start.deferred_draws_index;
         let groups = |draw: &DeferredDraw| {
             let range = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
-            frame.scene.paint_operations[range].iter().any(|operation| {
+            scene.paint_operations[range].iter().any(|operation| {
                 matches!(
                     operation,
                     PaintOperation::Primitive(Primitive::Surface(surface)) if surface.group > 0
@@ -208,12 +211,12 @@ impl Window {
         let range = record.range.clone();
         self.text_system
             .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
-        self.next_frame.scene.replay_moved(
-            range.start.scene_index..range.end.scene_index,
-            &self.rendered_frame.scene,
-            offset,
-            clip,
-        );
+        // A range recorded inside a scene layer is in its scene (`reuse_paint`).
+        let scenes = range.start.scene_index..range.end.scene_index;
+        match self.replay_source() {
+            Some(source) => self.next_frame.scene.replay_moved(scenes, source.scene(), offset, clip),
+            None => self.next_frame.scene.replay_moved(scenes, &self.rendered_frame.scene, offset, clip),
+        }
         RetainedPaint { range: start..self.paint_index(), replayable: true }
     }
 }
