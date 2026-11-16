@@ -104,22 +104,35 @@ fn text(html: &str) -> Option<String> {
     None
 }
 
+/// Начало имени открывающего тега (позиция после `<`) вне `<script>`/`<style>`.
+fn start_tag_at(html: &str, open: usize) -> bool {
+    html.as_bytes()
+        .get(open)
+        .is_some_and(u8::is_ascii_alphabetic)
+        && !in_raw_text(html, open)
+}
+
+/// Первый открывающий тег после середины; если во второй половине одни
+/// закрывающие теги (короткая страница, глубокая вложенность) — последний до неё.
 fn attr(html: &str) -> Option<String> {
     let bytes = html.as_bytes();
-    let mut at = middle(html);
-    while let Some(offset) = html[at..].find('<') {
-        let open = at + offset + 1;
-        if bytes.get(open).is_some_and(u8::is_ascii_alphabetic) && !in_raw_text(html, open) {
-            let name = (open..html.len())
-                .find(|&i| !bytes[i].is_ascii_alphanumeric())
-                .unwrap_or(html.len());
-            let mut out = html.to_owned();
-            out.insert_str(name, " data-edit=\"1\"");
-            return Some(out);
-        }
-        at = open;
-    }
-    None
+    let middle = middle(html);
+    let after = html[middle..]
+        .match_indices('<')
+        .map(|(i, _)| middle + i + 1)
+        .find(|&open| start_tag_at(html, open));
+    let open = after.or_else(|| {
+        html[..middle]
+            .rmatch_indices('<')
+            .map(|(i, _)| i + 1)
+            .find(|&open| start_tag_at(html, open))
+    })?;
+    let name = (open..html.len())
+        .find(|&i| !bytes[i].is_ascii_alphanumeric())
+        .unwrap_or(html.len());
+    let mut out = html.to_owned();
+    out.insert_str(name, " data-edit=\"1\"");
+    Some(out)
 }
 
 /// Первый листовой элемент после середины: `<имя ...>текст</имя>` без вложенных
@@ -168,90 +181,33 @@ fn leaf(html: &str) -> Option<std::ops::Range<usize>> {
     None
 }
 
+/// Класс на корневом элементе. Без явного `<html>` корень неявный: тег
+/// `<html class="alt">` ставится после doctype (до него он сменил бы режим
+/// документа), и разбор остального не меняется.
 fn class(html: &str) -> Option<String> {
     let lower = html.to_ascii_lowercase();
-    let open = lower.find("<html")? + "<html".len();
-    let tag_end = open + lower[open..].find('>')?;
-    if lower[open..tag_end].contains("class") {
-        return None;
-    }
     let mut out = html.to_owned();
-    out.insert_str(open, " class=\"alt\"");
+    match lower.find("<html") {
+        Some(at) => {
+            let open = at + "<html".len();
+            let tag_end = open + lower[open..].find('>')?;
+            if lower[open..tag_end].contains("class") {
+                return None;
+            }
+            out.insert_str(open, " class=\"alt\"");
+        }
+        None => {
+            let lead = lower.len() - lower.trim_start().len();
+            let at = if lower[lead..].starts_with("<!doctype") {
+                lead + lower[lead..].find('>')? + 1
+            } else {
+                lead
+            };
+            out.insert_str(at, "<html class=\"alt\">");
+        }
+    }
     Some(out)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::Edit;
-
-    fn page() -> String {
-        let body = "<p>alpha</p>".repeat(10);
-        format!(
-            "<html><head><style>p{{a:b}}</style></head><body>{body}<script>var a</script></body></html>"
-        )
-    }
-
-    #[test]
-    fn text_edit_changes_one_letter_of_rendered_text_after_the_middle() {
-        let page = page();
-        let edited = Edit::Text.markup(&page).unwrap();
-        assert_eq!(edited.len(), page.len());
-        assert_eq!(edited.matches("<p>olpha</p>").count(), 1, "{edited}");
-        assert!(edited.contains("var a"));
-    }
-
-    #[test]
-    fn attribute_and_class_edits_add_one_attribute() {
-        let page = page();
-        let edited = Edit::Attr.markup(&page).unwrap();
-        assert_eq!(
-            edited.matches("<p data-edit=\"1\">alpha").count(),
-            1,
-            "{edited}"
-        );
-        let edited = Edit::Class.markup(&page).unwrap();
-        assert!(edited.starts_with("<html class=\"alt\">"), "{edited}");
-        assert!(Edit::Class.markup("<html class=x>").is_err());
-    }
-
-    #[test]
-    fn insert_and_remove_change_one_leaf_element_after_the_middle() {
-        let page = page();
-        let inserted = Edit::Insert.markup(&page).unwrap();
-        assert_eq!(inserted.matches("<p>alpha</p>").count(), 11, "{inserted}");
-        assert_eq!(inserted.len(), page.len() + "<p>alpha</p>".len());
-        let removed = Edit::Remove.markup(&page).unwrap();
-        assert_eq!(removed.matches("<p>alpha</p>").count(), 9, "{removed}");
-        assert!(removed.contains("<script>var a</script>"));
-        assert_eq!(Edit::Remove.markup(&inserted).unwrap(), page);
-    }
-
-    #[test]
-    fn a_leaf_is_an_element_without_child_elements_outside_raw_text() {
-        // The padding puts the middle of the document before every candidate.
-        let tail = "<div><br><IMG src=x><em/><span>x</SPAN><b>y</b></div><script>a<b></b></script>";
-        let page = format!("<body>{}{tail}</body>", " ".repeat(200));
-        let removed = Edit::Remove.markup(&page).unwrap();
-        assert_eq!(
-            removed.trim_start_matches("<body>").trim_start(),
-            tail.replace("<span>x</SPAN>", "") + "</body>"
-        );
-        let inserted = Edit::Insert.markup(&page).unwrap();
-        assert!(
-            inserted.contains("<span>x</SPAN><span>x</SPAN><b>y</b>"),
-            "{inserted}"
-        );
-        assert!(
-            Edit::Insert
-                .markup("<body><br><script>x</script></body>")
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn unknown_edits_are_rejected() {
-        assert!(Edit::parse("resize").is_err());
-        assert!(Edit::parse("nope").is_err());
-        assert_eq!(Edit::parse("attr").unwrap(), Edit::Attr);
-    }
-}
+mod tests;
