@@ -55,6 +55,13 @@ if (!existsSync(join(release, "kamin-jobrun.exe"))) {
   process.exit(1)
 }
 
+// Тёплый поиск Grep/Glob (crates/search): без него каждый вызов снова
+// запускает rg.exe (~25–50 мс на Windows) — такой инсталлер не собираем.
+if (!existsSync(join(release, "kamin-search.exe"))) {
+  console.error("нет target/release/kamin-search.exe — прогони cargo build --release")
+  process.exit(1)
+}
+
 if (!existsSync(payload)) {
   console.error(`нет ${payload} — прогони npm run build:payload`)
   process.exit(1)
@@ -79,6 +86,9 @@ const shipFiles = [
   // Запускает команды инструментов в собственном Job Object (crates/jobrun,
   // INC-2026-0096). Лежит рядом с runtime/, расширение ищет его там.
   "kamin-jobrun.exe",
+  // Долгоживущий поиск для Grep/Glob (crates/search); расширение ищет его
+  // рядом с runtime/, как kamin-jobrun.exe.
+  "kamin-search.exe",
   "libcef.dll", "chrome_elf.dll", "icudtl.dat",
   "chrome_100_percent.pak", "chrome_200_percent.pak", "resources.pak",
   "v8_context_snapshot.bin", "snapshot_blob.bin",
