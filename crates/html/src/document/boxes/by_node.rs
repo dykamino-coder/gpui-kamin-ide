@@ -50,6 +50,12 @@ impl ByNode {
         }
     }
 
+    /// Drop the growth slack once the boxes of a document are in.
+    pub(super) fn fit(&mut self) {
+        self.dense.shrink_to_fit();
+        self.more.shrink_to_fit();
+    }
+
     /// Записать коробку ключа поверх прежней.
     pub(super) fn set(&mut self, key: u64, id: BoxId) {
         if let Some(at) = self.index(key) {

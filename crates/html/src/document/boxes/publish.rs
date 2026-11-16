@@ -188,6 +188,10 @@ impl BoxTree {
             &visited,
         );
         self.visited = visited;
+        if previous.is_none() {
+            self.arena.fit();
+            self.by_node.fit();
+        }
     }
 
     /// Слот для источника: прежний `reused` или новый. Новая или перемещённая

@@ -60,6 +60,13 @@ impl Arena {
         })
     }
 
+    /// Drop the growth slack once the boxes of a document are in: the slots
+    /// grow by doubling, and a fresh document fills them once.
+    pub(super) fn fit(&mut self) {
+        self.slots.shrink_to_fit();
+        self.free.shrink_to_fit();
+    }
+
     pub(super) fn get(&self, id: BoxId) -> Option<&BoxRecord> {
         let slot = self.slots.get(id.slot as usize)?;
         (slot.generation == id.generation)
