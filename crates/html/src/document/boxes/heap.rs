@@ -14,6 +14,11 @@ impl HeapSize for BoxTree {
                 .as_ref()
                 .map_or(0, |(_, inputs)| inputs.flow_heap_size(ops))
             + ops.at("layout/used-styles", |_| self.used.heap_size())
+            + ops.at("layout/atom-styles", |ops| {
+                (self.atom_paints.iter())
+                    .map(|paint| ops.shallow(Rc::as_ptr(paint)))
+                    .sum::<usize>()
+            })
     }
 }
 

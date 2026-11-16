@@ -14,7 +14,9 @@
 //! The atoms of a paragraph share one kept parent, so each compares it by
 //! pointer after the first. A computation that wrote a frame handle
 //! (`DocumentValues::frame_records`) is not kept: the handle dies with the
-//! frame. Blink keeps the same per object: `LayoutObject::Style` survives
+//! frame. A later stage continues the kept earlier one, and atoms share
+//! equal paint results (`share_paint`), so the kept styles of many like
+//! atoms do not each hold their own copy. Blink keeps the same per object: `LayoutObject::Style` survives
 //! until `StyleDifference` says otherwise.
 
 use super::BoxTree;
@@ -22,8 +24,11 @@ use crate::dom::{Element, SharedStyle};
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
+use shared::{recent_parent, same_parent, share_paint};
 use std::cell::RefCell;
 use std::rc::Rc;
+
+mod shared;
 
 /// How far the atom's style goes.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -38,7 +43,7 @@ pub(crate) enum Stage {
     PseudoLines,
 }
 
-/// One kept computation: its inputs and the styles of both stages.
+/// One kept computation: its inputs and the styles of its stages.
 pub(crate) struct AtomStyle {
     own: SharedStyle,
     parent: Rc<BoxStyle>,
@@ -71,7 +76,7 @@ pub(crate) fn atom_style(
         .then(|| doc.boxes.borrow().box_of(e.node_id))
         .flatten()
     else {
-        return Rc::new(compute(e, parent, opts, stage).0);
+        return Rc::new(compute(e, parent, opts, stage, None).0);
     };
     let vcx = opts.cx.vcx();
     let viewport = (opts.viewport, vcx.viewport);
@@ -90,38 +95,28 @@ pub(crate) fn atom_style(
         .get(id)
         .and_then(|r| r.atom_style.clone());
     let entry = kept
-        .filter(|entry| fits(entry) && (entry.own.identical(&e.style) || entry.own.same(&e.style)));
-    if let Some(entry) = &entry
-        && let Some(style) = entry
-            .slot(stage)
-            .borrow()
-            .as_ref()
-            .filter(|k| k.viewport.is_none_or(|v| v == viewport))
-    {
-        let style = style.style.clone();
-        store(&doc.boxes, id, entry);
-        return style;
+        .filter(|entry| fits(entry) && (entry.own.identical(&e.style) || entry.own.same(&e.style)))
+        .unwrap_or_else(|| {
+            Rc::new(AtomStyle {
+                own: e.style.clone(),
+                parent: parent_rc,
+                doc: vcx.doc,
+                fonts,
+                images,
+                stages: Default::default(),
+            })
+        });
+    let staged = Staged {
+        e,
+        parent,
+        opts,
+        entry: &entry,
+        viewport,
+    };
+    let (style, _, frame_free) = staged.style(stage);
+    if frame_free {
+        store(&doc.boxes, id, &entry);
     }
-    let (style, read, frame_free) = compute(e, parent, opts, stage);
-    let style = Rc::new(style);
-    if !frame_free {
-        return style;
-    }
-    let entry = entry.unwrap_or_else(|| {
-        Rc::new(AtomStyle {
-            own: e.style.clone(),
-            parent: parent_rc,
-            doc: vcx.doc,
-            fonts,
-            images,
-            stages: Default::default(),
-        })
-    });
-    *entry.slot(stage).borrow_mut() = Some(Kept {
-        viewport: read.then_some(viewport),
-        style: style.clone(),
-    });
-    store(&doc.boxes, id, &entry);
     style
 }
 
@@ -131,79 +126,86 @@ impl AtomStyle {
     }
 }
 
-/// The style of `stage`, whether it read the viewport, and whether it wrote
-/// no frame handle.
+impl Stage {
+    /// The stage this one continues.
+    fn before(self) -> Option<Stage> {
+        match self {
+            Stage::Merged => None,
+            Stage::Resolved => Some(Stage::Merged),
+            Stage::PseudoLines => Some(Stage::Resolved),
+        }
+    }
+}
+
+/// One atom's stages under the inputs of its entry.
+struct Staged<'a> {
+    e: &'a Element,
+    parent: &'a BoxStyle,
+    opts: &'a RenderOpts,
+    entry: &'a AtomStyle,
+    viewport: ((f32, f32), (f32, f32)),
+}
+
+impl Staged<'_> {
+    /// The style of `stage`, whether it read the viewport and whether it wrote
+    /// no frame handle. A later stage continues the kept earlier one, so the
+    /// stages of an atom share what that step leaves alone (the paint result).
+    fn style(&self, stage: Stage) -> (Rc<BoxStyle>, bool, bool) {
+        if let Some(kept) = (self.entry.slot(stage).borrow().as_ref())
+            .filter(|k| k.viewport.is_none_or(|v| v == self.viewport))
+        {
+            return (kept.style.clone(), kept.viewport.is_some(), true);
+        }
+        let from = stage.before().map(|before| self.style(before));
+        let (mut style, read, frame_free) = compute(
+            self.e,
+            self.parent,
+            self.opts,
+            stage,
+            from.as_ref().map(|(style, _, _)| &**style),
+        );
+        if from.is_none() {
+            share_paint(&self.opts.cx.doc().boxes, &mut style);
+        }
+        let read = read || from.as_ref().is_some_and(|(_, read, _)| *read);
+        let frame_free = frame_free && from.as_ref().is_none_or(|(_, _, free)| *free);
+        let style = Rc::new(style);
+        if frame_free {
+            *self.entry.slot(stage).borrow_mut() = Some(Kept {
+                viewport: read.then_some(self.viewport),
+                style: style.clone(),
+            });
+        }
+        (style, read, frame_free)
+    }
+}
+
+/// The style of `stage` (continuing `from`, the style of the stage before,
+/// if given), whether it read the viewport, and whether it wrote no frame
+/// handle.
 fn compute(
     e: &Element,
     parent: &BoxStyle,
     opts: &RenderOpts,
     stage: Stage,
+    from: Option<&BoxStyle>,
 ) -> (BoxStyle, bool, bool) {
     let vcx = opts.cx.vcx();
     let before = vcx.doc.frame_records();
     let (style, read) = crate::values::viewport_reads::track(vcx.doc, || {
-        let mut merged = box_style(parent, &e.style, vcx);
-        if stage != Stage::Merged {
-            merged.resolve_viewport(opts.viewport, vcx);
+        let (mut style, resolve) = match from {
+            Some(from) => (from.clone(), stage == Stage::Resolved),
+            None => (box_style(parent, &e.style, vcx), stage != Stage::Merged),
+        };
+        if resolve {
+            style.resolve_viewport(opts.viewport, vcx);
         }
         if stage == Stage::PseudoLines {
-            crate::layout::box_tree::pseudo_line_layers::install(e, &mut merged, vcx);
+            crate::layout::box_tree::pseudo_line_layers::install(e, &mut style, vcx);
         }
-        merged
+        style
     });
     (style, read, vcx.doc.frame_records() == before)
-}
-
-/// The kept parent if `parent` equals it, else a new one kept for the next
-/// atoms: the atoms of a paragraph compare their parent once.
-fn recent_parent(boxes: &RefCell<BoxTree>, parent: &BoxStyle) -> Rc<BoxStyle> {
-    let Ok(mut boxes) = boxes.try_borrow_mut() else {
-        return Rc::new(parent.clone());
-    };
-    match &boxes.atom_parent {
-        Some(kept) if same_parent(kept, parent) => kept.clone(),
-        _ => {
-            let kept = Rc::new(parent.clone());
-            boxes.atom_parent = Some(kept.clone());
-            kept
-        }
-    }
-}
-
-/// Every value of a parent box style that `box_style` reads.
-fn same_parent(a: &BoxStyle, b: &BoxStyle) -> bool {
-    let paint = match (&a.paint, &b.paint) {
-        (None, None) => true,
-        (Some(x), Some(y)) => Rc::ptr_eq(x, y) || **x == **y,
-        _ => false,
-    };
-    a.same_box_values(b)
-        && paint
-        && a.self_node == b.self_node
-        && a.decor_box == b.decor_box
-        && a.cb_node == b.cb_node
-        && a.fixed_cb_node == b.fixed_cb_node
-        && a.anchor_key == b.anchor_key
-        && same_element(a.element_style.as_ref(), b.element_style.as_ref())
-}
-
-fn same_element(
-    a: Option<&crate::style::computed::ElementStyle>,
-    b: Option<&crate::style::computed::ElementStyle>,
-) -> bool {
-    match (a, b) {
-        (None, None) => true,
-        (Some(x), Some(y)) => {
-            Rc::ptr_eq(&x.original, &y.original)
-                && Rc::ptr_eq(&x.computed, &y.computed)
-                && match (&x.parent, &y.parent) {
-                    (None, None) => true,
-                    (Some(p), Some(q)) => Rc::ptr_eq(p, q) || same_element(Some(p), Some(q)),
-                    _ => false,
-                }
-        }
-        _ => false,
-    }
 }
 
 /// Keep `entry` in the record of box `id`, unless the box tree is borrowed.
