@@ -3,7 +3,7 @@
 
 mod layer;
 pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of};
+pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
 mod damage;
 mod record;
 #[doc(hidden)]
@@ -211,6 +211,12 @@ pub(crate) struct SceneBook {
     /// layer finished from this scene (`SceneLayer::finish`) without a second
     /// pass over its commands.
     pub(crate) primitive_ink: Option<Bounds<ScaledPixels>>,
+    /// The box runs and bindings of a paint record painted while a layer
+    /// records (`scene::layer::placed`).
+    pub(crate) record_runs: Option<Box<layer::RecordRuns>>,
+    /// Where the commands of a scene being placed here land
+    /// (`scene::layer::placed`), one entry per placed command.
+    pub(crate) placed_map: Option<layer::PlacedMap>,
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -742,8 +748,10 @@ impl Scene {
         for operation in operations {
             let mut operation = operation.clone();
             if !place(&mut operation) {
+                layer::PlacedMap::skip(&mut self.book.placed_map);
                 continue;
             }
+            let mut quad = None;
             match &mut operation {
                 PaintOperation::Primitive(primitive) => {
                     let placed = placed_bounds(primitive);
@@ -752,6 +760,9 @@ impl Scene {
                     }
                     self.add_primitive_ink(placed.intersect(&primitive.content_mask().bounds));
                     *primitive.order_mut() += shift;
+                    if matches!(primitive, Primitive::Quad(_)) {
+                        quad = Some(self.quads.len());
+                    }
                     self.push_ordered(primitive);
                     copied += 1;
                     if let Some(capture) = self.segment_capture.as_mut() {
@@ -765,11 +776,14 @@ impl Scene {
                     }
                     layer.order += shift;
                     if !self.push_layer_slot(layer) {
+                        layer::PlacedMap::skip(&mut self.book.placed_map);
                         continue;
                     }
                 }
                 _ => {}
             }
+            let at = self.paint_operations.len();
+            layer::PlacedMap::land(&mut self.book.placed_map, at, quad);
             self.paint_operations.push(operation);
         }
         Self::count_copied(copied);

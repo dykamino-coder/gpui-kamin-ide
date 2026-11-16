@@ -38,6 +38,9 @@ pub(crate) struct BoxRange {
     pub(crate) env: BoxEnv,
     /// The run is plain primitives, which a recording replaces.
     pub(crate) replaceable: bool,
+    /// How the run's commands came here from the paint record its box painted
+    /// in (`super::placed`); a recording of the box is placed the same way.
+    pub(crate) placed: Option<super::Placed>,
 }
 
 /// A box's own paint being recorded: where its commands start.
@@ -67,8 +70,9 @@ impl Scene {
     pub(crate) fn open_box(&mut self, owner: u32, area: Bounds<ScaledPixels>, env: BoxEnv) -> bool {
         // A group's scene (`in_group`) is composited into the layer as one
         // result: a run of its commands is no run of the layer.
+        // A paint record that keeps box runs (`super::placed`) is no group.
         if self.book.open_box.is_some()
-            || self.in_group
+            || (self.in_group && self.book.record_runs.is_none())
             || !self.layer_stack.is_empty()
             || !self.depth.plane_stack.is_empty()
             || !self.depth.contexts.is_empty()
@@ -126,6 +130,7 @@ impl Scene {
             ops: ops.start as u32..ops.end as u32,
             env: open.env,
             replaceable: plain,
+            placed: None,
         })
     }
 }

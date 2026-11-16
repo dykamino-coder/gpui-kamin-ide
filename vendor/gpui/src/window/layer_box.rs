@@ -39,10 +39,11 @@ impl Window {
             return self.with_paint_owner(owner, f);
         }
         let result = self.with_paint_owner(owner, f);
-        if let (Some(range), Some(recording)) = (
-            self.next_frame.scene.close_box(),
-            self.layer_recording.as_mut(),
-        ) {
+        let range = self.next_frame.scene.close_box();
+        // A paint record keeps the run for its placements (`scene::layer::placed`).
+        if let (Some(range), Some(runs)) = (&range, self.next_frame.scene.book.record_runs.as_mut()) {
+            runs.boxes.push(range.clone());
+        } else if let (Some(range), Some(recording)) = (range, self.layer_recording.as_mut()) {
             recording.boxes.push(range);
         }
         result
@@ -111,15 +112,20 @@ impl Window {
         }
         let mut moved = false;
         for at in runs {
-            let (area, env) = {
+            let (area, env, placed) = {
                 let content = layer.0.content.borrow();
                 let b = &content.boxes[at];
-                (b.area, b.env)
+                (b.area, b.env, b.placed)
             };
             if env.transformation != TransformationMatrix::unit() {
                 return None;
             }
             let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);
+            // A run placed from a paint record: the new commands are placed the same way.
+            let (scene, bindings) = match placed {
+                Some(placed) => crate::scene::place_run(scene, bindings, placed)?,
+                None => (scene, bindings),
+            };
             let mut current = layer.0.content.borrow_mut();
             let plan = current.check_box(at, &scene)?;
             let content = Rc::make_mut(&mut *current);
@@ -150,6 +156,7 @@ impl Window {
         let recording = Box::new(LayerRecording {
             bindings: Vec::new(),
             boxes: Vec::new(),
+            unheld: Vec::new(),
             source: None,
         });
         let mut state = (Scene::default(), Some(recording));
