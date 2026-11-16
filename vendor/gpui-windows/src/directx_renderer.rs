@@ -46,6 +46,7 @@ mod group_stage;
 mod gaussian;
 mod group_atlas;
 mod group_batch;
+mod group_series;
 mod texture_pool;
 mod gpu_memory;
 pub(crate) use gpu_memory::texture_bytes;
@@ -94,6 +95,13 @@ pub(crate) struct DirectXRenderer {
     /// KaminIDE patch: блендер «писать поверх» — для групп, у которых
     /// смешивание с кадром посчитано в шейдере.
     blend_replace: Option<ID3D11BlendState>,
+    /// KaminIDE patch: output-merger states of the blend modes it computes
+    /// (`group_series`), made on first use.
+    series_blends: group_series::SeriesBlends,
+    /// KaminIDE patch: output-merger series on (`GPUI_BLEND_SERIES=0` keeps
+    /// every blend mode on the shader path with backdrop copies, for
+    /// comparison runs).
+    blend_series: bool,
 
     width: u32,
     height: u32,
@@ -444,6 +452,9 @@ struct DirectXRenderPipelines {
     blur_pipeline: PipelineState<BlurQuad>,
     /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
     clear_pipeline: PipelineState<quad_clear::ClearColor>,
+    /// KaminIDE patch: group composites blended by the output merger
+    /// (`group_series`).
+    group_blend_pipeline: PipelineState<BlurQuad>,
 }
 
 struct DirectXGlobalElements {
@@ -582,6 +593,8 @@ impl DirectXRenderer {
             group_target_tex: None,
             blend_premultiplied: None,
             blend_replace: None,
+            series_blends: Default::default(),
+            blend_series: group_series::enabled(),
             width: 1,
             height: 1,
             backdrop: None,
@@ -2472,8 +2485,16 @@ impl DirectXRenderPipelines {
             1,
             create_blend_state_replace(device)?,
         )?;
+        let group_blend_pipeline = PipelineState::new(
+            device,
+            "group_blend_pipeline",
+            ShaderModule::GroupBlend,
+            4,
+            create_blend_state_premultiplied(device)?,
+        )?;
 
         Ok(Self {
+            group_blend_pipeline,
             shadow_pipeline,
             quad_pipeline,
             path_rasterization_pipeline,
@@ -3306,6 +3327,8 @@ pub(crate) mod shader_resources {
         Blur,
         /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
         Clear,
+        /// KaminIDE patch: group composites blended by the output merger.
+        GroupBlend,
     }
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -3391,6 +3414,10 @@ pub(crate) mod shader_resources {
                     ShaderTarget::Vertex => CLEAR_VERTEX_BYTES,
                     ShaderTarget::Fragment => CLEAR_FRAGMENT_BYTES,
                 },
+                ShaderModule::GroupBlend => match target {
+                    ShaderTarget::Vertex => GROUP_BLEND_VERTEX_BYTES,
+                    ShaderTarget::Fragment => GROUP_BLEND_FRAGMENT_BYTES,
+                },
             };
             Self { inner: bytes }
         }
@@ -3418,6 +3445,7 @@ pub(crate) mod shader_resources {
                 ShaderModule::EmojiRasterization => "emoji_rasterization",
                 ShaderModule::Blur => "blur",
                 ShaderModule::Clear => "clear",
+                ShaderModule::GroupBlend => "group_blend",
             }
         }
     }

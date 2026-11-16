@@ -249,6 +249,32 @@ impl DirectXRenderer {
 
     /// Draw a run of consecutive group composites level by level.
     pub(super) fn draw_composite_run(&mut self, run: &[&PaintSurface]) -> Result<()> {
+        // KaminIDE patch: consecutive composites of output-merger modes form a
+        // series without copies (`group_series`); the rest keep the levels.
+        // Segments are drawn in document order, each before the next.
+        let merger: Vec<bool> = run
+            .iter()
+            .map(|s| {
+                let g = s.group as usize - 1;
+                self.blend_series
+                    && group_series::merger_mode(self.blur.group_blend.get(g).copied().unwrap_or(0))
+            })
+            .collect();
+        let mut k = 0;
+        while k < run.len() {
+            let m = merger[k];
+            let end = k + merger[k..].iter().take_while(|&&v| v == m).count();
+            if m {
+                self.draw_composite_series(&run[k..end])?;
+            } else {
+                self.draw_composite_levels_run(&run[k..end])?;
+            }
+            k = end;
+        }
+        Ok(())
+    }
+
+    fn draw_composite_levels_run(&mut self, run: &[&PaintSurface]) -> Result<()> {
         for chunk in run.chunks(MAX_BATCH) {
             if let [s] = chunk {
                 self.draw_group_composite(s)?;
