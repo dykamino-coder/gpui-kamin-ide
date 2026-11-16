@@ -35,7 +35,6 @@ export class CliModTransport {
   onTurn: (turnId: string | null) => void = () => {}
   onUnavailable: () => void = () => {}
   onUncertain: () => void = () => {}
-  onRead: (submissionId: string, uuid: string) => void = () => {}
   hookConditions?: CliHandlerConditions
 
   constructor(readonly sessionId: string) {
@@ -95,17 +94,6 @@ export class CliModTransport {
             else this.hookConditions.release(data.generation)
             res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(result))
             return
-          }
-          if (Array.isArray(data.reads)) {
-            for (const read of data.reads.slice(0, 128)) {
-              if (
-                typeof read.submissionId === 'string' &&
-                read.submissionId.length <= 128 &&
-                typeof read.uuid === 'string' &&
-                read.uuid.length <= 128
-              )
-                this.onRead(read.submissionId, read.uuid)
-            }
           }
           if (Array.isArray(data.turns)) {
             for (const turn of data.turns.slice(0, 256)) {
@@ -251,10 +239,10 @@ export class CliModTransport {
     }
   }
 
-  submit(text: string, fallback: () => void, submissionId?: string): boolean {
+  submit(text: string, fallback: () => void, submissionId?: string, accepted?: () => void): boolean {
     if (!this.healthy() || this.pending.size >= 64 || Buffer.byteLength(text) > 131_072) return false
     const command: Command = { id: ++this.sequence, kind: 'submit', text, ...(submissionId ? { submissionId } : {}) }
-    this.pending.set(command.id, { command, claimed: false, fallback })
+    this.pending.set(command.id, { command, claimed: false, fallback, accepted })
     this.answerHeld()
     return true
   }

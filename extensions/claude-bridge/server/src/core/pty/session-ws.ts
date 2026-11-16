@@ -11,7 +11,7 @@ import {
   clearCompletedCommands,
   rememberCommandResult,
 } from './commands'
-import { mcpTasks, settleMcpTask } from './mcp-tasks'
+import { cancelEndedSessionTasks, mcpTasks, settleMcpTask } from './mcp-tasks'
 import { traceAnswered } from './mcp-trace'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
@@ -692,7 +692,15 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             })
           }
           cancelStartup('ended')
+          const ending =
+            authenticatedSessionId && sessionWsMap.get(authenticatedSessionId) === ws
+              ? getSession(authenticatedSessionId)
+              : undefined
           retireBinding('explicit_end')
+          if (ending)
+            void cancelEndedSessionTasks(ending).catch((error) =>
+              debugLog('ended session task cancel failed', { error: (error as Error).message }),
+            )
           break
         }
 

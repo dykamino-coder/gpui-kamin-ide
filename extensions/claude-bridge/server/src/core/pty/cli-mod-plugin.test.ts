@@ -15,7 +15,7 @@ const TOOL_CALL_EVENTS = [
   'settings.read',
   'classic.ConfigChange',
 ]
-const TRANSPORT_EVENTS = ['prompt.submit', 'session.append', 'session.start', 'turn.start', 'turn.complete']
+const TRANSPORT_EVENTS = ['session.start', 'turn.start', 'turn.complete']
 
 function events(register: (on: any) => unknown): string[] {
   const seen: string[] = []

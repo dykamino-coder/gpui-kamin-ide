@@ -305,6 +305,42 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
     await request('tools/call', { name: 'KillShell', arguments: { bash_id: '3' } })
     expect(mock.call).toHaveBeenCalled()
   })
+  it('settles the tasks of an explicitly ended session so the resumed session can sleep', async () => {
+    const delivered = await create()
+    await vi.waitFor(() =>
+      expect(mock.send).toHaveBeenCalledWith(
+        session.ws,
+        expect.objectContaining({ type: 'mcp:call', requestId: delivered }),
+      ),
+    )
+    session.ws = { readyState: 0 } as PtySession['ws']
+    const undelivered = await create()
+    const other = await tasks.mcpIdentity('synthetic-user', '/synthetic/other-conversation')
+    const foreign = await tasks.mcpTasks.create(other.id, 'Bash', { command: 'other session' })
+    expect(tasks.mcpTasks.hasWorkingOwner(session.mcpEndpoint!.id)).toBe(true)
+
+    await tasks.cancelEndedSessionTasks(session)
+
+    expect(tasks.mcpTasks.hasWorkingOwner(session.mcpEndpoint!.id)).toBe(false)
+    for (const id of [delivered, undelivered])
+      expect(await tasks.mcpTasks.get(session.mcpEndpoint!.id, id)).toMatchObject({ status: 'cancelled', input: {} })
+    expect((await tasks.mcpTasks.get(other.id, foreign.taskId))?.status).toBe('working')
+    // The ended client dropped its result; a late one cannot revive the task.
+    await tasks.settleMcpTask(session, {
+      type: 'mcp:response',
+      requestId: delivered,
+      taskOwner: session.mcpEndpoint!.id,
+      result: 'too late',
+    })
+    expect((await tasks.mcpTasks.get(session.mcpEndpoint!.id, delivered))?.status).toBe('cancelled')
+    expect(mock.send.mock.calls.some(([, frame]) => frame.type === 'mcp:call' && frame.requestId === undelivered)).toBe(
+      false,
+    )
+    await tasks.mcpTasks.update(other.id, foreign.taskId, (t) => {
+      t.status = 'cancelled'
+    })
+    session.ws = { readyState: 1 } as PtySession['ws']
+  })
   it('cancels an undelivered task without ever executing it', async () => {
     session.ws = { readyState: 0 } as PtySession['ws']
     const id = await create()
