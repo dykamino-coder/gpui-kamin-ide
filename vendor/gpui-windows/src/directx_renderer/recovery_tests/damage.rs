@@ -192,7 +192,7 @@ fn draw_chain(device: &DirectXDevices, frames: &[&Frame]) -> (Vec<u8>, SceneDama
     let mut damage = SceneDamage::Unknown;
     for (i, f) in frames.iter().enumerate() {
         let mut s = f.scene();
-        s.note_damage(&previous, i as u64 + 1, (W, H));
+        s.note_frame_damage(&previous, i as u64 + 1, (W, H));
         damage = s.frame_damage().0;
         r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
         previous = s;

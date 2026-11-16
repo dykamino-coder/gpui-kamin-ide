@@ -73,6 +73,26 @@ pub(super) fn apply<'a>(nodes: &'a mut Vec<Node>, path: &[usize]) -> Option<&'a 
     list.iter_mut().nth(*last)
 }
 
+/// Коробка по пути `path` за O(глубины), без обхода дерева; `None`, если там
+/// не элемент.
+pub(in crate::document) fn element_at<'a>(
+    nodes: &'a [Node],
+    path: &[usize],
+) -> Option<&'a Element> {
+    let (last, parents) = path.split_last()?;
+    let mut list: &[Node] = nodes;
+    for &i in parents {
+        let Some(Node::Element(e)) = list.get(i) else {
+            return None;
+        };
+        list = &e.children;
+    }
+    match list.get(*last)? {
+        Node::Element(e) => Some(e),
+        _ => None,
+    }
+}
+
 /// Обход коробок в прямом порядке с путём к каждой (без рекурсии: глубина
 /// дерева коробок ограничена только пределом представления); `false` от
 /// `visit` прерывает обход, и тогда результат — `false`.

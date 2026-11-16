@@ -6387,7 +6387,7 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_atlas.rs b/vendor/gpui-windows/src/directx_atlas.rs
-index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a2f144681
+index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..c8a8271eff295b81281362b36a2fe082281e342a
 --- a/vendor/gpui-windows/src/directx_atlas.rs
 +++ b/vendor/gpui-windows/src/directx_atlas.rs
 @@ -16 +16,8 @@
@@ -6407,7 +6407,7 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a
 @@ -37 +47 @@
 -        DirectXAtlas(Mutex::new(AtlasState::new(DirectXAtlasTextures {
 +        let state = Mutex::new(AtlasState::new(DirectXAtlasTextures {
-@@ -43 +53,25 @@
+@@ -43 +53,30 @@
 -        })))
 +        }));
 +        DirectXAtlas(state, std::sync::atomic::AtomicU64::new(0))
@@ -6422,22 +6422,27 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a
 +        self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +    }
 +
-+    /// KaminIDE patch: whether a sprite of `scene` (or of its groups) samples an
-+    /// external texture, whose content may differ from the last frame's.
++    /// KaminIDE patch: whether a sprite of `scene` (of its groups, or of the
++    /// retained layers it draws) samples an external texture, whose content
++    /// may differ from the last frame's.
 +    pub(crate) fn samples_external(&self, scene: &gpui::Scene) -> bool {
 +        let lock = self.0.lock();
-+        let external = |s: &gpui::Scene| {
++        let lock = &*lock;
++        fn external(lock: &AtlasState<DirectXAtlasTextures>, s: &gpui::Scene) -> bool {
 +            s.polychrome_sprites.iter().any(|sprite| {
 +                lock.backend
 +                    .texture(sprite.tile.texture_id)
 +                    .is_some_and(|t| t.external)
-+            })
-+        };
-+        external(scene) || scene.groups.iter().any(|g| external(&g.scene))
-@@ -49,0 +84,2 @@
++            }) || s.groups.iter().any(|g| external(lock, &g.scene))
++                || (0..s.layer_count())
++                    .filter_map(|i| s.layer(i))
++                    .any(|layer| external(lock, layer.scene()))
++        }
++        external(lock, scene)
+@@ -49,0 +89,2 @@
 +    // KaminIDE patch: None = слот освобождён (кадр «в полёте» пережил
 +    // unregister_external) — вызывающий пропускает отрисовку этой пачки.
-@@ -56,0 +93,104 @@
+@@ -56,0 +98,104 @@
 +    }
 +
 +    /// KaminIDE patch: положить ЧУЖУЮ текстуру D3D11 (готовый кадр CEF) в
@@ -6542,7 +6547,7 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a
 +        }
 +        drop(lock);
 +        self.bump();
-@@ -71,0 +212,26 @@
+@@ -71,0 +217,26 @@
 +        drop(lock);
 +        self.bump();
 +    }
@@ -6569,18 +6574,18 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..198dda4b5480b16019bf32af4ec61c9a
 +                );
 +            }
 +        }
-@@ -87,0 +254 @@
+@@ -87,0 +259 @@
 +        self.bump();
-@@ -225 +392,5 @@
+@@ -225 +397,5 @@
 -        let index = texture_list.free_list.pop();
 +        // KaminIDE patch: индексы НЕ переиспользуем (см. register_external) —
 +        // кадр «в полёте» со спрайтом старого владельца индекса рисовал чужую
 +        // текстуру. Слоты-пустышки копятся медленно (полное освобождение
 +        // атласной текстуры — редкость), Option в Vec дёшев.
 +        let index: Option<usize> = None;
-@@ -242,0 +414 @@
+@@ -242,0 +419 @@
 +            external: false,
-@@ -252,0 +425,3 @@
+@@ -252,0 +430,3 @@
 +    // KaminIDE patch: Option вместо unwrap-паники. Слот может быть None:
 +    // текстура вью снята unregister_external, а кадр с её спрайтом ещё в
 +    // полёте (CEF-насос реентерабелен) — тогда спрайт просто не рисуем.
@@ -6818,7 +6823,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc975fd81e96
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..30a32ccf4f0a84ee878a8bcdfb06d948ac76228b
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -6883,12 +6888,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
 +    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
 +    backdrop: Option<[f32; 4]>,
-@@ -56,0 +113,291 @@
+@@ -56,0 +113,296 @@
 +    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
 +    gpu_timer: batch_cost::GpuTimer,
 +    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
 +    /// Идёт основная сцена кадра (не буфер группы) — её пачки и меряются.
 +    timing_main: bool,
++    /// KaminIDE patch: instance buffers of retained scene layers (`layer_cache`).
++    layer_cache: layer_cache::LayerCache,
++    /// KaminIDE patch: the window background quad (`backdrop`) is still to be
++    /// skipped: the first quad batch of the frame, possibly inside a layer.
++    backdrop_pending: bool,
 +    /// KaminIDE patch (BR-31A): the last frame was not handed to the
 +    /// compositor, so the next paint must present (`present_gate`).
 +    unpresented: bool,
@@ -7175,40 +7185,40 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +    group_stage::downsample_clip(dc, dest.width, dest.height, || {
 +        pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
 +    })
-@@ -61,0 +409,2 @@
+@@ -61,0 +414,2 @@
 +    // KaminIDE patch: immutable snapshot belongs to these device resources.
 +    context: gpui::frame_capture::GpuDeviceContext,
-@@ -69,0 +419,2 @@
+@@ -69,0 +424,2 @@
 +use present_gate::FrameLatencyGate;
 +
-@@ -72 +423,4 @@
+@@ -72 +428,4 @@
 -    swap_chain: IDXGISwapChain1,
 +    /// KaminIDE patch: `None` for an offscreen target (`new_offscreen`).
 +    swap_chain: Option<IDXGISwapChain1>,
 +    /// KaminIDE patch (#76): см. FrameLatencyGate.
 +    frame_gate: Option<FrameLatencyGate>,
-@@ -94,0 +449,6 @@
+@@ -94,0 +454,6 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
 +    /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +    clear_pipeline: PipelineState<quad_clear::ClearColor>,
 +    /// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 +    group_tiles_pipeline: PipelineState<BlurQuad>,
-@@ -100,0 +461,2 @@
+@@ -100,0 +466,2 @@
 +    // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
 +    group_samplers: [Option<ID3D11SamplerState>; 4],
-@@ -121,0 +484 @@
+@@ -121,0 +489 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +497 @@
+@@ -133,0 +502 @@
 +            ..
-@@ -142,0 +507 @@
+@@ -142,0 +512 @@
 +            context: directx_devices.context.clone(),
-@@ -153,0 +519,4 @@
+@@ -153,0 +524,4 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
 +        self.capture = sink;
 +    }
 +
-@@ -159 +528,17 @@
+@@ -159 +533,17 @@
 -        if disable_direct_composition {
 +        Self::build(hwnd, directx_devices, disable_direct_composition, false)
 +    }
@@ -7227,7 +7237,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +        offscreen: bool,
 +    ) -> Result<Self> {
 +        if disable_direct_composition && !offscreen {
-@@ -167,2 +552,6 @@
+@@ -167,2 +557,6 @@
 -        let resources = DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 -            .context("Creating DirectX resources")?;
 +        let resources = if offscreen {
@@ -7236,28 +7246,30 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +            DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 +        }
 +        .context("Creating DirectX resources")?;
-@@ -180 +569 @@
+@@ -180 +574 @@
 -                .set_swap_chain(&resources.swap_chain)
 +                .set_swap_chain(resources.swap_chain()?)
-@@ -192,0 +582,2 @@
+@@ -192,0 +587,2 @@
 +            disable_direct_composition,
 +            offscreen,
-@@ -193,0 +585,9 @@
+@@ -193,0 +590,11 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
 +            timing_main: false,
++            layer_cache: Default::default(),
++            backdrop_pending: false,
 +            group_target: None,
 +            group_target_tex: None,
 +            blend_premultiplied: None,
 +            blend_replace: None,
 +            group_tiles: group_tiles::enabled(),
-@@ -195,0 +596 @@
+@@ -195,0 +603 @@
 +            backdrop: None,
-@@ -196,0 +598,2 @@
+@@ -196,0 +605,2 @@
 +            unpresented: false,
 +            retained: Default::default(),
-@@ -197,0 +601,34 @@
+@@ -197,0 +608,34 @@
 +    }
 +
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
@@ -7292,18 +7304,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +    /// KaminIDE patch: забыть чужую текстуру.
 +    pub fn unregister_external_texture(&self, id: AtlasTextureId) {
 +        self.atlas.unregister_external(id);
-@@ -204 +641,2 @@
+@@ -204 +648,2 @@
 -    fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
 +    fn pre_draw(&mut self, clear_color: &[f32; 4], clear: bool) -> Result<()> {
 +        let clear_color = *self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -220 +658,2 @@
+@@ -220 +665,2 @@
 -                _pad: [0; 3],
 +                origin: [0.0; 2],
 +                _pad: 0,
-@@ -222,0 +662,2 @@
+@@ -222,0 +669,2 @@
 +        // KaminIDE patch: the clear is a draw, issued once the target, the
 +        // viewport and the frame parameters are bound (quad_clear).
-@@ -224,7 +664,0 @@
+@@ -224,7 +671,0 @@
 -            device_context.ClearRenderTargetView(
 -                resources
 -                    .render_target_view
@@ -7311,7 +7323,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 -                    .context("missing render target view")?,
 -                clear_color,
 -            );
-@@ -241 +675,6 @@
+@@ -241 +682,6 @@
 -        Ok(())
 +        // KaminIDE patch: a frame drawn within a rectangle clears it later,
 +        // under the scissor (`render`).
@@ -7319,7 +7331,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +            return Ok(());
 +        }
 +        self.clear_frame(clear_color)
-@@ -246,6 +685,12 @@
+@@ -246,6 +692,12 @@
 -        let result = unsafe {
 -            self.resources
 -                .as_ref()
@@ -7338,7 +7350,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +        else {
 +            self.unpresented = false;
 +            return Ok(());
-@@ -253 +698,37 @@
+@@ -253 +705,37 @@
 -        result.ok().context("Presenting swap chain failed")
 +        // KaminIDE patch (BR-31A): never wait inside Present. While the GPU
 +        // or the compositor is behind, a plain Present blocked the UI thread
@@ -7377,7 +7389,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +    /// must present even if the scene is unchanged.
 +    pub(crate) fn needs_presentation(&self) -> bool {
 +        self.unpresented
-@@ -263,65 +744,33 @@
+@@ -256,0 +745,2 @@
++        // KaminIDE patch: layer buffers die with the device.
++        self.layer_cache.clear();
+@@ -263,65 +753,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -7476,7 +7491,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -340 +789,60 @@
+@@ -340 +798,60 @@
 -        self.render(scene, background_appearance)?;
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (retained.rs): unite this frame's damage into every
@@ -7538,19 +7553,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -348,0 +857,4 @@
+@@ -348,0 +866,4 @@
 +    ///
 +    /// KaminIDE patch: with `within`, the target keeps the last frame and only
 +    /// that rectangle is cleared and drawn (scissor, `retained.rs`); groups
 +    /// whose composite cannot reach it are not drawn.
-@@ -352,0 +865 @@
+@@ -352,0 +874 @@
 +        within: Option<Region>,
-@@ -354 +867,3 @@
+@@ -354 +876,5 @@
 -        self.pre_draw(&match background_appearance {
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
++        self.backdrop_pending = self.backdrop.is_some();
++        self.layer_cache.begin_frame();
 +        let clear_color = match background_appearance {
-@@ -357,2 +872,72 @@
+@@ -357,2 +883,72 @@
 -        })?;
 -        self.upload_scene_buffers(scene)?;
 +        };
@@ -7625,26 +7642,33 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +            self.upload_scene_buffers(scene)?;
 +        }
 +        let b = base.unwrap_or_default();
-@@ -365,0 +951 @@
+@@ -365,0 +962,6 @@
++            // KaminIDE patch: a layer draws its own batches from its buffers.
++            if let PrimitiveBatch::Layer(index) = batch {
++                self.draw_layer(scene, index)?;
++                continue;
++            }
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -370,2 +956,2 @@
+@@ -370,2 +972,2 @@
 -                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
 -                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
 +                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
 +                PrimitiveBatch::Quads(range) => self.draw_quads(b[1] + range.start, range.len()),
-@@ -377 +963 @@
+@@ -377 +979 @@
 -                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
 +                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
-@@ -379 +965 @@
+@@ -379 +981 @@
 -                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
-@@ -382 +968 @@
+@@ -382 +984 @@
 -                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
 +                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
-@@ -385 +971 @@
+@@ -385 +987 @@
 -                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
-@@ -402,0 +989,404 @@
+@@ -387,0 +990 @@
++                PrimitiveBatch::Layer(_) => Ok(()),
+@@ -402,0 +1006,404 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -8049,19 +8073,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1401,0 @@
+@@ -412 +1418,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -425 +1414,4 @@
+@@ -425 +1431,4 @@
 -        self.render(scene, background_appearance)?;
 +        // KaminIDE patch: the target now holds a frame outside the window's
 +        // sequence of compared scenes (`retained.rs`).
 +        self.forget_frames();
 +        self.render(scene, background_appearance, None)?;
-@@ -488 +1480,2 @@
+@@ -488 +1497,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1487,24 @@
+@@ -494 +1504,24 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            // KaminIDE patch: an offscreen target is simply recreated.
@@ -8087,7 +8111,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +    ) -> Result<()> {
 +        // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
 +        self.forget_frames();
-@@ -500,19 +1516 @@
+@@ -500,19 +1533 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -8108,36 +8132,36 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 -
 -        resources.recreate_resources(devices, width, height)?;
 +        recreate(resources, devices)?;
-@@ -599,0 +1598,7 @@
+@@ -599,0 +1615,7 @@
 +        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
 +        // групп очищаются прозрачным — там первый квад рисуется как есть.
-+        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
-+            (1, len.saturating_sub(1))
-+        } else {
-+            (start, len)
-+        };
-@@ -621,0 +1627,6 @@
++        let skip = start == 0 && self.backdrop_pending && self.group_target.is_none();
++        if self.group_target.is_none() {
++            self.backdrop_pending = false;
++        }
++        let (start, len) = if skip { (1, len.saturating_sub(1)) } else { (start, len) };
+@@ -621,0 +1644,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1655,2 @@
+@@ -643,0 +1672,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1685,4 @@
+@@ -672 +1702,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1832,4 @@
+@@ -815,0 +1849,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1840,40 @@
+@@ -819,0 +1857,40 @@
 +        // KaminIDE patch: consecutive group composites are drawn level by level
 +        // (`group_batch`); anything else ends the run.
 +        let mut run: Vec<&PaintSurface> = Vec::new();
@@ -8178,7 +8202,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -822,0 +1883,365 @@
+@@ -822,0 +1900,365 @@
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
 +    fn draw_backdrop_blur(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
@@ -8544,10 +8568,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +        };
 +        Some((quad, place.page))
 +    }
-@@ -840 +2265 @@
+@@ -840 +2282 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2316,12 @@
+@@ -890,0 +2333,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -8560,14 +8584,14 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
 +            })
 +        };
-@@ -900 +2337 @@
+@@ -900 +2354 @@
 -        ) = create_resources(devices, &swap_chain, width, height)?;
 +        ) = create_resources(devices, Some(&swap_chain), width, height)?;
-@@ -904 +2341,2 @@
+@@ -904 +2358,2 @@
 -            swap_chain,
 +            swap_chain: Some(swap_chain),
 +            frame_gate,
-@@ -912,0 +2351,31 @@
+@@ -912,0 +2368,31 @@
 +    }
 +
 +    /// KaminIDE patch: a render target texture in place of a swap chain back
@@ -8599,10 +8623,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +    /// KaminIDE patch: the swap chain of a presented (non-offscreen) target.
 +    fn swap_chain(&self) -> Result<&IDXGISwapChain1> {
 +        self.swap_chain.as_ref().context("offscreen target has no swap chain")
-@@ -930 +2399 @@
+@@ -930 +2416 @@
 -        ) = create_resources(devices, &self.swap_chain, width, height)?;
 +        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
-@@ -999,0 +2469,22 @@
+@@ -999,0 +2486,22 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -8625,25 +8649,25 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +            4,
 +            create_blend_state_replace(device)?,
 +        )?;
-@@ -1001,0 +2493 @@
+@@ -1001,0 +2510 @@
 +            group_tiles_pipeline,
-@@ -1009,0 +2502,2 @@
+@@ -1009,0 +2519,2 @@
 +            blur_pipeline,
 +            clear_pipeline,
-@@ -1018,0 +2513,4 @@
+@@ -1018,0 +2530,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2522 @@
+@@ -1023,0 +2539 @@
 +            comp_root,
-@@ -1030 +2529,2 @@
+@@ -1030 +2546,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2564 @@
+@@ -1063,0 +2581 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2577,16 @@
+@@ -1076 +2594,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -8661,10 +8685,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2606,2 @@
+@@ -1089,0 +2623,2 @@
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2617,0 @@
+@@ -1100,30 +2634,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -8695,7 +8719,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 -        })
 -    }
 -
-@@ -1190,0 +2679,45 @@
+@@ -1190,0 +2696,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -8741,31 +8765,31 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2730 @@
+@@ -1197 +2747 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1275,0 +2809,2 @@
+@@ -1275,0 +2826,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2854,2 @@
+@@ -1319 +2871,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2883,2 @@
+@@ -1347 +2900,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1358 +2895 @@
+@@ -1358 +2912 @@
 -    swap_chain: &IDXGISwapChain1,
 +    swap_chain: Option<&IDXGISwapChain1>,
-@@ -1370,2 +2907,4 @@
+@@ -1370,2 +2924,4 @@
 -    let (render_target, render_target_view) =
 -        create_render_target_and_its_view(swap_chain, &devices.device)?;
 +    let (render_target, render_target_view) = match swap_chain {
 +        Some(swap_chain) => create_render_target_and_its_view(swap_chain, &devices.device)?,
 +        None => create_offscreen_target_and_its_view(&devices.device, width, height)?,
 +    };
-@@ -1400,0 +2940,36 @@
+@@ -1400,0 +2957,36 @@
 +    let mut render_target_view = None;
 +    unsafe { device.CreateRenderTargetView(&render_target, None, Some(&mut render_target_view))? };
 +    Ok((render_target, render_target_view))
@@ -8802,7 +8826,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +        device.CreateTexture2D(&offscreen_target_desc(width, height), None, Some(&mut render_target))?
 +    };
 +    let render_target = render_target.context("offscreen render target")?;
-@@ -1492,0 +3068,33 @@
+@@ -1492,0 +3085,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -8836,7 +8860,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +    }
 +}
 +
-@@ -1701,7 +3309 @@
+@@ -1701,7 +3326 @@
 -    use windows::{
 -        Win32::Graphics::Direct3D::{
 -            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
@@ -8845,14 +8869,14 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 -        core::{HSTRING, PCSTR},
 -    };
 +    use windows::Win32::Graphics::Direct3D::ID3DBlob;
-@@ -1719,0 +3322,6 @@
+@@ -1719,0 +3339,6 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
 +        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +        Clear,
 +        /// KaminIDE patch: group composites blended by the output merger.
 +        GroupTiles,
-@@ -1796,0 +3405,12 @@
+@@ -1796,0 +3422,12 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
@@ -8865,9 +8889,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
 +                },
-@@ -1801,0 +3422 @@
+@@ -1801,0 +3439 @@
 +    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
-@@ -1803,64 +3424 @@
+@@ -1803,64 +3441 @@
 -    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
 -        unsafe {
 -            use windows::Win32::Graphics::{
@@ -8933,11 +8957,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 -        }
 -    }
 +    use super::shader_compilation::build_shader_blob;
-@@ -1883,0 +3442,3 @@
+@@ -1883,0 +3459,3 @@
 +                ShaderModule::Blur => "blur",
 +                ShaderModule::Clear => "clear",
 +                ShaderModule::GroupTiles => "group_tiles",
-@@ -2054,17 +3615,37 @@
+@@ -2054,17 +3632,39 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -8957,6 +8981,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 -}
 +
 +mod backdrop;
++mod layer_cache;
 +mod recovery;
 +mod batch_cost;
 +
@@ -8983,6 +9008,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +        PrimitiveBatch::SubpixelSprites { range: r, .. } => (5, r.len(), sum(&scene.subpixel_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
 +        PrimitiveBatch::PolychromeSprites { range: r, .. } => (6, r.len(), sum(&scene.polychrome_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
 +        PrimitiveBatch::Surfaces(r) => (7, r.len(), sum(&scene.surfaces[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
++        PrimitiveBatch::Layer(_) => (8, 0, 0.0),
 +    }
 +}
 +
@@ -8994,10 +9020,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..225f0e48280cf922c5a78d35ef4edc97
 +mod shader_tests;
 diff --git a/vendor/gpui-windows/src/directx_renderer/backdrop.rs b/vendor/gpui-windows/src/directx_renderer/backdrop.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..65ef79ac97d4010597cae739f5ce9b37332dfb8f
+index 0000000000000000000000000000000000000000..0759f8c9e2bf651b77be9684ea0c0ba63937a884
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/backdrop.rs
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,202 @@
 +//! KaminIDE patch (INC-2026-0001): фон окна — очисткой кадра, а не квадом.
 +//!
 +//! Корень интерфейса первым рисует сплошной непрозрачный квад на всё окно.
@@ -9023,6 +9049,11 @@ index 0000000000000000000000000000000000000000..65ef79ac97d4010597cae739f5ce9b37
 +    // нарисовано, и очистка это стёрла бы.
 +    match scene.batches().next() {
 +        Some(PrimitiveBatch::Quads(range)) if range.start == 0 && !range.is_empty() => {}
++        // KaminIDE patch: a frame that starts with a retained layer starts
++        // with the layer's first batch (the renderer skips that quad there).
++        Some(PrimitiveBatch::Layer(index)) if scene.groups.is_empty() => {
++            return opaque_backdrop(scene.layer(index)?.scene(), width, height);
++        }
 +        _ => return None,
 +    }
 +    // Буферы групп рисуются ДО кадра, и backdrop-проход внутри группы
@@ -11830,6 +11861,144 @@ index 0000000000000000000000000000000000000000..bfcbca2ae2edb8ed4c4bdcdc3bc096a1
 +    let apart: Vec<Region> = (0..4).map(|i| r(i * 16, 0, 16, 16)).collect();
 +    assert_eq!(bin(&apart, 64, 16, 1, &mut l), 4);
 +}
+diff --git a/vendor/gpui-windows/src/directx_renderer/layer_cache.rs b/vendor/gpui-windows/src/directx_renderer/layer_cache.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..db98c0c9fb6c536aed10b6382cfb47707046bca0
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/layer_cache.rs
+@@ -0,0 +1,132 @@
++//! KaminIDE patch: instance buffers of retained scene layers (`gpui::SceneLayer`).
++//!
++//! A frame draws a layer (`PrimitiveBatch::Layer`) from buffers kept per
++//! layer and filled again only when the layer's version changes: an
++//! unchanged layer costs its draw calls, not an upload. The buffers are
++//! swapped into the pipelines for the layer's batches, so every batch is
++//! drawn by the same code as the frame's own. They are a cache of the layer:
++//! a layer not drawn in a frame loses them, and a lost device drops all.
++
++use super::{DirectXRenderer, PipelineState, create_buffer, create_buffer_view};
++use anyhow::Result;
++use collections::HashMap;
++use gpui::Scene;
++use windows::Win32::Graphics::Direct3D11::{ID3D11Buffer, ID3D11Device, ID3D11ShaderResourceView};
++
++/// One pipeline's instance buffer outside the pipeline.
++struct Instances {
++    buffer: ID3D11Buffer,
++    view: Option<ID3D11ShaderResourceView>,
++    size: usize,
++}
++
++impl Instances {
++    fn new<T>(device: &ID3D11Device) -> Result<Self> {
++        let buffer = create_buffer(device, std::mem::size_of::<T>(), 1)?;
++        let view = create_buffer_view(device, &buffer)?;
++        Ok(Self { buffer, view, size: 1 })
++    }
++
++    fn swap<T>(&mut self, pipeline: &mut PipelineState<T>) {
++        std::mem::swap(&mut self.buffer, &mut pipeline.buffer);
++        std::mem::swap(&mut self.view, &mut pipeline.view);
++        std::mem::swap(&mut self.size, &mut pipeline.buffer_size);
++    }
++}
++
++/// The buffers of one layer: shadows, quads, underlines, monochrome,
++/// subpixel and polychrome sprites, and the version they hold.
++struct LayerBuffers {
++    sets: [Instances; 6],
++    version: Option<u64>,
++    frame: u64,
++}
++
++/// Buffers of the layers drawn in the last frame, by layer id.
++#[derive(Default)]
++pub(super) struct LayerCache {
++    layers: HashMap<u64, LayerBuffers>,
++    frame: u64,
++}
++
++impl LayerCache {
++    /// A new frame: buffers of layers the last one did not draw are dropped.
++    pub(super) fn begin_frame(&mut self) {
++        let last = self.frame;
++        self.layers.retain(|_, layer| layer.frame == last);
++        self.frame += 1;
++    }
++
++    /// The buffers of a layer the last frame drew and this one has not yet,
++    /// emptied for another layer to fill.
++    fn take_stale(&mut self) -> Option<LayerBuffers> {
++        let frame = self.frame;
++        let id = *self.layers.iter().find(|(_, layer)| layer.frame != frame)?.0;
++        let mut buffers = self.layers.remove(&id)?;
++        buffers.version = None;
++        Some(buffers)
++    }
++
++    /// The device was lost: every buffer with it.
++    pub(super) fn clear(&mut self) {
++        self.layers.clear();
++    }
++}
++
++impl DirectXRenderer {
++    fn swap_layer_buffers(&mut self, sets: &mut [Instances; 6]) {
++        let p = &mut self.pipelines;
++        sets[0].swap(&mut p.shadow_pipeline);
++        sets[1].swap(&mut p.quad_pipeline);
++        sets[2].swap(&mut p.underline_pipeline);
++        sets[3].swap(&mut p.mono_sprites);
++        sets[4].swap(&mut p.subpixel_sprites);
++        sets[5].swap(&mut p.poly_sprites);
++    }
++
++    fn new_layer_buffers(&self) -> Result<LayerBuffers> {
++        let device = &self.devices.as_ref().ok_or_else(|| anyhow::anyhow!("devices missing"))?.device;
++        Ok(LayerBuffers {
++            sets: [
++                Instances::new::<gpui::Shadow>(device)?,
++                Instances::new::<gpui::Quad>(device)?,
++                Instances::new::<gpui::Underline>(device)?,
++                Instances::new::<gpui::MonochromeSprite>(device)?,
++                Instances::new::<gpui::SubpixelSprite>(device)?,
++                Instances::new::<gpui::PolychromeSprite>(device)?,
++            ],
++            version: None,
++            frame: 0,
++        })
++    }
++
++    /// Draw layer `index` of `scene` from its buffers, filling them first
++    /// when the layer changed since they were.
++    pub(super) fn draw_layer(&mut self, scene: &Scene, index: usize) -> Result<()> {
++        let Some(layer) = scene.layer(index) else {
++            return Ok(());
++        };
++        let mut buffers = match self.layer_cache.layers.remove(&layer.id()) {
++            Some(buffers) => buffers,
++            // A layer recorded again in place of one the last frame drew takes
++            // over that layer's buffers, already grown to its size: a rebuilt
++            // document costs an upload, not new device buffers.
++            None => match self.layer_cache.take_stale() {
++                Some(buffers) => buffers,
++                None => self.new_layer_buffers()?,
++            },
++        };
++        self.swap_layer_buffers(&mut buffers.sets);
++        let fresh = buffers.version == Some(layer.version());
++        let drawn = match fresh {
++            true => Ok(()),
++            false => self.upload_scene_buffers(layer.scene()),
++        }
++        .and_then(|()| self.draw_scene_at(layer.scene(), Some([0; 6])));
++        self.swap_layer_buffers(&mut buffers.sets);
++        buffers.version = drawn.is_ok().then_some(layer.version());
++        buffers.frame = self.layer_cache.frame;
++        self.layer_cache.layers.insert(layer.id(), buffers);
++        drawn
++    }
++}
 diff --git a/vendor/gpui-windows/src/directx_renderer/present_gate.rs b/vendor/gpui-windows/src/directx_renderer/present_gate.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..65a87aeb1795c855b07fc62d8873de05d65216f3
@@ -12371,7 +12540,7 @@ index 0000000000000000000000000000000000000000..d3432f8a2c42f73bcef325254289139c
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7c3edffccef9604c4fdc26619d9d7b1827257726
+index 0000000000000000000000000000000000000000..93c032e010943a87f26fc52b35299154acfa4de9
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
 @@ -0,0 +1,266 @@
@@ -12569,7 +12738,7 @@ index 0000000000000000000000000000000000000000..7c3edffccef9604c4fdc26619d9d7b18
 +    let mut damage = SceneDamage::Unknown;
 +    for (i, f) in frames.iter().enumerate() {
 +        let mut s = f.scene();
-+        s.note_damage(&previous, i as u64 + 1, (W, H));
++        s.note_frame_damage(&previous, i as u64 + 1, (W, H));
 +        damage = s.frame_damage().0;
 +        r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
 +        previous = s;
@@ -12643,10 +12812,10 @@ index 0000000000000000000000000000000000000000..7c3edffccef9604c4fdc26619d9d7b18
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ebb529073ab03d59a80a2892e645927bec5e3e72
+index 0000000000000000000000000000000000000000..a015c5a76ee546f7f8b189c96926aa7c0fe86a76
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,182 @@
 +//! KaminIDE patch: group images kept between frames (`group_cache`) follow
 +//! the group's content, not its index — a removed, inserted or reordered
 +//! group keeps the images of the others — and the frame equals its whole
@@ -12695,11 +12864,67 @@ index 0000000000000000000000000000000000000000..ebb529073ab03d59a80a2892e645927b
 +    let mut previous = Scene::default();
 +    for (i, f) in frames.iter().enumerate() {
 +        let mut s = groups(f);
-+        s.note_damage(&previous, i as u64 + 1, (W, H));
++        s.note_frame_damage(&previous, i as u64 + 1, (W, H));
 +        r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
 +        previous = s;
 +    }
 +    (target_bytes(&mut r), r.retained.groups.counts)
++}
++
++/// A frame whose groups do not fit the shelves of the last layout packs the
++/// group atlas again while the chain of compared frames lives on: the images
++/// kept before are gone, and no later frame may take one of them.
++#[test]
++fn a_group_atlas_packed_again_within_a_chain_keeps_no_stale_image() {
++    let device = DirectXDevices::new().unwrap();
++    let base: Vec<(usize, Hsla)> = (0..12).map(|i| (i, color(i))).collect();
++    let frame = |i: usize| match i {
++        0 | 2 => groups(&base),
++        1 => {
++            // One group as large as the frame: no shelf of the last layout holds it.
++            let mut s = groups(&base[..6]);
++            let mut inner = Scene::default();
++            let mut q = quad([0., 0., W as f32, H as f32], hsla(0.55, 0.6, 0.5, 1.));
++            q.order = 1;
++            inner.quads.push(q);
++            s.groups.push(PaintGroup { scene: inner, bounds: b(0., 0., W as f32, H as f32), ..Default::default() });
++            s.surfaces.push(PaintSurface {
++                order: 7,
++                bounds: b(0., 0., W as f32, H as f32),
++                content_mask: mask(),
++                corner_radii: Corners::default(),
++                blur_radius: 0.,
++                group: 7,
++                opacity: 0.3,
++                color_matrix: None,
++                fragment: 0,
++            });
++            s
++        }
++        _ => {
++            let mut recolored = base.clone();
++            recolored[4].1 = hsla(0.95, 0.9, 0.4, 1.);
++            groups(&recolored)
++        }
++    };
++    let mut r = offscreen(&device, W, H);
++    let mut previous = Scene::default();
++    for i in 0..4 {
++        let mut s = frame(i);
++        s.note_frame_damage(&previous, i as u64 + 1, (W, H));
++        r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
++        previous = s;
++        // Frame 1 packs the atlas again (nothing kept); frame 2 keeps only the images of frame 1.
++        let kept = [0, 0, 6, 11][i];
++        assert_eq!(r.retained.groups.counts.kept, kept, "frame {i}: groups kept");
++        let got = target_bytes(&mut r);
++        let mut whole = offscreen(&device, W, H);
++        let mut alone = frame(i);
++        alone.note_frame_damage(&Scene::default(), 1, (W, H));
++        whole.draw(&alone, WindowBackgroundAppearance::Opaque).unwrap();
++        let want = target_bytes(&mut whole);
++        assert!(got == want, "frame {i}: {} pixels differ from the whole frame", differing(&got, &want));
++    }
 +}
 +
 +#[test]
@@ -12748,7 +12973,7 @@ index 0000000000000000000000000000000000000000..ebb529073ab03d59a80a2892e645927b
 +    let mut r = offscreen(&device, W, H);
 +    let first = {
 +        let mut s = groups(&base);
-+        s.note_damage(&Scene::default(), 1, (W, H));
++        s.note_frame_damage(&Scene::default(), 1, (W, H));
 +        r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
 +        s
 +    };
@@ -12764,7 +12989,7 @@ index 0000000000000000000000000000000000000000..ebb529073ab03d59a80a2892e645927b
 +    let view = r.blur.groups[place.page].rtv[0].clone().unwrap();
 +    unsafe { dc.ClearView(&view, &[1.0, 0.0, 1.0, 1.0], Some(&[rect])) };
 +    let mut s = groups(&recolored);
-+    s.note_damage(&first, 2, (W, H));
++    s.note_frame_damage(&first, 2, (W, H));
 +    r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
 +    assert_eq!(r.retained.groups.counts, GroupCounts { kept: 11, drawn: 1 });
 +    r.finish_scrub(true).unwrap();
@@ -13183,10 +13408,10 @@ index 0000000000000000000000000000000000000000..c4ade6d3d9539d918ea664c3c26c559e
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5846d564449d7eaeeaa2d91c266e83a58fbca13f
+index 0000000000000000000000000000000000000000..b33506977c5c1e6d612373006ad91b84574a929c
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,103 @@
 +//! Headless renderer and populated device-bound effect fixtures.
 +
 +use super::*;
@@ -13238,6 +13463,8 @@ index 0000000000000000000000000000000000000000..5846d564449d7eaeeaa2d91c266e83a5
 +        timing_main: false,
 +        unpresented: false,
 +        retained: Default::default(),
++        layer_cache: Default::default(),
++        backdrop_pending: false,
 +    }
 +}
 +
@@ -16142,7 +16369,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..3284099e72945ba91cf0a1070262aaab
 +    return dst;
 +}
 diff --git a/vendor/gpui-windows/src/window.rs b/vendor/gpui-windows/src/window.rs
-index 8a5327d1a88477e1b0fed913046d34cd29754174..6f59c7e543cc79d5c4756d845eedb18724f502c5
+index 8a5327d1a88477e1b0fed913046d34cd29754174..fb5473a07d494885d3788bd954c674d6be29ecc5
 --- a/vendor/gpui-windows/src/window.rs
 +++ b/vendor/gpui-windows/src/window.rs
 @@ -54,0 +55,5 @@
@@ -16331,7 +16558,11 @@ index 8a5327d1a88477e1b0fed913046d34cd29754174..6f59c7e543cc79d5c4756d845eedb187
 -            .active_status_change
 -            .set(Some(callback));
 +        self.state.callbacks.active_status_change.set(Some(callback));
-@@ -1046,0 +1183,52 @@
+@@ -1046,0 +1183,56 @@
++    fn last_frame_presented(&self) -> bool {
++        self.state.renderer.try_borrow().is_ok_and(|renderer| !renderer.needs_presentation())
++    }
++
 +    fn rasterize_scene(&self, scene: &Scene, size: Size<DevicePixels>) -> anyhow::Result<image::RgbaImage> {
 +        self.state.renderer.borrow_mut().rasterize_scene(scene, size)
 +    }
@@ -16384,12 +16615,12 @@ index 8a5327d1a88477e1b0fed913046d34cd29754174..6f59c7e543cc79d5c4756d845eedb187
 +            .unregister_external_texture(id);
 +    }
 +
-@@ -1056,0 +1245,4 @@
+@@ -1056,0 +1249,4 @@
 +    }
 +
 +    fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
 +        self.state.renderer.borrow().gpu_memory(sink)
-@@ -1430 +1622,4 @@
+@@ -1430 +1626,4 @@
 -            hbrBackground: unsafe { CreateSolidBrush(COLORREF(0x00000000)) },
 +            // KaminIDE patch: БЕЗ кисти фона — чёрная заливала непокрытую
 +            // область при ресайзе (blit) чёрными полосами по краям.

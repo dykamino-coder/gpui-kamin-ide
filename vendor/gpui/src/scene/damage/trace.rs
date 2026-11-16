@@ -14,7 +14,7 @@ pub(super) fn log_damage(scene: &Scene, index: &DamageIndex, previous: &Scene) {
     if !log::log_enabled!(target: "gpui::frame", log::Level::Debug) {
         return;
     }
-    let old = &*previous.damage;
+    let old = &previous.book.index;
     log::debug!(
         target: "gpui::frame",
         "damage {:?} frame {} base {} size {:?} backdrop {}/{}",
