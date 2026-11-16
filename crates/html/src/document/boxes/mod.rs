@@ -75,6 +75,8 @@ pub(crate) struct BoxTree {
     visited: finish::Visited,
     /// Used styles derived from computed ones, shared by the boxes of one style.
     pub(crate) used: used::UsedStyles,
+    /// The parent box style of the latest atoms (`atom_styles`).
+    atom_parent: Option<Rc<crate::style::computed::BoxStyle>>,
 }
 
 impl BoxTree {

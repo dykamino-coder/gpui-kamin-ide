@@ -30,6 +30,11 @@ pub struct TraversalState {
     read: RefCell<std::collections::HashSet<usize>>,
     first_limit: Cell<Option<TraversalLimit>>,
     embedded: Cell<bool>,
+    /// A computation read the viewport size (`values::viewport_reads`).
+    pub viewport_read: Cell<bool>,
+    /// The viewport-dependent media queries of the build being recorded
+    /// (`style::css::reads::record`).
+    pub media_record: RefCell<Option<crate::style::css::reads::MediaReads>>,
 }
 
 impl TraversalState {

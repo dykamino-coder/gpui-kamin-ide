@@ -55,11 +55,6 @@ struct Kept {
     style: Rc<BoxStyle>,
 }
 
-thread_local! {
-    /// The parent box style of the latest atoms.
-    static PARENT: RefCell<Option<Rc<BoxStyle>>> = const { RefCell::new(None) };
-}
-
 /// The box style of atom `e` under `parent` at `stage`, kept in the record of
 /// its box.
 pub(crate) fn atom_style(
@@ -82,7 +77,7 @@ pub(crate) fn atom_style(
     let viewport = (opts.viewport, vcx.viewport);
     let fonts = vcx.doc.font_generation();
     let images = vcx.doc.background_images.borrow().clone();
-    let parent_rc = recent_parent(parent);
+    let parent_rc = recent_parent(&doc.boxes, parent);
     let fits = |entry: &AtomStyle| {
         std::ptr::eq(entry.doc, vcx.doc)
             && entry.fonts == fonts
@@ -146,7 +141,7 @@ fn compute(
 ) -> (BoxStyle, bool, bool) {
     let vcx = opts.cx.vcx();
     let before = vcx.doc.frame_records();
-    let (style, read) = crate::values::viewport_reads::track(|| {
+    let (style, read) = crate::values::viewport_reads::track(vcx.doc, || {
         let mut merged = box_style(parent, &e.style, vcx);
         if stage != Stage::Merged {
             merged.resolve_viewport(opts.viewport, vcx);
@@ -161,18 +156,18 @@ fn compute(
 
 /// The kept parent if `parent` equals it, else a new one kept for the next
 /// atoms: the atoms of a paragraph compare their parent once.
-fn recent_parent(parent: &BoxStyle) -> Rc<BoxStyle> {
-    PARENT.with(|recent| {
-        let mut recent = recent.borrow_mut();
-        match &*recent {
-            Some(kept) if same_parent(kept, parent) => kept.clone(),
-            _ => {
-                let kept = Rc::new(parent.clone());
-                *recent = Some(kept.clone());
-                kept
-            }
+fn recent_parent(boxes: &RefCell<BoxTree>, parent: &BoxStyle) -> Rc<BoxStyle> {
+    let Ok(mut boxes) = boxes.try_borrow_mut() else {
+        return Rc::new(parent.clone());
+    };
+    match &boxes.atom_parent {
+        Some(kept) if same_parent(kept, parent) => kept.clone(),
+        _ => {
+            let kept = Rc::new(parent.clone());
+            boxes.atom_parent = Some(kept.clone());
+            kept
         }
-    })
+    }
 }
 
 /// Every value of a parent box style that `box_style` reads.
@@ -223,6 +218,23 @@ fn store(boxes: &RefCell<BoxTree>, id: crate::dom::BoxId, entry: &Rc<AtomStyle>)
             .is_some_and(|kept| Rc::ptr_eq(kept, entry))
     {
         record.atom_style = Some(entry.clone());
+    }
+}
+
+#[cfg(feature = "heap-report")]
+impl kamin_heap::HeapSize for AtomStyle {
+    fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
+        let kept: usize = (self.stages.iter())
+            .map(|stage| {
+                stage.borrow().as_ref().map_or(0, |kept| {
+                    let style = &kept.style;
+                    ops.shallow(Rc::as_ptr(style))
+                        + style.style_rc().heap_size(ops)
+                        + (style.paint.as_ref()).map_or(0, |paint| ops.shallow(Rc::as_ptr(paint)))
+                })
+            })
+            .sum();
+        kept + self.own.heap_size(ops) + ops.shallow(Rc::as_ptr(&self.parent))
     }
 }
 

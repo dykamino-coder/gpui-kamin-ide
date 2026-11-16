@@ -168,9 +168,6 @@ impl Sum {
         if !self.has_viewport_terms() {
             return false;
         }
-        // A container unit counts too: an axis without a query container
-        // falls back to the viewport (ViewportCx::for_box).
-        crate::values::viewport_reads::note();
         let (w, h) = viewport;
         let (cw, ch) = container.unwrap_or(viewport);
         let axis = |a: f32, b: f32| if vertical { (b, a) } else { (a, b) };

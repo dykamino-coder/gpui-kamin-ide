@@ -50,7 +50,7 @@ impl Sharing {
             return (hit.value.clone(), hit.reads);
         }
         let (value, reads) =
-            crate::values::viewport_reads::track(|| slot.compute(parent, own, vcx));
+            crate::values::viewport_reads::track(vcx.doc, || slot.compute(parent, own, vcx));
         self.entries[self.next] = Some(Entry {
             own: Storage::of(own),
             parent: parent.clone(),

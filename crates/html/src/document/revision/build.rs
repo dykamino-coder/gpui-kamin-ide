@@ -124,7 +124,8 @@ impl Document {
             ..Default::default()
         };
         let mut kept = crate::dom::restyle_probe::RestyleCache::default();
-        let (built, media_reads) = crate::style::css::reads::record(|| {
+        let values = state.values.clone();
+        let (built, media_reads) = crate::style::css::reads::record(&values, || {
             parse_document(
                 &source.input,
                 theme_css,
