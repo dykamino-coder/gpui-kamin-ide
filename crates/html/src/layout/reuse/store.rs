@@ -67,6 +67,9 @@ pub(crate) struct Store {
     /// after no rebuild still records nothing, as a fresh document's first
     /// frame; the next records the blocks.
     pub(super) restyled: Cell<bool>,
+    /// The blocks the last rebuild restyled, when it restyled no root box:
+    /// only they are built without being recorded (`FlowCx::restyled`).
+    pub(super) restyled_blocks: Cell<HashSet<u64>>,
     /// The document was rebuilt since the last frame (`rebase`).
     pub(super) rebased: Cell<bool>,
     /// The rebuild that stripped the last flow key's boxes
@@ -175,6 +178,13 @@ impl Store {
         self.far_near.take();
         self.banned.take();
         self.reads_widths.take();
+    }
+
+    pub(super) fn restyled_block(&self, node: u64) -> bool {
+        let blocks = self.restyled_blocks.take();
+        let found = blocks.contains(&node);
+        self.restyled_blocks.set(blocks);
+        found
     }
 
     pub(super) fn banned(&self, node: u64) -> bool {

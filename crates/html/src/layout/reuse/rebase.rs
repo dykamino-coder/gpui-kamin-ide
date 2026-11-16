@@ -42,6 +42,10 @@ impl Store {
             (Some(a), Some(b), Some(ids)) => invalidated(was, now, a, b, ids, &mut memo),
             _ => None,
         };
+        // A restyle whose elements all lie in flow blocks restyled no root box.
+        // Its blocks may still change what follows them in document order
+        // (counters, list numbers), so the blocks are compared all the same.
+        let confined = restyled.and_then(|ids| holders(now, ids));
         let mut records = self.records.take();
         let recorded = records.len();
         // What the root boxes' comparison tells the flow keys (`carry_keys`).
@@ -81,15 +85,16 @@ impl Store {
                 })
             }
             None => {
-                let roots = match (&a, &b) {
-                    (Some(a), Some(b)) => {
-                        a.len() == b.len()
-                            && a.iter()
-                                .zip(b)
-                                .all(|(&x, &y)| same_cascaded_box(x, y, false, &mut memo))
-                    }
-                    _ => false,
-                };
+                let roots = confined.is_some()
+                    || match (&a, &b) {
+                        (Some(a), Some(b)) => {
+                            a.len() == b.len()
+                                && a.iter()
+                                    .zip(b)
+                                    .all(|(&x, &y)| same_cascaded_box(x, y, false, &mut memo))
+                        }
+                        _ => false,
+                    };
                 if let (Some(a), Some(b)) = (&a, &b)
                     && (roots
                         || a.len() == b.len()
@@ -122,8 +127,15 @@ impl Store {
         // that needs paint until it is painted clean).
         self.rebased.set(true);
         self.carry_keys(roots_seen);
-        if records.len() < recorded {
-            self.restyled.set(true);
+        // Only the restyled blocks are built bare; the others keep being recorded.
+        match confined {
+            Some(blocks) => self.restyled_blocks.set(blocks),
+            None => {
+                self.restyled_blocks.take();
+                if records.len() < recorded {
+                    self.restyled.set(true);
+                }
+            }
         }
         // The last frame wrapped blocks and none gave a record: the next would
         // wrap them again for nothing, so the run of restyles covers them.
@@ -204,6 +216,14 @@ fn invalidated<'a>(
         }
     }
     Some((Some(roots), blocks))
+}
+
+/// The flow blocks that hold the elements `ids`; `None` if one is in none
+/// (a root box, or an element out of the flow).
+fn holders(flow: &[Node], ids: &[u64]) -> Option<std::collections::HashSet<u64>> {
+    ids.iter()
+        .map(|&id| block(&flow[holder(flow, id)?]).map(|e| e.node_id))
+        .collect()
 }
 
 /// Позиция блока, содержащего ключ: числового порядка у NodeKey нет.

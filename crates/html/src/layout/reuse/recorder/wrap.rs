@@ -180,7 +180,10 @@ impl Skip<'_> {
                         window.record_retained_paint(|window| child.paint(window, cx))
                     })
                 });
-                output.paint = Some((paint, deferred, mask));
+                // The output may replay moved with its block (`placeholder`).
+                let movable = window.retained_movable(&output.prepaint, &paint)
+                    && crate::hooks::deferred_movable(&deferred);
+                output.paint = Some((paint, deferred, mask, movable));
                 Some(output)
             }
         };

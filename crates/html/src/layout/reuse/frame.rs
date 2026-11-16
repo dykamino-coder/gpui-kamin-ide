@@ -32,14 +32,27 @@ impl FlowReuse {
             let fits = root
                 && slot.layout().is_some_and(|id| {
                     let origin = scaled(window.layout_origin_unrounded(id), scale);
-                    let replay = replayable
-                        && slot.paint_holds()
-                        && record.replay.borrow().as_ref().is_some_and(|r| {
-                            r.follows(epoch)
-                                && r.origin == origin
-                                && r.mask == mask
-                                && window.retained_replayable(&r.prepaint, &r.paint)
-                        });
+                    // A movable output replays at a new place too, when what
+                    // it shows there was shown, and so recorded, where it was.
+                    let from = record.replay.borrow().as_ref().and_then(|r| {
+                        (replayable
+                            && slot.paint_holds()
+                            && r.follows(epoch)
+                            && (r.origin == origin
+                                || r.movable
+                                    && recorded(record.ink.get(), r.origin, origin, screen))
+                            && r.mask == mask
+                            && window.retained_replayable(&r.prepaint, &r.paint))
+                        .then_some(r.origin)
+                    });
+                    if let Some(from) = from {
+                        let offset = point(
+                            px((origin.x.0 - from.x.0) / scale),
+                            px((origin.y.0 - from.y.0) / scale),
+                        );
+                        slot.place(origin, offset);
+                    }
+                    let replay = from.is_some();
                     slot.set_replay(replay.then_some(epoch));
                     // Чернила растянутого листа — до любого правого края.
                     let ink = |ink: Bounds<ScaledPixels>| match slot.stretched() {
@@ -99,6 +112,7 @@ impl FlowReuse {
         // A frame after no rebuild ends the restyles (`Store::restyled`).
         if !self.store.rebased.replace(false) {
             self.store.restyled.set(false);
+            self.store.restyled_blocks.take();
         }
         let mut next = self.next.take();
         let skipped = next.len() as u64;
@@ -186,3 +200,20 @@ pub(super) fn placed(
 
 /// Запас проверки экрана на округление краёв, в точках устройства.
 pub(super) const SNAP: f32 = 2.0;
+
+/// What the ink `ink` of a block moved from `from` to `to` shows on `screen`
+/// (the window mask) was shown, and so recorded, at `from`: the window clips
+/// what it paints, so a moved copy cannot bring in what lay outside.
+fn recorded(
+    ink: Option<Bounds<ScaledPixels>>,
+    from: Point<ScaledPixels>,
+    to: Point<ScaledPixels>,
+    screen: Bounds<ScaledPixels>,
+) -> bool {
+    ink.is_none_or(|ink| {
+        let shown = screen.intersect(&placed(ink, to, 0.0));
+        let was = screen.intersect(&placed(ink, from, 0.0));
+        let was = placed(was, point(to.x - from.x, to.y - from.y), 0.0);
+        shown.size.width.0 <= 0.0 || shown.size.height.0 <= 0.0 || was.intersect(&shown) == shown
+    })
+}

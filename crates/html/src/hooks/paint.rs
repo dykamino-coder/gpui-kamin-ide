@@ -28,15 +28,8 @@ pub(crate) fn paint_capturing<R>(
     crate::paint::coordinator::capture(window, f)
 }
 
-/// Replay a complete deferred paint record into this frame's queues.
-pub(crate) fn replay_deferred(
-    window: &mut Window,
-    record: &LineCapture,
-) -> std::rc::Rc<LineCapture> {
-    crate::paint::coordinator::replay(window, record)
-}
-
-/// `replay_deferred` of a block that moved by `offset` since it painted.
+/// Replay a complete deferred paint record into this frame's queues, for a
+/// block that moved by `offset` since it painted.
 pub(crate) fn replay_deferred_moved(
     window: &mut Window,
     record: &LineCapture,
