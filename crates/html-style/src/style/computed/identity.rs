@@ -75,6 +75,15 @@ macro_rules! storage {
                 std::rc::Rc::strong_count(&c.inh.0) == 1 $(|| c.$group.is_unique())*
             }
 
+            /// A hash of the owners `matches` compares: equal for storages that match.
+            pub(crate) fn key(c: &Computed) -> u64 {
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                (c.block_tag, c.plain_block_box, std::rc::Rc::as_ptr(&c.inh.0)).hash(&mut h);
+                $(c.$group.addr().hash(&mut h);)*
+                h.finish()
+            }
+
             /// Поставить эти группы в `c`; собственные поля элемента остаются.
             pub(crate) fn share_into(&self, c: &mut Computed) {
                 c.inh = self.inh.clone();

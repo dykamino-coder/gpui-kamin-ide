@@ -11,53 +11,7 @@ impl BoxStyle {
     /// and Blink its matched properties cache by the identities of the matched
     /// declarations, for the same reason: a hash of identities instead of a walk of values.
     pub fn group_key(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let Computed {
-            decor_box: _,
-            block_tag,
-            plain_block_box,
-            clone_audit: _,
-            reset_text_box,
-            reset_cascade,
-            reset_box_layout,
-            reset_flex,
-            reset_border,
-            reset_grid,
-            reset_context,
-            reset_generated,
-            reset_svg_math,
-            reset_positioned,
-            reset_effects,
-            reset_background,
-            reset_mask,
-            reset_shapes,
-            reset_fragmentation,
-            reset_transforms,
-            inh,
-        } = &*self.style;
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (*block_tag, *plain_block_box).hash(&mut h);
-        [
-            reset_text_box.addr(),
-            reset_cascade.addr(),
-            reset_box_layout.addr(),
-            reset_flex.addr(),
-            reset_border.addr(),
-            reset_grid.addr(),
-            reset_context.addr(),
-            reset_generated.addr(),
-            reset_svg_math.addr(),
-            reset_positioned.addr(),
-            reset_effects.addr(),
-            reset_background.addr(),
-            reset_mask.addr(),
-            reset_shapes.addr(),
-            reset_fragmentation.addr(),
-            reset_transforms.addr(),
-            Rc::as_ptr(&inh.0) as usize,
-        ]
-        .hash(&mut h);
-        h.finish()
+        crate::style::computed::identity::Storage::key(&self.style)
     }
 }
 
