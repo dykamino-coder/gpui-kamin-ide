@@ -10,6 +10,7 @@ use std::rc::Rc;
 mod background;
 mod context;
 mod conversion_input;
+mod group_key;
 mod inputs;
 mod paint;
 mod paint_projection;

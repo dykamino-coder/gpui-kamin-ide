@@ -19,7 +19,7 @@ use std::rc::Rc;
 
 #[path = "conversions_values.rs"]
 mod values;
-use values::Values;
+use values::{Conversion, Values};
 
 /// Distinct recent inputs kept for reuse. Boxes of a page repeat a few styles, often
 /// interleaved (table cells, list items with nested blocks): as in GPUI's refinement share
@@ -91,13 +91,6 @@ pub(crate) enum Lookup {
     Miss,
     /// Convert without recording: no style repeated yet, or reuse paused on distinct styles.
     Pass,
-}
-
-struct Conversion {
-    input: BoxStyle,
-    dimensions: BoxDimensions,
-    values: Values,
-    style: Rc<StyleRefinement>,
 }
 
 impl StyleConversions {
@@ -194,11 +187,15 @@ impl StyleConversions {
             return None;
         };
         let (len, next) = (recent.len(), usize::from(self.next.get()));
-        let found = (1..=len)
-            .map(|back| &recent[(next + len - back) % len])
-            .find(|c| {
-                c.values == values && c.dimensions == *dimensions && c.input.same_box_values(input)
-            })
+        let key = input.group_key();
+        let fits = |c: &&Conversion| {
+            c.values == values && c.dimensions == *dimensions && c.input.same_box_values(input)
+        };
+        let newest_first = || (1..=len).map(|back| &recent[(next + len - back) % len]);
+        // Candidates of the same shared groups first: one comparison of shared values.
+        // Equal values in other allocations still match, after them.
+        let found = (newest_first().filter(|c| c.key == key).find(fits))
+            .or_else(|| newest_first().filter(|c| c.key != key).find(fits))
             .map(|c| c.style.clone());
         self.recent.set(candidates);
         found
@@ -213,6 +210,7 @@ impl StyleConversions {
         style: Rc<StyleRefinement>,
     ) {
         let entry = Conversion {
+            key: input.group_key(),
             input: input.clone(),
             dimensions,
             values: Values::of(vcx),
