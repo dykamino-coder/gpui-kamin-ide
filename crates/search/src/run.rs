@@ -9,9 +9,11 @@
 //! watcher) plugs in: `haystacks` yields the files to search either way.
 
 use crate::args::{Mode, Query};
-use grep_printer::{PathPrinterBuilder, Standard, StandardBuilder, Summary, SummaryBuilder, SummaryKind};
-use grep_regex::{RegexMatcher, RegexMatcherBuilder};
 use grep_matcher::LineTerminator;
+use grep_printer::{
+    PathPrinterBuilder, Standard, StandardBuilder, Summary, SummaryBuilder, SummaryKind,
+};
+use grep_regex::{RegexMatcher, RegexMatcherBuilder};
 use grep_searcher::{BinaryDetection, MmapChoice, Searcher, SearcherBuilder};
 use ignore::{DirEntry, WalkBuilder, WalkState, overrides::OverrideBuilder, types::TypesBuilder};
 use std::path::{Path, PathBuf};
@@ -87,7 +89,9 @@ impl Shared<'_> {
         let total = self.bytes.fetch_add(block.len(), Ordering::SeqCst) + block.len();
         let lines = block.iter().filter(|&&b| b == self.terminator).count();
         let records = self.records.fetch_add(lines, Ordering::SeqCst) + lines;
-        if total > self.control.max_bytes || (self.control.max_records > 0 && records > self.control.max_records) {
+        if total > self.control.max_bytes
+            || (self.control.max_records > 0 && records > self.control.max_records)
+        {
             self.truncated.store(true, Ordering::SeqCst);
         }
         if let Ok(mut b) = self.blocks.lock() {
@@ -104,7 +108,9 @@ fn threads(q: &Query) -> usize {
     if q.paths.len() == 1 && !q.paths[0].is_dir() {
         return 1;
     }
-    std::thread::available_parallelism().map_or(1, |n| n.get()).min(12)
+    std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(12)
 }
 
 fn walk_builder(q: &Query, cwd: &Path) -> Result<WalkBuilder, String> {
@@ -150,7 +156,11 @@ fn walk_builder(q: &Query, cwd: &Path) -> Result<WalkBuilder, String> {
 
 fn matcher(q: &Query) -> Result<RegexMatcher, String> {
     let mut b = RegexMatcherBuilder::new();
-    b.multi_line(true).unicode(true).octal(false).fixed_strings(false).case_insensitive(q.case_insensitive);
+    b.multi_line(true)
+        .unicode(true)
+        .octal(false)
+        .fixed_strings(false)
+        .case_insensitive(q.case_insensitive);
     if q.multiline {
         b.dot_matches_new_line(q.multiline_dotall);
     } else {
@@ -168,7 +178,8 @@ fn searcher(q: &Query) -> Searcher {
         .multi_line(q.multiline)
         .memory_map(MmapChoice::never());
     if q.mode == Mode::Standard {
-        b.before_context(q.before_context).after_context(q.after_context);
+        b.before_context(q.before_context)
+            .after_context(q.after_context);
     }
     b.build()
 }
@@ -180,11 +191,14 @@ fn haystack(dent: &DirEntry, shared: &Shared<'_>) -> Option<bool> {
         // ripgrep's ignore messages (a partial ignore file) do not count as errors.
         shared.message(err.to_string(), false);
     }
-    let is_dir = dent.file_type().is_some_and(|ft| ft.is_dir()) || (dent.path_is_symlink() && dent.path().is_dir());
+    let is_dir = dent.file_type().is_some_and(|ft| ft.is_dir())
+        || (dent.path_is_symlink() && dent.path().is_dir());
     if dent.depth() == 0 && !is_dir {
         return Some(true);
     }
-    dent.file_type().is_some_and(|ft| ft.is_file()).then_some(false)
+    dent.file_type()
+        .is_some_and(|ft| ft.is_file())
+        .then_some(false)
 }
 
 /// Runs `q` with the working directory `cwd`; Err means "let ripgrep run".
@@ -200,9 +214,13 @@ pub fn run(q: &Query, cwd: &Path, control: &Control<'_>) -> Result<Outcome, Stri
         errored: AtomicBool::new(false),
         truncated: AtomicBool::new(false),
         timed_out: AtomicBool::new(false),
-        terminator: if q.mode == Mode::Files && q.null { b'\0' } else { b'\n' },
+        terminator: if q.mode == Mode::Files && q.null {
+            b'\0'
+        } else {
+            b'\n'
+        },
     };
-    let with_filename = !(q.paths.len() == 1 && !q.paths[0].is_dir());
+    let with_filename = q.paths.len() != 1 || q.paths[0].is_dir();
     let mut file_separator: Option<Vec<u8>> = None;
     if q.mode == Mode::Files {
         let mut printer = PathPrinterBuilder::new();
@@ -258,8 +276,14 @@ pub fn run(q: &Query, cwd: &Path, control: &Control<'_>) -> Result<Outcome, Stri
                         return WalkState::Continue;
                     }
                 };
-                let Some(explicit) = haystack(&dent, shared) else { return WalkState::Continue };
-                searcher.set_binary_detection(if explicit { BinaryDetection::convert(b'\x00') } else { BinaryDetection::quit(b'\x00') });
+                let Some(explicit) = haystack(&dent, shared) else {
+                    return WalkState::Continue;
+                };
+                searcher.set_binary_detection(if explicit {
+                    BinaryDetection::convert(b'\x00')
+                } else {
+                    BinaryDetection::quit(b'\x00')
+                });
                 let path = dent.path();
                 let found = printer.search(matcher, &mut searcher, path);
                 match found {
@@ -298,7 +322,13 @@ pub fn run(q: &Query, cwd: &Path, control: &Control<'_>) -> Result<Outcome, Stri
     Ok(Outcome {
         stdout,
         stderr: shared.stderr.into_inner().unwrap_or_default(),
-        code: if matched && !errored { 0 } else if errored { 2 } else { 1 },
+        code: if matched && !errored {
+            0
+        } else if errored {
+            2
+        } else {
+            1
+        },
         truncated,
         timed_out: shared.timed_out.load(Ordering::SeqCst),
         cancelled: control.cancelled.load(Ordering::SeqCst),
@@ -311,7 +341,10 @@ struct SharedBuf(std::sync::Arc<Mutex<Vec<u8>>>);
 
 impl SharedBuf {
     fn take(&self) -> Vec<u8> {
-        self.0.lock().map(|mut b| std::mem::take(&mut *b)).unwrap_or_default()
+        self.0
+            .lock()
+            .map(|mut b| std::mem::take(&mut *b))
+            .unwrap_or_default()
     }
 }
 
@@ -348,7 +381,11 @@ impl Printer {
                     .build(NoColor::new(Vec::new())),
             );
         }
-        let kind = if q.mode == Mode::Count { SummaryKind::Count } else { SummaryKind::PathWithMatch };
+        let kind = if q.mode == Mode::Count {
+            SummaryKind::Count
+        } else {
+            SummaryKind::PathWithMatch
+        };
         Printer::Summary(
             SummaryBuilder::new()
                 .exclude_zero(true)
@@ -360,7 +397,12 @@ impl Printer {
     }
 
     /// One file's block of output and whether it matched.
-    fn search(&mut self, matcher: &RegexMatcher, searcher: &mut Searcher, path: &Path) -> std::io::Result<(bool, Vec<u8>)> {
+    fn search(
+        &mut self,
+        matcher: &RegexMatcher,
+        searcher: &mut Searcher,
+        path: &Path,
+    ) -> std::io::Result<(bool, Vec<u8>)> {
         let matched = match self {
             Printer::Standard(p) => {
                 p.get_mut().get_mut().clear();

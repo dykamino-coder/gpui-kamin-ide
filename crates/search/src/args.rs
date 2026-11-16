@@ -99,9 +99,15 @@ pub fn parse(args: &[String]) -> Result<Query, String> {
             "-A" | "--after-context" => after = Some(number(a, it.next())?),
             "-B" | "--before-context" => before = Some(number(a, it.next())?),
             "-C" | "--context" => both = Some(number(a, it.next())?),
-            "--glob" | "-g" => q.globs.push(it.next().ok_or("--glob needs a value")?.clone()),
-            "--type" | "-t" => q.types.push(it.next().ok_or("--type needs a value")?.clone()),
-            "-e" | "--regexp" => q.patterns.push(it.next().ok_or("-e needs a value")?.clone()),
+            "--glob" | "-g" => q
+                .globs
+                .push(it.next().ok_or("--glob needs a value")?.clone()),
+            "--type" | "-t" => q
+                .types
+                .push(it.next().ok_or("--type needs a value")?.clone()),
+            "-e" | "--regexp" => q
+                .patterns
+                .push(it.next().ok_or("-e needs a value")?.clone()),
             other if other.starts_with('-') && other.len() > 1 => {
                 return Err(format!("unsupported argument {other}"));
             }
@@ -135,8 +141,23 @@ mod tests {
     #[test]
     fn reads_the_grep_tool_command() {
         let q = parse(&s(&[
-            "--hidden", "--max-columns", "500", "--glob", "!.git", "--count", "-i", "-U", "--multiline-dotall",
-            "--glob", "*.rs", "--type", "rust", "-e", "-x", "--", "C:/w",
+            "--hidden",
+            "--max-columns",
+            "500",
+            "--glob",
+            "!.git",
+            "--count",
+            "-i",
+            "-U",
+            "--multiline-dotall",
+            "--glob",
+            "*.rs",
+            "--type",
+            "rust",
+            "-e",
+            "-x",
+            "--",
+            "C:/w",
         ]))
         .unwrap();
         assert_eq!(q.mode, Mode::Count);
@@ -150,16 +171,36 @@ mod tests {
 
     #[test]
     fn reads_the_glob_tool_command_and_context() {
-        let q = parse(&s(&["--files", "--null", "--hidden", "--no-ignore", "--no-config", "--follow", "--glob", "*.ts", "--", "/b"])).unwrap();
+        let q = parse(&s(&[
+            "--files",
+            "--null",
+            "--hidden",
+            "--no-ignore",
+            "--no-config",
+            "--follow",
+            "--glob",
+            "*.ts",
+            "--",
+            "/b",
+        ]))
+        .unwrap();
         assert_eq!(q.mode, Mode::Files);
         assert!(q.null && q.no_ignore && q.no_config && q.follow);
         let q = parse(&s(&["-C", "2", "-A", "1", "-n", "-e", "x", "--", "/b"])).unwrap();
-        assert_eq!((q.before_context, q.after_context, q.line_number), (2, 1, Some(true)));
+        assert_eq!(
+            (q.before_context, q.after_context, q.line_number),
+            (2, 1, Some(true))
+        );
     }
 
     #[test]
     fn refuses_what_it_does_not_replicate() {
-        for a in [&["-P", "-e", "x", "--", "/b"][..], &["-e", "x"], &["--sort", "path", "-e", "x", "--", "/b"], &["-A"]] {
+        for a in [
+            &["-P", "-e", "x", "--", "/b"][..],
+            &["-e", "x"],
+            &["--sort", "path", "-e", "x", "--", "/b"],
+            &["-A"],
+        ] {
             assert!(parse(&s(a)).is_err(), "{a:?}");
         }
     }

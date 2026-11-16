@@ -20510,6 +20510,158 @@ var init_local_glob = __esm({
   }
 });
 
+// src/main/mcp/tools/warm-search.ts
+function findWarmSearch(env4 = process.env, execPath = process.execPath, platform = process.platform) {
+  if (env4.KAMIN_SEARCH === "0") return null;
+  if (env4.KAMIN_SEARCH_PATH) return (0, import_node_fs13.existsSync)(env4.KAMIN_SEARCH_PATH) ? env4.KAMIN_SEARCH_PATH : null;
+  if (platform !== "win32") return null;
+  const hostDir = (0, import_node_path14.dirname)(execPath);
+  for (const candidate of [(0, import_node_path14.join)(hostDir, "..", "kamin-search.exe"), (0, import_node_path14.join)(hostDir, "kamin-search.exe")]) {
+    if ((0, import_node_fs13.existsSync)(candidate)) return candidate;
+  }
+  return null;
+}
+function warmSearch() {
+  shared ??= new WarmSearch(findWarmSearch());
+  return shared;
+}
+var import_node_child_process7, import_node_fs13, import_node_path14, DEATHS_ALLOWED, DEATH_WINDOW_MS, WarmSearch, shared;
+var init_warm_search = __esm({
+  "src/main/mcp/tools/warm-search.ts"() {
+    "use strict";
+    import_node_child_process7 = require("node:child_process");
+    import_node_fs13 = require("node:fs");
+    import_node_path14 = require("node:path");
+    DEATHS_ALLOWED = 3;
+    DEATH_WINDOW_MS = 6e4;
+    WarmSearch = class {
+      /** `args`: arguments of the process (tests run a script with node). */
+      constructor(binary, args = []) {
+        this.binary = binary;
+        this.args = args;
+      }
+      binary;
+      args;
+      child = null;
+      pending = /* @__PURE__ */ new Map();
+      nextId = 1;
+      buffer = Buffer.alloc(0);
+      header = null;
+      chunks = [];
+      /** Bytes in `buffer` and `chunks`. */
+      buffered = 0;
+      deaths = [];
+      /** Whether calls can go here at all. */
+      get available() {
+        const now = Date.now();
+        this.deaths = this.deaths.filter((t) => now - t < DEATH_WINDOW_MS);
+        return this.binary !== null && this.deaths.length < DEATHS_ALLOWED;
+      }
+      start() {
+        const child = (0, import_node_child_process7.spawn)(this.binary, this.args, { stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+        child.stdout.on("data", (d) => this.onData(d));
+        child.stdin.on("error", () => {
+        });
+        const ended = () => {
+          if (this.child !== child) return;
+          this.child = null;
+          this.buffer = Buffer.alloc(0);
+          this.header = null;
+          this.chunks = [];
+          this.buffered = 0;
+          if (this.pending.size) this.deaths.push(Date.now());
+          for (const settle of this.pending.values()) settle(null);
+          this.pending.clear();
+        };
+        child.on("exit", ended);
+        child.on("error", ended);
+        child.unref();
+        child.stdout.unref?.();
+        child.stdin.unref?.();
+        return child;
+      }
+      onData(chunk) {
+        if (this.header && this.buffered + chunk.length < this.header.stdoutLen) {
+          this.chunks.push(chunk);
+          this.buffered += chunk.length;
+          return;
+        }
+        this.buffer = Buffer.concat([this.buffer, ...this.chunks, chunk]);
+        this.chunks = [];
+        this.buffered = this.buffer.length;
+        for (; ; ) {
+          if (!this.header) {
+            const i = this.buffer.indexOf(10);
+            if (i === -1) return;
+            const line = this.buffer.subarray(0, i).toString("utf8");
+            this.buffer = this.buffer.subarray(i + 1);
+            this.buffered = this.buffer.length;
+            try {
+              this.header = JSON.parse(line);
+            } catch {
+              this.child?.kill();
+              return;
+            }
+          }
+          const answer = this.header;
+          if (this.buffer.length < answer.stdoutLen) return;
+          answer.stdout = Buffer.from(this.buffer.subarray(0, answer.stdoutLen));
+          this.buffer = this.buffer.subarray(answer.stdoutLen);
+          this.buffered = this.buffer.length;
+          this.header = null;
+          const settle = this.pending.get(answer.id);
+          if (!settle) continue;
+          this.pending.delete(answer.id);
+          settle(answer);
+        }
+      }
+      /** ripgrep's output for `args`, or null when ripgrep must run. */
+      async run(args, o) {
+        if (!this.available || o.signal?.aborted) return null;
+        this.child ??= this.start();
+        const child = this.child;
+        const id = this.nextId++;
+        const onAbort = () => void child.stdin?.write(`${JSON.stringify({ id, cancel: true })}
+`);
+        const answer = await new Promise((resolve) => {
+          this.pending.set(id, resolve);
+          o.signal?.addEventListener("abort", onAbort, { once: true });
+          const request = { id, args, cwd: o.cwd, timeoutMs: o.timeoutMs, maxBytes: o.maxBytes, maxRecords: o.maxRecords };
+          child.ref?.();
+          child.stdout.ref?.();
+          if (!child.stdin?.write(`${JSON.stringify(request)}
+`)) {
+          }
+        }).finally(() => {
+          o.signal?.removeEventListener("abort", onAbort);
+          if (!this.pending.size && this.child === child) {
+            ;
+            child.unref?.();
+            child.stdout.unref?.();
+          }
+        });
+        if (!answer || answer.unsupported !== void 0 || answer.code === void 0) return null;
+        return {
+          stdout: answer.stdout ?? Buffer.alloc(0),
+          stderr: answer.stderr ?? "",
+          code: answer.code,
+          truncated: answer.truncated === true,
+          timedOut: answer.timedOut === true
+        };
+      }
+      /** Ends the process (host shutdown, tests). */
+      dispose() {
+        this.child?.kill();
+        this.child = null;
+      }
+      /** Test hook: the running process. */
+      get process() {
+        return this.child;
+      }
+    };
+  }
+});
+
 // src/main/mcp/tools/glob-tool.ts
 function globQuery(rawPattern, base, platform = process.platform) {
   let pattern = platform === "win32" ? rawPattern.replace(/\\/g, "/") : rawPattern;
@@ -20522,7 +20674,7 @@ function globQuery(rawPattern, base, platform = process.platform) {
     let prefix = segments.slice(0, i).join("/");
     if (prefix === "") prefix = "/";
     else if (/^[a-zA-Z]:$/.test(prefix)) prefix += "/";
-    base = import_node_path14.default.resolve(base, prefix);
+    base = import_node_path15.default.resolve(base, prefix);
     pattern = "/" + segments.slice(i).join("/");
   }
   const named = `${base}/${pattern}`.replace(/\\/g, "/");
@@ -20537,7 +20689,7 @@ function ripgrepListArgs(q) {
 }
 function listWithRipgrep(rg, q, limit, signal) {
   return new Promise((resolve, reject) => {
-    const child = (0, import_node_child_process7.spawn)(rg, ripgrepListArgs(q), { cwd: q.base, stdio: ["ignore", "pipe", "pipe"], windowsHide: true, signal });
+    const child = (0, import_node_child_process8.spawn)(rg, ripgrepListArgs(q), { cwd: q.base, stdio: ["ignore", "pipe", "pipe"], windowsHide: true, signal });
     const files = [];
     let capped = false;
     let remainder = Buffer.alloc(0);
@@ -20591,9 +20743,19 @@ async function listWithFastGlob(q, limit) {
   if (capped) stream.destroy?.();
   return { files, capped };
 }
+async function listWarm(q, limit, signal) {
+  const warm = await warmSearch().run(ripgrepListArgs(q), { cwd: q.base, timeoutMs: 54e4, maxRecords: limit, signal });
+  if (!warm) return null;
+  const files = warm.stdout.toString("utf8").split("\0").filter(Boolean);
+  if (!warm.truncated && warm.code > 1 && files.length === 0) return null;
+  const toPath = process.platform === "win32" ? (p) => p.replace(/\\/g, "/") : (p) => p;
+  return { files: files.slice(0, limit).map(toPath), capped: warm.truncated || files.length >= limit };
+}
 async function listGlob(q, limit = MAX_GLOB_LISTED, signal) {
   const local = localGlobFiles(q);
   if (local && local.length < limit) return { files: local, capped: false };
+  const warm = await listWarm(q, limit, signal);
+  if (warm) return warm;
   const rg = await ripgrepPath();
   return rg ? listWithRipgrep(rg, q, limit, signal) : listWithFastGlob(q, limit);
 }
@@ -20608,7 +20770,7 @@ async function newestFirst(files) {
   } else {
     for (let i = 0; i < files.length; i++) {
       try {
-        mtimes[i] = import_node_fs13.default.statSync(files[i], { throwIfNoEntry: false })?.mtimeMs ?? 0;
+        mtimes[i] = import_node_fs14.default.statSync(files[i], { throwIfNoEntry: false })?.mtimeMs ?? 0;
       } catch {
         mtimes[i] = 0;
       }
@@ -20619,18 +20781,19 @@ async function newestFirst(files) {
   order.sort((a, b) => mtimes[b] - mtimes[a] || (files[a] < files[b] ? -1 : files[a] > files[b] ? 1 : 0));
   return order.map((i) => files[i]);
 }
-var import_node_child_process7, import_node_fs13, import_promises4, import_node_path14, import_fast_glob, MAX_GLOB_LISTED, SKIPPED_DIRECTORIES, GLOB_CHARS;
+var import_node_child_process8, import_node_fs14, import_promises4, import_node_path15, import_fast_glob, MAX_GLOB_LISTED, SKIPPED_DIRECTORIES, GLOB_CHARS;
 var init_glob_tool = __esm({
   "src/main/mcp/tools/glob-tool.ts"() {
     "use strict";
-    import_node_child_process7 = require("node:child_process");
-    import_node_fs13 = __toESM(require("node:fs"), 1);
+    import_node_child_process8 = require("node:child_process");
+    import_node_fs14 = __toESM(require("node:fs"), 1);
     import_promises4 = __toESM(require("node:fs/promises"), 1);
-    import_node_path14 = __toESM(require("node:path"), 1);
+    import_node_path15 = __toESM(require("node:path"), 1);
     import_fast_glob = __toESM(require_out4(), 1);
     init_fs_shared();
     init_ripgrep_path();
     init_local_glob();
+    init_warm_search();
     MAX_GLOB_LISTED = 5e4;
     SKIPPED_DIRECTORIES = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl", "node_modules"];
     GLOB_CHARS = /[*?[\]{}!]/;
@@ -20795,7 +20958,7 @@ function hasBom(b) {
 function searchFile(o, re, file, withName, budget) {
   let buf;
   try {
-    buf = import_node_fs14.default.readFileSync(file);
+    buf = import_node_fs15.default.readFileSync(file);
   } catch {
     throw new WalkAbort();
   }
@@ -20827,14 +20990,14 @@ function searchFile(o, re, file, withName, budget) {
 ` : out;
 }
 function localGrep(o, budget = defaultBudget()) {
-  if (!supported(o) || !import_node_path15.default.isAbsolute(o.searchPath)) return null;
+  if (!supported(o) || !import_node_path16.default.isAbsolute(o.searchPath)) return null;
   const re = lineMatcher(o.pattern, o.caseInsensitive);
   if (!re) return null;
   const overrides = Overrides.compile([...o.vcsDirectories.map((d) => `!${d}`), ...o.globs]);
   if (!overrides) return null;
   let stat;
   try {
-    stat = import_node_fs14.default.lstatSync(o.searchPath);
+    stat = import_node_fs15.default.lstatSync(o.searchPath);
   } catch {
     return null;
   }
@@ -20878,12 +21041,12 @@ function localGrep(o, budget = defaultBudget()) {
     throw err;
   }
 }
-var import_node_fs14, import_node_path15, import_node_buffer2;
+var import_node_fs15, import_node_path16, import_node_buffer2;
 var init_local_grep = __esm({
   "src/main/mcp/tools/local-search/local-grep.ts"() {
     "use strict";
-    import_node_fs14 = __toESM(require("node:fs"), 1);
-    import_node_path15 = __toESM(require("node:path"), 1);
+    import_node_fs15 = __toESM(require("node:fs"), 1);
+    import_node_path16 = __toESM(require("node:path"), 1);
     import_node_buffer2 = require("node:buffer");
     init_rg_ignore();
     init_rg_regex();
@@ -20901,7 +21064,7 @@ async function ripgrepStream(args, target, signal, onLines) {
   const rg = await rgBinary();
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Error("aborted"));
-    const child = (0, import_node_child_process8.spawn)(rg, [...args, target], {
+    const child = (0, import_node_child_process9.spawn)(rg, [...args, target], {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       signal
@@ -20938,10 +21101,12 @@ async function ripgrepStream(args, target, signal, onLines) {
   });
 }
 async function spawnRipgrep(args, timeoutMs, singleThread = false) {
+  const warm = await warmSearch().run(singleThread ? ["-j", "1", ...args] : args, { cwd: process.cwd(), timeoutMs, maxBytes: MAX_GREP_BYTES });
+  if (warm) return { stdout: warm.stdout.toString("utf8"), stderr: warm.stderr, truncated: warm.truncated, timedOut: warm.timedOut, code: warm.code };
   const rg = await rgBinary();
   return new Promise((resolve, reject) => {
     const extraArgs = singleThread ? ["-j", "1"] : [];
-    const child = (0, import_node_child_process8.spawn)(rg, [...extraArgs, ...args], {
+    const child = (0, import_node_child_process9.spawn)(rg, [...extraArgs, ...args], {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
     });
@@ -21101,8 +21266,15 @@ async function grepSearch(input, context) {
         controller.abort();
       }, RIPGREP_TIMEOUT_MS);
       let streamErr;
+      const warm = await warmSearch().run(args, { cwd: process.cwd(), timeoutMs: RIPGREP_TIMEOUT_MS, maxBytes: MAX_GREP_BYTES, maxRecords: options.headLimit + 1 });
+      if (warm) {
+        const lines = warm.stdout.toString("utf8").split("\n").map((l) => l.endsWith("\r") ? l.slice(0, -1) : l);
+        if (lines[lines.length - 1] === "") lines.pop();
+        collected.push(...lines.slice(0, options.headLimit + 1));
+        if (warm.timedOut) timedOut = true;
+      }
       try {
-        await ripgrepStream(args.slice(0, -1), args[args.length - 1], controller.signal, (lines) => {
+        if (!warm) await ripgrepStream(args.slice(0, -1), args[args.length - 1], controller.signal, (lines) => {
           for (const line of lines) {
             collected.push(line);
             if (collected.length > options.headLimit) {
@@ -21254,7 +21426,7 @@ async function walkFallback(regex, searchPath, outputMode, limit, timeoutMs, glo
         timedOut = true;
         break;
       }
-      const file = import_node_path16.default.normalize(entry);
+      const file = import_node_path17.default.normalize(entry);
       const matches = await matchFile(regex, file, outputMode, lineNumbers, true);
       if (matches) results.push(...matches);
     }
@@ -21271,7 +21443,7 @@ function presentMatches(lines, o) {
 ${lines.join("\n")}`;
   }
   if (!o.cwd) return lines.join("\n");
-  const prefix = o.cwd.endsWith(import_node_path16.default.sep) ? o.cwd : o.cwd + import_node_path16.default.sep;
+  const prefix = o.cwd.endsWith(import_node_path17.default.sep) ? o.cwd : o.cwd + import_node_path17.default.sep;
   const fold = process.platform === "win32";
   const head = fold ? prefix.toLowerCase() : prefix;
   const under = (line) => (fold ? line.slice(0, head.length).toLowerCase() : line.slice(0, head.length)) === head;
@@ -21290,18 +21462,19 @@ function fallbackResult(results, offset, headLimit, timedOut, timeoutMs, notice 
 [Search timed out after ${seconds}s \u2014 partial results above; try a narrower path or pattern]` : "");
   return textResult4((output || "No matches found.") + suffix + notice);
 }
-var import_promises5, import_node_path16, import_node_child_process8, import_fast_glob2, VCS_DIRECTORIES, MAX_COLUMNS, RIPGREP_TIMEOUT_MS, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE;
+var import_promises5, import_node_path17, import_node_child_process9, import_fast_glob2, VCS_DIRECTORIES, MAX_COLUMNS, RIPGREP_TIMEOUT_MS, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
     import_promises5 = __toESM(require("node:fs/promises"), 1);
-    import_node_path16 = __toESM(require("node:path"), 1);
-    import_node_child_process8 = require("node:child_process");
+    import_node_path17 = __toESM(require("node:path"), 1);
+    import_node_child_process9 = require("node:child_process");
     import_fast_glob2 = __toESM(require_out4(), 1);
     init_working_directory();
     init_fs_shared();
     init_ripgrep_path();
     init_local_grep();
+    init_warm_search();
     VCS_DIRECTORIES = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
     MAX_COLUMNS = 500;
     RIPGREP_TIMEOUT_MS = 54e4;
@@ -21378,7 +21551,7 @@ async function readFile(input, context) {
   const filePath = resolveToolPath(input.file_path, context?.cwd);
   if (isBlockedDevicePath(filePath)) return errorResult4(`Refusing to read blocking device path: ${filePath}`);
   try {
-    const ext = import_node_path17.default.extname(filePath).toLowerCase();
+    const ext = import_node_path18.default.extname(filePath).toLowerCase();
     if (ext === ".pdf") {
       return errorResult4(
         "PDF reading is not supported by this Read tool. Use the Bash tool with `pdftotext` or similar to extract PDF text."
@@ -21480,7 +21653,7 @@ async function writeFile(input, context) {
   const filePath = resolveToolPath(input.file_path, context?.cwd);
   if (typeof content !== "string") return errorResult4("content is required");
   try {
-    await import_promises6.default.mkdir(import_node_path17.default.dirname(filePath), { recursive: true });
+    await import_promises6.default.mkdir(import_node_path18.default.dirname(filePath), { recursive: true });
     const bytes = encodeText(content, await existingEncoding(filePath));
     await import_promises6.default.writeFile(filePath, bytes);
     invalidateFileCache(filePath);
@@ -21532,7 +21705,7 @@ async function editFile(input, context) {
       stat = await import_promises6.default.stat(filePath);
     } catch (err) {
       if (err?.code === "ENOENT" && oldString === "") {
-        await import_promises6.default.mkdir(import_node_path17.default.dirname(filePath), { recursive: true });
+        await import_promises6.default.mkdir(import_node_path18.default.dirname(filePath), { recursive: true });
         await import_promises6.default.writeFile(filePath, newString, "utf8");
         invalidateFileCache(filePath);
         return textResult4(`The file ${filePath} has been created successfully.`);
@@ -21600,7 +21773,7 @@ async function globSearch(input, context) {
   try {
     const { files, capped } = await listGlob(query, MAX_GLOB_LISTED, context?.signal);
     const sorted = await newestFirst(files);
-    const shown = sorted.slice(0, GLOB_SHOWN).map((p) => import_node_path17.default.normalize(p));
+    const shown = sorted.slice(0, GLOB_SHOWN).map((p) => import_node_path18.default.normalize(p));
     const total = capped ? `more than ${MAX_GLOB_LISTED}` : String(sorted.length);
     const suffix = sorted.length > GLOB_SHOWN ? capped ? `
 (Showing the ${GLOB_SHOWN} most recently modified of the first ${MAX_GLOB_LISTED} matching files listed; more exist. Use a more specific pattern or path.)` : `
@@ -21610,12 +21783,12 @@ async function globSearch(input, context) {
     return errorResult4(err instanceof Error ? err.message : String(err));
   }
 }
-var import_promises6, import_node_path17, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_LINE_LENGTH, STREAMED_RANGE_BYTES, GLOB_SHOWN;
+var import_promises6, import_node_path18, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_LINE_LENGTH, STREAMED_RANGE_BYTES, GLOB_SHOWN;
 var init_file_system = __esm({
   "src/main/mcp/tools/file-system.ts"() {
     "use strict";
     import_promises6 = __toESM(require("node:fs/promises"), 1);
-    import_node_path17 = __toESM(require("node:path"), 1);
+    import_node_path18 = __toESM(require("node:path"), 1);
     init_notebook();
     init_file_read_cache();
     init_text_codec();
@@ -38905,7 +39078,7 @@ var require_turndown_cjs = __commonJS({
         } else if (node.nodeType === 1) {
           replacement = replacementForNode.call(self, node);
         }
-        join4(output, replacement);
+        join5(output, replacement);
         return output;
       }, []);
     }
@@ -38913,7 +39086,7 @@ var require_turndown_cjs = __commonJS({
       var self = this;
       this.rules.forEach(function(rule) {
         if (typeof rule.append === "function") {
-          join4(output, rule.append(self.options));
+          join5(output, rule.append(self.options));
         }
       });
       return output.join("").replace(/^[\t\r\n]+/, "").replace(/[\t\r\n\s]+$/, "");
@@ -38925,7 +39098,7 @@ var require_turndown_cjs = __commonJS({
       if (whitespace.leading || whitespace.trailing) content = content.trim();
       return whitespace.leading + rule.replacement(content, node, this.options) + whitespace.trailing;
     }
-    function join4(output, replacement) {
+    function join5(output, replacement) {
       var tail = output.pop() || "";
       var s1 = trimTrailingNewlines(tail);
       var s2 = trimLeadingNewlines(replacement);
@@ -39194,7 +39367,7 @@ function errorResult6(message) {
 }
 function runGitLocal(args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const proc = (0, import_node_child_process9.spawn)("git", args, { cwd: opts.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const proc = (0, import_node_child_process10.spawn)("git", args, { cwd: opts.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";
     const timer = opts.timeoutMs ? setTimeout(() => {
       try {
@@ -39231,14 +39404,14 @@ async function getGitRoot(cwd) {
 async function exitWorktree(input, context) {
   if (!input.path) return errorResult6("path is required");
   const worktreePath = resolveToolPath(input.path, context?.cwd);
-  const worktreeName = import_node_path18.default.basename(worktreePath);
+  const worktreeName = import_node_path19.default.basename(worktreePath);
   if (!/^[a-zA-Z0-9_-]+$/.test(worktreeName)) {
     return errorResult6("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
   }
   try {
     const gitRoot = await getGitRoot(context?.cwd);
     if (!gitRoot) return errorResult6("Not inside a git repository.");
-    if (!import_node_fs15.default.existsSync(worktreePath)) {
+    if (!import_node_fs16.default.existsSync(worktreePath)) {
       return errorResult6(`Worktree path does not exist: ${worktreePath}`);
     }
     await runGitLocal(["worktree", "remove", worktreePath, "--force"], { cwd: gitRoot, timeoutMs: 3e4 });
@@ -39258,15 +39431,15 @@ async function enterWorktree(input, context) {
     if (!gitRoot) {
       return errorResult6("Not inside a git repository. Cannot create worktree.");
     }
-    const worktreesDir = import_node_path18.default.join(gitRoot, ".claude", "worktrees");
-    import_node_fs15.default.mkdirSync(worktreesDir, { recursive: true });
-    const worktreePath = import_node_path18.default.join(worktreesDir, name);
-    if (import_node_fs15.default.existsSync(worktreePath)) {
+    const worktreesDir = import_node_path19.default.join(gitRoot, ".claude", "worktrees");
+    import_node_fs16.default.mkdirSync(worktreesDir, { recursive: true });
+    const worktreePath = import_node_path19.default.join(worktreesDir, name);
+    if (import_node_fs16.default.existsSync(worktreePath)) {
       return errorResult6(`Worktree already exists at ${worktreePath}`);
     }
     const branchName = `worktree/${name}`;
     await runGitLocal(["worktree", "add", "-b", branchName, worktreePath, "HEAD"], { cwd: gitRoot, timeoutMs: 3e4 });
-    if (!import_node_fs15.default.existsSync(worktreePath)) {
+    if (!import_node_fs16.default.existsSync(worktreePath)) {
       return errorResult6("Worktree creation command succeeded but directory was not found");
     }
     return textResult6(
@@ -39279,13 +39452,13 @@ Based on: HEAD`
     return errorResult6(`Failed to create worktree: ${msg}`);
   }
 }
-var import_node_child_process9, import_node_path18, import_node_fs15, import_node_crypto3;
+var import_node_child_process10, import_node_path19, import_node_fs16, import_node_crypto3;
 var init_git = __esm({
   "src/main/mcp/tools/git.ts"() {
     "use strict";
-    import_node_child_process9 = require("node:child_process");
-    import_node_path18 = __toESM(require("node:path"), 1);
-    import_node_fs15 = __toESM(require("node:fs"), 1);
+    import_node_child_process10 = require("node:child_process");
+    import_node_path19 = __toESM(require("node:path"), 1);
+    import_node_fs16 = __toESM(require("node:fs"), 1);
     import_node_crypto3 = __toESM(require("node:crypto"), 1);
     init_working_directory();
   }
@@ -39716,12 +39889,12 @@ function setPluginLspProjectResolver(resolver) {
   resolveProject = resolver;
 }
 function isInside(root, candidate) {
-  const rel = import_node_path19.default.relative(import_node_path19.default.resolve(root), import_node_path19.default.resolve(candidate));
-  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path19.default.sep) && !import_node_path19.default.isAbsolute(rel);
+  const rel = import_node_path20.default.relative(import_node_path20.default.resolve(root), import_node_path20.default.resolve(candidate));
+  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path20.default.sep) && !import_node_path20.default.isAbsolute(rel);
 }
 function readJson(filePath) {
   try {
-    return JSON.parse(import_node_fs16.default.readFileSync(filePath, "utf-8"));
+    return JSON.parse(import_node_fs17.default.readFileSync(filePath, "utf-8"));
   } catch {
     return null;
   }
@@ -39737,12 +39910,12 @@ async function discoverPluginLspConfigs() {
   for (const plugin of await listEnabledInstalledPlugins()) {
     const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace);
     const rawMap = {};
-    collectConfigMap(rawMap, readJson(import_node_path19.default.join(plugin.installPath, ".lsp.json")));
+    collectConfigMap(rawMap, readJson(import_node_path20.default.join(plugin.installPath, ".lsp.json")));
     const declared = manifest.lspServers;
     const declarations = Array.isArray(declared) ? declared : declared === void 0 ? [] : [declared];
     for (const item of declarations) {
       if (typeof item === "string") {
-        const resolved = import_node_path19.default.resolve(plugin.installPath, item);
+        const resolved = import_node_path20.default.resolve(plugin.installPath, item);
         if (isInside(plugin.installPath, resolved)) collectConfigMap(rawMap, readJson(resolved));
       } else {
         collectConfigMap(rawMap, item);
@@ -39753,7 +39926,7 @@ async function discoverPluginLspConfigs() {
       const config = raw;
       if (typeof config.command !== "string" || !config.command.trim()) continue;
       if (!config.extensionToLanguage || typeof config.extensionToLanguage !== "object" || Array.isArray(config.extensionToLanguage)) continue;
-      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path19.default.join(import_node_os9.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
+      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path20.default.join(import_node_os9.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
       const env4 = {};
       for (const [key2, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key2] = subst(value);
       for (const [key2, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
@@ -39781,7 +39954,7 @@ async function discoverPluginLspConfigs() {
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 function fileUri(filePath) {
-  return (0, import_node_url.pathToFileURL)(import_node_path19.default.resolve(filePath)).href;
+  return (0, import_node_url.pathToFileURL)(import_node_path20.default.resolve(filePath)).href;
 }
 function matchLspLanguage(extensionToLanguage, file) {
   const lower = file.toLowerCase();
@@ -39792,14 +39965,14 @@ function matchLspLanguage(extensionToLanguage, file) {
   }
   return null;
 }
-var import_node_child_process10, import_node_fs16, import_node_os9, import_node_path19, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
+var import_node_child_process11, import_node_fs17, import_node_os9, import_node_path20, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
 var init_plugin_lsp = __esm({
   "src/main/plugin-lsp.ts"() {
     "use strict";
-    import_node_child_process10 = require("node:child_process");
-    import_node_fs16 = __toESM(require("node:fs"), 1);
+    import_node_child_process11 = require("node:child_process");
+    import_node_fs17 = __toESM(require("node:fs"), 1);
     import_node_os9 = __toESM(require("node:os"), 1);
-    import_node_path19 = __toESM(require("node:path"), 1);
+    import_node_path20 = __toESM(require("node:path"), 1);
     import_node_url = require("node:url");
     init_plugin_helpers();
     LSP_MAX_HEADER_BYTES = 16 * 1024;
@@ -39850,7 +40023,7 @@ var init_plugin_lsp = __esm({
         }
       }
     };
-    resolveProject = (_tabId, file) => import_node_path19.default.dirname(file);
+    resolveProject = (_tabId, file) => import_node_path20.default.dirname(file);
     LspProcess = class {
       constructor(config, projectRoot) {
         this.config = config;
@@ -39908,23 +40081,23 @@ var init_plugin_lsp = __esm({
           }
           this.child = null;
         }
-        const dataDir = import_node_path19.default.join(import_node_os9.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
-        import_node_fs16.default.mkdirSync(dataDir, { recursive: true });
+        const dataDir = import_node_path20.default.join(import_node_os9.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+        import_node_fs17.default.mkdirSync(dataDir, { recursive: true });
         let cwd = this.projectRoot;
         if (this.config.workspaceFolder) {
-          const requested = import_node_path19.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
+          const requested = import_node_path20.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
           if (isInside(this.projectRoot, requested)) cwd = requested;
         }
-        const pluginBin = import_node_path19.default.join(this.config.pluginRoot, "bin");
+        const pluginBin = import_node_path20.default.join(this.config.pluginRoot, "bin");
         const env4 = {
           ...process.env,
           ...Object.fromEntries(Object.entries(this.config.env).map(([k, v]) => [k, this.substitute(v)])),
           CLAUDE_PLUGIN_ROOT: this.config.pluginRoot,
           CLAUDE_PLUGIN_DATA: dataDir,
           CLAUDE_PROJECT_DIR: this.projectRoot,
-          PATH: [import_node_fs16.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path19.default.delimiter)
+          PATH: [import_node_fs17.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path20.default.delimiter)
         };
-        this.child = (0, import_node_child_process10.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
+        this.child = (0, import_node_child_process11.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
           cwd,
           env: env4,
           stdio: ["pipe", "pipe", "pipe"],
@@ -39957,7 +40130,7 @@ var init_plugin_lsp = __esm({
         await this.request("initialize", {
           processId: process.pid,
           rootUri,
-          workspaceFolders: [{ uri: rootUri, name: import_node_path19.default.basename(this.projectRoot) }],
+          workspaceFolders: [{ uri: rootUri, name: import_node_path20.default.basename(this.projectRoot) }],
           capabilities: {
             workspace: { workspaceFolders: true, configuration: true },
             textDocument: {
@@ -40047,7 +40220,7 @@ var init_plugin_lsp = __esm({
             result = items.map(() => this.config.settings ?? null);
           } else if (message.method === "workspace/workspaceFolders") {
             const uri = fileUri(this.projectRoot);
-            result = [{ uri, name: import_node_path19.default.basename(this.projectRoot) }];
+            result = [{ uri, name: import_node_path20.default.basename(this.projectRoot) }];
           } else if (message.method === "workspace/applyEdit") {
             result = { applied: false, failureReason: "Plugin LSP edits are not applied automatically by the bridge" };
           }
@@ -40059,7 +40232,7 @@ var init_plugin_lsp = __esm({
       }
       async syncDocument(file, languageId) {
         const uri = fileUri(file);
-        const content = await import_node_fs16.default.promises.readFile(file, "utf-8");
+        const content = await import_node_fs17.default.promises.readFile(file, "utf-8");
         const previous = this.documents.get(uri);
         if (!previous) {
           this.documents.set(uri, { content, version: 1, languageId });
@@ -40146,11 +40319,11 @@ var init_plugin_lsp = __esm({
       }
       async matching(file, tabId) {
         if (this.definitions.length === 0) await this.refresh();
-        const projectRoot = resolveProject(tabId, file) ?? import_node_path19.default.dirname(file);
+        const projectRoot = resolveProject(tabId, file) ?? import_node_path20.default.dirname(file);
         for (const config of this.definitions) {
           const languageId = matchLspLanguage(config.extensionToLanguage, file);
           if (!languageId) continue;
-          const instanceKey = `${config.id}::${import_node_path19.default.resolve(projectRoot)}`;
+          const instanceKey = `${config.id}::${import_node_path20.default.resolve(projectRoot)}`;
           let process2 = this.instances.get(instanceKey);
           if (!process2) {
             process2 = new LspProcess(config, projectRoot);
@@ -43127,7 +43300,7 @@ var import_path37 = __toESM(require("path"), 1);
 
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
-var import_node_path23 = __toESM(require("node:path"), 1);
+var import_node_path24 = __toESM(require("node:path"), 1);
 
 // src/resync-tracker.ts
 var ResyncTracker = class {
@@ -44333,37 +44506,37 @@ function toRendererConnectionState(state, authority, authorityGeneration, author
 
 // src/incident-diagnostics.ts
 var import_node_crypto5 = require("node:crypto");
-var import_node_fs18 = require("node:fs");
-var import_node_path20 = require("node:path");
+var import_node_fs19 = require("node:fs");
+var import_node_path21 = require("node:path");
 
 // ../../../src/kamin-host/rolling-log.ts
-var import_node_fs17 = require("node:fs");
+var import_node_fs18 = require("node:fs");
 function removeIfPresent(path57) {
   try {
-    if ((0, import_node_fs17.existsSync)(path57)) (0, import_node_fs17.unlinkSync)(path57);
+    if ((0, import_node_fs18.existsSync)(path57)) (0, import_node_fs18.unlinkSync)(path57);
   } catch {
   }
 }
 function rotateLogFiles(path57, backups) {
   if (backups <= 0) {
     removeIfPresent(path57);
-    return !(0, import_node_fs17.existsSync)(path57);
+    return !(0, import_node_fs18.existsSync)(path57);
   }
   removeIfPresent(`${path57}.${String(backups)}`);
   for (let i = backups - 1; i >= 1; i -= 1) {
     const from = `${path57}.${String(i)}`;
-    if (!(0, import_node_fs17.existsSync)(from)) continue;
+    if (!(0, import_node_fs18.existsSync)(from)) continue;
     const to = `${path57}.${String(i + 1)}`;
     removeIfPresent(to);
     try {
-      (0, import_node_fs17.renameSync)(from, to);
+      (0, import_node_fs18.renameSync)(from, to);
     } catch {
     }
   }
-  if ((0, import_node_fs17.existsSync)(path57)) {
+  if ((0, import_node_fs18.existsSync)(path57)) {
     removeIfPresent(`${path57}.1`);
     try {
-      (0, import_node_fs17.renameSync)(path57, `${path57}.1`);
+      (0, import_node_fs18.renameSync)(path57, `${path57}.1`);
     } catch {
       return false;
     }
@@ -44380,7 +44553,7 @@ var RollingLogWriter = class {
     if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
       throw new Error("rolling log backups must be a non-negative safe integer");
     }
-    if (options.rotateOnOpen && (0, import_node_fs17.existsSync)(path57) && (0, import_node_fs17.statSync)(path57).size > 0) {
+    if (options.rotateOnOpen && (0, import_node_fs18.existsSync)(path57) && (0, import_node_fs18.statSync)(path57).size > 0) {
       rotateLogFiles(path57, options.backups);
     }
     this.open();
@@ -44414,7 +44587,7 @@ var RollingLogWriter = class {
     let offset = 0;
     while (offset < data.length) {
       try {
-        const written = (0, import_node_fs17.writeSync)(fd, data, offset, data.length - offset);
+        const written = (0, import_node_fs18.writeSync)(fd, data, offset, data.length - offset);
         if (written <= 0) return false;
         this.bytes += written;
         offset += written;
@@ -44437,7 +44610,7 @@ var RollingLogWriter = class {
       try {
         if (this.fd === null) this.open();
         if (this.fd === null) return;
-        const written = (0, import_node_fs17.writeSync)(this.fd, data, offset, size);
+        const written = (0, import_node_fs18.writeSync)(this.fd, data, offset, size);
         if (written <= 0) return;
         this.bytes += written;
         offset += written;
@@ -44457,7 +44630,7 @@ var RollingLogWriter = class {
   closeDescriptor() {
     if (this.fd === null) return;
     try {
-      (0, import_node_fs17.closeSync)(this.fd);
+      (0, import_node_fs18.closeSync)(this.fd);
     } catch {
     }
     this.fd = null;
@@ -44465,9 +44638,9 @@ var RollingLogWriter = class {
   open() {
     if (this.permanentlyClosed) return;
     try {
-      this.fd = (0, import_node_fs17.openSync)(this.path, "a");
+      this.fd = (0, import_node_fs18.openSync)(this.path, "a");
       try {
-        this.bytes = (0, import_node_fs17.statSync)(this.path).size;
+        this.bytes = (0, import_node_fs18.statSync)(this.path).size;
       } catch {
         this.closeDescriptor();
         this.bytes = 0;
@@ -44484,8 +44657,8 @@ var RollingLogWriter = class {
     const rotated = rotateLogFiles(this.path, this.options.backups);
     this.bytes = 0;
     try {
-      this.fd = (0, import_node_fs17.openSync)(this.path, rotated ? "a" : "w");
-      this.bytes = (0, import_node_fs17.statSync)(this.path).size;
+      this.fd = (0, import_node_fs18.openSync)(this.path, rotated ? "a" : "w");
+      this.bytes = (0, import_node_fs18.statSync)(this.path).size;
     } catch {
       this.closeDescriptor();
       this.bytes = 0;
@@ -44671,8 +44844,8 @@ function installIncidentDiagnostics(logDir, subscribe) {
   installed = true;
   dropMarked = false;
   try {
-    (0, import_node_fs18.mkdirSync)(logDir, { recursive: true });
-    incidentLog = new RollingLogWriter((0, import_node_path20.join)(logDir, "incident.log"), {
+    (0, import_node_fs19.mkdirSync)(logDir, { recursive: true });
+    incidentLog = new RollingLogWriter((0, import_node_path21.join)(logDir, "incident.log"), {
       maxBytes: INCIDENT_LOG_MAX_BYTES,
       backups: INCIDENT_LOG_BACKUPS,
       rotateOnOpen: true
@@ -53355,8 +53528,8 @@ function suggestFetchHint(cause, host) {
 var import_child_process4 = require("child_process");
 
 // src/main/mcp/transports/stdio-launch.ts
-var import_node_fs19 = __toESM(require("node:fs"), 1);
-var import_node_path21 = __toESM(require("node:path"), 1);
+var import_node_fs20 = __toESM(require("node:fs"), 1);
+var import_node_path22 = __toESM(require("node:path"), 1);
 init_script_file();
 function envValue(env4, name) {
   const key2 = Object.keys(env4).find((key3) => key3.toLowerCase() === name.toLowerCase());
@@ -53364,13 +53537,13 @@ function envValue(env4, name) {
 }
 function windowsCommand(command, cwd, env4) {
   const directories = /[\\/]/.test(command) ? [""] : [cwd, ...(envValue(env4, "PATH") ?? "").split(";")];
-  const extensions = import_node_path21.default.win32.extname(command) ? [""] : (envValue(env4, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";");
+  const extensions = import_node_path22.default.win32.extname(command) ? [""] : (envValue(env4, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";");
   for (const directory of directories) {
-    const base = import_node_path21.default.win32.resolve(cwd, directory.replace(/^"(.*)"$/, "$1"), command);
+    const base = import_node_path22.default.win32.resolve(cwd, directory.replace(/^"(.*)"$/, "$1"), command);
     for (const extension2 of extensions) {
       const file = base + extension2;
       try {
-        if (import_node_fs19.default.statSync(file).isFile()) return file;
+        if (import_node_fs20.default.statSync(file).isFile()) return file;
       } catch {
       }
     }
@@ -54972,15 +55145,15 @@ var import_path35 = __toESM(require("path"), 1);
 // src/attachments.ts
 var import_promises9 = __toESM(require("node:fs/promises"), 1);
 var import_node_os11 = __toESM(require("node:os"), 1);
-var import_node_path22 = __toESM(require("node:path"), 1);
+var import_node_path23 = __toESM(require("node:path"), 1);
 async function saveAttachment(base64, name, root = import_node_os11.default.tmpdir()) {
   if (typeof base64 !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
     throw new Error("Invalid attachment encoding");
   }
   const safe = String(name || "attachment").replace(/[/\\\x00-\x1f<>:"|?*]/g, "_").slice(-120);
   await import_promises9.default.mkdir(root, { recursive: true });
-  const directory = await import_promises9.default.mkdtemp(import_node_path22.default.join(root, "bridge-upload-"));
-  const file = import_node_path22.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
+  const directory = await import_promises9.default.mkdtemp(import_node_path23.default.join(root, "bridge-upload-"));
+  const file = import_node_path23.default.join(directory, safe === "." || safe === ".." ? "attachment" : safe);
   await import_promises9.default.writeFile(file, Buffer.from(base64, "base64"), { flag: "wx", mode: 384 });
   return file;
 }
@@ -55607,8 +55780,8 @@ var BridgeHost = class {
     setPluginLspProjectResolver((tabId, file) => {
       const direct = tabId ? this.tabManager.getTab(tabId)?.config.cwd : void 0;
       if (direct) return direct;
-      const resolvedFile = import_node_path23.default.resolve(file);
-      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path23.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path23.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const resolvedFile = import_node_path24.default.resolve(file);
+      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path24.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path24.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
     });
     const getUserCwd = () => vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
     const ctx = {

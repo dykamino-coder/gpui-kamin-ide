@@ -67,7 +67,11 @@ export class WarmSearch {
   private buffered = 0
   private deaths: number[] = []
 
-  constructor(private readonly binary: string | null) {}
+  /** `args`: arguments of the process (tests run a script with node). */
+  constructor(
+    private readonly binary: string | null,
+    private readonly args: string[] = [],
+  ) {}
 
   /** Whether calls can go here at all. */
   get available(): boolean {
@@ -77,7 +81,7 @@ export class WarmSearch {
   }
 
   private start(): ChildProcess {
-    const child = spawn(this.binary!, [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
+    const child = spawn(this.binary!, this.args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
     child.stdout!.on('data', (d: Buffer) => this.onData(d))
     child.stdin!.on('error', () => {
       /* the process ended; 'exit' settles the requests */
@@ -148,9 +152,9 @@ export class WarmSearch {
     this.child ??= this.start()
     const child = this.child
     const id = this.nextId++
+    const onAbort = (): void => void child.stdin?.write(`${JSON.stringify({ id, cancel: true })}\n`)
     const answer = await new Promise<Answer | null>((resolve) => {
       this.pending.set(id, resolve)
-      const onAbort = (): void => void child.stdin?.write(`${JSON.stringify({ id, cancel: true })}\n`)
       o.signal?.addEventListener('abort', onAbort, { once: true })
       // An answer settles the request; so does the end of the process.
       const request = { id, args, cwd: o.cwd, timeoutMs: o.timeoutMs, maxBytes: o.maxBytes, maxRecords: o.maxRecords }
@@ -160,6 +164,8 @@ export class WarmSearch {
         /* backpressure only delays the request */
       }
     }).finally(() => {
+      // A long-lived signal (the session's) must not collect a listener per call.
+      o.signal?.removeEventListener('abort', onAbort)
       if (!this.pending.size && this.child === child) {
         ;(child as unknown as { unref?: () => void }).unref?.()
         ;(child.stdout as unknown as { unref?: () => void }).unref?.()

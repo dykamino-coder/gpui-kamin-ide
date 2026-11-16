@@ -50,7 +50,9 @@ type Running = Arc<Mutex<HashMap<u64, Arc<AtomicBool>>>>;
 /// line buffered, and megabytes written through it in pieces cost a system
 /// call each.
 fn write_answer(out: &Mutex<std::io::Stdout>, header: &serde_json::Value, body: &[u8]) {
-    let Ok(mut frame) = serde_json::to_vec(header) else { return };
+    let Ok(mut frame) = serde_json::to_vec(header) else {
+        return;
+    };
     frame.push(b'\n');
     frame.extend_from_slice(body);
     if let Ok(o) = out.lock() {
@@ -61,7 +63,12 @@ fn write_answer(out: &Mutex<std::io::Stdout>, header: &serde_json::Value, body: 
 }
 
 fn answer(req: &Request, cancelled: &AtomicBool) -> (serde_json::Value, Vec<u8>) {
-    let unsupported = |why: String| (serde_json::json!({ "id": req.id, "unsupported": why, "stdoutLen": 0 }), Vec::new());
+    let unsupported = |why: String| {
+        (
+            serde_json::json!({ "id": req.id, "unsupported": why, "stdoutLen": 0 }),
+            Vec::new(),
+        )
+    };
     let q = match args::parse(&req.args) {
         Ok(q) => q,
         Err(why) => return unsupported(why),
@@ -71,7 +78,9 @@ fn answer(req: &Request, cancelled: &AtomicBool) -> (serde_json::Value, Vec<u8>)
     }
     let control = run::Control {
         cancelled,
-        deadline: req.timeout_ms.map(|ms| Instant::now() + Duration::from_millis(ms)),
+        deadline: req
+            .timeout_ms
+            .map(|ms| Instant::now() + Duration::from_millis(ms)),
         max_bytes: req.max_bytes.unwrap_or(usize::MAX),
         max_records: req.max_records.unwrap_or(0),
     };
@@ -92,7 +101,10 @@ fn answer(req: &Request, cancelled: &AtomicBool) -> (serde_json::Value, Vec<u8>)
     }
 }
 
-#[allow(clippy::disallowed_methods, reason = "a process entry point reads its environment")]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a process entry point reads its environment"
+)]
 fn config_path_set() -> bool {
     std::env::var_os("RIPGREP_CONFIG_PATH").is_some_and(|v| !v.is_empty())
 }
@@ -101,7 +113,10 @@ fn idle_ms() -> u64 {
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         if a == "--idle-ms" {
-            return it.next().and_then(|v| v.parse().ok()).unwrap_or(DEFAULT_IDLE_MS);
+            return it
+                .next()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(DEFAULT_IDLE_MS);
         }
     }
     DEFAULT_IDLE_MS
@@ -119,8 +134,9 @@ fn now_ms(start: Instant) -> u64 {
 #[cfg(windows)]
 fn opt_out_of_power_throttling() {
     use windows::Win32::System::Threading::{
-        GetCurrentProcess, PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
-        PROCESS_POWER_THROTTLING_STATE, ProcessPowerThrottling, SetProcessInformation,
+        GetCurrentProcess, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
+        ProcessPowerThrottling, SetProcessInformation,
     };
     let state = PROCESS_POWER_THROTTLING_STATE {
         Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
@@ -163,7 +179,9 @@ fn main() {
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
         last.store(now_ms(start), Ordering::SeqCst);
-        let Ok(req) = serde_json::from_str::<Request>(&line) else { continue };
+        let Ok(req) = serde_json::from_str::<Request>(&line) else {
+            continue;
+        };
         if req.cancel {
             if let Ok(r) = running.lock()
                 && let Some(flag) = r.get(&req.id)

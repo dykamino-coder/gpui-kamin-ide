@@ -63,6 +63,7 @@ test("installer extracts ripgrep when the tar on PATH rejects drive-letter paths
     put("Cargo.toml", 'version = "0.0.0"\n');
     put("target/release/kaminide-gpui.exe", "synthetic shell");
     put("target/release/kamin-jobrun.exe", "synthetic job runner");
+    put("target/release/kamin-search.exe", "synthetic search process");
     put("target/ripgrep/" + directory + ".zip", zip);
     put("payload/runtime.tar.zst", zstdCompressSync(Buffer.alloc(1024)));
     put("package.json", "{}");
