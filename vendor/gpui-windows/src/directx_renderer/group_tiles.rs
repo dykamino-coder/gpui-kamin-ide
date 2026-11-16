@@ -17,7 +17,7 @@
 //! Lists are bounded: a tile holds at most `TILE_CAP` composites, and the run
 //! is split before the composite that would exceed it (one more copy and draw
 //! per split, never a longer list). Composites of one pass share an atlas page
-//! and carry no mask image; the others keep the levels.
+//! and a mask image view (or have none).
 
 use super::*;
 
@@ -101,32 +101,34 @@ pub(super) fn bin(regions: &[Region], width: u32, height: u32, cap: u32, lists: 
 }
 
 impl DirectXRenderer {
-    /// Whether composite `s` can join a pass: a retained image and no mask image.
+    /// Whether composite `s` can join a pass: it has a retained image.
     pub(super) fn tiles_take(&self, s: &PaintSurface) -> bool {
-        self.group_tiles
-            && self.group_composite_quad(s).is_some()
-            && self
-                .blur
-                .group_mask
-                .get(s.group as usize - 1)
-                .is_none_or(|m| m.is_none())
+        self.group_tiles && self.group_composite_quad(s).is_some()
     }
 
     /// Draw the leading composites of `run` that `tiles_take` accepts, on one
-    /// atlas page, in one pass; returns how many were drawn (0: fewer than two
-    /// could share a pass, nothing drawn).
+    /// atlas page and with one mask image (or none), in one pass; returns how
+    /// many were drawn (0: fewer than two could share a pass, nothing drawn).
     pub(super) fn draw_composite_tiles(&mut self, run: &[&PaintSurface]) -> Result<usize> {
         let mut quads = vec![BlurQuad::default()];
         let mut regions = Vec::new();
-        let mut page = None;
+        type View = Option<Option<ID3D11ShaderResourceView>>;
+        let mut first: Option<(usize, View)> = None;
         for s in run.iter().take(MAX_RUN) {
-            if !self.tiles_take(s) {
-                break;
-            }
-            let Some((quad, p)) = self.group_composite_quad(s) else {
+            let Some((mut quad, p)) = self.group_composite_quad(s).filter(|_| self.group_tiles) else {
                 break;
             };
-            if *page.get_or_insert(p) != p {
+            let mask = self.blur.group_mask.get(s.group as usize - 1).cloned().flatten();
+            // Masked composites carry their mask rectangle per instance and share
+            // the pass with those of the same view (the mask cache hands equal
+            // images one view), as in the composite levels.
+            let view = mask.map(|([srv], rect, once)| {
+                quad.pad2 = [1.0, once];
+                quad.mask_rect = rect;
+                srv
+            });
+            let (page, pass_view) = first.get_or_insert_with(|| (p, view.clone()));
+            if *page != p || *pass_view != view {
                 break;
             }
             quads.push(quad);
@@ -134,8 +136,14 @@ impl DirectXRenderer {
         }
         let mut lists = std::mem::take(&mut self.blur.tile_lists);
         let n = bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
-        let result = match page {
-            Some(page) if n >= 2 => self.draw_tile_pass(&mut quads, &regions[..n], page, &mut lists),
+        let result = match first {
+            Some((page, view)) if n >= 2 => {
+                if let Some(v) = &view {
+                    let dc = self.dev().device_context.clone();
+                    unsafe { dc.PSSetShaderResources(3, Some(slice::from_ref(v))) };
+                }
+                self.draw_tile_pass(&mut quads, &regions[..n], page, &mut lists)
+            }
             _ => Ok(()),
         };
         self.blur.tile_lists = lists;
@@ -214,37 +222,4 @@ impl DirectXRenderer {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{Region, TILE_CAP, TileLists, bin};
-
-    fn r(x: u32, y: u32, width: u32, height: u32) -> Region {
-        Region { x, y, width, height }
-    }
-
-    #[test]
-    fn every_tile_lists_its_composites_in_document_order() {
-        let mut l = TileLists::default();
-        // 40 x 20 target: 3 x 2 tiles of 16 px.
-        let n = bin(&[r(0, 0, 20, 10), r(10, 5, 30, 15), r(33, 17, 1, 1)], 40, 20, TILE_CAP, &mut l);
-        assert_eq!(n, 3);
-        let tile = |t: usize| &l.data[l.data[t] as usize..l.data[t + 1] as usize];
-        assert_eq!(tile(0), [1, 2]);
-        assert_eq!(tile(1), [1, 2]);
-        assert_eq!(tile(2), [2]);
-        assert_eq!(tile(3), [2]);
-        assert_eq!(tile(4), [2]);
-        assert_eq!(tile(5), [2, 3]);
-        assert_eq!(l.data.len(), 7 + 9);
-    }
-
-    #[test]
-    fn a_full_tile_ends_the_pass_before_the_composite_that_overflows_it() {
-        let mut l = TileLists::default();
-        let stack = vec![r(0, 0, 8, 8); 5];
-        assert_eq!(bin(&stack, 32, 32, 3, &mut l), 3);
-        assert_eq!(&l.data[l.data[0] as usize..l.data[1] as usize], [1, 2, 3]);
-        // Disjoint composites never split.
-        let apart: Vec<Region> = (0..4).map(|i| r(i * 16, 0, 16, 16)).collect();
-        assert_eq!(bin(&apart, 64, 16, 1, &mut l), 4);
-    }
-}
+mod tests;

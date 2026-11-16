@@ -1665,9 +1665,10 @@ float4 group_texel(BlurQuad q, float2 p) {
 // clip and mask-image coverage and the group opacity. Shared by blur_fragment
 // (blend modes mixed in the shader against a backdrop copy) and
 // group_tiles_fragment (a run of composites in one pass, no copies).
-// `image_mask` false (a literal): the caller never has a mask image, and no
-// gradient sample is compiled (group_tiles_fragment runs it in a loop).
-float4 group_source_with(BlurQuad q, float2 p, bool image_mask) {
+// `in_loop` (a literal): the mask image is read at level 0 instead of by the
+// derivatives, which a loop with a varying count has none of; every texture
+// has one level (MipLevels 1), so the texel is the same.
+float4 group_source_with(BlurQuad q, float2 p, bool in_loop) {
     float4 src;
     // KaminIDE patch: plane of a 3D rendering context — map the frame
     // pixel back through the inverse homography (perspective-correct
@@ -1726,7 +1727,7 @@ float4 group_source_with(BlurQuad q, float2 p, bool image_mask) {
         p.y >= q.mask_clip.y + q.mask_clip.w)) {
         mask = 0.0;
     }
-    if (image_mask && q.pad2.x > 0.5) {
+    if (q.pad2.x > 0.5) {
         float2 mt = (p - q.mask_rect.xy) / q.mask_rect.zw;
         uint norep = uint(q.pad2.y + 0.5);
         uint turn = (norep >> 3u) & 3u;
@@ -1736,7 +1737,12 @@ float4 group_source_with(BlurQuad q, float2 p, bool image_mask) {
         float inside = 1.0;
         if ((norep & 1u) && (mt.x < 0.0 || mt.x >= 1.0)) { inside = 0.0; }
         if ((norep & 2u) && (mt.y < 0.0 || mt.y >= 1.0)) { inside = 0.0; }
-        float4 mc = t_maskimg.Sample(s_sprite, frac(mt));
+        float4 mc;
+        if (in_loop) {
+            mc = t_maskimg.SampleLevel(s_sprite, frac(mt), 0.0);
+        } else {
+            mc = t_maskimg.Sample(s_sprite, frac(mt));
+        }
         // Светимость (`mask-mode: luminance`, бит 2): цвет уже умножен
         // на альфа, поэтому взвешенная сумма сразу равна lum * a.
         float mval = (norep & 4u)
@@ -1749,7 +1755,7 @@ float4 group_source_with(BlurQuad q, float2 p, bool image_mask) {
 }
 
 float4 group_source(BlurQuad q, float2 p) {
-    return group_source_with(q, p, true);
+    return group_source_with(q, p, false);
 }
 
 // KaminIDE patch: premultiplied source `src` of blend mode `mode` (not normal)
@@ -1967,7 +1973,7 @@ float4 group_tiles_fragment(BlurFragmentInput input): SV_Target {
         if (!composite_covers(q, c)) {
             continue;
         }
-        float4 src = group_source_with(q, p, false);
+        float4 src = group_source_with(q, p, true);
         float4 o = q.blend_mode == 0u ? src + dst * (1.0 - src.a) : composite_mix(q.blend_mode, src, dst);
         dst = round(saturate(o) * 255.0) / 255.0;
     }

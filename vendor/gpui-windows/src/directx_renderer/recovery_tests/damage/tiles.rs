@@ -186,19 +186,15 @@ fn modes_of_one_run_interleave_in_document_order() {
     }
 }
 
-/// Modes the oracle has no formula for: the pass takes the same steps as the
-/// levels (`composite_mix`, rounded), so the frames are equal.
+/// Every separable and non-separable mode, with a translucent group in the run.
 #[test]
-fn every_blend_mode_equals_the_composite_levels() {
+fn every_blend_mode_equals_its_formula() {
     for (gpu, device) in devices() {
         let bg = WindowBackgroundAppearance::Opaque;
         for m in 1..=15 {
             let mut groups = chain(&[m, m, 3, m, 9, m]);
             groups[2].opacity = 0.6;
-            let frame = scene(&backdrop(), &groups, None);
-            let got = draw_tiles(&device, &frame, bg);
-            let levels = draw_path(&device, &frame, bg, false);
-            assert_eq!(off(&got, &levels), (0, 0), "{gpu}: mode {m}");
+            check(&device, &format!("{gpu}: mode {m}"), &groups, bg);
         }
     }
 }
