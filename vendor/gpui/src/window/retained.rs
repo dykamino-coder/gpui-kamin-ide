@@ -191,9 +191,9 @@ impl Window {
     /// its paint no listener, input handler, cursor style or tab stop. Those
     /// carry window positions or identities a moved copy would not update.
     pub fn retained_movable(&self, prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> bool {
-        let (prepaint, paint) = (prepaint.range(), paint.range());
-        let (p, q) = (&prepaint.start, &prepaint.end);
-        let (a, b) = (&paint.start, &paint.end);
+        let (prepaints, paints) = (prepaint.range(), paint.range());
+        let (p, q) = (&prepaints.start, &prepaints.end);
+        let (a, b) = (&paints.start, &paints.end);
         let hitboxes = &self.next_frame.hitboxes[p.hitboxes_index..q.hitboxes_index];
         paint.replayable
             && hitboxes
