@@ -425,6 +425,8 @@ impl Compare<'_> {
             && a.polygon_inverse == b.polygon_inverse
             && match (&a.mask, &b.mask) {
                 (None, None) => true,
+                // A RenderImage is immutable and its id is unique per image
+                // (`RenderImage::new`): an equal id is equal mask bytes.
                 (Some(x), Some(y)) => x.id == y.id,
                 _ => false,
             }
@@ -441,7 +443,7 @@ impl Compare<'_> {
     /// диапазона) не равна никакой: слой меняется на месте, его примитивов
     /// нет в списках сцены, и равные списки не значат равную картинку.
     fn same_scene(&mut self, a: &Scene, b: &Scene) -> bool {
-        if !a.layers.is_empty() || !b.layers.is_empty() {
+        if !a.book.layers.is_empty() || !b.book.layers.is_empty() {
             return false;
         }
         if a.shadows.len() != b.shadows.len()
@@ -466,14 +468,14 @@ impl Compare<'_> {
 
 impl Scene {
     /// KaminIDE patch: повреждение этого кадра (`size` device px, номер
-    /// `id`) относительно `previous` — кадра `previous.damage_index.id` того же окна.
+    /// `id`) относительно `previous` — кадра `previous.book.index.id` того же окна.
     /// `pub` + `doc(hidden)`: тесты рендерера (`gpui_windows`) строят цепочку кадров.
     #[doc(hidden)]
     pub fn note_frame_damage(&mut self, previous: &Scene, id: u64, size: (u32, u32)) {
-        let mut index = std::mem::take(&mut *self.damage_index);
+        let mut index = std::mem::take(&mut self.book.index);
         index.build(self, size);
         index.id = id;
-        index.base = previous.damage_index.id;
+        index.base = previous.book.index.id;
         index.damage = self.damage_against(&index, previous);
         // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
         // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
@@ -486,21 +488,21 @@ impl Scene {
             };
             group_match::match_groups(&mut cmp, &mut index.group_base);
         }
-        *self.damage_index = index;
+        self.book.index = index;
     }
 
     /// KaminIDE patch: группа кадра `frame_damage().1` (с которым сравнивали
     /// этот), что рисует ту же картинку, что группа `g` этого кадра.
     #[doc(hidden)]
     pub fn group_base(&self, g: usize) -> Option<usize> {
-        match self.damage_index.group_base.get(g).copied().unwrap_or(0) {
+        match self.book.index.group_base.get(g).copied().unwrap_or(0) {
             0 => None,
             o => Some(o as usize - 1),
         }
     }
 
     fn damage_against(&self, index: &DamageIndex, previous: &Scene) -> SceneDamage {
-        let old = &*previous.damage_index;
+        let old = &previous.book.index;
         if index.backdrop || old.backdrop || old.size != index.size || old.size.is_none() {
             return SceneDamage::Unknown;
         }
@@ -509,7 +511,7 @@ impl Scene {
         // hold; their frame is compared by the layer bookkeeping
         // (`Scene::damage`, set by `Scene::note_damage` before this), which
         // knows the rectangles written into them since the last frame.
-        if !self.layers.is_empty() || !previous.layers.is_empty() {
+        if !self.book.layers.is_empty() || !previous.book.layers.is_empty() {
             return match self.damage() {
                 Some(None) => SceneDamage::Unchanged,
                 Some(Some(r)) => {
@@ -565,10 +567,10 @@ impl Scene {
     #[doc(hidden)]
     pub fn frame_damage(&self) -> (SceneDamage, u64, u64, (u32, u32)) {
         (
-            self.damage_index.damage,
-            self.damage_index.base,
-            self.damage_index.id,
-            self.damage_index.size.unwrap_or_default(),
+            self.book.index.damage,
+            self.book.index.base,
+            self.book.index.id,
+            self.book.index.size.unwrap_or_default(),
         )
     }
 
@@ -613,7 +615,7 @@ impl Scene {
     }
 
     pub(crate) fn clear_damage_index(&mut self) {
-        self.damage_index.clear();
+        self.book.index.clear();
     }
 }
 

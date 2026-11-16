@@ -38,6 +38,16 @@ function fixture(busy = true) {
   const queue = new CliSubmissions(session, mod, () => busy, abort)
   return { queue, mod, frames, armed, abort }
 }
+/** A stored prompt row as CLI 2.1.322 writes it. */
+function prompt(content: unknown, uuid: string, extra: object = {}) {
+  return {
+    type: 'user',
+    uuid,
+    timestamp: new Date().toISOString(),
+    message: { role: 'user', content },
+    ...extra,
+  } as any
+}
 afterEach(() => {
   vi.clearAllTimers()
   vi.useRealTimers()
@@ -51,7 +61,7 @@ describe('hybrid message receipts', () => {
     for (let i = 1; i <= 3; i++) {
       f.armed[i - 1]!()
       vi.advanceTimersByTime(100)
-      f.mod.onRead('id-' + i, 'uuid-' + i)
+      f.queue.transcript([prompt('same text', 'uuid-' + i)])
     }
     expect(deliver).toHaveBeenCalledTimes(3)
     expect(f.frames.filter((f) => f.state === 'read').map((f) => [f.id, f.uuid])).toEqual([
@@ -83,9 +93,14 @@ describe('hybrid message receipts', () => {
   it('uses submit while idle and replays receipts after reconnect', () => {
     const f = fixture(false)
     f.queue.submit('idle', 'Unicode 世界\nsecond line')
-    expect(f.mod.submit).toHaveBeenCalledWith('Unicode 世界\nsecond line', expect.any(Function), 'idle')
+    expect(f.mod.submit).toHaveBeenCalledWith(
+      'Unicode 世界\nsecond line',
+      expect.any(Function),
+      'idle',
+      expect.any(Function),
+    )
     expect(deliver).not.toHaveBeenCalled()
-    f.mod.onRead('idle', 'stored')
+    f.queue.transcript([prompt('Unicode 世界\nsecond line', 'stored')])
     f.frames.length = 0
     f.queue.replay()
     expect(f.frames).toEqual([expect.objectContaining({ id: 'idle', uuid: 'stored', state: 'read' })])
@@ -95,7 +110,7 @@ describe('hybrid message receipts', () => {
     f.queue.submit('old', 'first')
     f.armed[0]!()
     f.queue.disableReceipts()
-    f.mod.onRead('old', 'potentially-wrong-row')
+    f.queue.transcript([prompt('first', 'potentially-wrong-row')])
     expect(f.frames.some((f) => f.state === 'read')).toBe(false)
     expect(f.queue.submit('next', 'second')).toBe(false)
     expect(f.frames.at(-1)).toMatchObject({ capable: false })
@@ -106,7 +121,7 @@ describe('hybrid message receipts', () => {
     f.queue.rawInput('\x1b[O\x1b[?1;2c')
     expect(f.queue.capable).toBe(true)
     f.armed[0]!()
-    f.mod.onRead('pending', 'stored')
+    f.queue.transcript([prompt('text', 'stored')])
     expect(f.frames.at(-1)).toMatchObject({ state: 'read', uuid: 'stored' })
   })
   it('stamps receipts with server time and lists the ids it still tracks', () => {
@@ -144,8 +159,25 @@ describe('hybrid message receipts', () => {
       state: 'queued',
       warning: expect.stringContaining('earlier message'),
     })
-    f.mod.onRead('first', 'stored')
+    f.queue.transcript([prompt('awaiting CLI read', 'stored')])
     f.queue.action('second', 'push')
+    expect(f.mod.submit).toHaveBeenCalledTimes(2)
+  })
+  it('reports an accepted submit without a stored row as unconfirmed once the CLI is idle again', () => {
+    const f = fixture(false)
+    f.queue.submit('lost', 'stored differently')
+    f.queue.submit('next', 'waits behind it')
+    const [, , , accepted] = vi.mocked(f.mod.submit).mock.calls[0] as unknown as [
+      string,
+      () => void,
+      string,
+      () => void,
+    ]
+    accepted()
+    vi.advanceTimersByTime(4900)
+    expect(f.mod.submit).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(300)
+    expect(f.frames.find((frame) => frame.id === 'lost' && frame.state === 'uncertain')).toBeTruthy()
     expect(f.mod.submit).toHaveBeenCalledTimes(2)
   })
 })

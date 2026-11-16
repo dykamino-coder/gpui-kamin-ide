@@ -5,6 +5,7 @@ import { getSessionInputSnapshot, setSessionPromptReady, submitCoordinatedText }
 import { ProgramStatusParser, type ProgramStatus } from './program-status'
 import { CliSubmissions } from './cli-submissions'
 import type { CliModTransport } from './cli-mod-transport'
+import type { JsonlEntry } from '../../shared/jsonl-types'
 
 const controls = new WeakMap<PtySession, SessionCliControl>()
 
@@ -183,6 +184,11 @@ export class SessionCliControl {
 
   action(id: string, action: string): void {
     this.submissions?.action(id, action)
+  }
+
+  /** Newly appended transcript records of this session's CLI. */
+  transcript(entries: readonly JsonlEntry[]): void {
+    this.submissions?.transcript(entries)
   }
 
   handoff(): string[] {

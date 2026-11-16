@@ -239,6 +239,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
+      # The in-process Glob/Grep is tested against the real ripgrep.
+      - name: Install ripgrep for the differential search test
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep && rg --version
       - run: npm test
       - run: npm run build
       - name: Verify the committed extension bundle
@@ -489,6 +492,18 @@ jobs:
           git -C vendor/wpt-parsing checkout -q 6371636b3e1c45c8c5f4d83df0026ea591204638
           ls vendor/html5lib-tests/tokenizer vendor/html5lib-tests/encoding vendor/wpt-parsing/html/syntax/parsing/resources > /dev/null
           echo "html5lib-tests $(git -C vendor/html5lib-tests rev-parse --short HEAD), wpt $(git -C vendor/wpt-parsing rev-parse --short HEAD)"
+
+      # crates/search must print what this exact ripgrep prints: its
+      # differential test runs the binary the installer ships (same pin).
+      - name: Fetch the reference ripgrep 15.2.0
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'ripgrep-15.2.0.zip'
+          Invoke-WebRequest -Uri 'https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-pc-windows-msvc.zip' -OutFile $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          if ($hash -ne '71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5') { throw "ripgrep archive digest $hash" }
+          Expand-Archive -Path $zip -DestinationPath $env:RUNNER_TEMP
+          "KAMIN_RG_PATH=$(Join-Path $env:RUNNER_TEMP 'ripgrep-15.2.0-x86_64-pc-windows-msvc\rg.exe')" >> $env:GITHUB_ENV
 
       - run: cargo test --workspace
       - name: Acceptance environment is inert without debug assertions

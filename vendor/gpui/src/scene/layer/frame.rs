@@ -46,10 +46,10 @@ impl Scene {
         };
         // A recorded layer is new paint: its damage is all of it.
         layer.0.damage.take();
-        self.fresh += 1;
+        self.book.fresh += 1;
         let cell = Rc::downgrade(&layer.0);
         self.paint_operations.push(PaintOperation::Layer(LayerOp { cell: cell.clone(), bounds, order }));
-        self.layers.push(LayerSlot { order, cell, held: Some(layer.content()) });
+        self.book.layers.push(LayerSlot { order, cell, held: Some(layer.content()) });
     }
 
     /// Add the slot of a replayed layer command (its order already set);
@@ -60,41 +60,41 @@ impl Scene {
         };
         let held = cell.content.borrow().clone();
         if let Some(rect) = cell.damage.take() {
-            self.layer_damage = Some(self.layer_damage.map_or(rect, |d| d.union(&rect)));
+            self.book.layer_damage = Some(self.book.layer_damage.map_or(rect, |d| d.union(&rect)));
         }
-        self.layers.push(LayerSlot { order: op.order, cell: op.cell.clone(), held: Some(held) });
+        self.book.layers.push(LayerSlot { order: op.order, cell: op.cell.clone(), held: Some(held) });
         true
     }
 
     /// The content of layer `index` (`PrimitiveBatch::Layer`), while the scene
     /// holds it: its scene, id and version.
     pub fn layer(&self, index: usize) -> Option<&SceneLayer> {
-        self.layers.get(index)?.held.as_deref()
+        self.book.layers.get(index)?.held.as_deref()
     }
 
     /// The content of every layer this scene draws: what it holds, or after
     /// its present the host's current content (tests and snapshots read it).
     pub fn layer_contents(&self) -> Vec<Rc<SceneLayer>> {
         let current = |slot: &LayerSlot| slot.cell.upgrade().map(|cell| cell.content.borrow().clone());
-        self.layers.iter().filter_map(|slot| slot.held.clone().or_else(|| current(slot))).collect()
+        self.book.layers.iter().filter_map(|slot| slot.held.clone().or_else(|| current(slot))).collect()
     }
 
     /// Number of layers this scene draws.
     pub fn layer_count(&self) -> usize {
-        self.layers.len()
+        self.book.layers.len()
     }
 
     /// The scene was presented: let the content of its layers go, so a write
     /// before the next draw does not copy it.
     pub(crate) fn release_layers(&mut self) {
-        for slot in &mut self.layers {
+        for slot in &mut self.book.layers {
             slot.held = None;
         }
     }
 
     /// Hold the layers' current content again to present this scene once more.
     pub(crate) fn hold_layers(&mut self) {
-        for slot in &mut self.layers {
+        for slot in &mut self.book.layers {
             if slot.held.is_none() {
                 slot.held = slot.cell.upgrade().map(|cell| cell.content.borrow().clone());
             }
@@ -111,7 +111,7 @@ impl Scene {
             + self.subpixel_sprites.len()
             + self.polychrome_sprites.len()
             + self.surfaces.len()
-            + self.layers.iter().filter_map(|s| s.held.as_ref()).map(|l| l.scene.primitive_count()).sum::<usize>()
+            + self.book.layers.iter().filter_map(|s| s.held.as_ref()).map(|l| l.scene.primitive_count()).sum::<usize>()
     }
 
     /// `finish`, returning where each quad moved (`moved[old] == new`).
@@ -148,10 +148,10 @@ impl Scene {
 
     /// Order the layers for batching (`finish`).
     pub(crate) fn finish_layers(&mut self) {
-        let layers = &self.layers;
-        self.layer_order.clear();
-        self.layer_order.extend(0..layers.len() as u32);
-        self.layer_order.sort_by_key(|&at| layers[at as usize].order);
+        let layers = &self.book.layers;
+        self.book.layer_order.clear();
+        self.book.layer_order.extend(0..layers.len() as u32);
+        self.book.layer_order.sort_by_key(|&at| layers[at as usize].order);
     }
 
     /// What this finished frame changed against `previous`, the frame it
@@ -159,23 +159,23 @@ impl Scene {
     /// raster only the damage, and a frame whose damage is off screen needs
     /// no raster at all.
     pub(crate) fn note_damage(&mut self, previous: &Scene) {
-        let same = self.fresh == 0
+        let same = self.book.fresh == 0
             && self.groups.is_empty()
             && previous.groups.is_empty()
             && self.hoisted_backdrops.is_empty()
             && self.paint_operations.len() == previous.paint_operations.len()
-            && self.layers.len() == previous.layers.len()
-            && self.layers.iter().zip(&previous.layers).all(|(a, b)| {
+            && self.book.layers.len() == previous.book.layers.len()
+            && self.book.layers.iter().zip(&previous.book.layers).all(|(a, b)| {
                 a.order == b.order && Weak::ptr_eq(&a.cell, &b.cell)
             });
-        self.damage = same.then_some(self.layer_damage);
+        self.book.damage = same.then_some(self.book.layer_damage);
     }
 
     /// The device-pixel rectangle this frame changed against the frame
     /// before it: `Some(None)` — nothing, `Some(Some(r))` — only `r` (values
     /// written into its layers), `None` — unknown (new paint).
     pub fn damage(&self) -> Option<Option<Bounds<ScaledPixels>>> {
-        self.damage
+        self.book.damage
     }
 
     /// Count `n` primitives copied from an earlier scene.
