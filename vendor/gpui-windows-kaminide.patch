@@ -12479,7 +12479,7 @@ index 0000000000000000000000000000000000000000..1eebc6bea041acd6e658b013dbde4e04
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..00314aae93da935cceb4647a875c5db525c15ba9
+index 0000000000000000000000000000000000000000..a015c5a76ee546f7f8b189c96926aa7c0fe86a76
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 @@ -0,0 +1,182 @@
@@ -12640,7 +12640,7 @@ index 0000000000000000000000000000000000000000..00314aae93da935cceb4647a875c5db5
 +    let mut r = offscreen(&device, W, H);
 +    let first = {
 +        let mut s = groups(&base);
-+        s.note_damage(&Scene::default(), 1, (W, H));
++        s.note_frame_damage(&Scene::default(), 1, (W, H));
 +        r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
 +        s
 +    };
@@ -12656,7 +12656,7 @@ index 0000000000000000000000000000000000000000..00314aae93da935cceb4647a875c5db5
 +    let view = r.blur.groups[place.page].rtv[0].clone().unwrap();
 +    unsafe { dc.ClearView(&view, &[1.0, 0.0, 1.0, 1.0], Some(&[rect])) };
 +    let mut s = groups(&recolored);
-+    s.note_damage(&first, 2, (W, H));
++    s.note_frame_damage(&first, 2, (W, H));
 +    r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
 +    assert_eq!(r.retained.groups.counts, GroupCounts { kept: 11, drawn: 1 });
 +    r.finish_scrub(true).unwrap();

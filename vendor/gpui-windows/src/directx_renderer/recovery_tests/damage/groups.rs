@@ -155,7 +155,7 @@ fn a_spoiled_kept_image_is_redrawn_within_a_scrub_round_and_counted() {
     let mut r = offscreen(&device, W, H);
     let first = {
         let mut s = groups(&base);
-        s.note_damage(&Scene::default(), 1, (W, H));
+        s.note_frame_damage(&Scene::default(), 1, (W, H));
         r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
         s
     };
@@ -171,7 +171,7 @@ fn a_spoiled_kept_image_is_redrawn_within_a_scrub_round_and_counted() {
     let view = r.blur.groups[place.page].rtv[0].clone().unwrap();
     unsafe { dc.ClearView(&view, &[1.0, 0.0, 1.0, 1.0], Some(&[rect])) };
     let mut s = groups(&recolored);
-    s.note_damage(&first, 2, (W, H));
+    s.note_frame_damage(&first, 2, (W, H));
     r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
     assert_eq!(r.retained.groups.counts, GroupCounts { kept: 11, drawn: 1 });
     r.finish_scrub(true).unwrap();
