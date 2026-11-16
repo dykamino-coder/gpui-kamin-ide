@@ -238,34 +238,9 @@ pub(crate) fn is_live() -> bool {
     LIVE.load(Ordering::Relaxed)
 }
 
-/// How long exit waits for CEF to close the browsers.
-const CLOSE_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
-/// How long `cef::shutdown` may take before the process exits without it.
-const SHUTDOWN_WATCHDOG: std::time::Duration = std::time::Duration::from_secs(5);
-
 /// Погасить CEF при выходе.
-///
-/// With the multi-threaded message loop `CefShutdown` requires every browser
-/// to be closed first; called with open browsers it blocked the main thread,
-/// and the process, a renderer and the hosts stayed alive without a window
-/// (INC-2026-0122). The browsers are closed and awaited first, with a bound,
-/// and a watchdog ends the process if shutdown still does not return.
 pub fn shutdown() {
     if LIVE.swap(false, Ordering::Relaxed) {
-        super::browsers::close_all();
-        let started = std::time::Instant::now();
-        while super::browsers::open_count() > 0 && started.elapsed() < CLOSE_WAIT {
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        let open = super::browsers::open_count();
-        if open > 0 {
-            eprintln!("[cef] exit: {open} browser(s) still open after {} ms", started.elapsed().as_millis());
-        }
-        let _watchdog = std::thread::Builder::new().name("cef-shutdown-watchdog".into()).spawn(|| {
-            std::thread::sleep(SHUTDOWN_WATCHDOG);
-            eprintln!("[cef] exit: shutdown did not return in {} s, exiting", SHUTDOWN_WATCHDOG.as_secs());
-            std::process::exit(0);
-        });
         cef::shutdown();
     }
 }

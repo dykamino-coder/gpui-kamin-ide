@@ -11,7 +11,6 @@
 //! probe — `metric` работал, `screenshot` нет).
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{LazyLock, Mutex};
 
 use cef::rc::*;
@@ -20,24 +19,6 @@ use cef::*;
 use super::render_handler::ViewRender;
 
 /// Живые браузеры по id вью.
-/// Browsers CEF has created and not yet finished closing. `CefShutdown` with
-/// the multi-threaded message loop must not run while any is open: it blocks
-/// the main thread and the process never exits (INC-2026-0122).
-static OPEN: AtomicUsize = AtomicUsize::new(0);
-
-/// How many browsers are still open (created and not yet reported closed).
-pub(crate) fn open_count() -> usize {
-    OPEN.load(AtomicOrdering::SeqCst)
-}
-
-/// Closes every browser at exit, without `beforeunload` dialogs. CEF reports
-/// each one closed through `on_before_close`.
-pub(crate) fn close_all() {
-    let ids: Vec<String> = BROWSERS.lock().map(|m| m.keys().cloned().collect()).unwrap_or_default();
-    for id in ids {
-        close(&id);
-    }
-}
 static BROWSERS: LazyLock<Mutex<HashMap<String, Browser>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -209,13 +190,6 @@ cef::wrap_life_span_handler! {
                 host.notify_screen_info_changed();
                 host.was_resized();
             }
-            OPEN.fetch_add(1, AtomicOrdering::SeqCst);
-        }
-
-        /// CEF has finished closing this browser; `shutdown` waits for the
-        /// last one (INC-2026-0122).
-        fn on_before_close(&self, _browser: Option<&mut Browser>) {
-            let _ = OPEN.fetch_update(AtomicOrdering::SeqCst, AtomicOrdering::SeqCst, |n| n.checked_sub(1));
         }
     }
 }
