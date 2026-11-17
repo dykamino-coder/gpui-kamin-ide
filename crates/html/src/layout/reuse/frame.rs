@@ -51,22 +51,26 @@ impl FlowReuse {
                     };
                     // A repainted block may now paint its box where it painted
                     // nothing (a new background): its leaf counts as ink too.
+                    let s = window.layout_bounds(id).size;
+                    let leaf = Bounds {
+                        origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
+                        size: size(
+                            ScaledPixels(s.width.as_f32() * scale),
+                            ScaledPixels(s.height.as_f32() * scale),
+                        ),
+                    };
+                    let repainted = record.ink.get().map_or(leaf, |i| i.union(&leaf));
+                    let off =
+                        |i: Bounds<ScaledPixels>| !placed(ink(i), origin, SNAP).intersects(&screen);
+                    // Skipped and off the screen even repainted: a paint-only
+                    // edit of a box inside changes no pixel of this frame
+                    // (`Store::unpainted`).
+                    slot.set_clear(!replay && off(repainted));
                     let painted = match slot.repainted() {
-                        true => {
-                            let s = window.layout_bounds(id).size;
-                            let leaf = Bounds {
-                                origin: point(ScaledPixels(0.0), ScaledPixels(0.0)),
-                                size: size(
-                                    ScaledPixels(s.width.as_f32() * scale),
-                                    ScaledPixels(s.height.as_f32() * scale),
-                                ),
-                            };
-                            Some(record.ink.get().map_or(leaf, |i| i.union(&leaf)))
-                        }
+                        true => Some(repainted),
                         false => record.ink.get(),
                     };
-                    replay
-                        || painted.is_none_or(|i| !placed(ink(i), origin, SNAP).intersects(&screen))
+                    replay || painted.is_none_or(off)
                 });
             if !fits {
                 refused.insert(record.source.id());
@@ -108,6 +112,12 @@ impl FlowReuse {
             .iter()
             .filter(|slot| slot.replayed())
             .count() as u64;
+        // Blocks this frame did not paint: the layer holds no box of theirs.
+        let slots = self.placeholders.borrow();
+        let unpainted = slots.iter().filter(|s| !s.replayed() && s.clear());
+        self.store
+            .set_unpainted(unpainted.map(|s| s.record().source.id()).collect());
+        drop(slots);
         let mut recorded = 0;
         let epoch = self.store.epoch.get();
         let pending = self.pending.take();

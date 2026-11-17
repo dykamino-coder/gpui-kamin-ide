@@ -134,12 +134,29 @@ impl Document {
             crate::paint::box_tree::styled::paints_only_own_box(&self.state, a)
                 && crate::paint::box_tree::styled::paints_only_own_box(&self.state, b)
         };
-        let Some(repaints) =
-            super::layer_write::write_paint_values(&self.nodes, nodes, paths, &layer, plain)
-        else {
+        // A box under a block the frame skipped: any block on its path.
+        let unseen = |path: &super::patch::Path| {
+            self.reuse.skipped_any()
+                && (1..=path.len()).any(|k| {
+                    super::patch::element_at(&self.nodes, &path[..k])
+                        .is_some_and(|e| self.reuse.unpainted(e.node_id))
+                })
+        };
+        // A box whose runs showed no pixel of the layer's frame.
+        let off = |id: u64| self.reuse.off_screen(&layer, id);
+        let Some(taken) = super::layer_write::write_paint_values(
+            &self.nodes,
+            nodes,
+            paths,
+            &layer,
+            plain,
+            unseen,
+            off,
+        ) else {
             return false;
         };
-        self.reuse.queue_repaints(repaints);
+        self.reuse.queue_repaints(taken.records);
+        self.reuse.defer_repaints(taken.deferred);
         true
     }
 
