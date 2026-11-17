@@ -140,6 +140,14 @@ class ReductionTests(unittest.TestCase):
             self.assertIsNone(result)
             self.assertIn('"pid":', (Path(temp) / "owned-process.json").read_text())
 
+    def test_completed_capture_reaps_a_process_that_keeps_running(self):
+        with tempfile.TemporaryDirectory() as temp:
+            capture = Path(temp) / "capture"
+            code = "from pathlib import Path; import time; Path('capture').write_bytes(b'done'); time.sleep(30)"
+            result, _, _ = run([sys.executable, "-I", "-c", code], temp, 3,
+                               ready=lambda: capture.is_file() and capture.read_bytes() == b"done")
+            self.assertEqual(result, 0)
+
     @unittest.skipUnless(os.name == "nt", "Windows job ownership")
     def test_timeout_reaps_descendant_and_releases_inherited_files(self):
         import ctypes

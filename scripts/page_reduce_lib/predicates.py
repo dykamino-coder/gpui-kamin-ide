@@ -66,7 +66,12 @@ class Oracle:
                    f"--user-data-dir={chrome_dir / 'profile'}", "--virtual-time-budget=1000",
                    "--force-device-scale-factor=1", f"--window-size={args.width},{args.height}",
                    f"--screenshot={dest}", page.as_uri()]
-        code, _, _ = run(command, chrome_dir, args.timeout_s)
+        # Headless Chrome can remain alive after writing its capture (for
+        # example while remote fonts are pending). A complete IEND marks capture
+        # readiness; different() still validates all chunks and CRCs below.
+        def captured():
+            return dest.is_file() and dest.read_bytes().endswith(b"\x00\x00\x00\x00IEND\xaeB`\x82")
+        code, _, _ = run(command, chrome_dir, args.timeout_s, ready=captured)
         if code != 0 or not dest.is_file():
             return None
         return different(shots[0], dest, args.rect, args.tol)
