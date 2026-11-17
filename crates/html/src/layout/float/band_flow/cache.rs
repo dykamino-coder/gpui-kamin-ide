@@ -13,6 +13,15 @@ pub(super) struct Plans {
 }
 
 impl Plans {
+    pub(super) fn insert_for_frame(&self, plan: Plan, cx: &mut gpui::App) -> Rc<Plan> {
+        let plan = self.insert(plan);
+        let pending = plan.clone();
+        // Numeric plans may survive their frame. Their unconsumed prepared
+        // children must not keep the measuring arena and its callbacks alive.
+        cx.defer(move |_| pending.release_prepared());
+        plan
+    }
+
     pub(super) fn get(&self, width: f32) -> Option<Rc<Plan>> {
         for slot in &self.slots {
             let plan = slot.take();

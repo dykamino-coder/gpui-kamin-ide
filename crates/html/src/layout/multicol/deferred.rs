@@ -151,7 +151,7 @@ impl Recipe {
     /// the ones prepaint would build; a measure at another width replaces
     /// them.
     pub(crate) fn measure(
-        &self,
+        self: &std::rc::Rc<Self>,
         stack: &mut ColumnStack,
         width: f32,
         keep: Option<&gpui::ElementLayoutContext>,

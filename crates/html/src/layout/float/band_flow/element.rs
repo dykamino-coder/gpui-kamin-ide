@@ -181,7 +181,7 @@ impl Hooks for BandFlow {
                 }
                 super::clamp::publish(&output, &p, vert, inline_up);
                 let h = p.height;
-                cache.insert(p);
+                cache.insert_for_frame(p, cx);
                 phys(cb, h)
             })
         };

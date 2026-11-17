@@ -48,7 +48,7 @@ impl Recipe {
     /// Мера при известной ширине `width` в контексте места стопки: колонки
     /// остаются prepaint (`take_measured`); мера при другой ширине их заменяет.
     pub(super) fn measure_kept(
-        &self,
+        self: &Rc<Self>,
         stack: &mut ColumnStack,
         (width, col_w): (f32, f32),
         context: &ElementLayoutContext,
@@ -81,8 +81,19 @@ impl Recipe {
             extent,
             engine,
         });
-        self.measured.replace(kept);
+        self.keep_for_frame(kept, cx);
         extent
+    }
+
+    fn keep_for_frame(self: &Rc<Self>, kept: Option<Measured>, cx: &mut App) {
+        let scheduled = kept.is_some() && self.measured.borrow().is_none();
+        self.measured.replace(kept);
+        if scheduled {
+            let recipe = self.clone();
+            // Prepaint takes a matching result. Unconsumed measure trees
+            // expire with this frame, even when a callback retains Recipe.
+            cx.defer(move |_| drop(recipe.measured.take()));
+        }
     }
 
     /// The answer of the kept measure at this container width.
@@ -99,3 +110,6 @@ impl Recipe {
         self.measured.take().filter(|m| m.col_w == col_w.to_bits())
     }
 }
+
+#[cfg(test)]
+mod lifetime_tests;

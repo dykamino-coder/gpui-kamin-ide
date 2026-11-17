@@ -45,7 +45,7 @@ impl BandFlow {
                     p.engine = Some(retained);
                     plan(&kids, cb, contain_floats, &mut p)
                 });
-                self.plan.insert(plan)
+                self.plan.insert_for_frame(plan, cx)
             }
         };
         self.built.clear();

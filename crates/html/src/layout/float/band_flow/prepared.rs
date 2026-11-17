@@ -8,6 +8,9 @@ use gpui::{
 use std::cell::Cell;
 use std::rc::Rc;
 
+#[cfg(test)]
+mod lifetime_tests;
+
 pub(super) type Engine = RetainedLayout;
 
 #[derive(Clone, Default)]
@@ -56,6 +59,20 @@ impl Prepared {
             child.offset = offset;
             child.hooked()
         })
+    }
+}
+
+impl super::Plan {
+    pub(super) fn release_prepared(&self) {
+        let mut pending = vec![self.slots.as_slice()];
+        while let Some(slots) = pending.pop() {
+            for slot in slots {
+                drop(slot.prepared.0.take());
+                if !slot.kids.is_empty() {
+                    pending.push(&slot.kids);
+                }
+            }
+        }
     }
 }
 

@@ -15,7 +15,10 @@ pub(super) fn section(nodes: &[Node]) -> &Element {
     find(nodes).expect("section")
 }
 
-fn materialized_opts(tree: &crate::document::parsed::Parsed, viewport: (f32, f32)) -> RenderOpts {
+pub(super) fn materialized_opts(
+    tree: &crate::document::parsed::Parsed,
+    viewport: (f32, f32),
+) -> RenderOpts {
     let mut opts = RenderOpts {
         text: Default::default(),
         viewport,
