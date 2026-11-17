@@ -12,6 +12,8 @@ use gpui::{
 use windows::Win32::Graphics::Direct3D11::{D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE};
 
 mod groups;
+// KaminIDE patch: output-merger blend series equal their formulas.
+mod tiles;
 
 const W: u32 = 256;
 const H: u32 = 192;

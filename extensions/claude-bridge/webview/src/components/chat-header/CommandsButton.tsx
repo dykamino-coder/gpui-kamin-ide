@@ -40,15 +40,27 @@ export function CommandsButton({ tabId }: { tabId: string }): JSX.Element {
       setServerAvailable(snapshot.serverAvailable !== false)
     })
     const read = () => {
+      // The host publishes a snapshot only when it changed; a hidden page
+      // shows no badge or timer, so it asks nothing.
+      if (document.hidden) return
       bridge.commandAction(tabId, 'list')
       setNow(Date.now())
     }
-    read()
+    // A fresh mount has no snapshot yet, and the host drops sends to a hidden
+    // view: ask for the current one even if nothing changed.
+    const refresh = () => {
+      if (document.hidden) return
+      bridge.commandAction(tabId, 'list', 'refresh')
+      setNow(Date.now())
+    }
+    refresh()
+    document.addEventListener('visibilitychange', refresh)
     // Poll the local registry even with older servers and a closed popover (badge).
     const timer = setInterval(read, 1000)
     return () => {
       off()
       clearInterval(timer)
+      document.removeEventListener('visibilitychange', refresh)
     }
   }, [bridge, tabId])
   useEffect(() => {

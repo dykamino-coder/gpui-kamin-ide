@@ -20,6 +20,11 @@ impl Drop for WindowLifetime {
     }
 }
 
+/// Сколько выход ждёт освобождения окон, прежде чем уйти без них.
+const WINDOW_DRAIN_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+/// Шаг ожидания сообщений, чтобы предел проверялся и без входящих сообщений.
+const DRAIN_POLL_MS: u32 = 100;
+
 impl WindowsPlatform {
     pub(super) fn finish_shutdown(&self) -> Result<()> {
         if let Some(stop) = self.vsync_stop.borrow_mut().take() {
@@ -27,15 +32,27 @@ impl WindowsPlatform {
         }
         // WindowsWindow::drop ждёт закрытия диалогов и ставит DestroyWindow в
         // foreground executor. После WM_QUIT эти задачи ещё требуют сообщений.
+        // KaminIDE patch: окно, которое так и не отпустили, не должно держать
+        // процесс вечно (INC-2026-0122) — после предела выходим с записью.
+        let started = std::time::Instant::now();
         while self.live_windows.get() != 0 || !self.raw_window_handles.read().is_empty() {
-            self.wait_for_shutdown_work(None)?;
+            if started.elapsed() >= WINDOW_DRAIN_LIMIT {
+                log::error!(
+                    "shutdown: {} window(s) and {} handle(s) still alive after {} ms, exiting without them",
+                    self.live_windows.get(),
+                    self.raw_window_handles.read().len(),
+                    started.elapsed().as_millis()
+                );
+                break;
+            }
+            self.wait_for_shutdown_work(None, DRAIN_POLL_MS)?;
         }
         for thread in self.vsync_threads.take() {
             let handle = HANDLE(thread.as_raw_handle());
             // Восстановление устройства может послать синхронный SendMessage;
             // обычный join на UI-потоке заблокировал бы отправителя навсегда.
             // Сигнал HANDLE включает TLS-деструкторы, is_finished() — ещё нет.
-            while !self.wait_for_shutdown_work(Some(handle))? {}
+            while !self.wait_for_shutdown_work(Some(handle), INFINITE)? {}
             if thread.join().is_err() {
                 log::error!("VSyncProvider panicked during shutdown");
             }
@@ -44,13 +61,13 @@ impl WindowsPlatform {
         Ok(())
     }
 
-    fn wait_for_shutdown_work(&self, thread: Option<HANDLE>) -> Result<bool> {
+    fn wait_for_shutdown_work(&self, thread: Option<HANDLE>, timeout_ms: u32) -> Result<bool> {
         let handles = thread.map(|handle| [handle]);
         // Поток и platform HWND принадлежат этой платформе и живы до возврата.
         unsafe {
             let result = MsgWaitForMultipleObjectsEx(
                 handles.as_ref().map(|handles| handles.as_slice()),
-                INFINITE,
+                timeout_ms,
                 QS_ALLINPUT,
                 MWMO_INPUTAVAILABLE,
             );

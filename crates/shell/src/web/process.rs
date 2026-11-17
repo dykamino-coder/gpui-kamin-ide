@@ -2,6 +2,8 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+pub(super) mod exit;
+
 use cef::rc::*;
 use cef::*;
 
@@ -112,6 +114,7 @@ pub fn exit_if_child_process() {
 /// Поднять CEF в браузерном процессе. Зовётся ПОСЛЕ
 /// [`exit_if_child_process`], один раз.
 pub fn init() {
+    super::diag_sink::install_logger();
     if LIVE.load(Ordering::Relaxed) {
         return;
     }
@@ -241,6 +244,6 @@ pub(crate) fn is_live() -> bool {
 /// Погасить CEF при выходе.
 pub fn shutdown() {
     if LIVE.swap(false, Ordering::Relaxed) {
-        cef::shutdown();
+        exit::stop_cef();
     }
 }

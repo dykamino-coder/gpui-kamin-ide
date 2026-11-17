@@ -100,9 +100,26 @@ pub fn start_pump(cx: &mut gpui::App) {
 static TARGET: std::sync::OnceLock<gpui::WeakEntity<crate::state::model::RootView>> =
     std::sync::OnceLock::new();
 
-/// Запомнить корневой вью (зовётся из `main` сразу после создания окна).
-pub fn set_repaint_target(root: gpui::WeakEntity<crate::state::model::RootView>) {
-    let _ = TARGET.set(root);
+/// Связать веб-слой с главным окном (зовётся из `main` сразу после создания
+/// окна): корневой вью — адресат заказов перерисовки; свёртывание окна
+/// усыпляет браузеры, уход фокуса из окна гасит каретку в странице.
+pub fn attach_window(
+    root: gpui::Entity<crate::state::model::RootView>,
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+) {
+    let _ = TARGET.set(root.downgrade());
+    window
+        .observe_window_visibility(|visibility, _, _| {
+            super::visibility::set_window_shown(visibility.is_visible());
+        })
+        .detach();
+    root.update(cx, |_, cx| {
+        cx.observe_window_activation(window, |_, window, _| {
+            super::focus::window_active(window.is_window_active());
+        })
+        .detach();
+    });
 }
 
 fn repaint_target() -> Option<gpui::WeakEntity<crate::state::model::RootView>> {
