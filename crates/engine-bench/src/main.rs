@@ -68,6 +68,11 @@ fn main() {
         eprintln!("engine_bench: {error}");
         std::process::exit(1);
     }
+    #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
+    if let Err(error) = allocations::retain::init() {
+        eprintln!("engine_bench: {error}");
+        std::process::exit(1);
+    }
     // Политика арен — как у приложения, до первой аллокации стенда.
     kamin_alloc::configure();
     #[cfg(all(windows, feature = "work-counters"))]

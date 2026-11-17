@@ -144,6 +144,7 @@ macro_rules! heap_fields {
 }
 
 mod impls;
+pub mod retain;
 
 /// Дерево отчёта «путь → байты», как у about:memory (`page/dom/elements`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
