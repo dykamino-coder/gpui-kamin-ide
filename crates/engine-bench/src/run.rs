@@ -217,6 +217,7 @@ pub(super) async fn sample_with(
                 draw: Counters::delta(after.draw, before.draw),
                 present: Duration::ZERO,
                 readback: Duration::ZERO,
+                copy: Duration::ZERO,
                 total,
                 readback_to_resume: Duration::ZERO,
             },
@@ -264,6 +265,10 @@ pub(super) async fn sample_with(
                 .readback
                 .checked_sub(before.readback)
                 .ok_or("readback counter regressed")?,
+            copy: after
+                .copy
+                .checked_sub(before.copy)
+                .ok_or("capture copy counter regressed")?,
             total,
             // Конец кадра у браузеров — сообщение после обновления отрисовки; наш
             // отсчёт ждёт ещё пробуждения задачи после readback: оно выносится отдельно.
