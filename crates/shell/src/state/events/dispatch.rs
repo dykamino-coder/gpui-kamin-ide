@@ -13,23 +13,9 @@ use crate::root::RootView;
 impl RootView {
     /// Разбор события состояния: находим домен и передаём ему событие.
     /// Применить событие. Возвращает `false`, если состояние ИНТЕРФЕЙСА оно
-    /// не меняет и кадр заказывать незачем — таких событий большинство в
-    /// горячих потоках (вывод терминала, доставка страницам, пустые маршруты).
-    /// Ошибиться в сторону `true` безопасно (лишний кадр), в сторону `false`
-    /// — нет (устаревшая картинка), поэтому список ЯВНЫЙ и короткий.
+    /// не меняет и кадр заказывать незачем (`frame_need`).
     pub fn apply(&mut self, event: ShellEvent, cx: &mut Context<Self>) -> bool {
-        let needs_frame = !matches!(
-            &event,
-            // Насос терминала сам будит грид; событие состояния не меняет.
-            ShellEvent::Term(TermEvent::TermWakeup)
-                // JS в страницы: исполняется в CEF, поля RootView не трогает.
-                | ShellEvent::Term(TermEvent::WvJs { .. })
-                // Маршрут «в сторы следующих фаз» — пустой обработчик.
-                | ShellEvent::HostEvent { .. }
-                // Перечитка листингов: только исходящие запросы, мутации
-                // придут отдельными DirListing.
-                | ShellEvent::Tree(TreeEvent::RefreshTree)
-        );
+        let needs_frame = super::frame_need::needs_frame(&event, &self.webviews_alive);
         match &event {
             #[cfg(debug_assertions)]
             ShellEvent::NativeAcceptance { .. } => self.apply_native_acceptance(event, cx),
