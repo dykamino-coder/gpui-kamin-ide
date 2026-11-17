@@ -56,11 +56,7 @@ impl RootView {
             ShellEvent::Cz(CzEvent::UpdateProgress(done, total)) => {
                 self.update_progress = Some((done, total));
             }
-            ShellEvent::Cz(CzEvent::GracefulQuit) => {
-                // apply без окна — закрытие сделает frame_focus ближайшего кадра.
-                self.pending_quit = true;
-                cx.notify();
-            }
+            ShellEvent::Cz(CzEvent::GracefulQuit) => self.request_quit(cx),
             ShellEvent::Cz(CzEvent::UpdateInstallFailed(err)) => {
                 self.update_progress = None;
                 let _ = self
@@ -212,5 +208,40 @@ impl RootView {
             // Сюда диспетчер чужого не пришлёт
             _ => {}
         }
+    }
+}
+
+/// Сколько штатный выход ждёт кадра, прежде чем закрыть окно без него.
+const QUIT_FRAME_WAIT: std::time::Duration = std::time::Duration::from_millis(500);
+
+impl RootView {
+    /// Закрыть окно штатно: раскладку сохраняет и окно закрывает ближайший
+    /// кадр (`frame/focus.rs`). Кадра может не быть — окно свёрнуто перед
+    /// установкой обновления или не рисуется, — и выход ждал его секундами
+    /// (INC-2026-0122). Тогда то же делается без кадра.
+    pub(crate) fn request_quit(&mut self, cx: &mut Context<Self>) {
+        self.pending_quit = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            smol::Timer::after(QUIT_FRAME_WAIT).await;
+            let unframed = this.update(cx, |this, _| {
+                let unframed = std::mem::take(&mut this.pending_quit);
+                if unframed {
+                    this.persist_active_session_layout_sync();
+                }
+                unframed
+            });
+            if unframed.unwrap_or(false) {
+                // Главное окно — то, чей корень `Root`; у тостов корень свой.
+                cx.update(|cx| {
+                    for handle in cx.windows() {
+                        if handle.downcast::<gpui_component::Root>().is_some() {
+                            let _ = handle.update(cx, |_, window, _| window.remove_window());
+                        }
+                    }
+                });
+            }
+        })
+        .detach();
     }
 }

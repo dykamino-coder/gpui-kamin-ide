@@ -14,6 +14,7 @@ pub use win32::{cursor_over, focus_main, raw_hwnd};
 
 use stack::{ensure_ticker, max_visible, publish_overflow, pump_queue, relayout, slot_position};
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use win32::move_window;
@@ -103,8 +104,24 @@ pub(crate) fn fallback_area(cx: &App) -> (f32, f32, f32, f32) {
     }
 }
 
+/// Выход начался: gpui уже закрыл свои окна, а новое окно тоста никто не закроет,
+/// и выход ждал бы его до предела платформы (INC-2026-0122).
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
+/// Выход: новые тосты не открываются, очередь и стопка забыты — окна закрывает gpui.
+pub fn stop_for_quit() {
+    QUITTING.store(true, Ordering::Relaxed);
+    if let Ok(mut inner) = STATE.lock() {
+        inner.queue.clear();
+        inner.active.clear();
+    }
+}
+
 /// Показать тост: свободный слот — окно сразу, иначе в очередь.
 pub fn show(opts: ToastOpts, cx: &mut App) {
+    if QUITTING.load(Ordering::Relaxed) {
+        return;
+    }
     let max = max_visible(cx);
     let spawn = {
         let Ok(mut inner) = STATE.lock() else { return };
@@ -190,6 +207,27 @@ pub fn close(id: u64, cx: &mut App) {
     let _ = handle.update(cx, |_, window, _| window.remove_window());
     relayout(cx);
     pump_queue(cx);
+}
+
+/// Главное окно закрыто, остались только тосты — закрыть и их. gpui выходит
+/// из цикла лишь без окон, и открытый тост держал процесс до своего
+/// авто-закрытия (до 8 с, INC-2026-0122).
+pub fn close_all_if_alone(cx: &mut App) {
+    let handles: Vec<AnyWindowHandle> = {
+        let Ok(mut inner) = STATE.lock() else { return };
+        let alone = cx
+            .windows()
+            .iter()
+            .all(|w| inner.active.iter().any(|a| a.window == *w));
+        if !alone || inner.active.is_empty() {
+            return;
+        }
+        inner.queue.clear();
+        inner.active.drain(..).map(|a| a.window).collect()
+    };
+    for handle in handles {
+        let _ = handle.update(cx, |_, window, _| window.remove_window());
+    }
 }
 
 pub(crate) static TICKER: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));

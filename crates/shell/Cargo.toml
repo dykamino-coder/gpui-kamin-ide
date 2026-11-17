@@ -30,6 +30,7 @@ serde_json.workspace = true
 mimalloc.workspace = true
 kamin-alloc.workspace = true
 smol = "2"
+log = "0.4"
 kamin-model.workspace = true
 kamin-sidecar.workspace = true
 kamin-crash.workspace = true
