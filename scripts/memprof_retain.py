@@ -99,7 +99,7 @@ class Names:
             return f"({g.regions[node - g.root - 1][0]})"
         owner = self.owner[node]
         flag = FLAGS.get(g.flags[node])
-        text = f"{owner} · {self.site[node]}" if owner else self.site[node]
+        text = f"{owner} | {self.site[node]}" if owner else self.site[node]
         return f"{text} {{{flag}}}" if flag else text
 
     def group(self, node):
@@ -233,9 +233,12 @@ def holder_paths(graph, names, tree, out, top, threshold):
         named = next((hop for hop in chain if hop < graph.blocks and names.owner[hop]), None)
         print(f"\n{mb(graph.retained[node])} MB  {names.label(node)}", file=out)
         print("  retained by (dominators): " + " <- ".join(names.label(hop) for hop in chain[1:12]), file=out)
-        hops = [f"{names.label(hop)} {names.hop(graph.parent[hop], graph.parent_offset[hop])}"
-                for hop in path[:-1]]
-        print("  shortest path from a root: " + " <- ".join(hops[:14] + [names.label(path[-1])]), file=out)
+        # From the root down; `@where` is the word of the previous node that points to the next.
+        hops = [f"@{names.hop(graph.parent[hop], graph.parent_offset[hop])} {names.label(hop)}"
+                for hop in reversed(path[:-1])]
+        if len(hops) > 16:
+            hops = hops[:8] + [f"... {len(hops) - 16} more"] + hops[-8:]
+        print("  shortest path from a root: " + " > ".join([names.label(path[-1])] + hops), file=out)
         rows.append({"retained_bytes": graph.retained[node], "block": names.label(node),
                      "named_owner": names.label(named) if named is not None else None,
                      "dominators": [names.label(hop) for hop in chain],
