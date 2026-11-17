@@ -108,6 +108,7 @@ fn finishing_keeps_empty_destinations_until_late_children_have_been_prepainted(
             assert_eq!(output.borrow().len(), 2);
             pending.finish(window, app);
             assert_eq!(output.borrow().len(), 2);
+            drop(queue);
             gpui::div()
         },
     );
