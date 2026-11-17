@@ -48,6 +48,9 @@ pub(super) struct Slot {
     repaint: bool,
     /// Where the block lies in this frame, and how far its output moves.
     placed: Cell<(Point<ScaledPixels>, Point<Pixels>)>,
+    /// Not painted, and its leaf with its ink is off the screen of this
+    /// frame (`FlowReuse::validate`): a repainted box inside shows nothing.
+    clear: Cell<bool>,
 }
 
 impl Slot {
@@ -59,6 +62,7 @@ impl Slot {
             stretched,
             repaint,
             placed: Cell::new(Default::default()),
+            clear: Cell::new(false),
         }
     }
 
@@ -92,6 +96,14 @@ impl Slot {
 
     pub(super) fn set_replay(&self, epoch: Option<u64>) {
         self.replay.set(epoch);
+    }
+
+    pub(super) fn set_clear(&self, clear: bool) {
+        self.clear.set(clear);
+    }
+
+    pub(super) fn clear(&self) -> bool {
+        self.clear.get()
     }
 
     pub(super) fn replayed(&self) -> bool {

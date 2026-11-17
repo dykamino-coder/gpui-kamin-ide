@@ -15,6 +15,8 @@ export interface CompactionSub {
   currentFilePath: string
   /** PTY session create time — a candidate must be born after this to count. */
   readonly sessionCreatedAt: number
+  /** Transcripts the session explicitly left (resume): never candidates again. */
+  readonly left?: ReadonlySet<string>
   /** Invoked with the newer file when a compaction / new conversation appears. */
   onNewer: (candidate: string) => void
 }
@@ -141,6 +143,7 @@ export class CompactionScanner {
               if (
                 cur &&
                 candidate !== sub.currentFilePath &&
+                !sub.left?.has(candidate) &&
                 st.mtimeMs > cur.mtimeMs &&
                 st.birthtimeMs > sub.sessionCreatedAt
               )
@@ -161,7 +164,7 @@ export class CompactionScanner {
             }
           }
           for (const [p, st] of stats) {
-            if (p === sub.currentFilePath) continue
+            if (p === sub.currentFilePath || sub.left?.has(p)) continue
             if (st.mtimeMs > cur.mtimeMs && st.birthtimeMs > sub.sessionCreatedAt) {
               sub.onNewer(p) // first qualifying candidate wins (parity with old scan)
               break

@@ -15,7 +15,7 @@
 //! and the document builds its frame as before.
 
 use super::paint_damage::{PaintDamage, PaintValue, classify};
-use super::patch::Path;
+use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
 use crate::style::computed::BoxStyle;
 use gpui::{Hsla, LayerHandle};
@@ -28,32 +28,54 @@ type Write = (u32, Option<Hsla>, Option<Hsla>);
 /// their shape: `None` when a box's change is not own paint; otherwise the
 /// values are written and the boxes whose own commands the next frame records
 /// again are returned. Each box is reached along its path, without a walk of
-/// either tree.
+/// either tree. A box under a block the frame skipped off the screen
+/// (`unseen`) is in no run of the layer and shows no pixel of the frame: it
+/// takes neither a write nor a record, and its block's record takes the
+/// change for the frames that bring it near the screen (`Store::restyle`).
+/// A box in the layer whose runs showed no pixel of its frame (`off`) takes
+/// neither now: it is returned apart, its record deferred until a frame shows
+/// it (`layout::reuse::deferred`).
 pub(super) fn write_paint_values(
     old: &[Node],
     new: &[Node],
     paths: &[(Path, u64)],
     layer: &LayerHandle,
     plain: impl Fn(&Element, &Element) -> bool,
-) -> Option<Vec<(Path, u64)>> {
+    unseen: impl Fn(&Path) -> bool,
+    off: impl Fn(u64) -> bool,
+) -> Option<Taken> {
     if paths.is_empty() {
         // No element's style changed: the frame stands as it is.
-        return Some(Vec::new());
+        return Some(Taken::default());
     }
+    let held = |id: u64| u32::try_from(id).is_ok_and(|o| layer.holds_box(o));
     let mut writes: Vec<Write> = Vec::with_capacity(paths.len());
     let mut records: Vec<(Path, u64)> = Vec::new();
+    let mut deferred: Vec<(Path, u64)> = Vec::new();
     for (path, id) in paths {
         let (a, b) = (at(old, path, *id)?, at(new, path, *id)?);
-        let damage = classify(a, b);
+        // A box in an `svg` subtree: an `svg` element on its path.
+        let in_svg = || {
+            (1..=path.len()).any(|k| element_at(old, &path[..k]).is_some_and(|e| e.tag == "svg"))
+        };
+        let damage = classify(a, b, in_svg);
         if damage == PaintDamage::Rebuild {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
+        }
+        if unseen(path) {
+            crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
+            continue;
         }
         if !plain(a, b) {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
             return None;
         }
         u32::try_from(a.node_id).ok()?;
+        if off(a.node_id) && held(a.node_id) {
+            deferred.push((path.clone(), a.node_id));
+            continue;
+        }
         let fill = match damage {
             PaintDamage::Value(bits) if bits.contains(PaintValue::BACKGROUND_COLOR) => {
                 painted_background(a).zip(painted_background(b))
@@ -74,7 +96,6 @@ pub(super) fn write_paint_values(
     }
     // A box the layer cannot record again builds the frame as before;
     // nothing is written then.
-    let held = |id: u64| u32::try_from(id).is_ok_and(|o| layer.holds_box(o));
     if !records.iter().all(|r| held(r.1)) {
         crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
         return None;
@@ -95,7 +116,16 @@ pub(super) fn write_paint_values(
     }
     crate::paint_path::add(&crate::paint_path::RECORDS, records.len() as u64);
     crate::paint_path::add(&crate::paint_path::VALUES, values as u64);
-    Some(records)
+    crate::paint_path::add(&crate::paint_path::DEFERRED, deferred.len() as u64);
+    Some(Taken { records, deferred })
+}
+
+/// What the layer took of a restyle: the boxes the next frame records again
+/// and the boxes off the screen whose records wait.
+#[derive(Default)]
+pub(super) struct Taken {
+    pub(super) records: Vec<(Path, u64)>,
+    pub(super) deferred: Vec<(Path, u64)>,
 }
 
 /// The box numbered `id` at `path` in `nodes`; `None` when the path leads

@@ -20,6 +20,7 @@
 //! и стили с деревом кадра, а лист — несколько чисел.
 
 mod content;
+mod deferred;
 mod far;
 mod flow;
 mod frame;
