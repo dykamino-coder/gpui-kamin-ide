@@ -85,11 +85,23 @@ fn gpu(window: &gpui::Window) -> Value {
 pub(super) fn attach(
     cx: &mut AsyncApp,
     window: WindowHandle<View>,
+    mode_name: &str,
     mode: &mut Value,
 ) -> Result<()> {
     if enabled() {
         mode["memory_owners"] =
             window.update(cx, |view, window, cx| report(&view.doc, window, cx))?;
     }
+    // Граф удержания — сразу после обхода владельцев, чьи блоки он называет.
+    #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
+    {
+        let name = mode_name.to_owned();
+        let graph = window.update(cx, move |_, _, _| super::allocations::retain::snapshot(&name))?;
+        if let Some(graph) = graph {
+            mode["retainers"] = graph;
+        }
+    }
+    #[cfg(not(any(feature = "allocation-audit", feature = "heap-profile")))]
+    let _ = mode_name;
     Ok(())
 }

@@ -15,8 +15,16 @@ One command per question (docs/memprof.md):
       (DOM, style, layout, display list, text, gpui) after the last frame of each mode
       (ENGINE_BENCH_MEMORY_REPORT=1, crates/engine-bench/src/holders.rs); the probe records the whole
       run, and the report lists owners, the live heap at that moment and its unreported blocks by site.
+  memprof.py run --exe CAND.exe [--base-exe BASE.exe] --retainers --out DIR -- PAGE.html --mode relayout --runs 1
+      who keeps each block alive: with --owners, the bench also scans every live block and its roots
+      after the owner report of the first mode (ENGINE_BENCH_RETAINERS_OUT) and writes the retention
+      graph; the report gives the dominator tree, retained bytes by group and the path from a root
+      to the largest holders (scripts/memprof_retain.py); --heapsnapshot also writes a V8
+      .heapsnapshot for the Memory panel of Chrome.
   memprof.py diff A.json B.json
       compares two saved reports without symbols.
+  memprof.py retain-diff A-retain.json B-retain.json
+      retained bytes by group of two saved retention reports.
   memprof.py ws --exe CAND.exe [--base-exe BASE.exe] --out DIR -- PAGE.html --mode both --runs 5
       working set by memory region (image, mapped, private by reservation kind) at its peak, any build
       (timing-only included): what the live-heap reports cannot see (scripts/memprof_ws.py).
@@ -302,6 +310,8 @@ class Run:
             group[1] += total
         if snapshot is not None:
             self.owners = self._owners(snapshot, measured, paths)
+        # The retention graph (memprof_retain) names its blocks from the same moment.
+        self.held, self.measured = snapshot, measured
         return groups
 
     def _owners(self, snapshot, owned, paths):
@@ -619,6 +629,9 @@ def report_command(args):
         same_build(args.exe, args.base[0], args)
         base = Run(args.base[0], args.base[1], live, frames)
     report = write_report(cand, base, live, args)
+    for run, graph in zip((cand, base), args.retainers or ()):
+        if run:
+            retain_outputs(run, graph, pathlib.Path(graph).with_suffix(""), args)
     if args.delete_stacks:
         for path in [args.stacks] + ([args.base[1]] if args.base else []):
             drop_stacks(path)
@@ -697,9 +710,33 @@ def diff_command(args):
     render(out)
 
 
+def retain_outputs(run, graph, stem, args):
+    """Retention report of one side: <stem>.txt, <stem>.json and, if asked, <stem>.heapsnapshot."""
+    import memprof_retain
+    text = pathlib.Path(f"{stem}.txt")
+    with open(text, "w", encoding="utf-8") as out:
+        data = memprof_retain.report(graph, run, out, args.top)
+    pathlib.Path(f"{stem}.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
+    print(text.read_text(encoding="utf-8"))
+    if args.heapsnapshot:
+        path = memprof_retain.export_heapsnapshot(graph, run, f"{stem}.heapsnapshot")
+        print(f"heap snapshot for Chrome: {path}", file=sys.stderr)
+    return data
+
+
+def retain_diff_command(args):
+    import memprof_retain
+    one, two = (json.loads(pathlib.Path(p).read_text(encoding="utf-8")) for p in (args.cand, args.base))
+    memprof_retain.diff(one, two, sys.stdout, args.top)
+
+
 def run_command(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.retainers:
+        if args.sample:
+            raise SystemExit("--retainers names every block: run it exact, without --sample")
+        args.owners = True
     if args.owners:
         # The owner report follows the last frame of a mode: the probe records the whole run.
         phase, spec = None, "*"
@@ -724,8 +761,11 @@ def run_command(args):
     for name, exe in sides:
         stacks = out / f"{name}.stacks"
         env = dict(os.environ, ENGINE_BENCH_ALLOC_STACKS=spec, ENGINE_BENCH_ALLOC_STACKS_OUT=str(stacks))
-        for key in ("ENGINE_BENCH_ALLOC_STACKS_UNTIL", "ENGINE_BENCH_MEMORY_REPORT"):
+        for key in ("ENGINE_BENCH_ALLOC_STACKS_UNTIL", "ENGINE_BENCH_MEMORY_REPORT",
+                    "ENGINE_BENCH_RETAINERS_OUT"):
             env.pop(key, None)
+        if args.retainers:
+            env["ENGINE_BENCH_RETAINERS_OUT"] = str(out / f"{name}.retain")
         if phase:
             env["ENGINE_BENCH_ALLOC_STACKS_UNTIL"] = phase
         if args.owners:
@@ -749,6 +789,8 @@ def run_command(args):
         runs.append(Run(exe, stacks, True, frames))
         if not args.keep_stacks:
             drop_stacks(stacks)
+        if args.retainers:
+            retain_outputs(runs[-1], out / f"{name}.retain", out / f"{name}-retain", args)
     args.json = args.json or out / "report.json"
     report = write_report(runs[0], runs[1] if len(runs) > 1 else None, True, args)
     with open(out / "report.txt", "w", encoding="utf-8") as text:
@@ -772,6 +814,9 @@ def main(argv=None):
     run.add_argument("--at", help="<phase>@<frame>: live heap when this phase of this frame ends")
     run.add_argument("--owners", action="store_true",
                      help="who holds the heap: owner report after the last frame against the live heap")
+    run.add_argument("--retainers", action="store_true",
+                     help="who keeps each block alive: retention graph after the owner report (implies --owners)")
+    run.add_argument("--heapsnapshot", action="store_true", help="with --retainers: also a V8 .heapsnapshot")
     run.add_argument("--start", type=int, default=0, help="first recorded frame (0 = process start, default)")
     run.add_argument("--sample", type=int, default=0, help="mean sampling interval in bytes (0 = exact)")
     run.add_argument("--out", required=True, help="directory for stacks, bench JSON and reports")
@@ -792,6 +837,13 @@ def main(argv=None):
     rep.add_argument("--allocated", action="store_true", help="every allocation of the window, not the live heap")
     rep.add_argument("--frames", help="A-B: only blocks allocated in these frames (frees count in every frame)")
     rep.add_argument("--delete-stacks", action="store_true", help="remove the probe files once folded")
+    rep.add_argument("--retainers", nargs="+", metavar="GRAPH",
+                     help="retention graph files (.retain) of the candidate [and the base] run")
+    rep.add_argument("--heapsnapshot", action="store_true", help="with --retainers: also a V8 .heapsnapshot")
+
+    rtd = sub.add_parser("retain-diff", parents=[common], help="compare two saved retention reports by group")
+    rtd.add_argument("cand")
+    rtd.add_argument("base")
 
     dif = sub.add_parser("diff", parents=[common, mismatch], help="compare two saved JSON reports")
     dif.add_argument("cand")
@@ -822,7 +874,8 @@ def main(argv=None):
         preflight(args, args.out, exact=False)
         launcher = [p.strip('"') for p in shlex.split(args.launcher, posix=False)] if args.launcher else []
         return memprof_ws.ws_command(args, launcher)
-    {"run": run_command, "report": report_command, "diff": diff_command}[args.command](args)
+    {"run": run_command, "report": report_command, "diff": diff_command,
+     "retain-diff": retain_diff_command}[args.command](args)
 
 
 if __name__ == "__main__":

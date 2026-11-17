@@ -9,6 +9,9 @@ pub(super) use counted::thread_live;
 #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
 pub(super) mod probe;
 
+#[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
+pub(super) mod retain;
+
 #[cfg(all(feature = "heap-profile", not(feature = "allocation-audit")))]
 mod sampled;
 #[cfg(all(feature = "heap-profile", not(feature = "allocation-audit")))]
@@ -53,6 +56,7 @@ mod counted {
     // Пробник стеков выключен по умолчанию: тогда это одно чтение флага.
     #[inline]
     fn stack(kind: u8, bytes: usize, pointer: *const u8) {
+        super::retain::track(pointer, bytes);
         #[cfg(windows)]
         super::probe::record(kind, bytes, pointer);
         #[cfg(not(windows))]
@@ -62,6 +66,7 @@ mod counted {
     // получить тот же адрес и записать его выделение раньше этого освобождения.
     #[inline]
     fn release(bytes: usize, pointer: *const u8) {
+        super::retain::untrack(pointer);
         #[cfg(windows)]
         super::probe::release(bytes, pointer);
         #[cfg(not(windows))]
