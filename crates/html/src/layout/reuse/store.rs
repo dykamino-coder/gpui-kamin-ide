@@ -21,6 +21,8 @@ pub(crate) struct Store {
     pub(super) contents: RefCell<HashMap<u64, Rc<super::content::ContentRecord>>>,
     /// Inputs shared by the keys of the content records (`KeyInputs`).
     pub(super) inputs: super::content::shared::KeyInputs,
+    /// Paragraphs kept across frames (`paragraph`), by container and nodes.
+    pub(crate) paragraphs: super::paragraph::Records,
     /// Records of far blocks laid out from their kept layout subtree
     /// (`far`), with the storage of the build that claims them; allocated
     /// while there are any. A build holds it while it runs (`FlowReuse::far`).
@@ -176,6 +178,7 @@ impl Store {
     /// The flow key changed outside its widths: no replay record holds.
     pub(super) fn reset_replays(&self) {
         self.replays.take();
+        self.paragraphs.reset();
         self.far.take();
         self.far_near.take();
         self.banned.take();

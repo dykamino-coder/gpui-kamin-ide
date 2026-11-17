@@ -27,6 +27,7 @@ mod key;
 mod layered;
 pub(crate) mod lines;
 mod narrow;
+pub(crate) mod paragraph;
 mod placeholder;
 mod plain;
 mod rebase;

@@ -24,6 +24,7 @@ pub(crate) fn route_pieces(
     clamp_budget: Option<usize>,
     clamp_tag: Option<(u64, u32)>,
     line_atoms: LineAtoms,
+    keep: Option<crate::layout::reuse::paragraph::Sealed>,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
@@ -112,6 +113,7 @@ pub(crate) fn route_pieces(
                 clamp_budget,
                 clamp_tag,
                 line_atoms,
+                keep,
             );
         }
     }
@@ -230,6 +232,7 @@ mod tests {
                     None,
                     None,
                     vec![],
+                    None,
                 );
                 assert_eq!(
                     element.downcast_mut::<gpui::StyledText>().is_some(),

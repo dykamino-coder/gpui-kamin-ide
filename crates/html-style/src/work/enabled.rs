@@ -104,6 +104,8 @@ vocabulary!(Counter {
     ParagraphLineSteps => "paragraph_line_steps",
     ParagraphSpacerQueries => "paragraph_spacer_queries",
     ParagraphSpacerSteps => "paragraph_spacer_steps",
+    ParagraphsKept => "paragraphs_kept", ParagraphsResumed => "paragraphs_resumed",
+    KeptAtomsBuilt => "kept_atoms_built",
     SheetsParsed => "sheets_parsed",
 });
 vocabulary!(Phase {

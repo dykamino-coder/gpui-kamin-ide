@@ -49,7 +49,7 @@ pub(crate) struct KeyInputs {
 impl KeyInputs {
     /// A container style with the box values of `style` (`same_box_values`,
     /// which leaves out the box's own identity: the key keeps that apart).
-    pub(super) fn style(&self, style: &BoxStyle) -> Rc<BoxStyle> {
+    pub(in crate::layout::reuse) fn style(&self, style: &BoxStyle) -> Rc<BoxStyle> {
         self.styles.share(style, BoxStyle::same_box_values)
     }
 
@@ -57,7 +57,7 @@ impl KeyInputs {
         self.roots.share(root, |a, b| **a == **b)
     }
 
-    pub(super) fn text(&self, text: &gpui::TextStyle) -> Rc<gpui::TextStyle> {
+    pub(in crate::layout::reuse) fn text(&self, text: &gpui::TextStyle) -> Rc<gpui::TextStyle> {
         self.texts.share(text, |a, b| a == b)
     }
 }
