@@ -119,6 +119,16 @@ pub fn configure(cx: &mut gpui::App) {
         };
         theme_sync::apply(kind, cx);
     }
+    // Закрытие главного окна закрывает и тосты: иначе цикл gpui ждал их.
+    cx.on_window_closed(|cx, _| crate::toast::close_all_if_alone(cx))
+        .detach();
+    // После выхода задачи ещё крутятся, пока платформа ждёт окна: тост,
+    // пришедший в это время, держал бы процесс.
+    cx.on_app_quit(|_| {
+        crate::toast::stop_for_quit();
+        std::future::ready(())
+    })
+    .detach();
 }
 
 /// Передать запуск существующему окну либо подготовить новое.

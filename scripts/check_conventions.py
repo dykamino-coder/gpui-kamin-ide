@@ -3,6 +3,8 @@
 Usage: python scripts/check_conventions.py [base=origin/main] [--head HEAD]
 Checks committed trees, using their merge base (the same range as CI).
 Clippy owns environment access, debug macros and console output checks.
+Engine paths are English only: an added line with Cyrillic there is an error
+(the engine moves to its own public repository); existing lines are not checked.
 """
 
 import argparse
@@ -64,6 +66,29 @@ RULES = [
     ("7 panic on NaN", r"partial_cmp\([^)]*\)\s*\.unwrap\(\)", r"\.rs$"),
 ]
 
+# Engine paths that move to the public engine repository, where no Russian text is
+# allowed. Vendor patch files repeat vendor lines and are checked through those.
+ENGINE_TEXT = re.compile(
+    r"^(?:crates/(?:html|html-style|heap|font-facts|alloc|engine-bench)/"
+    r"|vendor/(?:gpui|gpui-windows|gpui-base|taffy|html5ever|markup5ever_rcdom|tendril|xml-rs|resvg|usvg)/"
+    r"|scripts/(?:memprof|check_conventions|check_computed|check_transitional|check_layer_imports"
+    r"|engine_test_support|wpt)|docs/memprof\.md$)"
+)
+CYRILLIC = re.compile(r"[\u0400-\u04FF]")
+ENGLISH_ONLY = "8 English only: Cyrillic added in an engine path"
+
+
+def cyrillic_added(path, text):
+    """True when an added line of an engine path contains Cyrillic."""
+    return bool(ENGINE_TEXT.search(path)) and not path.endswith(".patch") and bool(CYRILLIC.search(text))
+
+
+def text_diff(base, head):
+    """Added lines of the engine scripts and docs, which convention_diff does not cover."""
+    return git("diff", "-U0", f"{base}..{head}", "--", "scripts", "docs/memprof.md").decode(
+        "utf-8", "replace").splitlines()
+
+
 # Rule 7 for float ordering: `partial_cmp(..).unwrap_or(Equal)` is not a total
 # order once a NaN appears (`sort_by` may panic, `max_by` picks arbitrarily);
 # `f32::total_cmp` is. Matched over whole files because rustfmt splits the
@@ -107,6 +132,8 @@ def check(args):
             current = line[6:]
             in_test = False
         elif line.startswith("+") and not line.startswith("+++") and current:
+            if cyrillic_added(current, line[1:]):
+                bad.append((ENGLISH_ONLY, current, line[1:].strip()[:110]))
             # Preserve the existing added-test exemption; shared state is still
             # checked even inside a new test module.
             if "#[cfg(test)]" in line:
@@ -116,6 +143,13 @@ def check(args):
             for name, pattern, path in RULES:
                 if re.search(path, current) and re.search(pattern, line[1:]):
                     bad.append((name, current, line[1:].strip()[:110]))
+
+    current = None
+    for line in text_diff(base, head):
+        if line.startswith("+++ "):
+            current = line[6:] if line.startswith("+++ b/") else None
+        elif line.startswith("+") and current and cyrillic_added(current, line[1:]):
+            bad.append((ENGLISH_ONLY, current, line[1:].strip()[:110]))
 
     changed = [name for name in sources if sources[name] != old_sources.get(name)]
     dups = []

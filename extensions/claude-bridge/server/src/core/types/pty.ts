@@ -264,6 +264,10 @@ export interface SessionConfig {
   rows?: number
   /** Additional Claude CLI flags */
   extraArgs?: string[]
+  /** How the CLI asks the API to return thinking. `summarized` (the default)
+   *  returns readable summaries; `updates` is the CLI's own default, which
+   *  returns most thinking as a signature without text (INC-2026-0098). */
+  thinkingDisplay?: 'summarized' | 'updates'
   /** The user's standing instructions, APPENDED to the technical system prompt
    *  (never replacing it — see buildSystemPrompt). Client-supplied per session. */
   basePrompt?: string

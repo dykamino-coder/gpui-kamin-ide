@@ -394,6 +394,11 @@ impl WindowsWindowInner {
     }
 
     fn handle_destroy_msg(&self, handle: HWND) -> Option<isize> {
+        // KaminIDE patch: the HWND is still alive here. OLE holds the drop
+        // target, and through it this window, until `RevokeDragDrop`; a window
+        // destroyed by the system (`WM_CLOSE`) never reached the deferred revoke
+        // of `WindowsWindow::drop` and the shutdown drain waited forever.
+        self.drop_target.revoke(handle);
         let callback = { self.state.callbacks.close.take() };
         // Re-enable parent window if this was a modal dialog
         if let Some(parent_hwnd) = self.parent_hwnd {
