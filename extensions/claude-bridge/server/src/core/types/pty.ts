@@ -123,6 +123,8 @@ export interface PtySession {
     stop(): void
     getFilePath(): string | null
     replayAll?(history?: SessionConfig['history']): void
+    /** Follow an inline /resume reported by the CLI's SessionStart hook. */
+    adoptResumedTranscript?(conversationId: string): boolean
     segmentRange?(fromTs: string, toTs: string): Promise<{ lower: number; upper: number } | null>
     scanSubagents?(): Promise<void>
     selectSubagent?(agentId: string | null): void

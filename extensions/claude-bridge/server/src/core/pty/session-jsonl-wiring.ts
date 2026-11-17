@@ -75,7 +75,7 @@ function startJsonlWatcher(
     (status) => sendToClient(session.ws, { type: 'jsonl:status', ...status }),
     (entry) => handleJsonlUserEntry(session, entry),
     settingsDir,
-    (conversationId) => {
+    (conversationId, reason) => {
       // Смена id (авто-compact → новый файл): помнить ПРЕЖНИЕ id — клиент,
       // перезапустившийся со старым id из metadata, обязан находить эту живую
       // сессию (finder ниже матчит и по alias'ам); плюс персист линка
@@ -84,7 +84,9 @@ function startJsonlWatcher(
       const prev = session.cliConversationId
       if (prev && prev !== conversationId) {
         ;(session.conversationAliases ??= []).push(prev)
-        hooks.recordCompactLink(prev, conversationId)
+        // A resumed conversation is not the successor of the one it replaced:
+        // a compact link would make the old id open the resumed chat.
+        if (reason !== 'resume') hooks.recordCompactLink(prev, conversationId)
       }
       session.cliConversationId = conversationId
       hooks.onConversationId?.(conversationId)
@@ -95,7 +97,7 @@ function startJsonlWatcher(
         sessionId,
         conversationId,
         previousConversationId: prev ?? undefined,
-        idSource: prev && prev !== conversationId ? 'changed' : 'discovered',
+        idSource: reason === 'resume' ? 'resumed' : prev && prev !== conversationId ? 'changed' : 'discovered',
       })
       debugLog('JSONL conversationId discovered', { sessionId, conversationId })
       sendToClient(session.ws, { type: 'session:conversation-id', sessionId, conversationId })
