@@ -64,6 +64,26 @@ describe('reconcileQueueWithEntries', () => {
     expect(queued()).toBe(0)
   })
 
+  it('never lets an empty command-output row consume a queued slash command', () => {
+    enqueueLocal(TAB, '/clear')
+    enqueueLocal(TAB, '/resume 0b6e1f1c-5a8a-4c4e-9d43-3f6a3c1f2b10')
+    setEntries([row({ type: 'user', message: { content: '<local-command-stdout></local-command-stdout>' } })])
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(2)
+  })
+
+  it('confirms a typed command by the command and arguments the CLI recorded', () => {
+    enqueueLocal(TAB, '/model opus')
+    enqueueLocal(TAB, '/effort high')
+    setEntries([
+      row({ type: 'user', message: { content: '<command-name>/effort</command-name>\n<command-message>effort</command-message>\n<command-args>low</command-args>' } }),
+      row({ type: 'user', message: { content: '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>opus</command-args>' } }),
+      row({ type: 'user', message: { content: '<local-command-stdout>Set model to opus</local-command-stdout>' } }),
+    ])
+    reconcileQueueWithEntries(TAB)
+    expect(localQueue.value.get(TAB)?.map(item => item.content)).toEqual(['/effort high'])
+  })
+
   it('clears an image-only message via the FIFO fallback', () => {
     // The CLI rewrites such prompts, so no text overlap exists — but a real
     // user submission newer than the item still means it was taken.

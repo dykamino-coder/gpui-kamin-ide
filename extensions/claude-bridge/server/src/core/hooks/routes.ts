@@ -19,6 +19,7 @@ import { dispatchHook } from './dispatcher'
 import { commandLabel, HTTP_HOOK_RELAY, httpHookAnswer } from './http-hook-answer'
 import { getSession } from '../pty/session-manager'
 import { finalizeSessionTeardown, isSessionTearingDown } from '../pty/session-core'
+import { settleTerminalCommand } from '../pty/terminal-command-receipts'
 import type { HookInputPayload } from './types'
 import { warnLog } from '../logging'
 import { readRecentExecutions, clearLog } from './audit-log'
@@ -111,6 +112,8 @@ export function createHooksRoutes(): Hono {
     // precedence below, and of whether a client is attached.
     if (event === 'SessionStart' && payload.source === 'resume' && !session.conversation)
       session.jsonlWatcher?.adoptResumedTranscript?.(String(payload.session_id ?? ''))
+    // The same report completes the /resume, /clear or /compact that caused it.
+    if (event === 'SessionStart') settleTerminalCommand(session, payload.source, payload.session_id)
     if (isBridgeStatusEvent(event)) {
       applyDeterministicStatus(session, event, payload)
       // Our own no-op status hook has nothing to run — skip the dispatch (and
