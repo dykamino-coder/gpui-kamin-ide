@@ -108,7 +108,11 @@ pub(crate) fn set_window_shown(shown: bool) {
     views.window_hidden = !shown;
     // Невидимые по раскладке усыпляет `sleep_hidden` (с сообщением exthost);
     // здесь — только показанные раскладкой.
-    for id in ids.into_iter().filter(|id| views.visible.contains(id)) {
+    let laid_out: Vec<String> = ids
+        .into_iter()
+        .filter(|id| views.visible.contains(id))
+        .collect();
+    for id in laid_out {
         if !shown && views.asleep.insert(id.clone()) {
             set_hidden(&id, true);
         } else if shown && views.asleep.remove(&id) {
