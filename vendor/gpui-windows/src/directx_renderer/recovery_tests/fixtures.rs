@@ -39,6 +39,7 @@ pub(super) fn renderer(device: &DirectXDevices) -> DirectXRenderer {
         group_target_tex: None,
         blend_premultiplied: None,
         blend_replace: None,
+        group_tiles: true,
         width: 16,
         height: 16,
         backdrop: None,
