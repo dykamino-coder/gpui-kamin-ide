@@ -7,18 +7,20 @@ use super::reuse_tests::update;
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext};
 
-/// A 3×3 table; the cell `edited` carries the attribute `data-x`.
+/// A 3×3 table of fixed layout; the text of the cell `edited` changes. A text
+/// edit builds the frame (a paint-only change would be a scene-layer write with
+/// no build at all), and the fixed column widths keep the other cells' input.
 fn page(edited: Option<usize>) -> String {
     let cells: String = (0..9)
         .map(|i| {
-            let mark = if Some(i) == edited { " data-x" } else { "" };
+            let word = if Some(i) == edited { "edit" } else { "cell" };
             let row = if i % 3 == 0 { "<tr>" } else { "" };
-            format!("{row}<td{mark}><span>cell {i}</span></td>")
+            format!("{row}<td><span>{word} {i}</span></td>")
         })
         .collect();
     format!(
         "<!doctype html><html><head><style>body{{margin:0}} td{{padding:2px;border:1px solid #333}} \
-         [data-x]{{background:#ccc}}</style></head><body><table>{cells}</table></body></html>"
+         table{{table-layout:fixed;width:600px}}</style></head><body><table>{cells}</table></body></html>"
     )
 }
 

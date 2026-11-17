@@ -148,6 +148,12 @@ impl Window {
         mem::swap(&mut self.next_frame.scene, &mut scene);
         self.with_restore(scene, |window, scene| {
             mem::swap(&mut window.next_frame.scene, scene);
+            // Listeners and state reads go to the window, not the scene: the
+            // effects the isolated paint allowed (`Window::offscreen_inert`)
+            // stay allowed for the ink probes of the paint around it.
+            let inner = scene.ink_allowed;
+            let outer = &mut window.next_frame.scene.ink_allowed;
+            *outer = (outer.0 + inner.0, outer.1 + inner.1);
         }, |window| window.with_paint_scope(f))
     }
 }

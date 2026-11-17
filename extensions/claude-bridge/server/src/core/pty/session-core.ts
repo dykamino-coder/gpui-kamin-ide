@@ -14,6 +14,7 @@ import type { WebSocket as WS } from 'ws'
 import type { PtySession, SessionConfig } from './types'
 import { DEFAULT_SESSION_MODEL } from '../config'
 import { eventBus } from '../events/bus'
+import { makeRoomForOneMore } from './session-hibernation'
 import { debugLog, warnLog, infoLog } from '../logging'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
@@ -116,6 +117,8 @@ export async function createSession(
   config: SessionConfig = {},
   signal?: AbortSignal,
 ): Promise<PtySession> {
+  // Over the running-CLI bound: the least recently used idle chat sleeps first.
+  if (!config.isSubAgent) makeRoomForOneMore()
   const release = admission.reserve(tokenId)
   let registered: PtySession | undefined
   try {
@@ -564,7 +567,7 @@ async function createAdmittedSession(
   try {
     fs.writeFileSync(cliSettingsFile, cliSettings, { mode: 0o600, flag: 'wx' })
     const args = buildSessionClaudeArgs(config, settingsDir, cliSettingsFile)
-    if (cliMod) args.push('--plugin-dir', CLI_MOD_PLUGIN)
+    if (cliMod) args.push('--plugin-dir', cliMod.hookConditions ? cliMod.conditionsPlugin() : CLI_MOD_PLUGIN)
     pty = nodePty.spawn(claudeCmd, [...(developmentCli?.prefix ?? []), ...args], {
       name: 'xterm-256color',
       cols: config.cols ?? 120,
@@ -617,10 +620,10 @@ async function createAdmittedSession(
     lastResizeAt: Date.now(),
     consoleShrunk: false,
     host: config.host,
-    registeredTools: [],
-    registeredResources: [],
-    registeredResourceTemplates: [],
-    registeredPrompts: [],
+    registeredTools: config.carryRegistrations?.registeredTools ?? [],
+    registeredResources: config.carryRegistrations?.registeredResources ?? [],
+    registeredResourceTemplates: config.carryRegistrations?.registeredResourceTemplates ?? [],
+    registeredPrompts: config.carryRegistrations?.registeredPrompts ?? [],
     cliConversationId: config.resumeConversationId || null,
     isSubAgent: config.isSubAgent || false,
     parentSessionId: config.parentSessionId || null,
@@ -635,6 +638,7 @@ async function createAdmittedSession(
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,
     ...(config.conversation ? { conversation: config.conversation } : {}),
+    launchConfig: { ...config, carryRegistrations: undefined },
   }
 
   sessions.set(sessionId, session)
@@ -674,7 +678,8 @@ async function createAdmittedSession(
     lifecycleLog('pty_exit', { sessionId, exitCode, suppressed: false })
     debugLog('PTY exited', { sessionId, exitCode })
     session.state = 'exited'
-    sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
+    // A hibernating chat stays open in the client: it is woken, not ended.
+    if (!session.hibernating) sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
     // Also closes an open teardown window: once the CLI is gone its SessionEnd
     // can no longer arrive, so there is nothing left to keep the relay alive.
     finalizeSessionTeardown(sessionId, 'pty-exit', exitCode)
@@ -996,6 +1001,35 @@ export function destroySession(sessionId: string, reason: DestroyReason = 'unspe
   session.teardown.timer = setTimeout(() => finalizeTeardownFor(session, 'timeout', -1), TEARDOWN_GRACE_MS)
 }
 
+/** A closed stand-in for the client socket of a hibernating session: late
+ *  sends from the exiting CLI (activity, receipts, MCP rejections) carry the
+ *  old session id and must not reach the chat that is about to be woken. */
+const HIBERNATED_WS = { readyState: 3, bufferedAmount: 0, send() {}, close() {}, terminate() {} } as unknown as WS
+
+/**
+ * Stop an idle session's CLI on purpose. The teardown is the ordinary one
+ * (transcript archived, MCP endpoint and hooks released), but the client is
+ * neither told the session exited nor detached: the WS layer keeps the chat
+ * and respawns it with `--resume` on the next message. Resolves once the
+ * session is finalized, so a wake never runs two writers on one transcript.
+ */
+export function hibernateSession(sessionId: string): Promise<void> {
+  const session = sessions.get(sessionId)
+  if (!session || session.teardown) return Promise.resolve()
+  session.hibernating = true
+  session.ws = HIBERNATED_WS
+  const done = new Promise<void>((resolve) => {
+    const off = eventBus.on('session:destroyed', (event) => {
+      const data = (event?.data ?? event) as { sessionId?: string }
+      if (data?.sessionId !== sessionId) return
+      off()
+      resolve()
+    })
+  })
+  destroySession(sessionId, 'hibernate')
+  return done
+}
+
 /** True between `destroySession()` and the finalizer. Callers use it to refuse
  *  work an exiting session must no longer accept. */
 export function isSessionTearingDown(sessionId: string): boolean {
@@ -1135,6 +1169,8 @@ export async function restartWithEffort(
     ...(session.conversation ? { conversation: session.conversation } : {}),
     bearerHash: session.bearerHash,
     host: session.host,
+    // The client registered its MCP tools once, at create; a respawn keeps them.
+    carryRegistrations: session,
   })
 }
 
@@ -1209,6 +1245,8 @@ export async function restartWithModel(
     ...(session.conversation ? { conversation: session.conversation } : {}),
     bearerHash: session.bearerHash,
     host: session.host,
+    // The client registered its MCP tools once, at create; a respawn keeps them.
+    carryRegistrations: session,
   })
 }
 

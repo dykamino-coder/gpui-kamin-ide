@@ -91,6 +91,11 @@ pub struct Document {
     /// Дерево общее с элементом сохраняемого кадра (`retained`): тот
     /// собирает кадр сам, когда повтор прошлого не подошёл.
     nodes: Rc<Vec<Node>>,
+    /// Номер дерева `nodes`, новый у каждого (`scope::next_tree`): ключ
+    /// подготовки дерева между кадрами (`PreparationCache`). Адрес корневого
+    /// списка им быть не может: освобождённый список прошлой ревизии
+    /// занимает тот же адрес у следующей.
+    tree: u64,
     /// Записи сохраняемого кадра этого дерева (`render_viewport`).
     retained: Rc<retained::Slot>,
     /// Записи блоков корневого потока; переживают `update` (`layout::reuse`).
@@ -150,6 +155,11 @@ impl Document {
         self.key
     }
 
+    /// The document's state, shared (paint_path::census).
+    pub(crate) fn state_rc(&self) -> Rc<DocState> {
+        self.state.clone()
+    }
+
     pub fn nodes(&self) -> &[Node] {
         &self.nodes
     }
@@ -180,3 +190,8 @@ impl Document {
 mod image_values;
 
 pub mod dom;
+
+/// Elements painted with UA control defaults (`revision::paint_damage`).
+pub(crate) fn paint_controls() -> &'static [&'static str] {
+    revision::paint_damage_controls()
+}

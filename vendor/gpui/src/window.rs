@@ -70,6 +70,9 @@ mod natural_image;
 mod absolute_transformation;
 pub(crate) mod vector_transform;
 mod scene_capture;
+mod scene_layer;
+mod layer_box;
+pub use scene_layer::RecordedLayer;
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
@@ -316,6 +319,11 @@ impl WindowInvalidator {
 
     pub fn not_drawing(&self) -> bool {
         self.inner.borrow().draw_phase == DrawPhase::None
+    }
+
+    /// KaminIDE patch: the current draw phase (`Window::rerecord_layer_box`).
+    pub(crate) fn phase(&self) -> DrawPhase {
+        self.inner.borrow().draw_phase
     }
 
     #[track_caller]
@@ -1099,6 +1107,93 @@ pub(crate) struct PaintIndex {
     line_layout_index: LineLayoutIndex,
 }
 
+/// KaminIDE patch: a frame list index in a 32-bit word (`PackedPaintIndex`).
+pub(crate) fn pack_index(index: usize) -> u32 {
+    u32::try_from(index).expect("frame list index fits 32 bits")
+}
+
+/// KaminIDE patch: `PrepaintStateIndex` in 32-bit words: a retained range
+/// (`RetainedPrepaint`) is kept per recorded subtree.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PackedPrepaintIndex([u32; 5], [u32; 5]);
+
+impl PrepaintStateIndex {
+    pub(crate) fn pack(&self) -> PackedPrepaintIndex {
+        PackedPrepaintIndex(
+            [
+                self.hitboxes_index,
+                self.tooltips_index,
+                self.deferred_draws_index,
+                self.dispatch_tree_index,
+                self.accessed_element_states_index,
+            ]
+            .map(pack_index),
+            self.line_layout_index.pack(),
+        )
+    }
+}
+
+impl PackedPrepaintIndex {
+    pub(crate) fn unpack(&self) -> PrepaintStateIndex {
+        let [hitboxes_index, tooltips_index, deferred_draws_index, dispatch_tree_index, accessed_element_states_index] =
+            self.0.map(|w| w as usize);
+        PrepaintStateIndex {
+            hitboxes_index,
+            tooltips_index,
+            deferred_draws_index,
+            dispatch_tree_index,
+            accessed_element_states_index,
+            line_layout_index: LineLayoutIndex::unpack(self.1),
+        }
+    }
+}
+
+/// KaminIDE patch: `PaintIndex` in 32-bit words (`RetainedPaint`).
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PackedPaintIndex {
+    words: [u32; 6],
+    #[cfg(any(test, feature = "test-support"))]
+    debug_bounds_index: u32,
+    line: [u32; 5],
+}
+
+impl PaintIndex {
+    pub(crate) fn pack(&self) -> PackedPaintIndex {
+        PackedPaintIndex {
+            words: [
+                self.scene_index,
+                self.mouse_listeners_index,
+                self.input_handlers_index,
+                self.cursor_styles_index,
+                self.accessed_element_states_index,
+                self.tab_handle_index,
+            ]
+            .map(pack_index),
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: pack_index(self.debug_bounds_index),
+            line: self.line_layout_index.pack(),
+        }
+    }
+}
+
+impl PackedPaintIndex {
+    pub(crate) fn unpack(&self) -> PaintIndex {
+        let [scene_index, mouse_listeners_index, input_handlers_index, cursor_styles_index, accessed_element_states_index, tab_handle_index] =
+            self.words.map(|w| w as usize);
+        PaintIndex {
+            scene_index,
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: self.debug_bounds_index as usize,
+            mouse_listeners_index,
+            input_handlers_index,
+            cursor_styles_index,
+            accessed_element_states_index,
+            tab_handle_index,
+            line_layout_index: LineLayoutIndex::unpack(self.line),
+        }
+    }
+}
+
 impl Frame {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn record_debug_bounds(&mut self, selector: String, bounds: Bounds<Pixels>) {
@@ -1227,6 +1322,8 @@ impl Frame {
 
         // KaminIDE patch: also releases the frame's grafts (`finish_frame`).
         self.scene.finish_frame();
+        // KaminIDE patch: what changed against the frame this one replays.
+        self.scene.note_damage(&prev_frame.scene);
     }
 }
 
@@ -1292,6 +1389,28 @@ pub struct Window {
     /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
     pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
     pub(crate) element_opacity: f32,
+    /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
+    pub(crate) box_fill: Option<Bounds<Pixels>>,
+    /// KaminIDE patch: the scene layer being recorded (`window::scene_layer`)
+    /// and the binding scope of the paint (`with_paint_owner`, `with_paint_value`).
+    pub(crate) layer_recording: Option<Box<scene_layer::LayerRecording>>,
+    /// KaminIDE patch: tests paint without scene layers (set_scene_layers).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) scene_layers_off: bool,
+    /// The source layer of content painted into the frame (`RecordedLayer::Painted`).
+    pub(crate) layer_source: Option<Rc<crate::SceneLayer>>,
+    /// The platform showed a frame of this window (`present_unneeded`).
+    pub(crate) frame_presented: bool,
+    /// The next drawn frame is presented even if it changed nothing on screen
+    /// (Window::require_presentation).
+    pub(crate) presentation_required: bool,
+    /// KaminIDE patch: a frame capture reads the presented frames
+    /// (`Window::set_frame_capture`), and whether its reader lets unchanged
+    /// frames go unpresented (`Window::allow_unpresented_readback`).
+    pub(crate) frame_readback: bool,
+    pub(crate) unpresented_readback: bool,
+    pub(crate) paint_owner: u32,
+    pub(crate) paint_value: Option<crate::LayerValue>,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     /// KaminIDE patch: the innermost transformed-subtree hit scope during prepaint.
     hit_scope: Option<Rc<hit_transform::HitScope>>,
@@ -1970,7 +2089,9 @@ impl Window {
                                 }
                                 let arena_clear_needed = window.draw(cx);
                                 let t1 = std::time::Instant::now();
-                                window.present();
+                                // KaminIDE patch: a drawn frame that changed
+                                // nothing on screen is neither rastered nor presented.
+                                window.present_drawn(request_frame_options.require_presentation);
                                 {
                                     use crate::frame_perf::*;
                                     use std::sync::atomic::Ordering::Relaxed;
@@ -2237,6 +2358,17 @@ impl Window {
             content_mask_stack: Vec::new(),
             hit_scope: None,
             element_opacity: 1.0,
+            box_fill: None,
+            layer_recording: None,
+            #[cfg(any(test, feature = "test-support"))]
+            scene_layers_off: false,
+            layer_source: None,
+            frame_presented: false,
+            presentation_required: false,
+            frame_readback: false,
+            unpresented_readback: false,
+            paint_owner: 0,
+            paint_value: None,
             requested_autoscroll: None,
             last_text_input_configuration: None,
             focused_text_input_active: false,
@@ -2940,15 +3072,44 @@ impl Window {
     /// whose bounds don't intersect their content mask are culled at paint time and won't appear.
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_quads(&self) -> Vec<Quad> {
-        self.rendered_frame.scene.quads.clone()
+        let scene = &self.rendered_frame.scene;
+        let mut quads = scene.quads.clone();
+        for layer in scene.layer_contents() {
+            quads.extend(layer.scene().quads.iter().copied());
+        }
+        quads
     }
 
     /// Returns the underlines in the most recently rendered frame's scene.
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_underlines(&self) -> Vec<Underline> {
-        self.rendered_frame.scene.underlines.clone()
+        let scene = &self.rendered_frame.scene;
+        let mut underlines = scene.underlines.clone();
+        for layer in scene.layer_contents() {
+            underlines.extend(layer.scene().underlines.iter().cloned());
+        }
+        underlines
     }
 
+    /// KaminIDE patch: paint later frames into scene layers (`true`, the
+    /// default) or straight into the frame, as without retained layers: the
+    /// draw sequences of both must agree (`painted_sequence`).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_scene_layers(&mut self, on: bool) {
+        self.scene_layers_off = !on;
+    }
+
+    /// KaminIDE patch: the primitives of the most recently rendered frame in
+    /// the order they are drawn, a retained layer's in its place, without
+    /// their draw orders, each with its bounds within its content mask: a frame
+    /// painted into a scene layer and one painted straight into the frame draw
+    /// every two overlapping primitives in the same order.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_sequence(&self) -> Vec<(String, Bounds<ScaledPixels>)> {
+        let mut out = Vec::new();
+        crate::scene::draw_sequence(&self.rendered_frame.scene, &mut out);
+        out
+    }
     /// Set the content size of the window.
     pub fn resize(&mut self, size: Size<Pixels>) {
         self.platform_window.resize(size);
@@ -3705,7 +3866,7 @@ impl Window {
         );
         self.next_frame
             .scene
-            .note_damage(&self.rendered_frame.scene, self.frame_serial + 1, device);
+            .note_frame_damage(&self.rendered_frame.scene, self.frame_serial + 1, device);
 
         self.invalidator.set_phase(DrawPhase::Focus);
         let previous_focus_path = self.rendered_frame.focus_path();
@@ -3805,7 +3966,12 @@ impl Window {
         let _foreground_turn = profiler::journal::foreground_turn();
         #[cfg(feature = "profiler")]
         let present_start = Instant::now();
+        // KaminIDE patch: the frame holds its layers' content only while it
+        // is drawn (`scene::layer`); a host's write after this copies nothing.
+        self.rendered_frame.scene.hold_layers();
         self.platform_window.draw(&self.rendered_frame.scene);
+        self.rendered_frame.scene.release_layers();
+        self.frame_presented = true;
         #[cfg(feature = "profiler")]
         self.window_profiler.record_present(
             present_start,
@@ -4292,10 +4458,12 @@ impl Window {
 
         self.text_system
             .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
-        self.next_frame.scene.replay(
-            range.start.scene_index..range.end.scene_index,
-            &self.rendered_frame.scene,
-        );
+        // KaminIDE patch: a range recorded inside a scene layer is in its scene.
+        let scenes = range.start.scene_index..range.end.scene_index;
+        match self.replay_source() {
+            Some(source) => self.next_frame.scene.replay(scenes, source.scene()),
+            None => self.next_frame.scene.replay(scenes, &self.rendered_frame.scene),
+        }
     }
 
     /// KaminIDE patch: read the host context of type `T` for this traversal.
@@ -5255,7 +5423,11 @@ impl Window {
         // The strip split below restricts screen-space content masks, which
         // only matches the quad's own coordinates without a transformation.
         if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
+            let before = self.next_frame.scene.quads.len();
             self.next_frame.scene.insert_primitive(quad);
+            if self.paint_value.is_some() {
+                self.bind_painted_quad(before, opacity);
+            }
             return;
         }
 

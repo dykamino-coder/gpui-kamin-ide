@@ -6,7 +6,7 @@ import { useInputHistory } from '../../hooks/useInputHistory'
 import { useClipboardPaste } from '../../hooks/useClipboardPaste'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
 import { mcpLoading, tabPromptReady } from '../../signals/connection'
-import { tabWorking } from '../../signals/ui'
+import { tabWorking, tabHibernation, setTabHibernation } from '../../signals/ui'
 import { activeTabId, tabs } from '../../signals/tabs'
 import { sessionBindingPending } from '../../signals/session-binding'
 import { replayProgressByTab } from '../../signals/replay-progress'
@@ -185,6 +185,13 @@ export function InputBar(): JSX.Element {
   function handleInput(value: string): void {
     slashHandlers.onInput(value)
     setHasText(!!value.trim())
+    // Typing into a chat whose CLI the server stopped: start it now, so the
+    // message finds it (nearly) ready. Once per sleep; the server ignores it
+    // for a chat that is awake.
+    if (tabId && value.trim() && tabHibernation.peek().get(tabId) === 'asleep') {
+      setTabHibernation(tabId, 'waking')
+      bridge.warmSession(tabId)
+    }
   }
 
   function handleSlashSelect(cmd: string): void {

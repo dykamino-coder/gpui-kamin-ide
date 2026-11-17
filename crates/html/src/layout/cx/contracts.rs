@@ -12,6 +12,9 @@ pub(crate) struct BuildContext {
     pub(crate) in_render: bool,
     /// Корневой список, неизменность которого гарантирует Document.
     pub(crate) document_root: Option<(usize, usize)>,
+    /// Номер дерева этого корня (`Document::tree`): ключ того, что живёт
+    /// между кадрами; адрес корня — только тождество в пределах сборки.
+    pub(crate) document_tree: Option<u64>,
     /// Document::frame_opts уже начал кадр измерений текста этого документа.
     pub(crate) paragraph_frame_started: bool,
     /// Семантические коробки на пути сборки; не число служебных обёрток GPUI.

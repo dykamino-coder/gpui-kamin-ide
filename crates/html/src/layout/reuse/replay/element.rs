@@ -46,7 +46,10 @@ impl Wrap for ReplayRecorder {
         });
         let quiet =
             range.quiet(window).is_some() && callbacks == window.next_frame_callback_count();
-        let Some(id) = self.pending.captured(|c| c.layout.as_ref().map(|(_, id)| *id)) else {
+        let Some(id) = self
+            .pending
+            .captured(|c| c.layout.as_ref().map(|(_, id)| *id))
+        else {
             return;
         };
         if plain && quiet {

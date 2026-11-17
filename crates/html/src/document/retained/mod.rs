@@ -13,6 +13,9 @@
 //! том числе краска отложенных отрисовок (`Window::retained_replayable`).
 //! Иначе кадр собирается заново, как `Document::render`.
 
+mod box_repaint;
+#[cfg(test)]
+mod box_repaint_tests;
 #[cfg(test)]
 mod content_replay_tests;
 mod element;
@@ -20,6 +23,8 @@ mod element;
 mod escaped_replay_tests;
 #[cfg(test)]
 mod far_tests;
+#[cfg(test)]
+mod float_root_replay_tests;
 #[cfg(test)]
 mod invalidation_tests;
 #[cfg(test)]
@@ -32,6 +37,8 @@ mod l0_memory_tests;
 mod l0_resource_tests;
 #[cfg(test)]
 mod l0_tests;
+#[cfg(test)]
+mod layer_order_tests;
 #[cfg(test)]
 mod layered_replay_tests;
 #[cfg(test)]
@@ -111,6 +118,8 @@ impl FrameKey {
 struct Builder {
     state: Rc<DocState>,
     nodes: Rc<Vec<Node>>,
+    /// Номер дерева `nodes` (`Document::tree`).
+    tree: u64,
     opts: crate::RenderOpts,
     store: Rc<crate::layout::reuse::Store>,
     /// Счётчики сборки до первой сборки кадра: повторная (после отказа
@@ -145,7 +154,11 @@ impl Builder {
             .bg(rgb(0xffffff))
             .text_size(self.opts.text.font_size)
             .font_family(self.opts.text.font_family.clone())
-            .children(super::scope::render(&self.state, &self.nodes, &opts))
+            .children(super::scope::render(
+                &self.state,
+                (&self.nodes, self.tree),
+                &opts,
+            ))
             .into_any_element();
         (tree, flow)
     }
@@ -163,6 +176,12 @@ impl Document {
         let builder = self.frame_builder(opts, &key);
         element::Retained::new(self.retained.clone(), key, builder, candidate, prepared)
             .into_any_element()
+    }
+
+    /// Есть записанный устоявшийся кадр этого дерева: следующий кадр с теми же
+    /// опциями хоста может его повторить.
+    pub(super) fn frame_recorded(&self) -> bool {
+        self.retained.recorded.borrow().is_some()
     }
 
     /// Сколько раз кадр собран и сколько раз повторён (`render_viewport`).

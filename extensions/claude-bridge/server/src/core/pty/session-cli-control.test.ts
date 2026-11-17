@@ -24,6 +24,9 @@ function fixture() {
   } as unknown as CliModTransport
   return { frames, write, session, mod, control: new SessionCliControl(session, mod) }
 }
+const storedPrompt = (content: string, uuid: string) =>
+  ({ type: 'user', uuid, timestamp: new Date().toISOString(), message: { role: 'user', content } }) as any
+
 describe('interactive CLI control', () => {
   it('silently retains native delivery and OSC when the mod is unavailable', () => {
     vi.useFakeTimers()
@@ -93,9 +96,9 @@ describe('interactive CLI control', () => {
 
       expect(f.control.submit('first follow-up', 'first')).toBe(true)
       expect(f.control.submit('second follow-up', 'second')).toBe(true)
-      f.mod.onRead('first', 'first-row')
+      f.control.transcript([storedPrompt('first follow-up', 'first-row')])
       vi.advanceTimersByTime(100)
-      f.mod.onRead('second', 'second-row')
+      f.control.transcript([storedPrompt('second follow-up', 'second-row')])
       vi.advanceTimersByTime(100)
       expect(vi.mocked(f.mod.submit).mock.calls.map(([prompt, , id]) => [prompt, id])).toEqual([
         ['first follow-up', 'first'],
@@ -160,5 +163,30 @@ describe('interactive CLI control', () => {
         createdAt: expect.any(Number),
       }),
     ])
+  })
+  it('sends attachment paths and commands through the terminal without a delivery warning', () => {
+    const f = fixture()
+    for (const [id, text] of <[string, string][]>[
+      ['att', 'what is in it?\n/tmp/bridge-upload-x/attach.txt'],
+      ['win', 'and this?\nC:\\Users\\u\\AppData\\Local\\Temp\\bridge-upload-y\\attach.txt'],
+      ['cmd', '/model'],
+    ]) {
+      f.frames.length = 0
+      submitTextToSession(f.session, text, id)
+      const receipt = f.frames.find((frame) => frame.type === 'session:submission')
+      expect(receipt).toMatchObject({ id, state: 'fallback' })
+      expect(receipt).not.toHaveProperty('warning')
+    }
+    expect(f.mod.submit).not.toHaveBeenCalled()
+  })
+  it('still warns when an ordinary message falls back to the terminal', () => {
+    const f = fixture()
+    ;(f.mod as { healthy: () => boolean }).healthy = () => false
+    submitTextToSession(f.session, 'plain words', 'plain-id')
+    expect(f.frames.find((frame) => frame.type === 'session:submission')).toMatchObject({
+      id: 'plain-id',
+      state: 'fallback',
+      warning: 'Using native terminal delivery for this message.',
+    })
   })
 })

@@ -17,7 +17,7 @@ impl Document {
     /// Начать кадр и вернуть опции сборки с этим документом: с ними хост
     /// вызывает `render::*` по `nodes()` (стопка страниц) сам.
     pub fn frame_opts(&self, opts: &crate::RenderOpts) -> crate::RenderOpts {
-        frame_opts(&self.state, &self.nodes, opts)
+        frame_opts(&self.state, (&self.nodes, self.tree), opts)
     }
 
     /// Значения кадра документа: ими хост разбирает объявления листа
@@ -34,7 +34,7 @@ impl Document {
 
     /// Собрать кадр всего документа (`render::render`).
     pub fn render(&self, opts: &crate::RenderOpts) -> Vec<gpui::AnyElement> {
-        render(&self.state, &self.nodes, opts)
+        render(&self.state, (&self.nodes, self.tree), opts)
     }
 
     /// Собрать один блок верхнего уровня (`render::render_block`).
@@ -53,7 +53,7 @@ impl Document {
 /// Начать кадр документа `state` с деревом `nodes` (`Document::frame_opts`).
 pub(super) fn frame_opts(
     state: &std::rc::Rc<super::state::DocState>,
-    nodes: &[crate::dom::Node],
+    (nodes, tree): (&[crate::dom::Node], u64),
     opts: &crate::RenderOpts,
 ) -> crate::RenderOpts {
     state.begin_frame();
@@ -62,6 +62,7 @@ pub(super) fn frame_opts(
     opts.cx.clamp.input = None;
     opts.cx.values.inert_clear = false;
     opts.cx.contracts.document_root = Some((nodes.as_ptr() as usize, nodes.len()));
+    opts.cx.contracts.document_tree = Some(tree);
     opts.cx.contracts.paragraph_frame_started = true;
     opts
 }
@@ -69,11 +70,17 @@ pub(super) fn frame_opts(
 /// Собрать кадр всего документа (`Document::render`).
 pub(super) fn render(
     state: &std::rc::Rc<super::state::DocState>,
-    nodes: &[crate::dom::Node],
+    (nodes, tree): (&[crate::dom::Node], u64),
     opts: &crate::RenderOpts,
 ) -> Vec<gpui::AnyElement> {
-    crate::render::render(nodes, &frame_opts(state, nodes, opts))
+    crate::render::render(nodes, &frame_opts(state, (nodes, tree), opts))
         .into_iter()
         .map(|e| Scoped::wrap(state, e))
         .collect()
+}
+
+/// Следующий номер дерева документа (`Document::tree`); номера не повторяются.
+pub(super) fn next_tree() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }

@@ -171,11 +171,13 @@ impl FlowCx {
         self.restyled || self.reuse.store.restyled_block(e.node_id)
     }
 
-    /// Ребёнок `n` собран (или ушёл в анонимный абзац): запомнить его флоаты.
+    /// Ребёнок `n` собран (или ушёл в анонимный абзац): запомнить флоаты,
+    /// выходящие за его край (`plain::escaping_floats`); флоаты внутри корня
+    /// контекста форматирования следующих детей не трогают.
     pub(crate) fn built(&self, n: &crate::dom::Node) {
         if let crate::dom::Node::Element(e) = n
             && !self.floats.get()
-            && super::plain::floats(e)
+            && super::plain::escaping_floats(e)
         {
             self.floats.set(true);
         }

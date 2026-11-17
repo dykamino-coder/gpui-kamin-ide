@@ -1392,6 +1392,12 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     }
 
     /// Rasterize an isolated transparent scene without presenting the window.
+    /// KaminIDE patch: the last drawn frame reached the screen (a frame the
+    /// backend dropped is presented by the next draw, so that draw is needed).
+    fn last_frame_presented(&self) -> bool {
+        true
+    }
+
     fn rasterize_scene(&self, _scene: &Scene, _size: Size<DevicePixels>) -> Result<image::RgbaImage> {
         anyhow::bail!("isolated scene capture is unavailable on this platform")
     }

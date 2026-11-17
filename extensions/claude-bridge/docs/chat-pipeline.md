@@ -98,7 +98,11 @@ spinner" class is one of these copies diverging from (1) (§10).
   `edited_text_file`. `queue-operation` rows rebuild the pending queue.
 - Pending user bubbles come from submission receipts (`signals/submissions.ts`,
   host copy in `workspace/src/presentation.ts`) and normally disappear by the
-  stored UUID of the read receipt. A receipt the server can no longer settle
+  stored UUID of the read receipt. The server takes that UUID from the transcript
+  it tails (`CliSubmissions.transcript`): the first main-thread prompt row that
+  stores a handed-off text, in hand-off order. The CLI mod registers no
+  `session.append` handler, which CLI 2.1.322 would run on every tool call.
+  A receipt the server can no longer settle
   stays `uncertain` and is settled from the transcript by the shared
   `matchReceiptsToTranscript`: one row per receipt, never a row older than the
   receipt (store watermark; server `createdAt` against the CLI `timestamp`,

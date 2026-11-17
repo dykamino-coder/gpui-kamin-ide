@@ -64,7 +64,9 @@ impl Document {
         }
         let key = applied_key(self.key, records, theme_css);
         let revision = self.budget().revision();
-        if let Some(plan) = self.plan(&batch, theme_css, None, &revision) {
+        // Read from the source DOM before it is taken and the batch written.
+        let invalidation = self.invalidation(&batch, theme_css);
+        if let Some(plan) = self.plan(&batch, theme_css, None, invalidation.as_ref(), &revision) {
             batch.write();
             self.commit(
                 plan,
@@ -78,7 +80,7 @@ impl Document {
             );
             return Ok(self.report());
         }
-        self.rebuild(&batch, theme_css, key, revision)
+        self.rebuild(&batch, invalidation, theme_css, key, revision)
             .map_err(ApplyError::Rejected)
     }
 
@@ -86,12 +88,11 @@ impl Document {
     pub(super) fn rebuild(
         &mut self,
         batch: &Batch,
+        invalidation: Option<crate::dom::invalidation::Changed>,
         theme_css: &str,
         key: u64,
         revision: crate::budget::RevisionBudget,
     ) -> Result<BuildReport, DocumentFailure> {
-        // Read from the source DOM before it is taken and the batch written.
-        let invalidation = self.invalidation(batch, theme_css);
         let mut input = self
             .state
             .values

@@ -48,15 +48,19 @@ pub(super) fn deferred(
             // может разрешить процентную высоту иначе (quirks mode).
             let own = MulticolDimensions::for_element(&host, &host.style.used())
                 .with_measured_size(width, height);
-            host.children = crate::layout::fragment::flow::column_percentages_in(
-                &host.children,
-                &style,
+            // The outer width is read only when the height depends on it.
+            let percentage_height = opts.cx.constraints.with_avail_w(|avail_w| {
                 dimensions.percentage_height(
                     &style,
                     opts.cx.constraints.avail_h,
-                    opts.cx.constraints.avail_w(),
+                    avail_w,
                     opts.viewport.1,
-                ),
+                )
+            });
+            host.children = crate::layout::fragment::flow::column_percentages_in(
+                &host.children,
+                &style,
+                percentage_height,
                 Some(width),
                 &opts,
             )

@@ -15,6 +15,7 @@ pub(super) struct Counters {
     pub(super) layout: u32,
     pub(super) frames: u32,
     pub(super) readback: Duration,
+    pub(super) copy: Duration,
 }
 
 impl Counters {
@@ -25,6 +26,7 @@ impl Counters {
             layout: frame_perf::TAFFY_US.load(Relaxed),
             frames: frame_perf::FRAMES.load(Relaxed),
             readback: capture.readback_time(),
+            copy: capture.copy_time(),
         }
     }
     pub(super) fn delta(current: u32, previous: u32) -> Duration {
@@ -45,6 +47,9 @@ pub(super) struct Input {
     pub(super) draw: Duration,
     pub(super) present: Duration,
     pub(super) readback: Duration,
+    /// Часть readback после готовности кадра на GPU (копия в память): цена
+    /// стенда, которой нет у браузеров; доска вычитает её из кадра с растром.
+    pub(super) copy: Duration,
     pub(super) total: Duration,
     pub(super) readback_to_resume: Duration,
 }
@@ -72,6 +77,7 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
         ("document_build_total", input.document.map(ms)),
         ("cpu_draw_total", Some(ms(input.draw))),
         ("gpu_readback", Some(ms(input.readback))),
+        ("capture_copy", Some(ms(input.copy))),
         ("taffy_inclusive", Some(ms(input.layout))),
         ("readback_to_resume", Some(ms(input.readback_to_resume))),
     ]);
@@ -84,6 +90,7 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
         intervals.insert(name, Some(*scope));
     }
     subtract(input.present, input.readback)?;
+    subtract(input.readback, input.copy)?;
     intervals.insert(
         "layout",
         Some(
@@ -122,6 +129,7 @@ mod tests {
             draw: us(30),
             present: us(10),
             readback: us(4),
+            copy: us(3),
             total: us(60),
             readback_to_resume: us(1),
         }
@@ -144,6 +152,7 @@ mod tests {
         assert!((sum - result.phases["first_frame_total"].expect("total")).abs() < 1e-15);
         assert_eq!(result.diagnostics["taffy_inclusive"], Some(0.100));
         assert_eq!(result.diagnostics["gpu_readback"], Some(0.004));
+        assert_eq!(result.diagnostics["capture_copy"], Some(0.003));
     }
 
     #[test]

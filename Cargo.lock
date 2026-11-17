@@ -800,6 +800,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f"
 dependencies = [
  "memchr",
+ "regex-automata",
  "serde_core",
 ]
 
@@ -1769,7 +1770,7 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
 name = "engine-bench"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "encoding_rs",
  "futures",
@@ -2425,9 +2426,9 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "globset"
-version = "0.4.20"
+version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07c34a9410465b45bd9787443bc7370f37735bad04b0f0cd57ff1a3186c98988"
+checksum = "e47d37d2ae4464254884b60ab7071be2b876a9c35b696bd018ddcc76847309cd"
 dependencies = [
  "aho-corasick",
  "bstr",
@@ -3124,6 +3125,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "grep-matcher"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9417543f4870fc8f1c8e1af870afae2431007626d9e703fce6471c468d33847"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "grep-printer"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd76035e87871f51c1ee5b793e32122b3ccf9c692662d9622ef1686ff5321acb"
+dependencies = [
+ "bstr",
+ "grep-matcher",
+ "grep-searcher",
+ "log",
+ "termcolor",
+]
+
+[[package]]
+name = "grep-regex"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce0c256c3ad82bcc07b812c15a45ec1d398122e8e15124f96695234db7112ef"
+dependencies = [
+ "bstr",
+ "grep-matcher",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
+name = "grep-searcher"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72348823a0eafc4bc2e9051064f28b5b42cc100b571b3a35d67918d711efcbc6"
+dependencies = [
+ "bstr",
+ "encoding_rs",
+ "encoding_rs_io",
+ "grep-matcher",
+ "log",
+ "memchr",
+ "memmap2",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3557,9 +3608,9 @@ dependencies = [
 
 [[package]]
 name = "ignore"
-version = "0.4.33"
+version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00b69833ed729dc5aa7d19541d96d6cf8e9137194207a04916d658e43168402f"
+checksum = "d4ffa3a0547a138e59ddd6fa3b7c672ed47e6ad6a3cd177984ff1116aa5ba742"
 dependencies = [
  "crossbeam-deque",
  "globset",
@@ -3836,29 +3887,29 @@ dependencies = [
 
 [[package]]
 name = "kamin-alloc"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "mimalloc",
 ]
 
 [[package]]
 name = "kamin-crash"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "windows 0.62.2",
 ]
 
 [[package]]
 name = "kamin-font-facts"
-version = "1.0.106"
+version = "1.0.111"
 
 [[package]]
 name = "kamin-heap"
-version = "1.0.106"
+version = "1.0.111"
 
 [[package]]
 name = "kamin-html"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "encoding_rs",
  "foldhash 0.2.0",
@@ -3898,18 +3949,18 @@ dependencies = [
 
 [[package]]
 name = "kamin-jobrun"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "windows 0.62.2",
 ]
 
 [[package]]
 name = "kamin-metrics"
-version = "1.0.106"
+version = "1.0.111"
 
 [[package]]
 name = "kamin-model"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "serde",
  "serde_json",
@@ -3917,15 +3968,31 @@ dependencies = [
 
 [[package]]
 name = "kamin-probe"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "serde",
  "serde_json",
 ]
 
 [[package]]
+name = "kamin-search"
+version = "1.0.111"
+dependencies = [
+ "globset",
+ "grep-matcher",
+ "grep-printer",
+ "grep-regex",
+ "grep-searcher",
+ "ignore",
+ "serde",
+ "serde_json",
+ "termcolor",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "kamin-sidecar"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "serde",
  "serde_json",
@@ -3934,7 +4001,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-style"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "encoding_rs",
  "gpui-pre",
@@ -3955,11 +4022,11 @@ dependencies = [
 
 [[package]]
 name = "kamin-theme"
-version = "1.0.106"
+version = "1.0.111"
 
 [[package]]
 name = "kamin-ws"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "serde",
  "serde_json",
@@ -3968,7 +4035,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-gpui"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -4011,7 +4078,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-setup"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "anyhow",
  "gpui-pre",
@@ -4024,7 +4091,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-web-helper"
-version = "1.0.106"
+version = "1.0.111"
 dependencies = [
  "cef",
  "kamin-crash",

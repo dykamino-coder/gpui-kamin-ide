@@ -62,6 +62,8 @@ fn own(e: &Element, descendants: BoxTreeSummary) -> BoxTreeSummary {
 }
 
 mod preparation;
+#[cfg(test)]
+pub(crate) use preparation::Preparation;
 pub(crate) use preparation::PreparationCache;
 
 impl SubtreeFacts {

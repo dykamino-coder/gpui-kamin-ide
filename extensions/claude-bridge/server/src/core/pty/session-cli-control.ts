@@ -5,9 +5,21 @@ import { getSessionInputSnapshot, setSessionPromptReady, submitCoordinatedText }
 import { ProgramStatusParser, type ProgramStatus } from './program-status'
 import { CliSubmissions } from './cli-submissions'
 import type { CliModTransport } from './cli-mod-transport'
+import type { JsonlEntry } from '../../shared/jsonl-types'
 
 const controls = new WeakMap<PtySession, SessionCliControl>()
 
+/** Text only the CLI's own input line understands: a slash command, an
+ *  @-mention, a pasted image or an attachment path line, which the CLI expands.
+ *  Such a message goes through the terminal on purpose, not as a fallback. */
+export function needsTerminalDelivery(text: string): boolean {
+  return (
+    /^\s*\//.test(text) ||
+    /(^|\s)@\S/.test(text) ||
+    /\[Image(?:\s|#|\])/.test(text) ||
+    /(?:^|\n)(?:\/|[A-Za-z]:[\\/])\S/.test(text)
+  )
+}
 export class SessionCliControl {
   readonly parser: ProgramStatusParser
   private osc: ProgramStatus | undefined
@@ -104,6 +116,24 @@ export class SessionCliControl {
     return this.modTurnWorking() || this.osc === 'working' || this.osc === 'blocked'
   }
 
+  /** Why this CLI must keep running, or null when it sits idle at its prompt.
+   *  Without the mod or OSC status (before the first turn, older CLIs) the
+   *  hook-driven prompt state decides; no known prompt counts as work. */
+  liveWork(): 'turn' | 'submission' | 'status-unknown' | null {
+    if (this.authoritative()) {
+      if (this.busy()) return 'turn'
+    } else if (!getSessionInputSnapshot(this.session).promptReady) return 'status-unknown'
+    if (this.submissions?.pending()) return 'submission'
+    return null
+  }
+
+  /** Typed input can be delivered as intended: through the mod when this CLI
+   *  has one (otherwise it would fall back to terminal typing with a warning),
+   *  or at a visible prompt without it. */
+  inputReady(): boolean {
+    return this.mod ? this.mod.healthy() : getSessionInputSnapshot(this.session).promptReady
+  }
+
   authoritative(): boolean {
     return !!(this.mod?.healthy() && this.modReady) || this.osc !== undefined
   }
@@ -156,6 +186,11 @@ export class SessionCliControl {
     this.submissions?.action(id, action)
   }
 
+  /** Newly appended transcript records of this session's CLI. */
+  transcript(entries: readonly JsonlEntry[]): void {
+    this.submissions?.transcript(entries)
+  }
+
   handoff(): string[] {
     return this.submissions?.handoff() ?? []
   }
@@ -164,10 +199,7 @@ export class SessionCliControl {
     const input = getSessionInputSnapshot(this.session)
     // Engine submit intentionally does not expand mentions, pastes or native commands.
     if (
-      /^\s*\//.test(text) ||
-      /(^|\s)@\S/.test(text) ||
-      /\[Image(?:\s|#|\])/.test(text) ||
-      /(?:^|\n)(?:\/|[A-Za-z]:[\\/])\S/.test(text) ||
+      needsTerminalDelivery(text) ||
       (!submissionId &&
         (input.rawInputDirty || input.activeKind || input.queuedSubmissions || input.pendingMaintenance.length))
     )

@@ -165,6 +165,7 @@ impl Document {
         Ok(Document {
             state,
             nodes: Rc::new(nodes),
+            tree: crate::document::scope::next_tree(),
             retained: Default::default(),
             reuse: Default::default(),
             restyle: super::Kept::built(kept),

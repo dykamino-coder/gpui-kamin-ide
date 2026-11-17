@@ -60,6 +60,14 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   submissions.value = new Map(submissions.value).set(tabId, settleFromTranscript(tabId, next.slice(-256)))
 }
 
+/** A delivery toast is for the view that sent the message, once per warning.
+ *  A receipt this view never held (replayed after a reload, or sent from
+ *  another view) or one repeating the warning already shown stays on its badge. */
+export function shouldToastDelivery(data: SubmissionUpdate, shown: Submission | undefined): boolean {
+  if (!data.id) return true
+  return !!shown && shown.warning !== data.warning
+}
+
 export function optimisticSubmission(tabId: string, text: string): string {
   const id = crypto.randomUUID()
   receiveSubmission(tabId, { id, text, state: 'queued', cancelable: true })
