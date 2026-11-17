@@ -45,6 +45,8 @@ struct Views {
     /// усыпление отложено на тик: состав видимых меняется чаще, чем мы
     /// беспокоим CEF.
     asleep: HashSet<String>,
+    /// Окно свёрнуто: его кадров никто не увидит, спят все вью.
+    window_hidden: bool,
 }
 
 static VIEWS: LazyLock<Mutex<Views>> = LazyLock::new(|| Mutex::new(Views::default()));
@@ -83,7 +85,36 @@ pub(crate) fn is_visible(id: &str) -> bool {
 /// Значение для `was_hidden` при создании браузера: создание асинхронное, и
 /// пока оно шло, вью могло уйти с экрана.
 pub(crate) fn hidden_flag(id: &str) -> ::std::os::raw::c_int {
-    if is_visible(id) { 0 } else { 1 }
+    let shown = VIEWS
+        .lock()
+        .is_ok_and(|v| !v.window_hidden && v.visible.contains(id));
+    if shown { 0 } else { 1 }
+}
+
+/// Окно свернули или развернули (`WindowVisibility` GPUI).
+///
+/// Свёрнутое окно для Chromium — то же, что скрытая вкладка: без
+/// `was_hidden(1)` страницы продолжали слать кадры (каретка, анимации) в окно,
+/// которое их не покажет. Будим сразу, как в `mark_visible`; exthost о
+/// свёртывании не сообщаем — для расширения панель по-прежнему открыта.
+pub(crate) fn set_window_shown(shown: bool) {
+    let ids = super::browsers::ids();
+    let Ok(mut views) = VIEWS.lock() else {
+        return;
+    };
+    if views.window_hidden == !shown {
+        return;
+    }
+    views.window_hidden = !shown;
+    // Невидимые по раскладке усыпляет `sleep_hidden` (с сообщением exthost);
+    // здесь — только показанные раскладкой.
+    for id in ids.into_iter().filter(|id| views.visible.contains(id)) {
+        if !shown && views.asleep.insert(id.clone()) {
+            set_hidden(&id, true);
+        } else if shown && views.asleep.remove(&id) {
+            set_hidden(&id, false);
+        }
+    }
 }
 
 /// Усыпить всё, что ушло с экрана. Зовётся раз в секунду из насоса — задержка
@@ -117,7 +148,13 @@ fn wake(views: &mut Views, appeared: Vec<String>) {
         // Будим только то, что действительно спало: при первом показе будить
         // нечего, а лишний `was_resized` заставил бы Chromium перевёрстывать
         // страницу впустую.
-        if views.asleep.remove(&id) {
+        // Свёрнутое окно: появившееся вью спит и проснётся с окном
+        // (`set_window_shown`).
+        if views.window_hidden {
+            if views.asleep.insert(id.clone()) {
+                set_hidden(&id, true);
+            }
+        } else if views.asleep.remove(&id) {
             set_hidden(&id, false);
         }
         notify_view_state(&id, true);
