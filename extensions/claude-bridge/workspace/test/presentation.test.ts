@@ -100,6 +100,21 @@ test('JSONL arriving before fallback is reconciled from the shared cache', () =>
   assert.equal((state.snapshot()[0].args as any)[1].fallbackQueue.consumed, true)
 })
 
+test('a server completion receipt consumes a /resume queue item no transcript row can match', () => {
+  let entries: any[] = [{ type: 'user', uuid: 'old', _ord: 40, message: { content: 'before clear' } }]
+  const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }), () => entries)
+  const text = '/resume 0b6e1f1c-5a8a-4c4e-9d43-3f6a3c1f2b10'
+  state.accept({ kind: 'send', channel: 'pty-submit-text', args: ['tab', text, 'resume'] })
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'resume', text, state: 'fallback', cancelable: false }] })
+  entries = [{ type: 'user', uuid: 'resumed', _ord: 3, message: { content: 'hello one' } }]
+  state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', entries] })
+  assert.equal((state.snapshot()[0].args as any)[1].fallbackQueue.consumed, undefined)
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'resume', text, state: 'fallback', cancelable: false, committed: true }] })
+  const receipt = (state.snapshot()[0].args as any)[1]
+  assert.equal(receipt.fallbackQueue.consumed, true)
+  assert.equal(receipt.committed, true)
+})
+
 test('native receipt commitment survives zero views and transcript eviction in either event order', () => {
   for (const order of ['receipt-first', 'row-first']) {
     let entries: any[] = []

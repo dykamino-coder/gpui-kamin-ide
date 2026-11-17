@@ -260,6 +260,12 @@
   flex: 1; min-width: 0; padding-bottom: 6px;
   overflow-wrap: anywhere;
 }
+/* Thinking the API returned as a signature only: one quiet line, no text. */
+.block-thinking.thinking-hidden { align-items: center; }
+.block-thinking.thinking-hidden .thinking-mark { padding-top: 0; line-height: inherit; }
+.block-thinking .thinking-note {
+  font-size: var(--fs-sm); color: var(--text-muted); font-style: italic;
+}
 
 .block-tool-use {
   margin: 6px 12px; border: 1px solid var(--bg-surface);

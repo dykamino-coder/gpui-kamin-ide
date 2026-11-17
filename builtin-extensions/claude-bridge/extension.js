@@ -44069,6 +44069,8 @@ var McpResultOutbox = class {
 
 // src/main/ws/client-commands.ts
 init_shell();
+var SERVER_FRESH_MS = 15e3;
+var SERVER_ASK_AFTER_MS = 12e3;
 var ClientCommands = class {
   constructor(tabId, publish) {
     this.tabId = tabId;
@@ -44077,16 +44079,25 @@ var ClientCommands = class {
   tabId;
   publish;
   remote;
+  published;
   receive(snapshot2) {
     this.remote = { snapshot: snapshot2, at: Date.now() };
     this.list(snapshot2.sessionId);
   }
   reset() {
     this.remote = void 0;
+    this.published = void 0;
   }
-  list(sessionId) {
+  /** Whether a `commands:list` request is worth sending: the server's own
+   *  rounds keep the snapshot fresh, so an idle chat sends none. */
+  needsServerList(sessionId) {
+    return this.remote?.snapshot.sessionId !== sessionId || Date.now() - this.remote.at > SERVER_ASK_AFTER_MS;
+  }
+  /** Publish the merged snapshot when it differs from the last one published,
+   *  or always with `force` (a view that just mounted has none). */
+  list(sessionId, force = false) {
     const shells = localBackgroundShellSnapshot(this.tabId);
-    const serverAvailable = this.remote?.snapshot.sessionId === sessionId && Date.now() - this.remote.at < 5e3;
+    const serverAvailable = this.remote?.snapshot.sessionId === sessionId && Date.now() - this.remote.at < SERVER_FRESH_MS;
     const commands7 = serverAvailable ? this.remote.snapshot.commands.filter((c) => !shells.some((s) => s.id === c.id)) : [];
     for (const shell2 of shells) {
       if (!shell2.hiddenFromCommands) {
@@ -44104,11 +44115,11 @@ var ClientCommands = class {
       }
     }
     commands7.sort((a, b) => Number(b.background) - Number(a.background) || a.startedAt - b.startedAt);
-    this.publish("commands:snapshot", {
-      sessionId,
-      commands: commands7,
-      serverAvailable
-    });
+    const snapshot2 = { sessionId, commands: commands7, serverAvailable };
+    const key2 = JSON.stringify(snapshot2);
+    if (!force && key2 === this.published) return;
+    this.published = key2;
+    this.publish("commands:snapshot", snapshot2);
   }
   clear() {
     clearLocalCompletedShells(this.tabId);
@@ -46517,8 +46528,9 @@ var ConnectionManager = class _ConnectionManager {
   // ─── Private ────────────────────────────────────────────
   commandAction(action, id = "") {
     if (action === "list") {
-      this.commands.list(this.state.sessionId ?? "");
-      this.send({ type: "commands:list" });
+      const sessionId = this.state.sessionId ?? "";
+      this.commands.list(sessionId, id === "refresh");
+      if (this.commands.needsServerList(sessionId)) this.send({ type: "commands:list" });
     } else if (action === "clear") {
       this.commands.clear();
       this.commands.list(this.state.sessionId ?? "");
@@ -55697,6 +55709,8 @@ var STREAMING_ONLY_CHANNELS = /* @__PURE__ */ new Set([
   "streaming-status"
 ]);
 var RESYNC_ON_REVEAL_CHANNELS = /* @__PURE__ */ new Set(["tab:switched"]);
+var CHAT_ONLY_CHANNELS = /* @__PURE__ */ new Set(["commands:snapshot", "commands:output"]);
+var NOT_TOOLS_CHANNELS = /* @__PURE__ */ new Set(["mcp:test-log", "mcp:test-log-cleared", "logs:entry"]);
 var BridgeHost = class {
   // Every Bridge webview view attaches here (chat, the 4 tools panels, the 10
   // customize sections). Events fan out to all — except the per-session heavy
@@ -56076,11 +56090,13 @@ var BridgeHost = class {
     const channel = typeof msg.channel === "string" ? msg.channel : "";
     const heavy = HEAVY_SESSION_CHANNELS.has(channel);
     const streamOnly = STREAMING_ONLY_CHANNELS.has(channel);
+    const chatOnly = CHAT_ONLY_CHANNELS.has(channel);
+    const notTools = NOT_TOOLS_CHANNELS.has(channel);
     const resyncable = heavy || RESYNC_ON_REVEAL_CHANNELS.has(channel);
     for (const wv of this.webviews) {
       const role = this.webviewRoles.get(wv);
-      if (role === "customize" && heavy) continue;
-      if (role === "tools" && streamOnly) continue;
+      if (role === "customize" && (heavy || chatOnly)) continue;
+      if (role === "tools" && (streamOnly || chatOnly || notTools)) continue;
       if (this.resync.isHidden(wv)) {
         if (resyncable) this.resync.markStale(wv);
         continue;

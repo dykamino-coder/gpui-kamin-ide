@@ -25,6 +25,32 @@ it('trims nonessential traffic and keeps MCP Tasks in the background (CLI 2.1.31
   }
 })
 
+describe('Claude CLI thinking display (INC-2026-0098)', () => {
+  const display = (args: string[]) => {
+    const i = args.indexOf('--thinking-display')
+    return i < 0 ? undefined : args[i + 1]
+  }
+
+  it('asks for summarized thinking by default, so thinking blocks carry text', () => {
+    expect(display(buildClaudeArgs(session()))).toBe('summarized')
+    expect(display(buildClaudeArgs({ ...session(), resumeConversationId: 'c' } as SessionConfig))).toBe('summarized')
+  })
+
+  it('keeps the CLI display when the session or the server chose it, or the flags name one', () => {
+    expect(display(buildClaudeArgs({ ...session(), thinkingDisplay: 'updates' }))).toBeUndefined()
+    const own = buildClaudeArgs({ ...session(), extraArgs: ['--thinking-display', 'omitted'] })
+    expect(own.filter((arg) => arg === '--thinking-display')).toHaveLength(1)
+    expect(display(own)).toBe('omitted')
+    vi.stubEnv('CLAUDE_BRIDGE_THINKING_DISPLAY', 'updates')
+    try {
+      expect(display(buildClaudeArgs(session()))).toBeUndefined()
+      expect(display(buildClaudeArgs({ ...session(), thinkingDisplay: 'summarized' }))).toBe('summarized')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
 describe('Claude CLI model selection', () => {
   it('launches new sessions with Opus 5.5 and keeps an explicit user choice', () => {
     const defaultArgs = buildClaudeArgs(session())

@@ -98,6 +98,28 @@ describe('submission transcript identity', () => {
     expect(localQueue.value.has('tab')).toBe(false)
   })
 
+  it('drops a /resume queue item on its server completion receipt, though the view moved to another transcript', () => {
+    jsonlEntriesByTab.value = new Map([['tab', [{ type: 'user', uuid: 'old', _ord: 40, message: { role: 'user', content: 'before clear' } }]]])
+    const id = 'resume-1'
+    const text = '/resume 0b6e1f1c-5a8a-4c4e-9d43-3f6a3c1f2b10'
+    receiveSubmission('tab', { id, text, state: 'fallback', cancelable: false, createdAt: 1 })
+    expect(localQueue.value.get('tab')?.map(item => item.id)).toEqual([id])
+    // The resumed transcript: older rows, below the old watermark, no /resume row.
+    jsonlEntriesByTab.value = new Map([['tab', [{ type: 'user', uuid: 'resumed', _ord: 3, message: { role: 'user', content: 'hello one' } }]]])
+    reconcileQueueWithEntries('tab')
+    expect(localQueue.value.get('tab')?.map(item => item.id)).toEqual([id])
+    receiveSubmission('tab', { id, text, state: 'fallback', cancelable: false, committed: true, createdAt: 1 })
+    expect(localQueue.value.has('tab')).toBe(false)
+    // Replayed after a reattach: the settled command never comes back.
+    receiveSubmission('tab', { id, text, state: 'fallback', cancelable: false, committed: true, createdAt: 1 })
+    expect(localQueue.value.has('tab')).toBe(false)
+  })
+
+  it('never enqueues a terminal command first seen already completed', () => {
+    receiveSubmission('tab', { id: 'replayed', text: '/clear', state: 'fallback', committed: true })
+    expect(localQueue.value.has('tab')).toBe(false)
+  })
+
   it('restores the host cursor and leaves acceptance to the host', () => {
     jsonlEntriesByTab.value = new Map([['tab', [{ type: 'user', uuid: 'accepted', _ord: 11,
       message: { role: 'user', content: 'queued message' } }]]])
