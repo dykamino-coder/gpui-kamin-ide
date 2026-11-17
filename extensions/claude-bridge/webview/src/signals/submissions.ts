@@ -46,7 +46,9 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   if (item.state === 'read' && !item.uuid && modCapabilities.peek().get(tabId) !== true) item.committed = true
   item.fallbackQueue = mergeFallbackQueue(existing?.fallbackQueue, data.fallbackQueue)
   if (item.state === 'fallback') {
-    if (item.fallbackQueue?.consumed || item.fallbackQueue?.dismissed) removeLocalQueueItem(tabId, item.id)
+    // `committed`: the server saw the CLI complete this terminal command
+    // (SessionStart after /resume, /clear, /compact), which no row can show.
+    if (item.committed || item.fallbackQueue?.consumed || item.fallbackQueue?.dismissed) removeLocalQueueItem(tabId, item.id)
     else if (item.text && existing?.state !== 'fallback') {
       enqueueLocal(tabId, item.text, { id: item.id, ...item.fallbackQueue, hostOwned: !!item.fallbackQueue })
       // Старый host без метаданных использует desktop matcher. Browser host

@@ -2,10 +2,13 @@
 // "Thinking" label, no collapsed one-line teaser, nothing to expand. The
 // vnode tree is inspected directly (the suite has no DOM environment).
 import { expect, it } from 'vitest'
-import type { ContentBlock } from '../../types/jsonl'
+import type { ContentBlock, JsonlEntryData } from '../../types/jsonl'
 import { renderContentBlocks } from './ContentBlocks'
 import { JsonlTextBlock } from './JsonlTextBlock'
-import { ThinkingBlock } from './ThinkingBlock'
+import { ThinkingBlock, thoughtLabel } from './ThinkingBlock'
+import { contentWithThinkingDuration } from './thinking-duration'
+import { mergeAssistantEntriesByMessageId } from './utils'
+import { mergeAssistantEntry } from '../../signals/merge-assistant'
 
 interface VNodeLike { type: unknown; props: Record<string, unknown> & { children?: unknown } }
 
@@ -32,9 +35,33 @@ it('renders the full thinking text through the assistant text renderer, marked b
   expect(JSON.stringify(node.props.children)).not.toContain('thinking-toggle')
 })
 
-it('draws nothing for empty or whitespace-only thinking (signature-only block)', () => {
-  expect(ThinkingBlock({ thinking: '' })).toBeNull()
-  expect(ThinkingBlock({ thinking: ' \n\t' })).toBeNull()
+it('marks a signature-only thinking block with "thought N s" instead of drawing nothing (INC-2026-0098)', () => {
+  const node = ThinkingBlock({ thinking: '', durationMs: 4400 }) as unknown as VNodeLike
+  expect(node.props.class).toBe('block-thinking thinking-hidden')
+  const [mark, note] = kids(node)
+  expect(String(mark!.props.class)).toContain('fa-lightbulb')
+  expect(note!.props.children).toBe('thought 4 s')
+  const blank = ThinkingBlock({ thinking: ' \n\t' }) as unknown as VNodeLike
+  expect(kids(blank)[1]!.props.children).toBe('thought')
+  expect(thoughtLabel(200)).toBe('thought 1 s')
+  // Still streaming: the text may just not have arrived yet.
+  expect(ThinkingBlock({ thinking: '', isStreaming: true })).toBeNull()
+})
+
+it('keeps each thinking row\'s duration on its block through the message merges', () => {
+  const rows = [
+    { type: 'assistant', uuid: 'a', thinkingDurationMs: 7000, message: { id: 'm', content: [{ type: 'thinking', thinking: '', signature: 's' }] } },
+    { type: 'assistant', uuid: 'b', message: { id: 'm', content: [{ type: 'text', text: 'answer' }] } },
+  ] as unknown as JsonlEntryData[]
+  const merged = mergeAssistantEntriesByMessageId(rows)
+  expect(merged).toHaveLength(1)
+  const blocks = contentWithThinkingDuration(merged[0]!)
+  expect(blocks[0]!.durationMs).toBe(7000)
+  const [first] = renderContentBlocks(blocks) as unknown as VNodeLike[]
+  expect(first!.props.durationMs).toBe(7000)
+  expect((rows[0]!.message!.content as ContentBlock[])[0]!.durationMs).toBeUndefined()
+  const folded = mergeAssistantEntry(rows[0]!, rows[1]!)
+  expect((folded.message!.content as ContentBlock[])[0]!.durationMs).toBe(7000)
 })
 
 it('streams only the active thinking block and keeps finished ones static', () => {
