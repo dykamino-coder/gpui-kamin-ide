@@ -119,13 +119,18 @@ impl Window {
             clips: contexts.get::<crate::scene::segments::Clip>(),
             slices: contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
         });
-        let (result, draft, identity, scale) = self.capture_paint_commands(source_clip, cx, |window, cx| {
+        let (result, mut draft, identity, scale) = self.capture_paint_commands(source_clip, cx, |window, cx| {
             let _recording = window.render_contexts.enter(Some(Rc::new(Recording)));
             let _clips = window.render_contexts.enter::<crate::scene::segments::Clip>(None);
             let _slices = window.render_contexts.enter::<admission::Slices>(None);
             window.next_frame.scene.begin_segments(read);
+            // Under a layer the record keeps the runs of its boxes for its
+            // placements (`scene::layer::placed`).
+            window.begin_record_runs();
             paint(window, cx)
         })?;
+        // Groups and hoisted backdrops place through an adopted copy: no runs.
+        draft.end_record_runs();
         let mut records = Vec::with_capacity(segments.len());
         for (index, segment) in segments.iter().enumerate() {
             if segments[..index].iter().any(|prior| prior.id == segment.id) { continue; }

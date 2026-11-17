@@ -579,6 +579,11 @@ export class CodexSessionBinding {
     void this.deliver(text, submissionId)
   }
 
+  /** A turn that ended while no client was attached must not stay `working`. */
+  replay(): void {
+    this.activity(this.turnOpen)
+  }
+
   input(data: string): boolean {
     if (!data.includes('\x03')) return false
     void this.agent.interrupt().catch(() => undefined)
