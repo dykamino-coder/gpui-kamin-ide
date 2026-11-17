@@ -119,7 +119,21 @@ impl Pending {
                 _ => (0, true),
             }))
             .unwrap_or(0);
-            let task = self.0.borrow_mut().tasks.remove(at);
+            let (task, destinations) = {
+                let mut work = self.0.borrow_mut();
+                let task = work.tasks.remove(at);
+                // Empty hosts remain available until the final collect: a
+                // selected measure can still send them late OOF children.
+                let destinations = if task.is_none() {
+                    std::mem::take(&mut work.destinations)
+                } else {
+                    Vec::new()
+                };
+                (task, destinations)
+            };
+            // A context can own the arena whose callbacks own this Pending.
+            // Release it outside the borrow: dropping callbacks may reenter.
+            drop(destinations);
             let Some(Task {
                 item,
                 bounds,
@@ -169,3 +183,6 @@ mod tests {
         assert_eq!(super::next([].into_iter()), None);
     }
 }
+
+#[cfg(test)]
+mod lifetime_tests;
