@@ -98,9 +98,9 @@ fn svg_cpu_matches_previous_gpui_rasterizer() {
 #[test]
 fn independent_documents_share_fractional_svg_edge_upload() {
     use crate::resources::images::{store::ImageStore, svg_raster::RasterRequest};
-    // css-skew-001: один и тот же дробный край в разных документах.
-    // При разных ImageId линейная выборка атласа давала в (88, 61)
-    // RGB (116, 186, 116) и (117, 186, 117), даже у эталона с собой.
+    // css-skew-001: the same fractional edge in different documents.
+    // With different ImageIds, linear atlas sampling at (88, 61) produced
+    // RGB (116, 186, 116) and (117, 186, 117), even comparing a reference to itself.
     let markup = "<svg xmlns='http://www.w3.org/2000/svg' width='231.642' height='268.778'><path d='M 231.64212,268.77841 73.167806,158.54816 0,0 158.58452,110.15942 z' fill='green'/></svg>";
     let first = ImageStore::default();
     let second = ImageStore::default();
@@ -111,7 +111,7 @@ fn independent_documents_share_fractional_svg_edge_upload() {
     assert_eq!(a.bytes, b.bytes);
     let legacy = gpui::svg_markup_to_image(markup, 231.642, 268.778, 2.0).unwrap();
     assert_eq!(a.bytes.as_ref(), legacy.as_bytes(0).unwrap());
-    // Соседи выборки центра (88.5, 61.5) при растре 463 x 538.
+    // Neighbours sampled at centre (88.5, 61.5) in a 463 x 538 raster.
     let edge =
         [(176, 122), (177, 122), (176, 123), (177, 123)].map(|(x, y)| a.pixel(x, y).unwrap());
     assert_eq!(

@@ -1,5 +1,5 @@
-//! Совместимость CSS: преобразовать уникальный decoder RGBA в straight BGRA.
-//! Порядок alpha/ICC и округление сохраняют прежний CSS upload, без второго растра.
+//! CSS compatibility: convert the unique decoder RGBA buffer to straight BGRA.
+//! Preserve the previous CSS upload's alpha/ICC order and rounding in place.
 
 use super::types::ColourSpace;
 use crate::color::{IccProfile, clamp_near_gamut};
