@@ -83,12 +83,11 @@ pub(crate) fn is_visible(id: &str) -> bool {
 }
 
 /// Значение для `was_hidden` при создании браузера: создание асинхронное, и
-/// пока оно шло, вью могло уйти с экрана.
+/// пока оно шло, вью могло уйти с экрана. Свёрнутость окна здесь не
+/// учитывается: такой браузер не записан в усыплённые, и разворот окна его бы
+/// не разбудил.
 pub(crate) fn hidden_flag(id: &str) -> ::std::os::raw::c_int {
-    let shown = VIEWS
-        .lock()
-        .is_ok_and(|v| !v.window_hidden && v.visible.contains(id));
-    if shown { 0 } else { 1 }
+    if is_visible(id) { 0 } else { 1 }
 }
 
 /// Окно свернули или развернули (`WindowVisibility` GPUI).
@@ -102,7 +101,7 @@ pub(crate) fn set_window_shown(shown: bool) {
     let Ok(mut views) = VIEWS.lock() else {
         return;
     };
-    if views.window_hidden == !shown {
+    if views.window_hidden != shown {
         return;
     }
     views.window_hidden = !shown;
