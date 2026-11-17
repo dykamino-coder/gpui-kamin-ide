@@ -95,7 +95,7 @@ FIXES = {
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
         "DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.",
         "Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.",
-        "Process shutdown: drain deferred native window destruction, stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop.",
+        "Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.",
         "Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.",
         "Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.",
         "Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state,"

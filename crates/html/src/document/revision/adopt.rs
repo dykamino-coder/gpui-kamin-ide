@@ -21,6 +21,7 @@ use super::mutation::{AttrChange, Batch, open};
 use super::patch::{Target, attr_paths, patch};
 use super::text::{TextEdits, editable, patch_texts, text_paths};
 use crate::document::Document;
+use crate::paint_path as why;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -47,9 +48,9 @@ impl Document {
             && self.embedded_failure().is_none()
             && revision.failure().is_none();
         if !quiet || *self.theme_css != *theme_css {
-            return None;
+            return why::refuse(&why::REFUSED_PLAN_STATE);
         }
-        let root = values.source_dom()?;
+        let root = why::why(values.source_dom(), &why::REFUSED_PLAN_STATE)?;
         let mut targets = HashMap::new();
         if !batch.elements.is_empty() {
             let collected;
@@ -87,9 +88,10 @@ impl Document {
                     // A class the sheets read: its restyle may still reach
                     // only inherited paint values (`repaint`).
                     Some(_) if open(&change.element, &root) => {
-                        return self.repaint_plan(batch, changed?, theme_css);
+                        let changed = why::why(changed, &why::REFUSED_RESTYLE_PROBE)?;
+                        return self.repaint_plan(batch, changed, theme_css);
                     }
-                    _ => return None,
+                    _ => return why::refuse(&why::REFUSED_PLAN_ELEMENT),
                 }
             }
         }
@@ -105,22 +107,26 @@ impl Document {
                 Some(id) if open(&change.node, &root) && editable(change, &read) => {
                     texts.insert(id, change);
                 }
-                _ => return None,
+                _ => return why::refuse(&why::REFUSED_PLAN_TEXT),
             }
         }
         // Пути к правкам ищутся в текущем дереве; без единого пути дерево
         // коробок после пакета то же самое, и копировать нечего.
         let attrs = match targets.is_empty() {
             true => Vec::new(),
-            false => attr_paths(&self.nodes, &*self.boxes()?, &targets)?,
+            false => why::why(
+                self.boxes()
+                    .and_then(|b| attr_paths(&self.nodes, &b, &targets)),
+                &why::REFUSED_PLAN_PATHS,
+            )?,
         };
-        let found = text_paths(&self.nodes, &texts)?;
+        let found = why::why(text_paths(&self.nodes, &texts), &why::REFUSED_PLAN_TEXT)?;
         if attrs.is_empty() && found.is_empty() {
             return Some(Plan::Clean(None));
         }
         let mut nodes = (*self.nodes).clone();
         if !(patch(&mut nodes, attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
-            return None;
+            return why::refuse(&why::REFUSED_PLAN_PATHS);
         }
         // Цели атрибутов — только `class` и `data-*` (`neutral`): их читают
         // лишь селекторы и `attr()` каскада, а не сборка кадра.
