@@ -8,6 +8,7 @@ pub(crate) struct Sampled;
 
 #[inline]
 fn record(kind: u8, bytes: usize, pointer: *const u8) {
+    super::retain::track(pointer, bytes);
     #[cfg(windows)]
     super::probe::record(kind, bytes, pointer);
     #[cfg(not(windows))]
@@ -15,6 +16,7 @@ fn record(kind: u8, bytes: usize, pointer: *const u8) {
 }
 #[inline]
 fn release(bytes: usize, pointer: *const u8) {
+    super::retain::untrack(pointer);
     #[cfg(windows)]
     super::probe::release(bytes, pointer);
     #[cfg(not(windows))]

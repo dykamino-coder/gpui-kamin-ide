@@ -62,14 +62,19 @@ static ALLOC: allocations::Sampled = allocations::Sampled;
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
+    // Set allocator policy before any opt-in diagnostic configuration can allocate.
+    kamin_alloc::configure();
     // Пробник стеков читает окружение без аллокаций, до первой аллокации стенда.
     #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
     if let Err(error) = allocations::probe::init() {
         eprintln!("engine_bench: {error}");
         std::process::exit(1);
     }
-    // Политика арен — как у приложения, до первой аллокации стенда.
-    kamin_alloc::configure();
+    #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
+    if let Err(error) = allocations::retain::init() {
+        eprintln!("engine_bench: {error}");
+        std::process::exit(1);
+    }
     #[cfg(all(windows, feature = "work-counters"))]
     if let Err(error) = profile_state::publish() {
         eprintln!("engine_bench: {error}");
