@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import fsp from 'node:fs/promises'
 import { mkdtempSync, writeFileSync, rmSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { JsonlWatcher, type TranscriptSwitchReason } from './jsonl-watcher'
 import { CompactionScanner } from './compaction-scanner'
 import type { JsonlEntry, JsonlStatus } from '../../shared/jsonl-types'
@@ -77,6 +77,26 @@ describe('JsonlWatcher — explicit resume handoff', () => {
     expect(w.adoptResumedTranscript(CLEARED)).toBe(false)
     expect(w.getFilePath()).toBe(cleared)
     expect(ids).toEqual([])
+  })
+
+  it('stays on the resumed file when the /clear file is discovered only after the resume', async () => {
+    // Live order on 6.3.189: the resume arrived while the watcher still tailed
+    // the resumed conversation, and the cleared file was found seconds later.
+    const { resumed, cleared, statuses, ids, w } = setup()
+    ;(w as unknown as { filePath: string }).filePath = resumed
+    await new Promise((r) => setTimeout(r, 20))
+    expect(w.adoptResumedTranscript(RESUMED)).toBe(false)
+    const discovered = (w as unknown as { onDiscoveredNewer(p: string): void }).onDiscoveredNewer.bind(w)
+    discovered(cleared)
+    expect(w.getFilePath()).toBe(resumed)
+    expect(ids).toEqual([])
+    expect(statuses).toEqual([])
+    // A transcript created after the resume (a later /clear or compaction) is followed.
+    await new Promise((r) => setTimeout(r, 20))
+    const next = join(dirname(resumed), 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl')
+    writeFileSync(next, user('n1', '/clear'))
+    discovered(next)
+    expect(w.getFilePath()).toBe(next)
   })
 
   it('keeps discovery from handing the view back to the newer abandoned file', async () => {
