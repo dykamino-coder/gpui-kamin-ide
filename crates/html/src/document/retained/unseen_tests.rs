@@ -6,6 +6,7 @@
 //! document's; a box the frame showed, even in part, is recorded again or
 //! builds the frame, never left stale.
 
+use super::box_repaint_tests::{frames, quads};
 use super::reuse_tests::{settled, update};
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext, px, size};
@@ -40,21 +41,6 @@ fn framed(at: usize, edit: &str, wrapped: bool) -> String {
         open = if wrapped { "<div>" } else { "" },
         close = if wrapped { "</div>" } else { "" },
     )
-}
-
-fn frames(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> (u64, u64) {
-    cx.update(|_, cx| view.read(cx).doc.retained_frames())
-}
-
-/// The painted quads in paint order, without their draw orders.
-fn quads(cx: &mut VisualTestContext) -> Vec<String> {
-    cx.update(|window, _| {
-        let quads = window.painted_quads().into_iter().map(|mut q| {
-            q.order = 0;
-            format!("{q:?}")
-        });
-        quads.collect()
-    })
 }
 
 fn tall(view: &gpui::Entity<View>, cx: &mut VisualTestContext) {

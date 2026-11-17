@@ -35,6 +35,8 @@ pub(super) struct Retained {
     pending: [SceneDamage; BUFFER_COUNT],
     /// Staging texture of frame capture, kept while the size is the same.
     staging: Option<(u32, u32, ID3D11Texture2D)>,
+    /// How frame capture waits for the GPU (`gpu_wait`), kept with the device.
+    pub(super) gpu_wait: super::gpu_wait::GpuWait,
     /// The frame rasterizer state with the scissor test on.
     scissor: Option<ID3D11RasterizerState>,
     /// A pass of this frame failed and was skipped: the frame is incomplete.
@@ -169,6 +171,7 @@ impl DirectXRenderer {
     pub(super) fn reset_retained(&mut self) {
         self.forget_frames();
         self.retained.staging = None;
+        self.retained.gpu_wait = Default::default();
         self.retained.scissor = None;
         self.retained.groups.scrub = Default::default();
         self.retained.failed = false;
