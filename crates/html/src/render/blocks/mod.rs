@@ -48,7 +48,7 @@ async fn stack(
     fresh: bool,
 ) -> Vec<AnyElement> {
     let cell_bfc = opts.cx.constraints.cell_bfc;
-    let inner = context::child_options(inherited, &sizes, opts, fresh);
+    let mut inner = context::child_options(inherited, &sizes, opts, fresh);
     // Clean content of a box replays its last frame (`layout::reuse::content`).
     let reuse = opts.cx.contracts.reuse.as_ref();
     let content = reuse.and_then(|r| r.content(nodes, inherited, opts, &inner, fresh));
@@ -56,6 +56,9 @@ async fn stack(
         && let Some(out) = reuse.replay_content(content, &inner)
     {
         return out;
+    }
+    if let Some(content) = &content {
+        content.track(&mut inner);
     }
     let mut out = build(stk, nodes, inherited, sizes, &inner, cell_bfc).await;
     if let (Some(reuse), Some(content)) = (reuse, content) {

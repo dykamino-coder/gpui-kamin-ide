@@ -83,7 +83,7 @@ fn normalized_runs_feed_the_adapter_and_survive_geometry_and_font_changes() {
         .borrow()
         .normalized(&p.children, &resized)
         .unwrap();
-    assert!(Rc::ptr_eq(&first, &after));
+    assert!(first.same(&after));
     doc.state
         .boxes
         .borrow_mut()
@@ -94,7 +94,7 @@ fn normalized_runs_feed_the_adapter_and_survive_geometry_and_font_changes() {
         .borrow()
         .normalized(&p.children, &style)
         .unwrap();
-    assert!(Rc::ptr_eq(&first, &again));
+    assert!(first.same(&again));
     resized.inh.text_flow.text_transform = Some(TextTransform::Upper);
     assert!(
         doc.state
@@ -129,7 +129,7 @@ fn a_style_commit_replaces_normalization_but_keeps_box_identity() {
             tree.normalized(&p.children, &p.style.used()).unwrap(),
         )
     };
-    assert_eq!(text.text, "HELLO WORLD");
+    assert_eq!(text.text(), "HELLO WORLD");
     doc.update("<p>hello  world</p>", "p {text-transform:lowercase}")
         .unwrap();
     doc.state
@@ -140,9 +140,9 @@ fn a_style_commit_replaces_normalization_but_keeps_box_identity() {
     let p = paragraph(&doc.nodes);
     assert_eq!(tree.flow(&p.children).unwrap(), id);
     let next = tree.normalized(&p.children, &p.style.used()).unwrap();
-    assert_eq!(next.text, "hello world");
-    assert!(!Rc::ptr_eq(&text, &next));
-    assert_eq!(text.text, "HELLO WORLD");
+    assert_eq!(next.text(), "hello world");
+    assert!(!text.same(&next));
+    assert_eq!(text.text(), "HELLO WORLD");
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn an_unread_attribute_rebinds_the_adapter_without_replacing_runs() {
         .borrow()
         .normalized(&p.children, &p.style.used())
         .unwrap();
-    assert!(Rc::ptr_eq(&before, &after));
+    assert!(before.same(&after));
 }
 
 #[test]
@@ -228,14 +228,14 @@ fn retained_text_matches_css_whitespace_case_and_segment_break_rules() {
             &LayoutCx::default(),
         ));
         let runs = normalized
-            .items
+            .items()
             .iter()
             .map(|item| {
                 let ItemKind::Text { start, end } = item.kind else {
                     panic!("text run")
                 };
                 assert!(doc.state.boxes.borrow().get(item.box_id).is_some());
-                normalized.text[start..end].to_owned()
+                normalized.text()[start as usize..end as usize].to_owned()
             })
             .collect::<Vec<_>>();
         assert_eq!(runs, canonical, "{attributes}: {text:?}");

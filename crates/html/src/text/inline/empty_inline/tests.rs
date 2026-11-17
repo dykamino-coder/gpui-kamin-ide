@@ -1,4 +1,4 @@
-//! Факты текста не меняют участие скрытых коробок и отделяются при правке.
+//! Text facts do not change the participation of hidden boxes and are split off at an edit.
 
 use super::*;
 use crate::layout::cx::subtree::SubtreeFacts;

@@ -1,11 +1,11 @@
-//! Проверка повторов кадра и завершение его записей.
+//! The check of a frame's replays and the end of its records.
 
 use gpui::{Bounds, ScaledPixels, Window};
 use std::rc::Rc;
 
 impl super::super::FlowReuse {
-    /// Проверка повторов кадра (`ReplaySlot::valid`); неудачные блоки (все,
-    /// если раскладке понадобилась мера) запрещаются, пока ключ потока тот же.
+    /// The check of the frame's replays (`ReplaySlot::valid`); failed blocks (all of them,
+    /// if layout needed a measure) are banned while the flow key is the same.
     pub(in crate::layout::reuse) fn validate_replays(&self, window: &mut Window) -> bool {
         let slots = self.replay_slots.take();
         let failed: Vec<u64> = slots
@@ -38,7 +38,7 @@ impl super::super::FlowReuse {
         true
     }
 
-    /// Записи повтора этого кадра: повторённые и завершённые у экрана `screen`.
+    /// The replay records of this frame: replayed and finished near screen `screen`.
     pub(in crate::layout::reuse) fn finish_replays(&self, screen: Bounds<ScaledPixels>) {
         let mut replays = self.next_replays.take();
         let mut reads = self.store.reads_widths.take();

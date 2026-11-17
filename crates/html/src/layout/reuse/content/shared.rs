@@ -44,6 +44,7 @@ pub(crate) struct KeyInputs {
     styles: Latest<BoxStyle>,
     roots: Latest<BoxStyle>,
     texts: Latest<gpui::TextStyle>,
+    envs: Latest<super::key::KeyEnv>,
 }
 
 impl KeyInputs {
@@ -59,6 +60,12 @@ impl KeyInputs {
 
     pub(in crate::layout::reuse) fn text(&self, text: &gpui::TextStyle) -> Rc<gpui::TextStyle> {
         self.texts.share(text, |a, b| a == b)
+    }
+
+    /// One environment for the content keys of equal containers: a key
+    /// holds its container's identity and this pointer.
+    pub(super) fn env(&self, env: &super::key::KeyEnv) -> Rc<super::key::KeyEnv> {
+        self.envs.share(env, super::key::KeyEnv::same)
     }
 }
 

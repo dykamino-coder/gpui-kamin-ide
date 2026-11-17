@@ -1,27 +1,27 @@
-//! Коробка потока по его узлам, без адреса среза в ключе.
+//! The box of a flow by its nodes, without the slice address in the key.
 //!
-//! Кандидат — владелец первого узла с ключом: родитель коробки элемента
-//! (`by_node`) или владелец исходного текста, с которого начинается текст
+//! The candidate is the owner of the first keyed node: the parent of the element's box
+//! (`by_node`) or the owner of the source text the flow's text starts with
 //! (`Text::first_source`, `Flows`).
-//! Подтверждение — метка снимка детей, которым коробка опубликовала поток
-//! (`ChildrenMark`): метка держит снимок, и живой срез сравнивается только с
-//! живым снимком, так что освобождённый и заново выделенный срез чужого
-//! потока не выбирает коробку. Корневой поток документа (не снимок детей)
-//! подтверждается ключами всех своих узлов и длиной.
+//! The confirmation is the mark of the children snapshot the box published the flow with
+//! (`ChildrenMark`): the mark holds the snapshot, and a live slice is compared only with
+//! a live snapshot, so a freed and reallocated slice of another
+//! flow does not pick the box. The document's root flow (not a children snapshot)
+//! is confirmed by the keys of all its nodes and their count.
 
 use super::BoxTree;
 use super::by_node::ByNode;
 use super::source::Source;
 use crate::dom::{BoxId, Children, ChildrenMark, Node};
 
-/// Владелец потока по исходному тексту, с которого начинается его текст, и
-/// метки опубликованных потоков по слотам коробок.
+/// The owner of a flow by the source text its text starts with, and the
+/// marks of the published flows by box slot.
 #[derive(Default)]
 pub(super) struct Flows {
     texts: ByNode,
-    /// Снимок детей, которым коробка слота (её поколения) опубликовала поток.
+    /// The children snapshot the box of the slot (of its generation) published its flow with.
     marks: Vec<Option<(u32, ChildrenMark)>>,
-    /// Число узлов корневого потока коробки `Source::Root`.
+    /// The node count of the root flow of the `Source::Root` box.
     root: usize,
 }
 
@@ -50,7 +50,7 @@ impl Flows {
         }
     }
 
-    /// Коробка `id` удалена: её метка не держит снимок.
+    /// Box `id` is removed: its mark does not hold a snapshot.
     pub(super) fn forget(&mut self, id: BoxId) {
         self.set_mark(id, None);
     }
@@ -72,7 +72,7 @@ impl Flows {
 }
 
 impl BoxTree {
-    /// Коробка `id` публикует поток детьми `children` (пустые — без потока).
+    /// Box `id` publishes a flow with children `children` (empty: no flow).
     pub(super) fn set_flow(&mut self, children: &Children, id: BoxId) {
         if self.get(id).is_none() {
             return;
@@ -82,14 +82,14 @@ impl BoxTree {
         self.flows.own_texts(children, id);
     }
 
-    /// Корневая коробка `root` публикует поток документа `nodes`.
+    /// Root box `root` publishes the document flow `nodes`.
     pub(super) fn set_root_flow(&mut self, nodes: &[Node], root: BoxId) {
         self.flows.set_mark(root, None);
         self.flows.root = nodes.len();
         self.flows.own_texts(nodes, root);
     }
 
-    /// Владелец узла с ключом: коробка-родитель элемента или владелец текста.
+    /// The owner of a keyed node: the parent box of an element or the owner of a text.
     fn owner(&self, node: &Node) -> Option<Option<BoxId>> {
         match node {
             Node::Element(e) if e.node_id != 0 => Some(
@@ -105,7 +105,7 @@ impl BoxTree {
         }
     }
 
-    /// Коробка потока, опубликованного узлами `nodes`.
+    /// The box of the flow published by nodes `nodes`.
     pub(crate) fn flow_of(&self, nodes: &[Node]) -> Option<BoxId> {
         let owner = nodes.iter().find_map(|node| self.owner(node))??;
         let record = self.get(owner)?;
@@ -122,7 +122,7 @@ impl BoxTree {
         published.then_some(owner)
     }
 
-    /// Коробка потока, опубликованного срезом `nodes`.
+    /// The box of the flow published by slice `nodes`.
     #[cfg(test)]
     pub(crate) fn flow(&self, nodes: &[Node]) -> Option<BoxId> {
         self.flow_of(nodes)

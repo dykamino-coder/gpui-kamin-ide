@@ -162,7 +162,7 @@ fn capture_in<R>(
 
 /// Повтор отложенной краски `record` полной записи прошлого кадра: её строки
 /// и позиционированные задания встают в очереди открытого кадра, вне него
-/// рисуются на месте. Ответ — та же краска этого кадра. A block that lies
+/// painted in place. The answer is the same paint of this frame. A block that lies
 /// `offset` from where it painted moves its lines with it. A record with positioned jobs does not move (they keep the
 /// window positions of their stacking context).
 pub(crate) fn replay_moved(

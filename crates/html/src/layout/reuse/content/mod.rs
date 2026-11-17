@@ -1,20 +1,20 @@
-//! Повтор содержимого коробки на любой глубине без сборки его элементов.
+//! Replay of a box's content at any depth without building its elements.
 //!
-//! Содержимое блочного контейнера (`render::blocks::stack`: дети ячейки,
-//! блока, элемента списка) собирается из поддерева коробки и из того, что
-//! контейнер даёт ему снаружи: стиля контейнера, ограничений, окружения
-//! документа и счётчиков сборки. Если ни одна коробка поддерева не менялась
-//! с кадра записи (эпоха сборки `Epochs::paint` не новее записи) и вход
-//! снаружи тот же, сборка дала бы те же элементы: каждый элемент вывода
-//! повторяет свои узлы раскладки, prepaint и краску прошлого кадра
-//! (`replay`), а проверка кадра (`FlowReuse::validate_replays`) отвергает
-//! повтор, который встал не туда или которому понадобилась новая мера.
+//! The content of a block container (`render::blocks::stack`: the children of a cell,
+//! a block, a list item) is built from the box's subtree and from what the
+//! container gives it from outside: the container's style, constraints, the
+//! document environment and the build counters. If no box of the subtree changed
+//! since the recording frame (the build epoch `Epochs::paint` is not newer than the record) and the
+//! outside input is the same, a build would give the same elements: each output element
+//! replays its layout nodes, prepaint and paint of the previous frame
+//! (`replay`), and the frame check (`FlowReuse::validate_replays`) refuses
+//! a replay that landed elsewhere or needed a new measure.
 //!
-//! Чистоту решает дерево коробок за O(1) на контейнер, без сравнения
-//! поддерева: правка DOM (в том числе из JS) публикуется записью эпох, и
-//! содержимое на пути к ней собирается, а остальное повторяется. Так
-//! LayoutNG берёт кэшированный `LayoutResult` чистой коробки, а Blink
-//! `PaintController` — подпоследовательность краски чистого поддерева.
+//! The box tree decides cleanliness in O(1) per container, without comparing the
+//! subtree: a DOM edit (from script too) is published as an epoch record, and
+//! the content on the path to it is built while the rest replays. So
+//! LayoutNG takes the cached `LayoutResult` of a clean box, and Blink
+//! `PaintController` the paint subsequence of a clean subtree.
 
 mod key;
 pub(crate) mod shared;
@@ -28,38 +28,51 @@ use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
-use key::{ContentKey, key, plain};
+use key::{ContentKey, KeyEnv, key, plain};
 use std::cell::Cell;
 use std::rc::Rc;
 
-/// Запись содержимого: вход, номер публикации и элементы последнего кадра.
+/// A content record: the input, the publication number and the elements of the last frame.
 pub(crate) struct ContentRecord {
     key: ContentKey,
-    /// `BoxTree::clock` сборки записи: годна, пока эпоха сборки коробки не новее.
+    /// The build read a width from outside the container (`BoxConstraints::track_widths_below`):
+    /// the record holds only at the same widths.
+    widths: bool,
+    /// `BoxTree::clock` of the recording build: valid while the box's build epoch is not newer.
     at: u32,
     start: Counters,
     end: Counters,
-    items: Vec<Rc<ReplayRecord>>,
+    items: Box<[Rc<ReplayRecord>]>,
 }
 
-/// Содержимое, собранное в этой сборке с обёртками записи.
+/// A content built in this build with record wrappers.
 pub(super) struct PendingContent {
     owner: BoxId,
     record: ContentRecord,
+    reads: Rc<Cell<bool>>,
     items: Vec<Rc<PendingReplay>>,
 }
 
-/// Содержимое контейнера `inherited` в этой сборке: ключ для повтора и записи.
+/// The content of container `inherited` in this build: the key for replay and record.
 pub(crate) struct Content {
     owner: BoxId,
     key: ContentKey,
     at: u32,
     start: Counters,
+    /// Outside width reads of the build (`track`).
+    reads: Rc<Cell<bool>>,
+}
+
+impl Content {
+    /// Record the outside width reads of the content's build in `inner`.
+    pub(crate) fn track(&self, inner: &mut RenderOpts) {
+        inner.cx.constraints.track_widths_below(self.reads.clone());
+    }
 }
 
 impl FlowReuse {
-    /// Содержимое `nodes` контейнера `inherited` под опциями детей `inner`
-    /// (`outer` — опции контейнера), если его стоит повторять или записывать.
+    /// The content `nodes` of container `inherited` under the children options `inner`
+    /// (`outer`: the container's options), if it is worth replaying or recording.
     pub(crate) fn content(
         &self,
         nodes: &[Node],
@@ -78,7 +91,7 @@ impl FlowReuse {
         if root
             || nodes.is_empty()
             || outer.cx.contracts.document_root != Some(self.doc)
-            || !plain(nodes, inner)
+            || !plain(nodes, inherited, inner)
         {
             return None;
         }
@@ -97,28 +110,22 @@ impl FlowReuse {
             }
             (owner, boxes.clock())
         };
-        let cx = &inner.cx;
+        let env = KeyEnv::of(&self.store.inputs, inherited, outer, inner, fresh);
         Some(Content {
             owner,
             at,
-            start: Counters::read(cx),
+            start: Counters::read(&inner.cx),
             key: ContentKey {
-                inherited: self.store.inputs.style(inherited),
+                env: self.store.inputs.env(&env),
                 ids: key::ids(inherited),
-                constraints: cx.constraints.clone(),
-                cell_bfc: outer.cx.constraints.cell_bfc,
-                fresh,
-                len: nodes.len(),
-                root: self.store.inputs.root(&inner.root_style()),
-                viewport: inner.viewport,
-                text: self.store.inputs.text(&inner.text),
-                normal_line_height: inner.normal_line_height,
-                fonts: cx.doc().values.font_generation(),
+                len: u32::try_from(nodes.len()).unwrap_or(u32::MAX),
+                widths: inner.cx.constraints.key_widths(),
             },
+            reads: Rc::default(),
         })
     }
 
-    /// Повтор содержимого, если его запись годна (см. модуль).
+    /// Replay the content if its record is valid (see the module).
     pub(crate) fn replay_content(
         &self,
         content: &Content,
@@ -143,8 +150,14 @@ impl FlowReuse {
                 && record.at <= boxes.clock()
                 && !boxes.resized_by_siblings(content.owner, record.at)
         };
-        if !clean || !record.key.same(&content.key) {
+        if !clean || !record.key.same(&content.key, record.widths) {
             return None;
+        }
+        if record.widths {
+            // The replayed output read the widths: so does this build, for
+            // the records of the subtrees around it.
+            opts.cx.constraints.cb_width();
+            opts.cx.constraints.avail_w();
         }
         content
             .start
@@ -165,7 +178,7 @@ impl FlowReuse {
         Some(out)
     }
 
-    /// Обернуть собранное содержимое записью (см. модуль).
+    /// Wrap the built content in a record (see the module).
     pub(crate) fn record_content(
         &self,
         content: Content,
@@ -179,7 +192,7 @@ impl FlowReuse {
                 None,
                 (content.start, end),
                 true,
-                Rc::new(Cell::new(false)),
+                content.reads.clone(),
                 false,
                 &self.ink,
                 None,
@@ -192,31 +205,35 @@ impl FlowReuse {
             owner: content.owner,
             record: ContentRecord {
                 key: content.key,
+                widths: false,
                 at: content.at,
                 start: content.start,
                 end,
-                items: Vec::new(),
+                items: Box::default(),
             },
+            reads: content.reads,
             items,
         });
         self.pending_contents.replace(pending);
     }
 
-    /// Записи содержимого этого кадра: повторённые и завершённые.
+    /// The content records of this frame: replayed and finished.
     pub(super) fn finish_contents(&self) {
         let mut next = self.next_contents.take();
         for pending in self.pending_contents.take() {
             let PendingContent {
                 owner,
                 mut record,
+                reads,
                 items,
             } = pending;
-            let finished: Option<Vec<_>> = items
+            let finished: Option<Box<[_]>> = items
                 .iter()
                 .map(|item| item.finish(Source::bare(key(owner)), None).map(Rc::new))
                 .collect();
             if let Some(items) = finished {
                 record.items = items;
+                record.widths = reads.get();
                 next.insert(key(owner), Rc::new(record));
             }
         }

@@ -18,7 +18,7 @@ fn paragraph(doc: &Document) -> &crate::dom::Element {
     panic!("paragraph");
 }
 
-fn content(doc: &Document) -> (BoxId, Rc<InlineContent>) {
+fn content(doc: &Document) -> (BoxId, InlineContent) {
     crate::style::cascade::materialize::materialize(
         &doc.nodes,
         &Rc::new(Computed::default()),
@@ -50,25 +50,28 @@ fn mixed_text_preserves_cross_box_word_context_and_utf8_boundaries() {
         assert!(tree.normalized_inline(id, &p.style.used()).is_none());
     }
     let (_, text) = content(&doc);
-    assert_eq!(text.text, "Hello École AV سلام");
+    assert_eq!(text.text(), "Hello École AV سلام");
     assert_eq!(
-        text.items
+        text.items()
             .iter()
             .filter(|i| i.kind == ItemKind::Open)
             .count(),
         3
     );
     assert_eq!(
-        text.items
+        text.items()
             .iter()
             .filter(|i| i.kind == ItemKind::Close)
             .count(),
         3
     );
-    for item in &text.items {
+    for item in text.items() {
         assert!(doc.state.boxes.borrow().get(item.box_id).is_some());
         if let ItemKind::Text { start, end } = item.kind {
-            assert!(text.text.is_char_boundary(start) && text.text.is_char_boundary(end));
+            assert!(
+                text.text().is_char_boundary(start as usize)
+                    && text.text().is_char_boundary(end as usize)
+            );
         }
     }
 }
@@ -80,7 +83,7 @@ fn only_read_descendant_inputs_replace_the_normalized_owner() {
         .build()
         .unwrap();
     let (id, old) = content(&doc);
-    assert_eq!(old.text, "before MIXED after");
+    assert_eq!(old.text(), "before MIXED after");
     doc.update(
         html,
         "b {text-transform:uppercase;color:red;font-size:28px}",
@@ -98,7 +101,7 @@ fn only_read_descendant_inputs_replace_the_normalized_owner() {
     }
     let (same_id, painted) = content(&doc);
     assert_eq!(same_id, id);
-    assert!(Rc::ptr_eq(&old, &painted));
+    assert!(old.same(&painted));
     doc.update(
         html,
         "b {text-transform:lowercase;color:red;font-size:28px}",
@@ -106,7 +109,7 @@ fn only_read_descendant_inputs_replace_the_normalized_owner() {
     .unwrap();
     let (same_id, changed) = content(&doc);
     assert_eq!(same_id, id);
-    assert_eq!(changed.text, "before mixed after");
-    assert_eq!(old.text, "before MIXED after");
-    assert!(!Rc::ptr_eq(&old, &changed));
+    assert_eq!(changed.text(), "before mixed after");
+    assert_eq!(old.text(), "before MIXED after");
+    assert!(!old.same(&changed));
 }

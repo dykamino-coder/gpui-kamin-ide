@@ -1,7 +1,7 @@
-//! Ключ источника коробки: POD DOM-узла отдельно от синтетической роли.
+//! The source key of a box: the POD of the DOM node apart from the synthetic role.
 //!
-//! До перевода Element::node_id в M1 настоящий ключ приходит из записи обхода;
-//! порядок, плотность и адреса коробок не используются как идентичность.
+//! Until Element::node_id moves to M1 the real key comes from the traversal record;
+//! the order, density and addresses of boxes are not used as identity.
 
 pub(super) use crate::dom::NodeKey;
 use crate::dom::{BoxId, Element};
@@ -63,8 +63,8 @@ impl Source {
         {
             Self::Node(key)
         } else if !owner.is_some() && element.tag == "html-viewport" {
-            // Единственная корневая коробка окна не является фрагментом
-            // первого/последнего ребёнка и переживает замену их диапазона.
+            // The single root box of the window is not a fragment of the
+            // first/last child and survives the replacement of their range.
             Self::Viewport
         } else {
             let marks = &element.marks;

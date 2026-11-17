@@ -1,19 +1,19 @@
-//! Один уровень обхода публикации: новые братья, их прежние коробки и сравнение
-//! с прежним входом.
+//! One level of the publication walk: new siblings, their previous boxes and the comparison
+//! with the previous input.
 
 use super::BoxTree;
 use super::reuse::Reuse;
 use super::source::Source;
 use crate::dom::{BoxId, Element, Node};
 
-/// С чем сравниваются братья уровня обхода.
+/// What the siblings of a walk level are compared with.
 #[derive(Clone, Copy)]
 pub(super) enum Prev<'a> {
-    /// Общий снимок с прежним входом: поддерево не изменилось.
+    /// A snapshot shared with the previous input: the subtree did not change.
     Clean,
-    /// Прежние братья того же родителя.
+    /// The previous siblings of the same parent.
     Old(&'a [Node]),
-    /// Прежнего нет: всё новое.
+    /// There is no previous input: everything is new.
     Fresh,
 }
 
@@ -23,13 +23,13 @@ pub(super) struct Level<'a> {
     pub(super) parent: BoxId,
     pub(super) owner: Option<&'a Element>,
     pub(super) prev: Prev<'a>,
-    /// Предки уровня прошли `epochs::same_layout_inputs`: у родителя те же
-    /// вычисленные стили.
+    /// The ancestors of the level passed `epochs::same_layout_inputs`: the parent has the same
+    /// computed styles.
     pub(super) inherited: bool,
     last: BoxId,
-    /// Следующая прежняя коробка-ребёнок по порядку.
+    /// The next previous child box in order.
     cursor: BoxId,
-    /// Прежние дети после первого расхождения порядка.
+    /// The previous children after the first divergence of the order.
     rest: Option<Reuse>,
     reshaped: bool,
 }
@@ -63,8 +63,8 @@ impl<'a> Level<'a> {
         Some(node)
     }
 
-    /// Прежняя коробка этого источника среди детей того же родителя: сначала
-    /// по порядку, после расхождения — по источнику.
+    /// The previous box of this source among the children of the same parent: first
+    /// in order, after a divergence by source.
     pub(super) fn take(&mut self, tree: &BoxTree, origin: &Source) -> Option<BoxId> {
         if self.rest.is_none() {
             if let Some(record) = tree.get(self.cursor)
@@ -100,8 +100,8 @@ impl<'a> Level<'a> {
         self.last = id;
     }
 
-    /// Убрать прежних детей, не нашедших источника; `true`, если список детей
-    /// изменился.
+    /// Remove the previous children that found no source; `true` if the child list
+    /// changed.
     pub(super) fn finish(self, tree: &mut BoxTree) -> bool {
         let mut reshaped = self.reshaped;
         let mut cursor = self.cursor;
@@ -118,8 +118,8 @@ impl<'a> Level<'a> {
     }
 }
 
-/// Прежний элемент на месте `at` среди `new` братьев: тот же индекс либо
-/// сдвиг на разницу длин (одна вставка или удаление перед ним).
+/// The previous element at `at` among `new` siblings: the same index or
+/// shifted by the length difference (one insertion or removal before it).
 pub(super) fn paired(old: &[Node], new: usize, at: usize, key: u64) -> Option<&Element> {
     let shifted = (at + old.len()).checked_sub(new);
     [Some(at), shifted]

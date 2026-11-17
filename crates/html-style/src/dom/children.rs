@@ -59,12 +59,12 @@ impl Children {
         self.0.box_summary.set(None);
     }
 
-    /// Готовые факты списка без обхода узлов и без отдельного индекса дерева.
+    /// Ready facts of the list without walking the nodes or a separate tree index.
     pub fn box_summary(&self) -> Option<BoxTreeSummary> {
         self.0.box_summary.get()
     }
 
-    /// Публикация post-order подготовки; факты живут столько же, сколько снимок.
+    /// Publication of the post-order preparation; the facts live as long as the snapshot.
     pub fn publish_box_summary(&self, summary: BoxTreeSummary) {
         self.0.box_summary.set(Some(summary));
     }

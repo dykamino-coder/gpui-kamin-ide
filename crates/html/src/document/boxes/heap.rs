@@ -1,4 +1,4 @@
-//! Удерживаемые блоки T3 по владельцам: слоты, синтетика и логические IFC.
+//! Retained T3 blocks by owner: slots, synthetic boxes and logical IFCs.
 
 use super::{BoxRecord, BoxTree, inline::InlineContent};
 use kamin_heap::{HeapSize, Ops};
@@ -27,7 +27,7 @@ impl HeapSize for BoxRecord {
 
 impl HeapSize for InlineContent {
     fn heap_size(&self, ops: &mut Ops) -> usize {
-        self.text.heap_size(ops) + ops.buffer(self.items.as_ptr(), self.items.capacity())
+        self.chunk().heap_size(ops)
     }
 }
 

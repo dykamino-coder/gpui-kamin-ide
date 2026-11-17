@@ -100,8 +100,8 @@ impl SubtreeFacts {
         own(root, descendants)
     }
 
-    /// Только непосредственные дети: подготовленные потомки не обходятся.
-    /// Новые layout-made списки явно переходят на обычный запрос ниже.
+    /// Only the direct children: prepared descendants are not walked.
+    /// New layout-made lists explicitly fall back to the ordinary query below.
     pub(crate) fn prepared_list(&self, nodes: &[Node]) -> Option<BoxTreeSummary> {
         nodes
             .iter()

@@ -1,5 +1,5 @@
-//! Эпохи раскладки: что меняет собственные входы коробки, докуда идут `child`
-//! и `intrinsic`, и что paint-only правка эпох не трогает.
+//! Layout epochs: what changes the own inputs of a box, how far `child`
+//! and `intrinsic` go, and that a paint-only edit leaves the epochs alone.
 
 use super::{BoxTree, Epochs};
 use crate::document::Document;
@@ -81,7 +81,7 @@ fn a_size_edit_marks_the_box_and_its_ancestors_only() {
         assert_eq!(epochs(&doc, id).child, now, "{id}");
         assert_ne!(epochs(&doc, id).layout, now, "{id}");
     }
-    // Ширина изменилась: вклад меняется и у внешне заданной коробки.
+    // The width changed: the contribution changes even for an externally sized box.
     assert_eq!(epochs(&doc, "float").intrinsic, now);
     assert_eq!(epochs(&doc, "side"), side);
     assert_ne!(epochs(&doc, "p").layout, now);

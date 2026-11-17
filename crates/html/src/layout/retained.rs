@@ -1,8 +1,8 @@
-//! Удерживаемый результат раскладки коробки (L1): слот на записи дерева коробок.
+//! The retained layout result of a box (L1): a slot on the box tree record.
 //!
-//! Наполняет раскладка; дерево коробок только хранит слот и освобождает его
-//! вместе с коробкой.
+//! Layout fills it; the box tree only keeps the slot and frees it
+//! with the box.
 
-/// Результат раскладки одной коробки между кадрами.
+/// The layout result of one box between frames.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutSlot {}

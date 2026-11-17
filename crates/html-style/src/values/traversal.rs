@@ -22,7 +22,7 @@ pub struct TraversalState {
     elements: RefCell<Vec<usize>>,
     /// Адрес исходного текстового узла по его `TextId - 1`.
     texts: RefCell<Vec<usize>>,
-    /// Ключи тех же исходных текстов; номер обхода не служит идентичностью IFC.
+    /// Keys of the same source texts; the traversal number is not an IFC identity.
     text_keys: RefCell<Vec<crate::dom::NodeKey>>,
     /// Адреса исходных текстов, содержимое которых прочитала сборка сверх
     /// «пустой ли узел по CSS»: первый сильный знак для `dir=auto`/`<bdi>`,
@@ -73,7 +73,7 @@ impl TraversalState {
         self.texts.borrow()
     }
 
-    /// Постоянные DOM-ключи по `TextId - 1`, без удержания исходных Handle.
+    /// Persistent DOM keys by `TextId - 1`, without holding the source handles.
     pub fn text_keys(&self) -> std::cell::Ref<'_, Vec<crate::dom::NodeKey>> {
         self.text_keys.borrow()
     }

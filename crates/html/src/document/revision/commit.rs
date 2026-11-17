@@ -55,8 +55,8 @@ impl Document {
         match plan {
             Plan::Clean(nodes) => {
                 if let Some(nodes) = nodes {
-                    // Plan::Clean доказывает неизменность всех прочитанных
-                    // входов: обновляются только непрочитанные атрибуты.
+                    // Plan::Clean proves that all inputs read are unchanged:
+                    // only unread attributes are updated.
                     crate::document::boxes::BoxTree::edit(&self.state.boxes).rebind(&nodes);
                     self.nodes = Rc::new(nodes);
                     self.tree = crate::document::scope::next_tree();

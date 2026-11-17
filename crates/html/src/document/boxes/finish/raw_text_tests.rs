@@ -6,7 +6,6 @@ use crate::dom::Node;
 use crate::layout::cx::{BuildDoc, LayoutCx, ValueContext};
 use crate::style::computed::BoxStyle;
 use crate::text::content::{Content, raw};
-use std::rc::Rc;
 
 /// The layout context of `doc` after its box tree is finished.
 fn finished(doc: &Document) -> LayoutCx {
@@ -34,7 +33,7 @@ fn raw_buffer_is_shared_before_normalization_and_survives_text_commit() {
     let (Content::Retained(a), Content::Retained(b)) = (&first, &second) else {
         panic!("a flat flow must use the retained owner");
     };
-    assert!(Rc::ptr_eq(a, b));
+    assert!(a.same(b));
     assert_eq!(&*first, "  a  b ");
     doc.update("<p style='text-transform:uppercase'>changed</p>", "")
         .unwrap();

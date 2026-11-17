@@ -118,9 +118,9 @@ pub(super) fn blank_box(
     blank
 }
 
-/// Подготовленный снимок отвечает без сборки строк и без обхода потомков.
-/// У синтетического списка достаточно непосредственных детей: элемент внутри
-/// сразу исключает пустую коробку, его поддерево здесь не требуется.
+/// The prepared snapshot answers without building lines or walking descendants.
+/// For a synthetic list the direct children suffice: an element inside
+/// at once excludes an empty box, its subtree is not needed here.
 fn text_is_blank(e: &Element, keep_spaces: bool, painted_bg: bool) -> bool {
     let text = e.children.box_summary().map_or_else(
         || {

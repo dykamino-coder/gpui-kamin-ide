@@ -52,8 +52,8 @@ pub(super) struct Ranges {
 pub(crate) struct ReplayRecord {
     /// С чем сравнивается следующая сборка блока (`source`).
     pub(super) source: Source,
-    /// Ключ корневого потока; у записи содержимого (`content`) его нет:
-    /// она сверяет свой ключ сама.
+    /// The root flow key; a content record (`content`) has none:
+    /// it checks its own key.
     pub(super) key: Option<Rc<FlowKey>>,
     /// Сборка прочла ширину снаружи: запись годится только при тех же ширинах.
     pub(super) widths: bool,
@@ -193,8 +193,8 @@ impl PendingReplay {
         let paint = captured.paint?;
         let (scale, serial) = captured.env?;
         let ink = bounds.unwrap_or(Bounds { origin, size }.scale(scale));
-        // Дальний блок корневого потока пропускает запись повтора: его
-        // заместитель дешевле (`screen`); содержимое пишется везде.
+        // A far block of the root flow skips the replay record: its
+        // stand-in is cheaper (`screen`); a content is recorded everywhere.
         if screen.is_some_and(|screen| super::recorder::far(Some(ink), Point::default(), screen)) {
             return None;
         }

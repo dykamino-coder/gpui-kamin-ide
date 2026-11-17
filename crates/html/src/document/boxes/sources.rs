@@ -1,5 +1,5 @@
-//! Границы анонимных фрагментов: обход только поддерева анонимной коробки,
-//! без захода в авторские элементы.
+//! Bounds of anonymous fragments: a walk of the anonymous box's subtree only,
+//! without entering authored elements.
 
 use super::source::Source;
 use crate::dom::{Element, Node, NodeKey};
@@ -25,8 +25,8 @@ impl Extent {
 }
 
 impl Extent {
-    /// Первый и последний ключ источника внутри элемента `e`: авторский
-    /// элемент даёт свой ключ, текст — ключ своего узла, анонимный — свои.
+    /// The first and last source key inside element `e`: an authored
+    /// element gives its own key, a text the key of its node, an anonymous one its own.
     pub(super) fn of(
         e: &Element,
         text_keys: &[NodeKey],

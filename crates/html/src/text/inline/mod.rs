@@ -180,15 +180,12 @@ pub fn collect(
     let prepared = cx.doc().boxes.borrow().normalized(children, inherited);
     if let Some(text) = prepared {
         let mut pieces = text
-            .items
+            .items()
             .iter()
             .filter_map(|item| {
-                let crate::document::boxes::inline::ItemKind::Text { start, end } = item.kind
-                else {
-                    unreachable!("text-only prepared IFC")
-                };
-                (start != end).then(|| Piece::Text {
-                    text: text.text[start..end].to_owned(),
+                let range = item.kind.text_range()?;
+                (!range.is_empty()).then(|| Piece::Text {
+                    text: text.text()[range].to_owned(),
                     style: inherited.clone(),
                 })
             })

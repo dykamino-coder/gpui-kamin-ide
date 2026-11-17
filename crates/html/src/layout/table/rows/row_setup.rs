@@ -234,8 +234,8 @@ pub(super) fn hides_empty_cell(
         && empty_cell_text(cell)
 }
 
-// CSS2 §17.6.1.1: дочерняя коробка сразу исключает пустую ячейку.
-// Подготовленный снимок уже содержит ответ; у синтетики читаем только детей.
+// CSS2 §17.6.1.1: a child box at once excludes an empty cell.
+// The prepared snapshot already holds the answer; a synthetic one reads only its children.
 fn empty_cell_text(cell: &Element) -> bool {
     cell.children.box_summary().map_or_else(
         || cell.children.iter().all(crate::dom::whitespace::is_blank),

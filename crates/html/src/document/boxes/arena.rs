@@ -1,4 +1,4 @@
-//! Слоты удерживаемых коробок: записи меняются на месте, ключи переживают правки.
+//! Slots of retained boxes: records change in place, keys survive edits.
 
 use super::BoxRecord;
 use crate::dom::BoxId;
@@ -95,17 +95,17 @@ impl Arena {
         }
     }
 
-    /// Новое строчное содержимое коробки; `true`, если оно изменилось.
+    /// New inline content of a box; `true` if it changed.
     pub(super) fn inline(
         &mut self,
         id: BoxId,
-        content: Option<std::rc::Rc<super::inline::InlineContent>>,
+        content: Option<super::inline::InlineContent>,
     ) -> bool {
         let Some(record) = self.record_mut(id) else {
             return false;
         };
-        // Неизменный вход сохраняет Rc: потребитель может удержать его
-        // через commit, а resize не требует повторного сбора текста.
+        // An unchanged input keeps its stored content: a consumer may hold it
+        // across a commit, and a resize needs no new text collection.
         let changed = record.inline != content;
         if changed {
             record.inline = content;
@@ -114,15 +114,15 @@ impl Arena {
         changed
     }
 
-    /// Отцепить детей коробки перед повторной сборкой её списка.
+    /// Detach the children of a box before its list is built again.
     pub(super) fn unlink_first(&mut self, id: BoxId) {
         if let Some(record) = self.record_mut(id) {
             record.first = BoxId::NONE;
         }
     }
 
-    /// Запись по живому ключу: только для полей, которыми владеет само дерево
-    /// (эпохи, признак вклада, слот раскладки), без смены топологии.
+    /// The record of a live key: only for fields the tree itself owns
+    /// (epochs, the contribution flag, the layout slot), without changing the topology.
     pub(super) fn record_mut(&mut self, id: BoxId) -> Option<&mut BoxRecord> {
         let slot = self.slots.get_mut(id.slot as usize)?;
         (slot.generation == id.generation)
@@ -136,7 +136,7 @@ impl Arena {
             return None;
         }
         let value = slot.value.take()?;
-        // Переполненный слот уходит навсегда: старый ключ никогда не воскреснет.
+        // An exhausted slot is retired for good: an old key never comes back.
         if let Some(generation) = slot.generation.checked_add(1) {
             slot.generation = generation;
             self.free.push(id.slot);

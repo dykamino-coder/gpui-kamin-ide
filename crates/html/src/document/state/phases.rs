@@ -8,7 +8,7 @@ use crate::values::{DocumentValues, ValueCx};
 use std::rc::Rc;
 
 pub struct DocState {
-    /// Единственное изменяемое дерево коробок этой линии ревизий документа.
+    /// The single mutable box tree of this line of document revisions.
     pub(crate) boxes: Rc<std::cell::RefCell<crate::document::boxes::BoxTree>>,
     /// Нижние данные: арены, at-правила, метрики корня, ресурсы, шрифтовые факты.
     pub(crate) values: Rc<DocumentValues>,

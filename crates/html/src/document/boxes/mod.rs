@@ -1,7 +1,7 @@
-//! Дерево коробок документа: стабильные слоты и изменяемые связи между ними.
+//! The document's box tree: stable slots and the mutable links between them.
 //!
-//! Входное Vec<Node> пока служит адаптером подготовки. Арена не хранит его снимков:
-//! публикация меняет существующие записи, а удаление увеличивает поколение слота.
+//! The input Vec<Node> still serves as the preparation adapter. The arena keeps no snapshots of it:
+//! a publication changes the existing records, and a removal bumps the slot generation.
 
 mod adapter;
 mod arena;
@@ -35,7 +35,6 @@ pub(crate) mod used;
 use crate::dom::{BoxId, Node};
 use arena::Arena;
 use source::Source;
-use std::rc::Rc;
 
 pub(crate) struct BoxRecord {
     pub(crate) parent: BoxId,
@@ -43,16 +42,16 @@ pub(crate) struct BoxRecord {
     pub(crate) next: BoxId,
     source: u64,
     origin: Source,
-    pub(crate) inline: Option<Rc<inline::InlineContent>>,
+    pub(crate) inline: Option<inline::InlineContent>,
     prepared: Option<Box<finish::Prepared>>,
-    /// Номера публикаций, на которых изменились входы раскладки.
+    /// Publication numbers at which the layout inputs changed.
     pub(crate) epochs: Epochs,
-    /// Вклад в intrinsic-размеры предка не зависит от содержимого.
+    /// The contribution to the ancestor's intrinsic sizes does not depend on the content.
     external: bool,
     /// The box sizes its children from all their intrinsic contributions
     /// (table, flex, grid): a child's width follows its siblings' content.
     distributes: bool,
-    /// Удерживаемый результат раскладки коробки; им владеет раскладка.
+    /// The retained layout result of the box; layout owns it.
     layout_slot: Option<Box<crate::layout::retained::LayoutSlot>>,
 }
 
@@ -65,10 +64,10 @@ pub(crate) struct BoxTree {
     by_node: by_node::ByNode,
     first: BoxId,
     epoch: u64,
-    /// Номер публикации для эпох раскладки (`Epochs`).
+    /// Publication number for the layout epochs (`Epochs`).
     clock: u32,
     finished: Option<(u64, crate::text::inline::normalization::Inputs)>,
-    /// Потоки, обойдённые последней публикацией, до подготовки кадром.
+    /// The flows the last publication walked, until a frame prepares them.
     visited: finish::Visited,
     /// Used styles derived from computed ones, shared by the boxes of one style.
     pub(crate) used: used::UsedStyles,
@@ -94,21 +93,21 @@ impl BoxTree {
         self.arena.get(id)
     }
 
-    /// Живые коробки без обхода адаптерного дерева Element/Children.
-    /// Порядок слотов не задаёт порядок документа: его задают first/next.
+    /// Live boxes without walking the adapter tree Element/Children.
+    /// The slot order is not the document order: first/next give it.
     pub(crate) fn iter(&self) -> impl Iterator<Item = (BoxId, &BoxRecord)> {
         self.arena.iter()
     }
 
-    /// Опубликовать принятый вход той же формы.
-    /// Источник задаётся NodeKey DOM, а синтетическая роль — отдельно от него.
+    /// Publish an accepted input of the same shape.
+    /// The source is given by the DOM NodeKey, the synthetic role apart from it.
     #[cfg(test)]
     fn publish(&mut self, nodes: &[Node]) {
         self.publish_sources(nodes, &[]);
     }
 
-    /// `previous` — вход прежней публикации, ещё живой: по нему ставятся эпохи
-    /// раскладки; без него все коробки считаются изменёнными.
+    /// `previous`: the input of the previous publication, still alive: the layout epochs
+    /// are set by it; without it every box counts as changed.
     pub(crate) fn publish_document(
         &mut self,
         nodes: &[Node],
@@ -134,8 +133,8 @@ impl BoxTree {
         self.publish_keyed(nodes, None, &keys);
     }
 
-    /// Полная смена формы до появления постоянных ключей DOM: старые ключи
-    /// коробок инвалидируются, а слоты получают новые поколения.
+    /// A full change of shape before persistent DOM keys exist: the old box keys
+    /// are invalidated, and the slots get new generations.
     pub(crate) fn replace(&mut self, nodes: &[Node], values: &crate::values::DocumentValues) {
         let ids: Vec<_> = self.iter().map(|(id, _)| id).collect();
         for id in ids {

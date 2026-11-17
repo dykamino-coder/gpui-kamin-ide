@@ -1,4 +1,4 @@
-//! Замещаемые коробки и разрывы — листья IFC, включая вложенный fallback.
+//! Replaced boxes and breaks are IFC leaves, nested fallback included.
 
 use super::*;
 use crate::dom::Node;
@@ -30,8 +30,12 @@ fn replaced_descendants_do_not_create_html_inline_flows() {
             .filter_map(|(_, r)| r.inline.as_ref())
             .collect();
         assert_eq!(flows.len(), 1, "{tag} descendants are not HTML flow owners");
-        assert_eq!(flows[0].text, "beforeafter", "{tag}");
-        assert_eq!(flows[0].items.len(), 3, "{tag} is represented by one leaf");
+        assert_eq!(flows[0].text(), "beforeafter", "{tag}");
+        assert_eq!(
+            flows[0].items().len(),
+            3,
+            "{tag} is represented by one leaf"
+        );
     }
 }
 
@@ -47,9 +51,9 @@ fn break_descendants_cannot_leak_into_the_parent_flow() {
             ],
         )]);
         let flow = tree.get(tree.first).unwrap().inline.as_ref().unwrap();
-        assert_eq!(flow.text, "after");
-        assert_eq!(flow.items[0].kind, kind);
-        assert_eq!(flow.items.len(), 2);
+        assert_eq!(flow.text(), "after");
+        assert_eq!(flow.items()[0].kind, kind);
+        assert_eq!(flow.items().len(), 2);
         assert_eq!(
             tree.arena
                 .iter()
@@ -67,10 +71,10 @@ fn floats_keep_their_order_and_do_not_share_absolute_position_markers() {
         "",
     ).build().unwrap();
     let content = super::tests::flow(&doc, "main");
-    assert_eq!(content.text, "beforeafter");
+    assert_eq!(content.text(), "beforeafter");
     assert_eq!(
         content
-            .items
+            .items()
             .iter()
             .map(|item| &item.kind)
             .collect::<Vec<_>>(),
@@ -83,6 +87,6 @@ fn floats_keep_their_order_and_do_not_share_absolute_position_markers() {
         ],
     );
     for (tag, text) in [("i", "left"), ("b", "right"), ("span", "overlay")] {
-        assert_eq!(super::tests::flow(&doc, tag).text, text);
+        assert_eq!(super::tests::flow(&doc, tag).text(), text);
     }
 }

@@ -1,4 +1,4 @@
-//! Синтетическая коробка определяется владельцем и источником, а не номером обхода.
+//! A synthetic box is defined by its owner and source, not by the traversal number.
 
 use super::*;
 use crate::dom::{Element, NodeKey, Text};
@@ -12,7 +12,7 @@ fn element(key: u32, children: Vec<Node>) -> Element {
 fn wrapper(child: Node) -> Node {
     let mut e = crate::layout::table::anon::anon_element("table", vec![child]);
     e.marks.anonymous_wrapper = true;
-    // Старый путь таблиц выдаёт производный node_id: это не ключ DOM.
+    // The old table path gives a derived node_id: it is not a DOM key.
     e.node_id = 123;
     Node::Element(e)
 }

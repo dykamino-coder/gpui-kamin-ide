@@ -1,4 +1,4 @@
-//! Память индексов исходного DOM; сами узлы меряет владелец исходного дерева.
+//! Memory of the source DOM indexes; the owner of the source tree measures the nodes.
 
 use super::TraversalState;
 use kamin_heap::{HeapSize, Ops};

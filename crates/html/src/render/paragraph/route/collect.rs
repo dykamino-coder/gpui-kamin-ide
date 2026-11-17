@@ -187,8 +187,8 @@ pub(crate) fn paragraph_pieces_routed(
         each_line: inherited.inh.text_flow.text_indent_each_line == Some(true),
         hanging: inherited.inh.text_flow.text_indent_hanging == Some(true),
     };
-    // Межсловный интервал и отступ первой строки (в том числе отрицательный)
-    // считает своя раскладка строк (`lines::rules`): ряда из слов под них нет.
+    // Word spacing and the first-line indent (negative ones included)
+    // are computed by the line layout itself (`lines::rules`): no row of words is made for them.
     // Атомы — В СТРОКУ абзаца (CSS 2.1 §9.2.2, §10.8): каждый становится
     // распоркой (U+FEFF), её продвижение — ширина атома, а сам элемент
     // раскладывает и ставит на базовую линию своей строки `Paragraph`. Для

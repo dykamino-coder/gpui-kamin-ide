@@ -1,4 +1,4 @@
-//! Чтение связей и эпох коробок для раскладки и слот её результата, без выделений.
+//! Reading box links and epochs for layout, and its result slot, without allocation.
 
 use super::BoxTree;
 use super::epochs::{Change, Epochs};
@@ -13,19 +13,19 @@ use crate::layout::retained::LayoutSlot;
     )
 )]
 impl BoxTree {
-    /// Эпохи входов раскладки коробки.
+    /// Epochs of the layout inputs of a box.
     pub(crate) fn epochs(&self, id: BoxId) -> Option<Epochs> {
         self.get(id).map(|r| r.epochs)
     }
 
-    /// Номер последней публикации; эпохи коробок не больше него. Номер меньше
-    /// сохранённого потребителем значит, что счёт начался заново (`tick`):
-    /// изменено всё.
+    /// The number of the last publication; box epochs are not above it. A number below
+    /// the one a consumer kept means the count started over (`tick`):
+    /// everything changed.
     pub(crate) fn clock(&self) -> u32 {
         self.clock
     }
 
-    /// Предки коробки от родителя к корню.
+    /// Ancestors of the box from the parent to the root.
     pub(crate) fn ancestors(&self, id: BoxId) -> impl Iterator<Item = BoxId> + '_ {
         let first = self.get(id).map_or(BoxId::NONE, |r| r.parent);
         std::iter::successors(Some(first).filter(|p| self.get(*p).is_some()), |&p| {
@@ -35,7 +35,7 @@ impl BoxTree {
         })
     }
 
-    /// Дети коробки в порядке документа.
+    /// Children of the box in document order.
     pub(crate) fn children(&self, id: BoxId) -> impl Iterator<Item = BoxId> + '_ {
         let first = self.get(id).map_or(BoxId::NONE, |r| r.first);
         std::iter::successors(Some(first).filter(|c| self.get(*c).is_some()), |&c| {
@@ -45,13 +45,13 @@ impl BoxTree {
         })
     }
 
-    /// Слот результата раскладки, если раскладка его заводила.
+    /// The layout result slot, if layout created it.
     pub(crate) fn slot(&self, id: BoxId) -> Option<&LayoutSlot> {
         self.get(id)?.layout_slot.as_deref()
     }
 
-    /// Слот результата раскладки (создаётся при первом обращении). Живёт, пока
-    /// жива коробка; смена эпох его не сбрасывает — годность решает раскладка.
+    /// The layout result slot (created on first access). It lives as long
+    /// as the box; an epoch change does not reset it: layout decides its validity.
     pub(crate) fn slot_mut(&mut self, id: BoxId) -> Option<&mut LayoutSlot> {
         let record = self.arena.record_mut(id)?;
         Some(record.layout_slot.get_or_insert_with(Default::default))
@@ -59,9 +59,9 @@ impl BoxTree {
 }
 
 impl BoxTree {
-    /// Эпоха сборки (`Epochs::paint`) коробки `id`: номер
-    /// последней публикации, изменившей что-либо, что читает сборка её
-    /// поддерева. `None` — у источника нет коробки.
+    /// The build epoch (`Epochs::paint`) of box `id`: the number
+    /// of the last publication that changed anything the build of its
+    /// subtree reads. `None`: the source has no box.
     pub(crate) fn build_epoch(&self, id: BoxId) -> Option<u32> {
         Some(self.get(id)?.epochs.paint)
     }
@@ -84,8 +84,8 @@ impl BoxTree {
         owner.filter(|id: &BoxId| self.get(*id).is_some())
     }
 
-    /// Следующий номер публикации. При переполнении все коробки получают
-    /// эпохи 1 и номер 1: потребитель с прежним номером видит их изменёнными.
+    /// The next publication number. On overflow every box gets
+    /// epochs 1 and the number 1: a consumer with an older number sees them changed.
     pub(super) fn tick(&mut self) -> u32 {
         if self.clock == u32::MAX {
             let ids: Vec<_> = self.iter().map(|(id, _)| id).collect();
@@ -105,9 +105,9 @@ impl BoxTree {
         self.clock
     }
 
-    /// Поставить эпохи изменённым коробкам и их предкам: `child` — до корня,
-    /// `intrinsic` — до первой коробки с внешним вкладом. Подъём останавливается
-    /// на предке, уже получившем эту эпоху: O(изменённых + глубина).
+    /// Set epochs on the changed boxes and their ancestors: `child` up to the root,
+    /// `intrinsic` up to the first box with an external contribution. The walk stops
+    /// at an ancestor that already has this epoch: O(changed + depth).
     pub(super) fn propagate(&mut self, clock: u32, changed: &[(BoxId, Change)]) {
         for &(id, change) in changed {
             let Some(record) = self.arena.record_mut(id) else {
@@ -118,7 +118,7 @@ impl BoxTree {
                 continue;
             }
             record.epochs.layout = clock;
-            // Вклад меняется у самой коробки; дальше — если он не внешний.
+            // The contribution changes for the box itself; further up unless it is external.
             let own = change == Change::Own;
             let mut stop = !own && record.external;
             record.epochs.intrinsic = clock;
@@ -156,7 +156,7 @@ impl BoxTree {
         false
     }
 
-    /// `paint` коробки и её предков до первого, уже получившего эту эпоху.
+    /// `paint` of the box and its ancestors up to the first that already has this epoch.
     fn mark_paint(&mut self, id: BoxId, clock: u32) {
         let mut at = id;
         while let Some(record) = self.arena.record_mut(at) {
@@ -168,7 +168,7 @@ impl BoxTree {
         }
     }
 
-    /// Убрать коробку со всем поддеревом; ключи их слотов больше не разрешаются.
+    /// Remove a box with its whole subtree; the keys of their slots no longer resolve.
     pub(super) fn remove_subtree(&mut self, id: BoxId) {
         let mut pending = vec![id];
         while let Some(id) = pending.pop() {

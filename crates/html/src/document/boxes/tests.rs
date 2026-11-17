@@ -1,4 +1,4 @@
-//! Контракты публикации коробок: стабильные ключи, связи и ревизии документа.
+//! Contracts of box publication: stable keys, links and document revisions.
 
 use super::*;
 use crate::document::Document;
@@ -186,10 +186,12 @@ fn hiding_a_sibling(records: bool) {
         "unchanged sibling must retain its own key, records={records}"
     );
     assert_eq!(tree.get(right).unwrap().origin, Source::Node(right_key));
-    assert!(Rc::ptr_eq(
-        right_flow.as_ref().unwrap(),
-        tree.get(right).unwrap().inline.as_ref().unwrap()
-    ));
+    assert!(
+        right_flow
+            .as_ref()
+            .unwrap()
+            .same(tree.get(right).unwrap().inline.as_ref().unwrap())
+    );
     assert!(tree.get(left).is_none(), "hidden box must be retired");
     drop(tree);
     if records {

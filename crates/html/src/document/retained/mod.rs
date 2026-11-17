@@ -20,6 +20,8 @@ mod box_repaint_tests;
 mod column_repaint_tests;
 #[cfg(test)]
 mod content_replay_tests;
+#[cfg(test)]
+mod content_resize_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;

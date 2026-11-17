@@ -1,6 +1,6 @@
-//! Устойчивые факты нормализованного поддерева, принадлежащие COW-снимку детей.
+//! Stable facts of a normalized subtree, owned by the copy-on-write children snapshot.
 
-/// Текст списка: непосредственные дети отдельно от текста потомков в потоке.
+/// Text of the list: direct children apart from the text of in-flow descendants.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BoxTextFacts {
     pub elements: bool,
@@ -36,8 +36,8 @@ impl std::ops::BitOr for BoxTextFacts {
     }
 }
 
-/// Доказательства для подготовки потока. `block` виден сквозь inline/contents,
-/// остальные признаки объединяют всё поддерево, включая независимые блоки.
+/// Evidence for flow preparation. `block` is seen through inline/contents,
+/// the other flags cover the whole subtree, independent blocks included.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BoxTreeSummary {
     pub breaks: bool,

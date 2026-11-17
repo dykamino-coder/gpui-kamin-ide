@@ -38,21 +38,19 @@ impl Runs {
             self.diverged = true;
             return None;
         }
-        found.map(|(start, end)| &self.mixed.text.text[start..end])
+        found.map(|range| &self.mixed.text.text()[range])
     }
 
-    fn find(&mut self, raw: &str, style: &Computed) -> Option<(usize, usize)> {
+    fn find(&mut self, raw: &str, style: &Computed) -> Option<std::ops::Range<usize>> {
         let source = &self.mixed.source;
-        let offset = source.items[self.at..]
+        let offset = source.items()[self.at..]
             .iter()
             .position(|item| matches!(item.kind, ItemKind::Text { .. }))?;
         let index = self.at + offset;
         self.at = index + 1;
-        let item = &source.items[index];
-        let ItemKind::Text { start, end } = item.kind else {
-            return None;
-        };
-        if source.text[start..end] != *raw {
+        let item = &source.items()[index];
+        let range = item.kind.text_range()?;
+        if source.text()[range] != *raw {
             return None;
         }
         // The owner's inputs were checked when the runs were handed out.
@@ -61,21 +59,19 @@ impl Runs {
                 .mixed
                 .inputs
                 .iter()
+                .flat_map(|inputs| inputs.iter())
                 .find(|(id, _)| *id == item.box_id)
                 .is_some_and(|(_, inputs)| inputs.matches(style))
         {
             return None;
         }
-        match self.mixed.text.items.get(index)?.kind {
-            ItemKind::Text { start, end } => Some((start, end)),
-            _ => None,
-        }
+        self.mixed.text.items().get(index)?.kind.text_range()
     }
 
     /// Every text node took its run and no run is left over.
     pub(crate) fn complete(&self) -> bool {
         !self.diverged
-            && !self.mixed.source.items[self.at..]
+            && !self.mixed.source.items()[self.at..]
                 .iter()
                 .any(|item| matches!(item.kind, ItemKind::Text { .. }))
     }

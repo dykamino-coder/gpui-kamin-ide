@@ -32,7 +32,7 @@ impl DocumentValues {
     pub fn initial_style(&self) -> Computed {
         self.initial_styles.seed.clone()
     }
-    /// Общий начальный стиль для чтения, без нового заголовка.
+    /// The shared initial style for reading, without a new header.
     pub fn initial_style_ref(&self) -> &Computed {
         &self.initial_styles.seed
     }

@@ -103,8 +103,8 @@ pub(super) fn prepare_cell_box(
     // 50px сжималась до 32 точек, и прижим строк оставался без места
     // (table-cell-valign-003-ref). Ортогональную ячейку не трогаем:
     // её width — логический inline-size, он ниже перекладывается в
-    // высоту. У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
-    // задаёт высота (table-cell-align-001/002).
+    // height. In a VERTICAL table the width stays with the box: the track
+    // is set by the height (table-cell-align-001/002).
     let font_relative = !(orthogonal_inline || geom.table_is_vertical)
         && matches!(
             used.reset_box_layout.width,

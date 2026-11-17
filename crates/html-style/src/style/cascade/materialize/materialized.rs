@@ -25,20 +25,20 @@ pub(super) fn inputs(vcx: ValueCx<'_>) -> Inputs {
 }
 
 pub(super) struct Materialized {
-    /// Вычисленный стиль родителя, под которым он посчитан.
+    /// The parent's computed style it was computed under.
     pub(super) parent: Rc<Computed>,
-    /// Поколение шрифтовых входов и размеры viewport для относительных единиц,
-    /// если значения их прочитали.
+    /// Generation of the font inputs and the viewport size for relative units,
+    /// if the values read them.
     pub(super) generation: Stored,
     pub(super) computed: Published,
 }
 
 impl Materialized {
-    /// Годится ли стиль под родителем `parent`: те же унаследованные данные. Стиль с
-    /// каскадным `inherit` ненаследуемого свойства (`explicit`) зависит и от
-    /// ненаследуемых значений родителя (css-cascade-5 §7.3.1): ему годен только тот же
-    /// родитель или равный во всём (Blink `MatchedPropertiesCache`: explicit inheritance
-    /// сверяет и non-inherited данные родителя).
+    /// Whether the style holds under the parent `parent`: the same inherited data. A style
+    /// with a cascaded `inherit` of a non-inherited property (`explicit`) also depends on
+    /// the parent's non-inherited values (css-cascade-5 §7.3.1): only the same parent
+    /// or one equal in everything fits it (Blink `MatchedPropertiesCache`: explicit inheritance
+    /// also checks the parent's non-inherited data).
     pub(super) fn fits(&self, parent: &Computed, generation: Inputs, own: &Computed) -> bool {
         self.generation.0 == generation.0
             && self

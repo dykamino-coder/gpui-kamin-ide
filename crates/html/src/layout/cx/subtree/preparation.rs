@@ -84,8 +84,8 @@ impl Preparation {
 }
 
 impl Preparation {
-    /// Подготовка дерева той же формы и стилей, что у `base`. Неизменённые
-    /// COW-списки уже владеют фактами; обрабатываются только скопированные.
+    /// Preparation of a tree of the same shape and styles as `base`. Unchanged
+    /// copy-on-write lists already own their facts; only the copied ones are processed.
     fn continued(base: &Self, nodes: &[Node]) -> Self {
         let mut facts = SubtreeFacts::default();
         let clearance_possible = facts.clearance_possible(nodes);

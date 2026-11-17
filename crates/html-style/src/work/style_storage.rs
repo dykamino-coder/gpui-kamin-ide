@@ -22,8 +22,8 @@ impl Snapshot {
 pub struct Owner(Rc<Cell<Snapshot>>);
 impl std::fmt::Debug for Owner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Живой журнал не является значением стиля: другие снимки документа
-        // меняют его счётчики, не меняя этот стиль. Числа доступны в snapshot().
+        // The live log is not a style value: other snapshots of the document
+        // change its counters without changing this style. The numbers are in snapshot().
         f.write_str("Owner")
     }
 }

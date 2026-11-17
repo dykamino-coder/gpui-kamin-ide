@@ -1,4 +1,4 @@
-//! Пустая inline-коробка: исходный и подготовленный текстовые входы совпадают.
+//! An empty inline box: the source and prepared text inputs agree.
 
 use super::*;
 use crate::layout::table::anon::anon_element;

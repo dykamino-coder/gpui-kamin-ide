@@ -84,8 +84,8 @@ impl ComputedSlot {
             .map(|m| (m.computed.legacy.clone(), m.parent.clone()))
     }
 
-    /// Прочитали ли значения материализованного стиля размер viewport.
-    fn reads_viewport(&self) -> bool {
+    /// Whether the values of the materialized style read the viewport size.
+    pub fn reads_viewport(&self) -> bool {
         (self.0.borrow().as_ref()).is_some_and(|m| m.generation.1.is_some())
     }
 

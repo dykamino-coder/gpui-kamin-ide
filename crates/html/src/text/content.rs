@@ -3,10 +3,10 @@
 use crate::document::boxes::inline::InlineContent;
 use crate::dom::{Node, text_content::gather_text};
 use crate::layout::cx::LayoutCx;
-use std::{ops::Deref, rc::Rc};
+use std::ops::Deref;
 
 pub(crate) enum Content {
-    Retained(Rc<InlineContent>),
+    Retained(InlineContent),
     Gathered(String),
 }
 
@@ -15,7 +15,7 @@ impl Deref for Content {
 
     fn deref(&self) -> &str {
         match self {
-            Self::Retained(content) => &content.text,
+            Self::Retained(content) => content.text(),
             Self::Gathered(text) => text,
         }
     }

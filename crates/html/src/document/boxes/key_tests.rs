@@ -1,4 +1,4 @@
-//! Коробка освобождается при Remove, а ключ исходного DOM живёт до Drop.
+//! A box is freed at Remove, and the source DOM key lives until Drop.
 
 use super::*;
 use html5ever::tree_builder::{NodeOrText, TreeSink};

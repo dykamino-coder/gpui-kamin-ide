@@ -1,6 +1,6 @@
-//! Счётчики наблюдения повтора блоков.
+//! Counters observing block replay.
 
-/// Счётчики наблюдения повтора блоков.
+/// Counters observing block replay.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ReuseStats {
     /// Blocks wrapped for recording (`recorder::Making`).

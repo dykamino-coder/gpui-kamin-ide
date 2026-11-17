@@ -1,52 +1,46 @@
-//! Логический вход IFC: UTF-8 и границы коробок без геометрии и элементов GPUI.
+//! The logical IFC input: UTF-8 and box boundaries, without geometry or GPUI elements.
 //!
-//! Каждый текст хранится только у ближайшего хозяина потока. Атомы с собственным
-//! потоком представлены ключом листа; ширина строки не входит в этот вход.
+//! Every text is kept only by the nearest owner of its flow. Atoms with a flow
+//! of their own are represented by a leaf key; the line width is not part of this input.
+//!
+//! The flows a publication changed share one buffer of text and one of items
+//! (`Chunk`); a flow holds its ranges in it, so a document of thousands of
+//! paragraphs keeps two allocations instead of three per flow. Blink keeps one
+//! text buffer per inline formatting context (`InlineItemsData`); here one
+//! buffer serves every flow of a publication. A later publication (a DOM edit,
+//! also from script) puts only the flows it changed into a new chunk; an old
+//! chunk lives while one of its flows does, so the retained text is at most the
+//! live text plus the text of the first publication.
 
 use crate::dom::{BoxId, Element};
 use crate::layout::box_kind;
 use crate::style::computed::{Display, RubyRole};
-use std::rc::Rc;
 use std::string::String;
+
+mod content;
+#[cfg(feature = "heap-report")]
+pub(crate) use content::Chunk;
+pub(super) use content::len as offset;
+use content::{Closed, append, len};
+pub(crate) use content::{InlineContent, Item, ItemKind};
 
 #[cfg(test)]
 mod leaves;
 #[cfg(test)]
 mod tests;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ItemKind {
-    Text { start: usize, end: usize },
-    Open,
-    Close,
-    HardBreak,
-    Opportunity,
-    Atom,
-    RubyAnnotation,
-    Float,
-    OutOfFlow,
-    Block,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Item {
-    pub(crate) box_id: BoxId,
-    pub(crate) kind: ItemKind,
-}
-
-/// Исходные логические прогоны. Нормализация CSS Text и шейпинг — следующие
-/// стадии: диапазоны здесь относятся к этому буферу, а не к исходному DOM.
-#[derive(Default, Debug, PartialEq, Eq)]
-pub(crate) struct InlineContent {
-    pub(crate) text: String,
-    pub(crate) items: Vec<Item>,
+/// Text and items being collected for one open flow.
+#[derive(Default)]
+struct Scratch {
+    text: String,
+    items: Vec<Item>,
 }
 
 struct Frame {
     id: BoxId,
     closes: bool,
     owner: Option<usize>,
-    content: Option<InlineContent>,
+    content: Option<Scratch>,
 }
 
 struct Class {
@@ -59,10 +53,12 @@ struct Class {
 #[derive(Default)]
 pub(super) struct Collection {
     frames: Vec<Frame>,
-    /// Буферы закрытых потоков: следующий поток пишет в них, а наружу уходит
-    /// копия точного размера.
-    spare: Vec<InlineContent>,
-    pub(super) finished: Vec<(BoxId, Option<Rc<InlineContent>>)>,
+    /// Buffers of closed flows: the next flow writes into them.
+    spare: Vec<Scratch>,
+    /// The closed flows of this publication, one after another.
+    text: String,
+    items: Vec<Item>,
+    finished: Vec<Closed>,
 }
 
 impl Collection {
@@ -71,11 +67,11 @@ impl Collection {
             id,
             closes: false,
             owner: Some(0),
-            content: Some(InlineContent::default()),
+            content: Some(Scratch::default()),
         });
     }
 
-    fn owner(&mut self) -> Option<&mut InlineContent> {
+    fn owner(&mut self) -> Option<&mut Scratch> {
         let index = self.frames.last()?.owner?;
         self.frames[index].content.as_mut()
     }
@@ -111,7 +107,7 @@ impl Collection {
         });
     }
 
-    /// Элемент отдаёт свой текст в IFC предка (строчная коробка, contents).
+    /// The element gives its text to the IFC of an ancestor (an inline box, contents).
     pub(super) fn feeds_owner(&self, element: &Element) -> bool {
         let class = self.classify(element);
         class.inline
@@ -121,7 +117,7 @@ impl Collection {
                 .is_some_and(|frame| frame.owner.is_some())
     }
 
-    /// Неизменное поддерево: предок получает только элемент строки коробки.
+    /// An unchanged subtree: the ancestor gets only the line item of the box.
     pub(super) fn skip(&mut self, id: BoxId, element: &Element) {
         if let Some(kind) = self.classify(element).kind {
             self.item(id, kind);
@@ -181,13 +177,13 @@ impl Collection {
             return;
         };
         if let Some(content) = self.owner() {
-            let start = content.text.len();
+            let start = len(content.text.len());
             content.text.push_str(text);
             content.items.push(Item {
                 box_id,
                 kind: ItemKind::Text {
                     start,
-                    end: content.text.len(),
+                    end: len(content.text.len()),
                 },
             });
         }
@@ -200,16 +196,26 @@ impl Collection {
         if frame.closes {
             self.item(frame.id, ItemKind::Close);
         }
-        let content = frame.content.and_then(|mut scratch| {
-            let exact = (!scratch.items.is_empty()).then(|| InlineContent {
-                text: scratch.text.as_str().into(),
-                items: scratch.items.clone(),
+        let ranges = frame.content.and_then(|mut scratch| {
+            let ranges = (!scratch.items.is_empty()).then(|| {
+                let text = append(&mut self.text, &scratch.text);
+                let start = len(self.items.len());
+                self.items.append(&mut scratch.items);
+                (text, (start, len(self.items.len())))
             });
             scratch.text.clear();
             scratch.items.clear();
             self.spare.push(scratch);
-            exact
+            ranges
         });
-        self.finished.push((frame.id, content.map(Rc::new)));
+        self.finished.push((frame.id, ranges));
+    }
+
+    /// The closed flows with their content (`content::seal`).
+    pub(super) fn seal<'a>(
+        self,
+        old: impl Fn(BoxId) -> Option<&'a InlineContent>,
+    ) -> Vec<(BoxId, Option<InlineContent>)> {
+        content::seal(&self.text, &self.items, &self.finished, old)
     }
 }

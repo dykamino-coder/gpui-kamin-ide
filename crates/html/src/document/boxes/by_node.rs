@@ -1,9 +1,9 @@
-//! Первая коробка исходного элемента по его ключу за O(1) без хэш-таблицы.
+//! The first box of a source element by its key, in O(1) without a hash table.
 //!
-//! Ключи — счётчик документа подряд от единицы (`dom::NodeKey`), поэтому
-//! плотный вектор от наименьшего ключа занимает 8 Б на узел. Ключ далеко за
-//! концом вектора (чужой счётчик, синтетика) уходит в разреженную таблицу,
-//! чтобы не раздувать вектор.
+//! Keys are a document counter from one up (`dom::NodeKey`), so a dense
+//! vector from the smallest key takes 8 B per node. A key far past the
+//! end of the vector (another counter, synthetic boxes) goes to a sparse table,
+//! so that the vector does not bloat.
 
 use crate::dom::BoxId;
 use std::collections::HashMap;
@@ -28,7 +28,7 @@ impl ByNode {
         }
     }
 
-    /// Запомнить коробку, если у ключа ещё нет первой.
+    /// Remember the box if the key has no first one yet.
     pub(super) fn insert_first(&mut self, key: u64, id: BoxId) {
         if self.dense.is_empty() && self.more.is_empty() {
             self.base = key;
@@ -39,7 +39,7 @@ impl ByNode {
             }
             return;
         }
-        // Рост подряд (типичный разбор) — в вектор; далёкий ключ — в таблицу.
+        // Growth in order (a typical parse) goes to the vector; a far key to the table.
         let slack = self.dense.len().max(1024) as u64;
         if key >= self.base && key - self.base < self.dense.len() as u64 + slack {
             let at = (key - self.base) as usize;
@@ -56,7 +56,7 @@ impl ByNode {
         self.more.shrink_to_fit();
     }
 
-    /// Записать коробку ключа поверх прежней.
+    /// Write the key's box over the previous one.
     pub(super) fn set(&mut self, key: u64, id: BoxId) {
         if let Some(at) = self.index(key) {
             self.dense[at] = id;
@@ -66,7 +66,7 @@ impl ByNode {
         self.insert_first(key, id);
     }
 
-    /// Забыть ключ, если его первая коробка — `id`.
+    /// Forget the key if its first box is `id`.
     pub(super) fn remove_if(&mut self, key: u64, id: BoxId) {
         match self.index(key) {
             Some(at) if self.dense[at] == id => self.dense[at] = BoxId::NONE,

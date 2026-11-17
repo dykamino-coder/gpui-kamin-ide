@@ -5,13 +5,10 @@ use crate::dom::{BoxId, Node};
 
 impl BoxTree {
     /// Raw text is distinct from CSS Text normalization (direction, shadows, hashing).
-    pub(crate) fn raw_text(
-        &self,
-        nodes: &[Node],
-    ) -> Option<std::rc::Rc<super::inline::InlineContent>> {
+    pub(crate) fn raw_text(&self, nodes: &[Node]) -> Option<super::inline::InlineContent> {
         let record = self.get(self.flow_of(nodes)?)?;
         let text = record.inline.as_ref()?;
-        text.items
+        text.items()
             .iter()
             .all(|item| matches!(item.kind, super::inline::ItemKind::Text { .. }))
             .then(|| text.clone())

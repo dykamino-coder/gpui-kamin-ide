@@ -1,43 +1,43 @@
-//! Эпохи входов раскладки коробки: собственных, поддерева и вклада в intrinsic-размер.
+//! Epochs of the layout inputs of a box: its own, its subtree's and its intrinsic contribution.
 //!
-//! Значение эпохи — номер публикации (`BoxTree::clock`), на которой вход изменился.
-//! Потребитель хранит номер, при котором раскладывал, и сравнивает: сбрасывать нечего.
+//! An epoch is the publication number (`BoxTree::clock`) at which the input changed.
+//! A consumer keeps the number it laid out at and compares: nothing is reset.
 
 use crate::dom::Element;
 use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
 
-/// Номера публикаций, на которых изменились входы раскладки коробки.
+/// Publication numbers at which the layout inputs of a box changed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Epochs {
-    /// Собственные входы: used-стиль раскладки, прочитанные раскладкой атрибуты,
-    /// метки, строчное содержимое, список детей-коробок.
+    /// Own inputs: the used layout style, the attributes layout reads,
+    /// marks, inline content, the list of child boxes.
     pub(crate) layout: u32,
-    /// У потомка изменились собственные входы (ставится всем предкам до корня).
+    /// A descendant's own inputs changed (set on every ancestor up to the root).
     pub(crate) child: u32,
-    /// Может измениться min/max-content вклад коробки в предка.
+    /// The box's min/max-content contribution to its ancestor may change.
     pub(crate) intrinsic: u32,
-    /// Изменилось что-либо, что читает сборка элементов коробки или её
-    /// поддерева: входы раскладки или только краски (ставится всем предкам).
+    /// Something the element build of the box or of its subtree reads changed:
+    /// layout inputs or paint-only ones (set on every ancestor).
     pub(crate) paint: u32,
 }
 
-/// Почему коробка грязна на этой публикации.
+/// Why a box is dirty at this publication.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Change {
-    /// Новая, перемещённая или со сменой собственных входов: её вклад может
-    /// измениться, даже если он задан извне (ширина 100px → 200px).
+    /// New, moved or with changed own inputs: its contribution may
+    /// change even if it is set from outside (width 100px → 200px).
     Own,
-    /// Изменились только дети или текст: вклад меняется, если он не внешний.
+    /// Only the children or the text changed: the contribution changes unless it is external.
     Content,
-    /// Изменились только значения краски: раскладка та же.
+    /// Only paint values changed: the layout is the same.
     Paint,
 }
 
-/// Вклад коробки в intrinsic-размеры предка не зависит от её содержимого:
-/// inline-size и его min/max заданы длиной, отступы и рамка — тоже, или коробка
-/// вынесена из потока. Ячейка и подпись таблицы, элемент flex/grid, таблица и
-/// ортогональный поток не останавливают подъём: их вклад читает содержимое
+/// The box's contribution to its ancestor's intrinsic sizes does not depend on its content:
+/// the inline size and its min/max are lengths, so are the padding and border, or the box
+/// is out of flow. A table cell and caption, a flex/grid item, a table and an
+/// orthogonal flow do not stop the propagation: their contribution reads the content
 /// (css-tables-3 §3.9, css-flexbox-1 §4.5, Servo
 /// `outer_inline_content_sizes_depend_on_content`).
 pub(super) fn external_contribution(e: &Element, parent: Option<&Element>) -> bool {
@@ -65,8 +65,8 @@ pub(super) fn external_contribution(e: &Element, parent: Option<&Element>) -> bo
         }
     }
     let layout = &style.reset_box_layout;
-    // `display: inline` после каскада — `InlineBlock` с `inline_display`
-    // (`layout::box_kind::inline_level_box`); у строчной коробки ширины нет.
+    // `display: inline` after the cascade is `InlineBlock` with `inline_display`
+    // (`layout::box_kind::inline_level_box`); an inline box has no width.
     let floated = layout.float.is_some_and(|f| f != 0);
     let inline = !floated
         && (style.reset_context.inline_display == Some(true)
@@ -84,8 +84,8 @@ pub(super) fn external_contribution(e: &Element, parent: Option<&Element>) -> bo
                 | Display::GridLanes
         )
     );
-    // Ячейка и таблица: их ширина — только нижняя граница (css-tables-3 §3.9);
-    // табличные виды у HTML-элементов приходят по тегу, не по `display`.
+    // A cell and a table: their width is only a lower bound (css-tables-3 §3.9);
+    // table display types of HTML elements come from the tag, not from `display`.
     let table = matches!(
         e.tag.as_str(),
         "table" | "caption" | "td" | "th" | "tr" | "tbody" | "thead" | "tfoot"
@@ -135,20 +135,20 @@ pub(super) fn distributes(e: &Element) -> bool {
         )
 }
 
-/// Атрибуты, которые раскладка не читает: класс и стиль доходят через
-/// used-стиль, остальные — только для каскада, ссылок и доступности.
+/// Attributes layout does not read: class and style arrive through the
+/// used style, the others serve only the cascade, links and accessibility.
 fn layout_reads(name: &str) -> bool {
     !matches!(name, "class" | "style" | "id" | "title" | "href")
         && !name.starts_with("aria-")
         && !name.starts_with("data-")
 }
 
-/// Одинаковые собственные входы раскладки у коробки двух публикаций (без детей).
-/// В отличие от `dom::same_layout_box` (ключ повтора записей, который повторяет
-/// и краску SVG-разметки), здесь важна только раскладка. `inherited`: у
-/// родителей те же вычисленные стили (все предки прошли это сравнение), и
-/// стиль ещё не вычисленной пересборки сравнивается по каскаду
-/// (`dom::same_cascaded_layout_stages`, Blink `StyleDifference` до раскладки).
+/// Equal own layout inputs of a box in two publications (without children).
+/// Unlike `dom::same_layout_box` (the record replay key, which also replays
+/// the paint of SVG markup), only layout matters here. `inherited`: the
+/// parents have the same computed styles (all ancestors passed this comparison), and
+/// the style of a rebuild not yet computed is compared by its cascade
+/// (`dom::same_cascaded_layout_stages`, Blink `StyleDifference` before layout).
 pub(super) fn same_layout_inputs(a: &Element, b: &Element, inherited: bool) -> bool {
     let read = |(name, _): &&(String, String)| layout_reads(name);
     a.node_id == b.node_id

@@ -10,7 +10,7 @@ pub(super) fn holders(flow: &[Node], ids: &[u64]) -> Option<std::collections::Ha
         .collect()
 }
 
-/// Позиция блока, содержащего ключ: числового порядка у NodeKey нет.
+/// The position of the block holding a key: NodeKey has no numeric order.
 pub(super) fn holder(flow: &[Node], id: u64) -> Option<usize> {
     flow.iter()
         .position(|n| block(n).is_some_and(|e| holds(e, id)))

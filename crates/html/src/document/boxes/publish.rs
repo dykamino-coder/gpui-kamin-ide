@@ -1,9 +1,9 @@
-//! Публикация входа: слоты переиспользуются по источнику, связи меняются на месте.
+//! Publication of an input: slots are reused by source, links change in place.
 //!
-//! С прежним входом (`previous`) публикация идёт только по изменённому: элемент,
-//! чей снимок детей общий с прежним и чьи входы раскладки те же, сохраняет
-//! поддерево коробок как есть (связи, IFC, подготовленный текст), если он не
-//! отдаёт текст в IFC предка. Попутно ставятся эпохи раскладки (`epochs`).
+//! With a previous input (`previous`) the publication walks only what changed: an element
+//! whose children snapshot is shared with the previous one and whose layout inputs are equal keeps
+//! its box subtree as it is (links, IFC, prepared text), unless it
+//! gives its text to an ancestor's IFC. The layout epochs are set on the way (`epochs`).
 
 use super::epochs::{self, Change};
 use super::level::{Level, Prev, paired, texts_differ};
@@ -11,7 +11,7 @@ use super::source::Source;
 use super::{BoxRecord, BoxTree, finish, inline};
 use crate::dom::{BoxId, Element, Node};
 
-/// Что публикация знает о входе, кроме самих узлов.
+/// What the publication knows about the input besides the nodes themselves.
 pub(super) struct Keys<'a> {
     pub(super) text: &'a [crate::dom::NodeKey],
     pub(super) element: &'a dyn Fn(u64) -> Option<crate::dom::NodeKey>,
@@ -31,8 +31,8 @@ impl BoxTree {
             Some(p) => Prev::Old(p),
             None => Prev::Fresh,
         };
-        // Фрагмент может состоять из текста или соседних inline без Element-
-        // родителя. Его IFC принадлежит документной коробке, а не первому span.
+        // A fragment may consist of text or adjacent inlines without an Element
+        // parent. Its IFC belongs to the document box, not to the first span.
         let needs_root = nodes.iter().any(|node| match node {
             Node::Text(_) => true,
             Node::Element(e) => {
@@ -149,8 +149,8 @@ impl BoxTree {
             }
             let kept = reused == Some(id) && matches!(prev, Prev::Clean) && !inline.feeds_owner(e);
             if kept {
-                // Неизменное поддерево: связи, IFC и подготовка остаются; предок
-                // получает только элемент строки для этой коробки.
+                // An unchanged subtree: links, IFC and preparation stay; the ancestor
+                // gets only the line item of this box.
                 inline.skip(id, e);
                 continue;
             }
@@ -173,7 +173,8 @@ impl BoxTree {
                 old_children,
             ));
         }
-        for (id, content) in inline.finished {
+        let finished = inline.seal(|id| self.get(id).and_then(|r| r.inline.as_ref()));
+        for (id, content) in finished {
             if self.arena.inline(id, content) {
                 changed.push((id, Change::Content));
             }
@@ -194,8 +195,8 @@ impl BoxTree {
         }
     }
 
-    /// Слот для источника: прежний `reused` или новый. Новая или перемещённая
-    /// к другому родителю коробка отмечается изменённой.
+    /// The slot of a source: the previous `reused` or a new one. A new box or one moved
+    /// to another parent is marked changed.
     fn record(
         &mut self,
         origin: Source,
@@ -233,8 +234,8 @@ impl BoxTree {
         id
     }
 
-    /// Границы анонимного фрагмента: первый и последний ключ источника внутри
-    /// (авторский элемент даёт свой ключ, не заходя внутрь).
+    /// The bounds of an anonymous fragment: the first and last source key inside
+    /// (an authored element gives its own key without going inside).
     fn extent(&self, e: &Element, keys: &Keys) -> super::sources::Extent {
         if Source::authored(e) && (keys.element)(e.node_id).is_some() {
             return Default::default();

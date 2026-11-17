@@ -1,4 +1,4 @@
-//! Сопоставление старых коробок источникам без отдельного блока для одиночки.
+//! Matching old boxes to sources without a separate block for a single one.
 
 use super::source::Source;
 use crate::dom::BoxId;
@@ -42,7 +42,7 @@ impl Reuse {
         }
     }
 
-    /// Прежние коробки, не взятые ни одним источником.
+    /// Previous boxes that no source took.
     pub(super) fn into_ids(self) -> impl Iterator<Item = BoxId> {
         self.sources
             .into_values()
