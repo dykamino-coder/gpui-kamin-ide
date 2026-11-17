@@ -76,7 +76,7 @@ it('merges server tasks without duplicate or stale legacy shells, and expires un
     serverAvailable: false,
     commands: [expect.objectContaining({ id: shell.id, status: 'failed' })],
   })
-  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 6000)
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 16000)
   commands.list('s')
   expect(publish.mock.lastCall?.[1].serverAvailable).toBe(false)
   commands.reset()
@@ -120,4 +120,32 @@ it('clears only finished records from both sources without losing active tasks o
     id: shell.id,
     output: shell.output,
   })
+})
+
+it('publishes only changed snapshots unless a view asks to refresh, and asks the server only when its rounds went quiet', () => {
+  fixture.shells.mockReturnValue([shell])
+  const publish = vi.fn()
+  const commands = new ClientCommands('a', publish)
+  expect(commands.needsServerList('s')).toBe(true)
+  commands.receive({ sessionId: 's', commands: [task] })
+  expect(publish).toHaveBeenCalledTimes(1)
+  expect(commands.needsServerList('s')).toBe(false)
+  expect(commands.needsServerList('other')).toBe(true)
+  commands.list('s')
+  commands.receive({ sessionId: 's', commands: [task] })
+  expect(publish).toHaveBeenCalledTimes(1)
+  commands.list('s', true)
+  expect(publish).toHaveBeenCalledTimes(2)
+  fixture.shells.mockReturnValue([{ ...shell, running: false, exitCode: 0 }])
+  commands.list('s')
+  expect(publish).toHaveBeenCalledTimes(3)
+  const now = Date.now()
+  vi.spyOn(Date, 'now').mockReturnValue(now + 13000)
+  expect(commands.needsServerList('s')).toBe(true)
+  commands.list('s')
+  expect(publish).toHaveBeenCalledTimes(3)
+  vi.spyOn(Date, 'now').mockReturnValue(now + 16000)
+  commands.list('s')
+  expect(publish).toHaveBeenCalledTimes(4)
+  expect(publish.mock.lastCall?.[1].serverAvailable).toBe(false)
 })
