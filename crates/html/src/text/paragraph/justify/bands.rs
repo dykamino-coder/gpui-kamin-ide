@@ -36,8 +36,8 @@ impl Paragraph {
 }
 
 impl Paragraph {
-    /// Подложка промежутка между словами — только если оба соседа и сам
-    /// промежуток лежат в ОДНОМ прогоне, и у него есть фон; with the box that
+    /// The fill of the gap between two words, only when both neighbours and
+    /// the gap lie in ONE run that has a background; with the box that
     /// binds the fill as its background (0 for none: a band with a border
     /// binds none, `gpui::TextRun::background_owner`).
     pub(crate) fn gap_background(&self, left: &Word, right: &Word) -> Option<(gpui::Hsla, u32)> {
