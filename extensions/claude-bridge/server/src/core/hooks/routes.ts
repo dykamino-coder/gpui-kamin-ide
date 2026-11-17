@@ -106,6 +106,11 @@ export function createHooksRoutes(): Hono {
     // the authoritative signal (vs scraping OSC spinner glyphs). Emit before any
     // dispatch — idempotent even if the user also has a hook for the same event.
     const event = requestedEvent
+    // An inline /resume writes nothing to the resumed transcript; this hook is
+    // the CLI's only report of the new identity. Independent of status
+    // precedence below, and of whether a client is attached.
+    if (event === 'SessionStart' && payload.source === 'resume' && !session.conversation)
+      session.jsonlWatcher?.adoptResumedTranscript?.(String(payload.session_id ?? ''))
     if (isBridgeStatusEvent(event)) {
       applyDeterministicStatus(session, event, payload)
       // Our own no-op status hook has nothing to run — skip the dispatch (and
