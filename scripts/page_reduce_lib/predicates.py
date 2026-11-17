@@ -74,7 +74,11 @@ class Oracle:
         # example while remote fonts are pending). A complete IEND marks capture
         # readiness; different() still validates all chunks and CRCs below.
         def captured():
-            return dest.is_file() and dest.read_bytes().endswith(b"\x00\x00\x00\x00IEND\xaeB`\x82")
+            try:
+                return dest.read_bytes().endswith(b"\x00\x00\x00\x00IEND\xaeB`\x82")
+            except (FileNotFoundError, PermissionError):
+                # Chrome may still hold the newly created PNG exclusively.
+                return False
         # Allow normal browser shutdown before terminating the owned job. Killing
         # during screenshot shutdown can delay Windows child-process rundown.
         code, _, _ = run(command, chrome_dir, args.timeout_s, ready=captured, ready_grace=2)

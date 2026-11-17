@@ -219,6 +219,8 @@ class OracleTests(unittest.TestCase):
                     dest = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--screenshot="))
                     png(Path(dest), [0, 0, 255])
                     self.assertTrue(kwargs["ready"]())
+                    with patch.object(Path, "read_bytes", side_effect=PermissionError("capture still open")):
+                        self.assertFalse(kwargs["ready"]())
                 return 0, b"", b""
             with patch("page_reduce_lib.predicates.run", side_effect=capture):
                 self.assertTrue(oracle(page))
