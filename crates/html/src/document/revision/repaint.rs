@@ -31,8 +31,9 @@ use super::patch::{Target, apply, attr_paths, patch};
 use super::source_index::SourceIndex;
 use crate::document::Document;
 use crate::dom::Node;
+use crate::paint_path::{self as why, refuse};
 use crate::style::computed::Computed;
-use paths::style_paths;
+use paths::{painted_borders, style_paths};
 use std::collections::HashMap;
 
 /// Перерасчёт одного элемента: тег его коробок и каскадный стиль до и после
@@ -60,29 +61,6 @@ impl Restyle {
     }
 }
 
-/// Whether the colours of the borders of a box with the cascaded style
-/// `style` may be paint values: no table part, whose collapsed borders are a
-/// layout result with their colours, and no inline-level box, whose sides are
-/// painted with its line (`Computed::same_layout_but_border_colors`;
-/// the box itself is checked too, `paths::takes`).
-fn painted_borders(style: &Computed) -> bool {
-    use crate::style::computed::Display;
-    !matches!(
-        style.reset_box_layout.display,
-        Some(
-            Display::Table
-                | Display::InlineTable
-                | Display::TableRow
-                | Display::TableRowGroup
-                | Display::TableCell
-                | Display::Contents
-                | Display::InlineBlock
-                | Display::InlineFlex
-                | Display::InlineGrid
-        )
-    )
-}
-
 impl Document {
     /// План пакета смен `class` и `data-*`, если перерасчёт стиля меняет у
     /// найденных элементов только значения краски; `None` — нужна сборка.
@@ -95,19 +73,19 @@ impl Document {
     ) -> Option<Plan> {
         let values = &self.state.values;
         if !batch.texts.is_empty() || values.quirks() {
-            return None;
+            return refuse(&why::REFUSED_PLAN_TEXT);
         }
-        let input = values.traversal.take_source()?;
+        let input = why::why(values.traversal.take_source(), &why::REFUSED_PLAN_STATE)?;
         // The probes leave the cache in the state of the DOM after the
         // batch: it goes back only with a plan (otherwise the document is
         // rebuilt, and a fresh cache starts from its DOM).
         let mut kept = self.restyle.take().unwrap_or_default();
         let index = kept.ids(&values.traversal.elements());
-        let restyles = index.and_then(|index| {
+        let restyles = why::why(index, &why::REFUSED_RESTYLE_PROBE).and_then(|index| {
             self.restyles(batch, changed, (&input, &index), theme_css, &mut kept.cache)
         });
         values.traversal.retain(input);
-        let boxes = kept.boxes(&self.nodes)?;
+        let boxes = why::why(kept.boxes(&self.nodes), &why::REFUSED_PLAN_PATHS)?;
         let plan = self.restyled(batch, &changed.elements, &boxes, restyles?)?;
         self.restyle.set(Some(kept));
         Some(plan)
@@ -134,17 +112,23 @@ impl Document {
                 },
             );
         }
-        let attr_paths = attr_paths(&self.nodes, boxes, &attrs)?;
+        let attr_paths = why::why(
+            attr_paths(&self.nodes, boxes, &attrs),
+            &why::REFUSED_PLAN_PATHS,
+        )?;
         // Rules that change no cascaded value (an inline style or a more
         // specific rule wins): the batch writes only `class`/`data-*`, which the
         // frame build does not read; the frame stays as recorded (`Plan::Clean`).
         if restyles.is_empty() && attr_paths.is_empty() {
             return Some(Plan::Clean(None));
         }
-        let style_paths = style_paths(&self.nodes, boxes, &restyles)?;
+        let style_paths = why::why(
+            style_paths(&self.nodes, boxes, &restyles),
+            &why::REFUSED_PLAN_PATHS,
+        )?;
         let mut nodes = (*self.nodes).clone();
         if !patch(&mut nodes, attr_paths, &attrs) {
-            return None;
+            return refuse(&why::REFUSED_PLAN_PATHS);
         }
         if restyles.is_empty() {
             return Some(Plan::Clean(Some(nodes)));
@@ -152,7 +136,7 @@ impl Document {
         for (path, id) in &style_paths {
             match (apply(&mut nodes, path), restyles.get(id)) {
                 (Some(Node::Element(e)), Some(r)) => e.style.set_cascaded_paint(&r.new),
-                _ => return None,
+                _ => return refuse(&why::REFUSED_PLAN_PATHS),
             }
         }
         let mut restyled: Vec<u64> = restyles.into_keys().collect();
@@ -172,7 +156,8 @@ impl Document {
     ) -> Option<HashMap<u64, Restyle>> {
         let values = &self.state.values;
         let media = self.state.media();
-        let probe = cache.probe(input, theme_css, media, values).ok()??;
+        let probe = cache.probe(input, theme_css, media, values).ok().flatten();
+        let probe = why::why(probe, &why::REFUSED_RESTYLE_PROBE)?;
         // `attr()` reads attributes outside selectors (a `::before` of a
         // mutated element): such a document is rebuilt.
         let own = batch
@@ -181,34 +166,40 @@ impl Document {
             .flat_map(|c| c.old.iter().chain(&c.new));
         let mut own = own.filter(|a| &*a.name.local == "style").map(|a| &*a.value);
         if probe.reads_attr() || own.any(|css| css.contains("attr(")) {
-            return None;
+            return refuse(&why::REFUSED_RESTYLE_ATTR);
         }
         let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
-        let mut targets = cache.targets(&probe, changed, &mutated)?;
+        let targets = cache.targets(&probe, changed, &mutated);
+        let mut targets = why::why(targets, &why::REFUSED_RESTYLE_PROBE)?;
         // Unwrapped `html`/`body` (`document::unwrap_document`) fold their
         // values into the cascades of their children's boxes: the probe
         // folds them the same way.
-        let unwrapped = fold::Unwrapped::add(&self.nodes, &input.dom.document, &mut targets)?;
+        let unwrapped = fold::Unwrapped::add(&self.nodes, &input.dom.document, &mut targets);
+        let unwrapped = why::why(unwrapped, &why::REFUSED_RESTYLE_ROOT)?;
         // The styles before the batch are those the last probe of each
         // target left (Blink and Stylo keep the old style on the element);
         // only targets no edit has probed yet are cascaded.
-        let before = cache.kept_styles(&probe, input, values, &targets).ok()?;
+        let before = cache.kept_styles(&probe, input, values, &targets).ok();
+        let before = why::why(before, &why::REFUSED_RESTYLE_PROBE)?;
         batch.write();
         let after = cache.styles(&probe, input, values, &targets);
         batch.undo();
-        let after = after.ok()?;
+        let after = why::why(after.ok(), &why::REFUSED_RESTYLE_PROBE)?;
         let vcx = self.state.values();
         let parent = match &unwrapped {
-            Some(u) => Some(u.parent(|i| before[i].as_ref().map(|p| &*p.style), vcx)?),
+            Some(u) => Some(why::why(
+                u.parent(|i| before[i].as_ref().map(|p| &*p.style), vcx),
+                &why::REFUSED_RESTYLE_ROOT,
+            )?),
             None => None,
         };
         let ids = targets.iter().map(|target| index.id(target));
         let mut out = HashMap::new();
         let entries = targets.iter().zip(ids).zip(before).zip(after).enumerate();
         for (i, (((target, id), old), new)) in entries {
-            let (old, new) = (old?, new?);
+            let (old, new) = why::why(old.zip(new), &why::REFUSED_RESTYLE_PROBE)?;
             if old.rest != new.rest {
-                return None;
+                return refuse(&why::REFUSED_RESTYLE_REST);
             }
             if *old.style == *new.style {
                 continue;
@@ -216,9 +207,9 @@ impl Document {
             // A batch that restyles an unwrapped wrapper rebuilds: its values
             // reach every top-level box and the text of the page.
             if unwrapped.as_ref().is_some_and(|u| u.folds(i)) {
-                return None;
+                return refuse(&why::REFUSED_RESTYLE_ROOT);
             }
-            let id = id?;
+            let id = why::why(id, &why::REFUSED_RESTYLE_PROBE)?;
             let (old, new) = match &parent {
                 Some(p) => (
                     p.fold(target, old.style, vcx),
@@ -229,7 +220,7 @@ impl Document {
             // The frame may only repaint: layout reads the same values.
             let borders = painted_borders(&old) && painted_borders(&new);
             if !(old.same_layout(&new) || borders && old.same_layout_but_border_colors(&new)) {
-                return None;
+                return refuse(&why::REFUSED_RESTYLE_LAYOUT);
             }
             let restyle = Restyle {
                 tag: super::adopt::tag_of(target),
@@ -241,7 +232,7 @@ impl Document {
             // derives it, not the cascade of the element.
             let canvas = restyle.background() && restyle.tag == "body";
             if restyle.tag == "html" || canvas {
-                return None;
+                return refuse(&why::REFUSED_RESTYLE_ROOT);
             }
             out.insert(id, restyle);
         }
