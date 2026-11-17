@@ -41,6 +41,7 @@ pub(crate) struct FontInfo {
 
 mod scene_capture;
 mod frame_capture;
+mod gpu_wait;
 mod group_region;
 mod group_stage;
 mod gaussian;
