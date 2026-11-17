@@ -3,14 +3,15 @@
 //! Every text is kept only by the nearest owner of its flow. Atoms with a flow
 //! of their own are represented by a leaf key; the line width is not part of this input.
 //!
-//! The flows a publication changed share one buffer of text and one of items
-//! (`Chunk`); a flow holds its ranges in it, so a document of thousands of
-//! paragraphs keeps two allocations instead of three per flow. Blink keeps one
-//! text buffer per inline formatting context (`InlineItemsData`); here one
-//! buffer serves every flow of a publication. A later publication (a DOM edit,
-//! also from script) puts only the flows it changed into a new chunk; an old
-//! chunk lives while one of its flows does, so the retained text is at most the
-//! live text plus the text of the first publication.
+//! The flows a publication changed share one buffer of items (`Chunk`); a
+//! flow holds its range in it, and its text as a shared string that is inline
+//! when short and otherwise the one buffer its paragraph shares
+//! (`InlineContent::shared_text`). Blink keeps the text of an inline
+//! formatting context in `InlineItemsData` and copies it again into its shape
+//! results. A later publication (a DOM edit, also from script) puts only the
+//! flows it changed into a new chunk; an old chunk lives while one of its
+//! flows does, so the retained items are at most the live items plus those of
+//! the first publication.
 
 use crate::dom::{BoxId, Element};
 use crate::layout::box_kind;

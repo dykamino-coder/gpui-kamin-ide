@@ -228,8 +228,7 @@ impl Document {
     }
 
     /// Elements of box contents replayed at any depth (`layout::reuse::content`).
-    #[cfg(test)]
-    pub(crate) fn replayed_contents(&self) -> u64 {
+    pub fn replayed_contents(&self) -> u64 {
         self.reuse.stats.get().contents
     }
 

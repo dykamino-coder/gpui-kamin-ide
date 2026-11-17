@@ -236,6 +236,7 @@ pub(crate) fn paragraph_pieces_routed(
         pieces = out;
     }
     let keep = keep.and_then(|keep| keep.seal(nodes, flow_text));
+    let shared = opts.cx.doc().boxes.borrow().flow_text(nodes);
     route_pieces(
         pieces,
         inherited,
@@ -246,5 +247,6 @@ pub(crate) fn paragraph_pieces_routed(
         clamp_tag,
         line_atoms,
         keep,
+        shared,
     )
 }

@@ -20,7 +20,7 @@ pub(crate) fn native_paragraph(
     native_request: Option<&NativeRequest<'_>>,
     native: bool,
     selectable: bool,
-    text: String,
+    text: SharedString,
     runs: Vec<gpui::TextRun>,
     pieces: Vec<inline::Piece>,
     edges: Vec<(std::ops::Range<usize>, bool, f32)>,
@@ -71,7 +71,7 @@ pub(crate) fn native_paragraph(
     let id = gpui::ElementId::Integer(text_id(&text));
     let family = inherited.inh.font.font_family.clone().unwrap_or_default();
     let para = crate::text::paragraph::Paragraph::new(
-        SharedString::from(text),
+        text,
         runs,
         gpui::px(biggest),
         line,

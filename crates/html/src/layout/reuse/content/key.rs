@@ -133,6 +133,24 @@ fn window_free(e: &Element) -> bool {
     })
 }
 
+/// The container's inline size follows the width it gets from outside: it
+/// is not a definite length of its own (`width: auto`, a percentage, a
+/// shrink-to-fit box) and not a table cell or the anonymous block of a
+/// cell's content (the container is a cell's BFC root), whose width the table
+/// layout sets (`BoxTree::resized_by_siblings`). Its content lays out in that
+/// width without reading it through `BoxConstraints`, so the record holds
+/// only at the same widths, and while the window is resized it is not
+/// written: the root flow's rule for a block that fills the width
+/// (`plain::fills_width`).
+pub(super) fn follows_width(inherited: &BoxStyle, outer: &RenderOpts) -> bool {
+    use crate::style::computed::Display;
+    use crate::style::values::value::Len;
+    let layout = &inherited.reset_box_layout;
+    !outer.cx.constraints.cell_bfc
+        && !matches!(layout.display, Some(Display::TableCell))
+        && !matches!(layout.width, Some(Len::Px(_)))
+}
+
 /// No query container size reaches the style (ResetContext::cq_size, cq_box).
 fn no_query_container(
     size: (Option<f32>, Option<f32>),

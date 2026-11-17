@@ -28,7 +28,7 @@ use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
-use key::{ContentKey, KeyEnv, key, plain};
+use key::{ContentKey, KeyEnv, follows_width, key, plain};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -61,6 +61,8 @@ pub(crate) struct Content {
     start: Counters,
     /// Outside width reads of the build (`track`).
     reads: Rc<Cell<bool>>,
+    /// The container's width follows the outside one (`key::follows_width`).
+    follows: bool,
 }
 
 impl Content {
@@ -110,8 +112,10 @@ impl FlowReuse {
             }
             (owner, boxes.clock())
         };
+        let follows = follows_width(inherited, outer);
         let env = KeyEnv::of(&self.store.inputs, inherited, outer, inner, fresh);
         Some(Content {
+            follows,
             owner,
             at,
             start: Counters::read(&inner.cx),
@@ -121,7 +125,7 @@ impl FlowReuse {
                 len: u32::try_from(nodes.len()).unwrap_or(u32::MAX),
                 widths: inner.cx.constraints.key_widths(),
             },
-            reads: Rc::default(),
+            reads: Rc::new(Cell::new(follows)),
         })
     }
 
@@ -185,6 +189,12 @@ impl FlowReuse {
         opts: &RenderOpts,
         out: &mut Vec<AnyElement>,
     ) {
+        // Its width changes with the window's: the next build of another
+        // width would not replay it (Blink `ShouldCreateSubsequence` caches
+        // only where a replay is likely).
+        if content.follows && self.resized.get() {
+            return;
+        }
         let end = Counters::read(&opts.cx);
         let mut items = Vec::with_capacity(out.len());
         for child in std::mem::take(out) {

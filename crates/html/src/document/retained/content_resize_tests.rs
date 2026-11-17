@@ -118,3 +118,27 @@ fn a_media_query_on_the_width_rebuilds_the_contents_it_restyles(cx: &mut TestApp
     let css = "@media (min-width:600px){td span{display:inline-block;padding-left:7px}}";
     assert_eq!(resized(cx, &cells(FIXED, "", css)), 0);
 }
+
+/// Blocks in a wrapper block (not root-flow blocks), each with a block of
+/// text: `style` styles each.
+fn blocks(style: &str) -> String {
+    let blocks: String = (0..9)
+        .map(|i| format!("<div style='{style}'><div>block {i} with some words</div></div>"))
+        .collect();
+    format!(
+        "<!doctype html><html><head><style>body{{margin:0}}</style></head><body><div>{blocks}</div></body></html>"
+    )
+}
+
+#[gpui::test]
+fn contents_of_blocks_that_fill_the_width_are_built_after_a_width_change(cx: &mut TestAppContext) {
+    for style in ["", "width:50%", "display:inline-block"] {
+        assert_eq!(resized(cx, &blocks(style)), 0, "{style}");
+    }
+}
+
+#[gpui::test]
+fn contents_of_blocks_of_a_fixed_width_replay_across_a_width_change(cx: &mut TestAppContext) {
+    let replays = resized(cx, &blocks("width:200px"));
+    assert!(replays > 0, "fixed blocks replayed: {replays}");
+}

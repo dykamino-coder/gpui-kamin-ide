@@ -14,6 +14,15 @@ use crate::text::inline;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
+/// The paragraph's text: the retained flow text when it is the same, so the
+/// paragraph shares its buffer (`BoxTree::flow_text`); a copy otherwise.
+fn own_text(text: String, shared: Option<SharedString>) -> SharedString {
+    match shared {
+        Some(shared) if *shared == *text => shared,
+        _ => SharedString::from(text),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn route_pieces(
     pieces: Vec<inline::Piece>,
@@ -25,6 +34,7 @@ pub(crate) fn route_pieces(
     clamp_tag: Option<(u64, u32)>,
     line_atoms: LineAtoms,
     keep: Option<crate::layout::reuse::paragraph::Sealed>,
+    shared: Option<SharedString>,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
@@ -89,7 +99,7 @@ pub(crate) fn route_pieces(
         let selectable = inherited.reset_context.no_select != Some(true)
             && inherited.inh.ui.pointer_events_none != Some(true);
         if !native && !selectable {
-            return gpui::StyledText::new(SharedString::from(text))
+            return gpui::StyledText::new(own_text(text, shared))
                 .with_ligature_breaking(false)
                 .with_runs(runs)
                 .into_any_element();
@@ -102,7 +112,7 @@ pub(crate) fn route_pieces(
                 native_request,
                 native,
                 selectable,
-                text,
+                own_text(text, shared),
                 runs,
                 pieces,
                 edges,
@@ -232,6 +242,7 @@ mod tests {
                     None,
                     None,
                     vec![],
+                    None,
                     None,
                 );
                 assert_eq!(

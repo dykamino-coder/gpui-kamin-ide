@@ -33,6 +33,13 @@ pub(super) struct Prepared {
     text: Option<InlineContent>,
 }
 
+impl Prepared {
+    /// The normalized runs when they differ from the source.
+    pub(super) fn normalized(&self) -> Option<&InlineContent> {
+        self.text.as_ref()
+    }
+}
+
 /// A prepared flow with inline boxes: one normalized run per source text item
 /// (empty runs kept), so the paragraph adapter can take each text node's run in
 /// document order. `inputs` are those of the descendant boxes the runs read.
@@ -217,7 +224,7 @@ impl kamin_heap::HeapSize for Prepared {
             + self
                 .text
                 .as_ref()
-                .map_or(0, |text| text.chunk().heap_size(ops))
+                .map_or(0, |text| kamin_heap::HeapSize::heap_size(text, ops))
             + ops.buffer(dependencies.as_ptr(), dependencies.len())
             + dependencies
                 .iter()

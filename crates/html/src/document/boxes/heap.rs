@@ -1,6 +1,6 @@
 //! Retained T3 blocks by owner: slots, synthetic boxes and logical IFCs.
 
-use super::{BoxRecord, BoxTree, inline::InlineContent};
+use super::{BoxRecord, BoxTree};
 use kamin_heap::{HeapSize, Ops};
 
 impl HeapSize for BoxTree {
@@ -22,12 +22,6 @@ impl HeapSize for BoxRecord {
             + ops.at("text/box-ifc", |ops| {
                 self.inline.heap_size(ops) + self.prepared.heap_size(ops)
             })
-    }
-}
-
-impl HeapSize for InlineContent {
-    fn heap_size(&self, ops: &mut Ops) -> usize {
-        self.chunk().heap_size(ops)
     }
 }
 

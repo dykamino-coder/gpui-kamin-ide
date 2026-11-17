@@ -1,6 +1,14 @@
-//! The stored inline content of a flow: items and ranges in a shared chunk.
+//! The stored inline content of a flow: its text, and its items as a range
+//! of a chunk shared by the flows of one publication.
+//!
+//! The text is the flow's own shared string: a short one is inline, a long
+//! one is one shared buffer that the paragraph built from an unchanged flow
+//! takes as its own text (`InlineContent::shared_text`). Blink copies the
+//! DOM text into `InlineItemsData::text_content` and again into each shape
+//! result's string; here the box tree and the paragraph share one copy.
 
 use crate::dom::BoxId;
+use gpui::SharedString;
 use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,39 +45,42 @@ impl ItemKind {
     }
 }
 
-/// Text and items of the flows of one publication (see the module).
+/// Items of the flows of one publication (see the module).
 #[derive(Debug, Default)]
 pub(crate) struct Chunk {
-    text: Box<str>,
     items: Box<[Item]>,
 }
 
-/// The source logical runs of one flow: ranges in a shared buffer.
+/// The source logical runs of one flow: its text and a range of shared items.
 /// CSS Text normalization and shaping are the next stages: the offsets of text
 /// items are relative to the text of this flow, not to the source DOM.
 #[derive(Clone, Debug)]
 pub(crate) struct InlineContent {
+    text: SharedString,
     chunk: Rc<Chunk>,
-    text: (u32, u32),
     items: (u32, u32),
 }
 
 impl InlineContent {
     /// A flow in a chunk of its own.
     pub(crate) fn single(text: String, items: Vec<Item>) -> Self {
-        let (text_len, items_len) = (len(text.len()), len(items.len()));
+        let items_len = len(items.len());
         Self {
+            text: SharedString::from(text),
             chunk: Rc::new(Chunk {
-                text: text.into_boxed_str(),
                 items: items.into_boxed_slice(),
             }),
-            text: (0, text_len),
             items: (0, items_len),
         }
     }
 
     pub(crate) fn text(&self) -> &str {
-        &self.chunk.text[self.text.0 as usize..self.text.1 as usize]
+        &self.text
+    }
+
+    /// The text as a shared string: a clone shares its buffer.
+    pub(crate) fn shared_text(&self) -> SharedString {
+        self.text.clone()
     }
 
     pub(crate) fn items(&self) -> &[Item] {
@@ -79,13 +90,8 @@ impl InlineContent {
     /// The same stored flow, not only an equal one.
     pub(crate) fn same(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.chunk, &other.chunk)
-            && self.text == other.text
             && self.items == other.items
-    }
-
-    #[cfg(feature = "heap-report")]
-    pub(crate) fn chunk(&self) -> &Rc<Chunk> {
-        &self.chunk
+            && self.text == other.text
     }
 }
 
@@ -98,10 +104,21 @@ impl PartialEq for InlineContent {
 impl Eq for InlineContent {}
 
 #[cfg(feature = "heap-report")]
-impl kamin_heap::HeapSize for Chunk {
+impl kamin_heap::HeapSize for InlineContent {
     fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
-        ops.buffer(self.text.as_ptr(), self.text.len())
-            + ops.buffer(self.items.as_ptr(), self.items.len())
+        // A text longer than the inline capacity of `SmolStr` (23 bytes) is
+        // one shared block: the `Arc` counters, then the bytes.
+        const INLINE: usize = 23;
+        const COUNTERS: usize = 2 * size_of::<usize>();
+        let text = if self.text.len() > INLINE {
+            ops.buffer(
+                self.text.as_ptr().wrapping_sub(COUNTERS),
+                self.text.len() + COUNTERS,
+            )
+        } else {
+            0
+        };
+        text + ops.buffer(self.chunk.items.as_ptr(), self.chunk.items.len())
     }
 }
 
@@ -124,10 +141,9 @@ pub(super) fn seal<'a>(
 ) -> Vec<(BoxId, Option<InlineContent>)> {
     enum Kept {
         Old(InlineContent),
-        New((u32, u32), (u32, u32)),
+        New(SharedString, (u32, u32)),
         None,
     }
-    let mut text = String::new();
     let mut items = Vec::new();
     let kept: Vec<_> = finished
         .iter()
@@ -140,14 +156,15 @@ pub(super) fn seal<'a>(
             if let Some(old) = old(id).filter(|o| o.text() == t_slice && o.items() == i_slice) {
                 return (id, Kept::Old(old.clone()));
             }
-            let t = append(&mut text, t_slice);
             let start = len(items.len());
             items.extend_from_slice(i_slice);
-            (id, Kept::New(t, (start, len(items.len()))))
+            (
+                id,
+                Kept::New(SharedString::from(t_slice), (start, len(items.len()))),
+            )
         })
         .collect();
     let chunk = Rc::new(Chunk {
-        text: text.into_boxed_str(),
         items: items.into_boxed_slice(),
     });
     kept.into_iter()
