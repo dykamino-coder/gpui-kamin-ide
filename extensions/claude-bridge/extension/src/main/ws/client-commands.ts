@@ -2,8 +2,16 @@
 import type { CommandSnapshot } from '../../shared/commands'
 import { localBackgroundShellSnapshot, stopLocalBackgroundShell, clearLocalCompletedShells } from '../mcp/tools/shell'
 
+// The server answers each of its own `commands:request` rounds with a snapshot:
+// every second while something runs, every 10 s when idle. A snapshot younger
+// than SERVER_FRESH_MS therefore means the server still serves this session.
+const SERVER_FRESH_MS = 15_000
+// Ask the server explicitly only when its own rounds have not refreshed us.
+const SERVER_ASK_AFTER_MS = 12_000
+
 export class ClientCommands {
   private remote?: { snapshot: CommandSnapshot; at: number }
+  private published?: string
 
   constructor(
     private readonly tabId: string,
@@ -17,11 +25,20 @@ export class ClientCommands {
 
   reset(): void {
     this.remote = undefined
+    this.published = undefined
   }
 
-  list(sessionId: string): void {
+  /** Whether a `commands:list` request is worth sending: the server's own
+   *  rounds keep the snapshot fresh, so an idle chat sends none. */
+  needsServerList(sessionId: string): boolean {
+    return this.remote?.snapshot.sessionId !== sessionId || Date.now() - this.remote.at > SERVER_ASK_AFTER_MS
+  }
+
+  /** Publish the merged snapshot when it differs from the last one published,
+   *  or always with `force` (a view that just mounted has none). */
+  list(sessionId: string, force = false): void {
     const shells = localBackgroundShellSnapshot(this.tabId)
-    const serverAvailable = this.remote?.snapshot.sessionId === sessionId && Date.now() - this.remote.at < 5000
+    const serverAvailable = this.remote?.snapshot.sessionId === sessionId && Date.now() - this.remote.at < SERVER_FRESH_MS
     const commands: CommandSnapshot['commands'] = serverAvailable
       ? this.remote!.snapshot.commands.filter((c) => !shells.some((s) => s.id === c.id))
       : []
@@ -49,11 +66,11 @@ export class ClientCommands {
       }
     }
     commands.sort((a, b) => Number(b.background) - Number(a.background) || a.startedAt - b.startedAt)
-    this.publish('commands:snapshot', {
-      sessionId,
-      commands,
-      serverAvailable,
-    } satisfies CommandSnapshot)
+    const snapshot = { sessionId, commands, serverAvailable } satisfies CommandSnapshot
+    const key = JSON.stringify(snapshot)
+    if (!force && key === this.published) return
+    this.published = key
+    this.publish('commands:snapshot', snapshot)
   }
 
   clear(): void {
