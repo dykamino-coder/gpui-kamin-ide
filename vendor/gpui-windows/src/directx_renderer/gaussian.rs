@@ -225,7 +225,7 @@ impl DirectXRenderer {
             MinDepth: 0.0,
             MaxDepth: 1.0,
         }];
-        let blend = self.replace_blend()?;
+        let blend = self.blur_task_blend(quads)?;
         unsafe { dc.OMSetRenderTargets(Some(dst), None) };
         let pipeline = &self.pipelines.blur_pipeline;
         let (globals, sampler) = (&self.blur.globals, &self.globals.sampler);
