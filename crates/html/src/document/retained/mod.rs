@@ -57,9 +57,13 @@ mod restyle_run_tests;
 #[cfg(test)]
 mod reuse_tests;
 #[cfg(test)]
+mod svg_paint_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod unread_color_tests;
+#[cfg(test)]
+mod unseen_tests;
 mod window_key;
 
 use super::Document;

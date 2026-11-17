@@ -48,6 +48,17 @@ impl LayerHandle {
             && runs.all(|b| b.replaceable && b.env.transformation == crate::TransformationMatrix::unit())
     }
 
+    /// The device-pixel area the runs of box `owner` cover, their placed box
+    /// with its ink (`BoxRange::area`): any paint the box records again in
+    /// the same place lies inside it. `None` when the box has no run.
+    pub fn box_area(&self, owner: u32) -> Option<Bounds<ScaledPixels>> {
+        let content = self.0.content.borrow();
+        content
+            .runs_of(owner)
+            .map(|at| content.boxes[at].area)
+            .reduce(|a, b| a.union(&b))
+    }
+
     /// Write the background of `owner` from `from` to `to`.
     /// `set_backgrounds` of one write.
     pub fn set_background(&self, owner: u32, from: Hsla, to: Hsla) -> Option<Bounds<ScaledPixels>> {

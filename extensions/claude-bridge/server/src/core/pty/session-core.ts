@@ -819,6 +819,7 @@ export function reattachSession(session: PtySession, ws: WS): void {
   session.detachedAt = null
   session.ws = ws
   sessionCliControl(session)?.replay()
+  session.agentInput?.replay?.()
   session.lastActivityAt = new Date()
   notifySessionAttachmentChanged(session)
   resendSessionUsage(session)
