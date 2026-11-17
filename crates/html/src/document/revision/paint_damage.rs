@@ -64,16 +64,27 @@ pub(crate) enum PaintDamage {
 pub(super) const CONTROLS: [&str; 6] =
     ["input", "button", "select", "textarea", "meter", "progress"];
 
-/// The damage from `a` (old box) to `b` (new box of the same element).
-pub(crate) fn classify(a: &Element, b: &Element) -> PaintDamage {
+/// The damage from `a` (old box) to `b` (new box of the same element);
+/// `in_svg` tells whether the box is in an `svg` subtree (asked only when
+/// its SVG paints changed).
+pub(crate) fn classify(a: &Element, b: &Element, in_svg: impl FnOnce() -> bool) -> PaintDamage {
     if a.node_id != b.node_id || a.tag != b.tag || CONTROLS.contains(&a.tag.as_str()) {
         return PaintDamage::Rebuild;
     }
     // The restyle (`Plan::Restyled`) wrote the new paint groups into the
     // boxes in place: the cascaded styles carry the whole difference.
-    let Some(bits) = own_paint_only(a.style.cascaded(), b.style.cascaded()) else {
+    let (old, new) = (a.style.cascaded(), b.style.cascaded());
+    let Some(bits) = own_paint_only(old, new) else {
         return PaintDamage::Rebuild;
     };
+    // `fill` and `stroke` paint SVG shapes only: in an `svg` subtree they
+    // raster the image again (the frame is built); on any other box they
+    // paint nothing, and no rule passes them from it into an `svg`
+    // (`resources::svg_document::serialize` reads each shape's own value).
+    let svg = (&old.reset_svg_math, &new.reset_svg_math);
+    if (svg.0.svg_fill != svg.1.svg_fill || svg.0.svg_stroke != svg.1.svg_stroke) && in_svg() {
+        return PaintDamage::Rebuild;
+    }
     if bits.layer_writable() {
         PaintDamage::Value(bits)
     } else {

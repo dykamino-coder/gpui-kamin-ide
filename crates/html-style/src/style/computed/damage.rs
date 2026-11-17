@@ -6,7 +6,7 @@
 //! reaches every descendant's own style), the background colour and gradients
 //! of the box itself (with `bg_explicit`, which only presentational hints at
 //! cascade time and control painting read) and, on request, its border
-//! colours. A background image with a URL stays layout damage: it loads as a
+//! colours, and the SVG paints `fill` and `stroke` (`svg`). A background image with a URL stays layout damage: it loads as a
 //! resource of the build. Everything else, `currentcolor` values resolved into
 //! other groups included, is layout damage. The destructuring is exhaustive: a
 //! new field of a compared struct must be classified here.
@@ -88,7 +88,8 @@ fn same_but_color_and(
         && *reset_grid == o.reset_grid
         && *reset_context == o.reset_context
         && *reset_generated == o.reset_generated
-        && *reset_svg_math == o.reset_svg_math
+        && (*reset_svg_math == o.reset_svg_math
+            || svg::same_layout_svg(reset_svg_math, &o.reset_svg_math))
         && *reset_positioned == o.reset_positioned
         && *reset_effects == o.reset_effects
         && *reset_mask == o.reset_mask
@@ -222,5 +223,6 @@ fn same_layout_background(a: &ResetBackground, b: &ResetBackground) -> bool {
         && *bg_repeat == b.bg_repeat
 }
 
+mod svg;
 #[cfg(test)]
 mod tests;
