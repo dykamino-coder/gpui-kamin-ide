@@ -14,7 +14,7 @@
 # 12. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
 # 13. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
 # 14. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
-# 15. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
+# 15. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU query diagnostics read a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
 # 16. Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.
 # 17. Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.
 # 18. GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.
@@ -6824,7 +6824,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..406c4fa46e7b5b14343bc69460cacb47ab318d61
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..ef6d346bb74498d2a8d6c82537d9cc60aff90dbf
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7822,7 +7822,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..406c4fa46e7b5b14343bc69460cacb47
 +
 +    /// KaminIDE patch: draw the scene of `group` into the frame-domain stage,
 +    /// scissored to its stage region `raw`.
-+    pub(super) fn draw_group_content(
++    fn draw_group_content(
 +        &mut self,
 +        group: &gpui::PaintGroup,
 +        raw: Region,
@@ -11643,10 +11643,10 @@ index 0000000000000000000000000000000000000000..cc7317a71e56ae16682701821419c3da
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tasks.rs b/vendor/gpui-windows/src/directx_renderer/group_tasks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8884d0aca72ebf89d2550be537e1af995d88e3e6
+index 0000000000000000000000000000000000000000..045a3cba27c7a1256c83b31f488bbbaa567a75b8
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tasks.rs
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,195 @@
 +//! Finished Gaussian tasks, reused only after an exact GPU comparison of the input.
 +//!
 +//! A predicate sees the complete raw rectangle, including the kernel halo. It
@@ -11713,7 +11713,15 @@ index 0000000000000000000000000000000000000000..8884d0aca72ebf89d2550be537e1af99
 +            unsafe { device.CreatePredicate(&desc, Some(&mut self.predicate))? };
 +        }
 +        if self.no_write.is_none() {
-+            let desc = D3D11_BLEND_DESC::default();
++            // Keep writes enabled with identity blending: a zero write mask can
++            // bypass shader discard in hardware occlusion accounting.
++            let mut desc = D3D11_BLEND_DESC::default();
++            desc.RenderTarget[0] = D3D11_RENDER_TARGET_BLEND_DESC {
++                BlendEnable: true.into(), SrcBlend: D3D11_BLEND_ZERO,
++                DestBlend: D3D11_BLEND_ONE, BlendOp: D3D11_BLEND_OP_ADD,
++                SrcBlendAlpha: D3D11_BLEND_ZERO, DestBlendAlpha: D3D11_BLEND_ONE,
++                BlendOpAlpha: D3D11_BLEND_OP_ADD, RenderTargetWriteMask: 15,
++            };
 +            unsafe { device.CreateBlendState(&desc, Some(&mut self.no_write))? };
 +        }
 +        Ok(())
@@ -11757,16 +11765,23 @@ index 0000000000000000000000000000000000000000..8884d0aca72ebf89d2550be537e1af99
 +        let Some(slot) = self.blur.tasks.entries.iter().position(|e| e.key == k) else { return Ok(false) };
 +        let device = self.dev().device.clone();
 +        let dc = self.dev().device_context.clone();
-+        self.blur.tasks.resources(&device)?;
++        if self.blur.tasks.resources(&device).is_err() {
++            self.blur.tasks.entries.clear();
++            return Ok(false);
++        }
 +        let r = gaussian::direct_radius(g.blur_radius).unwrap();
 +        let place = self.blur.group_place[i];
 +        let region = self.blur.group_regions[i];
 +        let Some(source) = self.blur.tasks.entries[slot].output else {
++            if self.blur.tasks.entries[slot].input.is_none() {
++                let Ok(input) = create_blur_texture(&device, raw.width, raw.height, false) else {
++                    self.blur.tasks.entries.clear();
++                    return Ok(false);
++                };
++                self.blur.tasks.entries[slot].input = Some(input);
++            }
 +            self.gaussian_group(i, g.blur_radius, r, raw)?;
 +            let entry = &mut self.blur.tasks.entries[slot];
-+            if entry.input.is_none() {
-+                entry.input = Some(create_blur_texture(&device, raw.width, raw.height, false)?);
-+            }
 +            let area = D3D11_BOX { left: raw.x, top: raw.y, front: 0,
 +                right: raw.x + raw.width, bottom: raw.y + raw.height, back: 1 };
 +            unsafe {
@@ -13048,12 +13063,31 @@ index 0000000000000000000000000000000000000000..69bb0b813867db2fed89906566449032
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/blur_tasks.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/blur_tasks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9f34246b83de1b19d58dac34f2d73bda3489e4a4
+index 0000000000000000000000000000000000000000..0b4e8c357ad4288fbbd83b9c789e51e958e1193d
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/blur_tasks.rs
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,175 @@
 +//! Reusing a finished blur must preserve every RGBA byte, including mismatch fallback.
 +use super::*;
++
++fn devices() -> Vec<DirectXDevices> {
++    use crate::GpuAdapterPreference as P;
++    let mut names = Vec::new();
++    let mut out = Vec::new();
++    for p in [P::Default, P::HighPerformance, P::Software] {
++        let d = DirectXDevices::with_instrumentation(p, gpui::Instrumentation::default()).unwrap();
++        let desc = unsafe { d.adapter.GetDesc1() }.unwrap();
++        let name = String::from_utf16_lossy(&desc.Description)
++            .trim_matches('\0')
++            .to_owned();
++        if !names.contains(&name) {
++            eprintln!("blur task adapter: {name}");
++            names.push(name);
++            out.push(d);
++        }
++    }
++    out
++}
 +
 +fn scene(changed: bool) -> Scene {
 +    let mut s = Scene::default();
@@ -13064,15 +13098,28 @@ index 0000000000000000000000000000000000000000..9f34246b83de1b19d58dac34f2d73bda
 +        let mut inner = Scene::default();
 +        let color = if changed && i % 3 == 2 {
 +            hsla(0.65, 0.9, 0.4, 0.75)
-+        } else { hsla(0.05, 0.8, 0.6, 0.75) };
++        } else {
++            hsla(0.05, 0.8, 0.6, 0.75)
++        };
 +        let mut q = quad([x, y, 40., 30.], color);
 +        q.order = 1;
 +        inner.quads.push(q);
-+        s.groups.push(PaintGroup { scene: inner, bounds, blur_radius: 0.6, ..Default::default() });
++        s.groups.push(PaintGroup {
++            scene: inner,
++            bounds,
++            blur_radius: 0.6,
++            ..Default::default()
++        });
 +        s.surfaces.push(PaintSurface {
-+            order: i as u32 + 1, bounds, content_mask: mask(),
-+            corner_radii: Corners::default(), blur_radius: 0.,
-+            group: i as u32 + 1, opacity: 0.8, color_matrix: None, fragment: 0,
++            order: i as u32 + 1,
++            bounds,
++            content_mask: mask(),
++            corner_radii: Corners::default(),
++            blur_radius: 0.,
++            group: i as u32 + 1,
++            opacity: 0.8,
++            color_matrix: None,
++            fragment: 0,
 +        });
 +    }
 +    s
@@ -13080,53 +13127,120 @@ index 0000000000000000000000000000000000000000..9f34246b83de1b19d58dac34f2d73bda
 +
 +#[test]
 +fn validated_blur_tasks_equal_uncached_rgba_for_hits_and_misses() {
-+    let device = DirectXDevices::new().unwrap();
-+    for changed in [false, true] {
-+        let mut cached = offscreen(&device, W, H);
-+        let mut uncached = offscreen(&device, W, H);
-+        uncached.blur.tasks.disabled = true;
-+        let s = scene(changed);
-+        cached.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
-+        uncached.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
-+        assert!(cached.blur.tasks.probes >= 8, "the GPU predicate must run");
-+        assert_eq!(uncached.blur.tasks.probes, 0);
-+        let got = target_bytes(&mut cached);
-+        assert_eq!(cached.blur.tasks.last_difference(&cached.dev().device_context), changed);
-+        let want = target_bytes(&mut uncached);
-+        assert!(got == want, "changed={changed}: {} differing pixels", differing(&got, &want));
++    for device in devices() {
++        for changed in [false, true] {
++            let mut cached = offscreen(&device, W, H);
++            let mut uncached = offscreen(&device, W, H);
++            uncached.blur.tasks.disabled = true;
++            let mut s = scene(changed);
++            // Constant nonempty inputs fill the raw rectangle and its halo.
++            // Integer scissoring makes translated inputs byte-identical; the
++            // changed last group must select the original kernel instead.
++            for group in &mut s.groups {
++                for q in &mut group.scene.quads {
++                    q.bounds.origin.x.0 -= 8.;
++                    q.bounds.origin.y.0 -= 8.;
++                    q.bounds.size.width.0 += 16.;
++                    q.bounds.size.height.0 += 16.;
++                    q.corner_radii = Corners::default();
++                }
++            }
++            cached.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
++            uncached
++                .draw(&s, WindowBackgroundAppearance::Opaque)
++                .unwrap();
++            assert!(cached.blur.tasks.probes >= 8, "the GPU predicate must run");
++            assert_eq!(uncached.blur.tasks.probes, 0);
++            let got = target_bytes(&mut cached);
++            assert_eq!(
++                cached
++                    .blur
++                    .tasks
++                    .last_difference(&cached.dev().device_context),
++                changed
++            );
++            let want = target_bytes(&mut uncached);
++            assert!(
++                got == want,
++                "changed={changed}: {} differing pixels",
++                differing(&got, &want)
++            );
++        }
 +    }
 +}
 +
 +#[test]
 +fn mutated_input_rebuilds_the_task_and_retained_frame_without_stale_pixels() {
-+    let device = DirectXDevices::new().unwrap();
-+    let mut cached = offscreen(&device, W, H);
-+    let mut previous = Scene::default();
-+    for (i, changed) in [false, true, false].into_iter().enumerate() {
-+        let mut s = scene(changed);
-+        s.note_frame_damage(&previous, i as u64 + 1, (W, H));
-+        cached.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
-+        let mut whole = offscreen(&device, W, H);
-+        whole.blur.tasks.disabled = true;
-+        whole.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
-+        let got = target_bytes(&mut cached);
-+        let want = target_bytes(&mut whole);
-+        assert!(got == want, "frame {i}: {} differing pixels", differing(&got, &want));
-+        previous = s;
++    for device in devices() {
++        let mut cached = offscreen(&device, W, H);
++        let mut previous = Scene::default();
++        for (i, changed) in [false, true, false].into_iter().enumerate() {
++            let mut s = scene(changed);
++            s.note_frame_damage(&previous, i as u64 + 1, (W, H));
++            cached.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
++            let mut whole = offscreen(&device, W, H);
++            whole.blur.tasks.disabled = true;
++            whole.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
++            let got = target_bytes(&mut cached);
++            let want = target_bytes(&mut whole);
++            assert!(
++                got == want,
++                "frame {i}: {} differing pixels",
++                differing(&got, &want)
++            );
++            previous = s;
++        }
 +    }
 +}
 +
 +#[test]
 +fn removing_all_groups_releases_cached_task_inputs() {
-+    let device = DirectXDevices::new().unwrap();
-+    let mut cached = offscreen(&device, W, H);
-+    let first = scene(false);
-+    cached.draw(&first, WindowBackgroundAppearance::Opaque).unwrap();
-+    assert!(cached.blur.tasks.inputs().next().is_some());
-+    let mut empty = Scene::default();
-+    empty.note_frame_damage(&first, 1, (W, H));
-+    cached.draw(&empty, WindowBackgroundAppearance::Opaque).unwrap();
-+    assert!(cached.blur.tasks.inputs().next().is_none());
++    for device in devices() {
++        let mut cached = offscreen(&device, W, H);
++        let first = scene(false);
++        cached
++            .draw(&first, WindowBackgroundAppearance::Opaque)
++            .unwrap();
++        assert!(cached.blur.tasks.inputs().next().is_some());
++        let mut empty = Scene::default();
++        empty.note_frame_damage(&first, 1, (W, H));
++        cached
++            .draw(&empty, WindowBackgroundAppearance::Opaque)
++            .unwrap();
++        assert!(cached.blur.tasks.inputs().next().is_none());
++    }
++}
++
++#[test]
++fn a_difference_only_in_the_kernel_halo_rejects_reuse() {
++    for device in devices() {
++        let mut cached = offscreen(&device, W, H);
++        let mut uncached = offscreen(&device, W, H);
++        uncached.blur.tasks.disabled = true;
++        let mut s = scene(false);
++        for group in &mut s.groups {
++            group.scene.quads.clear();
++        }
++        // The last group starts at x=188. Its output begins at 186, but its
++        // raw input begins at 184: this extra texel is outside the output.
++        let mut halo = quad([185., 126., 1., 8.], hsla(0.6, 1., 0.5, 1.));
++        halo.order = 2;
++        halo.corner_radii = Corners::default();
++        s.groups.last_mut().unwrap().scene.quads.push(halo);
++        cached.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
++        uncached
++            .draw(&s, WindowBackgroundAppearance::Opaque)
++            .unwrap();
++        let got = target_bytes(&mut cached);
++        assert!(
++            cached
++                .blur
++                .tasks
++                .last_difference(&cached.dev().device_context)
++        );
++        let want = target_bytes(&mut uncached);
++        assert!(got == want, "{} differing pixels", differing(&got, &want));
++    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 new file mode 100644
@@ -15810,7 +15924,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..34988871bd24725b3d85c3fabe1345bc4a713bd9
+index ba89c6873354fb7449b8294878e080a68c3dd29b..870b9a6812271bf5df6835f3d586daaa6a4f24e6
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -16520,8 +16634,8 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..34988871bd24725b3d85c3fabe1345bc
 +    input.position.xy += global_origin;
 +    BlurQuad q = blur_quads[input.quad_id];
 +    float2 t = q.texel;
-+    // Exact input validation for a finished Gaussian task. Color writes are
-+    // disabled; only differing texels contribute to the occlusion predicate.
++    // Exact input validation for a finished Gaussian task. Identity blending
++    // preserves the target; only differing texels contribute to the predicate.
 +    if (q.blur_pass > 6.5) {
 +        int2 p = int2(floor(input.position.xy));
 +        float4 a = t_sprite.Load(int3(p + int2(q.src_origin), 0));

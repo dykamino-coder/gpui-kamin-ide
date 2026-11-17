@@ -64,7 +64,15 @@ impl Tasks {
             unsafe { device.CreatePredicate(&desc, Some(&mut self.predicate))? };
         }
         if self.no_write.is_none() {
-            let desc = D3D11_BLEND_DESC::default();
+            // Keep writes enabled with identity blending: a zero write mask can
+            // bypass shader discard in hardware occlusion accounting.
+            let mut desc = D3D11_BLEND_DESC::default();
+            desc.RenderTarget[0] = D3D11_RENDER_TARGET_BLEND_DESC {
+                BlendEnable: true.into(), SrcBlend: D3D11_BLEND_ZERO,
+                DestBlend: D3D11_BLEND_ONE, BlendOp: D3D11_BLEND_OP_ADD,
+                SrcBlendAlpha: D3D11_BLEND_ZERO, DestBlendAlpha: D3D11_BLEND_ONE,
+                BlendOpAlpha: D3D11_BLEND_OP_ADD, RenderTargetWriteMask: 15,
+            };
             unsafe { device.CreateBlendState(&desc, Some(&mut self.no_write))? };
         }
         Ok(())
@@ -108,16 +116,23 @@ impl DirectXRenderer {
         let Some(slot) = self.blur.tasks.entries.iter().position(|e| e.key == k) else { return Ok(false) };
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
-        self.blur.tasks.resources(&device)?;
+        if self.blur.tasks.resources(&device).is_err() {
+            self.blur.tasks.entries.clear();
+            return Ok(false);
+        }
         let r = gaussian::direct_radius(g.blur_radius).unwrap();
         let place = self.blur.group_place[i];
         let region = self.blur.group_regions[i];
         let Some(source) = self.blur.tasks.entries[slot].output else {
+            if self.blur.tasks.entries[slot].input.is_none() {
+                let Ok(input) = create_blur_texture(&device, raw.width, raw.height, false) else {
+                    self.blur.tasks.entries.clear();
+                    return Ok(false);
+                };
+                self.blur.tasks.entries[slot].input = Some(input);
+            }
             self.gaussian_group(i, g.blur_radius, r, raw)?;
             let entry = &mut self.blur.tasks.entries[slot];
-            if entry.input.is_none() {
-                entry.input = Some(create_blur_texture(&device, raw.width, raw.height, false)?);
-            }
             let area = D3D11_BOX { left: raw.x, top: raw.y, front: 0,
                 right: raw.x + raw.width, bottom: raw.y + raw.height, back: 1 };
             unsafe {

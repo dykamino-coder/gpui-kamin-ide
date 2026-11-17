@@ -1155,7 +1155,7 @@ impl DirectXRenderer {
 
     /// KaminIDE patch: draw the scene of `group` into the frame-domain stage,
     /// scissored to its stage region `raw`.
-    pub(super) fn draw_group_content(
+    fn draw_group_content(
         &mut self,
         group: &gpui::PaintGroup,
         raw: Region,
