@@ -1,0 +1,31 @@
+name: Page reducer tests
+
+on:
+  pull_request:
+    paths:
+      - scripts/page_reduce.py
+      - scripts/page_reduce_lib/**
+      - scripts/test_page_reduce.py
+      - .github/workflows/page-reduce.yml
+  push:
+    paths:
+      - scripts/page_reduce.py
+      - scripts/page_reduce_lib/**
+      - scripts/test_page_reduce.py
+      - .github/workflows/page-reduce.yml
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: python -I scripts/test_page_reduce.py
