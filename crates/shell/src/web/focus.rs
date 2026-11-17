@@ -46,9 +46,19 @@ pub(crate) fn blur_if_outside(x: f32, y: f32) {
 
 /// Окно стало активным или перестало им быть. Владелец фокуса не меняется:
 /// вернувшись в окно, пользователь продолжает в том же поле.
+///
+/// Уходя, гасим ВСЕ браузеры, а не только владельца: offscreen-браузер CEF
+/// с рождения считает себя в фокусе, и до первого клика по вью владельца нет,
+/// а каретка в поле чата уже мигает.
 pub(crate) fn window_active(active: bool) {
     let owner = FOCUSED.lock().ok().and_then(|f| f.clone());
-    if let Some(id) = owner {
-        super::input::set_focus(&id, active);
+    if active {
+        if let Some(id) = owner {
+            super::input::set_focus(&id, true);
+        }
+        return;
+    }
+    for id in super::browsers::ids() {
+        super::input::set_focus(&id, false);
     }
 }
