@@ -10,6 +10,7 @@ import { CliXmlContent } from './CliXmlContent'
 import { ToolResultBlock } from './ToolResultBlock'
 import { JsonlTextBlock } from './JsonlTextBlock'
 import { renderContentBlocks } from './ContentBlocks'
+import { contentWithThinkingDuration } from './thinking-duration'
 import { MessageActions } from './MessageActions'
 
 interface AssistantEntryProps {
@@ -142,7 +143,7 @@ export function AssistantEntry({ entry, toolResults }: AssistantEntryProps): JSX
         ? <JsonlTextBlock text={content} />
         : Array.isArray(content)
           ? renderContentBlocks(
-              content,
+              contentWithThinkingDuration(entry),
               toolResults,
               entry.__streaming === true ? entry.__streamingActiveBlock : undefined,
             )

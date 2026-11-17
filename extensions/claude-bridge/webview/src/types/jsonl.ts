@@ -2,6 +2,9 @@ export interface ContentBlock {
   type: 'text' | 'tool_use' | 'tool_result' | 'thinking'
   text?: string
   thinking?: string
+  /** Render copy only: how long the model thought for this block (its row's
+   *  `thinkingDurationMs`), carried onto the block when rows are merged. */
+  durationMs?: number
   name?: string
   id?: string
   input?: any
@@ -54,6 +57,8 @@ export interface JsonlEntryData {
   /** CLI thinking display mode for this assistant row; `"updates"` = the TUI
    *  prints the thinking text as visible narration (INC-2026-0063). */
   thinkingDisplay?: string
+  /** CLI: how long the model thought for this row's thinking block. */
+  thinkingDurationMs?: number
   isSidechain?: boolean
   /** Owning teammate/subagent for a sidechain STREAM stub — the CLI's
    *  `x-claude-code-agent-id` (`<name>-<n>@<team>`), stamped by the MITM. Lets the
