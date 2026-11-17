@@ -41,14 +41,16 @@ def read(path):
         row = bytearray(raw[base + 1:base + 1 + stride])
         if mode > 4:
             raise ValueError("invalid PNG filter")
-        for x in range(stride):
+        # Page captures mostly use Up rows. Handle that filter without the
+        # per-byte predictor dispatch used by the other PNG filter modes.
+        if mode == 2:
+            row = bytearray((value + above) & 255 for value, above in zip(row, previous))
+        for x in range(stride) if mode not in (0, 2) else ():
             a = row[x - channels] if x >= channels else 0
             b = previous[x]
             c = previous[x - channels] if x >= channels else 0
             if mode == 1:
                 value = a
-            elif mode == 2:
-                value = b
             elif mode == 3:
                 value = (a + b) // 2
             elif mode == 4:
@@ -59,10 +61,17 @@ def read(path):
                 value = 0
             row[x] = (row[x] + value) & 255
         # Composite transparency onto white, as a page canvas does.
-        rgb = bytearray()
-        for x in range(0, stride, channels):
-            alpha = row[x + 3] if channels == 4 else 255
-            rgb.extend((v * alpha + 255 * (255 - alpha) + 127) // 255 for v in row[x:x + 3])
+        if channels == 3:
+            rgb = row
+        elif row[3::4] == b"\xff" * width:
+            rgb = bytearray(width * 3)
+            for channel in range(3):
+                rgb[channel::3] = row[channel::4]
+        else:
+            rgb = bytearray()
+            for x in range(0, stride, channels):
+                alpha = row[x + 3]
+                rgb.extend((v * alpha + 255 * (255 - alpha) + 127) // 255 for v in row[x:x + 3])
         rows.append(rgb)
         previous = row
     return width, height, rows

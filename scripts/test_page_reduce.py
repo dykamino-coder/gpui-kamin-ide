@@ -179,6 +179,22 @@ def png(path, color, rgba=False):
 
 
 class PngTests(unittest.TestCase):
+    def test_all_png_filters_decode_known_two_row_image(self):
+        rows = [bytes([10, 20, 30, 40, 50, 60]), bytes([15, 25, 35, 45, 55, 65])]
+        encoded = [rows, [bytes([10,20,30,30,30,30]), bytes([15,25,35,30,30,30])],
+                   [rows[0], bytes([5]*6)],
+                   [bytes([10,20,30,35,40,45]), bytes([10,15,20,18,18,18])],
+                   [bytes([10,20,30,30,30,30]), bytes([5]*6)]]
+        def chunk(kind, body):
+            return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "filters.png"
+            for mode, filtered in enumerate(encoded):
+                raw = b"".join(bytes([mode]) + row for row in filtered)
+                path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0))
+                                 + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+                self.assertEqual(read(path), (2, 2, rows), f"filter {mode}")
+
     def test_rgb_tolerance_alpha_and_bounds(self):
         with tempfile.TemporaryDirectory() as temp:
             a, b = Path(temp) / "a.png", Path(temp) / "b.png"
