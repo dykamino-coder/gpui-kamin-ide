@@ -92,9 +92,12 @@ pub(super) fn attach(
         mode["memory_owners"] =
             window.update(cx, |view, window, cx| report(&view.doc, window, cx))?;
     }
-    // Граф удержания — сразу после обхода владельцев, чьи блоки он называет.
+    // Capture retention immediately after collecting the labeled holders.
     #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
     {
+        if !super::allocations::retain::enabled() {
+            return Ok(());
+        }
         let name = mode_name.to_owned();
         let graph = window.update(cx, move |_, _, _| {
             super::allocations::retain::snapshot(&name)

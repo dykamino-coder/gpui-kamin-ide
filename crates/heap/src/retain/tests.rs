@@ -1,10 +1,10 @@
-//! Граф на искусственной памяти: пути, доминаторы, вход недостижимого и циклы
-//! `Rc`; плюс настоящий цикл `Rc` в куче теста.
+//! Synthetic memory tests for paths, dominators, unrooted entries, and `Rc`
+//! cycles, plus a real `Rc` cycle in the test heap.
 
 use super::*;
 use std::collections::BTreeMap;
 
-/// Память теста: слова блоков и областей по их началу.
+/// Test memory maps block and region base addresses to their words.
 #[derive(Default)]
 struct Fake(BTreeMap<usize, Vec<usize>>);
 
@@ -17,12 +17,12 @@ impl Memory for Fake {
 
 const STACK: usize = 0x10;
 
-/// Блок `index` по адресу `0x1000 * (index + 1)` со словами `words`.
+/// Block `index` at `0x1000 * (index + 1)` containing `words`.
 fn at(index: usize) -> usize {
     0x1000 * (index + 1)
 }
 
-/// Граф из блоков (слова каждого) и одного стека со словами `stack`.
+/// A graph from block word arrays and one stack containing `stack`.
 fn graph(blocks: &[Vec<usize>], stack: &[usize]) -> Graph {
     let mut memory = Fake::default();
     let mut list = Vec::new();
@@ -44,7 +44,7 @@ fn graph(blocks: &[Vec<usize>], stack: &[usize]) -> Graph {
     Graph::build(list, regions, &memory)
 }
 
-/// Узлы пути от узла к корню по кратчайшим путям.
+/// Shortest-path node sequence from a node back to the root.
 fn path(graph: &Graph, mut node: u32) -> Vec<u32> {
     let mut out = vec![node];
     while node != graph.root() {
@@ -195,12 +195,12 @@ fn the_file_starts_with_the_magic_and_the_header() {
     assert_eq!((blocks, nodes), (2, 5));
 }
 
-/// Настоящая память процесса теста: блоки живы, пока тест держит их `Rc`.
+/// Real process memory; blocks stay live while the test holds their `Rc` values.
 struct Process;
 
 impl Memory for Process {
     fn words(&self, address: usize, bytes: usize) -> &[usize] {
-        // SAFETY: тест передаёт только блоки живых `Rc`, выровненные по слову.
+        // SAFETY: the test supplies only live, word-aligned `Rc` allocations.
         unsafe { std::slice::from_raw_parts(address as *const usize, bytes / size_of::<usize>()) }
     }
 }
@@ -212,7 +212,7 @@ fn a_real_rc_cycle_is_found_in_the_heap() {
     let first = Rc::new(Link(RefCell::new(None), [0; 4]));
     let second = Rc::new(Link(RefCell::new(Some(first.clone())), [0; 4]));
     *first.0.borrow_mut() = Some(second.clone());
-    // Блок Rc — RcBox: два счётчика и значение.
+    // An RcBox allocation contains two reference counts followed by the value.
     let header = 2 * size_of::<usize>();
     let block = |rc: &Rc<Link>| Block {
         address: Rc::as_ptr(rc) as usize - header,

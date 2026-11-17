@@ -4,7 +4,7 @@
 #[cfg(feature = "allocation-audit")]
 pub(super) use counted::Counted;
 #[cfg(all(test, feature = "allocation-audit"))]
-pub(super) use counted::thread_live;
+pub(super) use counted::{thread_calls, thread_live};
 
 #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
 pub(super) mod probe;
@@ -34,6 +34,7 @@ mod counted {
     #[cfg(test)]
     thread_local! {
         static THREAD_LIVE: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+        static THREAD_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     }
     #[cfg(test)]
     fn thread_delta(bytes: i64) {
@@ -45,9 +46,18 @@ mod counted {
         THREAD_LIVE.with(std::cell::Cell::get)
     }
 
+    /// Successful allocation calls on this thread, including temporary allocations.
+    #[cfg(test)]
+    pub(crate) fn thread_calls() -> u64 {
+        THREAD_CALLS.with(std::cell::Cell::get)
+    }
+
     fn allocated(bytes: usize) {
         #[cfg(test)]
-        thread_delta(bytes as i64);
+        {
+            thread_delta(bytes as i64);
+            let _ = THREAD_CALLS.try_with(|calls| calls.set(calls.get() + 1));
+        }
         CALLS.fetch_add(1, Relaxed);
         BYTES.fetch_add(bytes as u64, Relaxed);
         let live = LIVE.fetch_add(bytes as u64, Relaxed) + bytes as u64;

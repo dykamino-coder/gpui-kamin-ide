@@ -1,19 +1,11 @@
-//! Граф удержания кучи стенда (docs/memprof.md, «Who keeps a block alive»):
-//! кто держит живой блок сейчас, а не где его выделили. Шим аллокатора ведёт
-//! таблицу живых блоков с запуска процесса; после отчёта владельцев первого
-//! режима (`holders::attach`) поток документа сканирует каждый живой блок и
-//! корни (`roots`) и пишет граф с кратчайшими путями и доминаторами
-//! (`kamin_heap::retain`) в файл для `scripts/memprof.py --retainers`.
-//!
-//! `ENGINE_BENCH_RETAINERS_OUT=<файл>` включает учёт; без переменной шим
-//! делает одно чтение флага и ничего не выделяет.
-//! `ENGINE_BENCH_RETAINERS_SLOTS=<k>` — таблица на `2^k` слотов по 16 байт
-//! (по умолчанию 23: ~6 млн живых блоков); переполнение выключает учёт, и
-//! снимок сообщает об ошибке вместо неполного графа.
-//!
-//! Скан читает блоки, пока другие потоки стенда могут работать; их стеки и
-//! память ОС не сканируются, такие держатели видны как вход «без корня».
+//! Explicitly enabled retention snapshots (see docs/memprof.md).
+//! Without ENGINE_BENCH_RETAINERS_OUT, startup and allocator hooks allocate nothing.
+//! All table metadata, output path and snapshot state are created after opt-in.
+//! ENGINE_BENCH_RETAINERS_SLOTS sets the table size to 2^k slots (default k=23).
+//! A conservative snapshot scans live blocks and the snapshot thread's roots;
+//! other threads' stacks and native allocations are outside its scope.
 
+mod config;
 mod roots;
 mod table;
 
@@ -21,9 +13,9 @@ use kamin_heap::retain::{Block, FLAG_CYCLE, FLAG_UNHELD, Graph, Memory};
 use serde_json::{Value, json};
 use std::{
     path::PathBuf,
-    sync::{
-        OnceLock,
-        atomic::{AtomicBool, Ordering::Relaxed},
+    sync::atomic::{
+        AtomicBool, AtomicPtr,
+        Ordering::{Acquire, Relaxed, Release},
     },
     time::Instant,
 };
@@ -31,11 +23,31 @@ use std::{
 const OUT: &str = "ENGINE_BENCH_RETAINERS_OUT";
 const SLOTS: &str = "ENGINE_BENCH_RETAINERS_SLOTS";
 
-static PATH: OnceLock<PathBuf> = OnceLock::new();
-static TAKEN: AtomicBool = AtomicBool::new(false);
+struct State {
+    path: PathBuf,
+    taken: AtomicBool,
+    table: table::Table,
+}
 
-/// Читает окружение до первой аллокации стенда и включает таблицу.
+// Only the publication pointer exists when tracking is disabled.
+static STATE: AtomicPtr<State> = AtomicPtr::new(std::ptr::null_mut());
+
+#[inline]
+fn state() -> Option<&'static State> {
+    // SAFETY: initialization publishes a complete immutable State with release ordering.
+    // Its table/flags use atomics, and the State is never reclaimed during the process.
+    unsafe { STATE.load(Acquire).as_ref() }
+}
+
+pub(crate) fn enabled() -> bool {
+    state().is_some()
+}
+
+/// Checks presence without initializing the global allocator on the disabled path.
 pub(crate) fn init() -> Result<(), String> {
+    if !config::present() {
+        return Ok(());
+    }
     let Some(path) = std::env::var_os(OUT) else {
         return Ok(());
     };
@@ -47,33 +59,39 @@ pub(crate) fn init() -> Result<(), String> {
             .ok_or_else(|| format!("{SLOTS}={text}: expected 16..30"))?,
         Err(_) => 23,
     };
-    table::open(bits)?;
-    let _ = PATH.set(path.into());
+    let table = table::Table::new(bits)?;
+    let state = Box::new(State {
+        path: path.into(),
+        taken: AtomicBool::new(false),
+        table,
+    });
+    // Startup calls init once, before document work and allocator callbacks can track.
+    STATE.store(Box::into_raw(state), Release);
     Ok(())
 }
 
-/// Выделен блок: при выключенном учёте — одно чтение флага.
+/// Record an allocation; disabled tracking costs one pointer load.
 #[inline]
 pub(super) fn track(pointer: *const u8, bytes: usize) {
-    if table::tracking() {
-        table::insert(pointer as usize, bytes);
+    if let Some(state) = state() {
+        state.table.insert(pointer as usize, bytes);
     }
 }
-/// Блок `pointer` освобождается: до возврата аллокатору.
+/// Record a free before returning `pointer` to the allocator.
 #[inline]
 pub(super) fn untrack(pointer: *const u8) {
-    if table::tracking() {
-        table::remove(pointer as usize);
+    if let Some(state) = state() {
+        state.table.remove(pointer as usize);
     }
 }
 
-/// Память живых блоков процесса.
+/// Live process heap memory.
 struct Process;
 
 impl Memory for Process {
     fn words(&self, address: usize, bytes: usize) -> &[usize] {
-        // SAFETY: адрес и размер — живой блок таблицы или область корней;
-        // блоки аллокатора выровнены не меньше чем по слову.
+        // SAFETY: the address and size describe a live table block or root region.
+        // Allocator blocks are aligned to at least a machine word.
         unsafe { std::slice::from_raw_parts(address as *const usize, bytes / size_of::<usize>()) }
     }
 }
@@ -82,24 +100,26 @@ fn ms(since: Instant) -> f64 {
     (since.elapsed().as_secs_f64() * 1e4).round() / 10.0
 }
 
-/// Снимок графа один раз за процесс: сводка для записи режима в JSON стенда.
+/// Take one graph snapshot per process and return its benchmark JSON summary.
 pub(crate) fn snapshot(mode: &str) -> Option<Value> {
-    let path = PATH.get()?;
-    if TAKEN.swap(true, Relaxed) {
+    let state = state()?;
+    let path = &state.path;
+    let table = &state.table;
+    if state.taken.swap(true, Relaxed) {
         return None;
     }
-    if table::overflowed() {
+    if table.overflowed() {
         return Some(json!({"error": format!(
-            "the live block table overflowed; raise {SLOTS} (now {} slots)", table::capacity())}));
+            "the live block table overflowed; raise {SLOTS} (now {} slots)", table.capacity())}));
     }
     let started = Instant::now();
     let mut count = 0usize;
-    table::each(|_, _| count += 1);
-    // Сам список — живой блок таблицы со всеми адресами; в граф он не входит.
+    table.each(|_, _| count += 1);
+    // The block list itself contains every address; exclude it from the graph.
     let mut blocks: Vec<Block> = Vec::with_capacity(count + count / 8 + 4096);
     let own = blocks.as_ptr() as usize;
     let mut missed = 0usize;
-    table::each(|address, bytes| {
+    table.each(|address, bytes| {
         if address == own {
             return;
         }
@@ -120,7 +140,7 @@ pub(crate) fn snapshot(mode: &str) -> Option<Value> {
     let analyze = ms(analyzed);
     let mut summary = summary(&graph, mode);
     summary["missed_blocks"] = json!(missed);
-    summary["table_slots"] = json!(table::capacity());
+    summary["table_slots"] = json!(table.capacity());
     summary["collect_ms"] = json!(collect);
     summary["scan_ms"] = json!(scan);
     summary["analyze_ms"] = json!(analyze);
@@ -161,3 +181,6 @@ fn summary(graph: &Graph, mode: &str) -> Value {
         "scope": "live Rust heap blocks, conservative scan of every aligned word; roots: the snapshot thread's stack, the image's writable sections and its TLS",
     })
 }
+
+#[cfg(all(test, feature = "allocation-audit"))]
+mod tests;

@@ -1,9 +1,9 @@
-//! Двоичный файл графа: строка `kamin retain graph v1`, длина и текст
-//! JSON-заголовка вызывающего (u32), затем числа little-endian:
-//! `blocks nodes edges regions` (u64 каждое), области (`start bytes` u64 и имя:
-//! длина u32 + UTF-8), адреса и размеры блоков (u64), `edge_start` (u32,
-//! узлов + 1), `edge_to` и `edge_offset` (u32), `idom` (u32), `retained` (u64),
-//! `parent` и `parent_offset` (u32), `flags` (u8). Читает `scripts/memprof_retain.py`.
+//! Binary graph format: `kamin retain graph v1`, a u32 JSON header length and
+//! header text, then little-endian values. Counts `blocks nodes edges regions`
+//! are u64. Each region has u64 start/bytes and a u32-length UTF-8 name. Block
+//! addresses/sizes are u64; `edge_start` has nodes+1 u32 entries; `edge_to`,
+//! `edge_offset`, `idom`, `parent`, and `parent_offset` are u32; `retained` is u64
+//! and `flags` is u8. The reader is `scripts/memprof_retain.py`.
 
 use super::Graph;
 use std::io::{Result, Write};

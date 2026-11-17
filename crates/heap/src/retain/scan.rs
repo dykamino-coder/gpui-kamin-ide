@@ -1,19 +1,18 @@
-//! Консервативный скан: каждое выровненное слово каждого блока и каждой области
-//! корней ищется двоичным поиском среди интервалов живых блоков. Слово внутри
-//! блока (не только его начало — у таблиц hashbrown указатель смотрит в
-//! середину выделения) даёт ребро; повторное ребро в тот же блок из того же
-//! источника не пишется, остаётся первое смещение.
+//! Conservative scanning: binary-search sorted live-block intervals for every
+//! aligned word in each block and root region. Interior pointers count too
+//! (hashbrown tables can point inside an allocation). Deduplicate edges from
+//! the same source to the same block, retaining the first pointer offset.
 
 use super::{Block, Graph, Memory, NONE, Region};
 
-/// Блок, внутрь которого указывает `address` (блоки упорядочены и не пересекаются).
+/// The block containing `address`; blocks must be sorted and non-overlapping.
 pub(super) fn find(blocks: &[Block], address: usize) -> Option<u32> {
     let index = blocks.partition_point(|block| block.address <= address);
     let block = blocks.get(index.checked_sub(1)?)?;
     (address < block.address + block.bytes).then_some((index - 1) as u32)
 }
 
-/// Интервалы блоков для поиска слов: начала отдельно от концов ради кэша.
+/// Block intervals with separate start and end arrays for cache locality.
 struct Intervals {
     starts: Vec<usize>,
     ends: Vec<usize>,
@@ -45,7 +44,7 @@ impl Intervals {
     }
 }
 
-/// Рёбра одного источника: слова `words` узла `source`.
+/// Edges from `words` belonging to node `source`.
 fn edges_of(
     graph: &mut Graph,
     intervals: &Intervals,
@@ -71,7 +70,7 @@ fn edges_of(
 pub(super) fn scan(mut blocks: Vec<Block>, regions: Vec<Region>, memory: &impl Memory) -> Graph {
     blocks.retain(|block| block.bytes > 0);
     blocks.sort_unstable_by_key(|block| block.address);
-    // Пересечение значит, что таблица живых блоков устарела; первый блок остаётся.
+    // An overlap indicates stale live-block tracking; retain the first block.
     blocks.dedup_by(|next, kept| next.address < kept.address + kept.bytes);
     let intervals = Intervals::new(&blocks);
     let count = blocks.len();
@@ -94,7 +93,7 @@ pub(super) fn scan(mut blocks: Vec<Block>, regions: Vec<Region>, memory: &impl M
             memory.words(block.address, block.bytes),
         );
     }
-    // Общий корень держит области корней и узел «без корня».
+    // The virtual root owns root regions and the unrooted node.
     graph.edge_start.push(graph.edge_to.len() as u32);
     for region in 0..graph.regions.len() {
         graph.edge_to.push(graph.region(region));
@@ -114,7 +113,7 @@ pub(super) fn scan(mut blocks: Vec<Block>, regions: Vec<Region>, memory: &impl M
             memory.words(start, bytes),
         );
     }
-    // Рёбра узла «без корня» допишет анализ: он последний.
+    // Analysis appends edges to the final, unrooted node.
     graph.edge_start.push(graph.edge_to.len() as u32);
     graph.edge_start.push(graph.edge_to.len() as u32);
     debug_assert_eq!(graph.edge_start.len(), nodes + 1);

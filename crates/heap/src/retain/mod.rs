@@ -1,17 +1,15 @@
-//! Граф удержания кучи без сборщика мусора: консервативный скан живых блоков
-//! (как у Boehm GC и DMD) даёт рёбра «блок → блок», корни — стек потока и
-//! статики модуля. По графу считаются кратчайший путь от корня до каждого
-//! блока и дерево доминаторов с удержанным размером (как анализ кучи Gecko:
-//! `ComputeShortestPaths` и `DominatorTree`, и панель Memory Chrome).
+//! Heap retention without garbage collection: conservative scanning of live
+//! blocks (as in Boehm GC and DMD) produces block-to-block edges. Thread stacks
+//! and module statics provide roots. Analysis computes shortest root paths and
+//! a dominator tree with retained sizes, as in Gecko ComputeShortestPaths and
+//! DominatorTree and the Chrome Memory panel.
 //!
-//! Граф строится по запросу и ничего не стоит, пока его не попросили: список
-//! живых блоков и чтение их памяти даёт вызывающий (`Memory`), здесь только
-//! алгоритмы без зависимостей от платформы.
+//! The caller supplies live blocks and memory access through `Memory` on demand;
+//! these algorithms have no platform dependencies or background work.
 //!
-//! Нумерация узлов: блоки `0..blocks` в порядке адресов, затем виртуальные
-//! узлы — общий корень, по узлу на каждую область корней и узел «без корня»,
-//! через который в граф входят блоки, недостижимые из областей (их держит
-//! чужой стек, память ОС или они утекли в цикле `Rc`).
+//! Node IDs start with address-sorted blocks, followed by a virtual root, one
+//! node per root region, and an unrooted node. The latter reaches blocks held
+//! by unscanned stacks, OS memory, or leaked `Rc` cycles.
 
 mod analyze;
 mod scan;
@@ -21,15 +19,15 @@ mod write;
 #[cfg(test)]
 mod tests;
 
-/// Живой блок кучи: адрес и запрошенный размер.
+/// A live heap block: address and requested size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Block {
     pub address: usize,
     pub bytes: usize,
 }
 
-/// Область корней: диапазон памяти вне кучи, слова которого держат блоки
-/// (стек потока, секция статик модуля, TLS).
+/// A non-heap root region whose words can hold blocks: a stack, writable
+/// module section, or thread-local storage.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Region {
     pub name: String,
@@ -37,60 +35,58 @@ pub struct Region {
     pub bytes: usize,
 }
 
-/// Чтение памяти блока или области словами указателя.
+/// Read blocks and root regions as pointer-sized words.
 pub trait Memory {
-    /// Выровненные слова диапазона `[address, address + bytes)`; хвост меньше
-    /// слова не читается.
+    /// Aligned words in `[address, address + bytes)`; ignore a partial trailing word.
     fn words(&self, address: usize, bytes: usize) -> &[usize];
 }
 
-/// Нет ребра или родителя.
+/// No edge or parent.
 pub const NONE: u32 = u32::MAX;
 
-/// Блок вошёл в граф через узел «без корня» как исток (никто его не держит).
+/// A block entered through the unrooted node as a source with no incoming edge.
 pub const FLAG_UNHELD: u8 = 1;
-/// Блок вошёл через узел «без корня» как представитель цикла, который никто
-/// снаружи не держит (утечка цикла `Rc`).
+/// A representative of a cycle with no external holder, such as a leaked `Rc` cycle.
 pub const FLAG_CYCLE: u8 = 2;
 
-/// Граф удержания и его анализ.
+/// The retention graph and its analysis.
 #[derive(Debug, Default)]
 pub struct Graph {
     pub blocks: Vec<Block>,
     pub regions: Vec<Region>,
-    /// Начало рёбер узла `i` — `edge_start[i]`, конец — `edge_start[i + 1]`.
+    /// Node `i` edges occupy `edge_start[i]..edge_start[i + 1]`.
     pub edge_start: Vec<u32>,
     pub edge_to: Vec<u32>,
-    /// Смещение слова-указателя внутри источника ребра, байты.
+    /// Byte offset of the pointer word inside the edge source.
     pub edge_offset: Vec<u32>,
-    /// Непосредственный доминатор узла; у общего корня — он сам.
+    /// Immediate dominator; the virtual root dominates itself.
     pub idom: Vec<u32>,
-    /// Байты, которые освободились бы вместе с узлом (поддерево доминаторов).
+    /// Bytes released with this node: its dominator subtree.
     pub retained: Vec<u64>,
-    /// Предок на кратчайшем пути от корня и смещение его слова.
+    /// Shortest-path parent and the offset of its pointer word.
     pub parent: Vec<u32>,
     pub parent_offset: Vec<u32>,
     pub flags: Vec<u8>,
 }
 
 impl Graph {
-    /// Индекс общего корня.
+    /// Virtual root index.
     pub fn root(&self) -> u32 {
         self.blocks.len() as u32
     }
-    /// Индекс узла области корней `region`.
+    /// Node index for root region `region`.
     pub fn region(&self, region: usize) -> u32 {
         (self.blocks.len() + 1 + region) as u32
     }
-    /// Индекс узла «без корня».
+    /// Unrooted node index.
     pub fn unrooted(&self) -> u32 {
         (self.blocks.len() + 1 + self.regions.len()) as u32
     }
-    /// Число узлов вместе с виртуальными.
+    /// Node count including virtual nodes.
     pub fn nodes(&self) -> usize {
         self.blocks.len() + 2 + self.regions.len()
     }
-    /// Рёбра узла: (цель, смещение).
+    /// Outgoing edges as (target, offset).
     pub fn edges(&self, node: u32) -> impl Iterator<Item = (u32, u32)> + '_ {
         let range =
             self.edge_start[node as usize] as usize..self.edge_start[node as usize + 1] as usize;
@@ -99,39 +95,38 @@ impl Graph {
             .copied()
             .zip(self.edge_offset[range].iter().copied())
     }
-    /// Собственный размер узла (у виртуальных — 0).
+    /// Own size of a node; virtual nodes own no bytes.
     pub fn bytes(&self, node: u32) -> u64 {
         self.blocks
             .get(node as usize)
             .map_or(0, |block| block.bytes as u64)
     }
-    /// Блок, внутрь которого указывает `address`.
+    /// The block containing `address`.
     pub fn block_at(&self, address: usize) -> Option<u32> {
         scan::find(&self.blocks, address)
     }
 
-    /// Скан и анализ: рёбра, вход недостижимого через «без корня», кратчайшие
-    /// пути и доминаторы. Блоки сортируются по адресу; пересекающиеся и
-    /// нулевые отбрасываются.
+    /// Scan and analyze edges, unrooted entries, shortest paths, and dominators.
+    /// Sort blocks by address and discard overlapping or empty blocks.
     pub fn build(blocks: Vec<Block>, regions: Vec<Region>, memory: &impl Memory) -> Self {
         let mut graph = Self::scan(blocks, regions, memory);
         graph.analyze();
         graph
     }
 
-    /// Только рёбра (для замера цены скана отдельно от анализа).
+    /// Scan edges alone to measure scanning separately from analysis.
     pub fn scan(blocks: Vec<Block>, regions: Vec<Region>, memory: &impl Memory) -> Self {
         scan::scan(blocks, regions, memory)
     }
 
-    /// Вход недостижимого, кратчайшие пути, доминаторы и удержанный размер.
+    /// Analyze unrooted entries, shortest paths, dominators, and retained sizes.
     pub fn analyze(&mut self) {
         unrooted::connect(self);
         analyze::shortest_paths(self);
         analyze::dominators(self);
     }
 
-    /// Двоичный файл графа для `scripts/memprof_retain.py`.
+    /// Write the binary graph consumed by `scripts/memprof_retain.py`.
     pub fn write(&self, out: &mut impl std::io::Write, header: &str) -> std::io::Result<()> {
         write::write(self, out, header)
     }

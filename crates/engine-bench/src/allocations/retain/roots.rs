@@ -1,10 +1,9 @@
-//! Области корней графа удержания — единственное платформенное место скана:
-//! стек потока, который делает снимок (от его текущей вершины до основания),
-//! записываемые секции образа процесса (статики) и TLS этого потока.
-//! Windows: границы стека потока, секции и каталог TLS из PE-заголовка
-//! образа. Linux: `/proc/self/maps` (стек основного потока и записываемые
-//! отображения исполняемого файла с его `.bss`). Стеки других потоков и память
-//! ОС не сканируются: то, что держат только они, входит в граф через «без корня».
+//! Platform-specific retention roots: the snapshot thread stack from its current
+//! position to its base, writable image sections, and thread-local storage.
+//! Windows uses stack bounds and PE section/TLS headers. Linux uses
+//! `/proc/self/maps` for the main stack and writable executable mappings,
+//! including `.bss`. Other threads and OS memory are not scanned; blocks held
+//! only there enter the graph through the unrooted node.
 
 use kamin_heap::retain::Region;
 
@@ -49,34 +48,34 @@ mod windows {
     const TLS_DIRECTORY: usize = 9;
 
     fn u16_at(address: usize) -> u16 {
-        // SAFETY: адрес внутри заголовков загруженного образа процесса.
+        // SAFETY: the address lies within the loaded process image headers.
         unsafe { std::ptr::read_unaligned(address as *const u16) }
     }
     fn u32_at(address: usize) -> u32 {
-        // SAFETY: как у `u16_at`.
+        // SAFETY: the same loaded-image bounds as `u16_at` apply.
         unsafe { std::ptr::read_unaligned(address as *const u32) }
     }
     fn u64_at(address: usize) -> u64 {
-        // SAFETY: как у `u16_at`.
+        // SAFETY: the same loaded-image bounds as `u16_at` apply.
         unsafe { std::ptr::read_unaligned(address as *const u64) }
     }
 
     pub(super) fn regions(stack_pointer: usize) -> Vec<Region> {
         let mut out = Vec::new();
         let (mut low, mut high) = (0usize, 0usize);
-        // SAFETY: функция только пишет два слова по переданным адресам.
+        // SAFETY: the function writes only two words to the supplied output addresses.
         unsafe { GetCurrentThreadStackLimits(&mut low, &mut high) };
         if (low..high).contains(&stack_pointer) {
             out.extend(region("stack of the snapshot thread", stack_pointer, high));
         }
-        // SAFETY: нулевое имя — модуль процесса; вызов ничего не захватывает.
+        // SAFETY: a null name selects the process module; the call retains no pointers.
         let base = unsafe { GetModuleHandleW(std::ptr::null()) } as usize;
         if base == 0 || u16_at(base) != 0x5a4d {
             return out;
         }
         let nt = base + u32_at(base + 0x3c) as usize;
         if u32_at(nt) != 0x4550 || u16_at(nt + 24) != 0x20b {
-            return out; // не PE32+
+            return out; // Not PE32+.
         }
         let sections = u16_at(nt + 6) as usize;
         let optional = nt + 24;
@@ -86,7 +85,7 @@ mod windows {
             if u32_at(header + 36) & WRITE == 0 {
                 continue;
             }
-            // SAFETY: имя секции — 8 байт заголовка, дополненные нулями.
+            // SAFETY: the section name occupies eight zero-padded header bytes.
             let raw = unsafe { std::slice::from_raw_parts(header as *const u8, 8) };
             let name = String::from_utf8_lossy(raw)
                 .trim_end_matches('\0')
@@ -99,7 +98,7 @@ mod windows {
         out
     }
 
-    /// Блок TLS образа у текущего потока: `TEB.ThreadLocalStoragePointer[индекс]`.
+    /// The current thread image TLS block: `TEB.ThreadLocalStoragePointer[index]`.
     #[cfg(target_arch = "x86_64")]
     fn thread_local(base: usize, optional: usize) -> Option<Region> {
         let directory = optional + 112 + TLS_DIRECTORY * 8;
@@ -112,14 +111,14 @@ mod windows {
         let index = u32_at(u64_at(tls + 16) as usize) as usize;
         let zero = u32_at(tls + 32) as usize;
         let slots: usize;
-        // SAFETY: gs указывает на TEB текущего потока; 0x58 — ThreadLocalStoragePointer.
+        // SAFETY: gs points to this thread TEB; offset 0x58 is ThreadLocalStoragePointer.
         unsafe {
             std::arch::asm!("mov {}, gs:[0x58]", out(reg) slots, options(nostack, readonly, preserves_flags));
         }
         if slots == 0 {
             return None;
         }
-        // SAFETY: массив TLS потока содержит слот каждого модуля со статическим TLS.
+        // SAFETY: the thread TLS array contains a slot for each static-TLS module.
         let block = unsafe { *(slots as *const usize).add(index) };
         if block == 0 {
             return None;
@@ -138,7 +137,7 @@ mod windows {
 mod linux {
     use super::{Region, region};
 
-    /// `start-end perms offset dev inode path` одной строки `/proc/self/maps`.
+    /// Parse `start-end perms offset dev inode path` from one `/proc/self/maps` line.
     fn parse(line: &str) -> Option<(usize, usize, &str, &str)> {
         let mut fields = line.split_whitespace();
         let (start, end) = fields.next()?.split_once('-')?;

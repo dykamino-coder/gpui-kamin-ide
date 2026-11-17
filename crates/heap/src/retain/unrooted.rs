@@ -1,15 +1,13 @@
-//! Вход в граф для блоков, недостижимых из областей корней. Их держит то, что
-//! скан не видит (стек другого потока, память ОС — например указатель окна в
-//! данных окна Windows), или никто: утечка. Узел «без корня» получает ребро на
-//! каждый исток — блок без входящих рёбер — и на представителя каждого цикла,
-//! который никто снаружи не держит (компоненты сильной связности Тарьяна без
-//! входа из других компонент; представитель — самый крупный блок). Тогда всё
-//! недостижимое достижимо ровно через свои истоки, и доминаторы делят его по
-//! настоящим держателям, а не по порядку обхода.
+//! Unrooted entries represent blocks held by unscanned memory (another thread
+//! stack or OS data such as a Windows window pointer), or by nobody: a leak.
+//! The unrooted node points to each source without incoming edges and to the
+//! largest representative of each Tarjan strongly connected component with no
+//! incoming edge from another component. Dominators then attribute retention
+//! to actual holders rather than traversal order.
 
 use super::{FLAG_CYCLE, FLAG_UNHELD, Graph, NONE};
 
-/// Отмечает достижимое из `start` по рёбрам блоков.
+/// Mark blocks reachable from `start` along block edges.
 fn mark_from(graph: &Graph, start: u32, reached: &mut [bool], stack: &mut Vec<u32>) {
     stack.push(start);
     while let Some(node) = stack.pop() {
@@ -27,7 +25,7 @@ pub(super) fn connect(graph: &mut Graph) {
     let mut reached = vec![false; graph.nodes()];
     let mut stack = Vec::new();
     mark_from(graph, graph.root(), &mut reached, &mut stack);
-    // Входящие рёбра от недостижимых блоков.
+    // Incoming edges from unreachable blocks.
     let mut incoming = vec![0u32; count];
     for source in 0..count as u32 {
         if !reached[source as usize] {
@@ -60,8 +58,8 @@ pub(super) fn connect(graph: &mut Graph) {
     }
 }
 
-/// Представители компонент сильной связности среди ещё не достигнутых блоков,
-/// в которые нет рёбер из других таких компонент.
+/// Representatives of unreached strongly connected components with no incoming
+/// edge from another unreached component.
 fn unheld_cycles(graph: &Graph, reached: &[bool]) -> Vec<u32> {
     let count = graph.blocks.len();
     let mut component = vec![NONE; count];
@@ -93,14 +91,14 @@ fn unheld_cycles(graph: &Graph, reached: &[bool]) -> Vec<u32> {
         .collect()
 }
 
-/// Итеративный алгоритм Тарьяна на недостигнутых блоках; возвращает число компонент.
+/// Iterative Tarjan traversal of unreached blocks; return the component count.
 fn tarjan(graph: &Graph, reached: &[bool], component: &mut [u32]) -> usize {
     let count = graph.blocks.len();
     let mut order = vec![NONE; count];
     let mut low = vec![0u32; count];
     let mut on_stack = vec![false; count];
     let mut stack: Vec<u32> = Vec::new();
-    // Кадр обхода: узел и позиция следующего ребра.
+    // A traversal frame stores the node and next edge position.
     let mut calls: Vec<(u32, u32)> = Vec::new();
     let (mut next, mut components) = (0u32, 0usize);
     for start in 0..count as u32 {

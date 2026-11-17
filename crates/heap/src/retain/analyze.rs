@@ -1,9 +1,8 @@
-//! Кратчайшие пути и доминаторы. Путь — обход в ширину от общего корня, сначала
-//! через области корней, и только потом через «без корня»: блок, который держат
-//! и стек, и недостижимый объект, получает путь от стека. Доминаторы —
-//! итеративный алгоритм Cooper–Harvey–Kennedy («A Simple, Fast Dominance
-//! Algorithm»; его же применяет анализ кучи Gecko) по обратному постпорядку;
-//! удержанный размер — сумма собственных размеров поддерева доминаторов.
+//! Shortest paths and dominators. Breadth-first traversal visits root regions
+//! before the unrooted node, preferring a stack path over an unreachable holder.
+//! Dominators use the Cooper-Harvey-Kennedy iterative algorithm in reverse
+//! postorder, also used by Gecko heap analysis. Retained bytes sum the own sizes
+//! of each dominator subtree.
 
 use super::{Graph, NONE};
 use std::collections::VecDeque;
@@ -37,7 +36,7 @@ pub(super) fn shortest_paths(graph: &mut Graph) {
     graph.parent_offset = offset;
 }
 
-/// Постпорядок обхода в глубину от корня: номер узла и порядок узлов.
+/// Depth-first postorder from the root: node IDs and their order.
 fn postorder(graph: &Graph) -> (Vec<u32>, Vec<u32>) {
     let nodes = graph.nodes();
     let mut number = vec![NONE; nodes];
@@ -64,7 +63,7 @@ fn postorder(graph: &Graph) -> (Vec<u32>, Vec<u32>) {
     (number, order)
 }
 
-/// Предшественники в виде CSR.
+/// Predecessors in compressed sparse row form.
 fn predecessors(graph: &Graph) -> (Vec<u32>, Vec<u32>) {
     let nodes = graph.nodes();
     let mut start = vec![0u32; nodes + 1];
