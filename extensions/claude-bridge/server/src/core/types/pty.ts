@@ -13,6 +13,9 @@ export interface SessionAgentInput {
   submit(text: string, submissionId?: string): void
   /** Raw terminal input. Only Ctrl+C (interrupt) has a meaning; false = ignored. */
   input(data: string): boolean
+  /** Re-send the engine's live turn state to a newly attached client: an edge
+   *  sent while no client was attached is otherwise lost for good. */
+  replay?(): void
 }
 
 // ---------------------------------------------------------------------------
