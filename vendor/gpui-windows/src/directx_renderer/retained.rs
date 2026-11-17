@@ -62,6 +62,13 @@ fn enabled() -> bool {
     *ENABLED.get_or_init(|| std::env::var_os("GPUI_DAMAGE_REDRAW").is_none_or(|v| v != "0"))
 }
 
+/// `GPUI_DAMAGE_FULL=1` draws every frame whole but keeps the retained group
+/// images (measuring the full-frame composite without the group renders).
+fn force_full() -> bool {
+    static FULL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FULL.get_or_init(|| std::env::var_os("GPUI_DAMAGE_FULL").is_some_and(|v| v == "1"))
+}
+
 impl DirectXRenderer {
     /// Index of the buffer this frame draws into, `None` if it is unknown.
     fn buffer_slot(&self) -> Option<usize> {
@@ -105,6 +112,9 @@ impl DirectXRenderer {
             self.forget_frames();
             return Plan::Full;
         };
+        if force_full() {
+            return Plan::Full;
+        }
         // The screen shows this frame already; capture of a swap chain reads
         // the back buffer, which may hold an older one.
         let capture_reads_back = self.capture.is_some() && self.res().swap_chain.is_some();
