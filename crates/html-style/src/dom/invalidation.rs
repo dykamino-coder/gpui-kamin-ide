@@ -166,13 +166,21 @@ fn reads(sel: &Selector, changed: &Changed) -> bool {
         || sel.prev.as_ref().is_some_and(|p| reads(&p.0, changed))
 }
 
-/// `raw` has `name` (ASCII lowercase) somewhere, ignoring ASCII case.
+/// `raw` has `name` (ASCII lowercase) as a whole identifier, ignoring ASCII
+/// case: a class or attribute name in a selector is one identifier token
+/// (css-syntax-3 §4.3.11), so a name inside a longer one (`b` in
+/// `::backdrop`) is not read. Escapes are taken as reading any name before.
 fn mentions(raw: &str, name: &str) -> bool {
     let (raw, name) = (raw.as_bytes(), name.as_bytes());
+    let ident = |b: Option<&u8>| {
+        b.is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b >= 0x80)
+    };
     !name.is_empty()
-        && raw
-            .windows(name.len())
-            .any(|w| w.eq_ignore_ascii_case(name))
+        && raw.windows(name.len()).enumerate().any(|(at, w)| {
+            w.eq_ignore_ascii_case(name)
+                && !ident(at.checked_sub(1).and_then(|i| raw.get(i)))
+                && !ident(raw.get(at + name.len()))
+        })
 }
 /// The most selective feature of the subject of `sel`: an id, a class, a
 /// tag, then an attribute name, which many elements carry; `None`: none.

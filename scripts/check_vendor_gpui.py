@@ -50,6 +50,7 @@ TEST_FILTERS = {
     "gpui-windows": [
         "directx_renderer::recovery_tests::damage",
         "directx_renderer::group_atlas",
+        "window::drop_target",
     ],
 }
 
