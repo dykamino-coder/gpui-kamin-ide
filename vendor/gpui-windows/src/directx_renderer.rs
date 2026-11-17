@@ -638,6 +638,11 @@ impl DirectXRenderer {
     }
 
     /// KaminIDE patch: забыть чужую текстуру.
+    /// KaminIDE patch: see `DirectXAtlas::damage_external`.
+    pub fn damage_external_texture(&self, id: AtlasTextureId, rect: Bounds<DevicePixels>) {
+        self.atlas.damage_external(id, rect);
+    }
+
     pub fn unregister_external_texture(&self, id: AtlasTextureId) {
         self.atlas.unregister_external(id);
     }
@@ -711,7 +716,13 @@ impl DirectXRenderer {
         let result = unsafe { swap_chain.Present(0, DXGI_PRESENT_DO_NOT_WAIT) };
         present_gate::count_present_call(started.elapsed());
         let shown = present_gate::frame_shown(result)?;
+        if result == windows::Win32::Foundation::DXGI_STATUS_OCCLUDED {
+            // KaminIDE patch: whether the chain took a buffer is unknown.
+            self.forget_frames();
+        }
         if shown {
+            // KaminIDE patch (retained.rs): the next frame draws into the next buffer.
+            self.retained.presents = self.retained.presents.wrapping_add(1);
             // The queued frame will signal the gate again; a dropped one
             // keeps the count it took for the next attempt.
             if let Some(gate) = &self.res().frame_gate {
@@ -802,6 +813,7 @@ impl DirectXRenderer {
         // A frame the target and the screen already show is neither drawn nor
         // presented, and takes nothing from the latency gate.
         let plan = self.plan_frame(scene, background_appearance);
+        self.count_plan(&plan);
         let keep = matches!(plan, retained::Plan::Keep);
         if keep && !self.unpresented {
             self.frame_drawn(&plan);
