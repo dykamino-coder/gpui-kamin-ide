@@ -41,6 +41,14 @@ impl Scene {
             mapping.push(copies);
         }
         let (mut scene, _) = self.segment_commands(id, None, scale, &mapping, extent, None);
+        // The box runs of the record, moved with their commands into the
+        // segment; without a map (groups) its owners are unheld.
+        if let Some(runs) = self.book.record_runs.as_deref() {
+            scene.book.record_runs = Some(Box::new(match scene.book.placed_map.take() {
+                Some(map) => runs.carry(&map, &scene),
+                None => runs.dropped(),
+            }));
+        }
         scene.groups = groups;
         scene.finish_frozen();
         scene

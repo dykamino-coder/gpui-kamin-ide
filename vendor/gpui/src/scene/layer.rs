@@ -21,6 +21,7 @@
 mod boxes;
 mod frame;
 mod order;
+mod placed;
 mod reorder;
 mod splice;
 mod write;
@@ -28,6 +29,7 @@ mod write;
 use super::{Bounds, ScaledPixels, Scene};
 pub(crate) use boxes::{BoxEnv, BoxRange, OpenBox, ink_of};
 pub(crate) use frame::{LayerOp, LayerSlot};
+pub(crate) use placed::{Placed, PlacedMap, RecordRuns, place_run, release_unheld};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
@@ -103,6 +105,9 @@ pub mod layer_counters {
     pub static RUNS_MOVED_LATER: AtomicU64 = AtomicU64::new(0);
     /// Bindings not made because the quad was painted into a group's scene.
     pub static GROUP_BINDS_SKIPPED: AtomicU64 = AtomicU64::new(0);
+    /// Box runs of a paint record that could not be placed by one shift and
+    /// clip (`scene::layer::placed`): their boxes paint the layer anew.
+    pub static RUNS_UNPLACED: AtomicU64 = AtomicU64::new(0);
     /// Layers whose bindings or runs named another scene (`SceneLayer::finish`):
     /// they take no writes. Zero on every page, or a recording is wrong.
     pub static RECORDS_REFUSED: AtomicU64 = AtomicU64::new(0);
@@ -255,3 +260,5 @@ mod tests;
 mod order_tests;
 #[cfg(test)]
 mod rerecord_tests;
+#[cfg(test)]
+mod placed_tests;

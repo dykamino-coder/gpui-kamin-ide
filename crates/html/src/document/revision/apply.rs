@@ -80,6 +80,7 @@ impl Document {
             );
             return Ok(self.report());
         }
+        crate::paint_path::add(&crate::paint_path::REFUSED_REBUILT, 1);
         self.rebuild(&batch, invalidation, theme_css, key, revision)
             .map_err(ApplyError::Rejected)
     }
