@@ -125,7 +125,7 @@ impl PaintPlan {
                 Command::Record(record) => {
                     let mask = window.content_mask().scale(window.scale_factor());
                     if presentation.is_none()
-                        && window.next_frame.scene.replay_placed(&record.0.scene, Point::default(), Some(mask.bounds))
+                        && window.replay_placed_carrying(&record.0.scene, Point::default(), Some(mask.bounds))
                     {
                         continue;
                     }
