@@ -1,7 +1,8 @@
 export interface SubmissionUpdate {
   /** Local transport refused this prompt before sending it; restore its draft. */
   rejected?: boolean
-  /** Host observed the stored UUID; survives eviction from replay windows. */
+  /** Delivery confirmed: the host observed the stored UUID, or the server saw
+   *  the CLI complete a terminal command. Survives eviction from replay windows. */
   committed?: boolean
   /** Browser host сохраняет курсор legacy queue независимо от страниц. */
   fallbackQueue?: { afterOrd: number; enqueuedAt: number; consumed?: boolean; dismissed?: boolean }
@@ -71,12 +72,32 @@ function hasOwnText(content: string): boolean {
     .join(' ').trim().length >= 8
 }
 
+/** `/name args` as typed: the CLI reads only the first line as the command. */
+function typedCommand(text: string): string | undefined {
+  const match = /^\s*\/([A-Za-z][\w:-]*)(?:[ \t]+([^\n]*))?(?:\n|$)/.exec(text)
+  return match ? `${match[1]!.toLowerCase()} ${norm(match[2] ?? '')}` : undefined
+}
+
+/** The command a transcript row records (`<command-name>` / `<command-args>`). */
+function recordedCommand(text: string): string | undefined {
+  const name = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/i.exec(text)?.[1]
+  if (!name) return undefined
+  return `${name.toLowerCase()} ${norm(/<command-args>([\s\S]*?)<\/command-args>/i.exec(text)?.[1] ?? '')}`
+}
+
+/** Output of a local command: it follows the command, it never is one. */
+const COMMAND_OUTPUT = /^\s*<local-command-(?:stdout|stderr|caveat)>/i
+
+type QueueRow = { entry: QueueEntry; text: string; ord: number; ts: number; kind: 'user' | 'command' | 'queued'; command?: string }
+
 /** Один matcher для desktop queue и headless host; системные notices и
- * tool_result не подтверждают отправку. Одна строка принимает только один item. */
+ * tool_result не подтверждают отправку. Одна строка принимает только один item.
+ * A slash command is confirmed only by a row recording that same command, never
+ * by position: an empty command-output row cannot acknowledge an arbitrary item. */
 export function matchSubmissionQueue(
   items: readonly LocalQueueItem[], entries: readonly QueueEntry[], consumed: ReadonlySet<string> = new Set(),
 ): Array<{ item: LocalQueueItem; entry: QueueEntry }> {
-  const rows: Array<{ entry: QueueEntry; text: string; ord: number; ts: number; kind: 'user' | 'command' | 'queued' }> = []
+  const rows: QueueRow[] = []
   const seen = new Set<string>()
   for (const entry of entries) {
     const identity = queueRowIdentity(entry)
@@ -87,28 +108,33 @@ export function matchSubmissionQueue(
     if (entry.type === 'attachment' && entry.attachment?.type === 'queued_command' && typeof entry.attachment.prompt === 'string') {
       rows.push({ entry, text: norm(entry.attachment.prompt), ord, ts, kind: 'queued' })
     } else if (entry.type === 'system' && typeof entry.content === 'string' && /<command-name>/i.test(entry.content)) {
-      rows.push({ entry, text: norm(entry.content), ord, ts, kind: 'command' })
+      rows.push({ entry, text: norm(entry.content), ord, ts, kind: 'command', command: recordedCommand(entry.content) })
     } else if (entry.type === 'user' && !entry.isMeta) {
       const content = entry.message?.content
       const blocks = Array.isArray(content) ? content.filter(block => block?.type === 'text' && typeof block.text === 'string') : []
       const text = typeof content === 'string' ? content : blocks.length ? blocks.map(block => block.text).join('\n') : undefined
-      if (text !== undefined) rows.push({ entry, text: norm(text), ord, ts, kind: 'user' })
+      if (text === undefined || COMMAND_OUTPUT.test(text)) continue
+      const command = recordedCommand(text)
+      rows.push({ entry, text: norm(text), ord, ts, kind: command ? 'command' : 'user', ...(command ? { command } : {}) })
     }
   }
   const matches: Array<{ item: LocalQueueItem; entry: QueueEntry }> = []
   let cursor = 0
   for (const item of items) {
     const text = norm(item.content)
+    const command = typedCommand(item.content)
     // Rows written before the server accepted the item (its own clock) cannot
     // confirm it; a 2 s margin covers the CLI and server rounding the same instant.
     const after = (row: { ord: number; ts: number }): boolean => row.ord > item.afterOrd &&
       !(item.notBefore !== undefined && Number.isFinite(row.ts) && row.ts < item.notBefore - 2000)
-    let index = rows.findIndex((row, i) => i >= cursor && after(row) && (
-      row.text === text || (text.length >= 20 && row.text.includes(text.slice(0, 40))) ||
-      (row.text.length >= 20 && text.includes(row.text.slice(0, 40)))
-    ))
+    let index = command !== undefined
+      ? rows.findIndex((row, i) => i >= cursor && after(row) && (row.command === command || (row.kind === 'user' && row.text === text)))
+      : rows.findIndex((row, i) => i >= cursor && after(row) && (
+        row.text === text || (text.length >= 20 && row.text.includes(text.slice(0, 40))) ||
+        (row.text.length >= 20 && text.includes(row.text.slice(0, 40)))
+      ))
     // CLI переписывает image-only prompt; только для него допустим FIFO.
-    if (index < 0 && !hasOwnText(item.content)) index = rows.findIndex((row, i) => i >= cursor && row.kind !== 'command' && after(row))
+    if (index < 0 && command === undefined && !hasOwnText(item.content)) index = rows.findIndex((row, i) => i >= cursor && row.kind !== 'command' && after(row))
     if (index >= 0) {
       matches.push({ item, entry: rows[index]!.entry })
       cursor = index + 1

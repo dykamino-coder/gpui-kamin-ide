@@ -89,6 +89,17 @@ const STREAMING_ONLY_CHANNELS = new Set<string>([
  *  implicitly included — this set is the non-heavy remainder. */
 const RESYNC_ON_REVEAL_CHANNELS = new Set<string>(["tab:switched"])
 
+/** Channels only the chat header renders (the commands popover and badge).
+ *  The tools and customize panels never show it, and in an idle KaminIDE the
+ *  snapshot reached all four open views twice a second. */
+const CHAT_ONLY_CHANNELS = new Set<string>(["commands:snapshot", "commands:output"])
+
+/** Diagnostic streams the tools panels never render: the connector test log
+ *  and the Logs section live in customize (and in the browser shell, which
+ *  attaches as chat). An MCP server writing to stderr kept them flowing to the
+ *  console, plan and agents panels while nothing was on screen. */
+const NOT_TOOLS_CHANNELS = new Set<string>(["mcp:test-log", "mcp:test-log-cleared", "logs:entry"])
+
 export class BridgeHost {
   // Every Bridge webview view attaches here (chat, the 4 tools panels, the 10
   // customize sections). Events fan out to all — except the per-session heavy
@@ -561,11 +572,13 @@ export class BridgeHost {
     const channel = typeof msg.channel === "string" ? msg.channel : ""
     const heavy = HEAVY_SESSION_CHANNELS.has(channel)
     const streamOnly = STREAMING_ONLY_CHANNELS.has(channel)
+    const chatOnly = CHAT_ONLY_CHANNELS.has(channel)
+    const notTools = NOT_TOOLS_CHANNELS.has(channel)
     const resyncable = heavy || RESYNC_ON_REVEAL_CHANNELS.has(channel)
     for (const wv of this.webviews) {
       const role = this.webviewRoles.get(wv)
-      if (role === "customize" && heavy) continue
-      if (role === "tools" && streamOnly) continue
+      if (role === "customize" && (heavy || chatOnly)) continue
+      if (role === "tools" && (streamOnly || chatOnly || notTools)) continue
       // Hidden view: the host would refuse this send anyway, so skip the clone
       // and remember the gap. Only channels a reveal can actually replay count
       // as stale-making — a dropped one-shot (toast, dialog) isn't recoverable
