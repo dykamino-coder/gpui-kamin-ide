@@ -46,6 +46,16 @@ impl WidthSink for Cell<bool> {
     }
 }
 
+/// A nested subtree's sink and its tracked ancestor's (`track_widths_below`).
+struct BothSinks(Rc<dyn WidthSink>, Rc<dyn WidthSink>);
+
+impl WidthSink for BothSinks {
+    fn note(&self) {
+        self.0.note();
+        self.1.note();
+    }
+}
+
 /// Read set of the widths of a subtree kept across frames (`layout::reuse`):
 /// the subtree's build output stays valid under another available width
 /// unless the build consumed a width that came from outside the subtree.
@@ -58,16 +68,6 @@ impl WidthSink for Cell<bool> {
 /// The set is in cells, so a flow can record the reads of each of its
 /// children's builds in its own context, without a copy per child
 /// (`BoxConstraints::track_widths_in_place`).
-/// A nested subtree's sink and its tracked ancestor's (`track_widths_below`).
-struct BothSinks(Rc<dyn WidthSink>, Rc<dyn WidthSink>);
-
-impl WidthSink for BothSinks {
-    fn note(&self) {
-        self.0.note();
-        self.1.note();
-    }
-}
-
 #[derive(Default)]
 struct WidthReads {
     sink: Cell<Option<Rc<dyn WidthSink>>>,
@@ -198,10 +198,8 @@ impl BoxConstraints {
     /// of the root flow): a read goes to `sink`, and also to the outer sink
     /// when a width of this context came from outside the outer subtree.
     pub(crate) fn track_widths_below(&mut self, sink: Rc<dyn WidthSink>) {
-        let outer = (self.cb_outside.get() || self.avail_outside.get())
-            .then(|| self.widths.sink())
-            .flatten();
-        let sink = match outer {
+        let outside = self.cb_outside.get() || self.avail_outside.get();
+        let sink = match self.widths.sink().filter(|_| outside) {
             Some(outer) => Rc::new(BothSinks(sink, outer)),
             None => sink,
         };

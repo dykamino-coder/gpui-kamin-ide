@@ -91,9 +91,7 @@ pub(crate) fn paragraph_pieces_routed(
             let piece = atom(e, atom_cx, &ruby);
             let extents = ruby.take_extents();
             if matches!(piece, Some(inline::Piece::Atom(_))) {
-                if let Some(keep) = &keep {
-                    keep.note_atom(e, atom_cx);
-                }
+                keep.iter().for_each(|keep| keep.note_atom(e, atom_cx));
                 let extents = if ruby_role(e) == Some(crate::style::computed::RubyRole::Container) {
                     extents
                 } else {
@@ -208,7 +206,6 @@ pub(crate) fn paragraph_pieces_routed(
         let mut at = 0usize;
         let mut out = Vec::with_capacity(pieces.len() + 2 * atom_count);
         let mut mark = super::spacer::atom_spacer(inherited, opts);
-
         mark.inline_decoration.band_color = None;
         mark.inline_decoration.border_stroke = None;
         for p in pieces {

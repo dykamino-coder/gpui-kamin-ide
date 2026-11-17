@@ -98,7 +98,8 @@ type PlacedPrepaint = (RetainedPrepaint, Point<Pixels>, Size<Pixels>);
 
 /// Запись, которая завершится после краски кадра (`FlowReuse::finish`).
 pub(super) struct PendingReplay {
-    /// Чтения ширин снаружи за сборку и меры кадра записи.
+    /// Reads of the outer widths by the build and the measures of the
+    /// recording frame.
     pub(super) widths: Rc<Cell<bool>>,
     /// The build and what the frame captured, boxed apart: the element tree
     /// keeps the pending record until the next frame, but all of this goes

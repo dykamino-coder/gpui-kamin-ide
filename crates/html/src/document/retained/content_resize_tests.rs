@@ -119,11 +119,27 @@ fn a_media_query_on_the_width_rebuilds_the_contents_it_restyles(cx: &mut TestApp
     assert_eq!(resized(cx, &cells(FIXED, "", css)), 0);
 }
 
+#[gpui::test]
+fn a_container_query_on_the_width_rebuilds_the_contents_it_restyles(cx: &mut TestAppContext) {
+    let css = "div{container-type:inline-size} \
+               @container (min-width:500px){td span{display:inline-block;padding-left:7px}}";
+    assert_eq!(resized(cx, &cells(FIXED, "", css)), 0);
+}
+
 /// Blocks in a wrapper block (not root-flow blocks), each with a block of
 /// text: `style` styles each.
 fn blocks(style: &str) -> String {
+    nested(style, "")
+}
+
+/// `blocks` whose block of text is styled by `inner`.
+fn nested(style: &str, inner: &str) -> String {
     let blocks: String = (0..9)
-        .map(|i| format!("<div style='{style}'><div>block {i} with some words</div></div>"))
+        .map(|i| {
+            format!(
+                "<div style='{style}'><div style='{inner}'>block {i} with some words</div></div>"
+            )
+        })
         .collect();
     format!(
         "<!doctype html><html><head><style>body{{margin:0}}</style></head><body><div>{blocks}</div></body></html>"
@@ -139,6 +155,28 @@ fn contents_of_blocks_that_fill_the_width_are_built_after_a_width_change(cx: &mu
 
 #[gpui::test]
 fn contents_of_blocks_of_a_fixed_width_replay_across_a_width_change(cx: &mut TestAppContext) {
-    let replays = resized(cx, &blocks("width:200px"));
-    assert!(replays > 0, "fixed blocks replayed: {replays}");
+    // All but the first: the test window's pointer rests at the origin, on
+    // the first block's text, whose paint takes live selection listeners and
+    // the text cursor (`interactive::selection`): an ink sink taint keeps
+    // that content from being recorded, as for any block under the pointer.
+    assert_eq!(resized(cx, &blocks("width:200px")), 8);
+}
+
+#[gpui::test]
+fn percentages_of_a_block_sized_by_the_window_are_built(cx: &mut TestAppContext) {
+    // A pixel width that a percentage of the window's width bounds or
+    // narrows: the content follows the window.
+    for style in [
+        "width:300px;max-width:50%",
+        "width:100px;min-width:50%",
+        "width:300px;box-sizing:border-box;padding-left:10%",
+    ] {
+        assert_eq!(resized(cx, &nested(style, "width:50%")), 0, "{style}");
+    }
+}
+
+#[gpui::test]
+fn percentages_inside_a_block_of_a_fixed_width_replay(cx: &mut TestAppContext) {
+    // All but the block under the pointer, as for blocks of a fixed width.
+    assert_eq!(resized(cx, &nested("width:200px", "width:50%")), 8);
 }

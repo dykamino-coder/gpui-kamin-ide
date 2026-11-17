@@ -4,7 +4,16 @@
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use crate::text::paragraph::Paragraph;
-use gpui::{AnyElement, IntoElement};
+use gpui::{AnyElement, IntoElement, SharedString};
+
+/// The paragraph's text: the retained flow text when it is the same, so the
+/// paragraph shares its buffer (`BoxTree::flow_text`); a copy otherwise.
+pub(super) fn own_text(text: String, shared: Option<SharedString>) -> SharedString {
+    match shared {
+        Some(shared) if *shared == *text => shared,
+        _ => SharedString::from(text),
+    }
+}
 
 /// The paragraph with its scroll owner and projection of this frame.
 pub(crate) fn finish(para: Paragraph, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {

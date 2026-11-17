@@ -35,8 +35,7 @@ use std::rc::Rc;
 /// A content record: the input, the publication number and the elements of the last frame.
 pub(crate) struct ContentRecord {
     key: ContentKey,
-    /// The build read a width from outside the container (`BoxConstraints::track_widths_below`):
-    /// the record holds only at the same widths.
+    /// The build read an outside width (`BoxConstraints::track_widths_below`): same widths only.
     widths: bool,
     /// `BoxTree::clock` of the recording build: valid while the box's build epoch is not newer.
     at: u32,
@@ -143,8 +142,7 @@ impl FlowReuse {
             .contents
             .borrow()
             .get(&key(content.owner))
-            .cloned();
-        let record = record?;
+            .cloned()?;
         let clean = {
             let boxes = opts.cx.doc().boxes.borrow();
             let epoch = boxes.build_epoch(content.owner)?;
