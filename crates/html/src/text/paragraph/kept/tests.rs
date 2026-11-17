@@ -1,3 +1,5 @@
+//! Tests of the kept paragraph's atom paths and slot (`super`).
+
 use super::*;
 
 #[test]

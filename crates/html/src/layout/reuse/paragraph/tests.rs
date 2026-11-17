@@ -1,3 +1,5 @@
+//! Tests of the atom paths and record keys of kept paragraphs (`super`).
+
 use super::*;
 
 fn el(node_id: u64, children: Vec<Node>) -> Node {
