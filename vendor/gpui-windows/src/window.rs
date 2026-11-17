@@ -30,6 +30,10 @@ use windows::{
 
 use crate::direct_manipulation::DirectManipulationHandler;
 use crate::*;
+
+// KaminIDE patch: the drop target is revoked while the HWND is alive (INC-2026-0122).
+mod drop_target;
+pub(crate) use drop_target::DropTarget;
 use gpui::*;
 
 pub(crate) struct WindowsWindow(pub Rc<WindowsWindowInner>);
@@ -103,6 +107,8 @@ pub struct WindowsWindowState {
 pub(crate) struct WindowsWindowInner {
     pub(crate) hwnd: HWND,
     pub(crate) dialog_owner: Rc<crate::dialog::DialogOwner>,
+    // KaminIDE patch: OLE registration of the drop target, revoked in `WM_DESTROY`.
+    pub(crate) drop_target: DropTarget,
     drop_target_helper: IDropTargetHelper,
     pub(crate) state: WindowsWindowState,
     system_settings: WindowsSystemSettings,
@@ -304,6 +310,7 @@ impl WindowsWindowInner {
         Ok(Rc::new(Self {
             hwnd,
             dialog_owner: crate::dialog::DialogOwner::new(hwnd),
+            drop_target: DropTarget::default(),
             _lifetime: crate::platform::WindowLifetime::new(context.live_windows.clone()),
             drop_target_helper: context.drop_target_helper.clone(),
             state,
@@ -751,10 +758,9 @@ impl Drop for WindowsWindow {
                 this.dialog_owner.when_idle().await;
                 let handle = this.hwnd;
                 unsafe {
-                    // KaminIDE patch: an offscreen window registered no drop target.
-                    if this.state.offscreen_paint.is_none() {
-                        RevokeDragDrop(handle).log_err();
-                    }
+                    // KaminIDE patch: a window destroyed by the system revoked its
+                    // target in `WM_DESTROY` already; an offscreen one has none.
+                    this.drop_target.revoke(handle);
                     DestroyWindow(handle).log_err();
                 }
             })
@@ -1714,11 +1720,7 @@ fn register_drag_drop(window: &Rc<WindowsWindowInner>) -> Result<()> {
     // we call `RevokeDragDrop`.
     // So, it's safe to drop it here.
     let drag_drop_handler: IDropTarget = handler.into();
-    unsafe {
-        RegisterDragDrop(window_handle, &drag_drop_handler)
-            .context("unable to register drag-drop event")?;
-    }
-    Ok(())
+    window.drop_target.register(window_handle, &drag_drop_handler)
 }
 
 fn calculate_window_rect(bounds: Bounds<DevicePixels>, border_offset: &WindowBorderOffset) -> RECT {
