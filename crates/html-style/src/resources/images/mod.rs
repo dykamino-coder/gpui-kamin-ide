@@ -24,6 +24,7 @@ pub mod tests_support;
 
 pub mod identity;
 pub mod pixels;
+mod presentation;
 pub mod svg_fragment;
 pub mod svg_links;
 pub mod svg_raster;
