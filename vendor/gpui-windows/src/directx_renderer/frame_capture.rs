@@ -9,6 +9,9 @@ impl DirectXRenderer {
         let (w, h) = (self.width, self.height);
         // KaminIDE patch: one staging texture per size (`retained.rs`).
         let staging = self.capture_staging()?;
+        // KaminIDE patch: the frame is complete when the GPU has executed it;
+        // the copy below is the capture's own cost, reported apart (`copied`).
+        self.wait_gpu_idle()?;
         let devices = self.dev();
         let render_target = self
             .res()
@@ -16,9 +19,6 @@ impl DirectXRenderer {
             .as_ref()
             .context("render target missing")?;
         let ctx = &devices.device_context;
-        // KaminIDE patch: the frame is complete when the GPU has executed it;
-        // the copy below is the capture's own cost, reported apart (`copied`).
-        wait_gpu_idle(&devices.device, ctx)?;
         let copy_started = std::time::Instant::now();
         unsafe { ctx.CopyResource(&staging, render_target) };
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
@@ -68,36 +68,4 @@ impl DirectXRenderer {
         Ok(())
     }
 
-}
-
-/// KaminIDE patch: block until the GPU has executed every command submitted
-/// so far (an event query), without touching the frame's pixels.
-fn wait_gpu_idle(device: &ID3D11Device, ctx: &ID3D11DeviceContext) -> Result<()> {
-    use windows::core::Interface;
-    let desc = D3D11_QUERY_DESC { Query: D3D11_QUERY_EVENT, MiscFlags: 0 };
-    let mut query = None;
-    unsafe { device.CreateQuery(&desc, Some(&mut query))? };
-    let query: ID3D11Query = query.context("event query missing")?;
-    unsafe { ctx.End(&query) };
-    let mut flags = 0u32;
-    loop {
-        let mut done = 0i32;
-        // The `GetData` wrapper maps S_FALSE ("not yet") to Ok; read the raw HRESULT.
-        let hr = unsafe {
-            (Interface::vtable(ctx).GetData)(
-                Interface::as_raw(ctx),
-                Interface::as_raw(&query),
-                &mut done as *mut i32 as *mut _,
-                std::mem::size_of::<i32>() as u32,
-                flags,
-            )
-        };
-        hr.ok()?;
-        if hr == windows::Win32::Foundation::S_OK && done != 0 {
-            return Ok(());
-        }
-        // The first call flushed the queue; later polls only ask.
-        flags = D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32;
-        std::thread::yield_now();
-    }
 }
