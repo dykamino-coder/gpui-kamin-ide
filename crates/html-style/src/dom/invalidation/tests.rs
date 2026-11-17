@@ -55,6 +55,29 @@ fn arguments_and_attribute_selectors_read_their_names() {
 }
 
 #[test]
+fn an_unparsed_selector_reads_a_name_only_as_a_whole_identifier() {
+    for (raw, read) in [
+        ("backdrop", false),
+        ("nth-child(2 of .b)", true),
+        ("nth-child(2 of .a-b)", false),
+        ("is(.B, p)", true),
+        ("not([data-b])", false),
+        ("x\\62", true),
+    ] {
+        let changed = Changed {
+            elements: vec![1],
+            classes: vec!["b".into()],
+            attrs: vec!["class".into()],
+        };
+        let mut sel = crate::style::css::parse_stylesheet("p{color:red}").unwrap()[0]
+            .sel
+            .clone();
+        sel.also = vec![raw.into()];
+        assert_eq!(reads(&sel, &changed), read, "{raw}");
+    }
+}
+
+#[test]
 fn a_dependent_rule_without_subject_features_restyles_anything() {
     for css in [
         ".alt *{color:red}",

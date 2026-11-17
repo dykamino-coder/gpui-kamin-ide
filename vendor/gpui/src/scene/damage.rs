@@ -19,7 +19,9 @@ use super::{PaintGroup, PaintSurface, Path, Primitive, Scene, TransformationMatr
 use crate::{Bounds, ScaledPixels};
 use collections::FxHashMap;
 
+mod clipped;
 mod group_match;
+mod trace;
 
 /// Сторона клетки повреждения, device px.
 pub const DAMAGE_TILE: u32 = 64;
@@ -373,7 +375,7 @@ impl Compare<'_> {
         }
         match a >> KIND_SHIFT {
             0 => eq!(shadows),
-            1 => eq!(quads),
+            1 => eq!(quads) || clipped::same_visible(&sa.quads[i], &sb.quads[j]),
             2 => same_path(&sa.paths[i], &sb.paths[j]),
             3 => eq!(underlines),
             4 => eq!(monochrome_sprites),
@@ -477,6 +479,7 @@ impl Scene {
         index.id = id;
         index.base = previous.book.index.id;
         index.damage = self.damage_against(&index, previous);
+        trace::log_damage(self, &index, previous);
         // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
         // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
         index.group_base.clear();
