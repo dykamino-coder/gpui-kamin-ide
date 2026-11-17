@@ -13,11 +13,11 @@
 //! том числе краска отложенных отрисовок (`Window::retained_replayable`).
 //! Иначе кадр собирается заново, как `Document::render`.
 
-#[cfg(test)]
-mod content_replay_tests;
 mod box_repaint;
 #[cfg(test)]
 mod box_repaint_tests;
+#[cfg(test)]
+mod content_replay_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;
