@@ -11,6 +11,10 @@ pub struct InlineDecoration {
     /// Физические стороны: верх, право, низ, лево.
     pub physical_padding: Option<[f32; 4]>,
     pub corner_radius: Option<f32>,
+    /// The node number of the inline box whose band `band_color` is (0: none
+    /// or no single box, as for a first-line or first-letter band): the
+    /// owner of the band's pieces in a scene layer.
+    pub band_owner: u64,
 }
 
 impl InlineDecoration {
@@ -21,6 +25,11 @@ impl InlineDecoration {
             border_stroke: self.border_stroke.or(parent.border_stroke),
             physical_padding: self.physical_padding.or(parent.physical_padding),
             corner_radius: self.corner_radius.or(parent.corner_radius),
+            band_owner: if self.band_color.is_some() {
+                self.band_owner
+            } else {
+                parent.band_owner
+            },
         }
     }
 }

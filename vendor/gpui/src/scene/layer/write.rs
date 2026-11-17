@@ -40,12 +40,17 @@ impl SceneLayer {
 impl LayerHandle {
     /// Whether box `owner` painted runs this layer can record again
     /// (`Window::rerecord_layer_box`): at least one, each of plain
-    /// primitives under no transformation.
+    /// primitives under no transformation, outside stacking layers (the runs
+    /// of an inline box' band on its line layer take value writes only).
     pub fn holds_box(&self, owner: u32) -> bool {
         let content = self.0.content.borrow();
         let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
         runs.peek().is_some()
-            && runs.all(|b| b.replaceable && b.env.transformation == crate::TransformationMatrix::unit())
+            && runs.all(|b| {
+                b.replaceable
+                    && b.env.layer.is_none()
+                    && b.env.transformation == crate::TransformationMatrix::unit()
+            })
     }
 
     /// The device-pixel area the runs of box `owner` cover, their placed box

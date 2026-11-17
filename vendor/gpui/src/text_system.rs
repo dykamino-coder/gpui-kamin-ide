@@ -722,6 +722,7 @@ impl WindowTextSystem {
                 background_pad: run.background_pad,
                 background_radius: run.background_radius,
                 background_line_gap: run.background_line_gap,
+                background_owner: run.background_owner,
                 background_border: run.background_border,
                 underline: run.underline,
                 strikethrough: run.strikethrough,
@@ -891,6 +892,7 @@ impl WindowTextSystem {
                 background_pad: run.background_pad,
                 background_radius: run.background_radius,
                 background_line_gap: run.background_line_gap,
+                background_owner: run.background_owner,
                 background_border: run.background_border,
                 underline: run.underline,
                 strikethrough: run.strikethrough,
@@ -989,6 +991,7 @@ impl WindowTextSystem {
                         background_pad: run.background_pad,
                         background_radius: run.background_radius,
                         background_line_gap: run.background_line_gap,
+                        background_owner: run.background_owner,
                         background_border: run.background_border,
                         underline: run.underline,
                         strikethrough: run.strikethrough,
@@ -1405,6 +1408,12 @@ pub struct TextRun {
     /// (the HTML engine's inline box content area). `false` (IDE text) keeps
     /// the band at ascent + descent.
     pub background_line_gap: bool,
+    /// KaminIDE patch: the box whose band the run paints (the host's node
+    /// number of an inline box; 0 for none). Each piece of the band is that
+    /// box's run in a scene layer (`Window::with_box_paint`) and its fill a
+    /// background value bound to it, so the box's fragments over all lines
+    /// are one owner's runs (`LayerHandle::set_backgrounds`).
+    pub background_owner: u32,
     /// The underline style (if any)
     pub underline: Option<UnderlineStyle>,
     /// The strikethrough style (if any)

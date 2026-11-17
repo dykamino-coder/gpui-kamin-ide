@@ -38,6 +38,7 @@ pub(super) fn padding_spacer_style(merged: &BoxStyle, advance: f32, painted: boo
     let mut style = spacer_style(merged, advance);
     if painted {
         style.inline_decoration.band_color = merged.inline_decoration.band_color;
+        style.inline_decoration.band_owner = merged.inline_decoration.band_owner;
     }
     style
 }
@@ -53,6 +54,7 @@ pub(super) fn margin_spacer_style(
 ) -> BoxStyle {
     let mut style = spacer_style(merged, advance);
     style.inline_decoration.band_color = inherited.inline_decoration.band_color;
+    style.inline_decoration.band_owner = inherited.inline_decoration.band_owner;
     style
 }
 

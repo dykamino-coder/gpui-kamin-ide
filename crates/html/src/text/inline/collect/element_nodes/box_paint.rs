@@ -60,6 +60,7 @@ pub(super) fn element_style(
             && merged.paint_background().top.clip != Some(crate::style::computed::BgClip::Text)
     }) {
         merged.inline_decoration.band_color = Some(bg);
+        merged.inline_decoration.band_owner = e.node_id;
         // Единицы шрифта разрешаются так же, как в `inline_sides`:
         // разбор только по точкам ронял `padding: 1em` в ноль, и
         // подсветка строчной коробки шла впритык к тексту.
@@ -139,6 +140,7 @@ pub(super) fn element_style(
             b: 0.5,
             a: 0.0,
         });
+        merged.inline_decoration.band_owner = e.node_id;
         let family = merged.inh.font.font_family.clone().unwrap_or_default();
         let px_of = |l: Option<crate::style::values::value::Len>| match l {
             Some(
@@ -193,6 +195,7 @@ pub(super) fn element_style(
                 b: 0.0,
                 a: 0.0,
             });
+            merged.inline_decoration.band_owner = e.node_id;
             painted_bg = true;
         }
     }

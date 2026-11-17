@@ -14192,10 +14192,10 @@ index 0000000000000000000000000000000000000000..5747e5016ee233d0558d11b448405464
 +mod rerecord_tests;
 diff --git a/vendor/gpui/src/scene/layer/boxes.rs b/vendor/gpui/src/scene/layer/boxes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e672108ea
+index 0000000000000000000000000000000000000000..8fa0cfc43338977593d2a5e2d01341e7375ac653
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/boxes.rs
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,139 @@
 +//! KaminIDE patch: the paint ranges of boxes in a scene layer.
 +//!
 +//! While a layer is recorded, the own paint of a box (its shadows, fill,
@@ -14223,6 +14223,9 @@ index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e
 +    pub(crate) rem_size: Pixels,
 +    /// Where the host placed the box's fill (Window::box_fill_bounds).
 +    pub(crate) fill: Option<Bounds<Pixels>>,
++    /// The order of the stacking layer the run was painted in (`None`:
++    /// outside layers, ordered by the bounds tree).
++    pub(crate) layer: Option<crate::scene::DrawOrder>,
 +}
 +
 +/// A box's own paint in a layer: its owner, its placed area and ink, its run
@@ -14261,18 +14264,23 @@ index 0000000000000000000000000000000000000000..c7fc179842eea44a77d8fda416faf34e
 +impl Scene {
 +    /// Start the own paint of box `owner` with `area` (its placed bounds,
 +    /// device pixels). `false` where the scene orders by other means
-+    /// (stacking layers, 3D, a box already open): the box paints as before.
-+    pub(crate) fn open_box(&mut self, owner: u32, area: Bounds<ScaledPixels>, env: BoxEnv) -> bool {
++    /// (nested or bottom stacking layers, 3D, a box already open): the box
++    /// paints as before. Inside one stacking layer (`Scene::push_layer`, the
++    /// layer of a text line) every command takes the layer's order, which the
++    /// run keeps (`BoxEnv::layer`).
++    pub(crate) fn open_box(&mut self, owner: u32, area: Bounds<ScaledPixels>, mut env: BoxEnv) -> bool {
 +        // A group's scene (`in_group`) is composited into the layer as one
 +        // result: a run of its commands is no run of the layer.
 +        if self.book.open_box.is_some()
 +            || self.in_group
-+            || !self.layer_stack.is_empty()
++            || self.layer_stack.len() > 1
++            || self.layer_stack.last() == Some(&super::super::BOTTOM_LAYER)
 +            || !self.depth.plane_stack.is_empty()
 +            || !self.depth.contexts.is_empty()
 +        {
 +            return false;
 +        }
++        env.layer = self.layer_stack.last().copied();
 +        self.book.open_box = Some(OpenBox {
 +            owner,
 +            ops: self.paint_operations.len(),
@@ -14769,10 +14777,10 @@ index 0000000000000000000000000000000000000000..94451323f200d3a0712e3f8f369bbe91
 +}
 diff --git a/vendor/gpui/src/scene/layer/order_tests.rs b/vendor/gpui/src/scene/layer/order_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3aad3fc224a47d4125ac6644fe308433daaaef88
+index 0000000000000000000000000000000000000000..436edb22ea913beb0ff0014b934b6a293d518ce5
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/order_tests.rs
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,165 @@
 +//! Scene layers: a layer's scene draws its commands in the order the scene
 +//! without layers draws them, as recorded and as a box's run is recorded
 +//! again.
@@ -14823,6 +14831,7 @@ index 0000000000000000000000000000000000000000..3aad3fc224a47d4125ac6644fe308433
 +        opacity: 1.,
 +        rem_size: crate::px(16.),
 +        fill: None,
++        layer: None,
 +    }
 +}
 +
@@ -14917,6 +14926,27 @@ index 0000000000000000000000000000000000000000..3aad3fc224a47d4125ac6644fe308433
 +        Step::Box(2, rect(30., 12., 20., 10.), vec![(rect(31., 12., 19., 10.), hsla(0.1, 1., 0.5, 1.))]),
 +    ]);
 +}
++
++#[test]
++fn a_box_in_a_line_layer_keeps_the_layer_order_and_a_nested_one_opens_no_run() {
++    // The pieces of an inline box's band paint in the layer of their line.
++    let mut scene = Scene::default();
++    scene.insert_primitive(quad(rect(0., 0., 100., 100.), hsla(0., 0., 1., 1.)));
++    scene.push_layer(rect(0., 0., 50., 10.));
++    let order = *scene.layer_stack.last().unwrap();
++    assert!(scene.open_box(7, rect(0., 0., 20., 10.), env()));
++    scene.insert_primitive(quad(rect(0., 0., 20., 10.), hsla(0.6, 1., 0.5, 1.)));
++    let run = scene.close_box().unwrap();
++    assert_eq!(run.env.layer, Some(order));
++    assert!(run.replaceable);
++    scene.push_layer(rect(0., 0., 10., 10.));
++    assert!(!scene.open_box(8, rect(0., 0., 10., 10.), env()), "a nested layer orders by its own");
++    scene.pop_layer();
++    scene.pop_layer();
++    scene.push_bottom_layer();
++    assert!(!scene.open_box(9, rect(0., 0., 10., 10.), env()), "the bottom layer orders by paint");
++}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/scene/layer/reorder.rs b/vendor/gpui/src/scene/layer/reorder.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..00bb513ff0f4ba8b006f17593bd975c5b90fbb34
@@ -15450,10 +15480,10 @@ index 0000000000000000000000000000000000000000..6dd0ce57d03e62543162b91b6f475f44
 +}
 diff --git a/vendor/gpui/src/scene/layer/tests.rs b/vendor/gpui/src/scene/layer/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ccee8fbf2893d0a9bfabf297be6d4b769742a050
+index 0000000000000000000000000000000000000000..2d00ee880769cb1a7eb94f803e958cb3c691b86a
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/tests.rs
-@@ -0,0 +1,474 @@
+@@ -0,0 +1,475 @@
 +//! Scene layers: value writes, copy on write, batching and replay.
 +
 +use super::{Binding, LayerHandle, LayerValue, SceneLayer, layer_counters};
@@ -15651,6 +15681,7 @@ index 0000000000000000000000000000000000000000..ccee8fbf2893d0a9bfabf297be6d4b76
 +        opacity: 1.,
 +        rem_size: crate::px(16.),
 +        fill: None,
++        layer: None,
 +    }
 +}
 +
@@ -15930,10 +15961,10 @@ index 0000000000000000000000000000000000000000..ccee8fbf2893d0a9bfabf297be6d4b76
 +}
 diff --git a/vendor/gpui/src/scene/layer/write.rs b/vendor/gpui/src/scene/layer/write.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4ea8fbc7600b25c9acb258bea6010c20a31f2479
+index 0000000000000000000000000000000000000000..3a65a48fb2fccaae1a06d896b78af0499b8b3f66
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/write.rs
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,135 @@
 +//! KaminIDE patch: value writes into a scene layer (`LayerHandle`).
 +//!
 +//! A value write changes a painted value of existing commands in place: the
@@ -15976,12 +16007,17 @@ index 0000000000000000000000000000000000000000..4ea8fbc7600b25c9acb258bea6010c20
 +impl LayerHandle {
 +    /// Whether box `owner` painted runs this layer can record again
 +    /// (`Window::rerecord_layer_box`): at least one, each of plain
-+    /// primitives under no transformation.
++    /// primitives under no transformation, outside stacking layers (the runs
++    /// of an inline box' band on its line layer take value writes only).
 +    pub fn holds_box(&self, owner: u32) -> bool {
 +        let content = self.0.content.borrow();
 +        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
 +        runs.peek().is_some()
-+            && runs.all(|b| b.replaceable && b.env.transformation == crate::TransformationMatrix::unit())
++            && runs.all(|b| {
++                b.replaceable
++                    && b.env.layer.is_none()
++                    && b.env.transformation == crate::TransformationMatrix::unit()
++            })
 +    }
 +
 +    /// The device-pixel area the runs of box `owner` cover, their placed box
@@ -16979,7 +17015,7 @@ index 0000000000000000000000000000000000000000..d3a62e2bdc1b0167e3ed1b9dcd1389de
 +    multiply(multiply(expand(m), h), expand(inverse))
 +}
 diff --git a/vendor/gpui/src/style.rs b/vendor/gpui/src/style.rs
-index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e8a35d33c
+index 9150fdded91b817305454f18beb0a0b7d6c5966a..bde071ff3bca3659d9d999a54b9d1d1f5baf9e53
 --- a/vendor/gpui/src/style.rs
 +++ b/vendor/gpui/src/style.rs
 @@ -0,0 +1,4 @@
@@ -17183,7 +17219,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +            stretch: self.font_stretch,
 @@ -567,0 +746 @@
 +                stretch: self.font_stretch,
-@@ -570,0 +750,9 @@
+@@ -570,0 +750,10 @@
 +            // KaminIDE patch: кегль прогона задаёт разметка; у стиля он один
 +            // на блок, поэтому здесь его нет.
 +            font_size: None,
@@ -17192,15 +17228,16 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +            background_pad: Default::default(),
 +            background_radius: Default::default(),
 +            background_line_gap: false,
++            background_owner: 0,
 +            background_border: None,
-@@ -652,3 +840,3 @@
+@@ -652,3 +841,3 @@
 -                if self
 -                    .border_color
 -                    .is_some_and(|color| !color.is_transparent())
 +                // KaminIDE patch: край обрезки — padding-box ВСЕГДА
 +                // (css-overflow-3 §3, overflow clip edge): рамка вычитается и
 +                // прозрачная — прозрачность цвета не двигает край.
-@@ -660,0 +849,8 @@
+@@ -660,0 +850,8 @@
 +                // KaminIDE patch: край обрезки отодвигается наружу на
 +                // заданное поле (внутрь — при отсчёте от content-box).
 +                if let Some([top, right, bottom, left]) = self.overflow_clip_offset {
@@ -17209,22 +17246,22 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +                    min.y -= crate::px(top);
 +                    max.y += crate::px(bottom);
 +                }
-@@ -667,0 +864,4 @@
+@@ -667,0 +865,4 @@
 +                    // KaminIDE patch: оси были ПЕРЕПУТАНЫ — при «x видима,
 +                    // y прячется» маска резала X по коробке и отпускала Y.
 +                    // Свободная ось не ограничивается вовсе (широкий запас):
 +                    // однокоординатная обрезка режет только свою ось.
-@@ -670,2 +870,2 @@
+@@ -670,2 +871,2 @@
 -                        point(min.x, bounds.origin.y),
 -                        point(max.x, bounds.bottom_right().y),
 +                        point(crate::px(-1_000_000.0), min.y),
 +                        point(crate::px(1_000_000.0), max.y),
-@@ -675,2 +875,2 @@
+@@ -675,2 +876,2 @@
 -                        point(bounds.origin.x, min.y),
 -                        point(bounds.bottom_right().x, max.y),
 +                        point(min.x, crate::px(-1_000_000.0)),
 +                        point(max.x, crate::px(1_000_000.0)),
-@@ -684,0 +885,37 @@
+@@ -684,0 +886,37 @@
 +    }
 +
 +    /// KaminIDE patch: `overflow_mask` of an HTML box (`snap_to_device_pixels`)
@@ -17262,7 +17299,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +                point(at(b.right()), at(b.bottom())),
 +            ),
 +        })
-@@ -694,0 +932,41 @@
+@@ -694,0 +933,41 @@
 +        self.paint_box(bounds, window, cx);
 +        self.paint_after_box(window, cx, continuation);
 +    }
@@ -17304,7 +17341,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +    ) {
 +        continuation(window, cx);
 +
-@@ -697,3 +975,8 @@
+@@ -697,3 +976,8 @@
 -            cx.set_global(DebugBelow)
 -        }
 -
@@ -17316,7 +17353,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +    // Finish shadows, background and border temporaries before painting children.
 +    #[inline(never)]
 +    pub fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, _cx: &mut App) {
-@@ -701 +984,6 @@
+@@ -701 +985,6 @@
 -        if self.debug || cx.has_global::<DebugBelow>() {
 +        if self.debug_below {
 +            _cx.set_global(DebugBelow)
@@ -17324,11 +17361,11 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +
 +        #[cfg(debug_assertions)]
 +        if self.debug || _cx.has_global::<DebugBelow>() {
-@@ -713,0 +1002,3 @@
+@@ -713,0 +1003,3 @@
 +        // KaminIDE patch: a box without fill keeps where its fill would lie,
 +        // for a later recording of its run in a scene layer.
 +        window.note_box_fill(self, bounds);
-@@ -720 +1011,7 @@
+@@ -720 +1012,7 @@
 -
 +                    // KaminIDE patch: радиальный хранит цвета там же, где
 +                    // линейный, — берём первый стоп.
@@ -17337,14 +17374,14 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +                        .first()
 +                        .map(|stop| stop.color)
 +                        .unwrap_or_default(),
-@@ -730,2 +1027,4 @@
+@@ -730,2 +1028,4 @@
 -            window.paint_quad(quad(
 -                bounds,
 +            // KaminIDE patch: a box recorded again into a scene layer fills
 +            // the bounds its first recording placed (`Window::box_fill_bounds`).
 +            let fill = quad(
 +                window.box_fill_bounds(self, bounds),
-@@ -737,3 +1036,7 @@
+@@ -737,3 +1037,7 @@
 -            ));
 -        }
 -
@@ -17355,7 +17392,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +
 +        // Upstream's own inset shadows (`BoxShadow::inset` in `box_shadow`),
 +        // cast from the border box; HTML uses `inset_box_shadow` below.
-@@ -742,20 +1045,36 @@
+@@ -742,20 +1046,36 @@
 -        continuation(window, cx);
 -
 -        if self.is_border_visible() {
@@ -17412,18 +17449,18 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +        }
 +
 +        border_snap::paint(self, bounds, corner_radii, rem_size, window);
-@@ -773,0 +1093,2 @@
+@@ -773,0 +1094,2 @@
 +            safe_alignment: (false, false, false, false),
 +            safe_justify_alignment: (false, false),
-@@ -779,0 +1101 @@
+@@ -779,0 +1102 @@
 +            overflow_clip_offset: None,
-@@ -791,0 +1114,5 @@
+@@ -791,0 +1115,5 @@
 +            aspect_ratio_preferred_size: [None; 2],
 +            sizing_keywords: [None; 2],
 +            max_sizing_keywords: [None; 2],
 +            min_sizing_keywords: [None; 2],
 +            contained_intrinsic_size: [None; 2],
-@@ -797,0 +1125,8 @@
+@@ -797,0 +1126,8 @@
 +            // KaminIDE patch
 +            justify_items: None,
 +            justify_self: None,
@@ -17432,7 +17469,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +            grid_auto_cols: None,
 +            grid_auto_cols_list: Vec::new(),
 +            grid_auto_rows_list: Vec::new(),
-@@ -800,0 +1136,23 @@
+@@ -800,0 +1137,23 @@
 +            flex_balance_lines: 0,
 +            flex_cross_reverse: false,
 +            block_baselines: false,
@@ -17456,29 +17493,29 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..f738168569dffb2a294a18850ab63a1e
 +            block_flow: None,
 +            grid_subgrid: 0,
 +            grid_line_names: None,
-@@ -802,0 +1161 @@
+@@ -802,0 +1162 @@
 +            item_is_table: false,
-@@ -806,0 +1166 @@
+@@ -806,0 +1167 @@
 +            snap_to_device_pixels: false,
-@@ -808,0 +1169 @@
+@@ -808,0 +1170 @@
 +            inset_box_shadow: Default::default(),
-@@ -813,0 +1175,4 @@
+@@ -813,0 +1176,4 @@
 +            grid_cols_min: None,
 +            grid_cols_fit: false,
 +            grid_template_cols: None,
 +            grid_template_rows: None,
-@@ -1059,0 +1425,3 @@
+@@ -1059,0 +1426,3 @@
 +    /// KaminIDE patch: `last baseline` — выравнивание по ПОСЛЕДНИМ базовым
 +    /// линиям с прижимом группы к концу оси (css-align-3 §4.2, §9.3).
 +    LastBaseline,
-@@ -1133,0 +1502,4 @@
+@@ -1133,0 +1503,4 @@
 +    /// KaminIDE patch: a block container that establishes a new block formatting context
 +    /// (`display: flow-root`, css-display-3 §2.2): its margins never collapse with its
 +    /// children's or through it (CSS 2.1 §8.3.1).
 +    FlowRoot,
-@@ -1258,0 +1631 @@
+@@ -1258,0 +1632 @@
 +            AlignItems::LastBaseline => Self::LAST_BASELINE,
-@@ -1282,0 +1656 @@
+@@ -1282,0 +1657 @@
 +            Display::FlowRoot => Self::FlowRoot,
 diff --git a/vendor/gpui/src/style/border_snap.rs b/vendor/gpui/src/style/border_snap.rs
 new file mode 100644
@@ -23596,7 +23633,7 @@ index 0000000000000000000000000000000000000000..0f7110e1019bd308ec84e84e4d75d522
 +    }
 +}
 diff --git a/vendor/gpui/src/text_system.rs b/vendor/gpui/src/text_system.rs
-index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5b880b5a0
+index cf6bb10293699bb4b9a5c8149f996822444fd732..8338e73992456678b96f8bccf72e6a30c911fc20
 --- a/vendor/gpui/src/text_system.rs
 +++ b/vendor/gpui/src/text_system.rs
 @@ -0,0 +1 @@
@@ -23678,15 +23715,16 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5
 +        runs: &[TextRun],
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
-@@ -664,0 +722,4 @@
+@@ -664,0 +722,5 @@
 +                background_pad: run.background_pad,
 +                background_radius: run.background_radius,
 +                background_line_gap: run.background_line_gap,
++                background_owner: run.background_owner,
 +                background_border: run.background_border,
-@@ -670 +731 @@
+@@ -670 +732 @@
 -        let layout = self.layout_line(&text, font_size, runs, force_width);
 +        let layout = self.layout_line_spaced(&text, font_size, runs, force_width, letter_spacing);
-@@ -674,0 +736,117 @@
+@@ -674,0 +737,117 @@
 +            decoration_runs,
 +        }
 +    }
@@ -23804,12 +23842,13 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5
 +                len: layout.len,
 +            }),
 +            text: line.text,
-@@ -712,0 +891,4 @@
+@@ -712,0 +892,5 @@
 +                background_pad: run.background_pad,
 +                background_radius: run.background_radius,
 +                background_line_gap: run.background_line_gap,
++                background_owner: run.background_owner,
 +                background_border: run.background_border,
-@@ -757,0 +940,16 @@
+@@ -757,0 +942,16 @@
 +        self.shape_text_spaced(text, font_size, runs, wrap_width, line_clamp, px(0.))
 +    }
 +
@@ -23826,26 +23865,27 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5
 +        line_clamp: Option<usize>,
 +        letter_spacing: Pixels,
 +    ) -> Result<SmallVec<[WrappedLine; 1]>> {
-@@ -790,0 +989,4 @@
+@@ -790,0 +991,5 @@
 +                        background_pad: run.background_pad,
 +                        background_radius: run.background_radius,
 +                        background_line_gap: run.background_line_gap,
++                        background_owner: run.background_owner,
 +                        background_border: run.background_border,
-@@ -797,0 +1000 @@
+@@ -797,0 +1003 @@
 +                let run_size = run.font_size.unwrap_or(font_size);
-@@ -800 +1003,2 @@
+@@ -800 +1006,2 @@
 -                    && !decoration_changed
 +                    && font_run.font_size == run_size
 +                    && (!self.break_ligatures || !decoration_changed)
-@@ -806,0 +1011,2 @@
+@@ -806,0 +1014,2 @@
 +                        font_size: run_size,
 +                        break_ligatures: self.break_ligatures,
-@@ -818 +1024 @@
+@@ -818 +1027 @@
 -            let layout = self.line_layout_cache.layout_wrapped_line(
 +            let layout = self.line_layout_cache.layout_wrapped_line_spaced(
-@@ -823,0 +1030 @@
+@@ -823,0 +1033 @@
 +                letter_spacing,
-@@ -893 +1100,12 @@
+@@ -893 +1103,12 @@
 -        let mut last_run = None::<&TextRun>;
 +        self.layout_line_spaced(text, font_size, runs, force_width, px(0.))
 +    }
@@ -23859,7 +23899,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
 +    ) -> Arc<LineLayout> {
-@@ -897,30 +1115,14 @@
+@@ -897,30 +1118,14 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -23904,14 +23944,14 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5
 +        let text = self.no_break_hyphens(text, &font_runs);
 +        let layout = self.line_layout_cache.layout_line_spaced(
 +            &SharedString::new(&*text),
-@@ -929,0 +1132 @@
+@@ -929,0 +1135 @@
 +            letter_spacing,
-@@ -947,0 +1151,2 @@
+@@ -947,0 +1154,2 @@
 +                    font_size,
 +                    break_ligatures: true,
-@@ -975 +1179,0 @@
+@@ -975 +1182,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -979,27 +1183 @@
+@@ -979,27 +1186 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -23940,9 +23980,9 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1037 +1214,0 @@
+@@ -1037 +1217,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -1041,27 +1218 @@
+@@ -1041,27 +1221 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -23971,7 +24011,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1236,0 +1388,20 @@
+@@ -1236,0 +1391,26 @@
 +    /// KaminIDE patch: свой кегль прогона (`font-size` у `<span>` в строке).
 +    ///
 +    /// `None` — кегль всего блока. Без этого поля кусок другого размера
@@ -23992,7 +24032,13 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5
 +    /// (the HTML engine's inline box content area). `false` (IDE text) keeps
 +    /// the band at ascent + descent.
 +    pub background_line_gap: bool,
-@@ -1308,0 +1480,49 @@
++    /// KaminIDE patch: the box whose band the run paints (the host's node
++    /// number of an inline box; 0 for none). Each piece of the band is that
++    /// box's run in a scene layer (`Window::with_box_paint`) and its fill a
++    /// background value bound to it, so the box's fragments over all lines
++    /// are one owner's runs (`LayerHandle::set_backgrounds`).
++    pub background_owner: u32,
+@@ -1308,0 +1489,49 @@
 +
 +    /// KaminIDE patch: ширина начертания (`font-stretch`).
 +    ///
@@ -24042,9 +24088,9 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..5b646f5a3189e968d7b3bf19c50337d5
 +            _ => FontStretch::UltraExpanded,
 +        }
 +    }
-@@ -1323,0 +1544 @@
+@@ -1323,0 +1553 @@
 +        stretch: crate::FontStretch::default(),
-@@ -1448,0 +1670,8 @@
+@@ -1448,0 +1679,8 @@
 +impl WindowTextSystem {
 +    /// KaminIDE patch: the shaped line caches for the engine bench's memory report
 +    /// (`crate::heap_report`).
@@ -24323,13 +24369,13 @@ index 63dc89ba41ea9cf44bdffb7d81d3015d696f4413..5462b9187e77fa30da6629fa4f46aace
 +        }
 +    }
 diff --git a/vendor/gpui/src/text_system/line.rs b/vendor/gpui/src/text_system/line.rs
-index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210b96fbbc4
+index f5210052e2b73d03521c35207b0e05550aba3e48..1145dfe79e4d9bf341c34cfcb639bba375334af7
 --- a/vendor/gpui/src/text_system/line.rs
 +++ b/vendor/gpui/src/text_system/line.rs
 @@ -4 +4 @@
 -    WrappedLineLayout, black, fill, point, px, size, underline_y_offset,
 +    WrappedLineLayout, black, point, px, size, underline_y_offset,
-@@ -32,0 +33,13 @@
+@@ -32,0 +33,16 @@
 +    /// KaminIDE patch: поля вокруг фона прогона (строчный бокс) по четырём
 +    /// сторонам, `[верх, право, низ, лево]`. Одной парой их держать нельзя:
 +    /// `padding-top: 20px` без нижнего раздувал полосу вниз на те же 20 px.
@@ -24343,46 +24389,49 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +    /// KaminIDE patch: the background band spans the font's line gap too
 +    /// (see [`crate::TextRun::background_line_gap`]).
 +    pub background_line_gap: bool,
-@@ -146,0 +160 @@
++    /// KaminIDE patch: the box whose band the run paints
++    /// (see [`crate::TextRun::background_owner`]).
++    pub background_owner: u32,
+@@ -146,0 +163 @@
 +            &self.text,
-@@ -170,0 +185 @@
+@@ -170,0 +188 @@
 +            &self.text,
-@@ -214,4 +229,2 @@
+@@ -214,4 +232,2 @@
 -                    color: decoration.color,
 -                    background_color: decoration.background_color,
 -                    underline: decoration.underline,
 -                    strikethrough: decoration.strikethrough,
 +                    // KaminIDE patch: поля фона/рамки строчного бокса тоже переносятся.
 +                    ..decoration.clone()
-@@ -221,4 +234,2 @@
+@@ -221,4 +237,2 @@
 -                    color: decoration.color,
 -                    background_color: decoration.background_color,
 -                    underline: decoration.underline,
 -                    strikethrough: decoration.strikethrough,
 +                    // KaminIDE patch: поля фона/рамки строчного бокса тоже переносятся.
 +                    ..decoration.clone()
-@@ -317,0 +329 @@
+@@ -317,0 +332 @@
 +                    font_size: run.font_size,
-@@ -347,4 +359,2 @@
+@@ -347,4 +362,2 @@
 -                    color: decoration.color,
 -                    background_color: decoration.background_color,
 -                    underline: decoration.underline,
 -                    strikethrough: decoration.strikethrough,
 +                    // KaminIDE patch: поля фона/рамки строчного бокса тоже переносятся.
 +                    ..decoration.clone()
-@@ -399,0 +410,3 @@
+@@ -399,0 +413,3 @@
 +            // KaminIDE patch: текста у голой раскладки нет — выключка
 +            // (`Justify`) без пробелов не растягивает строку.
 +            "",
-@@ -428,0 +442,3 @@
+@@ -428,0 +445,3 @@
 +            // KaminIDE patch: текста у голой раскладки нет — выключка
 +            // (`Justify`) без пробелов не растягивает строку.
 +            "",
-@@ -475,0 +492 @@
+@@ -475,0 +495 @@
 +            &self.text,
-@@ -506,0 +524 @@
+@@ -506,0 +527 @@
 +            &self.text,
-@@ -520,0 +539,42 @@
+@@ -520,0 +542,42 @@
 +/// KaminIDE patch: добавка на один межсловный пробел в каждой строке.
 +///
 +/// Выключка растягивает не буквы, а промежутки между словами, и только в
@@ -24425,9 +24474,9 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +    extras
 +}
 +
-@@ -522,0 +583 @@
+@@ -522,0 +586 @@
 +    text: &str,
-@@ -547,0 +609,10 @@
+@@ -547,0 +612,10 @@
 +        // KaminIDE patch: выключка по ширине — остаток строки раздаётся её
 +        // межсловным промежуткам (см. `justify_extras`).
 +        let justify = (align == TextAlign::Justify).then(|| {
@@ -24438,14 +24487,14 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                align_width.unwrap_or(layout.width),
 +            )
 +        });
-@@ -571,0 +643,3 @@
+@@ -571,0 +646,3 @@
 +        // KaminIDE patch: выключка — добавка на каждый пройденный промежуток.
 +        let mut line_ix = 0usize;
 +        let mut prev_space = false;
-@@ -573 +647 @@
+@@ -573 +650 @@
 -            max_glyph_size = text_system.bounding_box(run.font_id, layout.font_size).size;
 +            max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
-@@ -580,0 +655,11 @@
+@@ -580,0 +658,11 @@
 +                let space = text.as_bytes().get(glyph.index) == Some(&b' ');
 +                if let Some(extras) = justify.as_ref() {
 +                    // Добавка отдаётся ОДИН раз на промежуток: положение
@@ -24457,10 +24506,10 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                }
 +                prev_space = space;
 +
-@@ -582,0 +668,2 @@
+@@ -582,0 +671,2 @@
 +                    line_ix += 1;
 +                    prev_space = false;
-@@ -732 +819,12 @@
+@@ -732 +822,12 @@
 -                if max_glyph_bounds.intersects(&content_mask.bounds) {
 +                // KaminIDE patch: маска окна под масштабом стопки страниц —
 +                // в ИТОГОВЫХ координатах (`Window::scaled_mask`), а глиф ещё в
@@ -24474,7 +24523,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                    .bounds;
 +                if glyph_view.intersects(&content_mask.bounds) {
 +                    // Вертикальное смещение глифа от набора (upstream).
-@@ -735,6 +833,14 @@
+@@ -735,6 +836,14 @@
 -                        window.paint_emoji(
 -                            glyph_origin + baseline_offset + vertical_offset,
 -                            run.font_id,
@@ -24495,14 +24544,14 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                                color.a,
 +                            )?;
 +                        }
-@@ -746 +852,3 @@
+@@ -746 +855,3 @@
 -                            layout.font_size,
 +                            // KaminIDE patch: кегль ПРОГОНА — иначе кусок
 +                            // другого размера рисовался чужими глифами.
 +                            run.font_size,
-@@ -792,0 +901 @@
+@@ -792,0 +904 @@
 +    text: &str,
-@@ -802 +911,44 @@
+@@ -802 +914,44 @@
 -    let line_bounds = line_paint_bounds(
 +    // KaminIDE patch: высота коробки СОДЕРЖИМОГО строчной коробки — подъём
 +    // плюс спуск шрифта (CSS 2.1 §10.6.1), а не доля кегля. Теми же числами
@@ -24548,7 +24597,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +    // KaminIDE patch: границы слоя — по upstream `line_paint_bounds` (учёт
 +    // выравнивания), раздутые на перелив полосы вверх и вниз.
 +    let mut line_bounds = line_paint_bounds(
-@@ -809,0 +962,12 @@
+@@ -809,0 +965,12 @@
 +    line_bounds.origin.y -= bleed.0;
 +    line_bounds.size.height += bleed.0 + bleed.1;
 +        // KaminIDE patch: выключка по ширине — остаток строки раздаётся её
@@ -24561,17 +24610,17 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                align_width.unwrap_or(layout.width),
 +            )
 +        });
-@@ -810,0 +975 @@
+@@ -810,0 +978 @@
 +        let all_style_runs = decoration_runs;
-@@ -814 +979,6 @@
+@@ -814 +982,6 @@
 -        let mut current_background: Option<(Point<Pixels>, Hsla)> = None;
 +        // Пятое поле — рамка строчного бокса: она живёт вместе с фоном и
 +        // режется переносом так же, как он.
 +        let mut current_background: Option<(
 +            Point<Pixels>,
-+            (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>),
++            (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>, u32),
 +        )> = None;
-@@ -828,0 +999,30 @@
+@@ -828,0 +1002,30 @@
 +        // KaminIDE patch: выключка — добавка на каждый пройденный промежуток.
 +        let mut line_ix = 0usize;
 +        let mut prev_space = false;
@@ -24589,7 +24638,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                .find(|r| r.background_color.is_some())
 +            && let Some(bg) = style_run.background_color
 +        {
-+            window.paint_quad(snap_band(run_background_quad(
++            paint_band((style_run.background_owner, style_run.background_border.is_some()), run_background_quad(
 +                glyph_origin,
 +                layout.width,
 +                line_height,
@@ -24600,12 +24649,12 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                true,
 +                true,
 +                style_run.background_border,
-+            ), window));
++            ), window);
 +        }
-@@ -830 +1030 @@
+@@ -830 +1033 @@
 -            max_glyph_size = text_system.bounding_box(run.font_id, layout.font_size).size;
 +            max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
-@@ -834,0 +1035,10 @@
+@@ -834,0 +1038,10 @@
 +                let space = text.as_bytes().get(glyph.index) == Some(&b' ');
 +                if let Some(extras) = justify.as_ref() {
 +                    // Та же добавка, что и в проходе глифов: подложки прогонов
@@ -24616,10 +24665,10 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                }
 +                prev_space = space;
 +
-@@ -836,0 +1047,2 @@
+@@ -836,0 +1050,2 @@
 +                    line_ix += 1;
 +                    prev_space = false;
-@@ -842,8 +1054,33 @@
+@@ -842,8 +1057,36 @@
 -                        window.paint_quad(fill(
 -                            Bounds {
 -                                origin: *background_origin,
@@ -24645,9 +24694,12 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                                    other => break other,
 +                                }
 +                            };
-+                            !next_run.is_some_and(|r| r.background_color == Some(background_color.0))
++                            !next_run.is_some_and(|r| {
++                                r.background_color == Some(background_color.0)
++                                    && r.background_owner == background_color.5
++                            })
 +                        };
-+                        window.paint_quad(snap_band(run_background_quad(
++                        paint_band((background_color.5, background_color.4.is_some()), run_background_quad(
 +                            *background_origin,
 +                            glyph_origin.x - background_origin.x,
 +                            line_height,
@@ -24658,19 +24710,20 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                            background_color.3,
 +                            run_ends_here,
 +                            background_color.4,
-+                        ), window));
++                        ), window);
 +                        if !run_ends_here {
 +                            background_color.3 = false;
-@@ -869 +1106,4 @@
+@@ -869 +1112,4 @@
 -                let mut finished_background: Option<(Point<Pixels>, Hsla)> = None;
 +                let mut finished_background: Option<(
 +                    Point<Pixels>,
-+                    (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>),
++                    (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>, u32),
 +                )> = None;
-@@ -884 +1124 @@
+@@ -884 +1130,2 @@
 -                            && style_run.background_color.as_ref() != Some(background_color)
-+                            && style_run.background_color.as_ref() != Some(&background_color.0)
-@@ -891 +1131,9 @@
++                            && (style_run.background_color.as_ref() != Some(&background_color.0)
++                                || style_run.background_owner != background_color.5)
+@@ -891 +1138,10 @@
 -                                run_background,
 +                                (
 +                                    run_background,
@@ -24680,8 +24733,9 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                                    // на переносе подсветка продолжается.
 +                                    true,
 +                                    style_run.background_border,
++                                    style_run.background_owner,
 +                                ),
-@@ -906,7 +1154,12 @@
+@@ -906,7 +1162,12 @@
 -                    window.paint_quad(fill(
 -                        Bounds {
 -                            origin: background_origin,
@@ -24689,7 +24743,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 -                        },
 -                        background_color,
 -                    ));
-+                    window.paint_quad(snap_band(run_background_quad(
++                    paint_band((background_color.5, background_color.4.is_some()), run_background_quad(
 +                        background_origin,
 +                        width,
 +                        line_height,
@@ -24700,8 +24754,8 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                        background_color.3,
 +                        true,
 +                        background_color.4,
-+                    ), window));
-@@ -928,7 +1181,12 @@
++                    ), window);
+@@ -928,7 +1189,12 @@
 -            window.paint_quad(fill(
 -                Bounds {
 -                    origin: background_origin,
@@ -24709,7 +24763,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 -                },
 -                background_color,
 -            ));
-+            window.paint_quad(snap_band(run_background_quad(
++            paint_band((background_color.5, background_color.4.is_some()), run_background_quad(
 +                background_origin,
 +                last_line_end_x - background_origin.x,
 +                line_height,
@@ -24720,8 +24774,31 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +                background_color.3,
 +                true,
 +                background_color.4,
-+            ), window));
-@@ -940,0 +1199,99 @@
++            ), window);
+@@ -940,0 +1207,122 @@
++/// KaminIDE patch: one piece of the band of inline box `owner` (0: none) on
++/// its line: the box's run in a scene layer (`Window::with_box_paint`), so
++/// the box's pieces over all lines are its runs. The band of a box without a
++/// border binds its fill as the box's background (`LayerValue::Background`),
++/// so a new colour is written into every piece at once
++/// (`LayerHandle::set_backgrounds`). The band of a box with a border on any
++/// side paints fill and border in one quad and binds no piece, as a write of
++/// the fill would recolour the border.
++fn paint_band((owner, bordered): (u32, bool), quad: crate::PaintQuad, window: &mut Window) {
++    let quad = snap_band(quad, window);
++    if owner == 0 {
++        window.paint_quad(quad);
++        return;
++    }
++    window.with_box_paint(owner, quad.bounds, |window| {
++        if bordered {
++            window.paint_quad(quad);
++        } else {
++            window.with_paint_value(crate::LayerValue::Background, |w| w.paint_quad(quad));
++        }
++    });
++}
++
 +/// KaminIDE patch: the band of an inline box with a border is pixel-snapped
 +/// like a box border (`style::border_snap`, Blink box_border_painter.cc): the
 +/// outer and inner edges round to device pixels separately, so a fractional
@@ -24821,7 +24898,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +    }
 +}
 +
-@@ -941,0 +1299,27 @@
+@@ -941,0 +1330,27 @@
 +    origin: Point<Pixels>,
 +    layout: &LineLayout,
 +    line_height: Pixels,
@@ -24849,69 +24926,77 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210
 +}
 +
 +fn line_rows_bounds(
-@@ -956 +1340,2 @@
+@@ -956 +1371,2 @@
 -    if align == TextAlign::Left || layout.len == 0 {
 +    // KaminIDE patch: выключка (`Justify`) начинается от левого края, как `Left`.
 +    if matches!(align, TextAlign::Left | TextAlign::Justify) || layout.len == 0 {
-@@ -973 +1358 @@
+@@ -973 +1389 @@
 -            TextAlign::Left => Pixels::ZERO,
 +            TextAlign::Left | TextAlign::Justify => Pixels::ZERO,
-@@ -1003 +1388,3 @@
+@@ -1003 +1419,3 @@
 -        TextAlign::Left => origin.x,
 +        // Выключка начинается от левого края: остаток раздают пробелы внутри
 +        // строки, а не сдвиг всей строки (см. `justify_extras`).
 +        TextAlign::Left | TextAlign::Justify => origin.x,
-@@ -1043,0 +1431 @@
+@@ -1043,0 +1462 @@
 +                    font_size: px(16.0),
-@@ -1135,0 +1524,4 @@
+@@ -1135,0 +1555,5 @@
 +                background_pad: [px(0.); 4],
 +                background_radius: px(0.),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
-@@ -1278,0 +1671,4 @@
+@@ -1278,0 +1703,5 @@
 +                background_pad: [px(0.); 4],
 +                background_radius: px(0.),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
-@@ -1356,0 +1753,4 @@
+@@ -1356,0 +1786,5 @@
 +                        background_pad: [px(0.); 4],
 +                        background_radius: px(0.),
 +                        background_line_gap: false,
++                        background_owner: 0,
 +                        background_border: None,
-@@ -1392,0 +1793 @@
+@@ -1392,0 +1827 @@
 +                    &wrapped.text,
-@@ -1490,0 +1892 @@
+@@ -1490,0 +1926 @@
 +                        font_size: px(16.0),
-@@ -1513,0 +1916 @@
+@@ -1513,0 +1950 @@
 +                        font_size: px(16.0),
-@@ -1611,0 +2015,4 @@
+@@ -1611,0 +2049,5 @@
 +                    background_pad: [px(0.); 4],
 +                    background_radius: px(0.),
 +                    background_line_gap: false,
++                    background_owner: 0,
 +                    background_border: None,
-@@ -1618,0 +2026,4 @@
+@@ -1618,0 +2061,5 @@
 +                    background_pad: [px(0.); 4],
 +                    background_radius: px(0.),
 +                    background_line_gap: false,
++                    background_owner: 0,
 +                    background_border: None,
-@@ -1625,0 +2037,4 @@
+@@ -1625,0 +2073,5 @@
 +                    background_pad: [px(0.); 4],
 +                    background_radius: px(0.),
 +                    background_line_gap: false,
++                    background_owner: 0,
 +                    background_border: None,
-@@ -1736,0 +2152 @@
+@@ -1736,0 +2189 @@
 +                        font_size: px(16.0),
-@@ -1759,0 +2176 @@
+@@ -1759,0 +2213 @@
 +                        font_size: px(16.0),
-@@ -1861,0 +2279,4 @@
+@@ -1861,0 +2316,5 @@
 +                background_pad: [px(0.); 4],
 +                background_radius: px(0.),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
-@@ -1884,0 +2306,4 @@
+@@ -1884,0 +2344,5 @@
 +                background_pad: [px(0.); 4],
 +                background_radius: px(0.),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
 diff --git a/vendor/gpui/src/text_system/line_layout.rs b/vendor/gpui/src/text_system/line_layout.rs
 index f0bf1211114e4522a5310067e2549ba2727a4c1d..b58f4ea219e1156bfba8d48ae26ad40b7596f0be
@@ -28617,10 +28702,10 @@ index 0000000000000000000000000000000000000000..466fb22a1859060d509375a341b69402
 +}
 diff --git a/vendor/gpui/src/window/layer_box.rs b/vendor/gpui/src/window/layer_box.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..78ad7e6eca5247d644d731f8350d64fe02db0440
+index 0000000000000000000000000000000000000000..89a1b1e846054b3b72c723a36e7f1aceea2b00f1
 --- /dev/null
 +++ b/vendor/gpui/src/window/layer_box.rs
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,180 @@
 +//! KaminIDE patch: the own paint of a box in a scene layer, and its later
 +//! recording into the box's run (`scene::layer::boxes`).
 +//!
@@ -28656,6 +28741,7 @@ index 0000000000000000000000000000000000000000..78ad7e6eca5247d644d731f8350d64fe
 +            opacity: self.element_opacity(),
 +            rem_size: self.rem_size(),
 +            fill: None,
++            layer: None,
 +        };
 +        let area = self.box_area(&env);
 +        if !self.next_frame.scene.open_box(owner, area, env) {
@@ -28739,7 +28825,9 @@ index 0000000000000000000000000000000000000000..78ad7e6eca5247d644d731f8350d64fe
 +                let b = &content.boxes[at];
 +                (b.area, b.env)
 +            };
-+            if env.transformation != TransformationMatrix::unit() {
++            // A run in a stacking layer keeps the layer's order, which a
++            // recording outside the layer does not give.
++            if env.transformation != TransformationMatrix::unit() || env.layer.is_some() {
 +                return None;
 +            }
 +            let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);

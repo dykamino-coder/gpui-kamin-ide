@@ -134,6 +134,10 @@ impl Document {
             crate::paint::box_tree::styled::paints_only_own_box(&self.state, a)
                 && crate::paint::box_tree::styled::paints_only_own_box(&self.state, b)
         };
+        let band = |a: &crate::dom::Element, b: &crate::dom::Element| {
+            super::layer_write::paints_band(&self.state, a)
+                && super::layer_write::paints_band(&self.state, b)
+        };
         // A box under a block the frame skipped: any block on its path.
         let unseen = |path: &super::patch::Path| {
             self.reuse.skipped_any()
@@ -150,6 +154,7 @@ impl Document {
             paths,
             &layer,
             plain,
+            band,
             unseen,
             off,
         ) else {

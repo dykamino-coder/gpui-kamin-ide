@@ -34,13 +34,18 @@ type Write = (u32, Option<Hsla>, Option<Hsla>);
 /// change for the frames that bring it near the screen (`Store::restyle`).
 /// A box in the layer whose runs showed no pixel of its frame (`off`) takes
 /// neither now: it is returned apart, its record deferred until a frame shows
-/// it (`layout::reuse::deferred`).
+/// it (`layout::reuse::deferred`). An inline box whose own paint is its band
+/// (`band`) takes a new background colour as a value written into every
+/// piece of its band; any other change of its own paint is no layer write
+/// yet.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_paint_values(
     old: &[Node],
     new: &[Node],
     paths: &[(Path, u64)],
     layer: &LayerHandle,
     plain: impl Fn(&Element, &Element) -> bool,
+    band: impl Fn(&Element, &Element) -> bool,
     unseen: impl Fn(&Path) -> bool,
     off: impl Fn(u64) -> bool,
 ) -> Option<Taken> {
@@ -67,12 +72,16 @@ pub(super) fn write_paint_values(
             crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
             continue;
         }
-        if !plain(a, b) {
+        // The pieces of an inline box's band take value writes only, at once:
+        // a write paints nothing, on the screen or off it.
+        let own = plain(a, b);
+        let banded = !own && band(a, b);
+        if !own && !banded {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
             return None;
         }
         u32::try_from(a.node_id).ok()?;
-        if off(a.node_id) && held(a.node_id) {
+        if !banded && off(a.node_id) && held(a.node_id) {
             deferred.push((path.clone(), a.node_id));
             continue;
         }
@@ -90,6 +99,10 @@ pub(super) fn write_paint_values(
                 if writes.last().is_none_or(|w: &Write| w.0 != owner) {
                     writes.push((owner, Some(from), Some(to)));
                 }
+            }
+            _ if banded => {
+                crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
+                return None;
             }
             _ => records.push((path.clone(), a.node_id)),
         }
@@ -151,4 +164,25 @@ fn painted_background(e: &Element) -> Option<Option<Hsla>> {
         && values.flat.is_none()
         && values.color_clip.is_none();
     plain.then(|| values.color.map(|c| c.to_hsla()))
+}
+
+/// Whether the box of `e` is an inline box whose own paint is its band, the
+/// pieces of its text runs over all its lines (`gpui::TextRun::background_owner`):
+/// in the scene layer they are its runs, and its background colour a value
+/// bound to them. Not under a hover layer, a filter or a transform, which
+/// paint it otherwise.
+pub(super) fn paints_band(
+    doc: &std::rc::Rc<crate::document::state::DocState>,
+    e: &Element,
+) -> bool {
+    if crate::paint::box_tree::styled::own_box_refusal(doc, e) != Some("inline") {
+        return false;
+    }
+    let c = BoxStyle::shared(e.style.used());
+    c.inh.ui.hidden != Some(true)
+        && !c.reset_fragmentation.bdb_clone
+        && c.reset_effects.filter_ref.is_none()
+        && c.reset_effects.backdrop_color.is_none()
+        && c.reset_transforms.transform.is_none()
+        && !c.reset_transforms.transform_ancestor
 }

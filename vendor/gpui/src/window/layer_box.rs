@@ -33,6 +33,7 @@ impl Window {
             opacity: self.element_opacity(),
             rem_size: self.rem_size(),
             fill: None,
+            layer: None,
         };
         let area = self.box_area(&env);
         if !self.next_frame.scene.open_box(owner, area, env) {
@@ -116,7 +117,9 @@ impl Window {
                 let b = &content.boxes[at];
                 (b.area, b.env)
             };
-            if env.transformation != TransformationMatrix::unit() {
+            // A run in a stacking layer keeps the layer's order, which a
+            // recording outside the layer does not give.
+            if env.transformation != TransformationMatrix::unit() || env.layer.is_some() {
                 return None;
             }
             let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);

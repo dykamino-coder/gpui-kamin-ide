@@ -25,13 +25,13 @@ fn first_difference(a: &[String], b: &[String]) -> Option<(usize, usize, usize, 
     Some((at, a.len(), b.len(), get(a), get(b)))
 }
 
-fn frames(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> (u64, u64) {
+pub(super) fn frames(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> (u64, u64) {
     cx.update(|_, cx| view.read(cx).doc.retained_frames())
 }
 
 /// The painted quads in paint order, without their draw orders: a box
 /// recorded again keeps its key, a fresh frame numbers its own.
-fn quads(cx: &mut VisualTestContext) -> Vec<String> {
+pub(super) fn quads(cx: &mut VisualTestContext) -> Vec<String> {
     cx.update(|window, _| {
         window
             .painted_quads()
