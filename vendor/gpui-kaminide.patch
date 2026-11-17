@@ -16526,10 +16526,10 @@ index 0000000000000000000000000000000000000000..ccee8fbf2893d0a9bfabf297be6d4b76
 +}
 diff --git a/vendor/gpui/src/scene/layer/write.rs b/vendor/gpui/src/scene/layer/write.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..194c59c7ed5f6586aec505d38afbbd640b64a735
+index 0000000000000000000000000000000000000000..4ea8fbc7600b25c9acb258bea6010c20a31f2479
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/write.rs
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,130 @@
 +//! KaminIDE patch: value writes into a scene layer (`LayerHandle`).
 +//!
 +//! A value write changes a painted value of existing commands in place: the
@@ -16578,6 +16578,17 @@ index 0000000000000000000000000000000000000000..194c59c7ed5f6586aec505d38afbbd64
 +        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
 +        runs.peek().is_some()
 +            && runs.all(|b| b.replaceable && b.env.transformation == crate::TransformationMatrix::unit())
++    }
++
++    /// The device-pixel area the runs of box `owner` cover, their placed box
++    /// with its ink (`BoxRange::area`): any paint the box records again in
++    /// the same place lies inside it. `None` when the box has no run.
++    pub fn box_area(&self, owner: u32) -> Option<Bounds<ScaledPixels>> {
++        let content = self.0.content.borrow();
++        content
++            .runs_of(owner)
++            .map(|at| content.boxes[at].area)
++            .reduce(|a, b| a.union(&b))
 +    }
 +
 +    /// Write the background of `owner` from `from` to `to`.
