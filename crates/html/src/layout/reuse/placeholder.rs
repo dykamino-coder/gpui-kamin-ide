@@ -43,6 +43,9 @@ pub(super) struct Slot {
     /// The block's paint-only values changed since the record
     /// (Store::same_tree): the leaf holds, the recorded paint does not.
     repaint: bool,
+    /// Not painted, and its leaf with its ink is off the screen of this
+    /// frame (`FlowReuse::validate`): a repainted box inside shows nothing.
+    clear: Cell<bool>,
 }
 
 impl Slot {
@@ -53,6 +56,7 @@ impl Slot {
             replay: Cell::new(None),
             stretched,
             repaint,
+            clear: Cell::new(false),
         }
     }
 
@@ -81,6 +85,14 @@ impl Slot {
 
     pub(super) fn set_replay(&self, epoch: Option<u64>) {
         self.replay.set(epoch);
+    }
+
+    pub(super) fn set_clear(&self, clear: bool) {
+        self.clear.set(clear);
+    }
+
+    pub(super) fn clear(&self) -> bool {
+        self.clear.get()
     }
 
     pub(super) fn replayed(&self) -> bool {

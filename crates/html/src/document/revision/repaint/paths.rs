@@ -95,3 +95,26 @@ const TABLE_PARTS: &[&str] = &[
 fn layers(b: &Element) -> impl Iterator<Item = &Option<crate::dom::SharedStyle>> {
     [&b.hover, &b.first_letter, &b.first_line].into_iter()
 }
+
+/// Whether the colours of the borders of a box with the cascaded style
+/// `style` may be paint values: no table part, whose collapsed borders are a
+/// layout result with their colours, and no inline-level box, whose sides are
+/// painted with its line (`Computed::same_layout_but_border_colors`;
+/// the box itself is checked too, `takes`).
+pub(super) fn painted_borders(style: &crate::style::computed::Computed) -> bool {
+    use crate::style::computed::Display;
+    !matches!(
+        style.reset_box_layout.display,
+        Some(
+            Display::Table
+                | Display::InlineTable
+                | Display::TableRow
+                | Display::TableRowGroup
+                | Display::TableCell
+                | Display::Contents
+                | Display::InlineBlock
+                | Display::InlineFlex
+                | Display::InlineGrid
+        )
+    )
+}

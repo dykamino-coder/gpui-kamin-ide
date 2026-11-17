@@ -159,6 +159,13 @@ export function computeProjectSlug(dir: string): string {
 // one's and silently dropped never-seen entries.
 let globalOrdCounter = 0
 
+/** Why the watcher moved to another transcript: a newer file found by discovery
+ *  (compaction, /clear) or the CLI's own report that it resumed a conversation. */
+export type TranscriptSwitchReason = 'discovered' | 'resume'
+
+// A CLI conversation id is the transcript's basename; nothing else may name a path.
+const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export class JsonlWatcher {
   private sessionCreatedAt: number
   /** Returns false when the frame was DROPPED (WS backpressure / closed socket).
@@ -176,7 +183,7 @@ export class JsonlWatcher {
   private replayAbort: AbortController | null = null
   private sendStatus: (status: JsonlStatus) => void
   private onUserEntry?: (entry: JsonlEntry) => void
-  private onConversationId?: (conversationId: string) => void
+  private onConversationId?: (conversationId: string, reason?: TranscriptSwitchReason) => void
   // `boolean | void`, NOT void: the subagent watcher must see a dropped frame to
   // avoid advancing its offset past lines the client never got (the 6.3.25 rule).
   // Typing this `void` silently discarded that signal all the way down.
@@ -260,7 +267,7 @@ export class JsonlWatcher {
     sendStatus: (status: JsonlStatus) => void,
     onUserEntry?: (entry: JsonlEntry) => void,
     settingsDir?: string,
-    onConversationId?: (conversationId: string) => void,
+    onConversationId?: (conversationId: string, reason?: TranscriptSwitchReason) => void,
     sendSubagentEntries?: (agentName: string, entries: JsonlEntry[], agentId?: string) => boolean | void | SendOutcome,
     onReplayReset?: () => void,
     onStatsEntry?: (entry: JsonlEntry) => void,
@@ -744,6 +751,7 @@ export class JsonlWatcher {
       dir: this.slugDir || path.dirname(this.filePath),
       currentFilePath: this.filePath,
       sessionCreatedAt: this.sessionCreatedAt,
+      left: this.leftTranscripts,
       onNewer: (candidate) => {
         if (!this.stopped) this.switchToFile(candidate)
       },
@@ -752,10 +760,30 @@ export class JsonlWatcher {
   }
 
   /**
-   * Switch to a new JSONL file (compaction detected).
+   * Follow the CLI's report that it resumed `conversationId` inline
+   * (SessionStart, source `resume`). The resumed transcript is usually older
+   * and unchanged, so discovery, which only picks newer files born after the
+   * PTY, never selects it (INC-2026-0102). The file left behind stays excluded
+   * from discovery, so a newer abandoned transcript cannot take the view back.
+   */
+  adoptResumedTranscript(conversationId: string): boolean {
+    if (this.stopped || !this.filePath || !CONVERSATION_ID.test(conversationId)) return false
+    const target = path.join(this.slugDir || path.dirname(this.filePath), `${conversationId}.jsonl`)
+    if (target === this.filePath || !fs.existsSync(target)) return false
+    this.leftTranscripts.add(this.filePath)
+    this.leftTranscripts.delete(target)
+    this.switchToFile(target, 'resume')
+    return true
+  }
+
+  /** Transcripts this session explicitly left by a resume; discovery skips them. */
+  private leftTranscripts = new Set<string>()
+
+  /**
+   * Switch to a new JSONL file (compaction detected, or an explicit resume).
    * Stops polling old file, reads new file from beginning.
    */
-  private switchToFile(newPath: string): void {
+  private switchToFile(newPath: string, reason: TranscriptSwitchReason = 'discovered'): void {
     // Stop current polling + native watcher
     if (this.tailTimer) {
       clearInterval(this.tailTimer)
@@ -788,7 +816,7 @@ export class JsonlWatcher {
     // Extract conversationId from new filename (compaction creates a new conversation)
     if (this.onConversationId) {
       const conversationId = path.basename(newPath, '.jsonl')
-      this.onConversationId(conversationId)
+      this.onConversationId(conversationId, reason)
     }
 
     // Notify client about the switch — compacted flag tells renderer to clear old entries

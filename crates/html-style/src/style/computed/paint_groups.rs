@@ -1,7 +1,8 @@
 //! The paint-only delta of a restyle as a unit: the two style groups whose
 //! values `Computed::same_layout` lets differ, the inherited UI group
-//! (`color`) and the box's own background, and the colours of its borders
-//! (`Computed::same_layout_but_border_colors`).
+//! (`color`) and the box's own background, the colours of its borders
+//! (`Computed::same_layout_but_border_colors`) and the SVG paints `fill` and
+//! `stroke`.
 //!
 //! Blink turns the difference of two computed styles into the work of the
 //! frame (`ComputedStyle::VisualInvalidationDiff`): a paint-only difference
@@ -27,6 +28,11 @@ impl Computed {
             out.reset_border.border_colors = new.reset_border.border_colors.clone();
             out.reset_cascade.side_order.border[2] = new.reset_cascade.side_order.border[2];
         }
+        let (svg, new_svg) = (&out.reset_svg_math, &new.reset_svg_math);
+        if svg.svg_fill != new_svg.svg_fill || svg.svg_stroke != new_svg.svg_stroke {
+            out.reset_svg_math.svg_fill = new.reset_svg_math.svg_fill.clone();
+            out.reset_svg_math.svg_stroke = new.reset_svg_math.svg_stroke.clone();
+        }
         out
     }
 
@@ -35,6 +41,8 @@ impl Computed {
         self.inh.ui == other.inh.ui
             && self.reset_background == other.reset_background
             && self.reset_border.border_colors == other.reset_border.border_colors
+            && self.reset_svg_math.svg_fill == other.reset_svg_math.svg_fill
+            && self.reset_svg_math.svg_stroke == other.reset_svg_math.svg_stroke
     }
 }
 
