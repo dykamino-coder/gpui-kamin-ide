@@ -4,6 +4,7 @@ import { sendToClient } from './session-io'
 import { getSessionInputSnapshot, setSessionPromptReady, submitCoordinatedText } from './session-input-coordinator'
 import { ProgramStatusParser, type ProgramStatus } from './program-status'
 import { CliSubmissions } from './cli-submissions'
+import { replayTerminalCommandReceipts } from './terminal-command-receipts'
 import type { CliModTransport } from './cli-mod-transport'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 
@@ -166,6 +167,7 @@ export class SessionCliControl {
   replay(): void {
     this.snapshot()
     this.submissions?.replay()
+    replayTerminalCommandReceipts(this.session)
     // After a server or CLI restart the client may still show receipts this
     // process never saw; list what is tracked so it can stop waiting for them.
     sendToClient(this.session.ws, {
