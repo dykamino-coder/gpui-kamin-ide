@@ -2,6 +2,7 @@ import type { JsonlEntryData, ContentBlock } from '../../types/jsonl'
 import { stripMcpPrefix } from '../../lib/mcp-tool-name'
 import { taskNotificationText } from './task-notification'
 import { systemEntryDraws } from './entry-draws'
+import { contentWithThinkingDuration } from './thinking-duration'
 
 /** JsonlEntry's rendering branches; unknown CLI telemetry draws no row. */
 export const RENDERABLE_ENTRY_TYPES: ReadonlySet<string> = new Set([
@@ -446,8 +447,9 @@ export function mergeAssistantEntriesByMessageId(entries: JsonlEntryData[]): Jso
       continue
     }
     const target = out[targetIdx]!
-    const targetContent = Array.isArray(target.message?.content) ? target.message!.content : []
-    const incomingContent = Array.isArray(e.message?.content) ? e.message!.content : []
+    // Only the thinking row knows its duration; keep it on its blocks.
+    const targetContent = contentWithThinkingDuration(target)
+    const incomingContent = contentWithThinkingDuration(e)
     out[targetIdx] = {
       ...target,
       ...e,
