@@ -51,6 +51,9 @@ pub(crate) enum Refusal {
     AtomPath,
     /// The paragraph holds what a later frame could not lay out without a build.
     Paragraph,
+    /// The paragraph has no atom: a text-only build is cheap, while keeping
+    /// every such paragraph of a long page costs its whole model in memory.
+    TextOnly,
 }
 
 /// Kept paragraphs of a document: recorded, resumed and refused by reason.
@@ -58,7 +61,7 @@ pub(crate) enum Refusal {
 pub(crate) struct KeepStats {
     pub(crate) recorded: u64,
     pub(crate) resumed: u64,
-    pub(crate) refused: [u64; 6],
+    pub(crate) refused: [u64; 7],
 }
 
 /// The records of a document's kept paragraphs, by `key::id`.

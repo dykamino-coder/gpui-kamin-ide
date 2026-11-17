@@ -78,14 +78,15 @@ fn width_dependent_atoms_are_refused_by_name(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn text_paragraphs_are_kept(cx: &mut TestAppContext) {
+fn text_paragraphs_are_refused_by_name(cx: &mut TestAppContext) {
     let text = "alpha beta gamma delta ".repeat(12);
     let rows: String = (0..40).map(|i| format!("<p>{i} {text}</p>")).collect();
     let page = format!("<body style='margin:0'><div style='padding:1px'>{rows}</div></body>");
     let stats = compare(cx, &page, &[401., 300., 400.]);
+    let text_only = stats.refused[Refusal::TextOnly as usize];
     assert!(
-        stats.resumed > 40,
-        "text paragraphs were built again: {stats:?}"
+        stats.recorded == 0 && text_only >= 40,
+        "text-only paragraphs must not be kept: {stats:?}"
     );
 }
 
