@@ -62,6 +62,7 @@ class Oracle:
         chrome_dir.mkdir()
         dest = chrome_dir / "shot.png"
         command = [args.chrome, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+                   "--disable-extensions", "--disable-background-networking", "--disable-component-update",
                    "--no-first-run", "--no-default-browser-check",
                    f"--user-data-dir={chrome_dir / 'profile'}", "--virtual-time-budget=1000",
                    "--force-device-scale-factor=1", f"--window-size={args.width},{args.height}",
@@ -71,7 +72,9 @@ class Oracle:
         # readiness; different() still validates all chunks and CRCs below.
         def captured():
             return dest.is_file() and dest.read_bytes().endswith(b"\x00\x00\x00\x00IEND\xaeB`\x82")
-        code, _, _ = run(command, chrome_dir, args.timeout_s, ready=captured)
+        # Allow normal browser shutdown before terminating the owned job. Killing
+        # during screenshot shutdown can delay Windows child-process rundown.
+        code, _, _ = run(command, chrome_dir, args.timeout_s, ready=captured, ready_grace=2)
         if code != 0 or not dest.is_file():
             return None
         return different(shots[0], dest, args.rect, args.tol)

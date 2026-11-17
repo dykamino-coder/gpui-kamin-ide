@@ -16,7 +16,7 @@ def prefix(value):
     return [part.strip('"') for part in shlex.split(value, posix=os.name != "nt")]
 
 
-def run(command, directory, timeout, env=None, ready=None):
+def run(command, directory, timeout, env=None, ready=None, ready_grace=0):
     """Wait for exit or an explicit completed capture, then reap owned processes."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -33,15 +33,17 @@ def run(command, directory, timeout, env=None, ready=None):
         pidlog = directory / "owned-process.json"
         pidlog.write_text(json.dumps(ownership), encoding="utf-8")
         deadline = time.monotonic() + timeout
-        timed_out, captured = False, False
+        timed_out, captured, completed_at = False, False, None
         try:
             if os.name == "nt":
                 from .windows_job import Job
                 job = Job(proc)
             while proc.poll() is None:
                 if ready is not None and ready():
-                    captured = True
-                    break
+                    completed_at = completed_at or time.monotonic()
+                    if time.monotonic() - completed_at >= ready_grace:
+                        captured = True
+                        break
                 if ownership["child"] is None:
                     header = stdout.read_bytes().split(b"\n", 1)[0]
                     match = re.fullmatch(rb"Hidden desktop: perfcorpus-bench-\d+ own child: (\d+)\r?", header)

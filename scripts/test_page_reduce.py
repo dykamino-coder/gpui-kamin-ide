@@ -145,7 +145,7 @@ class ReductionTests(unittest.TestCase):
             capture = Path(temp) / "capture"
             code = "from pathlib import Path; import time; Path('capture').write_bytes(b'done'); time.sleep(30)"
             result, _, _ = run([sys.executable, "-I", "-c", code], temp, 3,
-                               ready=lambda: capture.is_file() and capture.read_bytes() == b"done")
+                               ready=lambda: capture.is_file() and capture.read_bytes() == b"done", ready_grace=.05)
             self.assertEqual(result, 0)
 
     @unittest.skipUnless(os.name == "nt", "Windows job ownership")
