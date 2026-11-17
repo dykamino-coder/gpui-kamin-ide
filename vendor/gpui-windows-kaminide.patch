@@ -10,7 +10,7 @@
 # 8. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
 # 9. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
 # 10. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
-# 11. Process shutdown: drain deferred native window destruction, stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop.
+# 11. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
 # 12. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
 # 13. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
 # 14. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
@@ -13540,7 +13540,7 @@ index ee02309d8c7f3c92938c2154d1db30721599993d..46137eb4dfaeff01d19c29d01bf16015
 +    Ok(forced_scale.unwrap_or(dpi_x as f32 / USER_DEFAULT_SCREEN_DPI as f32))
 +}
 diff --git a/vendor/gpui-windows/src/events.rs b/vendor/gpui-windows/src/events.rs
-index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..0e03f3e7f67e79d5b728088bdf749fa3dfa1df10
+index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..2a955a9c7fe1cca355f8531eae4990bb9a8cdbbc
 --- a/vendor/gpui-windows/src/events.rs
 +++ b/vendor/gpui-windows/src/events.rs
 @@ -31,0 +32,2 @@
@@ -13693,28 +13693,34 @@ index 4a9b18b0938eade6991f4a8cb5230062a2ef8b2a..0e03f3e7f67e79d5b728088bdf749fa3
 +            pending.store(false, Ordering::Release);
 +        }
 +        self.handle_paint_msg(handle)
-@@ -887 +940 @@
+@@ -343,0 +397,5 @@
++        // KaminIDE patch: the HWND is still alive here. OLE holds the drop
++        // target, and through it this window, until `RevokeDragDrop`; a window
++        // destroyed by the system (`WM_CLOSE`) never reached the deferred revoke
++        // of `WindowsWindow::drop` and the shutdown drain waited forever.
++        self.drop_target.revoke(handle);
+@@ -887 +945 @@
 -        let new_scale_factor = new_dpi / USER_DEFAULT_SCREEN_DPI as f32;
 +        let new_scale_factor = self.state.display.get().forced_scale.unwrap_or(new_dpi / USER_DEFAULT_SCREEN_DPI as f32);
-@@ -958 +1011 @@
+@@ -958 +1016 @@
 -        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor))?;
 +        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor), self.state.display.get().forced_scale)?;
-@@ -1275 +1328 @@
+@@ -1275 +1333 @@
 -            self.draw_window(handle, false);
 +            self.draw_window(handle, NativeDraw::paint(false));
-@@ -1329 +1382,4 @@
+@@ -1329 +1387,4 @@
 -    fn draw_window(&self, handle: HWND, force_render: bool) -> Option<isize> {
 +    fn draw_window(&self, handle: HWND, draw: NativeDraw) -> Option<isize> {
 +        let NativeDraw { force_render, require_presentation } = draw;
 +        log::debug!(target: "gpui::frame", "native force={} present={} pending={}",
 +            force_render, require_presentation, self.state.force_render_pending.get());
-@@ -1358 +1414 @@
+@@ -1358 +1419 @@
 -        let force_render = force_render || self.state.force_render_pending.take();
 +        let force_render = consume_force_render(force_render, &self.state.force_render_pending);
-@@ -1369 +1425 @@
+@@ -1369 +1430 @@
 -            require_presentation: false,
 +            require_presentation,
-@@ -1812,0 +1869,34 @@
+@@ -1812,0 +1874,34 @@
 +
 +#[cfg(test)]
 +mod forced_frame_tests {
@@ -14656,10 +14662,10 @@ index 0000000000000000000000000000000000000000..da07c73f67b93e6ae2e3a477420715ec
 +}
 diff --git a/vendor/gpui-windows/src/platform/shutdown.rs b/vendor/gpui-windows/src/platform/shutdown.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7c5331367978c8913accd30b438cc7de8c0de8b9
+index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb3156197ef02d07
 --- /dev/null
 +++ b/vendor/gpui-windows/src/platform/shutdown.rs
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,110 @@
 +//! Завершение оконных задач и GPU-потоков до остановки цикла сообщений.
 +
 +use super::*;
@@ -14682,6 +14688,11 @@ index 0000000000000000000000000000000000000000..7c5331367978c8913accd30b438cc7de
 +    }
 +}
 +
++/// Сколько выход ждёт освобождения окон, прежде чем уйти без них.
++const WINDOW_DRAIN_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
++/// Шаг ожидания сообщений, чтобы предел проверялся и без входящих сообщений.
++const DRAIN_POLL_MS: u32 = 100;
++
 +impl WindowsPlatform {
 +    pub(super) fn finish_shutdown(&self) -> Result<()> {
 +        if let Some(stop) = self.vsync_stop.borrow_mut().take() {
@@ -14689,15 +14700,27 @@ index 0000000000000000000000000000000000000000..7c5331367978c8913accd30b438cc7de
 +        }
 +        // WindowsWindow::drop ждёт закрытия диалогов и ставит DestroyWindow в
 +        // foreground executor. После WM_QUIT эти задачи ещё требуют сообщений.
++        // KaminIDE patch: окно, которое так и не отпустили, не должно держать
++        // процесс вечно (INC-2026-0122) — после предела выходим с записью.
++        let started = std::time::Instant::now();
 +        while self.live_windows.get() != 0 || !self.raw_window_handles.read().is_empty() {
-+            self.wait_for_shutdown_work(None)?;
++            if started.elapsed() >= WINDOW_DRAIN_LIMIT {
++                log::error!(
++                    "shutdown: {} window(s) and {} handle(s) still alive after {} ms, exiting without them",
++                    self.live_windows.get(),
++                    self.raw_window_handles.read().len(),
++                    started.elapsed().as_millis()
++                );
++                break;
++            }
++            self.wait_for_shutdown_work(None, DRAIN_POLL_MS)?;
 +        }
 +        for thread in self.vsync_threads.take() {
 +            let handle = HANDLE(thread.as_raw_handle());
 +            // Восстановление устройства может послать синхронный SendMessage;
 +            // обычный join на UI-потоке заблокировал бы отправителя навсегда.
 +            // Сигнал HANDLE включает TLS-деструкторы, is_finished() — ещё нет.
-+            while !self.wait_for_shutdown_work(Some(handle))? {}
++            while !self.wait_for_shutdown_work(Some(handle), INFINITE)? {}
 +            if thread.join().is_err() {
 +                log::error!("VSyncProvider panicked during shutdown");
 +            }
@@ -14706,13 +14729,13 @@ index 0000000000000000000000000000000000000000..7c5331367978c8913accd30b438cc7de
 +        Ok(())
 +    }
 +
-+    fn wait_for_shutdown_work(&self, thread: Option<HANDLE>) -> Result<bool> {
++    fn wait_for_shutdown_work(&self, thread: Option<HANDLE>, timeout_ms: u32) -> Result<bool> {
 +        let handles = thread.map(|handle| [handle]);
 +        // Поток и platform HWND принадлежат этой платформе и живы до возврата.
 +        unsafe {
 +            let result = MsgWaitForMultipleObjectsEx(
 +                handles.as_ref().map(|handles| handles.as_slice()),
-+                INFINITE,
++                timeout_ms,
 +                QS_ALLINPUT,
 +                MWMO_INPUTAVAILABLE,
 +            );
@@ -15573,31 +15596,39 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..daf52a74013839cc8f4a94994a2da403
 +    return input.color;
 +}
 diff --git a/vendor/gpui-windows/src/window.rs b/vendor/gpui-windows/src/window.rs
-index 8a5327d1a88477e1b0fed913046d34cd29754174..fb5473a07d494885d3788bd954c674d6be29ecc5
+index 8a5327d1a88477e1b0fed913046d34cd29754174..4c12ce20f78bc1c67ae4079557e0e49d9ab313ce
 --- a/vendor/gpui-windows/src/window.rs
 +++ b/vendor/gpui-windows/src/window.rs
-@@ -54,0 +55,5 @@
+@@ -32,0 +33,4 @@
++
++// KaminIDE patch: the drop target is revoked while the HWND is alive (INC-2026-0122).
++mod drop_target;
++pub(crate) use drop_target::DropTarget;
+@@ -54,0 +59,5 @@
 +    /// KaminIDE patch: до этого момента каждый WM_PAINT рисует принудительно.
 +    /// Презент, сделанный во время системной анимации разворота, DWM теряет,
 +    /// а следующие WM_PAINT пропускали отрисовку как «не грязную» — окно
 +    /// оставалось со старым контентом до первого события ввода.
 +    pub resize_boost_until: Cell<Option<std::time::Instant>>,
-@@ -88,0 +94,3 @@
+@@ -88,0 +98,3 @@
 +    /// KaminIDE patch: `Some` for an offscreen (message-only) window: a paint
 +    /// message is queued (see `post_offscreen_paint`).
 +    pub(crate) offscreen_paint: Option<Arc<AtomicBool>>,
-@@ -96 +104 @@
+@@ -96 +108 @@
 -    hwnd: HWND,
 +    pub(crate) hwnd: HWND,
-@@ -110,0 +119,2 @@
+@@ -97,0 +110,2 @@
++    // KaminIDE patch: OLE registration of the drop target, revoked in `WM_DESTROY`.
++    pub(crate) drop_target: DropTarget,
+@@ -110,0 +125,2 @@
 +    // Последнее поле: renderer и остальные ресурсы освобождаются до счётчика.
 +    _lifetime: crate::platform::WindowLifetime,
-@@ -123,0 +134 @@
+@@ -123,0 +140 @@
 +        offscreen: bool,
-@@ -129 +140 @@
+@@ -129 +146 @@
 -            monitor_dpi / USER_DEFAULT_SCREEN_DPI as f32
 +            display.forced_scale.unwrap_or(monitor_dpi / USER_DEFAULT_SCREEN_DPI as f32)
-@@ -145,2 +156,7 @@
+@@ -145,2 +162,7 @@
 -        let renderer = DirectXRenderer::new(hwnd, directx_devices, disable_direct_composition)
 -            .context("Creating DirectX renderer")?;
 +        let resize_boost_until = None;
@@ -15607,45 +15638,46 @@ index 8a5327d1a88477e1b0fed913046d34cd29754174..fb5473a07d494885d3788bd954c674d6
 +            DirectXRenderer::new(hwnd, directx_devices, disable_direct_composition)
 +        }
 +        .context("Creating DirectX renderer")?;
-@@ -169,0 +186 @@
+@@ -169,0 +192 @@
 +            resize_boost_until: Cell::new(resize_boost_until),
-@@ -191,0 +209 @@
+@@ -191,0 +215 @@
 +            offscreen_paint: offscreen.then(|| Arc::new(AtomicBool::new(false))),
-@@ -280,0 +299 @@
+@@ -280,0 +305 @@
 +            context.offscreen,
-@@ -287,0 +307 @@
+@@ -287,0 +313,2 @@
++            drop_target: DropTarget::default(),
 +            _lifetime: crate::platform::WindowLifetime::new(context.live_windows.clone()),
-@@ -421,0 +442 @@
+@@ -421,0 +449 @@
 +    live_windows: Rc<Cell<usize>>,
-@@ -429,0 +451 @@
+@@ -429,0 +458 @@
 +    offscreen: bool,
-@@ -446,0 +469,4 @@
+@@ -446,0 +476,4 @@
 +        // KaminIDE patch: see `WindowsPlatform::set_offscreen_windows`.
 +        if creation_info.offscreen {
 +            return Self::new_offscreen(handle, params, creation_info);
 +        }
-@@ -450,0 +477 @@
+@@ -450,0 +484 @@
 +            live_windows,
-@@ -457,0 +485 @@
+@@ -457,0 +492 @@
 +            offscreen: _,
-@@ -461,0 +490,6 @@
+@@ -461,0 +497,6 @@
 +        // KaminIDE patch: env перечитывается ПРИ КАЖДОМ создании окна —
 +        // main-окну нужен blit (WebView2-чайлды поверх), overlay-окну
 +        // dcomp с premultiplied-альфой (настоящая прозрачность поповеров).
 +        let disable_direct_composition = std::env::var("GPUI_DISABLE_DIRECT_COMPOSITION")
 +            .map(|value| value == "true" || value == "1")
 +            .unwrap_or(disable_direct_composition);
-@@ -518 +552 @@
+@@ -518 +559 @@
 -            WindowsDisplay::new(display_id)
 +            WindowsDisplay::new(display_id, directx_devices.instrumentation.config().scale_factor)
-@@ -522 +556 @@
+@@ -522 +563 @@
 -        .or_else(WindowsDisplay::primary_monitor)
 +        .or_else(|| WindowsDisplay::primary_monitor(directx_devices.instrumentation.config().scale_factor))
-@@ -534,0 +569 @@
+@@ -534,0 +576 @@
 +            live_windows,
-@@ -542,0 +578 @@
+@@ -542,0 +585 @@
 +            offscreen: false,
-@@ -591,0 +628,93 @@
+@@ -591,0 +635,93 @@
 +
 +    /// KaminIDE patch: a message-only window (`HWND_MESSAGE` parent) whose
 +    /// renderer draws into an offscreen texture. It is never shown, has no
@@ -15739,30 +15771,29 @@ index 8a5327d1a88477e1b0fed913046d34cd29754174..fb5473a07d494885d3788bd954c674d6
 +        };
 +        Ok(Self(this))
 +    }
-@@ -625 +754,4 @@
+@@ -625 +761,3 @@
 -                    RevokeDragDrop(handle).log_err();
-+                    // KaminIDE patch: an offscreen window registered no drop target.
-+                    if this.state.offscreen_paint.is_none() {
-+                        RevokeDragDrop(handle).log_err();
-+                    }
-@@ -633,0 +766,5 @@
++                    // KaminIDE patch: a window destroyed by the system revoked its
++                    // target in `WM_DESTROY` already; an offscreen one has none.
++                    this.drop_target.revoke(handle);
+@@ -633,0 +772,5 @@
 +    fn set_frame_capture(&self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) -> Result<()> {
 +        self.state.renderer.borrow_mut().set_frame_capture(sink);
 +        Ok(())
 +    }
 +
-@@ -969,0 +1107,3 @@
+@@ -969,0 +1113,3 @@
 +    fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
 +        Some(self.0.frame_waker())
 +    }
-@@ -979,5 +1119 @@
+@@ -979,5 +1125 @@
 -        self.0
 -            .state
 -            .callbacks
 -            .active_status_change
 -            .set(Some(callback));
 +        self.state.callbacks.active_status_change.set(Some(callback));
-@@ -1046,0 +1183,56 @@
+@@ -1046,0 +1189,56 @@
 +    fn last_frame_presented(&self) -> bool {
 +        self.state.renderer.try_borrow().is_ok_and(|renderer| !renderer.needs_presentation())
 +    }
@@ -15819,14 +15850,198 @@ index 8a5327d1a88477e1b0fed913046d34cd29754174..fb5473a07d494885d3788bd954c674d6
 +            .unregister_external_texture(id);
 +    }
 +
-@@ -1056,0 +1249,4 @@
+@@ -1056,0 +1255,4 @@
 +    }
 +
 +    fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
 +        self.state.renderer.borrow().gpu_memory(sink)
-@@ -1430 +1626,4 @@
+@@ -1430 +1632,4 @@
 -            hbrBackground: unsafe { CreateSolidBrush(COLORREF(0x00000000)) },
 +            // KaminIDE patch: БЕЗ кисти фона — чёрная заливала непокрытую
 +            // область при ресайзе (blit) чёрными полосами по краям.
 +            // Стирание выключено и в WM_ERASEBKGND (`events.rs`).
 +            hbrBackground: Default::default(),
+@@ -1518,5 +1723 @@
+-    unsafe {
+-        RegisterDragDrop(window_handle, &drag_drop_handler)
+-            .context("unable to register drag-drop event")?;
+-    }
+-    Ok(())
++    window.drop_target.register(window_handle, &drag_drop_handler)
+diff --git a/vendor/gpui-windows/src/window/drop_target.rs b/vendor/gpui-windows/src/window/drop_target.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..80b5a111c12a27999c157a2b60dc0b9fd63dd6a7
+--- /dev/null
++++ b/vendor/gpui-windows/src/window/drop_target.rs
+@@ -0,0 +1,171 @@
++//! KaminIDE patch: OLE drop target of a window, revoked while its HWND is alive.
++//!
++//! `RegisterDragDrop` keeps a reference to the `IDropTarget`, and through it
++//! the `Rc` of the window, until `RevokeDragDrop`, which only works on a live
++//! HWND. A window destroyed by the system (`WM_CLOSE` → `DefWindowProc`) is
++//! gone before `WindowsWindow::drop` runs its deferred revoke; the revoke
++//! failed, the `Rc` was never released and the shutdown drain waited forever
++//! (INC-2026-0122). The window therefore revokes in `WM_DESTROY`, once.
++
++use std::cell::Cell;
++
++use anyhow::{Context as _, Result};
++use gpui_util::ResultExt;
++use windows::Win32::{
++    Foundation::HWND,
++    System::Ole::{IDropTarget, RegisterDragDrop, RevokeDragDrop},
++};
++
++/// Whether this window's drop target is registered with OLE.
++#[derive(Default)]
++pub(crate) struct DropTarget(Cell<bool>);
++
++impl DropTarget {
++    /// Registers `target` for `hwnd`; OLE holds it until [`Self::revoke`].
++    pub(crate) fn register(&self, hwnd: HWND, target: &IDropTarget) -> Result<()> {
++        unsafe { RegisterDragDrop(hwnd, target) }.context("unable to register drag-drop event")?;
++        self.0.set(true);
++        Ok(())
++    }
++
++    /// Releases the target. Must run while `hwnd` is alive; later calls do nothing.
++    pub(crate) fn revoke(&self, hwnd: HWND) {
++        if self.0.replace(false) {
++            unsafe { RevokeDragDrop(hwnd) }.log_err();
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::rc::Rc;
++    use windows::Win32::{
++        Foundation::{LPARAM, LRESULT, POINTL, WPARAM},
++        System::{
++            Com::IDataObject,
++            LibraryLoader::GetModuleHandleW,
++            Ole::{DROPEFFECT, OleInitialize},
++            SystemServices::MODIFIERKEYS_FLAGS,
++        },
++        UI::WindowsAndMessaging::*,
++    };
++    use windows::core::{Ref, implement, w};
++
++    /// A drop target that owns a share of `Rc`, as the window's handler does.
++    #[implement(IDropTarget)]
++    struct Probe(#[allow(dead_code)] Rc<()>);
++
++    #[allow(non_snake_case)]
++    impl windows::Win32::System::Ole::IDropTarget_Impl for Probe_Impl {
++        fn DragEnter(
++            &self,
++            _: Ref<IDataObject>,
++            _: MODIFIERKEYS_FLAGS,
++            _: &POINTL,
++            _: *mut DROPEFFECT,
++        ) -> windows::core::Result<()> {
++            Ok(())
++        }
++        fn DragOver(
++            &self,
++            _: MODIFIERKEYS_FLAGS,
++            _: &POINTL,
++            _: *mut DROPEFFECT,
++        ) -> windows::core::Result<()> {
++            Ok(())
++        }
++        fn DragLeave(&self) -> windows::core::Result<()> {
++            Ok(())
++        }
++        fn Drop(
++            &self,
++            _: Ref<IDataObject>,
++            _: MODIFIERKEYS_FLAGS,
++            _: &POINTL,
++            _: *mut DROPEFFECT,
++        ) -> windows::core::Result<()> {
++            Ok(())
++        }
++    }
++
++    thread_local! {
++        /// Registration of the test window, revoked by its `WM_DESTROY` when enabled.
++        static TARGET: (DropTarget, Cell<bool>) = (DropTarget::default(), Cell::new(false));
++    }
++
++    unsafe extern "system" fn proc(
++        hwnd: HWND,
++        msg: u32,
++        wparam: WPARAM,
++        lparam: LPARAM,
++    ) -> LRESULT {
++        if msg == WM_DESTROY {
++            TARGET.with(|(target, enabled)| {
++                if enabled.get() {
++                    target.revoke(hwnd);
++                }
++            });
++        }
++        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
++    }
++
++    /// Registers a target on a real window, closes it from outside with
++    /// `WM_CLOSE` (default handling destroys it) and returns the `Rc` count left.
++    fn strong_count_after_external_close(revoke_in_destroy: bool) -> usize {
++        unsafe { OleInitialize(None) }.ok();
++        TARGET.with(|(_, enabled)| enabled.set(revoke_in_destroy));
++        let class = w!("KaminDropTargetTest");
++        let instance = unsafe { GetModuleHandleW(None) }.expect("module handle");
++        let wc = WNDCLASSW {
++            lpfnWndProc: Some(proc),
++            hInstance: instance.into(),
++            lpszClassName: class,
++            ..Default::default()
++        };
++        unsafe { RegisterClassW(&wc) };
++        let hwnd = unsafe {
++            CreateWindowExW(
++                WINDOW_EX_STYLE(0),
++                class,
++                w!(""),
++                WS_OVERLAPPED,
++                0,
++                0,
++                10,
++                10,
++                None,
++                None,
++                Some(instance.into()),
++                None,
++            )
++        }
++        .expect("test window");
++        let owner = Rc::new(());
++        let target: IDropTarget = Probe(owner.clone()).into();
++        TARGET
++            .with(|(registration, _)| registration.register(hwnd, &target))
++            .expect("register");
++        drop(target);
++        unsafe { SendMessageW(hwnd, WM_CLOSE, None, None) };
++        assert!(
++            !unsafe { IsWindow(Some(hwnd)) }.as_bool(),
++            "WM_CLOSE destroys the window"
++        );
++        // What `WindowsWindow::drop` does afterwards on the dead HWND.
++        TARGET.with(|(registration, _)| registration.revoke(hwnd));
++        Rc::strong_count(&owner)
++    }
++
++    #[test]
++    fn window_closed_from_outside_releases_its_drop_target() {
++        assert_eq!(strong_count_after_external_close(true), 1);
++    }
++
++    #[test]
++    fn revoke_after_the_system_destroyed_the_window_keeps_the_target_alive() {
++        // The defect this module removes: without the revoke in `WM_DESTROY`
++        // OLE keeps the target, and with it the window, alive.
++        assert_eq!(strong_count_after_external_close(false), 2);
++    }
++}

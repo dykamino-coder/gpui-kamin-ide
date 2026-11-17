@@ -10,7 +10,7 @@
 //! мьютекс повторно и встаёт намертво (поймано: окно перестало отвечать
 //! probe — `metric` работал, `screenshot` нет).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 
 use cef::rc::*;
@@ -22,16 +22,12 @@ use super::render_handler::ViewRender;
 static BROWSERS: LazyLock<Mutex<HashMap<String, Browser>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Запрошенный размер вью в ЛОГИЧЕСКИХ px и масштаб экрана. ОТДЕЛЬНО от
-/// браузеров: эту карту читают `view_rect` и `screen_info` изнутри вызова CEF,
-/// когда мьютекс браузеров может быть занят.
-///
-/// Логические, а не физические: CEF считает размер вью в CSS-пикселях и сам
-/// умножает его на масштаб. Отдашь физические — страница сверстается шире
-/// панели и выглядит мелкой (поймано глазами на первом же кадре).
-/// Размер вью и масштаб экрана.
 type ViewSize = (i32, i32, f32);
 
+/// Размер вью в ЛОГИЧЕСКИХ px (CEF сам умножает его на масштаб; физические
+/// сверстали бы страницу шире панели) и масштаб экрана. Отдельно от браузеров:
+/// карту читают `view_rect` и `screen_info` изнутри вызова CEF, когда мьютекс
+/// браузеров может быть занят.
 static SIZES: LazyLock<Mutex<HashMap<String, ViewSize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -190,18 +186,23 @@ cef::wrap_life_span_handler! {
                 host.notify_screen_info_changed();
                 host.was_resized();
             }
+            super::process::exit::opened();
+        }
+
+        /// CEF закрыл браузер: выход ждёт последнего (INC-2026-0122).
+        fn on_before_close(&self, _browser: Option<&mut Browser>) {
+            super::process::exit::closed();
         }
     }
 }
 
 /// Вью, которым смена scale не доехала (браузер ещё создавался).
-static NOTIFY_PENDING: LazyLock<Mutex<std::collections::HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+static NOTIFY_PENDING: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
 
 /// Вью, чей браузер уже заказан, но ещё не создан. Без этого списка отрисовка
 /// заказывала бы его каждый кадр: `open` зовётся из `render`.
-static STARTING: LazyLock<Mutex<std::collections::HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+static STARTING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
 /// Когда браузер вью был заказан — для ватчдога «вью без кадров».
 static OPENED_AT: LazyLock<Mutex<HashMap<String, std::time::Instant>>> =
@@ -440,8 +441,7 @@ static NUDGES: LazyLock<Mutex<HashMap<String, (std::time::Instant, std::time::In
 
 /// «Танец на 1px» взведён: следующий `view_rect` отдаст высоту на пиксель
 /// меньше — это сбрасывает залипший `hold_resize` внутри CEF.
-static DANCE: LazyLock<Mutex<std::collections::HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+static DANCE: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
 /// Съесть флаг танца (зовёт `view_rect`).
 pub(crate) fn take_dance(id: &str) -> bool {

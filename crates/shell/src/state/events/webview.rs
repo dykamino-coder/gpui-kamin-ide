@@ -72,7 +72,7 @@ impl RootView {
                 Ok(()) => {
                     // Тот же путь, что у установки обновления: раскладка
                     // сохраняется, окно закрывается штатно (`frame/focus.rs`).
-                    self.pending_quit = true;
+                    self.request_quit(cx);
                     None
                 }
                 Err(e) => Some(format!("Could not restart KaminIDE: {e}")),
