@@ -36,7 +36,10 @@ pub(super) fn open(bits: u32) -> Result<(), String> {
     // SAFETY: размер ненулевой; нули — пустые слоты.
     let slots = unsafe { System.alloc_zeroed(layout) }.cast::<Slot>();
     if slots.is_null() {
-        return Err(format!("retainers: cannot reserve {} slots", 1usize << bits));
+        return Err(format!(
+            "retainers: cannot reserve {} slots",
+            1usize << bits
+        ));
     }
     BITS.store(bits, Relaxed);
     SLOTS.store(slots, Release);
@@ -52,7 +55,10 @@ fn slots() -> Option<(&'static [Slot], u32)> {
     }
     let bits = BITS.load(Relaxed);
     // SAFETY: таблица выделена в `open` и не освобождается до конца процесса.
-    Some((unsafe { std::slice::from_raw_parts(pointer, 1usize << bits) }, bits))
+    Some((
+        unsafe { std::slice::from_raw_parts(pointer, 1usize << bits) },
+        bits,
+    ))
 }
 
 #[inline]

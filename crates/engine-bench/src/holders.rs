@@ -96,7 +96,9 @@ pub(super) fn attach(
     #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
     {
         let name = mode_name.to_owned();
-        let graph = window.update(cx, move |_, _, _| super::allocations::retain::snapshot(&name))?;
+        let graph = window.update(cx, move |_, _, _| {
+            super::allocations::retain::snapshot(&name)
+        })?;
         if let Some(graph) = graph {
             mode["retainers"] = graph;
         }

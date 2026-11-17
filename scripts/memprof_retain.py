@@ -124,7 +124,7 @@ class Names:
             if name.startswith("static"):
                 symbol = self.symbols.name(start + offset + 1)
                 if symbol != "?":
-                    return f"{symbol}"
+                    return f"near {symbol}"  # the nearest symbol at or before the word
         return f"+0x{offset:x}"
 
 

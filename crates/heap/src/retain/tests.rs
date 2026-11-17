@@ -31,7 +31,7 @@ fn graph(blocks: &[Vec<usize>], stack: &[usize]) -> Graph {
         words.resize(words.len().max(4), 0);
         list.push(Block {
             address: at(index),
-            bytes: words.len() * size_of::<usize>(),
+            bytes: size_of_val(words.as_slice()),
         });
         memory.0.insert(at(index), words);
     }
@@ -39,7 +39,7 @@ fn graph(blocks: &[Vec<usize>], stack: &[usize]) -> Graph {
     let regions = vec![Region {
         name: "stack main".into(),
         start: STACK,
-        bytes: stack.len() * size_of::<usize>(),
+        bytes: size_of_val(stack),
     }];
     Graph::build(list, regions, &memory)
 }
@@ -102,7 +102,13 @@ fn repeated_words_give_one_edge_with_the_first_offset() {
 fn an_rc_cycle_nobody_holds_enters_through_its_largest_block() {
     // 0 <-> 1 (cycle, 1 is larger), 2 holds 3 and nobody holds 2; stack holds 4.
     let g = graph(
-        &[vec![1, 1, at(1)], vec![1, 1, at(0), 0, 0, 0], vec![at(3)], vec![], vec![]],
+        &[
+            vec![1, 1, at(1)],
+            vec![1, 1, at(0), 0, 0, 0],
+            vec![at(3)],
+            vec![],
+            vec![],
+        ],
         &[at(4)],
     );
     assert_eq!(g.flags[1], FLAG_CYCLE);
@@ -139,17 +145,35 @@ fn a_block_held_by_the_stack_and_an_unheld_block_takes_the_stack_path() {
 fn overlapping_and_empty_blocks_are_dropped() {
     let memory = Fake::default();
     let blocks = vec![
-        Block { address: 0x2000, bytes: 64 },
-        Block { address: 0x2010, bytes: 8 },
-        Block { address: 0x3000, bytes: 0 },
-        Block { address: 0x1000, bytes: 8 },
+        Block {
+            address: 0x2000,
+            bytes: 64,
+        },
+        Block {
+            address: 0x2010,
+            bytes: 8,
+        },
+        Block {
+            address: 0x3000,
+            bytes: 0,
+        },
+        Block {
+            address: 0x1000,
+            bytes: 8,
+        },
     ];
     let g = Graph::build(blocks, Vec::new(), &memory);
     assert_eq!(
         g.blocks,
         vec![
-            Block { address: 0x1000, bytes: 8 },
-            Block { address: 0x2000, bytes: 64 }
+            Block {
+                address: 0x1000,
+                bytes: 8
+            },
+            Block {
+                address: 0x2000,
+                bytes: 64
+            }
         ]
     );
     assert_eq!(g.flags[0], FLAG_UNHELD);
@@ -197,7 +221,10 @@ fn a_real_rc_cycle_is_found_in_the_heap() {
     let g = Graph::build(vec![block(&first), block(&second)], Vec::new(), &Process);
     let cycle = g.flags.iter().filter(|flag| **flag == FLAG_CYCLE).count();
     assert_eq!(cycle, 1);
-    assert_eq!(g.retained[g.unrooted() as usize], 2 * block(&first).bytes as u64);
+    assert_eq!(
+        g.retained[g.unrooted() as usize],
+        2 * block(&first).bytes as u64
+    );
     assert_eq!(second.1[0], 0);
     *first.0.borrow_mut() = None;
 }

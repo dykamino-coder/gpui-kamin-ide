@@ -92,7 +92,8 @@ impl Graph {
     }
     /// Рёбра узла: (цель, смещение).
     pub fn edges(&self, node: u32) -> impl Iterator<Item = (u32, u32)> + '_ {
-        let range = self.edge_start[node as usize] as usize..self.edge_start[node as usize + 1] as usize;
+        let range =
+            self.edge_start[node as usize] as usize..self.edge_start[node as usize + 1] as usize;
         self.edge_to[range.clone()]
             .iter()
             .copied()
@@ -100,7 +101,9 @@ impl Graph {
     }
     /// Собственный размер узла (у виртуальных — 0).
     pub fn bytes(&self, node: u32) -> u64 {
-        self.blocks.get(node as usize).map_or(0, |block| block.bytes as u64)
+        self.blocks
+            .get(node as usize)
+            .map_or(0, |block| block.bytes as u64)
     }
     /// Блок, внутрь которого указывает `address`.
     pub fn block_at(&self, address: usize) -> Option<u32> {

@@ -36,7 +36,9 @@ static TAKEN: AtomicBool = AtomicBool::new(false);
 
 /// Читает окружение до первой аллокации стенда и включает таблицу.
 pub(crate) fn init() -> Result<(), String> {
-    let Some(path) = std::env::var_os(OUT) else { return Ok(()) };
+    let Some(path) = std::env::var_os(OUT) else {
+        return Ok(());
+    };
     let bits = match std::env::var(SLOTS) {
         Ok(text) => text
             .parse::<u32>()

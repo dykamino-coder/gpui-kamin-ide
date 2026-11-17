@@ -88,7 +88,9 @@ mod windows {
             }
             // SAFETY: имя секции — 8 байт заголовка, дополненные нулями.
             let raw = unsafe { std::slice::from_raw_parts(header as *const u8, 8) };
-            let name = String::from_utf8_lossy(raw).trim_end_matches('\0').to_owned();
+            let name = String::from_utf8_lossy(raw)
+                .trim_end_matches('\0')
+                .to_owned();
             let start = base + u32_at(header + 12) as usize;
             let size = u32_at(header + 8) as usize;
             out.extend(region(format!("static {name}"), start, start + size));

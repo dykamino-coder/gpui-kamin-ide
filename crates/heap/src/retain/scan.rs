@@ -24,7 +24,10 @@ struct Intervals {
 impl Intervals {
     fn new(blocks: &[Block]) -> Self {
         let starts: Vec<usize> = blocks.iter().map(|block| block.address).collect();
-        let ends: Vec<usize> = blocks.iter().map(|block| block.address + block.bytes).collect();
+        let ends: Vec<usize> = blocks
+            .iter()
+            .map(|block| block.address + block.bytes)
+            .collect();
         Self {
             low: starts.first().copied().unwrap_or(0),
             high: ends.last().copied().unwrap_or(0),
@@ -51,7 +54,9 @@ fn edges_of(
     words: &[usize],
 ) {
     for (index, word) in words.iter().enumerate() {
-        let Some(target) = intervals.find(*word) else { continue };
+        let Some(target) = intervals.find(*word) else {
+            continue;
+        };
         if target as u32 == source || mark[target] == source {
             continue;
         }
