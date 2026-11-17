@@ -197,6 +197,33 @@ class PngTests(unittest.TestCase):
 
 
 class OracleTests(unittest.TestCase):
+    def test_rgb_uses_hidden_launcher_for_both_renderers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            page = Path(temp) / "p.html"
+            page.write_text("<p>x</p>")
+            args = SimpleNamespace(launcher="python hidden.py", runner="page", exe="engine.exe",
+                                   predicate="rgb", timeout_s=3, exe_arg=[], require_regex=[],
+                                   engine_png=None, chrome="chrome.exe", width=1, height=1,
+                                   rect=(0, 0, 1, 1), tol=0)
+            oracle = Oracle(args)
+            commands = []
+            def capture(command, directory, timeout, *extra, **kwargs):
+                commands.append(command)
+                self.assertEqual(command[:2], ["python", "hidden.py"])
+                if command[2] == "engine.exe":
+                    shots = page.parent / "target/wpt-shots"
+                    shots.mkdir(parents=True)
+                    png(shots / "p.png", [255, 0, 0])
+                else:
+                    self.assertEqual(command[2], "chrome.exe")
+                    dest = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--screenshot="))
+                    png(Path(dest), [0, 0, 255])
+                    self.assertTrue(kwargs["ready"]())
+                return 0, b"", b""
+            with patch("page_reduce_lib.predicates.run", side_effect=capture):
+                self.assertTrue(oracle(page))
+            self.assertEqual(len(commands), 2)
+
     def test_memory_delegates_to_canonical_tool_and_uses_peak(self):
         with tempfile.TemporaryDirectory() as temp:
             page = Path(temp) / "p.html"

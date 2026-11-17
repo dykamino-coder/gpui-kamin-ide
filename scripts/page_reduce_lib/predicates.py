@@ -61,7 +61,10 @@ class Oracle:
         chrome_dir = page.parent / "chrome"
         chrome_dir.mkdir()
         dest = chrome_dir / "shot.png"
-        command = [args.chrome, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+        # Keep Chrome on the same hidden desktop as the engine. On Windows,
+        # headless Chrome on the interactive desktop can retain its browser
+        # process after capture and stall process rundown during job cleanup.
+        command = [*self.launcher, args.chrome, "--headless=new", "--disable-gpu", "--hide-scrollbars",
                    "--disable-extensions", "--disable-background-networking", "--disable-component-update",
                    "--no-first-run", "--no-default-browser-check",
                    f"--user-data-dir={chrome_dir / 'profile'}", "--virtual-time-budget=1000",
