@@ -15961,10 +15961,10 @@ index 0000000000000000000000000000000000000000..2d00ee880769cb1a7eb94f803e958cb3
 +}
 diff --git a/vendor/gpui/src/scene/layer/write.rs b/vendor/gpui/src/scene/layer/write.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3a65a48fb2fccaae1a06d896b78af0499b8b3f66
+index 0000000000000000000000000000000000000000..a50330534844c793f4f7786523b4622449bdc56c
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/write.rs
-@@ -0,0 +1,135 @@
+@@ -0,0 +1,142 @@
 +//! KaminIDE patch: value writes into a scene layer (`LayerHandle`).
 +//!
 +//! A value write changes a painted value of existing commands in place: the
@@ -16058,7 +16058,7 @@ index 0000000000000000000000000000000000000000..3a65a48fb2fccaae1a06d896b78af049
 +                if !current.painted_in(owner, from) {
 +                    return None;
 +                }
-+                plain.push((owner, to));
++                plain.push((owner, from, to));
 +            }
 +        }
 +        if plain.is_empty() {
@@ -16067,16 +16067,23 @@ index 0000000000000000000000000000000000000000..3a65a48fb2fccaae1a06d896b78af049
 +        let layer = std::rc::Rc::make_mut(&mut current);
 +        let mut damage: Option<Bounds<ScaledPixels>> = None;
 +        let mut written = 0;
-+        for &(owner, to) in &plain {
-+            let mut edge = to;
-+            edge.a = 0.;
++        // A fill's quad takes the fill's colour as its transparent edge (the
++        // box painter's fill quad), which follows the fill; any other edge
++        // (a text band's transparent black) stays as painted.
++        let edge_of = |c: Hsla, opacity: f32| Hsla { a: 0., ..c }.opacity(opacity);
++        for &(owner, from, to) in &plain {
 +            for at in layer.bound(owner, LayerValue::Background) {
 +                let b = layer.bindings[at];
 +                let fill = Background::from(to).opacity(b.opacity);
-+                let border = edge.opacity(b.opacity);
++                let (old, border) = (edge_of(from, b.opacity), edge_of(to, b.opacity));
++                let edge = |e: &mut Hsla| {
++                    if *e == old {
++                        *e = border;
++                    }
++                };
 +                if let Some(quad) = layer.scene.quads.get_mut(b.quad as usize) {
 +                    quad.background = fill;
-+                    quad.border_color = border;
++                    edge(&mut quad.border_color);
 +                    let rect = super::boxes::ink_of(&Primitive::Quad(*quad));
 +                    damage = Some(damage.map_or(rect, |d| d.union(&rect)));
 +                }
@@ -16084,7 +16091,7 @@ index 0000000000000000000000000000000000000000..3a65a48fb2fccaae1a06d896b78af049
 +                    layer.scene.paint_operations.get_mut(b.op as usize)
 +                {
 +                    quad.background = fill;
-+                    quad.border_color = border;
++                    edge(&mut quad.border_color);
 +                }
 +                written += 1;
 +            }

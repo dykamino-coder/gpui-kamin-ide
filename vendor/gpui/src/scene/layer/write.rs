@@ -91,7 +91,7 @@ impl LayerHandle {
                 if !current.painted_in(owner, from) {
                     return None;
                 }
-                plain.push((owner, to));
+                plain.push((owner, from, to));
             }
         }
         if plain.is_empty() {
@@ -100,16 +100,23 @@ impl LayerHandle {
         let layer = std::rc::Rc::make_mut(&mut current);
         let mut damage: Option<Bounds<ScaledPixels>> = None;
         let mut written = 0;
-        for &(owner, to) in &plain {
-            let mut edge = to;
-            edge.a = 0.;
+        // A fill's quad takes the fill's colour as its transparent edge (the
+        // box painter's fill quad), which follows the fill; any other edge
+        // (a text band's transparent black) stays as painted.
+        let edge_of = |c: Hsla, opacity: f32| Hsla { a: 0., ..c }.opacity(opacity);
+        for &(owner, from, to) in &plain {
             for at in layer.bound(owner, LayerValue::Background) {
                 let b = layer.bindings[at];
                 let fill = Background::from(to).opacity(b.opacity);
-                let border = edge.opacity(b.opacity);
+                let (old, border) = (edge_of(from, b.opacity), edge_of(to, b.opacity));
+                let edge = |e: &mut Hsla| {
+                    if *e == old {
+                        *e = border;
+                    }
+                };
                 if let Some(quad) = layer.scene.quads.get_mut(b.quad as usize) {
                     quad.background = fill;
-                    quad.border_color = border;
+                    edge(&mut quad.border_color);
                     let rect = super::boxes::ink_of(&Primitive::Quad(*quad));
                     damage = Some(damage.map_or(rect, |d| d.union(&rect)));
                 }
@@ -117,7 +124,7 @@ impl LayerHandle {
                     layer.scene.paint_operations.get_mut(b.op as usize)
                 {
                     quad.background = fill;
-                    quad.border_color = border;
+                    edge(&mut quad.border_color);
                 }
                 written += 1;
             }
