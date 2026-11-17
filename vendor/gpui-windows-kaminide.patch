@@ -9501,10 +9501,10 @@ index 0000000000000000000000000000000000000000..c49be4fa651ee122c07e5e3ba446dc11
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/frame_capture.rs b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e973627a34b99871115f7f107e26ade950f2f512
+index 0000000000000000000000000000000000000000..b4a56996a66aaabd977b765bfdfa1287adbd42ee
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,103 @@
 +//! KaminIDE patch: readback владеет неизменяемым контекстом своего устройства.
 +
 +use super::*;
@@ -9523,6 +9523,10 @@ index 0000000000000000000000000000000000000000..e973627a34b99871115f7f107e26ade9
 +            .as_ref()
 +            .context("render target missing")?;
 +        let ctx = &devices.device_context;
++        // KaminIDE patch: the frame is complete when the GPU has executed it;
++        // the copy below is the capture's own cost, reported apart (`copied`).
++        wait_gpu_idle(&devices.device, ctx)?;
++        let copy_started = std::time::Instant::now();
 +        unsafe { ctx.CopyResource(&staging, render_target) };
 +        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
 +        unsafe { ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
@@ -9565,11 +9569,44 @@ index 0000000000000000000000000000000000000000..e973627a34b99871115f7f107e26ade9
 +            grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
 +        });
 +        if let Some(sink) = &mut self.capture {
++            sink.copied(copy_started.elapsed());
 +            sink.completed(gpui::frame_capture::CapturedFrame { width: w, height: h, bgra, context }, started.elapsed());
 +        }
 +        Ok(())
 +    }
 +
++}
++
++/// KaminIDE patch: block until the GPU has executed every command submitted
++/// so far (an event query), without touching the frame's pixels.
++fn wait_gpu_idle(device: &ID3D11Device, ctx: &ID3D11DeviceContext) -> Result<()> {
++    use windows::core::Interface;
++    let desc = D3D11_QUERY_DESC { Query: D3D11_QUERY_EVENT, MiscFlags: 0 };
++    let mut query = None;
++    unsafe { device.CreateQuery(&desc, Some(&mut query))? };
++    let query: ID3D11Query = query.context("event query missing")?;
++    unsafe { ctx.End(&query) };
++    let mut flags = 0u32;
++    loop {
++        let mut done = 0i32;
++        // The `GetData` wrapper maps S_FALSE ("not yet") to Ok; read the raw HRESULT.
++        let hr = unsafe {
++            (Interface::vtable(ctx).GetData)(
++                Interface::as_raw(ctx),
++                Interface::as_raw(&query),
++                &mut done as *mut i32 as *mut _,
++                std::mem::size_of::<i32>() as u32,
++                flags,
++            )
++        };
++        hr.ok()?;
++        if hr == windows::Win32::Foundation::S_OK && done != 0 {
++            return Ok(());
++        }
++        // The first call flushed the queue; later polls only ask.
++        flags = D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32;
++        std::thread::yield_now();
++    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/gaussian.rs b/vendor/gpui-windows/src/directx_renderer/gaussian.rs
 new file mode 100644

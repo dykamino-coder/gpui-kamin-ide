@@ -35,6 +35,7 @@ struct State {
     closed: bool,
     seq: u64,
     readback_us: u64,
+    copy_us: u64,
     latest: Option<Frame>,
     first: Option<Frame>,
     armed: bool,
@@ -59,6 +60,11 @@ impl CaptureSession {
 
     pub fn readback_time(&self) -> Duration {
         Duration::from_micros(self.0.borrow().readback_us)
+    }
+
+    /// Часть `readback_time` после готовности кадра на GPU: копия цели в память.
+    pub fn copy_time(&self) -> Duration {
+        Duration::from_micros(self.0.borrow().copy_us)
     }
 
     pub fn latest(&self) -> Option<Frame> {
@@ -128,6 +134,10 @@ impl FrameCaptureSink for Endpoint {
         for waker in wakes {
             waker.wake();
         }
+    }
+
+    fn copied(&mut self, copy: Duration) {
+        self.0.borrow_mut().copy_us += copy.as_micros() as u64;
     }
 }
 
