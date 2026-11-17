@@ -64,7 +64,7 @@ class ParserTests(unittest.TestCase):
             result = prepare(source, root / "page.html", True)
             self.assertIn("@media print{", result)
             self.assertIn("@media screen{b{color:red}}", result)
-            self.assertIn((root / "x.png").as_uri(), result)
+            self.assertIn((root / "x.png").resolve().as_uri(), result)
             self.assertIn('content:"url(no)"', result)
             self.assertNotIn("<link", result)
 
