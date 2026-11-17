@@ -163,6 +163,14 @@ let globalOrdCounter = 0
  *  (compaction, /clear) or the CLI's own report that it resumed a conversation. */
 export type TranscriptSwitchReason = 'discovered' | 'resume'
 
+function bornBefore(file: string, at: number): boolean {
+  try {
+    return fs.statSync(file).birthtimeMs <= at
+  } catch {
+    return false
+  }
+}
+
 // A CLI conversation id is the transcript's basename; nothing else may name a path.
 const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -752,9 +760,7 @@ export class JsonlWatcher {
       currentFilePath: this.filePath,
       sessionCreatedAt: this.sessionCreatedAt,
       left: this.leftTranscripts,
-      onNewer: (candidate) => {
-        if (!this.stopped) this.switchToFile(candidate)
-      },
+      onNewer: (candidate) => this.onDiscoveredNewer(candidate),
     }
     this.compactionUnsub = compactionScanner.subscribe(this.compactionSub)
   }
@@ -768,6 +774,9 @@ export class JsonlWatcher {
    */
   adoptResumedTranscript(conversationId: string): boolean {
     if (this.stopped || !this.filePath || !CONVERSATION_ID.test(conversationId)) return false
+    // Recorded even when the resumed file is already the current one: the
+    // /clear file the CLI left may not have been discovered yet.
+    this.resumedAt = Date.now()
     const target = path.join(this.slugDir || path.dirname(this.filePath), `${conversationId}.jsonl`)
     if (target === this.filePath || !fs.existsSync(target)) return false
     this.leftTranscripts.add(this.filePath)
@@ -776,8 +785,22 @@ export class JsonlWatcher {
     return true
   }
 
+  private onDiscoveredNewer(candidate: string): void {
+    if (this.stopped) return
+    // A file created before the CLI reported a resume (the /clear just before
+    // it, typically still undiscovered) belongs to the conversation the CLI
+    // has left: it must not take the view from the resumed one.
+    if (this.resumedAt !== null && bornBefore(candidate, this.resumedAt)) {
+      this.leftTranscripts.add(candidate)
+      return
+    }
+    this.switchToFile(candidate)
+  }
+
   /** Transcripts this session explicitly left by a resume; discovery skips them. */
   private leftTranscripts = new Set<string>()
+  /** When the CLI last reported an inline resume (null: never). */
+  private resumedAt: number | null = null
 
   /**
    * Switch to a new JSONL file (compaction detected, or an explicit resume).
