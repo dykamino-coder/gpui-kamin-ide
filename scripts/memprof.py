@@ -25,6 +25,9 @@ One command per question (docs/memprof.md):
       compares two saved reports without symbols.
   memprof.py retain-diff A-retain.json B-retain.json
       retained bytes by group of two saved retention reports.
+  memprof.py retain-query DIR/cand.retain --holders TEXT... | --cut TEXT...
+      every holder (incoming edge, field offset) of the blocks whose label contains TEXT, or the bytes
+      they keep alive together (no root reaches them once those blocks are cut).
   memprof.py ws --exe CAND.exe [--base-exe BASE.exe] --out DIR -- PAGE.html --mode both --runs 5
       working set by memory region (image, mapped, private by reservation kind) at its peak, any build
       (timing-only included): what the live-heap reports cannot see (scripts/memprof_ws.py).
@@ -730,6 +733,11 @@ def retain_diff_command(args):
     memprof_retain.diff(one, two, sys.stdout, args.top)
 
 
+def retain_query_command(args):
+    import memprof_retain
+    memprof_retain.query(args.graph, f"{args.graph}.names.json", args.holders, args.cut, sys.stdout)
+
+
 def run_command(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -845,6 +853,11 @@ def main(argv=None):
     rtd.add_argument("cand")
     rtd.add_argument("base")
 
+    rtq = sub.add_parser("retain-query", help="holders of blocks, or what a set of blocks keeps alive")
+    rtq.add_argument("graph", help="a .retain file; its labels are read from GRAPH.names.json")
+    rtq.add_argument("--holders", nargs="+", metavar="TEXT", help="incoming edges of blocks whose label contains TEXT")
+    rtq.add_argument("--cut", nargs="+", metavar="TEXT", help="bytes freed without the blocks whose label contains TEXT")
+
     dif = sub.add_parser("diff", parents=[common, mismatch], help="compare two saved JSON reports")
     dif.add_argument("cand")
     dif.add_argument("base")
@@ -875,7 +888,7 @@ def main(argv=None):
         launcher = [p.strip('"') for p in shlex.split(args.launcher, posix=False)] if args.launcher else []
         return memprof_ws.ws_command(args, launcher)
     {"run": run_command, "report": report_command, "diff": diff_command,
-     "retain-diff": retain_diff_command}[args.command](args)
+     "retain-diff": retain_diff_command, "retain-query": retain_query_command}[args.command](args)
 
 
 if __name__ == "__main__":

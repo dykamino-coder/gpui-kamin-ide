@@ -70,11 +70,15 @@ class Graph:
 class Names:
     """Labels of nodes: owner path, [type] site and subsystem from the probe file of the run."""
 
-    def __init__(self, graph, run):
+    def __init__(self, graph, run=None, saved=None):
         self.graph = graph
+        self.symbols = run.symbols if run else None
+        if saved:
+            data = json.loads(pathlib.Path(saved).read_text(encoding="utf-8"))
+            self.site, self.owner, self.subsystem = data["site"], data["owner"], data["subsystem"]
+            return
         held = (run.held if run else None) or {}
         measured = (run.measured if run else None) or {}
-        self.symbols = run.symbols if run else None
         self.site, self.owner, self.subsystem = [], [], []
         for address in graph.address:
             pointer = format(address, "x")
@@ -88,6 +92,11 @@ class Names:
                 self.subsystem.append("?")
             path = measured.get(pointer)
             self.owner.append(path[0] if path else None)
+
+    def save(self, path):
+        """Labels beside the graph, so later queries need neither the probe file nor symbols."""
+        data = {"site": self.site, "owner": self.owner, "subsystem": self.subsystem}
+        pathlib.Path(path).write_text(json.dumps(data), encoding="utf-8")
 
     def label(self, node):
         g = self.graph
@@ -246,10 +255,71 @@ def holder_paths(graph, names, tree, out, top, threshold):
     return rows
 
 
+def matching(graph, names, patterns):
+    return [node for node in range(graph.blocks) if any(p in names.label(node) for p in patterns)]
+
+
+def cut(graph, names, patterns, out):
+    """What the blocks matching `patterns` keep alive together: the bytes no root reaches once their
+    outgoing edges are removed (the retained size of a set, which a dominator tree does not give when
+    several of them hold the same blocks)."""
+    removed = bytearray(graph.nodes)
+    for node in matching(graph, names, patterns):
+        removed[node] = 1
+    seen = bytearray(graph.nodes)
+    seen[graph.root] = 1
+    stack = [graph.root]
+    while stack:
+        node = stack.pop()
+        if removed[node]:
+            continue
+        for edge in range(graph.edge_start[node], graph.edge_start[node + 1]):
+            target = graph.edge_to[edge]
+            if not seen[target]:
+                seen[target] = 1
+                stack.append(target)
+    lost = collections.Counter()
+    for node in range(graph.blocks):
+        if not seen[node]:
+            lost[names.group(node)] += graph.size[node]
+    total = sum(lost.values())
+    print(f"cut {patterns} ({sum(removed)} blocks): frees {total / 1e6:.3f} MB", file=out)
+    for group, size in lost.most_common(15):
+        print(f"  {mb(size)}  {group}", file=out)
+    return total
+
+
+def holders(graph, names, patterns, out, top=15):
+    """Every incoming edge of the blocks matching `patterns`, by the retainer's label and field offset."""
+    targets = set(matching(graph, names, patterns))
+    found = collections.defaultdict(lambda: [0, set(), collections.Counter()])
+    for source in range(graph.nodes):
+        for edge in range(graph.edge_start[source], graph.edge_start[source + 1]):
+            if graph.edge_to[edge] in targets and source not in targets:
+                entry = found[names.label(source)]
+                entry[0] += 1
+                entry[1].add(source)
+                entry[2][graph.edge_offset[edge]] += 1
+    print(f"holders of {patterns}: {len(targets)} blocks, {sum(graph.size[t] for t in targets) / 1e6:.3f} MB", file=out)
+    for label, (edges, sources, offsets) in sorted(found.items(), key=lambda item: -item[1][0])[:top]:
+        fields = ", ".join(f"+0x{offset:x}" for offset, _ in offsets.most_common(3))
+        print(f"  {edges:7d} edges from {len(sources):7d} blocks at {fields}  {label}", file=out)
+
+
+def query(graph_path, names_path, holder_patterns, cut_patterns, out):
+    graph = Graph(graph_path)
+    names = Names(graph, saved=names_path)
+    if holder_patterns:
+        holders(graph, names, holder_patterns, out)
+    if cut_patterns:
+        cut(graph, names, cut_patterns, out)
+
+
 def report(graph_path, run, out, top=25, threshold_mb=1.0):
     """Prints the retention report to `out` and returns it as a dict."""
     graph = Graph(graph_path)
     names = Names(graph, run)
+    names.save(f"{graph_path}.names.json")
     tree = children(graph)
     header = graph.header
     threshold = int(threshold_mb * 1e6)

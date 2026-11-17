@@ -268,7 +268,7 @@ dominator chain and the shortest path from a root, each hop with the field offse
 holds the pointer. `--heapsnapshot` writes the graph as a V8 `.heapsnapshot`: «Load profile» in the
 Memory panel of Chrome DevTools shows it with its own Summary (by group), Containment, Retainers and
 retained sizes. `memprof.py retain-diff A-retain.json B-retain.json` compares two pages or two builds
-by group; `memprof.py report EXE STACKS --retainers GRAPH` folds saved files.
+by group; `memprof.py report EXE STACKS --retainers GRAPH` folds saved files. When several holders share a cluster, its blocks are dominated by the root and the tree cannot tell them apart; `memprof.py retain-query DIR/cand.retain --holders TEXT` lists every incoming edge of the blocks whose label contains TEXT (retainer and field offset), and `--cut TEXT...` gives the bytes no root reaches once those blocks are removed, the retained size of a set. Both read the labels the report saved beside the graph (`cand.retain.names.json`).
 
 The scan is conservative, as in Boehm GC: a number that looks like a heap address is an edge, so a
 retained size is an upper bound. Rust structures hold aligned pointers in their fields, and stale
