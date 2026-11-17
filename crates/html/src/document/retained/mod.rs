@@ -16,6 +16,8 @@
 mod box_repaint;
 #[cfg(test)]
 mod box_repaint_tests;
+#[cfg(test)]
+mod column_repaint_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;

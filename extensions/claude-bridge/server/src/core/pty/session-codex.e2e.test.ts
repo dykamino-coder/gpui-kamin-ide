@@ -301,6 +301,22 @@ describe('codex chat over the Bridge session WebSocket', () => {
     client.close()
   }, 30_000)
 
+  it('tells a reattached client that the turn which ended meanwhile is over', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, 'turn while away', 'sub-away')
+    await client.entry((e) => e.type === 'assistant' && text(e).startsWith('echo: turn while away'))
+    const conv = await client.next((f) => f.type === 'session:conversation-id')
+    // The window that saw `working` is gone; the edge back to idle went to it only.
+    const again = await Client.open(port)
+    again.send({ type: 'session:resume', token: 'tok-a', protocolVersion: 1, conversationId: conv.conversationId })
+    const state = await again.next((f) => f.type === 'session:activity')
+    expect(state).toMatchObject({ isWorking: false, promptReady: true, hookDriven: true })
+    again.send({ type: 'session:end' })
+    again.close()
+    client.close()
+  }, 30_000)
+
   it('runs Bridge MCP tools through the real handler, per-session Bearer and host round trip', async () => {
     const a = await Client.open(port)
     const b = await Client.open(port)

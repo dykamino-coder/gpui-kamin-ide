@@ -40,10 +40,11 @@ impl Window {
             return self.with_paint_owner(owner, f);
         }
         let result = self.with_paint_owner(owner, f);
-        if let (Some(range), Some(recording)) = (
-            self.next_frame.scene.close_box(),
-            self.layer_recording.as_mut(),
-        ) {
+        let range = self.next_frame.scene.close_box();
+        // A paint record keeps the run for its placements (`scene::layer::placed`).
+        if let (Some(range), Some(runs)) = (&range, self.next_frame.scene.book.record_runs.as_mut()) {
+            runs.boxes.push(range.clone());
+        } else if let (Some(range), Some(recording)) = (range, self.layer_recording.as_mut()) {
             recording.boxes.push(range);
         }
         result
@@ -52,25 +53,23 @@ impl Window {
     /// Where the host places the fill of `style` in `bounds`; a box recorded
     /// again takes the bounds its first recording placed, the host's raster
     /// frame of that paint being gone.
+    /// A first recording places every fill on its own bounds: a box painted
+    /// per fragment (`BoxPainter`) has one fill per fragment.
     pub(crate) fn box_fill_bounds(&self, style: &Style, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
-        if let Some(fill) = self
-            .box_fill
-            .or_else(|| self.next_frame.scene.open_box_fill())
-        {
+        if let Some(fill) = self.box_fill {
             return fill;
         }
         self.render_context::<PaintTraversal>()
             .map_or(bounds, |host| (host.fill_bounds)(style, bounds, self))
     }
 
-    /// Keep the fill bounds of the box whose own paint is open, painted or not.
+    /// Keep the fill bounds of the box whose own paint is open, painted or
+    /// not. A second fill (the box painted per fragment) is no one fill a
+    /// later recording could restore: the run is then not replaceable.
     pub(crate) fn note_box_fill(&mut self, style: &Style, bounds: Bounds<Pixels>) {
-        if self.box_fill.is_none()
-            && self.next_frame.scene.box_open()
-            && self.next_frame.scene.open_box_fill().is_none()
-        {
+        if self.box_fill.is_none() && self.next_frame.scene.box_open() {
             let fill = self.box_fill_bounds(style, bounds);
-            self.next_frame.scene.set_open_box_fill(fill);
+            self.next_frame.scene.note_open_box_fill(fill);
         }
     }
 
@@ -112,10 +111,10 @@ impl Window {
         }
         let mut moved = false;
         for at in runs {
-            let (area, env) = {
+            let (area, env, placed) = {
                 let content = layer.0.content.borrow();
                 let b = &content.boxes[at];
-                (b.area, b.env)
+                (b.area, b.env, b.placed)
             };
             // A run in a stacking layer keeps the layer's order, which a
             // recording outside the layer does not give.
@@ -123,6 +122,11 @@ impl Window {
                 return None;
             }
             let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);
+            // A run placed from a paint record: the new commands are placed the same way.
+            let (scene, bindings) = match placed {
+                Some(placed) => crate::scene::place_run(scene, bindings, placed)?,
+                None => (scene, bindings),
+            };
             let mut current = layer.0.content.borrow_mut();
             let plan = current.check_box(at, &scene)?;
             let content = Rc::make_mut(&mut *current);
@@ -153,6 +157,7 @@ impl Window {
         let recording = Box::new(LayerRecording {
             bindings: Vec::new(),
             boxes: Vec::new(),
+            unheld: Vec::new(),
             source: None,
         });
         let mut state = (Scene::default(), Some(recording));

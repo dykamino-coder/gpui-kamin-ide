@@ -19,7 +19,10 @@ fn page(edit: &str) -> String {
 }
 
 /// The first quad where `a` and `b` differ, and their lengths.
-fn first_difference(a: &[String], b: &[String]) -> Option<(usize, usize, usize, String, String)> {
+pub(super) fn first_difference(
+    a: &[String],
+    b: &[String],
+) -> Option<(usize, usize, usize, String, String)> {
     let at = (0..a.len().max(b.len())).find(|&i| a.get(i) != b.get(i))?;
     let get = |v: &[String]| v.get(at).cloned().unwrap_or_default();
     Some((at, a.len(), b.len(), get(a), get(b)))
@@ -46,7 +49,7 @@ pub(super) fn quads(cx: &mut VisualTestContext) -> Vec<String> {
     })
 }
 
-fn fresh(cx: &mut TestAppContext, html: &str) -> Vec<String> {
+pub(super) fn fresh(cx: &mut TestAppContext, html: &str) -> Vec<String> {
     let (_, fresh) = open(cx, html);
     frame(fresh);
     quads(fresh)

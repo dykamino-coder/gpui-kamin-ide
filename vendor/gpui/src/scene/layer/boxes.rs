@@ -41,6 +41,9 @@ pub(crate) struct BoxRange {
     pub(crate) env: BoxEnv,
     /// The run is plain primitives, which a recording replaces.
     pub(crate) replaceable: bool,
+    /// How the run's commands came here from the paint record its box painted
+    /// in (`super::placed`); a recording of the box is placed the same way.
+    pub(crate) placed: Option<super::Placed>,
 }
 
 /// A box's own paint being recorded: where its commands start.
@@ -49,6 +52,10 @@ pub(crate) struct OpenBox {
     ops: usize,
     area: Bounds<ScaledPixels>,
     env: BoxEnv,
+    /// The box placed more than one fill (painted per fragment of its
+    /// admission): its `env` restores none of them, so the run is not
+    /// replaceable and an edit of the box paints the layer anew.
+    split: bool,
 }
 
 /// The clipped placed bounds of a primitive.
@@ -73,8 +80,9 @@ impl Scene {
     pub(crate) fn open_box(&mut self, owner: u32, area: Bounds<ScaledPixels>, mut env: BoxEnv) -> bool {
         // A group's scene (`in_group`) is composited into the layer as one
         // result: a run of its commands is no run of the layer.
+        // A paint record that keeps box runs (`super::placed`) is no group.
         if self.book.open_box.is_some()
-            || self.in_group
+            || (self.in_group && self.book.record_runs.is_none())
             || self.layer_stack.len() > 1
             || self.layer_stack.last() == Some(&super::super::BOTTOM_LAYER)
             || !self.depth.plane_stack.is_empty()
@@ -88,6 +96,7 @@ impl Scene {
             ops: self.paint_operations.len(),
             area,
             env,
+            split: false,
         });
         true
     }
@@ -97,14 +106,14 @@ impl Scene {
         self.book.open_box.is_some()
     }
 
-    /// The fill bounds the open box's paint placed.
-    pub(crate) fn open_box_fill(&self) -> Option<Bounds<Pixels>> {
-        self.book.open_box.as_ref()?.env.fill
-    }
-
-    pub(crate) fn set_open_box_fill(&mut self, fill: Bounds<Pixels>) {
+    /// Note a fill the open box's paint places: the first is its fill, a
+    /// second splits it (`OpenBox::split`).
+    pub(crate) fn note_open_box_fill(&mut self, fill: Bounds<Pixels>) {
         if let Some(open) = self.book.open_box.as_mut() {
-            open.env.fill = Some(fill);
+            match open.env.fill {
+                None => open.env.fill = Some(fill),
+                Some(_) => open.split = true,
+            }
         }
     }
 
@@ -133,7 +142,8 @@ impl Scene {
             ink,
             ops: ops.start as u32..ops.end as u32,
             env: open.env,
-            replaceable: plain,
+            replaceable: plain && !open.split,
+            placed: None,
         })
     }
 }
