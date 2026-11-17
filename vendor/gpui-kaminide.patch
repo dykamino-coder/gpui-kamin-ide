@@ -15408,11 +15408,11 @@ index 0000000000000000000000000000000000000000..a48934c673427a006dbbbfce600bd086
 +}
 diff --git a/vendor/gpui/src/scene/layer/placed/replay.rs b/vendor/gpui/src/scene/layer/placed/replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..56f16ffb9f8ee751e7961589fa45410dda6e2636
+index 0000000000000000000000000000000000000000..de5f0b331c6287a5a5a9a319ae3206e6fa93dafe
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/placed/replay.rs
 @@ -0,0 +1,89 @@
-+//! Перенос записей коробок при размещении сцены во фрагменте.
++//! Replays box records when placing a scene in a fragment.
 +
 +use super::{Binding, BoxRange, MANY, Placed, PlacedMap};
 +use crate::{Bounds, Point, ScaledPixels, Scene, Window};

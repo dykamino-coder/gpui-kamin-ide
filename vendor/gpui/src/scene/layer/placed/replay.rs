@@ -1,4 +1,4 @@
-//! Перенос записей коробок при размещении сцены во фрагменте.
+//! Replays box records when placing a scene in a fragment.
 
 use super::{Binding, BoxRange, MANY, Placed, PlacedMap};
 use crate::{Bounds, Point, ScaledPixels, Scene, Window};

@@ -1,4 +1,4 @@
-//! Проверки освобождения арены после завершения отложенного позиционирования.
+//! Tests arena release after deferred positioning finishes.
 
 use super::*;
 use gpui::{IntoElement, RetainedLayout, Styled, size};
