@@ -23,7 +23,15 @@ const item = (completed: boolean, item: Record<string, unknown>) =>
   ] as const
 
 describe(`CodexEventNormalizer on the recorded ${CODEX_PROTOCOL_VERSION} gate trace`, () => {
-  it('replays the root-turn and item lifecycle fields emitted by 0.167.2', () => {
+  it('records a lockdown that starts threads without config warnings', () => {
+    // 0.168+ warns on every thread when config.toml still sets the deprecated
+    // `features.multi_agent`; the chat would show it as a notice.
+    const methods = notifications(trace).map((f) => f.method)
+    expect(methods).not.toContain('configWarning')
+    expect(methods).not.toContain('warning')
+  })
+
+  it(`replays the root-turn and item lifecycle fields emitted by ${CODEX_PROTOCOL_VERSION}`, () => {
     const frames = notifications(trace)
     const turns = frames.filter((f) => f.method === 'turn/started')
     expect(turns).toHaveLength(3)

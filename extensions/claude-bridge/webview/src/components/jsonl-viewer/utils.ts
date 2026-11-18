@@ -109,6 +109,10 @@ export const NON_RENDERING_ENTRY_TYPES: ReadonlySet<string> = new Set([
   'session-owner',
   'resume-head-vouch',
   'repl-mode',
+  // CLI 2.1.323+ session lineage and data-flow bookkeeping.
+  'derived-from',
+  'data-flow-records',
+  'data-flow-incomplete',
 ])
 
 /** Does an `attachment` row actually DRAW anything?
