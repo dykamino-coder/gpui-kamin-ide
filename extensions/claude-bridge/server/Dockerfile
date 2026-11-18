@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # handshake → hook round-trip) before shipping a new pin.
 # + tsx (a devDependency, but the runtime CMD invokes it via npx; install it
 # globally so the container doesn't pull it from the network on first start).
-ARG CLAUDE_CODE_VERSION=2.1.322
+ARG CLAUDE_CODE_VERSION=2.1.327
 ARG CLAUDE_CODE_CACHE_BUST=1
 # Codex CLI (ChatGPT chats) — PINNED for the same reason: Bridge drives the
 # experimental app-server protocol and removes built-in tools through the
@@ -54,7 +54,7 @@ ARG CLAUDE_CODE_CACHE_BUST=1
 # (src/core/codex/tool-gate.codex.test.ts; CI installs this exact ARG).
 # The npm package carries the native binary as a per-platform optional
 # dependency — no install script, no download from OpenAI at build time.
-ARG CODEX_VERSION=0.167.2
+ARG CODEX_VERSION=0.170.0
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" tsx@4 \
     && npm cache clean --force \
     && rm -rf /tmp/* /root/.npm
