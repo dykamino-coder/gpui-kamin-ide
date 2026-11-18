@@ -610,6 +610,8 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
     }
 
     case 'tools/call': {
+      // The CLI records the tool_use in its transcript before calling the tool.
+      session.jsonlWatcher?.poke?.()
       const params = body.params as { name?: string; arguments?: Record<string, unknown> } | undefined
       const toolName = params?.name
       if (params?.arguments !== undefined && !record(params.arguments))
