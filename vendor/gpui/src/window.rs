@@ -3172,6 +3172,20 @@ impl Window {
         Some(texture.with_size(width, height))
     }
 
+    /// KaminIDE patch: the producer repainted the rectangle (`x, y, w, h`,
+    /// physical texture pixels) of an external texture. From the first call a
+    /// window frame redraws only such rectangles of its sprites, not the whole
+    /// window, so EVERY change of its pixels must be reported.
+    pub fn damage_external_texture(&self, texture: &ExternalTexture, x: i32, y: i32, w: i32, h: i32) {
+        self.platform_window.damage_external_texture(
+            texture.0.texture_id,
+            Bounds {
+                origin: point(DevicePixels(x), DevicePixels(y)),
+                size: size(DevicePixels(w.max(0)), DevicePixels(h.max(0))),
+            },
+        );
+    }
+
     /// KaminIDE patch: забыть чужую текстуру.
     pub fn drop_external_texture(&self, texture: &ExternalTexture) {
         self.platform_window

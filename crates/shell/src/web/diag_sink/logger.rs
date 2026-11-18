@@ -13,6 +13,8 @@ static LOGGER: DiagLogger = DiagLogger;
 impl Log for DiagLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= Level::Error
+            || (FRAMES.load(std::sync::atomic::Ordering::Relaxed)
+                && metadata.target() == "gpui::frame")
     }
 
     fn log(&self, record: &Record) {
@@ -31,6 +33,19 @@ fn line(record: &Record) -> String {
         record.target(),
         record.args()
     )
+}
+
+/// Stand diagnostics: also write the frame damage journal (`gpui::frame`,
+/// debug: damaged tiles and the first differing scene entries).
+static FRAMES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn trace_frames(on: bool) {
+    FRAMES.store(on, std::sync::atomic::Ordering::Relaxed);
+    log::set_max_level(if on {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Error
+    });
 }
 
 /// Подключить логгер; повторный вызов и чужой логгер оставляют прежний.

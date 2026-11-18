@@ -11,10 +11,13 @@
 //!
 //! Anything the scene does not describe forces a full frame: another size,
 //! background or opaque backdrop colour, an atlas change that may alter the
-//! pixels of a referenced tile, a sampled external texture, a frame that was
+//! pixels of a referenced tile, a sampled external texture whose change was
+//! not reported as a rectangle (`external_damage.rs`), a frame that was
 //! not compared with the one drawn last, or a failed draw.
 
 use super::*;
+mod full_by;
+use full_by::FullBy;
 
 /// What the target holds apart from the damage: the inputs of a frame that
 /// the scene comparison does not cover.
@@ -46,6 +49,10 @@ pub(super) struct Retained {
     /// This frame continues the last one: `Some(true)` the same scene again,
     /// `Some(false)` compared with it (`Scene::group_base`).
     pub(super) chain: Option<(bool, u64)>,
+    /// Why the last planned frame would be drawn whole.
+    pub(super) full_by: FullBy,
+    /// Frames the swap chain took (`present`): which buffer comes next.
+    pub(super) presents: usize,
 }
 
 /// How the current frame reaches the target.
@@ -72,13 +79,11 @@ fn force_full() -> bool {
 }
 
 impl DirectXRenderer {
-    /// Index of the buffer this frame draws into, `None` if it is unknown.
+    /// Buffer this frame draws into: the flip-sequential chain hands them out in turn
+    /// per present (D3D11 `GetCurrentBackBufferIndex` did not follow; stand audit).
     fn buffer_slot(&self) -> Option<usize> {
-        let Some(swap_chain) = &self.res().swap_chain else {
-            return Some(0);
-        };
-        let chain: IDXGISwapChain3 = swap_chain.cast().ok()?;
-        Some(unsafe { chain.GetCurrentBackBufferIndex() } as usize % BUFFER_COUNT)
+        let chain = self.res().swap_chain.is_some();
+        Some(if chain { self.retained.presents % BUFFER_COUNT } else { 0 })
     }
 
     /// Unite this frame's damage into every buffer and choose what to draw.
@@ -95,7 +100,8 @@ impl DirectXRenderer {
             backdrop: backdrop.map(|c| c.map(f32::to_bits)),
             epoch: self.atlas.epoch(),
         };
-        let comparable = id != 0 && size == target.size && !self.atlas.samples_external(scene);
+        let external = self.atlas.external_damage(scene);
+        let comparable = id != 0 && size == target.size && external != SceneDamage::Unknown;
         self.retained.chain = match self.retained.last {
             Some((last, t)) if comparable && t == target && last == id => Some((true, id)),
             Some((last, t)) if comparable && t == target && last == base => Some((false, base)),
@@ -106,15 +112,20 @@ impl DirectXRenderer {
             Some((last, t)) if comparable && t == target && last == base => damage,
             _ => SceneDamage::Unknown,
         };
+        let retarget = self.retained.last.is_some_and(|(_, t)| t != target);
+        self.retained.full_by = FullBy::of(external, retarget, damage, frame);
+        let frame = frame.union(external);
         self.retained.last = Some((id, target));
         for pending in &mut self.retained.pending {
             *pending = pending.union(frame);
         }
         let Some(slot) = self.buffer_slot().filter(|_| enabled()) else {
+            self.retained.full_by = FullBy::Disabled;
             self.forget_frames();
             return Plan::Full;
         };
         if force_full() {
+            self.retained.full_by = FullBy::Disabled;
             return Plan::Full;
         }
         // The screen shows this frame already; capture of a swap chain reads
@@ -139,6 +150,7 @@ impl DirectXRenderer {
                     height: height.min(self.height.saturating_sub(y)).max(1),
                 };
                 if region == Region::full(self.width, self.height) {
+                    self.retained.full_by = FullBy::Region;
                     Plan::Full
                 } else {
                     Plan::Within(region)
