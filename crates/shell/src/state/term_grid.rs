@@ -117,23 +117,33 @@ pub(crate) fn term_grid(
         // `cursorBlink: true` (`TerminalSession.tsx:75`): xterm
         // мигает периодом 1.2 с — половину периода курсор виден,
         // половину нет. У нас он был статичным (ревью ц.19)
-        let cursor = div()
-            .absolute()
-            .left(px(ccol as f32 * TERM_CELL_W))
-            .top(px(crow as f32 * TERM_CELL_H))
-            .w(px(TERM_CELL_W))
-            .h(px(TERM_CELL_H))
-            .bg(rgba(p.editor_cursor))
-            .text_color(rgba(p.editor_bg))
-            .child(ch);
+        let (bg, fg) = (rgba(p.editor_cursor), rgba(p.editor_bg));
+        let cursor = move |ch: String| div().size_full().bg(bg).text_color(fg).child(ch);
+        let place = |el: gpui::AnyElement| {
+            div()
+                .absolute()
+                .left(px(ccol as f32 * TERM_CELL_W))
+                .top(px(crow as f32 * TERM_CELL_H))
+                .w(px(TERM_CELL_W))
+                .h(px(TERM_CELL_H))
+                .child(el)
+        };
         // Под RDP вечное мигание = постоянные кадры в сеть — курсор статичен.
         // Иначе мигание 1.2s по общему такту `anim_tick`: кадр только на смену
         // видимости (2 за цикл), а не на каждую развёртку (INC-2026-0001).
-        let hidden = !crate::win_integration::reduce_motion() && {
-            crate::web::diag_why::tick("animation/term-cursor");
-            crate::ui::anim_tick::step(600) % 2 == 1
-        };
-        grid_el = grid_el.child(if hidden { cursor.invisible() } else { cursor });
+        // Шаг перерисовывает только клетку курсора, не окно (INC-2026-0064).
+        grid_el = grid_el.child(place(if crate::win_integration::reduce_motion() {
+            cursor(ch).into_any_element()
+        } else {
+            crate::ui::ticking::ticking("term-cursor", 600, move |n| {
+                crate::web::diag_why::tick("animation/term-cursor");
+                cursor(ch.clone())
+                    .when(n % 2 == 1, |c| c.invisible())
+                    .into_any_element()
+            })
+            .size_full()
+            .into_any_element()
+        }));
     }
     grid_el
 }

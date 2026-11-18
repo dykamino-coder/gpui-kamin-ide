@@ -166,6 +166,9 @@ pub(crate) fn report(instrumentation: &gpui::Instrumentation) {
     let g_taffy = gpui::frame_perf::TAFFY_US.swap(0, Ordering::Relaxed) / 1000;
     let g_measus = gpui::frame_perf::MEASURE_US.swap(0, Ordering::Relaxed) / 1000;
     let g_reused = gpui::frame_perf::REUSED_VIEWS.swap(0, Ordering::Relaxed);
+    // INC-2026-0064: кадры с раскладкой корня против кадров одних изолированных вью.
+    let g_root = gpui::frame_perf::ROOT_LAYOUTS.swap(0, Ordering::Relaxed);
+    let g_iso = gpui::frame_perf::ISOLATED_FRAMES.swap(0, Ordering::Relaxed);
     // #76, sw-путь: средняя цена копии кадра, покрытие dirty, интервал кадров.
     let sw_put = SW_PUT_US.swap(0, Ordering::Relaxed);
     let sw_dirty = SW_DIRTY_PCT_SUM.swap(0, Ordering::Relaxed);
@@ -193,8 +196,8 @@ pub(crate) fn report(instrumentation: &gpui::Instrumentation) {
     }
     let active = [
         f, p, r, b, m, c, d, us, mx, ctx, tex, gd, gp, g_swap, g_dropped, gf, g_pre, g_hit, g_pnt,
-        g_nodes, g_runs, g_meas, g_taffy, g_measus, g_reused, sw_put, sw_dirty, sw_gap, g_shaped,
-        g_cachedl, g_shape_ms, stretched, exact, died,
+        g_nodes, g_runs, g_meas, g_taffy, g_measus, g_reused, g_root, g_iso, sw_put, sw_dirty,
+        sw_gap, g_shaped, g_cachedl, g_shape_ms, stretched, exact, died,
     ]
     .iter()
     .any(|&count| count != 0);
@@ -203,7 +206,7 @@ pub(crate) fn report(instrumentation: &gpui::Instrumentation) {
         .is_ok_and(|mut clock| clock.should_emit(active, now));
     if emit {
         emit_line(format!(
-            "[cef] interval_ms={interval}: кадров {f}, кадров окна {d}, отрисовок {p}, заказов {r}, занято {b}, не тот размер {m}, обрезано {c}, растянуто {stretched}, точно {exact}, кадр окна в среднем {avg} мкс, худший {mx} мкс, из них состояние {ctx_avg} мкс; текстуры {tex} мс, строк дерева {rows}; окно сложило {gf} кадров: сцена {gd} мс, презент {gp} мс, из них вызов Present {g_swap} мс, не отдано кадров {g_dropped} (раскладка {g_pre} мс, попадания {g_hit} мс, рисование {g_pnt} мс); узлов на кадр {per}, замеров на кадр {per_meas}, проходов {g_runs}; taffy {g_taffy} мс, замеры {g_measus} мс; переиграно вью {g_reused}; шейпинг: промахов {g_shaped} ({g_shape_ms} мс), из кэша {g_cachedl}"
+            "[cef] interval_ms={interval}: кадров {f}, кадров окна {d}, отрисовок {p}, заказов {r}, занято {b}, не тот размер {m}, обрезано {c}, растянуто {stretched}, точно {exact}, кадр окна в среднем {avg} мкс, худший {mx} мкс, из них состояние {ctx_avg} мкс; текстуры {tex} мс, строк дерева {rows}; окно сложило {gf} кадров: сцена {gd} мс, презент {gp} мс, из них вызов Present {g_swap} мс, не отдано кадров {g_dropped} (раскладка {g_pre} мс, попадания {g_hit} мс, рисование {g_pnt} мс); узлов на кадр {per}, замеров на кадр {per_meas}, проходов {g_runs}; taffy {g_taffy} мс, замеры {g_measus} мс; переиграно вью {g_reused}; раскладок корня {g_root}, кадров без корня {g_iso}; шейпинг: промахов {g_shaped} ({g_shape_ms} мс), из кэша {g_cachedl}"
         ));
     }
     // #76: топ self-time prepaint по типам элементов (KAMIN_PREPAINT_PROF=1).
