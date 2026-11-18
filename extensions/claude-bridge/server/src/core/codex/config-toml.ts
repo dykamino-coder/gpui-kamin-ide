@@ -39,7 +39,11 @@ export const CODEX_DISABLED_FEATURES = [
   'browser_use',
   'computer_use',
   'image_generation',
-  'multi_agent',
+  // Subagent tools are off through `agents.enabled` (codexLockdownConfig).
+  // `multi_agent` itself is deprecated since 0.168: setting it in config.toml
+  // makes every thread start with a deprecation warning. An enabled
+  // `multi_agent_v2` would override `agents.enabled`, so it is pinned off.
+  'multi_agent_v2',
   'memories',
   'hooks',
   'tool_suggest',
@@ -78,6 +82,7 @@ export function codexLockdownConfig(options: CodexLockdownOptions): TomlTable {
     web_search: options.webSearch ?? 'live',
     model_catalog_json: options.catalogPath,
     features: Object.fromEntries(CODEX_DISABLED_FEATURES.map((name) => [name, false])),
+    agents: { enabled: false },
   }
 }
 

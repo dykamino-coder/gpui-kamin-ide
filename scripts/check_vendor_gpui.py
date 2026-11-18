@@ -48,6 +48,7 @@ def crate_features(manifest: dict) -> dict[str, str]:
 # A filter skips the all-targets build, which the full fork check owns.
 TEST_FILTERS = {
     "gpui-windows": [
+        "directx_atlas::",
         "directx_renderer::recovery_tests::damage",
         "directx_renderer::group_atlas",
         "window::drop_target",
