@@ -81,13 +81,12 @@ impl super::FlowCx {
     /// может оказаться далёким блоком (`far_worth_recording`).
     pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
-        let restyled = self.restyled(e);
-        mark.replay = match self.recolour || restyled {
+        mark.replay = match self.recolour {
             true => self.recolour_worth_recording(e),
             false => self.replay_worth_recording(e),
         };
         // A build of a run of restyles wraps no child (`FlowCx::record`).
-        mark.far = !restyled && self.far_candidate(e, opts);
+        mark.far = !self.restyled && self.far_candidate(e, opts);
         if mark.replay {
             mark.widths = Some(Rc::default());
             // Its step-8 wrapper goes on outside the replay recorder.

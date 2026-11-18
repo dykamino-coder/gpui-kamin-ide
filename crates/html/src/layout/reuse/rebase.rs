@@ -9,11 +9,9 @@
 //! the records are repainted in place, without a walk of either tree.
 
 mod handover;
-mod holders;
 mod keys;
 use super::{Store, flow_blocks};
 use crate::dom::{CascadedMemo, Element, Node, same_cascaded_box, same_cascaded_tree};
-use holders::{holder, holders};
 use keys::Roots;
 use std::collections::HashMap;
 
@@ -44,10 +42,6 @@ impl Store {
             (Some(a), Some(b), Some(ids)) => invalidated(was, now, a, b, ids, &mut memo),
             _ => None,
         };
-        // A restyle whose elements all lie in flow blocks restyled no root box.
-        // Its blocks may still change what follows them in document order
-        // (counters, list numbers), so the blocks are compared all the same.
-        let confined = restyled.and_then(|ids| holders(now, ids));
         let mut records = self.records.take();
         let recorded = records.len();
         // What the root boxes' comparison tells the flow keys (`carry_keys`).
@@ -87,16 +81,15 @@ impl Store {
                 })
             }
             None => {
-                let roots = confined.is_some()
-                    || match (&a, &b) {
-                        (Some(a), Some(b)) => {
-                            a.len() == b.len()
-                                && a.iter()
-                                    .zip(b)
-                                    .all(|(&x, &y)| same_cascaded_box(x, y, false, &mut memo))
-                        }
-                        _ => false,
-                    };
+                let roots = match (&a, &b) {
+                    (Some(a), Some(b)) => {
+                        a.len() == b.len()
+                            && a.iter()
+                                .zip(b)
+                                .all(|(&x, &y)| same_cascaded_box(x, y, false, &mut memo))
+                    }
+                    _ => false,
+                };
                 if let (Some(a), Some(b)) = (&a, &b)
                     && (roots
                         || a.len() == b.len()
@@ -129,15 +122,8 @@ impl Store {
         // that needs paint until it is painted clean).
         self.rebased.set(true);
         self.carry_keys(roots_seen);
-        // Only the restyled blocks are built bare; the others keep being recorded.
-        match confined {
-            Some(blocks) => self.restyled_blocks.set(blocks),
-            None => {
-                self.restyled_blocks.take();
-                if records.len() < recorded {
-                    self.restyled.set(true);
-                }
-            }
+        if records.len() < recorded {
+            self.restyled.set(true);
         }
         // The last frame wrapped blocks and none gave a record: the next would
         // wrap them again for nothing, so the run of restyles covers them.
@@ -218,4 +204,33 @@ fn invalidated<'a>(
         }
     }
     Some((Some(roots), blocks))
+}
+
+/// Позиция блока, содержащего ключ: числового порядка у NodeKey нет.
+fn holder(flow: &[Node], id: u64) -> Option<usize> {
+    flow.iter()
+        .position(|n| block(n).is_some_and(|e| holds(e, id)))
+}
+
+/// The element `n`, if it is one.
+fn block(n: &Node) -> Option<&Element> {
+    match n {
+        Node::Element(e) => Some(e),
+        Node::Text(_) => None,
+    }
+}
+
+/// The subtree of `e` has the element `id`.
+fn holds(e: &Element, id: u64) -> bool {
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        if e.node_id == id {
+            return true;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(c) => Some(c),
+            Node::Text(_) => None,
+        }));
+    }
+    false
 }

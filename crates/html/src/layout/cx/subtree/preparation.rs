@@ -6,12 +6,16 @@ use crate::layout::order::{Unkeyed, unkeyed_positioned};
 use std::rc::Rc;
 
 pub(crate) struct Preparation {
+    pub(crate) facts: Rc<SubtreeFacts>,
     pub(crate) unkeyed: Rc<Unkeyed>,
     pub(crate) clearance_possible: bool,
-    /// The preparation walked the whole tree (`new`), not only copied lists.
-    #[cfg(test)]
-    full: bool,
+    /// Сколько подготовок продолжено от последней полной (`continued`).
+    depth: u8,
 }
+
+/// Предел цепочки продолжений: глубже факты собираются полным обходом, чтобы
+/// поиск по слоям и удержанные ими метки снимков не росли с числом правок.
+const MAX_DEPTH: u8 = 4;
 
 type Snapshot = (u64, Rc<Preparation>);
 
@@ -56,7 +60,9 @@ impl PreparationCache {
         let key = tree.unwrap_or(BASE);
         let prepared = match snapshot {
             Some((old, prepared)) if fresh && old == key => prepared,
-            Some((BASE, base)) if fresh => Rc::new(Preparation::continued(&base, nodes)),
+            Some((BASE, base)) if fresh && base.depth < MAX_DEPTH => {
+                Rc::new(Preparation::continued(&base, nodes))
+            }
             _ => Rc::new(Preparation::new(nodes)),
         };
         if tree.is_some() {
@@ -69,7 +75,7 @@ impl PreparationCache {
     #[cfg(test)]
     pub(crate) fn last(&self) -> Option<(Rc<Preparation>, bool)> {
         let snapshot = self.snapshot.take();
-        let last = snapshot.as_ref().map(|(_, p)| (p.clone(), p.full));
+        let last = snapshot.as_ref().map(|(_, p)| (p.clone(), p.depth == 0));
         self.snapshot.set(snapshot);
         last
     }
@@ -84,16 +90,16 @@ impl Preparation {
 }
 
 impl Preparation {
-    /// Preparation of a tree of the same shape and styles as `base`. Unchanged
-    /// copy-on-write lists already own their facts; only the copied ones are processed.
+    /// Подготовка дерева той же формы и стилей, что у `base`: факты — слой
+    /// над фактами `base` с записями только для новых списков детей.
     fn continued(base: &Self, nodes: &[Node]) -> Self {
-        let mut facts = SubtreeFacts::default();
+        let mut facts = SubtreeFacts::overlay(base.facts.clone());
         let clearance_possible = facts.clearance_possible(nodes);
         Self {
+            facts: Rc::new(facts),
             unkeyed: base.unkeyed.clone(),
             clearance_possible,
-            #[cfg(test)]
-            full: false,
+            depth: base.depth + 1,
         }
     }
 
@@ -117,7 +123,9 @@ impl Preparation {
         while let Some((e, leave)) = pending.pop() {
             if leave {
                 let flags = facts.list_flags(&e.children);
-                e.children.publish_box_summary(flags);
+                facts
+                    .children
+                    .insert(e.children.identity(), (e.children.mark(), flags));
                 // Конец поддерева исключает собственных потомков из проверки
                 // более позднего позиционированного (CSS2 Appendix E, шаг 8).
                 map.insert(e.node_id, at);
@@ -137,10 +145,10 @@ impl Preparation {
         }
         let clearance_possible = facts.clearance_possible(nodes);
         Self {
+            facts: Rc::new(facts),
             unkeyed: Rc::new((map, last)),
             clearance_possible,
-            #[cfg(test)]
-            full: true,
+            depth: 0,
         }
     }
 }

@@ -10,9 +10,7 @@ pub(super) fn resolve_cell_heights(
     e: &Element,
     row: &Element,
     inherited: &Computed,
-    // The cell's box style: written (and so copied) only by the rare
-    // orthogonal limit below, not merely by being passed here.
-    cm: &mut crate::style::computed::BoxStyle,
+    cm: &mut Computed,
     cell: &mut Element,
 ) {
     // `ch` на высоте ячейки разрешается с письмом РЯДА: при

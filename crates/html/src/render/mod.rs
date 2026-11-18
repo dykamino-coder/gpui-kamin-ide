@@ -45,9 +45,6 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // проход только сверяет входы.
     let changed =
         crate::style::cascade::materialize::materialize_changed(nodes, root.style_rc(), vcx);
-    if stable {
-        crate::document::boxes::BoxTree::edit(&opts.cx.doc().boxes).finish(nodes, &root, changed);
-    }
     // Прежние вычисленные группы отпущены: выведенные из них группы больше не нужны.
     vcx.doc.derived.release_unowned();
     // Подготовка переживает кадры только по номеру дерева документа.
@@ -55,6 +52,9 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let prepared = opts.cx.layout().preparation.get(nodes, tree, changed);
     let opts = &*opts.inner(|cx| {
         cx.values.inert_clear = !prepared.clearance_possible;
+        cx.contracts.subtrees = std::rc::Rc::new(std::cell::RefCell::new(
+            crate::layout::cx::subtree::SubtreeFacts::overlay(prepared.facts.clone()),
+        ));
     });
     // Переводы стилей коробок — общие в пределах этой сборки (`layout::cx::conversions`).
     let _conversions = opts.cx.layout().conversions.build();

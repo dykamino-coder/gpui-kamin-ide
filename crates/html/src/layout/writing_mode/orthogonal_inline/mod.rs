@@ -6,7 +6,7 @@
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::layout::block::ratio_basis;
 use crate::style::computed::orthogonal::{AxisSizes, InlineConstraint, available};
-use crate::style::computed::{BoxStyle, Computed, Display, Overflow, Position};
+use crate::style::computed::{Computed, Display, Overflow, Position};
 use crate::style::values::value::{Len, px_strict};
 
 pub(crate) fn edges(style: &Computed, vertical: bool) -> f32 {
@@ -80,7 +80,7 @@ pub(super) fn flow_constraint(style: &Computed) -> Option<InlineConstraint> {
 }
 
 pub(crate) fn resolve(
-    style: &mut BoxStyle,
+    style: &mut Computed,
     parent: &Computed,
     viewport: (f32, f32),
     principal: bool,

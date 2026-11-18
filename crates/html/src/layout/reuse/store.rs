@@ -1,6 +1,5 @@
 //! Записи блоков одного документа между кадрами (`Store`).
 
-use super::stats::ReuseStats;
 use super::{FlowKey, Record, far::FrameFar, narrow, replay::ReplayRecord};
 use crate::dom::Element;
 use std::cell::{Cell, RefCell};
@@ -16,13 +15,6 @@ pub(crate) struct Store {
     /// Records of blocks replayed on screen with their layout subtree
     /// (`replay`), by node id.
     pub(super) replays: RefCell<HashMap<u64, Rc<ReplayRecord>>>,
-    /// Records of box contents replayed at any depth (`content`), by the
-    /// node of their container.
-    pub(super) contents: RefCell<HashMap<u64, Rc<super::content::ContentRecord>>>,
-    /// Inputs shared by the keys of the content records (`KeyInputs`).
-    pub(super) inputs: super::content::shared::KeyInputs,
-    /// Paragraphs kept across frames (`paragraph`), by container and nodes.
-    pub(crate) paragraphs: super::paragraph::Records,
     /// Records of far blocks laid out from their kept layout subtree
     /// (`far`), with the storage of the build that claims them; allocated
     /// while there are any. A build holds it while it runs (`FlowReuse::far`).
@@ -71,9 +63,6 @@ pub(crate) struct Store {
     /// after no rebuild still records nothing, as a fresh document's first
     /// frame; the next records the blocks.
     pub(super) restyled: Cell<bool>,
-    /// The blocks the last rebuild restyled, when it restyled no root box:
-    /// only they are built without being recorded (`FlowCx::restyled`).
-    pub(super) restyled_blocks: Cell<HashSet<u64>>,
     /// The document was rebuilt since the last frame (`rebase`).
     pub(super) rebased: Cell<bool>,
     /// The rebuild that stripped the last flow key's boxes
@@ -97,7 +86,6 @@ impl Store {
     /// nodes either, so no kept layout subtree is left (`far`).
     pub(crate) fn forget_replays(&self) {
         self.replays.take();
-        self.contents.take();
         self.far.take();
     }
 
@@ -179,18 +167,10 @@ impl Store {
     /// The flow key changed outside its widths: no replay record holds.
     pub(super) fn reset_replays(&self) {
         self.replays.take();
-        self.paragraphs.reset();
         self.far.take();
         self.far_near.take();
         self.banned.take();
         self.reads_widths.take();
-    }
-
-    pub(super) fn restyled_block(&self, node: u64) -> bool {
-        let blocks = self.restyled_blocks.take();
-        let found = blocks.contains(&node);
-        self.restyled_blocks.set(blocks);
-        found
     }
 
     pub(super) fn banned(&self, node: u64) -> bool {
@@ -246,4 +226,25 @@ pub(crate) enum Damage {
     None,
     /// Paint-only values: the recorded layout holds, its paint does not.
     Paint,
+}
+
+/// Счётчики наблюдения повтора блоков.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ReuseStats {
+    /// Blocks wrapped for recording (`recorder::Making`).
+    pub tracked: u64,
+    pub recorded: u64,
+    pub skipped: u64,
+    pub rebuilt_frames: u64,
+    /// Blocks of the root flow replayed on screen without a build: skipped
+    /// blocks whose output of the last frame was replayed, and blocks whose
+    /// layout subtree was claimed whole (`replay`).
+    pub replayed: u64,
+    /// Of `replayed`, blocks whose layout subtree was claimed whole.
+    pub subtrees: u64,
+    /// Blocks wrapped for a subtree replay record (`replay::PendingReplay`).
+    pub replay_tracked: u64,
+    /// Far blocks laid out from their kept layout subtree without a build
+    /// (`far`).
+    pub far: u64,
 }

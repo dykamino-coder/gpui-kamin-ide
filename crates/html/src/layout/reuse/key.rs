@@ -19,18 +19,6 @@ impl Counters {
         }
     }
 
-    /// These counters advanced as far as `from` advanced to `to`: an inert
-    /// subtree takes its keys in order and none of them reaches its output
-    /// (`content`), so a replay after an inserted or removed box moves them.
-    pub(super) fn advanced(self, from: Self, to: Self) -> Self {
-        Self {
-            keys: self.keys.wrapping_add(to.keys.wrapping_sub(from.keys)),
-            anchors: self
-                .anchors
-                .wrapping_add(to.anchors.wrapping_sub(from.anchors)),
-        }
-    }
-
     pub(crate) fn write(self, cx: &LayoutCx) {
         cx.deferred.keys.set(self.keys);
         crate::layout::positioned::anchor::set_seq(&cx.layout().anchors, self.anchors);

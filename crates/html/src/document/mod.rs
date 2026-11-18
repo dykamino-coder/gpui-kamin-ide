@@ -77,7 +77,6 @@ use crate::document::logical_properties::resolve_logical;
 use crate::document::writing_mode::propagate_writing_mode;
 
 mod box_style;
-pub(crate) mod boxes;
 
 use crate::dom::Node;
 use state::DocState;
@@ -114,8 +113,6 @@ pub struct Document {
     /// An XML document (`image/svg+xml`, `crate::dom::xml`).
     xml: bool,
     last_failure: Option<DocumentFailure>,
-    /// Media features of the build read from the viewport size (`viewport`).
-    media_reads: Rc<crate::style::css::reads::MediaReads>,
     #[cfg(feature = "engine-bench")]
     timings: BuildTimings,
 }

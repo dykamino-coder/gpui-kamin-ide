@@ -272,7 +272,6 @@ impl TaffyLayoutEngine {
         let fresh = context.take()?;
         if let Some(old) = self.taffy.get_node_context_mut(node) {
             old.measure = fresh.measure;
-            old.kept = false;
         }
         // The requests after this leaf follow the ones after it last pass; a
         // leaf left behind an aligned cursor is new content, the cursor stays.
@@ -387,9 +386,7 @@ impl TaffyLayoutEngine {
             if self.taffy.has_node_context(*node)
                 && let Some(context) = self.taffy.get_node_context_mut(*node)
             {
-                context.remeasured = false;
-                context.kept = std::mem::take(&mut context.keep_measure);
-                if !context.kept {
+                if !std::mem::take(&mut context.keep_measure) {
                     context.measure = stub.clone();
                 }
             }
@@ -593,20 +590,6 @@ impl TaffyLayoutEngine {
                 self.layout_bounds(LayoutId(node), scale_factor)
             })
             .reduce(|a, b| a.union(&b))
-    }
-
-    /// Whether this pass measured a leaf of `subtree` with the function an
-    /// earlier pass kept (`keep_measures`): its constraints changed, and
-    /// the leaf may lie or draw otherwise than when it was captured.
-    pub fn remeasured(&self, subtree: &RetainedSubtree) -> bool {
-        let Some((sequence, range)) = self.retained.span(subtree) else {
-            return true;
-        };
-        self.retained.nodes(sequence)[range].iter().any(|&node| {
-            self.taffy
-                .get_node_context(node)
-                .is_some_and(|context| context.remeasured)
-        })
     }
 
     /// Whether a leaf of a subtree claimed whole was measured in this pass.

@@ -29,7 +29,6 @@ impl View {
 
 impl Render for View {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        self.doc.set_viewport(self.viewport).unwrap();
         self.doc.render_viewport(&self.opts())
     }
 }
@@ -56,7 +55,6 @@ pub(super) fn open_document(
     cx.update(|window, app| {
         let step = window.on_update_rendering(move |window, app| {
             stepped.update(app, |view, cx| {
-                view.doc.set_viewport(view.viewport).unwrap();
                 view.doc
                     .update_rendering(&view.opts(), &parent, window, cx, |_| {})
             })

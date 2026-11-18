@@ -237,8 +237,6 @@ use crate::text::paragraph::runs::*;
 pub(super) mod geometry;
 pub use crate::text::paragraph::geometry::*;
 mod atoms;
-mod kept;
-pub(crate) use kept::{AtomFn, AtomSource, KeptAtoms, KeptSlot, LazyBuild};
 mod clamp;
 mod first_line;
 mod fit;

@@ -7,6 +7,7 @@
 
 use super::{orthogonal_limit, quirks};
 use crate::dom::Element;
+use crate::dom::text_content::gather_text;
 use crate::layout::box_tree::pseudo_line_layers;
 use crate::layout::options::RenderOpts;
 use crate::layout::writing_mode::orthogonal_inline;
@@ -27,7 +28,8 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
     // прижим текста читают `rtl` из стиля, и без этого шага блок с арабским
     // текстом прижимался влево.
     if e.attr("dir") == Some("auto") && e.style.cascaded().inh.writing.rtl.is_none() {
-        let text = crate::text::content::raw(&e.children, &opts.cx);
+        let mut text = String::new();
+        gather_text(&e.children, &mut text);
         let strong = text.chars().find_map(|ch| {
             use unicode_bidi::BidiClass::*;
             match unicode_bidi::bidi_class(ch) {
@@ -58,12 +60,8 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
         }
     }
     merged.resolve_viewport(opts.viewport, vcx);
-    if e.marks.quirks_fill {
-        quirks::fill(e, &mut merged, inherited, opts);
-    }
-    if merged.reset_transforms.offset_icb {
-        crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
-    }
+    quirks::fill(e, &mut merged, inherited, opts);
+    crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
     let gutters = crate::interactive::scroll_extent::classic::model(
         opts.cx.scroll.frame.as_ref(),
         e.node_id,
@@ -89,40 +87,4 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     merged
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::dom::Node;
-    use std::rc::Rc;
-
-    #[test]
-    fn an_ordinary_box_keeps_its_published_style_shared() {
-        let opts = RenderOpts {
-            text: gpui::TextStyle::default(),
-            viewport: (800.0, 600.0),
-            normal_line_height: 1.2,
-            cx: Default::default(),
-            frag: Default::default(),
-        };
-        let parent = BoxStyle::default();
-        let nodes = [Node::Element(crate::layout::table::anon::anon_element(
-            "div",
-            vec![],
-        ))];
-        crate::style::cascade::materialize::materialize(&nodes, parent.style_rc(), opts.cx.vcx());
-        let Node::Element(element) = &nodes[0] else {
-            unreachable!()
-        };
-        let published = element
-            .style
-            .slot()
-            .any()
-            .expect("published computed style");
-        for _ in 0..2 {
-            let merged = merged_style(element, &parent, &opts);
-            assert!(Rc::ptr_eq(merged.style_rc(), &published));
-        }
-    }
 }

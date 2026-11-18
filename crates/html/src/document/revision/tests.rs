@@ -45,7 +45,6 @@ fn state(doc: &Document) -> String {
 mod damage;
 mod differential;
 mod invalidation;
-mod media;
 mod records;
 mod repaint;
 mod repaint_background;

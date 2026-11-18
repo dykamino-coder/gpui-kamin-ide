@@ -10,7 +10,7 @@ use crate::text::{
     fonts::style_font::measure_font, inline, metrics, paragraph::text_id::text_id,
     text_box::normal_fraction,
 };
-use gpui::{AnyElement, SharedString};
+use gpui::{AnyElement, IntoElement, SharedString};
 #[allow(clippy::too_many_arguments)]
 // Paragraph construction consumes the span geometry records used by the probes.
 #[allow(clippy::type_complexity)]
@@ -20,7 +20,7 @@ pub(crate) fn native_paragraph(
     native_request: Option<&NativeRequest<'_>>,
     native: bool,
     selectable: bool,
-    text: SharedString,
+    text: String,
     runs: Vec<gpui::TextRun>,
     pieces: Vec<inline::Piece>,
     edges: Vec<(std::ops::Range<usize>, bool, f32)>,
@@ -31,7 +31,6 @@ pub(crate) fn native_paragraph(
     clamp_budget: Option<usize>,
     clamp_tag: Option<(u64, u32)>,
     line_atoms: LineAtoms,
-    keep: Option<crate::layout::reuse::paragraph::Sealed>,
 ) -> AnyElement {
     let native_request = native_request.filter(|_| native);
     let inherited = native_request.map_or(inherited, |request| request.style);
@@ -71,7 +70,7 @@ pub(crate) fn native_paragraph(
     let id = gpui::ElementId::Integer(text_id(&text));
     let family = inherited.inh.font.font_family.clone().unwrap_or_default();
     let para = crate::text::paragraph::Paragraph::new(
-        text,
+        SharedString::from(text),
         runs,
         gpui::px(biggest),
         line,
@@ -218,16 +217,27 @@ pub(crate) fn native_paragraph(
         ),
     );
     let para = crate::render::paragraph::first_line_box::configure(para, inherited, opts);
-    let mut para = if selectable {
+    let para = if selectable {
         para.selectable(id, opts.selection_color())
     } else {
         para
     };
-    if let Some(keep) = keep {
-        keep.attach(&mut para, opts);
-    }
     if let Some(request) = native_request {
         request.built.set(true);
     }
-    super::finish::finish(para, inherited, opts)
+    let projection = crate::interactive::scroll_extent::projection(
+        opts.cx.scroll.frame.as_ref(),
+        inherited.self_node,
+        None,
+        opts.cx.scroll.sticky.as_ref(),
+    );
+    let sticky = projection
+        .as_ref()
+        .map(|p| p.link().clone())
+        .or_else(|| opts.cx.scroll.sticky.clone());
+    crate::interactive::scroll_extent::project(
+        para.scroll_owner(inherited.self_node, sticky, opts.cx.scroll.frame.clone())
+            .into_any_element(),
+        projection,
+    )
 }

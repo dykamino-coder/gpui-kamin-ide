@@ -16,7 +16,6 @@ pub struct DocumentBuilder<'a> {
     source: Option<super::source::Source<'a>>,
     xml: bool,
     media: Media,
-    viewport: Option<(f32, f32)>,
     fonts: crate::text::metrics::FontContext,
     limits: crate::budget::DocumentLimits,
     governor: crate::budget::ResourceGovernor,
@@ -30,7 +29,6 @@ impl<'a> DocumentBuilder<'a> {
             source: None,
             xml: false,
             media: Media::default(),
-            viewport: None,
             fonts: Default::default(),
             limits: Default::default(),
             governor: Default::default(),
@@ -58,14 +56,6 @@ impl<'a> DocumentBuilder<'a> {
     /// Выбрать печатный носитель (иначе экранный).
     pub fn print(&mut self, print: bool) -> &mut Self {
         self.media = Media::for_medium(print);
-        self
-    }
-
-    /// The size of the viewport the document is first shown in (CSS px): the
-    /// size of its screen medium (`Document::set_viewport`). Without it the
-    /// medium starts at its default size.
-    pub fn viewport(&mut self, viewport: (f32, f32)) -> &mut Self {
-        self.viewport = Some(viewport);
         self
     }
 
@@ -106,22 +96,10 @@ impl<'a> DocumentBuilder<'a> {
                 .transpose()?
                 .flatten(),
             self.xml,
-            super::state::DocState::new(self.medium()),
+            super::state::DocState::new(self.media),
             &self.fonts,
             revision,
         )
-    }
-
-    /// The medium with the size of the first viewport, if the host gave it.
-    fn medium(&self) -> Media {
-        match self.viewport {
-            Some((width, height)) if !self.media.print => Media {
-                width,
-                height,
-                ..self.media
-            },
-            _ => self.media,
-        }
     }
 }
 

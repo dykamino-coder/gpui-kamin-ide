@@ -7,9 +7,6 @@ use crate::dom::outcome::{FailureScope, TraversalKind, TraversalLimit};
 use markup5ever_rcdom::Handle;
 use std::cell::{Cell, RefCell};
 
-#[cfg(feature = "heap-report")]
-mod heap;
-
 /// Предел построения коробок: 2 × 1026, как nsCSSFrameConstructor Gecko.
 /// Исходный DOM этим пределом не ограничен.
 pub const MAX_DEPTH: usize = crate::budget::DocumentLimits::BOX_DEPTH;
@@ -22,21 +19,12 @@ pub struct TraversalState {
     elements: RefCell<Vec<usize>>,
     /// Адрес исходного текстового узла по его `TextId - 1`.
     texts: RefCell<Vec<usize>>,
-    /// Keys of the same source texts; the traversal number is not an IFC identity.
-    text_keys: RefCell<Vec<crate::dom::NodeKey>>,
     /// Адреса исходных текстов, содержимое которых прочитала сборка сверх
     /// «пустой ли узел по CSS»: первый сильный знак для `dir=auto`/`<bdi>`,
     /// текст листа `<style>`. Правка такого текста может изменить стиль.
     read: RefCell<std::collections::HashSet<usize>>,
     first_limit: Cell<Option<TraversalLimit>>,
     embedded: Cell<bool>,
-    /// A computation read the viewport size (`values::viewport_reads`).
-    pub viewport_read: Cell<bool>,
-    /// The viewport-dependent media queries of the build being recorded
-    /// (`style::css::reads::record`).
-    pub media_record: RefCell<Option<crate::style::css::reads::MediaReads>>,
-    /// Equal paints of this document's boxes, shared (SharedPaints).
-    pub paints: crate::style::decoration_paint::SharedPaints,
 }
 
 impl TraversalState {
@@ -48,8 +36,6 @@ impl TraversalState {
         self.elements.replace(exact);
         let exact = self.texts.borrow().as_slice().to_vec();
         self.texts.replace(exact);
-        let exact = self.text_keys.borrow().as_slice().to_vec();
-        self.text_keys.replace(exact);
     }
 
     /// Забрать исходный DOM: следующая ревизия собирается из него же
@@ -64,18 +50,12 @@ impl TraversalState {
         let mut texts = self.texts.borrow_mut();
         let id = u32::try_from(texts.len() + 1).ok()?;
         texts.push(std::rc::Rc::as_ptr(handle) as usize);
-        self.text_keys.borrow_mut().push(handle.key());
         crate::dom::TextId::new(id)
     }
 
     /// Адреса исходных текстов удерживаемого DOM по `TextId - 1`.
     pub fn texts(&self) -> std::cell::Ref<'_, Vec<usize>> {
         self.texts.borrow()
-    }
-
-    /// Persistent DOM keys by `TextId - 1`, without holding the source handles.
-    pub fn text_keys(&self) -> std::cell::Ref<'_, Vec<crate::dom::NodeKey>> {
-        self.text_keys.borrow()
     }
 
     /// Сборка прочитала содержимое исходного текста `handle`.
@@ -108,6 +88,22 @@ impl TraversalState {
     /// Адреса построенных исходных элементов удерживаемого DOM.
     pub fn elements(&self) -> std::cell::Ref<'_, Vec<usize>> {
         self.elements.borrow()
+    }
+
+    /// Следующая ревизия с тем же деревом коробок: её исходный DOM и адреса его
+    /// элементов и текстов по тем же `node_id` и `TextId` и прочитанных сборкой
+    /// текстов.
+    pub fn readopt(
+        &self,
+        source: Admitted,
+        elements: Vec<usize>,
+        texts: Vec<usize>,
+        read: std::collections::HashSet<usize>,
+    ) {
+        self.source.replace(Some(source));
+        self.elements.replace(elements);
+        self.texts.replace(texts);
+        self.read.replace(read);
     }
 
     pub fn set_embedded(&self) {

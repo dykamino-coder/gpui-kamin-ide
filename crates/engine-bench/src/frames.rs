@@ -51,8 +51,6 @@ pub(super) struct Frames {
     before: (u64, u64),
     /// Сборки внутри `Window::draw` до кадра (`Document::builds_inside_draw`).
     before_inside: u64,
-    /// Contents replayed in the document before the frame (`Document::replayed_contents`).
-    before_contents: u64,
     samples: Vec<Value>,
 }
 
@@ -73,7 +71,6 @@ impl Frames {
             relayout,
             before: (0, 0),
             before_inside: 0,
-            before_contents: 0,
             samples: Vec::new(),
         })
     }
@@ -91,7 +88,6 @@ impl Frames {
             }
             self.before = view.doc.retained_frames();
             self.before_inside = view.doc.builds_inside_draw();
-            self.before_contents = view.doc.replayed_contents();
         })?;
         Ok(())
     }
@@ -104,13 +100,8 @@ impl Frames {
         mode: &str,
         index: usize,
     ) -> Result<()> {
-        let (after, inside, contents) = window.read_with(cx, |view, _| {
-            let doc = &view.doc;
-            (
-                doc.retained_frames(),
-                doc.builds_inside_draw(),
-                doc.replayed_contents(),
-            )
+        let (after, inside) = window.read_with(cx, |view, _| {
+            (view.doc.retained_frames(), view.doc.builds_inside_draw())
         })?;
         let cold = mode == "cold";
         let counts = delta(if cold { (0, 0) } else { self.before }, after)?;
@@ -128,8 +119,7 @@ impl Frames {
         let group = usize::from(self.relayout && !index.is_multiple_of(2));
         self.samples.push(json!({"mode": mode, "sample_index": index,
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
-            "builds_inside_draw": inside,
-            "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents })}));
+            "builds_inside_draw": inside}));
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
     }
 

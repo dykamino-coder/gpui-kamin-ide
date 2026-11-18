@@ -177,13 +177,10 @@ impl BoxStyle {
 
     /// `Computed::resolve_viewport` без копии общего стиля, когда решать нечего.
     pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: crate::values::ValueCx<'_>) {
-        // A paint with no lengths to resolve stays shared (`SharedPaints`).
-        if let Some(paint) = &mut self.paint
-            && paint.background.has_lengths()
-        {
-            let mut own = (**paint).clone();
-            own.background.resolve_viewport(&self.style, viewport, vcx);
-            *paint = vcx.doc.traversal.paints.share(own);
+        if let Some(paint) = &mut self.paint {
+            Rc::make_mut(paint)
+                .background
+                .resolve_viewport(&self.style, viewport, vcx);
         }
         if self.style.has_viewport_lengths(vcx) {
             Rc::make_mut(&mut self.style).resolve_viewport(viewport, vcx);
@@ -204,12 +201,6 @@ impl BoxStyle {
     /// Вычисленный стиль коробки — общий указатель.
     pub fn style_rc(&self) -> &Rc<Computed> {
         &self.style
-    }
-
-    /// Replace the box style with a ready shared value (the used style from the
-    /// document table) instead of writing through DerefMut, which copies Computed.
-    pub fn set_style_rc(&mut self, style: Rc<Computed>) {
-        self.style = style;
     }
 }
 

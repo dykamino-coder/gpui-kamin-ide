@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::style::decoration_paint::{DecorationPaint, PaintInput};
+use std::rc::Rc;
 mod gradient_filter;
 
 pub(super) fn inherit_paint(
@@ -123,5 +124,5 @@ pub(super) fn inherit_paint(
         &images,
     );
     paint.preparation = (!paint_filter).then_some(input);
-    c.paint = Some(vcx.doc.traversal.paints.share(paint));
+    c.paint = Some(Rc::new(paint));
 }

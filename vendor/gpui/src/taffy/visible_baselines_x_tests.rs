@@ -15,13 +15,10 @@ fn clipped_right_origin_lines_include_final_width_insets_and_scrollbar_gutter() 
             static_positions: Vec::new(),
             measure: Rc::new(RefCell::new(node_measure(|_, _, _, _, _| unreachable!()))),
             layout_lines: None,
-            layout_lines_x: Some(vec![px(11.0), px(17.0), px(23.0)].into()),
+            layout_lines_x: Some(vec![px(11.0), px(17.0), px(23.0)]),
             layout_lines_x_from_right: true,
             key_slot: crate::taffy::retained::NO_SLOT,
             keep_measure: false,
-            kept: false,
-            remeasured: false,
-            performed_size: taffy::Size::ZERO,
         };
         let mut style: Style = Style::DEFAULT;
         style.size = taffy::Size {

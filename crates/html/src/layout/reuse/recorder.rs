@@ -69,7 +69,7 @@ pub(super) struct Making {
 struct Output {
     prepaint: RetainedPrepaint,
     /// Вывод краски, отложенные строки и маска краски.
-    paint: Option<(RetainedPaint, Rc<LineCapture>, Bounds<Pixels>, bool)>,
+    paint: Option<(RetainedPaint, Rc<LineCapture>, Bounds<Pixels>)>,
 }
 
 impl Making {
@@ -161,7 +161,7 @@ impl Pending {
         // повтора (`FlowReuse::validate` пропускает его по чернилам), а на
         // другом месте повтор не годен: его вывод не хранится.
         let replay = match output.map(|o| (o.prepaint, o.paint)) {
-            Some((prepaint, Some((paint, deferred, at, movable))))
+            Some((prepaint, Some((paint, deferred, at))))
                 if !far && at == mask && paint.replayable() && deferred.complete() =>
             {
                 Some(Box::new(Replay {
@@ -171,7 +171,6 @@ impl Pending {
                     origin,
                     mask,
                     epoch,
-                    movable,
                 }))
             }
             _ => None,

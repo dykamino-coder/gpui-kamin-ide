@@ -65,12 +65,7 @@ pub(super) fn document_rules(
     // Каждый `<style>` — ОТДЕЛЬНАЯ таблица: конец каждой закрывает свои
     // незакрытые конструкции (CSS 2.1 §4.2, `uri-017`). В склейке незакрытая
     // запись первой таблицы съедала правила второй.
-    let sheets = document_style_tags(
-        &input.dom.document,
-        admission,
-        &vcx.doc.traversal,
-        (&media, vcx),
-    )?;
+    let sheets = document_style_tags(&input.dom.document, admission, &vcx.doc.traversal)?;
     let reads_attr = sheets.iter().any(|css| css.contains("attr(")) || extra_css.contains("attr(");
     for css in sheets.iter() {
         let base = rules.len();

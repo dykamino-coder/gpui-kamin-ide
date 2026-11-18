@@ -1,7 +1,6 @@
 //! Текст: руби, вертикальный текст, обрезка строк.
 
 pub mod clamp;
-pub(crate) mod content;
 pub(crate) mod font_facts;
 pub mod fonts;
 pub mod inline;

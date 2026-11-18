@@ -8,7 +8,8 @@ use super::{LineAtoms, NativeRequest};
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::render::paragraph::alignment::{atom_inline_size_fixed, atom_line_align};
-use crate::render::paragraph::atom_piece::{AtomRuby, atom_piece};
+use crate::render::paragraph::atom_piece::AtomRuby;
+use crate::render::paragraph::atom_piece::atom_piece;
 use crate::render::paragraph::edges::has_flow_text;
 use crate::render::paragraph::metrics::atoms_fit_line;
 use crate::style::computed::{BoxStyle, Computed};
@@ -41,18 +42,10 @@ pub(crate) fn paragraph_pieces_routed(
         cx.clamp.paragraph = None;
     });
     let opts = &*child_opts;
-    // The paragraph kept from the last frame, or the plan of this one's record.
-    let plain = native_request.is_none() && clamp_tag.is_none() && first_line_at == 0;
-    let keep = match crate::layout::reuse::paragraph::start(
-        nodes,
-        inherited,
-        opts,
-        plain,
-        super::finish::atom_builder,
-    ) {
-        Ok(para) => return super::finish::finish(para, inherited, opts),
-        Err(keep) => keep,
-    };
+    // Проверено: брать поперечное выравнивание ряда с самих кусков, когда
+    // абзац своего не задал (`vertical-align: bottom` у картинки), ничего не
+    // меняет — ни это, ни `align-self` на самой картинке высоту строки не
+    // трогают, картинка лишь прижимается к её низу. Дело не в выравнивании.
     // Текстовый путь абзаца — единственное место, где место куска вне потока
     // считается ДВУНАПРАВЛЕННО: строку режет и переставляет разбор UAX#9
     // внутри `lines.rs`, а `point_of` берёт продвижение от начала СВОЕЙ
@@ -91,7 +84,6 @@ pub(crate) fn paragraph_pieces_routed(
             let piece = atom(e, atom_cx, &ruby);
             let extents = ruby.take_extents();
             if matches!(piece, Some(inline::Piece::Atom(_))) {
-                keep.iter().for_each(|keep| keep.note_atom(e, atom_cx));
                 let extents = if ruby_role(e) == Some(crate::style::computed::RubyRole::Container) {
                     extents
                 } else {
@@ -185,8 +177,16 @@ pub(crate) fn paragraph_pieces_routed(
         each_line: inherited.inh.text_flow.text_indent_each_line == Some(true),
         hanging: inherited.inh.text_flow.text_indent_hanging == Some(true),
     };
-    // Word spacing and the first-line indent (negative ones included)
-    // are computed by the line layout itself (`lines::rules`): no row of words is made for them.
+    // Межсловный интервал считает своя раскладка строк: ряд из слов ломает
+    // выключку, висящие пробелы и перенос. Ряд остаётся только под отступ
+    // первой строки, который своей раскладке пока неизвестен.
+    // Отступ первой строки умеет своя раскладка строк: она одна знает, где
+    // строка кончается, и отрицательный отступ ей не помеха. Ряд из слов
+    // остаётся запасным путём — на нём отступ становится распоркой, а она
+    // отрицательной ширины не бывает.
+    // Ряда из слов под отступ первой строки больше нет: `lines::rules` отдаёт
+    // правила переноса ВСЕГДА, и своя раскладка строк умеет и отступ, и
+    // отрицательный отступ.
     // Атомы — В СТРОКУ абзаца (CSS 2.1 §9.2.2, §10.8): каждый становится
     // распоркой (U+FEFF), её продвижение — ширина атома, а сам элемент
     // раскладывает и ставит на базовую линию своей строки `Paragraph`. Для
@@ -205,7 +205,9 @@ pub(crate) fn paragraph_pieces_routed(
         let mut aligns = atom_aligns.into_iter().flatten();
         let mut at = 0usize;
         let mut out = Vec::with_capacity(pieces.len() + 2 * atom_count);
-        let mut mark = super::spacer::atom_spacer(inherited, opts);
+        let mut mark = inherited.clone();
+        mark.inh.text_flow.word_space_char = None;
+        mark.inh.text_flow.letter_spacing = Some(Len::Px(0.0));
         mark.inline_decoration.band_color = None;
         mark.inline_decoration.border_stroke = None;
         for p in pieces {
@@ -232,9 +234,6 @@ pub(crate) fn paragraph_pieces_routed(
         }
         pieces = out;
     }
-    let keep = keep.and_then(|keep| keep.seal(nodes, flow_text));
-    let doc = opts.cx.doc();
-    let shared = doc.boxes.borrow().flow_text(nodes, inherited.self_node);
     route_pieces(
         pieces,
         inherited,
@@ -244,7 +243,5 @@ pub(crate) fn paragraph_pieces_routed(
         clamp_budget,
         clamp_tag,
         line_atoms,
-        keep,
-        shared,
     )
 }

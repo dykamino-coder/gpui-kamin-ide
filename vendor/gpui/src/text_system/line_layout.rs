@@ -601,33 +601,6 @@ pub(crate) struct LineLayoutIndex {
     wrapped_lines_by_hash_index: usize,
 }
 
-impl LineLayoutIndex {
-    /// KaminIDE patch: this index in 32-bit words; retained ranges keep many.
-    pub(crate) fn pack(&self) -> [u32; 5] {
-        [
-            self.font_generation,
-            self.lines_index,
-            self.wrapped_lines_index,
-            self.lines_by_hash_index,
-            self.wrapped_lines_by_hash_index,
-        ]
-        .map(crate::window::pack_index)
-    }
-
-    /// KaminIDE patch: the index `pack` gave.
-    pub(crate) fn unpack(words: [u32; 5]) -> Self {
-        let [font_generation, lines_index, wrapped_lines_index, lines_by_hash_index, wrapped_lines_by_hash_index] =
-            words.map(|w| w as usize);
-        Self {
-            font_generation,
-            lines_index,
-            wrapped_lines_index,
-            lines_by_hash_index,
-            wrapped_lines_by_hash_index,
-        }
-    }
-}
-
 impl LineLayoutCache {
     pub fn new(
         platform_text_system: Arc<dyn PlatformTextSystem>,

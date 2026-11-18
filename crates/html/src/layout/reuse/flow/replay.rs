@@ -36,13 +36,12 @@ impl FlowCx {
             return None;
         }
         let record = store.replays.borrow().get(&e.node_id).cloned();
-        let start = Counters::read(&opts.cx);
-        let Some(record) =
-            record.filter(|r| r.paint_last.is_some() == step8() && r.fits(&self.key, start, e))
-        else {
+        let Some(record) = record.filter(|r| {
+            r.paint_last.is_some() == step8() && r.fits(&self.key, Counters::read(&opts.cx), e)
+        }) else {
             return self.far(e, opts);
         };
-        start.advanced(record.start, record.end).write(&opts.cx);
+        record.end.write(&opts.cx);
         let mut next = self.reuse.next_replays.take();
         next.insert(e.node_id, record.clone());
         self.reuse.next_replays.replace(next);
@@ -75,9 +74,9 @@ impl FlowCx {
         }
         let Some(child) = out.pop() else { return };
         let pending = Rc::new(PendingReplay::new(
-            Some(self.key.clone()),
-            (mark.start, end),
-            super::super::content::inert_tree(e, opts.cx.vcx()),
+            self.key.clone(),
+            mark.start,
+            end,
             widths,
             super::super::plain::fills_width(e),
             &self.reuse.ink,

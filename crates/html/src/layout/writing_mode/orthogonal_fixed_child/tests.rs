@@ -1,5 +1,6 @@
 //! Проверки поведения доменного модуля.
 use super::*;
+use crate::style::computed::BoxStyle;
 
 fn parent(size: f32) -> InlineConstraint {
     InlineConstraint {
@@ -94,7 +95,7 @@ fn parallel_block_retains_inline_block_height_during_intrinsic_measurement() {
         );
         with_inherited
     };
-    let child = {
+    let mut child = {
         let mut with_inherited = {
             let style_base = bordered();
             Computed {
@@ -112,9 +113,8 @@ fn parallel_block_retains_inline_block_height_during_intrinsic_measurement() {
         );
         with_inherited
     };
-    let mut child = crate::style::computed::BoxStyle::from(child);
     resolve(&mut child, &container, (800.0, 600.0), false);
-    let contribution = native_vertical::constraint(&child, 160.0).unwrap();
+    let contribution = native_vertical::constraint(&BoxStyle::new(child.clone()), 160.0).unwrap();
     assert_eq!(contribution.fixed, Some(120.0));
     assert_eq!(contribution.used(40.0, 140.0), 120.0);
     container.reset_box_layout.height = None;
@@ -152,16 +152,15 @@ fn parallel_cell_children_fill_the_cells_authored_inline_size() {
         );
         with_inherited
     };
-    let child = {
+    let mut child = {
         let mut with_inherited = Computed { ..bordered() };
         with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         with_inherited
     };
-    let mut child = crate::style::computed::BoxStyle::from(child);
     resolve(&mut child, &cell, (800.0, 600.0), false);
-    let constraint = native_vertical::constraint(&child, 180.0).unwrap();
+    let constraint = native_vertical::constraint(&BoxStyle::new(child.clone()), 180.0).unwrap();
     // A shorter line still occupies the containing cell's content inline
     // size, with both borders deducted once rather than shrinking its box.
     assert_eq!(constraint.used(60.0, 120.0), 140.0);

@@ -6,45 +6,13 @@
 //! коробок округляются от сырого начала абзаца, как в основном дереве.
 
 use super::*;
-use gpui::{App, Bounds, LayoutId, Pixels, Point, Window, point, px};
+use gpui::{App, Bounds, LayoutId, Window, point, px};
 
 impl Paragraph {
     pub(super) fn place_atoms(&mut self, root: LayoutId, window: &mut Window, cx: &mut App) {
-        let count = self.atom_count();
-        if count == 0 || self.lines.is_empty() {
+        if self.atoms.is_empty() || self.lines.is_empty() {
             return;
         }
-        let origins = self.atom_origins(root, count, window);
-        if self.place_kept(&origins, window, cx) {
-            return;
-        }
-        for (k, origin) in origins.into_iter().enumerate() {
-            let Some(origin) = origin else {
-                self.atoms[k].hidden = true;
-                continue;
-            };
-            self.atoms[k].hidden = false;
-            match self.atoms[k].root.get() {
-                Some(root) => {
-                    window.set_layout_root_origin(root, origin);
-                    self.atoms[k]
-                        .el
-                        .prepaint_at(point(px(0.), px(0.)), window, cx);
-                }
-                None => {
-                    self.atoms[k].el.prepaint_at(origin, window, cx);
-                }
-            }
-        }
-    }
-
-    /// Where each atom's root goes; `None` past the last line.
-    fn atom_origins(
-        &self,
-        root: LayoutId,
-        count: usize,
-        window: &mut Window,
-    ) -> Vec<Option<Point<Pixels>>> {
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(root),
             size: window.layout_size_unrounded(root),
@@ -70,19 +38,18 @@ impl Paragraph {
         }
         let mut cursor = 0;
         let mut row_geometry = None;
-        let mut origins = Vec::with_capacity(count);
-        for k in 0..count {
+        for k in 0..self.atoms.len() {
             let Some(b) = self.atom_boxes.get(k).copied() else {
-                origins.push(None);
                 continue;
             };
             // Атом за концом последней строки остался в оборванном
             // `line-clamp` хвосте: прежде он вставал на последнюю видимую
             // строку поверх её текста (`line-clamp-auto-with-ruby-002`).
             let Some(row) = atom_row(&self.lines, &mut cursor, b.at) else {
-                origins.push(None);
+                self.atoms[k].hidden = true;
                 continue;
             };
+            self.atoms[k].hidden = false;
             let line = self.lines[row].clone();
             let (p, q) = pads.get(row).copied().unwrap_or((0.0, 0.0));
             if row_geometry
@@ -122,12 +89,19 @@ impl Paragraph {
             // `set_root_origin`). Округлённый угол корня давал точку
             // расхождения с тем же атомом в гибком ряду
             // (`flexbox-justify-content-horiz-002/004`).
-            origins.push(Some(point(
-                bounds.origin.x + x,
-                bounds.origin.y + px(top + b.drop),
-            )));
+            let origin = point(bounds.origin.x + x, bounds.origin.y + px(top + b.drop));
+            match self.atoms[k].root.get() {
+                Some(root) => {
+                    window.set_layout_root_origin(root, origin);
+                    self.atoms[k]
+                        .el
+                        .prepaint_at(point(px(0.), px(0.)), window, cx);
+                }
+                None => {
+                    self.atoms[k].el.prepaint_at(origin, window, cx);
+                }
+            }
         }
-        origins
     }
 }
 

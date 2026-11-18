@@ -24,8 +24,6 @@ pub(crate) fn route_pieces(
     clamp_budget: Option<usize>,
     clamp_tag: Option<(u64, u32)>,
     line_atoms: LineAtoms,
-    keep: Option<crate::layout::reuse::paragraph::Sealed>,
-    shared: Option<SharedString>,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
@@ -90,7 +88,7 @@ pub(crate) fn route_pieces(
         let selectable = inherited.reset_context.no_select != Some(true)
             && inherited.inh.ui.pointer_events_none != Some(true);
         if !native && !selectable {
-            return gpui::StyledText::new(super::finish::own_text(text, shared))
+            return gpui::StyledText::new(SharedString::from(text))
                 .with_ligature_breaking(false)
                 .with_runs(runs)
                 .into_any_element();
@@ -103,7 +101,7 @@ pub(crate) fn route_pieces(
                 native_request,
                 native,
                 selectable,
-                super::finish::own_text(text, shared),
+                text,
                 runs,
                 pieces,
                 edges,
@@ -114,7 +112,6 @@ pub(crate) fn route_pieces(
                 clamp_budget,
                 clamp_tag,
                 line_atoms,
-                keep,
             );
         }
     }
@@ -233,8 +230,6 @@ mod tests {
                     None,
                     None,
                     vec![],
-                    None,
-                    None,
                 );
                 assert_eq!(
                     element.downcast_mut::<gpui::StyledText>().is_some(),

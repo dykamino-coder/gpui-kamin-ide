@@ -72,7 +72,6 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
         .unwrap();
     let old_state = doc.state.clone();
     let old_revision = doc.revision_budget();
-    let dom_key = doc.source_dom().key();
     let live = doc.budget().reserve(BudgetKind::LiveBytes, 8).unwrap();
     let salt = doc.salt();
     let failure = doc.update(&"x".repeat(17), "").unwrap_err();
@@ -82,7 +81,6 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
     assert!(doc.update("<p>b</p>", "").unwrap().changed());
     assert_eq!(doc.revision_budget().used(BudgetKind::SourceBytes), 8);
     assert_eq!(old_revision.used(BudgetKind::SourceBytes), 8);
-    assert_eq!(doc.source_dom().key(), dom_key);
     // Обновление меняет объём живого DOM; отдельная резервация остаётся
     // в том же ledger и освобождает ровно свои восемь байт.
     let with_live = doc.budget().used(BudgetKind::LiveBytes);

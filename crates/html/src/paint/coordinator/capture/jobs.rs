@@ -43,7 +43,7 @@ impl JobCapture {
             window.replay_retained_paint(paint);
         }
         if let Some(deferred) = self.deferred.borrow().as_ref() {
-            readmit(window, deferred, gpui::Point::default());
+            readmit(window, deferred);
         }
     }
 }
@@ -116,23 +116,19 @@ pub(in crate::paint::coordinator) fn lost(job: &Positioned) {
 /// Возврат отложенной краски `record` в очереди открытого кадра: строки — в
 /// очередь строк, задания — в собиратель с их ключами, в порядке прихода.
 /// Вне открытого кадра всё рисуется на месте, как рисовала бы сборка.
-pub(super) fn readmit(
-    window: &mut Window,
-    record: &LineCapture,
-    offset: gpui::Point<gpui::Pixels>,
-) {
+pub(super) fn readmit(window: &mut Window, record: &LineCapture) {
     for line in record.lines.borrow().iter() {
         match current(window).filter(|pass| pass.is_open(window)) {
             Some(pass) => {
                 let job = queue::Inline {
-                    paint: queue::InlinePaint::Replay(Box::new((line.clone(), offset))),
+                    paint: queue::InlinePaint::Replay(Box::new(line.clone())),
                     context: window.raster_paint_ctx(&pass.raster),
                     captures: super::claim(window, &pass),
                 };
                 pass.jobs.admit_inline(job);
             }
             None => {
-                window.replay_retained_paint_moved(line, offset);
+                window.replay_retained_paint(line);
             }
         }
     }

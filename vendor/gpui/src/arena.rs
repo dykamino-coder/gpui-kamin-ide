@@ -85,9 +85,6 @@ pub struct Arena {
     current_chunk_index: usize,
     chunk_size: NonZeroUsize,
     scope_depth: usize,
-    /// KaminIDE patch: elements of the frame that lay out as their child
-    /// (`note_layoutless`), so the layout tree gets no node of theirs.
-    layoutless: usize,
 }
 
 impl Drop for Arena {
@@ -106,7 +103,6 @@ impl Arena {
             current_chunk_index: 0,
             chunk_size,
             scope_depth: 0,
-            layoutless: 0,
         }
     }
 
@@ -117,17 +113,6 @@ impl Arena {
     /// KaminIDE patch: values allocated since the last clear (elements of the frame).
     pub fn allocations(&self) -> usize {
         self.elements.len()
-    }
-
-    /// KaminIDE patch: one element of the frame lays out as its child and
-    /// takes no node of the layout tree.
-    pub fn note_layoutless(&mut self) {
-        self.layoutless += 1;
-    }
-
-    /// KaminIDE patch: elements of the frame that may take a layout node.
-    pub fn layout_elements(&self) -> usize {
-        self.elements.len().saturating_sub(self.layoutless)
     }
 
     /// Marks the start of a scope (e.g. a window draw) whose allocations must stay
@@ -171,7 +156,6 @@ impl Arena {
         self.valid.set(false);
         self.valid = Rc::new(Cell::new(true));
         self.elements.clear();
-        self.layoutless = 0;
         // KaminIDE patch: drop elements before returning their backing chunks.
         // Keep one normal frame chunk, rather than a permanent high-water mark.
         self.chunks.truncate(1);

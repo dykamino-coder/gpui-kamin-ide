@@ -55,7 +55,7 @@ pub(super) fn boundary_gap_after_box(
 ///
 /// Распорка строчной коробки пропускается: в её трекинге лежит поле коробки, а
 /// не межбуквенный интервал, и перебивать его нельзя.
-pub(in crate::text::inline) fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
+pub(super) fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
     let last = pieces.iter_mut().rev().find_map(|p| match p {
         Piece::Text { text, style } if !text.is_empty() && text != SPACER => Some(style),
         _ => None,

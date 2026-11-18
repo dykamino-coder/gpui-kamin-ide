@@ -54,11 +54,9 @@ impl Record {
             resizable: self.resizable.clone(),
             stretch: self.stretch.clone(),
             far: self.far.clone(),
-            // Copied: a frame refused and built again finds this record by its
-            // block once more (`FlowReuse::again`).
             replay: RefCell::new(match repaint {
                 true => None,
-                false => self.replay.borrow().clone(),
+                false => self.replay.take(),
             }),
             repaint: Cell::new(self.repaint.get() || repaint),
             kept: Cell::new(false),

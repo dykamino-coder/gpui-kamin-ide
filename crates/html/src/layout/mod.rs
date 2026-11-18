@@ -22,7 +22,6 @@ pub(crate) mod page;
 pub(crate) mod positioned;
 pub(crate) mod probe;
 pub(crate) mod replaced;
-pub(crate) mod retained;
 pub(crate) mod reuse;
 pub(crate) mod table;
 pub(crate) mod writing_mode;

@@ -13,7 +13,6 @@ use crate::style::computed::{
     Computed, ResetBackground, ResetBorder, ResetBoxLayout, Sides, StyleGroup,
 };
 use std::cell::Cell;
-use std::rc::Rc;
 
 const CAPACITY: usize = 32;
 
@@ -38,9 +37,6 @@ struct Entry {
     padding: Sides,
     /// The groups after the write.
     written: Groups,
-    /// The style written over and the whole style written: a cell of the
-    /// same style value takes it without a copy of `Computed`.
-    whole: (Rc<Computed>, Rc<Computed>),
 }
 
 fn groups(style: &Computed) -> Groups {
@@ -60,16 +56,7 @@ impl EdgeStyles {
     /// plus the half edges) over the style of `cell` and drop its own border.
     pub(super) fn apply(&self, cell: &mut Element, insets: [f32; 4], padding: Sides) {
         let mut made = self.0.take();
-        let base = cell.style.used().style;
-        let whole = made.iter().find(|entry| {
-            entry.insets == insets && entry.padding == padding && Rc::ptr_eq(&entry.whole.0, &base)
-        });
-        if let Some(entry) = whole {
-            cell.style.set_used_rc(entry.whole.1.clone());
-            self.0.set(made);
-            return;
-        }
-        let over = groups(&base);
+        let over = groups(&cell.style.used());
         let hit = made.iter().find(|entry| {
             entry.insets == insets && entry.padding == padding && same(&entry.over, &over)
         });
@@ -87,13 +74,11 @@ impl EdgeStyles {
         style.reset_box_layout.padding = padding;
         style.reset_border.border_width = Default::default();
         style.reset_border.border_visible = [None; 4];
-        let written = groups(style);
         let entry = Entry {
             over,
             insets,
             padding,
-            written,
-            whole: (base, cell.style.used().style),
+            written: groups(style),
         };
         if made.len() < CAPACITY {
             made.push(entry);
@@ -158,33 +143,6 @@ mod tests {
         assert_eq!(a.reset_background.bg_border_insets, Some([0.5; 4]));
         assert_eq!(b.reset_box_layout.padding, pad(1.5));
         assert_eq!(b.reset_border.border_visible, [None; 4]);
-        assert_eq!(entries(&styles), 1);
-    }
-
-    #[test]
-    fn cells_of_one_style_value_share_the_whole_used_style_without_a_copy() {
-        let styles = EdgeStyles::default();
-        let [mut a, _] = cells();
-        let mut b = a.clone();
-        styles.apply(&mut a, [0.5; 4], pad(1.5));
-        #[cfg(feature = "work-counters")]
-        let session = crate::work::Session::begin();
-        styles.apply(&mut b, [0.5; 4], pad(1.5));
-        #[cfg(feature = "work-counters")]
-        {
-            let work = session.finish();
-            let copies: u64 = work
-                .0
-                .iter()
-                .map(|phase| phase[crate::work::Counter::ComputedClones as usize])
-                .sum();
-            assert_eq!(copies, 0, "the second cell copied its style");
-        }
-        assert!(Rc::ptr_eq(&a.style.used().style, &b.style.used().style));
-        assert_eq!(b.style.used().reset_box_layout.padding, pad(1.5));
-        // A later edit of one cell copies its own style, not the shared one.
-        b.style.used_mut().reset_box_layout.width = Some(Len::Px(7.0));
-        assert_eq!(a.style.used().reset_box_layout.width, None);
         assert_eq!(entries(&styles), 1);
     }
 

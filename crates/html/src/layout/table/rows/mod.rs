@@ -1,5 +1,6 @@
 //! Цикл рядов таблицы: ячейки, рамки ячеек, фоны (table_rows).
 
+use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::table_finish;
 use gpui::AnyElement;

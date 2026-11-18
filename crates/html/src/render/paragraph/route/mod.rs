@@ -16,11 +16,9 @@ use std::cell::Cell;
 mod alignment;
 mod choose;
 mod collect;
-mod finish;
 mod native;
 mod probed;
 mod row_record;
-mod spacer;
 mod spans;
 mod styling;
 

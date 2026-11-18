@@ -47,10 +47,9 @@ pub(super) fn walk(
             .map(|(_, c)| c.clone())
             .unwrap_or_else(|| inherited.clone());
         let slot = e.style.slot();
-        let (computed, reads) = match slot.get(e.style.cascaded(), &parent, generation) {
-            Some(kept) => (kept, slot.reads_viewport()),
-            None => sharing.compute(slot, &parent, e.style.cascaded(), vcx),
-        };
+        let computed = slot
+            .get(e.style.cascaded(), &parent, generation)
+            .unwrap_or_else(|| sharing.compute(slot, &parent, e.style.cascaded(), vcx));
         // Равные входы позволяют разделить значение, но ссылка наследования
         // должна указывать на текущего родителя, включая новый кадр каскада.
         let republished = !e
@@ -68,7 +67,7 @@ pub(super) fn walk(
         {
             *slot.0.borrow_mut() = Some(Rc::new(Materialized {
                 parent: parent.clone(),
-                generation: super::stored(generation, reads),
+                generation,
                 computed: computed.clone(),
             }));
         }

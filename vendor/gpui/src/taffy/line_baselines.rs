@@ -103,9 +103,6 @@ impl TaffyLayoutEngine {
             layout_lines_x_from_right: false,
             key_slot: crate::taffy::retained::NO_SLOT,
             keep_measure: false,
-            kept: false,
-            remeasured: false,
-            performed_size: taffy::Size::ZERO,
         });
         // KaminIDE patch: a keyed leaf keeps a previous leaf of the same key.
         let key = self.retained.next_key.take();

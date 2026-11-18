@@ -608,37 +608,6 @@ impl Scene {
         }
     }
 
-    /// KaminIDE patch: `replay` of `range` of the rendered `prev_scene` moved
-    /// by `offset` and clipped by `clip` (`Window::replay_retained_paint_moved`):
-    /// commands are placed as `replay_placed` places a record's, and indexed
-    /// by a tree packed from their new places.
-    pub(crate) fn replay_moved(
-        &mut self,
-        range: Range<usize>,
-        prev_scene: &Scene,
-        offset: Point<ScaledPixels>,
-        clip: Bounds<ScaledPixels>,
-    ) {
-        let mut operations = prev_scene.paint_operations[range].to_vec();
-        operations.retain_mut(|operation| match operation {
-            PaintOperation::Primitive(primitive) => {
-                record::geometry::primitive(primitive, offset, Some(clip));
-                !placed_bounds(primitive)
-                    .intersect(&primitive.content_mask().bounds)
-                    .is_empty()
-            }
-            PaintOperation::StartLayer(bounds, _) => {
-                *bounds = record::geometry::bounds(*bounds, offset);
-                true
-            }
-            _ => true,
-        });
-        if !self.replay_shifted(&operations, ReplaySource::Pack, &prev_scene.book.images, |_| true) {
-            for operation in operations {
-                self.replay_image_operation(operation, &prev_scene.book.images);
-            }
-        }
-    }
     /// KaminIDE patch: `replay_record` of `scene.copy_record(offset, clip)`
     /// without the intermediate copy: every command is placed (moved by
     /// `offset`, clipped by `clip`; primitives clipped away are dropped as

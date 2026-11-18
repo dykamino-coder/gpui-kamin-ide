@@ -8,11 +8,7 @@ impl Document {
     /// Блоки кучи документа по путям отчёта: DOM, исходное дерево разбора,
     /// стиль, сохраняемые записи.
     pub fn heap_report(&self, ops: &mut Ops) {
-        ops.at("document/box-arena", |ops| self.state.boxes.heap_size(ops));
         ops.at("dom/nodes", |ops| self.nodes.heap_size(ops));
-        ops.at("dom/source-index", |ops| {
-            self.state.values.traversal.heap_size(ops)
-        });
         if let Some(source) = self.state.values.source_dom() {
             ops.at("dom/source-tree", |ops| {
                 kamin_style::dom::heap::source_tree(&source, ops)

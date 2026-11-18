@@ -53,7 +53,7 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         let painted = used_style(block, &BoxStyle::from((*block.style.cascaded()).clone()))
             .unwrap_or_else(|| BoxStyle::from(block.style.cascaded().clone()));
         assert_eq!(painted.reset_box_layout.height, Some(Len::Px(0.0)));
-        let child = {
+        let mut child = {
             let mut with_inherited = Computed {
                 reset_context: crate::style::computed::StyleGroup::new(
                     crate::style::computed::ResetContext {
@@ -66,7 +66,6 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
             with_inherited.inh.writing.writing_mode = Some(WritingModeKw::new(true, false, false));
             with_inherited
         };
-        let mut child = crate::style::computed::BoxStyle::from(child);
         orthogonal_inline::resolve(&mut child, &block.style.used(), (800.0, 600.0), false);
         let available = child
             .reset_context

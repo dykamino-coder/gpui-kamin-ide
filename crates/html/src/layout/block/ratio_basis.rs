@@ -56,7 +56,7 @@ mod tests {
             ),
             ..Computed::default()
         };
-        let child = {
+        let mut child = {
             let mut with_inherited = Computed {
                 reset_box_layout: crate::style::computed::StyleGroup::new(
                     crate::style::computed::ResetBoxLayout {
@@ -71,7 +71,6 @@ mod tests {
             );
             with_inherited
         };
-        let mut child = crate::style::computed::BoxStyle::from(child);
         resolve(&mut child, &parent, (800.0, 600.0), false);
         assert_eq!(child.reset_box_layout.height, Some(Len::Px(100.0)));
         assert_eq!(

@@ -26,8 +26,6 @@ impl Recorder {
         child: AnyElement,
         (reuse, at): (Rc<FlowReuse>, usize),
     ) -> Self {
-        // The wrapper lays out as its child: no node of its own.
-        gpui::note_layoutless_element();
         Self { child, reuse, at }
     }
 }
@@ -182,10 +180,7 @@ impl Skip<'_> {
                         window.record_retained_paint(|window| child.paint(window, cx))
                     })
                 });
-                // The output may replay moved with its block (`placeholder`).
-                let movable = window.retained_movable(&output.prepaint, &paint)
-                    && crate::hooks::deferred_movable(&deferred);
-                output.paint = Some((paint, deferred, mask, movable));
+                output.paint = Some((paint, deferred, mask));
                 Some(output)
             }
         };

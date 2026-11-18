@@ -21,7 +21,7 @@ fn px(value: Option<Len>) -> Option<f32> {
 }
 
 /// Resolve the box's own inline-axis percentages against its vertical containing block.
-pub(crate) fn resolve_percentages(style: &mut BoxStyle, parent: &BoxStyle) {
+pub(crate) fn resolve_percentages(style: &mut Computed, parent: &BoxStyle) {
     let Some(cb) = parent.inline_definite else {
         return;
     };

@@ -174,10 +174,8 @@ struct NodeContext {
     // KaminIDE patch: intrinsic callbacks cannot overwrite performed static rects.
     static_positions: Vec<MeasuredStaticPosition>,
     measure: std::rc::Rc<std::cell::RefCell<NodeMeasureFn>>,
-    // KaminIDE patch: boxed slices, not vectors: the room of the capacities
-    // holds `performed_size`.
-    layout_lines: Option<Box<[Pixels]>>,
-    layout_lines_x: Option<Box<[Pixels]>>,
+    layout_lines: Option<Vec<Pixels>>,
+    layout_lines_x: Option<Vec<Pixels>>,
     layout_lines_x_from_right: bool,
     /// KaminIDE patch: index of this keyed leaf in its key's candidate list
     /// (`retained::NO_SLOT` outside it). Lives in the struct's padding.
@@ -185,20 +183,12 @@ struct NodeContext {
     /// KaminIDE patch: the next pass keeps this leaf's measure function
     /// (`TaffyLayoutEngine::keep_measures`). Lives in the struct's padding.
     keep_measure: bool,
-    /// KaminIDE patch: this pass measures the leaf with the function an
-    /// earlier pass kept (`keep_measures`), not with one of its requests.
-    kept: bool,
-    /// KaminIDE patch: the kept function laid the leaf out otherwise in this
-    /// pass than in the last full layout (`TaffyLayoutEngine::remeasured`).
-    remeasured: bool,
-    /// KaminIDE patch: the size of the leaf's last full layout.
-    performed_size: taffy::Size<f32>,
 }
 
 // The retained-tree fields above fill padding: every node of the frame tree has
 // a context slot (a dense secondary map), so a larger context costs every node.
 const _: () = assert!(
-    std::mem::size_of::<NodeContext>() == 10 * std::mem::size_of::<usize>()
+    std::mem::size_of::<NodeContext>() == 11 * std::mem::size_of::<usize>()
         || std::mem::size_of::<usize>() != 8
 );
 

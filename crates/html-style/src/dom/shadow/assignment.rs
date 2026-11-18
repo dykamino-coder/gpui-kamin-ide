@@ -65,7 +65,7 @@ pub(super) fn shadow_scope(
     agent.clone_cost.replay(&admission)?;
     let mut rules = agent.rules.clone();
     let mut frames = agent.frames.clone();
-    let sheets = try_collect_style_tags(root, &admission, Some((&media, vcx)))?;
+    let sheets = try_collect_style_tags(root, &admission)?;
     for css in sheets.iter() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(css, media, layers, vcx)?

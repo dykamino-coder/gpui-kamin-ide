@@ -46,16 +46,6 @@ impl WidthSink for Cell<bool> {
     }
 }
 
-/// A nested subtree's sink and its tracked ancestor's (`track_widths_below`).
-struct BothSinks(Rc<dyn WidthSink>, Rc<dyn WidthSink>);
-
-impl WidthSink for BothSinks {
-    fn note(&self) {
-        self.0.note();
-        self.1.note();
-    }
-}
-
 /// Read set of the widths of a subtree kept across frames (`layout::reuse`):
 /// the subtree's build output stays valid under another available width
 /// unless the build consumed a width that came from outside the subtree.
@@ -190,22 +180,6 @@ impl BoxConstraints {
             "a tracking context"
         );
         self.widths.sink.set(Some(sink));
-        self.cb_outside.set(true);
-        self.avail_outside.set(true);
-    }
-
-    /// `track_widths` inside a subtree that may be tracked already (a block
-    /// of the root flow): a read goes to `sink`, and also to the outer sink
-    /// when a width of this context came from outside the outer subtree.
-    pub(crate) fn track_widths_below(&mut self, sink: Rc<dyn WidthSink>) {
-        let outside = self.cb_outside.get() || self.avail_outside.get();
-        let sink = match self.widths.sink().filter(|_| outside) {
-            Some(outer) => Rc::new(BothSinks(sink, outer)),
-            None => sink,
-        };
-        self.widths = WidthReads {
-            sink: Cell::new(Some(sink)),
-        };
         self.cb_outside.set(true);
         self.avail_outside.set(true);
     }

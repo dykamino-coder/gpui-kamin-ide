@@ -1,5 +1,6 @@
 //! Выбор физического маршрута вертикального абзаца.
 
+use crate::dom::text_content::gather_text;
 use crate::layout::options::{RenderOpts, own_size};
 use crate::render::paragraph::route::NativeRequest;
 use crate::text::fonts::style_font::measure_font;
@@ -68,7 +69,8 @@ pub(crate) fn vertical_paragraph(
     // (`rotated_atom::physical`), so a line of atoms only is turned like any
     // other: its atoms advance along the vertical inline axis and wrap at the
     // box's inline size (css-writing-modes-4 §6.4 Abstract-Physical Mapping).
-    let plain = crate::text::content::raw(nodes, &opts.cx);
+    let mut plain = String::new();
+    gather_text(nodes, &mut plain);
     // Неразрывный пробел — ТЕКСТ: он даёт строку и её толщину
     // (`<td>&nbsp;</td>` в вертикальном ряду, ch-units-vrl-005).
     if crate::dom::whitespace::blank_text(&plain) && !turned_atom_line(nodes, inherited) {

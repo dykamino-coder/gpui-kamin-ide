@@ -46,10 +46,6 @@ impl Computed {
             )
         };
         let size = self.inh.font.font_size?;
-        // Without a viewport the size stays unfolded, which is a read of it too.
-        if size.folds_viewport(vcx) {
-            crate::values::viewport_reads::note(vcx);
-        }
         let size = if vcx.viewport.0 > 0.0 && vcx.viewport.1 > 0.0 {
             size.fold_viewport(self.viewport_cx(vcx.viewport), vcx)
         } else {

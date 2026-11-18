@@ -18,24 +18,12 @@ pub type TextId = NonZeroU32;
 pub struct Text {
     text: String,
     source: Option<TextId>,
-    /// The source node the text starts with: a glued text keeps it.
-    first: Option<TextId>,
 }
 
 impl Text {
     /// Текст из исходного узла `source`.
     pub fn from_source(text: String, source: Option<TextId>) -> Self {
-        Self {
-            text,
-            source,
-            first: source,
-        }
-    }
-
-    /// The source text node this text starts with, glued or not: the key of
-    /// the flow that publishes it (`BoxTree` flows).
-    pub fn first_source(&self) -> Option<TextId> {
-        self.first
+        Self { text, source }
     }
 
     /// Номер исходного текстового узла, если текст построен из одного узла.
@@ -73,11 +61,7 @@ impl DerefMut for Text {
 
 impl From<String> for Text {
     fn from(text: String) -> Self {
-        Self {
-            text,
-            source: None,
-            first: None,
-        }
+        Self { text, source: None }
     }
 }
 

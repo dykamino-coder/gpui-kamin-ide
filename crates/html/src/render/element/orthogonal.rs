@@ -3,13 +3,13 @@
 use crate::dom::Element;
 use crate::layout::box_kind::in_flow;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{BoxStyle, Computed, Display};
+use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn orthogonal_limit(
     e: &Element,
-    merged: &mut BoxStyle,
+    merged: &mut Computed,
     inherited: &Computed,
     opts: &RenderOpts,
 ) {
@@ -107,7 +107,7 @@ pub(crate) fn orthogonal_limit(
                 || merged.reset_context.ortho_limit.is_none()
                 || h.is_some()
             {
-                set_ortho_limit(merged, avail, opts);
+                merged.reset_context.ortho_limit = Some(avail);
                 own_limit = true;
             }
         }
@@ -136,31 +136,8 @@ pub(crate) fn orthogonal_limit(
                 + px_of(e.style.used().reset_box_layout.padding.top).unwrap_or(0.0)
                 + px_of(e.style.used().reset_box_layout.padding.bottom).unwrap_or(0.0);
             if edges > 0.0 {
-                set_ortho_limit(merged, (l - edges).max(0.0), opts);
+                merged.reset_context.ortho_limit = Some((l - edges).max(0.0));
             }
         }
     }
-}
-
-/// Blocks of one style share the style with their limit from the box tree
-/// (`document::boxes::used`) instead of a copy each; a style only this box
-/// holds is written in place, and an unchanged limit is not written at all.
-fn set_ortho_limit(merged: &mut BoxStyle, limit: f32, opts: &RenderOpts) {
-    if merged.reset_context.ortho_limit == Some(limit) {
-        return;
-    }
-    if std::rc::Rc::strong_count(merged.style_rc()) == 1 {
-        merged.reset_context.ortho_limit = Some(limit);
-        return;
-    }
-    let role = crate::document::boxes::used::UsedRole::OrthoLimit(limit.to_bits());
-    let base = merged.style_rc().clone();
-    let found = opts.cx.doc().boxes.borrow().used.find(&base, role);
-    if let Some(found) = found {
-        merged.set_style_rc(found);
-        return;
-    }
-    merged.reset_context.ortho_limit = Some(limit);
-    let used = merged.style_rc().clone();
-    opts.cx.doc().boxes.borrow().used.insert(&base, role, used);
 }

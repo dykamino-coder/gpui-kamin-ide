@@ -47,35 +47,10 @@ async fn stack(
     opts: &RenderOpts,
     fresh: bool,
 ) -> Vec<AnyElement> {
-    let cell_bfc = opts.cx.constraints.cell_bfc;
-    let mut inner = context::child_options(inherited, &sizes, opts, fresh);
-    // Clean content of a box replays its last frame (`layout::reuse::content`).
-    let reuse = opts.cx.contracts.reuse.as_ref();
-    let content = reuse.and_then(|r| r.content(nodes, inherited, opts, &inner, fresh));
-    if let (Some(reuse), Some(content)) = (reuse, &content)
-        && let Some(out) = reuse.replay_content(content, &inner)
-    {
-        return out;
-    }
-    if let Some(content) = &content {
-        content.track(&mut inner);
-    }
-    let mut out = build(stk, nodes, inherited, sizes, &inner, cell_bfc).await;
-    if let (Some(reuse), Some(content)) = (reuse, content) {
-        reuse.record_content(content, &inner, &mut out);
-    }
-    out
-}
-
-async fn build(
-    stk: &mut reblessive::Stk,
-    nodes: &[Node],
-    inherited: &BoxStyle,
-    sizes: BoxDimensions,
-    opts: &RenderOpts,
-    cell_bfc: bool,
-) -> Vec<AnyElement> {
     let vcx = opts.cx.vcx();
+    let cell_bfc = opts.cx.constraints.cell_bfc;
+    let inner_opts = context::child_options(inherited, &sizes, opts, fresh);
+    let opts = &inner_opts;
     let (ordered, under_tf) = prepare_children::container_flags(inherited);
     if text_only::applies(nodes, inherited, ordered) {
         return text_only::flow(stk, nodes, inherited, opts, under_tf).await;

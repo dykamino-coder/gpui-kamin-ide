@@ -33,29 +33,6 @@ impl SharedStyle {
             && same_ptr(&self.decoration, &other.decoration)
     }
 
-    /// `same` by the cascaded style, the derived stages compared only where
-    /// both styles have them (see `same_cascaded_layout`). The decoration
-    /// input of a rebuilt tree is its own: by value.
-    pub fn same_cascaded(&self, other: &Self) -> bool {
-        let used = match (&self.used, &other.used) {
-            (Some(a), Some(b)) => same_rc(a, b),
-            _ => true,
-        };
-        let base = match (self.computed.any(), other.computed.any()) {
-            (Some(a), Some(b)) => same_rc(&a, &b),
-            _ => true,
-        };
-        let decoration = match (&self.decoration, &other.decoration) {
-            (None, None) => true,
-            (Some(a), Some(b)) => same_rc(a, b),
-            _ => false,
-        };
-        used && base
-            && same_rc(&self.cascaded, &other.cascaded)
-            && same_ptr(&self.box_facts, &other.box_facts)
-            && decoration
-    }
-
     /// Like `same`, but the stages may differ in paint-only values
     /// (`Computed::same_layout`): layout reads the same values from both.
     pub fn same_layout(&self, other: &Self) -> bool {
@@ -65,33 +42,14 @@ impl SharedStyle {
             (Some(a), Some(b)) => layout(a, b),
             _ => false,
         };
-        used && layout(&self.base(), &other.base()) && self.same_cascaded_layout(other)
-    }
-
-    /// The cascaded and decoration inputs of `same_layout` and the derived
-    /// stages (computed, used) where both styles have them. A style of a
-    /// rebuilt tree is not materialized before its first frame; its computed
-    /// style is a function of the cascaded one under the parent's computed
-    /// style, the fonts and the viewport, so with those equal (the caller's
-    /// part) the same cascaded style gives the same computed and used ones.
-    pub fn same_cascaded_layout(&self, other: &Self) -> bool {
-        let layout = |a: &Rc<Computed>, b: &Rc<Computed>| Rc::ptr_eq(a, b) || a.same_layout(b);
-        let used = match (&self.used, &other.used) {
-            (Some(a), Some(b)) => layout(a, b),
-            _ => true,
-        };
-        let base = match (self.computed.any(), other.computed.any()) {
-            (Some(a), Some(b)) => layout(&a, &b),
-            _ => true,
-        };
         // A rebuilt tree carries its own decoration inputs: by value, as layout reads them.
         let decoration = match (&self.decoration, &other.decoration) {
             (None, None) => true,
             (Some(a), Some(b)) => Rc::ptr_eq(a, b) || a.same_layout(b),
             _ => false,
         };
-        used && base
-            && layout(&self.cascaded, &other.cascaded)
+        used && layout(&self.cascaded, &other.cascaded)
+            && layout(&self.base(), &other.base())
             && same_ptr(&self.box_facts, &other.box_facts)
             && decoration
     }

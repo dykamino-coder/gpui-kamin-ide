@@ -2,7 +2,7 @@
 //! который повторяет его раскладку, prepaint и краску (`super`).
 
 use super::{PendingReplay, ReplaySlot, plain_environment};
-use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred_moved};
+use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use std::rc::Rc;
 /// Прозрачная обёртка блока: снимает узлы раскладки, диапазоны prepaint и
@@ -14,8 +14,6 @@ pub(in crate::layout::reuse) struct ReplayRecorder {
 
 impl ReplayRecorder {
     pub(in crate::layout::reuse) fn new(child: AnyElement, pending: Rc<PendingReplay>) -> Self {
-        // The wrapper lays out as its child: no node of its own.
-        gpui::note_layoutless_element();
         Self { child, pending }
     }
 }
@@ -34,7 +32,8 @@ impl Wrap for ReplayRecorder {
         let id = self.child.request_layout(window, cx);
         let layout = window.capture_layout(start, id);
         self.pending
-            .capture(|c| c.layout = layout.map(|layout| (layout, id)));
+            .layout
+            .replace(layout.map(|layout| (layout, id)));
         id
     }
 
@@ -46,20 +45,14 @@ impl Wrap for ReplayRecorder {
         });
         let quiet =
             range.quiet(window).is_some() && callbacks == window.next_frame_callback_count();
-        let Some(id) = self
-            .pending
-            .captured(|c| c.layout.as_ref().map(|(_, id)| *id))
-        else {
+        let Some(id) = self.pending.layout.borrow().as_ref().map(|(_, id)| *id) else {
             return;
         };
         if plain && quiet {
             let origin = window.layout_origin_unrounded(id);
             let size = window.layout_size_unrounded(id);
-            let mask = window.content_mask();
-            self.pending.capture(|c| {
-                c.prepaint = Some((range, origin, size));
-                c.mask = Some(mask);
-            });
+            self.pending.prepaint.replace(Some((range, origin, size)));
+            self.pending.mask.replace(Some(window.content_mask()));
         }
     }
 
@@ -74,33 +67,19 @@ impl Wrap for ReplayRecorder {
         });
         let prepaint = self
             .pending
-            .captured(|c| c.prepaint.as_ref().map(|(p, _, _)| p.clone()));
-        let replayable = prepaint
+            .prepaint
+            .borrow()
             .as_ref()
-            .is_some_and(|prepaint| window.retained_replayable(prepaint, &paint))
+            .map(|(p, _, _)| p.clone());
+        let replayable = prepaint
+            .is_some_and(|prepaint| window.retained_replayable(&prepaint, &paint))
             && callbacks == window.next_frame_callback_count();
         if replayable {
-            let movable = prepaint
-                .as_ref()
-                .is_some_and(|prepaint| window.retained_movable(prepaint, &paint))
-                && crate::hooks::deferred_movable(&lines);
-            self.pending.capture(|c| c.movable = movable);
-            // A box's content keeps the measure functions of its leaves: a
-            // replay laid out at new constraints measures as a build would,
-            // and the frame check refuses only that replay (`ReplaySlot`).
-            if self.pending.captured(|c| Some(c.key.is_none())) == Some(true) {
-                self.pending.captured(|c| {
-                    let (layout, _) = c.layout.as_ref()?;
-                    window.keep_retained_measures(layout, false);
-                    Some(())
-                });
-            }
-            self.pending.capture(|c| {
-                c.paint = Some(paint);
-                c.lines = Some(lines);
-            });
-            let env = (window.scale_factor(), window.frame_serial());
-            self.pending.capture(|c| c.env = Some(env));
+            self.pending.paint.replace(Some(paint));
+            self.pending.lines.replace(Some(lines));
+            self.pending
+                .env
+                .set(Some((window.scale_factor(), window.frame_serial())));
         }
     }
 }
@@ -142,10 +121,9 @@ impl Hooks for Replay {
     }
 
     fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, _: &mut App) {
-        let offset = self.slot.offset.get();
-        self.slot.record.ranges(|r| {
-            r.prepaint = window.replay_retained_prepaint_moved(&r.prepaint, offset);
-        });
+        self.slot
+            .record
+            .ranges(|r| r.prepaint = window.replay_retained_prepaint(&r.prepaint));
     }
 
     fn paint(
@@ -156,25 +134,15 @@ impl Hooks for Replay {
         window: &mut Window,
         _: &mut App,
     ) {
-        let offset = self.slot.offset.get();
         self.slot.record.ranges(|r| {
             // Строки вне открытого кадра рисуются на месте: в выводе блока.
             let (lines, paint) = window.record_retained_paint(|window| {
-                window.replay_retained_paint_moved(&r.paint, offset);
-                replay_deferred_moved(window, &r.lines, offset)
+                window.replay_retained_paint(&r.paint);
+                replay_deferred(window, &r.lines)
             });
             r.paint = paint;
             r.lines = lines;
-            r.origin += offset;
             r.serial = window.frame_serial();
         });
-        // Not compacted: a box's content is laid out again at every relayout
-        // of its container (a table's columns), and the compacted form of a
-        // paragraph measure shapes its text anew at each measure.
-        if self.slot.record.key.is_none() {
-            self.slot
-                .record
-                .ranges(|r| window.keep_retained_measures(&r.layout, false));
-        }
     }
 }

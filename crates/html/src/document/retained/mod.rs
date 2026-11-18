@@ -18,10 +18,6 @@ mod box_repaint;
 mod box_repaint_tests;
 #[cfg(test)]
 mod column_repaint_tests;
-#[cfg(test)]
-mod content_replay_tests;
-#[cfg(test)]
-mod content_resize_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;
@@ -31,8 +27,6 @@ mod far_tests;
 mod float_root_replay_tests;
 #[cfg(test)]
 mod invalidation_tests;
-#[cfg(test)]
-mod kept_paragraph_tests;
 #[cfg(test)]
 mod key_reuse_tests;
 #[cfg(test)]
@@ -45,8 +39,6 @@ mod l0_tests;
 mod layer_order_tests;
 #[cfg(test)]
 mod layered_replay_tests;
-#[cfg(test)]
-mod moved_rows_tests;
 #[cfg(test)]
 mod paint_damage_tests;
 mod prepared;
@@ -72,8 +64,6 @@ mod tests;
 mod unread_color_tests;
 #[cfg(test)]
 mod unseen_tests;
-#[cfg(test)]
-mod used_style_tests;
 mod window_key;
 
 use super::Document;
@@ -225,11 +215,6 @@ impl Document {
     #[cfg(test)]
     pub(crate) fn replayed_subtrees(&self) -> u64 {
         self.reuse.stats.get().subtrees
-    }
-
-    /// Elements of box contents replayed at any depth (`layout::reuse::content`).
-    pub fn replayed_contents(&self) -> u64 {
-        self.reuse.stats.get().contents
     }
 
     /// Far blocks laid out from their kept layout subtree (`layout::reuse::far`).

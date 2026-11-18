@@ -104,9 +104,8 @@ use crate::text::inline::collect::element_nodes::collect_element;
 mod boundary_spacing;
 mod overlays;
 pub(crate) use overlays::to_rotated_frame;
-pub(crate) mod retained;
-pub(super) mod text_nodes;
-pub(super) use crate::text::inline::collect::boundary_spacing::set_boundary_spacing;
+mod text_nodes;
+use crate::text::inline::collect::boundary_spacing::set_boundary_spacing;
 pub(super) use crate::text::inline::collect::overlays::overlay_in_row;
 use crate::text::inline::collect::text_nodes::collect_text;
 
@@ -131,8 +130,6 @@ pub(crate) struct CollectCx {
     /// (css-text-3 §4.1.1, across inline boundaries) and is itself discarded
     /// at the container's end (css-ruby-1 §2.4).
     pub(super) ruby_space: bool,
-    /// Text runs the box tree prepared for this flow (`retained`).
-    pub(crate) runs: Option<retained::Runs>,
 }
 
 impl CollectCx {
@@ -187,7 +184,7 @@ async fn collect_stack(
                 } else {
                     t
                 };
-                collect_text(t, inherited, &mut cx.case, cx.runs.as_mut(), &mut out);
+                collect_text(t, inherited, &mut cx.case, &mut out);
             }
             Node::Element(e) => {
                 stk.run(|stk| {

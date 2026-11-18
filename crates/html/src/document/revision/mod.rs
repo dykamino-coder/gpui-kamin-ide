@@ -7,7 +7,6 @@ mod build;
 mod commit;
 mod kept;
 mod layer_write;
-mod media;
 pub(super) use layer_write::at;
 mod mentions;
 mod mutation;
@@ -145,8 +144,6 @@ impl Document {
                 return Err(record(failure, self));
             }
         };
-        crate::document::boxes::BoxTree::edit(&candidate.state.boxes)
-            .replace(&candidate.nodes, &candidate.state.values);
         *self = candidate;
         Ok(self.report())
     }

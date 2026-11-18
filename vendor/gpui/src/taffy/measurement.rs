@@ -144,21 +144,12 @@ pub(super) fn leaf(
     cx: &mut App,
 ) -> LayoutOutput {
     let performed = matches!(input.run_mode, taffy::RunMode::PerformLayout);
-    // The full layout of a leaf measured with a kept function is compared
-    // with the one it replaces (`TaffyLayoutEngine::remeasured`).
-    let mut before = None;
     if performed {
         if let Some(context) = context.as_deref_mut() {
-            let old = (
-                std::mem::take(&mut context.static_positions),
-                context.layout_lines.take(),
-                context.layout_lines_x.take(),
-                std::mem::take(&mut context.layout_lines_x_from_right),
-                context.performed_size,
-            );
-            if context.kept {
-                before = Some(old);
-            }
+            context.static_positions.clear();
+            context.layout_lines = None;
+            context.layout_lines_x = None;
+            context.layout_lines_x_from_right = false;
         }
     }
     taffy::compute_leaf_layout(input, style, taffy::tree::calc_value, |known, available| {
@@ -197,19 +188,10 @@ pub(super) fn leaf(
         let output = measured.to_native(scale);
         // Intrinsic probes must not replace metadata belonging to a cached full layout.
         if performed {
-            let size = output.size;
-            if let Some((positions, lines, lines_x, from_right, old_size)) = &before {
-                context.remeasured |= *old_size != size
-                    || *positions != measured.static_positions
-                    || lines.as_deref() != measured.lines_y.as_deref()
-                    || lines_x.as_deref() != measured.lines_x.as_deref()
-                    || *from_right != measured.x_from_right;
-            }
             context.static_positions = measured.static_positions;
-            context.layout_lines = measured.lines_y.map(Vec::into_boxed_slice);
-            context.layout_lines_x = measured.lines_x.map(Vec::into_boxed_slice);
+            context.layout_lines = measured.lines_y;
+            context.layout_lines_x = measured.lines_x;
             context.layout_lines_x_from_right = measured.x_from_right;
-            context.performed_size = size;
         }
         output
     })

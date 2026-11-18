@@ -11,9 +11,12 @@ pub(crate) fn block_floats(
     ge: &Element,
     positioned: impl Fn(&Computed) -> bool,
     col_w: Option<f32>,
-    _vcx: crate::layout::cx::FrameCx<'_>,
+    vcx: crate::layout::cx::FrameCx<'_>,
 ) -> Option<Element> {
-    if crate::layout::cx::subtree::SubtreeFacts::default().floats_absent(ge) {
+    if vcx
+        .subtrees
+        .is_some_and(|facts| facts.borrow_mut().floats_absent(ge))
+    {
         return None;
     }
     floats_in(ge, &positioned, col_w)

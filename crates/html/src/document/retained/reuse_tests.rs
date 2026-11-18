@@ -77,26 +77,26 @@ fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppCon
     let grown = format!("{}x", "x ".repeat(300));
     let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
     let (view, cx) = settled(cx, &page("x"), &page("xy"));
-    // The grown block moves the visible blocks below it: they replay their
-    // output at the new place (`placeholder`), and no frame is built twice.
+    // The grown block moves the visible blocks below it: their replay is
+    // refused, and one more build of the same frame builds just them.
     update(&view, cx, &page("x"));
     update(&view, cx, &page(&grown));
-    assert_eq!(reused(&view, cx).2, 0, "moved visible blocks were refused");
+    assert_eq!(reused(&view, cx).2, 1, "moved visible blocks were replayed");
     // An update adopts a new tree, and its frame counters start anew.
     let builds = cx.update(|_, cx| view.read(cx).doc.retained_frames().0);
-    assert_eq!(builds, 1, "the moved frame was built twice");
-    // The shrink brings blocks onto the screen, which are built.
+    assert_eq!(builds, 2, "the refused frame was built more than twice");
+    // The refused blocks are built from then on while the flow key stays
+    // (`Store::banned`): moving them again builds no frame twice.
     update(&view, cx, &page("x"));
-    let before = reused(&view, cx).2;
     update(&view, cx, &page(&grown));
     let (_, skipped, rebuilt) = reused(&view, cx);
-    let rebuilt = rebuilt - before;
     assert!(
         skipped > 300,
         "shifted offscreen blocks were rebuilt: {skipped}"
     );
-    assert_eq!(rebuilt, 0, "a moved block was refused");
+    assert_eq!(rebuilt, 1, "a refused block was replayed again");
 }
+
 #[gpui::test]
 fn blocks_after_a_float_are_always_built(cx: &mut TestAppContext) {
     let float = "<div style='height:20px'><span style='float:left;height:9000px'>f</span></div>";
