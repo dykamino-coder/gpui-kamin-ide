@@ -19,9 +19,12 @@ impl OofQueue {
     ) {
         // Only split source/layout children can prepaint before this host is visited.
         // Ordinary children and empty queues keep the host's normal layout order.
-        let needs_preparation = self.state.items.borrow().iter().any(|(spot, kid)| {
-            spot.get().layout_only && matches!(kid, OofKid::Ready(_))
-        });
+        let needs_preparation = self
+            .state
+            .items
+            .borrow()
+            .iter()
+            .any(|(spot, kid)| spot.get().layout_only && matches!(kid, OofKid::Ready(_)));
         if !needs_preparation {
             self.commit_to(destination);
             return;
