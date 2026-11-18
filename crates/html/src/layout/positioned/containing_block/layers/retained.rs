@@ -3,7 +3,7 @@
 use super::super::SpotCell;
 use super::super::oof::{Destination, OofKid};
 use super::{ABS, CbLayer, FIX, Positioning};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub(crate) struct Retained {
@@ -140,22 +140,7 @@ impl Escaped {
     /// Измерительные деревья не публикуют выпавших потомков: только дерево,
     /// дошедшее до prepaint, присоединяет их к назначениям исходных предков.
     pub(crate) fn wrap(self, child: gpui::AnyElement) -> gpui::AnyElement {
-        use gpui::IntoElement;
-        let escaped = Cell::new(Some(self));
-        // ContextScope сохраняет фазу PaintLast даже без открытого собирателя.
-        // Произвольная Hooks-обёртка скрыла бы эту метку от родительского Div.
-        gpui::ContextScope::new(
-            Rc::new(move |phase| {
-                if phase == gpui::ScopePhase::Prepaint
-                    && let Some(escaped) = escaped.take()
-                {
-                    escaped.commit();
-                }
-                Box::new(())
-            }),
-            child,
-        )
-        .into_any_element()
+        publication::Publication::wrap(self, child)
     }
 
     pub(crate) fn commit(self) {
@@ -164,6 +149,8 @@ impl Escaped {
         }
     }
 }
+
+mod publication;
 
 #[cfg(test)]
 mod tests;
