@@ -49,7 +49,11 @@ fn named(root: &Handle, id: &str) -> Handle {
 fn computed(nodes: &[Node], out: &mut Vec<String>) {
     for node in nodes {
         if let Node::Element(e) = node {
-            out.push(format!("{} {:?}", e.tag, e.style.computed()));
+            out.push(format!(
+                "{} {}",
+                e.tag,
+                crate::document::test_tree::value(&format!("{:?}", e.style.computed()))
+            ));
             computed(&e.children, out);
         }
     }
