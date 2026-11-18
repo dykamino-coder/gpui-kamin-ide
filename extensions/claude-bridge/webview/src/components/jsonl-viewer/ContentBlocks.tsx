@@ -68,7 +68,7 @@ export function renderContentBlocks(
     }
     switch (block.type) {
       case 'thinking':
-        out.push(<ThinkingBlock key={i} thinking={block.thinking || ''} isStreaming={streamingActiveBlock === i} />)
+        out.push(<ThinkingBlock key={i} thinking={block.thinking || ''} isStreaming={streamingActiveBlock === i} durationMs={block.durationMs} />)
         break
       case 'text':
         out.push(<JsonlTextBlock key={i} text={block.text || ''} isStreaming={streamingActiveBlock === i} />)

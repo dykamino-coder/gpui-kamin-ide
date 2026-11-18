@@ -4,9 +4,10 @@
 //! change into the scene layer; on a shape in an `svg` the frame is built
 //! with the new paint. Either frame equals a fresh document's.
 
+use super::box_repaint_tests::{frames, quads};
 use super::reuse_tests::{settled, update};
-use super::tests::{View, frame, open};
-use gpui::{TestAppContext, VisualTestContext};
+use super::tests::{frame, open};
+use gpui::TestAppContext;
 
 /// Rows of 20px; `class` goes on row 3, a `div`, and on the `rect` of the
 /// `svg` after it.
@@ -23,20 +24,6 @@ fn page(class: &str) -> String {
          .paint{{fill:#0a0;stroke:#a0a}}</style></head><body>{rows}\
          <svg width=40 height=20><rect class='{class}' width=30 height=10 /></svg></body></html>"
     )
-}
-
-fn frames(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> (u64, u64) {
-    cx.update(|_, cx| view.read(cx).doc.retained_frames())
-}
-
-fn quads(cx: &mut VisualTestContext) -> Vec<String> {
-    cx.update(|window, _| {
-        let quads = window.painted_quads().into_iter().map(|mut q| {
-            q.order = 0;
-            format!("{q:?}")
-        });
-        quads.collect()
-    })
 }
 
 /// Whether `class` on a settled document kept its frame, its frame and a

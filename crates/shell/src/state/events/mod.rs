@@ -7,6 +7,7 @@ pub mod dispatch;
 pub mod editor;
 pub mod extensions_updates;
 pub mod find_in_files;
+mod frame_need;
 pub mod layout_panels;
 pub mod layout_presets;
 pub mod misc;

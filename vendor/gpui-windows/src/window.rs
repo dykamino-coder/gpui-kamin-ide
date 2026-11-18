@@ -1242,6 +1242,14 @@ impl PlatformWindow for WindowsWindow {
             .unregister_external_texture(id);
     }
 
+    fn damage_external_texture(&self, id: AtlasTextureId, rect: Bounds<DevicePixels>) {
+        self.0
+            .state
+            .renderer
+            .borrow()
+            .damage_external_texture(id, rect);
+    }
+
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         self.state.renderer.borrow().sprite_atlas()
     }

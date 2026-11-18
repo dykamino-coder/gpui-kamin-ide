@@ -73,6 +73,10 @@ export class WorkspacePresentation {
       const receipt = { ...(previous?.[1] as SubmissionUpdate), ...args[1] }
       if ((previous?.[1] as SubmissionUpdate)?.committed) receipt.committed = true
       receipt.fallbackQueue = mergeFallbackQueue((previous?.[1] as SubmissionUpdate)?.fallbackQueue, args[1].fallbackQueue)
+      // The server saw the CLI complete this terminal command (SessionStart after
+      // /resume, /clear, /compact); no transcript row will ever show it.
+      if (receipt.state === 'fallback' && receipt.committed && receipt.fallbackQueue && !receipt.fallbackQueue.consumed)
+        receipt.fallbackQueue = { ...receipt.fallbackQueue, consumed: true }
       this.submissions.set(key, { ...frame, args: [args[0], receipt] })
       if (receipt.rejected && !(previous?.[1] as SubmissionUpdate)?.rejected &&
           (previous?.[1] as SubmissionUpdate)?.state !== 'cancelled')
