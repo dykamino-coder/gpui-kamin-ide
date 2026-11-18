@@ -72,11 +72,18 @@ pub fn decode(
         applied_orientation = Some(tag);
     }
     let Grant { retention, .. } = grant;
+    let format = if options.colour == ColourPolicy::CssBgra {
+        super::presentation::css_bgra(&mut pixels, &colour_space);
+        colour_space = ColourSpace::Srgb;
+        PixelFormat::Bgra8
+    } else {
+        PixelFormat::Rgba8
+    };
     let raster = CpuRaster {
         width,
         height,
         stride: width as usize * 4,
-        format: PixelFormat::Rgba8,
+        format,
         alpha: AlphaMode::Straight,
         colour_space,
         bytes: pixels.into(),
