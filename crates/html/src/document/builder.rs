@@ -80,6 +80,13 @@ impl<'a> DocumentBuilder<'a> {
     /// Исходный DOM сохраняется целиком; предел обхода даёт Degraded в report().
     /// Source admission предшествует разбору и ранним проходам документа.
     pub fn build(&self) -> Result<Document, super::DocumentFailure> {
+        self.build_for_view(false)
+    }
+
+    pub(crate) fn build_for_view(
+        &self,
+        viewport: bool,
+    ) -> Result<Document, super::DocumentFailure> {
         let budget = crate::budget::DocumentBudget::new(self.limits.clone(), self.governor.clone())
             .map_err(|e| super::DocumentFailure::new(super::FailureReason::Budget(e)))?;
         let revision = budget.revision();
@@ -96,7 +103,7 @@ impl<'a> DocumentBuilder<'a> {
                 .transpose()?
                 .flatten(),
             self.xml,
-            super::state::DocState::new(self.media),
+            super::state::DocState::for_view(self.media, viewport),
             &self.fonts,
             revision,
         )

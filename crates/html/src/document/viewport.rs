@@ -15,7 +15,9 @@ use crate::style::computed::{BoxStyle, Computed, Display, Overflow};
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
 
+mod root_scroll;
 mod wrapper;
+pub(crate) use root_scroll::RootScroll;
 pub(super) use wrapper::wrap;
 
 pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
@@ -108,7 +110,7 @@ pub(super) fn prepare_embedded(
         ),
         vcx,
     );
-    let mut nodes = wrap(nodes, viewport, canvas);
+    let mut nodes = wrap(nodes, viewport, canvas, false);
     if responsive
         && let [Node::Element(root)] = nodes.as_mut_slice()
         && root.tag == "html-viewport"
@@ -119,13 +121,18 @@ pub(super) fn prepare_embedded(
 }
 
 // Keep document preparation identical for initial, updated, and embedded markup.
-pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Computed) {
+pub(super) fn prepare(
+    nodes: Vec<Node>,
+    vcx: ValueCx<'_>,
+    full_page: bool,
+) -> (Vec<Node>, Computed) {
     crate::values::image_values::prepare(&nodes, vcx);
     let canvas = canvas_backing(&nodes, None);
     let viewport = policy(&nodes, vcx)
-        .or_else(|| canvas.map(|_| Computed::default()))
+        .or_else(|| (canvas.is_some() || full_page).then(Computed::default))
         .filter(|c| {
-            canvas.is_some()
+            full_page
+                || canvas.is_some()
                 || c.used_scrollbar_colors().is_some()
                 || c.reset_box_layout.scroll.forced.into_iter().any(|v| v)
                 || c.reset_box_layout.scroll.gutter.is_some_and(|v| v != 0)
@@ -140,7 +147,7 @@ pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Compute
         ),
         vcx,
     );
-    (wrap(nodes, viewport, canvas), root)
+    (wrap(nodes, viewport, canvas, full_page), root)
 }
 
 fn canvas_backing(
