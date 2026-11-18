@@ -3,7 +3,7 @@
 use super::{SpannerFlow, SpannerPass};
 use crate::hooks::{IntoHooked, Wrap};
 use gpui::{AnyElement, IntoElement, Styled, point, px, size};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::Cell, rc::Rc};
 
 struct Trial {
     child: AnyElement,
@@ -18,7 +18,7 @@ impl Wrap for Trial {
 
 #[gpui::test]
 fn trial_contexts_expire_before_the_final_spanner_build(cx: &mut gpui::TestAppContext) {
-    let observed = Rc::new(RefCell::new(Vec::new()));
+    let observed = Rc::new(Cell::new(Vec::new()));
     let trials = observed.clone();
     let final_builds = Rc::new(std::cell::Cell::new(0));
     let finals = final_builds.clone();
@@ -33,18 +33,22 @@ fn trial_contexts_expire_before_the_final_spanner_build(cx: &mut gpui::TestAppCo
                     let child = gpui::div().w(px(120.)).h(px(30.)).into_any_element();
                     if pass == SpannerPass::Measure {
                         let context = Rc::new(());
-                        trials.borrow_mut().push(Rc::downgrade(&context));
+                        let mut contexts = trials.take();
+                        contexts.push(Rc::downgrade(&context));
+                        trials.set(contexts);
                         Trial {
                             child,
                             _context: context,
                         }
                         .hooked()
                     } else {
-                        assert!(!trials.borrow().is_empty(), "the trial did not run");
+                        let contexts = trials.take();
+                        assert!(!contexts.is_empty(), "the trial did not run");
                         assert!(
-                            trials.borrow().iter().all(|weak| weak.upgrade().is_none()),
+                            contexts.iter().all(|weak| weak.upgrade().is_none()),
                             "a trial element still retains its captured context"
                         );
+                        trials.set(contexts);
                         finals.set(finals.get() + 1);
                         child
                     }
@@ -54,10 +58,5 @@ fn trial_contexts_expire_before_the_final_spanner_build(cx: &mut gpui::TestAppCo
         },
     );
     assert!(final_builds.get() > 0, "the final build did not run");
-    assert!(
-        observed
-            .borrow()
-            .iter()
-            .all(|weak| weak.upgrade().is_none())
-    );
+    assert!(observed.take().iter().all(|weak| weak.upgrade().is_none()));
 }
