@@ -221,6 +221,21 @@ pub(crate) fn texture_for(
     Some(tile.region(crop.0, crop.1, crop.2, crop.3))
 }
 
+/// Submit the copies queued on the window's context. A copy made outside a
+/// window draw has no present behind it to submit it, and its `ReleaseSync`
+/// would wait in our queue while the producer waits to acquire the texture
+/// (CEF shutdown then took up to 74 s).
+pub(crate) fn submit_copies(window: &gpui::Window) {
+    let context = unsafe {
+        super::d3d_device::take_owned::<windows::Win32::Graphics::Direct3D11::ID3D11DeviceContext>(
+            window.d3d_context_raw(),
+        )
+    };
+    if let Some(context) = context {
+        unsafe { context.Flush() };
+    }
+}
+
 /// Плитки атласа закрытых вью: выбрасывать можно только с потока отрисовки,
 /// поэтому копим и отдаём первому же кадру любого живого вью.
 static DEAD_TILES: LazyLock<Mutex<Vec<gpui::ExternalTexture>>> =

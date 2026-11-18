@@ -90,6 +90,7 @@ pub(crate) fn accept(ids: &[String], window: &gpui::Window) -> bool {
             && super::shared_texture::shown_key(id) == Some(last.key);
         all &= shown;
     }
+    super::shared_texture::submit_copies(window);
     all
 }
 
