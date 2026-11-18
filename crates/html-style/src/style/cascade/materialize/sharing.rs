@@ -19,6 +19,8 @@ struct Entry {
     parent: Rc<Computed>,
     size: (Option<u32>, Option<u32>),
     value: Published,
+    /// The computation read the viewport size (`viewport_reads`).
+    reads: bool,
 }
 
 pub(super) fn size_key(size: (Option<f32>, Option<f32>)) -> (Option<u32>, Option<u32>) {
@@ -32,7 +34,7 @@ impl Sharing {
         parent: &Rc<Computed>,
         own: &Computed,
         vcx: ValueCx<'_>,
-    ) -> Published {
+    ) -> (Published, bool) {
         let size = size_key(slot.1.get());
         let recent = (1..=CAPACITY).map(|back| (self.next + CAPACITY - back) % CAPACITY);
         if let Some(hit) = recent
@@ -45,17 +47,19 @@ impl Sharing {
         {
             crate::work::add!(MaterializedSharingHits, 1);
             // Идентичность элемента в computed-стадию не входит: значение общее.
-            return hit.value.clone();
+            return (hit.value.clone(), hit.reads);
         }
-        let value = slot.compute(parent, own, vcx);
+        let (value, reads) =
+            crate::values::viewport_reads::track(vcx.doc, || slot.compute(parent, own, vcx));
         self.entries[self.next] = Some(Entry {
             own: Storage::of(own),
             parent: parent.clone(),
             size,
             value: value.clone(),
+            reads,
         });
         self.next = (self.next + 1) % CAPACITY;
-        value
+        (value, reads)
     }
 }
 
@@ -74,24 +78,28 @@ mod tests {
         let parent = Rc::new(Computed::default());
         let own = Computed::default();
         let first_slot = ComputedSlot::default();
-        let first = cache.compute(&first_slot, &parent, &own, vcx);
-        let second = cache.compute(&ComputedSlot::default(), &parent, &own.clone(), vcx);
+        let first = cache.compute(&first_slot, &parent, &own, vcx).0;
+        let second = cache
+            .compute(&ComputedSlot::default(), &parent, &own.clone(), vcx)
+            .0;
         assert!(first.handle.ptr_eq(&second.handle));
         let mut changed_parent = (*parent).clone();
         changed_parent.reset_effects.opacity = Some(0.5);
         let distinct_parent = Rc::new(changed_parent);
-        let third = cache.compute(&first_slot, &distinct_parent, &own, vcx);
+        let third = cache.compute(&first_slot, &distinct_parent, &own, vcx).0;
         // Opacity не наследуется: одинаковых наследуемых входов достаточно.
         assert!(first.handle.ptr_eq(&third.handle));
         let equal_parent = Rc::new(Computed::default());
-        let equal = cache.compute(&first_slot, &equal_parent, &own, vcx);
+        let equal = cache.compute(&first_slot, &equal_parent, &own, vcx).0;
         assert!(first.handle.ptr_eq(&equal.handle));
         first_slot.set_container_size((Some(50.0), None));
-        let fourth = cache.compute(&first_slot, &parent, &own, vcx);
+        let fourth = cache.compute(&first_slot, &parent, &own, vcx).0;
         assert!(!first.handle.ptr_eq(&fourth.handle));
         let mut changed = own.clone();
         changed.reset_box_layout.width = Some(crate::style::values::value::Len::Px(10.0));
-        let fifth = cache.compute(&ComputedSlot::default(), &parent, &changed, vcx);
+        let fifth = cache
+            .compute(&ComputedSlot::default(), &parent, &changed, vcx)
+            .0;
         assert!(!first.handle.ptr_eq(&fifth.handle));
     }
 
@@ -102,16 +110,20 @@ mod tests {
         let mut own = Computed::default();
         own.decor_box = 10;
         let mut cache = Sharing::default();
-        let first = cache.compute(&ComputedSlot::default(), &parent, &own, doc.values());
+        let first = cache
+            .compute(&ComputedSlot::default(), &parent, &own, doc.values())
+            .0;
         own.decor_box = 20;
         let mut cousin_parent = (*parent).clone();
         cousin_parent.decor_box = 99;
-        let second = cache.compute(
-            &ComputedSlot::default(),
-            &Rc::new(cousin_parent),
-            &own,
-            doc.values(),
-        );
+        let second = cache
+            .compute(
+                &ComputedSlot::default(),
+                &Rc::new(cousin_parent),
+                &own,
+                doc.values(),
+            )
+            .0;
         assert_eq!(first.decor_box, 0);
         assert!(first.handle.ptr_eq(&second.handle));
     }
@@ -150,8 +162,8 @@ mod tests {
             let own = element("i").style.cascaded();
             let slot = ComputedSlot::default();
             let mut cache = Sharing::default();
-            let before = cache.compute(&slot, &left, own, vcx);
-            let after = cache.compute(&slot, &right, own, vcx);
+            let before = cache.compute(&slot, &left, own, vcx).0;
+            let after = cache.compute(&slot, &right, own, vcx).0;
             let expected = slot.compute(&right, own, vcx);
             assert_ne!(
                 *before, *expected,
@@ -161,7 +173,7 @@ mod tests {
             // Тот же контракт защищает уже опубликованный слот после правки родителя.
             *slot.0.borrow_mut() = Some(Rc::new(super::super::Materialized {
                 parent: left,
-                generation: super::super::inputs(vcx),
+                generation: super::super::stored(super::super::inputs(vcx), true),
                 computed: before,
             }));
             assert!(slot.get(own, &right, super::super::inputs(vcx)).is_none());
@@ -177,8 +189,12 @@ mod tests {
         let alias = own.clone();
         let parent = Rc::new(doc.initial_style());
         let mut cache = Sharing::default();
-        let result = cache.compute(&ComputedSlot::default(), &parent, &own, doc.values());
-        let repeated = cache.compute(&ComputedSlot::default(), &parent, &alias, doc.values());
+        let result = cache
+            .compute(&ComputedSlot::default(), &parent, &own, doc.values())
+            .0;
+        let repeated = cache
+            .compute(&ComputedSlot::default(), &parent, &alias, doc.values())
+            .0;
         assert_eq!(result.reset_effects.opacity, Some(0.25));
         assert!(result.handle.ptr_eq(&repeated.handle));
     }
@@ -197,11 +213,15 @@ mod tests {
         let new_parent = Rc::new(new_parent);
         let slot = ComputedSlot::default();
         let mut cold = Sharing::default();
-        let before = cold.compute(&slot, &old_parent, &own, vcx);
+        let before = cold.compute(&slot, &old_parent, &own, vcx).0;
         let mut restyle = Sharing::default();
-        let after = restyle.compute(&slot, &new_parent, &own, vcx);
-        let hit = restyle.compute(&ComputedSlot::default(), &new_parent, &own, vcx);
-        let changed = restyle.compute(&ComputedSlot::default(), &old_parent, &own, vcx);
+        let after = restyle.compute(&slot, &new_parent, &own, vcx).0;
+        let hit = restyle
+            .compute(&ComputedSlot::default(), &new_parent, &own, vcx)
+            .0;
+        let changed = restyle
+            .compute(&ComputedSlot::default(), &old_parent, &own, vcx)
+            .0;
         assert_eq!(
             changed.reset_box_layout.width,
             before.reset_box_layout.width

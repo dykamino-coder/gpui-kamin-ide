@@ -36,7 +36,7 @@ fn scene(cx: &mut VisualTestContext) -> Vec<String> {
 }
 
 #[gpui::test]
-fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppContext) {
+fn unchanged_onscreen_blocks_replay_and_a_moved_one_replays_moved(cx: &mut TestAppContext) {
     let page = |text: &str| {
         format!(
             "<body style='margin:0;display:flow-root'><table style='width:300px'><tr><td>a</td><td>b</td></tr></table>\
@@ -60,11 +60,16 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_is_rebuilt(cx: &mut TestAppC
         "the table and the tail were rebuilt"
     );
     assert_eq!(reused(&view, cx).2, 0, "an unmoved replay was refused");
-    // A taller paragraph moves the tail: its replay fails the frame check and
-    // the frame is built again; the tail is then built until the key changes.
+    // A taller paragraph moves the tail: an inert block replays at its new
+    // place, and the frame is not built again.
+    let before = replayed(&view, cx);
     update(&view, cx, &page(&"word ".repeat(400)));
-    let (_, _, rebuilt) = reused(&view, cx);
-    assert_eq!(rebuilt, 1, "a moved block was replayed at its old place");
+    assert_eq!(reused(&view, cx).2, 0, "a moved inert block was refused");
+    assert_eq!(
+        replayed(&view, cx) - before,
+        2,
+        "the table and the moved tail replayed"
+    );
 }
 
 /// While the width changes, a block that fills it (`width: auto`) gets no

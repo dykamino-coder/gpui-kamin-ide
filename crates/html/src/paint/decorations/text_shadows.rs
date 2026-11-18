@@ -10,7 +10,6 @@ use groups::{ShadowStyle, collect_groups};
 use masks::masked_layer;
 
 use crate::dom::Node;
-use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Shadow};
 use crate::text::shadow_text::normalize_for_shadow;
@@ -96,8 +95,7 @@ pub(crate) fn with_text_shadow(
     let Some((shadow, rest)) = block.split_first() else {
         return el;
     };
-    let mut plain = String::new();
-    gather_text(nodes, &mut plain);
+    let plain = crate::text::content::raw(nodes, &opts.cx);
     let plain = crate::text::inline::transform_case(&normalize_for_shadow(&plain), style);
     if crate::dom::whitespace::blank_text(&plain) {
         return el;
