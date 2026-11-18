@@ -1,23 +1,24 @@
 # KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Debug shaders: embed both HLSL sources and their shared include, compile with rooted virtual filenames and the existing flags, and keep dev/agent binaries independent of the build worktree. The scoped include callback borrows static bytes until synchronous D3DCompile returns; its raw out-pointers are supplied by the compiler. Release keeps its existing embedded bytecode.
-# 2. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
-# 3. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
-# 4. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
-# 5. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
-# 6. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
-# 7. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
-# 8. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
-# 9. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
-# 10. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
-# 11. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
-# 12. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
-# 13. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
-# 14. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
-# 15. Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.
-# 16. Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.
-# 17. GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.
-# 18. Damage redraw: the target keeps the last frame and every buffer (offscreen texture or flip-model back buffer) carries the damage accumulated since it was drawn; a frame is drawn only within that rectangle under a scissor, groups whose composite cannot reach it are skipped, and an unchanged frame is neither drawn nor presented. A different size, background, opaque backdrop, atlas epoch (removed tiles, replaced or forgotten external textures, device loss), a sampled external texture, a failed pass or GPUI_DAMAGE_REDRAW=0 draw the whole frame. Frame capture keeps one staging texture per size. Group images stay in the group atlas between frames: a group matched with a group of the last frame (Scene::group_base) keeps that group's atlas rectangle and image and is not drawn again; the other groups take free space on the shelves of the last full layout, and the atlas is packed again when they do not fit.
+# 1. Atlas lifetime: keep only live texture slots with monotonic checked ids; reclaim empty pages without tombstones or stale-scene id reuse.
+# 2. Debug shaders: embed both HLSL sources and their shared include, compile with rooted virtual filenames and the existing flags, and keep dev/agent binaries independent of the build worktree. The scoped include callback borrows static bytes until synchronous D3DCompile returns; its raw out-pointers are supplied by the compiler. Release keeps its existing embedded bytecode.
+# 3. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
+# 4. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
+# 5. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
+# 6. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
+# 7. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
+# 8. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
+# 9. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
+# 10. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
+# 11. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
+# 12. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
+# 13. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
+# 14. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
+# 15. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
+# 16. Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.
+# 17. Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.
+# 18. GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.
+# 19. Damage redraw: the target keeps the last frame and every buffer (offscreen texture or flip-model back buffer) carries the damage accumulated since it was drawn; a frame is drawn only within that rectangle under a scissor, groups whose composite cannot reach it are skipped, and an unchanged frame is neither drawn nor presented. A different size, background, opaque backdrop, atlas epoch (removed tiles, replaced or forgotten external textures, device loss), a sampled external texture, a failed pass or GPUI_DAMAGE_REDRAW=0 draw the whole frame. Frame capture keeps one staging texture per size. Group images stay in the group atlas between frames: a group matched with a group of the last frame (Scene::group_base) keeps that group's atlas rectangle and image and is not drawn again; the other groups take free space on the shelves of the last full layout, and the atlas is packed again when they do not fit.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -6387,10 +6388,13 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_atlas.rs b/vendor/gpui-windows/src/directx_atlas.rs
-index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc75df4a71
+index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..aeb59d203da20232fc9a807b06b5245b5c7f70d2
 --- a/vendor/gpui-windows/src/directx_atlas.rs
 +++ b/vendor/gpui-windows/src/directx_atlas.rs
-@@ -16 +16,12 @@
+@@ -12 +12 @@
+-    AtlasBackend, AtlasKey, AtlasState, AtlasTextureId, AtlasTextureKind, AtlasTextureList,
++    AtlasBackend, AtlasKey, AtlasState, AtlasTextureId, AtlasTextureKind,
+@@ -16 +16,14 @@
 -pub(crate) struct DirectXAtlas(Mutex<AtlasState<DirectXAtlasTextures>>);
 +/// KaminIDE patch: the second field counts changes that alter the pixels of
 +/// tiles a scene may still reference (removed tiles, replaced or forgotten
@@ -6404,14 +6408,23 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc
 +);
 +
 +mod external_damage;
-@@ -32,0 +44,3 @@
++mod texture_slots;
++use texture_slots::TextureSlots;
+@@ -21,3 +34,3 @@
+-    monochrome_textures: AtlasTextureList<DirectXAtlasTexture>,
+-    polychrome_textures: AtlasTextureList<DirectXAtlasTexture>,
+-    subpixel_textures: AtlasTextureList<DirectXAtlasTexture>,
++    monochrome_textures: TextureSlots<DirectXAtlasTexture>,
++    polychrome_textures: TextureSlots<DirectXAtlasTexture>,
++    subpixel_textures: TextureSlots<DirectXAtlasTexture>,
+@@ -32,0 +46,3 @@
 +    /// KaminIDE patch: a texture of another producer (`register_external`),
 +    /// whose pixels change without the atlas knowing.
 +    external: bool,
-@@ -37 +51 @@
+@@ -37 +53 @@
 -        DirectXAtlas(Mutex::new(AtlasState::new(DirectXAtlasTextures {
 +        let state = Mutex::new(AtlasState::new(DirectXAtlasTextures {
-@@ -43 +57,39 @@
+@@ -43 +59,37 @@
 -        })))
 +        }));
 +        DirectXAtlas(
@@ -6438,9 +6451,7 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc
 +        let lock = self.0.lock();
 +        let list = &lock.backend.polychrome_textures;
 +        let is_external = |index: u32| {
-+            list.textures
-+                .get(index as usize)
-+                .and_then(Option::as_ref)
++            list.get(index)
 +                .is_some_and(|t| t.external)
 +        };
 +        self.2.lock().take(scene, is_external)
@@ -6455,7 +6466,7 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc
 @@ -49,0 +102,2 @@
 +    // KaminIDE patch: None = слот освобождён (кадр «в полёте» пережил
 +    // unregister_external) — вызывающий пропускает отрисовку этой пачки.
-@@ -56,0 +111,106 @@
+@@ -56,0 +111,95 @@
 +    }
 +
 +    /// KaminIDE patch: положить ЧУЖУЮ текстуру D3D11 (готовый кадр CEF) в
@@ -6477,14 +6488,9 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc
 +            [view]
 +        };
 +        let list = &mut lock.backend.polychrome_textures;
-+        // KaminIDE patch: индексы из free_list НЕ переиспользуем. Кадр может
-+        // быть построен до remove/unregister, а нарисован после (CEF-насос
-+        // реентерабелен): спрайты с прошлым id в переиспользованном слоте
-+        // выбирали пиксели чужого кадра CEF (коррапт атласа), а после
-+        // освобождения слота texture() падал unwrap'ом на None. Слот на
-+        // регистрацию — всегда новый; пустые слоты копятся (Option = дёшево).
++        // Never reuse an id: an in-flight external scene may still reference it.
 +        let id = AtlasTextureId {
-+            index: list.textures.len() as u32,
++            index: list.next_id()?,
 +            kind: AtlasTextureKind::Polychrome,
 +        };
 +        let atlas_texture = DirectXAtlasTexture {
@@ -6498,7 +6504,7 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc
 +            live_atlas_keys: 0,
 +            external: true,
 +        };
-+        list.textures.push(Some(atlas_texture));
++        list.insert(id.index, atlas_texture);
 +        Some(AtlasTile {
 +            texture_id: id,
 +            tile_id: gpui::TileId(0),
@@ -6537,8 +6543,7 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc
 +            }
 +            [view]
 +        };
-+        let ix = id.index as usize;
-+        let Some(Some(slot)) = lock.backend.polychrome_textures.textures.get_mut(ix) else {
++        let Some(slot) = lock.backend.polychrome_textures.get_mut(id.index) else {
 +            return false;
 +        };
 +        slot.texture = texture;
@@ -6549,20 +6554,22 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc
 +        true
 +    }
 +
-+    /// KaminIDE patch: забыть чужую текстуру (её кадр больше не показываем).
-+    /// Индекс в free_list НЕ возвращаем — см. register_external: спрайт из
-+    /// кадра «в полёте» ещё может ссылаться на этот id, переиспользование
-+    /// слота рисовало чужую текстуру вместо него.
++    /// Drop an external texture without retaining a vacant slot or reusing its id.
++    /// An older scene still naming the id will skip its missing texture.
 +    pub(crate) fn unregister_external(&self, id: AtlasTextureId) {
 +        let mut lock = self.0.lock();
-+        let ix = id.index as usize;
-+        if lock.backend.polychrome_textures.textures.get(ix).is_some() {
-+            lock.backend.polychrome_textures.textures[ix] = None;
-+        }
++        lock.backend.polychrome_textures.remove(id.index);
 +        drop(lock);
 +        self.2.lock().forget(id.index);
 +        self.bump();
-@@ -71,0 +232,27 @@
+@@ -68,3 +217,3 @@
+-            textures.monochrome_textures = AtlasTextureList::default();
+-            textures.polychrome_textures = AtlasTextureList::default();
+-            textures.subpixel_textures = AtlasTextureList::default();
++            textures.monochrome_textures = TextureSlots::default();
++            textures.polychrome_textures = TextureSlots::default();
++            textures.subpixel_textures = TextureSlots::default();
+@@ -71,0 +221,27 @@
 +        drop(lock);
 +        *self.2.lock() = Default::default();
 +        self.bump();
@@ -6581,7 +6588,7 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc
 +            ("gpu/atlas/subpixel", &lock.backend.subpixel_textures),
 +        ];
 +        for (path, list) in lists {
-+            for texture in list.textures.iter().flatten() {
++            for texture in list.iter() {
 +                let used = texture.allocator.allocated_space().max(0) as u64;
 +                sink(
 +                    path,
@@ -6590,21 +6597,73 @@ index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..36ce2049d4dfad9db7796f44cd2cb6dc
 +                );
 +            }
 +        }
-@@ -87,0 +275 @@
+@@ -87,0 +264 @@
 +        self.bump();
-@@ -225 +413,5 @@
+@@ -117,5 +294 @@
+-        let Some(texture_slot) = textures.textures.get_mut(id.index as usize) else {
+-            return;
+-        };
+-
+-        if let Some(mut texture) = texture_slot.take() {
++        if let Some(texture) = textures.get_mut(id.index) {
+@@ -125,3 +298 @@
+-                textures.free_list.push(texture.id.index as usize);
+-            } else {
+-                *texture_slot = Some(texture);
++                textures.remove(id.index);
+@@ -225 +396,2 @@
 -        let index = texture_list.free_list.pop();
-+        // KaminIDE patch: индексы НЕ переиспользуем (см. register_external) —
-+        // кадр «в полёте» со спрайтом старого владельца индекса рисовал чужую
-+        // текстуру. Слоты-пустышки копятся медленно (полное освобождение
-+        // атласной текстуры — редкость), Option в Vec дёшев.
-+        let index: Option<usize> = None;
-@@ -242,0 +435 @@
++        // Unique ids preserve stale-scene safety without retaining empty slots.
++        let index = texture_list.next_id()?;
+@@ -235 +407 @@
+-                index: index.unwrap_or(texture_list.textures.len()) as u32,
++                index,
+@@ -243,10 +415,8 @@
+-        };
+-        if let Some(ix) = index {
+-            texture_list.textures[ix] = Some(atlas_texture);
+-            texture_list.textures.get_mut(ix).unwrap().as_mut()
+-        } else {
+-            texture_list.textures.push(Some(atlas_texture));
+-            texture_list.textures.last_mut().unwrap().as_mut()
+-        }
+-    }
+-
 +            external: false,
-@@ -252,0 +446,3 @@
++        };
++        Some(texture_list.insert(index, atlas_texture))
++    }
++
 +    // KaminIDE patch: Option вместо unwrap-паники. Слот может быть None:
 +    // текстура вью снята unregister_external, а кадр с её спрайтом ещё в
 +    // полёте (CEF-насос реентерабелен) — тогда спрайт просто не рисуем.
+@@ -259 +429 @@
+-        textures.textures.get(id.index as usize)?.as_ref()
++        textures.get(id.index)
+@@ -392,0 +563,23 @@
++    fn empty_pages_are_released_without_reusing_stale_scene_ids() {
++        let atlas = create_atlas().expect("WARP device must be available");
++        let size = Size {
++            width: DevicePixels(700),
++            height: DevicePixels(700),
++        };
++        let mut previous = None;
++        for request in 0..64 {
++            let key = make_image_key(request);
++            let tile = insert_tile(&atlas, key.clone(), size);
++            if let Some(old) = previous {
++                assert_ne!(old, tile.texture_id);
++                assert!(atlas.get_texture_view(old).is_none());
++            }
++            assert_eq!(atlas.0.lock().backend.polychrome_textures.iter().count(), 1);
++            atlas.remove(&key);
++            assert!(atlas.get_texture_view(tile.texture_id).is_none());
++            assert_eq!(atlas.0.lock().backend.polychrome_textures.iter().count(), 0);
++            previous = Some(tile.texture_id);
++        }
++    }
++
++    #[test]
 diff --git a/vendor/gpui-windows/src/directx_atlas/external_damage.rs b/vendor/gpui-windows/src/directx_atlas/external_damage.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..8a61f92f237312df0805226d32705b0ddf011de6
@@ -6814,6 +6873,109 @@ index 0000000000000000000000000000000000000000..8a61f92f237312df0805226d32705b0d
 +            map(dev(100, 100, 10, 10), &s),
 +            SceneDamage::Rect { x: 198, y: 198, width: 24, height: 24 }
 +        );
++    }
++}
+diff --git a/vendor/gpui-windows/src/directx_atlas/texture_slots.rs b/vendor/gpui-windows/src/directx_atlas/texture_slots.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..1b79aa3040cd878d11b7810fa9b76f113622c335
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_atlas/texture_slots.rs
+@@ -0,0 +1,97 @@
++//! Live atlas textures keep unique ids without accumulating empty slots.
++
++use std::collections::BTreeMap;
++
++pub(super) struct TextureSlots<T> {
++    live: BTreeMap<u32, T>,
++    next_id: Option<u32>,
++}
++
++impl<T> Default for TextureSlots<T> {
++    fn default() -> Self {
++        Self {
++            live: BTreeMap::new(),
++            next_id: Some(0),
++        }
++    }
++}
++
++impl<T> TextureSlots<T> {
++    pub(super) fn next_id(&mut self) -> Option<u32> {
++        let id = self.next_id?;
++        self.next_id = id.checked_add(1);
++        Some(id)
++    }
++
++    pub(super) fn insert(&mut self, id: u32, texture: T) -> &mut T {
++        self.live.entry(id).or_insert(texture)
++    }
++
++    pub(super) fn get(&self, id: u32) -> Option<&T> {
++        self.live.get(&id)
++    }
++
++    pub(super) fn get_mut(&mut self, id: u32) -> Option<&mut T> {
++        self.live.get_mut(&id)
++    }
++
++    pub(super) fn remove(&mut self, id: u32) {
++        self.live.remove(&id);
++    }
++
++    pub(super) fn iter(&self) -> impl Iterator<Item = &T> {
++        self.live.values()
++    }
++
++    pub(super) fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut T> {
++        self.live.values_mut()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn retired_ids_do_not_alias_new_textures_or_accumulate_tombstones() {
++        let mut slots = TextureSlots::default();
++        let first = slots.next_id().unwrap();
++        slots.insert(first, "old");
++        slots.remove(first);
++        for _ in 0..10_000 {
++            let id = slots.next_id().unwrap();
++            slots.insert(id, "new");
++            assert_eq!(slots.live.len(), 1);
++            assert!(slots.get(first).is_none());
++            slots.remove(id);
++            assert!(slots.live.is_empty());
++        }
++    }
++
++    #[test]
++    fn allocation_keeps_reverse_creation_order_after_removal() {
++        let mut slots = TextureSlots::default();
++        for value in 0..3 {
++            let id = slots.next_id().unwrap();
++            slots.insert(id, value);
++        }
++        slots.remove(1);
++        assert_eq!(
++            slots
++                .iter_mut()
++                .rev()
++                .map(|value| *value)
++                .collect::<Vec<_>>(),
++            [2, 0]
++        );
++    }
++
++    #[test]
++    fn exhausted_ids_fail_without_wrapping_into_old_scenes() {
++        let mut slots = TextureSlots::<()>::default();
++        slots.next_id = Some(u32::MAX);
++        assert_eq!(slots.next_id(), Some(u32::MAX));
++        assert_eq!(slots.next_id(), None);
++        assert_eq!(slots.next_id(), None);
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_devices.rs b/vendor/gpui-windows/src/directx_devices.rs

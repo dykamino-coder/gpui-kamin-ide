@@ -64,6 +64,10 @@ const NON_RENDERING = new Set<string>([
   'session-owner',
   'resume-head-vouch',
   'repl-mode',
+  // CLI 2.1.323+ session lineage and data-flow bookkeeping.
+  'derived-from',
+  'data-flow-records',
+  'data-flow-incomplete',
 ])
 
 // CLI-synthesised placeholder texts that never render as a bubble (mirrors

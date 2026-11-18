@@ -235,6 +235,11 @@ export class JsonlWatcher {
   private fileIdentity: string | null = null
   private fileStamp: { size: number; mtime: number } | null = null
   private reading = false
+  /** A change signal arrived while a tail read was running. The read already
+   *  sized its range, so it re-runs on completion instead of losing the signal
+   *  (which left the newest records waiting for the 10s safety poll). */
+  private rescanRequested = false
+  private discoveryPoke: (() => void) | null = null
   // Fast re-check after a backpressure DROP (offset not advanced) so recovery
   // doesn't wait on the 10s safety poll.
   private tailRetryTimer: ReturnType<typeof setTimeout> | null = null
@@ -651,6 +656,7 @@ export class JsonlWatcher {
 
     // Scan immediately: waiting a poll interval delayed every session's open by
     // that much, and delayed the "nothing to replay" answer above with it.
+    this.discoveryPoke = () => void tick()
     void tick()
     this.discoveryTimer = setInterval(() => {
       void tick()
@@ -1379,8 +1385,8 @@ export class JsonlWatcher {
         if (debounceTimer) clearTimeout(debounceTimer)
         debounceTimer = setTimeout(() => {
           debounceTimer = null
-          if (this.stopped || this.reading) return
-          this.checkForNewContent()
+          if (this.stopped) return
+          void this.checkForNewContent()
         }, 20)
       }
       this.tailWatcher = fs.watch(this.filePath, { persistent: false }, (eventType) => {
@@ -1436,8 +1442,12 @@ export class JsonlWatcher {
     // Set BEFORE the first await — fs.watch debounce and the safety-net
     // interval both check this flag, and an async gap here let them race
     // into a double read of the same range.
-    if (this.reading) return
+    if (this.reading) {
+      this.rescanRequested = true
+      return
+    }
     this.reading = true
+    this.rescanRequested = false
     const filePath = this.filePath
     const gen = this.replayGen
     const live = () => !this.stopped && this.filePath === filePath && this.replayGen === gen
@@ -1515,9 +1525,21 @@ export class JsonlWatcher {
     } finally {
       if (live()) {
         this.reading = false
-        if (more) setImmediate(() => void this.checkForNewContent())
+        if (more || this.rescanRequested) {
+          this.rescanRequested = false
+          setImmediate(() => void this.checkForNewContent())
+        }
       }
     }
+  }
+
+  /** An outside signal that the transcript probably changed: a CLI hook
+   *  (prompt, tool, stop) reaches the server right around its JSONL write.
+   *  Looks now instead of waiting for a discovery poll or a missed fs event. */
+  poke(): void {
+    if (this.stopped) return
+    if (!this.filePath) this.discoveryPoke?.()
+    else if (this.tailTimer) void this.checkForNewContent()
   }
 
   /** Read complete records from `offset`, stopping once TAIL_BATCH_BYTES of

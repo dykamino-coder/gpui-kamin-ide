@@ -132,6 +132,7 @@ impl Scene {
     /// A copy of a finished layer scene (a write's copy on write).
     pub(super) fn copy_finished(&self) -> Scene {
         Scene {
+            book: Box::new(super::super::SceneBook { images: self.book.images.clone(), ..Default::default() }),
             paint_operations: self.paint_operations.clone(),
             primitive_bounds: self.primitive_bounds.clone(),
             shadows: self.shadows.clone(),

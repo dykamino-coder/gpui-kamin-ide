@@ -8,7 +8,7 @@
 // never a guess and never a Claude rate.
 //
 // Source: https://developers.openai.com/api/docs/pricing (standard tier,
-// per 1M tokens), read 2026-11-12. Long-context rates apply to the whole
+// per 1M tokens), read 2026-11-12; GPT-6.2 rows read 2026-11-18. Long-context rates apply to the whole
 // request once its input exceeds 272K tokens; the page lists the long cache
 // write rate only for some models, so the long tier doubles the short one
 // (the page's rule for input and cache prices). Cache write uses the 30-minute
@@ -17,7 +17,7 @@
 // ============================================================================
 
 export const OPENAI_PRICES_SOURCE = 'https://developers.openai.com/api/docs/pricing'
-export const OPENAI_PRICES_AS_OF = '2026-11-12'
+export const OPENAI_PRICES_AS_OF = '2026-11-18'
 export const OPENAI_LONG_CONTEXT_TOKENS = 272_000
 
 export interface OpenAiRate {
@@ -47,6 +47,8 @@ function rate(
 }
 
 const RATES: Record<string, OpenAiRate> = {
+  'gpt-6.2-sol': rate(2, 0.1, 2.5, 10, [4, 0.2, 15]),
+  'gpt-6.2-astra': rate(8, 0.4, 10, 40, [16, 0.8, 60]),
   'gpt-6-astra': rate(10, 1, 12.5, 50, [20, 2, 75]),
   'gpt-6.1-sol': rate(2, 0.1, 2.5, 10, [4, 0.2, 15]),
   'gpt-6.1-terra': rate(1, 0.05, 1.25, 5, [2, 0.1, 7.5]),
