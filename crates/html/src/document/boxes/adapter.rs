@@ -16,9 +16,12 @@ impl BoxTree {
 
     /// The retained text of the flow of `nodes`, normalized when it was
     /// prepared: a paragraph whose text equals it takes it as its own
-    /// (`InlineContent::shared_text`) instead of a copy.
-    pub(crate) fn flow_text(&self, nodes: &[Node]) -> Option<gpui::SharedString> {
-        let record = self.get(self.flow_of(nodes)?)?;
+    /// (`InlineContent::shared_text`) instead of a copy. A slice the box tree
+    /// did not publish (a render copy of the children) takes the text of the
+    /// box of `container`, the element whose content `nodes` are: the caller
+    /// shares it only when it is equal.
+    pub(crate) fn flow_text(&self, nodes: &[Node], container: u64) -> Option<gpui::SharedString> {
+        let record = self.get(self.flow_of(nodes).or_else(|| self.box_of(container))?)?;
         let prepared = record.prepared.as_ref().and_then(|p| p.normalized());
         prepared.or(record.inline.as_ref()).map(|t| t.shared_text())
     }

@@ -51,3 +51,22 @@ fn every_keyed_element_finds_its_first_box_and_an_edit_keeps_it() {
         "an attribute edit keeps the box"
     );
 }
+
+#[test]
+fn a_flow_of_inline_elements_only_finds_its_text_by_its_element() {
+    let html = "<p><span>one </span><span>two</span></p>";
+    let doc = Document::builder(html, "").build().unwrap();
+    let mut pending = vec![doc.nodes.iter()];
+    let p = loop {
+        match pending.last_mut().and_then(|s| s.next()) {
+            Some(Node::Element(e)) if e.tag == "p" => break e,
+            Some(Node::Element(e)) => pending.push(e.children.iter()),
+            Some(Node::Text(_)) => {}
+            None if pending.pop().is_some() => {}
+            None => panic!("no paragraph"),
+        }
+    };
+    let tree = doc.state.boxes.borrow();
+    let text = tree.flow_text(&p.children, p.node_id);
+    assert_eq!(text.as_deref(), Some("one two"));
+}
