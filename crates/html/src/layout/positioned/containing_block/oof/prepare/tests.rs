@@ -22,13 +22,9 @@ fn ordinary_publication_does_not_prepare_layout(cx: &mut gpui::TestAppContext) {
                 selected.commit_prepared(&destination, window, cx);
                 assert!(selected.is_empty());
                 assert_eq!(host.len(), children);
-                assert!(
-                    host.state
-                        .items
-                        .borrow()
-                        .iter()
-                        .all(|(_, kid)| { matches!(kid, OofKid::Ready(_)) })
-                );
+                assert!(host.state.items.borrow().iter().all(|(_, kid)| {
+                    matches!(kid, OofKid::Ready(_))
+                }));
                 // Even an initially empty selected queue must redirect late descendants.
                 selected.push(Default::default(), gpui::div().into_any_element());
                 assert_eq!(host.len(), children + 1);
