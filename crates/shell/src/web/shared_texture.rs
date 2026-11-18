@@ -35,11 +35,43 @@ struct Slot {
     width: i32,
     height: i32,
     tile: gpui::ExternalTexture,
+    /// `TILE_GENERATION` value of `tile`.
+    generation: u64,
     /// Регион страницы, который сейчас ПОКАЗАН (w, h) — по нему решаем, не
     /// хуже ли новый кадр уже показанного.
     content: (i32, i32),
     /// Когда последний раз принимали кадр: страховка от вечного отказа.
     accepted_at: std::time::Instant,
+    /// The page frame copied into `texture` last (`incoming::Incoming::frame`)
+    /// and the region of it that is shown.
+    frame: u64,
+    crop: (i32, i32, i32, i32),
+    /// The last call showed an older region instead of the new frame (a
+    /// transitional resize frame): what is painted is not `crop`.
+    held: bool,
+}
+
+/// What a sprite of the view samples: the same key means the same atlas tile
+/// and region, so a newer copy into the texture needs no new scene.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FrameKey {
+    tile: u64,
+    size: (i32, i32),
+    crop: (i32, i32, i32, i32),
+}
+
+/// Bumped whenever a view's atlas entry is registered or refilled.
+static TILE_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// The key of the frame `texture_for` returned last for view `id`.
+pub(crate) fn shown_key(id: &str) -> Option<FrameKey> {
+    let map = SLOTS.lock().ok()?;
+    let slot = map.get(id).filter(|slot| !slot.held)?;
+    Some(FrameKey {
+        tile: slot.generation,
+        size: (slot.width, slot.height),
+        crop: slot.crop,
+    })
 }
 
 static SLOTS: LazyLock<Mutex<HashMap<String, Slot>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -61,6 +93,16 @@ pub(crate) fn texture_for(
     if !incoming.shared.belongs_to(device.raw()) {
         return None;
     }
+    // This frame is in the own texture already (the pump shows page frames
+    // without a window draw, `page_frame.rs`): a later paint copies nothing.
+    let copied_already = SLOTS.lock().ok().and_then(|m| {
+        m.get(id)
+            .filter(|s| s.frame == incoming.frame && !s.held)
+            .map(|s| s.tile.region(s.crop.0, s.crop.1, s.crop.2, s.crop.3))
+    });
+    if copied_already.is_some() {
+        return copied_already;
+    }
     // ПЕРЕХОДНЫЕ кадры ресайза не показываем. При расширении по ширине
     // Chromium сначала присылает кадр с НЕДОРИСОВАННОЙ высотой (content_rect
     // короче панели), следующим — полный: на экране это «прыжок» страницы
@@ -80,6 +122,11 @@ pub(crate) fn texture_for(
                 (ch < dh - 2 && axis_kept(want.1, dh)) || (cw < dw - 2 && axis_kept(want.0, dw));
             if worse && accepted_at.elapsed().as_millis() < 250 {
                 super::diag::cropped();
+                if let Ok(mut map) = SLOTS.lock()
+                    && let Some(slot) = map.get_mut(id)
+                {
+                    slot.held = true;
+                }
                 return Some(tile.region(0, 0, dw, dh));
             }
         }
@@ -107,8 +154,13 @@ pub(crate) fn texture_for(
                     width: w,
                     height: h,
                     tile: tile.clone(),
+                    generation: TILE_GENERATION
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                     content: (incoming.content.2, incoming.content.3),
                     accepted_at: std::time::Instant::now(),
+                    frame: 0,
+                    crop: (0, 0, 0, 0),
+                    held: false,
                 },
             );
         }
@@ -122,9 +174,7 @@ pub(crate) fn texture_for(
     let (tex_w, tex_h) = (own_desc.Width as i32, own_desc.Height as i32);
     let (cx_, cy_, cw, ch) = incoming.content;
     // Рисуем ТОЛЬКО страницу (`content_rect`), без прозрачных полей буфера.
-    let crop = move |tile: gpui::ExternalTexture| {
-        tile.region(cx_.min(tex_w - 1), cy_.min(tex_h - 1), cw, ch)
-    };
+    let crop = (cx_.min(tex_w - 1), cy_.min(tex_h - 1), cw, ch);
     let tile = match known {
         Some((texture, w, h, tile)) if texture.same_as(&own) && w == tex_w && h == tex_h => {
             // Текстура та же, но регион страницы мог смениться — обновим,
@@ -155,12 +205,20 @@ pub(crate) fn texture_for(
     };
     // Копия выше принесла в свою текстуру кадры, пришедшие с прошлой
     // отрисовки: окно перерисует только то, что в них меняли (`incoming`).
-    if super::copy_frame::take_copied(id)
-        && let Some((x, y, w, h)) = incoming::take_damage(id, incoming.frame)
-    {
+    let copied = super::copy_frame::take_copied(id);
+    if copied && let Some((x, y, w, h)) = incoming::take_damage(id, incoming.frame) {
         window.damage_external_texture(&tile, x, y, w, h);
     }
-    Some(crop(tile))
+    if let Ok(mut map) = SLOTS.lock()
+        && let Some(slot) = map.get_mut(id)
+    {
+        slot.crop = crop;
+        slot.held = false;
+        if copied {
+            slot.frame = incoming.frame;
+        }
+    }
+    Some(tile.region(crop.0, crop.1, crop.2, crop.3))
 }
 
 /// Плитки атласа закрытых вью: выбрасывать можно только с потока отрисовки,
@@ -171,6 +229,7 @@ static DEAD_TILES: LazyLock<Mutex<Vec<gpui::ExternalTexture>>> =
 /// Забыть кадры и текстуры ОДНОГО вью (закрытие браузера).
 pub(crate) fn forget_view(id: &str) {
     incoming::forget(Some(id));
+    super::page_frame::forget(id);
     if let Ok(mut map) = SLOTS.lock()
         && let Some(slot) = map.remove(id)
         && let Ok(mut dead) = DEAD_TILES.lock()
