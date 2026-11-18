@@ -52,8 +52,13 @@ pub(super) fn write_paint_values(
         // No element's style changed: the frame stands as it is.
         return Some(Taken::default());
     }
-    // A box's own painter's runs, or the pieces of an inline box's band.
-    let held = |id: u64| u32::try_from(id).is_ok_and(|o| layer.holds_box(o) || layer.holds_band(o));
+    // A box's own painter's runs, or the pieces of the boxes in `bands`: a
+    // band is recorded again only into pieces no other painter cut.
+    let held = |id: u64, bands: &[u64]| {
+        u32::try_from(id)
+            .is_ok_and(|o| layer.holds_band(o) || (!bands.contains(&id) && layer.holds_box(o)))
+    };
+    let mut bands: Vec<u64> = Vec::new();
     let mut writes: Vec<Write> = Vec::with_capacity(paths.len());
     let mut records: Vec<(Path, u64)> = Vec::new();
     let mut deferred: Vec<(Path, u64)> = Vec::new();
@@ -83,7 +88,7 @@ pub(super) fn write_paint_values(
             }
         };
         u32::try_from(a.node_id).ok()?;
-        if !banded && off(a.node_id) && held(a.node_id) {
+        if !banded && off(a.node_id) && held(a.node_id, &[]) {
             deferred.push((path.clone(), a.node_id));
             continue;
         }
@@ -100,12 +105,16 @@ pub(super) fn write_paint_values(
                 // Fragments of one element share an owner: one write each.
                 if writes.last().is_none_or(|w: &Write| w.0 != owner) {
                     writes.push((owner, Some(from), Some(to)));
+                    bands.extend(banded.then_some(a.node_id));
                 }
             }
             // Any other change of a band: its pieces are painted again.
             _ if banded => match super::layer_band::band_change(old, path, a, b) {
                 super::layer_band::BandChange::Nothing => continue,
-                super::layer_band::BandChange::Pieces => records.push((path.clone(), a.node_id)),
+                super::layer_band::BandChange::Pieces => {
+                    bands.push(a.node_id);
+                    records.push((path.clone(), a.node_id));
+                }
                 super::layer_band::BandChange::Refused(reason) => {
                     refuse_not_own(reason);
                     return None;
@@ -116,7 +125,7 @@ pub(super) fn write_paint_values(
     }
     // A box the layer cannot record again builds the frame as before;
     // nothing is written then.
-    if !records.iter().all(|r| held(r.1)) {
+    if !records.iter().all(|r| held(r.1, &bands)) {
         crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
         return None;
     }
@@ -124,7 +133,7 @@ pub(super) fn write_paint_values(
     if layer.set_backgrounds(&writes).is_none() {
         // A fill the layer does not hold as painted: its box records again.
         let owners = writes.iter().map(|w| u64::from(w.0));
-        if !owners.clone().all(held) {
+        if !owners.clone().all(|o| held(o, &bands)) {
             crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
             return None;
         }

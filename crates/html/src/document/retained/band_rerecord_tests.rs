@@ -81,7 +81,9 @@ fn delta(counts: &[u64]) -> String {
     let now = crate::paint_path::read();
     let named = crate::paint_path::NAMES.iter().zip(now.iter().zip(counts));
     named
-        .filter(|(n, (a, b))| a > b && (n.starts_with("refused") || n.starts_with("not_own")))
+        .filter(|(n, (a, b))| {
+            a > b && (n.starts_with("refused") || n.starts_with("not_own") || **n == "records")
+        })
         .map(|(n, (a, b))| format!("{n}={} ", a - b))
         .collect()
 }
@@ -160,4 +162,26 @@ fn a_band_on_a_justified_box_builds_its_frame(cx: &mut TestAppContext) {
         "justified pieces are cut by another painter: the frame is built"
     );
     assert_eq!(edited, fresh, "the built frame differs from a fresh one");
+}
+
+/// A bordered `span` that is a flex item: the layer holds its own box but not
+/// its band, whose pieces edge spacers cut. The revision refuses before any
+/// box is recorded again (`revision::layer_write`), and the frame is built.
+#[gpui::test]
+fn a_cut_band_is_refused_before_any_record(cx: &mut TestAppContext) {
+    let css = "div{display:flex} #s{border:1px solid #acd;padding:1px} #s.b{background:#eee}";
+    let body = "<div><span id=s class='CLASS'>side word</span></div>";
+    let (kept, edited, fresh, refused) = edit_refused(cx, css, body, "b");
+    assert!(
+        !kept,
+        "the cut band is not recorded again: the frame is built"
+    );
+    assert!(
+        !refused.contains("records"),
+        "a box was recorded: {refused}"
+    );
+    assert_eq!(
+        edited, fresh,
+        "the frame differs from a fresh one: {refused}"
+    );
 }
