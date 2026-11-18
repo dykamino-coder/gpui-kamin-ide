@@ -104,9 +104,15 @@ pub(super) fn key(id: BoxId) -> u64 {
 
 /// A build without fragmentation, line clamping, ruby or deferred out-of-flow
 /// builds; the subtree is inert (`inert_tree`) and its styles do not follow
-/// the window (`window_free`).
-pub(super) fn plain(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> bool {
+/// the window (`window_free`). `lists`: the verdicts of this build's lists.
+pub(super) fn plain(
+    nodes: &[Node],
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+    lists: &super::inert::InertLists,
+) -> bool {
     let cx = &opts.cx;
+    let vcx = cx.vcx();
     cx.fragmentation.lines.is_none()
         && cx.clamp.input.is_none()
         && cx.ruby.base.is_none()
@@ -116,21 +122,16 @@ pub(super) fn plain(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> 
             inherited.reset_context.cq_size,
             inherited.reset_context.cq_box,
         )
-        && nodes.iter().all(|n| match n {
-            Node::Element(e) => inert_tree(e, cx.vcx()) && window_free(e),
-            Node::Text(_) => true,
-        })
+        && lists.all(nodes, |e| inert_node(e, vcx) && window_free(e))
 }
 
-/// No style of the subtree of `e` folded a viewport length at the cascade
+/// The style of `e` folded no viewport length at the cascade
 /// (`ComputedSlot::reads_viewport`: a `font-size: 2vw` is pixels by now, and
-/// a new window width restyles the element without a layout epoch) and none
-/// sees a query container (container lengths and queries follow its size).
+/// a new window width restyles the element without a layout epoch) and sees
+/// no query container (container lengths and queries follow its size).
 fn window_free(e: &Element) -> bool {
-    super::super::plain::all_elements(e, |e| {
-        let context = &e.style.used().reset_context;
-        !e.style.slot().reads_viewport() && no_query_container(context.cq_size, context.cq_box)
-    })
+    let context = &e.style.used().reset_context;
+    !e.style.slot().reads_viewport() && no_query_container(context.cq_size, context.cq_box)
 }
 
 /// The container's inline size follows the width it gets from outside: it
@@ -163,9 +164,12 @@ fn no_query_container(
 /// positions, floats, transforms, blends or takes a paint key or anchor its
 /// output keeps, so its content replays with moved counters (`content`).
 pub(in crate::layout::reuse) fn inert_tree(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
-    super::super::plain::all_elements(e, |e| {
-        super::super::plain::replayable_node(e, vcx)
-            && e.style.used().reset_positioned.anchor_name.is_none()
-            && e.style.used().reset_positioned.implicit_anchor.is_none()
-    })
+    super::super::plain::all_elements(e, |e| inert_node(e, vcx))
+}
+
+/// The box `e` itself is inert (`inert_tree`).
+fn inert_node(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
+    super::super::plain::replayable_node(e, vcx)
+        && e.style.used().reset_positioned.anchor_name.is_none()
+        && e.style.used().reset_positioned.implicit_anchor.is_none()
 }
