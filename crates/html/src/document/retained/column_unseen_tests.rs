@@ -44,12 +44,27 @@ fn an_unseen_float_paragraph_keeps_the_fragmented_frame(cx: &mut TestAppContext)
     let before = frames(&view, vcx);
     update(&view, vcx, &page(" data-edit"));
     let kept = frames(&view, vcx) == (before.0, before.1 + 1);
+    assert_eq!(
+        vcx.update(|_, cx| view.read(cx).doc.reuse.deferred_repaints()),
+        1,
+        "the omitted owner must wait for a fresh recording"
+    );
     let once = frames(&view, vcx);
     update(&view, vcx, &page(" data-edit=again"));
     let repeated = frames(&view, vcx) == (once.0, once.1 + 1);
+    assert_eq!(
+        vcx.update(|_, cx| view.read(cx).doc.reuse.deferred_repaints()),
+        1,
+        "repeated edits must share one deferred owner"
+    );
     let scene = quads(vcx);
     grow(&view, vcx);
     let grown = quads(vcx);
+    assert_eq!(
+        vcx.update(|_, cx| view.read(cx).doc.reuse.deferred_repaints()),
+        0,
+        "a fresh recording must discharge the deferred owner"
+    );
     let (fresh_view, fresh) = open(cx, &page(" data-edit=again"));
     frame(fresh);
     let expected = quads(fresh);
@@ -81,9 +96,17 @@ fn an_omitted_fragment_with_nonvalue_damage_rebuilds_as_fresh(cx: &mut TestAppCo
         update(&view, vcx, &page(" data-edit"));
         let before = frames(&view, vcx);
         update(&view, vcx, &changed);
-        assert!(
-            frames(&view, vcx).0 > before.0,
+        let after = frames(&view, vcx);
+        // Replacing the tree resets its counters; a replay keeps both.
+        assert_ne!(
+            after,
+            (before.0, before.1 + 1),
             "{kind} must build a fresh frame"
+        );
+        assert_eq!(
+            vcx.update(|_, cx| view.read(cx).doc.reuse.deferred_repaints()),
+            0,
+            "{kind} must discharge the old deferred record"
         );
         let scene = quads(vcx);
         grow(&view, vcx);
