@@ -5,17 +5,22 @@ use crate::dom::Marks;
 use crate::style::computed::Computed;
 use std::cell::Cell;
 
-fn el(tag: &str, children: Vec<Node>) -> Element {
-    Element::synthetic(tag, Computed::default(), Marks::default(), children)
+fn el(tag: &str, children: Vec<Node>) -> Node {
+    Node::Element(Element::synthetic(
+        tag,
+        Computed::default(),
+        Marks::default(),
+        children,
+    ))
 }
 
-/// A chain of `depth` nested `div`s around `leaf`, outermost first in the
-/// returned list of each level's element.
-fn chain(depth: usize, leaf: Element) -> Vec<Element> {
+/// A chain of `depth` nested `div`s around `leaf`: the node of each level,
+/// outermost first.
+fn chain(depth: usize, leaf: Node) -> Vec<Node> {
     let mut levels = vec![leaf];
     for _ in 0..depth {
         let inner = levels.last().cloned().expect("a level");
-        levels.push(el("div", vec![Node::Element(inner)]));
+        levels.push(el("div", vec![inner]));
     }
     levels.reverse();
     levels
@@ -41,16 +46,13 @@ fn every_container_of_a_deep_chain_asks_once_per_element() {
 #[test]
 fn a_failing_leaf_fails_every_container_above_it_and_no_other() {
     let levels = chain(50, el("img", vec![]));
-    let sibling = el("div", vec![Node::Element(el("p", vec![]))]);
+    let sibling = el("div", vec![el("p", vec![])]);
     let lists = InertLists::default();
     let own = |e: &Element| e.tag != "img";
     let both = [levels[0].clone(), sibling.clone()];
     assert!(!lists.all(&both, own));
-    assert!(
-        levels
-            .iter()
-            .all(|l| !lists.all(std::slice::from_ref(l), own))
-    );
+    let failing = |l: &Node| !lists.all(std::slice::from_ref(l), own);
+    assert!(levels.iter().all(failing));
     assert!(lists.all(std::slice::from_ref(&sibling), own));
     // Same verdicts as a fresh walk of each subtree.
     for level in &levels {
