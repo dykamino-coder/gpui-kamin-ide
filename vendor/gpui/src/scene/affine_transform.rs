@@ -95,7 +95,7 @@ impl Scene {
                 PaintOperation::StartLayer(b, _) => *b = placed(*b, matrix),
                 _ => {}
             }
-            scene.replay_operation(command);
+            scene.replay_image_operation(command, &self.book.images);
         }
         scene.segment_capture = self.segment_capture;
         scene.hoisted_backdrops = self.hoisted_backdrops.into_iter().map(|mut p| {
