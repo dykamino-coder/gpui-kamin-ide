@@ -17,17 +17,21 @@ FIELDS = ("features", "profile", "opt_level", "debug_assertions", "profile_overr
 ALLOW = "--allow-feature-mismatch"
 
 
-def of_exe(exe):
+def of_exe(exe, launcher=()):
     """The exe's own build record, or None for an exe that predates `--build-info`."""
     try:
-        with subprocess.Popen([str(exe), "--build-info"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        with subprocess.Popen([*launcher, str(exe), "--build-info"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                               stdin=subprocess.DEVNULL) as process:
             try:
                 text, _ = process.communicate(timeout=60)
             except subprocess.TimeoutExpired:
                 process.kill()
                 return None
-        build = json.loads(text.decode("utf-8")) if process.returncode == 0 else None
+        decoded = text.decode("utf-8-sig")
+        if launcher and decoded.startswith("Hidden desktop:"):
+            # The hidden launcher announces its child before forwarding JSON.
+            decoded = decoded.partition("\n")[2]
+        build = json.loads(decoded) if process.returncode == 0 else None
     except (OSError, ValueError):
         return None
     return build if isinstance(build, dict) and "features" in build else None

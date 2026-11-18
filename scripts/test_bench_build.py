@@ -92,5 +92,54 @@ class MemprofDiff(unittest.TestCase):
                 memprof.diff_command(args)
 
 
+
+class LauncherMetadata(unittest.TestCase):
+    def probe(self, payload, prefix=(), code=0):
+        from unittest.mock import MagicMock, patch
+        process = MagicMock()
+        process.__enter__.return_value = process
+        process.communicate.return_value = (payload, None)
+        process.returncode = code
+        with patch.object(bench_build.subprocess, "Popen", return_value=process) as spawn:
+            result = bench_build.of_exe("candidate.exe", prefix)
+        spawn.assert_called_once()
+        self.assertEqual(spawn.call_args.args[0], [*prefix, "candidate.exe", "--build-info"])
+        return result
+
+    def test_hidden_metadata_banner_requires_a_requested_launcher(self):
+        import json
+        record = build(AUDIT)
+        data = json.dumps(record).encode()
+        banner = b"Hidden desktop: perfcorpus-bench-123 own child: 456\n"
+        prefix = ["python", "-I", "hidden-desktop-launch.py"]
+        self.assertEqual(self.probe(data), record)
+        self.assertEqual(self.probe(banner + data, prefix), record)
+        self.assertIsNone(self.probe(banner + data))
+        self.assertIsNone(self.probe(b"unexpected output\n" + data, prefix))
+
+    def test_failed_launcher_does_not_retry_the_exe_directly(self):
+        self.assertIsNone(self.probe(b"", ["python", "hidden.py"], code=3))
+
+    def test_memprof_metadata_uses_the_requested_quoted_launcher(self):
+        import types
+        from unittest.mock import call, patch
+        args = types.SimpleNamespace(launcher='"C:/Program Files/Python/python.exe" -I "C:/hidden launcher.py"',
+                                     allow_feature_mismatch=False, depth=8, top=5, json=None)
+        prefix = ["C:/Program Files/Python/python.exe", "-I", "C:/hidden launcher.py"]
+        cand, base = (types.SimpleNamespace(exe=name) for name in ("c.exe", "b.exe"))
+        with patch.object(bench_build, "of_exe", return_value=build(AUDIT)) as probe, \
+                patch.object(memprof, "build_report", return_value={}), patch.object(memprof, "render"):
+            memprof.same_build(cand.exe, base.exe, args)
+            memprof.write_report(cand, base, True, args)
+        self.assertEqual(probe.call_args_list, [call("b.exe", prefix), call("c.exe", prefix),
+                                              call("c.exe", prefix), call("b.exe", prefix)])
+
+    def test_saved_report_accepts_the_metadata_launcher(self):
+        from unittest.mock import patch
+        with patch.object(memprof, "report_command") as report:
+            memprof.main(["report", "--launcher", "python hidden.py", "c.exe", "c.stacks"])
+        self.assertEqual(memprof.metadata_launcher(report.call_args.args[0]), ["python", "hidden.py"])
+
+
 if __name__ == "__main__":
     unittest.main()

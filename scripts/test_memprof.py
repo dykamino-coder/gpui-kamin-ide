@@ -282,7 +282,7 @@ class RunCommand(unittest.TestCase):
         import bench_build
         builds = {"c.exe": {"features": ["allocation-audit"], "profile": "release"},
                   "b.exe": {"features": ["heap-profile"], "profile": "release"}}
-        with unittest.mock.patch.object(bench_build, "of_exe", lambda exe: builds[str(exe)]):
+        with unittest.mock.patch.object(bench_build, "of_exe", lambda exe, launcher=(): builds[str(exe)]):
             with self.assertRaises(SystemExit) as stopped:
                 self.run_memprof()
             self.assertIn("heap-profile", str(stopped.exception))

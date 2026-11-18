@@ -641,17 +641,24 @@ def report_command(args):
     return report
 
 
+def metadata_launcher(args):
+    """Use the requested launcher for metadata probes as well as measured runs."""
+    command = getattr(args, "launcher", None)
+    return [part.strip('"') for part in shlex.split(command, posix=False)] if command else []
+
+
 def same_build(cand_exe, base_exe, args):
     """Refuses a base and a candidate built with different features or profiles (bench_build)."""
     import bench_build
-    return bench_build.require_same(bench_build.of_exe(base_exe), bench_build.of_exe(cand_exe),
+    return bench_build.require_same(bench_build.of_exe(base_exe, metadata_launcher(args)),
+                                    bench_build.of_exe(cand_exe, metadata_launcher(args)),
                                     args.allow_feature_mismatch)
 
 
 def write_report(cand, base, live, args):
     import bench_build
     report = build_report(cand, base, live, args.depth, args.top)
-    report["builds"] = {name: bench_build.of_exe(run.exe) for name, run in (("cand", cand), ("base", base)) if run}
+    report["builds"] = {name: bench_build.of_exe(run.exe, metadata_launcher(args)) for name, run in (("cand", cand), ("base", base)) if run}
     if args.json:
         pathlib.Path(args.json).write_text(json.dumps(report, indent=1), encoding="utf-8")
     render(report)
@@ -782,7 +789,7 @@ def run_command(args):
             env["ENGINE_BENCH_ALLOC_STACKS_SAMPLE"] = str(args.sample)
         else:
             env.pop("ENGINE_BENCH_ALLOC_STACKS_SAMPLE", None)
-        prefix = [part.strip('"') for part in shlex.split(args.launcher, posix=False)] if args.launcher else []
+        prefix = metadata_launcher(args)
         command = [*prefix, exe, *bench]
         with open(out / f"{name}.json", "wb") as stdout, open(out / f"{name}.err", "wb") as stderr:
             code = subprocess.run(command, env=env, stdout=stdout, stderr=stderr,
@@ -839,6 +846,7 @@ def main(argv=None):
     run.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
     rep = sub.add_parser("report", parents=[common, mismatch], help="fold probe files")
+    rep.add_argument("--launcher", help="command prefix for executable metadata probes")
     rep.add_argument("exe")
     rep.add_argument("stacks")
     rep.add_argument("base", nargs="*", help="BASE_EXE BASE_STACKS")
