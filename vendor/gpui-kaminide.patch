@@ -14687,10 +14687,10 @@ index 0000000000000000000000000000000000000000..66de2fec3140115ea4618035c2c64bcc
 +}
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355c45960e2
+index 0000000000000000000000000000000000000000..867b0fbd067f7f4735e3f533b149e42e7b34c9b2
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,267 @@
 +//! KaminIDE patch: a retained scene layer.
 +//!
 +//! A host paints content once into a layer (`Window::record_scene_layer`),
@@ -14850,6 +14850,7 @@ index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355
 +        // run a range of its commands; one that does not was recorded in
 +        // another scene. The layer then takes no value writes and records no
 +        // box again (the host paints it anew), counted, never a wrong write.
++        placed::settle_clipped_away(&mut boxes);
 +        let quads = scene.quads.len();
 +        let operations = scene.paint_operations.len();
 +        let valid = bindings.iter().all(|b| {
@@ -14955,6 +14956,8 @@ index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355
 +mod rerecord_tests;
 +#[cfg(test)]
 +mod placed_tests;
++#[cfg(test)]
++mod clipped_tests;
 diff --git a/vendor/gpui/src/scene/layer/boxes.rs b/vendor/gpui/src/scene/layer/boxes.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..4d8e5b6157cf8b67c4797720e4deba3a57e63acb
@@ -15101,6 +15104,90 @@ index 0000000000000000000000000000000000000000..4d8e5b6157cf8b67c4797720e4deba3a
 +            placed: None,
 +        })
 +    }
++}
+diff --git a/vendor/gpui/src/scene/layer/clipped_tests.rs b/vendor/gpui/src/scene/layer/clipped_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b99f6e442b65c5477e0d8b6f75af751f047b57eb
+--- /dev/null
++++ b/vendor/gpui/src/scene/layer/clipped_tests.rs
+@@ -0,0 +1,78 @@
++//! Scene layers: a box of a placed record whose commands every placement's
++//! clip cut away keeps one empty run, as a box painted directly whose
++//! commands the content mask culled; a box painted in another placement
++//! keeps only its painted runs.
++
++use super::order_tests::{env, quad, rect};
++use super::{LayerHandle, Placed, PlacedMap, RecordRuns, SceneLayer};
++use crate::{Hsla, Scene, ScaledPixels, hsla, point};
++
++fn blue() -> Hsla {
++    hsla(0.6, 1., 0.5, 1.)
++}
++
++/// Two columns of a child 100 tall, 50 per column, 60 apart.
++fn columns() -> [Placed; 2] {
++    let at = |x: f32, y: f32| point(ScaledPixels(x), ScaledPixels(y));
++    [
++        Placed { offset: at(0., 0.), clip: Some(rect(0., 0., 40., 50.)) },
++        Placed { offset: at(60., -50.), clip: Some(rect(60., 0., 40., 50.)) },
++    ]
++}
++
++/// A record of box 1 (second column) and box 3 below both columns.
++fn record() -> Scene {
++    let mut s = Scene { in_group: true, ..Scene::default() };
++    s.book.record_runs = Some(Box::default());
++    for (owner, area) in [(1, rect(0., 60., 40., 30.)), (3, rect(0., 110., 40., 20.))] {
++        assert!(s.open_box(owner, area, env()));
++        s.insert_primitive(quad(area, blue()));
++        let run = s.close_box().unwrap();
++        s.book.record_runs.as_mut().unwrap().boxes.push(run);
++    }
++    s.end_record_runs();
++    s.finish();
++    s
++}
++
++fn layer() -> LayerHandle {
++    let record = record();
++    let mut page = Scene::default();
++    let mut carried = RecordRuns::default();
++    for placed in columns() {
++        page.book.placed_map = Some(PlacedMap::new(Some(placed), 0));
++        assert!(page.replay_placed(&record, placed.offset, placed.clip));
++        let map = page.book.placed_map.take().unwrap();
++        carried.extend(record.book.record_runs.as_deref().unwrap().carry(&map, &page));
++    }
++    LayerHandle::new(SceneLayer::finish(page, carried.bindings, carried.boxes))
++}
++
++#[test]
++fn a_box_clipped_away_in_every_placement_keeps_one_empty_run() {
++    let layer = layer();
++    let content = layer.0.content.borrow();
++    let runs: Vec<usize> = content.runs_of(3).collect();
++    assert_eq!(runs.len(), 1, "one empty run for both placements");
++    assert!(content.boxes[runs[0]].ops.is_empty(), "no command of box 3 landed");
++    drop(content);
++    assert!(layer.holds_box(3), "the layer holds the box clipped away");
++    let area = layer.box_area(3).expect("its area");
++    assert!(
++        !area.intersects(&rect(0., 0., 100., 50.)),
++        "its area lies outside the columns: {area:?}"
++    );
++    assert!(
++        layer.set_background(3, blue(), hsla(0., 1., 0.5, 1.)).is_none(),
++        "no fill of it is painted: a value write refuses"
++    );
++}
++
++#[test]
++fn a_box_painted_in_one_placement_keeps_only_its_painted_run() {
++    let layer = layer();
++    let content = layer.0.content.borrow();
++    let runs: Vec<usize> = content.runs_of(1).collect();
++    assert_eq!(runs.len(), 1, "box 1 shows in the second column only");
++    assert!(!content.boxes[runs[0]].ops.is_empty(), "its run holds its fill");
 +}
 diff --git a/vendor/gpui/src/scene/layer/frame.rs b/vendor/gpui/src/scene/layer/frame.rs
 new file mode 100644
@@ -15695,10 +15782,10 @@ index 0000000000000000000000000000000000000000..3aad3fc224a47d4125ac6644fe308433
 +}
 diff --git a/vendor/gpui/src/scene/layer/placed.rs b/vendor/gpui/src/scene/layer/placed.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..df54c0f9ee7966bd14ca2d8d6b85a245bef40370
+index 0000000000000000000000000000000000000000..a35404e959953763f1f19f2ca9882a684b04d2c0
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/placed.rs
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,373 @@
 +//! KaminIDE patch: the box runs and value bindings a paint record carries
 +//! into the scenes it is placed in.
 +//!
@@ -15851,6 +15938,8 @@ index 0000000000000000000000000000000000000000..df54c0f9ee7966bd14ca2d8d6b85a245
 +                if !whole {
 +                    super::layer_counters::RUNS_UNPLACED.fetch_add(1, Relaxed);
 +                    out.unheld.push(run.owner);
++                } else if let Some(empty) = clipped_away(run, map.at, dest) {
++                    out.boxes.push(empty);
 +                }
 +                continue;
 +            };
@@ -15903,6 +15992,74 @@ index 0000000000000000000000000000000000000000..df54c0f9ee7966bd14ca2d8d6b85a245
 +        self.bindings.extend(other.bindings);
 +        self.unheld.extend(other.unheld);
 +    }
++}
++
++/// The run of a box none of whose commands landed in this placement, when
++/// the placement's clip (with the clips that placed the run before) misses
++/// the run's whole area: whatever the box paints there is cut away, as a box
++/// painted directly whose commands the content mask culled
++/// (`Scene::insert_primitive`) keeps its run without commands. Its empty run
++/// stays in the dest at the end of the placed commands, so the layer holds
++/// the box: a paint-only edit of it records it again (nothing lands) or
++/// waits while it is off the screen, instead of painting the layer anew.
++/// `None` when its commands landed nowhere for another reason or the
++/// placement is not one shift and clip (a draft's routes).
++fn clipped_away(run: &BoxRange, at: Option<Placed>, dest: &Scene) -> Option<BoxRange> {
++    let at = at?;
++    let placed = run.placed.map_or(at, |p| p.then(at));
++    let area = record::geometry::bounds(run.area, at.offset);
++    let clip = placed.clip?;
++    if !area.intersect(&clip).is_empty() {
++        return None;
++    }
++    let end = dest.paint_operations.len() as u32;
++    Some(BoxRange {
++        owner: run.owner,
++        area,
++        ink: None,
++        ops: end..end,
++        env: run.env,
++        replaceable: run.replaceable,
++        placed: Some(placed),
++    })
++}
++
++/// Whether `run` is the empty run of a box its placement clipped away
++/// (`clipped_away`): a box painted directly keeps no placement.
++fn is_clipped_away(run: &BoxRange) -> bool {
++    run.ops.is_empty() && run.placed.is_some()
++}
++
++/// The runs of a finished layer: the empty runs of a box clipped away in
++/// one placement are dropped where another placement painted the box, as
++/// before such runs were kept; a box clipped away in every placement keeps
++/// one empty run over the union of its areas.
++pub(crate) fn settle_clipped_away(boxes: &mut Vec<BoxRange>) {
++    if !boxes.iter().any(is_clipped_away) {
++        return;
++    }
++    let mut painted: Vec<u32> = boxes.iter().filter(|b| !is_clipped_away(b)).map(|b| b.owner).collect();
++    painted.sort_unstable();
++    painted.dedup();
++    let mut kept: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
++    let mut out = Vec::with_capacity(boxes.len());
++    for run in boxes.drain(..) {
++        if !is_clipped_away(&run) {
++            out.push(run);
++        } else if painted.binary_search(&run.owner).is_err() {
++            match kept.get(&run.owner) {
++                Some(&at) => {
++                    let first: &mut BoxRange = &mut out[at];
++                    first.area = first.area.union(&run.area);
++                }
++                None => {
++                    kept.insert(run.owner, out.len());
++                    out.push(run);
++                }
++            }
++        }
++    }
++    *boxes = out;
 +}
 +
 +impl Scene {
