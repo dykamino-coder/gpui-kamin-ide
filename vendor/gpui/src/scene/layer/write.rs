@@ -53,6 +53,22 @@ impl LayerHandle {
             })
     }
 
+    /// Whether every run of box `owner` is a piece of its band that the layer
+    /// records again (`Window::rerecord_layer_band`): at least one, each of
+    /// plain primitives in the stacking layer of its line, none cut by another
+    /// painter. An empty piece counts: its box may take a band.
+    pub fn holds_band(&self, owner: u32) -> bool {
+        let content = self.0.content.borrow();
+        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
+        runs.peek().is_some()
+            && runs.all(|b| {
+                b.replaceable
+                    && b.env.piece.is_some()
+                    && b.env.layer.is_some()
+                    && b.env.transformation == crate::TransformationMatrix::unit()
+            })
+    }
+
     /// The device-pixel area the runs of box `owner` cover, their placed box
     /// with its ink (`BoxRange::area`): any paint the box records again in
     /// the same place lies inside it. `None` when the box has no run.

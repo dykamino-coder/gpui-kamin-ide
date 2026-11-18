@@ -148,6 +148,32 @@ pub(super) fn run_for(
     decorated_run(text, style, Default::default(), ink, base, vcx, None)
 }
 
+/// The band an inline box's runs paint (`gpui::BandStyle`): the line
+/// painter's first paint and a band recorded again in a scene layer
+/// (`document::retained::band_repaint`) take it from here.
+pub(crate) fn band_style(d: &crate::style::inline_decoration::InlineDecoration) -> gpui::BandStyle {
+    gpui::BandStyle {
+        // A fully transparent band colour only identifies its inline box (see
+        // `BORDER_BAND`): it is kept black (lightness 0) so nothing of it can
+        // blend into the border edge, with the id in hue and saturation.
+        color: d.band_color.map(|c| {
+            if c.a == 0.0 {
+                gpui::Hsla {
+                    h: c.r,
+                    s: c.g,
+                    l: 0.0,
+                    a: 0.0,
+                }
+            } else {
+                c.to_hsla()
+            }
+        }),
+        pad: d.physical_padding.unwrap_or_default().map(gpui::px),
+        radius: gpui::px(d.corner_radius.unwrap_or(0.0)),
+        border: d.border_stroke.map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
+    }
+}
+
 fn decorated_run(
     text: &str,
     style: &Computed,
@@ -172,34 +198,16 @@ fn decorated_run(
             .map(Color::to_hsla)
             .unwrap_or(base.color)
     };
+    let band = band_style(&inline_decoration);
     TextRun {
         len: text.len(),
         font,
         font_size,
         color,
-        // A fully transparent band colour only identifies its inline box (see
-        // `BORDER_BAND`): it is kept black (lightness 0) so nothing of it can
-        // blend into the border edge, with the id in hue and saturation.
-        background_color: inline_decoration.band_color.map(|c| {
-            if c.a == 0.0 {
-                gpui::Hsla {
-                    h: c.r,
-                    s: c.g,
-                    l: 0.0,
-                    a: 0.0,
-                }
-            } else {
-                c.to_hsla()
-            }
-        }),
-        background_border: inline_decoration
-            .border_stroke
-            .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
-        background_pad: inline_decoration
-            .physical_padding
-            .unwrap_or_default()
-            .map(gpui::px),
-        background_radius: gpui::px(inline_decoration.corner_radius.unwrap_or(0.0)),
+        background_color: band.color,
+        background_border: band.border,
+        background_pad: band.pad,
+        background_radius: band.radius,
         background_line_gap: true,
         // The box whose band this is: its pieces are that box's runs in the
         // document's scene layer (`gpui::TextRun::background_owner`).

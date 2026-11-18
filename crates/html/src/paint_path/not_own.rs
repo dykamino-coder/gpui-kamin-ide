@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 /// The reasons, in the order of their counters; a reason not listed counts
 /// as the last.
-pub const REASONS: [&str; 12] = [
+pub const REASONS: [&str; 14] = [
     "root_canvas",
     "hover",
     "inline",
@@ -21,6 +21,10 @@ pub const REASONS: [&str; 12] = [
     "band_effect",
     // A change of an inline box's band that is no plain background colour.
     "band_paint",
+    // A band appearing or going on a box nested in another inline box.
+    "band_nested",
+    // A band appearing or going with padding and no border.
+    "band_geometry",
     // A box that changed between an own box and an inline band.
     "kind",
     "other",

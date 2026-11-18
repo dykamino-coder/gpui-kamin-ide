@@ -14,6 +14,7 @@ use crate::text::inline::collect::element_nodes::blank_box::blank_box;
 
 mod box_paint;
 use crate::text::inline::collect::element_nodes::box_paint::element_style;
+pub(crate) use box_paint::band_of;
 
 use crate::dom::Element;
 use crate::style::values::value::Len;
@@ -101,6 +102,11 @@ pub(super) async fn collect_element(
     }
     if atomic {
         out.push(box_paint::atomic_marker(marker.clone()));
+    } else if st.reset_box_layout.display.is_none() && merged.inline_decoration.band_owner == 0 {
+        // An inline box under no band owns the pieces of its lines all the
+        // same: in a scene layer they are its empty runs, which a band that
+        // appears on it paints (`gpui::TextRun::background_owner`).
+        merged.inline_decoration.band_owner = e.node_id;
     }
     // Боковые поля, рамки и отступы СТРОЧНОЙ коробки: своей
     // коробки в раскладке у неё нет, поэтому место занимает

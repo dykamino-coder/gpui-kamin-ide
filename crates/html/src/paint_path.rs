@@ -165,6 +165,8 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "not_own_decoration",
     "not_own_band_effect",
     "not_own_band_paint",
+    "not_own_band_nested",
+    "not_own_band_geometry",
     "not_own_kind",
     "not_own_other",
 ];

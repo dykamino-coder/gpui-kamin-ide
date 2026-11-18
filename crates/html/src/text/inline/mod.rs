@@ -59,6 +59,7 @@ pub(crate) mod atom_parent;
 pub(super) mod collect;
 pub(crate) use crate::text::inline::collect::to_rotated_frame;
 use crate::text::inline::collect::*;
+pub(crate) use collect::band_of;
 pub(super) mod hyphenate;
 pub use crate::text::inline::hyphenate::*;
 pub(super) mod spans;

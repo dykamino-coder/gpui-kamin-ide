@@ -72,6 +72,7 @@ pub(crate) mod vector_transform;
 mod scene_capture;
 mod scene_layer;
 mod layer_box;
+mod layer_band;
 pub use scene_layer::RecordedLayer;
 mod frame_capture;
 mod paint_scope;
@@ -1298,6 +1299,9 @@ pub struct Window {
     pub(crate) element_opacity: f32,
     /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
     pub(crate) box_fill: Option<Bounds<Pixels>>,
+    /// KaminIDE patch: the bands painted now are cut into pieces by another
+    /// painter (`Window::paint_split_bands`).
+    pub(crate) band_split: bool,
     /// KaminIDE patch: the scene layer being recorded (`window::scene_layer`)
     /// and the binding scope of the paint (`with_paint_owner`, `with_paint_value`).
     pub(crate) layer_recording: Option<Box<scene_layer::LayerRecording>>,
@@ -2266,6 +2270,7 @@ impl Window {
             hit_scope: None,
             element_opacity: 1.0,
             box_fill: None,
+            band_split: false,
             layer_recording: None,
             #[cfg(any(test, feature = "test-support"))]
             scene_layers_off: false,

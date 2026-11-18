@@ -28,6 +28,10 @@ pub(crate) struct BoxEnv {
     /// The order of the stacking layer the run was painted in (`None`:
     /// outside layers, ordered by the bounds tree).
     pub(crate) layer: Option<crate::scene::DrawOrder>,
+    /// The run is a piece of an inline box's band on a line, with the
+    /// segment in `bounds` (`text_system::band_piece`); `None` for a box's
+    /// own painter and for pieces cut by another painter.
+    pub(crate) piece: Option<crate::text_system::band_piece::BandEdges>,
 }
 
 /// A box's own paint in a layer: its owner, its placed area and ink, its run

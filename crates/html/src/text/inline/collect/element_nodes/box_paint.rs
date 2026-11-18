@@ -19,6 +19,14 @@ pub(super) fn atomic_marker(style: BoxStyle) -> Piece {
     }
 }
 
+/// The band inline box `e` (a child of block `parent`) paints in its runs,
+/// as the collection gives it (`element_style`, `runs::band_style`).
+pub(crate) fn band_of(e: &Element, parent: &Element, vcx: ValueCx<'_>) -> gpui::BandStyle {
+    let inherited = BoxStyle::shared(parent.style.used());
+    let (merged, _) = element_style(e, &inherited, vcx);
+    crate::text::inline::runs::band_style(&merged.inline_decoration)
+}
+
 pub(super) fn element_style(
     e: &Element,
     inherited: &BoxStyle,

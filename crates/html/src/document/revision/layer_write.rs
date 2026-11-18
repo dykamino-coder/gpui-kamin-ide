@@ -36,8 +36,8 @@ type Write = (u32, Option<Hsla>, Option<Hsla>);
 /// neither now: it is returned apart, its record deferred until a frame shows
 /// it (`layout::reuse::deferred`). An inline box whose own paint is its band
 /// (`Own::Band`) takes a new background colour as a value written into every
-/// piece of its band; any other change of its own paint is no layer write
-/// yet.
+/// piece of its band; any other change of its band paints its pieces again
+/// on the next frame (`layer_band`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_paint_values(
     old: &[Node],
@@ -52,7 +52,8 @@ pub(super) fn write_paint_values(
         // No element's style changed: the frame stands as it is.
         return Some(Taken::default());
     }
-    let held = |id: u64| u32::try_from(id).is_ok_and(|o| layer.holds_box(o));
+    // A box's own painter's runs, or the pieces of an inline box's band.
+    let held = |id: u64| u32::try_from(id).is_ok_and(|o| layer.holds_box(o) || layer.holds_band(o));
     let mut writes: Vec<Write> = Vec::with_capacity(paths.len());
     let mut records: Vec<(Path, u64)> = Vec::new();
     let mut deferred: Vec<(Path, u64)> = Vec::new();
@@ -101,10 +102,15 @@ pub(super) fn write_paint_values(
                     writes.push((owner, Some(from), Some(to)));
                 }
             }
-            _ if banded => {
-                refuse_not_own("band_paint");
-                return None;
-            }
+            // Any other change of a band: its pieces are painted again.
+            _ if banded => match super::layer_band::band_change(old, path, a, b) {
+                super::layer_band::BandChange::Nothing => continue,
+                super::layer_band::BandChange::Pieces => records.push((path.clone(), a.node_id)),
+                super::layer_band::BandChange::Refused(reason) => {
+                    refuse_not_own(reason);
+                    return None;
+                }
+            },
             _ => records.push((path.clone(), a.node_id)),
         }
     }
@@ -152,11 +158,18 @@ pub(in crate::document) fn at<'a>(
     super::patch::element_at(nodes, path).filter(|e| e.node_id == id)
 }
 
+/// The element holding the box at `path` in `nodes`.
+pub(in crate::document) fn parent_at<'a>(nodes: &'a [Node], path: &[usize]) -> Option<&'a Element> {
+    path.len()
+        .checked_sub(1)
+        .and_then(|n| element_at(nodes, &path[..n]))
+}
+
 /// The plain colour the box's background paints (`Some(None)`: no fill);
 /// `None` for a gradient, an image stack, a flattened stack or a colour
 /// clipped apart from the box (`background-clip`), which no single fill of
 /// the box's own painter (`Style::paint_box`) carries.
-fn painted_background(e: &Element) -> Option<Option<Hsla>> {
+pub(super) fn painted_background(e: &Element) -> Option<Option<Hsla>> {
     let style = BoxStyle::shared(e.style.used());
     let values = style.paint_background();
     let plain = values.gradient.is_none()
