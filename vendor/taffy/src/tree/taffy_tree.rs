@@ -23,6 +23,8 @@ mod calc_size;
 mod computed_output;
 #[path = "node_lifetime.rs"]
 mod node_lifetime;
+#[path = "snapshot.rs"]
+mod snapshot;
 #[cfg(feature = "block_layout")]
 use crate::block::BlockContext;
 use crate::geometry::Size;

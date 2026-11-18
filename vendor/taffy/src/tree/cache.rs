@@ -272,6 +272,15 @@ impl Default for Cache {
 }
 
 impl Cache {
+    /// Translate references in completed results when copying a subtree.
+    pub(crate) fn remap_nodes(&mut self, mut remap: impl FnMut(crate::NodeId) -> crate::NodeId) {
+        if let Some(entry) = &mut self.final_layout_entry {
+            for candidate in entry.content.oof_candidates.as_mut_slice() {
+                candidate.node = remap(candidate.node);
+            }
+        }
+    }
+
     /// The most recent full layout output, never an intrinsic size-only result.
     pub(crate) fn performed_layout_output(&self) -> Option<LayoutOutput> {
         self.final_layout_entry

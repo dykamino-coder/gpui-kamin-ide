@@ -36,46 +36,9 @@ impl TaffyLayoutEngine {
 /// A tree holding a copy of the subtree of `root`, with room for exactly its nodes:
 /// a page keeps one copy per measured subtree, most of them a few nodes.
 fn copy_tree(source: &TaffyTree<NodeContext>, root: NodeId) -> (TaffyTree<NodeContext>, NodeId) {
-    let mut tree = TaffyTree::with_capacity(subtree_nodes(source, root));
+    let (mut tree, root) = source.snapshot_subtree(root).expect(EXPECT_MESSAGE);
     tree.disable_rounding();
-    // The copied styles carry the engine tree's `calc()` handles.
-    tree.share_calc_registry(source);
-    let root = copy_subtree(source, &mut tree, root);
     (tree, root)
-}
-
-// KaminIDE patch: keep the optional stacker feature optional.
-#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
-fn subtree_nodes(source: &TaffyTree<NodeContext>, node: NodeId) -> usize {
-    let children = source.children_slice(node);
-    1 + children
-        .iter()
-        .map(|&child| subtree_nodes(source, child))
-        .sum::<usize>()
-}
-
-// KaminIDE patch: keep the optional stacker feature optional.
-#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
-fn copy_subtree(
-    source: &TaffyTree<NodeContext>,
-    target: &mut TaffyTree<NodeContext>,
-    node: NodeId,
-) -> NodeId {
-    let children: Vec<_> = source
-        .children(node)
-        .expect(EXPECT_MESSAGE)
-        .into_iter()
-        .map(|child| copy_subtree(source, target, child))
-        .collect();
-    let copy = target
-        .new_with_children(source.shared_style(node).expect(EXPECT_MESSAGE), &children)
-        .expect(EXPECT_MESSAGE);
-    if let Some(context) = source.get_node_context(node) {
-        target
-            .set_node_context(copy, Some(context.clone()))
-            .expect(EXPECT_MESSAGE);
-    }
-    copy
 }
 
 impl LayoutMeasurement {
@@ -186,14 +149,19 @@ pub(super) fn leaf(
                 taffy::RequestedAxis::Vertical => Some(crate::Axis::Vertical),
                 taffy::RequestedAxis::Both => None,
             }
-        } else { None };
+        } else {
+            None
+        };
         if performed {
             geometry.fixed = Size {
                 width: input.known_dimensions.width.is_some(),
                 height: input.known_dimensions.height.is_some(),
             };
         }
-        let measured = context.measure.borrow_mut().measure(known, available, geometry, window, cx);
+        let measured = context
+            .measure
+            .borrow_mut()
+            .measure(known, available, geometry, window, cx);
         let output = measured.to_native(scale);
         // Intrinsic probes must not replace metadata belonging to a cached full layout.
         if performed {

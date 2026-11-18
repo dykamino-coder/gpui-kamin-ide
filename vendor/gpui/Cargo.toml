@@ -708,3 +708,16 @@ priority = -1
 [lints.rust.unexpected_cfgs]
 level = "allow"
 priority = 0
+
+# Keep standalone fork tests in the same isolated agent profile as the workspace.
+[profile.agent]
+inherits = "dev"
+opt-level = 0
+debug = 0
+incremental = true
+codegen-units = 256
+
+[profile.agent.package."*"]
+opt-level = 2
+debug = "line-tables-only"
+codegen-units = 16
