@@ -26,8 +26,6 @@ fn trial_contexts_expire_before_the_final_spanner_build(cx: &mut gpui::TestAppCo
         point(px(0.), px(0.)),
         size(px(800.), px(600.)),
         move |_, _| {
-            let trials = trials.clone();
-            let finals = finals.clone();
             SpannerFlow::deferred(
                 move |_, pass, _, _| {
                     let child = gpui::div().w(px(120.)).h(px(30.)).into_any_element();
