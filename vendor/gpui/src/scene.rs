@@ -633,9 +633,9 @@ impl Scene {
             }
             _ => true,
         });
-        if !self.replay_shifted(&operations, ReplaySource::Pack, |_| true) {
+        if !self.replay_shifted(&operations, ReplaySource::Pack, &prev_scene.book.images, |_| true) {
             for operation in operations {
-                self.replay_operation(operation);
+                self.replay_image_operation(operation, &prev_scene.book.images);
             }
         }
     }

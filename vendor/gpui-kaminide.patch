@@ -11813,7 +11813,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..7c1499d58700354f6467b2b66f272d0d467452db
+index 160587a4ad924f80c2dd01b90a8300febbc13105..173858453b213ff91e2b867cb9e81e2eb03b972f
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,37 @@
@@ -12361,9 +12361,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..7c1499d58700354f6467b2b66f272d0d
 +            }
 +            _ => true,
 +        });
-+        if !self.replay_shifted(&operations, ReplaySource::Pack, |_| true) {
++        if !self.replay_shifted(&operations, ReplaySource::Pack, &prev_scene.book.images, |_| true) {
 +            for operation in operations {
-+                self.replay_operation(operation);
++                self.replay_image_operation(operation, &prev_scene.book.images);
 +            }
 +        }
 +    }
