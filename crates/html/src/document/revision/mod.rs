@@ -8,6 +8,7 @@ mod commit;
 mod kept;
 mod layer_band;
 mod layer_write;
+pub(super) use layer_band::records_band;
 pub(super) use layer_write::{at, parent_at};
 mod mentions;
 mod mutation;

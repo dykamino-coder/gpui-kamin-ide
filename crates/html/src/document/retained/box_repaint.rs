@@ -55,7 +55,7 @@ impl Builder {
                 return false;
             };
             // An inline box: the pieces of its band, from its new band.
-            if e.inline && e.style.used().reset_box_layout.display.is_none() {
+            if crate::document::revision::records_band(e) {
                 let Some(parent) = crate::document::revision::parent_at(&self.nodes, path) else {
                     return false;
                 };

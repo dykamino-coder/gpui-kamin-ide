@@ -52,8 +52,8 @@ pub(super) fn write_paint_values(
         // No element's style changed: the frame stands as it is.
         return Some(Taken::default());
     }
-    // A box's own painter's runs, or the pieces of the boxes in `bands`: a
-    // band is recorded again only into pieces no other painter cut.
+    // A box's own painter's runs, or the pieces of the boxes in `bands`,
+    // recorded again as their bands (`records_band`) into uncut pieces only.
     let held = |id: u64, bands: &[u64]| {
         u32::try_from(id)
             .is_ok_and(|o| layer.holds_band(o) || (!bands.contains(&id) && layer.holds_box(o)))
@@ -88,7 +88,10 @@ pub(super) fn write_paint_values(
             }
         };
         u32::try_from(a.node_id).ok()?;
-        if !banded && off(a.node_id) && held(a.node_id, &[]) {
+        if super::layer_band::records_band(a) {
+            bands.push(a.node_id);
+        }
+        if !banded && off(a.node_id) && held(a.node_id, &bands) {
             deferred.push((path.clone(), a.node_id));
             continue;
         }
@@ -105,16 +108,12 @@ pub(super) fn write_paint_values(
                 // Fragments of one element share an owner: one write each.
                 if writes.last().is_none_or(|w: &Write| w.0 != owner) {
                     writes.push((owner, Some(from), Some(to)));
-                    bands.extend(banded.then_some(a.node_id));
                 }
             }
             // Any other change of a band: its pieces are painted again.
             _ if banded => match super::layer_band::band_change(old, path, a, b) {
                 super::layer_band::BandChange::Nothing => continue,
-                super::layer_band::BandChange::Pieces => {
-                    bands.push(a.node_id);
-                    records.push((path.clone(), a.node_id));
-                }
+                super::layer_band::BandChange::Pieces => records.push((path.clone(), a.node_id)),
                 super::layer_band::BandChange::Refused(reason) => {
                     refuse_not_own(reason);
                     return None;

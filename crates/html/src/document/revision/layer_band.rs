@@ -13,6 +13,13 @@ use super::patch::{Path, element_at};
 use crate::dom::Element;
 use crate::style::values::value::Len;
 
+/// Whether the box of `e` is recorded again as its band's pieces
+/// (`retained::box_repaint`) rather than as its own box: an inline box,
+/// also one a flex or grid container blockifies only in layout.
+pub(in crate::document) fn records_band(e: &Element) -> bool {
+    e.inline && e.style.used().reset_box_layout.display.is_none()
+}
+
 /// What the restyle of inline box `a` to `b` at `path` in `old` asks of its
 /// band's pieces.
 #[derive(Debug, PartialEq)]
