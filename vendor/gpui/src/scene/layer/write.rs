@@ -55,8 +55,10 @@ impl LayerHandle {
 
     /// Whether every run of box `owner` is a piece of its band that the layer
     /// records again (`Window::rerecord_layer_band`): at least one, each of
-    /// plain primitives in the stacking layer of its line, none cut by another
-    /// painter. An empty piece counts: its box may take a band.
+    /// plain primitives, none cut by another painter. A piece in the stacking
+    /// layer of its line takes the layer's order; one painted outside any
+    /// stacking layer is planned as a box's run is (`SceneLayer::check_box`).
+    /// An empty piece counts: its box may take a band.
     pub fn holds_band(&self, owner: u32) -> bool {
         let content = self.0.content.borrow();
         let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
@@ -64,7 +66,6 @@ impl LayerHandle {
             && runs.all(|b| {
                 b.replaceable
                     && b.env.piece.is_some()
-                    && b.env.layer.is_some()
                     && b.env.transformation == crate::TransformationMatrix::unit()
             })
     }

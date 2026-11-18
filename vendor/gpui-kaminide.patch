@@ -16878,10 +16878,10 @@ index 0000000000000000000000000000000000000000..521e3216ed4a6a6a509bdcb341b8e4cf
 +}
 diff --git a/vendor/gpui/src/scene/layer/write.rs b/vendor/gpui/src/scene/layer/write.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d2bfdb0f46a4e3d88a105d9721acbab94bdf9ef6
+index 0000000000000000000000000000000000000000..d3f0684eb925d8d9657024549860c66d63dec3d2
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/write.rs
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,159 @@
 +//! KaminIDE patch: value writes into a scene layer (`LayerHandle`).
 +//!
 +//! A value write changes a painted value of existing commands in place: the
@@ -16939,8 +16939,10 @@ index 0000000000000000000000000000000000000000..d2bfdb0f46a4e3d88a105d9721acbab9
 +
 +    /// Whether every run of box `owner` is a piece of its band that the layer
 +    /// records again (`Window::rerecord_layer_band`): at least one, each of
-+    /// plain primitives in the stacking layer of its line, none cut by another
-+    /// painter. An empty piece counts: its box may take a band.
++    /// plain primitives, none cut by another painter. A piece in the stacking
++    /// layer of its line takes the layer's order; one painted outside any
++    /// stacking layer is planned as a box's run is (`SceneLayer::check_box`).
++    /// An empty piece counts: its box may take a band.
 +    pub fn holds_band(&self, owner: u32) -> bool {
 +        let content = self.0.content.borrow();
 +        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
@@ -16948,7 +16950,6 @@ index 0000000000000000000000000000000000000000..d2bfdb0f46a4e3d88a105d9721acbab9
 +            && runs.all(|b| {
 +                b.replaceable
 +                    && b.env.piece.is_some()
-+                    && b.env.layer.is_some()
 +                    && b.env.transformation == crate::TransformationMatrix::unit()
 +            })
 +    }
