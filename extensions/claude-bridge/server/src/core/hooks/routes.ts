@@ -99,6 +99,9 @@ export function createHooksRoutes(): Hono {
     } catch {
       return c.json({ error: 'Invalid JSON' }, 400)
     }
+    // The CLI writes its transcript around every lifecycle hook: look now
+    // rather than on the next discovery poll (new chats) or a missed fs event.
+    session.jsonlWatcher?.poke?.()
     const relayKind = c.req.header('X-Bridge-Hook-Relay')
     const commandRelay = relayKind === 'command'
     const httpRelay = relayKind === HTTP_HOOK_RELAY

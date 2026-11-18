@@ -4,6 +4,9 @@ use super::Node;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
+mod box_summary;
+pub use box_summary::{BoxTextFacts, BoxTreeSummary};
+
 /// Дети элемента с копированием при изменении списка.
 #[derive(Clone, Debug, Default)]
 pub struct Children(Rc<Snapshot>);
@@ -17,12 +20,21 @@ impl ChildrenMark {
     pub fn is_alive(&self) -> bool {
         self.0.strong_count() != 0
     }
+
+    /// The marked snapshot is alive and holds exactly the nodes `nodes`: a
+    /// live slice is compared with a live snapshot only.
+    pub fn holds(&self, nodes: &[Node]) -> bool {
+        self.0
+            .upgrade()
+            .is_some_and(|snapshot| std::ptr::eq(snapshot.nodes.as_slice(), nodes))
+    }
 }
 
 #[derive(Debug, Default)]
 struct Snapshot {
     nodes: Vec<Node>,
     intrinsic: super::intrinsic::IntrinsicCache,
+    box_summary: std::cell::Cell<Option<BoxTreeSummary>>,
 }
 
 impl Clone for Snapshot {
@@ -30,6 +42,7 @@ impl Clone for Snapshot {
         Self {
             nodes: self.nodes.clone(),
             intrinsic: Default::default(),
+            box_summary: Default::default(),
         }
     }
 }
@@ -43,6 +56,17 @@ impl Children {
     /// Изменение computed-стиля самого узла или его потомка.
     pub fn dirty_intrinsic_sizes(&self) {
         self.0.intrinsic.dirty();
+        self.0.box_summary.set(None);
+    }
+
+    /// Ready facts of the list without walking the nodes or a separate tree index.
+    pub fn box_summary(&self) -> Option<BoxTreeSummary> {
+        self.0.box_summary.get()
+    }
+
+    /// Publication of the post-order preparation; the facts live as long as the snapshot.
+    pub fn publish_box_summary(&self, summary: BoxTreeSummary) {
+        self.0.box_summary.set(Some(summary));
     }
 
     /// Идентичность неизменяемого снимка: изменение списка отделяет его через COW.
@@ -73,6 +97,7 @@ impl From<Vec<Node>> for Children {
         Self(Rc::new(Snapshot {
             nodes,
             intrinsic: Default::default(),
+            box_summary: Default::default(),
         }))
     }
 }
@@ -96,6 +121,7 @@ impl DerefMut for Children {
         // ветвь. Копии старого снимка сохраняют свой корректный результат.
         let snapshot = Rc::make_mut(&mut self.0);
         snapshot.intrinsic.dirty();
+        snapshot.box_summary.set(None);
         &mut snapshot.nodes
     }
 }

@@ -5,6 +5,7 @@ use crate::dom::Element;
 use crate::layout::table::{collapsed_cell_edge, table_spanning_size};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use std::rc::Rc;
 
 pub(super) fn prepare_cell_box(
     geom: &crate::layout::table::context::TableGeom<'_>,
@@ -61,62 +62,92 @@ pub(super) fn prepare_cell_box(
     } else {
         None
     };
-    if spans.clipped {
-        cell.style.used_mut().reset_box_layout.overflow_x = None;
-        cell.style.used_mut().reset_box_layout.overflow_y = None;
-    }
+    // The table's edits below are a function of the cell's style and its
+    // place in the grid: cells of one style in like places share one used
+    // style from the box tree instead of a copy each.
+    let mut edits = crate::document::boxes::used::CellUsed {
+        clear_overflow: spans.clipped,
+        ..Default::default()
+    };
     // Ячейка схлопнутой колонки не рисуется: колонка выброшена
     // (css-tables-3 §visibility-collapse-cell-rendering), её дорожка
     // нулевая, а краска ячейки торчала бы поверх соседей.
-    if (cursor.col_ix..cursor.col_ix + spans.span_cols as usize)
-        .all(|i| geom.cols_collapsed.get(i).copied().unwrap_or(false))
-    {
-        cell.style.used_mut().inh.ui.hidden = Some(true);
-    }
-    if let Some(minimum) = table_spanning_size::minimum(
+    edits.in_collapsed_columns = (cursor.col_ix..cursor.col_ix + spans.span_cols as usize)
+        .all(|i| geom.cols_collapsed.get(i).copied().unwrap_or(false));
+    if let Some(Len::Px(minimum)) = table_spanning_size::minimum(
         cm,
         spans.span_cols,
         geom.e.style.used().reset_context.table_fixed == Some(true),
         geom.table_is_vertical,
         spans.spans_collapsed,
     ) {
-        cell.style.used_mut().reset_box_layout.min_width = Some(minimum);
+        edits.spanning_min = Some(minimum.to_bits());
     }
-    let orthogonal_inline = cell.style.used().wm().vertical()
+    let used = cell.style.used();
+    let orthogonal_inline = used.wm().vertical()
         && !geom.e.style.used().wm().vertical()
-        && cell.style.used().reset_box_layout.width_from_inline;
-    if !geom.table_is_vertical
+        && used.reset_box_layout.width_from_inline;
+    // A mixed percentage `calc()` is `auto` for the column (`col_measure`,
+    // Blink `table_layout_utils`: calculated lengths with percentages
+    // are treated as auto); left on the box it widened the table alone
+    // (`calc-width-table-auto-1` row 4).
+    let authored = !geom.table_is_vertical
         && !orthogonal_inline
-        // A mixed percentage `calc()` is `auto` for the column (`col_measure`,
-        // Blink `table_layout_utils`: calculated lengths with percentages
-        // are treated as auto); left on the box it widened the table alone
-        // (`calc-width-table-auto-1` row 4).
         && matches!(
-            cell.style.used().reset_box_layout.width,
+            used.reset_box_layout.width,
             Some(Len::Px(_)) | Some(Len::Pct(_)) | Some(Len::Calc(_))
-        )
-    {
-        cell.style.used_mut().reset_box_layout.width = None;
-    }
+        );
     // Кегльная ширина уходит с коробки, как Px и доля: колонка
     // разрешает её сама (Em-ветка col_widths), а на коробке она
     // падала в запасной кегль 16px — ячейка `width: 2em` при шрифте
     // 50px сжималась до 32 точек, и прижим строк оставался без места
     // (table-cell-valign-003-ref). Ортогональную ячейку не трогаем:
     // её width — логический inline-size, он ниже перекладывается в
-    // высоту.
-    if !(cell.style.used().wm().vertical()
-        && !geom.e.style.used().wm().vertical()
-        && cell.style.used().reset_box_layout.width_from_inline
-        // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
-        // задаёт высота (table-cell-align-001/002).
-        || geom.table_is_vertical)
+    // height. In a VERTICAL table the width stays with the box: the track
+    // is set by the height (table-cell-align-001/002).
+    let font_relative = !(orthogonal_inline || geom.table_is_vertical)
         && matches!(
-            cell.style.used().reset_box_layout.width,
+            used.reset_box_layout.width,
             Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_))
-        )
-    {
-        cell.style.used_mut().reset_box_layout.width = None;
+        );
+    edits.clear_width = authored || font_relative;
+    let base = used.style.clone();
+    drop(used);
+    if edits != Default::default() {
+        let role = crate::document::boxes::used::UsedRole::Cell(edits);
+        // A shared style is edited once and kept by the box tree for the next
+        // like cell; a style only this cell holds is not kept.
+        let shared = Rc::strong_count(&base) > 2;
+        let found = shared
+            .then(|| opts.cx.doc().boxes.borrow().used.find(&base, role))
+            .flatten();
+        let used = found.unwrap_or_else(|| {
+            let mut used = (*base).clone();
+            if edits.clear_overflow {
+                used.reset_box_layout.overflow_x = None;
+                used.reset_box_layout.overflow_y = None;
+            }
+            if edits.in_collapsed_columns {
+                used.inh.ui.hidden = Some(true);
+            }
+            if let Some(bits) = edits.spanning_min {
+                used.reset_box_layout.min_width = Some(Len::Px(f32::from_bits(bits)));
+            }
+            if edits.clear_width {
+                used.reset_box_layout.width = None;
+            }
+            let used = Rc::new(used);
+            if shared {
+                opts.cx
+                    .doc()
+                    .boxes
+                    .borrow()
+                    .used
+                    .insert(&base, role, used.clone());
+            }
+            used
+        });
+        cell.style.set_used_rc(used);
     }
     // The row's logical block size is physical width in a vertical table.
     // Preserve authored cell width as a minimum, then stretch to the row.

@@ -20,7 +20,7 @@ use crate::cache::{BoundedCache, Hinted, MIB, hint};
 use std::sync::{Arc, LazyLock};
 
 /// Версия декодера: меняется вместе с кодеками или порядком шагов декодирования.
-const DECODER_REVISION: u32 = 1;
+const DECODER_REVISION: u32 = 2;
 
 /// Результат декодирования, разделяемый документами одного governor.
 pub type Decoded = Result<(DecodedImage, ImageMetadata), ImageError>;
@@ -75,6 +75,18 @@ impl DecodedImageCache {
         options: DecodeOptions,
         budget: &DocumentBudget,
     ) -> (Decoded, Option<Admission>) {
+        // Equivalent orientation requests share their pixels. A real EXIF
+        // transform keeps its own cache entry and metadata.
+        let options = if options.orientation == super::types::OrientationMode::FromImage
+            && !matches!(super::orientation::exif_orientation(&bytes), Some(2..=8))
+        {
+            DecodeOptions {
+                orientation: super::types::OrientationMode::None,
+                ..options
+            }
+        } else {
+            options
+        };
         let governor = budget.governor().clone();
         let key = Hinted {
             hint: hint((&*bytes, options, DECODER_REVISION, &governor)),
@@ -123,5 +135,53 @@ fn admit(decoded: Decoded, budget: &DocumentBudget) -> (Decoded, Option<Admissio
     match admission {
         Ok(admission) => (decoded, admission),
         Err(error) => (Err(error), None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resources::images::{fixtures, types::*};
+
+    #[test]
+    fn equivalent_orientations_share_pixels_but_real_transforms_do_not() {
+        for tag in [None, Some(1), Some(9), Some(6)] {
+            let png = fixtures::png(3, 2);
+            let bytes: Arc<[u8]> = tag
+                .map_or(png.clone(), |tag| {
+                    fixtures::with_chunk(&png, b"eXIf", &fixtures::tiff_orientation(tag))
+                })
+                .into();
+            let cache = DecodedImageCache::new(MIB);
+            let budget = crate::budget::RevisionBudget::standalone();
+            let options = DecodeOptions {
+                colour: ColourPolicy::CssBgra,
+                ..Default::default()
+            };
+            let (turned, _a) = cache.decode(bytes.clone(), options, budget.document());
+            let (raw, _b) = cache.decode(
+                bytes,
+                DecodeOptions {
+                    orientation: OrientationMode::None,
+                    ..options
+                },
+                budget.document(),
+            );
+            let (DecodedImage::Raster(turned), meta) = turned.unwrap() else {
+                panic!("raster")
+            };
+            let (DecodedImage::Raster(raw), _) = raw.unwrap() else {
+                panic!("raster")
+            };
+            let transforms = tag == Some(6);
+            assert_eq!(Arc::ptr_eq(&turned, &raw), !transforms, "tag {tag:?}");
+            assert_eq!(cache.len(), if transforms { 2 } else { 1 });
+            assert_eq!(meta.applied_orientation, tag.filter(|_| transforms));
+            assert_eq!((raw.width, raw.height), (3, 2));
+            assert_eq!(
+                (turned.width, turned.height),
+                if transforms { (2, 3) } else { (3, 2) }
+            );
+        }
     }
 }

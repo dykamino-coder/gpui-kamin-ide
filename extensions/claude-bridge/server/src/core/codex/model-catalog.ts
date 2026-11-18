@@ -30,8 +30,10 @@ export const CATALOG_TOOL_PATCH = {
   apply_patch_tool_type: null,
   shell_type: 'disabled',
   experimental_supported_tools: [] as string[],
-  // `features.multi_agent = false` does not stop a catalog-declared v2 runtime:
-  // code-mode models still got spawn_agent & co. in a `collaboration` namespace.
+  // The config switch alone (`features.multi_agent = false` before 0.168,
+  // `agents.enabled = false` now) is not trusted to stop a catalog-declared v2
+  // runtime: code-mode models once got spawn_agent & co. in a `collaboration`
+  // namespace.
   multi_agent_version: 'disabled',
 } as const
 

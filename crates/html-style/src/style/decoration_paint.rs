@@ -4,6 +4,8 @@
 use super::background_paint::BackgroundValues;
 use super::computed::{Computed, Filter, Shadow};
 use super::values::value::{Color, StyleColor};
+mod shared;
+pub use shared::SharedPaints;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ForegroundPaint {

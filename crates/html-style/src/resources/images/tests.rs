@@ -10,6 +10,24 @@ use super::vector::svg_size;
 use crate::resources::loader::{Cancellation, ResourceUrl, SyncLoader, fetch};
 use fixtures::*;
 
+#[test]
+fn css_decode_publishes_renderer_pixels_without_changing_neutral_decode() {
+    let png = solid_png([8, 16, 24, 128]);
+    let (neutral, _) = raster(&png, DecodeOptions::default());
+    let (css, _) = raster(
+        &png,
+        DecodeOptions {
+            colour: ColourPolicy::CssBgra,
+            ..Default::default()
+        },
+    );
+    assert_eq!(neutral.pixel(0, 0), Some([8, 16, 24, 128]));
+    assert_eq!(css.pixel(0, 0), Some([47, 31, 15, 128]));
+    assert_eq!(css.format, PixelFormat::Bgra8);
+    assert_eq!(css.alpha, AlphaMode::Straight);
+    assert_eq!(css.colour_space, ColourSpace::Srgb);
+}
+
 /// Декодирование с допуском в стандартном профиле отдельного документа.
 fn decode(
     bytes: &[u8],
