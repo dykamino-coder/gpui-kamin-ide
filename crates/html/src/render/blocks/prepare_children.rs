@@ -166,14 +166,15 @@ pub(crate) fn prepare_children(
     let collapsed = if ordered_context {
         reorder(split)
     } else {
-        let facts: &std::cell::RefCell<crate::layout::cx::subtree::SubtreeFacts> =
-            &opts.cx.contracts.subtrees;
         let (unchanged, inline_preparation) = {
-            let mut facts = facts.borrow_mut();
-            (
-                facts.margins_unchanged(&split),
-                !facts.inline_preparation_absent(&split),
-            )
+            let mut facts = crate::layout::cx::subtree::SubtreeFacts::default();
+            match facts.prepared_list(&split) {
+                Some(summary) => (!summary.margins, summary.split_inline),
+                None => (
+                    facts.margins_unchanged(&split),
+                    !facts.inline_preparation_absent(&split),
+                ),
+            }
         };
         let mut out = if unchanged {
             split

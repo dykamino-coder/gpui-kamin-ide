@@ -1,0 +1,55 @@
+//! Raw subtree text borrows the retained IFC buffer of a flat text flow.
+
+use super::tests::paragraph;
+use crate::document::Document;
+use crate::dom::Node;
+use crate::layout::cx::{BuildDoc, LayoutCx, ValueContext};
+use crate::style::computed::BoxStyle;
+use crate::text::content::{Content, raw};
+
+/// The layout context of `doc` after its box tree is finished.
+fn finished(doc: &Document) -> LayoutCx {
+    doc.state
+        .boxes
+        .borrow_mut()
+        .finish(&doc.nodes, &BoxStyle::default(), false);
+    LayoutCx {
+        values: ValueContext {
+            doc: BuildDoc::of(doc.state.clone()),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[test]
+fn raw_buffer_is_shared_before_normalization_and_survives_text_commit() {
+    let html = "<p style='text-transform:uppercase'>  a  b </p>";
+    let mut doc = Document::builder(html, "").build().unwrap();
+    let cx = finished(&doc);
+    let p = paragraph(&doc.nodes);
+    let first = raw(&p.children, &cx);
+    let second = raw(&p.children, &cx);
+    let (Content::Retained(a), Content::Retained(b)) = (&first, &second) else {
+        panic!("a flat flow must use the retained owner");
+    };
+    assert!(a.same(b));
+    assert_eq!(&*first, "  a  b ");
+    doc.update("<p style='text-transform:uppercase'>changed</p>", "")
+        .unwrap();
+    assert_eq!(&*first, "  a  b ");
+    let cx = finished(&doc);
+    assert_eq!(&*raw(&paragraph(&doc.nodes).children, &cx), "changed");
+}
+
+#[test]
+fn opaque_descendants_and_synthetic_slices_keep_full_subtree_text() {
+    let html = "<p>before <span style='display:inline-block'>inside</span> after</p>";
+    let doc = Document::builder(html, "").build().unwrap();
+    let cx = finished(&doc);
+    let mixed = raw(&paragraph(&doc.nodes).children, &cx);
+    assert!(matches!(mixed, Content::Gathered(_)));
+    assert_eq!(&*mixed, "before inside after");
+    let synthetic = vec![Node::Text("synthetic".into())];
+    assert_eq!(&*raw(&synthetic, &cx), "synthetic");
+}
