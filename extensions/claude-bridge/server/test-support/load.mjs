@@ -102,6 +102,9 @@ class Chat {
     if (f.type === 'error') counts.errorFrames++
     if (f.type === 'session:activity' && typeof f.promptReady === 'boolean') this.ready = f.promptReady
     if (f.type === 'session:conversation-id' && f.conversationId) this.conversationId = f.conversationId
+    // A host reports the calls it still holds; the server redelivers a call
+    // that went out on a dropped socket and is absent from this report.
+    if (f.type === 'commands:request') this.send({ type: 'commands:report', report: { calls: [], shells: [] } })
     if (f.type === 'mcp:call') {
       counts.toolCalls++
       this.send({ type: 'mcp:response', requestId: f.requestId, result: 'Synthetic host result' })
