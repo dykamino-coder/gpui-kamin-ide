@@ -12,65 +12,15 @@
 
 use super::d3d_device::Device;
 use super::gpu_texture::GpuTexture;
-use super::open_shared::{open_by_handle, warn_once};
+use super::open_shared::warn_once;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
 use super::device_cache::sync_device;
 pub(crate) use super::device_cache::{device, remember_device, with_current_device};
 
-/// Последний кадр вью: открытая общая текстура Chromium и её размер.
-#[derive(Clone)]
-pub(crate) struct Incoming {
-    pub(crate) shared: GpuTexture,
-    /// Регион СТРАНИЦЫ внутри буфера (`content_rect`: x, y, w, h) — только
-    /// его и рисуем: остальное прозрачно и читалось бы чёрным. Размер самого
-    /// буфера не храним: он берётся у своей текстуры, иначе плитка атласа
-    /// могла заявить больше, чем в текстуре есть.
-    pub(crate) content: (i32, i32, i32, i32),
-}
-
-static INCOMING: LazyLock<Mutex<HashMap<String, Incoming>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-/// Принять кадр (зовётся с потока CEF).
-///
-/// Номер буфера ОТКРЫВАЕМ ЗДЕСЬ: у CEF он живёт только на время вызова, и
-/// попытка открыть его позже, с потока отрисовки, даёт `E_INVALIDARG` — панель
-/// тогда остаётся пустой (наступал на это дважды). Копировать с этого потока
-/// нельзя: контекст D3D11 не потокобезопасен, копия делается в отрисовке.
-pub(crate) fn put(id: &str, handle: isize, width: i32, height: i32, content: (i32, i32, i32, i32)) {
-    if handle == 0 || width <= 0 || height <= 0 {
-        return;
-    }
-    let Some(device) = device() else { return };
-    let Some(shared) = open_by_handle(device.raw() as isize, handle) else {
-        return;
-    };
-    // Размер спрашиваем У САМОЙ текстуры: номера буферов Chromium
-    // переиспользует, и кэш открытых мог отдать буфер ПРОШЛОГО размера —
-    // копирование между разными размерами слой проверки D3D11 считает ошибкой.
-    let desc = shared.desc();
-    if desc.Width as i32 != width || desc.Height as i32 != height {
-        // Открыли не тот буфер — Chromium уже пересоздал его под другой размер.
-        super::diag::mismatch();
-        return;
-    }
-    let _ = with_current_device(&device, || store(id, shared, content));
-}
-
-/// Запомнить последний кадр вью.
-fn store(id: &str, shared: GpuTexture, content: (i32, i32, i32, i32)) {
-    super::copy_frame::frame_arrived(id);
-    if let Ok(mut map) = INCOMING.lock() {
-        map.insert(id.to_string(), Incoming { shared, content });
-    }
-}
-
-/// Последний кадр вью (зовётся с потока отрисовки).
-pub(crate) fn get(id: &str) -> Option<Incoming> {
-    INCOMING.lock().ok()?.get(id).cloned()
-}
+mod incoming;
+pub(crate) use incoming::{bounding, get, put};
 
 /// Слот атласа на вью: заводится один раз и живёт до закрытия вью, дальше в нём
 /// МЕНЯЕТСЯ содержимое. Так номер записи не освобождается и не достаётся
@@ -175,7 +125,7 @@ pub(crate) fn texture_for(
     let crop = move |tile: gpui::ExternalTexture| {
         tile.region(cx_.min(tex_w - 1), cy_.min(tex_h - 1), cw, ch)
     };
-    match known {
+    let tile = match known {
         Some((texture, w, h, tile)) if texture.same_as(&own) && w == tex_w && h == tex_h => {
             // Текстура та же, но регион страницы мог смениться — обновим,
             // иначе фильтр переходных кадров сравнивал бы со старым.
@@ -185,13 +135,13 @@ pub(crate) fn texture_for(
                 slot.content = (cw, ch);
                 slot.accepted_at = std::time::Instant::now();
             }
-            Some(crop(tile))
+            tile
         }
         Some((_, _, _, tile)) => {
             let raw = own.extra_ref();
             let next = window.update_external_texture(&tile, raw, tex_w, tex_h)?;
             remember(own, &next, tex_w, tex_h);
-            Some(crop(next))
+            next
         }
         None => {
             let raw = own.extra_ref();
@@ -200,9 +150,17 @@ pub(crate) fn texture_for(
                 return None;
             };
             remember(own, &tile, tex_w, tex_h);
-            Some(crop(tile))
+            tile
         }
+    };
+    // Копия выше принесла в свою текстуру кадры, пришедшие с прошлой
+    // отрисовки: окно перерисует только то, что в них меняли (`incoming`).
+    if super::copy_frame::take_copied(id)
+        && let Some((x, y, w, h)) = incoming::take_damage(id, incoming.frame)
+    {
+        window.damage_external_texture(&tile, x, y, w, h);
     }
+    Some(crop(tile))
 }
 
 /// Плитки атласа закрытых вью: выбрасывать можно только с потока отрисовки,
@@ -212,9 +170,7 @@ static DEAD_TILES: LazyLock<Mutex<Vec<gpui::ExternalTexture>>> =
 
 /// Забыть кадры и текстуры ОДНОГО вью (закрытие браузера).
 pub(crate) fn forget_view(id: &str) {
-    if let Ok(mut map) = INCOMING.lock() {
-        map.remove(id);
-    }
+    incoming::forget(Some(id));
     if let Ok(mut map) = SLOTS.lock()
         && let Some(slot) = map.remove(id)
         && let Ok(mut dead) = DEAD_TILES.lock()
@@ -251,8 +207,6 @@ pub(super) fn forget_device_objects() {
         map.clear();
     }
     super::open_shared::forget_all();
-    if let Ok(mut map) = INCOMING.lock() {
-        map.clear();
-    }
+    incoming::forget(None);
     super::copy_frame::forget_all();
 }
