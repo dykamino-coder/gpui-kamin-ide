@@ -37,7 +37,7 @@ pub(super) fn computed(doc: &Document) -> String {
     materialize(doc.nodes(), &root, doc.state.values());
     let mut out = String::new();
     walk(doc.nodes(), &mut out);
-    out
+    crate::document::test_tree::value(&out)
 }
 
 /// Ревизия `old` → `new` принята на месте и после кадра прежней ревизии даёт
