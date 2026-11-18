@@ -102,11 +102,6 @@ pub(super) async fn collect_element(
     }
     if atomic {
         out.push(box_paint::atomic_marker(marker.clone()));
-    } else if st.reset_box_layout.display.is_none() && merged.inline_decoration.band_owner == 0 {
-        // An inline box under no band owns the pieces of its lines all the
-        // same: in a scene layer they are its empty runs, which a band that
-        // appears on it paints (`gpui::TextRun::background_owner`).
-        merged.inline_decoration.band_owner = e.node_id;
     }
     // Боковые поля, рамки и отступы СТРОЧНОЙ коробки: своей
     // коробки в раскладке у неё нет, поэтому место занимает

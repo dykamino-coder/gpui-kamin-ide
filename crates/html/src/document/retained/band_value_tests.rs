@@ -5,46 +5,19 @@
 //! writes the colour into every piece. A box with a border binds no piece
 //! and builds the frame. Either frame equals a fresh document's.
 
-use super::box_repaint_tests::{frames, quads};
-use super::reuse_tests::{settled, update};
-use super::tests::{frame, open};
+use super::band_rerecord_tests::WRAPPED;
 use gpui::TestAppContext;
 
-/// `body` (a block of text with an inline box `#s` over several lines) under
-/// the rules `css`; `class` goes on `#s`.
-fn page(css: &str, body: &str, class: &str) -> String {
-    format!(
-        "<!doctype html><html><head><style>html,body{{margin:0;background:#fff;color:#000}}\
-         p{{width:120px;font:16px/20px sans-serif;margin:0}} #s{{background:#ee0}} {css}</style>\
-         </head><body>{}</body></html>",
-        body.replace("CLASS", class)
-    )
-}
-
-const WRAPPED: &str =
-    "<p>one <span id=s class='CLASS'>two three four five six seven</span> end</p>";
-
-/// Whether `class` on a settled document kept its frame, its frame and a
-/// fresh document's.
+/// Whether `class` on `#s` (yellow before it) in `body` under `css` kept its
+/// frame, its frame and a fresh document's (`band_rerecord_tests::edit`).
 fn edit(
     cx: &mut TestAppContext,
     css: &str,
     body: &str,
     class: &str,
 ) -> (bool, Vec<String>, Vec<String>) {
-    let at = |class: &str| page(css, body, class);
-    let (view, vcx) = settled(cx, &at(""), &at("x"));
-    update(&view, vcx, &at(""));
-    update(&view, vcx, &at(""));
-    let before = frames(&view, vcx);
-    update(&view, vcx, &at(class));
-    let kept = frames(&view, vcx) == (before.0, before.1 + 1);
-    let edited = quads(vcx);
-    let (_, fresh) = open(cx, &at(class));
-    frame(fresh);
-    (kept, edited, quads(fresh))
+    super::band_rerecord_tests::edit(cx, &format!("#s{{background:#ee0}} {css}"), body, class)
 }
-
 #[gpui::test]
 fn a_wrapped_inline_box_takes_its_new_background_in_every_piece(cx: &mut TestAppContext) {
     let (kept, edited, fresh) = edit(cx, "#s.b{background:#0af}", WRAPPED, "b");

@@ -20,17 +20,28 @@ fn page(css: &str, body: &str, class: &str) -> String {
     )
 }
 
-const WRAPPED: &str =
+pub(super) const WRAPPED: &str =
     "<p>one <span id=s class='CLASS'>two three four five six seven</span> end</p>";
 
 /// Whether `class` on a settled document kept its frame, its frame and a
 /// fresh document's.
-fn edit(
+pub(super) fn edit(
     cx: &mut TestAppContext,
     css: &str,
     body: &str,
     class: &str,
 ) -> (bool, Vec<String>, Vec<String>) {
+    let (kept, edited, fresh, _) = edit_refused(cx, css, body, class);
+    (kept, edited, fresh)
+}
+
+/// `edit`, and the paint path's refusals of the edit.
+fn edit_refused(
+    cx: &mut TestAppContext,
+    css: &str,
+    body: &str,
+    class: &str,
+) -> (bool, Vec<String>, Vec<String>, String) {
     let at = |class: &str| page(css, body, class);
     let (view, vcx) = settled(cx, &at(""), &at("x"));
     update(&view, vcx, &at(""));
@@ -38,12 +49,12 @@ fn edit(
     let before = frames(&view, vcx);
     let counts = crate::paint_path::read();
     update(&view, vcx, &at(class));
-    LAST.with(|l| *l.borrow_mut() = delta(&counts));
+    let refused = delta(&counts);
     let kept = frames(&view, vcx) == (before.0, before.1 + 1);
     let edited = quads(vcx);
     let (_, fresh) = open(cx, &at(class));
     frame(fresh);
-    (kept, edited, quads(fresh))
+    (kept, edited, quads(fresh), refused)
 }
 
 #[gpui::test]
@@ -65,11 +76,6 @@ fn a_band_goes_from_every_piece(cx: &mut TestAppContext) {
     assert_eq!(edited, fresh, "the kept frame differs from a fresh one");
 }
 
-std::thread_local! {
-    /// The refusals of the last edit, for a failure's message.
-    static LAST: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
-}
-
 /// The paint path's refusals since `counts`.
 fn delta(counts: &[u64]) -> String {
     let now = crate::paint_path::read();
@@ -80,10 +86,6 @@ fn delta(counts: &[u64]) -> String {
         .collect()
 }
 
-fn refusals() -> String {
-    LAST.with(|l| l.borrow().clone())
-}
-
 /// A box with edges (padding, border) puts edge spacers on its lines, and a
 /// line with edge spacers is painted word by word, as a justified one is
 /// (`Paragraph::paint_justified_line`): its pieces are cut by that painter,
@@ -92,21 +94,18 @@ fn refusals() -> String {
 #[gpui::test]
 fn a_bordered_band_takes_a_background(cx: &mut TestAppContext) {
     let css = "#s{border:2px solid #00f;padding:1px} #s.b{background:#eee}";
-    let (kept, edited, fresh) = edit(cx, css, WRAPPED, "b");
+    let (kept, edited, fresh, refused) = edit_refused(cx, css, WRAPPED, "b");
     assert!(
         !kept,
         "the pieces of a box with edges are cut: the frame is built"
     );
     assert!(
-        refusals().contains("refused_by_layer"),
-        "the layer refuses, not the plan: {}",
-        refusals()
+        refused.contains("refused_by_layer"),
+        "the layer refuses, not the plan: {refused}"
     );
     assert_eq!(
-        edited,
-        fresh,
-        "the frame differs from a fresh one: {}",
-        refusals()
+        edited, fresh,
+        "the frame differs from a fresh one: {refused}"
     );
 }
 
