@@ -5,6 +5,7 @@ mod layer;
 pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
 pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
 mod damage;
+pub(crate) mod image_resources;
 mod record;
 #[doc(hidden)]
 pub use damage::{DAMAGE_TILE, SceneDamage};
@@ -191,6 +192,7 @@ pub struct Scene {
 /// scene keeps the size it had with only the damage index boxed.
 #[derive(Default)]
 pub(crate) struct SceneBook {
+    pub(crate) images: image_resources::ImageResources,
     /// Клетки кадра и повреждение против прошлого кадра (`damage`).
     pub(crate) index: damage::DamageIndex,
     /// The box whose own paint is being recorded into a layer.
@@ -390,6 +392,7 @@ impl Scene {
     }
 
     pub fn clear(&mut self) {
+        self.book.images.clear();
         self.segment_capture = None;
         self.paint_operations.clear();
         self.groups.clear();
@@ -586,9 +589,9 @@ impl Scene {
                 }
             })
             .unwrap_or(ReplaySource::Pack);
-        if !self.replay_shifted(operations, source, |_| true) {
+        if !self.replay_shifted(operations, source, &prev_scene.book.images, |_| true) {
             for operation in operations {
-                self.replay_operation(operation.clone());
+                self.replay_image_operation(operation.clone(), &prev_scene.book.images);
             }
         }
     }
@@ -598,9 +601,9 @@ impl Scene {
     pub(crate) fn replay_record(&mut self, scene: &Scene) {
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), Point::default(), None, 0);
         let source = ReplaySource::Graft(graft, false);
-        if !self.replay_shifted(&scene.paint_operations, source, |_| true) {
+        if !self.replay_shifted(&scene.paint_operations, source, &scene.book.images, |_| true) {
             for operation in &scene.paint_operations {
-                self.replay_operation(operation.clone());
+                self.replay_image_operation(operation.clone(), &scene.book.images);
             }
         }
     }
@@ -628,7 +631,7 @@ impl Scene {
         }
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0);
         let source = ReplaySource::Graft(graft, false);
-        self.replay_shifted(&scene.paint_operations, source, |operation| match operation {
+        self.replay_shifted(&scene.paint_operations, source, &scene.book.images, |operation| match operation {
             PaintOperation::Primitive(primitive) => {
                 record::geometry::primitive(primitive, offset, clip);
                 !placed_bounds(primitive)
@@ -713,6 +716,7 @@ impl Scene {
         &mut self,
         operations: &[PaintOperation],
         source: ReplaySource,
+        images: &image_resources::ImageResources,
         mut place: impl FnMut(&mut PaintOperation) -> bool,
     ) -> bool {
         if !self.layer_stack.is_empty()
@@ -763,6 +767,7 @@ impl Scene {
                     if matches!(primitive, Primitive::Quad(_)) {
                         quad = Some(self.quads.len());
                     }
+                    self.copy_image(primitive, images);
                     self.push_ordered(primitive);
                     copied += 1;
                     if let Some(capture) = self.segment_capture.as_mut() {
@@ -877,6 +882,7 @@ impl Scene {
                     continue;
                 }
                 scene.add_primitive_ink(clipped);
+                scene.copy_image(primitive, &self.book.images);
                 scene.push_ordered(primitive);
             }
             scene.paint_operations.push(operation);

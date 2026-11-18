@@ -204,6 +204,41 @@ async function loadTurn() {
 }
 /** Messages this process received (in memory only, for /fake-recall). */
 const received = []
+// `/fake-stream <blocks> <intervalMs> <tag>`: a measured load turn. Timed
+// assistant blocks around one client tool round trip; each block carries its
+// tag, sequence and emit time, so the client measures first-block latency,
+// gaps, loss and duplicates without trusting server-side bookkeeping.
+async function streamTurn([blocksArg = '20', intervalArg = '50', tag = 'turn']) {
+  const blocks = Number(blocksArg)
+  const interval = Number(intervalArg)
+  if (!Number.isInteger(blocks) || blocks < 1 || blocks > 500) throw new Error('Block count must be 1..500')
+  if (!Number.isInteger(interval) || interval < 0 || interval > 5000) throw new Error('Interval must be 0..5000ms')
+  if (!/^[a-zA-Z0-9-]{1,64}$/.test(tag)) throw new Error('Invalid stream tag')
+  osc('working')
+  if (!loadMcpReady) {
+    await rpc('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'fake-claude', version: '0.0.0' },
+    })
+    await rpc('notifications/initialized', {})
+    loadMcpReady = true
+  }
+  const filler = 'synthetic streamed text '.repeat(16)
+  for (let seq = 0; seq < blocks; seq++) {
+    if (seq === Math.floor(blocks / 2)) {
+      const input = { command: `echo ${tag}`, description: 'Synthetic load tool' }
+      const call = rec.tool('mcp__user-tools__Bash', input)
+      emit(call)
+      const response = await rpc('tools/call', { name: 'Bash', arguments: input })
+      emit(rec.result(call.message.content[0].id, JSON.stringify(response?.result ?? response?.error ?? null)))
+    }
+    emit(rec.assistant([{ type: 'text', text: `[load ${tag} seq=${seq} t=${Date.now()}] ${filler}` }]))
+    process.stdout.write(`\r\n${tag} block ${seq}`)
+    if (interval) await pause(interval)
+  }
+  osc('idle')
+}
 async function execute(command) {
   if (command === '/exit') {
     await hook('SessionEnd')
@@ -319,6 +354,9 @@ async function execute(command) {
       )
       break
     }
+    case '/fake-stream':
+      await streamTurn(command.split(/\s+/).slice(1))
+      break
     default:
       if (LOAD_K > 0) {
         await loadTurn()
@@ -396,7 +434,12 @@ process.stdin.on('data', (chunk) => {
           screen('Synthetic scenario failed')
         })
     } else if (ch === '\x7f' || ch === '\b') buffer = buffer.slice(0, -1)
-    else if (ch >= ' ') buffer += ch
+    else if (ch >= ' ') {
+      buffer += ch
+      // A TUI echoes typed/pasted text; the server's terminal submit path waits
+      // for that echo before Enter, so a silent CLI would stall it to its cap.
+      if (!stream) process.stdout.write(ch)
+    }
   }
 })
 if (args.includes('/usage')) await execute('/usage')

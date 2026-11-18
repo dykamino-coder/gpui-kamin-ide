@@ -68,6 +68,9 @@ export interface JsonlEntry {
     | 'session-owner'
     | 'resume-head-vouch'
     | 'repl-mode'
+    | 'derived-from'
+    | 'data-flow-records'
+    | 'data-flow-incomplete'
   uuid: string
   parentUuid?: string | null
   isSidechain?: boolean

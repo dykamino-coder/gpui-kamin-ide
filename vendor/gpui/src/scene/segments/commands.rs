@@ -56,7 +56,7 @@ impl Scene {
                         let offset = (route.destination - route.source).scale(scale);
                         record::geometry::primitive(&mut primitive, offset, Some(clip));
                         let (at, quads) = (output.paint_operations.len(), output.quads.len());
-                        output.insert_primitive(primitive);
+                        output.insert_image_primitive(primitive, &self.book.images);
                         if output.paint_operations.len() > at {
                             let quad = (output.quads.len() > quads).then_some(quads);
                             let placed = crate::scene::layer::Placed { offset, clip: Some(clip) };

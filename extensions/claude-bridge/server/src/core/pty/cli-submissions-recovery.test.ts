@@ -44,7 +44,7 @@ async function fixture(sessionId = 'recovery') {
           protocol: 1,
           session: sessionId,
           instance: 'cli',
-          version: '2.1.322',
+          version: '2.1.327',
           turnId: 'long-turn',
           ...extra,
         }),
@@ -87,7 +87,7 @@ async function fixture(sessionId = 'recovery') {
   let loss: 'request' | 'response' | undefined
   const engine = {
     env: { get: async () => sessionId },
-    session: { version: async () => ({ version: '2.1.322' }) },
+    session: { version: async () => ({ version: '2.1.327' }) },
     clock: {
       now: async () => 0,
       every: (_: number, cb: () => Promise<void>) => {
