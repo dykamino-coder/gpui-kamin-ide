@@ -28,11 +28,14 @@ describe('codex lockdown', () => {
         'browser_use = false',
         'computer_use = false',
         'image_generation = false',
-        'multi_agent = false',
+        'multi_agent_v2 = false',
         'memories = false',
         'hooks = false',
         'tool_suggest = false',
         'skill_search = false',
+        '',
+        '[agents]',
+        'enabled = false',
         '',
       ].join('\n'),
     )
@@ -53,11 +56,12 @@ describe('codex lockdown', () => {
       'features.browser_use=false',
       'features.computer_use=false',
       'features.image_generation=false',
-      'features.multi_agent=false',
+      'features.multi_agent_v2=false',
       'features.memories=false',
       'features.hooks=false',
       'features.tool_suggest=false',
       'features.skill_search=false',
+      'agents.enabled=false',
     ])
   })
 })

@@ -49,6 +49,7 @@ export interface JsonlEntry {
     | 'mode' | 'permission-mode' | 'pr-link' | 'queue-operation' | 'worktree-state' | 'content-replacement'
     | 'attachment' | 'progress' | 'speculation-accept'
     | 'session-owner' | 'resume-head-vouch' | 'repl-mode'
+    | 'derived-from' | 'data-flow-records' | 'data-flow-incomplete'
   uuid: string
   parentUuid?: string | null
   isSidechain?: boolean
