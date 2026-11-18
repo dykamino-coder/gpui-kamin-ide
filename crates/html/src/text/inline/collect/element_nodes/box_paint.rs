@@ -223,7 +223,7 @@ pub(super) fn element_style(
         // An inline box under no band owns the pieces of its lines all the
         // same: in a scene layer they are its empty runs, which a band that
         // appears on it paints (`gpui::TextRun::background_owner`).
-        merged.inline_decoration.band_owner = e.node_id;
+        merged.inline_decoration.band_owner = band_owner(e);
     }
     (merged, painted_bg)
 }
