@@ -84,15 +84,22 @@ fn refusals() -> String {
     LAST.with(|l| l.borrow().clone())
 }
 
-/// A bordered box's pieces are not all held by the layer yet: the edit is
-/// refused by it and the frame is built, equal to a fresh one.
+/// A box with edges (padding, border) puts edge spacers on its lines, and a
+/// line with edge spacers is painted word by word, as a justified one is
+/// (`Paragraph::paint_justified_line`): its pieces are cut by that painter,
+/// the layer holds none of them (`LayerHandle::holds_band`) and the frame
+/// is built, equal to a fresh one.
 #[gpui::test]
 fn a_bordered_band_takes_a_background(cx: &mut TestAppContext) {
     let css = "#s{border:2px solid #00f;padding:1px} #s.b{background:#eee}";
     let (kept, edited, fresh) = edit(cx, css, WRAPPED, "b");
     assert!(
-        !kept || refusals().is_empty(),
-        "kept with refusals: {}",
+        !kept,
+        "the pieces of a box with edges are cut: the frame is built"
+    );
+    assert!(
+        refusals().contains("refused_by_layer"),
+        "the layer refuses, not the plan: {}",
         refusals()
     );
     assert_eq!(
