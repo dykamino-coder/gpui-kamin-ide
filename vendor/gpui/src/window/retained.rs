@@ -20,6 +20,11 @@ pub struct RetainedPrepaint(Range<PackedPrepaintIndex>);
 pub struct RetainedPaint {
     range: Range<PackedPaintIndex>,
     replayable: bool,
+    /// Mouse listeners and element state reads of the range that open ink
+    /// sinks allowed (`Window::offscreen_inert`): a replay copies the same
+    /// ones, inert under the same guarantee, and allows them again, or a
+    /// replayed subtree would taint the sinks of the subtrees around it.
+    allowed: (u32, u32),
 }
 
 impl RetainedPrepaint {
@@ -33,8 +38,8 @@ impl RetainedPrepaint {
 }
 
 impl RetainedPaint {
-    fn of(range: Range<PaintIndex>, replayable: bool) -> Self {
-        Self { range: range.start.pack()..range.end.pack(), replayable }
+    fn of(range: Range<PaintIndex>, replayable: bool, allowed: (u32, u32)) -> Self {
+        Self { range: range.start.pack()..range.end.pack(), replayable, allowed }
     }
 
     fn range(&self) -> Range<PaintIndex> {
@@ -58,6 +63,8 @@ impl RetainedPaint {
         }
         self.range.end = next.range.end;
         self.replayable &= next.replayable;
+        self.allowed.0 = self.allowed.0.wrapping_add(next.allowed.0);
+        self.allowed.1 = self.allowed.1.wrapping_add(next.allowed.1);
         true
     }
 }
@@ -168,9 +175,12 @@ impl Window {
         let root = self.retained_root_environment();
         let groups = self.next_frame.scene.groups.len();
         let start = self.paint_index();
+        let before = self.next_frame.scene.ink_allowed;
         let result = f(self);
         let replayable = root && groups == self.next_frame.scene.groups.len();
-        (result, RetainedPaint::of(start..self.paint_index(), replayable))
+        let after = self.next_frame.scene.ink_allowed;
+        let allowed = (after.0.wrapping_sub(before.0), after.1.wrapping_sub(before.1));
+        (result, RetainedPaint::of(start..self.paint_index(), replayable, allowed))
     }
 
     /// Copy replayable paint output recorded in the previous frame into this one.
@@ -179,7 +189,16 @@ impl Window {
         debug_assert!(record.replayable, "non-replayable paint record");
         let start = self.paint_index();
         self.reuse_paint(record.range());
-        RetainedPaint::of(start..self.paint_index(), true)
+        self.allow_replayed(record);
+        RetainedPaint::of(start..self.paint_index(), true, record.allowed)
+    }
+
+    /// The effects of `record` its frame allowed are allowed in this one
+    /// (`RetainedPaint::allowed`).
+    fn allow_replayed(&mut self, record: &RetainedPaint) {
+        let allowed = &mut self.next_frame.scene.ink_allowed;
+        allowed.0 = allowed.0.wrapping_add(record.allowed.0);
+        allowed.1 = allowed.1.wrapping_add(record.allowed.1);
     }
 }
 
@@ -238,7 +257,8 @@ impl Window {
             Some(source) => self.next_frame.scene.replay_moved(scenes, source.scene(), offset, clip),
             None => self.next_frame.scene.replay_moved(scenes, &self.rendered_frame.scene, offset, clip),
         }
-        RetainedPaint::of(start..self.paint_index(), true)
+        // A movable record has no listener or state read to allow.
+        RetainedPaint::of(start..self.paint_index(), true, (0, 0))
     }
 }
 /// KaminIDE patch: placed bounds of everything a retained subtree offered to
