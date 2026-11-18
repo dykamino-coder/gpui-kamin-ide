@@ -13,8 +13,9 @@ pub struct InlineDecoration {
     pub corner_radius: Option<f32>,
     /// The node number of the inline box whose band `band_color` is (0: none
     /// or no single box, as for a first-line or first-letter band): the
-    /// owner of the band's pieces in a scene layer.
-    pub band_owner: u64,
+    /// owner of the band's pieces in a scene layer. 32 bits, as the scene's
+    /// run owner (`gpui::TextRun::background_owner`); a number past that is 0.
+    pub band_owner: u32,
 }
 
 impl InlineDecoration {

@@ -68,7 +68,7 @@ pub(super) fn element_style(
             && merged.paint_background().top.clip != Some(crate::style::computed::BgClip::Text)
     }) {
         merged.inline_decoration.band_color = Some(bg);
-        merged.inline_decoration.band_owner = e.node_id;
+        merged.inline_decoration.band_owner = band_owner(e);
         // Единицы шрифта разрешаются так же, как в `inline_sides`:
         // разбор только по точкам ронял `padding: 1em` в ноль, и
         // подсветка строчной коробки шла впритык к тексту.
@@ -148,7 +148,7 @@ pub(super) fn element_style(
             b: 0.5,
             a: 0.0,
         });
-        merged.inline_decoration.band_owner = e.node_id;
+        merged.inline_decoration.band_owner = band_owner(e);
         let family = merged.inh.font.font_family.clone().unwrap_or_default();
         let px_of = |l: Option<crate::style::values::value::Len>| match l {
             Some(
@@ -203,7 +203,7 @@ pub(super) fn element_style(
                 b: 0.0,
                 a: 0.0,
             });
-            merged.inline_decoration.band_owner = e.node_id;
+            merged.inline_decoration.band_owner = band_owner(e);
             painted_bg = true;
         }
     }
@@ -226,6 +226,11 @@ pub(super) fn element_style(
         merged.inline_decoration.band_owner = e.node_id;
     }
     (merged, painted_bg)
+}
+
+/// The scene owner number of `e`'s band (`InlineDecoration::band_owner`).
+fn band_owner(e: &Element) -> u32 {
+    u32::try_from(e.node_id).unwrap_or(0)
 }
 
 #[cfg(test)]

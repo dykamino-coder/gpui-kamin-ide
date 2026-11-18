@@ -1555,8 +1555,11 @@ export class ConnectionManager {
 
   commandAction(action: 'list' | 'stop' | 'output' | 'clear', id = ''): void {
     if (action === 'list') {
-      this.commands.list(this.state.sessionId ?? '')
-      this.send({ type: 'commands:list' })
+      // `id === 'refresh'`: the view just mounted and needs the snapshot even
+      // when nothing changed. Otherwise only changes are published.
+      const sessionId = this.state.sessionId ?? ''
+      this.commands.list(sessionId, id === 'refresh')
+      if (this.commands.needsServerList(sessionId)) this.send({ type: 'commands:list' })
     } else if (action === 'clear') {
       this.commands.clear()
       this.commands.list(this.state.sessionId ?? '')

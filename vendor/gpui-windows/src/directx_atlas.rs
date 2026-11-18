@@ -20,7 +20,11 @@ use gpui::{
 pub(crate) struct DirectXAtlas(
     Mutex<AtlasState<DirectXAtlasTextures>>,
     std::sync::atomic::AtomicU64,
+    // KaminIDE patch: repainted rectangles of external textures.
+    Mutex<external_damage::ExternalDamage>,
 );
+
+mod external_damage;
 
 struct DirectXAtlasTextures {
     device: ID3D11Device,
@@ -51,7 +55,11 @@ impl DirectXAtlas {
             polychrome_textures: Default::default(),
             subpixel_textures: Default::default(),
         }));
-        DirectXAtlas(state, std::sync::atomic::AtomicU64::new(0))
+        DirectXAtlas(
+            state,
+            std::sync::atomic::AtomicU64::new(0),
+            Mutex::new(Default::default()),
+        )
     }
 
     /// KaminIDE patch: see the second field of `DirectXAtlas`.
@@ -63,23 +71,28 @@ impl DirectXAtlas {
         self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// KaminIDE patch: whether a sprite of `scene` (of its groups, or of the
-    /// retained layers it draws) samples an external texture, whose content
-    /// may differ from the last frame's.
-    pub(crate) fn samples_external(&self, scene: &gpui::Scene) -> bool {
+    /// KaminIDE patch: what the external textures sampled by `scene` changed
+    /// since the last call (`external_damage.rs`): `Unchanged` without
+    /// external textures or reported changes, `Unknown` when a change cannot
+    /// be placed. Each planned frame calls it once.
+    pub(crate) fn external_damage(&self, scene: &gpui::Scene) -> gpui::SceneDamage {
         let lock = self.0.lock();
-        let lock = &*lock;
-        fn external(lock: &AtlasState<DirectXAtlasTextures>, s: &gpui::Scene) -> bool {
-            s.polychrome_sprites.iter().any(|sprite| {
-                lock.backend
-                    .texture(sprite.tile.texture_id)
-                    .is_some_and(|t| t.external)
-            }) || s.groups.iter().any(|g| external(lock, &g.scene))
-                || (0..s.layer_count())
-                    .filter_map(|i| s.layer(i))
-                    .any(|layer| external(lock, layer.scene()))
-        }
-        external(lock, scene)
+        let list = &lock.backend.polychrome_textures;
+        let is_external = |index: u32| {
+            list.textures
+                .get(index as usize)
+                .and_then(Option::as_ref)
+                .is_some_and(|t| t.external)
+        };
+        self.2.lock().take(scene, is_external)
+    }
+
+    /// KaminIDE patch: the producer of external texture `id` repainted
+    /// `rect` (texture pixels) of it. From the first call on, the texture's
+    /// changes are placed by these rectangles; the producer must report
+    /// every change.
+    pub(crate) fn damage_external(&self, id: AtlasTextureId, rect: Bounds<DevicePixels>) {
+        self.2.lock().mark(id.index, rect);
     }
 
     /// Returns the view backing `id`, or `None` once every tile in it has been
@@ -183,6 +196,7 @@ impl DirectXAtlas {
         slot.texture = texture;
         slot.view = view;
         drop(lock);
+        self.2.lock().forget(id.index);
         self.bump();
         true
     }
@@ -198,6 +212,7 @@ impl DirectXAtlas {
             lock.backend.polychrome_textures.textures[ix] = None;
         }
         drop(lock);
+        self.2.lock().forget(id.index);
         self.bump();
     }
 
@@ -215,6 +230,7 @@ impl DirectXAtlas {
             textures.subpixel_textures = AtlasTextureList::default();
         });
         drop(lock);
+        *self.2.lock() = Default::default();
         self.bump();
     }
 }

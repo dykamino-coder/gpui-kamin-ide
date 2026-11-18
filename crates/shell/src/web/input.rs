@@ -296,28 +296,4 @@ pub(crate) fn set_focus(id: &str, focus: bool) {
     on_browser(id, move |host| host.set_focus(focus as i32));
 }
 
-/// Вью, которому последним отдали фокус клавиатуры.
-static FOCUSED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-
-/// Отдать фокус вью, забрав его у прежнего: без явного `set_focus(false)`
-/// каретка в прежнем вью продолжала мигать и ловить ввод.
-pub(crate) fn focus_view(id: &str) {
-    let prev = FOCUSED
-        .lock()
-        .map(|mut f| f.replace(id.to_string()))
-        .unwrap_or(None);
-    if let Some(prev) = prev
-        && prev != id
-    {
-        set_focus(&prev, false);
-    }
-    set_focus(id, true);
-}
-
-/// Клик мимо всех вью: забрать фокус у последнего (клик в наш интерфейс).
-pub(crate) fn blur_all() {
-    let prev = FOCUSED.lock().map(|mut f| f.take()).unwrap_or(None);
-    if let Some(prev) = prev {
-        set_focus(&prev, false);
-    }
-}
+// Кто владеет фокусом между вью и окном — `web/focus.rs`.

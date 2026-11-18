@@ -190,7 +190,7 @@ fn main() {
                 view_slot = Some(view.clone());
                 // Заказы перерисовки на приход кадров CEF адресуем ЭТОМУ вью:
                 // `cx.refresh()` глушил бы кэш панелей (`web/pump.rs`).
-                web::set_repaint_target(view.downgrade());
+                web::attach_window(view.clone(), window, cx);
                 // Фон окна рисует корневой канвас `RootView`: фон `Root`
                 // перекрывал бы его собственный слой (0.7.1: `Root` — `Styled`,
                 // свой стиль ложится поверх фона темы).

@@ -26,6 +26,12 @@ import { SessionAdmissionError } from './session-admission'
 import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId } from './live-switch'
 import { interruptClaudeTurn, switchClaudeModelInPlace } from './claude-turn'
 import { rememberEffortSelection } from './effort-selection'
+import type { SessionConfig } from '../types/pty'
+
+/** A client's per-chat thinking display, validated: unknown values keep the default. */
+function thinkingDisplayChoice(value: unknown): Pick<SessionConfig, 'thinkingDisplay'> {
+  return value === 'summarized' || value === 'updates' ? { thinkingDisplay: value } : {}
+}
 import {
   codexBinding,
   codexEffort as codexReasoningEffort,
@@ -604,6 +610,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 cols: msg.cols,
                 rows: msg.rows,
                 basePrompt: msg.basePrompt,
+                ...thinkingDisplayChoice(msg.thinkingDisplay),
                 transcriptMirrorDir: msg.transcriptMirrorDir,
                 host: normalizeHostDeclaration(msg.host),
                 bearerHash,
@@ -963,6 +970,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 // prompt too — otherwise the instructions only ever applied to
                 // brand-new sessions.
                 basePrompt: msg.basePrompt,
+                ...thinkingDisplayChoice(msg.thinkingDisplay),
                 transcriptMirrorDir: msg.transcriptMirrorDir,
                 host: normalizeHostDeclaration(msg.host),
                 bearerHash,

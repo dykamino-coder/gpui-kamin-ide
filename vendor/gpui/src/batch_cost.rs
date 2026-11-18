@@ -21,6 +21,24 @@ struct Totals {
     timed_frames: u64,
     frame_gpu_ns: f64,
     kinds: [Kind; 9],
+    /// Planned frames by plan: kept, drawn whole, drawn within a rectangle.
+    plans: [u64; 3],
+    /// Area the drawn frames rasterized (the scissor, or the whole target).
+    painted_px: f64,
+    window_px: f64,
+    /// Why frames were drawn whole, by reason.
+    full_by: Vec<(&'static str, u64)>,
+}
+
+/// How a planned frame reaches the target ([`BatchCost::plan`]).
+#[derive(Clone, Copy)]
+pub enum FramePlan {
+    /// Nothing is drawn: the target already holds the frame.
+    Keep,
+    /// The whole target is drawn, for the given reason.
+    Full(&'static str),
+    /// Only a rectangle of this many pixels is drawn.
+    Within(f64),
 }
 
 /// Счётчики одного приложения; backend получает явный общий экземпляр.
@@ -49,6 +67,29 @@ impl BatchCost {
             k.batches += 1;
             k.prims += prims as u64;
             k.area_px += area_px;
+        });
+    }
+
+    /// The plan of a window frame of `window_px` pixels: how much is painted
+    /// and why a frame is drawn whole.
+    pub fn plan(&self, plan: FramePlan, window_px: f64) {
+        self.with(|t| {
+            t.window_px = window_px;
+            match plan {
+                FramePlan::Keep => t.plans[0] += 1,
+                FramePlan::Full(reason) => {
+                    t.plans[1] += 1;
+                    t.painted_px += window_px;
+                    match t.full_by.iter_mut().find(|(r, _)| *r == reason) {
+                        Some((_, n)) => *n += 1,
+                        None => t.full_by.push((reason, 1)),
+                    }
+                }
+                FramePlan::Within(px) => {
+                    t.plans[2] += 1;
+                    t.painted_px += px;
+                }
+            }
         });
     }
 
@@ -107,10 +148,10 @@ impl BatchCost {
     /// Строка для `diag.log` за период; счётчики обнуляются.
     pub fn take_line(&self) -> Option<String> {
         let t = self.totals.lock().ok()?.take()?;
-        if t.frames == 0 {
+        if t.frames == 0 && t.plans == [0; 3] {
             return None;
         }
-        let per = |v: f64| v / t.frames as f64;
+        let per = |v: f64| v / t.frames.max(1) as f64;
         let timed = t.timed_frames.max(1) as f64;
         let kinds = KINDS
             .iter()
@@ -141,8 +182,56 @@ impl BatchCost {
             String::new()
         };
         Some(format!(
-            "[gpu] frames={}{frame_gpu} per frame: {kinds}; top quads: {detail}",
-            t.frames
+            "[gpu] frames={}{frame_gpu} {} per frame: {kinds}; top quads: {detail}",
+            t.frames,
+            plan_summary(&t)
         ))
+    }
+}
+
+/// `plan keep=K full=F within=W painted_kpx=… window_kpx=… full_by=reason:N,…`:
+/// `painted_kpx` is the mean rasterized area of a drawn (not kept) frame.
+fn plan_summary(t: &Totals) -> String {
+    let [keep, full, within] = t.plans;
+    let drawn = (full + within).max(1) as f64;
+    let reasons = t
+        .full_by
+        .iter()
+        .map(|(r, n)| format!("{r}:{n}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "plan keep={keep} full={full} within={within} painted_kpx={:.0} window_kpx={:.0} full_by={}",
+        t.painted_px / drawn / 1000.0,
+        t.window_px / 1000.0,
+        if reasons.is_empty() { "-" } else { &reasons }
+    )
+}
+
+#[cfg(test)]
+mod plan_tests {
+    use super::{BatchCost, FramePlan};
+
+    #[test]
+    fn a_period_of_kept_frames_still_reports_its_plan() {
+        let cost = BatchCost::default();
+        cost.plan(FramePlan::Keep, 1000.0);
+        let line = cost.take_line().unwrap();
+        assert!(line.contains("plan keep=1 full=0 within=0"), "{line}");
+        assert!(cost.take_line().is_none());
+    }
+
+    #[test]
+    fn painted_area_is_the_mean_of_drawn_frames_with_reasons() {
+        let cost = BatchCost::default();
+        cost.frame();
+        cost.frame();
+        cost.plan(FramePlan::Full("external"), 4_000_000.0);
+        cost.plan(FramePlan::Within(10_000.0), 4_000_000.0);
+        let line = cost.take_line().unwrap();
+        assert!(
+            line.contains("full=1 within=1 painted_kpx=2005 window_kpx=4000 full_by=external:1"),
+            "{line}"
+        );
     }
 }

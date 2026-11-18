@@ -176,7 +176,7 @@ then `<a|z|r> <frame> <phase> <bytes> <pointer> <return addresses>` per allocati
   Extend the table when a new module appears in `other`.
 - Attribution is by allocation site, not by the current holder: a block allocated by layout and
   later moved into a retained cache is reported under the site that allocated it, with its full
-  stack. The question «who holds it now» is answered by `--owners` below.
+  stack. The question «who holds it now» is answered by `--owners` and `--retainers` below.
 
 ## Who holds the memory (`--owners`)
 
@@ -230,6 +230,53 @@ bench JSON, which is the driver's figure for the whole process. The numbers are 
 `memory_owners.gpu` of the bench JSON. Not walked: the swap chain's other buffers, DirectWrite's
 glyph rasterization targets, buffers and shaders. The walk reads existing fields on request
 (`Window::gpu_memory`); nothing is counted while rendering.
+
+## Who keeps a block alive (`--retainers`)
+
+```sh
+python scripts/memprof.py run --exe CAND.exe --retainers [--heapsnapshot] --out DIR \
+  -- PAGE.html --viewport 800x600 --mode relayout --runs 1
+```
+
+Owners name only what a reporter reaches, and a stack names only where a block was allocated. The
+retention graph names who holds it now, without a line of reporter code. With
+`ENGINE_BENCH_RETAINERS_OUT` the allocator shim of an `allocation-audit` or `heap-profile` bench keeps a
+table of live blocks (`{address -> requested size}`, lock-free open addressing in system memory, so
+the table itself is not in the graph) from process start. Right after the owner report of the first
+mode the document thread scans every live block once: each aligned word that points into a live
+block, at its start or inside it (hashbrown tables point into the middle of their allocation), is an
+edge from the scanned block to that block. Roots are the stack of the snapshot thread from its
+current top, the image's writable sections (statics) and its TLS block
+(`crates/engine-bench/src/allocations/retain/roots.rs`, the only platform code: PE headers and the
+TEB on Windows, `/proc/self/maps` on Linux). The graph algorithms are in `crates/heap/src/retain`:
+
+- blocks no root reaches enter through one «unrooted» node: every block nobody points to, and for
+  every cycle nobody outside holds (strongly connected components, Tarjan) its largest block. They
+  are held by what the scan does not see (other threads' stacks, OS memory such as the window's user
+  data) or by nobody (a leaked `Rc` cycle, flagged `{cycle}`);
+- the shortest path from the root (breadth first, through the real roots before «unrooted»), as
+  Gecko's `ComputeShortestPaths`;
+- the dominator tree (Cooper–Harvey–Kennedy, as Gecko's `DominatorTree`) and the retained size of
+  each node: the bytes freed with it.
+
+The report (`cand-retain.txt`, `.json`) names nodes from the probe file of the same run: the owner
+path when an owner measured the block, else the `[type]` and site that allocated it. It prints the
+bytes retained by each root, the dominator tree largest first (a chain where one child keeps almost
+all of its parent is folded into one line), retained bytes by group (owner path or site) not counted
+twice under a dominator of the same group, with object counts, and for the largest holders their
+dominator chain and the shortest path from a root, each hop with the field offset or the static that
+holds the pointer. `--heapsnapshot` writes the graph as a V8 `.heapsnapshot`: «Load profile» in the
+Memory panel of Chrome DevTools shows it with its own Summary (by group), Containment, Retainers and
+retained sizes. `memprof.py retain-diff A-retain.json B-retain.json` compares two pages or two builds
+by group; `memprof.py report EXE STACKS --retainers GRAPH` folds saved files. When several holders share a cluster, its blocks are dominated by the root and the tree cannot tell them apart; `memprof.py retain-query DIR/cand.retain --holders TEXT` lists every incoming edge of the blocks whose label contains TEXT (retainer and field offset), and `--cut TEXT...` gives the bytes no root reaches once those blocks are removed, the retained size of a set. Both read the labels the report saved beside the graph (`cand.retain.names.json`).
+
+The scan is conservative, as in Boehm GC: a number that looks like a heap address is an edge, so a
+retained size is an upper bound. Rust structures hold aligned pointers in their fields, and stale
+words on the stack are the usual false edges. The table costs 16 bytes per slot (`2^23` slots by
+default, `ENGINE_BENCH_RETAINERS_SLOTS=<k>` for `2^k`); when it overflows, tracking stops and the
+snapshot reports an error instead of a partial graph. Without the variable the shim pays one relaxed
+flag load per call, and no product build contains any of it. Other threads keep running during the
+scan; a block one of them frees meanwhile may be read after its free.
 
 ## Limits
 

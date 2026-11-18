@@ -363,7 +363,7 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 if let Some(fh) = &fh_click {
                     _w.focus(fh, _cx);
                 }
-                super::input::focus_view(id);
+                super::focus::focus_view(id);
                 super::input::click(
                     id,
                     x,
