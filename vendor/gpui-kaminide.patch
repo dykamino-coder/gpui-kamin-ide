@@ -30278,10 +30278,10 @@ index 0000000000000000000000000000000000000000..106501ad7a57ae23f3909d5dfd29da9d
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/natural_image.rs b/vendor/gpui/src/window/natural_image.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1cbe730fec32017c6536115cafe02ba4d4261a40
+index 0000000000000000000000000000000000000000..4d7f040e99a3a014833edb9872c0a6c4e3a7d296
 --- /dev/null
 +++ b/vendor/gpui/src/window/natural_image.rs
-@@ -0,0 +1,243 @@
+@@ -0,0 +1,244 @@
 +//! Opt-in natural raster painting preserves source phase on the CSS edge grid.
 +
 +use super::*;
@@ -30440,6 +30440,7 @@ index 0000000000000000000000000000000000000000..1cbe730fec32017c6536115cafe02ba4
 +#[cfg(test)]
 +mod tests {
 +    use super::*;
++    use crate::AtlasKey;
 +
 +    #[test]
 +    fn natural_cache_eviction_releases_uploads_without_scene_users() {

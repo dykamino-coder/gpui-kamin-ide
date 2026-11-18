@@ -156,6 +156,7 @@ fn sample(pixel: u32, source: u32, phase: f64, scale: f64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AtlasKey;
 
     #[test]
     fn natural_cache_eviction_releases_uploads_without_scene_users() {
