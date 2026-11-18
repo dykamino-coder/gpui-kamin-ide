@@ -346,7 +346,7 @@ pub(super) async fn run(
         #[cfg_attr(not(feature = "heap-report"), allow(unused_mut))]
         let mut mode = report::measured_mode(&samples, &diagnostics);
         #[cfg(feature = "heap-report")]
-        super::holders::attach(cx, window, &mut mode)?;
+        super::holders::attach(cx, window, name, &mut mode)?;
         modes.insert(name.into(), mode);
         work_samples.push((name, work));
     }
