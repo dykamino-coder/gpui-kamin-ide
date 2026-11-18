@@ -17,6 +17,15 @@ impl OofQueue {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // Only split source/layout children can prepaint before this host is visited.
+        // Ordinary children and empty queues keep the host's normal layout order.
+        let needs_preparation = self.state.items.borrow().iter().any(|(spot, kid)| {
+            spot.get().layout_only && matches!(kid, OofKid::Ready(_))
+        });
+        if !needs_preparation {
+            self.commit_to(destination);
+            return;
+        }
         let items = self.state.items.take();
         // Redirect before requesting layout: nested children must reach the live host.
         self.commit_to(destination);
@@ -25,7 +34,7 @@ impl OofQueue {
             .and_then(|queue| queue.state.preparation.borrow().clone());
         for (spot, kid) in items {
             let kid = match (kid, host.as_ref()) {
-                (OofKid::Ready(child), Some(host)) => {
+                (OofKid::Ready(child), Some(host)) if spot.get().layout_only => {
                     let mut owner = host.owner.clone();
                     let root = window.with_retained_layout(&mut owner, |window| {
                         // Host geometry belongs to its layout arena, not the source's scroll offset.
@@ -49,3 +58,6 @@ impl OofQueue {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
