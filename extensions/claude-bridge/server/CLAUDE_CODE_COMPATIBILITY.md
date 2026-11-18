@@ -1,11 +1,29 @@
 # Совместимость Claude Code CLI
 
-Текущий образ закрепляет **2.1.322** в `Dockerfile`. На 2026-11-10 npm
-`dist-tags.latest` возвращал `2.1.322`. Выбор следует поручению владельца
-использовать npm `latest`, без диапазона или auto-update. Версии самого Bridge
-и workspace этим обновлением не меняются. CLI mod (`src/cli-mod`) по-прежнему
-привязан к одной точной версии: `CLI_MOD_VERSION`, проверка в `bridge.js` и
-tests меняются вместе с pin.
+Текущий образ закрепляет **2.1.327** в `Dockerfile`. На 2026-11-18 npm
+`dist-tags.latest` возвращал `2.1.327` (`stable` — `2.1.311`). Выбор следует
+поручению владельца использовать npm `latest`, без диапазона или auto-update.
+CLI mod (`src/cli-mod`) по-прежнему привязан к одной точной версии:
+`CLI_MOD_VERSION`, проверка в `transport.js` и tests меняются вместе с pin.
+
+## Проверка перехода с 2.1.322 на 2.1.327
+
+Источники: официальный changelog 2.1.323–2.1.327 и сравнение Linux x64
+binaries `2.1.322` / `2.1.327` (строки контрактов, env-переменные, типы
+записей transcript).
+
+| Контракт       | Изменения upstream и решение Bridge                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JSONL / resume | Новые служебные записи `derived-from`, `data-flow-records`, `data-flow-incomplete` добавлены в списки не отображаемых типов webview и server segment index. Новые attachment-типы (`agent_ask_notice`, `linked_plugin_tools_note`, `plugin_note`, `tool_results_cut`) уже скрыты allowlist-предикатом. 2.1.326/2.1.327 исправляют потерю хвоста при resume после сбоя; Bridge не опирается на прежнее поведение. |
+| CLI mod        | API `prompt.submit`/`turn.*`/`http.fetch`/`session.version` для Bridge совпадает; `claude plugin test` для `src/cli-mod`: 4/4 на 2.1.327. 2.1.327 пропускает hook `prompt.submit`, вернувший ни `{ text }`, ни `{ drop }` (тестовый мок Bridge так отвечает, результат не меняется).                                                                                                                             |
+| Model / effort | Строки cache-warning диалога, `PreModelSwitch`, `hook-agent-` и model id (`claude-fable-5-2`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`) присутствуют; новых model id нет. 2.1.323 меняет окно контекста неизвестного model id с 200K на 1M — Bridge передаёт только известные id.                                                                                                              |
+| Environment    | Все env-переменные из `session-env.ts`/`session-settings.ts` присутствуют в 2.1.327. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` и `CLAUDE_CODE_AUTO_COMPACT_WINDOW` читаются как прежде; формула порога `auto-compact.ts` по binary заново не выводилась.                                                                                                                                                                 |
+| Hooks          | 2.1.326 меняет `"decision": "block"` и `updatedInput` при нескольких hooks, HTTP hooks игнорируют `Content-Length`/`Transfer-Encoding` в `headers`. Bridge отвечает одним hook на событие и эти заголовки не задаёт. Сравнение http/command hooks (ниже, для 2.1.322) на 2.1.327 не повторялось.                                                                                                                 |
+
+Gate 2.1.327 (2026-11-18, кандидат-образ на `kamin-acc-302`, KaminIDE 1.0.115):
+новый чат Opus 5.5 — размышления показаны, ToolSearch и Bash вызваны, ответ
+получен; после перезапуска контейнера чат продолжился с контекстом (cold
+resume); in-session `/resume <id>` своей беседы завершился без ошибки.
 
 ## Проверка перехода с 2.1.312 на 2.1.322
 
