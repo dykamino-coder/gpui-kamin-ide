@@ -18,8 +18,15 @@ impl Snapshot {
     }
 }
 /// Явный владелец наблюдения, независимый от сессии и времени жизни документа.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct Owner(Rc<Cell<Snapshot>>);
+impl std::fmt::Debug for Owner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The live log is not a style value: other snapshots of the document
+        // change its counters without changing this style. The numbers are in snapshot().
+        f.write_str("Owner")
+    }
+}
 impl Owner {
     pub fn snapshot(&self) -> Snapshot {
         self.0.get()
@@ -79,6 +86,16 @@ impl Drop for Allocation {
 mod tests {
     use super::*;
     use crate::style::computed::StyleGroup;
+    #[test]
+    fn debugging_a_style_owner_does_not_depend_on_other_live_styles() {
+        let owner = Owner::default();
+        let before = format!("{owner:?}");
+        let allocation = Allocation::new::<[u64; 3]>(&owner);
+        assert_eq!(owner.snapshot().group_allocations, 1);
+        assert_eq!(format!("{owner:?}"), before);
+        drop(allocation);
+        assert_eq!(owner.snapshot(), Snapshot::default());
+    }
     #[test]
     fn owners_isolate_cow_and_balance_after_document_lifetime() {
         let owner = Owner::default();

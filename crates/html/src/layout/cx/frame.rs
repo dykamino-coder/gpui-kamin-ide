@@ -1,11 +1,10 @@
 //! Frame facts of a build next to the document's values (`FrameCx`): the line-measure owner
-//! of the nearest fragmented ancestor (`LineCx`) and the build's memoized subtree and length
+//! of the nearest fragmented ancestor (`LineCx`) and the build's memoized length
 //! facts, the deferred paint owner of its render tree and its layout state. Layout and paint
 //! code that reads these facts takes the frame context; calls into style, text and the value
 //! arenas receive its `values` projection.
 
 use crate::layout::cx::deferred::Deferred;
-use crate::layout::cx::subtree::SubtreeFacts;
 use crate::layout::fragment::LineCx;
 use crate::layout::fragment::line_shape::LengthFacts;
 use crate::layout::layout_state::LayoutState;
@@ -20,8 +19,6 @@ pub(crate) struct FrameCx<'a> {
     pub(crate) lines: Option<&'a Rc<LineCx>>,
     /// Lengths already resolved for unchanged subtrees of this build.
     pub(crate) lengths: Option<&'a Rc<RefCell<LengthFacts>>>,
-    /// Break and float facts already proven absent for subtrees of this build.
-    pub(crate) subtrees: Option<&'a Rc<RefCell<SubtreeFacts>>>,
     /// Deferred paint owner of the render tree being built.
     pub(crate) paint: Option<&'a Rc<Deferred>>,
     /// Layout state of the document (anchors under transforms).
@@ -37,7 +34,6 @@ impl<'a> FrameCx<'a> {
             values: doc.values(),
             lines: None,
             lengths: None,
-            subtrees: None,
             paint: None,
             layout: &doc.layout,
         }
@@ -91,7 +87,6 @@ impl FrameDoc {
             values: self.values.vcx(),
             lines: None,
             lengths: None,
-            subtrees: None,
             paint: self.paint.as_ref(),
             layout: &self.layout,
         }

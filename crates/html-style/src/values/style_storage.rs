@@ -32,6 +32,10 @@ impl DocumentValues {
     pub fn initial_style(&self) -> Computed {
         self.initial_styles.seed.clone()
     }
+    /// The shared initial style for reading, without a new header.
+    pub fn initial_style_ref(&self) -> &Computed {
+        &self.initial_styles.seed
+    }
     /// Живые заголовки и уникальные группы, происходящие от initial этого документа.
     #[cfg(feature = "work-counters")]
     pub fn style_storage(&self) -> crate::work::style_storage::Snapshot {

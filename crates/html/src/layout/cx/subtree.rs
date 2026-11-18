@@ -1,27 +1,16 @@
 //! Факты поддерева: один итеративный post-order проход каждого COW-снимка.
 
-use crate::dom::{Element, Node};
+use crate::dom::{BoxTextFacts, BoxTreeSummary, Element, Node};
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow, real_inline};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use std::collections::HashMap;
 
 /// Отрицательный ответ разрешает пропустить семантический обход. Неизвестные
 /// длины и сложные inline-коробки остаются на общем пути схлопывания.
-#[derive(Default)]
-pub(crate) struct SubtreeFacts {
-    children: HashMap<usize, (crate::dom::ChildrenMark, u8)>,
-    base: Option<std::rc::Rc<SubtreeFacts>>,
-}
+#[derive(Clone, Copy, Default)]
+pub(crate) struct SubtreeFacts {}
 
-const BREAK: u8 = 1;
-const FLOAT: u8 = 2;
-const MARGIN: u8 = 4;
-const BLOCK: u8 = 8;
-const CLEARABLE: u8 = 16;
-const SPLIT: u8 = 32;
-
-fn own(e: &Element, descendants: u8) -> u8 {
+fn own(e: &Element, descendants: BoxTreeSummary) -> BoxTreeSummary {
     crate::work::add!(SubtreeNodesVisited, 1);
     let style = e.style.used();
     let breaks = style.reset_fragmentation.break_before_force
@@ -41,26 +30,35 @@ fn own(e: &Element, descendants: u8) -> u8 {
     let inline = real_inline(e);
     // CSS2 §9.2.1.1: простой inline с текстом не требует переписывать поля,
     // но блок в его потомках требует разбиения даже при нулевых полях.
-    let split = inline && !out_of_flow(&style) && descendants & BLOCK != 0;
+    let split = inline && !out_of_flow(&style) && descendants.block;
     let zero = |v| matches!(v, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
     let margins = floats
         || split
         || !zero(style.reset_box_layout.margin.top)
         || !zero(style.reset_box_layout.margin.bottom);
     let block = if inline || style.reset_box_layout.display == Some(Display::Contents) {
-        !out_of_flow(&style) && descendants & BLOCK != 0
+        !out_of_flow(&style) && descendants.block
     } else {
         block_level_in_flow(e)
     };
     // BLOCK — видимость через inline/contents, остальные биты — объединение
     // всех потомков. Граница блочной коробки прерывает только поиск BLOCK.
-    (descendants & !BLOCK)
-        | u8::from(breaks)
-        | (u8::from(floats) * FLOAT)
-        | (u8::from(margins) * MARGIN)
-        | (u8::from(block) * BLOCK)
-        | (u8::from(may_clear) * CLEARABLE)
-        | (u8::from(split) * SPLIT)
+    BoxTreeSummary {
+        breaks: descendants.breaks || breaks,
+        floats: descendants.floats || floats,
+        margins: descendants.margins || margins,
+        block,
+        clearable: descendants.clearable || may_clear,
+        split_inline: descendants.split_inline || split,
+        text: BoxTextFacts {
+            elements: true,
+            in_flow: descendants.text.in_flow
+                && style.reset_box_layout.display != Some(Display::None)
+                && !out_of_flow(&style)
+                && !floats,
+            ..Default::default()
+        },
+    }
 }
 
 mod preparation;
@@ -69,80 +67,60 @@ pub(crate) use preparation::Preparation;
 pub(crate) use preparation::PreparationCache;
 
 impl SubtreeFacts {
-    pub(crate) fn overlay(base: std::rc::Rc<Self>) -> Self {
-        Self {
-            base: Some(base),
-            ..Self::default()
-        }
-    }
-
-    /// Факты списка по его идентичности в этом слое или в основах. Снимок
-    /// неизменяем, пока жива его метка, поэтому у одной идентичности во всех
-    /// слоях одни факты, и порядок поиска не влияет на ответ: сначала свой
-    /// слой (поддеревья этой сборки), затем нижний (полная подготовка, где
-    /// почти все списки), затем промежуточные.
-    fn cached(&self, identity: usize) -> Option<u8> {
-        let own = |layer: &Self| layer.children.get(&identity).map(|entry| entry.1);
-        if let Some(flags) = own(self) {
-            return Some(flags);
-        }
-        let mut bottom = self.base.as_deref()?;
-        while let Some(next) = bottom.base.as_deref() {
-            bottom = next;
-        }
-        if let Some(flags) = own(bottom) {
-            return Some(flags);
-        }
-        let mut at = self.base.as_deref();
-        while let Some(layer) = at.filter(|layer| !std::ptr::eq(*layer, bottom)) {
-            if let Some(flags) = own(layer) {
-                return Some(flags);
-            }
-            at = layer.base.as_deref();
-        }
-        None
-    }
-
     pub(crate) fn breaks_absent(&mut self, root: &Element) -> bool {
-        self.element_flags(root) & BREAK == 0
+        !self.element_flags(root).breaks
     }
 
     pub(crate) fn floats_absent(&mut self, root: &Element) -> bool {
-        self.element_flags(root) & FLOAT == 0
+        !self.element_flags(root).floats
     }
 
     pub(crate) fn margins_unchanged(&mut self, nodes: &[Node]) -> bool {
         self.collect(nodes);
-        self.list_flags(nodes) & MARGIN == 0
+        !self.list_flags(nodes).margins
     }
 
     pub(crate) fn inline_preparation_absent(&mut self, nodes: &[Node]) -> bool {
         self.collect(nodes);
-        self.list_flags(nodes) & SPLIT == 0
+        !self.list_flags(nodes).split_inline
     }
 
     pub(crate) fn clearance_possible(&mut self, nodes: &[Node]) -> bool {
         self.collect(nodes);
-        self.list_flags(nodes) & CLEARABLE != 0
+        self.list_flags(nodes).clearable
     }
 
-    fn element_flags(&mut self, root: &Element) -> u8 {
-        self.collect(&root.children);
-        own(root, self.list_flags(&root.children))
+    fn element_flags(&mut self, root: &Element) -> BoxTreeSummary {
+        let descendants = root.children.box_summary().unwrap_or_else(|| {
+            self.collect(&root.children);
+            let summary = self.list_flags(&root.children);
+            root.children.publish_box_summary(summary);
+            summary
+        });
+        own(root, descendants)
     }
 
-    fn list_flags(&self, nodes: &[Node]) -> u8 {
-        nodes.iter().fold(0, |flags, node| {
-            flags
-                | match node {
-                    Node::Element(e) => own(
-                        e,
-                        self.cached(e.children.identity())
-                            .expect("post-order facts"),
-                    ),
-                    Node::Text(_) => 0,
-                }
-        })
+    /// Only the direct children: prepared descendants are not walked.
+    /// New layout-made lists explicitly fall back to the ordinary query below.
+    pub(crate) fn prepared_list(&self, nodes: &[Node]) -> Option<BoxTreeSummary> {
+        nodes
+            .iter()
+            .try_fold(BoxTreeSummary::default(), |flags, node| {
+                Some(
+                    flags
+                        | match node {
+                            Node::Element(e) => own(e, e.children.box_summary()?),
+                            Node::Text(text) => BoxTreeSummary {
+                                text: BoxTextFacts::text(text),
+                                ..Default::default()
+                            },
+                        },
+                )
+            })
+    }
+
+    fn list_flags(&self, nodes: &[Node]) -> BoxTreeSummary {
+        self.prepared_list(nodes).expect("post-order facts")
     }
 
     fn collect(&mut self, nodes: &[Node]) {
@@ -154,15 +132,12 @@ impl SubtreeFacts {
             }
         }
         while let Some((children, leave)) = pending.pop() {
-            if self.cached(children.identity()).is_some() {
+            if children.box_summary().is_some() {
                 continue;
             }
             if leave {
                 let flags = self.list_flags(children);
-                // Метка снимка исключает повторное использование адреса, не
-                // удерживая промежуточные деревья сборки до конца кадра.
-                self.children
-                    .insert(children.identity(), (children.mark(), flags));
+                children.publish_box_summary(flags);
             } else {
                 pending.push((children, true));
                 for node in children.iter() {
