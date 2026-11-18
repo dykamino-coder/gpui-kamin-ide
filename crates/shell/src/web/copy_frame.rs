@@ -32,8 +32,7 @@ static RECOVERY: LazyLock<Mutex<HashMap<String, super::keyed_access::RetryBudget
 
 /// Views whose last `copy_into_own` copied the producer's texture; a retried
 /// copy returns the previous texture and must not consume the frame's damage.
-static COPIED: LazyLock<Mutex<std::collections::HashSet<String>>> =
-    LazyLock::new(Default::default);
+static COPIED: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
 
 /// Whether the last `copy_into_own` of view `id` copied a frame (read once).
 pub(crate) fn take_copied(id: &str) -> bool {

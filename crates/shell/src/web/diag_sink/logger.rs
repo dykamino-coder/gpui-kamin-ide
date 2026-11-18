@@ -41,7 +41,11 @@ static FRAMES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::ne
 
 pub(crate) fn trace_frames(on: bool) {
     FRAMES.store(on, std::sync::atomic::Ordering::Relaxed);
-    log::set_max_level(if on { LevelFilter::Debug } else { LevelFilter::Error });
+    log::set_max_level(if on {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Error
+    });
 }
 
 /// Подключить логгер; повторный вызов и чужой логгер оставляют прежний.

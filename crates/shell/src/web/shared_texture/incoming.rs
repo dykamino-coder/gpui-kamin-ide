@@ -81,8 +81,18 @@ fn store(id: &str, shared: GpuTexture, content: Rect, dirty: Rect) {
     super::super::copy_frame::frame_arrived(id);
     if let Ok(mut views) = VIEWS.lock() {
         let frame = views.latest.get(id).map_or(1, |last| last.frame + 1);
-        views.latest.insert(id.to_string(), Incoming { shared, content, frame });
-        let next = views.damage.get(id).map_or(dirty, |prev| union(*prev, dirty));
+        views.latest.insert(
+            id.to_string(),
+            Incoming {
+                shared,
+                content,
+                frame,
+            },
+        );
+        let next = views
+            .damage
+            .get(id)
+            .map_or(dirty, |prev| union(*prev, dirty));
         views.damage.insert(id.to_string(), next);
     }
 }
