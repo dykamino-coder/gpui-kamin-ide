@@ -83,6 +83,7 @@ impl Window {
             recording.boxes.extend(carried.boxes);
             recording.bindings.extend(carried.bindings);
             recording.unheld.extend(carried.unheld);
+            recording.omitted.extend(carried.omitted);
         }
         done
     }

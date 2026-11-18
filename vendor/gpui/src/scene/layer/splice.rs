@@ -83,6 +83,11 @@ impl SceneLayer {
             layer_counters::RUNS_REORDERED.fetch_add(1, Relaxed);
             return None;
         };
+        // A changed command footprint needs a fresh recording, which also
+        // establishes absence again for owners omitted from this recording.
+        if !self.omitted.is_empty() && plan.changed {
+            return None;
+        }
         // The frame ordered the layer by its bounds.
         if let Some(rect) = plan.ink
             && !self.bounds.is_some_and(|l| l.intersect(&rect) == rect)

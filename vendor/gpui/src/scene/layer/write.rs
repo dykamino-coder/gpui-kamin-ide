@@ -48,6 +48,13 @@ impl LayerHandle {
             && runs.all(|b| b.replaceable && b.env.transformation == crate::TransformationMatrix::unit())
     }
 
+    /// Whether every recorded copy of a nonempty plain box was omitted by
+    /// placement. This proves absence only in this recording; it supplies no
+    /// environment for recording the box again. Unknown copies cancel it.
+    pub fn omits_box(&self, owner: u32) -> bool {
+        self.0.content.borrow().omitted.binary_search(&owner).is_ok()
+    }
+
     /// The device-pixel area the runs of box `owner` cover, their placed box
     /// with its ink (`BoxRange::area`): any paint the box records again in
     /// the same place lies inside it. `None` when the box has no run.

@@ -86,6 +86,16 @@ pub(super) fn write_paint_values(
         match fill {
             Some((Some(from), Some(to))) => {
                 let owner = a.node_id as u32;
+                // A value-only fill edit cannot change clip admission. Keep
+                // the current layer; restyle drops the block's stale record.
+                if damage == PaintDamage::Value(PaintValue::BACKGROUND_COLOR)
+                    && from.a > 0.
+                    && to.a > 0.
+                    && layer.omits_box(owner)
+                {
+                    deferred.push((path.clone(), a.node_id));
+                    continue;
+                }
                 // Fragments of one element share an owner: one write each.
                 if writes.last().is_none_or(|w: &Write| w.0 != owner) {
                     writes.push((owner, Some(from), Some(to)));

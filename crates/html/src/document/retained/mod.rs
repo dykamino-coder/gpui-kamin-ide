@@ -229,3 +229,6 @@ impl Document {
         self.reuse.far_records()
     }
 }
+
+#[cfg(test)]
+mod column_unseen_tests;

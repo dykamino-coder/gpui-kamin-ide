@@ -154,6 +154,7 @@ impl Window {
         let recording = Box::new(LayerRecording {
             bindings: Vec::new(),
             boxes: Vec::new(),
+            omitted: Vec::new(),
             unheld: Vec::new(),
             source: None,
         });

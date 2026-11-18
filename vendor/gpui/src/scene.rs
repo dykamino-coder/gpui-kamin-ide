@@ -3,7 +3,7 @@
 
 mod layer;
 pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
+pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, RecordRuns, ink_of, place_run};
 mod damage;
 mod record;
 #[doc(hidden)]

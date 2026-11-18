@@ -20,6 +20,7 @@
 
 mod boxes;
 mod frame;
+mod finish;
 mod order;
 mod placed;
 mod reorder;
@@ -32,7 +33,7 @@ pub(crate) use frame::{LayerOp, LayerSlot};
 pub(crate) use placed::{Placed, PlacedMap, RecordRuns, place_run, release_unheld};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+use std::sync::atomic::Ordering::Relaxed;
 
 /// A value a host may write into a layer without painting again.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -64,6 +65,8 @@ pub struct SceneLayer {
     bindings: Vec<Binding>,
     /// The runs of the boxes' own commands, in paint order.
     pub(crate) boxes: Vec<BoxRange>,
+    /// Owners with no commands in this recording, after checking every copy.
+    omitted: Vec<u32>,
     /// `(owner, index into boxes)`, sorted: a box's runs by bisection
     /// (`runs_of`), not a scan of every run of the layer. Built lazily.
     by_owner: std::cell::OnceCell<Vec<(u32, u32)>>,
@@ -143,53 +146,13 @@ impl Clone for SceneLayer {
             bounds: self.bounds,
             bindings: self.bindings.clone(),
             boxes: self.boxes.clone(),
+            omitted: self.omitted.clone(),
             by_owner: self.by_owner.clone(),
         }
     }
 }
 
 impl SceneLayer {
-    /// Finish `scene`, painted with `bindings` (quad indices in paint order)
-    /// and the runs of its boxes, into a layer: the scene is sorted once and
-    /// the bindings follow their quads.
-    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>, mut boxes: Vec<BoxRange>) -> Self {
-        // Every binding names a quad of this scene and its command, every
-        // run a range of its commands; one that does not was recorded in
-        // another scene. The layer then takes no value writes and records no
-        // box again (the host paints it anew), counted, never a wrong write.
-        let quads = scene.quads.len();
-        let operations = scene.paint_operations.len();
-        let valid = bindings.iter().all(|b| {
-            (b.quad as usize) < quads
-                && matches!(
-                    scene.paint_operations.get(b.op as usize),
-                    Some(super::PaintOperation::Primitive(super::Primitive::Quad(_)))
-                )
-        }) && boxes.iter().all(|b| b.ops.end as usize <= operations);
-        if !valid {
-            debug_assert!(false, "a layer binding or run names another scene");
-            layer_counters::RECORDS_REFUSED.fetch_add(1, Relaxed);
-            bindings.clear();
-            boxes.clear();
-        }
-        let moved = scene.finish_tracking_quads();
-        for binding in &mut bindings {
-            binding.quad = moved[binding.quad as usize];
-        }
-        bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
-        // Kept while the scene was painted: no second pass over the commands.
-        let bounds = scene.book.primitive_ink;
-        #[cfg(debug_assertions)]
-        assert!(
-            bounds == ink_of_commands(&scene.paint_operations),
-            "the scene's kept ink differs from its commands"
-        );
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        layer_counters::RECORDS.fetch_add(1, Relaxed);
-        let by_owner = std::cell::OnceCell::new();
-        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, boxes, by_owner }
-    }
-
     /// `(owner, index into boxes)` sorted, built at the first lookup: a layer
     /// no host repaints a box of never builds it.
     fn by_owner(&self) -> &[(u32, u32)] {
@@ -262,3 +225,6 @@ mod order_tests;
 mod rerecord_tests;
 #[cfg(test)]
 mod placed_tests;
+
+#[cfg(test)]
+mod omitted_tests;

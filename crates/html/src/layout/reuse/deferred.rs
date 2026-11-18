@@ -5,9 +5,13 @@
 //! wholly outside the area the layer's frame showed changes no pixel of that
 //! frame. Its record waits here instead of being made now: the layer and its
 //! damage stay as they are, so the frame needs neither a recording nor a
-//! raster. A frame that replays the layer has the same window inputs
-//! (`WindowKey`), so the box is still off the screen; it is recorded only
-//! when a replay finds it in the area shown (`Store::due_repaints`). Any
+//! raster. A fragmented box may also have no commands in this recording:
+//! complete placement evidence, checked against every copy, proves that
+//! absence without inventing a run or an environment to record it again.
+//! Replay still requires matching frame and window inputs; any change of
+//! layout, placement or admission must invalidate that replay normally.
+//! A held run is recorded when it reaches the area shown
+//! (`Store::due_repaints`). Any
 //! other frame paints a new layer from the current boxes, whose records of
 //! the edited blocks the restyle dropped (`Store::restyle`), and the deferred
 //! records go with the old layer. Blink marks such an object for paint and
@@ -44,10 +48,12 @@ fn grown(b: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
 
 /// Whether box `owner`'s runs in `layer` miss `shown`.
 fn misses(layer: &LayerHandle, owner: u64, shown: Bounds<ScaledPixels>) -> bool {
-    u32::try_from(owner)
-        .ok()
-        .and_then(|o| layer.box_area(o))
-        .is_some_and(|area| !grown(area).intersects(&shown))
+    u32::try_from(owner).is_ok_and(|owner| {
+        layer.omits_box(owner)
+            || layer
+                .box_area(owner)
+                .is_some_and(|area| !grown(area).intersects(&shown))
+    })
 }
 
 impl Deferred {

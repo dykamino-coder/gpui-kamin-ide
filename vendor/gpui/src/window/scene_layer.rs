@@ -8,13 +8,14 @@
 //! recording names that layer as its `source`, from which `reuse_paint` copies.
 
 use super::*;
-use crate::scene::{Binding, BoxRange, LayerHandle, LayerValue, SceneLayer};
+use crate::scene::{Binding, BoxRange, LayerHandle, LayerValue, RecordRuns, SceneLayer};
 
 /// A layer being recorded: the bindings its scopes painted and the layer
 /// the previous recording of the same content made.
 pub(crate) struct LayerRecording {
     pub(crate) bindings: Vec<Binding>,
     pub(crate) boxes: Vec<BoxRange>,
+    pub(crate) omitted: Vec<u32>,
     /// Owners whose paint reached the layer outside their runs
     /// (`scene::layer::placed`): the layer holds none of their runs.
     pub(crate) unheld: Vec<u32>,
@@ -69,7 +70,7 @@ impl Window {
             bindings.reserve_exact(bound);
             boxes.reserve_exact(runs);
         }
-        let recording = Box::new(LayerRecording { bindings, boxes, unheld: Vec::new(), source });
+        let recording = Box::new(LayerRecording { bindings, boxes, omitted: Vec::new(), unheld: Vec::new(), source });
         // The frame's scene and no recording wait in `state` while `f`
         // paints into a new scene; restoring swaps them back, on unwind too.
         let mut state = (scene, Some(recording));
@@ -79,15 +80,15 @@ impl Window {
             mem::swap(&mut window.next_frame.scene, &mut state.0);
             mem::swap(&mut window.layer_recording, &mut state.1);
         }, f);
-        let (mut bindings, mut boxes, unheld) =
-            recording.map_or_else(Default::default, |r| (r.bindings, r.boxes, r.unheld));
-        crate::scene::release_unheld(&mut bindings, &mut boxes, unheld);
+        let runs = recording.map_or_else(RecordRuns::default, |r| RecordRuns {
+            bindings: r.bindings, boxes: r.boxes, omitted: r.omitted, unheld: r.unheld,
+        });
         if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
             let scene = self.adopt_scene(scene);
             self.next_frame.scene.replay_record(&scene);
             return (result, RecordedLayer::Spliced);
         }
-        (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))))
+        (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish_recording(scene, runs))))
     }
 
     /// Tests paint without scene layers (`Window::set_scene_layers`).

@@ -11794,14 +11794,14 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..aa9dfcd85fbbe24b92f83998cd50b2f42497bb00
+index 160587a4ad924f80c2dd01b90a8300febbc13105..f942137d4d715cb29355402f77c7cc50c4420ea3
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,36 @@
 +
 +mod layer;
 +pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-+pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
++pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, RecordRuns, ink_of, place_run};
 +mod damage;
 +mod record;
 +#[doc(hidden)]
@@ -14268,10 +14268,10 @@ index 0000000000000000000000000000000000000000..ba4a997ad94474a16ba9dcec4e9d8488
 +}
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355c45960e2
+index 0000000000000000000000000000000000000000..5686ba44998f6faeacc3b198a279769a4f992807
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,230 @@
 +//! KaminIDE patch: a retained scene layer.
 +//!
 +//! A host paints content once into a layer (`Window::record_scene_layer`),
@@ -14294,6 +14294,7 @@ index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355
 +
 +mod boxes;
 +mod frame;
++mod finish;
 +mod order;
 +mod placed;
 +mod reorder;
@@ -14306,7 +14307,7 @@ index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355
 +pub(crate) use placed::{Placed, PlacedMap, RecordRuns, place_run, release_unheld};
 +use std::cell::{Cell, RefCell};
 +use std::rc::Rc;
-+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
++use std::sync::atomic::Ordering::Relaxed;
 +
 +/// A value a host may write into a layer without painting again.
 +#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -14338,6 +14339,8 @@ index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355
 +    bindings: Vec<Binding>,
 +    /// The runs of the boxes' own commands, in paint order.
 +    pub(crate) boxes: Vec<BoxRange>,
++    /// Owners with no commands in this recording, after checking every copy.
++    omitted: Vec<u32>,
 +    /// `(owner, index into boxes)`, sorted: a box's runs by bisection
 +    /// (`runs_of`), not a scan of every run of the layer. Built lazily.
 +    by_owner: std::cell::OnceCell<Vec<(u32, u32)>>,
@@ -14417,53 +14420,13 @@ index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355
 +            bounds: self.bounds,
 +            bindings: self.bindings.clone(),
 +            boxes: self.boxes.clone(),
++            omitted: self.omitted.clone(),
 +            by_owner: self.by_owner.clone(),
 +        }
 +    }
 +}
 +
 +impl SceneLayer {
-+    /// Finish `scene`, painted with `bindings` (quad indices in paint order)
-+    /// and the runs of its boxes, into a layer: the scene is sorted once and
-+    /// the bindings follow their quads.
-+    pub(crate) fn finish(mut scene: Scene, mut bindings: Vec<Binding>, mut boxes: Vec<BoxRange>) -> Self {
-+        // Every binding names a quad of this scene and its command, every
-+        // run a range of its commands; one that does not was recorded in
-+        // another scene. The layer then takes no value writes and records no
-+        // box again (the host paints it anew), counted, never a wrong write.
-+        let quads = scene.quads.len();
-+        let operations = scene.paint_operations.len();
-+        let valid = bindings.iter().all(|b| {
-+            (b.quad as usize) < quads
-+                && matches!(
-+                    scene.paint_operations.get(b.op as usize),
-+                    Some(super::PaintOperation::Primitive(super::Primitive::Quad(_)))
-+                )
-+        }) && boxes.iter().all(|b| b.ops.end as usize <= operations);
-+        if !valid {
-+            debug_assert!(false, "a layer binding or run names another scene");
-+            layer_counters::RECORDS_REFUSED.fetch_add(1, Relaxed);
-+            bindings.clear();
-+            boxes.clear();
-+        }
-+        let moved = scene.finish_tracking_quads();
-+        for binding in &mut bindings {
-+            binding.quad = moved[binding.quad as usize];
-+        }
-+        bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
-+        // Kept while the scene was painted: no second pass over the commands.
-+        let bounds = scene.book.primitive_ink;
-+        #[cfg(debug_assertions)]
-+        assert!(
-+            bounds == ink_of_commands(&scene.paint_operations),
-+            "the scene's kept ink differs from its commands"
-+        );
-+        static NEXT: AtomicU64 = AtomicU64::new(1);
-+        layer_counters::RECORDS.fetch_add(1, Relaxed);
-+        let by_owner = std::cell::OnceCell::new();
-+        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, boxes, by_owner }
-+    }
-+
 +    /// `(owner, index into boxes)` sorted, built at the first lookup: a layer
 +    /// no host repaints a box of never builds it.
 +    fn by_owner(&self) -> &[(u32, u32)] {
@@ -14536,6 +14499,9 @@ index 0000000000000000000000000000000000000000..9b29b4e256156785f41460013a3bc355
 +mod rerecord_tests;
 +#[cfg(test)]
 +mod placed_tests;
++
++#[cfg(test)]
++mod omitted_tests;
 diff --git a/vendor/gpui/src/scene/layer/boxes.rs b/vendor/gpui/src/scene/layer/boxes.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..4d8e5b6157cf8b67c4797720e4deba3a57e63acb
@@ -14681,6 +14647,100 @@ index 0000000000000000000000000000000000000000..4d8e5b6157cf8b67c4797720e4deba3a
 +            replaceable: plain && !open.split,
 +            placed: None,
 +        })
++    }
++}
+diff --git a/vendor/gpui/src/scene/layer/finish.rs b/vendor/gpui/src/scene/layer/finish.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f713d56c807ee6748e05cde5630fd755cfeac06e
+--- /dev/null
++++ b/vendor/gpui/src/scene/layer/finish.rs
+@@ -0,0 +1,88 @@
++//! Finish a retained layer and reduce proofs from all placements of a box.
++
++#[cfg(debug_assertions)]
++use super::ink_of_commands;
++use super::{Binding, BoxRange, RecordRuns, SceneLayer, layer_counters, release_unheld};
++use crate::scene::Scene;
++use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
++
++impl SceneLayer {
++    /// Finish a recording. No absent owner may also have visible or unknown
++    /// commands: checking the union precedes removal of the unheld runs.
++    pub(crate) fn finish_recording(scene: Scene, mut runs: RecordRuns) -> Self {
++        if !runs.omitted.is_empty() {
++            let mut present = runs.unheld.clone();
++            present.extend(runs.boxes.iter().map(|b| b.owner));
++            present.extend(runs.bindings.iter().map(|b| b.owner));
++            present.sort_unstable();
++            present.dedup();
++            runs.omitted
++                .retain(|owner| present.binary_search(owner).is_err());
++            runs.omitted.sort_unstable();
++            runs.omitted.dedup();
++        }
++        release_unheld(&mut runs.bindings, &mut runs.boxes, runs.unheld);
++        let sizes = (runs.bindings.len(), runs.boxes.len());
++        let mut layer = Self::finish(scene, runs.bindings, runs.boxes);
++        if layer.recorded_sizes() == sizes {
++            layer.omitted = runs.omitted;
++        }
++        layer
++    }
++
++    /// Finish `scene`, painted with `bindings` (quad indices in paint order)
++    /// and the runs of its boxes, into a layer: the scene is sorted once and
++    /// the bindings follow their quads.
++    pub(crate) fn finish(
++        mut scene: Scene,
++        mut bindings: Vec<Binding>,
++        mut boxes: Vec<BoxRange>,
++    ) -> Self {
++        // Every binding names a quad of this scene and its command, every
++        // run a range of its commands; one that does not was recorded in
++        // another scene. The layer then takes no value writes and records no
++        // box again (the host paints it anew), counted, never a wrong write.
++        let quads = scene.quads.len();
++        let operations = scene.paint_operations.len();
++        let valid = bindings.iter().all(|b| {
++            (b.quad as usize) < quads
++                && matches!(
++                    scene.paint_operations.get(b.op as usize),
++                    Some(crate::scene::PaintOperation::Primitive(
++                        crate::scene::Primitive::Quad(_)
++                    ))
++                )
++        }) && boxes.iter().all(|b| b.ops.end as usize <= operations);
++        if !valid {
++            debug_assert!(false, "a layer binding or run names another scene");
++            layer_counters::RECORDS_REFUSED.fetch_add(1, Relaxed);
++            bindings.clear();
++            boxes.clear();
++        }
++        let moved = scene.finish_tracking_quads();
++        for binding in &mut bindings {
++            binding.quad = moved[binding.quad as usize];
++        }
++        bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
++        // Kept while the scene was painted: no second pass over the commands.
++        let bounds = scene.book.primitive_ink;
++        #[cfg(debug_assertions)]
++        assert!(
++            bounds == ink_of_commands(&scene.paint_operations),
++            "the scene's kept ink differs from its commands"
++        );
++        static NEXT: AtomicU64 = AtomicU64::new(1);
++        layer_counters::RECORDS.fetch_add(1, Relaxed);
++        let by_owner = std::cell::OnceCell::new();
++        Self {
++            scene,
++            id: NEXT.fetch_add(1, Relaxed),
++            version: 0,
++            bounds,
++            bindings,
++            boxes,
++            by_owner,
++            omitted: Vec::new(),
++        }
 +    }
 +}
 diff --git a/vendor/gpui/src/scene/layer/frame.rs b/vendor/gpui/src/scene/layer/frame.rs
@@ -14873,6 +14933,132 @@ index 0000000000000000000000000000000000000000..2e82848e9ee50ce7f6bde563fe969dfd
 +    pub(crate) fn count_copied(n: usize) {
 +        layer_counters::PRIMITIVES_COPIED.fetch_add(n as u64, Relaxed);
 +    }
++}
+diff --git a/vendor/gpui/src/scene/layer/omitted_tests.rs b/vendor/gpui/src/scene/layer/omitted_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..41bc9d3b2d0feff4d0785220f80c3e084e2d3d26
+--- /dev/null
++++ b/vendor/gpui/src/scene/layer/omitted_tests.rs
+@@ -0,0 +1,120 @@
++//! Absence needs complete placement evidence for every copy of an owner.
++
++use super::order_tests::{env, quad, rect};
++use super::{LayerHandle, Placed, PlacedMap, RecordRuns, SceneLayer};
++use crate::{ScaledPixels, Scene, hsla, point};
++
++fn source() -> Scene {
++    let mut scene = Scene {
++        in_group: true,
++        ..Scene::default()
++    };
++    scene.book.record_runs = Some(Box::default());
++    for (owner, x) in [(1, 0.), (2, 20.)] {
++        let area = rect(x, 0., 10., 10.);
++        assert!(scene.open_box(owner, area, env()));
++        scene.insert_primitive(quad(area, hsla(0., 0., 0.5, 1.)));
++        let run = scene.close_box().unwrap();
++        scene.book.record_runs.as_mut().unwrap().boxes.push(run);
++    }
++    scene.finish();
++    scene
++}
++
++fn place(source: &Scene, scene: &mut Scene, clip_x: f32) -> RecordRuns {
++    let at = Placed {
++        offset: point(ScaledPixels(0.), ScaledPixels(0.)),
++        clip: Some(rect(clip_x, 0., 10., 10.)),
++    };
++    scene.book.placed_map = Some(PlacedMap::new(Some(at), 0));
++    assert!(scene.replay_placed(source, at.offset, at.clip));
++    let map = scene.book.placed_map.take().unwrap();
++    source.book.record_runs.as_ref().unwrap().carry(&map, scene)
++}
++
++#[test]
++fn omitted_commands_prove_absence_without_a_rerecord_environment() {
++    let mut scene = Scene::default();
++    let runs = place(&source(), &mut scene, 100.);
++    let layer = LayerHandle::new(SceneLayer::finish_recording(scene, runs));
++    for owner in [1, 2] {
++        assert!(layer.omits_box(owner));
++        assert!(!layer.holds_box(owner));
++        assert_eq!(layer.box_area(owner), None);
++        assert_eq!(
++            layer.set_background(owner, hsla(0., 0., 0.5, 1.), hsla(0., 1., 0.5, 1.)),
++            None
++        );
++    }
++    assert!(!layer.omits_box(3));
++}
++
++#[test]
++fn visible_and_unknown_copies_cancel_absence_before_unheld_runs_are_removed() {
++    let source = source();
++    for unknown in [false, true] {
++        let mut scene = Scene::default();
++        let mut runs = place(&source, &mut scene, 100.);
++        runs.extend(place(&source, &mut scene, 0.));
++        if unknown {
++            runs.unheld.push(2);
++        }
++        let layer = LayerHandle::new(SceneLayer::finish_recording(scene, runs));
++        assert!(!layer.omits_box(1));
++        assert!(layer.holds_box(1));
++        assert_eq!(layer.omits_box(2), !unknown);
++    }
++}
++
++#[test]
++fn missing_multiple_empty_and_nonplain_ranges_never_prove_absence() {
++    let source = source();
++    let runs = source.book.record_runs.as_ref().unwrap();
++    let scene = Scene::default();
++    assert_eq!(runs.carry(&PlacedMap::new(None, 2), &scene).omitted, [1, 2]);
++    let mut many = Some(PlacedMap::new(None, 2));
++    for _ in 0..2 {
++        PlacedMap::set(&mut many, 0, 0, Some(0), Placed::default());
++    }
++    let carried = runs.carry(&many.unwrap(), &scene);
++    assert!(!carried.omitted.contains(&1));
++    assert!(carried.unheld.contains(&1));
++    let missing = runs.carry(&PlacedMap::new(None, 0), &scene);
++    assert!(missing.omitted.is_empty());
++    assert_eq!(missing.unheld, [1, 2]);
++    let mut invalid = runs.as_ref().clone();
++    invalid.boxes[0].ops = 0..0;
++    invalid.boxes[1].replaceable = false;
++    let carried = invalid.carry(&PlacedMap::new(None, 2), &scene);
++    assert!(carried.omitted.is_empty());
++    assert_eq!(carried.unheld, [1, 2]);
++}
++
++#[test]
++fn another_placement_preserves_absence_but_an_adopted_copy_cancels_it() {
++    let mut scene = Scene::default();
++    let runs = place(&source(), &mut scene, 100.);
++    let carried = runs.carry(&PlacedMap::new(None, 0), &Scene::default());
++    assert_eq!(carried.omitted, [1, 2]);
++    let dropped = carried.dropped();
++    assert!(dropped.omitted.is_empty());
++    assert_eq!(dropped.unheld, [1, 2]);
++}
++
++#[test]
++fn a_changed_footprint_reestablishes_absence_in_a_fresh_recording() {
++    let mut scene = Scene::default();
++    scene.insert_primitive(quad(rect(0., 0., 100., 100.), hsla(0., 0., 1., 1.)));
++    let runs = place(&source(), &mut scene, 0.);
++    let layer = SceneLayer::finish_recording(scene, runs);
++    let at = layer.runs_of(1).next().unwrap();
++    let mut same = Scene::default();
++    same.insert_primitive(quad(rect(0., 0., 10., 10.), hsla(0., 1., 0.5, 1.)));
++    assert!(layer.check_box(at, &same).is_some());
++    let mut changed = Scene::default();
++    changed.insert_primitive(quad(rect(0., 0., 15., 10.), hsla(0., 1., 0.5, 1.)));
++    assert!(layer.check_box(at, &changed).is_none());
++    let mut without_proof = layer.clone();
++    without_proof.omitted.clear();
++    assert!(without_proof.check_box(at, &changed).is_some());
 +}
 diff --git a/vendor/gpui/src/scene/layer/order.rs b/vendor/gpui/src/scene/layer/order.rs
 new file mode 100644
@@ -15275,10 +15461,10 @@ index 0000000000000000000000000000000000000000..3aad3fc224a47d4125ac6644fe308433
 +}
 diff --git a/vendor/gpui/src/scene/layer/placed.rs b/vendor/gpui/src/scene/layer/placed.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a48934c673427a006dbbbfce600bd086f3c232a5
+index 0000000000000000000000000000000000000000..a139ca274680e87219918e2144743628d167f2e3
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/placed.rs
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,192 @@
 +//! KaminIDE patch: the box runs and value bindings a paint record carries
 +//! into the scenes it is placed in.
 +//!
@@ -15304,6 +15490,7 @@ index 0000000000000000000000000000000000000000..a48934c673427a006dbbbfce600bd086
 +use std::sync::atomic::Ordering::Relaxed;
 +
 +mod replay;
++mod map;
 +pub(crate) use replay::{place_run, release_unheld};
 +
 +/// No command landed for this source command.
@@ -15357,49 +15544,14 @@ index 0000000000000000000000000000000000000000..a48934c673427a006dbbbfce600bd086
 +    ops: Vec<PlacedOp>,
 +}
 +
-+impl PlacedMap {
-+    /// A map for a replay (`at`) or for `len` commands of a draft (`None`).
-+    pub(crate) fn new(at: Option<Placed>, len: usize) -> Self {
-+        let none = PlacedOp { op: NONE, quad: NONE, placed: Placed::default() };
-+        let ops = if at.is_some() { Vec::new() } else { vec![none; len] };
-+        Self { at, ops }
-+    }
-+
-+    /// The next source command of a replay landed nowhere.
-+    pub(crate) fn skip(map: &mut Option<Self>) {
-+        if let Some(map) = map {
-+            let placed = map.at.unwrap_or_default();
-+            map.ops.push(PlacedOp { op: NONE, quad: NONE, placed });
-+        }
-+    }
-+
-+    /// The next source command of a replay landed as command `op`.
-+    pub(crate) fn land(map: &mut Option<Self>, op: usize, quad: Option<usize>) {
-+        if let Some(map) = map {
-+            let placed = map.at.unwrap_or_default();
-+            let quad = quad.map_or(NONE, |q| q as u32);
-+            map.ops.push(PlacedOp { op: op as u32, quad, placed });
-+        }
-+    }
-+
-+    /// Source command `source` of a draft landed as command `op`.
-+    pub(crate) fn set(map: &mut Option<Self>, source: usize, op: usize, quad: Option<usize>, placed: Placed) {
-+        let Some(entry) = map.as_mut().and_then(|m| m.ops.get_mut(source)) else {
-+            return;
-+        };
-+        *entry = if entry.op == NONE {
-+            PlacedOp { op: op as u32, quad: quad.map_or(NONE, |q| q as u32), placed }
-+        } else {
-+            PlacedOp { op: MANY, quad: MANY, placed }
-+        };
-+    }
-+}
-+
 +/// The box runs and bindings of a paint record, in its commands.
 +#[derive(Clone, Debug, Default)]
 +pub(crate) struct RecordRuns {
 +    pub(crate) boxes: Vec<BoxRange>,
 +    pub(crate) bindings: Vec<Binding>,
++    /// Nonempty plain runs whose commands all landed nowhere. A visible or
++    /// unheld copy cancels this proof when the destination layer is finished.
++    pub(crate) omitted: Vec<u32>,
 +    /// Owners whose paint reached this scene outside their runs (a run or
 +    /// binding that could not be placed, a record placed as an adopted
 +    /// copy): the layer holds none of their runs and bindings
@@ -15413,7 +15565,9 @@ index 0000000000000000000000000000000000000000..a48934c673427a006dbbbfce600bd086
 +    /// commands landed nowhere (clipped away in this fragment) is not there;
 +    /// the owner of one placed twice or by different placements is unheld.
 +    pub(crate) fn carry(&self, map: &PlacedMap, dest: &Scene) -> RecordRuns {
-+        let mut out = RecordRuns { unheld: self.unheld.clone(), ..RecordRuns::default() };
++        let mut out = RecordRuns {
++            unheld: self.unheld.clone(), omitted: self.omitted.clone(), ..RecordRuns::default()
++        };
 +        for run in &self.boxes {
 +            let mut span: Option<(u32, u32)> = None;
 +            let mut placed: Option<Placed> = None;
@@ -15431,7 +15585,9 @@ index 0000000000000000000000000000000000000000..a48934c673427a006dbbbfce600bd086
 +                span = Some(span.map_or((m.op, m.op), |(a, _)| (a, m.op)));
 +            }
 +            let (Some((first, last)), Some(placed), true) = (span, placed, whole) else {
-+                if !whole {
++                if whole && !run.ops.is_empty() && run.replaceable {
++                    out.omitted.push(run.owner);
++                } else {
 +                    super::layer_counters::RUNS_UNPLACED.fetch_add(1, Relaxed);
 +                    out.unheld.push(run.owner);
 +                }
@@ -15474,7 +15630,7 @@ index 0000000000000000000000000000000000000000..a48934c673427a006dbbbfce600bd086
 +    pub(crate) fn dropped(&self) -> RecordRuns {
 +        super::layer_counters::RUNS_UNPLACED.fetch_add(self.boxes.len() as u64, Relaxed);
 +        let owners = self.boxes.iter().map(|b| b.owner).chain(self.bindings.iter().map(|b| b.owner));
-+        let mut unheld: Vec<u32> = self.unheld.iter().copied().chain(owners).collect();
++        let mut unheld: Vec<u32> = self.unheld.iter().chain(&self.omitted).copied().chain(owners).collect();
 +        unheld.sort_unstable();
 +        unheld.dedup();
 +        RecordRuns { unheld, ..RecordRuns::default() }
@@ -15485,6 +15641,7 @@ index 0000000000000000000000000000000000000000..a48934c673427a006dbbbfce600bd086
 +        self.boxes.extend(other.boxes);
 +        self.bindings.extend(other.bindings);
 +        self.unheld.extend(other.unheld);
++        self.omitted.extend(other.omitted);
 +    }
 +}
 +
@@ -15500,12 +15657,89 @@ index 0000000000000000000000000000000000000000..a48934c673427a006dbbbfce600bd086
 +        }
 +    }
 +}
+diff --git a/vendor/gpui/src/scene/layer/placed/map.rs b/vendor/gpui/src/scene/layer/placed/map.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..33f75423dfbd80ddfd1f2f59517d4a9b9f2d205e
+--- /dev/null
++++ b/vendor/gpui/src/scene/layer/placed/map.rs
+@@ -0,0 +1,71 @@
++//! Maintain the per-command placement map.
++
++use super::{MANY, NONE, Placed, PlacedMap, PlacedOp};
++
++impl PlacedMap {
++    /// A map for a replay (`at`) or for `len` commands of a draft (`None`).
++    pub(crate) fn new(at: Option<Placed>, len: usize) -> Self {
++        let none = PlacedOp {
++            op: NONE,
++            quad: NONE,
++            placed: Placed::default(),
++        };
++        let ops = if at.is_some() {
++            Vec::new()
++        } else {
++            vec![none; len]
++        };
++        Self { at, ops }
++    }
++
++    /// The next source command of a replay landed nowhere.
++    pub(crate) fn skip(map: &mut Option<Self>) {
++        if let Some(map) = map {
++            let placed = map.at.unwrap_or_default();
++            map.ops.push(PlacedOp {
++                op: NONE,
++                quad: NONE,
++                placed,
++            });
++        }
++    }
++
++    /// The next source command of a replay landed as command `op`.
++    pub(crate) fn land(map: &mut Option<Self>, op: usize, quad: Option<usize>) {
++        if let Some(map) = map {
++            let placed = map.at.unwrap_or_default();
++            let quad = quad.map_or(NONE, |q| q as u32);
++            map.ops.push(PlacedOp {
++                op: op as u32,
++                quad,
++                placed,
++            });
++        }
++    }
++
++    /// Source command `source` of a draft landed as command `op`.
++    pub(crate) fn set(
++        map: &mut Option<Self>,
++        source: usize,
++        op: usize,
++        quad: Option<usize>,
++        placed: Placed,
++    ) {
++        let Some(entry) = map.as_mut().and_then(|m| m.ops.get_mut(source)) else {
++            return;
++        };
++        *entry = if entry.op == NONE {
++            PlacedOp {
++                op: op as u32,
++                quad: quad.map_or(NONE, |q| q as u32),
++                placed,
++            }
++        } else {
++            PlacedOp {
++                op: MANY,
++                quad: MANY,
++                placed,
++            }
++        };
++    }
++}
 diff --git a/vendor/gpui/src/scene/layer/placed/replay.rs b/vendor/gpui/src/scene/layer/placed/replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..de5f0b331c6287a5a5a9a319ae3206e6fa93dafe
+index 0000000000000000000000000000000000000000..82dfeb818fb9da14dfde16d164e324217fbbd115
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/placed/replay.rs
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,90 @@
 +//! Replays box records when placing a scene in a fragment.
 +
 +use super::{Binding, BoxRange, MANY, Placed, PlacedMap};
@@ -15591,6 +15825,7 @@ index 0000000000000000000000000000000000000000..de5f0b331c6287a5a5a9a319ae3206e6
 +            recording.boxes.extend(carried.boxes);
 +            recording.bindings.extend(carried.bindings);
 +            recording.unheld.extend(carried.unheld);
++            recording.omitted.extend(carried.omitted);
 +        }
 +        done
 +    }
@@ -16161,10 +16396,10 @@ index 0000000000000000000000000000000000000000..4914566a071fbbac9af9c2f0a59d21fc
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/layer/splice.rs b/vendor/gpui/src/scene/layer/splice.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6dd0ce57d03e62543162b91b6f475f44b6dec180
+index 0000000000000000000000000000000000000000..29100d32e0b389a7e5ba3c2ea18086615b75d4ec
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/splice.rs
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,217 @@
 +//! KaminIDE patch: a box's run of commands replaced in a scene layer.
 +//!
 +//! The new run (a scratch scene the box painted, `Window::rerecord_layer_box`)
@@ -16250,6 +16485,11 @@ index 0000000000000000000000000000000000000000..6dd0ce57d03e62543162b91b6f475f44
 +            layer_counters::RUNS_REORDERED.fetch_add(1, Relaxed);
 +            return None;
 +        };
++        // A changed command footprint needs a fresh recording, which also
++        // establishes absence again for owners omitted from this recording.
++        if !self.omitted.is_empty() && plan.changed {
++            return None;
++        }
 +        // The frame ordered the layer by its bounds.
 +        if let Some(rect) = plan.ink
 +            && !self.bounds.is_some_and(|l| l.intersect(&rect) == rect)
@@ -16859,10 +17099,10 @@ index 0000000000000000000000000000000000000000..ccee8fbf2893d0a9bfabf297be6d4b76
 +}
 diff --git a/vendor/gpui/src/scene/layer/write.rs b/vendor/gpui/src/scene/layer/write.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4ea8fbc7600b25c9acb258bea6010c20a31f2479
+index 0000000000000000000000000000000000000000..e474d283659e1b49751de90ea3a1b66050567352
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/write.rs
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,137 @@
 +//! KaminIDE patch: value writes into a scene layer (`LayerHandle`).
 +//!
 +//! A value write changes a painted value of existing commands in place: the
@@ -16911,6 +17151,13 @@ index 0000000000000000000000000000000000000000..4ea8fbc7600b25c9acb258bea6010c20
 +        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
 +        runs.peek().is_some()
 +            && runs.all(|b| b.replaceable && b.env.transformation == crate::TransformationMatrix::unit())
++    }
++
++    /// Whether every recorded copy of a nonempty plain box was omitted by
++    /// placement. This proves absence only in this recording; it supplies no
++    /// environment for recording the box again. Unknown copies cancel it.
++    pub fn omits_box(&self, owner: u32) -> bool {
++        self.0.content.borrow().omitted.binary_search(&owner).is_ok()
 +    }
 +
 +    /// The device-pixel area the runs of box `owner` cover, their placed box
@@ -29579,10 +29826,10 @@ index 0000000000000000000000000000000000000000..466fb22a1859060d509375a341b69402
 +}
 diff --git a/vendor/gpui/src/window/layer_box.rs b/vendor/gpui/src/window/layer_box.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0a25c62b166000ea95924ead8819b556c22ff448
+index 0000000000000000000000000000000000000000..3c2a34ae791e525bf74268eb53ea57307c2b894c
 --- /dev/null
 +++ b/vendor/gpui/src/window/layer_box.rs
-@@ -0,0 +1,182 @@
+@@ -0,0 +1,183 @@
 +//! KaminIDE patch: the own paint of a box in a scene layer, and its later
 +//! recording into the box's run (`scene::layer::boxes`).
 +//!
@@ -29739,6 +29986,7 @@ index 0000000000000000000000000000000000000000..0a25c62b166000ea95924ead8819b556
 +        let recording = Box::new(LayerRecording {
 +            bindings: Vec::new(),
 +            boxes: Vec::new(),
++            omitted: Vec::new(),
 +            unheld: Vec::new(),
 +            source: None,
 +        });
@@ -33451,10 +33699,10 @@ index 0000000000000000000000000000000000000000..f86b14fa0513bf4b384e11a27c3cc61a
 +}
 diff --git a/vendor/gpui/src/window/scene_layer.rs b/vendor/gpui/src/window/scene_layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e82c61e1afa50006f7a2190ee1b903c3a789e705
+index 0000000000000000000000000000000000000000..422993d1e99039258e70d3e830bb25ee998a3b10
 --- /dev/null
 +++ b/vendor/gpui/src/window/scene_layer.rs
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,208 @@
 +//! KaminIDE patch: recording retained scene layers (`scene::layer`) and
 +//! binding the values a host may write into them.
 +//!
@@ -33465,13 +33713,14 @@ index 0000000000000000000000000000000000000000..e82c61e1afa50006f7a2190ee1b903c3
 +//! recording names that layer as its `source`, from which `reuse_paint` copies.
 +
 +use super::*;
-+use crate::scene::{Binding, BoxRange, LayerHandle, LayerValue, SceneLayer};
++use crate::scene::{Binding, BoxRange, LayerHandle, LayerValue, RecordRuns, SceneLayer};
 +
 +/// A layer being recorded: the bindings its scopes painted and the layer
 +/// the previous recording of the same content made.
 +pub(crate) struct LayerRecording {
 +    pub(crate) bindings: Vec<Binding>,
 +    pub(crate) boxes: Vec<BoxRange>,
++    pub(crate) omitted: Vec<u32>,
 +    /// Owners whose paint reached the layer outside their runs
 +    /// (`scene::layer::placed`): the layer holds none of their runs.
 +    pub(crate) unheld: Vec<u32>,
@@ -33526,7 +33775,7 @@ index 0000000000000000000000000000000000000000..e82c61e1afa50006f7a2190ee1b903c3
 +            bindings.reserve_exact(bound);
 +            boxes.reserve_exact(runs);
 +        }
-+        let recording = Box::new(LayerRecording { bindings, boxes, unheld: Vec::new(), source });
++        let recording = Box::new(LayerRecording { bindings, boxes, omitted: Vec::new(), unheld: Vec::new(), source });
 +        // The frame's scene and no recording wait in `state` while `f`
 +        // paints into a new scene; restoring swaps them back, on unwind too.
 +        let mut state = (scene, Some(recording));
@@ -33536,15 +33785,15 @@ index 0000000000000000000000000000000000000000..e82c61e1afa50006f7a2190ee1b903c3
 +            mem::swap(&mut window.next_frame.scene, &mut state.0);
 +            mem::swap(&mut window.layer_recording, &mut state.1);
 +        }, f);
-+        let (mut bindings, mut boxes, unheld) =
-+            recording.map_or_else(Default::default, |r| (r.bindings, r.boxes, r.unheld));
-+        crate::scene::release_unheld(&mut bindings, &mut boxes, unheld);
++        let runs = recording.map_or_else(RecordRuns::default, |r| RecordRuns {
++            bindings: r.bindings, boxes: r.boxes, omitted: r.omitted, unheld: r.unheld,
++        });
 +        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
 +            let scene = self.adopt_scene(scene);
 +            self.next_frame.scene.replay_record(&scene);
 +            return (result, RecordedLayer::Spliced);
 +        }
-+        (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))))
++        (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish_recording(scene, runs))))
 +    }
 +
 +    /// Tests paint without scene layers (`Window::set_scene_layers`).

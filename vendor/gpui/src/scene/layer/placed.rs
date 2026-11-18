@@ -23,6 +23,7 @@ use crate::{Bounds, Point};
 use std::sync::atomic::Ordering::Relaxed;
 
 mod replay;
+mod map;
 pub(crate) use replay::{place_run, release_unheld};
 
 /// No command landed for this source command.
@@ -76,49 +77,14 @@ pub(crate) struct PlacedMap {
     ops: Vec<PlacedOp>,
 }
 
-impl PlacedMap {
-    /// A map for a replay (`at`) or for `len` commands of a draft (`None`).
-    pub(crate) fn new(at: Option<Placed>, len: usize) -> Self {
-        let none = PlacedOp { op: NONE, quad: NONE, placed: Placed::default() };
-        let ops = if at.is_some() { Vec::new() } else { vec![none; len] };
-        Self { at, ops }
-    }
-
-    /// The next source command of a replay landed nowhere.
-    pub(crate) fn skip(map: &mut Option<Self>) {
-        if let Some(map) = map {
-            let placed = map.at.unwrap_or_default();
-            map.ops.push(PlacedOp { op: NONE, quad: NONE, placed });
-        }
-    }
-
-    /// The next source command of a replay landed as command `op`.
-    pub(crate) fn land(map: &mut Option<Self>, op: usize, quad: Option<usize>) {
-        if let Some(map) = map {
-            let placed = map.at.unwrap_or_default();
-            let quad = quad.map_or(NONE, |q| q as u32);
-            map.ops.push(PlacedOp { op: op as u32, quad, placed });
-        }
-    }
-
-    /// Source command `source` of a draft landed as command `op`.
-    pub(crate) fn set(map: &mut Option<Self>, source: usize, op: usize, quad: Option<usize>, placed: Placed) {
-        let Some(entry) = map.as_mut().and_then(|m| m.ops.get_mut(source)) else {
-            return;
-        };
-        *entry = if entry.op == NONE {
-            PlacedOp { op: op as u32, quad: quad.map_or(NONE, |q| q as u32), placed }
-        } else {
-            PlacedOp { op: MANY, quad: MANY, placed }
-        };
-    }
-}
-
 /// The box runs and bindings of a paint record, in its commands.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RecordRuns {
     pub(crate) boxes: Vec<BoxRange>,
     pub(crate) bindings: Vec<Binding>,
+    /// Nonempty plain runs whose commands all landed nowhere. A visible or
+    /// unheld copy cancels this proof when the destination layer is finished.
+    pub(crate) omitted: Vec<u32>,
     /// Owners whose paint reached this scene outside their runs (a run or
     /// binding that could not be placed, a record placed as an adopted
     /// copy): the layer holds none of their runs and bindings
@@ -132,7 +98,9 @@ impl RecordRuns {
     /// commands landed nowhere (clipped away in this fragment) is not there;
     /// the owner of one placed twice or by different placements is unheld.
     pub(crate) fn carry(&self, map: &PlacedMap, dest: &Scene) -> RecordRuns {
-        let mut out = RecordRuns { unheld: self.unheld.clone(), ..RecordRuns::default() };
+        let mut out = RecordRuns {
+            unheld: self.unheld.clone(), omitted: self.omitted.clone(), ..RecordRuns::default()
+        };
         for run in &self.boxes {
             let mut span: Option<(u32, u32)> = None;
             let mut placed: Option<Placed> = None;
@@ -150,7 +118,9 @@ impl RecordRuns {
                 span = Some(span.map_or((m.op, m.op), |(a, _)| (a, m.op)));
             }
             let (Some((first, last)), Some(placed), true) = (span, placed, whole) else {
-                if !whole {
+                if whole && !run.ops.is_empty() && run.replaceable {
+                    out.omitted.push(run.owner);
+                } else {
                     super::layer_counters::RUNS_UNPLACED.fetch_add(1, Relaxed);
                     out.unheld.push(run.owner);
                 }
@@ -193,7 +163,7 @@ impl RecordRuns {
     pub(crate) fn dropped(&self) -> RecordRuns {
         super::layer_counters::RUNS_UNPLACED.fetch_add(self.boxes.len() as u64, Relaxed);
         let owners = self.boxes.iter().map(|b| b.owner).chain(self.bindings.iter().map(|b| b.owner));
-        let mut unheld: Vec<u32> = self.unheld.iter().copied().chain(owners).collect();
+        let mut unheld: Vec<u32> = self.unheld.iter().chain(&self.omitted).copied().chain(owners).collect();
         unheld.sort_unstable();
         unheld.dedup();
         RecordRuns { unheld, ..RecordRuns::default() }
@@ -204,6 +174,7 @@ impl RecordRuns {
         self.boxes.extend(other.boxes);
         self.bindings.extend(other.bindings);
         self.unheld.extend(other.unheld);
+        self.omitted.extend(other.omitted);
     }
 }
 
