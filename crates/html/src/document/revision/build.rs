@@ -124,18 +124,21 @@ impl Document {
             ..Default::default()
         };
         let mut kept = crate::dom::restyle_probe::RestyleCache::default();
-        let built = parse_document(
-            &source.input,
-            theme_css,
-            source.base.as_ref(),
-            state,
-            fonts,
-            revision,
-            invalidation,
-            &mut kept,
-            #[cfg(feature = "engine-bench")]
-            &mut timings,
-        );
+        let values = state.values.clone();
+        let (built, media_reads) = crate::style::css::reads::record(&values, || {
+            parse_document(
+                &source.input,
+                theme_css,
+                source.base.as_ref(),
+                state,
+                fonts,
+                revision,
+                invalidation,
+                &mut kept,
+                #[cfg(feature = "engine-bench")]
+                &mut timings,
+            )
+        });
         let (state, nodes, root) = match built {
             Ok(built) => built,
             Err(mut failure) => {
@@ -150,6 +153,13 @@ impl Document {
             return Err((failure, Box::new(source)));
         }
         state.values.traversal.retain(source.input);
+        if state.boxes.borrow().is_empty() {
+            crate::document::boxes::BoxTree::edit(&state.boxes).publish_document(
+                &nodes,
+                None,
+                &state.values,
+            );
+        }
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
         Ok(Document {
@@ -165,6 +175,7 @@ impl Document {
             base_url,
             xml,
             last_failure: None,
+            media_reads: Rc::new(media_reads),
             #[cfg(feature = "engine-bench")]
             timings,
         })

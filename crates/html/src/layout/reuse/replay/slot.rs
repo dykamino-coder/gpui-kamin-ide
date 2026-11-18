@@ -1,7 +1,7 @@
 //! Место повтора блока в кадре и его проверка перед prepaint.
 
 use super::{ReplayRecord, plain_environment};
-use gpui::{LayoutId, Window};
+use gpui::{LayoutId, Pixels, Point, Window};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -9,6 +9,9 @@ use std::rc::Rc;
 pub(in crate::layout::reuse) struct ReplaySlot {
     pub(super) record: Rc<ReplayRecord>,
     pub(super) layout: Cell<Option<LayoutId>>,
+    /// How far the block lies from where it painted (`valid`): a content
+    /// record whose output moves (`Ranges::movable`) replays moved.
+    pub(super) offset: Cell<Point<Pixels>>,
 }
 
 impl ReplaySlot {
@@ -16,6 +19,7 @@ impl ReplaySlot {
         Self {
             record,
             layout: Cell::new(None),
+            offset: Cell::new(Point::default()),
         }
     }
 
@@ -41,17 +45,30 @@ impl ReplaySlot {
             window.scale_factor(),
             window.content_mask(),
         );
-        fresh
-            && self
-                .record
-                .ranges(|r| {
-                    r.serial + 1 == serial
-                        && r.lines.complete()
-                        && r.scale == scale
-                        && r.mask == mask
-                        && r.origin == origin
-                        && r.size == size
-                })
-                .unwrap_or(false)
+        // A box's content (`content`, no flow key) or an inert root-flow
+        // block may lie elsewhere: its movable output replays moved.
+        let content = self.record.key.is_none();
+        let moves = content || self.record.inert;
+        let placed = self.record.ranges(|r| {
+            // Its leaves keep their functions: one measured again may lie or
+            // draw otherwise (`Window::retained_remeasured`).
+            let remeasured = content && window.retained_remeasured(&r.layout);
+            let moved = r.origin != origin;
+            let fits = !remeasured
+                && r.serial + 1 == serial
+                && r.lines.complete()
+                && r.scale == scale
+                && r.mask == mask
+                && r.size == size
+                && (!moved || moves && r.movable);
+            (fits, origin - r.origin)
+        });
+        match placed {
+            Some((true, offset)) if fresh => {
+                self.offset.set(offset);
+                true
+            }
+            _ => false,
+        }
     }
 }

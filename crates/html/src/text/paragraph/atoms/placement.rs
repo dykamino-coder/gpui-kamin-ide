@@ -86,6 +86,8 @@ impl Paragraph {
                 base
             };
             let w = f32::from(s.width);
+            self.kept
+                .note_size(self.atom_boxes.len(), w, f32::from(s.height));
             // Уровни одной стороны стоят стопкой в каждой колонке; выход за
             // коробку — по самой высокой стопке.
             let (mut over, mut under) = (0.0f32, 0.0f32);

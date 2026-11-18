@@ -225,15 +225,7 @@ impl Paragraph {
             }
         }
         window.replace_glyph_offset(outer_nudge);
-        // Атом — со своей строкой (той, что держит его место, как в `atom_placement`).
-        for (k, slot) in self.atoms.iter_mut().enumerate().filter(|(_, s)| !s.hidden) {
-            let at = self.atom_boxes.get(k).map(|b| b.at);
-            let row = at.and_then(|at| self.lines.iter().position(|l| at < l.range.end));
-            match row.and_then(|row| bands.get(row)) {
-                Some(&band) => line_admission::paint(window, band, |w| slot.el.paint(w, cx)),
-                None => slot.el.paint(window, cx),
-            }
-        }
+        self.paint_atoms(&bands, window, cx);
         for (i, (_, el, _)) in self.overlays.iter_mut().enumerate() {
             if !self.overlay_hidden.get(i).copied().unwrap_or(false) {
                 el.paint(window, cx);

@@ -54,11 +54,11 @@ fn load_url(src: &str, orient: bool, vcx: ValueCx<'_>) -> Option<Source> {
         } else {
             OrientationMode::None
         },
-        colour: ColourPolicy::Preserve,
+        colour: ColourPolicy::CssBgra,
     };
     let (image, fragment) = vcx.doc.images.borrow_mut().resolve_image(src, options)?;
     match image {
-        DecodedImage::Raster(r) => Some(Source::Raster(super::presentation::raster(&r))),
+        DecodedImage::Raster(r) => Some(Source::Raster(r)),
         DecodedImage::Vector(v) => {
             let markup = if let Some(id) = fragment {
                 String::from_utf8(svg_fragment::rewrite_svg_fragment(
