@@ -87,6 +87,35 @@ fn an_unseen_float_paragraph_keeps_the_fragmented_frame(cx: &mut TestAppContext)
 }
 
 #[gpui::test]
+fn another_owners_edit_preserves_the_omitted_repaint(cx: &mut TestAppContext) {
+    let (view, vcx) = settled(cx, &page(""), &page(" data-x"));
+    update(&view, vcx, &page(""));
+    update(&view, vcx, &page(""));
+    update(&view, vcx, &page(" data-edit"));
+    let changed =
+        page(" data-edit").replacen("<p class=item>", "<p class=item data-edit=again>", 1);
+    update(&view, vcx, &changed);
+    assert_eq!(
+        vcx.update(|_, cx| view.read(cx).doc.reuse.deferred_repaints()),
+        1,
+        "a visible owner's value write must preserve the omitted owner's debt"
+    );
+    let scene = quads(vcx);
+    grow(&view, vcx);
+    let grown = quads(vcx);
+    assert_eq!(
+        vcx.update(|_, cx| view.read(cx).doc.reuse.deferred_repaints()),
+        0,
+        "fresh recording must paint both owners and discharge the debt"
+    );
+    let (fresh_view, fresh) = open(cx, &changed);
+    frame(fresh);
+    assert_eq!(first_difference(&scene, &quads(fresh)), None);
+    grow(&fresh_view, fresh);
+    assert_eq!(first_difference(&grown, &quads(fresh)), None);
+}
+
+#[gpui::test]
 fn an_omitted_fragment_with_nonvalue_damage_rebuilds_as_fresh(cx: &mut TestAppContext) {
     for kind in ["clear", "gradient", "mixed", "geometry"] {
         let changed = page(&format!(" data-edit={kind}"));
