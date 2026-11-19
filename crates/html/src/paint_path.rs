@@ -54,6 +54,14 @@ pub static REFUSED_PLAN_PATHS: AtomicU64 = AtomicU64::new(0);
 pub static PLAN_CLEAN: AtomicU64 = AtomicU64::new(0);
 pub static PLAN_PATCHED: AtomicU64 = AtomicU64::new(0);
 pub static PLAN_RESTYLED: AtomicU64 = AtomicU64::new(0);
+/// Edits wholly off the screen of boxes the layer cannot record again, kept
+/// with the frame until a frame shows them (`layout::reuse::Wait`): inline
+/// boxes and boxes with decoration elements.
+pub static DEFERRED_INLINE: AtomicU64 = AtomicU64::new(0);
+pub static DEFERRED_DECORATION: AtomicU64 = AtomicU64::new(0);
+/// Such edits a replay brought onto the screen: the frame was built.
+pub static ARRIVED_INLINE: AtomicU64 = AtomicU64::new(0);
+pub static ARRIVED_DECORATION: AtomicU64 = AtomicU64::new(0);
 /// Nanoseconds spent deciding and writing the paint-only path.
 pub static WRITE_NS: AtomicU64 = AtomicU64::new(0);
 
@@ -78,6 +86,10 @@ impl Drop for Timer {
 
 pub(crate) fn add(counter: &AtomicU64, n: u64) {
     counter.fetch_add(n, Relaxed);
+    #[cfg(test)]
+    if let Some(i) = counters().iter().position(|c| std::ptr::eq(*c, counter)) {
+        local::add(i, n);
+    }
 }
 
 /// `value`, counting `reason` when it is `None`.
@@ -94,14 +106,29 @@ pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
     None
 }
 
+#[cfg(test)]
+mod local;
 pub mod not_own;
 
 /// Counters before the reasons of `REFUSED_NOT_OWN` (`not_own`) in `NAMES`.
-const PATH: usize = 22;
+const PATH: usize = 26;
 
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
-    let path = [
+    // Tests run in parallel: each reads the counts of its own thread.
+    #[cfg(test)]
+    return local::read();
+    #[cfg(not(test))]
+    {
+        let path = counters().map(|c| c.load(Relaxed));
+        let reasons = not_own::read();
+        std::array::from_fn(|i| if i < PATH { path[i] } else { reasons[i - PATH] })
+    }
+}
+
+/// The path's counters in the order of `NAMES`.
+fn counters() -> [&'static AtomicU64; PATH] {
+    [
         &VALUES,
         &RECORDS,
         &UNSEEN,
@@ -123,11 +150,12 @@ pub fn read() -> [u64; NAMES.len()] {
         &PLAN_CLEAN,
         &PLAN_PATCHED,
         &PLAN_RESTYLED,
+        &DEFERRED_INLINE,
+        &DEFERRED_DECORATION,
+        &ARRIVED_INLINE,
+        &ARRIVED_DECORATION,
         &WRITE_NS,
     ]
-    .map(|c| c.load(Relaxed));
-    let reasons = not_own::read();
-    std::array::from_fn(|i| if i < PATH { path[i] } else { reasons[i - PATH] })
 }
 
 /// Names of `read`'s counters: the path's, then `not_own_<reason>` for each
@@ -154,6 +182,10 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "plan_clean",
     "plan_patched",
     "plan_restyled",
+    "deferred_inline",
+    "deferred_decoration",
+    "arrived_inline",
+    "arrived_decoration",
     "write_ns",
     "not_own_root_canvas",
     "not_own_hover",

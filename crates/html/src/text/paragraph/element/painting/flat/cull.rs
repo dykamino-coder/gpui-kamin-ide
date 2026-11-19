@@ -78,6 +78,12 @@ impl Cull {
         })
     }
 
+    /// The inline extent the lines' ink can reach and its bleed beyond a
+    /// line's band, window pixels (`layout::retained::fragments`).
+    pub(super) fn reach(&self) -> ((f32, f32), f32) {
+        ((self.left.into(), self.right.into()), self.bleed.into())
+    }
+
     /// Skip the line of band `band` (top, bottom): its ink cannot reach the
     /// mask. The skipped ink is offered to open ink sinks.
     pub(super) fn skip(&self, band: (Pixels, Pixels), window: &mut Window) -> bool {
