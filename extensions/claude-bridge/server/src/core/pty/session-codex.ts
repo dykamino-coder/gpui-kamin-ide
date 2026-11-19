@@ -23,6 +23,7 @@ import { config as bridgeConfig } from '../config'
 import { CodexAgentSession } from '../codex/codex-session'
 import { classifyCodexError, describeCodexError, loginRequired } from '../codex/codex-errors'
 import { codexUnavailableReason, type CodexRuntime } from '../codex/codex-runtime'
+import { limitWindowLabel, type CodexRateLimits } from '../../shared/codex-rate-limits'
 import { bridgeMcpThreadConfig } from '../codex/config-toml'
 import { JsonRpcError } from '../codex/jsonrpc'
 import { CodexConsoleRenderer, consoleBanner, consoleNotice } from '../codex/console-render'
@@ -39,6 +40,7 @@ import { holdMcpEndpoint, mcpIdentity } from './mcp-tasks'
 import { ResumeNotFoundError } from './session-resume-not-found'
 import { attachOutputDebounce, sendToClient } from './session-io'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
+import type { SessionUsage, SessionUsageWindow } from './session-statusline'
 import { buildSystemPrompt } from './system-prompt'
 import type { PtySession, SessionConfig } from './types'
 
@@ -175,6 +177,51 @@ export function transcriptHasTurns(file: string): boolean {
 /** Claude model ids from the shared selector never reach codex. */
 export function codexModel(model: string | null | undefined): string | undefined {
   return model && !/^claude/i.test(model) ? model : undefined
+}
+
+/** ChatGPT plan windows (`account/rateLimits/read`, account-wide bucket) as a
+ *  `session:usage` snapshot tagged `engine: 'codex'`. 5-hour and weekly
+ *  windows take the ids the Claude status line uses, so the row labels them
+ *  alike; context fields stay null (codex reports its window per response). */
+export function codexPlanUsage(
+  limits: CodexRateLimits,
+  model: string | null,
+  effort: string | null,
+): SessionUsage | null {
+  const account = limits.buckets[0]
+  if (!account) return null
+  const windows: SessionUsageWindow[] = []
+  for (const [slot, w] of [
+    ['primary', account.primary],
+    ['secondary', account.secondary],
+  ] as const) {
+    if (!w || w.resetsAt === null) continue
+    const id = w.windowMinutes === 300 ? 'five_hour' : w.windowMinutes === 7 * 24 * 60 ? 'seven_day' : `codex_${slot}`
+    windows.push({
+      id,
+      label: limitWindowLabel(w.windowMinutes, 'Plan limit'),
+      percent: w.usedPercent,
+      resetsAt: new Date(w.resetsAt).toISOString(),
+    })
+  }
+  if (windows.length === 0) return null
+  const at = new Date(limits.readAt).toISOString()
+  return {
+    windows,
+    contextPercent: null,
+    contextWindowSize: null,
+    autoCompactAt: null,
+    model,
+    effort,
+    observedAt: at,
+    limitsObservedAt: at,
+    engine: 'codex',
+  }
+}
+
+/** `/compact`, alone or with instructions after a space or newline. */
+export function isCompactCommand(text: string): boolean {
+  return /^\s*\/compact(?:\s|$)/.test(text)
 }
 
 /** Bridge effort levels → codex ReasoningEffort; Claude's `max` is codex `xhigh`. */
@@ -584,6 +631,21 @@ export class CodexSessionBinding {
     this.activity(this.turnOpen)
   }
 
+  /** The ChatGPT plan windows for the status row under the chat input, tagged
+   *  as codex usage (the webview never shows them in a Claude chat). Read
+   *  through the runtime's account cache; an unreadable account sends nothing
+   *  and the row says it has no plan data. */
+  private pushPlanLimits(): void {
+    void this.runtime
+      .rateLimits()
+      .then((limits) => {
+        if (this.disposed) return
+        const usage = codexPlanUsage(limits, this.session.model ?? null, this.session.effort ?? null)
+        if (usage) sendToClient(this.session.ws, { type: 'session:usage', sessionId: this.session.id, usage })
+      })
+      .catch(() => undefined)
+  }
+
   input(data: string): boolean {
     if (!data.includes('\x03')) return false
     void this.agent.interrupt().catch(() => undefined)
@@ -608,7 +670,11 @@ export class CodexSessionBinding {
       return
     }
     try {
-      await this.agent.send(text, submissionId)
+      // `/compact [instructions]` (typed, or the Compact button) compacts the
+      // thread like codex's own command; sent as text it was a paid model turn
+      // that compacted nothing. Codex compaction takes no instructions.
+      if (isCompactCommand(text)) await this.agent.compact()
+      else await this.agent.send(text, submissionId)
       this.receipt(text, submissionId, 'read')
     } catch (error) {
       const info = classifyCodexError((error as Error).message)
@@ -651,6 +717,7 @@ export class CodexSessionBinding {
         this.flushStream()
         this.activity(false)
         if (event.status === 'failed' && event.error) this.recordError(raw.kind, event.error.message)
+        this.pushPlanLimits()
         break
       case 'notice':
         // A retried error is transient; the final outcome is the turn's.

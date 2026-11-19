@@ -187,6 +187,20 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
     return this.send(text, submissionId)
   }
 
+  /** Compact the thread's context (`thread/compact/start`) — what codex's own
+   *  `/compact` does — instead of sending the text as a model turn. Runs after
+   *  the current turn ends, in order with queued messages; the compaction then
+   *  runs as its own turn (turn/started … contextCompaction … turn/completed). */
+  compact(): Promise<void> {
+    const next = this.sending.then(async () => {
+      await this.waitForIdle()
+      const threadId = this.requireThread()
+      await this.options.host.rpc.request('thread/compact/start', { threadId })
+    })
+    this.sending = next.catch(() => undefined)
+    return next
+  }
+
   private async steerNow(text: string, submissionId?: string): Promise<void> {
     const turnId = this.activeTurnId
     if (!turnId) return this.deliver(text, submissionId)

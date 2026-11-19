@@ -252,6 +252,28 @@ const handlers = {
     if (t?.active && t.active.id === p.turnId) t.active.interrupted = true
     return {}
   },
+  // Context compaction runs as its own turn: no model answer, one
+  // contextCompaction item. Counted so tests can tell it from a text turn.
+  'thread/compact/start': (p) => {
+    const t = threads.get(p?.threadId)
+    if (!t) throw new RpcError(-32600, 'thread not loaded')
+    if (t.active) throw new RpcError(-32600, 'turn already running')
+    const turnId = `turn-${++t.turns}`
+    t.active = { id: turnId, interrupted: false, effort: null, model: t.model }
+    t.compactions = (t.compactions ?? 0) + 1
+    saveThread(t)
+    queueMicrotask(() => {
+      notify('turn/started', { threadId: t.id, turn: { id: turnId, status: 'inProgress', error: null, items: [] } })
+      item(t, turnId, { type: 'contextCompaction', id: `compact-${t.compactions}` })
+      t.active = null
+      saveThread(t)
+      notify('turn/completed', {
+        threadId: t.id,
+        turn: { id: turnId, status: 'completed', error: null, items: [], durationMs: 1 },
+      })
+    })
+    return {}
+  },
 }
 
 function item(t, turnId, it, started = true) {
