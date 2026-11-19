@@ -23,6 +23,18 @@ impl Window {
         bounds: Bounds<Pixels>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        self.with_run(owner, bounds, None, f)
+    }
+
+    /// The own paint `f` of box `owner` in `bounds`, a piece of its band on a
+    /// line when `piece` is given (`text_system::band_piece`).
+    pub(crate) fn with_run<R>(
+        &mut self,
+        owner: u32,
+        bounds: Bounds<Pixels>,
+        piece: Option<crate::text_system::band_piece::BandEdges>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
         if owner == 0 || self.layer_recording.is_none() {
             return self.with_paint_owner(owner, f);
         }
@@ -34,9 +46,14 @@ impl Window {
             rem_size: self.rem_size(),
             fill: None,
             layer: None,
+            piece,
         };
         let area = self.box_area(&env);
         if !self.next_frame.scene.open_box(owner, area, env) {
+            // A band piece outside a run: its box is recorded again nowhere.
+            if piece.is_some() {
+                self.unhold_band(owner);
+            }
             return self.with_paint_owner(owner, f);
         }
         let result = self.with_paint_owner(owner, f);
@@ -99,6 +116,21 @@ impl Window {
         cx: &mut App,
         mut paint: impl FnMut(&mut Self, &mut App, Bounds<Pixels>),
     ) -> Option<bool> {
+        self.rerecord_runs(layer, owner, cx, false, |w, cx, env| paint(w, cx, env.bounds))
+    }
+
+    /// Record the runs of box `owner` again, each with `paint` in the paint
+    /// state of its recording: the box's own painter's runs (`band` false,
+    /// outside stacking layers) or the pieces of its band (`band`, in the
+    /// stacking layer of their line).
+    pub(crate) fn rerecord_runs(
+        &mut self,
+        layer: &LayerHandle,
+        owner: u32,
+        cx: &mut App,
+        band: bool,
+        mut paint: impl FnMut(&mut Self, &mut App, &BoxEnv),
+    ) -> Option<bool> {
         if self.layer_recording.is_some() || owner == 0 {
             return None;
         }
@@ -116,9 +148,12 @@ impl Window {
                 let b = &content.boxes[at];
                 (b.area, b.env, b.placed)
             };
-            // A run in a stacking layer keeps the layer's order, which a
-            // recording outside the layer does not give.
-            if env.transformation != TransformationMatrix::unit() || env.layer.is_some() {
+            // A run in a stacking layer keeps the layer's order
+            // (`SceneLayer::plan_layer_run`): only band pieces are there.
+            if env.transformation != TransformationMatrix::unit()
+                || env.piece.is_some() != band
+                || (env.layer.is_some() && !band)
+            {
                 return None;
             }
             let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);
@@ -152,7 +187,7 @@ impl Window {
         area: Bounds<ScaledPixels>,
         env: BoxEnv,
         cx: &mut App,
-        paint: &mut impl FnMut(&mut Self, &mut App, Bounds<Pixels>),
+        paint: &mut impl FnMut(&mut Self, &mut App, &BoxEnv),
     ) -> (Scene, Vec<crate::scene::Binding>) {
         let recording = Box::new(LayerRecording {
             bindings: Vec::new(),
@@ -170,7 +205,7 @@ impl Window {
         self.box_fill = env.fill;
         self.next_frame.scene.open_box(owner, area, env);
         self.with_rem_size(Some(env.rem_size), |window| {
-            window.with_paint_owner(owner, |window| paint(window, cx, env.bounds))
+            window.with_paint_owner(owner, |window| paint(window, cx, &env))
         });
         self.next_frame.scene.close_box();
         self.box_fill = None;

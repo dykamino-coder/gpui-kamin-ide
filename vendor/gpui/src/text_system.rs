@@ -1,3 +1,4 @@
+pub(crate) mod band_piece;
 mod composed;
 mod font_fallbacks;
 mod font_features;
@@ -10,6 +11,7 @@ mod shaping;
 pub use composed::LinePiece;
 pub use font_fallbacks::*;
 pub use font_features::*;
+pub use band_piece::BandStyle;
 pub use line::*;
 pub use line_layout::*;
 pub use line_wrapper::*;
@@ -711,6 +713,7 @@ impl WindowTextSystem {
                 && last_run.underline == run.underline
                 && last_run.strikethrough == run.strikethrough
                 && last_run.background_color == run.background_color
+                && last_run.background_owner == run.background_owner
             {
                 last_run.len += run.len as u32;
                 continue;
@@ -881,6 +884,7 @@ impl WindowTextSystem {
                 && last_run.underline == run.underline
                 && last_run.strikethrough == run.strikethrough
                 && last_run.background_color == run.background_color
+                && last_run.background_owner == run.background_owner
             {
                 last_run.len += run.len as u32;
                 continue;
@@ -980,6 +984,7 @@ impl WindowTextSystem {
                     && last_run.underline == run.underline
                     && last_run.strikethrough == run.strikethrough
                     && last_run.background_color == run.background_color
+                    && last_run.background_owner == run.background_owner
                 {
                     last_run.len += run_len_within_line as u32;
                     false

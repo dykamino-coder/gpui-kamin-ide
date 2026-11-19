@@ -922,7 +922,10 @@ fn paint_line_background(
         // Only HTML engine runs opt in (`background_line_gap`); IDE text keeps
         // ascent + descent.
         let line_gap_band = decoration_runs.iter().any(|r| {
-            r.background_line_gap && (r.background_color.is_some() || r.background_border.is_some())
+            r.background_line_gap
+                && (r.background_color.is_some()
+                    || r.background_border.is_some()
+                    || r.background_owner != 0)
         });
         let gap = if line_gap_band {
             layout.runs.first().map_or(px(0.), |r| {
@@ -976,6 +979,16 @@ fn paint_line_background(
         });
     window.paint_layer(line_bounds, |window| {
         let all_style_runs = decoration_runs;
+        // KaminIDE patch: one piece of a box's band (`band_piece`), from the
+        // band's start to `width`, ending the box there or not.
+        type Band = (Option<Hsla>, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>, u32);
+        let piece = |origin: Point<Pixels>, width: Pixels, end: bool, b: &Band, window: &mut Window| {
+            let style = super::BandStyle { color: b.0, pad: b.1, radius: b.2, border: b.4 };
+            let sides = super::band_piece::BandEdges::sides_of(&style);
+            let edges = super::band_piece::BandEdges { content_height, start: b.3, end, sides };
+            let at = super::band_piece::Piece { origin, width, line_height, edges };
+            super::band_piece::paint_band(at, b.5, style, window);
+        };
         let mut decoration_runs = decoration_runs.iter();
         let mut wraps = wrap_boundaries.iter().peekable();
         let mut run_end = 0;
@@ -983,7 +996,7 @@ fn paint_line_background(
         // режется переносом так же, как он.
         let mut current_background: Option<(
             Point<Pixels>,
-            (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>, u32),
+            (Option<Hsla>, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>, u32),
         )> = None;
         let text_system = cx.text_system().clone();
         let mut glyph_origin = point(
@@ -1010,24 +1023,33 @@ fn paint_line_background(
         // строчной коробки занимают место в строке и красятся).
         // Полоса нужна только для заливки: добавление `background_border`
         // в условие ниже дублирует рамку строчной коробки.
-        if layout.runs.iter().all(|r| r.glyphs.is_empty())
-            && let Some(style_run) = all_style_runs
-                .iter()
-                .find(|r| r.background_color.is_some())
-            && let Some(bg) = style_run.background_color
-        {
-            paint_band((style_run.background_owner, style_run.background_border.is_some()), run_background_quad(
-                glyph_origin,
-                layout.width,
-                line_height,
-                content_height,
-                bg,
-                style_run.background_pad,
-                style_run.background_radius,
-                true,
-                true,
-                style_run.background_border,
-            ), window);
+        if layout.runs.iter().all(|r| r.glyphs.is_empty()) {
+            // KaminIDE patch: the band of such a line is the first one with a
+            // colour; a box takes it as its piece when it is the line's only
+            // box, painted or empty. With several boxes the piece passes from
+            // one to another as colours come and go: none is recorded again.
+            let mut owners = all_style_runs.iter().map(|r| r.background_owner).filter(|o| *o != 0);
+            let first = owners.next();
+            let single = owners.all(|o| Some(o) == first);
+            let painted = all_style_runs.iter().find(|r| r.background_color.is_some());
+            let run = painted.or_else(|| all_style_runs.iter().find(|r| single && Some(r.background_owner) == first));
+            if let Some(style_run) = run {
+                let style = super::BandStyle {
+                    color: style_run.background_color,
+                    pad: style_run.background_pad,
+                    radius: style_run.background_radius,
+                    border: style_run.background_border,
+                };
+                let sides = super::band_piece::BandEdges::sides_of(&style);
+                let edges = super::band_piece::BandEdges { content_height, start: true, end: true, sides };
+                let at = super::band_piece::Piece { origin: glyph_origin, width: layout.width, line_height, edges };
+                super::band_piece::paint_band(at, style_run.background_owner, style, window);
+            }
+            if !single {
+                for r in all_style_runs.iter().filter(|r| r.background_owner != 0) {
+                    window.unhold_band(r.background_owner);
+                }
+            }
         }
         for (run_ix, run) in layout.runs.iter().enumerate() {
             max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
@@ -1072,22 +1094,11 @@ fn paint_line_background(
                                 }
                             };
                             !next_run.is_some_and(|r| {
-                                r.background_color == Some(background_color.0)
+                                r.background_color == background_color.0
                                     && r.background_owner == background_color.5
                             })
                         };
-                        paint_band((background_color.5, background_color.4.is_some()), run_background_quad(
-                            *background_origin,
-                            glyph_origin.x - background_origin.x,
-                            line_height,
-                            content_height,
-                            background_color.0,
-                            background_color.1,
-                            background_color.2,
-                            background_color.3,
-                            run_ends_here,
-                            background_color.4,
-                        ), window);
+                        piece(*background_origin, glyph_origin.x - background_origin.x, run_ends_here, background_color, window);
                         if !run_ends_here {
                             background_color.3 = false;
                             background_origin.x = origin.x;
@@ -1111,7 +1122,7 @@ fn paint_line_background(
 
                 let mut finished_background: Option<(
                     Point<Pixels>,
-                    (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>, u32),
+                    (Option<Hsla>, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>, u32),
                 )> = None;
                 if glyph.index >= run_end {
                     let mut style_run = decoration_runs.next();
@@ -1127,16 +1138,18 @@ fn paint_line_background(
 
                     if let Some(style_run) = style_run {
                         if let Some((_, background_color)) = &mut current_background
-                            && (style_run.background_color.as_ref() != Some(&background_color.0)
+                            && (style_run.background_color != background_color.0
                                 || style_run.background_owner != background_color.5)
                         {
                             finished_background = current_background.take();
                         }
-                        if let Some(run_background) = style_run.background_color {
+                        // KaminIDE patch: an inline box without a band still has
+                        // its pieces (empty runs of its box, `band_piece`).
+                        if style_run.background_color.is_some() || style_run.background_owner != 0 {
                             current_background.get_or_insert((
                                 point(glyph_origin.x, glyph_origin.y),
                                 (
-                                    run_background,
+                                    style_run.background_color,
                                     style_run.background_pad,
                                     style_run.background_radius,
                                     // Поле слева — только у начала прогона:
@@ -1159,18 +1172,7 @@ fn paint_line_background(
                     if background_origin.x == glyph_origin.x {
                         background_origin.x -= max_glyph_size.width.half();
                     };
-                    paint_band((background_color.5, background_color.4.is_some()), run_background_quad(
-                        background_origin,
-                        width,
-                        line_height,
-                        content_height,
-                        background_color.0,
-                        background_color.1,
-                        background_color.2,
-                        background_color.3,
-                        true,
-                        background_color.4,
-                    ), window);
+                    piece(background_origin, width, true, &background_color, window);
                 }
             }
         }
@@ -1186,45 +1188,11 @@ fn paint_line_background(
             if last_line_end_x == background_origin.x {
                 background_origin.x -= max_glyph_size.width.half()
             };
-            paint_band((background_color.5, background_color.4.is_some()), run_background_quad(
-                background_origin,
-                last_line_end_x - background_origin.x,
-                line_height,
-                content_height,
-                background_color.0,
-                background_color.1,
-                background_color.2,
-                background_color.3,
-                true,
-                background_color.4,
-            ), window);
+            piece(background_origin, last_line_end_x - background_origin.x, true, &background_color, window);
         }
 
         Ok(())
     })
-}
-
-/// KaminIDE patch: one piece of the band of inline box `owner` (0: none) on
-/// its line: the box's run in a scene layer (`Window::with_box_paint`), so
-/// the box's pieces over all lines are its runs. The band of a box without a
-/// border binds its fill as the box's background (`LayerValue::Background`),
-/// so a new colour is written into every piece at once
-/// (`LayerHandle::set_backgrounds`). The band of a box with a border on any
-/// side paints fill and border in one quad and binds no piece, as a write of
-/// the fill would recolour the border.
-fn paint_band((owner, bordered): (u32, bool), quad: crate::PaintQuad, window: &mut Window) {
-    let quad = snap_band(quad, window);
-    if owner == 0 {
-        window.paint_quad(quad);
-        return;
-    }
-    window.with_box_paint(owner, quad.bounds, |window| {
-        if bordered {
-            window.paint_quad(quad);
-        } else {
-            window.with_paint_value(crate::LayerValue::Background, |w| w.paint_quad(quad));
-        }
-    });
 }
 
 /// KaminIDE patch: the band of an inline box with a border is pixel-snapped
@@ -1232,7 +1200,7 @@ fn paint_band((owner, bordered): (u32, bool), quad: crate::PaintQuad, window: &m
 /// outer and inner edges round to device pixels separately, so a fractional
 /// border width rasterizes as whole pixels, as it does on block boxes and
 /// column rules (`multicol-rule-*-000`).
-fn snap_band(quad: crate::PaintQuad, window: &Window) -> crate::PaintQuad {
+pub(super) fn snap_band(quad: crate::PaintQuad, window: &Window) -> crate::PaintQuad {
     let w = quad.border_widths;
     if (w.top == px(0.) && w.right == px(0.) && w.bottom == px(0.) && w.left == px(0.))
         || quad.corner_radii.top_left != px(0.)
@@ -1259,7 +1227,7 @@ fn snap_band(quad: crate::PaintQuad, window: &Window) -> crate::PaintQuad {
 /// Прежний квад занимал строку целиком, поэтому подсветка получалась выше и
 /// уже браузерной.
 #[allow(clippy::too_many_arguments)]
-fn run_background_quad(
+pub(super) fn run_background_quad(
     origin: Point<Pixels>,
     width: Pixels,
     line_height: Pixels,

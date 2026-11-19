@@ -49,6 +49,7 @@ pub(super) fn env() -> super::BoxEnv {
         rem_size: crate::px(16.),
         fill: None,
         layer: None,
+        piece: None,
     }
 }
 
