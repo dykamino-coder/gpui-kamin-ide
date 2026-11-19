@@ -7212,7 +7212,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a8301bf5c
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..fd80874e642c3600d2d174c83a678f0d74ad75ec
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7928,11 +7928,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +            self.drop_frame();
 +            return Ok(());
 +        }
-+        let drawn = match plan {
++        let drawn = match &plan {
 +            retained::Plan::Keep => Ok(()),
 +            retained::Plan::Full => self.render(scene, background_appearance, None),
 +            retained::Plan::Within(region) => {
-+                self.render(scene, background_appearance, Some(region))
++                self.render(scene, background_appearance, Some(region.as_slice()))
 +            }
 +        };
 +        if let Err(e) = drawn {
@@ -7941,8 +7941,8 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +        }
 +        // KaminIDE patch: stand-only check against a whole redraw (`damage_audit`).
 +        if damage_audit::enabled() && !keep {
-+            let within = match plan {
-+                retained::Plan::Within(region) => Some(region),
++            let within = match &plan {
++                retained::Plan::Within(region) => Some(region.as_slice()),
 +                _ => None,
 +            };
 +            if let Err(e) = self.audit_frame(scene, background_appearance, within) {
@@ -7961,7 +7961,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +    /// that rectangle is cleared and drawn (scissor, `retained.rs`); groups
 +    /// whose composite cannot reach it are not drawn.
 @@ -352,0 +887 @@
-+        within: Option<Region>,
++        within: Option<&[Region]>,
 @@ -354 +889,5 @@
 -        self.pre_draw(&match background_appearance {
 +        self.ensure_drawable_resources()?;
@@ -7969,7 +7969,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +        self.backdrop_pending = self.backdrop.is_some();
 +        self.layer_cache.begin_frame();
 +        let clear_color = match background_appearance {
-@@ -357,2 +896,72 @@
+@@ -357,2 +896,61 @@
 -        })?;
 -        self.upload_scene_buffers(scene)?;
 +        };
@@ -7979,7 +7979,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +        self.blur.frame_globals = Some([viewport.Width, viewport.Height]);
 +        let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
 +        self.gpu_timer.begin(&device, &ctx);
-+        let needed = within.map(|r| scene.groups_needed([r.x, r.y, r.width, r.height]));
++        let needed = Self::needed_damage_groups(scene, within);
 +        log::debug!(
 +            target: "gpui::frame",
 +            "plan within {within:?} groups {} needed {:?}",
@@ -8004,22 +8004,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +        }
 +        // KaminIDE patch: the scissor goes on only now: the group passes and
 +        // their blurs write other targets in their own coordinates.
-+        let restore = match within {
-+            Some(region) => {
-+                let state = self.begin_scissor(region)?;
-+                let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
-+                self.clear_frame(clear)?;
-+                Some(state)
-+            }
-+            None => None,
-+        };
 +        self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
 +        self.timing_main = true;
-+        let drawn = self.draw_scene(scene);
++        let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
++        let drawn = self.draw_damage_regions(scene, within, clear);
 +        self.timing_main = false;
-+        if let Some(state) = restore {
-+            unsafe { ctx.RSSetState(&state) };
-+        }
 +        self.gpu_timer.end(&ctx);
 +        drawn
 +    }
@@ -8044,33 +8033,33 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +            self.upload_scene_buffers(scene)?;
 +        }
 +        let b = base.unwrap_or_default();
-@@ -365,0 +975,6 @@
+@@ -365,0 +964,6 @@
 +            // KaminIDE patch: a layer draws its own batches from its buffers.
 +            if let PrimitiveBatch::Layer(index) = batch {
 +                self.draw_layer(scene, index)?;
 +                continue;
 +            }
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -370,2 +985,2 @@
+@@ -370,2 +974,2 @@
 -                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
 -                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
 +                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
 +                PrimitiveBatch::Quads(range) => self.draw_quads(b[1] + range.start, range.len()),
-@@ -377 +992 @@
+@@ -377 +981 @@
 -                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
 +                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
-@@ -379 +994 @@
+@@ -379 +983 @@
 -                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
-@@ -382 +997 @@
+@@ -382 +986 @@
 -                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
 +                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
-@@ -385 +1000 @@
+@@ -385 +989 @@
 -                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
-@@ -387,0 +1003 @@
+@@ -387,0 +992 @@
 +                PrimitiveBatch::Layer(_) => Ok(()),
-@@ -402,0 +1019,404 @@
+@@ -402,0 +1008,404 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -8475,19 +8464,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1431,0 @@
+@@ -412 +1420,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -425 +1444,4 @@
+@@ -425 +1433,4 @@
 -        self.render(scene, background_appearance)?;
 +        // KaminIDE patch: the target now holds a frame outside the window's
 +        // sequence of compared scenes (`retained.rs`).
 +        self.forget_frames();
 +        self.render(scene, background_appearance, None)?;
-@@ -488 +1510,2 @@
+@@ -488 +1499,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1517,24 @@
+@@ -494 +1506,24 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            // KaminIDE patch: an offscreen target is simply recreated.
@@ -8513,7 +8502,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +    ) -> Result<()> {
 +        // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
 +        self.forget_frames();
-@@ -500,19 +1546 @@
+@@ -500,19 +1535 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -8534,7 +8523,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 -
 -        resources.recreate_resources(devices, width, height)?;
 +        recreate(resources, devices)?;
-@@ -599,0 +1628,7 @@
+@@ -599,0 +1617,7 @@
 +        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
 +        // групп очищаются прозрачным — там первый квад рисуется как есть.
 +        let skip = start == 0 && self.backdrop_pending && self.group_target.is_none();
@@ -8542,28 +8531,28 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +            self.backdrop_pending = false;
 +        }
 +        let (start, len) = if skip { (1, len.saturating_sub(1)) } else { (start, len) };
-@@ -621,0 +1657,6 @@
+@@ -621,0 +1646,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1685,2 @@
+@@ -643,0 +1674,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1715,4 @@
+@@ -672 +1704,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1862,4 @@
+@@ -815,0 +1851,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1870,40 @@
+@@ -819,0 +1859,40 @@
 +        // KaminIDE patch: consecutive group composites are drawn level by level
 +        // (`group_batch`); anything else ends the run.
 +        let mut run: Vec<&PaintSurface> = Vec::new();
@@ -8604,7 +8593,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -822,0 +1913,365 @@
+@@ -822,0 +1902,365 @@
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
 +    fn draw_backdrop_blur(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
@@ -8970,10 +8959,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +        };
 +        Some((quad, place.page))
 +    }
-@@ -840 +2295 @@
+@@ -840 +2284 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2346,12 @@
+@@ -890,0 +2335,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -8986,14 +8975,14 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
 +            })
 +        };
-@@ -900 +2367 @@
+@@ -900 +2356 @@
 -        ) = create_resources(devices, &swap_chain, width, height)?;
 +        ) = create_resources(devices, Some(&swap_chain), width, height)?;
-@@ -904 +2371,2 @@
+@@ -904 +2360,2 @@
 -            swap_chain,
 +            swap_chain: Some(swap_chain),
 +            frame_gate,
-@@ -912,0 +2381,31 @@
+@@ -912,0 +2370,31 @@
 +    }
 +
 +    /// KaminIDE patch: a render target texture in place of a swap chain back
@@ -9025,10 +9014,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +    /// KaminIDE patch: the swap chain of a presented (non-offscreen) target.
 +    fn swap_chain(&self) -> Result<&IDXGISwapChain1> {
 +        self.swap_chain.as_ref().context("offscreen target has no swap chain")
-@@ -930 +2429 @@
+@@ -930 +2418 @@
 -        ) = create_resources(devices, &self.swap_chain, width, height)?;
 +        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
-@@ -999,0 +2499,22 @@
+@@ -999,0 +2488,22 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -9051,25 +9040,25 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +            4,
 +            create_blend_state_replace(device)?,
 +        )?;
-@@ -1001,0 +2523 @@
+@@ -1001,0 +2512 @@
 +            group_tiles_pipeline,
-@@ -1009,0 +2532,2 @@
+@@ -1009,0 +2521,2 @@
 +            blur_pipeline,
 +            clear_pipeline,
-@@ -1018,0 +2543,4 @@
+@@ -1018,0 +2532,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2552 @@
+@@ -1023,0 +2541 @@
 +            comp_root,
-@@ -1030 +2559,2 @@
+@@ -1030 +2548,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2594 @@
+@@ -1063,0 +2583 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2607,16 @@
+@@ -1076 +2596,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -9087,10 +9076,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2636,2 @@
+@@ -1089,0 +2625,2 @@
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2647,0 @@
+@@ -1100,30 +2636,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -9121,7 +9110,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 -        })
 -    }
 -
-@@ -1190,0 +2709,45 @@
+@@ -1190,0 +2698,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -9167,31 +9156,31 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2760 @@
+@@ -1197 +2749 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1275,0 +2839,2 @@
+@@ -1275,0 +2828,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2884,2 @@
+@@ -1319 +2873,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2913,2 @@
+@@ -1347 +2902,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1358 +2925 @@
+@@ -1358 +2914 @@
 -    swap_chain: &IDXGISwapChain1,
 +    swap_chain: Option<&IDXGISwapChain1>,
-@@ -1370,2 +2937,4 @@
+@@ -1370,2 +2926,4 @@
 -    let (render_target, render_target_view) =
 -        create_render_target_and_its_view(swap_chain, &devices.device)?;
 +    let (render_target, render_target_view) = match swap_chain {
 +        Some(swap_chain) => create_render_target_and_its_view(swap_chain, &devices.device)?,
 +        None => create_offscreen_target_and_its_view(&devices.device, width, height)?,
 +    };
-@@ -1400,0 +2970,36 @@
+@@ -1400,0 +2959,36 @@
 +    let mut render_target_view = None;
 +    unsafe { device.CreateRenderTargetView(&render_target, None, Some(&mut render_target_view))? };
 +    Ok((render_target, render_target_view))
@@ -9228,7 +9217,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +        device.CreateTexture2D(&offscreen_target_desc(width, height), None, Some(&mut render_target))?
 +    };
 +    let render_target = render_target.context("offscreen render target")?;
-@@ -1492,0 +3098,33 @@
+@@ -1492,0 +3087,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -9262,7 +9251,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +    }
 +}
 +
-@@ -1701,7 +3339 @@
+@@ -1701,7 +3328 @@
 -    use windows::{
 -        Win32::Graphics::Direct3D::{
 -            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
@@ -9271,14 +9260,14 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 -        core::{HSTRING, PCSTR},
 -    };
 +    use windows::Win32::Graphics::Direct3D::ID3DBlob;
-@@ -1719,0 +3352,6 @@
+@@ -1719,0 +3341,6 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
 +        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +        Clear,
 +        /// KaminIDE patch: group composites blended by the output merger.
 +        GroupTiles,
-@@ -1796,0 +3435,12 @@
+@@ -1796,0 +3424,12 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
@@ -9291,9 +9280,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 +                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
 +                },
-@@ -1801,0 +3452 @@
+@@ -1801,0 +3441 @@
 +    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
-@@ -1803,64 +3454 @@
+@@ -1803,64 +3443 @@
 -    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
 -        unsafe {
 -            use windows::Win32::Graphics::{
@@ -9359,11 +9348,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..83e54216b1b60c1df779c707848ec13a
 -        }
 -    }
 +    use super::shader_compilation::build_shader_blob;
-@@ -1883,0 +3472,3 @@
+@@ -1883,0 +3461,3 @@
 +                ShaderModule::Blur => "blur",
 +                ShaderModule::Clear => "clear",
 +                ShaderModule::GroupTiles => "group_tiles",
-@@ -2054,17 +3645,39 @@
+@@ -2054,17 +3634,39 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -9832,7 +9821,7 @@ index 0000000000000000000000000000000000000000..6d21abaab80a8f220bd3bba5c283da0d
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/damage_audit.rs b/vendor/gpui-windows/src/directx_renderer/damage_audit.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c49be4fa651ee122c07e5e3ba446dc1133dce7c0
+index 0000000000000000000000000000000000000000..6ac27406fb63071aeb76caf9fe16a66870da64f5
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/damage_audit.rs
 @@ -0,0 +1,104 @@
@@ -9872,7 +9861,7 @@ index 0000000000000000000000000000000000000000..c49be4fa651ee122c07e5e3ba446dc11
 +        &mut self,
 +        scene: &Scene,
 +        background: WindowBackgroundAppearance,
-+        within: Option<Region>,
++        within: Option<&[Region]>,
 +    ) -> Result<()> {
 +        let planned = self.read_target()?;
 +        let (kept, drawn) = (
@@ -13067,10 +13056,10 @@ index 0000000000000000000000000000000000000000..d3432f8a2c42f73bcef325254289139c
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..93c032e010943a87f26fc52b35299154acfa4de9
+index 0000000000000000000000000000000000000000..f6fa2f54fbe12bd30228e25a818e573d1d115bb1
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,267 @@
 +//! KaminIDE patch (R4): the retained target redrawn only within a frame's
 +//! damage (`retained.rs`) holds byte for byte what a whole redraw of that
 +//! frame draws, for every kind of edit the damage diff must see: a changed,
@@ -13337,6 +13326,7 @@ index 0000000000000000000000000000000000000000..93c032e010943a87f26fc52b35299154
 +        );
 +    }
 +}
++mod sparse;
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..a015c5a76ee546f7f8b189c96926aa7c0fe86a76
@@ -13526,6 +13516,75 @@ index 0000000000000000000000000000000000000000..a015c5a76ee546f7f8b189c96926aa7c
 +    assert!(got == want, "{} pixels differ from the whole frame", differing(&got, &want));
 +}
 \ No newline at end of file
+diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/sparse.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/sparse.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8a7f5bf6abd1030ce5f815a38e28900844bbf225
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/sparse.rs
+@@ -0,0 +1,63 @@
++//! Two distant edits must not invalidate the clean space between them.
++use super::*;
++
++fn corners(changed: bool) -> Scene {
++    let mut scene = Scene::default();
++    for (order, rect) in [
++        [8., 8., 16., 16.],
++        [W as f32 - 24., H as f32 - 24., 16., 16.],
++    ]
++    .into_iter()
++    .enumerate()
++    {
++        let mut q = quad(rect, hsla(if changed { 0.7 } else { 0.2 }, 0.8, 0.5, 0.6));
++        q.order = order as u32 + 1;
++        scene.quads.push(q);
++    }
++    let mut middle = quad([88., 56., 80., 80.], hsla(0.4, 0.7, 0.4, 0.5));
++    middle.order = 3;
++    scene.quads.push(middle);
++    scene
++}
++
++#[test]
++fn distant_corner_edits_preserve_the_clean_middle_and_fresh_pixels() {
++    let device = DirectXDevices::with_instrumentation(
++        crate::GpuAdapterPreference::Software,
++        gpui::Instrumentation::default(),
++    )
++    .unwrap();
++    let mut before = corners(false);
++    before.note_frame_damage(&Scene::default(), 1, (W, H));
++    let mut after = corners(true);
++    after.note_frame_damage(&before, 2, (W, H));
++    let mut retained = offscreen(&device, W, H);
++    retained
++        .draw(&before, WindowBackgroundAppearance::Opaque)
++        .unwrap();
++    let plan = retained.plan_frame(&after, WindowBackgroundAppearance::Opaque);
++    assert!(
++        matches!(plan, crate::directx_renderer::retained::Plan::Within(_)),
++        "two corner tiles must not force a full-frame redraw"
++    );
++    if let crate::directx_renderer::retained::Plan::Within(regions) = &plan {
++        assert_eq!(regions.len(), 2);
++        assert_eq!(
++            regions.iter().map(|r| r.width * r.height).sum::<u32>(),
++            8192
++        );
++    }
++    // Rebuild the comparison chain after inspecting its plan.
++    retained.forget_frames();
++    retained
++        .draw(&before, WindowBackgroundAppearance::Opaque)
++        .unwrap();
++    retained
++        .draw(&after, WindowBackgroundAppearance::Opaque)
++        .unwrap();
++    let mut fresh = offscreen(&device, W, H);
++    fresh
++        .draw(&after, WindowBackgroundAppearance::Opaque)
++        .unwrap();
++    assert_eq!(target_bytes(&mut retained), target_bytes(&mut fresh));
++}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..347cb7c6a1f8b3e67448c92764ba493096471fcf
@@ -14171,10 +14230,10 @@ index 0000000000000000000000000000000000000000..aaf7456d5f3830b608a8856a69066fa9
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/retained.rs b/vendor/gpui-windows/src/directx_renderer/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a43fc29b8943da4589663c1304b3f75dd698ae97
+index 0000000000000000000000000000000000000000..33035f9657e493075663ae74e123a0fdf2455732
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/retained.rs
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,248 @@
 +//! KaminIDE patch: the render target keeps the last frame; a new frame is
 +//! drawn only where its scene paints otherwise (`Scene::frame_damage`).
 +//!
@@ -14193,7 +14252,10 @@ index 0000000000000000000000000000000000000000..a43fc29b8943da4589663c1304b3f75d
 +//! not compared with the one drawn last, or a failed draw.
 +
 +use super::*;
++mod damage_tiles;
++mod draw;
 +mod full_by;
++use damage_tiles::DamageTiles;
 +use full_by::FullBy;
 +
 +/// What the target holds apart from the damage: the inputs of a frame that
@@ -14212,7 +14274,7 @@ index 0000000000000000000000000000000000000000..a43fc29b8943da4589663c1304b3f75d
 +    /// scene whose damage was united into `pending`.
 +    last: Option<(u64, Target)>,
 +    /// Damage since each buffer was last drawn, by back buffer index.
-+    pending: [SceneDamage; BUFFER_COUNT],
++    pending: [DamageTiles; BUFFER_COUNT],
 +    /// Staging texture of frame capture, kept while the size is the same.
 +    staging: Option<(u32, u32, ID3D11Texture2D)>,
 +    /// How frame capture waits for the GPU (`gpu_wait`), kept with the device.
@@ -14238,8 +14300,8 @@ index 0000000000000000000000000000000000000000..a43fc29b8943da4589663c1304b3f75d
 +    Keep,
 +    /// Draw everything.
 +    Full,
-+    /// Draw within the rectangle only.
-+    Within(Region),
++    /// Draw only these disjoint device-pixel regions.
++    Within(Vec<Region>),
 +}
 +
 +/// `GPUI_DAMAGE_REDRAW=0` draws every frame whole (comparison runs, fallback).
@@ -14291,11 +14353,17 @@ index 0000000000000000000000000000000000000000..a43fc29b8943da4589663c1304b3f75d
 +        };
 +        let retarget = self.retained.last.is_some_and(|(_, t)| t != target);
 +        self.retained.full_by = FullBy::of(external, retarget, damage, frame);
++        let regions = if frame == damage {
++            scene.frame_damage_regions()
++        } else {
++            &[]
++        };
++        for pending in &mut self.retained.pending {
++            pending.merge(frame, regions, target.size);
++            pending.merge(external, &[], target.size);
++        }
 +        let frame = frame.union(external);
 +        self.retained.last = Some((id, target));
-+        for pending in &mut self.retained.pending {
-+            *pending = pending.union(frame);
-+        }
 +        let Some(slot) = self.buffer_slot().filter(|_| enabled()) else {
 +            self.retained.full_by = FullBy::Disabled;
 +            self.forget_frames();
@@ -14311,26 +14379,15 @@ index 0000000000000000000000000000000000000000..a43fc29b8943da4589663c1304b3f75d
 +        if frame == SceneDamage::Unchanged && !self.unpresented && !capture_reads_back {
 +            return Plan::Keep;
 +        }
-+        match self.retained.pending[slot] {
-+            SceneDamage::Unchanged => Plan::Keep,
-+            SceneDamage::Unknown => Plan::Full,
-+            SceneDamage::Rect {
-+                x,
-+                y,
-+                width,
-+                height,
-+            } => {
-+                let region = Region {
-+                    x,
-+                    y,
-+                    width: width.min(self.width.saturating_sub(x)).max(1),
-+                    height: height.min(self.height.saturating_sub(y)).max(1),
-+                };
-+                if region == Region::full(self.width, self.height) {
++        match self.retained.pending[slot].regions() {
++            None => Plan::Full,
++            Some(regions) if regions.is_empty() => Plan::Keep,
++            Some(regions) => {
++                if DamageTiles::covers_target(&regions, (self.width, self.height)) {
 +                    self.retained.full_by = FullBy::Region;
 +                    Plan::Full
 +                } else {
-+                    Plan::Within(region)
++                    Plan::Within(regions)
 +                }
 +            }
 +        }
@@ -14344,7 +14401,7 @@ index 0000000000000000000000000000000000000000..a43fc29b8943da4589663c1304b3f75d
 +        } else if !matches!(plan, Plan::Keep)
 +            && let Some(slot) = self.buffer_slot()
 +        {
-+            self.retained.pending[slot] = SceneDamage::Unchanged;
++            self.retained.pending[slot].clear((self.width, self.height));
 +        }
 +    }
 +
@@ -14353,7 +14410,7 @@ index 0000000000000000000000000000000000000000..a43fc29b8943da4589663c1304b3f75d
 +        self.retained.last = None;
 +        self.retained.chain = None;
 +        self.retained.groups.valid.clear();
-+        self.retained.pending = [SceneDamage::Unknown; BUFFER_COUNT];
++        self.retained.pending = std::array::from_fn(|_| DamageTiles::default());
 +    }
 +
 +    /// The device is lost: drop its objects along with the kept frames.
@@ -14425,12 +14482,305 @@ index 0000000000000000000000000000000000000000..a43fc29b8943da4589663c1304b3f75d
 +        Ok(staging)
 +    }
 +}
+diff --git a/vendor/gpui-windows/src/directx_renderer/retained/damage_tiles.rs b/vendor/gpui-windows/src/directx_renderer/retained/damage_tiles.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e7bfa8b70aa3a8061265510c91994c2199b7f3fd
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/retained/damage_tiles.rs
+@@ -0,0 +1,236 @@
++//! Per-buffer damage on the scene comparator's integer-pixel tile grid.
++use super::super::Region;
++use gpui::{DAMAGE_TILE, SceneDamage};
++use std::collections::HashMap;
++
++pub(super) struct DamageTiles {
++    size: (u32, u32),
++    changed: Vec<bool>,
++    unknown: bool,
++}
++
++impl Default for DamageTiles {
++    fn default() -> Self {
++        Self {
++            size: (0, 0),
++            changed: Vec::new(),
++            unknown: true,
++        }
++    }
++}
++
++impl DamageTiles {
++    pub(super) fn covers_target(regions: &[Region], size: (u32, u32)) -> bool {
++        let area: u64 = regions
++            .iter()
++            .map(|r| u64::from(r.width) * u64::from(r.height))
++            .sum();
++        area == u64::from(size.0) * u64::from(size.1)
++    }
++
++    pub(super) fn clear(&mut self, size: (u32, u32)) {
++        self.size = size;
++        self.changed.resize(
++            (size.0.div_ceil(DAMAGE_TILE) as usize) * (size.1.div_ceil(DAMAGE_TILE) as usize),
++            false,
++        );
++        self.changed.fill(false);
++        self.unknown = false;
++    }
++
++    pub(super) fn merge(&mut self, damage: SceneDamage, regions: &[[u32; 4]], size: (u32, u32)) {
++        if self.unknown {
++            return;
++        }
++        if size != self.size || damage == SceneDamage::Unknown {
++            self.unknown = true;
++            return;
++        }
++        if let SceneDamage::Rect {
++            x,
++            y,
++            width,
++            height,
++        } = damage
++        {
++            if regions.is_empty() {
++                self.mark([x, y, width, height]);
++            } else {
++                for &r in regions {
++                    self.mark(r);
++                }
++            }
++        }
++    }
++
++    fn mark(&mut self, [x, y, width, height]: [u32; 4]) {
++        let cols = self.size.0.div_ceil(DAMAGE_TILE) as usize;
++        let right = x
++            .saturating_add(width)
++            .min(self.size.0)
++            .div_ceil(DAMAGE_TILE);
++        let bottom = y
++            .saturating_add(height)
++            .min(self.size.1)
++            .div_ceil(DAMAGE_TILE);
++        if width == 0 || height == 0 {
++            return;
++        }
++        for row in y / DAMAGE_TILE..bottom {
++            for col in x / DAMAGE_TILE..right {
++                self.changed[row as usize * cols + col as usize] = true;
++            }
++        }
++    }
++
++    /// Return disjoint, vertically coalesced runs; None requires a whole frame.
++    pub(super) fn regions(&self) -> Option<Vec<Region>> {
++        if self.unknown {
++            return None;
++        }
++        let (w, h) = self.size;
++        let cols = w.div_ceil(DAMAGE_TILE) as usize;
++        let mut out: Vec<Region> = Vec::new();
++        let mut previous: HashMap<(u32, u32), usize> = HashMap::new();
++        for row in 0..h.div_ceil(DAMAGE_TILE) {
++            let mut current = HashMap::new();
++            let mut col = 0;
++            while col < cols {
++                if !self.changed[row as usize * cols + col] {
++                    col += 1;
++                    continue;
++                }
++                let first = col;
++                while col < cols && self.changed[row as usize * cols + col] {
++                    col += 1;
++                }
++                let x = first as u32 * DAMAGE_TILE;
++                let width = (col as u32 * DAMAGE_TILE).min(w) - x;
++                let y = row * DAMAGE_TILE;
++                let height = DAMAGE_TILE.min(h - y);
++                let key = (x, width);
++                let index = match previous.get(&key).copied() {
++                    Some(i) => {
++                        out[i].height += height;
++                        i
++                    }
++                    None => {
++                        out.push(Region {
++                            x,
++                            y,
++                            width,
++                            height,
++                        });
++                        out.len() - 1
++                    }
++                };
++                current.insert(key, index);
++            }
++            previous = current;
++        }
++        Some(out)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn rect(x: u32, y: u32, width: u32, height: u32) -> SceneDamage {
++        SceneDamage::Rect {
++            x,
++            y,
++            width,
++            height,
++        }
++    }
++
++    #[test]
++    fn distant_edits_preserve_clean_tiles_and_clip_the_last_row() {
++        let mut tiles = DamageTiles::default();
++        tiles.clear((256, 193));
++        tiles.merge(rect(1, 1, 1, 1), &[], (256, 193));
++        tiles.merge(rect(255, 192, 1, 1), &[], (256, 193));
++        let r = tiles.regions().unwrap();
++        assert_eq!(r.len(), 2);
++        assert_eq!(r.iter().map(|r| r.width * r.height).sum::<u32>(), 4096 + 64);
++        assert_eq!(
++            r[1],
++            Region {
++                x: 192,
++                y: 192,
++                width: 64,
++                height: 1
++            }
++        );
++    }
++
++    #[test]
++    fn history_unions_overlap_once_and_coalesces_vertical_runs() {
++        let mut tiles = DamageTiles::default();
++        tiles.clear((256, 192));
++        tiles.merge(rect(65, 1, 1, 1), &[], (256, 192));
++        tiles.merge(rect(65, 1, 1, 127), &[], (256, 192));
++        assert_eq!(
++            tiles.regions().unwrap(),
++            vec![Region {
++                x: 64,
++                y: 0,
++                width: 64,
++                height: 128
++            }]
++        );
++        tiles.merge(SceneDamage::Unknown, &[], (256, 192));
++        tiles.merge(SceneDamage::Unchanged, &[], (256, 192));
++        assert!(tiles.regions().is_none());
++        tiles.clear((256, 192));
++        assert!(tiles.regions().unwrap().is_empty());
++    }
++
++    #[test]
++    fn sparse_regions_override_the_conservative_envelope() {
++        let mut tiles = DamageTiles::default();
++        tiles.clear((256, 192));
++        tiles.merge(
++            rect(0, 0, 256, 192),
++            &[[0, 0, 64, 64], [192, 128, 64, 64]],
++            (256, 192),
++        );
++        assert_eq!(
++            tiles
++                .regions()
++                .unwrap()
++                .iter()
++                .map(|r| r.width * r.height)
++                .sum::<u32>(),
++            8192
++        );
++        tiles.merge(SceneDamage::Unchanged, &[], (257, 192));
++        assert!(tiles.regions().is_none());
++    }
++
++    #[test]
++    fn every_small_grid_mask_is_covered_exactly_once() {
++        let size = (129, 65);
++        for mask in 0u32..64 {
++            let mut tiles = DamageTiles::default();
++            tiles.clear(size);
++            for cell in 0..6 {
++                if mask & (1 << cell) != 0 {
++                    tiles.merge(rect((cell % 3) * 64, (cell / 3) * 64, 1, 1), &[], size);
++                }
++            }
++            let regions = tiles.regions().unwrap();
++            for y in 0..size.1 {
++                for x in 0..size.0 {
++                    let covers = regions
++                        .iter()
++                        .filter(|r| x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height)
++                        .count();
++                    let selected = mask & (1 << (x / 64 + (y / 64) * 3)) != 0;
++                    assert_eq!(covers, usize::from(selected), "mask={mask} at ({x},{y})");
++                }
++            }
++        }
++    }
++}
+diff --git a/vendor/gpui-windows/src/directx_renderer/retained/draw.rs b/vendor/gpui-windows/src/directx_renderer/retained/draw.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..4a1a7874bc2cd36a45a74fdcb30874179caa077f
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/retained/draw.rs
+@@ -0,0 +1,45 @@
++//! Prepare groups and instance buffers once, then replay disjoint scissors.
++use super::super::*;
++
++impl DirectXRenderer {
++    pub(in crate::directx_renderer) fn needed_damage_groups(
++        scene: &Scene,
++        regions: Option<&[Region]>,
++    ) -> Option<Vec<bool>> {
++        regions.map(|regions| {
++            let mut needed = vec![false; scene.groups.len()];
++            for r in regions {
++                for (n, hit) in needed
++                    .iter_mut()
++                    .zip(scene.groups_needed([r.x, r.y, r.width, r.height]))
++                {
++                    *n |= hit;
++                }
++            }
++            needed
++        })
++    }
++
++    pub(in crate::directx_renderer) fn draw_damage_regions(
++        &mut self,
++        scene: &Scene,
++        regions: Option<&[Region]>,
++        clear: [f32; 4],
++    ) -> Result<()> {
++        let Some(regions) = regions else {
++            return self.draw_scene(scene);
++        };
++        self.upload_scene_buffers(scene)?;
++        let ctx = self.dev().device_context.clone();
++        for &region in regions {
++            let restore = self.begin_scissor(region)?;
++            self.backdrop_pending = self.backdrop.is_some();
++            let drawn = self
++                .clear_frame(clear)
++                .and_then(|()| self.draw_scene_at(scene, Some([0; 6])));
++            unsafe { ctx.RSSetState(&restore) };
++            drawn?;
++        }
++        Ok(())
++    }
++}
 diff --git a/vendor/gpui-windows/src/directx_renderer/retained/full_by.rs b/vendor/gpui-windows/src/directx_renderer/retained/full_by.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c748024332c93f463312a869afa8bbfda84ffca9
+index 0000000000000000000000000000000000000000..b28e6781e2a0803fe4a5d5e03b0cddaa1981b1dd
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/retained/full_by.rs
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,98 @@
 +//! KaminIDE patch: why a frame is drawn whole, and the count of every plan
 +//! in the `[gpu]` line (`plan keep=… full=… within=… full_by=…`).
 +
@@ -14498,7 +14848,9 @@ index 0000000000000000000000000000000000000000..c748024332c93f463312a869afa8bbfd
 +        let counted = match plan {
 +            Plan::Keep => FramePlan::Keep,
 +            Plan::Full => FramePlan::Full(self.retained.full_by.name()),
-+            Plan::Within(r) => FramePlan::Within(r.width as f64 * r.height as f64),
++            Plan::Within(r) => {
++                FramePlan::Within(r.iter().map(|r| r.width as f64 * r.height as f64).sum())
++            }
 +        };
 +        self.gpu_timer.instrumentation.batches.plan(counted, window);
 +    }
@@ -14511,12 +14863,20 @@ index 0000000000000000000000000000000000000000..c748024332c93f463312a869afa8bbfd
 +
 +    #[test]
 +    fn an_unplaced_external_change_comes_first_then_the_target() {
-+        let rect = SceneDamage::Rect { x: 0, y: 0, width: 1, height: 1 };
++        let rect = SceneDamage::Rect {
++            x: 0,
++            y: 0,
++            width: 1,
++            height: 1,
++        };
 +        let unknown = SceneDamage::Unknown;
 +        assert_eq!(FullBy::of(unknown, true, rect, rect), FullBy::External);
 +        assert_eq!(FullBy::of(rect, true, rect, unknown), FullBy::Target);
 +        assert_eq!(FullBy::of(rect, false, rect, unknown), FullBy::Unknown);
-+        assert_eq!(FullBy::of(SceneDamage::Unchanged, false, rect, rect), FullBy::Earlier);
++        assert_eq!(
++            FullBy::of(SceneDamage::Unchanged, false, rect, rect),
++            FullBy::Earlier
++        );
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/scene_capture.rs b/vendor/gpui-windows/src/directx_renderer/scene_capture.rs

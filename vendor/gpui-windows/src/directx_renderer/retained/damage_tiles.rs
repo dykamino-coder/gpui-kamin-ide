@@ -21,7 +21,10 @@ impl Default for DamageTiles {
 
 impl DamageTiles {
     pub(super) fn covers_target(regions: &[Region], size: (u32, u32)) -> bool {
-        let area: u64 = regions.iter().map(|r| u64::from(r.width) * u64::from(r.height)).sum();
+        let area: u64 = regions
+            .iter()
+            .map(|r| u64::from(r.width) * u64::from(r.height))
+            .sum();
         area == u64::from(size.0) * u64::from(size.1)
     }
 
