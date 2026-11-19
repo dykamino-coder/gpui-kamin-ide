@@ -340,7 +340,12 @@ pub(super) async fn run(
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
         let mut work = Vec::with_capacity(args.runs);
-        let step = super::memory::phase_step(cx, capture, cold).await?;
+        let (step, busy_windows) = if args.mode == Mode::Scroll {
+            let busy = super::memory::converge(cx, capture, 5).await?;
+            (Step::Warm, Some(busy))
+        } else {
+            (super::memory::phase_step(cx, capture, cold).await?, None)
+        };
         for index in 1..=args.runs {
             frames.prepare(cx, window, index)?;
             let (sample, frame, counts) =
@@ -360,6 +365,9 @@ pub(super) async fn run(
         let mut mode = report::measured_mode(&samples, &diagnostics);
         #[cfg(feature = "heap-report")]
         super::holders::attach(cx, window, name, &mut mode)?;
+        if let Some(busy) = busy_windows {
+            mode["start_busy_steady_windows"] = json!(busy);
+        }
         modes.insert(name.into(), mode);
         work_samples.push((name, work));
     }

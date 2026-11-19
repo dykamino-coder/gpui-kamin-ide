@@ -32,6 +32,18 @@ pub(super) async fn phase_step(
     Ok(run::Step::Warm)
 }
 
+/// Start of the scroll phase: the root scroller may still paint a few frames
+/// after its cold setup, so wait for a steady window up to `tries` times and
+/// return how many windows saw a frame (reported, never hidden).
+pub(super) async fn converge(cx: &AsyncApp, capture: &CaptureSession, tries: u32) -> Result<u32> {
+    for busy in 0..tries {
+        if steady(cx, capture).await.is_ok() {
+            return Ok(busy);
+        }
+    }
+    Err(format!("the document kept painting through {tries} steady windows").into())
+}
+
 async fn idle(cx: &AsyncApp, capture: &CaptureSession, milliseconds: u64) -> Result<Value> {
     let sequence = capture.sequence();
     let before = Snapshot::read()?;
