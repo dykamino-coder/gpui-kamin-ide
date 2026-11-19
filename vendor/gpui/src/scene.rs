@@ -650,6 +650,9 @@ impl Scene {
                 *bounds = record::geometry::bounds(*bounds, offset);
                 true
             }
+            // KaminIDE patch: a moved copy is not a scroll step; its primitives
+            // stay as drawn, unmarked, so a scrolled replay builds instead.
+            PaintOperation::Reservoir(_) => false,
             _ => true,
         });
         if !self.replay_shifted(&operations, ReplaySource::Pack, &prev_scene.book.images, |_| true) {
@@ -692,6 +695,9 @@ impl Scene {
                 *bounds = record::geometry::bounds(*bounds, offset);
                 true
             }
+            // KaminIDE patch: a moved copy is not a scroll step; its primitives
+            // stay as drawn, unmarked, so a scrolled replay builds instead.
+            PaintOperation::Reservoir(_) => false,
             _ => true,
         })
     }
@@ -703,7 +709,10 @@ impl Scene {
         let mut layers = 0usize;
         for operation in operations {
             match operation {
-                PaintOperation::Primitive(_) | PaintOperation::Layer(_) | PaintOperation::Dormant(_) => {}
+                PaintOperation::Primitive(_)
+                | PaintOperation::Layer(_)
+                | PaintOperation::Dormant(_)
+                | PaintOperation::Reservoir(_) => {}
                 PaintOperation::StartLayer(..) => layers += 1,
                 PaintOperation::EndLayer => match layers.checked_sub(1) {
                     Some(open) => layers = open,
@@ -827,6 +836,8 @@ impl Scene {
                     }
                 }
                 PaintOperation::StartLayer(_, order) => *order += shift,
+                // KaminIDE patch: the primitives a reservoir draws next take it too.
+                PaintOperation::Reservoir(reservoir) => reservoir.raised += shift,
                 PaintOperation::Layer(layer) => {
                     if !self.ink.is_empty() || self.ink_scope != 0 {
                         ink = Some(ink.map_or(layer.bounds, |ink| ink.union(&layer.bounds)));
@@ -975,6 +986,7 @@ impl Scene {
             PaintOperation::EndDepthPlane => self.pop_depth_plane(),
             // KaminIDE patch: kept as it is, not drawn.
             PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
+            PaintOperation::Reservoir(reservoir) => self.paint_operations.push(PaintOperation::Reservoir(reservoir)),
         }
     }
 
@@ -1155,6 +1167,9 @@ pub(crate) enum PaintOperation {
     /// KaminIDE patch: a primitive under a scroll node that its chain hides
     /// now; not drawn, kept for a replay at another offset (`scroll_marks`).
     Dormant(std::rc::Rc<Primitive>),
+    /// KaminIDE patch: the primitives of one scroll node kept across frames;
+    /// the `drawn` commands after it are the ones it shows now (`scroll_marks`).
+    Reservoir(Box<scroll_marks::ReservoirOp>),
 }
 
 #[derive(Clone)]

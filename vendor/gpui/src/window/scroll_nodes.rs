@@ -60,7 +60,7 @@ pub(crate) struct PaintPairing {
     cursor: usize,
     /// Copied nodes waiting for the paint range that holds them: index and
     /// scene range in the rendered frame (`reuse_scroll_nodes`).
-    landing: Vec<(u32, Range<usize>)>,
+    pub(crate) landing: Vec<(u32, Range<usize>)>,
     /// Content mask depth under each open prepaint node.
     pub(crate) depths: Vec<usize>,
     /// Open paint nodes and the content mask depth under each.

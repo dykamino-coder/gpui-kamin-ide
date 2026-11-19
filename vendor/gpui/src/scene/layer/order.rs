@@ -87,7 +87,7 @@ fn tree_rects(ops: &[PaintOperation], mut f: impl FnMut(usize, Bounds<ScaledPixe
             PaintOperation::StartBottomLayer => depth += 1,
             PaintOperation::EndLayer => depth = depth.saturating_sub(1),
             // KaminIDE patch: a dormant primitive draws nothing.
-            PaintOperation::Dormant(_) => {}
+            PaintOperation::Dormant(_) | PaintOperation::Reservoir(_) => {}
             PaintOperation::Layer(layer) => {
                 if depth == 0 {
                     f(at, layer.bounds, layer.order / ORDER_STEP);

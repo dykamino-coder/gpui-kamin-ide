@@ -139,14 +139,24 @@ impl Window {
         let range = record.range();
         self.reuse_paint_state(&range);
         let scenes = range.start.scene_index..range.end.scene_index;
-        let landed = self.next_frame.scene.paint_operations.len();
         let scale = self.scale_factor();
         let scaled = |point: Point<Pixels>| point.scale(scale);
-        self.next_frame.scene.replay_scrolled(scenes.clone(), &self.rendered_frame.scene, |id| {
+        // The copied nodes' scene ranges, mapped through the replay.
+        let landing = std::mem::take(&mut self.next_frame.scroll_paint.landing);
+        let (mine, others): (Vec<_>, Vec<_>) =
+            landing.into_iter().partition(|(_, paint)| paint.start >= scenes.start && paint.end <= scenes.end);
+        self.next_frame.scroll_paint.landing = others;
+        let mut edges: Vec<(usize, usize)> = mine.iter().flat_map(|(_, paint)| [(paint.start, 0), (paint.end, 0)]).collect();
+        edges.sort_unstable();
+        edges.dedup();
+        self.next_frame.scene.replay_scrolled(scenes, &self.rendered_frame.scene, |id| {
             let node = plan.node(id);
             (scaled(node.shift), node.clip.scale(scale))
-        });
-        self.land_scroll_nodes(scenes, landed);
+        }, &mut edges);
+        let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
+        for (index, paint) in mine {
+            self.next_frame.scroll_nodes[index as usize].paint = Some(land(paint.start)..land(paint.end));
+        }
         self.allow_replayed(record);
         RetainedPaint::of(start..self.paint_index(), true, record.allowed)
     }

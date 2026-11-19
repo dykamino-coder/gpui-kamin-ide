@@ -91,7 +91,7 @@ fn scrolled(
 }
 
 /// A wheel step inside the interest rect replays the record moved: what
-/// scrolls out is kept dormant, what scrolls in (recorded dormant) is drawn,
+/// scrolls out stays in the node's reservoir, what scrolls in is drawn,
 /// and the frame equals a fresh paint at the new offset; the step back wakes
 /// the first row again. A step past the interest rect needs a build.
 #[crate::test]
@@ -106,18 +106,19 @@ fn a_scroll_step_inside_the_interest_rect_replays_like_a_fresh_paint(cx: &mut Te
             let (prepaint, paint, _) = record(window, node, 0.);
             let at_rest = drawn(window);
             assert_eq!(at_rest, (vec![(10., clip().scale(s))], 1));
+            let at_rest = at_rest.0;
             next_frame(window);
             let (prepaint, paint) = scrolled(window, (&prepaint, &paint), node, -30.).expect("a step inside the interest rect");
-            let stepped = drawn(window);
+            let stepped = drawn(window).0;
             next_frame(window);
             let (prepaint, paint) = scrolled(window, (&prepaint, &paint), node, 0.).expect("the step back");
-            assert_eq!(drawn(window), at_rest, "the row that scrolled out comes back");
+            assert_eq!(drawn(window).0, at_rest, "the row that scrolled out comes back");
             next_frame(window);
             assert!(scrolled(window, (&prepaint, &paint), node, -200.).is_none());
             next_frame(window);
             record(window, node, -30.);
-            assert_eq!(stepped, drawn(window), "a fresh paint at the stepped offset");
-            assert_eq!(stepped, (vec![(30., clip().scale(s))], 1));        })
+            assert_eq!(stepped, drawn(window).0, "a fresh paint at the stepped offset");
+            assert_eq!(stepped, vec![(30., clip().scale(s))]);        })
         .unwrap();
 }
 

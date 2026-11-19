@@ -12266,7 +12266,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a46552025216
+index 160587a4ad924f80c2dd01b90a8300febbc13105..7faf4b66c77724ed860308ee4f636da4d8c99630
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,38 @@
@@ -12766,7 +12766,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +590,115 @@
+@@ -142 +590,121 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let landed = self.paint_operations.len();
 +        self.scroll.raise = 0;
@@ -12831,6 +12831,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +                *bounds = record::geometry::bounds(*bounds, offset);
 +                true
 +            }
++            // KaminIDE patch: a moved copy is not a scroll step; its primitives
++            // stay as drawn, unmarked, so a scrolled replay builds instead.
++            PaintOperation::Reservoir(_) => false,
 +            _ => true,
 +        });
 +        if !self.replay_shifted(&operations, ReplaySource::Pack, &prev_scene.book.images, |_| true) {
@@ -12873,6 +12876,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +                *bounds = record::geometry::bounds(*bounds, offset);
 +                true
 +            }
++            // KaminIDE patch: a moved copy is not a scroll step; its primitives
++            // stay as drawn, unmarked, so a scrolled replay builds instead.
++            PaintOperation::Reservoir(_) => false,
 +            _ => true,
 +        })
 +    }
@@ -12883,12 +12889,15 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +706,272 @@
+@@ -144,4 +712,278 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
 -            }
-+                PaintOperation::Primitive(_) | PaintOperation::Layer(_) | PaintOperation::Dormant(_) => {}
++                PaintOperation::Primitive(_)
++                | PaintOperation::Layer(_)
++                | PaintOperation::Dormant(_)
++                | PaintOperation::Reservoir(_) => {}
 +                PaintOperation::StartLayer(..) => layers += 1,
 +                PaintOperation::EndLayer => match layers.checked_sub(1) {
 +                    Some(open) => layers = open,
@@ -13012,6 +13021,8 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +                    }
 +                }
 +                PaintOperation::StartLayer(_, order) => *order += shift,
++                // KaminIDE patch: the primitives a reservoir draws next take it too.
++                PaintOperation::Reservoir(reservoir) => reservoir.raised += shift,
 +                PaintOperation::Layer(layer) => {
 +                    if !self.ink.is_empty() || self.ink_scope != 0 {
 +                        ink = Some(ink.map_or(layer.bounds, |ink| ink.union(&layer.bounds)));
@@ -13160,9 +13171,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
 +            // KaminIDE patch: kept as it is, not drawn.
 +            PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
-@@ -162,0 +993 @@
++            PaintOperation::Reservoir(reservoir) => self.paint_operations.push(PaintOperation::Reservoir(reservoir)),
+@@ -162,0 +1005 @@
 +        self.finish_layers();
-@@ -190,2 +1021,96 @@
+@@ -190,2 +1033,96 @@
 -        }
 -    }
 +            layers: &self.book.layers,
@@ -13261,7 +13273,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1137,5 @@
+@@ -212,2 +1149,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -13269,13 +13281,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1144,4 @@
+@@ -216 +1156,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1149,9 @@
+@@ -217,0 +1161,12 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
@@ -13285,7 +13297,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +    /// KaminIDE patch: a primitive under a scroll node that its chain hides
 +    /// now; not drawn, kept for a replay at another offset (`scroll_marks`).
 +    Dormant(std::rc::Rc<Primitive>),
-@@ -259,0 +1200,69 @@
++    /// KaminIDE patch: the primitives of one scroll node kept across frames;
++    /// the `drawn` commands after it are the ones it shows now (`scroll_marks`).
++    Reservoir(Box<scroll_marks::ReservoirOp>),
+@@ -259,0 +1215,69 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -13355,20 +13370,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1295,2 @@
+@@ -285,0 +1310,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1330,4 @@
+@@ -318,0 +1345,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1479 @@
+@@ -463,0 +1494 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1512,2 @@
+@@ -495,0 +1527,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -528,5 +1546,6 @@
+@@ -528,5 +1561,6 @@
 -        }
 -    }
 -}
@@ -13380,7 +13395,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +}
 +
 +#[derive(Default, Debug, Copy, Clone, PartialEq)]
-@@ -543,0 +1563,10 @@
+@@ -543,0 +1578,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -13391,25 +13406,25 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -552 +1581 @@
+@@ -552 +1596 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -571 +1600 @@
+@@ -571 +1615 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -580,0 +1610,5 @@
+@@ -580,0 +1625,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1637,5 @@
+@@ -602,0 +1652,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1689,12 @@
+@@ -649,0 +1704,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -13422,19 +13437,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -708 +1759 @@
+@@ -708 +1774 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -727 +1778 @@
+@@ -727 +1793 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -746 +1797 @@
+@@ -746 +1812 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -751 +1802 @@
+@@ -751 +1817 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1809,54 @@
+@@ -757,0 +1824,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -13489,7 +13504,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1879,23 @@
+@@ -773,0 +1894,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -13513,19 +13528,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..d50ec0a516b6bb323aa7874ad247a465
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1924,2 @@
+@@ -795,0 +1939,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +1946 @@
+@@ -815,0 +1961 @@
 +            color_mapping: None,
-@@ -835,0 +1967,6 @@
+@@ -835,0 +1982,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
 +                matrix.translation[1] *= factor;
 +                (bounds.scale(factor), matrix)
 +            }),
-@@ -949,0 +2087,55 @@
+@@ -949,0 +2102,55 @@
 +
 +/// KaminIDE patch: the primitives of `scene` in the order its batches draw
 +/// them, a retained layer's in its place (`Window::painted_sequence`): each
@@ -15653,7 +15668,7 @@ index 0000000000000000000000000000000000000000..39dce5eefbc447b93b28f0a495219583
 +}
 diff --git a/vendor/gpui/src/scene/layer/order.rs b/vendor/gpui/src/scene/layer/order.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..710889062af706c44a86809354ee84906a39f71e
+index 0000000000000000000000000000000000000000..2072c02ac1a54b919ace42a549d8ca8786c62d3b
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/order.rs
 @@ -0,0 +1,245 @@
@@ -15746,7 +15761,7 @@ index 0000000000000000000000000000000000000000..710889062af706c44a86809354ee8490
 +            PaintOperation::StartBottomLayer => depth += 1,
 +            PaintOperation::EndLayer => depth = depth.saturating_sub(1),
 +            // KaminIDE patch: a dormant primitive draws nothing.
-+            PaintOperation::Dormant(_) => {}
++            PaintOperation::Dormant(_) | PaintOperation::Reservoir(_) => {}
 +            PaintOperation::Layer(layer) => {
 +                if depth == 0 {
 +                    f(at, layer.bounds, layer.order / ORDER_STEP);
@@ -18116,10 +18131,10 @@ index 0000000000000000000000000000000000000000..96ce71c11a00c60ddb6cd3e9af73e105
 +}
 diff --git a/vendor/gpui/src/scene/scroll_marks.rs b/vendor/gpui/src/scene/scroll_marks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..12826921026e7329037c5b293cc9e4e5cd65efd2
+index 0000000000000000000000000000000000000000..c98fd72ab9b2d15fa6bf528f6644a27bf5a7db67
 --- /dev/null
 +++ b/vendor/gpui/src/scene/scroll_marks.rs
-@@ -0,0 +1,223 @@
+@@ -0,0 +1,381 @@
 +//! KaminIDE patch: primitives painted under a scroll node (`window::scroll_nodes`).
 +//!
 +//! A primitive painted inside a scroll container keeps its own mask: the mask
@@ -18232,114 +18247,272 @@ index 0000000000000000000000000000000000000000..12826921026e7329037c5b293cc9e4e5
 +    /// Whether `range` of this finished scene can be replayed scrolled: its
 +    /// commands keep their orders under one shift (`shiftable`), and inside
 +    /// each node's scene range (`nodes`) every command is a marked primitive
-+    /// (copies that dropped marks, layers or depth sorting need a build).
++    /// or a reservoir with the primitives it drew (copies that dropped marks,
++    /// layers or depth sorting need a build).
 +    pub(crate) fn scrollable(&self, range: &Range<usize>, nodes: impl Iterator<Item = Range<usize>>) -> bool {
-+        let operations = &self.paint_operations[range.clone()];
-+        Self::shiftable(operations)
++        Self::shiftable(&self.paint_operations[range.clone()])
 +            && nodes.into_iter().all(|node| {
-+                let marked = self.scroll.within(&node).len();
-+                marked == node.len()
-+                    && self.paint_operations[node]
-+                        .iter()
-+                        .all(|op| matches!(op, PaintOperation::Primitive(_) | PaintOperation::Dormant(_)))
++                let mut plain = 0;
++                let mut at = node.start;
++                while at < node.end {
++                    match &self.paint_operations[at] {
++                        PaintOperation::Reservoir(reservoir) => at += reservoir.drawn as usize,
++                        PaintOperation::Primitive(_) | PaintOperation::Dormant(_) => plain += 1,
++                        _ => return false,
++                    }
++                    at += 1;
++                }
++                at == node.end && plain == self.scroll.within(&node).len()
 +            })
 +    }
 +
 +    /// `replay` of `range` of the rendered `prev` with the scroll nodes moved:
-+    /// `node` gives a node's shift and real clip chain in this frame. Each
-+    /// marked primitive moves by its node's shift and is drawn with
-+    /// (own + shift) ∩ chain, dormant when that shows nothing; runs of
-+    /// commands with one shift are copied as `replay` copies a range, so a run
-+    /// keeps its recorded relative orders and lies above what it overlaps
-+    /// before it. The caller checked `scrollable` and that this scene is at
-+    /// its root (no open layer or depth context).
++    /// `node` gives a node's shift and real clip chain in this frame. The
++    /// commands of a node between other commands form a reservoir (made once
++    /// from its marked primitives, then shared by the frames that replay it):
++    /// each frame draws only its primitives that (own + shift) ∩ chain shows,
++    /// found through its tile grid, in their paint order, moved by the
++    /// node's total shift. Runs of commands with one shift are copied as
++    /// `replay` copies a range, so a run keeps its relative orders and lies
++    /// above what it overlaps before it. The caller checked `scrollable` and
++    /// that this scene is at its root (no open layer or depth context).
 +    pub(crate) fn replay_scrolled(
 +        &mut self,
 +        range: Range<usize>,
 +        prev: &Scene,
 +        node: impl Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>),
++        edges: &mut [(usize, usize)],
 +    ) {
++        // Where each of dges (old command indices, sorted) lands here.
++        let mut edge = 0;
 +        let marks = prev.scroll.within(&range);
 +        let mut marks = marks.iter().peekable();
 +        let mut run: Vec<PaintOperation> = Vec::new();
-+        let mut run_marks: Vec<ScrollMark> = Vec::new();
-+        let mut run_shift = Point::default();
-+        for at in range {
++        let mut run_shift: Point<ScaledPixels> = Point::default();
++        let mut at = range.start;
++        while at < range.end {
++            while edge < edges.len() && edges[edge].0 <= at {
++                edges[edge].1 = self.paint_operations.len() + run.len();
++                edge += 1;
++            }
 +            let source = &prev.paint_operations[at];
-+            let Some(found) = marks.next_if(|mark| mark.op as usize == at) else {
++            // A reservoir, or the marked primitives of one node made into one.
++            let found = match source {
++                PaintOperation::Reservoir(reservoir) => {
++                    at += 1 + reservoir.drawn as usize;
++                    Some(((**reservoir).clone(), node(reservoir.run.node)))
++                }
++                _ => match marks.peek() {
++                    Some(mark) if mark.op as usize == at => {
++                        let id = mark.node;
++                        let mut items = Vec::new();
++                        while let Some(mark) = marks.next_if(|mark| mark.op as usize == at && mark.node == id) {
++                            items.push(Item::of(&prev.paint_operations[at], mark));
++                            at += 1;
++                        }
++                        let run = std::rc::Rc::new(Run::new(id, items));
++                        Some((ReservoirOp { run, shift: Point::default(), raised: 0, drawn: 0 }, node(id)))
++                    }
++                    _ => None,
++                },
++            };
++            let Some((mut reservoir, (shift, chain))) = found else {
 +                if run_shift != Point::default() && !run.is_empty() {
-+                    self.replay_run(&run, &run_marks, &prev.book.images);
++                    self.replay_run(&run, &prev.book.images);
 +                    run.clear();
-+                    run_marks.clear();
 +                }
 +                run_shift = Point::default();
 +                run.push(source.clone());
++                at += 1;
 +                continue;
 +            };
-+            let (shift, chain) = node(found.node);
-+            let own = record::geometry::bounds(found.own, shift);
-+            let placed = record::geometry::bounds(found.placed, shift);
-+            let mask = own.intersect(&chain);
-+            let shown = !placed.intersect(&mask).is_empty();
-+            let mut mark = ScrollMark { own, placed, ..*found };
-+            let operation = match (source, shown) {
-+                (PaintOperation::Primitive(primitive), true) => {
-+                    let mut primitive = primitive.clone();
-+                    record::geometry::primitive(&mut primitive, shift, None);
-+                    primitive.content_mask_mut().bounds = mask;
-+                    PaintOperation::Primitive(primitive)
-+                }
-+                (PaintOperation::Primitive(primitive), false) => {
-+                    mark.moved = shift;
-+                    PaintOperation::Dormant(std::rc::Rc::new(primitive.clone()))
-+                }
-+                (PaintOperation::Dormant(primitive), true) => {
-+                    let mut primitive = Primitive::clone(primitive);
-+                    record::geometry::primitive(&mut primitive, found.moved + shift, None);
-+                    *primitive.order_mut() += found.raised;
-+                    primitive.content_mask_mut().bounds = mask;
-+                    mark.moved = Point::default();
-+                    mark.raised = 0;
-+                    PaintOperation::Primitive(primitive)
-+                }
-+                (PaintOperation::Dormant(primitive), false) => {
-+                    mark.moved = found.moved + shift;
-+                    PaintOperation::Dormant(primitive.clone())
-+                }
-+                _ => unreachable!("a scroll mark on a command that is not a primitive"),
-+            };
-+            if shift != run_shift && !run.is_empty() {
-+                self.replay_run(&run, &run_marks, &prev.book.images);
++            // A reservoir is copied on its own, indexed by its tree.
++            if !run.is_empty() {
++                self.replay_run(&run, &prev.book.images);
 +                run.clear();
-+                run_marks.clear();
 +            }
-+            run_shift = shift;
-+            mark.op = run.len() as u32;
-+            run_marks.push(mark);
-+            run.push(operation);
++            run_shift = Point::default();
++            reservoir.shift = reservoir.shift + shift;
++            run.push(PaintOperation::Dormant(std::rc::Rc::new(Primitive::Quad(Default::default()))));
++            reservoir.run.draw(reservoir.shift, reservoir.raised, chain, &mut run);
++            reservoir.drawn = (run.len() - 1) as u32;
++            let tree = reservoir.run.tree.clone();
++            let graft = crate::bounds_tree::Graft::new(tree, reservoir.shift, Some(chain), reservoir.raised / ORDER_STEP);
++            run[0] = PaintOperation::Reservoir(Box::new(reservoir));
++            if !self.replay_shifted(&run, ReplaySource::Graft(graft, true), &prev.book.images, |_| true) {
++                for operation in &run {
++                    self.replay_image_operation(operation.clone(), &prev.book.images);
++                }
++            }
++            run.clear();
 +        }
 +        if !run.is_empty() {
-+            self.replay_run(&run, &run_marks, &prev.book.images);
++            self.replay_run(&run, &prev.book.images);
++        }
++        for edge in &mut edges[edge..] {
++            edge.1 = self.paint_operations.len();
 +        }
 +    }
-+    /// One run of `replay_scrolled`: copied with a tree packed from the
-+    /// commands; marks land when the copy was one command per command.
-+    fn replay_run(&mut self, run: &[PaintOperation], marks: &[ScrollMark], images: &image_resources::ImageResources) {
-+        let landed = self.paint_operations.len();
-+        self.scroll.raise = 0;
++
++    /// One run of `replay_scrolled`, copied with a tree packed from it.
++    fn replay_run(&mut self, run: &[PaintOperation], images: &image_resources::ImageResources) {
 +        if !self.replay_shifted(run, ReplaySource::Pack, images, |_| true) {
 +            for operation in run {
 +                self.replay_image_operation(operation.clone(), images);
 +            }
 +        }
-+        if self.paint_operations.len() - landed == run.len() {
-+            let raise = self.scroll.raise;
-+            let ops = &self.paint_operations;
-+            self.scroll.marks.extend(marks.iter().map(|mark| {
-+                let op = landed as u32 + mark.op;
-+                let dormant = matches!(ops[op as usize], PaintOperation::Dormant(_));
-+                ScrollMark { op, raised: mark.raised + if dormant { raise } else { 0 }, ..*mark }
-+            }));
++    }
++}
++
++/// Side of a reservoir tile (scaled pixels). Like cc's raster tilings, and
++/// unlike a one-axis sort, a grid finds what a clip shows when the node
++/// scrolls on either axis (wide pages, carousels, vertical writing modes).
++const TILE: f32 = 512.;
++/// A primitive covering more tiles is checked on every draw instead.
++const SPREAD: usize = 16;
++
++/// One primitive of a reservoir, as of the frame it was made in.
++#[derive(Clone)]
++struct Item {
++    primitive: Primitive,
++    own: Bounds<ScaledPixels>,
++    placed: Bounds<ScaledPixels>,
++}
++
++impl Item {
++    /// A marked command with the shift and raise it has not taken yet.
++    fn of(operation: &PaintOperation, mark: &ScrollMark) -> Self {
++        let mut primitive = match operation {
++            PaintOperation::Primitive(primitive) => primitive.clone(),
++            PaintOperation::Dormant(primitive) => Primitive::clone(primitive),
++            _ => unreachable!("a scroll mark on a command that is not a primitive"),
++        };
++        if mark.moved != Point::default() {
++            record::geometry::primitive(&mut primitive, mark.moved, None);
++        }
++        *primitive.order_mut() += mark.raised;
++        Item { primitive, own: mark.own, placed: mark.placed }
++    }
++}
++
++/// The primitives one node painted between other commands, in paint order,
++/// with a tile grid over where they land (CSR: `cells` offsets into `tiled`).
++pub(crate) struct Run {
++    node: ScrollNodeId,
++    items: Vec<Item>,
++    origin: Point<ScaledPixels>,
++    columns: usize,
++    rows: usize,
++    cells: Vec<u32>,
++    tiled: Vec<u32>,
++    spread: Vec<u32>,
++    /// Where the items land, as the bounds tree would hold them, packed once
++    /// and grafted moved by the shift and clipped by the chain each frame.
++    tree: std::rc::Rc<crate::bounds_tree::BoundsTree<ScaledPixels>>,
++}
++
++/// A reservoir in a scene: the shared run, the shift and order raise its
++/// primitives take now, and how many primitives it drew after itself.
++#[derive(Clone)]
++pub(crate) struct ReservoirOp {
++    pub(crate) run: std::rc::Rc<Run>,
++    pub(crate) shift: Point<ScaledPixels>,
++    pub(crate) raised: DrawOrder,
++    pub(crate) drawn: u32,
++}
++
++impl Run {
++    fn new(node: ScrollNodeId, items: Vec<Item>) -> Self {
++        let area = items.iter().map(|item| item.placed.intersect(&item.own)).reduce(|a, b| a.union(&b));
++        let area = area.unwrap_or_default();
++        let tile = |value: ScaledPixels, from: ScaledPixels| ((value.0 - from.0) / TILE).floor().max(0.) as usize;
++        let columns = tile(area.right(), area.left()) + 1;
++        let rows = tile(area.bottom(), area.top()) + 1;
++        let span = |bounds: &Bounds<ScaledPixels>| {
++            let (left, right) = (tile(bounds.left(), area.left()), tile(bounds.right(), area.left()).min(columns - 1));
++            let (top, bottom) = (tile(bounds.top(), area.top()), tile(bounds.bottom(), area.top()).min(rows - 1));
++            (left, right, top, bottom)
++        };
++        let mut counts = vec![0u32; columns * rows + 1];
++        let mut spread = Vec::new();
++        let reach: Vec<_> = items
++            .iter()
++            .enumerate()
++            .map(|(index, item)| {
++                let shown = item.placed.intersect(&item.own);
++                let (left, right, top, bottom) = span(&shown);
++                let wide = shown.is_empty() || (right - left + 1) * (bottom - top + 1) > SPREAD;
++                if wide {
++                    spread.push(index as u32);
++                } else {
++                    for row in top..=bottom {
++                        for column in left..=right {
++                            counts[row * columns + column + 1] += 1;
++                        }
++                    }
++                }
++                (wide, left, right, top, bottom)
++            })
++            .collect();
++        for cell in 1..counts.len() {
++            counts[cell] += counts[cell - 1];
++        }
++        let mut fill = counts.clone();
++        let mut tiled = vec![0u32; *counts.last().unwrap_or(&0) as usize];
++        for (index, &(wide, left, right, top, bottom)) in reach.iter().enumerate() {
++            if wide {
++                continue;
++            }
++            for row in top..=bottom {
++                for column in left..=right {
++                    let cell = row * columns + column;
++                    tiled[fill[cell] as usize] = index as u32;
++                    fill[cell] += 1;
++                }
++            }
++        }
++        let rects = items
++            .iter()
++            .map(|item| (item.placed.intersect(&item.own), item.primitive.order() / ORDER_STEP))
++            .filter(|(rect, _)| !rect.is_empty())
++            .collect();
++        let mut tree = crate::bounds_tree::BoundsTree::packed(rects, |coordinate| coordinate.0);
++        tree.freeze();
++        let tree = std::rc::Rc::new(tree);
++        Run { node, items, origin: area.origin, columns, rows, cells: counts, tiled, spread, tree }
++    }
++
++    /// Append the primitives `chain` shows with the run moved by `shift`, in
++    /// paint order, each moved and drawn with (own + shift) ∩ chain.
++    fn draw(&self, shift: Point<ScaledPixels>, raised: DrawOrder, chain: Bounds<ScaledPixels>, out: &mut Vec<PaintOperation>) {
++        // The clip in the run's coordinates, as tiles.
++        let seen = record::geometry::bounds(chain, point(ScaledPixels(-shift.x.0), ScaledPixels(-shift.y.0)));
++        let tile = |value: ScaledPixels, from: ScaledPixels| ((value.0 - from.0) / TILE).floor();
++        let (left, right) = (tile(seen.left(), self.origin.x), tile(seen.right(), self.origin.x));
++        let (top, bottom) = (tile(seen.top(), self.origin.y), tile(seen.bottom(), self.origin.y));
++        let mut picked: Vec<u32> = self.spread.clone();
++        if right >= 0. && bottom >= 0. && (left as usize) < self.columns && (top as usize) < self.rows && !seen.is_empty() {
++            let clamp = |value: f32, count: usize| (value.max(0.) as usize).min(count - 1);
++            for row in clamp(top, self.rows)..=clamp(bottom, self.rows) {
++                let cells = row * self.columns;
++                let (from, to) = (cells + clamp(left, self.columns), cells + clamp(right, self.columns));
++                picked.extend_from_slice(&self.tiled[self.cells[from] as usize..self.cells[to + 1] as usize]);
++            }
++        }
++        // Indices are paint order: sorting restores it, the grid only selects.
++        picked.sort_unstable();
++        picked.dedup();
++        for index in picked {
++            let item = &self.items[index as usize];
++            let mask = item.own.intersect(&seen);
++            if item.placed.intersect(&mask).is_empty() {
++                continue;
++            }
++            let mut primitive = item.primitive.clone();
++            record::geometry::primitive(&mut primitive, shift, None);
++            *primitive.order_mut() += raised;
++            primitive.content_mask_mut().bounds = record::geometry::bounds(mask, shift);
++            out.push(PaintOperation::Primitive(primitive));
 +        }
 +    }
 +}
@@ -35585,7 +35758,7 @@ index 0000000000000000000000000000000000000000..948bb61bcd1c032402bcb9851c250c64
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5d992226df6920d8b0a62a8c51ea09a9528594c2
+index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c28027c19
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
 @@ -0,0 +1,460 @@
@@ -35651,7 +35824,7 @@ index 0000000000000000000000000000000000000000..5d992226df6920d8b0a62a8c51ea09a9
 +    cursor: usize,
 +    /// Copied nodes waiting for the paint range that holds them: index and
 +    /// scene range in the rendered frame (`reuse_scroll_nodes`).
-+    landing: Vec<(u32, Range<usize>)>,
++    pub(crate) landing: Vec<(u32, Range<usize>)>,
 +    /// Content mask depth under each open prepaint node.
 +    pub(crate) depths: Vec<usize>,
 +    /// Open paint nodes and the content mask depth under each.
@@ -36052,10 +36225,10 @@ index 0000000000000000000000000000000000000000..5d992226df6920d8b0a62a8c51ea09a9
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..aaf25d2cc2b951b6bb21b1b5db1f372010019fac
+index 0000000000000000000000000000000000000000..4a49a0fc2f36d8520b68ae35e065e77736a02fb8
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,166 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -36197,14 +36370,24 @@ index 0000000000000000000000000000000000000000..aaf25d2cc2b951b6bb21b1b5db1f3720
 +        let range = record.range();
 +        self.reuse_paint_state(&range);
 +        let scenes = range.start.scene_index..range.end.scene_index;
-+        let landed = self.next_frame.scene.paint_operations.len();
 +        let scale = self.scale_factor();
 +        let scaled = |point: Point<Pixels>| point.scale(scale);
-+        self.next_frame.scene.replay_scrolled(scenes.clone(), &self.rendered_frame.scene, |id| {
++        // The copied nodes' scene ranges, mapped through the replay.
++        let landing = std::mem::take(&mut self.next_frame.scroll_paint.landing);
++        let (mine, others): (Vec<_>, Vec<_>) =
++            landing.into_iter().partition(|(_, paint)| paint.start >= scenes.start && paint.end <= scenes.end);
++        self.next_frame.scroll_paint.landing = others;
++        let mut edges: Vec<(usize, usize)> = mine.iter().flat_map(|(_, paint)| [(paint.start, 0), (paint.end, 0)]).collect();
++        edges.sort_unstable();
++        edges.dedup();
++        self.next_frame.scene.replay_scrolled(scenes, &self.rendered_frame.scene, |id| {
 +            let node = plan.node(id);
 +            (scaled(node.shift), node.clip.scale(scale))
-+        });
-+        self.land_scroll_nodes(scenes, landed);
++        }, &mut edges);
++        let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
++        for (index, paint) in mine {
++            self.next_frame.scroll_nodes[index as usize].paint = Some(land(paint.start)..land(paint.end));
++        }
 +        self.allow_replayed(record);
 +        RetainedPaint::of(start..self.paint_index(), true, record.allowed)
 +    }
@@ -36214,10 +36397,10 @@ index 0000000000000000000000000000000000000000..aaf25d2cc2b951b6bb21b1b5db1f3720
 +mod tests;
 diff --git a/vendor/gpui/src/window/scroll_replay/tests.rs b/vendor/gpui/src/window/scroll_replay/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f064cd164da690924a5a4d7d06b98d5b66e501b8
+index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d2f4c8e5c
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay/tests.rs
-@@ -0,0 +1,302 @@
+@@ -0,0 +1,303 @@
 +use super::*;
 +use crate::scene::{PaintOperation, Primitive};
 +use crate::{Quad, ScrollHandle, TestAppContext, div, px, size};
@@ -36311,7 +36494,7 @@ index 0000000000000000000000000000000000000000..f064cd164da690924a5a4d7d06b98d5b
 +}
 +
 +/// A wheel step inside the interest rect replays the record moved: what
-+/// scrolls out is kept dormant, what scrolls in (recorded dormant) is drawn,
++/// scrolls out stays in the node's reservoir, what scrolls in is drawn,
 +/// and the frame equals a fresh paint at the new offset; the step back wakes
 +/// the first row again. A step past the interest rect needs a build.
 +#[crate::test]
@@ -36326,18 +36509,19 @@ index 0000000000000000000000000000000000000000..f064cd164da690924a5a4d7d06b98d5b
 +            let (prepaint, paint, _) = record(window, node, 0.);
 +            let at_rest = drawn(window);
 +            assert_eq!(at_rest, (vec![(10., clip().scale(s))], 1));
++            let at_rest = at_rest.0;
 +            next_frame(window);
 +            let (prepaint, paint) = scrolled(window, (&prepaint, &paint), node, -30.).expect("a step inside the interest rect");
-+            let stepped = drawn(window);
++            let stepped = drawn(window).0;
 +            next_frame(window);
 +            let (prepaint, paint) = scrolled(window, (&prepaint, &paint), node, 0.).expect("the step back");
-+            assert_eq!(drawn(window), at_rest, "the row that scrolled out comes back");
++            assert_eq!(drawn(window).0, at_rest, "the row that scrolled out comes back");
 +            next_frame(window);
 +            assert!(scrolled(window, (&prepaint, &paint), node, -200.).is_none());
 +            next_frame(window);
 +            record(window, node, -30.);
-+            assert_eq!(stepped, drawn(window), "a fresh paint at the stepped offset");
-+            assert_eq!(stepped, (vec![(30., clip().scale(s))], 1));        })
++            assert_eq!(stepped, drawn(window).0, "a fresh paint at the stepped offset");
++            assert_eq!(stepped, vec![(30., clip().scale(s))]);        })
 +        .unwrap();
 +}
 +
