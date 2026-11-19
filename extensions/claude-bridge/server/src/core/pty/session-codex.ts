@@ -406,6 +406,9 @@ export async function createCodexSession(
     bearerHash: config.bearerHash,
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,
+    // The chat's launch context (standing instructions and the rest) travels
+    // with the chat to the next engine on a switch, as for a Claude session.
+    launchConfig: { ...config, carryRegistrations: undefined },
     ...(config.conversation ? { conversation: config.conversation } : {}),
   }
   const releaseEndpoint = holdMcpEndpoint(session)
