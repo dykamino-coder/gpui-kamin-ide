@@ -30,7 +30,7 @@ pub enum LayerPainter {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum BoxContents {
     Own,
-    DecoratedBox,
+    DecoratedBox(Pixels),
     External,
 }
 
@@ -44,7 +44,7 @@ impl RunPainter {
     pub(crate) fn kind(self) -> LayerPainter {
         match self {
             Self::Box(BoxContents::Own) => LayerPainter::Box,
-            Self::Box(BoxContents::DecoratedBox) => LayerPainter::DecoratedBox,
+            Self::Box(BoxContents::DecoratedBox(_)) => LayerPainter::DecoratedBox,
             Self::Box(BoxContents::External) => LayerPainter::External,
             Self::Band(_) => LayerPainter::Band,
         }

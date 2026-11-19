@@ -24,10 +24,9 @@
 use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
 use crate::layout::reuse::{Store, Wait};
+use crate::paint::decorations::outset;
+use crate::style::computed::BoxStyle;
 use gpui::{Bounds, LayerHandle, ScaledPixels};
-use reach::{grow, reach};
-
-mod reach;
 
 /// The area an edit off the screen can paint and why it waits for a frame.
 pub(super) type FrameWait = (Bounds<ScaledPixels>, Wait);
@@ -54,13 +53,16 @@ pub(super) fn waits(
     a: &Element,
     b: &Element,
 ) -> Option<(Bounds<ScaledPixels>, Wait)> {
-    let outset = reach(a)?.max(reach(b)?);
+    // The old line bleed or decorated run belongs to the recorded frame.
+    // Only the requested paint needs to be bounded here.
+    let outset = outset(&BoxStyle::shared(b.style.used()))?;
     let area = match kind {
         Wait::Inline => inline_area(store, boxes, old, path, a, outset)?,
-        Wait::Decoration => {
-            let run = layer.box_area(u32::try_from(a.node_id).ok()?)?;
-            grow(run, outset * store.shown_scale())
-        }
+        Wait::Decoration => layer.decoration_area(
+            u32::try_from(a.node_id).ok()?,
+            gpui::px(outset),
+            store.shown_scale(),
+        )?,
     };
     store.misses_shown(area).then_some((area, kind))
 }

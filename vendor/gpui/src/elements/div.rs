@@ -1870,9 +1870,9 @@ impl Div {
     }
 
     /// Record a box whose decorations also paint in child elements.
-    pub fn decorated_paint_owner(mut self, owner: u32) -> Self {
+    pub fn decorated_paint_owner(mut self, owner: u32, outset: Pixels) -> Self {
         self.interactivity.paint_owner = owner;
-        self.interactivity.box_run = crate::scene::BoxContents::DecoratedBox;
+        self.interactivity.box_run = crate::scene::BoxContents::DecoratedBox(outset);
         self
     }
 
