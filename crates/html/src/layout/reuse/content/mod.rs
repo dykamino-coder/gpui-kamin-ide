@@ -16,9 +16,9 @@
 //! LayoutNG takes the cached `LayoutResult` of a clean box, and Blink
 //! `PaintController` the paint subsequence of a clean subtree.
 
+pub(super) mod inert;
 mod key;
 pub(crate) mod shared;
-
 pub(super) use key::inert_tree;
 
 use super::replay::{PendingReplay, Replay, ReplayRecord, ReplayRecorder, ReplaySlot};
@@ -92,7 +92,7 @@ impl FlowReuse {
         if root
             || nodes.is_empty()
             || outer.cx.contracts.document_root != Some(self.doc)
-            || !plain(nodes, inherited, inner)
+            || !plain(nodes, inherited, inner, &self.inert)
         {
             return None;
         }
