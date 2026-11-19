@@ -30,7 +30,7 @@ vi.mock('../../auth/dashboard-auth', () => ({
   validateDashboardSession: async () => null,
 }))
 vi.mock('../../auth/tokens', () => ({
-  resolveTokenSync: (token: string) =>
+  resolveToken: async (token: string) =>
     token === 'synthetic-own'
       ? { userName: 'owner', tokenId: 'token' }
       : token === 'synthetic-foreign'

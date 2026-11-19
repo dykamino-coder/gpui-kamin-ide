@@ -250,6 +250,17 @@ describe('ChatGPT (codex) responses in the cost and context chip', () => {
     expect(shown.tooltip).toContain('ChatGPT plan')
   })
 
+  it('a chat switched from Claude measures codex context by the codex window, not the old auto-compact point', () => {
+    const claudeSession = { autoCompactAt: 900_000, contextWindowSize: 1_000_000 }
+    const entries = [turn('c1', 400_000), usageLine('usage:t:1', 'gpt-5.5', 800, 25_000, 50)] as any
+    expect(computeContextStats(entries, true, 'gpt-5.5', claudeSession)).toMatchObject({
+      used: 25_800, limit: 258_000, limitSource: 'engine', pct: 10,
+    })
+    // Back on Claude: its own turn has no engine window, the compact point is 100% again.
+    const back = [...entries, turn('c2', 450_000)]
+    expect(computeContextStats(back, true, 'claude-opus-5', claudeSession)).toMatchObject({ limit: 900_000, limitSource: 'compact', pct: 50 })
+  })
+
   it('shows tokens without a price for a model with no published API price', () => {
     const stats = computeContextStats([usageLine('usage:t:1', 'codex-future', 1500, 0, 500)] as any, true, null)!
     expect(stats.cost).toBe(0)

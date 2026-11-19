@@ -1,5 +1,5 @@
 import type { JSX } from 'preact'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import { Dropdown } from './Dropdown'
 import { DropdownTrigger } from './DropdownTrigger'
 import { DropdownOption } from './DropdownOption'
@@ -45,6 +45,16 @@ export function ModelDropdown(): JSX.Element {
   const current = tabEngine === 'codex' ? selectedGptOption(model, gpt) : selectedModelOption(model)
   const listed = tabEngine === 'codex' ? gpt : MODEL_OPTIONS
   const isOutsidePicker = !listed.some(option => option.value === current.value)
+
+  // Load the GPT list before the user can pick from it: ask once the active
+  // chat is connected (the request rides its socket), then keep the reply —
+  // opening the menu refreshes it but already shows the cached list.
+  const tabConnected = activeTab?.status === 'connected'
+  useEffect(() => {
+    if (!tabId || !tabConnected || codexCatalog.peek()) return
+    codexCatalogLoading.value = true
+    bridge.requestCodexModels(tabId)
+  }, [tabId, tabConnected])
 
   function toggle(): void {
     const next = !open

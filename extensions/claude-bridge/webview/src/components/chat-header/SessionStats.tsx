@@ -4,7 +4,7 @@ import { jsonlEntriesByTab, getJsonlStructureVersion } from '../../signals/jsonl
 import { activeTabId, tabs } from '../../signals/tabs'
 import { compactSegments, activeSegmentIdx } from '../../signals/compact-segments'
 import { replayProgressByTab } from '../../signals/replay-progress'
-import { usageByTab } from '../../signals/session-usage'
+import { usageByTab, usageForEngine } from '../../signals/session-usage'
 import { useBridge } from '../../hooks/useBridge'
 import { computeContextStats, costDisplay } from '../../utils/session-cost'
 import { CHIP_LABEL_STYLE, CHIP_STYLE, METER_TRACK_STYLE, meterFillStyle } from '../input-bar/usage-chip'
@@ -52,9 +52,11 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
     // (аудит #70 D2; тот же паттерн, что segCache в compact-segments).
     const replayingNow = replayProgressByTab.value.get(id) != null
     const segIdxNow = replayingNow ? 0 : activeSegmentIdx.value
-    const model = tabs.value.find(t => t.id === id)?.model
-    // Точка автосжатия (и окно модели) из session:usage — 100% индикатора.
-    const usage = usageByTab.value.get(id)
+    const tab = tabs.value.find(t => t.id === id)
+    const model = tab?.model
+    // Точка автосжатия (и окно модели) из session:usage — 100% индикатора;
+    // только снимок того агента, на котором чат идёт сейчас.
+    const usage = usageForEngine(usageByTab.value.get(id), tab?.engine)
     const session = { autoCompactAt: usage?.autoCompactAt ?? null, contextWindowSize: usage?.contextWindowSize ?? null }
     const key = `${id}|${getJsonlStructureVersion(id)}|${segIdxNow}|${replayingNow}|${model ?? ''}|${session.autoCompactAt ?? ''}|${session.contextWindowSize ?? ''}`
     if (statsCache.key === key) return statsCache.value
