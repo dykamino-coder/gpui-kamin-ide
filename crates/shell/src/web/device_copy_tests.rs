@@ -97,3 +97,65 @@ fn rejects_old_source_or_foreign_context_and_replaces_equal_size_own_texture() {
     assert!(!second.same_as(&first));
     copy_frame::forget_view("generation-test");
 }
+
+/// A copy with damage changes the own texture only inside the damage: CEF
+/// changes unreported translucent texels between frames (INC-2026-0064).
+#[test]
+fn copy_with_damage_changes_only_the_damaged_texels() {
+    let (device, context) = device();
+    let source = texture(&device, false);
+    let fill = |value: u8| {
+        let texels = [value; 16];
+        unsafe {
+            context.UpdateSubresource(source.raw(), 0, None, texels.as_ptr().cast(), 8, 16);
+        }
+    };
+    fill(10);
+    let own = copy_frame::copy_into_own(
+        "damage-copy-test",
+        device.as_raw(),
+        context.as_raw(),
+        &source,
+    )
+    .unwrap();
+    fill(200);
+    let again = copy_frame::copy_damage_into_own(
+        "damage-copy-test",
+        device.as_raw(),
+        context.as_raw(),
+        &source,
+        Some((&own, (1, 0, 5, 1))),
+    )
+    .unwrap();
+    assert!(again.same_as(&own));
+    let mut desc = D3D11_TEXTURE2D_DESC::default();
+    unsafe { own.raw().GetDesc(&mut desc) };
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+    let mut staging = None;
+    let red = unsafe {
+        device
+            .CreateTexture2D(&desc, None, Some(&mut staging))
+            .unwrap();
+        let staging = staging.unwrap();
+        context.CopyResource(&staging, own.raw());
+        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+        context
+            .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+            .unwrap();
+        let row = |y: usize| {
+            std::slice::from_raw_parts(
+                (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),
+                8,
+            )
+            .to_vec()
+        };
+        let texels = [row(0), row(1)].map(|r| [r[0], r[4]]);
+        context.Unmap(&staging, 0);
+        texels
+    };
+    // Damage (1, 0, 5, 1) clamps to texel (1, 0) of the 2 x 2 buffer.
+    assert_eq!(red, [[10, 200], [10, 10]]);
+    copy_frame::forget_view("damage-copy-test");
+}

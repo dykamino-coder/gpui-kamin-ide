@@ -75,7 +75,7 @@ async function gateConditions($, state, event, e, next) {
     : [...(state.conditionAgents.get(e.tool_use_id) ?? [])].some((call) => call.agentId?.startsWith('hook-agent-'))
   // Native hook agents have their own empty declaration set. They still emit
   // mod events (including for MCP tools); queuing them behind their parent
-  // would deadlock. The identifier is pinned with CLI 2.1.327 and covered by
+  // would deadlock. The identifier is pinned with CLI 2.1.328 and covered by
   // the real-CLI nested-agent fixture.
   if (!state.active || !state.conditionEnabled || nativeHookAgent) return next(e)
   const generation = `${state.instance}:${++state.conditionSequence}`

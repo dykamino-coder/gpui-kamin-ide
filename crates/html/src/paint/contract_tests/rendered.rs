@@ -182,3 +182,5 @@ mod collect;
 mod continuations;
 mod floats;
 use collect::collect;
+
+mod positioned_float;

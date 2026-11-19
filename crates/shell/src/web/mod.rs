@@ -49,6 +49,7 @@ mod keyed_mutex;
 mod motion_css;
 mod open_shared;
 mod outbox;
+mod page_frame;
 mod popup;
 mod process;
 mod profile;
