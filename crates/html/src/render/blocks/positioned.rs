@@ -17,7 +17,7 @@ pub(crate) fn static_position_layer(
     built: AnyElement,
     layer_ok: bool,
     under_tf: bool,
-    nodes: &[crate::dom::Node],
+    nodes: &crate::layout::positioned::predicates::Siblings<'_>,
     idx: usize,
     paint_key: u64,
     out: &mut Vec<gpui::AnyElement>,
@@ -141,7 +141,7 @@ pub(crate) fn static_position_layer(
     // всех соседей контейнера.
     let taken = if below {
         Some(built)
-    } else if paint_last_ok(e, &nodes[idx + 1..], cx) {
+    } else if paint_last_ok(e, nodes.after(idx), cx) {
         cx.position.state.late_push(
             spot,
             crate::paint::coordinator::PaintLast::new(built)

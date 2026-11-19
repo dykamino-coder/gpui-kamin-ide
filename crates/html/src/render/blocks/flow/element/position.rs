@@ -20,7 +20,7 @@ pub(crate) async fn position_element(
     under_tf: bool,
     ordered_context: bool,
     geometry_layer_ok: bool,
-    nodes: &[crate::dom::Node],
+    nodes: &crate::layout::positioned::predicates::Siblings<'_>,
     idx: usize,
     paint_key: u64,
     out: &mut Vec<AnyElement>,
@@ -43,7 +43,7 @@ pub(crate) async fn position_element(
         paint_key,
         root_box.clone(),
         out,
-        &nodes[idx + 1..],
+        nodes.after(idx),
     ) {
         return;
     }

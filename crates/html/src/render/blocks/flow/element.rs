@@ -31,7 +31,7 @@ use gpui::AnyElement;
 pub(crate) async fn paint_element(
     stk: &mut reblessive::Stk,
     e: &crate::dom::Element,
-    nodes: &[Node],
+    nodes: &crate::layout::positioned::predicates::Siblings<'_>,
     idx: usize,
     inherited: &BoxStyle,
     opts: &RenderOpts,
