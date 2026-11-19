@@ -3,14 +3,10 @@
 //! Вынесено из `mod.rs` без изменения поведения
 //! (`plan/100-refactor-250.md`).
 
-use crate::overlay::region::apply_window_region;
 use crate::root::RootView;
 
 /// Собирает список активных оверлеев кадра и отдаёт его в probe-реестр.
-/// Пустой список = ни одного `hit_area` в кадре → paint-хук не вызовется,
-/// поэтому окно режется в ноль прямо здесь.
-pub(crate) fn publish_states(r: &RootView, window: &gpui::Window) {
-    let _ = window;
+pub(crate) fn publish_states(r: &RootView) {
     let mut st: Vec<&'static str> = Vec::new();
     if !r.toasts.is_empty() {
         st.push("toasts");
@@ -63,12 +59,5 @@ pub(crate) fn publish_states(r: &RootView, window: &gpui::Window) {
     if r.hover_pill.is_some() {
         st.push("hover_pill");
     }
-    let empty = st.is_empty();
     crate::probe::registry::set_overlay_states(st);
-    if empty {
-        // Ни одного hit_area в кадре → paint-хук не вызовется —
-        // резать окно в ноль прямо здесь
-        #[cfg(windows)]
-        apply_window_region(window.scale_factor());
-    }
 }

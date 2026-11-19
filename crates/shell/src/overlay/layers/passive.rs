@@ -3,7 +3,6 @@
 //! Слой вынесен из `OverlayWindow::render` как есть (`plan/100-refactor-250.md`).
 
 use crate::host_link::ShellEvent;
-use crate::overlay::hit_area;
 use crate::root::RootView;
 use gpui::div;
 use gpui::prelude::*;
@@ -25,10 +24,8 @@ pub(crate) fn add_passive(
     let _ = window;
 
     if !r.toasts.is_empty() {
-        // Тосты интерактивны точечно (кнопка dismiss) — hit-регион на
-        // контейнере тостов, остальное окно прозрачно для ввода.
         // Обёртка НЕСЁТ размер (нулевой anchor давал интринсик-сжатие
-        // карт и нулевой hit-rect — тосты не кликались)
+        // карт — тосты не кликались).
         // Якорим ОТ ЛЕВОГО-ВЕРХНЕГО угла по размеру MAIN-вьюпорта:
         // `bottom/right` резолвятся к вьюпорту overlay-окна, который
         // после win32-ресайза бывает больше main — стопка уезжала за
@@ -56,7 +53,6 @@ pub(crate) fn add_passive(
                 // БЕЗ .relative(): он перезаписывал position=Absolute
                 // (последний вызов выигрывает) — тосты улетали в
                 // левый-верх потоком
-                .child(hit_area())
                 .child(crate::ui::toasts::toasts(&r.toasts, &r.toast_timers, tx, p)),
         );
     }
