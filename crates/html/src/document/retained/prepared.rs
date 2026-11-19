@@ -79,17 +79,18 @@ impl Document {
         };
         let (w, h) = key.viewport;
         let bounds = gpui::Bounds::new(Default::default(), size(px(w), px(h)));
-        if self.state.values.resources_unchanged()
-            && self.retained.inputs(Some(&key)).is_some_and(|r| r.matches(bounds, window, cx))
-        {
-            return;
-        }
-        let builder = self.frame_builder(opts, &Some(key.clone()));
-        // Элемент документа стоит в кадре под `parent` со своим id: шаг
-        // собирает под тем же стеком id и view, ключи состояний — кадра.
-        let id = document_id(&self.reuse);
-        let keys = builder.layout_keys;
         window.with_layout_outside_draw(parent, cx, |window, cx| {
+            if self.state.values.resources_unchanged()
+                && self
+                    .retained
+                    .inputs(Some(&key))
+                    .is_some_and(|r| r.matches(bounds, window, cx))
+            {
+                return;
+            }
+            let builder = self.frame_builder(opts, &Some(key.clone()));
+            let id = document_id(&self.reuse);
+            let keys = builder.layout_keys;
             window.with_id(id, |window| {
                 let before = window.next_frame_callback_count();
                 self.retained.builds.set(self.retained.builds.get() + 1);
