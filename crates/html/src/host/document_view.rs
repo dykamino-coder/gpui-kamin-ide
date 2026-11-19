@@ -129,4 +129,6 @@ impl Render for DocumentView {
 }
 
 #[cfg(test)]
+mod resize_tests;
+#[cfg(test)]
 mod tests;
