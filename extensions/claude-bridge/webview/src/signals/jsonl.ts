@@ -664,7 +664,18 @@ export function clearRefillDebt(tabId: string): void {
   needsRefill.delete(tabId)
 }
 
+// Bumped each time a tab's held transcript is wiped for a new one (a compact
+// switching the CLI to a new file, a reseed). History paging state — the
+// "start reached" verdict, the page cursor, a page in flight — belongs to one
+// generation: a replacement starts it over and a late page of the old one is
+// dropped (JsonlViewer).
+const generationByTab = new Map<string, number>()
+export function getJsonlGeneration(tabId: string): number {
+  return generationByTab.get(tabId) ?? 0
+}
+
 export function clearJsonlEntries(tabId: string): void {
+  generationByTab.set(tabId, getJsonlGeneration(tabId) + 1)
   liveWindows.delete(tabId)
   archivedLiveEntries.delete(tabId)
   archivedStreams.delete(tabId)

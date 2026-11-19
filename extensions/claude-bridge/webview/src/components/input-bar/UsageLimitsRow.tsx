@@ -1,11 +1,18 @@
 import type { JSX } from 'preact'
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
-import { activeTabId } from '../../signals/tabs'
-import { usageByTab } from '../../signals/session-usage'
+import { activeTabId, tabs } from '../../signals/tabs'
+import { usageByTab, usageForEngine } from '../../signals/session-usage'
 import { formatPercent, usageItems } from '../../lib/usage-format'
 import type { UsageLevel } from '../../lib/usage-format'
 import { SessionStats } from '../chat-header/SessionStats'
-import { CHIP_LABEL_STYLE, CHIP_STYLE, METER_TRACK_STYLE, meterFillStyle } from './usage-chip'
+import { CHIP_HEIGHT, CHIP_LABEL_STYLE, CHIP_STYLE, METER_TRACK_STYLE, meterFillStyle } from './usage-chip'
+
+/** Top padding + one chip: the row keeps this height before its data arrive,
+ *  so a late usage snapshot does not push the chat input up. */
+const ROW_PADDING_TOP = 5
+export const ROW_HEIGHT = ROW_PADDING_TOP + CHIP_HEIGHT
+
+const NO_PLAN_DATA = 'ChatGPT plan limits have not been reported to this chat. The Bridge dashboard shows the account limits.'
 
 const FILL: Record<UsageLevel, string> = {
   ok: 'var(--accent-green)',
@@ -28,7 +35,10 @@ const VALUE: Record<UsageLevel, string> = {
  *  show only the session pills. */
 export function UsageLimitsRow(): JSX.Element | null {
   const tabId = activeTabId.value
-  const usage = tabId ? usageByTab.value.get(tabId) : undefined
+  const engine = tabId ? (tabs.value.find(t => t.id === tabId)?.engine ?? 'claude') : 'claude'
+  // Only the snapshot of the agent the chat runs now: after a switch to
+  // ChatGPT the Claude plan windows are not this chat's limits.
+  const usage = tabId ? usageForEngine(usageByTab.value.get(tabId), engine) : undefined
   // Re-render each minute so "in 42m" counts down between snapshots.
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -65,6 +75,9 @@ export function UsageLimitsRow(): JSX.Element | null {
   // Context comes from SessionStats (tokens + compact action); the CLI's own
   // context percentage would only duplicate it.
   const items = usageItems(usage, now).filter(item => item.key !== 'context')
+  // A ChatGPT chat without plan windows from the server says so instead of
+  // leaving the slot to look like "no limits" (or to another agent's numbers).
+  const noPlanData = engine === 'codex' && items.length === 0
 
   return (
     <div
@@ -73,7 +86,7 @@ export function UsageLimitsRow(): JSX.Element | null {
       data-testid="usage-limits-row"
       style={`
         display:flex;align-items:center;gap:6px;
-        padding:5px 10px 0;
+        padding:5px 10px 0;min-height:${ROW_HEIGHT}px;
         max-width:800px;width:100%;margin:0 auto;box-sizing:border-box;
         font-size:10px;line-height:1;color:var(--text-muted);
         font-family:ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
@@ -95,6 +108,12 @@ export function UsageLimitsRow(): JSX.Element | null {
           )}
         </span>
       ))}
+      {noPlanData && (
+        <span data-testid="usage-plan-no-data" data-tooltip={NO_PLAN_DATA} title={NO_PLAN_DATA} style={CHIP_STYLE}>
+          <span style={CHIP_LABEL_STYLE}>plan</span>
+          <span style="color:var(--text-disabled)">no data</span>
+        </span>
+      )}
       <SessionStats variant="pills" meters={meters} />
     </div>
   )
