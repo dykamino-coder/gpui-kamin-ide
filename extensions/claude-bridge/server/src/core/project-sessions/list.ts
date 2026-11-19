@@ -8,7 +8,7 @@ import path from 'node:path'
 import { boolArg, intArg } from './args'
 import { redact } from './redact'
 import { summarize } from './summary'
-import { isPlainFile, listTranscripts, resolveScope, subagentDir, type CallerContext } from './scope'
+import { isPlainFile, listTranscripts, resolveScope, subagentDirs, type CallerContext, type TranscriptRef } from './scope'
 import { resolveTarget } from './target'
 import type { ToolOutput } from './types'
 
@@ -17,6 +17,19 @@ const TITLE_CHARS = 120
 function oneLine(s: string, max: number): string {
   const flat = redact(s.replace(/\s+/g, ' ').trim()).text
   return flat.length > max ? flat.slice(0, max) + '…' : flat
+}
+
+/** Engine and model fields of one listed chat. A chat that switched engines
+ *  lists its segments in order; `engine`/`model` are the ones answering now. */
+function engines(ref: TranscriptRef, engine: 'claude' | 'codex' | null, model: string | null): Record<string, unknown> {
+  const mixed = ref.mixed
+  if (!mixed) return { engine, model }
+  const active = mixed.segments[mixed.active]!
+  return {
+    engine: active.engine,
+    model: active.model ?? model,
+    segments: mixed.segments.map((s) => ({ engine: s.engine, model: s.model, started_at: s.startedAt })),
+  }
 }
 
 export async function listSessions(ctx: CallerContext, args: Record<string, unknown>): Promise<ToolOutput> {
@@ -40,11 +53,10 @@ export async function listSessions(ctx: CallerContext, args: Record<string, unkn
   for (const { ref, size, mtimeMs, stat } of page) {
     const s = await summarize(ref.file, stat)
     const live = ctx.live.find((l) => l.ids.includes(ref.conversationId))
-    const sub = subagentDir(ref)
     let subagents = 0
-    if (sub) {
+    for (const sub of subagentDirs(ref)) {
       try {
-        subagents = (await fsp.readdir(sub)).filter((n) => /^agent-[A-Za-z0-9_-]+\.jsonl$/.test(n)).length
+        subagents += (await fsp.readdir(sub)).filter((n) => /^agent-[A-Za-z0-9_-]+\.jsonl$/.test(n)).length
       } catch {
         /* none */
       }
@@ -52,6 +64,7 @@ export async function listSessions(ctx: CallerContext, args: Record<string, unkn
     conversations.push({
       session_id: ref.conversationId,
       title: s.title ? oneLine(s.title, TITLE_CHARS) : null,
+      ...engines(ref, s.engine, s.model),
       started_at: s.startedAt,
       last_activity_at: new Date(mtimeMs).toISOString(),
       last_entry_at: s.lastEntryAt,
@@ -83,22 +96,21 @@ export async function listSubagents(ctx: CallerContext, args: Record<string, unk
   const limit = intArg(args.limit, 'limit', 100, 1, 500)
   const offset = intArg(args.offset, 'offset', 0, 0, 1_000_000)
   const target = await resolveTarget(ctx, { session_id: args.session_id })
-  const dir = subagentDir(target.ref)
-  const found: Array<{ id: string; file: string; size: number; mtimeMs: number; stat: fs.Stats }> = []
-  if (dir) {
+  const found: Array<{ id: string; dir: string; file: string; size: number; mtimeMs: number; stat: fs.Stats }> = []
+  for (const dir of subagentDirs(target.ref)) {
     for (const name of await fsp.readdir(dir)) {
       const m = /^agent-([A-Za-z0-9_-]{1,128})\.jsonl$/.exec(name)
       const file = path.join(dir, name)
       if (!m || !isPlainFile(file)) continue
       const st = await fsp.lstat(file)
-      found.push({ id: m[1]!, file, size: st.size, mtimeMs: st.mtimeMs, stat: st })
+      found.push({ id: m[1]!, dir, file, size: st.size, mtimeMs: st.mtimeMs, stat: st })
     }
   }
   found.sort((a, b) => b.mtimeMs - a.mtimeMs)
   const agents = []
   for (const a of found.slice(offset, offset + limit)) {
     let meta: Record<string, unknown> = {}
-    const metaFile = path.join(dir!, `agent-${a.id}.meta.json`)
+    const metaFile = path.join(a.dir, `agent-${a.id}.meta.json`)
     if (isPlainFile(metaFile) && fs.lstatSync(metaFile).size <= 64 * 1024) {
       try {
         meta = JSON.parse(await fsp.readFile(metaFile, 'utf8')) as Record<string, unknown>
