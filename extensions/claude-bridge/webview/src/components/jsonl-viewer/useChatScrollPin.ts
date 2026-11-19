@@ -24,9 +24,6 @@ import { tabScrollMemory } from '../../signals/scroll-memory'
 
 // Distance (px) from the bottom still counted as "at bottom".
 const AT_BOTTOM_PX = 80
-// How long after a wheel/key/touch input a scroll-up counts as the reader's.
-const USER_INTENT_MS = 600
-const UP_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
 // Distance (px) from the top that triggers auto-loading older messages — so the
 // user just scrolls up instead of clicking a "show earlier" button.
 export const NEAR_TOP_PX = 400
@@ -149,35 +146,19 @@ export function useChatScrollPin(
   useEffect(() => {
     const h = host()
     if (!h) return
-    // The reader's own upward scroll (wheel, keys, scrollbar drag, touch) is
-    // told apart from layout jitter by the input that preceded it.
-    let upIntentAt = -Infinity
-    let dragging = false
-    const intendsUp = (): boolean => dragging || performance.now() - upIntentAt < USER_INTENT_MS
-    const markUp = (): void => { upIntentAt = performance.now() }
-    function onWheel(e: WheelEvent): void { if (e.deltaY < 0) markUp() }
-    function onKey(e: KeyboardEvent): void { if (UP_KEYS.has(e.key) || (e.key === ' ' && e.shiftKey)) markUp() }
-    // Only a press on the scroll surface itself (its scrollbar), not on a row.
-    function onPointerDown(e: PointerEvent): void { if (e.target === h) dragging = true }
-    function onPointerUp(): void { dragging = false }
-    function onTouchMove(): void { markUp() }
     function onScroll(): void {
       if (!h) return
       const top = h.scrollTop
       const movedUp = top < prevTopRef.current - 1
-      const movedDown = top > prevTopRef.current + 1
       const atBottom = distFromBottom(h) < AT_BOTTOM_PX
-      // A scroll-up without the reader's input releases stick ONLY once it
-      // leaves the bottom band. Async content growth (a widget's shadow-DOM
-      // render, an image load) makes the browser nudge scrollTop up by a few
-      // px, which read as "moved up" and dropped stick — so the Scroll-down pill
-      // appeared with the bar visually pinned to the bottom. Treating the whole
-      // AT_BOTTOM_PX band as "bottom" keeps stick armed through that jitter.
-      // The reader's own scroll-up releases it at once, even by 30px inside the
-      // band (BR-16: the next streamed word snapped them back down), and only
-      // their scroll back down into the band — or to the very end — re-arms it.
-      if (movedUp && (intendsUp() || !atBottom)) stickRef.current = false
-      else if (atBottom && (stickRef.current || movedDown || distFromBottom(h) <= 1)) stickRef.current = true
+      // A scroll-up releases stick ONLY once it leaves the bottom band. Async
+      // content growth (a widget's shadow-DOM render, an image load) makes the
+      // browser nudge scrollTop up by a few px, which read as "moved up" and
+      // dropped stick — so the Scroll-down pill appeared with the bar visually
+      // pinned to the bottom. Treating the whole AT_BOTTOM_PX band as "bottom"
+      // (a range, not one exact point) keeps stick armed through that jitter.
+      if (movedUp && !atBottom) stickRef.current = false
+      else if (atBottom) stickRef.current = true
       chatAtBottom.value = stickRef.current
       prevTopRef.current = top
       if (restoringRef.current) return
@@ -190,14 +171,6 @@ export function useChatScrollPin(
       if (id) tabScrollMemory.set(id, { scrollTop: top, atBottom: stickRef.current })
     }
     h.addEventListener('scroll', onScroll, { passive: true })
-    h.addEventListener('wheel', onWheel, { passive: true })
-    h.addEventListener('keydown', onKey)
-    h.addEventListener('pointerdown', onPointerDown)
-    h.addEventListener('touchmove', onTouchMove, { passive: true })
-    // The drag ends wherever the button is released.
-    const doc = h.ownerDocument as Document | undefined
-    doc?.addEventListener('pointerup', onPointerUp)
-    doc?.addEventListener('pointercancel', onPointerUp)
 
     // Growth detector (see file header on why RO can't be used here).
     const target = containerRef.current
@@ -231,16 +204,7 @@ export function useChatScrollPin(
       const id = tabRef.current
       if (id) tabScrollMemory.set(id, { scrollTop: el.scrollTop, atBottom: true })
     }
-    return () => {
-      h.removeEventListener('scroll', onScroll)
-      h.removeEventListener('wheel', onWheel)
-      h.removeEventListener('keydown', onKey)
-      h.removeEventListener('pointerdown', onPointerDown)
-      h.removeEventListener('touchmove', onTouchMove)
-      doc?.removeEventListener('pointerup', onPointerUp)
-      doc?.removeEventListener('pointercancel', onPointerUp)
-      mo?.disconnect()
-    }
+    return () => { h.removeEventListener('scroll', onScroll); mo?.disconnect() }
   }, [currentTabId, entriesLength > 0])
 
   // Mirror the active tab onto the ref each render.
