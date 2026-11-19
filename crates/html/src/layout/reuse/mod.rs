@@ -103,6 +103,8 @@ pub(crate) struct FlowReuse {
     next_contents: RefCell<HashMap<u64, Rc<content::ContentRecord>>>,
     /// Content this build wraps for recording (`content`).
     pending_contents: RefCell<Vec<content::PendingContent>>,
+    /// Subtree verdicts of the contents of this build (`content::inert`).
+    inert: content::inert::InertLists,
     /// Far state of this build (`far`): the document's, or made with the
     /// build's first far record or claim.
     far: Cell<Option<Box<far::FrameFar>>>,
@@ -187,6 +189,7 @@ impl FlowReuse {
             replay_slots: Default::default(),
             next_contents: Default::default(),
             pending_contents: Default::default(),
+            inert: Default::default(),
             far: Default::default(),
             far_widths: Cell::new(false),
             far_recorders: Cell::new(0),

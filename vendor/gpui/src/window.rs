@@ -100,6 +100,9 @@ mod render_context;
 mod box_edges;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;
+// KaminIDE patch: frames that redraw only isolated views.
+mod isolated;
+use isolated::{IsolatedDraw, RootRanges};
 mod retained_layout;
 mod update_rendering;
 pub use update_rendering::ElementPlace;
@@ -1052,6 +1055,8 @@ pub(crate) struct DeferredDraw {
     absolute_offset: Point<Pixels>,
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
+    // KaminIDE patch: set for an isolated view's draw (`window/isolated.rs`).
+    isolated: Option<IsolatedDraw>,
 }
 
 pub(crate) struct Frame {
@@ -1070,6 +1075,8 @@ pub(crate) struct Frame {
     pub(crate) hitbox_entry_scopes: FxHashMap<usize, Option<Rc<hit_transform::HitScope>>>,
     pub(crate) window_control_hitboxes: Vec<(WindowControlArea, Hitbox)>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
+    /// KaminIDE patch: views drawn isolated in this frame.
+    pub(crate) isolated_views: FxHashSet<EntityId>,
     pub(crate) input_handlers: Vec<Option<PlatformInputHandler>>,
     pub(crate) tooltip_requests: Vec<Option<TooltipRequest>>,
     pub(crate) cursor_styles: Vec<CursorStyleRequest>,
@@ -1215,6 +1222,7 @@ impl Frame {
             hitbox_entry_scopes: FxHashMap::default(),
             window_control_hitboxes: Vec::new(),
             deferred_draws: Vec::new(),
+            isolated_views: FxHashSet::default(),
             input_handlers: Vec::new(),
             tooltip_requests: Vec::new(),
             cursor_styles: Vec::new(),
@@ -1247,6 +1255,7 @@ impl Frame {
         self.hitbox_entry_scopes.clear();
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
+        self.isolated_views.clear();
         self.tab_stops.clear();
         self.focus = None;
 
@@ -1429,6 +1438,14 @@ pub struct Window {
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
     pub(crate) next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>>,
     pub(crate) dirty_views: FxHashSet<EntityId>,
+    /// KaminIDE patch: a dirty view lies outside every isolated view, so the
+    /// root must be drawn again (`window/isolated.rs`).
+    dirty_outside_isolated: bool,
+    /// KaminIDE patch: the root tree's ranges in the drawn frame.
+    root_ranges: Option<RootRanges>,
+    /// KaminIDE patch: entities the drawn frame read; a frame that keeps the
+    /// root keeps observing them.
+    last_accessed_entities: FxHashSet<EntityId>,
     focus_listeners: SubscriberSet<(), AnyWindowFocusListener>,
     pub(crate) focus_lost_listeners: SubscriberSet<(), AnyObserver>,
     focus_lost_path: SmallVec<[FocusId; 8]>,
@@ -2381,6 +2398,9 @@ impl Window {
             next_tooltip_id: TooltipId::default(),
             tooltip_bounds: None,
             dirty_views: FxHashSet::default(),
+            dirty_outside_isolated: false,
+            root_ranges: None,
+            last_accessed_entities: FxHashSet::default(),
             focus_listeners: SubscriberSet::new(),
             focus_lost_listeners: SubscriberSet::new(),
             focus_lost_path: SmallVec::new(),
@@ -2488,15 +2508,21 @@ impl Window {
     fn mark_view_dirty(&mut self, view_id: EntityId) {
         // Mark ancestor views as dirty. If already in the `dirty_views` set, then all its ancestors
         // should already be dirty.
+        // KaminIDE patch: the walk stops at an isolated view, which is redrawn
+        // alone; reaching the top means the root is drawn again.
         for view_id in self
             .rendered_frame
             .dispatch_tree
             .view_path_reversed(view_id)
         {
             if !self.dirty_views.insert(view_id) {
-                break;
+                return;
+            }
+            if self.rendered_frame.isolated_views.contains(&view_id) {
+                return;
             }
         }
+        self.dirty_outside_isolated = true;
     }
 
     pub(crate) fn refresh_visibility(&mut self, cx: &mut App) {
@@ -3836,9 +3862,12 @@ impl Window {
         }
         // A caught unwind still aborts this pass; never publish its partial scene.
         if !self.paint_pass.is_live() {
+            // KaminIDE patch: the recorded root ranges index the dropped frame.
+            self.root_ranges = None;
             return arena_scope.exit(&cx.element_arena);
         }
         self.dirty_views.clear();
+        self.dirty_outside_isolated = false;
         self.next_frame.window_active = self.active.get();
 
         // Register requested input handler with the platform window.
@@ -3957,6 +3986,7 @@ impl Window {
     fn record_entities_accessed(&mut self, cx: &mut App) {
         let mut entities_ref = cx.entities.accessed_entities.get_mut();
         let mut entities = mem::take(entities_ref.deref_mut());
+        self.last_accessed_entities.clone_from(&entities);
         let handle = self.handle;
         cx.record_entities_accessed(
             handle,
@@ -4077,7 +4107,9 @@ impl Window {
         // KaminIDE patch: стоимость фаз кадра (`frame_perf`).
         let _phase_started = std::time::Instant::now();
         let PrepaintRoots {
-            mut root_element,
+            root_element,
+            root_prepaint,
+            kept_root,
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector_element,
             prompt_element,
@@ -4099,7 +4131,17 @@ impl Window {
         // Now actually paint the elements.
         self.invalidator.set_phase(DrawPhase::Paint);
         let _paint_started = std::time::Instant::now();
-        root_element.paint(self, cx);
+        // KaminIDE patch: a kept root replays its paint records (`window/isolated.rs`).
+        let root_paint_start = self.paint_index();
+        match (root_element, kept_root) {
+            (Some(mut root_element), _) => root_element.paint(self, cx),
+            (None, Some(kept)) => self.reuse_paint(kept.paint),
+            (None, None) => {}
+        }
+        self.root_ranges = Some(RootRanges {
+            prepaint: root_prepaint,
+            paint: root_paint_start..self.paint_index(),
+        });
         crate::frame_perf::PAINT_US.fetch_add(
             _paint_started.elapsed().as_micros() as u32,
             std::sync::atomic::Ordering::Relaxed,
@@ -4250,6 +4292,8 @@ impl Window {
                 let _render_scope = self.render_contexts.enter_snapshot(
                     self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
                 );
+                // KaminIDE patch: a dirty isolated view is drawn again alone.
+                self.rebuild_isolated(deferred_draw_ix, cx);
                 let (element, parent_node, current_view, rem_size, absolute_offset, prepaint_range) = {
                     let deferred_draw = &mut self.next_frame.deferred_draws[deferred_draw_ix];
                     self.element_id_stack
@@ -4416,8 +4460,18 @@ impl Window {
                     absolute_offset: deferred_draw.absolute_offset,
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
+                    isolated: deferred_draw.isolated.clone(),
                 }),
         );
+        // KaminIDE patch: reused isolated draws stay isolated in the new frame.
+        let isolated = &mut self.next_frame.isolated_views;
+        for draw in &self.rendered_frame.deferred_draws
+            [range.start.deferred_draws_index..range.end.deferred_draws_index]
+        {
+            if let Some(draw) = &draw.isolated {
+                isolated.insert(draw.view.entity_id());
+            }
+        }
     }
 
     pub(crate) fn paint_index(&self) -> PaintIndex {
@@ -5174,6 +5228,7 @@ impl Window {
             absolute_offset,
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
+            isolated: None,
         });
     }
 

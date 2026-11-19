@@ -96,6 +96,10 @@ pub mod frame_perf {
     pub static MEASURE_US: AtomicU32 = AtomicU32::new(0);
     /// Кэшированных вью переиграно (не считалось заново) за период.
     pub static REUSED_VIEWS: AtomicU32 = AtomicU32::new(0);
+    /// KaminIDE patch: frames that rendered and laid out the window root.
+    pub static ROOT_LAYOUTS: AtomicU32 = AtomicU32::new(0);
+    /// KaminIDE patch: frames that kept the root and redrew only isolated views.
+    pub static ISOLATED_FRAMES: AtomicU32 = AtomicU32::new(0);
     // KaminIDE patch (#76): промахи/попадания line-layout-кэша — диагноз
     // «пере-шейпинг текста каждый кадр» (prepaint 65-70мкс/узел).
     /// Строк ЗАШЕЙПЛЕНО заново (промах кэша) за период.
