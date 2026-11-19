@@ -39,7 +39,7 @@ fn scene(cx: &mut VisualTestContext) -> Vec<String> {
 fn unchanged_onscreen_blocks_replay_and_a_moved_one_replays_moved(cx: &mut TestAppContext) {
     let page = |text: &str| {
         format!(
-            "<body style='margin:0;display:flow-root'><table style='width:300px'><tr><td>a</td><td>b</td></tr></table>\
+            "<body style='margin:0;line-height:20px;display:flow-root'><table style='width:300px'><tr><td>a</td><td>b</td></tr></table>\
              <p>{text}</p><p>tail</p></body>"
         )
     };
@@ -60,6 +60,7 @@ fn unchanged_onscreen_blocks_replay_and_a_moved_one_replays_moved(cx: &mut TestA
         "the table and the tail were rebuilt"
     );
     assert_eq!(reused(&view, cx).2, 0, "an unmoved replay was refused");
+    // The explicit line height keeps the translation on the device-pixel grid.
     // A taller paragraph moves the tail: an inert block replays at its new
     // place, and the frame is not built again.
     let before = replayed(&view, cx);

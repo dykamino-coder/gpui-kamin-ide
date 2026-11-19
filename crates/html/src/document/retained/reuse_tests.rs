@@ -75,7 +75,12 @@ fn a_skipped_block_that_reaches_the_screen_rebuilds_the_frame(cx: &mut TestAppCo
 #[gpui::test]
 fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppContext) {
     let grown = format!("{}x", "x ".repeat(300));
-    let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
+    // Only integral movement can replay rasterized glyphs unchanged.
+    let page = |text: &str| {
+        rows(5, text)
+            .replace("margin:0", "margin:0;line-height:20px")
+            .replace("<div style='height:20px'>x", "<div>x")
+    };
     let (view, cx) = settled(cx, &page("x"), &page("xy"));
     // The grown block moves the visible blocks below it: they replay their
     // output at the new place (`placeholder`), and no frame is built twice.

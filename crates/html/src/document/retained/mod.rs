@@ -244,3 +244,6 @@ impl Document {
         self.reuse.far_records()
     }
 }
+
+#[cfg(test)]
+mod moved_glyph_tests;

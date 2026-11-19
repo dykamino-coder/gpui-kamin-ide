@@ -40,6 +40,7 @@ impl FlowReuse {
                             && r.follows(epoch)
                             && (r.origin == origin
                                 || r.movable
+                                    && raster_phase_matches(r.origin, origin)
                                     && recorded(record.ink.get(), r.origin, origin, screen))
                             && r.mask == mask
                             && window.retained_replayable(&r.prepaint, &r.paint))
@@ -226,4 +227,15 @@ fn recorded(
         let was = placed(was, point(to.x - from.x, to.y - from.y), 0.0);
         shown.size.width.0 <= 0.0 || shown.size.height.0 <= 0.0 || was.intersect(&shown) == shown
     })
+}
+
+/// Replaying rasterized output must preserve its device-pixel phase.
+/// Widen before subtraction so f32 cancellation cannot hide a phase change.
+pub(super) fn raster_phase_matches(from: Point<ScaledPixels>, to: Point<ScaledPixels>) -> bool {
+    [
+        f64::from(to.x.0) - f64::from(from.x.0),
+        f64::from(to.y.0) - f64::from(from.y.0),
+    ]
+    .into_iter()
+    .all(|delta| delta.is_finite() && delta.fract() == 0.0)
 }

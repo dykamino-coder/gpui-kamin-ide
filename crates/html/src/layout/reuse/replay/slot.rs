@@ -1,5 +1,6 @@
 //! Место повтора блока в кадре и его проверка перед prepaint.
 
+use super::super::frame::{raster_phase_matches, scaled};
 use super::{ReplayRecord, plain_environment};
 use gpui::{LayoutId, Pixels, Point, Window};
 use std::cell::Cell;
@@ -60,7 +61,10 @@ impl ReplaySlot {
                 && r.scale == scale
                 && r.mask == mask
                 && r.size == size
-                && (!moved || moves && r.movable);
+                && (!moved
+                    || moves
+                        && r.movable
+                        && raster_phase_matches(scaled(r.origin, scale), scaled(origin, scale)));
             (fits, origin - r.origin)
         });
         match placed {

@@ -50,6 +50,7 @@ fn an_edit_in_one_cell_replays_the_contents_of_the_others(cx: &mut TestAppContex
 
 /// Nine blocks in a wrapper (not the root flow); the block `edited` carries
 /// the attribute `data-x`, which `rule` styles.
+// Integral line heights keep moved glyphs on the same device-pixel phase.
 fn blocks(edited: Option<usize>, rule: &str) -> String {
     let items: String = (0..9)
         .map(|i| {
@@ -58,7 +59,7 @@ fn blocks(edited: Option<usize>, rule: &str) -> String {
         })
         .collect();
     format!(
-        "<!doctype html><html><head><style>body{{margin:0}} .item{{padding:2px;border:1px solid #333}} \
+        "<!doctype html><html><head><style>body{{margin:0;line-height:20px}} .item{{padding:2px;border:1px solid #333}} \
          {rule}</style></head><body><div id=wrap>{items}</div></body></html>"
     )
 }
@@ -128,6 +129,7 @@ fn cx_rebuilt(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
 }
 
 /// Twelve rows of the root flow; the second one says `text`.
+// This fixture checks integral translation; fractional moves rebuild output.
 fn rows(text: &str) -> String {
     let items: String = (0..12)
         .map(|i| {
@@ -141,7 +143,7 @@ fn rows(text: &str) -> String {
         .collect();
     format!(
         "<!doctype html><html><head><style>body{{margin:0;display:flow-root}} \
-         .row{{border-bottom:1px solid #abc}}</style></head><body>{items}</body></html>"
+         .row{{line-height:20px;border-bottom:1px solid #abc}}</style></head><body>{items}</body></html>"
     )
 }
 
