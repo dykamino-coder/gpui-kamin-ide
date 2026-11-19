@@ -15,7 +15,7 @@ type Pending = { command: Command; claimed: boolean; fallback: () => void; accep
 export const CLI_MOD_PLUGIN = fileURLToPath(new URL('../../cli-mod', import.meta.url))
 /** The module files of the entry with hook handler conditions (hooks/bridge-conditions.js and what it imports). */
 const CONDITION_MODULES = ['bridge-conditions.js', 'conditions.js', 'transport.js']
-export const CLI_MOD_VERSION = '2.1.327'
+export const CLI_MOD_VERSION = '2.1.328'
 /** How long an idle /poll is held open. Below the 3 s lease, so a module that
  * stops polling still expires on time. */
 export const POLL_HOLD_MS = 2000

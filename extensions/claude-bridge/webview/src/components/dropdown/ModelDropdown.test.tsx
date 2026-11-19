@@ -19,6 +19,8 @@ vi.mock('preact/hooks', () => ({
     if (!(i in f.state)) f.state[i] = initial
     return [f.state[i], (value: unknown) => { f.state[i] = value }]
   },
+  // Effects run during the render call; each test re-renders explicitly.
+  useEffect: (effect: () => void) => { effect() },
 }))
 vi.mock('../../hooks/useBridge', () => ({ useBridge: () => f.bridge }))
 
@@ -80,6 +82,24 @@ describe('model selector with Claude and GPT groups', () => {
     render().props.onToggle()
     expect(f.bridge.requestCodexModels).toHaveBeenCalledWith('t1')
     expect(codexCatalogLoading.value).toBe(true)
+  })
+
+  it('loads the GPT list as soon as the chat connects, before the menu is opened', () => {
+    codexCatalog.value = null
+    tabs.value = [{ id: 't1', engine: 'claude', model: 'claude-opus-5-5', status: 'connecting' } as unknown as TabInfo]
+    activeTabId.value = 't1'
+    render()
+    expect(f.bridge.requestCodexModels).not.toHaveBeenCalled()
+    tabs.value = [{ id: 't1', engine: 'claude', model: 'claude-opus-5-5', status: 'connected' } as unknown as TabInfo]
+    render()
+    expect(f.bridge.requestCodexModels).toHaveBeenCalledWith('t1')
+    expect(codexCatalogLoading.value).toBe(true)
+    // The reply is kept: later renders do not ask again until the menu opens.
+    codexCatalog.value = { models: [gpt], account: { loggedIn: true } }
+    f.bridge.requestCodexModels.mockReset()
+    render()
+    expect(f.bridge.requestCodexModels).not.toHaveBeenCalled()
+    expect(options(render()).some(o => o.name === 'GPT-5.5')).toBe(true)
   })
 
   it('in a Claude chat a GPT model continues the chat on ChatGPT, a Claude model changes in place', () => {

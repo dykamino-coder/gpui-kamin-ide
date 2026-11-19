@@ -98,6 +98,7 @@ impl Paragraph {
                 background_radius,
                 background_border,
                 background_line_gap,
+                background_owner: _,
                 underline,
                 strikethrough,
             } = run;
@@ -187,6 +188,7 @@ fn same_style(a: &gpui::TextRun, b: &gpui::TextRun) -> bool {
         background_radius,
         background_border,
         background_line_gap,
+        background_owner: _,
         underline,
         strikethrough,
     } = a;

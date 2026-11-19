@@ -39,6 +39,7 @@ impl Paragraph {
             measures: self.measures.clone(),
             fragment: None,
             kept: Default::default(),
+            fragments: None,
             scroll_owner: None,
             plaintext: self.plaintext,
             lines_reversed: self.lines_reversed,

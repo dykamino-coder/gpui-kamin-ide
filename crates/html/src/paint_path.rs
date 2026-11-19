@@ -54,6 +54,14 @@ pub static REFUSED_PLAN_PATHS: AtomicU64 = AtomicU64::new(0);
 pub static PLAN_CLEAN: AtomicU64 = AtomicU64::new(0);
 pub static PLAN_PATCHED: AtomicU64 = AtomicU64::new(0);
 pub static PLAN_RESTYLED: AtomicU64 = AtomicU64::new(0);
+/// Edits wholly off the screen of boxes the layer cannot record again, kept
+/// with the frame until a frame shows them (`layout::reuse::Wait`): inline
+/// boxes and boxes with decoration elements.
+pub static DEFERRED_INLINE: AtomicU64 = AtomicU64::new(0);
+pub static DEFERRED_DECORATION: AtomicU64 = AtomicU64::new(0);
+/// Such edits a replay brought onto the screen: the frame was built.
+pub static ARRIVED_INLINE: AtomicU64 = AtomicU64::new(0);
+pub static ARRIVED_DECORATION: AtomicU64 = AtomicU64::new(0);
 /// Nanoseconds spent deciding and writing the paint-only path.
 pub static WRITE_NS: AtomicU64 = AtomicU64::new(0);
 
@@ -94,8 +102,20 @@ pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
     None
 }
 
+pub mod not_own;
+
+/// Counters before the reasons of `REFUSED_NOT_OWN` (`not_own`) in `NAMES`.
+const PATH: usize = 26;
+
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
+    let path = counters().map(|c| c.load(Relaxed));
+    let reasons = not_own::read();
+    std::array::from_fn(|i| if i < PATH { path[i] } else { reasons[i - PATH] })
+}
+
+/// The path's counters in the order of `NAMES`.
+fn counters() -> [&'static AtomicU64; PATH] {
     [
         &VALUES,
         &RECORDS,
@@ -118,13 +138,17 @@ pub fn read() -> [u64; NAMES.len()] {
         &PLAN_CLEAN,
         &PLAN_PATCHED,
         &PLAN_RESTYLED,
+        &DEFERRED_INLINE,
+        &DEFERRED_DECORATION,
+        &ARRIVED_INLINE,
+        &ARRIVED_DECORATION,
         &WRITE_NS,
     ]
-    .map(|c| c.load(Relaxed))
 }
 
-/// Names of `read`'s counters.
-pub const NAMES: [&str; 22] = [
+/// Names of `read`'s counters: the path's, then `not_own_<reason>` for each
+/// of `not_own::REASONS`.
+pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "values",
     "records",
     "unseen",
@@ -146,7 +170,25 @@ pub const NAMES: [&str; 22] = [
     "plan_clean",
     "plan_patched",
     "plan_restyled",
+    "deferred_inline",
+    "deferred_decoration",
+    "arrived_inline",
+    "arrived_decoration",
     "write_ns",
+    "not_own_root_canvas",
+    "not_own_hover",
+    "not_own_inline",
+    "not_own_hidden",
+    "not_own_clone",
+    "not_own_filter",
+    "not_own_transform",
+    "not_own_decoration",
+    "not_own_band_effect",
+    "not_own_band_paint",
+    "not_own_band_nested",
+    "not_own_band_geometry",
+    "not_own_kind",
+    "not_own_other",
 ];
 
 /// Census of a document's boxes for the paint-only path: how many paint only

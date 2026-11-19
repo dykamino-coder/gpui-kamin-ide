@@ -24,7 +24,7 @@ import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
-import { resolveTokenSync } from '../../auth/tokens'
+import { resolveToken } from '../../auth/tokens'
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
 /** Hard ceiling on a single range request, so a bad `len` can't ask the server
@@ -34,12 +34,13 @@ const MAX_RANGE_LEN = 8 * 1024 * 1024
 /** Resolve the caller's tokenId. Prefers the middleware-stamped value (dashboard
  *  auth enabled), falls back to resolving the Bearer header directly so the
  *  endpoint also works when dashboard auth is off. Null → not a valid token. */
-function callerTokenId(c: Context): string | null {
+async function callerTokenId(c: Context): Promise<string | null> {
   const fromCtx = c.get('apiTokenId') as string | undefined
   if (fromCtx) return fromCtx
   const auth = c.req.header('authorization')
   if (!auth?.startsWith('Bearer ')) return null
-  return resolveTokenSync(auth.slice(7))?.tokenId ?? null
+  // Async: a token created/renamed a moment ago is read from the DB, not missed.
+  return (await resolveToken(auth.slice(7)))?.tokenId ?? null
 }
 
 /** A project-slug dir belongs to this token iff the slugified settingsDir path it
@@ -53,9 +54,7 @@ function ownsProjectDir(name: string, tokenId: string): boolean {
 /** Every JSONL the token owns → conversationId, byte size, and absolute path.
  *  Scans `projects/` directly (not the settingsDirs, which get reaped) so orphaned
  *  transcripts still surface. Deduped by conversationId. */
-async function listTokenTranscripts(
-  tokenId: string,
-): Promise<Map<string, { size: number; filePath: string }>> {
+async function listTokenTranscripts(tokenId: string): Promise<Map<string, { size: number; filePath: string }>> {
   const out = new Map<string, { size: number; filePath: string }>()
   let dirs: fs.Dirent[]
   try {
@@ -80,7 +79,9 @@ async function listTokenTranscripts(
       try {
         const st = await fsp.stat(filePath)
         if (st.isFile()) out.set(conversationId, { size: st.size, filePath })
-      } catch { /* vanished between readdir and stat */ }
+      } catch {
+        /* vanished between readdir and stat */
+      }
     }
   }
   return out
@@ -112,7 +113,7 @@ export function registerTranscriptExportRoutes(api: Hono): void {
   // GET /api/dashboard/transcripts — list every transcript the caller's token
   // owns, so the client can loop over them. `{ conversationId, size }` only.
   api.get('/api/dashboard/transcripts', async (c) => {
-    const tokenId = callerTokenId(c)
+    const tokenId = await callerTokenId(c)
     if (!tokenId) return c.json({ error: 'Authentication required' }, 401)
     const map = await listTokenTranscriptsCached(tokenId)
     const transcripts = [...map.entries()].map(([conversationId, v]) => ({ conversationId, size: v.size }))
@@ -123,7 +124,7 @@ export function registerTranscriptExportRoutes(api: Hono): void {
   // range of a transcript the caller owns. Batching lives on the client: it
   // walks offset→size in MAX_RANGE_LEN-bounded requests and appends each slice.
   api.get('/api/dashboard/transcripts/:conversationId', async (c) => {
-    const tokenId = callerTokenId(c)
+    const tokenId = await callerTokenId(c)
     if (!tokenId) return c.json({ error: 'Authentication required' }, 401)
     const conversationId = c.req.param('conversationId')
     // Ownership check BEFORE touching the filesystem for reads: only files the

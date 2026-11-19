@@ -36,6 +36,7 @@ fn shape_label(
         background_pad: Default::default(),
         background_radius: Default::default(),
         background_line_gap: false,
+        background_owner: 0,
         background_border: None,
         underline: None,
         strikethrough: None,

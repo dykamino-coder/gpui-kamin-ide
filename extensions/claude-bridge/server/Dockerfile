@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # handshake → hook round-trip) before shipping a new pin.
 # + tsx (a devDependency, but the runtime CMD invokes it via npx; install it
 # globally so the container doesn't pull it from the network on first start).
-ARG CLAUDE_CODE_VERSION=2.1.327
+ARG CLAUDE_CODE_VERSION=2.1.328
 ARG CLAUDE_CODE_CACHE_BUST=1
 # Codex CLI (ChatGPT chats) — PINNED for the same reason: Bridge drives the
 # experimental app-server protocol and removes built-in tools through the

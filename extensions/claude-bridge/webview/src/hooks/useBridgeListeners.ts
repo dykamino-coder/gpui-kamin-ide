@@ -1,6 +1,6 @@
 import { receiveSubmission, noteSubmissionRows, forgetSubmissions, forgetModCapability, shouldToastDelivery, submissions } from '../signals/submissions'
 import { forgetCompaction, noteCompactionRows } from '../signals/compaction'
-import { setTabUsage } from '../signals/session-usage'
+import { forgetOtherEngineUsage, setTabUsage } from '../signals/session-usage'
 import { receiveAgentPreferences, receiveCodexAuth, receiveCodexModels } from '../signals/agent'
 import { useEffect, useRef } from 'preact/hooks'
 
@@ -332,6 +332,9 @@ export function useBridgeListeners(
         const nextEngine = data.engine ?? cur?.engine
         // An engine switch: receipts follow the new engine's own announcement.
         if (cur && data.engine && (cur.engine ?? 'claude') !== data.engine) forgetModCapability(tabId)
+        // The previous agent's plan windows and auto-compact point are not
+        // this agent's: the status row starts empty for the new one.
+        if (data.engine) forgetOtherEngineUsage(tabId, data.engine)
         if (cur && (cur.effort !== nextEffort || cur.model !== nextModel || cur.engine !== nextEngine)) {
           tabs.value = tabs.value.map(t => t.id === tabId ? { ...t, effort: nextEffort, model: nextModel, engine: nextEngine } : t)
         }
