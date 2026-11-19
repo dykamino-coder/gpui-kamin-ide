@@ -20,13 +20,14 @@ pub struct DocumentView {
 
 impl DocumentView {
     /// Build once, retaining source options, fonts and the document's resource budget.
+    /// The initial `viewport` is also the size of the screen medium of the build.
     pub fn open(
-        builder: &DocumentBuilder<'_>,
+        builder: &mut DocumentBuilder<'_>,
         viewport: Size<Pixels>,
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Entity<Self>, DocumentFailure> {
-        let document = builder.build_for_view(true)?;
+        let document = builder.viewport(css_size(viewport)).build_for_view(true)?;
         Ok(cx.new(|cx| Self::new(document, viewport, window, cx)))
     }
 
@@ -54,7 +55,7 @@ impl DocumentView {
                     font_family: "Times New Roman".into(),
                     ..Default::default()
                 },
-                viewport: (f32::from(viewport.width), f32::from(viewport.height)),
+                viewport: css_size(viewport),
                 normal_line_height: 1.31,
                 cx: Default::default(),
                 frag: Default::default(),
@@ -64,17 +65,21 @@ impl DocumentView {
         }
     }
 
-    /// Resize layout without rebuilding the source document.
-    /// Media-query invalidation will use Document::set_viewport when that API lands.
-    pub fn resize(&mut self, viewport: Size<Pixels>, cx: &mut Context<Self>) {
-        let viewport = (
-            f32::from(viewport.width).max(0.),
-            f32::from(viewport.height).max(0.),
-        );
-        if self.opts.viewport != viewport {
-            self.opts.viewport = viewport;
-            cx.notify();
+    /// Follow a new embedded size: the screen medium takes it as an environment
+    /// change of the document (`Document::set_viewport`), which restyles only
+    /// when a media query flips; otherwise layout alone follows the new size.
+    pub fn resize(
+        &mut self,
+        viewport: Size<Pixels>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), DocumentFailure> {
+        let viewport = css_size(viewport);
+        if self.opts.viewport == viewport {
+            return Ok(());
         }
+        self.opts.viewport = viewport;
+        cx.notify();
+        self.document.set_viewport(viewport).map(drop)
     }
 
     /// Access the same document used by input, retained drawing and diagnostics.
@@ -86,6 +91,13 @@ impl DocumentView {
     pub fn document_mut(&mut self) -> &mut Document {
         &mut self.document
     }
+}
+
+fn css_size(viewport: Size<Pixels>) -> (f32, f32) {
+    (
+        f32::from(viewport.width).max(0.),
+        f32::from(viewport.height).max(0.),
+    )
 }
 
 impl Focusable for DocumentView {

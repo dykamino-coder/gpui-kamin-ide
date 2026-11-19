@@ -1,7 +1,6 @@
 //! A standalone browser seed: open a local HTML page, scroll its root, resize its viewport.
 //!
 //! Run: cargo run -p kamin-html --example kamin-browser -- page.html
-//! Media-query resize awaits the engine's Document::set_viewport API.
 
 #![allow(
     clippy::print_stderr,
@@ -80,7 +79,9 @@ fn main() {
                         if let Ok(view) = &view {
                             view.update(cx, |view, cx| {
                                 cx.observe_window_bounds(window, |view, window, cx| {
-                                    view.resize(window.viewport_size(), cx);
+                                    if let Err(error) = view.resize(window.viewport_size(), cx) {
+                                        eprintln!("Cannot resize page: {error}");
+                                    }
                                 })
                                 .detach();
                                 view.focus_handle(cx).focus(window, cx);
