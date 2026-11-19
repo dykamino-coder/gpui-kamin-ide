@@ -10,13 +10,16 @@ use super::{replayed, resize};
 use gpui::{Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
 
 /// One long paragraph of fixed width, taller than the window, in mixed spans.
+/// Its background is ink on screen: the test text system rasterizes no
+/// glyphs, and the lines culled below the window offer ink far from it
+/// (`flat::cull`), which alone would make the block far.
 fn page() -> String {
     let spans: String = (0..300)
         .map(|i| format!("<span>word{i} AV ffi fi antidisestablishmentarianism. </span>"))
         .collect();
     format!(
         "<!doctype html><html><head><style>body{{margin:0;font:16px Arial}} \
-         p{{width:770px;margin:0;line-height:1.3;text-align:justify}} \
+         p{{width:770px;margin:0;line-height:1.3;text-align:justify;background:#ffe}} \
          span:nth-child(3n){{font-weight:bold;letter-spacing:.25px}}</style></head>\
          <body><p>{spans}</p></body></html>"
     )
