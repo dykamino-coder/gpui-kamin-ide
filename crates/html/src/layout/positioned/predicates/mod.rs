@@ -103,8 +103,8 @@ fn stays_own(e: &Element, under_cb: bool) -> Result<bool, bool> {
     let pos = style.reset_positioned.position;
     let positioned = is_positioned(pos);
     let z = style.reset_positioned.z_index;
-    // Тот же предикат, что и у выноса: такой сосед уедет в слой, и
-    // взаимный порядок сохранится.
+    // The same predicate as the hoist: such a sibling moves to the layer,
+    // and the mutual order is kept.
     let inset = &style.reset_positioned.inset;
     let hoisted = pos == Some(Position::Absolute)
         && !under_cb
@@ -125,11 +125,11 @@ fn stays_own(e: &Element, under_cb: bool) -> Result<bool, bool> {
     if positioned && !hoisted {
         return Ok(true);
     }
-    // Вынесенный сосед уезжает в слой ВМЕСТЕ с поддеревом: его
-    // позиционированные потомки рисуются внутри него и порядок с
-    // выносимым не ломают. Прежде абсолютный ребёнок такого соседа
-    // держал элемент на месте, и края считались от `body`, а не от
-    // окна (`backdrop-filters-*`: квадрат съезжал на поле тела).
+    // A hoisted sibling moves to the layer TOGETHER with its subtree: its
+    // positioned descendants paint inside it and keep the order with the
+    // hoisted one. Before, an absolute child of such a sibling kept the
+    // element in place, and its edges were taken from `body`, not from the
+    // viewport (`backdrop-filters-*`: the square moved onto the body margin).
     if hoisted {
         return Ok(false);
     }
