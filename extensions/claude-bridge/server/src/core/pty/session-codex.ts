@@ -13,14 +13,15 @@
 // codex's own rollout (CODEX_HOME) stays the source of truth for resume.
 // ============================================================================
 
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import type { WebSocket as WS } from 'ws'
 import type { AgentEvent } from '../../shared/agent-events'
 import { config as bridgeConfig } from '../config'
-import { CodexAgentSession } from '../codex/codex-session'
+import { CodexAgentSession, type TurnContext } from '../codex/codex-session'
+import { SESSION_CONTEXT_OPEN } from '../codex/normalize'
 import { classifyCodexError, describeCodexError, loginRequired } from '../codex/codex-errors'
 import { codexUnavailableReason, type CodexRuntime } from '../codex/codex-runtime'
 import { limitWindowLabel, type CodexRateLimits } from '../../shared/codex-rate-limits'
@@ -69,6 +70,8 @@ export interface CodexBindingHooks {
   /** Bridge Console text (the virtual PTY's output). */
   console?(data: string): void
   stallMs?: number
+  /** The chat's session instructions without the model line (developerInstructions). */
+  instructions?: string
 }
 
 export interface CodexPlacement {
@@ -119,6 +122,9 @@ export interface CodexChoice {
   model?: string
   /** Bridge effort level (the selector's value). */
   effort?: string
+  /** Hashes of the session instructions and the model line the thread's
+   *  context holds (see sessionContextFor). */
+  context?: { prompt: string; model: string }
 }
 
 function choiceFile(settingsDir: string, threadId: string): string {
@@ -131,6 +137,7 @@ export function loadCodexChoice(settingsDir: string, threadId: string): CodexCho
     return {
       ...(typeof raw.model === 'string' && raw.model ? { model: raw.model } : {}),
       ...(typeof raw.effort === 'string' && raw.effort ? { effort: raw.effort } : {}),
+      ...(isContextRecord(raw.context) ? { context: raw.context } : {}),
     }
   } catch {
     return null
@@ -151,6 +158,61 @@ function writeCodexChoice(settingsDir: string, threadId: string, choice: CodexCh
   } catch (error) {
     warnLog('codex choice not saved', { threadId, error: String(error) })
   }
+}
+
+function isContextRecord(value: unknown): value is { prompt: string; model: string } {
+  const v = value as { prompt?: unknown; model?: unknown } | null
+  return Boolean(v) && typeof v?.prompt === 'string' && typeof v?.model === 'string'
+}
+
+const contextHash = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 32)
+
+/** The line that tells the model its exact id and effort: codex models know
+ *  their family, not the identifier the chat runs ("Codex based on GPT-6"). */
+export function modelLine(model: string | null | undefined, effort: string | null | undefined): string {
+  if (!model) return ''
+  const level = codexEffort(effort)
+  return [
+    '## Model',
+    `This chat runs on the model \`${model}\`${level ? ` with reasoning effort \`${level}\`` : ''}.`,
+    'When asked which model you are, answer with this exact identifier.',
+  ].join('\n')
+}
+
+/** The context record of what a thread was given at thread/start. */
+export function startedContext(instructions: string, line: string): { prompt: string; model: string } {
+  return { prompt: contextHash(instructions), model: contextHash(line) }
+}
+
+/**
+ * What the thread's next turn must carry so the model works with the chat's
+ * current instructions, model and effort; null when its context has them.
+ *
+ * codex puts developerInstructions into the model context only with a
+ * thread's initial context: thread/resume of a thread that already ran a turn
+ * stores them in its config and the model never sees them, so a prompt saved
+ * after the first turn, or the model line after a switch, would not arrive.
+ * The changed part is sent once in front of the next message: the whole
+ * instructions when they changed, else the model line alone.
+ */
+export function sessionContextFor(
+  seen: { prompt: string; model: string } | undefined,
+  instructions: string,
+  line: string,
+): { text: string; record: { prompt: string; model: string } } | null {
+  const record = startedContext(instructions, line)
+  const promptChanged = seen?.prompt !== record.prompt
+  if (!promptChanged && seen?.model === record.model) return null
+  const parts = (promptChanged ? [instructions, line] : [line]).filter(Boolean)
+  if (!parts.length) return null
+  const text = [
+    SESSION_CONTEXT_OPEN,
+    'Bridge session context: it replaces the earlier session instructions and model line of this chat.',
+    '',
+    parts.join('\n\n'),
+    '</bridge_session_context>',
+  ].join('\n')
+  return { text, record }
 }
 
 /** Whether a codex chat's Bridge transcript holds a user or assistant entry,
@@ -272,6 +334,8 @@ export async function createCodexSession(
   // A resumed thread continues on the model and effort last chosen in it.
   const saved = placement.resumeThreadId ? loadCodexChoice(settingsDir, placement.resumeThreadId) : null
   const effort = saved?.effort ?? config.effort
+  const instructions = developerInstructions(config)
+  const startLine = modelLine(codexModel(saved?.model) ?? codexModel(config.model), effort)
   const startOptions = {
     host,
     id: sessionId,
@@ -279,7 +343,7 @@ export async function createCodexSession(
     model: codexModel(saved?.model) ?? codexModel(config.model),
     effort: codexEffort(effort),
     threadConfig,
-    developerInstructions: developerInstructions(config),
+    developerInstructions: [instructions, startLine].filter(Boolean).join('\n\n'),
   }
   // The binding is created below; the virtual PTY always drives its current
   // agent, which changes when the thread is resumed on a restarted app-server.
@@ -384,6 +448,12 @@ export async function createCodexSession(
   const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound && !freshThread
   session.model = agent.model
   session.cliConversationId = resumed ? threadId : null
+  // A new thread's initial context holds the instructions and the start line;
+  // a resumed one keeps what its record says it was given.
+  if (!resumed) {
+    const choice = loadCodexChoice(settingsDir, threadId)
+    writeCodexChoice(settingsDir, threadId, { ...choice, context: startedContext(instructions, startLine) })
+  }
   session.resumeNotFound = resumeNotFound
   if (freshThread) session.resumedOnFreshThread = true
   binding = new CodexSessionBinding(session, agent, deps.runtime, transcript, config.cwd, {
@@ -400,6 +470,7 @@ export async function createCodexSession(
     onDead: (code) => vpty.markExited(code),
     console: (data) => vpty.emit(data),
     stallMs: deps.stallMs,
+    instructions,
   })
   session.agentInput = binding
   codexBindings.set(session, binding)
@@ -674,11 +745,27 @@ export class CodexSessionBinding {
       // thread like codex's own command; sent as text it was a paid model turn
       // that compacted nothing. Codex compaction takes no instructions.
       if (isCompactCommand(text)) await this.agent.compact()
-      else await this.agent.send(text, submissionId)
+      else await this.agent.send(text, submissionId, () => this.turnContext())
       this.receipt(text, submissionId, 'read')
     } catch (error) {
       const info = classifyCodexError((error as Error).message)
       this.receipt(text, submissionId, 'uncertain', describeCodexError(info))
+    }
+  }
+
+  /** The session context the thread has not seen yet, recorded once codex took it. */
+  private turnContext(): TurnContext | null {
+    const instructions = this.hooks?.instructions
+    const threadId = this.agent.conversationId()
+    if (instructions === undefined || !threadId) return null
+    const { settingsDir } = this.session
+    const choice = loadCodexChoice(settingsDir, threadId)
+    const next = sessionContextFor(choice?.context, instructions, modelLine(this.agent.model, this.session.effort))
+    if (!next) return null
+    return {
+      text: next.text,
+      delivered: () =>
+        writeCodexChoice(settingsDir, threadId, { ...loadCodexChoice(settingsDir, threadId), context: next.record }),
     }
   }
 

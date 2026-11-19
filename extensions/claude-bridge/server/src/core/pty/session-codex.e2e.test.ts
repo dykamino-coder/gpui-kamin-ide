@@ -515,6 +515,60 @@ describe('codex chat over the Bridge session WebSocket', () => {
     again.close()
   }, 30_000)
 
+  it('brings a base prompt saved after the first turn and the exact model to the resumed thread, once', async () => {
+    // Owner's case: the thread ran turns before the prompt was saved; after a
+    // restart codex resumes it, and resume instructions never reach its context.
+    // Answers already given (a resumed chat replays them) are not the new one.
+    const answered = new Set<string>()
+    const recall = async (c: Client, word: string, id: string) => {
+      await say(c, `/fake-recall ${word}`, id)
+      const hit = await c.entry((e) => e.type === 'assistant' && text(e).startsWith('recall:') && !answered.has(e.uuid))
+      answered.add(hit.uuid)
+      return text(hit)
+    }
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    expect(await recall(client, 'BP-RES-7310', 'p1')).toBe('recall: nothing about BP-RES-7310')
+    // The model line arrives with the first turn (the start named no model).
+    expect(await recall(client, 'runs on the model', 'p1m')).toContain('`gpt-fake`')
+    const conv = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+    client.send({ type: 'session:end' })
+    client.close()
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime())
+
+    const again = await Client.open(port)
+    again.send({
+      type: 'session:resume',
+      token: 'tok-a',
+      conversationId: conv,
+      protocolVersion: 1,
+      cwd: '/work/project',
+      basePrompt: 'Saved later BP-RES-7310: reply in Russian.',
+    })
+    expect(await again.next((f) => f.type === 'session:created')).toMatchObject({ engine: 'codex' })
+    const seen = await recall(again, 'BP-RES-7310', 'p2')
+    expect(seen.split('Saved later BP-RES-7310')).toHaveLength(2)
+    // The chat shows the message, not the context sent in front of it.
+    const bubble = await again.entry((e) => e.type === 'user' && text(e).includes('/fake-recall BP-RES-7310'))
+    expect(text(bubble)).toBe('/fake-recall BP-RES-7310')
+    // Delivered once: the next turns do not repeat it.
+    expect((await recall(again, 'BP-RES-7310', 'p3')).split('Saved later BP-RES-7310')).toHaveLength(2)
+
+    // A model and effort switch updates the model line once, without the prompt again.
+    again.send({ type: 'session:change-model', model: 'gpt-fake-mini' })
+    await again.next((f) => f.type === 'session:model-changed' && f.model === 'gpt-fake-mini')
+    again.send({ type: 'session:change-effort', effort: 'low' })
+    await again.next((f) => f.type === 'session:model-changed' && f.effort === 'low')
+    const lines = await recall(again, 'runs on the model', 'p4')
+    expect(lines).toContain('This chat runs on the model `gpt-fake-mini` with reasoning effort `low`.')
+    expect(lines.split('`gpt-fake-mini`')).toHaveLength(2)
+    expect((await recall(again, 'BP-RES-7310', 'p5')).split('Saved later BP-RES-7310')).toHaveLength(2)
+    expect((await recall(again, 'gpt-fake-mini', 'p6')).split('runs on the model `gpt-fake-mini`')).toHaveLength(2)
+    again.send({ type: 'session:end' })
+    again.close()
+  }, 40_000)
+
   it('continues a chat that never ran a turn on a new thread after a restart, with its choice', async () => {
     // codex 0.160.1 writes a rollout only with the first turn (acceptance
     // 2026-11-12: such a chat came back as "Conversation not found").

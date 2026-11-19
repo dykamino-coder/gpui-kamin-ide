@@ -45,6 +45,13 @@ export interface CodexSessionOptions {
 
 const textInput = (text: string): UserInput[] => [{ type: 'text', text, text_elements: [] }]
 
+/** Text a new turn carries in front of the user's message (Bridge session
+ *  context the thread has not seen yet); `delivered` runs once codex took it. */
+export interface TurnContext {
+  text: string
+  delivered(): void
+}
+
 export class CodexAgentSession implements AgentSession, ThreadSink {
   readonly engine = 'codex' as const
   readonly capabilities: AgentCapabilities = { nativeSteer: true, liveModelSwitch: true, normalizedTranscript: true }
@@ -156,18 +163,20 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
 
   /** A running turn is steered; otherwise a new turn starts. Calls are
    *  serialized, so quick successive messages become one turn plus steers. */
-  send(text: string, submissionId?: string): Promise<void> {
-    const next = this.sending.then(() => this.deliver(text, submissionId))
+  send(text: string, submissionId?: string, context?: () => TurnContext | null): Promise<void> {
+    const next = this.sending.then(() => this.deliver(text, submissionId, context))
     this.sending = next.catch(() => undefined)
     return next
   }
 
-  private async deliver(text: string, submissionId?: string): Promise<void> {
-    if (this.activeTurnId) return this.steerNow(text, submissionId)
+  private async deliver(text: string, submissionId?: string, context?: () => TurnContext | null): Promise<void> {
+    if (this.activeTurnId) return this.steerNow(text, submissionId, context)
     const threadId = this.requireThread()
+    // Only a new turn carries the context: a steer joins a turn that already has it.
+    const extra = context?.() ?? null
     const response = await this.options.host.rpc.request<TurnStartResponse>('turn/start', {
       threadId,
-      input: textInput(text),
+      input: extra ? [...textInput(extra.text), ...textInput(text)] : textInput(text),
       ...(submissionId ? { clientUserMessageId: submissionId } : {}),
       ...(this.nextModel ? { model: this.nextModel } : {}),
       ...(this.effort ? { effort: this.effort } : {}),
@@ -177,6 +186,7 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       summary: CODEX_REASONING_SUMMARY,
     })
     this.nextModel = undefined
+    extra?.delivered()
     const turn = response.turn
     if (turn.status === 'inProgress' && this.activeTurnId === null && !this.completed.has(turn.id)) {
       this.activeTurnId = turn.id
@@ -201,9 +211,9 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
     return next
   }
 
-  private async steerNow(text: string, submissionId?: string): Promise<void> {
+  private async steerNow(text: string, submissionId?: string, context?: () => TurnContext | null): Promise<void> {
     const turnId = this.activeTurnId
-    if (!turnId) return this.deliver(text, submissionId)
+    if (!turnId) return this.deliver(text, submissionId, context)
     const threadId = this.requireThread()
     try {
       await this.options.host.rpc.request<TurnSteerResponse>('turn/steer', {
@@ -214,7 +224,8 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       })
     } catch (error) {
       // The turn ended between our check and codex's: the text starts a new one.
-      if (error instanceof JsonRpcError && this.activeTurnId !== turnId) return this.deliver(text, submissionId)
+      if (error instanceof JsonRpcError && this.activeTurnId !== turnId)
+        return this.deliver(text, submissionId, context)
       throw error
     }
   }
