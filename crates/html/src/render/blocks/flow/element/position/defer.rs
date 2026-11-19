@@ -2,16 +2,15 @@
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::layout::positioned::anchor::{key_of, resolve};
+use crate::layout::positioned::anchor::{key_of, resolve, trials};
 use crate::layout::positioned::containing_block::{
     OofKid, Spot, SpotCell, nearest_cb_index, spot_probe,
 };
 use crate::layout::positioned::predicates::edge_set;
+use crate::layout::positioned::viewport_anchor::{anchor_of, anchored};
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Position};
 use gpui::{AnyElement, IntoElement};
-
-use crate::layout::positioned::anchor::trials;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn defer(
@@ -52,12 +51,13 @@ pub(super) fn defer(
         crate::layout::block::struts::margin_px(length, &e.style.used(), opts.cx.vcx())
             .unwrap_or(0.)
     };
+    let anchor = anchor_of(fixed && to_icb, &opts.cx.position.state);
     let spot: SpotCell = Default::default();
     spot.set(Spot {
         fixed_axes: axes,
         preserve_cb_geometry: !to_icb,
         viewport_static: to_icb,
-        viewport_fixed: fixed && to_icb && opts.cx.position.state.viewport_anchor().is_some(),
+        viewport_fixed: anchor.is_some(),
         free_margin: (
             if axes.0 {
                 0.
@@ -87,14 +87,7 @@ pub(super) fn defer(
     let inherited = inherited.clone();
     let mut build_opts = opts.clone();
     build_opts.cx.position.oof_identities = Some(identities);
-    // A fixed box of the root viewport hangs on it, outside the root
-    // scroll range, as on the direct route (`position_element`).
-    let anchor = (fixed && to_icb)
-        .then(|| opts.cx.position.state.viewport_anchor())
-        .flatten();
-    if anchor.is_some() {
-        build_opts.cx.scroll.frame = None;
-    }
+    let _ = build_opts.cx.scroll.frame.take_if(|_| anchor.is_some());
     let frame = frame.clone();
     let paint_last = crate::layout::order::paint_last_ok(e, rest, &opts.cx);
     let source_paint = (!paint_last
@@ -151,13 +144,7 @@ pub(super) fn defer(
                 )
             })
             .finish();
-        let child = match &anchor {
-            Some(scroll) => crate::layout::positioned::viewport_anchor::ViewportAnchor::wrap(
-                child,
-                scroll.clone(),
-            ),
-            None => child,
-        };
+        let child = anchored(child, anchor.as_ref());
         let z_index = source.style.used().reset_positioned.z_index;
         let child = if !fixed && z_index.is_some_and(|z| z > 0) {
             crate::paint::stacking::layered(

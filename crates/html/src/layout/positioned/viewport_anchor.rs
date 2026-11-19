@@ -39,6 +39,29 @@ pub(crate) fn viewport_box(child: AnyElement) -> AnyElement {
         .into_any_element()
 }
 
+/// The root scroll handle a fixed box hangs on: `Some` when the box's
+/// containing block is the viewport (`viewport_fixed`: `position: fixed`
+/// without a fixed containing block among its ancestors) and the open ICB
+/// layer is a root scrollport's. Such a box is not part of the scrolled
+/// content and adds nothing to the root's scrollable overflow, so its
+/// subtree is built without the root scroll frame.
+pub(crate) fn anchor_of(
+    viewport_fixed: bool,
+    positioning: &crate::layout::positioned::containing_block::Positioning,
+) -> Option<ScrollHandle> {
+    viewport_fixed
+        .then(|| positioning.viewport_anchor())
+        .flatten()
+}
+
+/// `child` hung on `anchor`, or `child` itself.
+pub(crate) fn anchored(child: AnyElement, anchor: Option<&ScrollHandle>) -> AnyElement {
+    match anchor {
+        Some(scroll) => ViewportAnchor::wrap(child, scroll.clone()),
+        None => child,
+    }
+}
+
 pub(crate) struct ViewportAnchor {
     child: AnyElement,
     scroll: ScrollHandle,

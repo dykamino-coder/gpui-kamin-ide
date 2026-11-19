@@ -11,12 +11,13 @@
 //! `LayoutCx`, поэтому вложенный документ никогда не видит внешний слой.
 
 use super::SpotCell;
-use super::late::{LatePlace, spot_place};
-use crate::hooks::IntoHooked;
+use super::late::spot_place;
 use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 use std::cell::RefCell;
 
+mod initial;
+pub(super) use initial::icb_place;
 mod scope;
 pub(crate) use scope::LayerScope;
 
@@ -157,55 +158,6 @@ impl Positioning {
         layer.map(|l| l.taken).unwrap_or_default().place(icb_place)
     }
 
-    /// Open an initial-containing-block layer: the document, a strip block or
-    /// a nested document.
-    pub fn icb_open(&self) {
-        self.icb_open_anchored(None);
-    }
-
-    /// Open the ICB layer of a root scrollport scrolled by `anchor`.
-    pub(crate) fn icb_open_anchored(&self, anchor: Option<gpui::ScrollHandle>) {
-        let queue = OofQueue::initial();
-        self.pending.borrow_mut().push(queue.pending());
-        self.icb.borrow_mut().push(queue);
-        self.anchors.borrow_mut().push(anchor);
-    }
-
-    /// The root scroll handle of the top ICB layer: a fixed box placed into
-    /// it cancels that offset (css-position-3 §fixed-pos: the viewport is
-    /// its containing block and it does not move when the document scrolls).
-    pub(crate) fn viewport_anchor(&self) -> Option<gpui::ScrollHandle> {
-        self.anchors.borrow().last().cloned().flatten()
-    }
-
-    /// Take what the top ICB layer collected and close it.
-    pub fn icb_close(&self) -> Vec<AnyElement> {
-        self.anchors.borrow_mut().pop();
-        self.pending.borrow_mut().pop();
-        let layer = self.icb.borrow_mut().pop();
-        layer.unwrap_or_default().place(icb_place)
-    }
-
-    /// Is an ICB layer open?
-    ///
-    /// A scroll strip builds its subtree in a closure that
-    /// `ScrollArea::request_layout` calls AFTER `icb_close()`: candidates can
-    /// be hoisted only while the layer still exists.
-    pub fn icb_active(&self) -> bool {
-        !self.icb.borrow().is_empty()
-    }
-
-    /// Hand an element to the top ICB layer. No layer — it comes back.
-    pub fn icb_push(&self, spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
-        match self.icb.borrow_mut().last_mut() {
-            Some(layer) => {
-                layer.push(spot, el);
-                None
-            }
-            None => Some(el),
-        }
-    }
-
     /// Open the top paint layer for the children of a container.
     pub fn late_open(&self) {
         self.late.borrow_mut().push(OofQueue::with_pending(
@@ -249,28 +201,5 @@ impl Positioning {
             }
             None => Some(el),
         }
-    }
-}
-
-/// Заместитель слоя ICB — БЕЗ обёртки, в отличие от `spot_place`.
-///
-/// Любая коробка вокруг стала бы для раскладки содержащим блоком абсолютного
-/// ребёнка (понятия «позиционированный предок» у раскладки нет), и края
-/// считались бы от неё, а не от области просмотра — то есть ровно то, ради
-/// чего затеян вынос. `LatePlace` своей коробки не заводит: он отдаёт
-/// `layout_id` ребёнка. Исключение — `fixed` корневой области просмотра
-/// (`Spot::viewport_fixed`): его коробка ровно совпадает с областью
-/// просмотра, края те же, а в диапазон прокрутки он не входит.
-pub(super) fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
-    let now = spot.get();
-    let placed = if now.layout_only {
-        child
-    } else {
-        LatePlace { child, spot }.hooked()
-    };
-    if now.viewport_fixed {
-        crate::layout::positioned::viewport_anchor::viewport_box(placed)
-    } else {
-        placed
     }
 }
