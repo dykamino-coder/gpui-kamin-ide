@@ -75,14 +75,18 @@ export interface SessionUsage {
   contextPercent: number | null
   contextWindowSize: number | null
   /** Tokens at which the CLI auto-compacts this session (auto-compact.ts):
-   *  the context meter's 100%. */
-  autoCompactAt: number
+   *  the context meter's 100%. Null in a codex snapshot (codex reports its
+   *  context window with each response). */
+  autoCompactAt: number | null
   model: string | null
   effort: string | null
   observedAt: string
   /** When the shown 5h/7d windows were reported by a CLI: this snapshot, or
    *  the account's last report while this CLI has none (account-limits.ts). */
   limitsObservedAt?: string | null
+  /** The agent the snapshot describes. The Claude status line leaves it out
+   *  (clients read untagged as Claude); codex plan windows say `codex`. */
+  engine?: 'claude' | 'codex'
 }
 
 function clean(value: unknown): string | null {

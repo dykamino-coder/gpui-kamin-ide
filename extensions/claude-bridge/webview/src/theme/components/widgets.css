@@ -204,7 +204,10 @@
 .perm-menu {
   display: none; position: fixed;
   background: var(--bg-primary); border: 1px solid var(--bg-overlay); border-radius: var(--radius-sm);
-  min-width: 270px; z-index: var(--z-toast-lower); overflow: hidden;
+  min-width: 270px; z-index: var(--z-toast-lower);
+  /* DropdownMenu caps max-height to the room above the trigger; a longer list
+     scrolls inside the menu. */
+  box-sizing: border-box; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
   box-shadow: var(--shadow-bar);
 }
 .perm-menu.visible { display: block; }
