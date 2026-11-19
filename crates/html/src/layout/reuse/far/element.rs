@@ -30,6 +30,8 @@ impl FarRecorder {
         (pending, source): (PendingFar, Source),
         skip: Option<usize>,
     ) -> Self {
+        // The wrapper lays out as its child: no node of its own.
+        gpui::note_layoutless_element();
         Self {
             child,
             reuse,

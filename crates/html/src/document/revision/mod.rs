@@ -8,6 +8,7 @@ mod commit;
 mod kept;
 mod layer_band;
 mod layer_write;
+mod media;
 pub(super) use layer_band::records_band;
 pub(super) use layer_write::{at, parent_at};
 mod mentions;
@@ -146,6 +147,8 @@ impl Document {
                 return Err(record(failure, self));
             }
         };
+        crate::document::boxes::BoxTree::edit(&candidate.state.boxes)
+            .replace(&candidate.nodes, &candidate.state.values);
         *self = candidate;
         Ok(self.report())
     }

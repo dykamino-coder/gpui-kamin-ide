@@ -51,6 +51,7 @@ mod tabs;
 pub use crate::text::inline::bidi_controls::bidi_marks;
 pub use crate::text::inline::tabs::tab_stops;
 
+pub(crate) mod normalization;
 mod text_case;
 
 use crate::dom::{Element, Node};
@@ -60,6 +61,8 @@ pub(super) mod collect;
 pub(crate) use crate::text::inline::collect::to_rotated_frame;
 use crate::text::inline::collect::*;
 pub(crate) use collect::band_of;
+#[cfg(test)]
+pub(crate) use collect::retained::Runs;
 pub(super) mod hyphenate;
 pub use crate::text::inline::hyphenate::*;
 pub(super) mod spans;
@@ -175,17 +178,64 @@ pub fn collect(
     atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Vec<Piece> {
+    let prepared = cx.doc().boxes.borrow().normalized(children, inherited);
+    if let Some(text) = prepared {
+        let mut pieces = text
+            .items()
+            .iter()
+            .filter_map(|item| {
+                let range = item.kind.text_range()?;
+                (!range.is_empty()).then(|| Piece::Text {
+                    text: text.text()[range].to_owned(),
+                    style: inherited.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        collect::set_boundary_spacing(&mut pieces, None);
+        return pieces;
+    }
+    if let Some(pieces) = collect_mixed(children, inherited, atom, cx) {
+        return pieces;
+    }
+    // No retained runs, or the box tree saw other text or inputs.
     collect_with_empty_metrics(
         children,
         inherited,
         atom,
         empty_inline::has_text(children),
-        &mut collect::CollectCx {
-            case: text_case::Context::default(),
-            layout: cx.clone(),
-            inline_parents: Vec::new(),
-            inline_cb_depth: 0,
-            ruby_space: false,
-        },
+        &mut collect_cx(cx, None),
     )
+}
+
+fn collect_cx(
+    cx: &crate::layout::cx::LayoutCx,
+    runs: Option<collect::retained::Runs>,
+) -> collect::CollectCx {
+    collect::CollectCx {
+        case: text_case::Context::default(),
+        layout: cx.clone(),
+        inline_parents: Vec::new(),
+        inline_cb_depth: 0,
+        ruby_space: false,
+        runs,
+    }
+}
+
+/// The pieces of a flow with inline boxes from the runs the box tree prepared,
+/// if every text node takes its run.
+pub(crate) fn collect_mixed(
+    children: &[Node],
+    inherited: &BoxStyle,
+    atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
+    cx: &crate::layout::cx::LayoutCx,
+) -> Option<Vec<Piece>> {
+    let mixed = cx.doc().boxes.borrow().mixed_text(children, inherited)?;
+    let mut collect = collect_cx(cx, Some(collect::retained::Runs::new(mixed)));
+    let has_text = empty_inline::has_text(children);
+    let pieces = collect_with_empty_metrics(children, inherited, atom, has_text, &mut collect);
+    collect
+        .runs
+        .as_ref()
+        .is_some_and(collect::retained::Runs::complete)
+        .then_some(pieces)
 }

@@ -4,7 +4,6 @@
 //! сужение полноширинных форм (css-writing-modes-4 §9.1, §9.1.2, §9.1.3.1). На выходе атом
 //! `CombinedUpright` с внутренним абзацем.
 
-use crate::dom::text_content::gather_text;
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
@@ -28,8 +27,7 @@ pub(crate) fn piece(
     }
     let mut merged = box_style(inherited, &element.style, vcx);
     let count = merged.inh.writing.combine_upright.flatten()?;
-    let mut plain = String::new();
-    gather_text(&element.children, &mut plain);
+    let plain = crate::text::content::raw(&element.children, &opts.cx);
     let text = plain.trim();
     if text.is_empty()
         || count != 0

@@ -49,6 +49,14 @@ impl BackgroundValues {
         }
     }
 
+    /// The operands `resolve_viewport` folds lengths in are there.
+    pub fn has_lengths(&self) -> bool {
+        self.gradient.is_some()
+            || self.gradient_image.is_some()
+            || self.top.image.is_some()
+            || self.layers.is_some()
+    }
+
     /// Позднее разрешение единиц окна тем же обходом операндов, что у CSS.
     /// Размер области и ось берутся от корня, как до выделения этого входа.
     pub fn resolve_viewport(&mut self, root: &Computed, viewport: (f32, f32), vcx: ValueCx<'_>) {

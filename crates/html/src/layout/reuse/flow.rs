@@ -164,6 +164,13 @@ impl FlowReuse {
 }
 
 impl FlowCx {
+    /// Block `e` is built in a run of restyles (`Store::restyled`) or was
+    /// itself restyled by the last rebuild (`Store::restyled_blocks`): it is
+    /// recorded only for a recolour.
+    fn restyled(&self, e: &Element) -> bool {
+        self.restyled || self.reuse.store.restyled_block(e.node_id)
+    }
+
     /// Ребёнок `n` собран (или ушёл в анонимный абзац): запомнить флоаты,
     /// выходящие за его край (`plain::escaping_floats`); флоаты внутри корня
     /// контекста форматирования следующих детей не трогают.
@@ -201,7 +208,7 @@ impl FlowCx {
         if !single {
             return;
         }
-        if self.restyled {
+        if self.restyled(e) {
             // A run of restyles records only the replays of blocks that paint
             // nothing in their colour: a recolour replays them (`unread_color`).
             self.record_replay(e, mark, now.start, opts, out);
