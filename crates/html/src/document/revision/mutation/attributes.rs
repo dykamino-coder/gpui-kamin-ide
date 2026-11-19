@@ -1,8 +1,7 @@
 //! Attribute writes and their ordered difference for one element.
 use super::{Attribute, Handle, Mutation, QualName};
 
-/// `setAttribute`/`removeAttribute` (DOM §4.9): значение на месте прежнего
-/// атрибута, новый — в конец списка.
+/// Set or remove an attribute in place. A new attribute goes at the end.
 pub(super) fn set(list: &mut Vec<Attribute>, name: &QualName, value: Option<&str>) {
     let at = list.iter().position(|a| a.name == *name);
     match (at, value) {
@@ -18,8 +17,8 @@ pub(super) fn set(list: &mut Vec<Attribute>, name: &QualName, value: Option<&str
     }
 }
 
-/// Записи, переводящие атрибуты `old` в список `new` с тем же порядком: общее
-/// начало остаётся, хвост `old` снимается, хвост `new` ставится по порядку.
+/// Preserve the common prefix, remove the old tail, and append the new tail
+/// in source order.
 pub(in crate::document::revision) fn attribute_records(
     element: &Handle,
     old: &[Attribute],

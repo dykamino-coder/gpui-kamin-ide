@@ -1,13 +1,10 @@
-//! Записи мутаций DOM: единственный вход правки ревизии.
+//! The source DOM mutation journal used by document revisions.
 //!
-//! Запись ссылается на ручку узла `Document::source_dom`. Текст и атрибуты
-//! меняются через ту же ручку, что у JS (DOM §4.10; Blink
-//! `CharacterData::SetDataAndUpdate`, Servo `CharacterData::SetData`).
-//! Запись удаления указывает непосредственного родителя и ребёнка.
-//! `Document::update` переводит разметку той же формы в тот же журнал.
+//! Each record names a node in `Document::source_dom`. Text and attribute
+//! edits keep the source handle. A removal names both ends of a child link.
+//! `Document::update` converts same-shape markup edits into this journal.
 //!
-//! Пакет хранит прежние значения, позиции детей и родительские связи.
-//! Этого достаточно, чтобы вернуть DOM в прежнее состояние при отказе ревизии.
+//! A batch keeps old values, child positions and parent links for rollback.
 
 mod attributes;
 mod children;
