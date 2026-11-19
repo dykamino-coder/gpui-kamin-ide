@@ -1,4 +1,4 @@
-//! Тесты инертного поддерева: обычный поток, однократный вердикт и флоаты в корне контекста.
+//! Skip eligibility, anchor dependencies and floats in formatting contexts.
 
 use super::*;
 use crate::dom::{Marks, Text};

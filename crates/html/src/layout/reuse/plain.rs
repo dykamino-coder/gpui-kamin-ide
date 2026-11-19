@@ -1,9 +1,7 @@
 //! Инертное поддерево: обычный поток текста и блоков без собственных слоёв.
 //!
-//! Позиционированные потомки уходят в слой содержащего блока, флоаты — в
-//! полосы контейнера, а трансформация, прозрачность и смешение открывают
-//! контекст наложения с отложенной краской. Замещаемые элементы, формы и
-//! ссылки держат ресурсы, состояние или ввод. Такое поддерево не пропускается.
+//! Positioned and floating descendants, deferred paint, and interactive or
+//! replaced elements can affect state outside a skipped block.
 
 use crate::dom::{Element, Node};
 use crate::style::computed::Position;
