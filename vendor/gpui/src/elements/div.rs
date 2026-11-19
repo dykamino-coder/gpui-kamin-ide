@@ -2154,6 +2154,7 @@ impl Element for Div {
             request_layout.exact_bounds.map(|exact| (bounds, exact)),
         );
 
+        let scroll_node = self.interactivity.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
         let hitbox = self.interactivity.prepaint(
             global_id,
             inspector_id,
@@ -2169,8 +2170,10 @@ impl Element for Div {
                     return hitbox;
                 }
 
+                // KaminIDE patch: a scroll container's children form a scroll node.
+                let node = scroll_node.map(|id| (id, window.content_mask().bounds));
                 window.with_image_cache(image_cache, |window| {
-                    window.with_element_offset(scroll_offset, |window| {
+                    window.with_scroll_node_prepaint_if(node, scroll_offset, |window| window.with_element_offset(scroll_offset, |window| {
                         if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
                             (traversal.enter_children)(window);
                         }
@@ -2186,7 +2189,7 @@ impl Element for Div {
                                 child.prepaint(window, cx);
                             }
                         }
-                    });
+                    }));
 
                     if let Some(listener) = self.prepaint_listener.as_ref() {
                         listener(children_bounds, window, cx);
@@ -2220,6 +2223,8 @@ impl Element for Div {
             &mut window.raster_frame.exact_bounds,
             request_layout.exact_bounds.map(|exact| (bounds, exact)),
         );
+        // KaminIDE patch: the children of a scroll container paint as its node.
+        let scroll_node = self.interactivity.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
         window.with_image_cache(image_cache, |window| {
             self.interactivity.paint(
                 global_id,
@@ -2245,7 +2250,7 @@ impl Element for Div {
                         #[cfg(feature = "stacker")] { &mut **child }
                         #[cfg(not(feature = "stacker"))] { child }
                     });
-                    if let Some(painter) = painter {
+                    window.with_scroll_node_paint_if(scroll_node, |window| if let Some(painter) = painter {
                         (painter.0)(
                             &crate::ChildPaintContext {
                                 style,
@@ -2259,7 +2264,7 @@ impl Element for Div {
                         );
                     } else {
                         for child in children { child.paint(window, cx); }
-                    }
+                    });
                 },
             )
         });
@@ -4642,6 +4647,13 @@ enum ScrollStrategy {
 /// and for mutating the scroll state, like scrolling to a specific child.
 #[derive(Clone, Debug)]
 pub struct ScrollHandle(Rc<RefCell<ScrollHandleState>>);
+
+impl ScrollHandle {
+    /// KaminIDE patch: identity of the shared state, the scroll node's id.
+    pub(crate) fn node_identity(&self) -> usize {
+        Rc::as_ptr(&self.0) as *const () as usize
+    }
+}
 
 impl Default for ScrollHandle {
     fn default() -> Self {

@@ -32,7 +32,7 @@ impl RetainedPrepaint {
         Self(range.start.pack()..range.end.pack())
     }
 
-    fn range(&self) -> Range<PrepaintStateIndex> {
+    pub(crate) fn range(&self) -> Range<PrepaintStateIndex> {
         self.0.start.unpack()..self.0.end.unpack()
     }
 }
@@ -42,7 +42,7 @@ impl RetainedPaint {
         Self { range: range.start.pack()..range.end.pack(), replayable, allowed }
     }
 
-    fn range(&self) -> Range<PaintIndex> {
+    pub(crate) fn range(&self) -> Range<PaintIndex> {
         self.range.start.unpack()..self.range.end.unpack()
     }
 

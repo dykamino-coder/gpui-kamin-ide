@@ -78,6 +78,8 @@ mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained;
+mod scroll_nodes;
+pub use scroll_nodes::{ScrollNodeId, ScrollSegment};
 pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
 pub(crate) use retained::InkSinks;
 pub use retained::{InkScope, InkSink, InkSinkList, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
@@ -1074,6 +1076,10 @@ pub(crate) struct Frame {
     /// overriding the scope of their hitbox id.
     pub(crate) hitbox_entry_scopes: FxHashMap<usize, Option<Rc<hit_transform::HitScope>>>,
     pub(crate) window_control_hitboxes: Vec<(WindowControlArea, Hitbox)>,
+    /// KaminIDE patch: scroll containers prepainted in this frame (`scroll_nodes`).
+    pub(crate) scroll_nodes: Vec<scroll_nodes::ScrollNodeRecord>,
+    /// KaminIDE patch: the scroll nodes open while prepainting.
+    pub(crate) scroll_node_stack: Vec<u32>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
     /// KaminIDE patch: views drawn isolated in this frame.
     pub(crate) isolated_views: FxHashSet<EntityId>,
@@ -1098,6 +1104,8 @@ pub(crate) struct PrepaintStateIndex {
     deferred_draws_index: usize,
     dispatch_tree_index: usize,
     accessed_element_states_index: usize,
+    /// KaminIDE patch: scroll nodes prepainted so far (`scroll_nodes`).
+    scroll_nodes_index: usize,
     line_layout_index: LineLayoutIndex,
 }
 
@@ -1122,7 +1130,7 @@ pub(crate) fn pack_index(index: usize) -> u32 {
 /// KaminIDE patch: `PrepaintStateIndex` in 32-bit words: a retained range
 /// (`RetainedPrepaint`) is kept per recorded subtree.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct PackedPrepaintIndex([u32; 5], [u32; 5]);
+pub(crate) struct PackedPrepaintIndex([u32; 6], [u32; 5]);
 
 impl PrepaintStateIndex {
     pub(crate) fn pack(&self) -> PackedPrepaintIndex {
@@ -1133,6 +1141,7 @@ impl PrepaintStateIndex {
                 self.deferred_draws_index,
                 self.dispatch_tree_index,
                 self.accessed_element_states_index,
+                self.scroll_nodes_index,
             ]
             .map(pack_index),
             self.line_layout_index.pack(),
@@ -1142,7 +1151,7 @@ impl PrepaintStateIndex {
 
 impl PackedPrepaintIndex {
     pub(crate) fn unpack(&self) -> PrepaintStateIndex {
-        let [hitboxes_index, tooltips_index, deferred_draws_index, dispatch_tree_index, accessed_element_states_index] =
+        let [hitboxes_index, tooltips_index, deferred_draws_index, dispatch_tree_index, accessed_element_states_index, scroll_nodes_index] =
             self.0.map(|w| w as usize);
         PrepaintStateIndex {
             hitboxes_index,
@@ -1150,6 +1159,7 @@ impl PackedPrepaintIndex {
             deferred_draws_index,
             dispatch_tree_index,
             accessed_element_states_index,
+            scroll_nodes_index,
             line_layout_index: LineLayoutIndex::unpack(self.1),
         }
     }
@@ -1221,6 +1231,8 @@ impl Frame {
             hitbox_scopes: FxHashMap::default(),
             hitbox_entry_scopes: FxHashMap::default(),
             window_control_hitboxes: Vec::new(),
+            scroll_nodes: Vec::new(),
+            scroll_node_stack: Vec::new(),
             deferred_draws: Vec::new(),
             isolated_views: FxHashSet::default(),
             input_handlers: Vec::new(),
@@ -1254,6 +1266,8 @@ impl Frame {
         self.hitbox_scopes.clear();
         self.hitbox_entry_scopes.clear();
         self.window_control_hitboxes.clear();
+        self.scroll_nodes.clear();
+        self.scroll_node_stack.clear();
         self.deferred_draws.clear();
         self.isolated_views.clear();
         self.tab_stops.clear();
@@ -4409,6 +4423,7 @@ impl Window {
             deferred_draws_index: self.next_frame.deferred_draws.len(),
             dispatch_tree_index: self.next_frame.dispatch_tree.len(),
             accessed_element_states_index: self.next_frame.accessed_element_states.len(),
+            scroll_nodes_index: self.next_frame.scroll_nodes.len(),
             line_layout_index: self.text_system.layout_index(),
         }
     }
