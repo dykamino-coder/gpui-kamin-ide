@@ -26102,10 +26102,10 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..d6cd63626c3556f4169a509f19de0fc4
 +
 diff --git a/vendor/gpui/src/text_system/band_piece.rs b/vendor/gpui/src/text_system/band_piece.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2624e9766b04a954a565868e6fe83fbd19d23e7e
+index 0000000000000000000000000000000000000000..b16bfb1d3d9e7d981136a8957afe1c57696b6c30
 --- /dev/null
 +++ b/vendor/gpui/src/text_system/band_piece.rs
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,150 @@
 +//! KaminIDE patch: one piece of an inline box's band on a line, painted the
 +//! same way the first time (`paint_line_background`) and when the box's
 +//! paint is recorded again (`Window::rerecord_layer_band`).
@@ -26256,7 +26256,6 @@ index 0000000000000000000000000000000000000000..2624e9766b04a954a565868e6fe83fbd
 +        result
 +    }
 +}
-+
 diff --git a/vendor/gpui/src/text_system/composed.rs b/vendor/gpui/src/text_system/composed.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..a0a0eabb7fd8055cfd94f99e122f029a98cec70c
