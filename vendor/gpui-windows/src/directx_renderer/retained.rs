@@ -66,7 +66,7 @@ pub(super) enum Plan {
 }
 
 /// `GPUI_DAMAGE_REDRAW=0` draws every frame whole (comparison runs, fallback).
-fn enabled() -> bool {
+pub(super) fn enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var_os("GPUI_DAMAGE_REDRAW").is_none_or(|v| v != "0"))
 }

@@ -199,10 +199,13 @@ impl DirectXRenderer {
                 self.save_group_stage(i);
                 continue;
             };
+            let raw = Region::for_group(g, self.width, self.height)[0];
+            if self.cached_blur_task(i, g, raw)? {
+                continue;
+            }
             let (region, place) = (self.blur.group_regions[i], self.blur.group_place[i]);
             // The kernel reads only the group's own stage region: outside it the
             // stage held transparent black when the group was drawn alone.
-            let raw = Region::for_group(g, self.width, self.height)[0];
             let quad = gaussian::kernel_quad(
                 [place.x as f32, place.y as f32, region.width as f32, region.height as f32],
                 [

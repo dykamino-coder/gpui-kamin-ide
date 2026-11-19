@@ -58,6 +58,7 @@ mod present_gate;
 mod quad_clear;
 mod retained;
 mod group_cache;
+mod group_tasks;
 mod group_scrub;
 pub use group_scrub::group_scrub_mismatches;
 mod damage_audit;
@@ -138,6 +139,8 @@ struct BlurScratch {
     /// KaminIDE patch: stage rectangles written since the last clear (one per
     /// group of the pending layer).
     stage_dirty: Vec<Region>,
+    /// Finished blur tasks with GPU-validated input equality.
+    tasks: group_tasks::Tasks,
     /// KaminIDE patch: groups drawn into the stage whose regions are pairwise
     /// disjoint; one batched blur moves them into the atlas (`flush_group_layer`).
     layer: Vec<usize>,
@@ -1032,6 +1035,7 @@ impl DirectXRenderer {
     /// Общий staging сохраняет viewport и точность интерполяции исходного кадра.
     fn render_groups(&mut self, scene: &Scene, needed: Option<&[bool]>) -> Result<()> {
         if scene.groups.is_empty() {
+            self.blur.tasks = group_tasks::Tasks::default();
             self.blur.groups.clear();
             self.blur.group_place.clear();
             self.blur.level_backdrop = None;
@@ -1049,6 +1053,7 @@ impl DirectXRenderer {
         let dc = self.dev().device_context.clone();
         // KaminIDE patch: images kept from the last frame (`group_cache`).
         let reuse = self.prepare_group_targets(scene)?;
+        self.begin_blur_tasks(scene, &reuse, needed);
         let kept = reuse.iter().filter(|&&k| k).count();
         let mut valid = reuse.clone();
         self.retained.groups.valid.clear();
@@ -1163,7 +1168,7 @@ impl DirectXRenderer {
 
     /// KaminIDE patch: draw the scene of `group` into the frame-domain stage,
     /// scissored to its stage region `raw`.
-    pub(super) fn draw_group_content(
+    fn draw_group_content(
         &mut self,
         group: &gpui::PaintGroup,
         raw: Region,

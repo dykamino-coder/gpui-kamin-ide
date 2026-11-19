@@ -1790,6 +1790,15 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
     input.position.xy += global_origin;
     BlurQuad q = blur_quads[input.quad_id];
     float2 t = q.texel;
+    // Exact input validation for a finished Gaussian task. Identity blending
+    // preserves the target; only differing texels contribute to the predicate.
+    if (q.blur_pass > 6.5) {
+        int2 p = int2(floor(input.position.xy));
+        float4 a = t_sprite.Load(int3(p + int2(q.src_origin), 0));
+        float4 b = t_maskimg.Load(int3(p, 0));
+        if (all(a == b)) { discard; }
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
     // KaminIDE patch: Gaussian of a group: filter-effects-1 blur() with standard
     // deviation σ ≤ 4 px. poly holds the one-sided weights w[0..15]; outside
     // source_rect the filter input is transparent black. blur_pass 6: the whole

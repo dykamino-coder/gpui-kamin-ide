@@ -49,6 +49,12 @@ impl DirectXRenderer {
             whole("gpu/target/path-msaa", &resources.path_intermediate_msaa_texture);
         }
         let blur = &self.blur;
+        for input in blur.tasks.inputs() {
+            whole("gpu/group/task-input", input);
+        }
+        for output in blur.tasks.outputs() {
+            whole("gpu/group/task-output", output);
+        }
         let single = [
             ("gpu/group/stage", &blur.stage),
             ("gpu/group/level-backdrop", &blur.level_backdrop),
