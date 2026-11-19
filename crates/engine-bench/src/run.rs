@@ -350,6 +350,9 @@ pub(super) async fn run(
                 pixels::save(&frame.pixels, path)?;
             }
             frames.observe(cx, window, frame, name, index)?;
+            frames
+                .settle((&mut *cx, window, fonts, args, capture, luid), step)
+                .await?;
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }

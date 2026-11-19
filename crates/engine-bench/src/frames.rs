@@ -53,6 +53,8 @@ pub(super) struct Frames {
     base: (u32, u32),
     relayout: bool,
     scroll: bool,
+    /// When the step's wheel event was dispatched (prepare).
+    dispatched: Option<std::time::Instant>,
     before: (u64, u64),
     /// Сборки внутри `Window::draw` до кадра (`Document::builds_inside_draw`).
     before_inside: u64,
@@ -77,6 +79,7 @@ impl Frames {
             base: args.viewport,
             relayout,
             scroll: args.mode == Mode::Scroll,
+            dispatched: None,
             before: (0, 0),
             before_inside: 0,
             before_contents: 0,
@@ -104,6 +107,7 @@ impl Frames {
                     modifiers: gpui::Modifiers::default(),
                     touch_phase: gpui::TouchPhase::Moved,
                 };
+                self.dispatched = Some(std::time::Instant::now());
                 window.dispatch_event(gpui::PlatformInput::ScrollWheel(wheel), cx);
             }
             if self.relayout {
@@ -152,9 +156,37 @@ impl Frames {
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
             "wheel_step_px": if self.scroll { json!(WHEEL_STEP) } else { Value::Null },
             "root_scroll_offset": offset.map(|(x, y)| json!([x, y])),
+            "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
             "builds_inside_draw": inside,
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents })}));
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
+    }
+
+    /// Scroll: frames after the measured one until the document replays its
+    /// frame (settled), so a deferred second build of the step is counted with
+    /// the step and not in the next one. At most `SETTLE_FRAMES` frames.
+    pub(super) async fn settle(&mut self, run: Run<'_, '_>, step: Step<'_>) -> Result<()> {
+        const SETTLE_FRAMES: usize = 8;
+        let (cx, window, fonts, args, capture, luid) = run;
+        if !self.scroll {
+            return Ok(());
+        }
+        let (mut frames, mut builds, mut replays, mut settled) = (0, 0, 0, false);
+        while frames < SETTLE_FRAMES && !settled {
+            let before = window.read_with(cx, |view, _| view.doc.retained_frames())?;
+            sample(cx, window, fonts, args, step, capture, luid).await?;
+            let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
+            let (b, r) = delta(before, after)?;
+            frames += 1;
+            builds += b;
+            replays += r;
+            settled = b == 0 && r > 0;
+        }
+        if let Some(last) = self.samples.last_mut() {
+            last["settle"] = json!({"frames": frames, "builds": builds, "replays": replays,
+                "settled": settled, "present": "unavailable: the capture surface reports no present time"});
+        }
+        Ok(())
     }
 
     pub(super) fn report(&self) -> Value {
