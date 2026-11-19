@@ -12,6 +12,7 @@ pub use damage::{DAMAGE_TILE, SceneDamage};
 mod vector_transform;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
+pub(crate) mod scroll_marks;
 impl Scene {
     /// KaminIDE patch: the display list's buffers for the engine bench's memory report
     /// (`crate::heap_report`). Paths' vertices and the bounds tree nodes are not walked.
@@ -136,6 +137,8 @@ pub struct PaintGroup {
 pub struct Scene {
     pub(crate) segment_capture: Option<Box<segments::Capture>>,
     pub(crate) paint_operations: Vec<PaintOperation>,
+    /// KaminIDE patch: commands painted under scroll nodes (`scroll_marks`).
+    pub(crate) scroll: scroll_marks::ScrollBook,
     /// KaminIDE patch: группы, нарисованные в отдельные буферы.
     ///
     /// Список плоский и упорядочен по зависимости: вложенная группа стоит
@@ -395,6 +398,7 @@ impl Scene {
         self.book.images.clear();
         self.segment_capture = None;
         self.paint_operations.clear();
+        self.scroll.clear();
         self.groups.clear();
         match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
             Some(tree) => tree.clear(),
@@ -464,6 +468,14 @@ impl Scene {
         // KaminIDE patch: ink of open retained subtrees, culled or not.
         crate::window::ink_add(&self.ink, self.ink_scope, placed_bounds);
         crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
+        // KaminIDE patch: under a scroll node, drawn with own mask ∩ chain.
+        let ordered = match self.scroll.open {
+            Some((node, chain)) => match self.mark_scrolled(&mut primitive, node, chain) {
+                Some(ordered) => Some(ordered),
+                None => return,
+            },
+            None => None,
+        };
         let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {
@@ -479,7 +491,7 @@ impl Scene {
                 ORDER_STEP + self.bottom_seq
             }
             Some(o) => o,
-            None =>self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
+            None =>self.tree_mut().insert(ordered.unwrap_or(clipped_bounds)) * ORDER_STEP,
         };
         match &mut primitive {
             Primitive::Shadow(shadow) => {
@@ -575,6 +587,13 @@ impl Scene {
     /// frozen tree it was indexed with; another range is indexed once by a
     /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
+        let landed = self.paint_operations.len();
+        self.scroll.raise = 0;
+        self.replay_unmarked(range.clone(), prev_scene);
+        self.copy_scroll_marks(prev_scene, range, landed);
+    }
+
+    fn replay_unmarked(&mut self, range: Range<usize>, prev_scene: &Scene) {
         let operations = &prev_scene.paint_operations[range.clone()];
         // A block whose borrowed tree died with its record is packed again.
         let source = prev_scene
@@ -684,7 +703,7 @@ impl Scene {
         let mut layers = 0usize;
         for operation in operations {
             match operation {
-                PaintOperation::Primitive(_) | PaintOperation::Layer(_) => {}
+                PaintOperation::Primitive(_) | PaintOperation::Layer(_) | PaintOperation::Dormant(_) => {}
                 PaintOperation::StartLayer(..) => layers += 1,
                 PaintOperation::EndLayer => match layers.checked_sub(1) {
                     Some(open) => layers = open,
@@ -773,6 +792,8 @@ impl Scene {
             graft
         });
         let shift = raise * ORDER_STEP;
+        // KaminIDE patch: dormant primitives take it when they wake.
+        self.scroll.raise = shift;
         let start = self.paint_operations.len();
         let mut ink: Option<Bounds<ScaledPixels>> = None;
         let mut copied = 0;
@@ -952,6 +973,8 @@ impl Scene {
             PaintOperation::EndDepthContext => self.pop_depth_context(),
             PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
             PaintOperation::EndDepthPlane => self.pop_depth_plane(),
+            // KaminIDE patch: kept as it is, not drawn.
+            PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
         }
     }
 
@@ -1003,7 +1026,7 @@ impl Scene {
 
 /// KaminIDE patch: bounds of a primitive at its place on screen (after its
 /// transformation), before the content mask.
-fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
+pub(crate) fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
         // KaminIDE patch: границы примитива ПОСЛЕ трансформации — обход
         // четырёх углов матрицей.
         fn placed_by(
@@ -1129,6 +1152,9 @@ pub(crate) enum PaintOperation {
     EndDepthPlane,
     /// KaminIDE patch: a retained layer (`scene::layer`), ordered like one primitive.
     Layer(LayerOp),
+    /// KaminIDE patch: a primitive under a scroll node that its chain hides
+    /// now; not drawn, kept for a replay at another offset (`scroll_marks`).
+    Dormant(std::rc::Rc<Primitive>),
 }
 
 #[derive(Clone)]
@@ -1186,7 +1212,21 @@ impl Primitive {
         }
     }
 
-    fn order_mut(&mut self) -> &mut DrawOrder {
+    /// KaminIDE patch: the mask the primitive is drawn with.
+    pub(crate) fn content_mask_mut(&mut self) -> &mut ContentMask<ScaledPixels> {
+        match self {
+            Primitive::Shadow(p) => &mut p.content_mask,
+            Primitive::Quad(p) => &mut p.content_mask,
+            Primitive::Path(p) => &mut p.content_mask,
+            Primitive::Underline(p) => &mut p.content_mask,
+            Primitive::MonochromeSprite(p) => &mut p.content_mask,
+            Primitive::SubpixelSprite(p) => &mut p.content_mask,
+            Primitive::PolychromeSprite(p) => &mut p.content_mask,
+            Primitive::Surface(p) => &mut p.content_mask,
+        }
+    }
+
+    pub(crate) fn order_mut(&mut self) -> &mut DrawOrder {
         match self {
             Primitive::Shadow(p) => &mut p.order,
             Primitive::Quad(p) => &mut p.order,

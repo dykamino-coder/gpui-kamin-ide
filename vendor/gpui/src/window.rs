@@ -78,8 +78,11 @@ mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained;
+mod scroll_masks;
 mod scroll_nodes;
+mod scroll_replay;
 pub use scroll_nodes::{ScrollNodeId, ScrollSegment};
+pub use scroll_replay::ScrollReplay;
 pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
 pub(crate) use retained::InkSinks;
 pub use retained::{InkScope, InkSink, InkSinkList, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
@@ -1082,6 +1085,8 @@ pub(crate) struct Frame {
     pub(crate) scroll_node_stack: Vec<u32>,
     /// KaminIDE patch: paint pairing of scroll nodes (scroll_nodes::PaintPairing).
     pub(crate) scroll_paint: scroll_nodes::PaintPairing,
+    /// KaminIDE patch: hitboxes inserted under scroll nodes (`scroll_masks`).
+    pub(crate) scroll_hitboxes: Vec<scroll_masks::HitboxMark>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
     /// KaminIDE patch: views drawn isolated in this frame.
     pub(crate) isolated_views: FxHashSet<EntityId>,
@@ -1236,6 +1241,7 @@ impl Frame {
             scroll_nodes: Vec::new(),
             scroll_node_stack: Vec::new(),
             scroll_paint: Default::default(),
+            scroll_hitboxes: Vec::new(),
             deferred_draws: Vec::new(),
             isolated_views: FxHashSet::default(),
             input_handlers: Vec::new(),
@@ -1272,6 +1278,7 @@ impl Frame {
         self.scroll_nodes.clear();
         self.scroll_node_stack.clear();
         self.scroll_paint.clear();
+        self.scroll_hitboxes.clear();
         self.deferred_draws.clear();
         self.isolated_views.clear();
         self.tab_stops.clear();
@@ -1440,6 +1447,8 @@ pub struct Window {
     pub(crate) paint_owner: u32,
     pub(crate) paint_value: Option<crate::LayerValue>,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
+    /// KaminIDE patch: `set_scroll_interest_margin`.
+    pub(crate) scroll_interest_margin: Pixels,
     /// KaminIDE patch: the innermost transformed-subtree hit scope during prepaint.
     hit_scope: Option<Rc<hit_transform::HitScope>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
@@ -2393,6 +2402,7 @@ impl Window {
             mask_map: None,
             plane_contexts: Vec::new(),
             content_mask_stack: Vec::new(),
+            scroll_interest_margin: Pixels::ZERO,
             hit_scope: None,
             element_opacity: 1.0,
             box_fill: None,
@@ -3362,7 +3372,7 @@ impl Window {
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: 0,
@@ -3405,7 +3415,7 @@ impl Window {
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: 0,
@@ -3638,7 +3648,7 @@ impl Window {
         self.invalidator.debug_assert_paint();
         let underline = self.underline(origin, width, style);
         if exclusions.is_empty() {
-            self.next_frame.scene.insert_primitive(underline);
+            self.insert_scene_primitive(underline);
             return;
         }
 
@@ -3656,13 +3666,13 @@ impl Window {
             })
             .collect::<SmallVec<[_; 4]>>();
         if exclusions.is_empty() {
-            self.next_frame.scene.insert_primitive(underline);
+            self.insert_scene_primitive(underline);
             return;
         }
         exclusions.sort_unstable_by_key(|span| span.start);
 
         let mut paint_span = |start, end| {
-            self.next_frame.scene.insert_primitive(Underline {
+            self.insert_scene_primitive(Underline {
                 content_mask: ContentMask {
                     bounds: Bounds::from_corners(
                         point(start, bounds.top()),
@@ -4523,7 +4533,8 @@ impl Window {
         }
     }
 
-    pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
+    /// KaminIDE patch: `reuse_paint` of everything but the scene commands.
+    pub(crate) fn reuse_paint_state(&mut self, range: &Range<PaintIndex>) {
         // Cached elements still exist in the frame even when their paint methods don't run.
         #[cfg(any(test, feature = "test-support"))]
         for (selector, bounds) in &self.rendered_frame.debug_bounds_records
@@ -4562,7 +4573,11 @@ impl Window {
         );
 
         self.text_system
-            .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
+            .reuse_layouts(range.start.line_layout_index.clone()..range.end.line_layout_index.clone());
+    }
+
+    pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
+        self.reuse_paint_state(&range);
         // KaminIDE patch: a range recorded inside a scene layer is in its scene.
         let scenes = range.start.scene_index..range.end.scene_index;
         let landed = self.next_frame.scene.paint_operations.len();
@@ -5396,7 +5411,7 @@ impl Window {
                 continue;
             }
             let shadow_bounds = (bounds + shadow.offset).dilate(shadow.spread_radius);
-            self.next_frame.scene.insert_primitive(Shadow {
+            self.insert_scene_primitive(Shadow {
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: self.cover_bounds(shadow_bounds),
@@ -5441,7 +5456,7 @@ impl Window {
                 bottom_right: (corner_radii.bottom_right - shadow.spread_radius).max(zero),
                 bottom_left: (corner_radii.bottom_left - shadow.spread_radius).max(zero),
             };
-            self.next_frame.scene.insert_primitive(Shadow {
+            self.insert_scene_primitive(Shadow {
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: self.cover_bounds(hole),
@@ -5532,7 +5547,7 @@ impl Window {
         // only matches the quad's own coordinates without a transformation.
         if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
             let before = self.next_frame.scene.quads.len();
-            self.next_frame.scene.insert_primitive(quad);
+            self.insert_scene_primitive(quad);
             if self.paint_value.is_some() {
                 self.bind_painted_quad(before, opacity);
             }
@@ -5545,7 +5560,7 @@ impl Window {
         let inner_bounds = Self::largest_border_interior(&quad);
 
         if inner_bounds.is_empty() {
-            self.next_frame.scene.insert_primitive(quad);
+            self.insert_scene_primitive(quad);
             return;
         }
 
@@ -5575,7 +5590,7 @@ impl Window {
         for strip in strips {
             let content_mask_bounds = quad.content_mask.bounds.intersect(&strip);
             if !content_mask_bounds.is_empty() {
-                self.next_frame.scene.insert_primitive(Quad {
+                self.insert_scene_primitive(Quad {
                     content_mask: ContentMask {
                         bounds: content_mask_bounds,
                     },
@@ -5613,7 +5628,7 @@ impl Window {
     ) {
         self.invalidator.debug_assert_paint();
         let underline = self.underline(origin, width, style);
-        self.next_frame.scene.insert_primitive(underline);
+        self.insert_scene_primitive(underline);
     }
 
     /// Paint a strikethrough into the scene for the next frame at the current z-index.
@@ -5635,7 +5650,7 @@ impl Window {
         };
         let opacity = self.element_opacity();
 
-        self.next_frame.scene.insert_primitive(Underline {
+        self.insert_scene_primitive(Underline {
             order: 0,
             pad: 0,
             bounds,
@@ -5740,7 +5755,7 @@ impl Window {
             let transformation = self.current_transformation();
 
             if subpixel_rendering {
-                self.next_frame.scene.insert_primitive(SubpixelSprite {
+                self.insert_scene_primitive(SubpixelSprite {
                     order: 0,
                     pad: 0,
                     bounds,
@@ -5750,7 +5765,7 @@ impl Window {
                     transformation,
                 });
             } else {
-                self.next_frame.scene.insert_primitive(MonochromeSprite {
+                self.insert_scene_primitive(MonochromeSprite {
                     order: 0,
                     pad: 0,
                     bounds,
@@ -5828,7 +5843,7 @@ impl Window {
             let opacity = self.element_opacity() * alpha;
 
             let transformation = self.current_transformation();
-            self.next_frame.scene.insert_primitive(PolychromeSprite {
+            self.insert_scene_primitive(PolychromeSprite {
                 transformation,
                 order: 0,
                 pad: 0,
@@ -5895,7 +5910,7 @@ impl Window {
             .map_origin(|value| ScaledPixels(round_half_toward_zero(value.0)))
             .map_size(|size| size.ceil());
 
-        self.next_frame.scene.insert_primitive(MonochromeSprite {
+        self.insert_scene_primitive(MonochromeSprite {
             order: 0,
             pad: 0,
             bounds: final_bounds,
@@ -6003,7 +6018,7 @@ impl Window {
 
         // KaminIDE patch: картинка едет действующим преобразованием.
         let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: 0,
@@ -6072,7 +6087,7 @@ impl Window {
         let opacity = self.element_opacity();
 
         let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: 0,
@@ -6115,7 +6130,7 @@ impl Window {
         let scale_factor = self.scale_factor();
         let bounds = self.backdrop_device_bounds(bounds.scale(scale_factor));
         let content_mask = self.content_mask().scale(scale_factor);
-        self.next_frame.scene.insert_primitive(PaintSurface {
+        self.insert_scene_primitive(PaintSurface {
             order: 0,
             bounds,
             content_mask,
@@ -6192,7 +6207,7 @@ impl Window {
         if hoist && self.next_frame.scene.in_group {
             self.next_frame.scene.hoist_backdrop(surface);
         } else {
-            self.next_frame.scene.insert_primitive(surface);
+            self.insert_scene_primitive(surface);
         }
     }
 
@@ -6318,7 +6333,7 @@ impl Window {
 
         let bounds = self.snap_bounds(bounds);
         let content_mask = self.snapped_content_mask();
-        self.next_frame.scene.insert_primitive(PaintSurface {
+        self.insert_scene_primitive(PaintSurface {
             order: 0,
             bounds,
             content_mask,
@@ -6848,7 +6863,8 @@ impl Window {
     pub fn insert_hitbox(&mut self, bounds: Bounds<Pixels>, behavior: HitboxBehavior) -> Hitbox {
         self.invalidator.debug_assert_prepaint();
 
-        let content_mask = self.content_mask();
+        // KaminIDE patch: under a scroll node, own mask ∩ the node's clip.
+        let (content_mask, scroll_mark) = self.scroll_hitbox_mask(self.content_mask());
         let mut id = self.next_hitbox_id;
         self.next_hitbox_id = self.next_hitbox_id.next();
         let hitbox = Hitbox {
@@ -6861,6 +6877,10 @@ impl Window {
             self.next_frame.hitbox_scopes.insert(id, scope.clone());
         }
         if !self.insert_segment_hitbox(&hitbox) {
+            if let Some((node, own)) = scroll_mark {
+                let index = self.next_frame.hitboxes.len() as u32;
+                self.next_frame.scroll_hitboxes.push(scroll_masks::HitboxMark { index, node, own });
+            }
             self.next_frame.hitboxes.push(hitbox.clone());
         }
         hitbox

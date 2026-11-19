@@ -1,0 +1,302 @@
+use super::*;
+use crate::scene::{PaintOperation, Primitive};
+use crate::{Quad, ScrollHandle, TestAppContext, div, px, size};
+
+struct Empty;
+
+impl Render for Empty {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+
+fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+    Bounds::new(point(px(x), px(y)), size(px(w), px(h)))
+}
+
+/// A quad painted as an element paints one: under the current content mask.
+fn quad(window: &mut Window, y: f32) {
+    let scale = window.scale_factor();
+    let bounds = rect(0., y, 10., 10.).scale(scale);
+    let content_mask = window.content_mask().scale(scale);
+    window.insert_scene_primitive(Quad { bounds, content_mask, ..Default::default() });
+}
+
+/// Drawn quads (top in window pixels, drawn mask) and the number of dormant ones.
+fn drawn(window: &Window) -> (Vec<(f32, Bounds<ScaledPixels>)>, usize) {
+    let scale = window.scale_factor();
+    let mut quads = Vec::new();
+    let mut dormant = 0;
+    for operation in &window.next_frame.scene.paint_operations {
+        match operation {
+            PaintOperation::Primitive(primitive @ Primitive::Quad(_)) => {
+                // Where it lands: a moved copy moves its transformation.
+                let placed = crate::scene::placed_bounds(primitive);
+                quads.push((placed.origin.y.0 / scale, primitive.content_mask().bounds));
+            }
+            PaintOperation::Dormant(_) => dormant += 1,
+            _ => {}
+        }
+    }
+    (quads, dormant)
+}
+
+const CLIP: (f32, f32, f32, f32) = (0., 0., 100., 50.);
+
+fn clip() -> Bounds<Pixels> {
+    rect(CLIP.0, CLIP.1, CLIP.2, CLIP.3)
+}
+
+/// One record: a scroll node at `offset` holding a hitbox and a quad at
+/// content rows 10 and 60 (the second below the 50 px clip).
+fn record(window: &mut Window, node: ScrollNodeId, offset: f32) -> (RetainedPrepaint, RetainedPaint, Vec<Hitbox>) {
+    let mut hitboxes = Vec::new();
+    window.invalidator.set_phase(DrawPhase::Prepaint);
+    let (_, prepaint) = window.record_retained_prepaint(|window| {
+        window.with_scroll_node_prepaint(node, clip(), point(px(0.), px(offset)), |window| {
+            for y in [10., 60.] {
+                hitboxes.push(window.insert_hitbox(rect(0., y + offset, 10., 10.), HitboxBehavior::Normal));
+            }
+        });
+    });
+    window.invalidator.set_phase(DrawPhase::Paint);
+    let (_, paint) = window.record_retained_paint(|window| {
+        window.with_scroll_node_paint(node, |window| {
+            for y in [10., 60.] {
+                quad(window, y + offset);
+            }
+        });
+    });
+    (prepaint, paint, hitboxes)
+}
+
+fn next_frame(window: &mut Window) {
+    std::mem::swap(&mut window.rendered_frame, &mut window.next_frame);
+    window.next_frame.clear();
+}
+
+/// Replay of `prepaint`/`paint` from the rendered frame with the node at `to`.
+fn scrolled(
+    window: &mut Window,
+    records: (&RetainedPrepaint, &RetainedPaint),
+    node: ScrollNodeId,
+    to: f32,
+) -> Option<(RetainedPrepaint, RetainedPaint)> {
+    let plan = window.plan_scrolled_replay(records.0, records.1, |id| (id == node).then(|| point(px(0.), px(to))))?;
+    window.invalidator.set_phase(DrawPhase::Prepaint);
+    let prepaint = window.replay_retained_prepaint_scrolled(records.0, &plan);
+    window.invalidator.set_phase(DrawPhase::Paint);
+    let paint = window.replay_retained_paint_scrolled(records.1, &plan);
+    Some((prepaint, paint))
+}
+
+/// A wheel step inside the interest rect replays the record moved: what
+/// scrolls out is kept dormant, what scrolls in (recorded dormant) is drawn,
+/// and the frame equals a fresh paint at the new offset; the step back wakes
+/// the first row again. A step past the interest rect needs a build.
+#[crate::test]
+fn a_scroll_step_inside_the_interest_rect_replays_like_a_fresh_paint(cx: &mut TestAppContext) {
+    let window = cx.add_window(|_, _| Empty);
+    window
+        .update(cx, |_, window, _| {
+            window.set_scroll_interest_margin(px(100.));
+            let s = window.scale_factor();
+            let handle = ScrollHandle::new();
+            let node = ScrollNodeId::of(&handle);
+            let (prepaint, paint, _) = record(window, node, 0.);
+            let at_rest = drawn(window);
+            assert_eq!(at_rest, (vec![(10., clip().scale(s))], 1));
+            next_frame(window);
+            let (prepaint, paint) = scrolled(window, (&prepaint, &paint), node, -30.).expect("a step inside the interest rect");
+            let stepped = drawn(window);
+            next_frame(window);
+            let (prepaint, paint) = scrolled(window, (&prepaint, &paint), node, 0.).expect("the step back");
+            assert_eq!(drawn(window), at_rest, "the row that scrolled out comes back");
+            next_frame(window);
+            assert!(scrolled(window, (&prepaint, &paint), node, -200.).is_none());
+            next_frame(window);
+            record(window, node, -30.);
+            assert_eq!(stepped, drawn(window), "a fresh paint at the stepped offset");
+            assert_eq!(stepped, (vec![(30., clip().scale(s))], 1));        })
+        .unwrap();
+}
+
+/// Hitboxes under a node move with it and are hit-tested with own ∩ clip.
+#[crate::test]
+fn hitboxes_move_with_their_scroll_node(cx: &mut TestAppContext) {
+    let window = cx.add_window(|_, _| Empty);
+    window
+        .update(cx, |_, window, _| {
+            window.set_scroll_interest_margin(px(100.));
+            let node = ScrollNodeId::of(&ScrollHandle::new());
+            let (prepaint, paint, hitboxes) = record(window, node, 0.);
+            let hit = |window: &Window, y: f32, hitbox: &Hitbox| {
+                window.next_frame.hit_test(point(px(5.), px(y))).ids.contains(&hitbox.id)
+            };
+            assert!(hit(window, 15., &hitboxes[0]));
+            assert!(!hit(window, 65., &hitboxes[1]), "outside the clip");
+            next_frame(window);
+            scrolled(window, (&prepaint, &paint), node, -30.).unwrap();
+            assert!(hit(window, 35., &hitboxes[1]), "scrolled into the clip");
+            assert!(!hit(window, 15., &hitboxes[0]), "moved away and clipped");
+        })
+        .unwrap();
+}
+
+/// A nested node's clip follows its parent's shift; an anchor (a fixed box)
+/// stays where it is.
+#[crate::test]
+fn nested_nodes_and_anchors_follow_their_parent(cx: &mut TestAppContext) {
+    let window = cx.add_window(|_, _| Empty);
+    window
+        .update(cx, |_, window, _| {
+            window.set_scroll_interest_margin(px(100.));
+            let s = window.scale_factor();
+            let (outer, inner, fixed) = (ScrollHandle::new(), ScrollHandle::new(), ScrollHandle::new());
+            let id = ScrollNodeId::of;
+            let tall = rect(0., 0., 100., 100.);
+            window.invalidator.set_phase(DrawPhase::Prepaint);
+            let (_, prepaint) = window.record_retained_prepaint(|window| {
+                window.with_scroll_node_prepaint(id(&outer), tall, point(px(0.), px(0.)), |window| {
+                    window.with_content_mask(Some(ContentMask { bounds: rect(0., 50., 50., 30.) }), |window| {
+                        let chain = window.content_mask().bounds;
+                        window.with_scroll_node_prepaint(id(&inner), chain, point(px(0.), px(0.)), |_| {});
+                    });
+                    window.with_scroll_anchor_prepaint(id(&fixed), point(px(0.), px(0.)), |_| {});
+                });
+            });
+            window.invalidator.set_phase(DrawPhase::Paint);
+            let (_, paint) = window.record_retained_paint(|window| {
+                window.with_scroll_node_paint(id(&outer), |window| {
+                    window.with_content_mask(Some(ContentMask { bounds: rect(0., 50., 50., 30.) }), |window| {
+                        window.with_scroll_node_paint(id(&inner), |window| quad(window, 60.));
+                    });
+                    window.with_scroll_node_paint(id(&fixed), |window| quad(window, 0.));
+                });
+            });
+            next_frame(window);
+            let to = |node: ScrollNodeId| {
+                if node == id(&outer) {
+                    Some(point(px(0.), px(-20.)))
+                } else if node == id(&fixed) {
+                    Some(point(px(0.), px(20.)))
+                } else {
+                    None
+                }
+            };
+            let plan = window.plan_scrolled_replay(&prepaint, &paint, to).expect("inside the interest rect");
+            window.invalidator.set_phase(DrawPhase::Prepaint);
+            window.replay_retained_prepaint_scrolled(&prepaint, &plan);
+            window.invalidator.set_phase(DrawPhase::Paint);
+            window.replay_retained_paint_scrolled(&paint, &plan);
+            let clips: Vec<_> = window.next_frame.scroll_nodes.iter().map(|node| node.clip).collect();
+            assert_eq!(clips, vec![tall, rect(0., 30., 50., 30.), tall]);
+            let (quads, _) = drawn(window);
+            assert_eq!(quads, vec![(40., rect(0., 30., 50., 30.).scale(s)), (0., tall.scale(s))]);
+        })
+        .unwrap();
+}
+
+/// A command under a node without its own mask (a copy that lost it) makes
+/// the record build instead.
+#[crate::test]
+fn an_unmarked_command_under_a_node_needs_a_build(cx: &mut TestAppContext) {
+    let window = cx.add_window(|_, _| Empty);
+    window
+        .update(cx, |_, window, _| {
+            window.set_scroll_interest_margin(px(100.));
+            let s = window.scale_factor();
+            let node = ScrollNodeId::of(&ScrollHandle::new());
+            window.invalidator.set_phase(DrawPhase::Prepaint);
+            let (_, prepaint) = window.record_retained_prepaint(|window| {
+                window.with_scroll_node_prepaint(node, clip(), point(px(0.), px(0.)), |_| {});
+            });
+            window.invalidator.set_phase(DrawPhase::Paint);
+            let (_, paint) = window.record_retained_paint(|window| {
+                window.with_scroll_node_paint(node, |window| {
+                    let bounds = rect(0., 10., 10., 10.).scale(s);
+                    window.next_frame.scene.insert_primitive(Quad {
+                        bounds,
+                        content_mask: ContentMask { bounds },
+                        ..Default::default()
+                    });
+                });
+            });
+            next_frame(window);
+            assert!(window.plan_scrolled_replay(&prepaint, &paint, |_| Some(point(px(0.), px(-10.)))).is_none());
+        })
+        .unwrap();
+}
+
+/// The cost of a scrolled replay against a plain one on a text-like record:
+/// lines of glyph-sized quads every 20 px (80 and 480 a line) under an 800x600 node with
+/// a 2000 px interest margin. Runs only with `KAMIN_SCROLL_COST_OUT` set (a
+/// file the timings are appended to); a measurement, not a gate.
+#[crate::test]
+fn scrolled_replay_cost(cx: &mut TestAppContext) {
+    let Ok(out) = std::env::var("KAMIN_SCROLL_COST_OUT") else { return };
+    let window = cx.add_window(|_, _| Empty);
+    window
+        .update(cx, |_, window, _| {
+            use std::io::Write as _;
+            let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&out).unwrap();
+            window.set_scroll_interest_margin(px(2000.));
+            let node = ScrollNodeId::of(&ScrollHandle::new());
+            let port = rect(0., 0., 800., 600.);
+            for (rows, cols, step_x) in [(230usize, 80usize, 10.), (230, 480, 5.)] {
+                window.next_frame.clear();
+                window.invalidator.set_phase(DrawPhase::Prepaint);
+                let (_, prepaint) = window.record_retained_prepaint(|window| {
+                    window.with_scroll_node_prepaint(node, port, point(px(0.), px(0.)), |_| {});
+                });
+                window.invalidator.set_phase(DrawPhase::Paint);
+                let (_, paint) = window.record_retained_paint(|window| {
+                    window.with_scroll_node_paint(node, |window| {
+                        for row in 0..rows {
+                            for col in 0..cols {
+                                let scale = window.scale_factor();
+                                let bounds = rect(col as f32 * step_x, row as f32 * 20. - 2000., 4., 16.).scale(scale);
+                                let content_mask = window.content_mask().scale(scale);
+                                window.insert_scene_primitive(Quad { bounds, content_mask, ..Default::default() });
+                            }
+                        }
+                    });
+                });
+                let (mut plain, mut moved, mut planned) = (Vec::new(), Vec::new(), Vec::new());
+                let (mut prepaint, mut paint) = (prepaint, paint);
+                for step in 1..=9 {
+                    next_frame(window);
+                    let started = std::time::Instant::now();
+                    window.invalidator.set_phase(DrawPhase::Prepaint);
+                    let p = window.replay_retained_prepaint(&prepaint);
+                    window.invalidator.set_phase(DrawPhase::Paint);
+                    let q = window.replay_retained_paint(&paint);
+                    plain.push(started.elapsed().as_secs_f64() * 1000.);
+                    (prepaint, paint) = (p, q);
+                    next_frame(window);
+                    let started = std::time::Instant::now();
+                    let to = point(px(0.), px(-120. * step as f32));
+                    let plan = window.plan_scrolled_replay(&prepaint, &paint, |_| Some(to)).expect("inside the interest");
+                    planned.push(started.elapsed().as_secs_f64() * 1000.);
+                    window.invalidator.set_phase(DrawPhase::Prepaint);
+                    let p = window.replay_retained_prepaint_scrolled(&prepaint, &plan);
+                    window.invalidator.set_phase(DrawPhase::Paint);
+                    let q = window.replay_retained_paint_scrolled(&paint, &plan);
+                    moved.push(started.elapsed().as_secs_f64() * 1000.);
+                    (prepaint, paint) = (p, q);
+                }
+                let median = |v: &mut Vec<f64>| {
+                    v.sort_by(f64::total_cmp);
+                    v[v.len() / 2]
+                };
+                let (drawn, dormant) = drawn(window);
+                writeln!(
+                    file,
+                    "commands {} drawn {} dormant {}: plain replay {:.3} ms, scrolled replay {:.3} ms (plan {:.3} ms)",
+                    rows * cols, drawn.len(), dormant, median(&mut plain), median(&mut moved), median(&mut planned)
+                )
+                .unwrap();
+            }
+        })
+        .unwrap();
+}

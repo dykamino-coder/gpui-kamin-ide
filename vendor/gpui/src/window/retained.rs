@@ -19,16 +19,16 @@ pub struct RetainedPrepaint(Range<PackedPrepaintIndex>);
 #[derive(Clone, Default)]
 pub struct RetainedPaint {
     range: Range<PackedPaintIndex>,
-    replayable: bool,
+    pub(super) replayable: bool,
     /// Mouse listeners and element state reads of the range that open ink
     /// sinks allowed (`Window::offscreen_inert`): a replay copies the same
     /// ones, inert under the same guarantee, and allows them again, or a
     /// replayed subtree would taint the sinks of the subtrees around it.
-    allowed: (u32, u32),
+    pub(super) allowed: (u32, u32),
 }
 
 impl RetainedPrepaint {
-    fn of(range: Range<PrepaintStateIndex>) -> Self {
+    pub(super) fn of(range: Range<PrepaintStateIndex>) -> Self {
         Self(range.start.pack()..range.end.pack())
     }
 
@@ -38,7 +38,7 @@ impl RetainedPrepaint {
 }
 
 impl RetainedPaint {
-    fn of(range: Range<PaintIndex>, replayable: bool, allowed: (u32, u32)) -> Self {
+    pub(super) fn of(range: Range<PaintIndex>, replayable: bool, allowed: (u32, u32)) -> Self {
         Self { range: range.start.pack()..range.end.pack(), replayable, allowed }
     }
 
@@ -200,7 +200,7 @@ impl Window {
 
     /// The effects of `record` its frame allowed are allowed in this one
     /// (`RetainedPaint::allowed`).
-    fn allow_replayed(&mut self, record: &RetainedPaint) {
+    pub(super) fn allow_replayed(&mut self, record: &RetainedPaint) {
         let allowed = &mut self.next_frame.scene.ink_allowed;
         allowed.0 = allowed.0.wrapping_add(record.allowed.0);
         allowed.1 = allowed.1.wrapping_add(record.allowed.1);

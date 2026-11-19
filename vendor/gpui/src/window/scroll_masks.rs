@@ -1,0 +1,75 @@
+//! KaminIDE patch: masks under scroll nodes (`scroll_nodes`).
+//!
+//! The children of a scroll node are prepainted and painted under the node's
+//! interest rect instead of its clip, so their own masks (`scene::scroll_marks`)
+//! cover what a replay at another offset may show. Each primitive and hitbox
+//! is drawn and hit-tested with own mask ∩ the node's real clip chain.
+
+use super::*;
+use crate::scene::Primitive;
+
+/// The scroll node and own mask of a hitbox inserted under it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct HitboxMark {
+    /// Index of the hitbox in the frame's `hitboxes`.
+    pub(crate) index: u32,
+    pub(crate) node: ScrollNodeId,
+    pub(crate) own: Bounds<Pixels>,
+}
+
+impl Window {
+    /// How far past a scroll node's clip its children are recorded (window
+    /// pixels, each side). Zero records what is visible, as without nodes.
+    pub fn set_scroll_interest_margin(&mut self, margin: Pixels) {
+        self.scroll_interest_margin = margin;
+    }
+
+    /// Push a node's interest rect as the content mask of its children.
+    pub(super) fn open_interest(&mut self, interest: Bounds<Pixels>, paint: bool) {
+        let depth = self.content_mask_stack.len();
+        self.content_mask_stack.push(ContentMask { bounds: interest });
+        if !paint {
+            self.next_frame.scroll_paint.depths.push(depth);
+        }
+    }
+
+    /// Pop the mask `open_interest` pushed for the innermost prepaint or
+    /// paint node.
+    pub(super) fn close_interest(&mut self, paint: bool) {
+        let pairing = &mut self.next_frame.scroll_paint;
+        let depth = if paint { pairing.open.pop().map(|(_, depth)| depth) } else { pairing.depths.pop() };
+        if let Some(depth) = depth {
+            self.content_mask_stack.truncate(depth);
+        }
+    }
+
+    /// Insert a primitive into the next frame's scene, under the innermost
+    /// open paint node when there is one.
+    pub(crate) fn insert_scene_primitive(&mut self, primitive: impl Into<Primitive>) {
+        let scale = self.scale_factor();
+        let frame = &mut self.next_frame;
+        let open = frame.scroll_paint.open.last().map(|&(index, _)| {
+            let node = &frame.scroll_nodes[index as usize];
+            (node.id, node.clip.scale(scale))
+        });
+        frame.scene.scroll.open = open;
+        frame.scene.insert_primitive(primitive);
+        frame.scene.scroll.open = None;
+    }
+
+    /// The mask a hitbox inserted now is hit-tested with, and its mark when
+    /// it lies under a prepaint node: own mask ∩ the node's clip.
+    pub(crate) fn scroll_hitbox_mask(
+        &self,
+        mask: ContentMask<Pixels>,
+    ) -> (ContentMask<Pixels>, Option<(ScrollNodeId, Bounds<Pixels>)>) {
+        match self.next_frame.scroll_node_stack.last() {
+            Some(&top) => {
+                let node = &self.next_frame.scroll_nodes[top as usize];
+                let real = ContentMask { bounds: mask.bounds.intersect(&node.clip) };
+                (real, Some((node.id, mask.bounds)))
+            }
+            None => (mask, None),
+        }
+    }
+}

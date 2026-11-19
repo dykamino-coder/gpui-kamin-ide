@@ -1,0 +1,156 @@
+//! KaminIDE patch: replay of a retained record with its scroll nodes at new
+//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
+//!
+//! A wheel step that only moves a scroll offset needs no new build: the
+//! record's commands under each node move by the node's shift and are drawn
+//! with (own mask + shift) ∩ the node's new clip chain, its hitboxes the same,
+//! as cc moves a scroll layer and WebRender a scroll frame. The replay is
+//! allowed while each node's new clip lies inside the region its content was
+//! recorded for (its interest rect, moved with it); otherwise the host builds.
+
+use super::*;
+use collections::FxHashMap;
+
+/// A planned scrolled replay: per node of the record, in record order, its
+/// new offset, shift, real clip chain and interest rect.
+pub struct ScrollReplay {
+    nodes: Vec<PlannedNode>,
+    by_id: FxHashMap<ScrollNodeId, usize>,
+}
+
+#[derive(Clone, Copy)]
+struct PlannedNode {
+    offset: Point<Pixels>,
+    /// Shift of the node's children since the record (window pixels).
+    shift: Point<Pixels>,
+    clip: Bounds<Pixels>,
+    chain: Bounds<Pixels>,
+    interest: Bounds<Pixels>,
+}
+
+impl ScrollReplay {
+    /// Whether nothing moves (a plain replay draws the same).
+    pub fn is_still(&self) -> bool {
+        self.nodes.iter().all(|node| node.shift == Point::default())
+    }
+
+    fn node(&self, id: ScrollNodeId) -> &PlannedNode {
+        &self.nodes[self.by_id[&id]]
+    }
+}
+
+fn moved(bounds: Bounds<Pixels>, shift: Point<Pixels>) -> Bounds<Pixels> {
+    Bounds { origin: bounds.origin + shift, size: bounds.size }
+}
+
+fn inside(inner: Bounds<Pixels>, outer: Bounds<Pixels>) -> bool {
+    inner.is_empty() || inner.intersect(&outer) == inner
+}
+
+impl Window {
+    /// Plan the replay of a record made in the rendered frame with each of its
+    /// scroll nodes at `offset(id)` (`None`: where it was). `None` when the
+    /// record must be built instead: a node's new clip shows content outside
+    /// what was recorded, or the record holds commands a moved copy cannot
+    /// place (unmarked copies, layers, depth sorting, deferred draws).
+    pub fn plan_scrolled_replay(
+        &self,
+        prepaint: &RetainedPrepaint,
+        paint: &RetainedPaint,
+        offset: impl Fn(ScrollNodeId) -> Option<Point<Pixels>>,
+    ) -> Option<ScrollReplay> {
+        let (prepaints, paints) = (prepaint.range(), paint.range());
+        let scene = &self.next_frame.scene;
+        if !paint.replayable
+            || self.replay_source().is_some()
+            || scene.segment_capture.is_some()
+            || !scene.at_root()
+            || prepaints.start.deferred_draws_index != prepaints.end.deferred_draws_index
+        {
+            return None;
+        }
+        let first = prepaints.start.scroll_nodes_index;
+        let records = &self.rendered_frame.scroll_nodes[first..prepaints.end.scroll_nodes_index];
+        let scenes = paints.start.scene_index..paints.end.scene_index;
+        let mut plan = ScrollReplay { nodes: Vec::with_capacity(records.len()), by_id: FxHashMap::default() };
+        for node in records {
+            let painted = node.paint.clone()?;
+            if painted.start < scenes.start || painted.end > scenes.end {
+                return None;
+            }
+            let new = offset(node.id).unwrap_or(node.offset);
+            let parent = node
+                .parent
+                .and_then(|parent| (parent as usize).checked_sub(first))
+                .filter(|parent| *parent < plan.nodes.len())
+                .map(|parent| plan.nodes[parent]);
+            let parent_shift = parent.map_or(Point::default(), |parent| parent.shift);
+            // An anchor's mask stays in the viewport; a node's moves with its parent.
+            let chain = if node.anchored { node.chain } else { moved(node.chain, parent_shift) };
+            let clip = match parent {
+                Some(parent) => parent.clip.intersect(&chain),
+                None => node.clip,
+            };
+            let shift = parent_shift + (new - node.offset);
+            let interest = moved(node.interest, shift);
+            if !inside(clip, interest) {
+                return None;
+            }
+            plan.by_id.insert(node.id, plan.nodes.len());
+            plan.nodes.push(PlannedNode { offset: new, shift, clip, chain, interest });
+        }
+        let nodes = records.iter().filter_map(|node| node.paint.clone());
+        self.rendered_frame.scene.scrollable(&scenes, nodes).then_some(plan)
+    }
+
+    /// `replay_retained_prepaint` of a planned scrolled replay: hitboxes
+    /// under a node move by its shift and are hit-tested with (own + shift)
+    /// ∩ its new clip; the nodes take their new offsets and clips.
+    pub fn replay_retained_prepaint_scrolled(
+        &mut self,
+        record: &RetainedPrepaint,
+        plan: &ScrollReplay,
+    ) -> RetainedPrepaint {
+        let start = self.prepaint_index();
+        self.reuse_prepaint(record.range());
+        let frame = &mut self.next_frame;
+        for (node, planned) in frame.scroll_nodes[start.scroll_nodes_index..].iter_mut().zip(&plan.nodes) {
+            node.offset = planned.offset;
+            node.clip = planned.clip;
+            node.chain = planned.chain;
+            node.interest = planned.interest;
+        }
+        let from = frame.scroll_hitboxes.partition_point(|mark| (mark.index as usize) < start.hitboxes_index);
+        for mark in &mut frame.scroll_hitboxes[from..] {
+            let Some(&at) = plan.by_id.get(&mark.node) else { continue };
+            let planned = plan.nodes[at];
+            mark.own.origin += planned.shift;
+            let hitbox = &mut frame.hitboxes[mark.index as usize];
+            hitbox.bounds.origin += planned.shift;
+            hitbox.content_mask.bounds = mark.own.intersect(&planned.clip);
+        }
+        RetainedPrepaint::of(start..self.prepaint_index())
+    }
+
+    /// `replay_retained_paint` of a planned scrolled replay
+    /// (`Scene::replay_scrolled`).
+    pub fn replay_retained_paint_scrolled(&mut self, record: &RetainedPaint, plan: &ScrollReplay) -> RetainedPaint {
+        let start = self.paint_index();
+        let range = record.range();
+        self.reuse_paint_state(&range);
+        let scenes = range.start.scene_index..range.end.scene_index;
+        let landed = self.next_frame.scene.paint_operations.len();
+        let scale = self.scale_factor();
+        let scaled = |point: Point<Pixels>| point.scale(scale);
+        self.next_frame.scene.replay_scrolled(scenes.clone(), &self.rendered_frame.scene, |id| {
+            let node = plan.node(id);
+            (scaled(node.shift), node.clip.scale(scale))
+        });
+        self.land_scroll_nodes(scenes, landed);
+        self.allow_replayed(record);
+        RetainedPaint::of(start..self.paint_index(), true, record.allowed)
+    }
+}
+
+#[cfg(test)]
+mod tests;

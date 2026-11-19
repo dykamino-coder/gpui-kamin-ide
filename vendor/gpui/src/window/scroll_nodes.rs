@@ -34,7 +34,19 @@ pub(crate) struct ScrollNodeRecord {
     /// Index of the enclosing node in the same frame.
     pub(crate) parent: Option<u32>,
     pub(crate) offset: Point<Pixels>,
+    /// Real clip chain of the children: the enclosing node's clip and the
+    /// content mask at the node (`chain`).
     pub(crate) clip: Bounds<Pixels>,
+    /// Content mask at the node: under an enclosing node's interest rect,
+    /// not its real clip, so the clip follows a replay of that node.
+    pub(crate) chain: Bounds<Pixels>,
+    /// Where the children's content is recorded: the clip widened by the
+    /// window's interest margin (`set_scroll_interest_margin`). A replay
+    /// may show the children only inside it.
+    pub(crate) interest: Bounds<Pixels>,
+    /// An anchor (`with_scroll_anchor_prepaint`): its mask is fixed to the
+    /// viewport, not to the enclosing node's content.
+    pub(crate) anchored: bool,
     /// Scene commands of the node's children; empty until they paint.
     pub(crate) paint: Option<Range<usize>>,
     /// Paired with a paint that has not ended yet.
@@ -49,12 +61,18 @@ pub(crate) struct PaintPairing {
     /// Copied nodes waiting for the paint range that holds them: index and
     /// scene range in the rendered frame (`reuse_scroll_nodes`).
     landing: Vec<(u32, Range<usize>)>,
+    /// Content mask depth under each open prepaint node.
+    pub(crate) depths: Vec<usize>,
+    /// Open paint nodes and the content mask depth under each.
+    pub(crate) open: Vec<(u32, usize)>,
 }
 
 impl PaintPairing {
     pub(crate) fn clear(&mut self) {
         self.cursor = 0;
         self.landing.clear();
+        self.depths.clear();
+        self.open.clear();
     }
 }
 
@@ -109,24 +127,56 @@ impl Window {
         node: Option<(ScrollNodeId, Bounds<Pixels>)>,
         offset: Point<Pixels>,
     ) -> Option<u32> {
-        let (id, clip) = node?;
+        let (id, chain) = node?;
+        Some(self.open_scroll_node(id, chain, offset, false))
+    }
+
+    /// Open a scroll anchor: a node whose children stay where the host puts
+    /// them while enclosing nodes scroll (a fixed or sticky box), offset
+    /// against the enclosing node by `offset` (for a fixed box, minus the
+    /// enclosing scroll offset). Its mask does not move with that node.
+    pub fn with_scroll_anchor_prepaint<R>(
+        &mut self,
+        id: ScrollNodeId,
+        offset: Point<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let chain = self.content_mask().bounds;
+        self.open_scroll_node(id, chain, offset, true);
+        let result = f(self);
+        self.end_scroll_node_prepaint(Some(0));
+        result
+    }
+
+    fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, anchored: bool) -> u32 {
         let index = self.next_frame.scroll_nodes.len() as u32;
+        let parent = self.next_frame.scroll_node_stack.last().copied();
+        let clip = match parent {
+            Some(parent) => self.next_frame.scroll_nodes[parent as usize].clip.intersect(&chain),
+            None => chain,
+        };
+        let interest = clip.dilate(self.scroll_interest_margin);
         self.next_frame.scroll_nodes.push(ScrollNodeRecord {
             id,
-            parent: self.next_frame.scroll_node_stack.last().copied(),
+            parent,
             offset,
             clip,
+            chain,
+            interest,
+            anchored,
             paint: None,
             pending: false,
         });
         self.next_frame.scroll_node_stack.push(index);
-        Some(index)
+        self.open_interest(interest, false);
+        index
     }
 
     /// Close a node opened by `begin_scroll_node_prepaint`.
     pub(crate) fn end_scroll_node_prepaint(&mut self, open: Option<u32>) {
         if open.is_some() {
             self.next_frame.scroll_node_stack.pop();
+            self.close_interest(false);
         }
     }
 
@@ -150,12 +200,17 @@ impl Window {
         let start = frame.scene.paint_operations.len();
         frame.scroll_nodes[index].paint = Some(start..start);
         frame.scroll_nodes[index].pending = true;
+        let interest = frame.scroll_nodes[index].interest;
+        self.open_interest(interest, true);
+        let depth = self.content_mask_stack.len() - 1;
+        self.next_frame.scroll_paint.open.push((index as u32, depth));
         Some(index as u32)
     }
 
     /// End the paint started by `begin_scroll_node_paint`.
     pub(crate) fn end_scroll_node_paint(&mut self, open: Option<u32>) {
         let Some(index) = open else { return };
+        self.close_interest(true);
         let frame = &mut self.next_frame;
         let end = frame.scene.paint_operations.len();
         let node = &mut frame.scroll_nodes[index as usize];
@@ -170,6 +225,16 @@ impl Window {
     /// open now. Paint ranges land with the paint range that holds them
     /// (`land_scroll_nodes`); until then a copy is not paired or listed.
     pub(crate) fn reuse_scroll_nodes(&mut self, range: &Range<PrepaintStateIndex>) {
+        // Hitbox marks, renumbered as `reuse_prepaint` appends the hitboxes.
+        let hitboxes = range.start.hitboxes_index as u32..range.end.hitboxes_index as u32;
+        let landed = self.next_frame.hitboxes.len() as u32;
+        let marks = &self.rendered_frame.scroll_hitboxes;
+        let from = marks.partition_point(|mark| mark.index < hitboxes.start);
+        let to = marks.partition_point(|mark| mark.index < hitboxes.end);
+        self.next_frame.scroll_hitboxes.extend(marks[from..to].iter().map(|mark| super::scroll_masks::HitboxMark {
+            index: landed + mark.index - hitboxes.start,
+            ..*mark
+        }));
         let old = range.start.scroll_nodes_index..range.end.scroll_nodes_index;
         if old.is_empty() {
             return;
