@@ -12,9 +12,51 @@
 //! неэкранированной точки. «Не упомянуто» означает «ни одно правило от имени
 //! не зависит»; лишнее упоминание лишь отменяет короткий путь.
 
-/// Упоминает ли `css` имя атрибута из `attrs` где угодно или класс из
-/// `classes` после точки (имена — в нижнем ASCII-регистре).
+/// Whether `css` mentions an attribute name of `attrs` anywhere or a class of
+/// `classes` after a dot (names in ASCII lowercase).
 pub(super) fn mentions(css: &str, attrs: &[String], classes: &[String]) -> bool {
+    scan(css, |word, dotted| {
+        attrs.iter().any(|a| a == word) || dotted && classes.iter().any(|c| c == word)
+    })
+}
+
+/// The identifiers of a set of CSS texts, read in one pass: what `mentions`
+/// would find in any of them, so a batch of k elements costs one pass over the
+/// sheets instead of k (Blink reads its `RuleFeatureSet` the same way: built
+/// once, looked up per mutation).
+#[derive(Default)]
+pub(super) struct Mentions {
+    words: std::collections::HashSet<String>,
+    dotted: std::collections::HashSet<String>,
+}
+
+impl Mentions {
+    pub(super) fn of<'a>(texts: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut index = Self::default();
+        for css in texts {
+            scan(css, |word, dotted| {
+                if dotted && !index.dotted.contains(word) {
+                    index.dotted.insert(word.to_string());
+                }
+                if !index.words.contains(word) {
+                    index.words.insert(word.to_string());
+                }
+                false
+            });
+        }
+        index
+    }
+
+    /// `mentions` over every indexed text.
+    pub(super) fn any(&self, attrs: &[String], classes: &[String]) -> bool {
+        attrs.iter().any(|a| self.words.contains(a))
+            || classes.iter().any(|c| self.dotted.contains(c))
+    }
+}
+
+/// Calls `found` with each identifier of `css` (ASCII lowercase, escapes
+/// resolved) and whether an unescaped dot precedes it; stops at `true`.
+fn scan(css: &str, mut found: impl FnMut(&str, bool) -> bool) -> bool {
     let mut word = String::new();
     let mut dotted = false;
     let mut chars = css.chars().peekable();
@@ -33,7 +75,7 @@ pub(super) fn mentions(css: &str, attrs: &[String], classes: &[String]) -> bool 
             }
             _ => {}
         }
-        if !word.is_empty() && (attrs.contains(&word) || dotted && classes.contains(&word)) {
+        if !word.is_empty() && found(&word, dotted) {
             return true;
         }
         word.clear();
@@ -43,7 +85,6 @@ pub(super) fn mentions(css: &str, attrs: &[String], classes: &[String]) -> bool 
         }
     }
 }
-
 /// Символ экранирования после `\` (CSS Syntax §4.3.7); `None` — не экранирование.
 fn escaped(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Option<char> {
     let first = *chars.peek()?;
@@ -123,5 +164,56 @@ mod tests {
             assert!(mentions(css, &data, &[]), "{css}");
         }
         assert!(!mentions("[data-edits]{}[data]{}.classy{}", &data, &[]));
+    }
+
+    #[test]
+    fn the_index_of_several_sheets_finds_what_each_sheet_mentions() {
+        let sheets = [
+            ".alt{}",
+            "p::before{content:attr(data-edit)}",
+            "/* data-x */",
+            ".\\61 b{}",
+        ];
+        let index = super::Mentions::of(sheets);
+        for (attrs, classes) in [
+            (vec![], names(&["alt"])),
+            (vec![], names(&["ab"])),
+            (names(&["data-edit"]), vec![]),
+            (names(&["data-x"]), vec![]),
+            (vec![], names(&["data-x"])),
+            (names(&["alt"]), vec![]),
+            (names(&["data-y"]), names(&["salt", "edit"])),
+        ] {
+            let each = sheets.iter().any(|css| mentions(css, &attrs, &classes));
+            assert_eq!(index.any(&attrs, &classes), each, "{attrs:?} {classes:?}");
+        }
+    }
+
+    /// `cargo test --release -p kamin-html --lib mentions_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    #[allow(clippy::print_stderr)]
+    fn mentions_cost_of_a_batch() {
+        let ua = crate::style::ua::user_agent_css();
+        let sheet: String = (0..2000)
+            .map(|i| format!(".c{i} p[data-k{i}]{{color:red}}"))
+            .collect();
+        let texts = [ua, sheet.as_str()];
+        let attrs: Vec<Vec<String>> = (0..500).map(|i| vec![format!("data-z{i}")]).collect();
+        let start = std::time::Instant::now();
+        let each = attrs
+            .iter()
+            .filter(|a| texts.iter().any(|css| mentions(css, a, &[])))
+            .count();
+        let per_element = start.elapsed();
+        let start = std::time::Instant::now();
+        let index = super::Mentions::of(texts);
+        let once = attrs.iter().filter(|a| index.any(a, &[])).count();
+        let indexed = start.elapsed();
+        assert_eq!(each, once);
+        eprintln!(
+            "500 elements, {} bytes: per element {per_element:?}, index {indexed:?}",
+            ua.len() + sheet.len()
+        );
     }
 }
