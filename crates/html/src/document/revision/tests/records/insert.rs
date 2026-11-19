@@ -1,6 +1,10 @@
 use super::*;
 
-fn place(parent: &crate::SourceNode, child: &crate::SourceNode, before: Option<&Handle>) -> Mutation {
+fn place(
+    parent: &crate::SourceNode,
+    child: &crate::SourceNode,
+    before: Option<&Handle>,
+) -> Mutation {
     Mutation::InsertBefore {
         parent: parent.clone(),
         child: child.clone(),
@@ -26,10 +30,7 @@ fn insert_before_and_append_move_the_same_nodes_in_record_order() {
     let c = doc.create_text_node("c").unwrap();
     doc.apply(&[place(&em, &c, None)], "").unwrap();
     doc.apply(
-        &[
-            place(&main, &em, Some(b.handle())),
-            place(&b, &i, None),
-        ],
+        &[place(&main, &em, Some(b.handle())), place(&b, &i, None)],
         "",
     )
     .unwrap();
@@ -69,9 +70,7 @@ fn cycles_foreign_owners_and_stale_reference_nodes_refuse_the_whole_batch() {
         (place(&main, &b, Some(i.handle())), "reference"),
         (place(&root, &b, None), "hierarchy"),
     ] {
-        let error = doc
-            .apply(&[place(&b, &i, None), bad], "")
-            .unwrap_err();
+        let error = doc.apply(&[place(&b, &i, None), bad], "").unwrap_err();
         assert!(matches!(
             (error, expected),
             (ApplyError::Hierarchy, "hierarchy")
@@ -122,6 +121,9 @@ fn refusing_a_move_restores_both_parents_and_the_detached_allocation() {
     assert!(Rc::ptr_eq(&main.handle().children.borrow()[0], i.handle()));
     assert_eq!(b.handle().children.borrow().len(), 1);
     assert!(doc.apply(&records[..2], "").unwrap().changed());
-    assert!(Rc::ptr_eq(&main.handle().children.borrow()[0], new.handle()));
+    assert!(Rc::ptr_eq(
+        &main.handle().children.borrow()[0],
+        new.handle()
+    ));
     assert!(Rc::ptr_eq(&b.handle().children.borrow()[1], i.handle()));
 }

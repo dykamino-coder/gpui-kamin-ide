@@ -9,9 +9,9 @@
 mod attributes;
 mod children;
 mod source;
-use source::parent;
 pub(super) use attributes::attribute_records;
 pub use source::SourceNode;
+use source::parent;
 
 use super::apply::ApplyError;
 use html5ever::{Attribute, QualName};
