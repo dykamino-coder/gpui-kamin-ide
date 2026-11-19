@@ -84,11 +84,15 @@ pub(super) fn write_paint_values(
             }
             (Some(LayerPainter::Box), Own::Plain) => false,
             (Some(LayerPainter::Band), Own::Band) => true,
-            (None, Own::Band)
-                if super::layer_band::band_change(old, path, a, b)
-                    == super::layer_band::BandChange::Nothing =>
-            {
-                continue;
+            (None, Own::Band) => {
+                match super::layer_band::band_change(old, path, a, b) {
+                    super::layer_band::BandChange::Nothing => continue,
+                    super::layer_band::BandChange::Pieces => {
+                        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1)
+                    }
+                    super::layer_band::BandChange::Refused(reason) => refuse_not_own(reason),
+                }
+                return None;
             }
             (Some(LayerPainter::DecoratedBox), _) => {
                 refuse_not_own(Refusal::Decoration);

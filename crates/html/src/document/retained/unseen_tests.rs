@@ -117,6 +117,10 @@ fn check(
     };
     let (kept, waiting, edited_now, edited_then) = edited(cx, at, wrapped, then);
     let (fresh_now, fresh_then) = fresh(cx, &framed(at, " data-edit", wrapped), then);
+    assert!(
+        !fresh_now.is_empty() && !fresh_then.is_empty(),
+        "empty reference scene"
+    );
     assert_eq!(kept, keeps, "row {at}: the frame was kept: {kept}");
     assert_eq!(waiting > 0, defers, "row {at}: records waiting: {waiting}");
     assert_eq!(
