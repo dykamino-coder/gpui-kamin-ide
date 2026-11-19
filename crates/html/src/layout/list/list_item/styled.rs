@@ -125,7 +125,6 @@ pub(crate) async fn render_with_style(
         li,
         inherited,
     )
-    .relative()
     .flex()
     .flex_col()
     .children((!no_marker).then(|| {

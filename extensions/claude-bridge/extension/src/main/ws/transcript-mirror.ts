@@ -24,6 +24,22 @@ import path from 'path'
  *  (байты); больший разрыв = out-of-order реплей, который зеркалу нельзя. */
 const MAX_APPEND_GAP_BYTES = 256 * 1024
 
+/** `lastUuid` and `lastPos` must name the SAME record: the server proves the
+ *  resume by reading the uuid at `lastPos`. Take the newest record of `records`
+ *  that has both; a batch of uuid-less bookkeeping rows (`api-request`,
+ *  `tools-used`, …) keeps the previous pair. Pairing a new row's `_pos` with an
+ *  older uuid failed that proof on nearly every live reconnect. */
+function uuidProof(
+  records: readonly { _pos?: number; uuid?: string }[],
+  previous?: { lastUuid?: string; lastPos?: number } | null,
+): { lastUuid?: string; lastPos?: number } {
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i]!
+    if (r.uuid && typeof r._pos === 'number') return { lastUuid: r.uuid, lastPos: r._pos }
+  }
+  return { lastUuid: previous?.lastUuid, lastPos: previous?.lastPos }
+}
+
 export interface MirrorCursor {
   /** Fingerprint of the server file this mirror was built from. */
   head: string
@@ -223,8 +239,7 @@ export class TranscriptMirror {
       this.cursor = {
         head,
         pos: last._posEnd ?? this.cursor?.pos ?? 0,
-        lastUuid: last.uuid ?? this.cursor?.lastUuid,
-        lastPos: last._pos,
+        ...uuidProof(fresh, this.cursor),
       }
       // Дебаунс: writeFile+rename на КАЖДЫЙ батч — сотни пар fs-операций за
       // реплей (аудит #70 B8). Курсор в памяти всегда актуален; отставший на
@@ -272,7 +287,7 @@ export class TranscriptMirror {
         await this.close()
         await fsp.appendFile(this.file, fresh.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf8')
         const last = fresh.at(-1)!
-        this.cursor = { head, pos: last._posEnd ?? existing.pos, lastUuid: last.uuid, lastPos: last._pos }
+        this.cursor = { head, pos: last._posEnd ?? existing.pos, ...uuidProof(fresh, existing) }
         await this.writeSidecar()
         return
       }
@@ -280,7 +295,7 @@ export class TranscriptMirror {
       const payload = ordered.map((r) => JSON.stringify(r)).join('\n') + '\n'
       await fsp.writeFile(this.file, payload, 'utf8') // fresh, in order
       const last = ordered[ordered.length - 1]!
-      this.cursor = { head, pos: last._posEnd ?? 0, lastUuid: last.uuid, lastPos: last._pos }
+      this.cursor = { head, pos: last._posEnd ?? 0, ...uuidProof(ordered) }
       await this.writeSidecar()
     }).catch(() => { /* mirror is an optimisation: never break the session */ })
     return this.queue
