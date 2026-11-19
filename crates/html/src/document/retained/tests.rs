@@ -121,14 +121,20 @@ fn viewport_change_rebuilds(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn window_input_rebuilds(cx: &mut TestAppContext) {
+    let expected = super::box_repaint_tests::fresh(cx, PAGE);
     let (view, cx) = open(cx, PAGE);
     frame(cx);
     let (builds, replays) = frames(&view, cx);
+    let inside = super::l0_tests::builds(&view, cx).1;
     cx.simulate_mouse_move(point(px(30.), px(30.)), None, Modifiers::default());
     frame(cx);
     let (after, again) = frames(&view, cx);
     assert!(after > builds, "input did not rebuild the frame");
     assert_eq!(again, replays);
+    assert_eq!(super::l0_tests::builds(&view, cx).1, inside);
+    assert_eq!(super::box_repaint_tests::quads(cx), expected);
+    frame(cx);
+    assert_eq!(frames(&view, cx), (after, again + 1));
 }
 
 #[gpui::test]
