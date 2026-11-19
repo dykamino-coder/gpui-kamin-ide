@@ -26,11 +26,15 @@ pub(super) fn own_vars(
     vcx: crate::values::ValueCx<'_>,
 ) -> Rc<VarMap> {
     let registered = tree.doc.property_rules();
-    let inherits_all = registered
-        .rules
-        .iter()
-        .all(|(name, r)| r.inherits && (r.initial.is_none() || inherited.contains_key(name)));
-    if !custom && inherits_all {
+    // The registry keeps these facts per snapshot: the walk does not visit
+    // every registration on every element.
+    let shares = !custom
+        && registered.non_inherited == 0
+        && registered
+            .inherited_initial
+            .iter()
+            .all(|name| inherited.contains_key(name));
+    if shares {
         return inherited.clone();
     }
     let no_custom = CascadeMap::default();
