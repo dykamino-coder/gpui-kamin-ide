@@ -173,7 +173,7 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
 
 /// Census of a document's boxes for the paint-only path: how many paint only
 /// their own commands (`own`), and how many would refuse it, by reason
-/// (`paint::box_tree::styled::own_box_refusal`, controls).
+/// (`paint::box_tree::styled::requested_painter`, controls).
 pub fn census(doc: &crate::Document) -> std::collections::BTreeMap<&'static str, u64> {
     let mut out = std::collections::BTreeMap::new();
     let state = doc.state_rc();
@@ -189,7 +189,12 @@ pub fn census(doc: &crate::Document) -> std::collections::BTreeMap<&'static str,
         let reason = if crate::document::paint_controls().contains(&e.tag.as_str()) {
             Some("control")
         } else {
-            crate::paint::box_tree::styled::own_box_refusal(&state, e)
+            use crate::paint::box_tree::styled::{Own, requested_painter};
+            match requested_painter(&state, e) {
+                Own::Plain => None,
+                Own::Band => Some("inline"),
+                Own::Not(reason) => Some(reason.label()),
+            }
         };
         *out.entry(reason.unwrap_or("own")).or_insert(0) += 1;
         stack.push(e.children.iter());
