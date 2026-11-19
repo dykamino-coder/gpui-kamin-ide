@@ -86,10 +86,6 @@ impl Drop for Timer {
 
 pub(crate) fn add(counter: &AtomicU64, n: u64) {
     counter.fetch_add(n, Relaxed);
-    #[cfg(test)]
-    if let Some(i) = counters().iter().position(|c| std::ptr::eq(*c, counter)) {
-        local::add(i, n);
-    }
 }
 
 /// `value`, counting `reason` when it is `None`.
@@ -106,8 +102,6 @@ pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
     None
 }
 
-#[cfg(test)]
-mod local;
 pub mod not_own;
 
 /// Counters before the reasons of `REFUSED_NOT_OWN` (`not_own`) in `NAMES`.
@@ -115,15 +109,9 @@ const PATH: usize = 26;
 
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
-    // Tests run in parallel: each reads the counts of its own thread.
-    #[cfg(test)]
-    return local::read();
-    #[cfg(not(test))]
-    {
-        let path = counters().map(|c| c.load(Relaxed));
-        let reasons = not_own::read();
-        std::array::from_fn(|i| if i < PATH { path[i] } else { reasons[i - PATH] })
-    }
+    let path = counters().map(|c| c.load(Relaxed));
+    let reasons = not_own::read();
+    std::array::from_fn(|i| if i < PATH { path[i] } else { reasons[i - PATH] })
 }
 
 /// The path's counters in the order of `NAMES`.

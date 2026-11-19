@@ -39,12 +39,9 @@ pub(crate) fn add(reason: &str) {
         .position(|r| *r == reason)
         .unwrap_or(REASONS.len() - 1);
     COUNTS[at].fetch_add(1, Relaxed);
-    #[cfg(test)]
-    super::local::add(super::PATH + at, 1);
 }
 
 /// The counters in the order of `REASONS`.
-#[cfg_attr(test, allow(dead_code))]
 pub(super) fn read() -> [u64; REASONS.len()] {
     std::array::from_fn(|i| COUNTS[i].load(Relaxed))
 }
