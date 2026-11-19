@@ -3,7 +3,7 @@ import type { JSX } from 'preact'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { compactSegments, activeSegmentIdx, activeSegmentTsByTab } from '../../signals/compact-segments'
 import { activeTabId, tabs } from '../../signals/tabs'
-import { jsonlEntriesByTab, getJsonlStructureVersion, tabNeedsRefill, clearRefillDebt, prependJsonlEntries, trimTabToWindow, archivedViewTs, STORE_WINDOW, STORE_SLACK, SCROLL_UP_MAX } from '../../signals/jsonl'
+import { jsonlEntriesByTab, getJsonlGeneration, getJsonlStructureVersion, tabNeedsRefill, clearRefillDebt, prependJsonlEntries, trimTabToWindow, archivedViewTs, STORE_WINDOW, STORE_SLACK, SCROLL_UP_MAX } from '../../signals/jsonl'
 import { boundTabId } from '../../signals/session-binding'
 import { compactingTabs } from '../../signals/compaction'
 import { useBridge } from '../../hooks/useBridge'
@@ -106,14 +106,18 @@ export function JsonlViewer(): JSX.Element {
   const olderLoadingRef = useRef(false)
   const reachedStartRef = useRef(false)
   const pageCursorRef = useRef<number | null>(null)
-  const pendingPageRef = useRef<{ tab: string; segment: string | null; before: number; fill: boolean } | null>(null)
+  const pendingPageRef = useRef<{ tab: string; segment: string | null; generation: number; before: number; fill: boolean } | null>(null)
   const segment = currentTabId ? archivedViewTs(currentTabId) : null
+  // A transcript replaced in the same tab (compact → new file, reseed) is a new
+  // history: its paging starts over, even when the previous one had already
+  // reached its start (a short old generation left the new one cut at a page).
+  const generation = currentTabId ? getJsonlGeneration(currentTabId) : 0
   useEffect(() => {
     pageCursorRef.current = null
     pendingPageRef.current = null
     olderLoadingRef.current = false
     reachedStartRef.current = false
-  }, [currentTabId, segment])
+  }, [currentTabId, segment, generation])
 
   // `fill`: asked for by the viewport-fill effect below, not by a scroll-up.
   const onNearTop = useCallback((fill = false) => {
@@ -135,7 +139,7 @@ export function JsonlViewer(): JSX.Element {
     const oldestPos = pageCursorRef.current ?? (store[0] as { _pos?: number } | undefined)?._pos
     if (typeof oldestPos !== 'number' || oldestPos <= 0) { reachedStartRef.current = true; return }
     olderLoadingRef.current = true
-    pendingPageRef.current = { tab: currentTabId, segment: archivedViewTs(currentTabId) ?? null, before: oldestPos, fill }
+    pendingPageRef.current = { tab: currentTabId, segment: archivedViewTs(currentTabId) ?? null, generation: getJsonlGeneration(currentTabId), before: oldestPos, fill }
     bridge.loadOlderPage(currentTabId, oldestPos, OLDER_PAGE)
   }, [currentTabId, bridge])
 
@@ -146,6 +150,8 @@ export function JsonlViewer(): JSX.Element {
       if (tabId !== activeTabId.value) return
       const pending = pendingPageRef.current
       if (!pending || pending.tab !== tabId || pending.segment !== (archivedViewTs(tabId) ?? null)) return
+      // A late page of the transcript this tab held before its replacement.
+      if (pending.generation !== getJsonlGeneration(tabId)) return
       if (p.beforePos !== undefined && (p.beforePos !== pending.before || (p.fromTs ?? '') !== (pending.segment ?? ''))) return
       olderLoadingRef.current = false
       pendingPageRef.current = null

@@ -11,7 +11,7 @@
 // the case starts passing and vitest reports it — flip it to `it` then.
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  appendJsonlEntries, clearJsonlEntries, getJsonlEntries, prependJsonlEntries, trimTabToWindow,
+  appendJsonlEntries, clearJsonlEntries, getJsonlEntries, getJsonlGeneration, prependJsonlEntries, trimTabToWindow,
   replaceWindowWithSegment, setArchivedView, tabNeedsRefill, STORE_WINDOW, STORE_SLACK,
 } from './jsonl'
 import { activeTabId } from './tabs'
@@ -161,6 +161,17 @@ describe('compaction', () => {
     expect(chatView(TAB).all).toEqual(cliView(b.recs.slice(0, first))) // snapshot untouched
     setArchivedView(TAB, null)
     expectCli(b.recs)
+  })
+
+  it('a transcript replaced in the same tab is a new paging generation', () => {
+    deliver(asPaged(b.recs))
+    const before = getJsonlGeneration(TAB)
+    // The CLI switched files: the held rows go, the new file replays in.
+    clearJsonlEntries(TAB)
+    expect(getJsonlGeneration(TAB)).toBe(before + 1)
+    deliver(asPaged(b.recs))
+    expect(getJsonlGeneration(TAB)).toBe(before + 1) // ingest alone keeps it
+    expect(getJsonlGeneration(`${TAB}-other`)).toBe(0)
   })
 })
 

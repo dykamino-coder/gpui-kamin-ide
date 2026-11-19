@@ -262,10 +262,13 @@ export function computeContextStats(
   // сервер) — окно модели из status line, только для текущего сегмента:
   // архивный мог идти на другой модели.
   const valid = (n: number | null | undefined): number => (typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : 0)
-  const compactLimit = valid(session?.autoCompactAt)
-  const cliLimit = compactLimit ? 0 : isLiveSegment ? valid(session?.contextWindowSize) : 0
-  // codex reports its model's window with each response: exact, not a guess.
-  const engineLimit = compactLimit || cliLimit ? 0 : valid(isLiveSegment && latestUsage ? latestWindow : peakWindow)
+  // codex reports its model's window with each response: exact, not a guess,
+  // and it outranks the Claude CLI's auto-compact point and status-line window
+  // (a chat switched from Claude still holds those; 25.8K of a 258K codex
+  // window is 10%, not 3% of a 900K Claude compact point).
+  const engineLimit = valid(isLiveSegment && latestUsage ? latestWindow : peakWindow)
+  const compactLimit = engineLimit ? 0 : valid(session?.autoCompactAt)
+  const cliLimit = engineLimit || compactLimit ? 0 : isLiveSegment ? valid(session?.contextWindowSize) : 0
   // Оценка по имени: у сессии ДВА источника модели, и легаси может застрять в
   // ЛЮБОМ из них (витки хранят opus-4-8 до апгрейда, а таб уже живой opus-5
   // после hot-switch — инцидент «100% при 510K»). Берём максимум окон обоих.

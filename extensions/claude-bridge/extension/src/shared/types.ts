@@ -21,6 +21,9 @@ export interface SessionUsage {
   /** When a CLI reported the shown 5h/7d windows (may predate this
    *  session's CLI, which has none before its first model response). */
   limitsObservedAt?: string | null
+  /** The agent this snapshot describes; servers that omit it only report
+   *  the Claude CLI status line. */
+  engine?: AgentEngine
 }
 
 /** The agent behind a chat: Claude Code or ChatGPT through Codex CLI. */
