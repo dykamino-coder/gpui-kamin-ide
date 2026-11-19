@@ -1,5 +1,34 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Acceptance on the published KaminIDE 1.0.116 / server 6.3.193 — 2026-11-19
+
+Live acceptance by the executor `kacc18` on the installed release
+`kaminide-v1.0.116` (`a52709b9`) and the acceptance container on 6.3.193.
+The details are in each card's dated section. Closing a card as `done` is the
+maintainer's decision after review; this run only records results.
+
+| Card | Result | Remaining |
+| --- | --- | --- |
+| [INC-0110](runtime-issues/INC-2026-0110.md) | passed: first frame 2.3 s on a cold profile copy, one HTML per view (16/16) | maintainer review |
+| [INC-0111](runtime-issues/INC-2026-0111.md) | passed: two concurrent profiles, each wrote only its own `globalStorage`, home Bridge files untouched | maintainer review |
+| [INC-0112](runtime-issues/INC-2026-0112.md) | passed: stdio server via `C:\Program Files\nodejs\node.exe` with spaced script path and argument connected | maintainer review |
+| [INC-0073](runtime-issues/INC-2026-0073.md) | passed: no `KAMIN_CEF_FORCE_SW`, hardware profile, chat and Console draw | maintainer review |
+| [INC-0074](runtime-issues/INC-2026-0074.md) | passed: not-found notice, input disabled, no server session, Retry keeps id, Start new creates one | maintainer review |
+| [INC-0063](runtime-issues/INC-2026-0063.md) | passed: narration between tool groups in chat matches Console | maintainer review |
+| [INC-0088](runtime-issues/INC-2026-0088.md) | passed: final multi-block reply starts with the same sentence in chat and Console | maintainer review |
+| [INC-0072](runtime-issues/INC-2026-0072.md) | passed: `project_sessions_list` answered in an ordinary turn | maintainer review |
+| [INC-0081](runtime-issues/INC-2026-0081.md) | passed on the stand: resumed conversation after container recreation, no hook errors | maintainer decides on the production observation |
+| [INC-0071](runtime-issues/INC-2026-0071.md) | observation: `emptyWindowWithRows` 0 over 17 renders | BR-22 classification |
+| [INC-0079](runtime-issues/INC-2026-0079.md) | partial: wheel reaches the alternate-screen CLI | rest of the native gate |
+
+Not checkable on the local stand: INC-0023 and INC-0025 need sleep, RDP and
+DPI transitions of the only machine. INC-0041, 0042 (field part), 0044, 0054,
+0091, 0092 and 0114 need the deployment owner's environment or production
+use. INC-0055 needs IPC fault injection that the release build does not have.
+INC-0117 and INC-0078 belong to the lead's engine batch and reconciliation.
+Not run in this batch: INC-0015, 0016, 0019, 0053, 0064, 0070, 0089, 0090 and
+0093 (the next acceptance run).
+
 ## KaminIDE 1.0.104 delivery: large tool results reach the model — 2026-11-15
 
 Delivery reconciliation 2026-11-15, source `origin/main`
