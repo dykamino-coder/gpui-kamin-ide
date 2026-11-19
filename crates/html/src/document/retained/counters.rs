@@ -3,13 +3,13 @@
 use crate::Document;
 
 impl Document {
-    /// Сколько раз кадр собран и сколько раз повторён (`render_viewport`).
+    /// How many times the frame was built and how many times it was replayed (`render_viewport`).
     pub fn retained_frames(&self) -> (u64, u64) {
         (self.retained.builds.get(), self.retained.replays.get())
     }
 
-    /// Блоки корневого потока: записано, пропущено вне экрана, кадров
-    /// собрано заново после промаха проверки экрана (`layout::reuse`).
+    /// Blocks of the root flow: recorded, skipped off screen, and frames built
+    /// again after a missed screen check (`layout::reuse`).
     pub fn reused_blocks(&self) -> (u64, u64, u64) {
         let stats = self.reuse.stats.get();
         (stats.recorded, stats.skipped, stats.rebuilt_frames)
