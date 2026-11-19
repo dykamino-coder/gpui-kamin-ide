@@ -6,7 +6,7 @@
 //! первом проходе; подготовка снимка запоминает порядок документа, а этот модуль
 //! отвечает на этот вопрос (`paint_last_ok`). GPUI-обёртки остаются у построителей.
 
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::box_kind::block_level_in_flow;
 use crate::layout::cx::LayoutCx;
 use crate::layout::positioned::predicates::Later;
