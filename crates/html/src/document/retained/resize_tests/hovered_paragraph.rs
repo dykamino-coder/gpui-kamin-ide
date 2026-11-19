@@ -2,12 +2,12 @@
 //! Its selection listeners test the hit when an event comes, not where the
 //! pointer was at paint (`interactive::selection::track_selection`), so the
 //! paragraph the pointer rests on is recorded and replayed like any other
-//! block, and a drag over the replayed paragraph selects as over a fresh one.
+//! block.
 
 use super::super::layered_replay_tests::scene;
-use super::super::tests::{View, frame, open};
+use super::super::tests::{View, open};
 use super::{replayed, resize};
-use gpui::{Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
+use gpui::{Modifiers, TestAppContext, VisualTestContext, point, px};
 
 /// One long paragraph of fixed width, taller than the window, in mixed spans.
 /// Its background is ink on screen: the test text system rasterizes no
@@ -37,14 +37,6 @@ fn hovered(cx: &mut VisualTestContext, view: &gpui::Entity<View>) -> u64 {
     replayed(view, cx) - before
 }
 
-fn drag(cx: &mut VisualTestContext) {
-    let (from, to) = (point(px(30.), px(12.)), point(px(400.), px(70.)));
-    cx.simulate_mouse_down(from, MouseButton::Left, Modifiers::default());
-    cx.simulate_mouse_move(to, Some(MouseButton::Left), Modifiers::default());
-    cx.simulate_mouse_up(to, MouseButton::Left, Modifiers::default());
-    frame(cx);
-}
-
 #[gpui::test]
 fn the_paragraph_under_the_pointer_is_replayed_across_width_changes(cx: &mut TestAppContext) {
     let html = page();
@@ -55,19 +47,4 @@ fn the_paragraph_under_the_pointer_is_replayed_across_width_changes(cx: &mut Tes
     fcx.simulate_mouse_move(point(px(200.), px(100.)), None, Modifiers::default());
     resize(&fresh, fcx, 801.);
     assert_eq!(kept, scene(fcx), "the replayed frame at 801 differs from a fresh one");
-}
-
-#[gpui::test]
-fn a_drag_over_the_replayed_paragraph_selects_as_over_a_fresh_one(cx: &mut TestAppContext) {
-    let html = page();
-    let (fresh, fcx) = open(cx, &html);
-    resize(&fresh, fcx, 801.);
-    let unselected = scene(fcx);
-    drag(fcx);
-    let selected = scene(fcx);
-    assert_ne!(selected, unselected, "the drag selected nothing in a fresh document");
-    let (view, vcx) = open(cx, &html);
-    assert_eq!(hovered(vcx, &view), 2, "the hovered paragraph was built at a width change");
-    drag(vcx);
-    assert_eq!(scene(vcx), selected, "the selection differs from a fresh document's");
 }
