@@ -61,7 +61,6 @@ pub(super) fn cascade_element(
         me.target_current = true;
     }
     let rules = &scope.rules;
-    let vars: &VarMap = inherited_vars;
     let inline_decls: DeclBlock = attrs
         .iter()
         .find(|(k, _)| k == "style")
@@ -106,7 +105,6 @@ pub(super) fn cascade_element(
     // и `.dark{--c:blue}` складывались в него подряд, и последнее
     // объявление красило ВЕСЬ документ — переключение темы классом
     // не работало в принципе.
-    let registered = tree.doc.property_rules();
     // Одна карта каскада на пользовательские свойства и `color-scheme`:
     // подсказки и лист форм их не задают.
     let hints = presentational_hints::rules(&tag, &attrs, path, vcx);
@@ -123,49 +121,15 @@ pub(super) fn cascade_element(
         .chain(std::iter::once(&inline_decls))
         .any(|block| block.iter().any(|d| d.name.starts_with("--")));
     let pre = (custom || form).then(|| CascadeMap::collect(&matched, &inline_decls));
-    let no_custom = CascadeMap::default();
-    // An element without its own custom declarations has its parent's custom
-    // properties while every registered one inherits and the parent has a
-    // value for each that has an initial value (`cascade_map` would give
-    // the same map): it shares the parent's map (Stylo; Blink
-    // `StyleInheritedVariables`).
-    let inherits_all = registered
-        .rules
-        .iter()
-        .all(|(name, r)| r.inherits && (r.initial.is_none() || vars.contains_key(name)));
-    let cascaded = (custom || !inherits_all).then(|| {
-        crate::style::css::custom_properties::cascade_map(
-            pre.as_ref().unwrap_or(&no_custom),
-            vars,
-            &registered.rules,
-            |s, v| syntax_accepts(s, v, vcx),
-        )
-    });
-    let own_vars = match cascaded {
-        None => inherited_vars.clone(),
-        Some(cascaded) => {
-            let declared: std::collections::HashSet<&str> = matched
-                .iter()
-                .map(|r| &r.decls)
-                .chain(std::iter::once(&inline_decls))
-                .flat_map(|block| block.iter())
-                .map(|d| d.name.as_str())
-                .filter(|name| name.starts_with("--"))
-                .collect();
-            let revision = tree.doc.revision_budget();
-            let work = crate::style::css::variable_values::Work::new(&revision);
-            let own = crate::style::css::variable_values::compute_declared(
-                cascaded,
-                vars,
-                &registered.rules,
-                |s, v| syntax_accepts(s, v, vcx),
-                &work,
-                |name| declared.contains(name) || registered.rules.contains_key(name),
-            );
-            work.finish(&tree.doc);
-            Rc::new(own)
-        }
-    };
+    let own_vars = super::own_vars::own_vars(
+        &matched,
+        &inline_decls,
+        custom,
+        pre.as_ref(),
+        inherited_vars,
+        tree,
+        vcx,
+    );
     let vars: &VarMap = &own_vars;
     // Типизированный `attr()` читает атрибуты ЭТОГО элемента
     // (css-values-5 §7.7), `sibling-index()` — его место среди братьев.
