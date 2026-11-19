@@ -71,6 +71,9 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
             let _tex_started = std::time::Instant::now();
             let got = super::shared_texture::texture_for(id, window, want);
             super::diag::tex_took(_tex_started.elapsed().as_micros() as u32);
+            // Only a frame painted with nothing that depends on time or on a
+            // popup lets the pump show the next frame without this paint.
+            super::page_frame::painted(id, None, want);
             if let Some(tex) = got {
                 let (tw, th) = tex.size();
                 // Кадр не того размера — просим ещё раз. Один запрос при
@@ -78,7 +81,8 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 let scale = window.scale_factor();
                 let want_w = (f32::from(bounds.size.width) * scale).round() as i32;
                 let want_h = (f32::from(bounds.size.height) * scale).round() as i32;
-                if super::frame_size::mismatch(id, (tw, th), (want_w, want_h), scale) {
+                let mismatched = super::frame_size::mismatch(id, (tw, th), (want_w, want_h), scale);
+                if mismatched {
                     super::diag::cropped();
                     super::frame_size::nudge_if_lost(id);
                     note_mismatch(id);
@@ -223,9 +227,15 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                     };
                     window.paint_external_texture(rect, c, &strip);
                 }
+                // Everything above follows from the frame key and the bounds;
+                // a size mismatch also runs the catch-up timers of this paint.
+                if !mismatched {
+                    super::page_frame::painted(id, super::shared_texture::shown_key(id), want);
+                }
                 // Попап страницы (дропдаун `<select>`): отдельная текстура
                 // CEF, кладётся поверх кадра по прямоугольнику `on_popup_size`.
                 if let Some((ptile, (rx, ry, rw, rh))) = super::popup::texture_for(id, window) {
+                    super::page_frame::painted(id, None, want);
                     let rect = gpui::Bounds {
                         origin: gpui::point(
                             bounds.origin.x + px(rx as f32),
