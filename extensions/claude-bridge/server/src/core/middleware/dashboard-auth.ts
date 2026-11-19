@@ -5,7 +5,7 @@
 import type { Context, Next } from 'hono'
 import { consumeJsonlDownload } from '../dashboard/jsonl-download'
 import { isDashboardAuthEnabled, validateDashboardSession, validateCredentials } from '../auth/dashboard-auth'
-import { resolveTokenSync } from '../auth/tokens'
+import { resolveToken } from '../auth/tokens'
 
 /** Paths that don't require dashboard authentication */
 const PUBLIC_PATHS = [
@@ -55,7 +55,10 @@ export async function dashboardAuthMiddleware(c: Context, next: Next) {
   // /ws/session). Stamp the resolved userName onto the request context so
   // downstream endpoints can scope responses to the caller's data only —
   // an API-token holder must never see another user's stats.
-  const resolved = resolveTokenSync(token)
+  // Async resolver: token create/rename/delete drops the cache, and the sync
+  // lookup returned null for EVERY valid API token until something else
+  // re-read it — a 401 right after managing tokens.
+  const resolved = await resolveToken(token)
   if (resolved) {
     c.set('authKind', 'api')
     c.set('apiUserName', resolved.userName)
