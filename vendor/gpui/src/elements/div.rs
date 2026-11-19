@@ -2154,7 +2154,7 @@ impl Element for Div {
             request_layout.exact_bounds.map(|exact| (bounds, exact)),
         );
 
-        let scroll_node = self.interactivity.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
+        let scroll_handle = self.interactivity.tracked_scroll_handle.clone();
         let hitbox = self.interactivity.prepaint(
             global_id,
             inspector_id,
@@ -2171,7 +2171,7 @@ impl Element for Div {
                 }
 
                 // KaminIDE patch: a scroll container's children form a scroll node.
-                let node = scroll_node.map(|id| (id, window.content_mask().bounds));
+                let node = scroll_handle.as_ref().map(|handle| (handle, window.content_mask().bounds));
                 window.with_image_cache(image_cache, |window| {
                     let open = window.begin_scroll_node_prepaint(node, scroll_offset);
                     window.with_element_offset(scroll_offset, |window| {
@@ -4679,6 +4679,12 @@ impl ScrollHandle {
     /// Get the maximum scroll offset.
     pub fn max_offset(&self) -> Point<Pixels> {
         self.0.borrow().max_offset
+    }
+
+    /// KaminIDE patch: the scroll range a prepaint would record (tests).
+    #[cfg(test)]
+    pub(crate) fn set_max_offset(&self, max: Point<Pixels>) {
+        self.0.borrow_mut().max_offset = max;
     }
 
     /// Get the top child that's scrolled into view.

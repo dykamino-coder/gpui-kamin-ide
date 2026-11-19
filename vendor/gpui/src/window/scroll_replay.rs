@@ -48,8 +48,17 @@ fn inside(inner: Bounds<Pixels>, outer: Bounds<Pixels>) -> bool {
 }
 
 impl Window {
+    /// Whether a scroll node of a record made in the rendered frame is at
+    /// another offset now (its scroll handle, or its anchor's function).
+    pub fn retained_scrolled(&self, prepaint: &RetainedPrepaint) -> bool {
+        let range = prepaint.range();
+        self.rendered_frame.scroll_nodes[range.start.scroll_nodes_index..range.end.scroll_nodes_index]
+            .iter()
+            .any(|node| node.source.offset() != node.offset)
+    }
+
     /// Plan the replay of a record made in the rendered frame with each of its
-    /// scroll nodes at `offset(id)` (`None`: where it was). `None` when the
+    /// scroll nodes at its offset now (`retained_scrolled`). `None` when the
     /// record must be built instead: a node's new clip shows content outside
     /// what was recorded, or the record holds commands a moved copy cannot
     /// place (unmarked copies, layers, depth sorting, deferred draws).
@@ -57,7 +66,6 @@ impl Window {
         &self,
         prepaint: &RetainedPrepaint,
         paint: &RetainedPaint,
-        offset: impl Fn(ScrollNodeId) -> Option<Point<Pixels>>,
     ) -> Option<ScrollReplay> {
         let (prepaints, paints) = (prepaint.range(), paint.range());
         let scene = &self.next_frame.scene;
@@ -78,7 +86,7 @@ impl Window {
             if painted.start < scenes.start || painted.end > scenes.end {
                 return None;
             }
-            let new = offset(node.id).unwrap_or(node.offset);
+            let new = node.source.offset();
             let parent = node
                 .parent
                 .and_then(|parent| (parent as usize).checked_sub(first))

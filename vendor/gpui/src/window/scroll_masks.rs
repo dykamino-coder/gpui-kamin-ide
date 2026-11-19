@@ -18,10 +18,19 @@ pub(crate) struct HitboxMark {
 }
 
 impl Window {
-    /// How far past a scroll node's clip its children are recorded (window
-    /// pixels, each side). Zero records what is visible, as without nodes.
-    pub fn set_scroll_interest_margin(&mut self, margin: Pixels) {
-        self.scroll_interest_margin = margin;
+    /// Run `f` with the scroll nodes it opens recording `margin` past their
+    /// clip (window pixels, each side): a host's subtree that replays scrolled
+    /// (`plan_scrolled_replay`). Zero, the default, records what is visible.
+    pub fn with_scroll_interest_margin<R>(&mut self, margin: Pixels, f: impl FnOnce(&mut Self) -> R) -> R {
+        let outer = std::mem::replace(&mut self.scroll_interest_margin, margin);
+        let result = f(self);
+        self.scroll_interest_margin = outer;
+        result
+    }
+
+    /// The margin `with_scroll_interest_margin` set for what runs now.
+    pub fn scroll_interest_margin(&self) -> Pixels {
+        self.scroll_interest_margin
     }
 
     /// Push a node's interest rect as the content mask of its children.

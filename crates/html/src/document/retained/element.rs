@@ -29,6 +29,8 @@ pub(super) struct Retained {
     /// Кадры, заказанные поддеревом на этом кадре: такой кадр не устоялся.
     scheduled: usize,
     replay: bool,
+    /// The scroll nodes of the replayed record moved (`prepaint` to `paint`).
+    scroll_plan: Option<gpui::ScrollReplay>,
     /// Дерево собрано и разложено шагом документа до кадра (`prepared`) для
     /// элемента документа под этим местом в кадре: коробка области просмотра
     /// — лист её размера.
@@ -55,6 +57,7 @@ impl Retained {
                 flow: prepared.flow,
                 scheduled: prepared.scheduled,
                 replay: false,
+                scroll_plan: None,
                 laid_out: Some(prepared.parent),
             };
         }
@@ -74,6 +77,7 @@ impl Retained {
             flow,
             scheduled: 0,
             replay: false,
+            scroll_plan: None,
             laid_out: None,
         }
     }
@@ -145,12 +149,26 @@ impl Element for Retained {
         let Some(id) = id else { return };
         let key = WindowKey::capture(bounds, window, cx);
         let root = window.retained_root_environment();
+        // A document under its root scroller records past the viewport, so a
+        // wheel step replays the frame moved (`gpui::Window::plan_scrolled_replay`).
+        let margin = if self.builder.state.root_scroll.is_some() { px(SCROLL_INTEREST_PX) } else { px(0.) };
+        window.with_scroll_interest_margin(margin, |window| {
         window.with_element_state::<Record, _>(id, |record, window| {
             let before = window.next_frame_callback_count();
             // Состояние элемента живёт кадр: без него прошлый кадр окна не
             // рисовал документ, и повтор блоков из него невозможен.
             self.builder.store.draw(record.is_some());
             let record = record.filter(|r| r.reusable(&self.slot, &self.key, &key));
+            // A scroll node of the record moved: replay it moved when every
+            // node stays inside what was recorded, otherwise build.
+            let mut plan = None;
+            let record = record.filter(|r| {
+                if !window.retained_scrolled(&r.prepaint) {
+                    return true;
+                }
+                plan = window.plan_scrolled_replay(&r.prepaint, &r.paint);
+                plan.is_some()
+            });
             if let Some(r) = &record
                 && !window.retained_replayable(&r.prepaint, &r.paint)
             {
@@ -165,7 +183,11 @@ impl Element for Retained {
                 self.replay = true;
                 self.builder.store.forget_replays();
                 self.slot.replays.set(self.slot.replays.get() + 1);
-                let prepaint = window.replay_retained_prepaint(&record.prepaint);
+                let prepaint = match &plan {
+                    Some(plan) => window.replay_retained_prepaint_scrolled(&record.prepaint, plan),
+                    None => window.replay_retained_prepaint(&record.prepaint),
+                };
+                self.scroll_plan = plan;
                 return ((), Record { prepaint, ..record });
             }
             // Заместитель, оказавшийся у экрана, отменяет пропуск: кадр
@@ -204,6 +226,7 @@ impl Element for Retained {
                 settled: false,
             };
             ((), record)
+        })
         });
     }
 
@@ -221,7 +244,10 @@ impl Element for Retained {
         window.with_element_state::<Record, _>(id, |record, window| {
             let mut record = record.unwrap_or_default();
             if self.replay {
-                record.paint = window.replay_retained_paint(&record.paint);
+                record.paint = match self.scroll_plan.take() {
+                    Some(plan) => window.replay_retained_paint_scrolled(&record.paint, &plan),
+                    None => window.replay_retained_paint(&record.paint),
+                };
                 return ((), record);
             }
             let Some(tree) = self.tree.as_mut() else {
@@ -244,3 +270,8 @@ impl Element for Retained {
         });
     }
 }
+
+/// How far past the root scrollport a document records its frame (each
+/// side): Blink's cull rect expansion for composited scrollers
+/// (`kCullRectPixelDistanceToExpand`, cull_rect.cc). Step 3 sizes it by memory.
+const SCROLL_INTEREST_PX: f32 = 4000.;

@@ -49,11 +49,14 @@ fn clip() -> Bounds<Pixels> {
 
 /// One record: a scroll node at `offset` holding a hitbox and a quad at
 /// content rows 10 and 60 (the second below the 50 px clip).
-fn record(window: &mut Window, node: ScrollNodeId, offset: f32) -> (RetainedPrepaint, RetainedPaint, Vec<Hitbox>) {
+fn record(window: &mut Window, handle: &ScrollHandle, offset: f32) -> (RetainedPrepaint, RetainedPaint, Vec<Hitbox>) {
     let mut hitboxes = Vec::new();
+    let node = ScrollNodeId::of(handle);
+    handle.set_max_offset(point(px(0.), px(10_000.)));
+    handle.set_offset(point(px(0.), px(offset)));
     window.invalidator.set_phase(DrawPhase::Prepaint);
     let (_, prepaint) = window.record_retained_prepaint(|window| {
-        window.with_scroll_node_prepaint(node, clip(), point(px(0.), px(offset)), |window| {
+        window.with_scroll_node_prepaint(handle, clip(), |window| {
             for y in [10., 60.] {
                 hitboxes.push(window.insert_hitbox(rect(0., y + offset, 10., 10.), HitboxBehavior::Normal));
             }
@@ -79,10 +82,11 @@ fn next_frame(window: &mut Window) {
 fn scrolled(
     window: &mut Window,
     records: (&RetainedPrepaint, &RetainedPaint),
-    node: ScrollNodeId,
+    handle: &ScrollHandle,
     to: f32,
 ) -> Option<(RetainedPrepaint, RetainedPaint)> {
-    let plan = window.plan_scrolled_replay(records.0, records.1, |id| (id == node).then(|| point(px(0.), px(to))))?;
+    handle.set_offset(point(px(0.), px(to)));
+    let plan = window.plan_scrolled_replay(records.0, records.1)?;
     window.invalidator.set_phase(DrawPhase::Prepaint);
     let prepaint = window.replay_retained_prepaint_scrolled(records.0, &plan);
     window.invalidator.set_phase(DrawPhase::Paint);
@@ -99,10 +103,10 @@ fn a_scroll_step_inside_the_interest_rect_replays_like_a_fresh_paint(cx: &mut Te
     let window = cx.add_window(|_, _| Empty);
     window
         .update(cx, |_, window, _| {
-            window.set_scroll_interest_margin(px(100.));
+            window.scroll_interest_margin = px(100.);
             let s = window.scale_factor();
             let handle = ScrollHandle::new();
-            let node = ScrollNodeId::of(&handle);
+            let node = &handle;
             let (prepaint, paint, _) = record(window, node, 0.);
             let at_rest = drawn(window);
             assert_eq!(at_rest, (vec![(10., clip().scale(s))], 1));
@@ -128,8 +132,9 @@ fn hitboxes_move_with_their_scroll_node(cx: &mut TestAppContext) {
     let window = cx.add_window(|_, _| Empty);
     window
         .update(cx, |_, window, _| {
-            window.set_scroll_interest_margin(px(100.));
-            let node = ScrollNodeId::of(&ScrollHandle::new());
+            window.scroll_interest_margin = px(100.);
+            let handle = ScrollHandle::new();
+            let node = &handle;
             let (prepaint, paint, hitboxes) = record(window, node, 0.);
             let hit = |window: &Window, y: f32, hitbox: &Hitbox| {
                 window.next_frame.hit_test(point(px(5.), px(y))).ids.contains(&hitbox.id)
@@ -151,19 +156,25 @@ fn nested_nodes_and_anchors_follow_their_parent(cx: &mut TestAppContext) {
     let window = cx.add_window(|_, _| Empty);
     window
         .update(cx, |_, window, _| {
-            window.set_scroll_interest_margin(px(100.));
+            window.scroll_interest_margin = px(100.);
             let s = window.scale_factor();
             let (outer, inner, fixed) = (ScrollHandle::new(), ScrollHandle::new(), ScrollHandle::new());
             let id = ScrollNodeId::of;
+            outer.set_max_offset(point(px(0.), px(1000.)));
+            let fixed_at = Rc::new(std::cell::Cell::new(point(px(0.), px(0.))));
+            let fixed_source: Rc<dyn Fn() -> Point<Pixels>> = {
+                let at = fixed_at.clone();
+                Rc::new(move || at.get())
+            };
             let tall = rect(0., 0., 100., 100.);
             window.invalidator.set_phase(DrawPhase::Prepaint);
             let (_, prepaint) = window.record_retained_prepaint(|window| {
-                window.with_scroll_node_prepaint(id(&outer), tall, point(px(0.), px(0.)), |window| {
+                { outer.set_offset(point(px(0.), px(0.))); &mut *window }.with_scroll_node_prepaint(&outer, tall, |window| {
                     window.with_content_mask(Some(ContentMask { bounds: rect(0., 50., 50., 30.) }), |window| {
                         let chain = window.content_mask().bounds;
-                        window.with_scroll_node_prepaint(id(&inner), chain, point(px(0.), px(0.)), |_| {});
+                        { inner.set_offset(point(px(0.), px(0.))); &mut *window }.with_scroll_node_prepaint(&inner, chain, |_| {});
                     });
-                    window.with_scroll_anchor_prepaint(id(&fixed), point(px(0.), px(0.)), |_| {});
+                    window.with_scroll_anchor_prepaint(id(&fixed), fixed_source.clone(), |_| {});
                 });
             });
             window.invalidator.set_phase(DrawPhase::Paint);
@@ -176,16 +187,9 @@ fn nested_nodes_and_anchors_follow_their_parent(cx: &mut TestAppContext) {
                 });
             });
             next_frame(window);
-            let to = |node: ScrollNodeId| {
-                if node == id(&outer) {
-                    Some(point(px(0.), px(-20.)))
-                } else if node == id(&fixed) {
-                    Some(point(px(0.), px(20.)))
-                } else {
-                    None
-                }
-            };
-            let plan = window.plan_scrolled_replay(&prepaint, &paint, to).expect("inside the interest rect");
+            outer.set_offset(point(px(0.), px(-20.)));
+            fixed_at.set(point(px(0.), px(20.)));
+            let plan = window.plan_scrolled_replay(&prepaint, &paint).expect("inside the interest rect");
             window.invalidator.set_phase(DrawPhase::Prepaint);
             window.replay_retained_prepaint_scrolled(&prepaint, &plan);
             window.invalidator.set_phase(DrawPhase::Paint);
@@ -205,12 +209,14 @@ fn an_unmarked_command_under_a_node_needs_a_build(cx: &mut TestAppContext) {
     let window = cx.add_window(|_, _| Empty);
     window
         .update(cx, |_, window, _| {
-            window.set_scroll_interest_margin(px(100.));
+            window.scroll_interest_margin = px(100.);
             let s = window.scale_factor();
-            let node = ScrollNodeId::of(&ScrollHandle::new());
+            let handle = ScrollHandle::new();
+            handle.set_max_offset(point(px(0.), px(1000.)));
+            let node = ScrollNodeId::of(&handle);
             window.invalidator.set_phase(DrawPhase::Prepaint);
             let (_, prepaint) = window.record_retained_prepaint(|window| {
-                window.with_scroll_node_prepaint(node, clip(), point(px(0.), px(0.)), |_| {});
+                window.with_scroll_node_prepaint(&handle, clip(), |_| {});
             });
             window.invalidator.set_phase(DrawPhase::Paint);
             let (_, paint) = window.record_retained_paint(|window| {
@@ -224,7 +230,8 @@ fn an_unmarked_command_under_a_node_needs_a_build(cx: &mut TestAppContext) {
                 });
             });
             next_frame(window);
-            assert!(window.plan_scrolled_replay(&prepaint, &paint, |_| Some(point(px(0.), px(-10.)))).is_none());
+            handle.set_offset(point(px(0.), px(-10.)));
+            assert!(window.plan_scrolled_replay(&prepaint, &paint).is_none());
         })
         .unwrap();
 }
@@ -241,14 +248,17 @@ fn scrolled_replay_cost(cx: &mut TestAppContext) {
         .update(cx, |_, window, _| {
             use std::io::Write as _;
             let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&out).unwrap();
-            window.set_scroll_interest_margin(px(2000.));
-            let node = ScrollNodeId::of(&ScrollHandle::new());
+            window.scroll_interest_margin = px(2000.);
+            let handle = ScrollHandle::new();
+            handle.set_max_offset(point(px(0.), px(100_000.)));
+            let node = ScrollNodeId::of(&handle);
             let port = rect(0., 0., 800., 600.);
             for (rows, cols, step_x) in [(230usize, 80usize, 10.), (230, 480, 5.)] {
                 window.next_frame.clear();
+                handle.set_offset(point(px(0.), px(0.)));
                 window.invalidator.set_phase(DrawPhase::Prepaint);
                 let (_, prepaint) = window.record_retained_prepaint(|window| {
-                    window.with_scroll_node_prepaint(node, port, point(px(0.), px(0.)), |_| {});
+                    window.with_scroll_node_prepaint(&handle, port, |_| {});
                 });
                 window.invalidator.set_phase(DrawPhase::Paint);
                 let (_, paint) = window.record_retained_paint(|window| {
@@ -276,8 +286,8 @@ fn scrolled_replay_cost(cx: &mut TestAppContext) {
                     (prepaint, paint) = (p, q);
                     next_frame(window);
                     let started = std::time::Instant::now();
-                    let to = point(px(0.), px(-120. * step as f32));
-                    let plan = window.plan_scrolled_replay(&prepaint, &paint, |_| Some(to)).expect("inside the interest");
+                    handle.set_offset(point(px(0.), px(-120. * step as f32)));
+                    let plan = window.plan_scrolled_replay(&prepaint, &paint).expect("inside the interest");
                     planned.push(started.elapsed().as_secs_f64() * 1000.);
                     window.invalidator.set_phase(DrawPhase::Prepaint);
                     let p = window.replay_retained_prepaint_scrolled(&prepaint, &plan);

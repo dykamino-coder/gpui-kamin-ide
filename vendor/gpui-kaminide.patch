@@ -8230,7 +8230,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..defe3197e9f22ac05d850d07edf3d9a96e3af7b0
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276b251c086
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -8644,14 +8644,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..defe3197e9f22ac05d850d07edf3d9a9
 +            request_layout.exact_bounds.map(|exact| (bounds, exact)),
 +        );
 +
-+        let scroll_node = self.interactivity.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
++        let scroll_handle = self.interactivity.tracked_scroll_handle.clone();
 +        let hitbox = self.interactivity.prepaint(
 @@ -2026,0 +2166,2 @@
 +                // Children bring their own exact bounds.
 +                window.raster_frame.exact_bounds = None;
 @@ -2031,0 +2173,2 @@
 +                // KaminIDE patch: a scroll container's children form a scroll node.
-+                let node = scroll_node.map(|id| (id, window.content_mask().bounds));
++                let node = scroll_handle.as_ref().map(|handle| (handle, window.content_mask().bounds));
 @@ -2032,0 +2176 @@
 +                    let open = window.begin_scroll_node_prepaint(node, scroll_offset);
 @@ -2033,0 +2178,3 @@
@@ -9639,7 +9639,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..defe3197e9f22ac05d850d07edf3d9a9
 +    }
 +}
 +
-@@ -4448,0 +4860,21 @@
+@@ -4270,0 +4682,6 @@
++    }
++
++    /// KaminIDE patch: the scroll range a prepaint would record (tests).
++    #[cfg(test)]
++    pub(crate) fn set_max_offset(&self, max: Point<Pixels>) {
++        self.0.borrow_mut().max_offset = max;
+@@ -4448,0 +4866,21 @@
 +
 +    #[test]
 +    fn listener_lists_are_allocated_by_the_first_registration() {
@@ -9661,7 +9668,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..defe3197e9f22ac05d850d07edf3d9a9
 +                >= 18 * std::mem::size_of::<Vec<()>>()
 +        );
 +    }
-@@ -5268,8 +5700,8 @@
+@@ -5268,8 +5706,8 @@
 -        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
 -        interactivity.aria.label = Some("Buffer Font Size".into());
 -        interactivity.aria.value = Some("15".into());
@@ -28290,7 +28297,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..df2b14f1f439b62e0228d7960966ab9b4b60c6dc
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..63d8b268e6087527e2d1be30d3710b69c9c32758
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -30595,37 +30602,42 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..df2b14f1f439b62e0228d7960966ab9b
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +7189,2 @@
+@@ -5458,0 +7189,7 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
-+        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -5792,0 +7525,5 @@
++        // A wheel step moves scroll offsets, which retained records replay
++        // through their scroll nodes (`retained_scrolled`); a listener that
++        // changes anything else on a wheel notifies its view.
++        if !matches!(event, PlatformInput::ScrollWheel(_)) {
++            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
++        }
+@@ -5792,0 +7530,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -6132 +7869 @@
+@@ -6132 +7874 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6144 +7881 @@
+@@ -6144 +7886 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6164 +7901 @@
+@@ -6164 +7906 @@
 -            for listener in node.modifiers_changed_listeners.clone() {
 +            for listener in node.modifiers_changed_listeners().to_vec() {
-@@ -6396 +8133 @@
+@@ -6396 +8138 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6419 +8156 @@
+@@ -6419 +8161 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6598 +8335 @@
+@@ -6598 +8340 @@
 -            .filter_map(move |&node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(move |&node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6701 +8438 @@
+@@ -6701 +8443 @@
 -            .filter_map(|node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(|node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6789,0 +8527,7 @@
+@@ -6789,0 +8532,7 @@
 +    }
 +
 +    /// KaminIDE patch: GPU memory the window's renderer holds, one call per texture: owner path
@@ -30633,7 +30645,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..df2b14f1f439b62e0228d7960966ab9b
 +    /// report it.
 +    pub fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
 +        self.platform_window.gpu_memory(sink)
-@@ -7181,0 +8926,11 @@
+@@ -7181,0 +8931,11 @@
 +        // KaminIDE patch: a read sets states aside for the next frame, which
 +        // takes them before those of the drawn frame (`update_rendering`).
 +        if self.read_states.active {
@@ -30645,13 +30657,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..df2b14f1f439b62e0228d7960966ab9b
 +                .or_else(|| self.rendered_frame.element_states.remove(&key));
 +            return (key, state);
 +        }
-@@ -7186,0 +8942 @@
+@@ -7186,0 +8947 @@
 +            .or_else(|| self.read_states.states.remove(&key))
-@@ -7196,0 +8953,3 @@
+@@ -7196,0 +8958,3 @@
 +        if self.read_states.active {
 +            return self.read_states.states.insert(key, state);
 +        }
-@@ -7733,0 +9493,44 @@
+@@ -7733,0 +9498,44 @@
 +impl Frame {
 +    /// KaminIDE patch: the frame's buffers and tables for the engine bench's memory report
 +    /// (`crate::heap_report`). What listeners and element states own is not walked.
@@ -30696,7 +30708,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..df2b14f1f439b62e0228d7960966ab9b
 +    }
 +}
 +
-@@ -7752,0 +9556,31 @@
+@@ -7752,0 +9561,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
@@ -30728,7 +30740,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..df2b14f1f439b62e0228d7960966ab9b
 +        drop(scope.exit(&outer));
 +        outer.borrow_mut().clear();
 +    }
-@@ -7913,0 +9748,36 @@
+@@ -7913,0 +9753,36 @@
 +    /// `request_present` shows the last frame again: it wakes the platform,
 +    /// and the frame it gets presents without rendering any view.
 +    #[gpui::test]
@@ -30765,7 +30777,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..df2b14f1f439b62e0228d7960966ab9b
 +            .unwrap();
 +    }
 +
-@@ -8034,0 +9905,67 @@
+@@ -8034,0 +9910,67 @@
 +    }
 +
 +    /// KaminIDE patch: the open ink sinks, copied into every paint snapshot,
@@ -35677,10 +35689,10 @@ index 0000000000000000000000000000000000000000..c63e084b94a6344306491f7a2dea173f
 +}
 diff --git a/vendor/gpui/src/window/scroll_masks.rs b/vendor/gpui/src/window/scroll_masks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..948bb61bcd1c032402bcb9851c250c646046cb39
+index 0000000000000000000000000000000000000000..fdab84544b71857325ae8a48fe716b8487b7b945
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_masks.rs
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,84 @@
 +//! KaminIDE patch: masks under scroll nodes (`scroll_nodes`).
 +//!
 +//! The children of a scroll node are prepainted and painted under the node's
@@ -35701,10 +35713,19 @@ index 0000000000000000000000000000000000000000..948bb61bcd1c032402bcb9851c250c64
 +}
 +
 +impl Window {
-+    /// How far past a scroll node's clip its children are recorded (window
-+    /// pixels, each side). Zero records what is visible, as without nodes.
-+    pub fn set_scroll_interest_margin(&mut self, margin: Pixels) {
-+        self.scroll_interest_margin = margin;
++    /// Run `f` with the scroll nodes it opens recording `margin` past their
++    /// clip (window pixels, each side): a host's subtree that replays scrolled
++    /// (`plan_scrolled_replay`). Zero, the default, records what is visible.
++    pub fn with_scroll_interest_margin<R>(&mut self, margin: Pixels, f: impl FnOnce(&mut Self) -> R) -> R {
++        let outer = std::mem::replace(&mut self.scroll_interest_margin, margin);
++        let result = f(self);
++        self.scroll_interest_margin = outer;
++        result
++    }
++
++    /// The margin `with_scroll_interest_margin` set for what runs now.
++    pub fn scroll_interest_margin(&self) -> Pixels {
++        self.scroll_interest_margin
 +    }
 +
 +    /// Push a node's interest rect as the content mask of its children.
@@ -35758,10 +35779,10 @@ index 0000000000000000000000000000000000000000..948bb61bcd1c032402bcb9851c250c64
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c28027c19
+index 0000000000000000000000000000000000000000..8c20a9ad885dc118cfc0666673eabec8869d9a66
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,460 @@
+@@ -0,0 +1,496 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -35788,6 +35809,11 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 +    pub fn of(handle: &ScrollHandle) -> Self {
 +        Self(handle.node_identity())
 +    }
++
++    /// The node of a host's anchor: stable while 	oken lives.
++    pub fn of_token<T>(token: &Rc<T>) -> Self {
++        Self(Rc::as_ptr(token) as *const () as usize)
++    }
 +}
 +
 +/// One scroll container prepainted in a frame (or copied into it with a
@@ -35811,10 +35837,38 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 +    /// An anchor (`with_scroll_anchor_prepaint`): its mask is fixed to the
 +    /// viewport, not to the enclosing node's content.
 +    pub(crate) anchored: bool,
++    /// Where the node's offset is read when a replay plans: the container's
++    /// scroll handle, or the host's function for an anchor.
++    pub(crate) source: NodeSource,
 +    /// Scene commands of the node's children; empty until they paint.
 +    pub(crate) paint: Option<Range<usize>>,
 +    /// Paired with a paint that has not ended yet.
 +    pub(crate) pending: bool,
++}
++
++/// The offset of a scroll node in the current state (`plan_scrolled_replay`).
++#[derive(Clone)]
++pub(crate) enum NodeSource {
++    Handle(ScrollHandle),
++    Anchor(Rc<dyn Fn() -> Point<Pixels>>),
++}
++
++impl NodeSource {
++    /// The offset now: a handle's clamped to its scroll range, as prepaint
++    /// clamps it (written back, so the handle reads what is shown).
++    pub(crate) fn offset(&self) -> Point<Pixels> {
++        match self {
++            NodeSource::Handle(handle) => {
++                let (offset, max) = (handle.offset(), handle.max_offset());
++                let clamped = point(offset.x.clamp(-max.x, px(0.)), offset.y.clamp(-max.y, px(0.)));
++                if clamped != offset {
++                    handle.set_offset(clamped);
++                }
++                clamped
++            }
++            NodeSource::Anchor(offset) => offset(),
++        }
++    }
 +}
 +
 +/// Pairing of scroll node paints with their prepaints in one frame.
@@ -35858,12 +35912,11 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 +    /// with the node open, so nodes it opens are its children.
 +    pub fn with_scroll_node_prepaint<R>(
 +        &mut self,
-+        id: ScrollNodeId,
++        handle: &ScrollHandle,
 +        clip: Bounds<Pixels>,
-+        offset: Point<Pixels>,
 +        f: impl FnOnce(&mut Self) -> R,
 +    ) -> R {
-+        let open = self.begin_scroll_node_prepaint(Some((id, clip)), offset);
++        let open = self.begin_scroll_node_prepaint(Some((handle, clip)), handle.offset());
 +        let result = f(self);
 +        self.end_scroll_node_prepaint(open);
 +        result
@@ -35888,11 +35941,12 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 +    /// prepaint one Div per level (`depth_tests`).
 +    pub(crate) fn begin_scroll_node_prepaint(
 +        &mut self,
-+        node: Option<(ScrollNodeId, Bounds<Pixels>)>,
++        node: Option<(&ScrollHandle, Bounds<Pixels>)>,
 +        offset: Point<Pixels>,
 +    ) -> Option<u32> {
-+        let (id, chain) = node?;
-+        Some(self.open_scroll_node(id, chain, offset, false))
++        let (handle, chain) = node?;
++        let source = NodeSource::Handle(handle.clone());
++        Some(self.open_scroll_node(ScrollNodeId::of(handle), chain, offset, source))
 +    }
 +
 +    /// Open a scroll anchor: a node whose children stay where the host puts
@@ -35902,17 +35956,19 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 +    pub fn with_scroll_anchor_prepaint<R>(
 +        &mut self,
 +        id: ScrollNodeId,
-+        offset: Point<Pixels>,
++        offset: Rc<dyn Fn() -> Point<Pixels>>,
 +        f: impl FnOnce(&mut Self) -> R,
 +    ) -> R {
 +        let chain = self.content_mask().bounds;
-+        self.open_scroll_node(id, chain, offset, true);
++        let now = offset();
++        self.open_scroll_node(id, chain, now, NodeSource::Anchor(offset));
 +        let result = f(self);
 +        self.end_scroll_node_prepaint(Some(0));
 +        result
 +    }
 +
-+    fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, anchored: bool) -> u32 {
++    fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, source: NodeSource) -> u32 {
++        let anchored = matches!(source, NodeSource::Anchor(_));
 +        let index = self.next_frame.scroll_nodes.len() as u32;
 +        let parent = self.next_frame.scroll_node_stack.last().copied();
 +        let clip = match parent {
@@ -35928,6 +35984,7 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 +            chain,
 +            interest,
 +            anchored,
++            source,
 +            paint: None,
 +            pending: false,
 +        });
@@ -36114,10 +36171,10 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 +                    (ScrollHandle::new(), ScrollHandle::new(), ScrollHandle::new());
 +                let clip = Bounds::new(point(px(0.), px(0.)), size(px(100.), px(50.)));
 +                let small = Bounds::new(point(px(10.), px(10.)), size(px(20.), px(20.)));
-+                window.with_scroll_node_prepaint(ScrollNodeId::of(&other), clip, point(px(0.), px(-5.)), |_| {});
++                { other.set_offset(point(px(0.), px(-5.))); &mut *window }.with_scroll_node_prepaint(&other, clip, |_| {});
 +                let (_, prepaint) = window.record_retained_prepaint(|window| {
-+                    window.with_scroll_node_prepaint(ScrollNodeId::of(&outer), clip, point(px(0.), px(-40.)), |window| {
-+                        window.with_scroll_node_prepaint(ScrollNodeId::of(&inner), small, point(px(-3.), px(0.)), |_| {});
++                    { outer.set_offset(point(px(0.), px(-40.))); &mut *window }.with_scroll_node_prepaint(&outer, clip, |window| {
++                        { inner.set_offset(point(px(-3.), px(0.))); &mut *window }.with_scroll_node_prepaint(&inner, small, |_| {});
 +                    });
 +                });
 +                window.with_scroll_node_paint(ScrollNodeId::of(&other), |_| {});
@@ -36170,10 +36227,10 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 +                    (ScrollHandle::new(), ScrollHandle::new(), ScrollHandle::new());
 +                let clip = Bounds::new(point(px(0.), px(0.)), size(px(100.), px(50.)));
 +                let id = ScrollNodeId::of;
-+                window.with_scroll_node_prepaint(id(&other), clip, point(px(0.), px(-5.)), |_| {});
++                { other.set_offset(point(px(0.), px(-5.))); &mut *window }.with_scroll_node_prepaint(&other, clip, |_| {});
 +                let (_, prepaint) = window.record_retained_prepaint(|window| {
-+                    window.with_scroll_node_prepaint(id(&outer), clip, point(px(0.), px(-40.)), |window| {
-+                        window.with_scroll_node_prepaint(id(&inner), clip, point(px(-3.), px(0.)), |_| {});
++                    { outer.set_offset(point(px(0.), px(-40.))); &mut *window }.with_scroll_node_prepaint(&outer, clip, |window| {
++                        { inner.set_offset(point(px(-3.), px(0.))); &mut *window }.with_scroll_node_prepaint(&inner, clip, |_| {});
 +                    });
 +                });
 +                window.with_scroll_node_paint(id(&other), |window| quad(window, 0.));
@@ -36208,7 +36265,7 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 +                let handle = ScrollHandle::new();
 +                let clip = Bounds::new(point(px(0.), px(0.)), size(px(100.), px(50.)));
 +                for y in [-1., -2.] {
-+                    window.with_scroll_node_prepaint(ScrollNodeId::of(&handle), clip, point(px(0.), px(y)), |_| {});
++                    { handle.set_offset(point(px(0.), px(y))); &mut *window }.with_scroll_node_prepaint(&handle, clip, |_| {});
 +                }
 +                window.with_scroll_node_paint(ScrollNodeId::of(&handle), |window| quad(window, 0.));
 +                let painted = |window: &Window| {
@@ -36225,10 +36282,10 @@ index 0000000000000000000000000000000000000000..bcb7efb9027d7a917905c1c3a8a9ef7c
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4a49a0fc2f36d8520b68ae35e065e77736a02fb8
+index 0000000000000000000000000000000000000000..40631d90634825ecab03cd02442eb1a72d07a3eb
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,174 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -36279,8 +36336,17 @@ index 0000000000000000000000000000000000000000..4a49a0fc2f36d8520b68ae35e065e777
 +}
 +
 +impl Window {
++    /// Whether a scroll node of a record made in the rendered frame is at
++    /// another offset now (its scroll handle, or its anchor's function).
++    pub fn retained_scrolled(&self, prepaint: &RetainedPrepaint) -> bool {
++        let range = prepaint.range();
++        self.rendered_frame.scroll_nodes[range.start.scroll_nodes_index..range.end.scroll_nodes_index]
++            .iter()
++            .any(|node| node.source.offset() != node.offset)
++    }
++
 +    /// Plan the replay of a record made in the rendered frame with each of its
-+    /// scroll nodes at `offset(id)` (`None`: where it was). `None` when the
++    /// scroll nodes at its offset now (`retained_scrolled`). `None` when the
 +    /// record must be built instead: a node's new clip shows content outside
 +    /// what was recorded, or the record holds commands a moved copy cannot
 +    /// place (unmarked copies, layers, depth sorting, deferred draws).
@@ -36288,7 +36354,6 @@ index 0000000000000000000000000000000000000000..4a49a0fc2f36d8520b68ae35e065e777
 +        &self,
 +        prepaint: &RetainedPrepaint,
 +        paint: &RetainedPaint,
-+        offset: impl Fn(ScrollNodeId) -> Option<Point<Pixels>>,
 +    ) -> Option<ScrollReplay> {
 +        let (prepaints, paints) = (prepaint.range(), paint.range());
 +        let scene = &self.next_frame.scene;
@@ -36309,7 +36374,7 @@ index 0000000000000000000000000000000000000000..4a49a0fc2f36d8520b68ae35e065e777
 +            if painted.start < scenes.start || painted.end > scenes.end {
 +                return None;
 +            }
-+            let new = offset(node.id).unwrap_or(node.offset);
++            let new = node.source.offset();
 +            let parent = node
 +                .parent
 +                .and_then(|parent| (parent as usize).checked_sub(first))
@@ -36397,10 +36462,10 @@ index 0000000000000000000000000000000000000000..4a49a0fc2f36d8520b68ae35e065e777
 +mod tests;
 diff --git a/vendor/gpui/src/window/scroll_replay/tests.rs b/vendor/gpui/src/window/scroll_replay/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d2f4c8e5c
+index 0000000000000000000000000000000000000000..b3337f372c788edf44fdde49c04d6b8786aa6f49
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay/tests.rs
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,313 @@
 +use super::*;
 +use crate::scene::{PaintOperation, Primitive};
 +use crate::{Quad, ScrollHandle, TestAppContext, div, px, size};
@@ -36452,11 +36517,14 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +
 +/// One record: a scroll node at `offset` holding a hitbox and a quad at
 +/// content rows 10 and 60 (the second below the 50 px clip).
-+fn record(window: &mut Window, node: ScrollNodeId, offset: f32) -> (RetainedPrepaint, RetainedPaint, Vec<Hitbox>) {
++fn record(window: &mut Window, handle: &ScrollHandle, offset: f32) -> (RetainedPrepaint, RetainedPaint, Vec<Hitbox>) {
 +    let mut hitboxes = Vec::new();
++    let node = ScrollNodeId::of(handle);
++    handle.set_max_offset(point(px(0.), px(10_000.)));
++    handle.set_offset(point(px(0.), px(offset)));
 +    window.invalidator.set_phase(DrawPhase::Prepaint);
 +    let (_, prepaint) = window.record_retained_prepaint(|window| {
-+        window.with_scroll_node_prepaint(node, clip(), point(px(0.), px(offset)), |window| {
++        window.with_scroll_node_prepaint(handle, clip(), |window| {
 +            for y in [10., 60.] {
 +                hitboxes.push(window.insert_hitbox(rect(0., y + offset, 10., 10.), HitboxBehavior::Normal));
 +            }
@@ -36482,10 +36550,11 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +fn scrolled(
 +    window: &mut Window,
 +    records: (&RetainedPrepaint, &RetainedPaint),
-+    node: ScrollNodeId,
++    handle: &ScrollHandle,
 +    to: f32,
 +) -> Option<(RetainedPrepaint, RetainedPaint)> {
-+    let plan = window.plan_scrolled_replay(records.0, records.1, |id| (id == node).then(|| point(px(0.), px(to))))?;
++    handle.set_offset(point(px(0.), px(to)));
++    let plan = window.plan_scrolled_replay(records.0, records.1)?;
 +    window.invalidator.set_phase(DrawPhase::Prepaint);
 +    let prepaint = window.replay_retained_prepaint_scrolled(records.0, &plan);
 +    window.invalidator.set_phase(DrawPhase::Paint);
@@ -36502,10 +36571,10 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +    let window = cx.add_window(|_, _| Empty);
 +    window
 +        .update(cx, |_, window, _| {
-+            window.set_scroll_interest_margin(px(100.));
++            window.scroll_interest_margin = px(100.);
 +            let s = window.scale_factor();
 +            let handle = ScrollHandle::new();
-+            let node = ScrollNodeId::of(&handle);
++            let node = &handle;
 +            let (prepaint, paint, _) = record(window, node, 0.);
 +            let at_rest = drawn(window);
 +            assert_eq!(at_rest, (vec![(10., clip().scale(s))], 1));
@@ -36531,8 +36600,9 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +    let window = cx.add_window(|_, _| Empty);
 +    window
 +        .update(cx, |_, window, _| {
-+            window.set_scroll_interest_margin(px(100.));
-+            let node = ScrollNodeId::of(&ScrollHandle::new());
++            window.scroll_interest_margin = px(100.);
++            let handle = ScrollHandle::new();
++            let node = &handle;
 +            let (prepaint, paint, hitboxes) = record(window, node, 0.);
 +            let hit = |window: &Window, y: f32, hitbox: &Hitbox| {
 +                window.next_frame.hit_test(point(px(5.), px(y))).ids.contains(&hitbox.id)
@@ -36554,19 +36624,25 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +    let window = cx.add_window(|_, _| Empty);
 +    window
 +        .update(cx, |_, window, _| {
-+            window.set_scroll_interest_margin(px(100.));
++            window.scroll_interest_margin = px(100.);
 +            let s = window.scale_factor();
 +            let (outer, inner, fixed) = (ScrollHandle::new(), ScrollHandle::new(), ScrollHandle::new());
 +            let id = ScrollNodeId::of;
++            outer.set_max_offset(point(px(0.), px(1000.)));
++            let fixed_at = Rc::new(std::cell::Cell::new(point(px(0.), px(0.))));
++            let fixed_source: Rc<dyn Fn() -> Point<Pixels>> = {
++                let at = fixed_at.clone();
++                Rc::new(move || at.get())
++            };
 +            let tall = rect(0., 0., 100., 100.);
 +            window.invalidator.set_phase(DrawPhase::Prepaint);
 +            let (_, prepaint) = window.record_retained_prepaint(|window| {
-+                window.with_scroll_node_prepaint(id(&outer), tall, point(px(0.), px(0.)), |window| {
++                { outer.set_offset(point(px(0.), px(0.))); &mut *window }.with_scroll_node_prepaint(&outer, tall, |window| {
 +                    window.with_content_mask(Some(ContentMask { bounds: rect(0., 50., 50., 30.) }), |window| {
 +                        let chain = window.content_mask().bounds;
-+                        window.with_scroll_node_prepaint(id(&inner), chain, point(px(0.), px(0.)), |_| {});
++                        { inner.set_offset(point(px(0.), px(0.))); &mut *window }.with_scroll_node_prepaint(&inner, chain, |_| {});
 +                    });
-+                    window.with_scroll_anchor_prepaint(id(&fixed), point(px(0.), px(0.)), |_| {});
++                    window.with_scroll_anchor_prepaint(id(&fixed), fixed_source.clone(), |_| {});
 +                });
 +            });
 +            window.invalidator.set_phase(DrawPhase::Paint);
@@ -36579,16 +36655,9 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +                });
 +            });
 +            next_frame(window);
-+            let to = |node: ScrollNodeId| {
-+                if node == id(&outer) {
-+                    Some(point(px(0.), px(-20.)))
-+                } else if node == id(&fixed) {
-+                    Some(point(px(0.), px(20.)))
-+                } else {
-+                    None
-+                }
-+            };
-+            let plan = window.plan_scrolled_replay(&prepaint, &paint, to).expect("inside the interest rect");
++            outer.set_offset(point(px(0.), px(-20.)));
++            fixed_at.set(point(px(0.), px(20.)));
++            let plan = window.plan_scrolled_replay(&prepaint, &paint).expect("inside the interest rect");
 +            window.invalidator.set_phase(DrawPhase::Prepaint);
 +            window.replay_retained_prepaint_scrolled(&prepaint, &plan);
 +            window.invalidator.set_phase(DrawPhase::Paint);
@@ -36608,12 +36677,14 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +    let window = cx.add_window(|_, _| Empty);
 +    window
 +        .update(cx, |_, window, _| {
-+            window.set_scroll_interest_margin(px(100.));
++            window.scroll_interest_margin = px(100.);
 +            let s = window.scale_factor();
-+            let node = ScrollNodeId::of(&ScrollHandle::new());
++            let handle = ScrollHandle::new();
++            handle.set_max_offset(point(px(0.), px(1000.)));
++            let node = ScrollNodeId::of(&handle);
 +            window.invalidator.set_phase(DrawPhase::Prepaint);
 +            let (_, prepaint) = window.record_retained_prepaint(|window| {
-+                window.with_scroll_node_prepaint(node, clip(), point(px(0.), px(0.)), |_| {});
++                window.with_scroll_node_prepaint(&handle, clip(), |_| {});
 +            });
 +            window.invalidator.set_phase(DrawPhase::Paint);
 +            let (_, paint) = window.record_retained_paint(|window| {
@@ -36627,7 +36698,8 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +                });
 +            });
 +            next_frame(window);
-+            assert!(window.plan_scrolled_replay(&prepaint, &paint, |_| Some(point(px(0.), px(-10.)))).is_none());
++            handle.set_offset(point(px(0.), px(-10.)));
++            assert!(window.plan_scrolled_replay(&prepaint, &paint).is_none());
 +        })
 +        .unwrap();
 +}
@@ -36644,14 +36716,17 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +        .update(cx, |_, window, _| {
 +            use std::io::Write as _;
 +            let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&out).unwrap();
-+            window.set_scroll_interest_margin(px(2000.));
-+            let node = ScrollNodeId::of(&ScrollHandle::new());
++            window.scroll_interest_margin = px(2000.);
++            let handle = ScrollHandle::new();
++            handle.set_max_offset(point(px(0.), px(100_000.)));
++            let node = ScrollNodeId::of(&handle);
 +            let port = rect(0., 0., 800., 600.);
 +            for (rows, cols, step_x) in [(230usize, 80usize, 10.), (230, 480, 5.)] {
 +                window.next_frame.clear();
++                handle.set_offset(point(px(0.), px(0.)));
 +                window.invalidator.set_phase(DrawPhase::Prepaint);
 +                let (_, prepaint) = window.record_retained_prepaint(|window| {
-+                    window.with_scroll_node_prepaint(node, port, point(px(0.), px(0.)), |_| {});
++                    window.with_scroll_node_prepaint(&handle, port, |_| {});
 +                });
 +                window.invalidator.set_phase(DrawPhase::Paint);
 +                let (_, paint) = window.record_retained_paint(|window| {
@@ -36679,8 +36754,8 @@ index 0000000000000000000000000000000000000000..3b3d500d452b0a10173c9a432d037d1d
 +                    (prepaint, paint) = (p, q);
 +                    next_frame(window);
 +                    let started = std::time::Instant::now();
-+                    let to = point(px(0.), px(-120. * step as f32));
-+                    let plan = window.plan_scrolled_replay(&prepaint, &paint, |_| Some(to)).expect("inside the interest");
++                    handle.set_offset(point(px(0.), px(-120. * step as f32)));
++                    let plan = window.plan_scrolled_replay(&prepaint, &paint).expect("inside the interest");
 +                    planned.push(started.elapsed().as_secs_f64() * 1000.);
 +                    window.invalidator.set_phase(DrawPhase::Prepaint);
 +                    let p = window.replay_retained_prepaint_scrolled(&prepaint, &plan);

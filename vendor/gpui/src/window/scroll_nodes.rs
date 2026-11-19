@@ -24,6 +24,11 @@ impl ScrollNodeId {
     pub fn of(handle: &ScrollHandle) -> Self {
         Self(handle.node_identity())
     }
+
+    /// The node of a host's anchor: stable while 	oken lives.
+    pub fn of_token<T>(token: &Rc<T>) -> Self {
+        Self(Rc::as_ptr(token) as *const () as usize)
+    }
 }
 
 /// One scroll container prepainted in a frame (or copied into it with a
@@ -47,10 +52,38 @@ pub(crate) struct ScrollNodeRecord {
     /// An anchor (`with_scroll_anchor_prepaint`): its mask is fixed to the
     /// viewport, not to the enclosing node's content.
     pub(crate) anchored: bool,
+    /// Where the node's offset is read when a replay plans: the container's
+    /// scroll handle, or the host's function for an anchor.
+    pub(crate) source: NodeSource,
     /// Scene commands of the node's children; empty until they paint.
     pub(crate) paint: Option<Range<usize>>,
     /// Paired with a paint that has not ended yet.
     pub(crate) pending: bool,
+}
+
+/// The offset of a scroll node in the current state (`plan_scrolled_replay`).
+#[derive(Clone)]
+pub(crate) enum NodeSource {
+    Handle(ScrollHandle),
+    Anchor(Rc<dyn Fn() -> Point<Pixels>>),
+}
+
+impl NodeSource {
+    /// The offset now: a handle's clamped to its scroll range, as prepaint
+    /// clamps it (written back, so the handle reads what is shown).
+    pub(crate) fn offset(&self) -> Point<Pixels> {
+        match self {
+            NodeSource::Handle(handle) => {
+                let (offset, max) = (handle.offset(), handle.max_offset());
+                let clamped = point(offset.x.clamp(-max.x, px(0.)), offset.y.clamp(-max.y, px(0.)));
+                if clamped != offset {
+                    handle.set_offset(clamped);
+                }
+                clamped
+            }
+            NodeSource::Anchor(offset) => offset(),
+        }
+    }
 }
 
 /// Pairing of scroll node paints with their prepaints in one frame.
@@ -94,12 +127,11 @@ impl Window {
     /// with the node open, so nodes it opens are its children.
     pub fn with_scroll_node_prepaint<R>(
         &mut self,
-        id: ScrollNodeId,
+        handle: &ScrollHandle,
         clip: Bounds<Pixels>,
-        offset: Point<Pixels>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let open = self.begin_scroll_node_prepaint(Some((id, clip)), offset);
+        let open = self.begin_scroll_node_prepaint(Some((handle, clip)), handle.offset());
         let result = f(self);
         self.end_scroll_node_prepaint(open);
         result
@@ -124,11 +156,12 @@ impl Window {
     /// prepaint one Div per level (`depth_tests`).
     pub(crate) fn begin_scroll_node_prepaint(
         &mut self,
-        node: Option<(ScrollNodeId, Bounds<Pixels>)>,
+        node: Option<(&ScrollHandle, Bounds<Pixels>)>,
         offset: Point<Pixels>,
     ) -> Option<u32> {
-        let (id, chain) = node?;
-        Some(self.open_scroll_node(id, chain, offset, false))
+        let (handle, chain) = node?;
+        let source = NodeSource::Handle(handle.clone());
+        Some(self.open_scroll_node(ScrollNodeId::of(handle), chain, offset, source))
     }
 
     /// Open a scroll anchor: a node whose children stay where the host puts
@@ -138,17 +171,19 @@ impl Window {
     pub fn with_scroll_anchor_prepaint<R>(
         &mut self,
         id: ScrollNodeId,
-        offset: Point<Pixels>,
+        offset: Rc<dyn Fn() -> Point<Pixels>>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let chain = self.content_mask().bounds;
-        self.open_scroll_node(id, chain, offset, true);
+        let now = offset();
+        self.open_scroll_node(id, chain, now, NodeSource::Anchor(offset));
         let result = f(self);
         self.end_scroll_node_prepaint(Some(0));
         result
     }
 
-    fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, anchored: bool) -> u32 {
+    fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, source: NodeSource) -> u32 {
+        let anchored = matches!(source, NodeSource::Anchor(_));
         let index = self.next_frame.scroll_nodes.len() as u32;
         let parent = self.next_frame.scroll_node_stack.last().copied();
         let clip = match parent {
@@ -164,6 +199,7 @@ impl Window {
             chain,
             interest,
             anchored,
+            source,
             paint: None,
             pending: false,
         });
@@ -350,10 +386,10 @@ mod tests {
                     (ScrollHandle::new(), ScrollHandle::new(), ScrollHandle::new());
                 let clip = Bounds::new(point(px(0.), px(0.)), size(px(100.), px(50.)));
                 let small = Bounds::new(point(px(10.), px(10.)), size(px(20.), px(20.)));
-                window.with_scroll_node_prepaint(ScrollNodeId::of(&other), clip, point(px(0.), px(-5.)), |_| {});
+                { other.set_offset(point(px(0.), px(-5.))); &mut *window }.with_scroll_node_prepaint(&other, clip, |_| {});
                 let (_, prepaint) = window.record_retained_prepaint(|window| {
-                    window.with_scroll_node_prepaint(ScrollNodeId::of(&outer), clip, point(px(0.), px(-40.)), |window| {
-                        window.with_scroll_node_prepaint(ScrollNodeId::of(&inner), small, point(px(-3.), px(0.)), |_| {});
+                    { outer.set_offset(point(px(0.), px(-40.))); &mut *window }.with_scroll_node_prepaint(&outer, clip, |window| {
+                        { inner.set_offset(point(px(-3.), px(0.))); &mut *window }.with_scroll_node_prepaint(&inner, small, |_| {});
                     });
                 });
                 window.with_scroll_node_paint(ScrollNodeId::of(&other), |_| {});
@@ -406,10 +442,10 @@ mod tests {
                     (ScrollHandle::new(), ScrollHandle::new(), ScrollHandle::new());
                 let clip = Bounds::new(point(px(0.), px(0.)), size(px(100.), px(50.)));
                 let id = ScrollNodeId::of;
-                window.with_scroll_node_prepaint(id(&other), clip, point(px(0.), px(-5.)), |_| {});
+                { other.set_offset(point(px(0.), px(-5.))); &mut *window }.with_scroll_node_prepaint(&other, clip, |_| {});
                 let (_, prepaint) = window.record_retained_prepaint(|window| {
-                    window.with_scroll_node_prepaint(id(&outer), clip, point(px(0.), px(-40.)), |window| {
-                        window.with_scroll_node_prepaint(id(&inner), clip, point(px(-3.), px(0.)), |_| {});
+                    { outer.set_offset(point(px(0.), px(-40.))); &mut *window }.with_scroll_node_prepaint(&outer, clip, |window| {
+                        { inner.set_offset(point(px(-3.), px(0.))); &mut *window }.with_scroll_node_prepaint(&inner, clip, |_| {});
                     });
                 });
                 window.with_scroll_node_paint(id(&other), |window| quad(window, 0.));
@@ -444,7 +480,7 @@ mod tests {
                 let handle = ScrollHandle::new();
                 let clip = Bounds::new(point(px(0.), px(0.)), size(px(100.), px(50.)));
                 for y in [-1., -2.] {
-                    window.with_scroll_node_prepaint(ScrollNodeId::of(&handle), clip, point(px(0.), px(y)), |_| {});
+                    { handle.set_offset(point(px(0.), px(y))); &mut *window }.with_scroll_node_prepaint(&handle, clip, |_| {});
                 }
                 window.with_scroll_node_paint(ScrollNodeId::of(&handle), |window| quad(window, 0.));
                 let painted = |window: &Window| {

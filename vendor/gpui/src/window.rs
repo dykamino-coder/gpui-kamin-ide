@@ -7187,7 +7187,12 @@ impl Window {
         self.window_profiler.begin_input(event.kind_name());
         let update_count_before = self.invalidator.update_count();
         // KaminIDE patch: any input may change element state of retained subtrees.
-        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
+        // A wheel step moves scroll offsets, which retained records replay
+        // through their scroll nodes (`retained_scrolled`); a listener that
+        // changes anything else on a wheel notifies its view.
+        if !matches!(event, PlatformInput::ScrollWheel(_)) {
+            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
+        }
         // Track input modality for focus-visible styling and hover suppression.
         // Hover is suppressed during keyboard modality so that keyboard navigation
         // doesn't show hover highlights on the item under the mouse cursor.
