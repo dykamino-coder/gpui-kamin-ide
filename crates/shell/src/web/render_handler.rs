@@ -145,7 +145,8 @@ cef::wrap_render_handler! {
                 content,
                 dirty_rects.and_then(super::shared_texture::bounding),
             );
-            super::repaint_requested();
+            // A page frame wakes the pump without a window draw (`page_frame`).
+            super::page_frame::arrived(&self.id);
         }
 
         /// Готовый кадр в оперативке — запасной путь: без GPU (виртуалка,

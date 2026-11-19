@@ -79,9 +79,35 @@ pub(crate) fn copy_into_own(
     context_raw: *mut std::ffi::c_void,
     shared: &GpuTexture,
 ) -> Option<GpuTexture> {
+    copy_damage_into_own(id, device_raw, context_raw, shared, None)
+}
+
+/// A rectangle of the producer's buffer: x, y, w, h.
+pub(crate) type Rect = (i32, i32, i32, i32);
+
+/// Like [`copy_into_own`], but with `damage = Some((shown, rect))` only
+/// `rect` is copied when the own texture picked is `shown`, the texture that
+/// holds the view's previous frame.
+///
+/// The own texture then changes only where the producer reported a repaint.
+/// CEF's frames also change texels it does not report: the translucent
+/// antialiased texels of a page's rounded corners drift by a level or two
+/// from frame to frame (measured live on the Bridge Console, INC-2026-0064).
+/// A whole copy carried that drift into the texture outside the reported
+/// damage, so a later whole redraw of the window differed from the frames
+/// presented by damage. Chromium's own compositor shows an embedded surface
+/// the same way: outside the surface damage the previous output stays.
+#[cfg(windows)]
+pub(crate) fn copy_damage_into_own(
+    id: &str,
+    device_raw: *mut std::ffi::c_void,
+    context_raw: *mut std::ffi::c_void,
+    shared: &GpuTexture,
+    damage: Option<(&GpuTexture, Rect)>,
+) -> Option<GpuTexture> {
     use windows::Win32::Graphics::Direct3D11::{
-        D3D11_BIND_SHADER_RESOURCE, D3D11_USAGE_DEFAULT, ID3D11Device, ID3D11DeviceContext,
-        ID3D11Texture2D,
+        D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_USAGE_DEFAULT, ID3D11Device,
+        ID3D11DeviceContext, ID3D11Texture2D,
     };
     use windows::Win32::Graphics::Dxgi::IDXGIKeyedMutex;
     use windows::core::Interface;
@@ -120,6 +146,19 @@ pub(crate) fn copy_into_own(
                 })
             });
             let fresh = fitting.is_none();
+            // Only the reported rectangle, when the own texture holds the
+            // previous frame of this view; otherwise the whole buffer.
+            let region = damage
+                .filter(|(shown, _)| fitting.as_ref().is_some_and(|own| own.same_as(shown)))
+                .and_then(|(_, rect)| damage_box(rect, src_desc.Width, src_desc.Height))
+                .map(|(left, top, right, bottom)| D3D11_BOX {
+                    left,
+                    top,
+                    front: 0,
+                    right,
+                    bottom,
+                    back: 1,
+                });
             let own = match fitting.clone() {
                 Some(texture) => texture,
                 None => {
@@ -160,7 +199,19 @@ pub(crate) fn copy_into_own(
                 || {
                     #[cfg(debug_assertions)]
                     copied.set(true);
-                    context.CopyResource(own.raw(), shared.raw());
+                    match &region {
+                        Some(region) => context.CopySubresourceRegion(
+                            own.raw(),
+                            0,
+                            region.left,
+                            region.top,
+                            0,
+                            shared.raw(),
+                            0,
+                            Some(region as *const _),
+                        ),
+                        None => context.CopyResource(own.raw(), shared.raw()),
+                    }
                 },
                 || {
                     if let Some(m) = &mutex {
@@ -225,6 +276,28 @@ pub(crate) fn copy_into_own(
             Some(own)
         })()
     }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn copy_damage_into_own(
+    _id: &str,
+    _device_raw: *mut std::ffi::c_void,
+    _context_raw: *mut std::ffi::c_void,
+    _shared: &GpuTexture,
+    _damage: Option<(&GpuTexture, Rect)>,
+) -> Option<GpuTexture> {
+    None
+}
+
+/// The texel box of damage `rect` inside a `w` x `h` buffer: left, top,
+/// right, bottom; `None` when nothing of it is inside.
+#[cfg(any(windows, test))]
+fn damage_box((x, y, dw, dh): Rect, w: u32, h: u32) -> Option<(u32, u32, u32, u32)> {
+    let left = x.max(0) as i64;
+    let top = y.max(0) as i64;
+    let right = (x as i64 + dw as i64).min(w as i64);
+    let bottom = (y as i64 + dh as i64).min(h as i64);
+    (right > left && bottom > top).then_some((left as u32, top as u32, right as u32, bottom as u32))
 }
 
 #[cfg(not(windows))]
