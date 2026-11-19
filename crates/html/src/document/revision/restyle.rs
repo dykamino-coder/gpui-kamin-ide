@@ -59,16 +59,9 @@ impl Document {
                     return None;
                 }
                 if local == "class" {
-                    let tokens = |v: Option<&str>| -> Vec<String> {
-                        let v = v.unwrap_or("").split_ascii_whitespace();
-                        v.map(str::to_ascii_lowercase).collect()
-                    };
-                    let (a, b) = (tokens(was), tokens(is));
-                    let moved = a
-                        .iter()
-                        .filter(|t| !b.contains(t))
-                        .chain(b.iter().filter(|t| !a.contains(t)));
-                    changed.classes.extend(moved.cloned());
+                    changed
+                        .classes
+                        .extend(crate::dom::class_tokens::changed(was, is));
                 }
                 if !changed.attrs.contains(&local) {
                     changed.attrs.push(local);

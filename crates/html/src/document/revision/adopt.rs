@@ -215,16 +215,11 @@ fn neutral(change: &AttrChange, sheets: &[&str]) -> bool {
             return false;
         }
         if local == "class" {
-            let tokens = |v: &Option<String>| -> Vec<String> {
-                v.as_deref()
-                    .unwrap_or("")
-                    .split_ascii_whitespace()
-                    .map(str::to_ascii_lowercase)
-                    .collect()
-            };
-            let (a, b) = (tokens(&was), tokens(&is));
-            classes.extend(a.iter().filter(|t| !b.contains(t)).cloned());
-            classes.extend(b.iter().filter(|t| !a.contains(t)).cloned());
+            // Compared as selectors match them (dom::class_tokens): A -> `n            // changes the class outside quirks mode.
+            classes.extend(crate::dom::class_tokens::changed(
+                was.as_deref(),
+                is.as_deref(),
+            ));
         }
         names.push(local.to_ascii_lowercase());
     }

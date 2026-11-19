@@ -45,9 +45,7 @@ pub(super) fn level(
                 .ok_or(Error::CapacityOverflow)?;
             bytes = bytes.checked_add(strings).ok_or(Error::CapacityOverflow)?;
             if &*attr.name.local == "class" {
-                let classes = attr
-                    .value
-                    .split_whitespace()
+                let classes = crate::dom::class_tokens::tokens(&attr.value)
                     .count()
                     .checked_mul(2 * size_of::<String>())
                     .ok_or(Error::CapacityOverflow)?;

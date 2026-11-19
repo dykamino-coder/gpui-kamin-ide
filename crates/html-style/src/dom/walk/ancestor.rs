@@ -54,7 +54,11 @@ pub(super) fn element_ancestor(
     let classes: Vec<String> = attrs
         .iter()
         .find(|(k, _)| k == "class")
-        .map(|(_, v)| v.split_whitespace().map(str::to_string).collect())
+        .map(|(_, v)| {
+            crate::dom::class_tokens::tokens(v)
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default();
     let me = Ancestor {
         key: crate::dom::tree_index::HandleKey::of(handle),
