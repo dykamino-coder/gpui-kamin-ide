@@ -2,38 +2,67 @@
 
 use super::window_key::WindowKey;
 use super::{FrameKey, Slot};
-use gpui::{RetainedPaint, RetainedPrepaint};
-use std::rc::{Rc, Weak};
+use gpui::{AnyWindowHandle, App, Bounds, Pixels, RetainedPaint, RetainedPrepaint, Window};
+use std::{cell::Cell, rc::Rc};
 
-/// Запись кадра в состоянии элемента окна: живёт, только пока элемент
-/// рисуется каждый кадр, поэтому индексы всегда указывают в прошлый кадр.
+/// Inputs of the actual recording. The element state owns these inputs. The document
+/// can inspect them between frames without keeping an evicted element state alive.
+pub(super) struct Inputs {
+    pub(super) key: FrameKey,
+    window: AnyWindowHandle,
+    serial: Cell<u64>,
+    environment: WindowKey,
+}
+
+impl Inputs {
+    pub(super) fn new(key: FrameKey, environment: WindowKey, window: &Window) -> Rc<Self> {
+        Rc::new(Self {
+            key,
+            window: window.window_handle(),
+            serial: Cell::new(window.frame_serial()),
+            environment,
+        })
+    }
+
+    pub(super) fn matches(&self, bounds: Bounds<Pixels>, window: &Window, cx: &App) -> bool {
+        self.window == window.window_handle()
+            && self.serial.get().checked_add(1) == Some(window.frame_serial())
+            && window.retained_root_environment()
+            && self.environment == WindowKey::capture(bounds, window, cx)
+    }
+
+    pub(super) fn replayed(&self, window: &Window) {
+        self.serial.set(window.frame_serial());
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Record {
-    pub(super) slot: Weak<Slot>,
-    pub(super) key: Option<FrameKey>,
-    pub(super) window: Option<WindowKey>,
+    pub(super) inputs: Option<Rc<Inputs>>,
     pub(super) prepaint: RetainedPrepaint,
     pub(super) paint: RetainedPaint,
-    /// Prepaint шёл в корневом окружении окна.
     pub(super) root: bool,
-    pub(super) settled: bool,
 }
 
 impl Record {
-    pub(super) fn reusable(
-        &self,
-        slot: &Rc<Slot>,
-        key: &Option<FrameKey>,
-        window: &WindowKey,
+    pub(super) fn matches(
+        &self, slot: &Slot, key: Option<&FrameKey>, bounds: Bounds<Pixels>, window: &Window, cx: &App,
     ) -> bool {
-        self.settled
-            && self.paint.replayable()
-            && self
-                .slot
-                .upgrade()
-                .is_some_and(|own| Rc::ptr_eq(&own, slot))
-            && key.is_some()
-            && self.key == *key
-            && self.window.as_ref() == Some(window)
+        self.inputs.as_ref().zip(slot.inputs(key)).is_some_and(|(own, published)| {
+            Rc::ptr_eq(own, &published) && own.matches(bounds, window, cx)
+        })
+    }
+
+    pub(super) fn publish(&self, slot: &Slot, settled: bool) {
+        let inputs = self.inputs.as_ref().filter(|_| settled).map(Rc::downgrade);
+        slot.recorded.replace(inputs.unwrap_or_default());
+    }
+}
+
+/// Both the rendering step and the element inspect the same recording.
+impl Slot {
+    pub(super) fn inputs(&self, key: Option<&FrameKey>) -> Option<Rc<Inputs>> {
+        let inputs = self.recorded.borrow().upgrade()?;
+        (Some(&inputs.key) == key).then_some(inputs)
     }
 }

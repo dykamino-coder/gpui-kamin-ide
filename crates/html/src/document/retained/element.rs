@@ -7,7 +7,7 @@
 //! раскладывается отдельным корнем в тех же границах. Коробка имеет точный
 //! размер, поэтому её содержимое раскладывается так же, как в потоке.
 
-use super::record::Record;
+use super::record::{Inputs, Record};
 use super::window_key::WindowKey;
 use super::{Builder, FrameKey, Slot};
 mod build_in;
@@ -143,19 +143,20 @@ impl Element for Retained {
         cx: &mut App,
     ) {
         let Some(id) = id else { return };
-        let key = WindowKey::capture(bounds, window, cx);
         let root = window.retained_root_environment();
         window.with_element_state::<Record, _>(id, |record, window| {
             let before = window.next_frame_callback_count();
             // Состояние элемента живёт кадр: без него прошлый кадр окна не
             // рисовал документ, и повтор блоков из него невозможен.
             self.builder.store.draw(record.is_some());
-            let record = record.filter(|r| r.reusable(&self.slot, &self.key, &key));
+            let record = record.filter(|r| {
+                self.tree.is_none() && r.matches(&self.slot, self.key.as_ref(), bounds, window, cx)
+            });
             if let Some(r) = &record
                 && !window.retained_replayable(&r.prepaint, &r.paint)
             {
                 self.slot.unreplayable.set(true);
-                *self.slot.recorded.borrow_mut() = None;
+                self.slot.recorded.take();
             }
             if self.tree.is_none()
                 && root
@@ -195,13 +196,12 @@ impl Element for Retained {
             };
             self.scheduled += window.next_frame_callback_count().saturating_sub(before);
             let record = Record {
-                slot: Rc::downgrade(&self.slot),
-                key: self.key.clone(),
-                window: Some(key),
+                inputs: self.key.clone().map(|key| {
+                    Inputs::new(key, WindowKey::capture(bounds, window, cx), window)
+                }),
                 prepaint,
                 paint: RetainedPaint::default(),
                 root,
-                settled: false,
             };
             ((), record)
         });
@@ -222,6 +222,9 @@ impl Element for Retained {
             let mut record = record.unwrap_or_default();
             if self.replay {
                 record.paint = window.replay_retained_paint(&record.paint);
+                if let Some(inputs) = &record.inputs {
+                    inputs.replayed(window);
+                }
                 return ((), record);
             }
             let Some(tree) = self.tree.as_mut() else {
@@ -233,13 +236,13 @@ impl Element for Retained {
                 flow.finish();
             }
             self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-            record.settled = record.root
+            let settled = record.root
+                && !self.slot.unreplayable.get()
                 && paint.replayable()
                 && self.scheduled == 0
                 && self.builder.state.values.frame_ready();
             record.paint = paint;
-            record.settled &= !self.slot.unreplayable.get();
-            *self.slot.recorded.borrow_mut() = self.key.clone().filter(|_| record.settled);
+            record.publish(&self.slot, settled);
             ((), record)
         });
     }
