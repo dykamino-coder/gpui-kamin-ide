@@ -17,8 +17,9 @@
 import { createHash } from 'crypto'
 import fsp from 'fs/promises'
 
-/** Bytes of the head that go into the hash. A compaction rewrites from the very
- *  beginning, so the first KB changes; a plain append never touches it. */
+/** Upper bound of the head that goes into the hash: the first record, cut at
+ *  this many bytes. A compaction rewrites from the very beginning, so it
+ *  changes; a plain append never touches it. */
 const HEAD_BYTES = 1024
 
 export interface TranscriptFingerprint {
@@ -36,8 +37,15 @@ export async function fingerprintTranscript(filePath: string): Promise<Transcrip
     fd = await fsp.open(filePath, 'r')
     const buf = Buffer.alloc(Math.min(HEAD_BYTES, stat.size))
     if (buf.length > 0) await fd.read(buf, 0, buf.length, 0)
+    // Hash the first RECORD (within the first KB), not the first KB: a young
+    // transcript shorter than 1 KB grows into its head window with every
+    // append, so its head changed on each turn and no mirror cursor taken then
+    // could ever resume (the reattach re-sent the whole page). The first record
+    // never changes under append; a rewrite from the start replaces it.
+    const nl = buf.indexOf(0x0a)
+    const hashed = nl === -1 ? buf : buf.subarray(0, nl + 1)
     return {
-      head: createHash('sha256').update(buf).digest('hex').slice(0, 32),
+      head: createHash('sha256').update(hashed).digest('hex').slice(0, 32),
       size: stat.size,
     }
   } catch {

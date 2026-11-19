@@ -31,6 +31,25 @@ describe('transcript fingerprint', () => {
     expect(canResume(after, before!.head, before!.size)).toBe(true)
   })
 
+  it('is unchanged by an append while the file is still shorter than the hashed head', async () => {
+    // A fresh chat: its first status hands over the head when the file holds
+    // one short record. Every later turn must still resume from that cursor.
+    const file = await tmpFile(line(0))
+    const before = await fingerprintTranscript(file)
+    await appendFile(file, many(40, 1), 'utf8')
+    const after = await fingerprintTranscript(file)
+    expect(after!.size).toBeGreaterThan(1024)
+    expect(after?.head).toBe(before?.head)
+    expect(canResume(after, before!.head, before!.size)).toBe(true)
+  })
+
+  it('changes when the first record is rewritten', async () => {
+    const file = await tmpFile(line(0) + many(5, 1))
+    const before = await fingerprintTranscript(file)
+    await writeFile(file, line(7) + many(5, 1), 'utf8')
+    expect((await fingerprintTranscript(file))?.head).not.toBe(before?.head)
+  })
+
   it('changes when the file is rewritten from the start (compaction)', async () => {
     const file = await tmpFile(many(50))
     const before = await fingerprintTranscript(file)

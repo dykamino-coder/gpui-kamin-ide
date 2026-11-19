@@ -3,6 +3,7 @@ import { appendFileSync, mkdtempSync, renameSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { JsonlWatcher } from './jsonl-watcher'
+import { TranscriptTail } from './jsonl-tail'
 import type { JsonlStatus } from '../../shared/jsonl-types'
 
 const rec = (value: unknown): string => `${JSON.stringify(value)}\n`
@@ -148,7 +149,6 @@ describe('INC-0068 authoritative replay after a same-path rewrite', () => {
   })
   it('rejects a tail result when the file was replaced during its asynchronous read', async () => {
     const f = await fixture()
-    const read = f.state.readEntriesFromOffset.bind(f.state)
     let release!: () => void
     const gate = new Promise<void>((r) => {
       release = r
@@ -157,8 +157,12 @@ describe('INC-0068 authoritative replay after a same-path rewrite', () => {
     const started = new Promise<void>((r) => {
       entered = r
     })
-    vi.spyOn(f.state, 'readEntriesFromOffset').mockImplementationOnce(async (...args: unknown[]) => {
-      const result = await read(...args)
+    const read = TranscriptTail.prototype.read
+    vi.spyOn(TranscriptTail.prototype, 'read').mockImplementationOnce(async function (
+      this: TranscriptTail,
+      offset: number,
+    ) {
+      const result = await read.call(this, offset)
       entered()
       await gate
       return result
@@ -187,12 +191,14 @@ describe('INC-0068 authoritative replay after a same-path rewrite', () => {
       entered = r
     })
     const oldOffset = f.state.lastOffset
-    vi.spyOn(f.state, 'readEntriesFromOffset').mockImplementationOnce(async () => {
+    vi.spyOn(TranscriptTail.prototype, 'read').mockImplementationOnce(async () => {
       entered()
       await gate
       return {
-        entries: [{ type: 'user', uuid: 'stale-tail', message: { content: 'obsolete' } }],
+        entries: [{ type: 'user', uuid: 'stale-tail', message: { content: 'obsolete' } }] as never[],
+        spans: [[oldOffset, oldOffset + 1000]],
         endPos: oldOffset + 1000,
+        truncated: false,
       }
     })
     appendFileSync(f.file, user('old-pending'))
