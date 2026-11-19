@@ -33668,10 +33668,10 @@ index 0000000000000000000000000000000000000000..9d92561b810c8a95400783f1054dbeed
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..31254abc2bbd49cb11911147c07a4b01e43d4d89
+index 0000000000000000000000000000000000000000..f1d6996603e53a75ad5091451a815137cb6b0ef5
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,804 @@
+@@ -0,0 +1,809 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -34140,7 +34140,10 @@ index 0000000000000000000000000000000000000000..31254abc2bbd49cb11911147c07a4b01
 +    pub tainted: bool,
 +}
 +
-+/// Paint effects of a scope observed by open ink sinks.
++/// Paint effects of a scope observed by open ink sinks. A cursor style bound
++/// to a hitbox is not one: the frame resolves it by the hitbox hovered at its
++/// end (`Frame::cursor_style`), so it does nothing while the hitbox is not
++/// hovered, and a replay copies it with the hitbox (`Window::reuse_paint`).
 +pub(crate) struct InkProbe {
 +    start: PaintIndex,
 +    groups: usize,
@@ -34168,7 +34171,9 @@ index 0000000000000000000000000000000000000000..31254abc2bbd49cb11911147c07a4b01
 +        let quiet = self.clean
 +            && end.mouse_listeners_index - start.mouse_listeners_index == (allowed.0 - self.allowed.0) as usize
 +            && start.input_handlers_index == end.input_handlers_index
-+            && start.cursor_styles_index == end.cursor_styles_index
++            && window.next_frame.cursor_styles[start.cursor_styles_index..end.cursor_styles_index]
++                .iter()
++                .all(|request| request.hitbox_id.is_some())
 +            && end.accessed_element_states_index - start.accessed_element_states_index
 +                == (allowed.1 - self.allowed.1) as usize
 +            && start.tab_handle_index == end.tab_handle_index
