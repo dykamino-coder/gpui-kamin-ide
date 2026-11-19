@@ -140,4 +140,35 @@ mod tests {
             "a hidden scroll container has no bars"
         );
     }
+
+    #[test]
+    fn a_nested_owner_keeps_its_frame_next_to_the_viewport() {
+        let viewport = anon_element("html-viewport", vec![]);
+        let root = settled(&viewport);
+        let mut nested = anon_element("div", vec![]);
+        nested.node_id = 7;
+        let own = settled(&nested);
+        let style = scrolling(Overflow::Scroll);
+        assert_eq!(model(Some(&own), &nested, &style).bars, [false, true]);
+        assert_eq!(model(Some(&own), &viewport, &style).bars, [false; 2]);
+        assert_eq!(model(Some(&root), &nested, &style).bars, [false; 2]);
+        assert_eq!((root.bars(), own.bars()), ([false, true], [false, true]));
+    }
+
+    /// A pseudo-element can be a scroll container: its frame is matched by id 0,
+    /// not the viewport kind, and only while it scrolls. An anonymous box inside
+    /// that is not a scroll container leaves it alone.
+    #[test]
+    fn a_scrolling_pseudo_element_owns_its_frame() {
+        let pseudo = anon_element("::before", vec![]);
+        let frame = settled(&pseudo);
+        let style = scrolling(Overflow::Scroll);
+        assert_eq!(model(Some(&frame), &pseudo, &style).bars, [false, true]);
+        let anon = anon_element("tr", vec![]);
+        assert_eq!(
+            model(Some(&frame), &anon, &Computed::default()).bars,
+            [false; 2]
+        );
+        assert_eq!(frame.bars(), [false, true]);
+    }
 }
