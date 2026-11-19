@@ -15,6 +15,12 @@ it('reads the compression cut-off from the environment', () => {
   expect(wsCompressMinBytes({ BRIDGE_WS_COMPRESS_MIN_BYTES: '0' })).toBe(0)
   expect(wsCompressMinBytes({ BRIDGE_WS_COMPRESS_MIN_BYTES: '4096' })).toBe(4096)
   expect(wsCompressMinBytes({ BRIDGE_WS_COMPRESS_MIN_BYTES: 'lots' })).toBe(DEFAULT_WS_COMPRESS_MIN_BYTES)
+  expect(wsDeflateOptions({})).toEqual({ threshold: DEFAULT_WS_COMPRESS_MIN_BYTES, serverNoContextTakeover: true })
+  // Deflate-everything mode keeps the window between messages for its ratio.
+  expect(wsDeflateOptions({ BRIDGE_WS_COMPRESS_MIN_BYTES: '0' })).toMatchObject({
+    threshold: 0,
+    serverNoContextTakeover: false,
+  })
 })
 
 it('sends small live frames raw and bulk frames deflated on one permessage-deflate connection', async () => {
