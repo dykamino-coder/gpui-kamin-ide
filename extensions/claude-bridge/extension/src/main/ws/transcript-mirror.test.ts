@@ -41,6 +41,20 @@ describe('transcript mirror', () => {
     expect(cursor?.lastUuid).toBe('u2')
   })
 
+  it('keeps lastUuid and lastPos on the same record across uuid-less rows', async () => {
+    const dir = await freshDir()
+    const m = new TranscriptMirror(dir, 'conv')
+    const row = (pos: number) => ({ type: 'api-request', _pos: pos, _posEnd: pos + 40 })
+    await m.append([rec(1, 0), rec(2, 40), row(80)], HEAD) // batch ends on a bookkeeping row
+    await m.append([row(120)], HEAD) // a batch with no uuid at all
+    await m.close()
+
+    const cursor = await new TranscriptMirror(dir, 'conv').readCursor()
+    expect(cursor?.pos).toBe(160)
+    expect(cursor?.lastUuid).toBe('u2')
+    expect(cursor?.lastPos).toBe(40) // the record that carries u2, not the newest row
+  })
+
   it('appends across sessions instead of rewriting', async () => {
     const dir = await freshDir()
     const first = new TranscriptMirror(dir, 'conv')

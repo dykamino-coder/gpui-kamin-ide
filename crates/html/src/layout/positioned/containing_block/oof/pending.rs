@@ -20,7 +20,7 @@ struct Task {
 }
 
 struct Destination {
-    items: Weak<RefCell<VecDeque<Item>>>,
+    items: Weak<super::QueueState>,
     bounds: Bounds<Pixels>,
     place: Place,
     context: Context,
@@ -65,7 +65,7 @@ impl Pending {
         output: &Output,
     ) {
         self.0.borrow_mut().destinations.push(Destination {
-            items: Rc::downgrade(&queue.items),
+            items: Rc::downgrade(&queue.state),
             bounds,
             place,
             context,
@@ -99,7 +99,7 @@ impl Pending {
         } = &mut *work;
         for dest in destinations {
             if let (Some(items), Some(output)) = (dest.items.upgrade(), dest.output.upgrade()) {
-                tasks.extend(items.take().into_iter().map(|item| Task {
+                tasks.extend(items.items.take().into_iter().map(|item| Task {
                     item,
                     bounds: dest.bounds,
                     place: dest.place,

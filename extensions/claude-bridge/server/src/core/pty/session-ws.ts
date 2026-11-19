@@ -74,6 +74,7 @@ import {
 import { acquireWakeSlot, promoteWake, registerHibernationHandle, type WakeTicket } from './session-hibernation'
 import { hasInflightMcpCall, settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
+import { wsDeflateOptions } from './ws-compression'
 import { isTerminalResponseInput } from './session-input-coordinator'
 import { sessionCliControl } from './session-cli-control'
 import { eventBus } from '../events/bus'
@@ -233,17 +234,21 @@ export function getSessionWs(sessionId: string): WS | undefined {
  * Path: /ws/session
  */
 export function attachSessionWebSocket(_server: HttpServer): void {
-  // perMessageDeflate: the jsonl:entries / streaming:entry frames are
-  // repetitive JSON (keys, uuids, base64 signatures) that deflates 5-10×.
-  // The `ws` CLIENT already offers the extension by default; the server just
-  // has to accept it (ws-server default is OFF). `threshold: 1024` skips the
-  // tiny per-character session:output PTY frames (compressing those wastes
-  // CPU); context takeover stays on (default) for best ratio on the big JSON
-  // frames — memory is bounded by the number of live KaminIDE clients (one
-  // /ws/session per user machine, not per session), which is small.
+  // perMessageDeflate: bulk frames (history pages, replays, top-ups, large
+  // tool results) are repetitive JSON that deflates 5-10×, and the `ws` CLIENT
+  // offers the extension by default; the server just has to accept it (ws-server
+  // default is OFF). Small frames are sent as they are: deflating every live
+  // record (~1-2 KiB) was the largest single cost on the main thread with 200
+  // chats streaming, for a few hundred bytes saved each. Uncompressed and
+  // compressed messages mix freely on one permessage-deflate connection (RFC
+  // 7692 §6: RSV1 is set per message). The cut-off is `wsCompressMinBytes()`.
+  // `ws` honours `threshold` only without server context takeover; with it
+  // (the old setting) every frame was deflated whatever its size. Each bulk frame
+  // is self-similar enough to keep its ratio on its own, and the connection no
+  // longer carries a sliding window between messages.
   const wss = new WebSocketServer({
     noServer: true,
-    perMessageDeflate: { threshold: 1024 },
+    perMessageDeflate: wsDeflateOptions(),
   })
   registerWsRoute('/ws/session', wss)
 

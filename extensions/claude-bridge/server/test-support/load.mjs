@@ -18,6 +18,10 @@ const { values: opt } = parseArgs({
     jitter: { type: 'string', default: '2000' },
     idle: { type: 'string', default: '60' },
     phases: { type: 'string', default: 'open,turn,idle,reconnect,resume,close' },
+    // `paged` speaks the KaminIDE client protocol: paged history on create and
+    // resume, and a reattach that carries the mirror cursor. `legacy` is the
+    // pre-paged client: full replay on attach plus a `jsonl:sync-request`.
+    history: { type: 'string', default: 'paged' },
     out: { type: 'string' },
   },
 })
@@ -25,6 +29,8 @@ const num = (key) => Number(opt[key])
 const origin = `http://127.0.0.1:${opt.port}`
 const wsUrl = `ws://127.0.0.1:${opt.port}/ws/session`
 const MARK = /\[load (\S+) seq=(\d+) t=(\d+)\]/
+const paged = opt.history === 'paged'
+const historyField = () => (paged ? { history: { mode: 'paged' } } : {})
 const started = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - started) / 1000).toFixed(1)}s]`, ...a)
 
@@ -42,6 +48,7 @@ const counts = {
   openErrors: 0,
   errorFrames: 0,
   toolCalls: 0,
+  reattachWithoutCursor: 0,
   dupBy: {},
 }
 const idleTraffic = { bytesIn: 0, bytesOut: 0, seconds: 0, frames: {} }
@@ -68,12 +75,15 @@ class Chat {
     this.turn = null
     this.waiters = []
     this.idleFrames = null
+    // Every socket this chat used: wire bytes in both directions, whole run.
+    this.sockets = []
   }
   connect() {
     const ws = new WebSocket(wsUrl)
     this.ws = ws
     ws.on('message', (raw) => this.onFrame(JSON.parse(raw.toString()), raw.length))
     ws.on('error', () => {})
+    ws.once('open', () => this.sockets.push(ws._socket))
     return new Promise((resolve, reject) => {
       ws.once('open', resolve)
       ws.once('error', reject)
@@ -111,6 +121,8 @@ class Chat {
     }
     if (f.type === 'jsonl:sync-reset' || f.type === 'jsonl:sync-begin' || f.type === 'jsonl:sync-end')
       this.mirror.head = f.head ?? this.mirror.head
+    // The KaminIDE mirror learns the transcript fingerprint from watcher status.
+    if (f.type === 'jsonl:status' && f.fileHead) this.mirror.head = f.fileHead
     if (f.type === 'jsonl:entries') {
       for (const e of f.entries ?? []) {
         if (typeof e._posEnd === 'number' && (this.mirror.posEnd ?? -1) < e._posEnd) {
@@ -149,7 +161,14 @@ class Chat {
     const t0 = Date.now()
     await this.connect()
     const ready = this.waitFor(this.promptReady, 60000, 'prompt ready')
-    this.send({ type: 'session:create', token: this.client.token, cols: 120, rows: 40, protocolVersion: 1 })
+    this.send({
+      type: 'session:create',
+      token: this.client.token,
+      cols: 120,
+      rows: 40,
+      protocolVersion: 1,
+      ...historyField(),
+    })
     await this.waitFor((f) => f.type === 'session:created', 60000, 'created')
     await ready
     samples.open.push(Date.now() - t0)
@@ -186,6 +205,11 @@ class Chat {
     try {
       await this.connect()
       const created = this.waitFor((f) => f.type === 'session:created', 15000, 'reattach created')
+      const { head, posEnd, pos, uuid } = this.mirror
+      const cursor = head && posEnd !== undefined ? { head, pos: posEnd, lastPos: pos, lastUuid: uuid } : undefined
+      const replayed = paged
+        ? this.waitFor((f) => f.type === 'jsonl:status' && f.replayComplete, 15000, 'reattach replay')
+        : null
       this.send({
         type: 'session:resume',
         token: this.client.token,
@@ -193,11 +217,19 @@ class Chat {
         cols: 120,
         rows: 40,
         protocolVersion: 1,
+        ...(paged ? { history: { mode: 'paged', ...(cursor ? { cursor } : {}) } } : {}),
       })
       const reply = await created
       if (!reply.reattached) {
         counts.reconnectErrors++
         log('not reattached', JSON.stringify(reply).slice(0, 200))
+      }
+      if (paged) {
+        // The cursor rides on the resume itself; no separate sync round trip.
+        if (!cursor) counts.reattachWithoutCursor++
+        await replayed
+        samples.reattach.push(Date.now() - t0)
+        return
       }
       const end = this.waitFor((f) => f.type === 'jsonl:sync-end' || f.type === 'jsonl:sync-reset', 15000, 'sync')
       this.send({
@@ -232,6 +264,7 @@ class Chat {
       cols: 120,
       rows: 40,
       protocolVersion: 1,
+      ...historyField(),
     })
     const reply = await this.waitFor(
       (f) => f.type === 'session:created' || f.type === 'session:resume-not-found' || f.type === 'error',
@@ -289,7 +322,7 @@ log(`opened ${live().length}`)
 if (phases.has('turn')) {
   mark('turn')
   counts.turnErrors += await each(live(), (c) => c.streamTurn(`a${c.client.index}x${c.index}`), num('jitter'))
-  await each(live(), (c) => c.learnHead())
+  if (!paged) await each(live(), (c) => c.learnHead())
   log('turn A done')
 }
 if (phases.has('idle')) {
@@ -337,8 +370,12 @@ if (phases.has('close')) {
   }
   await sleep(2000)
 }
+const wireIn = chats.reduce((n, c) => n + c.sockets.reduce((m, s) => m + (s?.bytesRead ?? 0), 0), 0)
+const wireOut = chats.reduce((n, c) => n + c.sockets.reduce((m, s) => m + (s?.bytesWritten ?? 0), 0), 0)
 const result = {
   config: opt,
+  // Server-to-client wire bytes per chat over the whole run (compression included).
+  traffic: { bytesIn: wireIn, bytesOut: wireOut, bytesInPerChat: Math.round(wireIn / chats.length) },
   startedAt: started,
   finishedAt: Date.now(),
   chats: chats.length,

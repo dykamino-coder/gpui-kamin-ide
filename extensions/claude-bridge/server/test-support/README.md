@@ -87,7 +87,12 @@ socket is dropped after a third of its blocks, then `session:resume` and
 `session:resume`, one more turn) and `close`. It reports p50/p95/p99 of the
 first block after submit (`ttft`), gaps between blocks, emit-to-arrival
 delivery, open/reattach/cold-resume times, lost and duplicated blocks and idle
-traffic as JSON. `load-sampler.mjs` prints one line per tick with the server
+traffic as JSON, plus the whole-run wire bytes per chat (`traffic`). By default
+(`--history paged`) it speaks the KaminIDE client protocol: paged history on
+create and resume, and a reattach that carries the mirror cursor built from
+`_pos`/`_posEnd` and the watcher's `fileHead`. `--history legacy` is the
+pre-paged client (full replay on attach plus `jsonl:sync-request`); duplicates
+there are that protocol's, not the product's. `load-sampler.mjs` prints one line per tick with the server
 process CPU, RSS, fds and sockets, the fake CLIs and the container cgroup.
 
 Run both in your own Linux containers (or one host process) with the fake CLI
