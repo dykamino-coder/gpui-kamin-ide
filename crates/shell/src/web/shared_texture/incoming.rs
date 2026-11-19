@@ -102,6 +102,11 @@ pub(crate) fn get(id: &str) -> Option<Incoming> {
     VIEWS.lock().ok()?.latest.get(id).cloned()
 }
 
+/// The damage of the frames not copied yet, left in place.
+pub(crate) fn pending_damage(id: &str) -> Option<Rect> {
+    VIEWS.lock().ok()?.damage.get(id).copied()
+}
+
 /// The damage to report after `copied` (a frame from [`get`]) was copied
 /// into the own texture. It is cleared only while no later frame arrived:
 /// a later frame may already be in the copy (CEF shares its textures without

@@ -229,9 +229,7 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 }
                 // Everything above follows from the frame key and the bounds;
                 // a size mismatch also runs the catch-up timers of this paint.
-                // Edge strips stretch the frame's last texels, whose changes
-                // the producer's damage does not always cover (damage audit).
-                if !mismatched && !right_gap && !bottom_gap {
+                if !mismatched {
                     super::page_frame::painted(id, super::shared_texture::shown_key(id), want);
                 }
                 // Попап страницы (дропдаун `<select>`): отдельная текстура

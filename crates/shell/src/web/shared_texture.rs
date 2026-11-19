@@ -134,7 +134,24 @@ pub(crate) fn texture_for(
     // Копия под захватом keyed mutex: читать общую текстуру Chromium прямо в
     // своей отрисовке нельзя — так делает и эталонный `cef-mixer`.
     let context_raw = windows::core::Interface::as_raw(&context);
-    let own = super::copy_frame::copy_into_own(id, device.raw(), context_raw, &incoming.shared);
+    // In a steady state (the own texture holds the view's previous frame of
+    // the same page region) only the reported damage is copied: the texture
+    // then changes exactly where the window is told it changed.
+    let shown = SLOTS.lock().ok().and_then(|m| {
+        m.get(id)
+            .filter(|s| s.frame != 0 && s.crop == content_crop(incoming.content, s.width, s.height))
+            .map(|s| s.texture.clone())
+    });
+    let damage = shown
+        .as_ref()
+        .and_then(|shown| Some((shown, incoming::pending_damage(id)?)));
+    let own = super::copy_frame::copy_damage_into_own(
+        id,
+        device.raw(),
+        context_raw,
+        &incoming.shared,
+        damage,
+    );
     // Жалобы слоя проверки читаем ПОСЛЕ копирования: на нём он и ругается.
     super::d3d_log::drain(device.raw());
     let own = own?;
@@ -171,9 +188,9 @@ pub(crate) fn texture_for(
     // (замер стендом `check_web_drag`: кромка 0 при середине 228).
     let own_desc = own.desc();
     let (tex_w, tex_h) = (own_desc.Width as i32, own_desc.Height as i32);
-    let (cx_, cy_, cw, ch) = incoming.content;
+    let (_, _, cw, ch) = incoming.content;
     // Рисуем ТОЛЬКО страницу (`content_rect`), без прозрачных полей буфера.
-    let crop = (cx_.min(tex_w - 1), cy_.min(tex_h - 1), cw, ch);
+    let crop = content_crop(incoming.content, tex_w, tex_h);
     let tile = match known {
         Some((texture, w, h, tile)) if texture.same_as(&own) && w == tex_w && h == tex_h => {
             // Текстура та же, но регион страницы мог смениться — обновим,
@@ -218,6 +235,11 @@ pub(crate) fn texture_for(
         }
     }
     Some(tile.region(crop.0, crop.1, crop.2, crop.3))
+}
+
+/// The region of a `tex_w` x `tex_h` own texture a page `content` shows.
+fn content_crop((x, y, w, h): incoming::Rect, tex_w: i32, tex_h: i32) -> (i32, i32, i32, i32) {
+    (x.min(tex_w - 1), y.min(tex_h - 1), w, h)
 }
 
 /// Submit the copies queued on the window's context. A copy made outside a
