@@ -1,18 +1,12 @@
-//! Шаг документа до кадра (HTML «update the rendering»): сборка и раскладка
-//! дерева кадра вне `Window::draw`.
-//!
-//! Шаг делает то же, что кадр делал бы сам: собирает дерево (`Builder`) и
-//! раскладывает его корнем на точный размер области просмотра, как
-//! `Retained::build_in`. Кадр берёт подготовленное дерево того же ключа и в
-//! prepaint только проверяет заместителей и ставит дерево на место. Кадр,
-//! для которого шаг ничего не подготовил (хост без шага, другие опции, кадр
-//! пришлось собрать заново), собирается внутри `draw`, как раньше, и
-//! считается в `builds_inside_draw`.
+//! The document rendering step resolves block reuse with the laid-out root.
+//! The element consumes that decision when it draws in the same environment.
 
+mod layout;
 use super::{Builder, FrameKey, Slot};
 use crate::Document;
 use crate::layout::reuse::FlowReuse;
-use gpui::{AnyElement, App, AvailableSpace, ElementPlace, Window, px, size};
+use gpui::{AnyElement, App, ElementPlace, Window, px, size};
+pub(super) use layout::CheckedRoot;
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -24,6 +18,7 @@ pub(super) struct Prepared {
     pub(super) counters: Option<crate::layout::reuse::Counters>,
     pub(super) tree: AnyElement,
     pub(super) flow: Option<Rc<FlowReuse>>,
+    pub(super) checked: CheckedRoot,
     /// Кадры, заказанные сборкой и раскладкой шага.
     pub(super) scheduled: usize,
     /// Место в кадре, под которым стоит элемент документа этого дерева.
@@ -81,37 +76,38 @@ impl Document {
         let bounds = gpui::Bounds::new(Default::default(), size(px(w), px(h)));
         window.with_layout_outside_draw(parent, cx, |window, cx| {
             if self.state.values.resources_unchanged()
-                && self
-                    .retained
-                    .inputs(Some(&key))
-                    .is_some_and(|r| r.matches(bounds, window, cx))
+                && self.retained.inputs(Some(&key)).is_some_and(|r| {
+                    r.matches(
+                        &super::window_key::WindowKey::capture(bounds, window, cx),
+                        window,
+                    )
+                })
             {
                 return;
             }
             let builder = self.frame_builder(opts, &Some(key.clone()));
             let id = document_id(&self.reuse);
-            let keys = builder.layout_keys;
-            window.with_id(id, |window| {
+            window.with_global_id(id, |id, window| {
+                let epoch =
+                    window.with_element_state::<super::record::Record, _>(id, |record, window| {
+                        let mut record = record.unwrap_or_default();
+                        (record.begin(&builder.store, window), record)
+                    });
                 let before = window.next_frame_callback_count();
-                self.retained.builds.set(self.retained.builds.get() + 1);
-                let (mut tree, flow) = builder.build(true, false);
-                observe(UpdatePhase::Built);
-                let space = size(
-                    AvailableSpace::Definite(px(w)),
-                    AvailableSpace::Definite(px(h)),
-                );
-                window.with_layout_keys(keys, |window| {
-                    tree.request_layout(window, cx);
-                    observe(UpdatePhase::Requested);
-                    tree.layout_as_root(space, window, cx)
+                let (tree, flow) = builder.layout_checked(bounds, window, cx, |phase| {
+                    if phase == UpdatePhase::Built {
+                        self.retained.builds.set(self.retained.builds.get() + 1);
+                    }
+                    observe(phase);
                 });
-                observe(UpdatePhase::LaidOut);
+                let checked = CheckedRoot::new(epoch, bounds, window, cx);
                 let scheduled = window.next_frame_callback_count().saturating_sub(before);
                 self.retained.prepared.replace(Some(Prepared {
                     key,
                     counters: builder.counters.get(),
                     tree,
                     flow,
+                    checked,
                     scheduled,
                     parent: parent.clone(),
                 }));

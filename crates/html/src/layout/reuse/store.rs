@@ -83,12 +83,16 @@ pub(crate) struct Store {
 }
 
 impl Store {
-    /// Начался prepaint документа; `continued` — его состояние элемента было
-    /// в прошлом кадре окна, то есть прошлый кадр рисовал этот документ.
-    /// Иначе цепочка кадров рвётся, и ни один диапазон повтора не годен.
-    pub(crate) fn draw(&self, continued: bool) {
-        self.epoch
-            .set(self.epoch.get() + if continued { 1 } else { 2 });
+    /// Generation of the document output. A discontinuity leaves a gap so a
+    /// range in an older window frame can never follow the new generation.
+    pub(crate) fn epoch(&self) -> u64 {
+        self.epoch.get()
+    }
+
+    pub(crate) fn draw(&self, continued: bool) -> u64 {
+        let epoch = self.epoch.get() + if continued { 1 } else { 2 };
+        self.epoch.set(epoch);
+        epoch
     }
 
     /// Кадр документа повторён целиком: диапазоны записей повтора блоков

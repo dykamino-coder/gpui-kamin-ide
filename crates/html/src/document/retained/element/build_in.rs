@@ -1,9 +1,8 @@
-//! Сборка кадра внутри `Window::draw`: запись не подошла, а шаг документа
-//! дерево не подготовил, подготовил для другого места в кадре, или
-//! подготовленное отказала проверка заместителей.
+//! Draw-time layout for a host that did not prepare this placement.
 
 use super::Retained;
-use gpui::{App, AvailableSpace, Bounds, Pixels, RetainedPrepaint, Window, size};
+use crate::document::retained::UpdatePhase;
+use gpui::{App, Bounds, Pixels, RetainedPrepaint, Window};
 
 impl Retained {
     /// Дерево шага, собранное для другого места в кадре, не годится: ключи
@@ -16,6 +15,7 @@ impl Retained {
             .is_some_and(|parent| !window.element_stands_under(parent))
         {
             self.laid_out = None;
+            self.checked = None;
             self.scheduled = 0;
             self.slot.builds.set(self.slot.builds.get() + 1);
             self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
@@ -32,32 +32,16 @@ impl Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> RetainedPrepaint {
-        let space = size(
-            AvailableSpace::Definite(bounds.size.width),
-            AvailableSpace::Definite(bounds.size.height),
-        );
-        let (_, prepaint) = window.record_retained_prepaint(|window| {
-            // Заместители, отказанные проверкой прошлой сборки, собираются;
-            // если и эта не прошла (другое место корня), то без заместителей.
-            let mut allow = true;
-            loop {
+        let (mut tree, flow) = self.builder.layout_checked(bounds, window, cx, |phase| {
+            if phase == UpdatePhase::Built {
                 self.slot.builds.set(self.slot.builds.get() + 1);
                 self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
-                let (mut tree, flow) = self.builder.build(allow, true);
-                tree.layout_as_root(space, window, cx);
-                let fits = flow.as_ref().is_none_or(|flow| flow.validate(window));
-                if fits || !allow {
-                    tree.prepaint_at(bounds.origin, window, cx);
-                    self.tree = Some(tree);
-                    self.flow = flow;
-                    return;
-                }
-                if let Some(flow) = &flow {
-                    flow.note_rebuild();
-                }
-                allow = false;
             }
         });
+        let (_, prepaint) =
+            window.record_retained_prepaint(|w| tree.prepaint_at(bounds.origin, w, cx));
+        self.tree = Some(tree);
+        self.flow = flow;
         prepaint
     }
 }

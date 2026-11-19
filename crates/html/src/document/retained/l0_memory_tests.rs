@@ -1,8 +1,4 @@
-//! Шаг документа не копит память между кадрами: после каждого кадра арена
-//! элементов пуста, отложенных состояний нет, а кэш строк кадра — тот же, что
-//! у кадров без шага, и на кадрах одной ширины одного размера. Кадр
-//! собирается внутри `draw` только после отказа заместителя записи
-//! (`layout::reuse`).
+//! Memory left by rendering steps and by ordinary draws of the same document.
 
 use super::l0_tests::{PAGE, builds};
 use super::tests::{View, frame, open, open_without_step};
@@ -36,16 +32,12 @@ fn steps_leave_no_arena_lines_or_states_growing_between_frames(cx: &mut TestAppC
     let seen = footprints(&view, cx);
     let (built_after, inside_after) = builds(&view, cx);
     let refused_after = cx.update(|_, app| view.read(app).doc.reused_blocks().2);
-    assert!(
-        built_after >= built + FRAMES as u64,
-        "the step did not build every frame: {built} -> {built_after}"
-    );
-    // A frame builds inside the draw only after its prepaint refused a
-    // placeholder of the step's tree (the screen check needs the frame).
+    // Refused blocks still cost another build, now in the document step.
+    let retries = refused_after - refused;
+    assert!(built_after >= built + FRAMES as u64 + retries);
     assert_eq!(
-        inside_after - inside,
-        refused_after - refused,
-        "frames were built inside draw without a refused placeholder"
+        inside_after, inside,
+        "prepared roots were rebuilt inside draw"
     );
     assert_eq!(seen, base, "the step changed what frames leave behind");
     for (arena, _, states) in &seen {

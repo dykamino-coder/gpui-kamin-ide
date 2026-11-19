@@ -72,7 +72,10 @@ fn a_skipped_block_that_reaches_the_screen_rebuilds_the_frame(cx: &mut TestAppCo
     update(&view, cx, &short);
     let (_, skipped, rebuilt) = reused(&view, cx);
     assert_eq!(rebuilt, 1, "blocks pulled into view were left skipped");
-    assert!(skipped > 300, "unaffected blocks lost their reuse: {skipped}");
+    assert!(
+        skipped > 300,
+        "unaffected blocks lost their reuse: {skipped}"
+    );
     assert_eq!(super::l0_tests::builds(&view, cx).1, 0);
     assert_eq!(super::box_repaint_tests::quads(cx), expected);
 }

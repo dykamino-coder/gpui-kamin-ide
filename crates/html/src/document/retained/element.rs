@@ -1,11 +1,5 @@
-//! Элемент сохраняемого кадра: собирает и записывает кадр документа либо
-//! повторяет записанный в прошлом кадре.
-//!
-//! Решение принимается на prepaint, когда известны границы и окружение окна.
-//! Кандидат повтора на раскладке занимает узел того же размера, что коробка
-//! области просмотра; если запись не подошла, дерево собирается здесь же и
-//! раскладывается отдельным корнем в тех же границах. Коробка имеет точный
-//! размер, поэтому её содержимое раскладывается так же, как в потоке.
+//! Draw the prepared root or replay the recorded frame. A host that changes
+//! the placement or skips the document step supplies its final inputs here.
 
 use super::record::{Inputs, Record};
 use super::window_key::WindowKey;
@@ -33,6 +27,7 @@ pub(super) struct Retained {
     /// элемента документа под этим местом в кадре: коробка области просмотра
     /// — лист её размера.
     laid_out: Option<gpui::ElementPlace>,
+    checked: Option<super::prepared::CheckedRoot>,
 }
 
 impl Retained {
@@ -56,6 +51,7 @@ impl Retained {
                 scheduled: prepared.scheduled,
                 replay: false,
                 laid_out: Some(prepared.parent),
+                checked: Some(prepared.checked),
             };
         }
         let (tree, flow) = if candidate {
@@ -75,6 +71,7 @@ impl Retained {
             scheduled: 0,
             replay: false,
             laid_out: None,
+            checked: None,
         }
     }
 
@@ -146,37 +143,40 @@ impl Element for Retained {
         let root = window.retained_root_environment();
         window.with_element_state::<Record, _>(id, |record, window| {
             let before = window.next_frame_callback_count();
-            // Состояние элемента живёт кадр: без него прошлый кадр окна не
-            // рисовал документ, и повтор блоков из него невозможен.
-            self.builder.store.draw(record.is_some());
-            let record = record.filter(|r| {
-                self.tree.is_none() && r.matches(&self.slot, self.key.as_ref(), bounds, window, cx)
-            });
-            if let Some(r) = &record
-                && !window.retained_replayable(&r.prepaint, &r.paint)
-            {
+            let environment = self
+                .key
+                .as_ref()
+                .map(|_| WindowKey::capture(bounds, window, cx));
+            let mut state = record.unwrap_or_default();
+            let epoch = state.begin(&self.builder.store, window);
+            let candidate = self.tree.is_none()
+                && state.matches(&self.slot, self.key.as_ref(), environment.as_ref(), window);
+            if candidate && !window.retained_replayable(&state.prepaint, &state.paint) {
                 self.slot.unreplayable.set(true);
                 self.slot.recorded.take();
             }
-            if self.tree.is_none()
-                && root
+            if root
                 && !self.slot.unreplayable.get()
-                && let Some(record) = record.filter(|_| self.builder.repaint_boxes(window, cx))
+                && candidate
+                && self.builder.repaint_boxes(window, cx)
             {
                 self.replay = true;
                 self.builder.store.forget_replays();
                 self.slot.replays.set(self.slot.replays.get() + 1);
-                let prepaint = window.replay_retained_prepaint(&record.prepaint);
-                return ((), Record { prepaint, ..record });
+                state.prepaint = window.replay_retained_prepaint(&state.prepaint);
+                return ((), state);
             }
-            // Заместитель, оказавшийся у экрана, отменяет пропуск: кадр
-            // собирается заново без заместителей (`layout::reuse`).
-            if let Some(flow) = self.flow.as_ref()
-                && self.tree.is_some()
+            if let Some(checked) = self.checked.take() {
+                if !checked.holds(epoch, environment.as_ref(), window) {
+                    self.tree = None;
+                    self.flow = None;
+                }
+            } else if let Some(flow) = &self.flow
                 && !flow.validate(window)
             {
                 flow.note_rebuild();
                 self.tree = None;
+                self.flow = None;
             }
             let prepaint = match self.tree.as_mut() {
                 // Разложено корнем до кадра: на место, как в `build_in`.
@@ -195,15 +195,15 @@ impl Element for Retained {
                 None => self.build_in(bounds, window, cx),
             };
             self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-            let record = Record {
-                inputs: self.key.clone().map(|key| {
-                    Inputs::new(key, WindowKey::capture(bounds, window, cx), window)
-                }),
-                prepaint,
-                paint: RetainedPaint::default(),
-                root,
-            };
-            ((), record)
+            state.inputs = self
+                .key
+                .clone()
+                .zip(environment)
+                .map(|(key, env)| Inputs::new(key, env, window));
+            state.prepaint = prepaint;
+            state.paint = RetainedPaint::default();
+            state.root = root;
+            ((), state)
         });
     }
 
@@ -221,6 +221,7 @@ impl Element for Retained {
         window.with_element_state::<Record, _>(id, |record, window| {
             let mut record = record.unwrap_or_default();
             if self.replay {
+                record.painted();
                 record.paint = window.replay_retained_paint(&record.paint);
                 if let Some(inputs) = &record.inputs {
                     inputs.replayed(window);
@@ -242,6 +243,7 @@ impl Element for Retained {
                 && self.scheduled == 0
                 && self.builder.state.values.frame_ready();
             record.paint = paint;
+            record.painted();
             record.publish(&self.slot, settled);
             ((), record)
         });
