@@ -41,10 +41,18 @@ fn hovered(cx: &mut VisualTestContext, view: &gpui::Entity<View>) -> u64 {
 fn the_paragraph_under_the_pointer_is_replayed_across_width_changes(cx: &mut TestAppContext) {
     let html = page();
     let (view, vcx) = open(cx, &html);
-    assert_eq!(hovered(vcx, &view), 2, "the hovered paragraph was built at a width change");
+    assert_eq!(
+        hovered(vcx, &view),
+        2,
+        "the hovered paragraph was built at a width change"
+    );
     let kept = scene(vcx);
     let (fresh, fcx) = open(cx, &html);
     fcx.simulate_mouse_move(point(px(200.), px(100.)), None, Modifiers::default());
     resize(&fresh, fcx, 801.);
-    assert_eq!(kept, scene(fcx), "the replayed frame at 801 differs from a fresh one");
+    assert_eq!(
+        kept,
+        scene(fcx),
+        "the replayed frame at 801 differs from a fresh one"
+    );
 }
