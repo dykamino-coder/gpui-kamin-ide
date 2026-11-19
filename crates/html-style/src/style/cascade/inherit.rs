@@ -35,6 +35,7 @@ mod marker;
 mod paint;
 mod quirks;
 mod self_align;
+mod unwrapped;
 use containing::inherit_containing;
 use decorate::decorate;
 pub use flow_align::note as note_flow_align;
@@ -42,6 +43,7 @@ pub use fragment::group as fragment_group_style;
 pub use marker::content as marker_content;
 pub use marker::symbol as marker_symbol;
 use paint::inherit_paint;
+pub use unwrapped::Unwrapped;
 
 // `zoom` (css-viewport-1) не делать домножением использованных длин здесь,
 // в `inherit` (с `zoom_eff`/`scale_px` в `Computed`): гейт `zoom_eff != 1.0`
