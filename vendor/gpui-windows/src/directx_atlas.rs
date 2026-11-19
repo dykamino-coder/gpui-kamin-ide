@@ -9,7 +9,7 @@ use windows::Win32::Graphics::{
 };
 
 use gpui::{
-    AtlasBackend, AtlasKey, AtlasState, AtlasTextureId, AtlasTextureKind, AtlasTextureList,
+    AtlasBackend, AtlasKey, AtlasState, AtlasTextureId, AtlasTextureKind,
     AtlasTile, Bounds, DevicePixels, PlatformAtlas, Point, Size,
 };
 
@@ -20,14 +20,20 @@ use gpui::{
 pub(crate) struct DirectXAtlas(
     Mutex<AtlasState<DirectXAtlasTextures>>,
     std::sync::atomic::AtomicU64,
+    // KaminIDE patch: repainted rectangles of external textures.
+    Mutex<external_damage::ExternalDamage>,
 );
+
+mod external_damage;
+mod texture_slots;
+use texture_slots::TextureSlots;
 
 struct DirectXAtlasTextures {
     device: ID3D11Device,
     device_context: ID3D11DeviceContext,
-    monochrome_textures: AtlasTextureList<DirectXAtlasTexture>,
-    polychrome_textures: AtlasTextureList<DirectXAtlasTexture>,
-    subpixel_textures: AtlasTextureList<DirectXAtlasTexture>,
+    monochrome_textures: TextureSlots<DirectXAtlasTexture>,
+    polychrome_textures: TextureSlots<DirectXAtlasTexture>,
+    subpixel_textures: TextureSlots<DirectXAtlasTexture>,
 }
 
 struct DirectXAtlasTexture {
@@ -51,7 +57,11 @@ impl DirectXAtlas {
             polychrome_textures: Default::default(),
             subpixel_textures: Default::default(),
         }));
-        DirectXAtlas(state, std::sync::atomic::AtomicU64::new(0))
+        DirectXAtlas(
+            state,
+            std::sync::atomic::AtomicU64::new(0),
+            Mutex::new(Default::default()),
+        )
     }
 
     /// KaminIDE patch: see the second field of `DirectXAtlas`.
@@ -63,23 +73,26 @@ impl DirectXAtlas {
         self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// KaminIDE patch: whether a sprite of `scene` (of its groups, or of the
-    /// retained layers it draws) samples an external texture, whose content
-    /// may differ from the last frame's.
-    pub(crate) fn samples_external(&self, scene: &gpui::Scene) -> bool {
+    /// KaminIDE patch: what the external textures sampled by `scene` changed
+    /// since the last call (`external_damage.rs`): `Unchanged` without
+    /// external textures or reported changes, `Unknown` when a change cannot
+    /// be placed. Each planned frame calls it once.
+    pub(crate) fn external_damage(&self, scene: &gpui::Scene) -> gpui::SceneDamage {
         let lock = self.0.lock();
-        let lock = &*lock;
-        fn external(lock: &AtlasState<DirectXAtlasTextures>, s: &gpui::Scene) -> bool {
-            s.polychrome_sprites.iter().any(|sprite| {
-                lock.backend
-                    .texture(sprite.tile.texture_id)
-                    .is_some_and(|t| t.external)
-            }) || s.groups.iter().any(|g| external(lock, &g.scene))
-                || (0..s.layer_count())
-                    .filter_map(|i| s.layer(i))
-                    .any(|layer| external(lock, layer.scene()))
-        }
-        external(lock, scene)
+        let list = &lock.backend.polychrome_textures;
+        let is_external = |index: u32| {
+            list.get(index)
+                .is_some_and(|t| t.external)
+        };
+        self.2.lock().take(scene, is_external)
+    }
+
+    /// KaminIDE patch: the producer of external texture `id` repainted
+    /// `rect` (texture pixels) of it. From the first call on, the texture's
+    /// changes are placed by these rectangles; the producer must report
+    /// every change.
+    pub(crate) fn damage_external(&self, id: AtlasTextureId, rect: Bounds<DevicePixels>) {
+        self.2.lock().mark(id.index, rect);
     }
 
     /// Returns the view backing `id`, or `None` once every tile in it has been
@@ -116,14 +129,9 @@ impl DirectXAtlas {
             [view]
         };
         let list = &mut lock.backend.polychrome_textures;
-        // KaminIDE patch: индексы из free_list НЕ переиспользуем. Кадр может
-        // быть построен до remove/unregister, а нарисован после (CEF-насос
-        // реентерабелен): спрайты с прошлым id в переиспользованном слоте
-        // выбирали пиксели чужого кадра CEF (коррапт атласа), а после
-        // освобождения слота texture() падал unwrap'ом на None. Слот на
-        // регистрацию — всегда новый; пустые слоты копятся (Option = дёшево).
+        // Never reuse an id: an in-flight external scene may still reference it.
         let id = AtlasTextureId {
-            index: list.textures.len() as u32,
+            index: list.next_id()?,
             kind: AtlasTextureKind::Polychrome,
         };
         let atlas_texture = DirectXAtlasTexture {
@@ -137,7 +145,7 @@ impl DirectXAtlas {
             live_atlas_keys: 0,
             external: true,
         };
-        list.textures.push(Some(atlas_texture));
+        list.insert(id.index, atlas_texture);
         Some(AtlasTile {
             texture_id: id,
             tile_id: gpui::TileId(0),
@@ -176,28 +184,24 @@ impl DirectXAtlas {
             }
             [view]
         };
-        let ix = id.index as usize;
-        let Some(Some(slot)) = lock.backend.polychrome_textures.textures.get_mut(ix) else {
+        let Some(slot) = lock.backend.polychrome_textures.get_mut(id.index) else {
             return false;
         };
         slot.texture = texture;
         slot.view = view;
         drop(lock);
+        self.2.lock().forget(id.index);
         self.bump();
         true
     }
 
-    /// KaminIDE patch: забыть чужую текстуру (её кадр больше не показываем).
-    /// Индекс в free_list НЕ возвращаем — см. register_external: спрайт из
-    /// кадра «в полёте» ещё может ссылаться на этот id, переиспользование
-    /// слота рисовало чужую текстуру вместо него.
+    /// Drop an external texture without retaining a vacant slot or reusing its id.
+    /// An older scene still naming the id will skip its missing texture.
     pub(crate) fn unregister_external(&self, id: AtlasTextureId) {
         let mut lock = self.0.lock();
-        let ix = id.index as usize;
-        if lock.backend.polychrome_textures.textures.get(ix).is_some() {
-            lock.backend.polychrome_textures.textures[ix] = None;
-        }
+        lock.backend.polychrome_textures.remove(id.index);
         drop(lock);
+        self.2.lock().forget(id.index);
         self.bump();
     }
 
@@ -210,11 +214,12 @@ impl DirectXAtlas {
         lock.clear(|textures| {
             textures.device = device.clone();
             textures.device_context = device_context.clone();
-            textures.monochrome_textures = AtlasTextureList::default();
-            textures.polychrome_textures = AtlasTextureList::default();
-            textures.subpixel_textures = AtlasTextureList::default();
+            textures.monochrome_textures = TextureSlots::default();
+            textures.polychrome_textures = TextureSlots::default();
+            textures.subpixel_textures = TextureSlots::default();
         });
         drop(lock);
+        *self.2.lock() = Default::default();
         self.bump();
     }
 }
@@ -231,7 +236,7 @@ impl DirectXAtlas {
             ("gpu/atlas/subpixel", &lock.backend.subpixel_textures),
         ];
         for (path, list) in lists {
-            for texture in list.textures.iter().flatten() {
+            for texture in list.iter() {
                 let used = texture.allocator.allocated_space().max(0) as u64;
                 sink(
                     path,
@@ -286,17 +291,11 @@ impl AtlasBackend for DirectXAtlasTextures {
             AtlasTextureKind::Subpixel => &mut self.subpixel_textures,
         };
 
-        let Some(texture_slot) = textures.textures.get_mut(id.index as usize) else {
-            return;
-        };
-
-        if let Some(mut texture) = texture_slot.take() {
+        if let Some(texture) = textures.get_mut(id.index) {
             texture.allocator.deallocate(tile.tile_id.into());
             texture.decrement_ref_count();
             if texture.is_unreferenced() {
-                textures.free_list.push(texture.id.index as usize);
-            } else {
-                *texture_slot = Some(texture);
+                textures.remove(id.index);
             }
         }
     }
@@ -394,11 +393,8 @@ impl DirectXAtlasTextures {
             AtlasTextureKind::Polychrome => &mut self.polychrome_textures,
             AtlasTextureKind::Subpixel => &mut self.subpixel_textures,
         };
-        // KaminIDE patch: индексы НЕ переиспользуем (см. register_external) —
-        // кадр «в полёте» со спрайтом старого владельца индекса рисовал чужую
-        // текстуру. Слоты-пустышки копятся медленно (полное освобождение
-        // атласной текстуры — редкость), Option в Vec дёшев.
-        let index: Option<usize> = None;
+        // Unique ids preserve stale-scene safety without retaining empty slots.
+        let index = texture_list.next_id()?;
         let view = unsafe {
             let mut view = None;
             self.device
@@ -408,7 +404,7 @@ impl DirectXAtlasTextures {
         };
         let atlas_texture = DirectXAtlasTexture {
             id: AtlasTextureId {
-                index: index.unwrap_or(texture_list.textures.len()) as u32,
+                index,
                 kind,
             },
             bytes_per_pixel,
@@ -418,13 +414,7 @@ impl DirectXAtlasTextures {
             live_atlas_keys: 0,
             external: false,
         };
-        if let Some(ix) = index {
-            texture_list.textures[ix] = Some(atlas_texture);
-            texture_list.textures.get_mut(ix).unwrap().as_mut()
-        } else {
-            texture_list.textures.push(Some(atlas_texture));
-            texture_list.textures.last_mut().unwrap().as_mut()
-        }
+        Some(texture_list.insert(index, atlas_texture))
     }
 
     // KaminIDE patch: Option вместо unwrap-паники. Слот может быть None:
@@ -436,7 +426,7 @@ impl DirectXAtlasTextures {
             AtlasTextureKind::Polychrome => &self.polychrome_textures,
             AtlasTextureKind::Subpixel => &self.subpixel_textures,
         };
-        textures.textures.get(id.index as usize)?.as_ref()
+        textures.get(id.index)
     }
 }
 
@@ -567,6 +557,29 @@ mod tests {
             })
             .expect("allocation should succeed")
             .expect("callback returns Some")
+    }
+
+    #[test]
+    fn empty_pages_are_released_without_reusing_stale_scene_ids() {
+        let atlas = create_atlas().expect("WARP device must be available");
+        let size = Size {
+            width: DevicePixels(700),
+            height: DevicePixels(700),
+        };
+        let mut previous = None;
+        for request in 0..64 {
+            let key = make_image_key(request);
+            let tile = insert_tile(&atlas, key.clone(), size);
+            if let Some(old) = previous {
+                assert_ne!(old, tile.texture_id);
+                assert!(atlas.get_texture_view(old).is_none());
+            }
+            assert_eq!(atlas.0.lock().backend.polychrome_textures.iter().count(), 1);
+            atlas.remove(&key);
+            assert!(atlas.get_texture_view(tile.texture_id).is_none());
+            assert_eq!(atlas.0.lock().backend.polychrome_textures.iter().count(), 0);
+            previous = Some(tile.texture_id);
+        }
     }
 
     #[test]

@@ -44232,6 +44232,13 @@ var import_fs4 = require("fs");
 var import_promises8 = __toESM(require("fs/promises"), 1);
 var import_path5 = __toESM(require("path"), 1);
 var MAX_APPEND_GAP_BYTES = 256 * 1024;
+function uuidProof(records, previous) {
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i];
+    if (r.uuid && typeof r._pos === "number") return { lastUuid: r.uuid, lastPos: r._pos };
+  }
+  return { lastUuid: previous?.lastUuid, lastPos: previous?.lastPos };
+}
 var TranscriptMirror = class {
   file;
   sidecar;
@@ -44370,8 +44377,7 @@ var TranscriptMirror = class {
       this.cursor = {
         head,
         pos: last._posEnd ?? this.cursor?.pos ?? 0,
-        lastUuid: last.uuid ?? this.cursor?.lastUuid,
-        lastPos: last._pos
+        ...uuidProof(fresh, this.cursor)
       };
       this.scheduleSidecar();
     }).catch(() => {
@@ -44412,7 +44418,7 @@ var TranscriptMirror = class {
         await this.close();
         await import_promises8.default.appendFile(this.file, fresh.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
         const last2 = fresh.at(-1);
-        this.cursor = { head, pos: last2._posEnd ?? existing.pos, lastUuid: last2.uuid, lastPos: last2._pos };
+        this.cursor = { head, pos: last2._posEnd ?? existing.pos, ...uuidProof(fresh, existing) };
         await this.writeSidecar();
         return;
       }
@@ -44420,7 +44426,7 @@ var TranscriptMirror = class {
       const payload = ordered.map((r) => JSON.stringify(r)).join("\n") + "\n";
       await import_promises8.default.writeFile(this.file, payload, "utf8");
       const last = ordered[ordered.length - 1];
-      this.cursor = { head, pos: last._posEnd ?? 0, lastUuid: last.uuid, lastPos: last._pos };
+      this.cursor = { head, pos: last._posEnd ?? 0, ...uuidProof(ordered) };
       await this.writeSidecar();
     }).catch(() => {
     });

@@ -15,6 +15,7 @@ use super::diag_log::Log;
 
 mod logger;
 pub(super) use logger::install as install_logger;
+pub(crate) use logger::trace_frames;
 
 /// Сколько строк ждут записи, пока писатель стоит на диске. За 11 с простоя
 /// сводки набирается ~150 строк; лишнее отбрасывается со счётом.

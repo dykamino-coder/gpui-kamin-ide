@@ -53,5 +53,6 @@ impl Paragraph {
             return;
         }
         self.paint_flat(id, bounds, hitbox, window, cx);
+        self.keep_painted();
     }
 }

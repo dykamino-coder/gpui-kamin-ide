@@ -21,6 +21,9 @@ pub(crate) struct Replay {
     pub(super) origin: Point<ScaledPixels>,
     pub(super) mask: Bounds<Pixels>,
     pub(super) epoch: u64,
+    /// The output draws the same pixels moved with its block
+    /// (`Window::retained_movable`): it replays at a new place too.
+    pub(super) movable: bool,
 }
 
 impl Replay {
@@ -43,6 +46,8 @@ pub(super) struct Slot {
     /// The block's paint-only values changed since the record
     /// (Store::same_tree): the leaf holds, the recorded paint does not.
     repaint: bool,
+    /// Where the block lies in this frame, and how far its output moves.
+    placed: Cell<(Point<ScaledPixels>, Point<Pixels>)>,
     /// Not painted, and its leaf with its ink is off the screen of this
     /// frame (`FlowReuse::validate`): a repainted box inside shows nothing.
     clear: Cell<bool>,
@@ -56,8 +61,14 @@ impl Slot {
             replay: Cell::new(None),
             stretched,
             repaint,
+            placed: Cell::new(Default::default()),
             clear: Cell::new(false),
         }
+    }
+
+    /// The block lies at `origin`, its output moved by `offset`.
+    pub(super) fn place(&self, origin: Point<ScaledPixels>, offset: Point<Pixels>) {
+        self.placed.set((origin, offset));
     }
 
     pub(super) fn stretched(&self) -> bool {
@@ -154,7 +165,8 @@ impl Hooks for Placeholder {
             .as_ref()
             .map(|r| r.prepaint.clone());
         if let Some(prepaint) = prepaint {
-            let prepaint = window.replay_retained_prepaint(&prepaint);
+            let (_, offset) = self.slot.placed.get();
+            let prepaint = window.replay_retained_prepaint_moved(&prepaint, offset);
             self.update(|r| r.prepaint = prepaint);
         }
     }
@@ -179,14 +191,16 @@ impl Hooks for Placeholder {
             .map(|r| (r.paint.clone(), r.deferred.clone()));
         if let Some((paint, deferred)) = replay {
             // Строки вне открытого кадра рисуются на месте: в выводе блока.
+            let (origin, offset) = self.slot.placed.get();
             let (deferred, paint) = window.record_retained_paint(|window| {
-                window.replay_retained_paint(&paint);
-                crate::hooks::replay_deferred(window, &deferred)
+                window.replay_retained_paint_moved(&paint, offset);
+                crate::hooks::replay_deferred_moved(window, &deferred, offset)
             });
             self.update(|r| {
                 r.paint = paint;
                 r.deferred = deferred;
                 r.epoch = epoch;
+                r.origin = origin;
             });
         }
     }

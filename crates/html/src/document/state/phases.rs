@@ -10,6 +10,8 @@ use std::rc::Rc;
 pub struct DocState {
     /// The full-page view's canonical scroll owner; absent for ordinary builds and print.
     pub(crate) root_scroll: Option<Rc<crate::document::viewport::RootScroll>>,
+    /// The single mutable box tree of this line of document revisions.
+    pub(crate) boxes: Rc<std::cell::RefCell<crate::document::boxes::BoxTree>>,
     /// Нижние данные: арены, at-правила, метрики корня, ресурсы, шрифтовые факты.
     pub(crate) values: Rc<DocumentValues>,
     /// Anchor registries and root frame geometry of the layout phase of this document.
@@ -48,7 +50,7 @@ impl DocState {
         Self::with_paragraphs(
             media,
             crate::text::paragraph_state::ParagraphState::continuing(&previous.paragraph),
-            Some(&previous.values),
+            Some(previous),
             previous.root_scroll.clone(),
         )
     }
@@ -62,6 +64,7 @@ impl DocState {
     pub(crate) fn adopting(previous: &Self) -> Rc<Self> {
         Rc::new(Self {
             root_scroll: previous.root_scroll.clone(),
+            boxes: previous.boxes.clone(),
             values: previous.values.clone(),
             layout: Rc::new(crate::layout::layout_state::LayoutState::continuing(
                 &previous.layout,
@@ -76,7 +79,7 @@ impl DocState {
     fn with_paragraphs(
         media: Media,
         paragraph: crate::text::paragraph_state::ParagraphState,
-        previous: Option<&DocumentValues>,
+        previous: Option<&Self>,
         root_scroll: Option<Rc<crate::document::viewport::RootScroll>>,
     ) -> Rc<Self> {
         let text = Rc::<crate::text::text_fonts::TextFonts>::default();
@@ -87,11 +90,12 @@ impl DocState {
             Rc::new(crate::text::font_facts::Backend::new(values, fonts))
         };
         let values = match previous {
-            Some(previous) => DocumentValues::continuing(previous, media, fonts),
+            Some(previous) => DocumentValues::continuing(&previous.values, media, fonts),
             None => DocumentValues::new(media, fonts),
         };
         Rc::new(Self {
             root_scroll,
+            boxes: previous.map(|p| p.boxes.clone()).unwrap_or_default(),
             values,
             layout: Default::default(),
             text,

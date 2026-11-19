@@ -46,6 +46,8 @@ describe('model catalog', () => {
         shell_type: 'disabled',
         experimental_supported_tools: [],
         multi_agent_version: 'disabled',
+        use_responses_lite: false,
+        default_reasoning_summary: 'auto',
       })
     }
     expect(patched.models[0]!.tool_mode).toBe('code_mode_only')

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import http from 'node:http'
 import fs from 'node:fs'
-import { CliModTransport, POLL_HOLD_MS, createCliModTransport } from './cli-mod-transport'
+import { CliModTransport, POLL_HOLD_MS, createCliModTransport, resetCliVersionProbes } from './cli-mod-transport'
 import type { CliHandlerConditions } from '../hooks/cli-handler-conditions'
 
 const transports: CliModTransport[] = []
@@ -13,6 +13,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
   versionProbe.mockReset()
+  resetCliVersionProbes()
 })
 async function setup() {
   const transport = new CliModTransport('session-a')
@@ -33,7 +34,7 @@ async function setup() {
           protocol: 1,
           session: 'session-a',
           instance: 'one',
-          version: '2.1.322',
+          version: '2.1.328',
           turnId: null,
           ...extra,
         }),
@@ -60,7 +61,7 @@ describe('private mod transport', () => {
   socketIt('enables the pinned CLI by default, using the session invocation and environment', async () => {
     vi.stubEnv('BRIDGE_CLI_MOD', undefined)
     vi.stubGlobal('process', { ...process, platform: 'linux' })
-    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.322 (Claude Code)\n'))
+    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.328 (Claude Code)\n'))
     const cli = { command: '/cli/claude', prefix: ['--custom'], env: { PATH: '/cli' } }
     const transport = await createCliModTransport('default', cli)
     expect(transport).toBeDefined()
@@ -72,7 +73,7 @@ describe('private mod transport', () => {
       expect.any(Function),
     )
   })
-  it.each(['2.1.312 (Claude Code)', '2.1.323 (Claude Code)', 'unknown', ''])(
+  it.each(['2.1.312 (Claude Code)', '2.1.329 (Claude Code)', 'unknown', ''])(
     'falls back cleanly for CLI %j',
     async (version) => {
       vi.stubEnv('BRIDGE_CLI_MOD', undefined)
@@ -91,7 +92,7 @@ describe('private mod transport', () => {
     expect(await createCliModTransport('unused')).toBeUndefined()
   })
   socketIt('disposes a transport whose socket cannot listen', async () => {
-    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.322 (Claude Code)'))
+    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.328 (Claude Code)'))
     vi.spyOn(CliModTransport.prototype, 'listen').mockRejectedValue(new Error('socket unavailable'))
     const dispose = vi.spyOn(CliModTransport.prototype, 'dispose')
     expect(await createCliModTransport('unused')).toBeUndefined()
@@ -200,7 +201,7 @@ describe('private mod transport', () => {
     await call('/hello')
     const req = http.request({ socketPath: transport.socketPath, path: '/hooks/prepare', method: 'POST' })
     req.on('error', () => {})
-    req.end(JSON.stringify({ protocol: 1, session: 'session-a', version: '2.1.322', instance: 'one', generation: 'a' }))
+    req.end(JSON.stringify({ protocol: 1, session: 'session-a', version: '2.1.328', instance: 'one', generation: 'a' }))
     await ready
     const cancelled = new Promise<void>((resolve) =>
       observed.addEventListener('abort', () => resolve(), { once: true }),

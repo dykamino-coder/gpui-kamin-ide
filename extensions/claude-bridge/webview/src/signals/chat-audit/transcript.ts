@@ -128,7 +128,12 @@ export function asPaged(recs: readonly Rec[]): JsonlEntryData[] {
   return recs.map((r) => { const c = clone(r); (c as { _ord?: number })._ord = c._pos; return c })
 }
 
-/** Rows as the live tail delivers them: untagged. */
+/** Rows as the live tail of the current server delivers them: `_pos`, no `_ord`. */
+export function asTaggedLive(recs: readonly Rec[]): JsonlEntryData[] {
+  return recs.map((r) => { const c = clone(r); delete (c as { _ord?: number })._ord; return c })
+}
+
+/** Rows as the live tail of an older server delivers them: untagged. */
 export function asLive(recs: readonly Rec[]): JsonlEntryData[] {
   return recs.map((r) => { const c = clone(r); delete c._pos; delete (c as { _ord?: number })._ord; return c })
 }

@@ -11,18 +11,21 @@ pub use markup5ever_rcdom::NodeKey;
 mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};
+mod box_id;
+pub use box_id::BoxId;
 mod children;
 mod same_tree;
 pub use same_tree::{
-    BoxStyles, CascadedMemo, paints_without_color, same_box, same_cascaded_box, same_cascaded_tree,
-    same_layout_box, same_layout_tree_as, same_shell, same_tree, same_tree_as,
+    BoxStyles, CascadedMemo, paints_without_color, same_box, same_cascaded_box,
+    same_cascaded_layout_stages, same_cascaded_tree, same_cascaded_values, same_layout_box,
+    same_layout_stages, same_layout_tree_as, same_shell, same_tree, same_tree_as,
     same_unread_color_tree_as, same_values,
 };
 mod intrinsic;
 pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
 pub mod invalidation;
 pub mod traversal;
-pub use children::{Children, ChildrenMark};
+pub use children::{BoxTextFacts, BoxTreeSummary, Children, ChildrenMark};
 mod direction;
 pub mod early_admission;
 mod shared_style;

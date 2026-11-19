@@ -153,7 +153,6 @@ impl LayoutCx {
             values: self.vcx(),
             lines: self.fragmentation.lines.as_ref(),
             lengths: Some(&self.contracts.lengths),
-            subtrees: Some(&self.contracts.subtrees),
             paint: Some(&self.deferred.paint),
             layout: self.layout(),
         }

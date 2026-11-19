@@ -14,6 +14,7 @@ pub(crate) type BuildTrials =
 /// Готовая геометрия остаётся в исходной раскладке; отложенная строится один раз.
 pub(crate) enum OofKid {
     Ready(AnyElement),
+    Prepared(AnyElement),
     Waiting(crate::layout::positioned::anchor::Dependencies, Box<OofKid>),
     Deferred(BuildOof, Option<DeferredPaint>),
     Trials(BuildTrials, Option<DeferredPaint>),
@@ -22,23 +23,29 @@ pub(crate) enum OofKid {
 type Item = (SpotCell, OofKid);
 pub(crate) type Place = fn(SpotCell, AnyElement) -> AnyElement;
 
+#[derive(Default)]
+struct QueueState {
+    items: RefCell<VecDeque<Item>>,
+    preparation: RefCell<Option<prepare::HostLayout>>,
+}
+
 #[derive(Clone)]
 pub(super) struct OofQueue {
-    items: Rc<RefCell<VecDeque<Item>>>,
-    destination: Rc<RefCell<Weak<RefCell<VecDeque<Item>>>>>,
+    state: Rc<QueueState>,
+    destination: Rc<RefCell<Weak<QueueState>>>,
     pending: pending::Pending,
     initial: bool,
 }
 
 #[derive(Clone)]
-pub(super) struct Destination(Rc<RefCell<Weak<RefCell<VecDeque<Item>>>>>, pending::Pending);
+pub(super) struct Destination(Rc<RefCell<Weak<QueueState>>>, pending::Pending);
 
 impl Default for OofQueue {
     fn default() -> Self {
-        let items = Rc::default();
+        let state = Rc::default();
         Self {
-            destination: Rc::new(RefCell::new(Rc::downgrade(&items))),
-            items,
+            destination: Rc::new(RefCell::new(Rc::downgrade(&state))),
+            state,
             pending: Default::default(),
             initial: false,
         }
@@ -47,8 +54,8 @@ impl Default for OofQueue {
 
 impl Destination {
     pub(super) fn upgrade(&self) -> Option<OofQueue> {
-        self.0.borrow().upgrade().map(|items| OofQueue {
-            items,
+        self.0.borrow().upgrade().map(|state| OofQueue {
+            state,
             destination: self.0.clone(),
             pending: self.1.clone(),
             initial: false,
@@ -58,6 +65,7 @@ impl Destination {
 
 mod host;
 mod pending;
+mod prepare;
 pub(super) use pending::Pending;
 
 impl OofQueue {
@@ -103,7 +111,11 @@ impl OofQueue {
     /// его ещё не построенных потомков сохраняют тот же перенаправляемый адрес.
     pub(super) fn commit_to(&self, destination: &Destination) {
         if let Some(target) = destination.upgrade() {
-            target.items.borrow_mut().extend(self.items.take());
+            target
+                .state
+                .items
+                .borrow_mut()
+                .extend(self.state.items.take());
         }
         *self.destination.borrow_mut() = destination.0.borrow().clone();
     }
@@ -117,28 +129,28 @@ impl OofQueue {
             self.pending.observe(deps);
         }
         if let Some(items) = self.destination.borrow().upgrade() {
-            items.borrow_mut().push_back((spot, kid));
+            items.items.borrow_mut().push_back((spot, kid));
         }
     }
 
     pub(super) fn len(&self) -> usize {
-        self.items.borrow().len()
+        self.state.items.borrow().len()
     }
 
     pub(super) fn is_empty(&self) -> bool {
-        self.items.borrow().is_empty()
+        self.state.items.borrow().is_empty()
     }
 
     pub(super) fn place(self, place: Place) -> Vec<AnyElement> {
         let mut ready = Vec::new();
         let mut deferred = VecDeque::new();
-        for (spot, kid) in self.items.take() {
+        for (spot, kid) in self.state.items.take() {
             match kid {
                 OofKid::Ready(element) => ready.push(place(spot, element)),
                 other => deferred.push_back((spot, other)),
             }
         }
-        *self.items.borrow_mut() = deferred;
+        *self.state.items.borrow_mut() = deferred;
         // Пустое назначение тоже нужно: выпавший потомок может прийти из
         // вложенного хоста позже. Слабые ссылки не образуют цикл с build.
         if self.initial || !self.is_empty() || Rc::strong_count(&self.destination) > 1 {

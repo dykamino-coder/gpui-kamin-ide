@@ -64,6 +64,7 @@ Wait for `[FAKE] turn complete` / Stop before issuing the next command.
 | `/fake-next-usage`      | Later eligible assistant usage of 17000 tokens                                                                  |
 | `/fake-mcp`             | initialize, tools/list, Bash tools/call, then waits for actual tool result                                      |
 | `/usage`                | Fable/promotion TUI usage layout                                                                                |
+| `/fake-stream 20 50 t1` | Load turn: 20 timed assistant blocks 50 ms apart tagged `t1`, one client tool round trip in the middle          |
 | `/exit`                 | SessionEnd and process exit (Ctrl+C interrupts immediately)                                                     |
 
 Ordinary text yields a fixed synthetic response. Prompts are not recorded;
@@ -72,6 +73,41 @@ within the existing CLI slug and rejects unknown IDs. CLI `--output-format strea
 accepts newline user envelopes and emits init/assistant/result envelopes for protocol
 smoke tests. The Bridge interactive path uses disk JSONL rather than parsing these
 stdout envelopes. This is a bounded simulator, not an LLM or a full Claude TUI emulator.
+
+## Server load run
+
+`load.mjs` is a protocol-level client: each simulated workspace container owns
+one Bridge token and `--sessions` chat sockets, answers MCP tool calls like a
+client host and measures what its user sees. Phases (`--phases`, comma list):
+`open` (create every chat over `--ramp` seconds), `turn` (one `/fake-stream`
+turn per chat within `--jitter` ms), `idle` (`--idle` seconds, counts socket
+bytes), `wake` (another turn, e.g. after hibernation), `reconnect` (a turn whose
+socket is dropped after a third of its blocks, then `session:resume` and
+`jsonl:sync-request` from the client's mirror), `resume` (`session:end`, cold
+`session:resume`, one more turn) and `close`. It reports p50/p95/p99 of the
+first block after submit (`ttft`), gaps between blocks, emit-to-arrival
+delivery, open/reattach/cold-resume times, lost and duplicated blocks and idle
+traffic as JSON, plus the whole-run wire bytes per chat (`traffic`). By default
+(`--history paged`) it speaks the KaminIDE client protocol: paged history on
+create and resume, and a reattach that carries the mirror cursor built from
+`_pos`/`_posEnd` and the watcher's `fileHead`. `--history legacy` is the
+pre-paged client (full replay on attach plus `jsonl:sync-request`); duplicates
+there are that protocol's, not the product's. `load-sampler.mjs` prints one line per tick with the server
+process CPU, RSS, fds and sockets, the fake CLIs and the container cgroup.
+
+Run both in your own Linux containers (or one host process) with the fake CLI
+selected as above; the client must reach the server's loopback, for example a
+second container started with `--network container:<server>`:
+
+```sh
+node test-support/load-sampler.mjs 5000 > samples.jsonl &   # in the server container
+node test-support/load.mjs --clients 20 --sessions 10 --blocks 20 --interval 50 \
+  --ramp 20 --jitter 2000 --idle 120 --out run.json         # in the client container
+```
+
+The fake CLI is a lower bound for per-chat CPU and memory: it has no model
+stream, no mod input channel (input goes through the terminal submit path) and
+no streaming proxy, so it measures the server's own work, not real CLI cost.
 
 ## Interrupted MCP delivery: INC-0057
 

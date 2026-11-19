@@ -29,6 +29,26 @@ impl Window {
         grayscale: bool,
         sampling: ImageSampling,
     ) -> Result<()> {
+        self.paint_image_with_sampling_tile(
+            bounds,
+            corner_radii,
+            data,
+            frame_index,
+            grayscale,
+            sampling,
+        )
+        .map(|_| ())
+    }
+
+    pub(super) fn paint_image_with_sampling_tile(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+        grayscale: bool,
+        sampling: ImageSampling,
+    ) -> Result<Option<AtlasTile>> {
         self.invalidator.debug_assert_paint();
         let scale_factor = self.scale_factor();
         let bounds = bounds.scale(scale_factor);
@@ -52,6 +72,7 @@ impl Window {
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
+        let before = self.next_frame.scene.len();
         self.next_frame.scene.insert_primitive(PolychromeSprite {
             transformation,
             order: 0,
@@ -77,6 +98,6 @@ impl Window {
             tile,
             opacity,
         });
-        Ok(())
+        Ok((self.next_frame.scene.len() > before).then_some(tile))
     }
 }

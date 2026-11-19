@@ -43,7 +43,7 @@ impl BackgroundImages {
                         url: url.clone(),
                         options: DecodeOptions {
                             orientation,
-                            colour: ColourPolicy::Preserve,
+                            colour: ColourPolicy::CssBgra,
                         },
                     })
                 });
@@ -62,7 +62,7 @@ impl BackgroundImages {
                     Some(ImageState::Ready { image, .. }) => Fact {
                         availability: ImageAvailability::Ready,
                         uniform: match image {
-                            DecodedImage::Raster(r) => uniform(&super::presentation::raster(r)),
+                            DecodedImage::Raster(r) => uniform(r),
                             DecodedImage::Vector(_) => None,
                         },
                     },

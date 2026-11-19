@@ -1313,6 +1313,11 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// KaminIDE patch: забыть чужую текстуру.
     fn unregister_external_texture(&self, _id: AtlasTextureId) {}
 
+    /// KaminIDE patch: the producer repainted `rect` (texture pixels) of an
+    /// external texture. From the first call its changes are looked for only
+    /// in such rectangles, so every change must be reported.
+    fn damage_external_texture(&self, _id: AtlasTextureId, _rect: Bounds<DevicePixels>) {}
+
     fn can_start_external_drag(&self) -> bool {
         false
     }
