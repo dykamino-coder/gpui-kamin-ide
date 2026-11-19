@@ -8,7 +8,7 @@
 //! меняются в одном кадре окна.
 
 use gpui::prelude::*;
-use gpui::{Div, Rgba, div, px};
+use gpui::{AnyElement, Div, Rgba, div, px};
 
 /// Кадры: от точки к звезде и обратно. Только символы без цветного emoji-вида:
 /// `✳` (U+2733) подхватывал Segoe UI Emoji и рисовался зелёным квадратом,
@@ -19,20 +19,26 @@ const STEP_MS: u64 = 120;
 /// Кадр при reduced motion (RDP): статичная звезда без потока кадров.
 const STILL: &str = "✻";
 
-/// Кэшированному вью `id` со спиннером нужен кадр на следующем шаге глифа.
-pub(crate) fn request_frame(id: gpui::EntityId) {
-    if !crate::win_integration::reduce_motion() {
-        crate::ui::anim_tick::step_for_view(id, STEP_MS);
+/// Квадрат `size_px` с текущим глифом цвета `color`. Шаг глифа
+/// перерисовывает только квадрат (`ui::ticking`), а не окно (INC-2026-0064).
+pub(crate) fn glyph_spinner(
+    id: impl Into<gpui::ElementId>,
+    size_px: f32,
+    color: Rgba,
+) -> AnyElement {
+    if crate::win_integration::reduce_motion() {
+        return glyph(size_px, color, STILL).into_any_element();
     }
+    crate::ui::ticking::ticking(id, STEP_MS, move |n| {
+        glyph(size_px, color, FRAMES[(n % FRAMES.len() as u64) as usize]).into_any_element()
+    })
+    .w(px(size_px))
+    .h(px(size_px))
+    .flex_shrink_0()
+    .into_any_element()
 }
 
-/// Квадрат `size_px` с текущим глифом цвета `color`.
-pub(crate) fn glyph_spinner(size_px: f32, color: Rgba) -> Div {
-    let glyph = if crate::win_integration::reduce_motion() {
-        STILL
-    } else {
-        FRAMES[(crate::ui::anim_tick::step(STEP_MS) % FRAMES.len() as u64) as usize]
-    };
+fn glyph(size_px: f32, color: Rgba, glyph: &'static str) -> Div {
     div()
         .w(px(size_px))
         .h(px(size_px))

@@ -55,6 +55,9 @@ impl Document {
         match plan {
             Plan::Clean(nodes) => {
                 if let Some(nodes) = nodes {
+                    // Plan::Clean proves that all inputs read are unchanged:
+                    // only unread attributes are updated.
+                    crate::document::boxes::BoxTree::edit(&self.state.boxes).rebind(&nodes);
                     self.nodes = Rc::new(nodes);
                     self.tree = crate::document::scope::next_tree();
                 }
@@ -174,6 +177,11 @@ impl Document {
         state.values.admit_revision(revision.clone(), base.as_ref());
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
+        crate::document::boxes::BoxTree::edit(&state.boxes).publish_document(
+            &nodes,
+            Some(&self.nodes),
+            &state.values,
+        );
         match restyled {
             // A restyle reaches the records as a rebuild's does.
             Some(ids) => self.reuse.restyle(&self.nodes, &nodes, ids),
@@ -194,6 +202,7 @@ impl Document {
             base_url: self.base_url.clone(),
             xml: self.xml,
             last_failure: None,
+            media_reads: self.media_reads.clone(),
             #[cfg(feature = "engine-bench")]
             timings,
         }

@@ -245,5 +245,6 @@ mod heap;
 use facts::BoxFacts;
 mod restyle;
 mod same;
+mod shared_used;
 #[cfg(test)]
 mod tests;

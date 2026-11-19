@@ -46,7 +46,7 @@ pub fn same_layout_box(a: &Element, b: &Element) -> bool {
         && same_kind(a, b)
         && (a.attrs == b.attrs || a.attrs.iter().filter(read).eq(b.attrs.iter().filter(read)))
         && a.marks == b.marks
-        && BoxStyles::same_layout_as(&a.style, layers(a), b)
+        && BoxStyles::same_stages_as(&a.style, layers(a), b, SharedStyle::same_layout)
 }
 
 /// Whether the subtree of `b` lays out like the recorded one of `same_tree_as`:
@@ -64,7 +64,28 @@ pub fn same_layout_tree_as(
 }
 
 fn same_layout_styles(a: &Element, b: &Element) -> bool {
-    a.marks == b.marks && BoxStyles::same_layout_as(&a.style, layers(a), b)
+    a.marks == b.marks
+        && BoxStyles::same_stages_as(&a.style, layers(a), b, SharedStyle::same_layout)
+}
+
+/// Whether the style stages of two elements (style and pseudo-element layers)
+/// are equal but for paint-only values (`Computed::same_layout`).
+pub fn same_layout_stages(a: &Element, b: &Element) -> bool {
+    BoxStyles::same_stages_as(&a.style, layers(a), b, SharedStyle::same_layout)
+}
+
+/// `same_layout_stages` by the cascaded styles, the derived stages compared
+/// only where both elements have them (`SharedStyle::same_cascaded_layout`):
+/// for elements whose parents have the same computed styles.
+pub fn same_cascaded_layout_stages(a: &Element, b: &Element) -> bool {
+    BoxStyles::same_stages_as(&a.style, layers(a), b, SharedStyle::same_cascaded_layout)
+}
+
+/// `same_box` by the cascaded styles, as `same_cascaded_layout_stages`.
+pub fn same_cascaded_values(a: &Element, b: &Element) -> bool {
+    a.node_id == b.node_id
+        && same_shell(a, b)
+        && BoxStyles::same_stages_as(&a.style, layers(a), b, SharedStyle::same_cascaded)
 }
 
 /// Whether two elements carry the same values apart from their children,
@@ -78,72 +99,8 @@ fn same_styles(a: &Element, b: &Element) -> bool {
     a.marks == b.marks && BoxStyles::same_as(&a.style, layers(a), b)
 }
 
-fn layers(e: &Element) -> [Option<&SharedStyle>; 3] {
+pub(super) fn layers(e: &Element) -> [Option<&SharedStyle>; 3] {
     [&e.hover, &e.first_letter, &e.first_line].map(Option::as_ref)
-}
-
-/// The style stages of one box: its style and the pseudo-element layers,
-/// which most boxes do not have. Shared stages are pointers into the
-/// styles of the build they were taken from.
-#[derive(Clone)]
-pub struct BoxStyles {
-    style: SharedStyle,
-    layers: Option<Box<[Option<SharedStyle>; 3]>>,
-}
-
-impl BoxStyles {
-    pub fn of(e: &Element) -> Self {
-        let layers = layers(e).map(Option::<&SharedStyle>::cloned);
-        let layers = layers.iter().any(Option::is_some).then(|| Box::new(layers));
-        let style = e.style.clone();
-        Self { style, layers }
-    }
-
-    /// The element `shell` with these style stages.
-    pub fn apply(&self, shell: &Element) -> Element {
-        let [hover, first_letter, first_line] = self.layers.as_deref().cloned().unwrap_or_default();
-        Element {
-            style: self.style.clone(),
-            hover,
-            first_letter,
-            first_line,
-            ..shell.clone()
-        }
-    }
-
-    fn same(&self, b: &Element) -> bool {
-        let layers = self
-            .layers
-            .as_deref()
-            .map(|l| l.each_ref().map(Option::as_ref));
-        Self::same_as(&self.style, layers.unwrap_or_default(), b)
-    }
-
-    fn same_as(style: &SharedStyle, own: [Option<&SharedStyle>; 3], b: &Element) -> bool {
-        let layer = |x: Option<&SharedStyle>, y: Option<&SharedStyle>| match (x, y) {
-            (None, None) => true,
-            (Some(x), Some(y)) => x.same(y),
-            _ => false,
-        };
-        style.same(&b.style) && own.into_iter().zip(layers(b)).all(|(x, y)| layer(x, y))
-    }
-
-    fn same_layout(&self, b: &Element) -> bool {
-        let layers = self
-            .layers
-            .as_deref()
-            .map(|l| l.each_ref().map(Option::as_ref));
-        Self::same_layout_as(&self.style, layers.unwrap_or_default(), b)
-    }
-
-    fn same_layout_as(style: &SharedStyle, own: [Option<&SharedStyle>; 3], b: &Element) -> bool {
-        let layer = |x: Option<&SharedStyle>, y: Option<&SharedStyle>| match (x, y) {
-            (None, None) => true,
-            (Some(x), Some(y)) => x.same_layout(y),
-            _ => false,
-        };
-        style.same_layout(&b.style) && own.into_iter().zip(layers(b)).all(|(x, y)| layer(x, y))
-    }
 }
 
 /// Whether two subtrees carry the same values throughout.
@@ -218,6 +175,8 @@ fn same_children<'a>(
     true
 }
 
+mod box_styles;
+pub use box_styles::BoxStyles;
 mod cascaded;
 pub use cascaded::{CascadedMemo, same_cascaded_box, same_cascaded_tree};
 mod unread_color;

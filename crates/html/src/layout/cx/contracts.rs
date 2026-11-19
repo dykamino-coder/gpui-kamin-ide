@@ -19,8 +19,6 @@ pub(crate) struct BuildContext {
     pub(crate) paragraph_frame_started: bool,
     /// Семантические коробки на пути сборки; не число служебных обёрток GPUI.
     pub(crate) reflow_depth: usize,
-    /// Факты неизменяемых поддеревьев живут только в пределах одной сборки.
-    pub(crate) subtrees: std::rc::Rc<std::cell::RefCell<crate::layout::cx::subtree::SubtreeFacts>>,
     pub(crate) lengths:
         std::rc::Rc<std::cell::RefCell<crate::layout::fragment::line_shape::LengthFacts>>,
     /// Повтор устоявшихся блоков корневого потока этой сборки (layout::reuse).

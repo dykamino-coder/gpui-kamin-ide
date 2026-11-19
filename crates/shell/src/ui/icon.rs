@@ -73,22 +73,22 @@ pub fn codicon(glyph: &'static str, font_px: f32) -> Div {
 /// такта (`glyph_spinner`) вместо вращающейся иконки — вращение на редких
 /// кадрах дёргалось, а на частых перерисовывало всё окно (INC-2026-0001).
 pub fn spinner(
-    _id: impl Into<gpui::ElementId>,
+    id: impl Into<gpui::ElementId>,
     size_px: f32,
     color: gpui::Rgba,
 ) -> gpui::AnyElement {
-    super::glyph_spinner::glyph_spinner(size_px, color).into_any_element()
+    super::glyph_spinner::glyph_spinner(id, size_px, color)
 }
 
 /// `.spinner` вебвью-лоадера: тот же глиф-спиннер цветом дуги (кольцо
 /// оригинала не рисуется — вращения больше нет).
 pub fn spinner_ring(
-    _id: impl Into<gpui::ElementId>,
+    id: impl Into<gpui::ElementId>,
     size_px: f32,
     _ring: gpui::Rgba,
     arc: gpui::Rgba,
-) -> Div {
-    super::glyph_spinner::glyph_spinner(size_px, arc)
+) -> gpui::AnyElement {
+    super::glyph_spinner::glyph_spinner(id, size_px, arc)
 }
 
 /// `data:image/<fmt>;base64,<...>` → картинка для `gpui::img`.
