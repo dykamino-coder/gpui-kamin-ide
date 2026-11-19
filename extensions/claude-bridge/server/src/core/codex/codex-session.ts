@@ -25,6 +25,9 @@ import type {
   UserInput,
 } from './protocol'
 
+/** Reasoning summary requested on every turn: what the chat shows as thinking. */
+export const CODEX_REASONING_SUMMARY = 'auto' as const
+
 export interface CodexSessionOptions {
   host: CodexHost
   id?: string
@@ -168,6 +171,10 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       ...(submissionId ? { clientUserMessageId: submissionId } : {}),
       ...(this.nextModel ? { model: this.nextModel } : {}),
       ...(this.effort ? { effort: this.effort } : {}),
+      // The bundled catalog defaults every model to `none`, so without this the
+      // app-server never streams a reasoning summary and the chat shows no
+      // thinking at all (the CLI only shows it when its config asks).
+      summary: CODEX_REASONING_SUMMARY,
     })
     this.nextModel = undefined
     const turn = response.turn
