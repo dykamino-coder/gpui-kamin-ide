@@ -1,6 +1,9 @@
 //! Edits by mutation records (`Document::apply`) that move the root-flow
 //! blocks below them: the rows replay their output at the new place.
 
+#[cfg(windows)]
+mod real_glyph_tests;
+
 use super::content_replay_tests::{cx_replays, placed};
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext};

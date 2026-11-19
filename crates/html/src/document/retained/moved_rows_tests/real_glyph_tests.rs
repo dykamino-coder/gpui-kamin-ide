@@ -176,7 +176,7 @@ fn real_font_pixels(scale: f32) {
             cx.set_text_rendering_mode(TextRenderingMode::Grayscale);
             cx.text_system()
                 .add_fonts(vec![Cow::Borrowed(include_bytes!(
-                    "../../../../shell/assets/fonts/JetBrainsMono-Variable.ttf"
+                    "../../../../../shell/assets/fonts/JetBrainsMono-Variable.ttf"
                 ))])
                 .unwrap();
             let fonts = FontContext::new(cx.text_system().clone());

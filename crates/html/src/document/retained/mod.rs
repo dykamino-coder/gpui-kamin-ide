@@ -50,8 +50,6 @@ mod moved_rows_tests;
 #[cfg(test)]
 mod paint_damage_tests;
 mod prepared;
-#[cfg(all(test, windows))]
-mod real_glyph_tests;
 #[cfg(test)]
 mod rebuild_key_tests;
 #[cfg(test)]
