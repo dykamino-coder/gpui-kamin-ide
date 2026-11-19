@@ -322,6 +322,11 @@ export class CliModTransport {
 export const CLI_VERSION_PROBE_TTL_MS = 60_000
 const versionProbes = new Map<string, { at: number; version: Promise<string> }>()
 
+/** Tests: forget shared `--version` answers between cases. */
+export function resetCliVersionProbes(): void {
+  versionProbes.clear()
+}
+
 /** `claude --version`, shared by concurrent session starts and reused for a
  *  minute: spawning the CLI once per new chat cost the main thread ~10 ms each,
  *  two seconds when 200 chats resumed at once. Safe to reuse because the mod
@@ -334,14 +339,19 @@ export function probeCliVersion(
   const cached = versionProbes.get(key)
   if (cached && now - cached.at < CLI_VERSION_PROBE_TTL_MS) return cached.version
   const version = new Promise<string>((resolve) => {
-    execFile(
-      cli.command,
-      [...cli.prefix, '--version'],
-      { env: cli.env, timeout: 5000, maxBuffer: 65536 },
-      (error, stdout) => {
-        resolve(error ? '' : stdout.trim())
-      },
-    )
+    try {
+      execFile(
+        cli.command,
+        [...cli.prefix, '--version'],
+        { env: cli.env, timeout: 5000, maxBuffer: 65536 },
+        (error, stdout) => {
+          resolve(error ? '' : stdout.trim())
+        },
+      )
+    } catch {
+      // A synchronous spawn failure is a failed probe, not a rejection.
+      resolve('')
+    }
   })
   versionProbes.set(key, { at: now, version })
   // A failed probe is not remembered: the next start asks again.
