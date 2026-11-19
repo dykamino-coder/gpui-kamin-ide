@@ -19,6 +19,10 @@ impl Paragraph {
         let (Some(target), Some(cull)) = (self.fragments.as_ref(), cull) else {
             return;
         };
+        // Text of no inline box has no fragment: its container keeps no slot.
+        if self.runs.iter().all(|r| r.background_owner == 0) {
+            return;
+        }
         let (extent, bleed) = cull.reach();
         target.write(extent, bleed, window.scale_factor(), |out| {
             let (runs, mut r, mut at) = (&self.runs, 0, 0);
