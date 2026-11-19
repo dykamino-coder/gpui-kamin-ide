@@ -66,7 +66,7 @@ fn an_invalid_child_record_leaves_earlier_records_unapplied() {
     let salt = doc.salt();
     for bad in [remove(&main, &i), remove(&b, &a)] {
         let records = [data(&a, "changed"), remove(&main, &i), bad];
-        assert!(doc.apply(&records, "").is_err());
+        assert!(matches!(doc.apply(&records, ""), Err(ApplyError::NotChild)));
         assert_eq!(doc.salt(), salt);
         assert!(Rc::ptr_eq(&main.children.borrow()[0], &i));
         assert!(Rc::ptr_eq(&text_parent(&doc, "a"), &i));
