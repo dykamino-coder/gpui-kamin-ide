@@ -19,6 +19,14 @@ pub(super) fn atomic_marker(style: BoxStyle) -> Piece {
     }
 }
 
+/// The band inline box `e` (a child of block `parent`) paints in its runs,
+/// as the collection gives it (`element_style`, `runs::band_style`).
+pub(crate) fn band_of(e: &Element, parent: &Element, vcx: ValueCx<'_>) -> gpui::BandStyle {
+    let inherited = BoxStyle::shared(parent.style.used());
+    let (merged, _) = element_style(e, &inherited, vcx);
+    crate::text::inline::runs::band_style(&merged.inline_decoration)
+}
+
 pub(super) fn element_style(
     e: &Element,
     inherited: &BoxStyle,
@@ -60,6 +68,7 @@ pub(super) fn element_style(
             && merged.paint_background().top.clip != Some(crate::style::computed::BgClip::Text)
     }) {
         merged.inline_decoration.band_color = Some(bg);
+        merged.inline_decoration.band_owner = band_owner(e);
         // Единицы шрифта разрешаются так же, как в `inline_sides`:
         // разбор только по точкам ронял `padding: 1em` в ноль, и
         // подсветка строчной коробки шла впритык к тексту.
@@ -139,6 +148,7 @@ pub(super) fn element_style(
             b: 0.5,
             a: 0.0,
         });
+        merged.inline_decoration.band_owner = band_owner(e);
         let family = merged.inh.font.font_family.clone().unwrap_or_default();
         let px_of = |l: Option<crate::style::values::value::Len>| match l {
             Some(
@@ -193,6 +203,7 @@ pub(super) fn element_style(
                 b: 0.0,
                 a: 0.0,
             });
+            merged.inline_decoration.band_owner = band_owner(e);
             painted_bg = true;
         }
     }
@@ -207,7 +218,19 @@ pub(super) fn element_style(
     // пробелами — они рвали ряд схлопываемых пробелов, возвращали
     // краевой проход и добавляли лишнюю точку переноса. Та же
     // отсечка стоит в `has_own_box`.
+    if e.style.used().reset_box_layout.display.is_none() && merged.inline_decoration.band_owner == 0
+    {
+        // An inline box under no band owns the pieces of its lines all the
+        // same: in a scene layer they are its empty runs, which a band that
+        // appears on it paints (`gpui::TextRun::background_owner`).
+        merged.inline_decoration.band_owner = band_owner(e);
+    }
     (merged, painted_bg)
+}
+
+/// The scene owner number of `e`'s band (`InlineDecoration::band_owner`).
+fn band_owner(e: &Element) -> u32 {
+    u32::try_from(e.node_id).unwrap_or(0)
 }
 
 #[cfg(test)]

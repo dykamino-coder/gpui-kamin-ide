@@ -1,9 +1,12 @@
 // Shared look of the pills in the row under the chat input (limits, context,
 // cost): one rounded chip per value, a thin meter coloured by level.
 
+/** Chip height, px; the row reserves it before any chip arrives. */
+export const CHIP_HEIGHT = 18
+
 export const CHIP_STYLE = `
   display:inline-flex;align-items:center;gap:6px;min-width:0;flex:none;
-  height:18px;padding:0 8px;border-radius:999px;box-sizing:border-box;
+  height:${CHIP_HEIGHT}px;padding:0 8px;border-radius:999px;box-sizing:border-box;
   background:color-mix(in srgb, var(--bg-overlay) 55%, transparent);
   border:1px solid color-mix(in srgb, var(--text-muted) 16%, transparent);
 `

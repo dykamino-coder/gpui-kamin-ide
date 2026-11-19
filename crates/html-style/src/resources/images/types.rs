@@ -22,6 +22,9 @@ pub enum ColourPolicy {
     ConvertToSrgb,
     /// Оставить точки в пространстве файла (профиль описан в метаданных).
     Preserve,
+    /// CSS compatibility pixels, ready for the renderer: straight BGRA in sRGB.
+    /// Applies the historical CSS alpha/ICC rounding before publishing the raster.
+    CssBgra,
 }
 
 /// Параметры декодирования: всё, кроме байт, от чего зависят полученные точки.
@@ -80,6 +83,12 @@ pub struct CpuRaster {
     pub bytes: Arc<[u8]>,
     /// Physical квота декодированных точек; последнее поле — буфер освобождается раньше.
     pub retention: super::admission::Retention,
+}
+
+impl AsRef<[u8]> for CpuRaster {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
 }
 
 impl CpuRaster {

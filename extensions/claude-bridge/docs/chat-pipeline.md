@@ -36,8 +36,8 @@ spinner" class is one of these copies diverging from (1) (§10).
   batch; `replayProgress`; `replayComplete` last.
 - **Record tags.** `_pos`/`_posEnd` = exact byte offsets, stable while the file
   is not rewritten. `_ord`: `= _pos` on pages, a process-global counter on legacy
-  replay (changes on every replay and restart). **Live-tail records carry no
-  tag at all** (`jsonl-watcher.ts`, "Live records stay untagged").
+  replay (changes on every replay and restart). Live-tail records carry
+  `_pos`/`_posEnd` too (`jsonl-tail.ts`), no `_ord`; servers before that sent them untagged.
 - **Host cache.** Every batch goes into `cachedJsonlEntries` (dedup key
   `_pos ?? uuid`; rows with neither are always appended), capped by
   `trimJsonlCache`. `requestJsonlReplay` from the webview never reaches the
@@ -45,8 +45,8 @@ spinner" class is one of these copies diverging from (1) (§10).
   then status, tree and the cached streaming stub.
 - **Older pages.** `loadOlderPage(beforePos)` → server `readHistoryPage`
   (≤200 records before `beforePos`; `nextPos` = oldest returned `_pos`); offline
-  it reads the mirror. The mirror only receives tagged rows, so it lags the
-  cache by the whole live session.
+  it reads the mirror. The mirror only receives tagged rows; live rows are tagged,
+  so it follows the live session (older servers: it lagged by the whole session).
 
 ## 3. Dedup and ordering (store)
 
@@ -160,7 +160,7 @@ spinner" class is one of these copies diverging from (1) (§10).
 ## 9. CLI reference behaviour and comparison
 
 Reference: the differential run below used Claude Code **2.1.177**; the image
-now pins **2.1.322** (audit in `server/CLAUDE_CODE_COMPATIBILITY.md`), and the
+now pins **2.1.328** (audit in `server/CLAUDE_CODE_COMPATIBILITY.md`), and the
 run has not been repeated on it. Sources: code.claude.com
 `sessions` and Agent SDK `sessions`/`getSessionMessages` docs; the
 `anthropics/claude-code` CHANGELOG; and a differential run. The run used an
@@ -237,8 +237,8 @@ to one copy's bookkeeping.
 | D4 | multi-leaf chain union keeps a rewound-away branch visible; the CLI shows one branch | `compute-chain-uuids.ts` (`abandonedBranches`) | fixed: the subtree of every prompt whose sibling prompt is on the newest leaf's chain is hidden; non-prompt forks keep the multi-tip union |
 | D5 | the thinking-only canonical row replaces the stub's blocks, so streamed prose disappears until the text row lands | `jsonl.ts` (`holdStreamedProse`) | fixed: canonical rows without text are held under the stub until the first canonical text takes over |
 | D6 | stubs always sort last, but `stubSuperseded` looks for a successor after the stub, so an aborted API attempt (new `message.id` on retry) is never swept and stays under the retry's answer | `jsonl.ts` (`stubSuperseded`) | fixed: a successor is a later CLI timestamp than the store's newest when the stub appeared |
-| D7 | live rows carry no `_pos`; after a bottom trim of a live session the oldest resident row has no page cursor, so scroll-up stops (`reachedStart`) with history above unreachable; the mirror also never gets live rows | server `jsonl-watcher.ts` (tail contract) | expected-fail; open (tag live rows with `_pos`/`_posEnd`, ADR step 1) |
-| D8 | the host cache can hold the same record twice (untagged live copy keyed by uuid, tagged page copy keyed by `_pos`); the webview dedups by uuid, but the cache cap counts both | host `connection-manager.ts` | open, low |
+| D7 | live rows carry no `_pos`; after a bottom trim of a live session the oldest resident row has no page cursor, so scroll-up stops (`reachedStart`) with history above unreachable; the mirror also never gets live rows | server `jsonl-watcher.ts` (tail contract) | fixed: the tail tags live rows with `_pos`/`_posEnd` (`jsonl-tail.ts`, ADR step 1); the reattach cursor is exact |
+| D8 | the host cache can hold the same record twice (untagged live copy keyed by uuid, tagged page copy keyed by `_pos`); the webview dedups by uuid, but the cache cap counts both | host `connection-manager.ts` | fixed with D7 for current servers: both copies are keyed by `_pos` |
 | D9 | a pending receipt never settles when the read receipt is lost: the server forgets ids on restart (the client keeps a Queued bubble, Cancel does nothing), `uncertain` waits for a UUID that never comes, a stopped session sends no receipt at all | `submissions.ts`, `presentation.ts`, `cli-submissions.ts`, `session-io.ts` | fixed: reattach `known` snapshot, `createdAt`, transcript settling of `uncertain` receipts, stopped-session receipt |
 | D10 | the CLI's compaction request streamed into the chat as an assistant answer (the `<analysis>` summary text), and its stub had no canonical twin, so it stayed as a ghost until the TTL sweep; the CLI TUI shows only "Compacting conversation…" | server `native-mitm.ts`, webview `jsonl.ts` | fixed: the request is recognised by its system prompt; clients get a contentless `__compaction` marker that drives an indicator |
 

@@ -68,6 +68,7 @@ impl Store {
         self.reset();
         self.reset_replays();
         self.unrecorded.take();
+        self.restyled_blocks.take();
         self.refused.take();
         self.last.take();
         self.prev.take();

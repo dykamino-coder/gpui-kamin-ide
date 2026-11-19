@@ -102,6 +102,8 @@ fn letter_style(
         .clone());
     if let Some(bg) = style.reset_background.background {
         letter.inline_decoration.band_color = Some(bg);
+        // The letter's own band: no element box owns it.
+        letter.inline_decoration.band_owner = 0;
         if style.reset_box_layout.float.is_some_and(|f| f != 0) {
             float_band(&mut letter, fonts, vcx);
         }

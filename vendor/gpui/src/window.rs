@@ -72,6 +72,7 @@ pub(crate) mod vector_transform;
 mod scene_capture;
 mod scene_layer;
 mod layer_box;
+mod layer_band;
 pub use scene_layer::RecordedLayer;
 mod frame_capture;
 mod paint_scope;
@@ -100,6 +101,9 @@ mod render_context;
 mod box_edges;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;
+// KaminIDE patch: frames that redraw only isolated views.
+mod isolated;
+use isolated::{IsolatedDraw, RootRanges};
 mod retained_layout;
 mod update_rendering;
 pub use update_rendering::ElementPlace;
@@ -408,6 +412,12 @@ thread_local! {
 /// nested draw or panicking on the already-borrowed App.
 fn draw_in_progress() -> bool {
     CURRENT_ELEMENT_ARENA.with(|current| current.get().is_some())
+}
+
+/// KaminIDE patch: the element just built lays out as its child and takes no
+/// node of the layout tree (a wrapper that only records or hooks its child).
+pub fn note_layoutless_element() {
+    with_element_arena(|arena| arena.note_layoutless());
 }
 
 /// Allocates an element in the current arena. Uses the app-specific arena if one
@@ -1046,6 +1056,8 @@ pub(crate) struct DeferredDraw {
     absolute_offset: Point<Pixels>,
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
+    // KaminIDE patch: set for an isolated view's draw (`window/isolated.rs`).
+    isolated: Option<IsolatedDraw>,
 }
 
 pub(crate) struct Frame {
@@ -1064,6 +1076,8 @@ pub(crate) struct Frame {
     pub(crate) hitbox_entry_scopes: FxHashMap<usize, Option<Rc<hit_transform::HitScope>>>,
     pub(crate) window_control_hitboxes: Vec<(WindowControlArea, Hitbox)>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
+    /// KaminIDE patch: views drawn isolated in this frame.
+    pub(crate) isolated_views: FxHashSet<EntityId>,
     pub(crate) input_handlers: Vec<Option<PlatformInputHandler>>,
     pub(crate) tooltip_requests: Vec<Option<TooltipRequest>>,
     pub(crate) cursor_styles: Vec<CursorStyleRequest>,
@@ -1101,6 +1115,93 @@ pub(crate) struct PaintIndex {
     line_layout_index: LineLayoutIndex,
 }
 
+/// KaminIDE patch: a frame list index in a 32-bit word (`PackedPaintIndex`).
+pub(crate) fn pack_index(index: usize) -> u32 {
+    u32::try_from(index).expect("frame list index fits 32 bits")
+}
+
+/// KaminIDE patch: `PrepaintStateIndex` in 32-bit words: a retained range
+/// (`RetainedPrepaint`) is kept per recorded subtree.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PackedPrepaintIndex([u32; 5], [u32; 5]);
+
+impl PrepaintStateIndex {
+    pub(crate) fn pack(&self) -> PackedPrepaintIndex {
+        PackedPrepaintIndex(
+            [
+                self.hitboxes_index,
+                self.tooltips_index,
+                self.deferred_draws_index,
+                self.dispatch_tree_index,
+                self.accessed_element_states_index,
+            ]
+            .map(pack_index),
+            self.line_layout_index.pack(),
+        )
+    }
+}
+
+impl PackedPrepaintIndex {
+    pub(crate) fn unpack(&self) -> PrepaintStateIndex {
+        let [hitboxes_index, tooltips_index, deferred_draws_index, dispatch_tree_index, accessed_element_states_index] =
+            self.0.map(|w| w as usize);
+        PrepaintStateIndex {
+            hitboxes_index,
+            tooltips_index,
+            deferred_draws_index,
+            dispatch_tree_index,
+            accessed_element_states_index,
+            line_layout_index: LineLayoutIndex::unpack(self.1),
+        }
+    }
+}
+
+/// KaminIDE patch: `PaintIndex` in 32-bit words (`RetainedPaint`).
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PackedPaintIndex {
+    words: [u32; 6],
+    #[cfg(any(test, feature = "test-support"))]
+    debug_bounds_index: u32,
+    line: [u32; 5],
+}
+
+impl PaintIndex {
+    pub(crate) fn pack(&self) -> PackedPaintIndex {
+        PackedPaintIndex {
+            words: [
+                self.scene_index,
+                self.mouse_listeners_index,
+                self.input_handlers_index,
+                self.cursor_styles_index,
+                self.accessed_element_states_index,
+                self.tab_handle_index,
+            ]
+            .map(pack_index),
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: pack_index(self.debug_bounds_index),
+            line: self.line_layout_index.pack(),
+        }
+    }
+}
+
+impl PackedPaintIndex {
+    pub(crate) fn unpack(&self) -> PaintIndex {
+        let [scene_index, mouse_listeners_index, input_handlers_index, cursor_styles_index, accessed_element_states_index, tab_handle_index] =
+            self.words.map(|w| w as usize);
+        PaintIndex {
+            scene_index,
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: self.debug_bounds_index as usize,
+            mouse_listeners_index,
+            input_handlers_index,
+            cursor_styles_index,
+            accessed_element_states_index,
+            tab_handle_index,
+            line_layout_index: LineLayoutIndex::unpack(self.line),
+        }
+    }
+}
+
 impl Frame {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn record_debug_bounds(&mut self, selector: String, bounds: Bounds<Pixels>) {
@@ -1122,6 +1223,7 @@ impl Frame {
             hitbox_entry_scopes: FxHashMap::default(),
             window_control_hitboxes: Vec::new(),
             deferred_draws: Vec::new(),
+            isolated_views: FxHashSet::default(),
             input_handlers: Vec::new(),
             tooltip_requests: Vec::new(),
             cursor_styles: Vec::new(),
@@ -1154,6 +1256,7 @@ impl Frame {
         self.hitbox_entry_scopes.clear();
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
+        self.isolated_views.clear();
         self.tab_stops.clear();
         self.focus = None;
 
@@ -1251,6 +1354,7 @@ pub struct Window {
     is_resizable: bool,
     is_minimizable: bool,
     sprite_atlas: Arc<dyn PlatformAtlas>,
+    natural_images: natural_image::Cache,
     text_system: Arc<WindowTextSystem>,
     text_rendering_mode: Rc<Cell<TextRenderingMode>>,
     rem_size: Pixels,
@@ -1298,6 +1402,9 @@ pub struct Window {
     pub(crate) element_opacity: f32,
     /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
     pub(crate) box_fill: Option<Bounds<Pixels>>,
+    /// KaminIDE patch: the bands painted now are cut into pieces by another
+    /// painter (`Window::paint_split_bands`).
+    pub(crate) band_split: bool,
     /// KaminIDE patch: the scene layer being recorded (`window::scene_layer`)
     /// and the binding scope of the paint (`with_paint_owner`, `with_paint_value`).
     pub(crate) layer_recording: Option<Box<scene_layer::LayerRecording>>,
@@ -1335,6 +1442,14 @@ pub struct Window {
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
     pub(crate) next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>>,
     pub(crate) dirty_views: FxHashSet<EntityId>,
+    /// KaminIDE patch: a dirty view lies outside every isolated view, so the
+    /// root must be drawn again (`window/isolated.rs`).
+    dirty_outside_isolated: bool,
+    /// KaminIDE patch: the root tree's ranges in the drawn frame.
+    root_ranges: Option<RootRanges>,
+    /// KaminIDE patch: entities the drawn frame read; a frame that keeps the
+    /// root keeps observing them.
+    last_accessed_entities: FxHashSet<EntityId>,
     focus_listeners: SubscriberSet<(), AnyWindowFocusListener>,
     pub(crate) focus_lost_listeners: SubscriberSet<(), AnyObserver>,
     focus_lost_path: SmallVec<[FocusId; 8]>,
@@ -2240,6 +2355,7 @@ impl Window {
             is_resizable,
             is_minimizable,
             sprite_atlas,
+            natural_images: Default::default(),
             text_system,
             text_rendering_mode: cx.text_rendering_mode.clone(),
             rem_size: px(16.),
@@ -2266,6 +2382,7 @@ impl Window {
             hit_scope: None,
             element_opacity: 1.0,
             box_fill: None,
+            band_split: false,
             layer_recording: None,
             #[cfg(any(test, feature = "test-support"))]
             scene_layers_off: false,
@@ -2286,6 +2403,9 @@ impl Window {
             next_tooltip_id: TooltipId::default(),
             tooltip_bounds: None,
             dirty_views: FxHashSet::default(),
+            dirty_outside_isolated: false,
+            root_ranges: None,
+            last_accessed_entities: FxHashSet::default(),
             focus_listeners: SubscriberSet::new(),
             focus_lost_listeners: SubscriberSet::new(),
             focus_lost_path: SmallVec::new(),
@@ -2393,15 +2513,21 @@ impl Window {
     fn mark_view_dirty(&mut self, view_id: EntityId) {
         // Mark ancestor views as dirty. If already in the `dirty_views` set, then all its ancestors
         // should already be dirty.
+        // KaminIDE patch: the walk stops at an isolated view, which is redrawn
+        // alone; reaching the top means the root is drawn again.
         for view_id in self
             .rendered_frame
             .dispatch_tree
             .view_path_reversed(view_id)
         {
             if !self.dirty_views.insert(view_id) {
-                break;
+                return;
+            }
+            if self.rendered_frame.isolated_views.contains(&view_id) {
+                return;
             }
         }
+        self.dirty_outside_isolated = true;
     }
 
     pub(crate) fn refresh_visibility(&mut self, cx: &mut App) {
@@ -2888,6 +3014,20 @@ impl Window {
     pub fn request_animation_frame(&self) {
         let entity = self.current_view();
         self.on_next_frame(move |_, cx| cx.notify(entity));
+    }
+
+    /// KaminIDE patch: show the last drawn frame again, without a draw.
+    ///
+    /// A producer of an external texture that reported what it repainted
+    /// (`damage_external_texture`) needs nothing else: the scene samples the
+    /// same atlas tile, so the renderer redraws only the reported rectangle.
+    /// Chromium shows a new frame of an embedded surface the same way, with no
+    /// commit of the embedding layer tree (`SurfaceAggregator` damage).
+    pub fn request_present(&self) {
+        self.needs_present.set(true);
+        self.platform_window.schedule_frame();
+        // Presenting creates frame demand without dirtying the window.
+        self.invalidator.wake_platform();
     }
 
     /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
@@ -3741,9 +3881,12 @@ impl Window {
         }
         // A caught unwind still aborts this pass; never publish its partial scene.
         if !self.paint_pass.is_live() {
+            // KaminIDE patch: the recorded root ranges index the dropped frame.
+            self.root_ranges = None;
             return arena_scope.exit(&cx.element_arena);
         }
         self.dirty_views.clear();
+        self.dirty_outside_isolated = false;
         self.next_frame.window_active = self.active.get();
 
         // Register requested input handler with the platform window.
@@ -3862,6 +4005,7 @@ impl Window {
     fn record_entities_accessed(&mut self, cx: &mut App) {
         let mut entities_ref = cx.entities.accessed_entities.get_mut();
         let mut entities = mem::take(entities_ref.deref_mut());
+        self.last_accessed_entities.clone_from(&entities);
         let handle = self.handle;
         cx.record_entities_accessed(
             handle,
@@ -3982,7 +4126,9 @@ impl Window {
         // KaminIDE patch: стоимость фаз кадра (`frame_perf`).
         let _phase_started = std::time::Instant::now();
         let PrepaintRoots {
-            mut root_element,
+            root_element,
+            root_prepaint,
+            kept_root,
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector_element,
             prompt_element,
@@ -4004,7 +4150,17 @@ impl Window {
         // Now actually paint the elements.
         self.invalidator.set_phase(DrawPhase::Paint);
         let _paint_started = std::time::Instant::now();
-        root_element.paint(self, cx);
+        // KaminIDE patch: a kept root replays its paint records (`window/isolated.rs`).
+        let root_paint_start = self.paint_index();
+        match (root_element, kept_root) {
+            (Some(mut root_element), _) => root_element.paint(self, cx),
+            (None, Some(kept)) => self.reuse_paint(kept.paint),
+            (None, None) => {}
+        }
+        self.root_ranges = Some(RootRanges {
+            prepaint: root_prepaint,
+            paint: root_paint_start..self.paint_index(),
+        });
         crate::frame_perf::PAINT_US.fetch_add(
             _paint_started.elapsed().as_micros() as u32,
             std::sync::atomic::Ordering::Relaxed,
@@ -4155,6 +4311,8 @@ impl Window {
                 let _render_scope = self.render_contexts.enter_snapshot(
                     self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
                 );
+                // KaminIDE patch: a dirty isolated view is drawn again alone.
+                self.rebuild_isolated(deferred_draw_ix, cx);
                 let (element, parent_node, current_view, rem_size, absolute_offset, prepaint_range) = {
                     let deferred_draw = &mut self.next_frame.deferred_draws[deferred_draw_ix];
                     self.element_id_stack
@@ -4321,8 +4479,18 @@ impl Window {
                     absolute_offset: deferred_draw.absolute_offset,
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
+                    isolated: deferred_draw.isolated.clone(),
                 }),
         );
+        // KaminIDE patch: reused isolated draws stay isolated in the new frame.
+        let isolated = &mut self.next_frame.isolated_views;
+        for draw in &self.rendered_frame.deferred_draws
+            [range.start.deferred_draws_index..range.end.deferred_draws_index]
+        {
+            if let Some(draw) = &draw.isolated {
+                isolated.insert(draw.view.entity_id());
+            }
+        }
     }
 
     pub(crate) fn paint_index(&self) -> PaintIndex {
@@ -5079,6 +5247,7 @@ impl Window {
             absolute_offset,
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
+            isolated: None,
         });
     }
 
@@ -6183,12 +6352,14 @@ impl Window {
         self.request_layout_ref(&style, children, cx)
     }
 
-    /// KaminIDE patch: the frame's element count is the size hint of its layout tree.
+    /// KaminIDE patch: the frame's count of elements that may take a layout
+    /// node is the size hint of its layout tree; an element that lays out as
+    /// its child (`note_layoutless_element`) takes none.
     fn reserve_layout_nodes(&mut self) {
         self.layout_engine
             .as_mut()
             .unwrap()
-            .reserve_nodes_when_full(|| with_element_arena(|arena| arena.allocations()));
+            .reserve_nodes_when_full(|| with_element_arena(|arena| arena.layout_elements()));
     }
 
     /// KaminIDE patch: `request_layout_ref` for a style that is `refinement` applied to the
@@ -9536,6 +9707,42 @@ mod tests {
     /// Visibility transitions reach observers exactly once each, with the new
     /// state already stored on the window, and never wake the platform for a
     /// frame: the platform requests one itself when it resumes presenting.
+    /// `request_present` shows the last frame again: it wakes the platform,
+    /// and the frame it gets presents without rendering any view.
+    #[gpui::test]
+    fn test_request_present_presents_without_a_draw(cx: &mut TestAppContext) {
+        struct Counted(Rc<Cell<usize>>);
+        impl Render for Counted {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                self.0.set(self.0.get() + 1);
+                Empty
+            }
+        }
+        let renders = Rc::new(Cell::new(0));
+        let window = cx.add_window({
+            let renders = renders.clone();
+            move |_, _| Counted(renders)
+        });
+        let platform_window = cx.test_window(window.into());
+        platform_window.simulate_frame_request(RequestFrameOptions::default());
+        let rendered = renders.get();
+        let wakes = platform_window.frame_wake_count();
+
+        window
+            .update(cx, |_, window, _| window.request_present())
+            .unwrap();
+        assert!(platform_window.frame_wake_count() > wakes);
+        window
+            .update(cx, |_, window, _| assert!(window.needs_present.get()))
+            .unwrap();
+
+        platform_window.simulate_frame_request(RequestFrameOptions::default());
+        assert_eq!(renders.get(), rendered);
+        window
+            .update(cx, |_, window, _| assert!(!window.needs_present.get()))
+            .unwrap();
+    }
+
     #[gpui::test]
     fn test_window_visibility(cx: &mut TestAppContext) {
         use crate::WindowVisibility;

@@ -1276,6 +1276,22 @@ async function retireSwitchedSession(old: PtySession): Promise<void> {
   }
 }
 
+/** What an engine switch keeps from the chat's launch: the client-supplied
+ *  context of the chat. Not the engine's own choices (model, effort), the
+ *  resume/segment placement the switch plans itself, the terminal size, nor a
+ *  new chat's one-shot history cursor. */
+export function engineSwitchLaunchContext(launch: SessionConfig | undefined): SessionConfig {
+  if (!launch) return {}
+  const keep: SessionConfig = {}
+  if (launch.basePrompt !== undefined) keep.basePrompt = launch.basePrompt
+  if (launch.thinkingDisplay !== undefined) keep.thinkingDisplay = launch.thinkingDisplay
+  if (launch.transcriptMirrorDir !== undefined) keep.transcriptMirrorDir = launch.transcriptMirrorDir
+  if (launch.extraArgs !== undefined) keep.extraArgs = launch.extraArgs
+  if (launch.isSubAgent !== undefined) keep.isSubAgent = launch.isSubAgent
+  if (launch.parentSessionId !== undefined) keep.parentSessionId = launch.parentSessionId
+  return keep
+}
+
 /**
  * Continue the chat's conversation on the other engine, in the same chat
  * (conversation/manifest.ts). The joining engine starts first, beside the
@@ -1317,6 +1333,10 @@ export async function switchSessionEngine(
   const t1 = performance.now()
 
   const session = await createSession(ws, userName, tokenId, {
+    // The chat's launch context (the user's standing instructions, thinking
+    // display, transcript mirror, sub-agent placement) belongs to the chat, not
+    // to the engine: the joining engine starts with it, like a wake or restart.
+    ...engineSwitchLaunchContext(old.launchConfig),
     cwd: old.cwd,
     cols: 120,
     rows: 40,

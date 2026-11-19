@@ -48,6 +48,7 @@ impl DecorationInput {
             border_stroke,
             physical_padding,
             corner_radius: _,
+            band_owner: _,
         } = inline;
         let paint = match (paint, &other.paint) {
             (None, None) => true,

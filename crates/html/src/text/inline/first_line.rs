@@ -80,6 +80,10 @@ pub fn style_first_line(
                         base.inline_decoration.band_color,
                         style.reset_background.background,
                     );
+                    // A band of the first line's own is no element box's.
+                    if style.reset_background.background.is_some() {
+                        c.inline_decoration.band_owner = 0;
+                    }
                     c.inh.font.line_height =
                         style.inh.font.line_height.or(base.inh.font.line_height);
                     // TRANSITIONAL(cascade-7b-R12): Слой first-line пропускает допустимый vertical-align, поскольку float::FirstLine меряет без сдвига; удалить пропуск после учёта вертикального сдвига первой строки в этом замере.

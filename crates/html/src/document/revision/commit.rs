@@ -55,6 +55,9 @@ impl Document {
         match plan {
             Plan::Clean(nodes) => {
                 if let Some(nodes) = nodes {
+                    // Plan::Clean proves that all inputs read are unchanged:
+                    // only unread attributes are updated.
+                    crate::document::boxes::BoxTree::edit(&self.state.boxes).rebind(&nodes);
                     self.nodes = Rc::new(nodes);
                     self.tree = crate::document::scope::next_tree();
                 }
@@ -130,9 +133,8 @@ impl Document {
             crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);
             return false;
         };
-        let plain = |a: &crate::dom::Element, b: &crate::dom::Element| {
-            crate::paint::box_tree::styled::paints_only_own_box(&self.state, a)
-                && crate::paint::box_tree::styled::paints_only_own_box(&self.state, b)
+        let own = |a: &crate::dom::Element, b: &crate::dom::Element| {
+            super::layer_write::own_paint_of(&self.state, a, b)
         };
         // A box under a block the frame skipped: any block on its path.
         let unseen = |path: &super::patch::Path| {
@@ -149,7 +151,7 @@ impl Document {
             nodes,
             paths,
             &layer,
-            plain,
+            own,
             unseen,
             off,
         ) else {
@@ -175,6 +177,11 @@ impl Document {
         state.values.admit_revision(revision.clone(), base.as_ref());
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
+        crate::document::boxes::BoxTree::edit(&state.boxes).publish_document(
+            &nodes,
+            Some(&self.nodes),
+            &state.values,
+        );
         match restyled {
             // A restyle reaches the records as a rebuild's does.
             Some(ids) => self.reuse.restyle(&self.nodes, &nodes, ids),
@@ -195,6 +202,7 @@ impl Document {
             base_url: self.base_url.clone(),
             xml: self.xml,
             last_failure: None,
+            media_reads: self.media_reads.clone(),
             #[cfg(feature = "engine-bench")]
             timings,
         }

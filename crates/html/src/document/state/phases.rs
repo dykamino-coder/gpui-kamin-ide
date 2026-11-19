@@ -8,6 +8,8 @@ use crate::values::{DocumentValues, ValueCx};
 use std::rc::Rc;
 
 pub struct DocState {
+    /// The single mutable box tree of this line of document revisions.
+    pub(crate) boxes: Rc<std::cell::RefCell<crate::document::boxes::BoxTree>>,
     /// Нижние данные: арены, at-правила, метрики корня, ресурсы, шрифтовые факты.
     pub(crate) values: Rc<DocumentValues>,
     /// Anchor registries and root frame geometry of the layout phase of this document.
@@ -37,7 +39,7 @@ impl DocState {
         Self::with_paragraphs(
             media,
             crate::text::paragraph_state::ParagraphState::continuing(&previous.paragraph),
-            Some(&previous.values),
+            Some(previous),
         )
     }
 
@@ -49,6 +51,7 @@ impl DocState {
     /// основа подготовки нового (`LayoutState::continuing`).
     pub(crate) fn adopting(previous: &Self) -> Rc<Self> {
         Rc::new(Self {
+            boxes: previous.boxes.clone(),
             values: previous.values.clone(),
             layout: Rc::new(crate::layout::layout_state::LayoutState::continuing(
                 &previous.layout,
@@ -63,7 +66,7 @@ impl DocState {
     fn with_paragraphs(
         media: Media,
         paragraph: crate::text::paragraph_state::ParagraphState,
-        previous: Option<&DocumentValues>,
+        previous: Option<&Self>,
     ) -> Rc<Self> {
         let text = Rc::<crate::text::text_fonts::TextFonts>::default();
         let fonts = text.clone();
@@ -73,10 +76,11 @@ impl DocState {
             Rc::new(crate::text::font_facts::Backend::new(values, fonts))
         };
         let values = match previous {
-            Some(previous) => DocumentValues::continuing(previous, media, fonts),
+            Some(previous) => DocumentValues::continuing(&previous.values, media, fonts),
             None => DocumentValues::new(media, fonts),
         };
         Rc::new(Self {
+            boxes: previous.map(|p| p.boxes.clone()).unwrap_or_default(),
             values,
             layout: Default::default(),
             text,

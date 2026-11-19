@@ -62,9 +62,6 @@ pub(super) fn child_options(
     opts.inner(|cx| {
         if fresh {
             cx.contracts.lengths = Default::default();
-            if !cx.contracts.in_render {
-                cx.contracts.subtrees = Default::default();
-            }
         }
         if cb_width.is_some() {
             cx.constraints.set_cb_width(cb_width);

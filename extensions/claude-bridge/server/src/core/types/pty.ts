@@ -135,6 +135,8 @@ export interface PtySession {
      *  client that already mirrors the transcript. Callers must verify the
      *  file's fingerprint first. */
     streamFrom?(offset: number, live: () => boolean): Promise<number>
+    /** The CLI signalled activity (a hook); look at the transcript now. */
+    poke?(): void
   }
   /** What the client host declared it can execute; absent for older clients. */
   host?: HostDeclaration

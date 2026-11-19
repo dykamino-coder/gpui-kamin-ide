@@ -44227,11 +44227,63 @@ var SubmissionHandoff = class {
   }
 };
 
+// src/main/ws/reconnect-outbox.ts
+var RECONNECT_HOLD_MS = 6e4;
+var HOLD_WARNING = "Not delivered yet: the chat is reconnecting. It is sent as soon as the chat is back.";
+var EXPIRED_WARNING = "Message not delivered: the chat did not reconnect within a minute. Your text was returned to the composer.";
+var CHANGED_WARNING = "Message not delivered: the chat reconnected to another conversation. Your text was returned to the composer.";
+var ReconnectOutbox = class {
+  constructor(emit2, expire, holdMs = RECONNECT_HOLD_MS) {
+    this.emit = emit2;
+    this.expire = expire;
+    this.holdMs = holdMs;
+  }
+  emit;
+  expire;
+  holdMs;
+  held = /* @__PURE__ */ new Map();
+  hold(message) {
+    if (this.held.has(message.id)) return;
+    const timer = setTimeout(() => {
+      if (this.held.delete(message.id)) this.expire(message);
+    }, this.holdMs);
+    this.held.set(message.id, { ...message, timer });
+    this.emit({ id: message.id, text: message.text, state: "queued", cancelable: true, warning: HOLD_WARNING });
+  }
+  has(id) {
+    return this.held.has(id);
+  }
+  /** All held messages in the order they were written; the outbox is empty after. */
+  take() {
+    const all = [...this.held.values()];
+    this.held.clear();
+    return all.map(({ timer, ...message }) => {
+      clearTimeout(timer);
+      return message;
+    });
+  }
+  cancel(id) {
+    const item = this.held.get(id);
+    if (!item) return void 0;
+    clearTimeout(item.timer);
+    this.held.delete(id);
+    const { timer: _timer, ...message } = item;
+    return message;
+  }
+};
+
 // src/main/ws/transcript-mirror.ts
 var import_fs4 = require("fs");
 var import_promises8 = __toESM(require("fs/promises"), 1);
 var import_path5 = __toESM(require("path"), 1);
 var MAX_APPEND_GAP_BYTES = 256 * 1024;
+function uuidProof(records, previous) {
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i];
+    if (r.uuid && typeof r._pos === "number") return { lastUuid: r.uuid, lastPos: r._pos };
+  }
+  return { lastUuid: previous?.lastUuid, lastPos: previous?.lastPos };
+}
 var TranscriptMirror = class {
   file;
   sidecar;
@@ -44370,8 +44422,7 @@ var TranscriptMirror = class {
       this.cursor = {
         head,
         pos: last._posEnd ?? this.cursor?.pos ?? 0,
-        lastUuid: last.uuid ?? this.cursor?.lastUuid,
-        lastPos: last._pos
+        ...uuidProof(fresh, this.cursor)
       };
       this.scheduleSidecar();
     }).catch(() => {
@@ -44412,7 +44463,7 @@ var TranscriptMirror = class {
         await this.close();
         await import_promises8.default.appendFile(this.file, fresh.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
         const last2 = fresh.at(-1);
-        this.cursor = { head, pos: last2._posEnd ?? existing.pos, lastUuid: last2.uuid, lastPos: last2._pos };
+        this.cursor = { head, pos: last2._posEnd ?? existing.pos, ...uuidProof(fresh, existing) };
         await this.writeSidecar();
         return;
       }
@@ -44420,7 +44471,7 @@ var TranscriptMirror = class {
       const payload = ordered.map((r) => JSON.stringify(r)).join("\n") + "\n";
       await import_promises8.default.writeFile(this.file, payload, "utf8");
       const last = ordered[ordered.length - 1];
-      this.cursor = { head, pos: last._posEnd ?? 0, lastUuid: last.uuid, lastPos: last._pos };
+      this.cursor = { head, pos: last._posEnd ?? 0, ...uuidProof(ordered) };
       await this.writeSidecar();
     }).catch(() => {
     });
@@ -45407,6 +45458,10 @@ var lastConnectionAuthoritySequence = 0;
 var ConnectionManager = class _ConnectionManager {
   disposed = false;
   submissions = new SubmissionHandoff((update) => this.window.webContents.send("session:submission", this.tabId, update));
+  outbox = new ReconnectOutbox(
+    (update) => this.window.webContents.send("session:submission", this.tabId, update),
+    (held) => this.returnToComposer(held.id, held.text, EXPIRED_WARNING)
+  );
   handoffWait;
   reconnectAfterHandoff = false;
   // Shared cache of the last tree update (all connections share one tree per token)
@@ -46097,6 +46152,7 @@ var ConnectionManager = class _ConnectionManager {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.outbox.take();
     this.handoffWait?.finish();
     this.disconnect();
   }
@@ -46131,20 +46187,17 @@ var ConnectionManager = class _ConnectionManager {
    *  paste+retry dance. */
   submitText(text, submissionId) {
     if (this.disposed) return;
-    const reject = () => {
-      const update = {
-        id: submissionId ?? (0, import_node_crypto6.randomUUID)(),
-        text,
-        state: "cancelled",
-        rejected: true,
-        cancelable: false,
-        retryable: false,
-        warning: "Message not sent: the chat is reconnecting. Your text was returned to the composer."
-      };
-      this.submissions.receive(update);
-      this.window.webContents.send("session:submission", this.tabId, update);
-    };
-    if (this.identityHold || this.handoffWait || this.state.status !== "authenticated" || this.ws?.readyState !== wrapper_default.OPEN) {
+    const reject = () => this.returnToComposer(submissionId ?? (0, import_node_crypto6.randomUUID)(), text, "Message not sent: the chat is reconnecting. Your text was returned to the composer.");
+    if (this.identityHold || this.handoffWait) {
+      reject();
+      return;
+    }
+    if (this.state.status !== "authenticated" || this.ws?.readyState !== wrapper_default.OPEN) {
+      const conversationId = this.conversationId;
+      if (submissionId && conversationId && !this.pendingNewConversation && !this.resumeParked && !this.intentionalDisconnect) {
+        this.outbox.hold({ id: submissionId, text, conversationId });
+        return;
+      }
       reject();
       return;
     }
@@ -46156,7 +46209,33 @@ var ConnectionManager = class _ConnectionManager {
     }
     if (submissionId) this.submissions.remember(submissionId, text);
   }
+  /** Refuse a prompt: the webview puts the text back into the composer and says why. */
+  returnToComposer(id, text, warning) {
+    const update = {
+      id,
+      text,
+      state: "cancelled",
+      rejected: true,
+      cancelable: false,
+      retryable: false,
+      warning
+    };
+    this.submissions.receive(update);
+    this.window.webContents.send("session:submission", this.tabId, update);
+  }
+  /** The chat is back: send what waited for it, in order, into the same conversation only. */
+  flushOutbox() {
+    for (const held of this.outbox.take()) {
+      if (!this.identityHold && this.conversationId === held.conversationId) this.submitText(held.text, held.id);
+      else this.returnToComposer(held.id, held.text, CHANGED_WARNING);
+    }
+  }
   submissionAction(id, action) {
+    if (this.outbox.has(id)) {
+      const held = action === "cancel" ? this.outbox.cancel(id) : void 0;
+      if (held) this.window.webContents.send("session:submission", this.tabId, { id, text: held.text, state: "cancelled", cancelable: false });
+      return;
+    }
     if (this.submissions.action(id, action, this.state.status === "authenticated", (text, id2) => this.submitText(text, id2))) return;
     this.send({ type: "session:submission-action", id, action });
   }
@@ -46737,6 +46816,7 @@ var ConnectionManager = class _ConnectionManager {
       isIntentionallyDisconnected: () => this.intentionalDisconnect,
       notifyAuthenticated: () => {
         this.submissions.resume((text, id) => this.submitText(text, id));
+        this.flushOutbox();
         _ConnectionManager.onAuthenticated?.(this);
       },
       notifyElicitationRequest: (p) => _ConnectionManager.onElicitationRequest?.(this.tabId, p),

@@ -122,7 +122,7 @@ export function registerTransport(on, state) {
     state.socketPath = (await $.env.get('BRIDGE_CLI_MOD_SOCKET')) ?? ''
     state.session = (await $.env.get('BRIDGE_CLI_MOD_SESSION')) ?? ''
     state.version = (await $.session.version()).version
-    if (!state.socketPath || !state.session || state.version !== '2.1.322') return next(e)
+    if (!state.socketPath || !state.session || state.version !== '2.1.328') return next(e)
     state.instance = `${await $.clock.now()}-${Math.random()}`
     try {
       await exchange($, state, '/hello')

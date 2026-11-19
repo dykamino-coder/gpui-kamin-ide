@@ -36,14 +36,26 @@ describe('isVisibleEntry', () => {
       expect(isVisibleEntry(noise(t, 0))).toBe(false)
   })
 
-  it('drops CLI 2.1.322 bookkeeping rows and model-only attachments', () => {
-    for (const t of ['session-owner', 'resume-head-vouch', 'repl-mode']) expect(isVisibleEntry(noise(t, 0))).toBe(false)
+  it('drops CLI 2.1.322–2.1.327 bookkeeping rows and model-only attachments', () => {
+    for (const t of [
+      'session-owner',
+      'resume-head-vouch',
+      'repl-mode',
+      'derived-from',
+      'data-flow-records',
+      'data-flow-incomplete',
+    ])
+      expect(isVisibleEntry(noise(t, 0))).toBe(false)
     for (const kind of [
       'message_pdf_reads',
       'widget_context_hint',
       'claude_app_notice',
       'file_unchanged',
       'output_limit_note',
+      'agent_ask_notice',
+      'linked_plugin_tools_note',
+      'plugin_note',
+      'tool_results_cut',
     ])
       expect(isVisibleEntry({ ...noise('attachment', 0), attachment: { type: kind } } as unknown as JsonlEntry)).toBe(
         false,
