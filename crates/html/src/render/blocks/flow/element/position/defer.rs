@@ -87,7 +87,7 @@ pub(super) fn defer(
     let inherited = inherited.clone();
     let mut build_opts = opts.clone();
     build_opts.cx.position.oof_identities = Some(identities);
-    let _ = build_opts.cx.scroll.frame.take_if(|_| anchor.is_some());
+    crate::layout::positioned::viewport_anchor::unscroll(&mut build_opts.cx, anchor.is_some());
     let frame = frame.clone();
     let paint_last = crate::layout::order::paint_last_ok(e, rest, &opts.cx);
     let source_paint = (!paint_last || rest.stays_positioned())
