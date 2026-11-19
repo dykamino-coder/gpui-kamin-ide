@@ -81,7 +81,10 @@ pub(crate) fn take_pending() -> Vec<String> {
 pub(crate) fn accept(ids: &[String], window: &gpui::Window) -> bool {
     let mut all = true;
     for id in ids {
-        let last = PAINTED.lock().ok().and_then(|p| p.get(id.as_str()).copied());
+        let last = PAINTED
+            .lock()
+            .ok()
+            .and_then(|p| p.get(id.as_str()).copied());
         let Some(last) = last else {
             all = false;
             continue;

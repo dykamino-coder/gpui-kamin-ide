@@ -154,8 +154,7 @@ pub(crate) fn texture_for(
                     width: w,
                     height: h,
                     tile: tile.clone(),
-                    generation: TILE_GENERATION
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                    generation: TILE_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                     content: (incoming.content.2, incoming.content.3),
                     accepted_at: std::time::Instant::now(),
                     frame: 0,
@@ -222,9 +221,8 @@ pub(crate) fn texture_for(
 }
 
 /// Submit the copies queued on the window's context. A copy made outside a
-/// window draw has no present behind it to submit it, and its `ReleaseSync`
-/// would wait in our queue while the producer waits to acquire the texture
-/// (CEF shutdown then took up to 74 s).
+/// window draw has no present right behind it to submit it; until then its
+/// `ReleaseSync` of the producer's keyed mutex would wait in our queue.
 pub(crate) fn submit_copies(window: &gpui::Window) {
     let context = unsafe {
         super::d3d_device::take_owned::<windows::Win32::Graphics::Direct3D11::ID3D11DeviceContext>(
