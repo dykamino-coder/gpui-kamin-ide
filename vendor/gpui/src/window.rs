@@ -1080,6 +1080,8 @@ pub(crate) struct Frame {
     pub(crate) scroll_nodes: Vec<scroll_nodes::ScrollNodeRecord>,
     /// KaminIDE patch: the scroll nodes open while prepainting.
     pub(crate) scroll_node_stack: Vec<u32>,
+    /// KaminIDE patch: paint pairing of scroll nodes (scroll_nodes::PaintPairing).
+    pub(crate) scroll_paint: scroll_nodes::PaintPairing,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
     /// KaminIDE patch: views drawn isolated in this frame.
     pub(crate) isolated_views: FxHashSet<EntityId>,
@@ -1233,6 +1235,7 @@ impl Frame {
             window_control_hitboxes: Vec::new(),
             scroll_nodes: Vec::new(),
             scroll_node_stack: Vec::new(),
+            scroll_paint: Default::default(),
             deferred_draws: Vec::new(),
             isolated_views: FxHashSet::default(),
             input_handlers: Vec::new(),
@@ -1268,6 +1271,7 @@ impl Frame {
         self.window_control_hitboxes.clear();
         self.scroll_nodes.clear();
         self.scroll_node_stack.clear();
+        self.scroll_paint.clear();
         self.deferred_draws.clear();
         self.isolated_views.clear();
         self.tab_stops.clear();
@@ -4429,6 +4433,8 @@ impl Window {
     }
 
     pub(crate) fn reuse_prepaint(&mut self, range: Range<PrepaintStateIndex>) {
+        // KaminIDE patch: the scroll nodes prepainted in the range.
+        self.reuse_scroll_nodes(&range);
         for hitbox in &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index] {
             if let Some(scope) = self.rendered_frame.hitbox_scopes.get(&hitbox.id) {
                 self.next_frame.hitbox_scopes.insert(hitbox.id, scope.clone());
@@ -4559,10 +4565,12 @@ impl Window {
             .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
         // KaminIDE patch: a range recorded inside a scene layer is in its scene.
         let scenes = range.start.scene_index..range.end.scene_index;
+        let landed = self.next_frame.scene.paint_operations.len();
         match self.replay_source() {
-            Some(source) => self.next_frame.scene.replay(scenes, source.scene()),
-            None => self.next_frame.scene.replay(scenes, &self.rendered_frame.scene),
+            Some(source) => self.next_frame.scene.replay(scenes.clone(), source.scene()),
+            None => self.next_frame.scene.replay(scenes.clone(), &self.rendered_frame.scene),
         }
+        self.land_scroll_nodes(scenes, landed);
     }
 
     /// KaminIDE patch: read the host context of type `T` for this traversal.

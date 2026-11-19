@@ -139,6 +139,11 @@ impl Window {
                 mask.origin += offset;
                 *mask = mask.intersect(&clip);
             }
+            // KaminIDE patch: the copied scroll nodes moved with their children.
+            for node in &mut self.next_frame.scroll_nodes[start.scroll_nodes_index..] {
+                node.clip.origin += offset;
+                node.clip = node.clip.intersect(&clip);
+            }
         }
         RetainedPrepaint::of(start..self.prepaint_index())
     }
