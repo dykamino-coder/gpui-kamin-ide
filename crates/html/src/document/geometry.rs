@@ -125,23 +125,11 @@ impl Document {
                 }
             }
         }
-        let ids: HashMap<_, _> = state
-            .values
-            .traversal
-            .elements()
-            .iter()
-            .enumerate()
-            .map(|(i, address)| (*address, i as u64 + 1))
-            .collect();
-        let node_map = self
-            .state
-            .values
-            .traversal
-            .elements()
-            .iter()
-            .enumerate()
-            .filter_map(|(i, address)| ids.get(address).map(|id| (i as u64 + 1, *id)))
-            .collect();
+        let (ids, node_map) = bindings(
+            &input.dom.document,
+            &state.values.traversal.elements(),
+            &self.state.values.traversal.elements(),
+        );
         let scroll_states =
             crate::interactive::scroll_area::query_states(window, &node_map, scope)?;
         #[cfg(test)]
@@ -211,4 +199,22 @@ impl Document {
             read.get_bounding_client_rect(path)
         })
     }
+}
+
+fn bindings(
+    _root: &Handle,
+    query: &[usize],
+    live: &[usize],
+) -> (HashMap<usize, u64>, HashMap<u64, u64>) {
+    let ids: HashMap<_, _> = query
+        .iter()
+        .enumerate()
+        .map(|(i, address)| (*address, i as u64 + 1))
+        .collect();
+    let scroll = live
+        .iter()
+        .enumerate()
+        .filter_map(|(i, address)| ids.get(address).map(|id| (i as u64 + 1, *id)))
+        .collect();
+    (ids, scroll)
 }
