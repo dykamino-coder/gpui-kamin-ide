@@ -1026,6 +1026,38 @@ describe('engine switch inside one chat', () => {
     }
   }, 60_000)
 
+  // Each chain recalls only at its end: an earlier recall answer would put the
+  // marker into the carried history and hide a lost prompt.
+  const chains: Array<[string, string[]]> = [
+    ['ChatGPT → Claude', ['codex', 'claude']],
+    ['ChatGPT → Claude → ChatGPT', ['codex', 'claude', 'codex']],
+    ['Claude → ChatGPT → Claude', ['claude', 'codex', 'claude']],
+  ]
+  const modelOf = (engine: string) => (engine === 'codex' ? 'gpt-fake' : 'claude-sonnet-5-5')
+  it.each(chains)(
+    "keeps the chat's standing instructions on %s",
+    async (_name, [start, ...hops]) => {
+      const client = await Client.open(port)
+      const marker = `BP-HOP-${start}-${hops.length}`
+      await createChat(client, { engine: start, basePrompt: `Standing rule ${marker}: answer tersely.` })
+      await say(client, '/fake-note 7', 'h0')
+      await client.entry((e) => e.type === 'assistant' && text(e).includes('7'), 15_000)
+      for (const engine of hops) {
+        expect((await switchTo(client, engine, modelOf(engine))).restarted).toMatchObject({
+          type: 'session:restarted',
+          engine,
+        })
+      }
+      const mark = client.frames.length
+      await say(client, `/fake-recall ${marker}`, 'h1')
+      const recall = text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))
+      expect(recall).toContain(`Standing rule ${marker}`)
+      client.send({ type: 'session:end' })
+      client.close()
+    },
+    60_000,
+  )
+
   it('restarts an empty chat on the other engine, holds a prompt sent meanwhile and refuses the same engine', async () => {
     const client = await Client.open(port)
     await createChat(client, { engine: 'codex' })
