@@ -119,8 +119,16 @@ fn fresh(cx: &mut TestAppContext, at: usize, target: Target, then: Then) -> [Vec
 fn check(cx: &mut TestAppContext, at: usize, target: Target, defers: bool, then: Then) {
     let (kept, waiting, now, after) = edited(cx, at, target, then);
     let [fresh_now, fresh_after] = fresh(cx, at, target, then);
-    assert_eq!(first_difference(&now, &fresh_now), None, "the frame after the edit");
-    assert_eq!(first_difference(&after, &fresh_after), None, "the frame showing it");
+    assert_eq!(
+        first_difference(&now, &fresh_now),
+        None,
+        "the frame after the edit"
+    );
+    assert_eq!(
+        first_difference(&after, &fresh_after),
+        None,
+        "the frame showing it"
+    );
     assert!(kept, "the edit built the frame");
     assert_eq!(waiting > 0, defers, "records waiting: {waiting}");
 }
