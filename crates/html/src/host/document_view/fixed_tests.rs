@@ -9,9 +9,9 @@ use gpui::{
     Entity, Modifiers, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext, point,
 };
 
-const RED: &str = "width:50px;height:50px;background:red";
+pub(super) const RED: &str = "width:50px;height:50px;background:red";
 
-fn rows(extra: &str) -> String {
+pub(super) fn rows(extra: &str) -> String {
     let rows: String = (0..400)
         .map(|i| format!("<div class=r>row {i}</div>"))
         .collect();
@@ -21,11 +21,11 @@ fn rows(extra: &str) -> String {
     )
 }
 
-fn fixed_box() -> String {
+pub(super) fn fixed_box() -> String {
     format!("<div style='position:fixed;top:100px;left:0;{RED}'></div>")
 }
 
-fn wheel(cx: &mut VisualTestContext) {
+pub(super) fn wheel(cx: &mut VisualTestContext) {
     cx.simulate_event(ScrollWheelEvent {
         position: point(px(200.), px(20.)),
         delta: ScrollDelta::Pixels(point(px(0.), px(-120.))),
@@ -34,7 +34,7 @@ fn wheel(cx: &mut VisualTestContext) {
     });
 }
 
-fn root(view: &Entity<DocumentView>, cx: &mut VisualTestContext) -> gpui::ScrollHandle {
+pub(super) fn root(view: &Entity<DocumentView>, cx: &mut VisualTestContext) -> gpui::ScrollHandle {
     cx.update(|_, cx| {
         let state = view.read(cx).document.state_rc();
         state.root_scroll.as_ref().unwrap().handle.clone()
@@ -42,7 +42,7 @@ fn root(view: &Entity<DocumentView>, cx: &mut VisualTestContext) -> gpui::Scroll
 }
 
 /// Origins (CSS px) of the painted 50x50 quads.
-fn boxes(cx: &mut VisualTestContext) -> Vec<(f32, f32)> {
+pub(super) fn boxes(cx: &mut VisualTestContext) -> Vec<(f32, f32)> {
     cx.update(|window, _| {
         let s = window.scale_factor();
         window
@@ -58,7 +58,7 @@ fn boxes(cx: &mut VisualTestContext) -> Vec<(f32, f32)> {
 }
 
 /// The painted quads in paint order, without their draw orders.
-fn quads(cx: &mut VisualTestContext) -> Vec<String> {
+pub(super) fn quads(cx: &mut VisualTestContext) -> Vec<String> {
     cx.update(|window, _| {
         window
             .painted_quads()
@@ -167,16 +167,21 @@ fn a_fixed_box_outside_the_viewport_adds_no_scroll_range(cx: &mut TestAppContext
 
 #[gpui::test]
 fn a_scrolled_frame_with_a_fixed_box_matches_a_fresh_one(cx: &mut TestAppContext) {
-    let html = rows(&fixed_box());
+    matches_fresh(cx, &rows(&fixed_box()));
+}
+
+/// A frame scrolled by the wheel paints the quads of a new tree built at
+/// that offset.
+pub(super) fn matches_fresh(cx: &mut TestAppContext, html: &str) {
     let mut app = cx.clone();
-    let (view, scrolled) = open(&mut app, &html);
+    let (view, scrolled) = open(&mut app, html);
     wheel(scrolled);
     frame(scrolled);
     frame(scrolled);
     let offset = root(&view, scrolled).offset();
     let after = quads(scrolled);
     // The fresh frame: a new tree built at that offset, not a replay.
-    let (fresh_view, fresh) = open(cx, &html);
+    let (fresh_view, fresh) = open(cx, html);
     root(&fresh_view, fresh).set_offset(offset);
     fresh.update(|_, cx| {
         fresh_view.update(cx, |view, cx| {

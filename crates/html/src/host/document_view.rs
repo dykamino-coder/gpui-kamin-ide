@@ -129,6 +129,8 @@ impl Render for DocumentView {
 }
 
 #[cfg(test)]
+mod fixed_hoisted_tests;
+#[cfg(test)]
 mod fixed_tests;
 #[cfg(test)]
 mod resize_tests;
