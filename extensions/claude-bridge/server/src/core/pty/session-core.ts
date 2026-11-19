@@ -260,7 +260,7 @@ async function createAdmittedSession(
     // A swept Claude transcript comes back from the archive; without one the
     // segment continues in a new session that gets the whole conversation.
     if (segment.nativeId && segment.engine === 'claude' && !(await ensureSegmentTranscript(segment)))
-      segment = restartSegmentFresh(manifest)
+      segment = await restartSegmentFresh(manifest)
     settingsDir = segment.settingsDir
     fs.mkdirSync(settingsDir, { recursive: true })
     config.resumeConversationId = segment.nativeId ?? undefined
@@ -304,7 +304,7 @@ async function createAdmittedSession(
     if (manifest && (codex.resumedOnFreshThread || codex.resumeNotFound)) {
       // The new thread has none of the segment's context: it gets the whole
       // conversation with its first turn, and the client keeps the chat.
-      restartSegmentFresh(manifest)
+      await restartSegmentFresh(manifest)
       codex.resumeNotFound = false
       codex.resumedOnFreshThread = false
     }
@@ -1319,7 +1319,7 @@ export async function switchSessionEngine(
   old.segmentPump?.flush()
   const folderSuffix = old.cwd ? '-' + sanitizeDirName(old.cwd) : ''
   const sessionsDir = path.join(SESSIONS_BASE, tokenId + folderSuffix)
-  const plan = planSwitch({
+  const plan = await planSwitch({
     manifest: known,
     sessionsDir,
     from: {
