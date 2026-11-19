@@ -1,7 +1,7 @@
 //! Canonical DOM mutations share one fallible implementation with TreeSink.
 
-use super::{parent_index, remove, reserve, Admission};
-use crate::{append, Attribute, Handle, NodeData, QualName, RcDom};
+use super::{Admission, parent_index, remove, reserve};
+use crate::{Attribute, Handle, NodeData, QualName, RcDom, append};
 use markup5ever::interface::tree_builder::{ElementFlags, NodeOrText};
 use std::{cell::RefCell, mem, rc::Rc};
 use tendril::StrTendril;
@@ -54,8 +54,18 @@ impl RcDom {
         )
     }
 
-    pub fn try_create_text<A: Admission>(&self, text: StrTendril, policy: &A) -> Result<Handle, A::Error> {
-        self.try_new_node(NodeData::Text { contents: RefCell::new(text) }, None, policy)
+    pub fn try_create_text<A: Admission>(
+        &self,
+        text: StrTendril,
+        policy: &A,
+    ) -> Result<Handle, A::Error> {
+        self.try_new_node(
+            NodeData::Text {
+                contents: RefCell::new(text),
+            },
+            None,
+            policy,
+        )
     }
 
     pub fn try_create_comment<A: Admission>(

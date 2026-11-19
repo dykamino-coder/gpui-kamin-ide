@@ -1,5 +1,5 @@
 //! A script-held reference keeps its document identity while the node is detached.
-use super::{ApplyError, within};
+use super::{Address, ApplyError};
 use crate::document::{Document, DocumentFailure};
 use markup5ever_rcdom::{Handle, WeakHandle};
 use std::rc::Rc;
@@ -16,7 +16,9 @@ impl SourceNode {
     }
 
     pub(super) fn owned_by(&self, root: &Handle) -> bool {
-        self.document.upgrade().is_some_and(|owner| Rc::ptr_eq(&owner, root))
+        self.document
+            .upgrade()
+            .is_some_and(|owner| Rc::ptr_eq(&owner, root))
     }
 }
 
@@ -24,10 +26,13 @@ impl Document {
     /// Capture ownership while resolving a connected node for script.
     pub fn source_node(&self, node: &Handle) -> Result<SourceNode, ApplyError> {
         let root = self.source_dom();
-        if !within(node, &root) {
+        if !belongs(node, &root, &Default::default()) {
             return Err(ApplyError::Foreign);
         }
-        Ok(SourceNode { node: node.clone(), document: WeakHandle::new(&root) })
+        Ok(SourceNode {
+            node: node.clone(),
+            document: WeakHandle::new(&root),
+        })
     }
 
     /// Allocate a detached element in the same key space and budget as the parser.
@@ -35,13 +40,43 @@ impl Document {
         let source = self.state.values.traversal.source();
         let context = source.context().continuing(self.budget().revision());
         let node = source.create_element(name, &context)?;
-        Ok(SourceNode { node, document: WeakHandle::new(&source.dom.document) })
+        Ok(SourceNode {
+            node,
+            document: WeakHandle::new(&source.dom.document),
+        })
     }
 
     pub fn create_text_node(&self, text: &str) -> Result<SourceNode, DocumentFailure> {
         let source = self.state.values.traversal.source();
         let context = source.context().continuing(self.budget().revision());
         let node = source.create_text(text, &context)?;
-        Ok(SourceNode { node, document: WeakHandle::new(&source.dom.document) })
+        Ok(SourceNode {
+            node,
+            document: WeakHandle::new(&source.dom.document),
+        })
     }
+}
+
+pub(super) fn belongs(
+    node: &Handle,
+    root: &Handle,
+    certified: &std::collections::HashSet<Address>,
+) -> bool {
+    let mut at = Some(node.clone());
+    while let Some(node) = at {
+        if Rc::ptr_eq(&node, root) || certified.contains(&Rc::as_ptr(&node)) {
+            return true;
+        }
+        at = parent(&node);
+    }
+    false
+}
+
+pub(super) fn parent(node: &Handle) -> Option<Handle> {
+    let weak = node.parent.take();
+    let parent = weak
+        .as_ref()
+        .and_then(markup5ever_rcdom::WeakHandle::upgrade);
+    node.parent.set(weak);
+    parent
 }

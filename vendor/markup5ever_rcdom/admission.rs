@@ -119,6 +119,34 @@ pub(crate) fn reserve<T, A: Admission>(
     Ok(())
 }
 
+/// A prepared replacement keeps its allocation lease, including while held for rollback.
+pub struct ChildList {
+    children: Vec<Handle>,
+    storage: Lease,
+}
+impl ChildList {
+    pub fn prepare<A: Admission>(
+        children: impl Iterator<Item = Handle>,
+        policy: &A,
+    ) -> Result<Self, A::Error> {
+        let mut list = Self {
+            children: Vec::new(),
+            storage: None,
+        };
+        for node in children {
+            reserve(&mut list.children, &mut list.storage, 1, policy)?;
+            policy.visit()?;
+            list.children.push(node);
+        }
+        Ok(list)
+    }
+
+    pub fn exchange(&mut self, parent: &Handle) {
+        mem::swap(&mut self.children, &mut parent.children.borrow_mut());
+        mem::swap(&mut self.storage, &mut parent.children_lease.borrow_mut());
+    }
+}
+
 pub(crate) struct Work<T> {
     pub(crate) values: Vec<T>,
     lease: Lease,

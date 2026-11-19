@@ -18,6 +18,8 @@ pub enum ApplyError {
     Foreign,
     /// The named node is not a current direct child of this parent.
     NotChild,
+    /// The new edge would form a cycle or violate the document's child constraints.
+    Hierarchy,
     /// Сборка ревизии отвергнута; DOM и ревизия остались прежними.
     Rejected(DocumentFailure),
 }
@@ -26,6 +28,7 @@ impl std::fmt::Display for ApplyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Foreign => f.write_str("mutation record addresses a node outside the document"),
+            Self::Hierarchy => f.write_str("invalid DOM hierarchy"),
             Self::NotChild => f.write_str("mutation record does not name a direct child"),
             Self::Rejected(failure) => std::fmt::Display::fmt(failure, f),
         }
@@ -44,7 +47,16 @@ impl Document {
         #[cfg(feature = "engine-bench")]
         let started = crate::work::Clock::now();
         let root = self.source_dom();
-        let batch = Batch::in_document(records, &root)?;
+        let revision = std::cell::OnceCell::new();
+        let batch = Batch::in_document(records, &root, || {
+            let budget = revision.get_or_init(|| self.budget().revision());
+            self.state
+                .values
+                .traversal
+                .source()
+                .context()
+                .continuing(budget.clone())
+        })?;
         if batch.is_empty() && *self.theme_css == *theme_css {
             // Как `update` той же разметки: терминальный отказ ревизии остаётся.
             if let Some(mut failure) = self.revision_budget().failure() {
@@ -59,8 +71,10 @@ impl Document {
                 degradation: self.traversal_limit(),
             });
         }
+        let revision = revision
+            .into_inner()
+            .unwrap_or_else(|| self.budget().revision());
         let key = applied_key(self.key, records, theme_css);
-        let revision = self.budget().revision();
         // Read from the source DOM before it is taken and the batch written.
         // Child membership can change sibling selectors, inherited values and formatting.
         let invalidation = if batch.changes_children() {
@@ -190,8 +204,18 @@ fn applied_key(previous: u64, records: &[Mutation], theme_css: &str) -> u64 {
     theme_css.hash(&mut hash);
     for record in records {
         match record {
-            Mutation::InsertBefore { parent, child, before } => {
-                (3u8, parent.key(), child.handle().key(), before.as_ref().map(|n| n.key())).hash(&mut hash);
+            Mutation::InsertBefore {
+                parent,
+                child,
+                before,
+            } => {
+                (
+                    3u8,
+                    parent.handle().key(),
+                    child.handle().key(),
+                    before.as_ref().map(|n| n.key()),
+                )
+                    .hash(&mut hash);
             }
             Mutation::RemoveChild { parent, child } => {
                 (2u8, parent.key(), child.key()).hash(&mut hash);
