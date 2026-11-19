@@ -1,10 +1,29 @@
 # Совместимость Claude Code CLI
 
-Текущий образ закрепляет **2.1.327** в `Dockerfile`. На 2026-11-18 npm
-`dist-tags.latest` возвращал `2.1.327` (`stable` — `2.1.311`). Выбор следует
+Текущий образ закрепляет **2.1.328** в `Dockerfile`. На 2026-11-19 npm
+`dist-tags.latest` возвращал `2.1.328` (`stable` — `2.1.311`). Выбор следует
 поручению владельца использовать npm `latest`, без диапазона или auto-update.
 CLI mod (`src/cli-mod`) по-прежнему привязан к одной точной версии:
 `CLI_MOD_VERSION`, проверка в `transport.js` и tests меняются вместе с pin.
+
+## Проверка перехода с 2.1.327 на 2.1.328
+
+Источники: официальный changelog 2.1.328 и сравнение Linux x64 binaries
+`2.1.327` / `2.1.328` по множествам токенов (model id, env-переменные,
+`type:"…"`, имена hook events).
+
+| Контракт       | Изменения upstream и решение Bridge                                                                                                                                                                                                                                                                                                                 |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JSONL / resume | Новая служебная запись `api-request-resumed` (без uuid, рядом с `api-request`/`-shape`/`-blob`) и attachment `tool_offer_record`. Webview рисует только `RENDERABLE_ENTRY_TYPES` и allowlist attachments — обе невидимы (`cli-328-types.test.ts`). 2.1.328 исправляет потерю сводки сжатия при позднем сохранении и ускоряет resume больших сессий. |
+| CLI mod        | API `prompt.submit`/`http.fetch`/`session.version` присутствует; `claude plugin test` для `src/cli-mod`: 4/4 на 2.1.328. Upstream исправил перезагрузку mod посреди хода.                                                                                                                                                                           |
+| Model / effort | Множество model id не изменилось (`claude-fable-5-2`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`); страница models overview на 2026-11-19 нового model id не называет. Auto mode для Opus/Sonnet 4.6 у сторонних провайдеров Bridge не затрагивает.                                                                                 |
+| Environment    | Все env-переменные CLI из `server/src` присутствуют в 2.1.328; удалена только неиспользуемая Bridge `CLAUDE_CODE_CCR_SKIP_NEEDLESS_STARTUP_READS`. Новая `CLAUDE_CODE_DISABLE_DEFERRED_TOOL_RESUME` относится к `-p --resume`, Bridge её не задаёт. Автосжатие теперь пересобирает system prompt, как `/compact`.                                   |
+| Hooks          | Имена hook events не изменились. Managed `PostToolUse` больше не вызывается для вызовов, отклонённых до запуска; Bridge не использует managed settings. `mcp_tool` hooks получили `"onFailure": "block"` — Bridge их не задаёт.                                                                                                                     |
+
+Gate 2.1.328 (2026-11-19, кандидат-образ на `kamin-acc-302`, установленный
+KaminIDE): новый чат Opus 5.5 — размышления показаны, Bash вызван, Stop hook
+отработал (`stop_hook_summary`), ответ получен; после перезапуска контейнера
+чат продолжился с контекстом (cold resume).
 
 ## Проверка перехода с 2.1.322 на 2.1.327
 

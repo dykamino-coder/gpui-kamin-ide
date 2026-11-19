@@ -23,7 +23,8 @@ pub fn start_pump(cx: &mut gpui::App) {
             // не заказывает (`wake_pump`, BR-31); раньше флаг читался и
             // отбрасывался, и каждая такая побудка перерисовывала всё окно:
             // во время ответов Claude — сотни побудок в секунду (INC-2026-0001).
-            let repaint = super::take_repaint_request();
+            let mut repaint = super::take_repaint_request();
+            let mut frames = super::page_frame::take_pending();
             // Вытесненные текстуры освобождаем ЗДЕСЬ, между кадрами: внутри
             // отрисовки атлас трогать нельзя.
             cx.update(super::flush_retired);
@@ -32,15 +33,24 @@ pub fn start_pump(cx: &mut gpui::App) {
             // `window.rs:1386`) — замер показывал «переиграно вью 0» при
             // полностью размеченных компонентах. `notify` помечает грязным
             // только корень, а кэшированные панели переигрываются.
-            if repaint {
+            if repaint || !frames.is_empty() {
                 // Общий ритм (`frame_rhythm`): фоновый кадр — на границе слота,
                 // заказы, пришедшие за ожидание, уходят этим же кадром.
                 let wait = rhythm::delay(super::gpu_mode::software_render());
                 if !wait.is_zero() {
                     bg.timer(wait).await;
                     while wake_rx.try_recv().is_ok() {}
-                    super::take_repaint_request();
+                    repaint |= super::take_repaint_request();
+                    frames.extend(super::page_frame::take_pending());
                 }
+            }
+            // Page frames of an unchanged tile are shown by presenting the
+            // last scene again; the root is drawn only when one of them is
+            // not (another size, a popup, a resize catch-up).
+            if !frames.is_empty() && !present_frames(&frames, cx) {
+                repaint = true;
+            }
+            if repaint {
                 super::diag::refresh();
                 if let Some(root) = repaint_target()
                     && root.update(cx, |_, cx| cx.notify()).is_err()
@@ -97,6 +107,28 @@ pub fn start_pump(cx: &mut gpui::App) {
     .detach();
 }
 
+/// The main window: page frames are presented in it (`present_frames`).
+static WINDOW: std::sync::OnceLock<gpui::AnyWindowHandle> = std::sync::OnceLock::new();
+
+/// Copy the page frames of `frames` and present the window's last scene with
+/// their damage. `false`: some frame needs a window draw.
+fn present_frames(frames: &[String], cx: &mut gpui::AsyncApp) -> bool {
+    let Some(handle) = WINDOW.get().copied() else {
+        return false;
+    };
+    cx.update(|cx| {
+        handle.update(cx, |_, window, _| {
+            let shown = super::page_frame::accept(frames, window);
+            if shown {
+                super::diag::presented();
+                window.request_present();
+            }
+            shown
+        })
+    })
+    .unwrap_or(false)
+}
+
 /// Кому адресовать заказ перерисовки: корневой вью окна.
 static TARGET: std::sync::OnceLock<gpui::WeakEntity<crate::state::model::RootView>> =
     std::sync::OnceLock::new();
@@ -110,6 +142,7 @@ pub fn attach_window(
     cx: &mut gpui::App,
 ) {
     let _ = TARGET.set(root.downgrade());
+    let _ = WINDOW.set(window.window_handle());
     window
         .observe_window_visibility(|visibility, _, _| {
             super::visibility::set_window_shown(visibility.is_visible());

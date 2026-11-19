@@ -45,7 +45,7 @@ async function activeModule() {
           BRIDGE_CLI_MOD_HOOK_CONDITIONS: '1',
         })[key],
     },
-    session: { version: async () => ({ version: '2.1.327' }) },
+    session: { version: async () => ({ version: '2.1.328' }) },
     clock: { now: async () => 1, every: vi.fn() },
     fs: { read: vi.fn() },
     http: {
