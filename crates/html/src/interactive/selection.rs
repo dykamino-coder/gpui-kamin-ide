@@ -61,9 +61,9 @@ pub(crate) fn track_selection(
     index_at: impl Fn(Point<Pixels>) -> Option<usize> + Clone + 'static,
     window: &mut Window,
 ) {
-    // Слушатели действуют только при попадании в hitbox или во время жеста,
-    // а пустое выделение равно новому: пропуск или повтор такой краски
-    // ничего не теряет (`Window::offscreen_inert`).
+    // The listeners act only on a hit of `hitbox` or during a gesture, and an
+    // empty selection equals a new one: skipping or replaying this paint
+    // loses nothing (`Window::offscreen_inert`).
     window.offscreen_inert(|window| track(global, hitbox.clone(), index_at, window));
 }
 
