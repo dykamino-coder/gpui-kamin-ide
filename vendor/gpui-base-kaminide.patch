@@ -8932,48 +8932,53 @@ index 707835df949a3ea1821db1f5df1b0dd72075a615..200abbec97440607e2fd65eaf9078edb
 +# this package; its rustls stack builds the native aws-lc-sys crypto crate in
 +# standalone test builds, so it is not declared.
 diff --git a/vendor/gpui-base/src/input/base/element.rs b/vendor/gpui-base/src/input/base/element.rs
-index 369b17d3413fc0f6d49ec5737f282292942e6dbf..e24bd54ae10b013a6f534e9fc7f235a1155d3a11
+index 369b17d3413fc0f6d49ec5737f282292942e6dbf..003490e5a435d06a967322ba4994e2f4f554dc99
 --- a/vendor/gpui-base/src/input/base/element.rs
 +++ b/vendor/gpui-base/src/input/base/element.rs
 @@ -623 +623 @@
 -                        TextAlign::Left => RIGHT_MARGIN,
 +                        TextAlign::Left | TextAlign::Justify => RIGHT_MARGIN,
-@@ -1110,0 +1111,6 @@
+@@ -1110,0 +1111,7 @@
 +                    // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                    font_size: None,
 +                    background_pad: Default::default(),
 +                    background_radius: Default::default(),
 +                    background_line_gap: false,
++                    background_owner: 0,
 +                    background_border: None,
-@@ -1162,0 +1169,6 @@
+@@ -1162,0 +1170,7 @@
 +                // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                font_size: None,
 +                background_pad: Default::default(),
 +                background_radius: Default::default(),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
-@@ -1177,0 +1190,6 @@
+@@ -1177,0 +1192,7 @@
 +                // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                font_size: None,
 +                background_pad: Default::default(),
 +                background_radius: Default::default(),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
-@@ -1234,0 +1253,6 @@
+@@ -1234,0 +1256,7 @@
 +                // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                font_size: None,
 +                background_pad: Default::default(),
 +                background_radius: Default::default(),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
-@@ -1257,0 +1282,6 @@
+@@ -1257,0 +1286,7 @@
 +                    // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                    font_size: None,
 +                    background_pad: Default::default(),
 +                    background_radius: Default::default(),
 +                    background_line_gap: false,
++                    background_owner: 0,
 +                    background_border: None,
-@@ -2057,0 +2088,7 @@
+@@ -2057,0 +2093,7 @@
 +        // KaminIDE patch (#76): runs_for_range сканировал `runs` с нуля на
 +        // КАЖДУЮ wrapped-строку — O(строки × runs) на prepaint (у больших
 +        // вьюпортов это тысячи повторных проходов за кадр). Диапазоны идут
@@ -8981,7 +8986,7 @@ index 369b17d3413fc0f6d49ec5737f282292942e6dbf..e24bd54ae10b013a6f534e9fc7f235a1
 +        // только вперёд: суммарно O(runs) на кадр.
 +        let mut run_ix = 0usize;
 +        let mut run_start = 0usize;
-@@ -2072 +2109,21 @@
+@@ -2072 +2114,21 @@
 -                let line_runs = runs_for_range(runs, run_offset, &range);
 +                // KaminIDE patch (#76): эквивалент runs_for_range(runs, run_offset, range)
 +                // с инкрементальным курсором.
@@ -9004,10 +9009,10 @@ index 369b17d3413fc0f6d49ec5737f282292942e6dbf..e24bd54ae10b013a6f534e9fc7f235a1
 +                    cursor += run.len;
 +                    jx += 1;
 +                }
-@@ -2127,0 +2185,2 @@
+@@ -2127,0 +2190,2 @@
 +        // KaminIDE patch (#76): спан профиля — где именно жир TextElement.
 +        let _prof = cx.instrumentation().prepaint.enter("highlight_lines");
-@@ -2558,2 +2617,5 @@
+@@ -2558,2 +2622,5 @@
 -        let (line_number_width, line_number_len) =
 -            Self::layout_line_numbers(&state, &text, text_size, &text_style, window);
 +        let (line_number_width, line_number_len) = {
@@ -9015,21 +9020,23 @@ index 369b17d3413fc0f6d49ec5737f282292942e6dbf..e24bd54ae10b013a6f534e9fc7f235a1
 +            let _prof = cx.instrumentation().prepaint.enter("layout_line_numbers");
 +            Self::layout_line_numbers(&state, &text, text_size, &text_style, window)
 +        };
-@@ -2657,0 +2720,6 @@
+@@ -2657,0 +2725,7 @@
 +            // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +            font_size: None,
 +            background_pad: Default::default(),
 +            background_radius: Default::default(),
 +            background_line_gap: false,
++            background_owner: 0,
 +            background_border: None,
-@@ -2665,0 +2734,6 @@
+@@ -2665,0 +2740,7 @@
 +            // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +            font_size: None,
 +            background_pad: Default::default(),
 +            background_radius: Default::default(),
 +            background_line_gap: false,
++            background_owner: 0,
 +            background_border: None,
-@@ -2715,10 +2789,14 @@
+@@ -2715,10 +2796,14 @@
 -        let lines = Self::layout_lines(
 -            &state,
 -            &display_text,
@@ -9054,28 +9061,31 @@ index 369b17d3413fc0f6d49ec5737f282292942e6dbf..e24bd54ae10b013a6f534e9fc7f235a1
 +                window,
 +            )
 +        };
-@@ -2757,0 +2836,6 @@
+@@ -2757,0 +2843,7 @@
 +                                // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                                font_size: None,
 +                                background_pad: Default::default(),
 +                                background_radius: Default::default(),
 +                                background_line_gap: false,
++                                background_owner: 0,
 +                                background_border: None,
-@@ -2885,0 +2970,6 @@
+@@ -2885,0 +2978,7 @@
 +                // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                font_size: None,
 +                background_pad: Default::default(),
 +                background_radius: Default::default(),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
-@@ -2893,0 +2984,6 @@
+@@ -2893,0 +2993,7 @@
 +                // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                font_size: None,
 +                background_pad: Default::default(),
 +                background_radius: Default::default(),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
-@@ -2999,6 +3095,11 @@
+@@ -2999,6 +3105,11 @@
 -
 -        window.handle_input(
 -            &focus_handle,
@@ -9093,44 +9103,48 @@ index 369b17d3413fc0f6d49ec5737f282292942e6dbf..e24bd54ae10b013a6f534e9fc7f235a1
 +                cx,
 +            );
 +        }
-@@ -3105 +3206 @@
+@@ -3105 +3216 @@
 -        if window.is_window_active() {
 +        if window.is_window_active() && !is_minimap {
-@@ -3206 +3307 @@
+@@ -3206 +3317 @@
 -        if focused && show_cursor {
 +        if focused && show_cursor && !is_minimap {
-@@ -3326 +3427,3 @@
+@@ -3326 +3437,3 @@
 -        self.paint_mouse_listeners(&prepaint.hitbox, window, cx);
 +        if !is_minimap {
 +            self.paint_mouse_listeners(&prepaint.hitbox, window, cx);
 +        }
-@@ -4312,0 +4416,6 @@
+@@ -4312,0 +4426,7 @@
 +            // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +            font_size: None,
 +            background_pad: Default::default(),
 +            background_radius: Default::default(),
 +            background_line_gap: false,
++            background_owner: 0,
 +            background_border: None,
-@@ -4461,0 +4571,6 @@
+@@ -4461,0 +4582,7 @@
 +            // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +            font_size: None,
 +            background_pad: Default::default(),
 +            background_radius: Default::default(),
 +            background_line_gap: false,
++            background_owner: 0,
 +            background_border: None,
-@@ -4499,0 +4615,6 @@
+@@ -4499,0 +4627,7 @@
 +            // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +            font_size: None,
 +            background_pad: Default::default(),
 +            background_radius: Default::default(),
 +            background_line_gap: false,
++            background_owner: 0,
 +            background_border: None,
-@@ -4578,0 +4700,6 @@
+@@ -4578,0 +4713,7 @@
 +            // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +            font_size: None,
 +            background_pad: Default::default(),
 +            background_radius: Default::default(),
 +            background_line_gap: false,
++            background_owner: 0,
 +            background_border: None,
 diff --git a/vendor/gpui-base/src/input/base/layout.rs b/vendor/gpui-base/src/input/base/layout.rs
 index 779b1f2cf9bcd0b2f658bcccb5b6f4f556d07893..25b4cc7906c181210956c1181ac77783aade4907
@@ -9299,39 +9313,42 @@ index d1766e9e104284d44a80792996dd06f6be558b83..9b3bb795c420a9540dcad2fb449c45ed
 +            // KaminIDE patch: над минимапой курсор обычный — это не поле ввода.
 +            .when(!self.disabled && !self.minimap, |this| {
 diff --git a/vendor/gpui-base/src/input/editor/display_map/text_wrapper.rs b/vendor/gpui-base/src/input/editor/display_map/text_wrapper.rs
-index 4c59bf27ca6c31cf5678666d95d6abe777504976..0b9206ed95006999eddd14e4fc0e2d94c917d9cd
+index 4c59bf27ca6c31cf5678666d95d6abe777504976..47d836532d1d27307fc04e4cdf2b26c39e19dce2
 --- a/vendor/gpui-base/src/input/editor/display_map/text_wrapper.rs
 +++ b/vendor/gpui-base/src/input/editor/display_map/text_wrapper.rs
-@@ -421,0 +422,6 @@
+@@ -421,0 +422,7 @@
 +                                        // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                                        font_size: None,
 +                                        background_pad: Default::default(),
 +                                        background_radius: Default::default(),
 +                                        background_line_gap: false,
++                                        background_owner: 0,
 +                                        background_border: None,
-@@ -1109,0 +1116,6 @@
+@@ -1109,0 +1117,7 @@
 +                    // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                    font_size: None,
 +                    background_pad: Default::default(),
 +                    background_radius: Default::default(),
 +                    background_line_gap: false,
++                    background_owner: 0,
 +                    background_border: None,
-@@ -1257,0 +1270 @@
+@@ -1257,0 +1272 @@
 +            stretch: Default::default(),
-@@ -1453,0 +1467 @@
+@@ -1453,0 +1469 @@
 +            stretch: Default::default(),
-@@ -1725,0 +1740 @@
+@@ -1725,0 +1742 @@
 +            stretch: Default::default(),
 diff --git a/vendor/gpui-base/src/input/editor/indent.rs b/vendor/gpui-base/src/input/editor/indent.rs
-index d50bff1c10d58d7d6edb5c8413c19bd04725998f..446d89abd737983a8d414bf33c5949c8e5c7413c
+index d50bff1c10d58d7d6edb5c8413c19bd04725998f..97ad643e4c30af6bc532374182f22f37fd886f3b
 --- a/vendor/gpui-base/src/input/editor/indent.rs
 +++ b/vendor/gpui-base/src/input/editor/indent.rs
-@@ -94,0 +95,6 @@
+@@ -94,0 +95,7 @@
 +                // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +                font_size: None,
 +                background_pad: Default::default(),
 +                background_radius: Default::default(),
 +                background_line_gap: false,
++                background_owner: 0,
 +                background_border: None,
 diff --git a/vendor/gpui-base/src/motion.rs b/vendor/gpui-base/src/motion.rs
 index 2de123ab497f4b7e9831489aa2a20ff8327359dc..9fa538fc6a2ea8a42cbf96702f2d0779ba3dfdc8
@@ -9354,15 +9371,16 @@ index 5522a83d3fa0822754fc758d2442c010e5ed3394..56cb7e1e166ab4fcc4eee06a0d490e90
 +        // `Running` (and requested a frame) once its duration had elapsed.
 +        let duration = self.transition.duration.mul_f64(f64::from(reversing_factor));
 diff --git a/vendor/gpui-base/src/plot/label.rs b/vendor/gpui-base/src/plot/label.rs
-index fc59ffc9e1b8ac8e45fbf4124037748c2244d704..ec8679bb025862b9a4857502afd60489d03c4509
+index fc59ffc9e1b8ac8e45fbf4124037748c2244d704..1b553302aa7a7d4372f4af32022aa69c7f00f8db
 --- a/vendor/gpui-base/src/plot/label.rs
 +++ b/vendor/gpui-base/src/plot/label.rs
-@@ -33,0 +34,6 @@
+@@ -33,0 +34,7 @@
 +        // KaminIDE patch: поля строчного бокса вокруг фона прогона.
 +        font_size: None,
 +        background_pad: Default::default(),
 +        background_radius: Default::default(),
 +        background_line_gap: false,
++        background_owner: 0,
 +        background_border: None,
 diff --git a/vendor/gpui-base/src/root.rs b/vendor/gpui-base/src/root.rs
 index 16ea0565a9db319f3176f829b4d4e9f232e48b93..835c62cf2170def44f4bb1087198fb6ca7156e73

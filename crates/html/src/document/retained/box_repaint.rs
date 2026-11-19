@@ -54,6 +54,21 @@ impl Builder {
             let Ok(owner) = u32::try_from(e.node_id) else {
                 return false;
             };
+            // An inline box: the pieces of its band, from its new band.
+            if crate::document::revision::records_band(e) {
+                let Some(parent) = crate::document::revision::parent_at(&self.nodes, path) else {
+                    return false;
+                };
+                let band = crate::text::inline::band_of(e, parent, self.opts.cx.vcx());
+                match window.rerecord_layer_band(&layer, owner, cx, band) {
+                    Some(shifted) => moved |= shifted,
+                    None => {
+                        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+                        return false;
+                    }
+                }
+                continue;
+            }
             let mut div = crate::paint::box_tree::styled::own_paint_div(e, &self.opts.cx);
             let mut style = gpui::Style::default();
             style.refine(div.style());

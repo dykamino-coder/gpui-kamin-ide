@@ -14,6 +14,7 @@ use crate::text::inline::collect::element_nodes::blank_box::blank_box;
 
 mod box_paint;
 use crate::text::inline::collect::element_nodes::box_paint::element_style;
+pub(crate) use box_paint::band_of;
 
 use crate::dom::Element;
 use crate::style::values::value::Len;

@@ -57,9 +57,13 @@ impl Paragraph {
         window: &mut gpui::Window,
         cx: &mut gpui::App,
     ) {
-        self.paint_justified(
-            range, segs, free, line.width, bounds, y, pad, dx, window, cx,
-        );
+        // Justified words and gap fills cut the line's bands into pieces of
+        // their own: their boxes keep values only (`gpui::Window::paint_split_bands`).
+        window.paint_split_bands(|window| {
+            self.paint_justified(
+                range, segs, free, line.width, bounds, y, pad, dx, window, cx,
+            )
+        });
         if line.ellipsis {
             let text = self.span(segs, line.range.start, range.end);
             let (_, _, step, absorbed, _) = self.prepare_words(range, segs, free);

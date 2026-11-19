@@ -101,23 +101,37 @@ impl Paragraph {
             && ltr_place.is_empty()
             && let Some(next) = words.get(wi + 1)
             && next.range.start > word.range.end
-            && let Some(bg) = self.gap_background(word, next)
+            && let Some((bg, owner)) = self.gap_background(word, next)
         {
             let after = (self.x_at(segs, next.range.start, Edge::Start) - from)
                 + step * next.spaces_before as f32;
             let right = bounds.origin.x + dx + after;
             let left = x + shaped_width;
             if right > left {
-                window.paint_quad(gpui::fill(
-                    Bounds {
-                        origin: point(left, y + dy),
-                        size: gpui::size(right - left, self.line_height),
-                    },
-                    bg,
-                ));
+                let bounds = Bounds {
+                    origin: point(left, y + dy),
+                    size: gpui::size(right - left, self.line_height),
+                };
+                fill_band(window, bounds, bg, owner);
             }
         }
     }
+}
+
+/// A stretched gap's piece of the band of inline box `owner` (0: none),
+/// bound as that box's background like the band's other pieces
+/// (`gpui::TextRun::background_owner`).
+fn fill_band(window: &mut Window, bounds: Bounds<Pixels>, bg: gpui::Hsla, owner: u32) {
+    let quad = gpui::fill(bounds, bg);
+    if owner == 0 {
+        window.paint_quad(quad);
+        return;
+    }
+    window.with_paint_owner(owner, |window| {
+        window.with_paint_value(gpui::LayerValue::Background, |window| {
+            window.paint_quad(quad)
+        })
+    });
 }
 
 impl Paragraph {
@@ -144,15 +158,13 @@ impl Paragraph {
             y,
             ..
         } = context;
-        let mut fill = |left: Pixels, right: Pixels, dy: Pixels, bg: gpui::Hsla| {
+        let mut fill = |left: Pixels, right: Pixels, dy: Pixels, (bg, owner): (gpui::Hsla, u32)| {
             if right > left {
-                window.paint_quad(gpui::fill(
-                    Bounds {
-                        origin: point(left, y + dy),
-                        size: gpui::size(right - left, self.line_height),
-                    },
-                    bg,
-                ));
+                let bounds = Bounds {
+                    origin: point(left, y + dy),
+                    size: gpui::size(right - left, self.line_height),
+                };
+                fill_band(window, bounds, bg, owner);
             }
         };
         for (wi, pair) in words.windows(2).enumerate() {
