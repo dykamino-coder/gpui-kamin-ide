@@ -26,10 +26,14 @@ function usage(u: TokenUsageBreakdown): AgentTokenUsage {
   }
 }
 
+/** Opens the session context Bridge sends in front of a turn's message
+ *  (session-codex.ts): it is for the model, the chat shows the message only. */
+export const SESSION_CONTEXT_OPEN = '<bridge_session_context>'
+
 function userText(item: Item): string {
   const content = Array.isArray(item.content) ? (item.content as Array<{ type?: string; text?: string }>) : []
   return content
-    .filter((c) => c.type === 'text' && typeof c.text === 'string')
+    .filter((c) => c.type === 'text' && typeof c.text === 'string' && !c.text.startsWith(SESSION_CONTEXT_OPEN))
     .map((c) => c.text)
     .join('\n')
 }
