@@ -841,11 +841,11 @@ impl DirectXRenderer {
             self.drop_frame();
             return Ok(());
         }
-        let drawn = match plan {
+        let drawn = match &plan {
             retained::Plan::Keep => Ok(()),
             retained::Plan::Full => self.render(scene, background_appearance, None),
             retained::Plan::Within(region) => {
-                self.render(scene, background_appearance, Some(region))
+                self.render(scene, background_appearance, Some(region.as_slice()))
             }
         };
         if let Err(e) = drawn {
@@ -854,8 +854,8 @@ impl DirectXRenderer {
         }
         // KaminIDE patch: stand-only check against a whole redraw (`damage_audit`).
         if damage_audit::enabled() && !keep {
-            let within = match plan {
-                retained::Plan::Within(region) => Some(region),
+            let within = match &plan {
+                retained::Plan::Within(region) => Some(region.as_slice()),
                 _ => None,
             };
             if let Err(e) = self.audit_frame(scene, background_appearance, within) {
@@ -884,7 +884,7 @@ impl DirectXRenderer {
         &mut self,
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
-        within: Option<Region>,
+        within: Option<&[Region]>,
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
         self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
@@ -900,7 +900,7 @@ impl DirectXRenderer {
         self.blur.frame_globals = Some([viewport.Width, viewport.Height]);
         let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
         self.gpu_timer.begin(&device, &ctx);
-        let needed = within.map(|r| scene.groups_needed([r.x, r.y, r.width, r.height]));
+        let needed = Self::needed_damage_groups(scene, within);
         log::debug!(
             target: "gpui::frame",
             "plan within {within:?} groups {} needed {:?}",
@@ -925,22 +925,11 @@ impl DirectXRenderer {
         }
         // KaminIDE patch: the scissor goes on only now: the group passes and
         // their blurs write other targets in their own coordinates.
-        let restore = match within {
-            Some(region) => {
-                let state = self.begin_scissor(region)?;
-                let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
-                self.clear_frame(clear)?;
-                Some(state)
-            }
-            None => None,
-        };
         self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
         self.timing_main = true;
-        let drawn = self.draw_scene(scene);
+        let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
+        let drawn = self.draw_damage_regions(scene, within, clear);
         self.timing_main = false;
-        if let Some(state) = restore {
-            unsafe { ctx.RSSetState(&state) };
-        }
         self.gpu_timer.end(&ctx);
         drawn
     }

@@ -95,6 +95,8 @@ pub(crate) struct DamageIndex {
     backdrop: bool,
     /// Повреждение этого кадра и номера кадров (`Window::frame_serial`).
     pub(crate) damage: SceneDamage,
+    /// Disjoint dirty cells; the scalar damage remains a conservative envelope.
+    regions: Vec<[u32; 4]>,
     /// Группа прошлого кадра, рисующая ту же картинку, что группа `g`, плюс один
     /// (0 — нет), `group_match`.
     group_base: Vec<u32>,
@@ -262,6 +264,7 @@ impl DamageIndex {
         self.spans.clear();
         self.backdrop = false;
         self.damage = SceneDamage::Unknown;
+        self.regions.clear();
         self.group_base.clear();
         self.id = 0;
         self.base = 0;
@@ -478,7 +481,8 @@ impl Scene {
         index.build(self, size);
         index.id = id;
         index.base = previous.book.index.id;
-        index.damage = self.damage_against(&index, previous);
+        index.regions.clear();
+        index.damage = self.damage_against(&mut index, previous);
         trace::log_damage(self, &index, previous);
         // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
         // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
@@ -504,7 +508,7 @@ impl Scene {
         }
     }
 
-    fn damage_against(&self, index: &DamageIndex, previous: &Scene) -> SceneDamage {
+    fn damage_against(&self, index: &mut DamageIndex, previous: &Scene) -> SceneDamage {
         let old = &previous.book.index;
         if index.backdrop || old.backdrop || old.size != index.size || old.size.is_none() {
             return SceneDamage::Unknown;
@@ -553,6 +557,9 @@ impl Scene {
             if !same {
                 let (c, r) = ((t % cols) as u32, (t / cols) as u32);
                 let (x, y) = (c * DAMAGE_TILE, r * DAMAGE_TILE);
+                index
+                    .regions
+                    .push([x, y, DAMAGE_TILE.min(w - x), DAMAGE_TILE.min(h - y)]);
                 damage = damage.union(SceneDamage::Rect {
                     x,
                     y,
@@ -575,6 +582,13 @@ impl Scene {
             self.book.index.id,
             self.book.index.size.unwrap_or_default(),
         )
+    }
+
+    /// Disjoint dirty cells for backends preserving sparse damage. An empty
+    /// slice uses the scalar envelope (retained layers and unknown damage).
+    #[doc(hidden)]
+    pub fn frame_damage_regions(&self) -> &[[u32; 4]] {
+        &self.book.index.regions
     }
 
     /// KaminIDE patch: группы, чья картинка нужна кадру, рисуемому только в

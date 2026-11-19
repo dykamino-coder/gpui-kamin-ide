@@ -16,7 +16,10 @@
 //! not compared with the one drawn last, or a failed draw.
 
 use super::*;
+mod damage_tiles;
+mod draw;
 mod full_by;
+use damage_tiles::DamageTiles;
 use full_by::FullBy;
 
 /// What the target holds apart from the damage: the inputs of a frame that
@@ -35,7 +38,7 @@ pub(super) struct Retained {
     /// scene whose damage was united into `pending`.
     last: Option<(u64, Target)>,
     /// Damage since each buffer was last drawn, by back buffer index.
-    pending: [SceneDamage; BUFFER_COUNT],
+    pending: [DamageTiles; BUFFER_COUNT],
     /// Staging texture of frame capture, kept while the size is the same.
     staging: Option<(u32, u32, ID3D11Texture2D)>,
     /// How frame capture waits for the GPU (`gpu_wait`), kept with the device.
@@ -61,8 +64,8 @@ pub(super) enum Plan {
     Keep,
     /// Draw everything.
     Full,
-    /// Draw within the rectangle only.
-    Within(Region),
+    /// Draw only these disjoint device-pixel regions.
+    Within(Vec<Region>),
 }
 
 /// `GPUI_DAMAGE_REDRAW=0` draws every frame whole (comparison runs, fallback).
@@ -114,11 +117,17 @@ impl DirectXRenderer {
         };
         let retarget = self.retained.last.is_some_and(|(_, t)| t != target);
         self.retained.full_by = FullBy::of(external, retarget, damage, frame);
+        let regions = if frame == damage {
+            scene.frame_damage_regions()
+        } else {
+            &[]
+        };
+        for pending in &mut self.retained.pending {
+            pending.merge(frame, regions, target.size);
+            pending.merge(external, &[], target.size);
+        }
         let frame = frame.union(external);
         self.retained.last = Some((id, target));
-        for pending in &mut self.retained.pending {
-            *pending = pending.union(frame);
-        }
         let Some(slot) = self.buffer_slot().filter(|_| enabled()) else {
             self.retained.full_by = FullBy::Disabled;
             self.forget_frames();
@@ -134,26 +143,15 @@ impl DirectXRenderer {
         if frame == SceneDamage::Unchanged && !self.unpresented && !capture_reads_back {
             return Plan::Keep;
         }
-        match self.retained.pending[slot] {
-            SceneDamage::Unchanged => Plan::Keep,
-            SceneDamage::Unknown => Plan::Full,
-            SceneDamage::Rect {
-                x,
-                y,
-                width,
-                height,
-            } => {
-                let region = Region {
-                    x,
-                    y,
-                    width: width.min(self.width.saturating_sub(x)).max(1),
-                    height: height.min(self.height.saturating_sub(y)).max(1),
-                };
-                if region == Region::full(self.width, self.height) {
+        match self.retained.pending[slot].regions() {
+            None => Plan::Full,
+            Some(regions) if regions.is_empty() => Plan::Keep,
+            Some(regions) => {
+                if DamageTiles::covers_target(&regions, (self.width, self.height)) {
                     self.retained.full_by = FullBy::Region;
                     Plan::Full
                 } else {
-                    Plan::Within(region)
+                    Plan::Within(regions)
                 }
             }
         }
@@ -167,7 +165,7 @@ impl DirectXRenderer {
         } else if !matches!(plan, Plan::Keep)
             && let Some(slot) = self.buffer_slot()
         {
-            self.retained.pending[slot] = SceneDamage::Unchanged;
+            self.retained.pending[slot].clear((self.width, self.height));
         }
     }
 
@@ -176,7 +174,7 @@ impl DirectXRenderer {
         self.retained.last = None;
         self.retained.chain = None;
         self.retained.groups.valid.clear();
-        self.retained.pending = [SceneDamage::Unknown; BUFFER_COUNT];
+        self.retained.pending = std::array::from_fn(|_| DamageTiles::default());
     }
 
     /// The device is lost: drop its objects along with the kept frames.
