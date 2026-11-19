@@ -19,6 +19,8 @@ mod box_repaint_tests;
 #[cfg(test)]
 mod column_repaint_tests;
 #[cfg(test)]
+mod column_unseen_tests;
+#[cfg(test)]
 mod content_replay_tests;
 #[cfg(test)]
 mod content_resize_tests;

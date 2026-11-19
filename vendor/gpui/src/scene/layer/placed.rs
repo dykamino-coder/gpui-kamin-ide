@@ -150,6 +150,8 @@ impl RecordRuns {
                 if !whole {
                     super::layer_counters::RUNS_UNPLACED.fetch_add(1, Relaxed);
                     out.unheld.push(run.owner);
+                } else if let Some(empty) = clipped_away(run, map.at, dest) {
+                    out.boxes.push(empty);
                 }
                 continue;
             };
@@ -202,6 +204,74 @@ impl RecordRuns {
         self.bindings.extend(other.bindings);
         self.unheld.extend(other.unheld);
     }
+}
+
+/// The run of a box none of whose commands landed in this placement, when
+/// the placement's clip (with the clips that placed the run before) misses
+/// the run's whole area: whatever the box paints there is cut away, as a box
+/// painted directly whose commands the content mask culled
+/// (`Scene::insert_primitive`) keeps its run without commands. Its empty run
+/// stays in the dest at the end of the placed commands, so the layer holds
+/// the box: a paint-only edit of it records it again (nothing lands) or
+/// waits while it is off the screen, instead of painting the layer anew.
+/// `None` when its commands landed nowhere for another reason or the
+/// placement is not one shift and clip (a draft's routes).
+fn clipped_away(run: &BoxRange, at: Option<Placed>, dest: &Scene) -> Option<BoxRange> {
+    let at = at?;
+    let placed = run.placed.map_or(at, |p| p.then(at));
+    let area = record::geometry::bounds(run.area, at.offset);
+    let clip = placed.clip?;
+    if !area.intersect(&clip).is_empty() {
+        return None;
+    }
+    let end = dest.paint_operations.len() as u32;
+    Some(BoxRange {
+        owner: run.owner,
+        area,
+        ink: None,
+        ops: end..end,
+        env: run.env,
+        replaceable: run.replaceable,
+        placed: Some(placed),
+    })
+}
+
+/// Whether `run` is the empty run of a box its placement clipped away
+/// (`clipped_away`): a box painted directly keeps no placement.
+fn is_clipped_away(run: &BoxRange) -> bool {
+    run.ops.is_empty() && run.placed.is_some()
+}
+
+/// The runs of a finished layer: the empty runs of a box clipped away in
+/// one placement are dropped where another placement painted the box, as
+/// before such runs were kept; a box clipped away in every placement keeps
+/// one empty run over the union of its areas.
+pub(crate) fn settle_clipped_away(boxes: &mut Vec<BoxRange>) {
+    if !boxes.iter().any(is_clipped_away) {
+        return;
+    }
+    let mut painted: Vec<u32> = boxes.iter().filter(|b| !is_clipped_away(b)).map(|b| b.owner).collect();
+    painted.sort_unstable();
+    painted.dedup();
+    let mut kept: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+    let mut out = Vec::with_capacity(boxes.len());
+    for run in boxes.drain(..) {
+        if !is_clipped_away(&run) {
+            out.push(run);
+        } else if painted.binary_search(&run.owner).is_err() {
+            match kept.get(&run.owner) {
+                Some(&at) => {
+                    let first: &mut BoxRange = &mut out[at];
+                    first.area = first.area.union(&run.area);
+                }
+                None => {
+                    kept.insert(run.owner, out.len());
+                    out.push(run);
+                }
+            }
+        }
+    }
+    *boxes = out;
 }
 
 impl Scene {

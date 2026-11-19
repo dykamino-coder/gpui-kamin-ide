@@ -158,6 +158,7 @@ impl SceneLayer {
         // run a range of its commands; one that does not was recorded in
         // another scene. The layer then takes no value writes and records no
         // box again (the host paints it anew), counted, never a wrong write.
+        placed::settle_clipped_away(&mut boxes);
         let quads = scene.quads.len();
         let operations = scene.paint_operations.len();
         let valid = bindings.iter().all(|b| {
@@ -263,3 +264,5 @@ mod order_tests;
 mod rerecord_tests;
 #[cfg(test)]
 mod placed_tests;
+#[cfg(test)]
+mod clipped_tests;
