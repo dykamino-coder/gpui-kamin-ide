@@ -129,7 +129,16 @@ export async function recordUuidMatches(
     const line = Buffer.concat(chunks).toString('utf8')
     if (!line) return false
     const parsed = JSON.parse(line) as { uuid?: string }
-    return parsed.uuid === expectedUuid
+    if (parsed.uuid !== undefined) return parsed.uuid === expectedUuid
+    // A uuid-less bookkeeping row (`api-request`, `tools-used`, `mode`, …) at
+    // the offset carries nothing to compare. KaminIDE ≤1.0.116 pairs such a
+    // row's `_pos` with the uuid it held before (`last.uuid ?? previous`,
+    // the last row of an EARLIER batch), so the claimed record lies somewhere
+    // before the offset, not at it. Since live records are tailed in small
+    // batches, a turn usually ended on such a row and no reconnect resumed: each
+    // re-sent the newest page and dropped older chat rows. Accept the claim
+    // when that uuid still heads a record before the offset (bounded scan).
+    return await uuidHeadsRecordBefore(fd, pos, expectedUuid)
   } catch {
     return false // unparseable at that offset is itself a mismatch
   } finally {
@@ -137,6 +146,40 @@ export async function recordUuidMatches(
       /* already gone */
     })
   }
+}
+
+/** Does a complete record ending at or before `pos` carry `uuid`? Walks back at
+ *  most `MAX_RECORD_CHUNKS` chunks. */
+async function uuidHeadsRecordBefore(fd: fsp.FileHandle, pos: number, uuid: string): Promise<boolean> {
+  let tail = Buffer.alloc(0) // bytes after the earliest newline seen so far
+  let end = pos
+  for (let i = 0; i < MAX_RECORD_CHUNKS && end > 0; i++) {
+    const start = Math.max(0, end - CHUNK)
+    const buf = Buffer.alloc(end - start)
+    const { bytesRead } = await fd.read(buf, 0, buf.length, start)
+    const window = Buffer.concat([buf.subarray(0, bytesRead), tail])
+    // Records end with '\n'; `window` ends at a record boundary (`pos`).
+    let stop = window.length
+    for (;;) {
+      // (A negative offset would search from the END of the buffer.)
+      const nl = stop >= 2 ? window.lastIndexOf(0x0a, stop - 2) : -1
+      if (nl < 0 && start > 0) break // the line may begin in an earlier chunk
+      const text = window.toString('utf8', nl + 1, stop).trim()
+      if (text) {
+        try {
+          const row = JSON.parse(text) as { uuid?: unknown }
+          if (row.uuid === uuid) return true
+        } catch {
+          /* malformed: keep walking back */
+        }
+      }
+      if (nl < 0) return false
+      stop = nl + 1
+    }
+    tail = window.subarray(0, stop)
+    end = start
+  }
+  return false
 }
 
 const CHUNK = 64 * 1024

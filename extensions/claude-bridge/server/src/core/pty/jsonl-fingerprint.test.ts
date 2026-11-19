@@ -132,6 +132,35 @@ describe('transcript fingerprint', () => {
     expect(await recordUuidMatches(file, start, 'u400')).toBe(false)
   })
 
+  it('proves a uuid-less row at the offset by the claimed uuid heading a record before it', async () => {
+    // KaminIDE <=1.0.116 pairs the `_pos` of a trailing bookkeeping row with the
+    // uuid of an earlier batch's last row (live: a reconnect after an
+    // `api-request` row re-sent the whole page and dropped older chat rows).
+    const rows = [
+      '{"type":"user","uuid":"u1"}',
+      '{"type":"assistant","uuid":"u2"}',
+      '{"type":"api-request","id":"r1"}',
+      '{"type":"tools-used","tools":["Bash"]}',
+    ]
+    const file = await tmpFile(rows.join('\n') + '\n')
+    const at = (i: number) => rows.slice(0, i).reduce((n, r) => n + Buffer.byteLength(r) + 1, 0)
+    expect(await recordUuidMatches(file, at(3), 'u2')).toBe(true)
+    expect(await recordUuidMatches(file, at(2), 'u2')).toBe(true)
+    expect(await recordUuidMatches(file, at(3), 'u1')).toBe(true) // an earlier batch's last uuid
+    expect(await recordUuidMatches(file, at(3), 'u9')).toBe(false)
+    expect(await recordUuidMatches(file, at(1), 'u2')).toBe(true)
+    expect(await recordUuidMatches(file, at(1), 'u1')).toBe(false)
+  })
+
+  it('walks back across chunks and fails when no earlier record has a uuid', async () => {
+    const big = '{"type":"api-request","pad":"' + 'x'.repeat(70 * 1024) + '"}'
+    const file = await tmpFile(['{"type":"user","uuid":"u1"}', big, '{"type":"mode"}'].join('\n') + '\n')
+    const lastStart = Buffer.byteLength('{"type":"user","uuid":"u1"}\n' + big + '\n')
+    expect(await recordUuidMatches(file, lastStart, 'u1')).toBe(true)
+    const none = await tmpFile('{"type":"mode"}\n{"type":"api-request"}\n')
+    expect(await recordUuidMatches(none, Buffer.byteLength('{"type":"mode"}\n'), 'u1')).toBe(false)
+  })
+
   it('treats an unclaimed record as nothing to disprove', async () => {
     const file = await tmpFile(many(10))
     expect(await recordUuidMatches(file, undefined, undefined)).toBe(true)
