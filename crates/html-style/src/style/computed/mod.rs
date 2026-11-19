@@ -182,6 +182,9 @@ pub fn filter_contains_fixed(c: &Computed) -> bool {
         || c.reset_effects.filter_ref.is_some()
         || c.reset_effects.backdrop_blur.is_some()
         || c.reset_effects.backdrop_color.is_some()
+        // filter-effects-2 §backdrop-filter: any value other than `none`,
+        // `blur(0)` included, is a containing block for fixed descendants.
+        || c.reset_effects.backdrop_filter_set
 }
 
 pub mod wc {

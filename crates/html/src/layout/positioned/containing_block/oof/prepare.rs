@@ -27,21 +27,22 @@ impl OofQueue {
             let kid = match (kid, host.as_ref()) {
                 (OofKid::Ready(child), Some(host)) => {
                     let mut owner = host.owner.clone();
-                    let root = window.with_retained_layout(&mut owner, |window| {
+                    let (root, bounds) = window.with_retained_layout(&mut owner, |window| {
                         // Host geometry belongs to its layout arena, not the source's scroll offset.
                         window.with_absolute_element_offset(point(px(0.), px(0.)), |window| {
                             let bounds = window.layout_bounds(host.id);
-                            super::host::build_one(
+                            let root = super::host::build_one(
                                 (spot.clone(), OofKid::Ready(child)),
                                 bounds,
                                 host.place,
                                 window,
                                 cx,
                             )
-                            .0
+                            .0;
+                            (root, bounds)
                         })
                     });
-                    OofKid::Prepared(root)
+                    OofKid::Prepared(root, bounds)
                 }
                 (kid, _) => kid,
             };

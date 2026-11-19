@@ -47,7 +47,20 @@ pub(crate) async fn position_element(
     ) {
         return;
     }
-    let built = build::build(stk, e, inherited, opts, frame, layer_ok, root_box).await;
+    // A fixed box whose containing block is the viewport of the root
+    // scrollport hangs on that viewport, outside its scroll range.
+    let anchor = crate::layout::positioned::viewport_anchor::anchor_of(
+        e.style.used().reset_positioned.position == Some(crate::style::computed::Position::Fixed)
+            && !under_tf
+            && opts.paged_build().is_none(),
+        &opts.cx.position.state,
+    );
+    let unscrolled = anchor
+        .is_some()
+        .then(|| opts.inner(|cx| cx.scroll.frame = None));
+    let build_opts = unscrolled.as_deref().unwrap_or(opts);
+    let built = build::build(stk, e, inherited, build_opts, frame, layer_ok, root_box).await;
+    let built = crate::layout::positioned::viewport_anchor::anchored(built, anchor.as_ref());
     // Абсолютный блок без заданных краёв стоит на СТАТИЧЕСКОЙ позиции —
     // там, где он оказался бы в потоке, а не в углу содержащего блока.
     // Пустышка нулевой высоты держит это место в потоке, элемент висит

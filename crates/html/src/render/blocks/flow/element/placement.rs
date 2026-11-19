@@ -51,6 +51,11 @@ pub(crate) fn place_element(
             fixed_axes: (x_set, y_set),
             preserve_cb_geometry: to_cb,
             viewport_static: to_icb,
+            viewport_fixed: crate::layout::positioned::viewport_anchor::anchor_of(
+                to_icb && fixed && opts.paged_build().is_none(),
+                &opts.cx.position.state,
+            )
+            .is_some(),
             free_margin: (
                 if x_set {
                     0.0

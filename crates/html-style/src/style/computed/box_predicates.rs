@@ -48,6 +48,8 @@ fn contains_unpositioned(c: &Computed) -> bool {
     c.reset_transforms.transform.is_some()
         // css-transforms-2: `preserve-3d` is a containing block for all descendants.
         || c.reset_transforms.preserve_3d == Some(true)
+        // css-transforms-2 §perspective-property: a containing block for all descendants.
+        || c.reset_transforms.perspective.is_some()
         || c.reset_effects.filter.is_some()
         || c.reset_context.contain_paint == Some(true)
         || c.reset_context.contain_layout == Some(true)
