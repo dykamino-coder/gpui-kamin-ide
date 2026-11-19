@@ -13,6 +13,7 @@ mod shape;
 mod tests;
 mod text;
 
+pub(super) use adopt::element_ids;
 pub use apply::ApplyError;
 pub use mutation::Mutation;
 

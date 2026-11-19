@@ -4,6 +4,7 @@ use crate::{BROWSER_CSS, Document, ElementGeometry, RenderOpts};
 use gpui::{Context, IntoElement, Render, TestAppContext, Window, div};
 use std::rc::Rc;
 
+mod bindings;
 mod composite;
 mod isolation;
 mod multicol;
@@ -282,27 +283,4 @@ fn adjacent_cssom_reads_share_layout_and_match_fresh_fragments(cx: &mut TestAppC
         .unwrap();
         assert_eq!(super::FLUSHES.with(|n| n.get()) - before, 1);
     });
-}
-
-#[test]
-fn two_live_box_ids_for_one_source_cannot_donate_its_scroll_offset() {
-    let doc = Document::builder("<div id=a>a</div>text<!--gap--><div id=b>b</div>", "")
-        .build()
-        .unwrap();
-    let root = doc.source_dom();
-    let elements = doc.state.values.traversal.elements();
-    let a = elements
-        .iter()
-        .copied()
-        .find(|address| *address != 0)
-        .unwrap();
-    let mut live = elements.to_vec();
-    live.push(a);
-    let (query, scroll) = super::bindings(&root, &elements, &live);
-    let id = query[&a];
-    assert!(
-        !scroll.values().any(|target| *target == id),
-        "an ambiguous source transferred scroll to query box {id}"
-    );
-    assert!(scroll.values().any(|target| *target != id));
 }

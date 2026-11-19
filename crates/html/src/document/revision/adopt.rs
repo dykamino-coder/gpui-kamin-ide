@@ -64,7 +64,7 @@ impl Document {
             }
             all.extend(sheets.iter().map(String::as_str));
             let handles = batch.elements.iter().map(|change| &change.element);
-            let ids = source_ids(&values.traversal.elements(), handles);
+            let ids = element_ids(&values.traversal.elements(), handles);
             for (change, id) in batch.elements.iter().zip(ids) {
                 match id {
                     Some(id) if open(&change.element, &root) && neutral(change, &all) => {
@@ -115,6 +115,16 @@ impl Document {
             Plan::Patched(nodes)
         })
     }
+}
+
+/// Source element identity for this box builder. This revision of the builder
+/// writes by emitted id in TraversalState::record_element. The keyed builder
+/// uses the source handle's creation key in this same revision lookup.
+pub(in crate::document) fn element_ids<'a>(
+    list: &[usize],
+    handles: impl Iterator<Item = &'a Handle>,
+) -> Vec<Option<u64>> {
+    source_ids(list, handles)
 }
 
 /// Номера коробок (позиция в списке адресов сборки плюс один) исходных узлов

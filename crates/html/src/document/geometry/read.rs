@@ -73,8 +73,8 @@ impl GeometryRead<'_> {
         let mut pending = vec![(root.clone(), Vec::new())];
         while let Some((node, path)) = pending.pop() {
             if let NodeData::Element { name, attrs, .. } = &node.data {
-                let id = ids.get(&(Rc::as_ptr(&node) as usize)).copied().unwrap_or(0);
-                let b = boxes.remove(&id).unwrap_or_default();
+                let id = ids.get(&(Rc::as_ptr(&node) as usize));
+                let b = id.and_then(|id| boxes.remove(id)).unwrap_or_default();
                 let attr = |key: &str| {
                     attrs
                         .borrow()
@@ -83,9 +83,8 @@ impl GeometryRead<'_> {
                         .map(|a| a.value.to_string())
                         .unwrap_or_default()
                 };
-                let (font_size, line_height) = sink
-                    .1
-                    .get(&id)
+                let (font_size, line_height) = id
+                    .and_then(|id| sink.1.get(id))
                     .map(|style| crate::layout::geometry::font(style, base, state.values()))
                     .or(b.font)
                     .unwrap_or((16., LineHeight::Normal));

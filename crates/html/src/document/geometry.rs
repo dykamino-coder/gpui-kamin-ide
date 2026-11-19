@@ -201,20 +201,32 @@ impl Document {
     }
 }
 
+/// Match the two builds through the very same source nodes as revision edits.
+/// The query walk can build boxes for nodes skipped by the live walk.
 fn bindings(
-    _root: &Handle,
+    root: &Handle,
     query: &[usize],
     live: &[usize],
 ) -> (HashMap<usize, u64>, HashMap<u64, u64>) {
-    let ids: HashMap<_, _> = query
-        .iter()
-        .enumerate()
-        .map(|(i, address)| (*address, i as u64 + 1))
-        .collect();
-    let scroll = live
-        .iter()
-        .enumerate()
-        .filter_map(|(i, address)| ids.get(address).map(|id| (i as u64 + 1, *id)))
-        .collect();
+    let mut sources = Vec::with_capacity(query.len());
+    let mut pending = vec![root.clone()];
+    while let Some(node) = pending.pop() {
+        pending.extend(node.children.borrow().iter().cloned());
+        if matches!(node.data, NodeData::Element { .. }) {
+            sources.push(node);
+        }
+    }
+    let query = super::revision::element_ids(query, sources.iter());
+    let live = super::revision::element_ids(live, sources.iter());
+    let mut ids = HashMap::with_capacity(query.len());
+    let mut scroll = HashMap::with_capacity(live.len());
+    for ((node, query), live) in sources.into_iter().zip(query).zip(live) {
+        if let Some(query) = query {
+            ids.insert(Rc::as_ptr(&node) as usize, query);
+            if let Some(live) = live {
+                scroll.insert(live, query);
+            }
+        }
+    }
     (ids, scroll)
 }
