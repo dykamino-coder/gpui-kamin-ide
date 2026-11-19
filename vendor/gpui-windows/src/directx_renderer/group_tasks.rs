@@ -15,7 +15,7 @@ fn key(g: &PaintGroup, width: u32, height: u32) -> Option<Key> {
         return None;
     }
     let [raw, out] = Region::for_group(g, width, height);
-    // Four entries are at most 2 MiB, independently of document length.
+    // Four input/output pairs are at most 4 MiB, independently of document length.
     (u64::from(raw.width) * u64::from(raw.height) <= 128 * 1024).then_some(Key([
         g.blur_radius.to_bits(), raw.width, raw.height, out.width, out.height,
         out.x - raw.x, out.y - raw.y,
@@ -25,7 +25,8 @@ fn key(g: &PaintGroup, width: u32, height: u32) -> Option<Key> {
 struct Entry {
     key: Key,
     input: Option<BlurTexture>,
-    output: Option<group_atlas::Place>,
+    output: Option<BlurTexture>,
+    ready: bool,
 }
 
 #[derive(Default)]
@@ -40,6 +41,10 @@ pub(super) struct Tasks {
 }
 
 impl Tasks {
+    pub(super) fn outputs(&self) -> impl Iterator<Item = &ID3D11Texture2D> {
+        self.entries.iter().filter_map(|e| e.output.as_ref().map(|t| &t.texture))
+    }
+
     pub(super) fn inputs(&self) -> impl Iterator<Item = &ID3D11Texture2D> {
         self.entries.iter().filter_map(|e| e.input.as_ref().map(|t| &t.texture))
     }
@@ -100,17 +105,17 @@ impl DirectXRenderer {
         let entries = &mut self.blur.tasks.entries;
         entries.retain(|e| common.iter().any(|(k, _)| *k == e.key));
         for e in entries.iter_mut() {
-            e.output = None;
+            e.ready = false;
         }
         for (k, _) in common {
             if !entries.iter().any(|e| e.key == k) {
-                entries.push(Entry { key: k, input: None, output: None });
+                entries.push(Entry { key: k, input: None, output: None, ready: false });
             }
         }
     }
 
     /// Return true once this group has either copied a proven equal result or
-    /// executed its original kernel. The atlas owns the finished output.
+    /// executed its original kernel. Cached results never alias an atlas page.
     pub(super) fn cached_blur_task(&mut self, i: usize, g: &PaintGroup, raw: Region) -> Result<bool> {
         let Some(k) = key(g, self.width, self.height) else { return Ok(false) };
         let Some(slot) = self.blur.tasks.entries.iter().position(|e| e.key == k) else { return Ok(false) };
@@ -123,7 +128,7 @@ impl DirectXRenderer {
         let r = gaussian::direct_radius(g.blur_radius).unwrap();
         let place = self.blur.group_place[i];
         let region = self.blur.group_regions[i];
-        let Some(source) = self.blur.tasks.entries[slot].output else {
+        if !self.blur.tasks.entries[slot].ready {
             if self.blur.tasks.entries[slot].input.is_none() {
                 let Ok(input) = create_blur_texture(&device, raw.width, raw.height, false) else {
                     self.blur.tasks.entries.clear();
@@ -131,18 +136,33 @@ impl DirectXRenderer {
                 };
                 self.blur.tasks.entries[slot].input = Some(input);
             }
+            if self.blur.tasks.entries[slot].output.is_none() {
+                let Ok(output) = create_blur_texture(&device, region.width, region.height, false) else {
+                    self.blur.tasks.entries.clear();
+                    return Ok(false);
+                };
+                self.blur.tasks.entries[slot].output = Some(output);
+            }
             self.gaussian_group(i, g.blur_radius, r, raw)?;
             let entry = &mut self.blur.tasks.entries[slot];
             let area = D3D11_BOX { left: raw.x, top: raw.y, front: 0,
                 right: raw.x + raw.width, bottom: raw.y + raw.height, back: 1 };
             unsafe {
+                dc.OMSetRenderTargets(None, None);
                 dc.PSSetShaderResources(0, Some(&[None]));
                 dc.CopySubresourceRegion(&entry.input.as_ref().unwrap().texture, 0, 0, 0, 0,
                     &self.blur.stage.as_ref().unwrap().texture, 0, Some(&area));
             }
-            entry.output = Some(place);
+            let area = D3D11_BOX { left: place.x, top: place.y, front: 0,
+                right: place.x + region.width, bottom: place.y + region.height, back: 1 };
+            unsafe {
+                dc.CopySubresourceRegion(&entry.output.as_ref().unwrap().texture, 0, 0, 0, 0,
+                    &self.blur.groups[place.page].texture, 0, Some(&area));
+            }
+            entry.ready = true;
             return Ok(true);
-        };
+        }
+        let source = self.blur.tasks.entries[slot].output.as_ref().unwrap().texture.clone();
         // Every raw texel must be rasterized, including the halo. A page
         // smaller than the comparison viewport cannot prove equality.
         if self.blur.groups[place.page].width < raw.width
@@ -167,15 +187,15 @@ impl DirectXRenderer {
         compared?;
         #[cfg(test)]
         { self.blur.tasks.probes += 1; }
-        let area = D3D11_BOX { left: source.x, top: source.y, front: 0,
-            right: source.x + region.width, bottom: source.y + region.height, back: 1 };
+        let area = D3D11_BOX { left: 0, top: 0, front: 0,
+            right: region.width, bottom: region.height, back: 1 };
         unsafe {
             dc.OMSetRenderTargets(None, None);
             dc.PSSetShaderResources(0, Some(&[None]));
             // SetPredication skips the operation when result == PredicateValue.
             dc.SetPredication(&predicate, true);
             dc.CopySubresourceRegion(&self.blur.groups[place.page].texture, 0, place.x, place.y, 0,
-                &self.blur.groups[source.page].texture, 0, Some(&area));
+                &source, 0, Some(&area));
             dc.SetPredication(&predicate, false);
         }
         let blurred = self.gaussian_group(i, g.blur_radius, r, raw);

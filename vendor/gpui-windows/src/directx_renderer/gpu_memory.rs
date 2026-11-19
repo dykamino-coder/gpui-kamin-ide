@@ -52,6 +52,9 @@ impl DirectXRenderer {
         for input in blur.tasks.inputs() {
             whole("gpu/group/task-input", input);
         }
+        for output in blur.tasks.outputs() {
+            whole("gpu/group/task-output", output);
+        }
         let single = [
             ("gpu/group/stage", &blur.stage),
             ("gpu/group/level-backdrop", &blur.level_backdrop),

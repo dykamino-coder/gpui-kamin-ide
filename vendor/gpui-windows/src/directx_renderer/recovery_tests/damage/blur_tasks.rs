@@ -57,6 +57,24 @@ fn scene(changed: bool) -> Scene {
 }
 
 #[test]
+fn cached_blur_outputs_are_independent_of_atlas_subresources() {
+    let device = DirectXDevices::with_instrumentation(
+        crate::GpuAdapterPreference::Software, gpui::Instrumentation::default(),
+    ).unwrap();
+    let mut renderer = offscreen(&device, W, H);
+    renderer.draw(&scene(false), WindowBackgroundAppearance::Opaque).unwrap();
+    assert!(renderer.blur.tasks.probes >= 8, "repeated tasks must be exercised");
+    assert!(renderer.blur.group_place.windows(2).any(|p| p[0].page == p[1].page),
+        "the regression requires multiple groups in one atlas subresource");
+    let outputs: Vec<_> = renderer.blur.tasks.outputs().collect();
+    assert!(!outputs.is_empty());
+    for output in outputs {
+        assert!(renderer.blur.groups.iter().all(|page| output != &page.texture),
+            "CopySubresourceRegion cannot copy within the same atlas subresource");
+    }
+}
+
+#[test]
 fn validated_blur_tasks_equal_uncached_rgba_for_hits_and_misses() {
     for device in devices() {
         for changed in [false, true] {
@@ -133,12 +151,14 @@ fn removing_all_groups_releases_cached_task_inputs() {
             .draw(&first, WindowBackgroundAppearance::Opaque)
             .unwrap();
         assert!(cached.blur.tasks.inputs().next().is_some());
+        assert!(cached.blur.tasks.outputs().next().is_some());
         let mut empty = Scene::default();
         empty.note_frame_damage(&first, 1, (W, H));
         cached
             .draw(&empty, WindowBackgroundAppearance::Opaque)
             .unwrap();
         assert!(cached.blur.tasks.inputs().next().is_none());
+        assert!(cached.blur.tasks.outputs().next().is_none());
     }
 }
 

@@ -10150,10 +10150,10 @@ index 0000000000000000000000000000000000000000..9c6d6912db30686f6411de1815f8167a
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/gpu_memory.rs b/vendor/gpui-windows/src/directx_renderer/gpu_memory.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ab131f04c9e5384a872f8ed322a105273689de02
+index 0000000000000000000000000000000000000000..fddcf37baebc4c74ecdb007fd4adfa881300b6d4
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/gpu_memory.rs
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,110 @@
 +//! KaminIDE patch: GPU memory the renderer holds, by owner, for the engine bench's memory
 +//! report (`Window::gpu_memory`). Sizes come from the texture descriptions: what the pixels
 +//! take, not what the driver reserved around them. Not walked: the swap chain's other
@@ -10207,6 +10207,9 @@ index 0000000000000000000000000000000000000000..ab131f04c9e5384a872f8ed322a10527
 +        let blur = &self.blur;
 +        for input in blur.tasks.inputs() {
 +            whole("gpu/group/task-input", input);
++        }
++        for output in blur.tasks.outputs() {
++            whole("gpu/group/task-output", output);
 +        }
 +        let single = [
 +            ("gpu/group/stage", &blur.stage),
@@ -11971,10 +11974,10 @@ index 0000000000000000000000000000000000000000..cc7317a71e56ae16682701821419c3da
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tasks.rs b/vendor/gpui-windows/src/directx_renderer/group_tasks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..045a3cba27c7a1256c83b31f488bbbaa567a75b8
+index 0000000000000000000000000000000000000000..746e2f51057224cadc5f45860275a8d40bfc9558
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tasks.rs
-@@ -0,0 +1,195 @@
+@@ -0,0 +1,215 @@
 +//! Finished Gaussian tasks, reused only after an exact GPU comparison of the input.
 +//!
 +//! A predicate sees the complete raw rectangle, including the kernel halo. It
@@ -11992,7 +11995,7 @@ index 0000000000000000000000000000000000000000..045a3cba27c7a1256c83b31f488bbbaa
 +        return None;
 +    }
 +    let [raw, out] = Region::for_group(g, width, height);
-+    // Four entries are at most 2 MiB, independently of document length.
++    // Four input/output pairs are at most 4 MiB, independently of document length.
 +    (u64::from(raw.width) * u64::from(raw.height) <= 128 * 1024).then_some(Key([
 +        g.blur_radius.to_bits(), raw.width, raw.height, out.width, out.height,
 +        out.x - raw.x, out.y - raw.y,
@@ -12002,7 +12005,8 @@ index 0000000000000000000000000000000000000000..045a3cba27c7a1256c83b31f488bbbaa
 +struct Entry {
 +    key: Key,
 +    input: Option<BlurTexture>,
-+    output: Option<group_atlas::Place>,
++    output: Option<BlurTexture>,
++    ready: bool,
 +}
 +
 +#[derive(Default)]
@@ -12017,6 +12021,10 @@ index 0000000000000000000000000000000000000000..045a3cba27c7a1256c83b31f488bbbaa
 +}
 +
 +impl Tasks {
++    pub(super) fn outputs(&self) -> impl Iterator<Item = &ID3D11Texture2D> {
++        self.entries.iter().filter_map(|e| e.output.as_ref().map(|t| &t.texture))
++    }
++
 +    pub(super) fn inputs(&self) -> impl Iterator<Item = &ID3D11Texture2D> {
 +        self.entries.iter().filter_map(|e| e.input.as_ref().map(|t| &t.texture))
 +    }
@@ -12077,17 +12085,17 @@ index 0000000000000000000000000000000000000000..045a3cba27c7a1256c83b31f488bbbaa
 +        let entries = &mut self.blur.tasks.entries;
 +        entries.retain(|e| common.iter().any(|(k, _)| *k == e.key));
 +        for e in entries.iter_mut() {
-+            e.output = None;
++            e.ready = false;
 +        }
 +        for (k, _) in common {
 +            if !entries.iter().any(|e| e.key == k) {
-+                entries.push(Entry { key: k, input: None, output: None });
++                entries.push(Entry { key: k, input: None, output: None, ready: false });
 +            }
 +        }
 +    }
 +
 +    /// Return true once this group has either copied a proven equal result or
-+    /// executed its original kernel. The atlas owns the finished output.
++    /// executed its original kernel. Cached results never alias an atlas page.
 +    pub(super) fn cached_blur_task(&mut self, i: usize, g: &PaintGroup, raw: Region) -> Result<bool> {
 +        let Some(k) = key(g, self.width, self.height) else { return Ok(false) };
 +        let Some(slot) = self.blur.tasks.entries.iter().position(|e| e.key == k) else { return Ok(false) };
@@ -12100,7 +12108,7 @@ index 0000000000000000000000000000000000000000..045a3cba27c7a1256c83b31f488bbbaa
 +        let r = gaussian::direct_radius(g.blur_radius).unwrap();
 +        let place = self.blur.group_place[i];
 +        let region = self.blur.group_regions[i];
-+        let Some(source) = self.blur.tasks.entries[slot].output else {
++        if !self.blur.tasks.entries[slot].ready {
 +            if self.blur.tasks.entries[slot].input.is_none() {
 +                let Ok(input) = create_blur_texture(&device, raw.width, raw.height, false) else {
 +                    self.blur.tasks.entries.clear();
@@ -12108,18 +12116,33 @@ index 0000000000000000000000000000000000000000..045a3cba27c7a1256c83b31f488bbbaa
 +                };
 +                self.blur.tasks.entries[slot].input = Some(input);
 +            }
++            if self.blur.tasks.entries[slot].output.is_none() {
++                let Ok(output) = create_blur_texture(&device, region.width, region.height, false) else {
++                    self.blur.tasks.entries.clear();
++                    return Ok(false);
++                };
++                self.blur.tasks.entries[slot].output = Some(output);
++            }
 +            self.gaussian_group(i, g.blur_radius, r, raw)?;
 +            let entry = &mut self.blur.tasks.entries[slot];
 +            let area = D3D11_BOX { left: raw.x, top: raw.y, front: 0,
 +                right: raw.x + raw.width, bottom: raw.y + raw.height, back: 1 };
 +            unsafe {
++                dc.OMSetRenderTargets(None, None);
 +                dc.PSSetShaderResources(0, Some(&[None]));
 +                dc.CopySubresourceRegion(&entry.input.as_ref().unwrap().texture, 0, 0, 0, 0,
 +                    &self.blur.stage.as_ref().unwrap().texture, 0, Some(&area));
 +            }
-+            entry.output = Some(place);
++            let area = D3D11_BOX { left: place.x, top: place.y, front: 0,
++                right: place.x + region.width, bottom: place.y + region.height, back: 1 };
++            unsafe {
++                dc.CopySubresourceRegion(&entry.output.as_ref().unwrap().texture, 0, 0, 0, 0,
++                    &self.blur.groups[place.page].texture, 0, Some(&area));
++            }
++            entry.ready = true;
 +            return Ok(true);
-+        };
++        }
++        let source = self.blur.tasks.entries[slot].output.as_ref().unwrap().texture.clone();
 +        // Every raw texel must be rasterized, including the halo. A page
 +        // smaller than the comparison viewport cannot prove equality.
 +        if self.blur.groups[place.page].width < raw.width
@@ -12144,15 +12167,15 @@ index 0000000000000000000000000000000000000000..045a3cba27c7a1256c83b31f488bbbaa
 +        compared?;
 +        #[cfg(test)]
 +        { self.blur.tasks.probes += 1; }
-+        let area = D3D11_BOX { left: source.x, top: source.y, front: 0,
-+            right: source.x + region.width, bottom: source.y + region.height, back: 1 };
++        let area = D3D11_BOX { left: 0, top: 0, front: 0,
++            right: region.width, bottom: region.height, back: 1 };
 +        unsafe {
 +            dc.OMSetRenderTargets(None, None);
 +            dc.PSSetShaderResources(0, Some(&[None]));
 +            // SetPredication skips the operation when result == PredicateValue.
 +            dc.SetPredication(&predicate, true);
 +            dc.CopySubresourceRegion(&self.blur.groups[place.page].texture, 0, place.x, place.y, 0,
-+                &self.blur.groups[source.page].texture, 0, Some(&area));
++                &source, 0, Some(&area));
 +            dc.SetPredication(&predicate, false);
 +        }
 +        let blurred = self.gaussian_group(i, g.blur_radius, r, raw);
@@ -13391,10 +13414,10 @@ index 0000000000000000000000000000000000000000..69bb0b813867db2fed89906566449032
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/blur_tasks.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/blur_tasks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0b4e8c357ad4288fbbd83b9c789e51e958e1193d
+index 0000000000000000000000000000000000000000..3b63b696de3fdd07699aa382ecc9410e26788396
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/blur_tasks.rs
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,195 @@
 +//! Reusing a finished blur must preserve every RGBA byte, including mismatch fallback.
 +use super::*;
 +
@@ -13451,6 +13474,24 @@ index 0000000000000000000000000000000000000000..0b4e8c357ad4288fbbd83b9c789e51e9
 +        });
 +    }
 +    s
++}
++
++#[test]
++fn cached_blur_outputs_are_independent_of_atlas_subresources() {
++    let device = DirectXDevices::with_instrumentation(
++        crate::GpuAdapterPreference::Software, gpui::Instrumentation::default(),
++    ).unwrap();
++    let mut renderer = offscreen(&device, W, H);
++    renderer.draw(&scene(false), WindowBackgroundAppearance::Opaque).unwrap();
++    assert!(renderer.blur.tasks.probes >= 8, "repeated tasks must be exercised");
++    assert!(renderer.blur.group_place.windows(2).any(|p| p[0].page == p[1].page),
++        "the regression requires multiple groups in one atlas subresource");
++    let outputs: Vec<_> = renderer.blur.tasks.outputs().collect();
++    assert!(!outputs.is_empty());
++    for output in outputs {
++        assert!(renderer.blur.groups.iter().all(|page| output != &page.texture),
++            "CopySubresourceRegion cannot copy within the same atlas subresource");
++    }
 +}
 +
 +#[test]
@@ -13530,12 +13571,14 @@ index 0000000000000000000000000000000000000000..0b4e8c357ad4288fbbd83b9c789e51e9
 +            .draw(&first, WindowBackgroundAppearance::Opaque)
 +            .unwrap();
 +        assert!(cached.blur.tasks.inputs().next().is_some());
++        assert!(cached.blur.tasks.outputs().next().is_some());
 +        let mut empty = Scene::default();
 +        empty.note_frame_damage(&first, 1, (W, H));
 +        cached
 +            .draw(&empty, WindowBackgroundAppearance::Opaque)
 +            .unwrap();
 +        assert!(cached.blur.tasks.inputs().next().is_none());
++        assert!(cached.blur.tasks.outputs().next().is_none());
 +    }
 +}
 +
