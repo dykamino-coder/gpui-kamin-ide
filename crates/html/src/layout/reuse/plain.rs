@@ -43,22 +43,24 @@ const TABLE: &[&str] = &[
     "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th",
 ];
 
-/// Вердикт `plain` одного блочного ребёнка на время его сборки: решение о
-/// записи повтора (`FlowCx::mark`) и запись пропуска (`FlowCx::record`)
-/// спрашивают его оба, а обход поддерева выполняется один раз.
-#[derive(Default)]
-pub(super) struct Inert(std::cell::OnceCell<bool>);
-
-impl Inert {
-    /// `plain(e)` для ребёнка, ради которого создан вердикт.
-    pub(super) fn of(&self, e: &Element) -> bool {
-        *self.0.get_or_init(|| plain(e))
-    }
+/// A skip record may use another counter origin only when none of its
+/// paint keys or anchors escape the subtree. Both recorders use this result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CounterOrigin {
+    Fixed,
+    Relative,
 }
 
-/// Каждый элемент поддерева `e` инертен (см. модуль).
-pub(super) fn plain(e: &Element) -> bool {
-    all_elements(e, inert)
+pub(super) fn skip_origin(e: &Element, vcx: crate::values::ValueCx<'_>) -> Option<CounterOrigin> {
+    let mut origin = CounterOrigin::Relative;
+    all_elements(e, |node| {
+        if origin == CounterOrigin::Relative && super::content::inert_node(node, vcx) {
+            return true;
+        }
+        origin = CounterOrigin::Fixed;
+        inert(node)
+    })
+    .then_some(origin)
 }
 
 /// Элемент `e` сам инертен: обычный поток или таблица, без собственного слоя.
