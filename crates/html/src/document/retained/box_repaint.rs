@@ -29,6 +29,11 @@ impl Builder {
         // Deferred boxes this replay shows are recorded with the queued ones.
         if let Some(layer) = self.store.scene_layer() {
             let shown = window.content_mask().bounds.scale(window.scale_factor());
+            // An edit the layer cannot record that this replay shows: one
+            // frame is built for every edit waiting (`layout::reuse::Wait`).
+            if self.store.due_frames(shown) {
+                return false;
+            }
             self.store
                 .queue_repaints(self.store.due_repaints(&layer, shown));
         }

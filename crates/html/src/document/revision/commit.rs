@@ -146,6 +146,13 @@ impl Document {
         };
         // A box whose runs showed no pixel of the layer's frame.
         let off = |id: u64| self.reuse.off_screen(&layer, id);
+        // A box the layer cannot record, wholly off the screen (`offscreen`).
+        let boxes = self.state.boxes.borrow();
+        let waits =
+            |path: &super::patch::Path, a: &crate::dom::Element, b: &crate::dom::Element| {
+                super::offscreen::waits(&self.reuse, &boxes, &layer, (&self.nodes, path), a, b)
+            };
+        let mut frames = Vec::new();
         let Some(taken) = super::layer_write::write_paint_values(
             &self.nodes,
             nodes,
@@ -154,11 +161,15 @@ impl Document {
             own,
             unseen,
             off,
+            waits,
+            &mut frames,
         ) else {
             return false;
         };
+        drop(boxes);
         self.reuse.queue_repaints(taken.records);
         self.reuse.defer_repaints(taken.deferred);
+        self.reuse.defer_frames(frames);
         true
     }
 
