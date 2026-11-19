@@ -49,8 +49,7 @@ pub(crate) fn attach(
         stateful = stateful.overflow_y_scroll();
     }
     let mut div = stateful.0;
-    let bars =
-        crate::interactive::scroll_extent::classic::reserve(cx.scroll.frame.as_ref(), e.node_id, c);
+    let bars = crate::interactive::scroll_extent::classic::reserve(cx.scroll.frame.as_ref(), e, c);
     div.style().scrollbar_width = Some(gpui::px(c.reset_box_layout.scroll.thickness()).into());
     // Taffy reserves a classic gutter for Scroll, while Hidden has the same
     // sizing semantics without a gutter. Auto starts without bars.
