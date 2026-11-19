@@ -124,6 +124,10 @@ pub(crate) fn native_paragraph(
         .spacers(inline::spacers(&pieces))
         .spacer_edges(inline::spacer_edges(&pieces))
         .box_extents(inline::box_extents(&pieces))
+        .fragments_to(crate::layout::reuse::fragment_target(
+            opts,
+            inherited.self_node,
+        ))
         .flow_shapes(
             inherited
                 .reset_shapes

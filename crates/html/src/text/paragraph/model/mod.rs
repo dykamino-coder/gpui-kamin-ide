@@ -243,8 +243,8 @@ pub struct Paragraph {
     /// Подъём и спуск струта в точках (меряются в `request_layout`).
     pub(super) strut_box: (f32, f32),
     pub(super) first_strut: Option<super::first_line::Strut>,
-    /// Границы строк в байтах для замера и отрисовки.
-    pub(super) lines: Vec<Line>,
+    pub(super) lines: Vec<Line>, // Line byte ranges, measured and painted.
     pub(super) fragment: Option<crate::text::paragraph::fragment::LineFlow>,
     pub(super) kept: super::kept::Kept,
+    pub(super) fragments: Option<std::rc::Rc<crate::layout::retained::FragmentTarget>>,
 }
