@@ -112,14 +112,14 @@ impl Document {
                 },
             );
         }
-        let attr_paths = why::why(
+        let attrs_to_write = why::why(
             attr_paths(&self.nodes, boxes, &attrs),
             &why::REFUSED_PLAN_PATHS,
         )?;
         // Rules that change no cascaded value (an inline style or a more
         // specific rule wins): the batch writes only `class`/`data-*`, which the
         // frame build does not read; the frame stays as recorded (`Plan::Clean`).
-        if restyles.is_empty() && attr_paths.is_empty() {
+        if restyles.is_empty() && attrs_to_write.is_empty() {
             return Some(Plan::Clean(None));
         }
         let style_paths = why::why(
@@ -127,14 +127,15 @@ impl Document {
             &why::REFUSED_PLAN_PATHS,
         )?;
         let mut nodes = (*self.nodes).clone();
-        if !patch(&mut nodes, &attr_paths, &attrs) {
+        if !patch(&mut nodes, &attrs_to_write, &attrs) {
             return refuse(&why::REFUSED_PLAN_PATHS);
         }
+        let edited = |nodes| Edited {
+            nodes,
+            attrs: attrs_to_write,
+        };
         if restyles.is_empty() {
-            return Some(Plan::Clean(Some(Edited {
-                nodes,
-                attrs: attr_paths,
-            })));
+            return Some(Plan::Clean(Some(edited(nodes))));
         }
         for (path, id) in &style_paths {
             match (apply(&mut nodes, path), restyles.get(id)) {
@@ -144,14 +145,7 @@ impl Document {
         }
         let mut restyled: Vec<u64> = restyles.into_keys().collect();
         restyled.sort_unstable();
-        Some(Plan::Restyled(
-            Edited {
-                nodes,
-                attrs: attr_paths,
-            },
-            restyled,
-            style_paths,
-        ))
+        Some(Plan::Restyled(edited(nodes), restyled, style_paths))
     }
 
     /// Перерасчёты элементов, чей стиль меняет пакет, по номерам коробок;
