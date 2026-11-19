@@ -82,6 +82,7 @@ describe('CodexAgentSession', () => {
         clientUserMessageId: 'sub-1',
         model: 'gpt-6-sol',
         effort: 'high',
+        summary: 'auto',
       },
     ])
     expect(session.running).toBe(true)

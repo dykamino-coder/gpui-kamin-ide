@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import http from 'node:http'
 import fs from 'node:fs'
-import { CliModTransport, POLL_HOLD_MS, createCliModTransport } from './cli-mod-transport'
+import { CliModTransport, POLL_HOLD_MS, createCliModTransport, resetCliVersionProbes } from './cli-mod-transport'
 import type { CliHandlerConditions } from '../hooks/cli-handler-conditions'
 
 const transports: CliModTransport[] = []
@@ -13,6 +13,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
   versionProbe.mockReset()
+  resetCliVersionProbes()
 })
 async function setup() {
   const transport = new CliModTransport('session-a')

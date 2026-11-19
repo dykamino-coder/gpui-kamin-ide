@@ -184,6 +184,23 @@ function ensureWatch(): void {
   headWatch.unref?.()
 }
 
+let droppedWrites = 0
+
+/** A best-effort statistics write that did not happen (queue full, timed out,
+ *  failed). Statistics never hold up a chat, so the caller drops the row; the
+ *  loss is counted and logged instead of escaping as an unhandled rejection. */
+export function noteDroppedStatsWrite(error: unknown, what: string): void {
+  droppedWrites++
+  // First drop and then one line per 100: a saturated queue must not flood the log.
+  if (droppedWrites === 1 || droppedWrites % 100 === 0)
+    warnLog('stats: write dropped', { what, dropped: droppedWrites, error: String(error) })
+}
+
+/** Best-effort writes dropped since start (diagnostics and tests). */
+export function droppedStatsWrites(): number {
+  return droppedWrites
+}
+
 /** Сколько писателей ждут или исполняются — для диагностики и тестов. */
 export function statsWriteDepth(): number {
   return queue.length + (head ? 1 : 0)
@@ -192,12 +209,14 @@ export function statsWriteDepth(): number {
 /** Queue diagnostics: depth, oldest wait and the running head. */
 export function statsWriteQueueInfo(): {
   depth: number
+  dropped: number
   oldestWaitMs: number
   head: { label: string; runningMs: number; interrupted: boolean } | null
 } {
   const now = Date.now()
   return {
     depth: statsWriteDepth(),
+    dropped: droppedWrites,
     oldestWaitMs: queue.length ? now - queue[0]!.enqueuedAt : 0,
     head: head
       ? { label: head.label, runningMs: now - (head.startedAt ?? now), interrupted: !!head.interrupted }

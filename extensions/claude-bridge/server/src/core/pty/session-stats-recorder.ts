@@ -11,16 +11,21 @@ import { insertRequest } from '../stats/database/crud'
 import type { RequestLogEntry } from '../stats/types'
 import { eventBus } from '../events/bus'
 import { warnLog } from '../logging'
+import { noteDroppedStatsWrite } from '../stats/database/write-lock'
 
 export function handleJsonlUserEntry(session: PtySession, entry: JsonlEntry): void {
   const content = entry.message?.content
   if (Array.isArray(content) && content.some((b) => b.type === 'tool_result')) return
 
-  const userMessage = typeof content === 'string'
-    ? content
-    : Array.isArray(content)
-      ? content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n')
-      : ''
+  const userMessage =
+    typeof content === 'string'
+      ? content
+      : Array.isArray(content)
+        ? content
+            .filter((b) => b.type === 'text')
+            .map((b) => (b as { text: string }).text)
+            .join('\n')
+        : ''
 
   if (!userMessage.trim()) return
 
@@ -49,7 +54,8 @@ export function handleJsonlUserEntry(session: PtySession, entry: JsonlEntry): vo
   }
 
   try {
-    insertRequest(logEntry)
+    // Not awaited (the chat never waits for statistics), but never unhandled.
+    insertRequest(logEntry).catch((err: unknown) => noteDroppedStatsWrite(err, 'requests'))
     eventBus.emit('request:start', logEntry)
     eventBus.emit('request:complete', logEntry)
   } catch (err) {
