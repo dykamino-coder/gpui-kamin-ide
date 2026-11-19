@@ -186,15 +186,21 @@ pub(super) fn attribute_records(
 
 /// Узел принадлежит DOM `root` и стоит под элементами HTML вне шаблонов и
 /// чужого содержимого: у такого узла атрибуты и текст не часть формы
-/// (`shape`). Текст требует родителя-элемента.
+/// (`shape`). Текст требует родителя-элемента. Элемент может стоять и в
+/// поддереве SVG: его `class` и `data-*` (только их берут пути правки,
+/// `restyle::invalidation`, `adopt::neutral`) SVG читает лишь каскадом, а
+/// остальные атрибуты SVG — часть формы (`svg_cascade_only`). Текст в SVG
+/// закрыт: `<text>` и `<style>` читаются как есть.
 pub(super) fn open(node: &Handle, root: &Handle) -> bool {
+    let element = matches!(node.data, NodeData::Element { .. });
     let mut at = node.clone();
     let mut first = true;
     loop {
         match &at.data {
             NodeData::Document => return Rc::ptr_eq(&at, root) && !first,
             NodeData::Element { name, .. } => {
-                if name.ns != html5ever::ns!(html) || &*name.local == "template" {
+                let svg = element && name.ns == html5ever::ns!(svg);
+                if !(name.ns == html5ever::ns!(html) || svg) || &*name.local == "template" {
                     return false;
                 }
             }
@@ -213,6 +219,27 @@ pub(super) fn open(node: &Handle, root: &Handle) -> bool {
         first = false;
         at = parent;
     }
+}
+
+/// Отличие атрибутов `old` → `new` элемента SVG, которое SVG видит только
+/// каскадом: изменены лишь `class` и `data-*` без пространства имён (не
+/// `data-kamin*`). Остальные атрибуты SVG — геометрия и представление, их
+/// сериализация рисунка читает как есть (`svg_document::serialize`).
+pub(super) fn svg_cascade_only(old: &[Attribute], new: &[Attribute]) -> bool {
+    fn value<'a>(
+        list: &'a [Attribute],
+        name: &QualName,
+    ) -> Option<&'a html5ever::tendril::StrTendril> {
+        list.iter().find(|a| a.name == *name).map(|a| &a.value)
+    }
+    old.iter().chain(new).all(|attr| {
+        let local = &*attr.name.local;
+        value(old, &attr.name) == value(new, &attr.name)
+            || (attr.name.ns == html5ever::ns!()
+                && attr.name.prefix.is_none()
+                && (local == "class"
+                    || (local.starts_with("data-") && !local.starts_with("data-kamin"))))
+    })
 }
 
 fn parent(node: &Handle) -> Option<Handle> {

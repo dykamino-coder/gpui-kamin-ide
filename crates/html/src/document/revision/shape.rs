@@ -5,9 +5,10 @@
 //! число детей, содержимое шаблонов. Ревизия той же формы отличается только
 //! такими атрибутами и текстами; их и перечисляет `Shape`. Любое другое
 //! отличие (дети, атрибут или текст SVG/MathML или внутри `<template>`) —
-//! `None`: такая ревизия собирается заново.
+//! `None`: такая ревизия собирается заново. `class` и `data-*` элементов SVG
+//! — не форма: SVG видит их только каскадом.
 
-use super::mutation::{Mutation, attribute_records};
+use super::mutation::{Mutation, attribute_records, svg_cascade_only};
 use markup5ever_rcdom::{Handle, NodeData};
 
 /// Элемент, атрибуты которого в новой ревизии другие.
@@ -62,9 +63,8 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
         texts: Vec::new(),
         sheets: Vec::new(),
     };
-    // Узел, его пара, признак «атрибуты и тексты здесь — часть формы» и
-    // есть ли у узла родитель.
-    let mut stack = vec![(old.clone(), new.clone(), false, false)];
+    // Узел, его пара, что здесь часть формы (`Form`) и есть ли у узла родитель.
+    let mut stack = vec![(old.clone(), new.clone(), Form::Open, false)];
     while let Some((a, b, frozen, child)) = stack.pop() {
         let frozen = match (&a.data, &b.data) {
             (NodeData::Document, NodeData::Document) => frozen,
@@ -82,7 +82,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
             ) if name == n && public_id == p && system_id == s => frozen,
             (NodeData::Text { contents }, NodeData::Text { contents: c }) => {
                 if *contents.borrow() != *c.borrow() {
-                    if frozen || !child {
+                    if frozen != Form::Open || !child {
                         return None;
                     }
                     shape.texts.push(Edited {
@@ -123,10 +123,18 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                 }
                 // Чужое содержимое (SVG, MathML) и шаблоны обрабатываются своими
                 // проходами, читающими атрибуты как есть: там они — часть формы.
-                let frozen =
-                    frozen || name.ns != html5ever::ns!(html) || &*name.local == "template";
+                // Исключение — `class` и `data-*` в SVG вне шаблонов и MathML:
+                // их SVG видит только каскадом (`mutation::svg_cascade_only`).
+                let frozen = match frozen {
+                    Form::Closed => Form::Closed,
+                    _ if &*name.local == "template" => Form::Closed,
+                    _ if name.ns == html5ever::ns!(svg) => Form::Svg,
+                    form if name.ns == html5ever::ns!(html) => form,
+                    _ => Form::Closed,
+                };
                 if *attrs.borrow() != *at.borrow() {
-                    if frozen {
+                    let cascade = || svg_cascade_only(&attrs.borrow(), &at.borrow());
+                    if frozen == Form::Closed || (frozen == Form::Svg && !cascade()) {
                         return None;
                     }
                     shape.changed.push(Changed {
@@ -139,7 +147,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                 }
                 match (&*template_contents.borrow(), &*t.borrow()) {
                     (None, None) => {}
-                    (Some(x), Some(y)) => stack.push((x.clone(), y.clone(), true, false)),
+                    (Some(x), Some(y)) => stack.push((x.clone(), y.clone(), Form::Closed, false)),
                     _ => return None,
                 }
                 frozen
@@ -155,6 +163,18 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
         }
     }
     Some(shape)
+}
+
+/// Что в поддереве — часть формы.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Form {
+    /// Под элементами HTML: атрибуты и тексты — нет.
+    Open,
+    /// В SVG (и под `foreignObject` в нём): тексты и атрибуты, кроме `class`
+    /// и `data-*`.
+    Svg,
+    /// В шаблоне или MathML: всё.
+    Closed,
 }
 
 fn text_of(node: &Handle) -> String {

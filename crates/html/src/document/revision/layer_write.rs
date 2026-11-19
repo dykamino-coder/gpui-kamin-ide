@@ -14,7 +14,7 @@
 //! layers, decorations painted as child elements, the root's canvas) refuses,
 //! and the document builds its frame as before.
 
-use super::paint_damage::{PaintDamage, PaintValue, classify};
+use super::paint_damage::{PaintDamage, PaintValue, classify, svg_content};
 use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
 use crate::style::computed::BoxStyle;
@@ -75,6 +75,13 @@ pub(super) fn write_paint_values(
         if damage == PaintDamage::Rebuild {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
+        }
+        // An SVG content element has no CSS box: its pixels are the image of
+        // its `svg`, drawn from its fill and stroke (whose change builds the
+        // frame, `classify`), never from the box paint groups left here.
+        if svg_content(old, path) {
+            crate::paint_path::add(&crate::paint_path::SVG_UNPAINTED, 1);
+            continue;
         }
         if unseen(path) {
             crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
