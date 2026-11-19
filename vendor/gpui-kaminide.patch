@@ -8230,7 +8230,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032bf7113830
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..defe3197e9f22ac05d850d07edf3d9a96e3af7b0
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -8652,38 +8652,36 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 @@ -2031,0 +2173,2 @@
 +                // KaminIDE patch: a scroll container's children form a scroll node.
 +                let node = scroll_node.map(|id| (id, window.content_mask().bounds));
-@@ -2033 +2176,4 @@
--                    window.with_element_offset(scroll_offset, |window| {
-+                    window.with_scroll_node_prepaint_if(node, scroll_offset, |window| window.with_element_offset(scroll_offset, |window| {
+@@ -2032,0 +2176 @@
++                    let open = window.begin_scroll_node_prepaint(node, scroll_offset);
+@@ -2033,0 +2178,3 @@
 +                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
 +                            (traversal.enter_children)(window);
 +                        }
-@@ -2046 +2192 @@
--                    });
-+                    }));
-@@ -2055 +2201,3 @@
+@@ -2046,0 +2194 @@
++                    window.end_scroll_node_prepaint(open);
+@@ -2055 +2203,3 @@
 -        )
 +        );
 +        window.raster_frame.exact_bounds = outer_exact;
 +        hitbox
-@@ -2064 +2212 @@
+@@ -2064 +2214 @@
 -        _request_layout: &mut Self::RequestLayoutState,
 +        request_layout: &mut Self::RequestLayoutState,
-@@ -2073,0 +2222,6 @@
+@@ -2073,0 +2224,6 @@
 +        let outer_exact = std::mem::replace(
 +            &mut window.raster_frame.exact_bounds,
 +            request_layout.exact_bounds.map(|exact| (bounds, exact)),
 +        );
 +        // KaminIDE patch: the children of a scroll container paint as its node.
 +        let scroll_node = self.interactivity.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
-@@ -2082,0 +2237,3 @@
+@@ -2082,0 +2239,3 @@
 +                    let exact_bounds = window.raster_frame.exact_bounds;
 +                    // Own borders are painted; children bring their own bounds.
 +                    window.raster_frame.exact_bounds = None;
-@@ -2088,3 +2245,23 @@
+@@ -2088,2 +2247,23 @@
 -                    for child in &mut self.children {
 -                        child.paint(window, cx);
--                    }
 +                    let painter = self.child_painter.clone().or_else(|| {
 +                        window.render_context::<crate::PaintTraversal>()
 +                            .map(|traversal| traversal.children.clone())
@@ -8692,7 +8690,8 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +                        #[cfg(feature = "stacker")] { &mut **child }
 +                        #[cfg(not(feature = "stacker"))] { child }
 +                    });
-+                    window.with_scroll_node_paint_if(scroll_node, |window| if let Some(painter) = painter {
++                    let open = window.begin_scroll_node_paint(scroll_node);
++                    if let Some(painter) = painter {
 +                        (painter.0)(
 +                            &crate::ChildPaintContext {
 +                                style,
@@ -8706,26 +8705,27 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +                        );
 +                    } else {
 +                        for child in children { child.paint(window, cx); }
-+                    });
-@@ -2093,0 +2271 @@
+@@ -2090,0 +2271 @@
++                    window.end_scroll_node_paint(open);
+@@ -2093,0 +2275 @@
 +        window.raster_frame.exact_bounds = outer_exact;
-@@ -2100 +2278,4 @@
+@@ -2100 +2282,4 @@
 -    fn into_element(self) -> Self::Element {
 +    // KaminIDE patch: a finished div's base style may point at an equal earlier one
 +    // (`refinement_share`); later writes copy it.
 +    fn into_element(mut self) -> Self::Element {
 +        super::refinement_share::share(&mut self.interactivity.base_style);
-@@ -2132 +2312,0 @@
+@@ -2132 +2316,0 @@
 -#[derive(Default)]
-@@ -2133,0 +2314,4 @@
+@@ -2133,0 +2318,4 @@
 +    pub(crate) box_painter: Option<crate::BoxPainter>,
 +    /// KaminIDE patch: the owner the box's own paint binds its values to
 +    /// (`Window::with_paint_owner`); 0 for none.
 +    pub(crate) paint_owner: u32,
-@@ -2150,0 +2335,2 @@
+@@ -2150,0 +2339,2 @@
 +    /// KaminIDE patch: listener and drag-style lists, allocated by the first registration.
 +    pub(crate) listeners: Option<Box<InteractivityListeners>>,
-@@ -2153,8 +2339,65 @@
+@@ -2153,8 +2343,65 @@
 -    pub base_style: Box<StyleRefinement>,
 -    pub(crate) focus_style: Option<Box<StyleRefinement>>,
 -    pub(crate) in_focus_style: Option<Box<StyleRefinement>>,
@@ -8799,9 +8799,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +/// registration; a box without listeners keeps a single null pointer.
 +#[derive(Default)]
 +pub(crate) struct InteractivityListeners {
-@@ -2179 +2421,0 @@
+@@ -2179 +2425,0 @@
 -    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2181,0 +2424,21 @@
+@@ -2181,0 +2428,21 @@
 +    pub(crate) a11y_action_listeners:
 +        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
 +}
@@ -8823,7 +8823,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +    pub(crate) active_style: Option<Box<StyleRefinement>>,
 +    pub(crate) group_active_style: Option<GroupStyle>,
 +    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2188,7 +2450,0 @@
+@@ -2188,7 +2454,0 @@
 -    pub(crate) hitbox_behavior: HitboxBehavior,
 -    pub(crate) tab_index: Option<isize>,
 -    pub(crate) tab_group: bool,
@@ -8831,16 +8831,16 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 -
 -    pub(crate) a11y_action_listeners:
 -        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
-@@ -2196 +2451,0 @@
+@@ -2196 +2455,0 @@
 -    pub(crate) report_active_descendant_focus: bool,
-@@ -2199,6 +2453,0 @@
+@@ -2199,6 +2457,0 @@
 -
 -    #[cfg(any(feature = "inspector", debug_assertions))]
 -    pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
 -
 -    #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
 -    pub(crate) debug_selector: Option<String>,
-@@ -2206,0 +2456,56 @@
+@@ -2206,0 +2460,56 @@
 +impl InteractivityRare {
 +    /// Whether a rare field needs the element's hitbox.
 +    fn need_hitbox(&self) -> bool {
@@ -8897,7 +8897,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +        }
 +    }
 +}
-@@ -2216,0 +2522,16 @@
+@@ -2216,0 +2526,16 @@
 +        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, _, window, cx| {
 +            f(style.into_owned(), window, cx)
 +        })
@@ -8914,13 +8914,13 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +        cx: &mut App,
 +        f: impl FnOnce(ComputedStyle, Option<&Rc<StyleRefinement>>, &mut Window, &mut App) -> LayoutId,
 +    ) -> LayoutId {
-@@ -2223 +2544 @@
+@@ -2223 +2548 @@
 -                    self.base_style = inspector_state.base_style.clone();
 +                    self.base_style = Rc::from(inspector_state.base_style.clone());
-@@ -2226 +2547 @@
+@@ -2226 +2551 @@
 -                        base_style: self.base_style.clone(),
 +                        base_style: Box::new((*self.base_style).clone()),
-@@ -2294,2 +2615,5 @@
+@@ -2294,2 +2619,5 @@
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
 -                let layout_id = f(style, window, cx);
 +                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
@@ -8928,7 +8928,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +                // refinement on the default style (`compute_style_internal`).
 +                let refinement = self.rare.is_none().then_some(&self.base_style);
 +                let layout_id = f(style, refinement, window, cx);
-@@ -2354,11 +2678,56 @@
+@@ -2354,11 +2682,56 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -8996,7 +8996,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +                        element_state.long_press_tooltip_active.as_ref()
 +                    {
 +                        long_press_tooltip_active.set(false);
-@@ -2366,18 +2735 @@
+@@ -2366,18 +2739 @@
 -                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
 -                        element_state
 -                            .hover_state
@@ -9016,7 +9016,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 -                        }
 -                    }
 +                    element_state.active_tooltip.take();
-@@ -2385,20 +2737,12 @@
+@@ -2385,20 +2741,12 @@
 -
 -                window.with_text_style(style.text_style().cloned(), |window| {
 -                    window.with_content_mask(
@@ -9049,9 +9049,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
 +            f(&style, scroll_offset, hitbox, window, cx)
 +        })
-@@ -2409 +2752,0 @@
+@@ -2409 +2756,0 @@
 -            || self.window_control.is_some()
-@@ -2414,17 +2757,2 @@
+@@ -2414,17 +2761,2 @@
 -            || self.hover_style.is_some()
 -            || self.group_hover_style.is_some()
 -            || self.hover_listener.is_some()
@@ -9071,7 +9071,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 -            || self.tooltip_builder.is_some()
 +            || self.rare().is_some_and(InteractivityRare::need_hitbox)
 +            || self.listeners.as_deref().is_some_and(InteractivityListeners::need_hitbox)
-@@ -2518,113 +2846,109 @@
+@@ -2518,113 +2850,109 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -9294,7 +9294,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +2956,28 @@
+@@ -2632,2 +2960,28 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -9325,54 +9325,54 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +2985,2 @@
+@@ -2635,4 +2989,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -2789 +3137,3 @@
+@@ -2789 +3141,3 @@
 -        for listener in self.mouse_down_listeners.drain(..) {
 +        let mut no_listeners = InteractivityListeners::default();
 +        let listeners = self.listeners.as_deref_mut().unwrap_or(&mut no_listeners);
 +        for listener in listeners.mouse_down_listeners.drain(..) {
-@@ -2796 +3146 @@
+@@ -2796 +3150 @@
 -        for listener in self.mouse_up_listeners.drain(..) {
 +        for listener in listeners.mouse_up_listeners.drain(..) {
-@@ -2803 +3153 @@
+@@ -2803 +3157 @@
 -        for listener in self.mouse_pressure_listeners.drain(..) {
 +        for listener in listeners.mouse_pressure_listeners.drain(..) {
-@@ -2810 +3160 @@
+@@ -2810 +3164 @@
 -        for listener in self.mouse_move_listeners.drain(..) {
 +        for listener in listeners.mouse_move_listeners.drain(..) {
-@@ -2817 +3167 @@
+@@ -2817 +3171 @@
 -        for listener in self.mouse_exit_listeners.drain(..) {
 +        for listener in listeners.mouse_exit_listeners.drain(..) {
-@@ -2824 +3174 @@
+@@ -2824 +3178 @@
 -        for listener in self.file_drop_exit_listeners.drain(..) {
 +        for listener in listeners.file_drop_exit_listeners.drain(..) {
-@@ -2831 +3181 @@
+@@ -2831 +3185 @@
 -        for listener in self.scroll_wheel_listeners.drain(..) {
 +        for listener in listeners.scroll_wheel_listeners.drain(..) {
-@@ -2838 +3188 @@
+@@ -2838 +3192 @@
 -        for listener in self.pinch_listeners.drain(..) {
 +        for listener in listeners.pinch_listeners.drain(..) {
-@@ -2845 +3195,2 @@
+@@ -2845 +3199,2 @@
 -        if self.hover_style.is_some()
 +        let has_hover_style = self.rare.as_deref().is_some_and(|rare| rare.hover_style.is_some());
 +        if has_hover_style
-@@ -2847 +3198,2 @@
+@@ -2847 +3202,2 @@
 -            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
 +            || cx.active_drag.is_some()
 +                && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
-@@ -2850 +3202 @@
+@@ -2850 +3206 @@
 -            let hover_state = self.hover_style.as_ref().and_then(|_| {
 +            let hover_state = has_hover_style.then_some(()).and_then(|_| {
-@@ -2872 +3224 @@
+@@ -2872 +3228 @@
 -        if let Some(group_hover) = self.group_hover_style.as_ref() {
 +        if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -2897,5 +3249,5 @@
+@@ -2897,5 +3253,5 @@
 -        let mut drag_listener = mem::take(&mut self.drag_listener);
 -        let drop_listeners = mem::take(&mut self.drop_listeners);
 -        let click_listeners = mem::take(&mut self.click_listeners);
@@ -9383,25 +9383,25 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +        let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
 +        let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
 +        let can_drop_predicate = self.rare.as_deref_mut().and_then(|rare| rare.can_drop_predicate.take());
-@@ -3133 +3485 @@
+@@ -3133 +3489 @@
 -            if let Some(hover_listener) = self.hover_listener.take() {
 +            if let Some(hover_listener) = self.take_hover_listener() {
-@@ -3152 +3504 @@
+@@ -3152 +3508 @@
 -                let hover_listener_mode = self.hover_listener_mode;
 +                let hover_listener_mode = self.rare().map(|rare| rare.hover_listener_mode).unwrap_or_default();
-@@ -3187 +3539 @@
+@@ -3187 +3543 @@
 -            if let Some(tooltip_builder) = self.tooltip_builder.take() {
 +            if let Some(tooltip_builder) = self.take_tooltip_builder() {
-@@ -3228 +3580 @@
+@@ -3228 +3584 @@
 -                    self.tooltip_show_delay,
 +                    self.rare().and_then(|rare| rare.tooltip_show_delay),
-@@ -3252,2 +3604,3 @@
+@@ -3252,2 +3608,3 @@
 -                    .group_active_style
 -                    .as_ref()
 +                    .rare
 +                    .as_deref()
 +                    .and_then(|rare| rare.group_active_style.as_ref())
-@@ -3275,4 +3628,4 @@
+@@ -3275,4 +3632,4 @@
 -        let key_down_listeners = mem::take(&mut self.key_down_listeners);
 -        let key_up_listeners = mem::take(&mut self.key_up_listeners);
 -        let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
@@ -9410,7 +9410,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +        let key_up_listeners = self.take_listeners(|l| &mut l.key_up_listeners);
 +        let modifiers_changed_listeners = self.take_listeners(|l| &mut l.modifiers_changed_listeners);
 +        let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
-@@ -3305,0 +3659,12 @@
+@@ -3305,0 +3663,12 @@
 +    /// KaminIDE patch: the box's own paint (shadows, fill, borders, host
 +    /// painter) under its scene-layer run (`Window::with_box_paint`). A leaf
 +    /// of the paint recursion: its paint state and painter stay out of the
@@ -9423,12 +9423,12 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +        });
 +    }
 +
-@@ -3308,2 +3673,2 @@
+@@ -3308,2 +3677,2 @@
 -            .group_hover_style
 -            .as_ref()
 +            .rare()
 +            .and_then(|rare| rare.group_hover_style.as_ref())
-@@ -3404,0 +3770,28 @@
+@@ -3404,0 +3774,28 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -9457,43 +9457,43 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +        )))
 +    }
 +
-@@ -3414,0 +3808 @@
+@@ -3414,0 +3812 @@
 +        let rare = self.rare.as_deref();
-@@ -3417 +3811 @@
+@@ -3417 +3815 @@
 -            if let Some(in_focus_style) = self.in_focus_style.as_ref()
 +            if let Some(in_focus_style) = rare.and_then(|rare| rare.in_focus_style.as_ref())
-@@ -3423 +3817 @@
+@@ -3423 +3821 @@
 -            if let Some(focus_style) = self.focus_style.as_ref()
 +            if let Some(focus_style) = rare.and_then(|rare| rare.focus_style.as_ref())
-@@ -3429 +3823 @@
+@@ -3429 +3827 @@
 -            if let Some(focus_visible_style) = self.focus_visible_style.as_ref()
 +            if let Some(focus_visible_style) = rare.and_then(|rare| rare.focus_visible_style.as_ref())
-@@ -3438 +3832 @@
+@@ -3438 +3836 @@
 -            if let Some(group_hover) = self.group_hover_style.as_ref() {
 +            if let Some(group_hover) = rare.and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -3458 +3852 @@
+@@ -3458 +3856 @@
 -            if let Some(hover_style) = self.hover_style.as_ref() {
 +            if let Some(hover_style) = rare.and_then(|rare| rare.hover_style.as_ref()) {
-@@ -3481 +3875 @@
+@@ -3481 +3879 @@
 -                if let Some(can_drop_predicate) = &self.can_drop_predicate {
 +                if let Some(can_drop_predicate) = rare.and_then(|rare| rare.can_drop_predicate.as_ref()) {
-@@ -3486 +3880 @@
+@@ -3486 +3884 @@
 -                    for (state_type, group_drag_style) in &self.group_drag_over_styles {
 +                    for (state_type, group_drag_style) in self.listeners.iter().flat_map(|l| &l.group_drag_over_styles) {
-@@ -3496 +3890 @@
+@@ -3496 +3894 @@
 -                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
 +                    for (state_type, build_drag_over_style) in self.listeners.iter().flat_map(|l| &l.drag_over_styles) {
-@@ -3499 +3893,2 @@
+@@ -3499 +3897,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -3515 +3910 @@
+@@ -3515 +3914 @@
 -                && let Some(group) = self.group_active_style.as_ref()
 +                && let Some(group) = rare.and_then(|rare| rare.group_active_style.as_ref())
-@@ -3520 +3915 @@
+@@ -3520 +3919 @@
 -            if let Some(active_style) = self.active_style.as_ref()
 +            if let Some(active_style) = rare.and_then(|rare| rare.active_style.as_ref())
-@@ -3531,64 +3926,66 @@
+@@ -3531,64 +3930,66 @@
 -        if let Some(id) = &self.aria.author_id {
 -            node.set_author_id(id.to_string());
 -        }
@@ -9624,14 +9624,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +            }
 +        }
 +        if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
-@@ -3600 +3997 @@
+@@ -3600 +4001 @@
 -        for (action, _) in &self.a11y_action_listeners {
 +        for (action, _) in self.listeners.iter().flat_map(|l| &l.a11y_action_listeners) {
-@@ -4102,0 +4500,3 @@
+@@ -4102,0 +4504,3 @@
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
 +
-@@ -4250,0 +4651,7 @@
+@@ -4250,0 +4655,7 @@
 +impl ScrollHandle {
 +    /// KaminIDE patch: identity of the shared state, the scroll node's id.
 +    pub(crate) fn node_identity(&self) -> usize {
@@ -9639,7 +9639,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +    }
 +}
 +
-@@ -4448,0 +4856,21 @@
+@@ -4448,0 +4860,21 @@
 +
 +    #[test]
 +    fn listener_lists_are_allocated_by_the_first_registration() {
@@ -9661,7 +9661,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..f1e19032593653f6918576a58ac7032b
 +                >= 18 * std::mem::size_of::<Vec<()>>()
 +        );
 +    }
-@@ -5268,8 +5696,8 @@
+@@ -5268,8 +5700,8 @@
 -        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
 -        interactivity.aria.label = Some("Buffer Font Size".into());
 -        interactivity.aria.value = Some("15".into());
@@ -35149,10 +35149,10 @@ index 0000000000000000000000000000000000000000..c63e084b94a6344306491f7a2dea173f
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..588f65ed50479ea80ac150cbb68c879a54921fe2
+index 0000000000000000000000000000000000000000..5c2125142bac210442d178d743e4227899c9607a
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,243 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -35216,6 +35216,35 @@ index 0000000000000000000000000000000000000000..588f65ed50479ea80ac150cbb68c879a
 +        offset: Point<Pixels>,
 +        f: impl FnOnce(&mut Self) -> R,
 +    ) -> R {
++        let open = self.begin_scroll_node_prepaint(Some((id, clip)), offset);
++        let result = f(self);
++        self.end_scroll_node_prepaint(open);
++        result
++    }
++
++    /// Paint the children of a scroll container prepainted as node `id`
++    /// in this frame; without that node `f` just runs.
++    pub fn with_scroll_node_paint<R>(
++        &mut self,
++        id: ScrollNodeId,
++        f: impl FnOnce(&mut Self) -> R,
++    ) -> R {
++        let open = self.begin_scroll_node_paint(Some(id));
++        let result = f(self);
++        self.end_scroll_node_paint(open);
++        result
++    }
++
++    /// Open the scroll node of a container whose children prepaint next, when
++    /// `node` (id and scrollport clip) is set. Begin/end calls instead of a
++    /// closure keep the element's stack frame as it was: deep documents
++    /// prepaint one Div per level (`depth_tests`).
++    pub(crate) fn begin_scroll_node_prepaint(
++        &mut self,
++        node: Option<(ScrollNodeId, Bounds<Pixels>)>,
++        offset: Point<Pixels>,
++    ) -> Option<u32> {
++        let (id, clip) = node?;
 +        let index = self.next_frame.scroll_nodes.len() as u32;
 +        let start = self.prepaint_index();
 +        self.next_frame.scroll_nodes.push(ScrollNodeRecord {
@@ -35227,22 +35256,29 @@ index 0000000000000000000000000000000000000000..588f65ed50479ea80ac150cbb68c879a
 +            paint: None,
 +        });
 +        self.next_frame.scroll_node_stack.push(index);
-+        let result = f(self);
++        Some(index)
++    }
++
++    /// Close a node opened by `begin_scroll_node_prepaint`.
++    pub(crate) fn end_scroll_node_prepaint(&mut self, open: Option<u32>) {
++        let Some(index) = open else { return };
 +        self.next_frame.scroll_node_stack.pop();
 +        let end = self.prepaint_index();
 +        self.next_frame.scroll_nodes[index as usize].prepaint.end = end;
-+        result
 +    }
 +
-+    /// Paint the children of a scroll container prepainted as node `id`
-+    /// in this frame; without that node `f` just runs.
-+    pub fn with_scroll_node_paint<R>(
++    /// Start the paint of a container's children as node `id`.
++    pub(crate) fn begin_scroll_node_paint(
 +        &mut self,
-+        id: ScrollNodeId,
-+        f: impl FnOnce(&mut Self) -> R,
-+    ) -> R {
-+        let start = self.paint_index();
-+        let result = f(self);
++        id: Option<ScrollNodeId>,
++    ) -> Option<(ScrollNodeId, PaintIndex)> {
++        id.map(|id| (id, self.paint_index()))
++    }
++
++    /// End the paint started by `begin_scroll_node_paint`: the last node of
++    /// that id prepainted in this frame and not painted yet takes the range.
++    pub(crate) fn end_scroll_node_paint(&mut self, open: Option<(ScrollNodeId, PaintIndex)>) {
++        let Some((id, start)) = open else { return };
 +        let end = self.paint_index();
 +        if let Some(node) = self
 +            .next_frame
@@ -35253,34 +35289,7 @@ index 0000000000000000000000000000000000000000..588f65ed50479ea80ac150cbb68c879a
 +        {
 +            node.paint = Some(start..end);
 +        }
-+        result
 +    }
-+
-+    /// `with_scroll_node_prepaint` when `node` (id and scrollport clip) is set.
-+    pub(crate) fn with_scroll_node_prepaint_if<R>(
-+        &mut self,
-+        node: Option<(ScrollNodeId, Bounds<Pixels>)>,
-+        offset: Point<Pixels>,
-+        f: impl FnOnce(&mut Self) -> R,
-+    ) -> R {
-+        match node {
-+            Some((id, clip)) => self.with_scroll_node_prepaint(id, clip, offset, f),
-+            None => f(self),
-+        }
-+    }
-+
-+    /// `with_scroll_node_paint` when `node` is set.
-+    pub(crate) fn with_scroll_node_paint_if<R>(
-+        &mut self,
-+        node: Option<ScrollNodeId>,
-+        f: impl FnOnce(&mut Self) -> R,
-+    ) -> R {
-+        match node {
-+            Some(id) => self.with_scroll_node_paint(id, f),
-+            None => f(self),
-+        }
-+    }
-+
 +    /// The scroll nodes of the rendered frame inside a record made in it:
 +    /// both ranges of each node lie within the record's, outermost first, each
 +    /// with the position of its enclosing segment when that one is inside too.

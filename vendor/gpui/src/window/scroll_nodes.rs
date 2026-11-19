@@ -61,6 +61,35 @@ impl Window {
         offset: Point<Pixels>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        let open = self.begin_scroll_node_prepaint(Some((id, clip)), offset);
+        let result = f(self);
+        self.end_scroll_node_prepaint(open);
+        result
+    }
+
+    /// Paint the children of a scroll container prepainted as node `id`
+    /// in this frame; without that node `f` just runs.
+    pub fn with_scroll_node_paint<R>(
+        &mut self,
+        id: ScrollNodeId,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let open = self.begin_scroll_node_paint(Some(id));
+        let result = f(self);
+        self.end_scroll_node_paint(open);
+        result
+    }
+
+    /// Open the scroll node of a container whose children prepaint next, when
+    /// `node` (id and scrollport clip) is set. Begin/end calls instead of a
+    /// closure keep the element's stack frame as it was: deep documents
+    /// prepaint one Div per level (`depth_tests`).
+    pub(crate) fn begin_scroll_node_prepaint(
+        &mut self,
+        node: Option<(ScrollNodeId, Bounds<Pixels>)>,
+        offset: Point<Pixels>,
+    ) -> Option<u32> {
+        let (id, clip) = node?;
         let index = self.next_frame.scroll_nodes.len() as u32;
         let start = self.prepaint_index();
         self.next_frame.scroll_nodes.push(ScrollNodeRecord {
@@ -72,22 +101,29 @@ impl Window {
             paint: None,
         });
         self.next_frame.scroll_node_stack.push(index);
-        let result = f(self);
+        Some(index)
+    }
+
+    /// Close a node opened by `begin_scroll_node_prepaint`.
+    pub(crate) fn end_scroll_node_prepaint(&mut self, open: Option<u32>) {
+        let Some(index) = open else { return };
         self.next_frame.scroll_node_stack.pop();
         let end = self.prepaint_index();
         self.next_frame.scroll_nodes[index as usize].prepaint.end = end;
-        result
     }
 
-    /// Paint the children of a scroll container prepainted as node `id`
-    /// in this frame; without that node `f` just runs.
-    pub fn with_scroll_node_paint<R>(
+    /// Start the paint of a container's children as node `id`.
+    pub(crate) fn begin_scroll_node_paint(
         &mut self,
-        id: ScrollNodeId,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        let start = self.paint_index();
-        let result = f(self);
+        id: Option<ScrollNodeId>,
+    ) -> Option<(ScrollNodeId, PaintIndex)> {
+        id.map(|id| (id, self.paint_index()))
+    }
+
+    /// End the paint started by `begin_scroll_node_paint`: the last node of
+    /// that id prepainted in this frame and not painted yet takes the range.
+    pub(crate) fn end_scroll_node_paint(&mut self, open: Option<(ScrollNodeId, PaintIndex)>) {
+        let Some((id, start)) = open else { return };
         let end = self.paint_index();
         if let Some(node) = self
             .next_frame
@@ -98,34 +134,7 @@ impl Window {
         {
             node.paint = Some(start..end);
         }
-        result
     }
-
-    /// `with_scroll_node_prepaint` when `node` (id and scrollport clip) is set.
-    pub(crate) fn with_scroll_node_prepaint_if<R>(
-        &mut self,
-        node: Option<(ScrollNodeId, Bounds<Pixels>)>,
-        offset: Point<Pixels>,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        match node {
-            Some((id, clip)) => self.with_scroll_node_prepaint(id, clip, offset, f),
-            None => f(self),
-        }
-    }
-
-    /// `with_scroll_node_paint` when `node` is set.
-    pub(crate) fn with_scroll_node_paint_if<R>(
-        &mut self,
-        node: Option<ScrollNodeId>,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        match node {
-            Some(id) => self.with_scroll_node_paint(id, f),
-            None => f(self),
-        }
-    }
-
     /// The scroll nodes of the rendered frame inside a record made in it:
     /// both ranges of each node lie within the record's, outermost first, each
     /// with the position of its enclosing segment when that one is inside too.

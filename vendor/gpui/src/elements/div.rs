@@ -2173,7 +2173,8 @@ impl Element for Div {
                 // KaminIDE patch: a scroll container's children form a scroll node.
                 let node = scroll_node.map(|id| (id, window.content_mask().bounds));
                 window.with_image_cache(image_cache, |window| {
-                    window.with_scroll_node_prepaint_if(node, scroll_offset, |window| window.with_element_offset(scroll_offset, |window| {
+                    let open = window.begin_scroll_node_prepaint(node, scroll_offset);
+                    window.with_element_offset(scroll_offset, |window| {
                         if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
                             (traversal.enter_children)(window);
                         }
@@ -2189,7 +2190,8 @@ impl Element for Div {
                                 child.prepaint(window, cx);
                             }
                         }
-                    }));
+                    });
+                    window.end_scroll_node_prepaint(open);
 
                     if let Some(listener) = self.prepaint_listener.as_ref() {
                         listener(children_bounds, window, cx);
@@ -2250,7 +2252,8 @@ impl Element for Div {
                         #[cfg(feature = "stacker")] { &mut **child }
                         #[cfg(not(feature = "stacker"))] { child }
                     });
-                    window.with_scroll_node_paint_if(scroll_node, |window| if let Some(painter) = painter {
+                    let open = window.begin_scroll_node_paint(scroll_node);
+                    if let Some(painter) = painter {
                         (painter.0)(
                             &crate::ChildPaintContext {
                                 style,
@@ -2264,7 +2267,8 @@ impl Element for Div {
                         );
                     } else {
                         for child in children { child.paint(window, cx); }
-                    });
+                    }
+                    window.end_scroll_node_paint(open);
                 },
             )
         });
