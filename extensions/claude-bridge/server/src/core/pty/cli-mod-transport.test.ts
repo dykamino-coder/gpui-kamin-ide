@@ -73,7 +73,7 @@ describe('private mod transport', () => {
       expect.any(Function),
     )
   })
-  it.each(['2.1.312 (Claude Code)', '2.1.328 (Claude Code)', 'unknown', ''])(
+  it.each(['2.1.312 (Claude Code)', '2.1.329 (Claude Code)', 'unknown', ''])(
     'falls back cleanly for CLI %j',
     async (version) => {
       vi.stubEnv('BRIDGE_CLI_MOD', undefined)
