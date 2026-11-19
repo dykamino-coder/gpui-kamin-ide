@@ -92,12 +92,25 @@ pub(crate) fn classify(a: &Element, b: &Element, in_svg: impl FnOnce() -> bool) 
     }
 }
 
+/// A restyle that is not `Rebuild` of the element at `path` paints nothing
+/// when the element is SVG content (`svg_content`): its pixels are the image
+/// of its `svg`, drawn from its fill and stroke (whose change builds the
+/// frame, `classify`), never from the box paint groups left (background,
+/// border colours). Counted as `SVG_UNPAINTED`.
+pub(super) fn unpainted_svg(nodes: &[crate::dom::Node], path: &[usize]) -> bool {
+    let unpainted = svg_content(nodes, path);
+    if unpainted {
+        crate::paint_path::add(&crate::paint_path::SVG_UNPAINTED, 1);
+    }
+    unpainted
+}
+
 /// The element at `path` in `nodes` is SVG content: inside an `svg` element
 /// (not that outermost `svg`, a CSS box itself), and neither a
 /// `foreignObject` nor under one below that `svg` (HTML boxes again). SVG 2
 /// renders such an element into its `svg`'s canvas only (§3 "Rendering
 /// Model"), so no box property of CSS reaches it. One descent along the path.
-pub(super) fn svg_content(nodes: &[crate::dom::Node], path: &[usize]) -> bool {
+fn svg_content(nodes: &[crate::dom::Node], path: &[usize]) -> bool {
     let mut list = nodes;
     let mut inside = false;
     for (k, &i) in path.iter().enumerate() {
