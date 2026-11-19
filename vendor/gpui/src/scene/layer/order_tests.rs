@@ -48,6 +48,7 @@ pub(super) fn env() -> super::BoxEnv {
         opacity: 1.,
         rem_size: crate::px(16.),
         fill: None,
+        layer: None,
     }
 }
 
@@ -141,4 +142,24 @@ fn a_box_with_a_fill_and_a_border_over_it_keeps_the_orders_of_both() {
         Step::Line(rect(10., 12., 20., 10.), rect(10., 12., 45., 10.), false),
         Step::Box(2, rect(30., 12., 20., 10.), vec![(rect(31., 12., 19., 10.), hsla(0.1, 1., 0.5, 1.))]),
     ]);
+}
+
+#[test]
+fn a_box_in_a_line_layer_keeps_the_layer_order_and_a_nested_one_opens_no_run() {
+    // The pieces of an inline box's band paint in the layer of their line.
+    let mut scene = Scene::default();
+    scene.insert_primitive(quad(rect(0., 0., 100., 100.), hsla(0., 0., 1., 1.)));
+    scene.push_layer(rect(0., 0., 50., 10.));
+    let order = *scene.layer_stack.last().unwrap();
+    assert!(scene.open_box(7, rect(0., 0., 20., 10.), env()));
+    scene.insert_primitive(quad(rect(0., 0., 20., 10.), hsla(0.6, 1., 0.5, 1.)));
+    let run = scene.close_box().unwrap();
+    assert_eq!(run.env.layer, Some(order));
+    assert!(run.replaceable);
+    scene.push_layer(rect(0., 0., 10., 10.));
+    assert!(!scene.open_box(8, rect(0., 0., 10., 10.), env()), "a nested layer orders by its own");
+    scene.pop_layer();
+    scene.pop_layer();
+    scene.push_bottom_layer();
+    assert!(!scene.open_box(9, rect(0., 0., 10., 10.), env()), "the bottom layer orders by paint");
 }

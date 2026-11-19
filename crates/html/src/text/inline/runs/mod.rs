@@ -201,6 +201,9 @@ fn decorated_run(
             .map(gpui::px),
         background_radius: gpui::px(inline_decoration.corner_radius.unwrap_or(0.0)),
         background_line_gap: true,
+        // The box whose band this is: its pieces are that box's runs in the
+        // document's scene layer (`gpui::TextRun::background_owner`).
+        background_owner: inline_decoration.band_owner,
         underline: decoration
             .underline
             .unwrap_or(false)

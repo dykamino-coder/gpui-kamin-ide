@@ -94,9 +94,14 @@ pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
     None
 }
 
+pub mod not_own;
+
+/// Counters before the reasons of `REFUSED_NOT_OWN` (`not_own`) in `NAMES`.
+const PATH: usize = 22;
+
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
-    [
+    let path = [
         &VALUES,
         &RECORDS,
         &UNSEEN,
@@ -120,11 +125,14 @@ pub fn read() -> [u64; NAMES.len()] {
         &PLAN_RESTYLED,
         &WRITE_NS,
     ]
-    .map(|c| c.load(Relaxed))
+    .map(|c| c.load(Relaxed));
+    let reasons = not_own::read();
+    std::array::from_fn(|i| if i < PATH { path[i] } else { reasons[i - PATH] })
 }
 
-/// Names of `read`'s counters.
-pub const NAMES: [&str; 22] = [
+/// Names of `read`'s counters: the path's, then `not_own_<reason>` for each
+/// of `not_own::REASONS`.
+pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "values",
     "records",
     "unseen",
@@ -147,6 +155,18 @@ pub const NAMES: [&str; 22] = [
     "plan_patched",
     "plan_restyled",
     "write_ns",
+    "not_own_root_canvas",
+    "not_own_hover",
+    "not_own_inline",
+    "not_own_hidden",
+    "not_own_clone",
+    "not_own_filter",
+    "not_own_transform",
+    "not_own_decoration",
+    "not_own_band_effect",
+    "not_own_band_paint",
+    "not_own_kind",
+    "not_own_other",
 ];
 
 /// Census of a document's boxes for the paint-only path: how many paint only

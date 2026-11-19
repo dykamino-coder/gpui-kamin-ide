@@ -55,6 +55,8 @@ mod rebuild_key_tests;
 #[cfg(test)]
 mod recolour_layout_tests;
 pub use prepared::UpdatePhase;
+#[cfg(test)]
+mod band_value_tests;
 mod record;
 #[cfg(test)]
 mod replay_tests;

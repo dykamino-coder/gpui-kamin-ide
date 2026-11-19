@@ -25,6 +25,9 @@ pub(crate) struct BoxEnv {
     pub(crate) rem_size: Pixels,
     /// Where the host placed the box's fill (Window::box_fill_bounds).
     pub(crate) fill: Option<Bounds<Pixels>>,
+    /// The order of the stacking layer the run was painted in (`None`:
+    /// outside layers, ordered by the bounds tree).
+    pub(crate) layer: Option<crate::scene::DrawOrder>,
 }
 
 /// A box's own paint in a layer: its owner, its placed area and ink, its run
@@ -70,19 +73,24 @@ fn union(a: Option<Bounds<ScaledPixels>>, b: Bounds<ScaledPixels>) -> Option<Bou
 impl Scene {
     /// Start the own paint of box `owner` with `area` (its placed bounds,
     /// device pixels). `false` where the scene orders by other means
-    /// (stacking layers, 3D, a box already open): the box paints as before.
-    pub(crate) fn open_box(&mut self, owner: u32, area: Bounds<ScaledPixels>, env: BoxEnv) -> bool {
+    /// (nested or bottom stacking layers, 3D, a box already open): the box
+    /// paints as before. Inside one stacking layer (`Scene::push_layer`, the
+    /// layer of a text line) every command takes the layer's order, which the
+    /// run keeps (`BoxEnv::layer`).
+    pub(crate) fn open_box(&mut self, owner: u32, area: Bounds<ScaledPixels>, mut env: BoxEnv) -> bool {
         // A group's scene (`in_group`) is composited into the layer as one
         // result: a run of its commands is no run of the layer.
         // A paint record that keeps box runs (`super::placed`) is no group.
         if self.book.open_box.is_some()
             || (self.in_group && self.book.record_runs.is_none())
-            || !self.layer_stack.is_empty()
+            || self.layer_stack.len() > 1
+            || self.layer_stack.last() == Some(&super::super::BOTTOM_LAYER)
             || !self.depth.plane_stack.is_empty()
             || !self.depth.contexts.is_empty()
         {
             return false;
         }
+        env.layer = self.layer_stack.last().copied();
         self.book.open_box = Some(OpenBox {
             owner,
             ops: self.paint_operations.len(),

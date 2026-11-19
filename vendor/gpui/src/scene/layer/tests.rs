@@ -195,6 +195,7 @@ fn env() -> super::BoxEnv {
         opacity: 1.,
         rem_size: crate::px(16.),
         fill: None,
+        layer: None,
     }
 }
 
