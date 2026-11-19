@@ -21,6 +21,8 @@ use std::rc::Rc;
 /// Запись мутации исходного DOM ревизии.
 #[derive(Clone)]
 pub enum Mutation {
+    /// DOM removeChild: detach this direct child of the given source parent.
+    RemoveChild { parent: Handle, child: Handle },
     /// Новое содержимое текстового узла `node`.
     CharacterData { node: Handle, data: String },
     /// Атрибут `name` элемента `element`: новое значение или `None` — снять.
@@ -60,6 +62,7 @@ impl Batch {
         };
         for record in records {
             match record {
+                Mutation::RemoveChild { .. } => return None,
                 Mutation::CharacterData { node, data } => {
                     let NodeData::Text { contents } = &node.data else {
                         return None;

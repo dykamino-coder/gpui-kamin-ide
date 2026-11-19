@@ -205,6 +205,9 @@ fn applied_key(previous: u64, records: &[Mutation], theme_css: &str) -> u64 {
     theme_css.hash(&mut hash);
     for record in records {
         match record {
+            Mutation::RemoveChild { parent, child } => {
+                (2u8, parent.key(), child.key()).hash(&mut hash);
+            }
             Mutation::CharacterData { node, data } => {
                 (0u8, Rc::as_ptr(node) as usize, data).hash(&mut hash);
             }
