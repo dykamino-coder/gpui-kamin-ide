@@ -18,7 +18,18 @@ export function wsCompressMinBytes(env: NodeJS.ProcessEnv = process.env): number
  *  without server context takeover, so both go together. */
 export function wsDeflateOptions(env: NodeJS.ProcessEnv = process.env): {
   threshold: number
-  serverNoContextTakeover: true
+  serverNoContextTakeover: boolean
+  zlibDeflateOptions?: { level: number }
+  concurrencyLimit?: number
 } {
-  return { threshold: wsCompressMinBytes(env), serverNoContextTakeover: true }
+  const concurrency = Number(env.BRIDGE_WS_DEFLATE_CONCURRENCY)
+  const level = Number(env.BRIDGE_WS_DEFLATE_LEVEL)
+  return {
+    threshold: wsCompressMinBytes(env),
+    serverNoContextTakeover: env.BRIDGE_WS_DEFLATE_TAKEOVER !== '1',
+    ...(Number.isInteger(concurrency) && concurrency > 0 ? { concurrencyLimit: concurrency } : {}),
+    ...(Number.isInteger(level) && level >= 0 && level <= 9 && env.BRIDGE_WS_DEFLATE_LEVEL
+      ? { zlibDeflateOptions: { level } }
+      : {}),
+  }
 }

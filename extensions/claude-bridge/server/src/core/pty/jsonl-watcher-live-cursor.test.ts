@@ -82,6 +82,8 @@ it('extends the paged segment index from the records the tail already parsed', a
   await appendFile(f.file, line('live-a') + line('live-b'))
   await f.state.checkForNewContent()
   expect(state.indexOffset).toBe(state.lastOffset)
-  const index = f.statuses.filter((s) => s.segmentIndex).at(-1)?.segmentIndex
-  expect(index?.counts).toEqual([4])
+  // Live counts are announced once per INDEX_ANNOUNCE_MS, not per record.
+  expect(f.statuses.some((s) => s.segmentIndex)).toBe(false)
+  await expect.poll(() => f.statuses.filter((s) => s.segmentIndex).at(-1)?.segmentIndex?.counts).toEqual([4])
+  expect(f.statuses.filter((s) => s.segmentIndex)).toHaveLength(1)
 })

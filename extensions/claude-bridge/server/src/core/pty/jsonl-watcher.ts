@@ -91,6 +91,8 @@ const TAIL_BACKPRESSURE_RETRY_MS = 400
 // FS that drops inotify events, so it can be slow. (Without fs.watch we fall to
 // the aggressive TAIL_POLL_MS for streaming responsiveness.)
 const WATCH_SAFETY_POLL_MS = 10_000
+/** Longest delay of a live segment-count update (see announceIndexSoon). */
+const INDEX_ANNOUNCE_MS = 500
 // Live tail: complete records read per pass (a longer single record is read
 // whole). Further growth is picked up by an immediate follow-up pass.
 const TAIL_BATCH_BYTES = 4 * 1024 * 1024
@@ -575,6 +577,8 @@ export class JsonlWatcher {
 
   stop(): void {
     this.stopped = true
+    if (this.indexAnnounce) clearTimeout(this.indexAnnounce)
+    this.indexAnnounce = null
     this.tail?.close()
     this.tail = null
     this.cancelReplay() // cancel any in-flight replay, including its reads
@@ -1574,7 +1578,21 @@ export class JsonlWatcher {
     this.indexOffset = Math.max(this.indexOffset, to)
     if (this.indexOffset === before || !this.filePath) return
     this.historyIndex = this.indexBuilder.build()
-    this.sendStatus({ status: 'watching', filePath: this.filePath, segmentIndex: this.historyIndex })
+    this.announceIndexSoon()
+  }
+
+  private indexAnnounce: ReturnType<typeof setTimeout> | null = null
+
+  /** Live growth only moves the newest segment's count: announce it at most
+   *  every INDEX_ANNOUNCE_MS instead of one status frame per tailed record. A
+   *  new boundary still goes out at once (rebuildSegmentIndex). */
+  private announceIndexSoon(): void {
+    if (this.indexAnnounce) return
+    this.indexAnnounce = setTimeout(() => {
+      this.indexAnnounce = null
+      if (this.stopped || !this.filePath || !this.historyIndex) return
+      this.sendStatus({ status: 'watching', filePath: this.filePath, segmentIndex: this.historyIndex })
+    }, INDEX_ANNOUNCE_MS)
   }
 
   /** An outside signal that the transcript probably changed: a CLI hook
