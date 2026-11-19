@@ -34,6 +34,10 @@ beforeAll(async () => {
   app = new Hono()
   app.use('/api/dashboard/*', dashboardAuthMiddleware)
   app.get('/api/dashboard/stats', (c) => c.json({ user: c.get('apiUserName' as never) ?? null }))
+  app.get('/api/dashboard/tokens/:tokenId/sessions', (c) =>
+    c.json({ kind: c.get('authKind' as never) ?? null, user: c.get('apiUserName' as never) ?? null }),
+  )
+  app.get('/api/dashboard/tokens', (c) => c.json({ public: true }))
 })
 
 afterAll(async () => {
@@ -63,5 +67,19 @@ describe('dashboard API-token auth right after token management', () => {
     // The deleted one is refused; an unknown one too.
     expect((await call(b.token)).status).toBe(401)
     expect((await call('not-a-token')).status).toBe(401)
+  })
+})
+
+describe('per-user chat lists under the public /tokens prefix', () => {
+  it('need credentials and carry the caller, while the token bootstrap stays public', async () => {
+    const a = await tokens.createToken('carol')
+    expect((await app.request('/api/dashboard/tokens')).status).toBe(200)
+    expect((await app.request('/api/dashboard/tokens/carol/sessions')).status).toBe(401)
+    expect((await app.request('/api/dashboard/tokens/carol/sessions/')).status).toBe(401)
+    const res = await app.request('/api/dashboard/tokens/carol/sessions', {
+      headers: { authorization: `Bearer ${a.token}` },
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ kind: 'api', user: 'carol' })
   })
 })
