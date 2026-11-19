@@ -24,7 +24,7 @@ mod fold;
 mod paths;
 
 use super::boxes::Boxes;
-use super::commit::Plan;
+use super::commit::{Edited, Plan};
 pub(in crate::document) use super::kept::Kept;
 use super::mutation::Batch;
 use super::patch::{Target, apply, attr_paths, patch};
@@ -127,11 +127,14 @@ impl Document {
             &why::REFUSED_PLAN_PATHS,
         )?;
         let mut nodes = (*self.nodes).clone();
-        if !patch(&mut nodes, attr_paths, &attrs) {
+        if !patch(&mut nodes, &attr_paths, &attrs) {
             return refuse(&why::REFUSED_PLAN_PATHS);
         }
         if restyles.is_empty() {
-            return Some(Plan::Clean(Some(nodes)));
+            return Some(Plan::Clean(Some(Edited {
+                nodes,
+                attrs: attr_paths,
+            })));
         }
         for (path, id) in &style_paths {
             match (apply(&mut nodes, path), restyles.get(id)) {
@@ -141,7 +144,14 @@ impl Document {
         }
         let mut restyled: Vec<u64> = restyles.into_keys().collect();
         restyled.sort_unstable();
-        Some(Plan::Restyled(nodes, restyled, style_paths))
+        Some(Plan::Restyled(
+            Edited {
+                nodes,
+                attrs: attr_paths,
+            },
+            restyled,
+            style_paths,
+        ))
     }
 
     /// Перерасчёты элементов, чей стиль меняет пакет, по номерам коробок;
