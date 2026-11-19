@@ -480,6 +480,58 @@ describe('codex chat over the Bridge session WebSocket', () => {
     again.close()
   }, 30_000)
 
+  it('lets an idle ChatGPT chat sleep instead of ending it, and wakes it with the next message', async () => {
+    const { sweepIdleSessions } = await import('./session-hibernation')
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex', basePrompt: 'Standing rule BP-SLEEP-3301: answer tersely.' })
+    await say(client, 'before sleep', 'z1')
+    const first = await client.entry((e) => text(e).startsWith('echo: before sleep'))
+    const conv = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+
+    // An hour later: the sweep puts the chat to sleep; the client is told it
+    // sleeps, not that the session ended (which made it resume at once).
+    const mark = client.frames.length
+    const config = { idleMs: 15 * 60_000, maxAwake: 0, wakeConcurrency: 2, evictIdleMs: 60_000 }
+    expect(sweepIdleSessions(Date.now() + 60 * 60_000, config)).toBeGreaterThanOrEqual(1)
+    await client.next((f) => f.type === 'session:activity' && f.hibernation === 'asleep', 15_000, mark)
+
+    await say(client, '/fake-recall BP-SLEEP-3301', 'z2')
+    const recall = await client.entry(
+      (e) =>
+        e.type === 'assistant' &&
+        text(e).startsWith('recall:') &&
+        client.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= mark,
+      15_000,
+    )
+    // Same thread, the chat's standing instructions still there.
+    expect(recall.sessionId).toBe(conv)
+    expect(text(recall)).toContain('Standing rule BP-SLEEP-3301')
+    const after = client.frames.slice(mark)
+    expect(after.some((f) => f.type === 'session:activity' && f.hibernation === 'awake')).toBe(true)
+    expect(after.some((f) => f.type === 'session:exit')).toBe(false)
+    const user = await client.entry((e) => e.type === 'user' && text(e) === '/fake-recall BP-SLEEP-3301')
+    expect(user.parentUuid).toBe(first.uuid)
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
+  it('keeps a ChatGPT chat awake while its turn runs', async () => {
+    const { sweepIdleSessions } = await import('./session-hibernation')
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, '/fake-slow', 'w1')
+    await client.next((f) => f.type === 'session:activity' && f.isWorking === true, 15_000)
+    const mark = client.frames.length
+    const config = { idleMs: 15 * 60_000, maxAwake: 0, wakeConcurrency: 2, evictIdleMs: 60_000 }
+    sweepIdleSessions(Date.now() + 60 * 60_000, config)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(client.frames.slice(mark).some((f) => f.type === 'session:activity' && f.hibernation === 'asleep')).toBe(
+      false,
+    )
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
   it('resumes a codex chat on the model and effort chosen after its last turn', async () => {
     const client = await Client.open(port)
     await createChat(client, { engine: 'codex' })

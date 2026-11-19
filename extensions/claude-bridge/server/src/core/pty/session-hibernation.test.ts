@@ -85,8 +85,17 @@ describe('hibernationBlocker: live work keeps the CLI', () => {
     due.lastActivityAt = new Date(later - 20 * MIN)
     expect(hibernationBlocker(due, later, 15 * MIN, idle())).toBeNull()
   })
+  it('lets an idle ChatGPT chat sleep; its thread binding says what still runs', () => {
+    const chat = (work: 'turn' | 'submission' | null) => ({
+      ...s(),
+      engine: 'codex',
+      agentInput: { liveWork: () => work },
+    })
+    expect(hibernationBlocker(chat(null) as any, NOW, 15 * MIN)).toBeNull()
+    expect(hibernationBlocker(chat('turn') as any, NOW, 15 * MIN)).toBe('turn')
+    expect(hibernationBlocker(chat('submission') as any, NOW, 15 * MIN)).toBe('submission')
+  })
   it.each([
-    ['codex', { engine: 'codex' }],
     ['subagent', { isSubAgent: true }],
     ['detached', { detachGraceTimer: {} }],
     ['not-running', { state: 'starting' }],
@@ -126,6 +135,17 @@ describe('sweep and the awake bound', () => {
     // a: 5 min idle, b: 4, c: 3, d: 2 — none past 15 min; bound 2 → a, b sleep.
     sweepIdleSessions(NOW, { ...config, maxAwake: 2 }, idle())
     expect(slept).toEqual(['a', 'b'])
+    offs.forEach((off) => off())
+  })
+
+  it('never evicts a ChatGPT chat for the CLI bound', () => {
+    const slept: string[] = []
+    const ids = ['gpt', 'cli1', 'cli2']
+    const offs = ids.map((id) => registerHibernationHandle(handleFor(id, slept)))
+    // gpt is the least recently used, yet it runs no CLI: two CLIs, bound 1.
+    ids.forEach((id, i) => h.sessions.set(id, session(id, 5 - i, id === 'gpt' ? { engine: 'codex' } : {})))
+    sweepIdleSessions(NOW, { ...config, maxAwake: 1 }, idle())
+    expect(slept).toEqual(['cli1'])
     offs.forEach((off) => off())
   })
 
