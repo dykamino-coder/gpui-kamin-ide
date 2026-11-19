@@ -2,6 +2,24 @@ import { useState, useEffect, useCallback } from 'preact/hooks'
 import { useBridge } from './useBridge'
 import { pendingAttachments } from '../signals/ui'
 import { resizeImageBase64 } from '../utils/resize-image'
+import { showToast } from '../signals/toasts'
+
+/** Splits a drop into files and folders. A dropped folder arrives as a File
+ *  with no bytes to read, so it is told apart by its entry and refused by name
+ *  instead of failing the whole drop. */
+export function splitDroppedFolders(dt: DataTransfer): { files: File[]; folders: string[] } {
+  const files: File[] = []
+  const folders: string[] = []
+  const items = Array.from(dt.items ?? []).filter(item => item.kind === 'file')
+  if (items.length === 0) return { files: Array.from(dt.files ?? []), folders }
+  for (const item of items) {
+    const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
+    const file = item.getAsFile()
+    if (entry?.isDirectory) folders.push(entry.name || file?.name || 'folder')
+    else if (file) files.push(file)
+  }
+  return { files, folders }
+}
 
 export interface DragDropState {
   isDragging: boolean
@@ -43,10 +61,18 @@ export function useDragDrop(): DragDropState {
     setDragCounter(0)
     setIsDragging(false)
 
-    const files = e.dataTransfer?.files
-    if (!files) return
+    const dt = e.dataTransfer
+    if (!dt) return
+    const { files, folders } = splitDroppedFolders(dt)
+    if (folders.length > 0) {
+      showToast({
+        type: 'error',
+        title: folders.length === 1 ? `"${folders[0]}" is a folder` : `${folders.length} folders were not attached`,
+        message: 'Only files can be attached. Drop the files inside the folder instead.',
+      })
+    }
 
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       if (file.type.startsWith('image/')) {
         const buffer = await file.arrayBuffer()
         const bytes = new Uint8Array(buffer)
