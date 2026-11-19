@@ -111,11 +111,15 @@ pub(super) fn cut_band_sides(run: &mut TextRun, left: bool, right: bool) {
 #[allow(clippy::type_complexity)]
 pub(super) fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
     let mut out = slice_runs(runs, range);
-    let band_at = |at: usize| -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
+    let band_at = |at: usize| -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>, u32)> {
         let mut start = 0usize;
         for run in runs {
             if at < start + run.len {
-                return Some((run.background_color, run.background_border));
+                return Some((
+                    run.background_color,
+                    run.background_border,
+                    run.background_owner,
+                ));
             }
             start += run.len;
         }
@@ -127,7 +131,7 @@ pub(super) fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>
     // tab-separated word of a bordered `<span>`, `tab-bidi-001`). The cut
     // covers the whole band segment at that end: `vendor/gpui` draws a band
     // with the sides of its first run.
-    let band = |r: &TextRun| (r.background_color, r.background_border);
+    let band = |r: &TextRun| (r.background_color, r.background_border, r.background_owner);
     let n = out.len();
     let cut_left = range.start > 0
         && out.first().is_some_and(|f| {

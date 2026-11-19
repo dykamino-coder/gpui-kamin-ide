@@ -133,9 +133,8 @@ impl Document {
             crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);
             return false;
         };
-        let plain = |a: &crate::dom::Element, b: &crate::dom::Element| {
-            crate::paint::box_tree::styled::paints_only_own_box(&self.state, a)
-                && crate::paint::box_tree::styled::paints_only_own_box(&self.state, b)
+        let own = |a: &crate::dom::Element, b: &crate::dom::Element| {
+            super::layer_write::own_paint_of(&self.state, a, b)
         };
         // A box under a block the frame skipped: any block on its path.
         let unseen = |path: &super::patch::Path| {
@@ -152,7 +151,7 @@ impl Document {
             nodes,
             paths,
             &layer,
-            plain,
+            own,
             unseen,
             off,
         ) else {

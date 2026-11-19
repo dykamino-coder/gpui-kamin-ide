@@ -25,6 +25,7 @@ import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches }
 import { readHistoryPage } from './jsonl-page'
 import { SegmentIndexBuilder, type SegmentIndex } from './segment-index'
 import { readJsonlLines, readRange } from './jsonl-lines'
+import { TranscriptTail } from './jsonl-tail'
 import {
   RecordIndex,
   REPLAY_BATCH_BYTES,
@@ -90,6 +91,8 @@ const TAIL_BACKPRESSURE_RETRY_MS = 400
 // FS that drops inotify events, so it can be slow. (Without fs.watch we fall to
 // the aggressive TAIL_POLL_MS for streaming responsiveness.)
 const WATCH_SAFETY_POLL_MS = 10_000
+/** Longest delay of a live segment-count update (see announceIndexSoon). */
+const INDEX_ANNOUNCE_MS = 500
 // Live tail: complete records read per pass (a longer single record is read
 // whole). Further growth is picked up by an immediate follow-up pass.
 const TAIL_BATCH_BYTES = 4 * 1024 * 1024
@@ -235,6 +238,8 @@ export class JsonlWatcher {
   private fileIdentity: string | null = null
   private fileStamp: { size: number; mtime: number } | null = null
   private reading = false
+  /** Held descriptor of the tailed file (one read per pass, jsonl-tail.ts). */
+  private tail: TranscriptTail | null = null
   /** A change signal arrived while a tail read was running. The read already
    *  sized its range, so it re-runs on completion instead of losing the signal
    *  (which left the newest records waiting for the 10s safety poll). */
@@ -572,6 +577,10 @@ export class JsonlWatcher {
 
   stop(): void {
     this.stopped = true
+    if (this.indexAnnounce) clearTimeout(this.indexAnnounce)
+    this.indexAnnounce = null
+    this.tail?.close()
+    this.tail = null
     this.cancelReplay() // cancel any in-flight replay, including its reads
     if (this.discoveryTimer) {
       clearInterval(this.discoveryTimer)
@@ -832,6 +841,8 @@ export class JsonlWatcher {
       this.tailRetryTimer = null
     }
 
+    this.tail?.close()
+    this.tail = null
     this.filePath = newPath
     this.historyIndex = undefined
     this.indexBuilder = undefined
@@ -1355,6 +1366,8 @@ export class JsonlWatcher {
     if (this.history?.mode !== 'paged')
       this.sendStatus({ status: 'watching', filePath, compacted: true, replayComplete: false })
     else this.replaceOnPage = true
+    this.tail?.close()
+    this.tail = null
     this.lastOffset = 0
     this.historyIndex = undefined
     this.indexBuilder = undefined
@@ -1392,6 +1405,8 @@ export class JsonlWatcher {
       this.tailWatcher = fs.watch(this.filePath, { persistent: false }, (eventType) => {
         if (this.stopped) return
         if (eventType === 'rename') {
+          // The path may now name another file: reopen on the next pass.
+          this.tail?.close()
           // The underlying file was renamed/replaced — fall back to a fresh
           // poll so we pick up compactions / atomic writes without crashing
           // the watcher.
@@ -1454,35 +1469,42 @@ export class JsonlWatcher {
     let more = false
 
     try {
-      const stat = await fsp.stat(filePath)
+      if (this.tail?.filePath !== filePath) {
+        this.tail?.close()
+        this.tail = new TranscriptTail(filePath, SKIP_LINE_MARKER, TAIL_BATCH_BYTES)
+      }
+      const tail = this.tail
+      // One positional read on the held descriptor (jsonl-tail.ts). Metadata
+      // comes back only when there is nothing new at our offset.
+      const passStart = this.lastOffset
+      const pass = await tail.read(passStart)
       if (!live()) return
-      if (
-        stat.size < this.lastOffset ||
-        (this.fileIdentity && `${stat.dev}:${stat.ino}` !== this.fileIdentity) ||
-        (this.fileStamp?.size === stat.size && this.fileStamp.mtime !== stat.mtimeMs)
-      ) {
+      const opened = tail.identity
+      if (this.fileIdentity && opened && opened !== this.fileIdentity) {
         this.replayRewrittenFile(filePath)
         return
       }
-      this.fileStamp = { size: stat.size, mtime: stat.mtimeMs }
-      if (stat.size <= this.lastOffset) return
-
-      // Bounded read: at most TAIL_BATCH_BYTES of complete records per pass
-      // (a single longer record is still read whole). A client that was frozen
-      // while the CLI wrote tens of MiB no longer costs one giant Buffer, one
-      // giant string and one giant frame.
-      const { entries, spans, endPos, truncated } = await this.readEntriesFromOffset(
-        filePath,
-        this.lastOffset,
-        stat.size,
-      )
+      const stat = pass.stat
+      if (stat) {
+        if (
+          stat.size < this.lastOffset ||
+          (this.fileIdentity && stat.identity !== this.fileIdentity) ||
+          (this.fileStamp?.size === stat.size && this.fileStamp.mtime !== stat.mtimeMs)
+        ) {
+          this.replayRewrittenFile(filePath)
+          return
+        }
+        this.fileStamp = { size: stat.size, mtime: stat.mtimeMs }
+        // Appended between our read and the stat: look again.
+        more = stat.size > this.lastOffset
+        return
+      }
+      const { entries, spans, endPos, truncated } = pass
+      // The records came from the descriptor; the path may have been replaced
+      // while they were read. One stat proves they still belong to it.
+      const current = await fsp.stat(filePath)
       if (!live()) return
-      const currentStat = await fsp.stat(filePath)
-      if (!live()) return
-      if (
-        currentStat.size < endPos ||
-        (this.fileIdentity && `${currentStat.dev}:${currentStat.ino}` !== this.fileIdentity)
-      ) {
+      if (current.size < endPos || (this.fileIdentity && `${current.dev}:${current.ino}` !== this.fileIdentity)) {
         this.replayRewrittenFile(filePath)
         return
       }
@@ -1496,9 +1518,9 @@ export class JsonlWatcher {
       }
 
       // Paged counters follow the forward index, independently of delivery.
-      // Folding a high tail offset before the index reaches older records
-      // would skip that history forever. Detached clients also need counters.
-      if (this.history?.mode === 'paged') await this.rebuildSegmentIndex()
+      // When the index has reached the tail, the records just parsed extend it
+      // (one parse per record); only a lagging index re-reads the file.
+      if (this.history?.mode === 'paged') await this.extendSegmentIndex(entries, spans, passStart, endPos)
       if (!live()) return
 
       // Deliver BEFORE advancing the offset: if the socket cannot take the
@@ -1521,7 +1543,8 @@ export class JsonlWatcher {
       // the tail — rebuild + resend the segment index now.
       if (sawBoundary) void this.rebuildSegmentIndex()
     } catch {
-      // File might be temporarily unavailable, ignore
+      // File might be temporarily unavailable: drop the descriptor, reopen next pass.
+      this.tail?.close()
     } finally {
       if (live()) {
         this.reading = false
@@ -1533,6 +1556,45 @@ export class JsonlWatcher {
     }
   }
 
+  /** Fold freshly tailed records into the segment index when it already covers
+   *  everything before them; otherwise let the forward rebuild catch up. */
+  private async extendSegmentIndex(
+    entries: JsonlEntry[],
+    spans: Array<[number, number]>,
+    from: number,
+    to: number,
+  ): Promise<void> {
+    if (!this.indexBuilder || this.rebuildingIndex || this.indexOffset < from) {
+      await this.rebuildSegmentIndex()
+      return
+    }
+    const before = this.indexOffset
+    for (const [i, parsed] of entries.entries()) {
+      const [start, end] = spans[i]!
+      if (start < this.indexOffset) continue // already folded by an earlier pass
+      this.indexBuilder.add(parsed, start)
+      this.foldStats(parsed, start, end)
+    }
+    this.indexOffset = Math.max(this.indexOffset, to)
+    if (this.indexOffset === before || !this.filePath) return
+    this.historyIndex = this.indexBuilder.build()
+    this.announceIndexSoon()
+  }
+
+  private indexAnnounce: ReturnType<typeof setTimeout> | null = null
+
+  /** Live growth only moves the newest segment's count: announce it at most
+   *  every INDEX_ANNOUNCE_MS instead of one status frame per tailed record. A
+   *  new boundary still goes out at once (rebuildSegmentIndex). */
+  private announceIndexSoon(): void {
+    if (this.indexAnnounce) return
+    this.indexAnnounce = setTimeout(() => {
+      this.indexAnnounce = null
+      if (this.stopped || !this.filePath || !this.historyIndex) return
+      this.sendStatus({ status: 'watching', filePath: this.filePath, segmentIndex: this.historyIndex })
+    }, INDEX_ANNOUNCE_MS)
+  }
+
   /** An outside signal that the transcript probably changed: a CLI hook
    *  (prompt, tool, stop) reaches the server right around its JSONL write.
    *  Looks now instead of waiting for a discovery poll or a missed fs event. */
@@ -1540,47 +1602,6 @@ export class JsonlWatcher {
     if (this.stopped) return
     if (!this.filePath) this.discoveryPoke?.()
     else if (this.tailTimer) void this.checkForNewContent()
-  }
-
-  /** Read complete records from `offset`, stopping once TAIL_BATCH_BYTES of
-   *  them are collected. A torn trailing line is left unconsumed. */
-  private async readEntriesFromOffset(
-    filePath: string,
-    offset: number,
-    size: number,
-  ): Promise<{ entries: JsonlEntry[]; spans: Array<[number, number]>; endPos: number; truncated: boolean }> {
-    const entries: JsonlEntry[] = []
-    const spans: Array<[number, number]> = []
-    let endPos = offset
-    let truncated = false
-    for await (const line of readJsonlLines(filePath, { start: offset, end: size })) {
-      if (line.text.includes(SKIP_LINE_MARKER)) {
-        endPos = line.end
-      } else {
-        let parsed: JsonlEntry | null
-        try {
-          parsed = JSON.parse(line.text) as JsonlEntry
-        } catch {
-          parsed = null
-        }
-        if (parsed === null) {
-          // Torn write: leave its bytes for the next poll. A malformed line
-          // that IS terminated will never complete — skip it.
-          if (!line.terminated) break
-          endPos = line.end
-        } else {
-          // Live records stay untagged (unchanged wire contract for the tail).
-          entries.push(parsed)
-          spans.push([line.start, line.end])
-          endPos = line.end
-        }
-      }
-      if (endPos - offset >= TAIL_BATCH_BYTES && endPos < size) {
-        truncated = true
-        break
-      }
-    }
-    return { entries, spans, endPos, truncated }
   }
 }
 

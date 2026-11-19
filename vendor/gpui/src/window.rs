@@ -72,6 +72,7 @@ pub(crate) mod vector_transform;
 mod scene_capture;
 mod scene_layer;
 mod layer_box;
+mod layer_band;
 pub use scene_layer::RecordedLayer;
 mod frame_capture;
 mod paint_scope;
@@ -1401,6 +1402,9 @@ pub struct Window {
     pub(crate) element_opacity: f32,
     /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
     pub(crate) box_fill: Option<Bounds<Pixels>>,
+    /// KaminIDE patch: the bands painted now are cut into pieces by another
+    /// painter (`Window::paint_split_bands`).
+    pub(crate) band_split: bool,
     /// KaminIDE patch: the scene layer being recorded (`window::scene_layer`)
     /// and the binding scope of the paint (`with_paint_owner`, `with_paint_value`).
     pub(crate) layer_recording: Option<Box<scene_layer::LayerRecording>>,
@@ -2378,6 +2382,7 @@ impl Window {
             hit_scope: None,
             element_opacity: 1.0,
             box_fill: None,
+            band_split: false,
             layer_recording: None,
             #[cfg(any(test, feature = "test-support"))]
             scene_layers_off: false,
@@ -3009,6 +3014,20 @@ impl Window {
     pub fn request_animation_frame(&self) {
         let entity = self.current_view();
         self.on_next_frame(move |_, cx| cx.notify(entity));
+    }
+
+    /// KaminIDE patch: show the last drawn frame again, without a draw.
+    ///
+    /// A producer of an external texture that reported what it repainted
+    /// (`damage_external_texture`) needs nothing else: the scene samples the
+    /// same atlas tile, so the renderer redraws only the reported rectangle.
+    /// Chromium shows a new frame of an embedded surface the same way, with no
+    /// commit of the embedding layer tree (`SurfaceAggregator` damage).
+    pub fn request_present(&self) {
+        self.needs_present.set(true);
+        self.platform_window.schedule_frame();
+        // Presenting creates frame demand without dirtying the window.
+        self.invalidator.wake_platform();
     }
 
     /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
@@ -9688,6 +9707,42 @@ mod tests {
     /// Visibility transitions reach observers exactly once each, with the new
     /// state already stored on the window, and never wake the platform for a
     /// frame: the platform requests one itself when it resumes presenting.
+    /// `request_present` shows the last frame again: it wakes the platform,
+    /// and the frame it gets presents without rendering any view.
+    #[gpui::test]
+    fn test_request_present_presents_without_a_draw(cx: &mut TestAppContext) {
+        struct Counted(Rc<Cell<usize>>);
+        impl Render for Counted {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                self.0.set(self.0.get() + 1);
+                Empty
+            }
+        }
+        let renders = Rc::new(Cell::new(0));
+        let window = cx.add_window({
+            let renders = renders.clone();
+            move |_, _| Counted(renders)
+        });
+        let platform_window = cx.test_window(window.into());
+        platform_window.simulate_frame_request(RequestFrameOptions::default());
+        let rendered = renders.get();
+        let wakes = platform_window.frame_wake_count();
+
+        window
+            .update(cx, |_, window, _| window.request_present())
+            .unwrap();
+        assert!(platform_window.frame_wake_count() > wakes);
+        window
+            .update(cx, |_, window, _| assert!(window.needs_present.get()))
+            .unwrap();
+
+        platform_window.simulate_frame_request(RequestFrameOptions::default());
+        assert_eq!(renders.get(), rendered);
+        window
+            .update(cx, |_, window, _| assert!(!window.needs_present.get()))
+            .unwrap();
+    }
+
     #[gpui::test]
     fn test_window_visibility(cx: &mut TestAppContext) {
         use crate::WindowVisibility;

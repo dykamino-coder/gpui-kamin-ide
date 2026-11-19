@@ -38,6 +38,21 @@ export const CATALOG_TOOL_PATCH = {
 } as const
 
 /**
+ * Fields that decide whether a turn streams reasoning. With Responses Lite
+ * (`use_responses_lite: true`, the bundled default of every GPT-6 model in codex
+ * 0.170.0) the backend returns no reasoning item at all, whatever summary the
+ * turn asks for: `codex exec` with effort `high` and summary `detailed` reported
+ * `reasoning_output_tokens: 0` and no reasoning event, and the same request
+ * without Lite streamed a reasoning summary. The catalog default summary is
+ * `none`; `auto` matches what `turn/start` asks for. (The rollout
+ * `turn_context.summary` is always written as `none` and proves nothing.)
+ */
+export const CATALOG_REASONING_PATCH = {
+  use_responses_lite: false,
+  default_reasoning_summary: 'auto',
+} as const
+
+/**
  * `codex debug models` prints `WARNING:` diagnostics on stdout before the
  * JSON on some platforms (e.g. PATH-alias warnings on Windows temp homes).
  */
@@ -71,6 +86,8 @@ export function patchModelCatalog(catalog: ModelCatalog): ModelCatalog {
     model.shell_type = CATALOG_TOOL_PATCH.shell_type
     model.experimental_supported_tools = [...CATALOG_TOOL_PATCH.experimental_supported_tools]
     model.multi_agent_version = CATALOG_TOOL_PATCH.multi_agent_version
+    model.use_responses_lite = CATALOG_REASONING_PATCH.use_responses_lite
+    model.default_reasoning_summary = CATALOG_REASONING_PATCH.default_reasoning_summary
   }
   return copy
 }

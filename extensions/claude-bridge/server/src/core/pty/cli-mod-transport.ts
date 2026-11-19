@@ -15,7 +15,7 @@ type Pending = { command: Command; claimed: boolean; fallback: () => void; accep
 export const CLI_MOD_PLUGIN = fileURLToPath(new URL('../../cli-mod', import.meta.url))
 /** The module files of the entry with hook handler conditions (hooks/bridge-conditions.js and what it imports). */
 const CONDITION_MODULES = ['bridge-conditions.js', 'conditions.js', 'transport.js']
-export const CLI_MOD_VERSION = '2.1.327'
+export const CLI_MOD_VERSION = '2.1.328'
 /** How long an idle /poll is held open. Below the 3 s lease, so a module that
  * stops polling still expires on time. */
 export const POLL_HOLD_MS = 2000
@@ -318,6 +318,49 @@ export class CliModTransport {
   }
 }
 
+/** How long one `--version` answer stands for every session start. */
+export const CLI_VERSION_PROBE_TTL_MS = 60_000
+const versionProbes = new Map<string, { at: number; version: Promise<string> }>()
+
+/** Tests: forget shared `--version` answers between cases. */
+export function resetCliVersionProbes(): void {
+  versionProbes.clear()
+}
+
+/** `claude --version`, shared by concurrent session starts and reused for a
+ *  minute: spawning the CLI once per new chat cost the main thread ~10 ms each,
+ *  two seconds when 200 chats resumed at once. Safe to reuse because the mod
+ *  handshake checks the version again in the spawned CLI. */
+export function probeCliVersion(
+  cli: { command: string; prefix: string[]; env: NodeJS.ProcessEnv },
+  now = Date.now(),
+): Promise<string> {
+  const key = [cli.command, ...cli.prefix].join('\0')
+  const cached = versionProbes.get(key)
+  if (cached && now - cached.at < CLI_VERSION_PROBE_TTL_MS) return cached.version
+  const version = new Promise<string>((resolve) => {
+    try {
+      execFile(
+        cli.command,
+        [...cli.prefix, '--version'],
+        { env: cli.env, timeout: 5000, maxBuffer: 65536 },
+        (error, stdout) => {
+          resolve(error ? '' : stdout.trim())
+        },
+      )
+    } catch {
+      // A synchronous spawn failure is a failed probe, not a rejection.
+      resolve('')
+    }
+  })
+  versionProbes.set(key, { at: now, version })
+  // A failed probe is not remembered: the next start asks again.
+  void version.then((v) => {
+    if (!v && versionProbes.get(key)?.version === version) versionProbes.delete(key)
+  })
+  return version
+}
+
 export async function createCliModTransport(
   sessionId: string,
   cli = { command: 'claude', prefix: [] as string[], env: process.env },
@@ -327,16 +370,7 @@ export async function createCliModTransport(
   // checks the version in case the executable changes between probe and spawn.
   let transport: CliModTransport | undefined
   try {
-    const version = await new Promise<string>((resolve) => {
-      execFile(
-        cli.command,
-        [...cli.prefix, '--version'],
-        { env: cli.env, timeout: 5000, maxBuffer: 65536 },
-        (error, stdout) => {
-          resolve(error ? '' : stdout.trim())
-        },
-      )
-    })
+    const version = await probeCliVersion(cli)
     if (version !== `${CLI_MOD_VERSION} (Claude Code)`) return undefined
     transport = new CliModTransport(sessionId)
     await transport.listen()
