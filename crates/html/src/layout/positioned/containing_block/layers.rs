@@ -49,6 +49,11 @@ pub struct Positioning {
     /// positioned ancestor is placed against the viewport, so it becomes one
     /// of the last children of the document.
     icb: RefCell<Vec<OofQueue>>,
+    /// For each ICB layer: the scroll handle of the root scrollport whose
+    /// padding box is this initial containing block (`html-viewport`), or
+    /// `None`. A fixed box of that layer hangs on the viewport, not on the
+    /// scrolled content (`viewport_anchor`).
+    anchors: RefCell<Vec<Option<gpui::ScrollHandle>>>,
     /// Top paint layers: one per block container being built. A positioned
     /// box at its static position puts itself into the top layer, and the
     /// container appends the layer as its last children.
@@ -155,13 +160,27 @@ impl Positioning {
     /// Open an initial-containing-block layer: the document, a strip block or
     /// a nested document.
     pub fn icb_open(&self) {
+        self.icb_open_anchored(None);
+    }
+
+    /// Open the ICB layer of a root scrollport scrolled by `anchor`.
+    pub(crate) fn icb_open_anchored(&self, anchor: Option<gpui::ScrollHandle>) {
         let queue = OofQueue::initial();
         self.pending.borrow_mut().push(queue.pending());
         self.icb.borrow_mut().push(queue);
+        self.anchors.borrow_mut().push(anchor);
+    }
+
+    /// The root scroll handle of the top ICB layer: a fixed box placed into
+    /// it cancels that offset (css-position-3 §fixed-pos: the viewport is
+    /// its containing block and it does not move when the document scrolls).
+    pub(crate) fn viewport_anchor(&self) -> Option<gpui::ScrollHandle> {
+        self.anchors.borrow().last().cloned().flatten()
     }
 
     /// Take what the top ICB layer collected and close it.
     pub fn icb_close(&self) -> Vec<AnyElement> {
+        self.anchors.borrow_mut().pop();
         self.pending.borrow_mut().pop();
         let layer = self.icb.borrow_mut().pop();
         layer.unwrap_or_default().place(icb_place)
@@ -239,10 +258,19 @@ impl Positioning {
 /// ребёнка (понятия «позиционированный предок» у раскладки нет), и края
 /// считались бы от неё, а не от области просмотра — то есть ровно то, ради
 /// чего затеян вынос. `LatePlace` своей коробки не заводит: он отдаёт
-/// `layout_id` ребёнка.
+/// `layout_id` ребёнка. Исключение — `fixed` корневой области просмотра
+/// (`Spot::viewport_fixed`): его коробка ровно совпадает с областью
+/// просмотра, края те же, а в диапазон прокрутки он не входит.
 pub(super) fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
-    if spot.get().layout_only {
-        return child;
+    let now = spot.get();
+    let placed = if now.layout_only {
+        child
+    } else {
+        LatePlace { child, spot }.hooked()
+    };
+    if now.viewport_fixed {
+        crate::layout::positioned::viewport_anchor::viewport_box(placed)
+    } else {
+        placed
     }
-    LatePlace { child, spot }.hooked()
 }

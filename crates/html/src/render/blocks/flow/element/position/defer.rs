@@ -57,6 +57,7 @@ pub(super) fn defer(
         fixed_axes: axes,
         preserve_cb_geometry: !to_icb,
         viewport_static: to_icb,
+        viewport_fixed: fixed && to_icb && opts.cx.position.state.viewport_anchor().is_some(),
         free_margin: (
             if axes.0 {
                 0.
@@ -86,6 +87,14 @@ pub(super) fn defer(
     let inherited = inherited.clone();
     let mut build_opts = opts.clone();
     build_opts.cx.position.oof_identities = Some(identities);
+    // A fixed box of the root viewport hangs on it, outside the root
+    // scroll range, as on the direct route (`position_element`).
+    let anchor = (fixed && to_icb)
+        .then(|| opts.cx.position.state.viewport_anchor())
+        .flatten();
+    if anchor.is_some() {
+        build_opts.cx.scroll.frame = None;
+    }
     let frame = frame.clone();
     let paint_last = crate::layout::order::paint_last_ok(e, rest, &opts.cx);
     let source_paint = (!paint_last
@@ -142,6 +151,13 @@ pub(super) fn defer(
                 )
             })
             .finish();
+        let child = match &anchor {
+            Some(scroll) => crate::layout::positioned::viewport_anchor::ViewportAnchor::wrap(
+                child,
+                scroll.clone(),
+            ),
+            None => child,
+        };
         let z_index = source.style.used().reset_positioned.z_index;
         let child = if !fixed && z_index.is_some_and(|z| z > 0) {
             crate::paint::stacking::layered(
