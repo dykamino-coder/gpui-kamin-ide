@@ -64,11 +64,7 @@ export function slugOwnedBy(slug: string, tokenId: string): boolean {
   return tokenSlug.replace(/-/g, '').length > 0 && slug.includes(`-${tokenSlug}-`)
 }
 
-async function locateSettingsDir(
-  projectsDir: string,
-  conversationId: string,
-  tokenId: string,
-): Promise<string | null> {
+async function locateSettingsDir(projectsDir: string, conversationId: string, tokenId: string): Promise<string | null> {
   const jsonlFilename = `${conversationId}.jsonl`
 
   try {

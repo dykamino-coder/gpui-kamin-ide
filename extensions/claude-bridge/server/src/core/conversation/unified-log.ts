@@ -272,7 +272,7 @@ export function seedUnifiedLog(file: string, source: string): void {
   try {
     const size = fs.fstatSync(fd).size
     const buf = Buffer.allocUnsafe(SCAN_CHUNK)
-    for (let pos = size; pos > 0 && keep === 0; ) {
+    for (let pos = size; pos > 0 && keep === 0;) {
       const len = Math.min(SCAN_CHUNK, pos)
       pos -= len
       fs.readSync(fd, buf, 0, len, pos)

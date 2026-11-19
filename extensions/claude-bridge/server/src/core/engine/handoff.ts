@@ -290,9 +290,7 @@ function fromDigest(d: TurnDigest, source: HandoffSource, budget: number): Hando
     // text goes, never the newest turn.
     const room = Math.max(0, budget - bytes(recent) - 150)
     const earlier =
-      start > 0 && room > 0
-        ? `${requestList(d, start, room)}\n\n--- The most recent turns, verbatim ---\n\n`
-        : ''
+      start > 0 && room > 0 ? `${requestList(d, start, room)}\n\n--- The most recent turns, verbatim ---\n\n` : ''
     body = tailBytes(`${earlier}${recent}`, budget)
   }
   const names = [...new Set(source.engines ?? [source.engine])].map((e) => ENGINE_NAME[e])

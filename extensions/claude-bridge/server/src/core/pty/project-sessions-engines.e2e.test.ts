@@ -220,7 +220,6 @@ afterAll(async () => {
   }
 }, 30_000)
 
-
 // ── D1: chats of this folder and token, readable from both engines ─────────
 describe('project session tools for Claude and ChatGPT chats', () => {
   beforeEach(() => {
@@ -236,7 +235,13 @@ describe('project session tools for Claude and ChatGPT chats', () => {
 
   async function chat(engine: 'claude' | 'codex', opts: { token?: string; cwd?: string } = {}) {
     const client = await Client.open(port)
-    client.send({ type: 'session:create', token: opts.token ?? 'tok-a', protocolVersion: 1, cwd: opts.cwd ?? '/work/project', engine })
+    client.send({
+      type: 'session:create',
+      token: opts.token ?? 'tok-a',
+      protocolVersion: 1,
+      cwd: opts.cwd ?? '/work/project',
+      engine,
+    })
     const created = await client.next((f) => f.type === 'session:created' || f.type === 'session:error')
     expect(created.type).toBe('session:created')
     return client
@@ -246,7 +251,9 @@ describe('project session tools for Claude and ChatGPT chats', () => {
   }
   async function sessionOf(conversationId: string) {
     const { getAllSessions } = await import('./session-manager')
-    const s = getAllSessions().find((x) => x.cliConversationId === conversationId || (x.conversationAliases ?? []).includes(conversationId))
+    const s = getAllSessions().find(
+      (x) => x.cliConversationId === conversationId || (x.conversationAliases ?? []).includes(conversationId),
+    )
     if (!s?.mcpEndpoint) throw new Error(`no session for ${conversationId}`)
     return s
   }
@@ -254,7 +261,11 @@ describe('project session tools for Claude and ChatGPT chats', () => {
     const s = await sessionOf(conversationId)
     const res = await fetch(`http://127.0.0.1:${port}/mcp/${s.mcpEndpoint!.id}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${s.mcpEndpoint!.token}` },
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        authorization: `Bearer ${s.mcpEndpoint!.token}`,
+      },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: args } }),
     })
     const raw = await res.text()
@@ -262,10 +273,13 @@ describe('project session tools for Claude and ChatGPT chats', () => {
     const out = (data.result?.content ?? []).map((c: { text?: string }) => c.text ?? '').join('\n')
     return { isError: !!data.result?.isError, text: out }
   }
-  const dump = (...a: unknown[]) => fs.appendFileSync(process.env.K_D1_DUMP ?? path.join(state.home, 'd1.log'), a.map(String).join(' ') + '\n')
-  const listOf = (t: string) => JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)) as { conversations: Array<Record<string, any>> }
+  const dump = (...a: unknown[]) =>
+    fs.appendFileSync(process.env.K_D1_DUMP ?? path.join(state.home, 'd1.log'), a.map(String).join(' ') + '\n')
+  const listOf = (t: string) =>
+    JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)) as { conversations: Array<Record<string, any>> }
 
-  const footerOf = (t: string) => JSON.parse(t.slice(t.lastIndexOf('\n{') + 1)) as { results: number; transcripts: number }
+  const footerOf = (t: string) =>
+    JSON.parse(t.slice(t.lastIndexOf('\n{') + 1)) as { results: number; transcripts: number }
   const hitIds = (t: string) => [...t.matchAll(/^([0-9a-f-]{36}) #\d+/gm)].map((m) => m[1])
 
   it('both engines see the same chats of their token and folder, a mixed chat once', async () => {
@@ -306,7 +320,8 @@ describe('project session tools for Claude and ChatGPT chats', () => {
     expect(read.text).toContain('codex fact 5591')
     expect(read.text).toMatch(/assistant engine=codex/)
     // Other tokens and other folders stay invisible, by search and by id.
-    for (const q of ['7777', '8888']) expect(footerOf((await call(xId, 'project_session_search', { query: q })).text).results).toBe(0)
+    for (const q of ['7777', '8888'])
+      expect(footerOf((await call(xId, 'project_session_search', { query: q })).text).results).toBe(0)
     for (const id of [yId, zId]) {
       const r = await call(cId, 'project_session_read', { session_id: id })
       expect(r.isError).toBe(true)
@@ -349,8 +364,18 @@ describe('project session tools for Claude and ChatGPT chats', () => {
     // Resume by a known id from another token is refused for both engines.
     for (const id of [cId, xId]) {
       const b = await Client.open(port)
-      b.send({ type: 'session:resume', token: 'tok-b', protocolVersion: 1, cwd: '/work/project', conversationId: id, noSpawnOnNotFound: true })
-      const reply = await b.next((f) => ['session:resume-not-found', 'session:created', 'session:error'].includes(f.type), 15_000)
+      b.send({
+        type: 'session:resume',
+        token: 'tok-b',
+        protocolVersion: 1,
+        cwd: '/work/project',
+        conversationId: id,
+        noSpawnOnNotFound: true,
+      })
+      const reply = await b.next(
+        (f) => ['session:resume-not-found', 'session:created', 'session:error'].includes(f.type),
+        15_000,
+      )
       expect(reply.type).toBe('session:resume-not-found')
       b.close()
     }

@@ -8,7 +8,14 @@ import path from 'node:path'
 import { boolArg, intArg } from './args'
 import { redact } from './redact'
 import { summarize } from './summary'
-import { isPlainFile, listTranscripts, resolveScope, subagentDirs, type CallerContext, type TranscriptRef } from './scope'
+import {
+  isPlainFile,
+  listTranscripts,
+  resolveScope,
+  subagentDirs,
+  type CallerContext,
+  type TranscriptRef,
+} from './scope'
 import { resolveTarget } from './target'
 import type { ToolOutput } from './types'
 

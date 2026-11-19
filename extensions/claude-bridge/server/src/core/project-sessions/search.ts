@@ -150,19 +150,20 @@ async function targets(ctx: CallerContext, ids: Set<string> | null, withSubagent
   )
   for (const { ref, started } of withStart) {
     out.push({ key: ref.conversationId, conversationId: ref.conversationId, agentId: null, file: ref.file, started })
-    for (const dir of withSubagents ? subagentDirs(ref) : []) for (const name of (await fsp.readdir(dir)).sort()) {
-      const m = /^agent-([A-Za-z0-9_-]{1,128})\.jsonl$/.exec(name)
-      const file = path.join(dir, name)
-      if (m && isPlainFile(file)) {
-        out.push({
-          key: `${ref.conversationId}/${m[1]}`,
-          conversationId: ref.conversationId,
-          agentId: m[1]!,
-          file,
-          started,
-        })
+    for (const dir of withSubagents ? subagentDirs(ref) : [])
+      for (const name of (await fsp.readdir(dir)).sort()) {
+        const m = /^agent-([A-Za-z0-9_-]{1,128})\.jsonl$/.exec(name)
+        const file = path.join(dir, name)
+        if (m && isPlainFile(file)) {
+          out.push({
+            key: `${ref.conversationId}/${m[1]}`,
+            conversationId: ref.conversationId,
+            agentId: m[1]!,
+            file,
+            started,
+          })
+        }
       }
-    }
   }
   return out
 }
