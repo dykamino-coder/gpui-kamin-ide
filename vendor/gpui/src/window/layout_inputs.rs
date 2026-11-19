@@ -15,7 +15,10 @@ impl Default for LayoutInputId {
 }
 
 pub(super) struct PrepaintRoots {
-    pub(super) root_element: AnyElement,
+    /// `None` when the previous root tree is kept (`kept_root`).
+    pub(super) root_element: Option<AnyElement>,
+    pub(super) root_prepaint: Range<PrepaintStateIndex>,
+    pub(super) kept_root: Option<RootRanges>,
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub(super) inspector_element: Option<AnyElement>,
     pub(super) prompt_element: Option<AnyElement>,
@@ -53,19 +56,31 @@ impl Window {
     ) -> PrepaintRoots {
         let text_index = self.text_system.layout_index();
         self.layout_inputs = Some(FxHashSet::default());
+        let kept_root = self.kept_root(cx);
         loop {
             self.layout_retry = false;
             if self.a11y.is_active() {
                 self.a11y.begin_frame();
             }
-            let mut root = self.root.as_ref().unwrap().clone().into_any_element();
-            let id = root.request_layout(self, cx);
             let scale_factor = self.scale_factor();
-            self.layout_engine
-                .as_mut()
-                .unwrap()
-                .stretch_auto_size_to_fill(id, root_size, scale_factor);
-            root.prepaint_as_root(Point::default(), root_size.into(), self, cx);
+            // KaminIDE patch: when only isolated views changed, the previous
+            // root tree is replayed instead of rendered (`window/isolated.rs`).
+            let kept_root = kept_root.clone().filter(|_| !self.refreshing);
+            let root_prepaint_start = self.prepaint_index();
+            let root = if let Some(kept) = &kept_root {
+                self.reuse_root_prepaint(kept, cx);
+                None
+            } else {
+                let mut root = self.root.as_ref().unwrap().clone().into_any_element();
+                let id = root.request_layout(self, cx);
+                self.layout_engine
+                    .as_mut()
+                    .unwrap()
+                    .stretch_auto_size_to_fill(id, root_size, scale_factor);
+                root.prepaint_as_root(Point::default(), root_size.into(), self, cx);
+                Some(root)
+            };
+            let root_prepaint = root_prepaint_start..self.prepaint_index();
             #[cfg(any(feature = "inspector", debug_assertions))]
             let inspector_element = self.prepaint_inspector(_inspector_width, cx);
 
@@ -95,8 +110,16 @@ impl Window {
             }
             if !self.layout_retry {
                 self.layout_inputs = None;
+                let counter = if root.is_some() {
+                    &crate::frame_perf::ROOT_LAYOUTS
+                } else {
+                    &crate::frame_perf::ISOLATED_FRAMES
+                };
+                counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 return PrepaintRoots {
                     root_element: root,
+                    root_prepaint,
+                    kept_root,
                     #[cfg(any(feature = "inspector", debug_assertions))]
                     inspector_element,
                     prompt_element,

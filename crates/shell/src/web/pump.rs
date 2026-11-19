@@ -48,8 +48,9 @@ pub fn start_pump(cx: &mut gpui::App) {
                     return;
                 }
             }
-            // Кэшированные вью со ступенчатой анимацией (спиннер дерева)
-            // корень не перерисует: уведомляем их сами.
+            // Вью, чей шаг анимации наступил (`anim_tick::step_for_view`),
+            // уведомляем сами и только их: изолированный вью (`ui::ticking`)
+            // перерисуется без корня и соседей (INC-2026-0064).
             let views = crate::ui::anim_tick::take_view_subscribers();
             if !views.is_empty() {
                 cx.update(|cx| {
