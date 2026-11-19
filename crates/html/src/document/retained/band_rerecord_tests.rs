@@ -31,30 +31,39 @@ pub(super) fn edit(
     body: &str,
     class: &str,
 ) -> (bool, Vec<String>, Vec<String>) {
-    let (kept, edited, fresh, _) = edit_refused(cx, css, body, class);
+    let (kept, edited, fresh, _, _) = edit_refused(cx, css, body, class);
     (kept, edited, fresh)
 }
 
-/// `edit`, and the paint path's refusals of the edit.
+/// `edit`, the paint path's refusals of the edit (process-wide: tests in
+/// parallel add theirs) and the boxes the document queued to record again.
 fn edit_refused(
     cx: &mut TestAppContext,
     css: &str,
     body: &str,
     class: &str,
-) -> (bool, Vec<String>, Vec<String>, String) {
+) -> (bool, Vec<String>, Vec<String>, String, usize) {
     let at = |class: &str| page(css, body, class);
     let (view, vcx) = settled(cx, &at(""), &at("x"));
     update(&view, vcx, &at(""));
     update(&view, vcx, &at(""));
     let before = frames(&view, vcx);
     let counts = crate::paint_path::read();
-    update(&view, vcx, &at(class));
+    vcx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&at(class), "").unwrap()));
+    let queued = vcx.update(|_, cx| {
+        let reuse = &view.read(cx).doc.reuse;
+        let queued = reuse.take_repaints();
+        let n = queued.len();
+        reuse.queue_repaints(queued);
+        n
+    });
+    frame(vcx);
     let refused = delta(&counts);
     let kept = frames(&view, vcx) == (before.0, before.1 + 1);
     let edited = quads(vcx);
     let (_, fresh) = open(cx, &at(class));
     frame(fresh);
-    (kept, edited, quads(fresh), refused)
+    (kept, edited, quads(fresh), refused, queued)
 }
 
 #[gpui::test]
@@ -96,7 +105,7 @@ fn delta(counts: &[u64]) -> String {
 #[gpui::test]
 fn a_bordered_band_takes_a_background(cx: &mut TestAppContext) {
     let css = "#s{border:2px solid #00f;padding:1px} #s.b{background:#eee}";
-    let (kept, edited, fresh, refused) = edit_refused(cx, css, WRAPPED, "b");
+    let (kept, edited, fresh, refused, _) = edit_refused(cx, css, WRAPPED, "b");
     assert!(
         !kept,
         "the pieces of a box with edges are cut: the frame is built"
@@ -171,15 +180,12 @@ fn a_band_on_a_justified_box_builds_its_frame(cx: &mut TestAppContext) {
 fn a_cut_band_is_refused_before_any_record(cx: &mut TestAppContext) {
     let css = "div{display:flex} #s{border:1px solid #acd;padding:1px} #s.b{background:#eee}";
     let body = "<div><span id=s class='CLASS'>side word</span></div>";
-    let (kept, edited, fresh, refused) = edit_refused(cx, css, body, "b");
+    let (kept, edited, fresh, refused, queued) = edit_refused(cx, css, body, "b");
     assert!(
         !kept,
         "the cut band is not recorded again: the frame is built"
     );
-    assert!(
-        !refused.contains("records"),
-        "a box was recorded: {refused}"
-    );
+    assert_eq!(queued, 0, "a box was queued to record again: {refused}");
     assert_eq!(
         edited, fresh,
         "the frame differs from a fresh one: {refused}"
