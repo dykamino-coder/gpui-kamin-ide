@@ -234,3 +234,41 @@ fn geometry_query_restores_outer_pass_after_unwind(cx: &mut TestAppContext) {
         });
     });
 }
+
+#[gpui::test]
+fn adjacent_cssom_reads_share_layout_and_match_fresh_fragments(cx: &mut TestAppContext) {
+    let html = "<style>body{margin:0}#box{width:38px;height:15px;padding:2px}</style><p>before</p><!-- gap --><div id=box></div><i id=empty style='display:none'></i>";
+    let expected = snapshot(cx, html, 300.);
+    let target = find(&expected, "box");
+    assert!(target.border_box.width > 0.);
+    let hidden = find(&expected, "empty");
+    let doc = Document::builder(html, BROWSER_CSS).build().unwrap();
+    let (view, cx) = cx.add_window_view(|_, _| View(Rc::new(doc)));
+    cx.update(|window, cx| {
+        let opts = RenderOpts {
+            text: gpui::TextStyle::default(),
+            viewport: (300., 300.),
+            normal_line_height: 1.31,
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        let doc = view.read(cx).0.clone();
+        let before = super::FLUSHES.with(|n| n.get());
+        assert_eq!(
+            doc.get_client_rects(&target.path, &opts, window, cx)
+                .unwrap(),
+            target.client_rects
+        );
+        assert_eq!(
+            doc.get_bounding_client_rect(&target.path, &opts, window, cx)
+                .unwrap(),
+            target.border_box
+        );
+        assert!(
+            doc.get_client_rects(&hidden.path, &opts, window, cx)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(super::FLUSHES.with(|n| n.get()) - before, 1);
+    });
+}

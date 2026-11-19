@@ -20,6 +20,9 @@ impl Drop for QueryState {
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+thread_local! { static FLUSHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+
 impl Document {
     /// Снимок всех исходных элементов в DOM preorder, включая элементы без коробок.
     /// Запрос синхронно завершает отдельную раскладку; не публикует кадр и не
@@ -124,6 +127,8 @@ impl Document {
             .collect();
         let scroll_states =
             crate::interactive::scroll_area::query_states(window, &node_map, scope)?;
+        #[cfg(test)]
+        FLUSHES.with(|count| count.set(count.get() + 1));
         window.with_layout_query(cx, |window, cx| {
             scroll_states(window);
             window.with_render_context(Some(sink.clone()), |window| {
