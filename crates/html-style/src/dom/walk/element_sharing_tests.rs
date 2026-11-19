@@ -168,3 +168,31 @@ fn has_marks_two_levels_up_are_rechecked() {
     assert_eq!(s.len(), 6);
     assert_ne!(c[0], c[1], "у второго div есть ребёнок .a");
 }
+
+#[test]
+fn a_registered_non_inherited_property_resets_on_the_child() {
+    // The child declares no custom property, but `--n` does not inherit: it
+    // takes the initial value instead of the parent's (css-properties-values-api-1 §2).
+    let html = "<style>@property --n{syntax:'<color>';inherits:false;initial-value:green}\
+                div{--n:red}i{color:var(--n)}b{color:green}</style>\
+                <div><i>x</i></div><b>y</b>";
+    assert_eq!(styles(html, "i"), styles(html, "b"));
+}
+
+#[test]
+fn a_child_overriding_a_custom_property_sees_its_own_value() {
+    let html = "<style>:root{--a:red}.c{--a:blue}i{color:var(--a)}b{color:blue}</style>\
+                <div class=c><i>x</i></div><b>y</b>";
+    assert_eq!(styles(html, "i"), styles(html, "b"));
+}
+#[test]
+fn an_inherited_custom_property_keeps_its_computed_value() {
+    // `--b` is computed on the root, where `--a` is red; a descendant that
+    // declares only `--a` inherits `--b` as computed (CSS Variables §2).
+    let s = |tag: &str| {
+        let html = "<style>:root{--a:red;--b:var(--a)}.c{--a:blue}i,b{color:var(--b)}</style>\
+                    <div class=c><i>x</i></div><b>y</b>";
+        styles(html, tag)
+    };
+    assert_eq!(s("i"), s("b"), "the descendant of .c sees the root's --b");
+}
