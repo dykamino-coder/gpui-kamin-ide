@@ -8,6 +8,8 @@
 
 mod attributes;
 mod children;
+mod source;
+pub use source::SourceNode;
 pub(super) use attributes::attribute_records;
 
 use super::apply::ApplyError;
@@ -18,6 +20,8 @@ use std::rc::Rc;
 /// Запись мутации исходного DOM ревизии.
 #[derive(Clone)]
 pub enum Mutation {
+    /// Insert or move this node before a direct child, or append when before is None.
+    InsertBefore { parent: Handle, child: SourceNode, before: Option<Handle> },
     /// DOM removeChild: detach this direct child of the given source parent.
     RemoveChild { parent: Handle, child: Handle },
     /// Новое содержимое текстового узла `node`.
@@ -92,6 +96,7 @@ impl Batch {
         let mut slots = ScalarSlots::default();
         for record in records {
             match record {
+                Mutation::InsertBefore { .. } => return Err(ApplyError::NotChild),
                 Mutation::RemoveChild { parent, child } => {
                     children.remove(parent, child)?;
                 }

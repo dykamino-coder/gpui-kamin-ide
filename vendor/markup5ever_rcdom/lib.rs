@@ -251,7 +251,7 @@ pub struct WeakHandle {
 }
 
 impl WeakHandle {
-    fn new(node: &Handle) -> Self {
+    pub fn new(node: &Handle) -> Self {
         Self {
             weak: Rc::downgrade(node),
             _allocation: node._node_lease.clone(),

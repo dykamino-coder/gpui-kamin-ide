@@ -70,6 +70,17 @@ impl Admitted {
         Self::with_context(source, xml, Context::new(revision))
     }
 
+    pub fn create_element(&self, name: html5ever::QualName, context: &Context) -> Result<markup5ever_rcdom::Handle, DocumentFailure> {
+        context.0.name(&name.local).map_err(DocumentFailure::new)?;
+        let mut flags = html5ever::interface::ElementFlags::default();
+        flags.template = name.expanded() == html5ever::expanded_name!(html "template");
+        self.dom.try_create_element(name, Vec::new(), flags, &*context.0).map_err(DocumentFailure::new)
+    }
+
+    pub fn create_text(&self, text: &str, context: &Context) -> Result<markup5ever_rcdom::Handle, DocumentFailure> {
+        self.dom.try_create_text(text.into(), &*context.0).map_err(DocumentFailure::new)
+    }
+
     pub fn context(&self) -> Context {
         self.context.clone()
     }

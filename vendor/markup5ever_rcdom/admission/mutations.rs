@@ -54,6 +54,10 @@ impl RcDom {
         )
     }
 
+    pub fn try_create_text<A: Admission>(&self, text: StrTendril, policy: &A) -> Result<Handle, A::Error> {
+        self.try_new_node(NodeData::Text { contents: RefCell::new(text) }, None, policy)
+    }
+
     pub fn try_create_comment<A: Admission>(
         &self,
         contents: StrTendril,

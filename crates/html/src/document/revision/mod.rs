@@ -25,7 +25,7 @@ mod tests;
 mod text;
 
 pub use apply::ApplyError;
-pub use mutation::Mutation;
+pub use mutation::{Mutation, SourceNode};
 pub(super) use repaint::Kept;
 
 use super::{BuildReport, Document, DocumentFailure, RevisionStatus, base_url};
