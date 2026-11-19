@@ -160,7 +160,7 @@ spinner" class is one of these copies diverging from (1) (§10).
 ## 9. CLI reference behaviour and comparison
 
 Reference: the differential run below used Claude Code **2.1.177**; the image
-now pins **2.1.327** (audit in `server/CLAUDE_CODE_COMPATIBILITY.md`), and the
+now pins **2.1.328** (audit in `server/CLAUDE_CODE_COMPATIBILITY.md`), and the
 run has not been repeated on it. Sources: code.claude.com
 `sessions` and Agent SDK `sessions`/`getSessionMessages` docs; the
 `anthropics/claude-code` CHANGELOG; and a differential run. The run used an
