@@ -83,15 +83,25 @@ fn shapes(edit: &str, below: bool) -> String {
     format!(
         "<!doctype html><html><head><style>html,body{{margin:0;background:#fff;color:#000}}\
          .r{{height:20px}} svg{{vertical-align:top}} [data-edit],.hl{{background:#eee}}\
-         </style></head><body>{top}{bottom}</body></html>"
+         .f{{fill:#e00}} .s{{stroke:#00e}} .o{{opacity:.5}} .t{{transform:translate(5px)}}\
+         .n{{display:none}} body:has(rect.h) .r:nth-child(odd){{background:#eee}}\
+         svg:has(.h) ~ .r{{color:#e00}}</style></head><body>{top}{bottom}</body></html>"
     )
 }
 
 /// The painted primitives in paint order: quads and every other kind (the
-/// `svg` images) with their bounds.
+/// `svg` images) with their bounds, without the atlas tile an image took
+/// (each document allocates its own; the pixels are the benches' check).
 fn scene(cx: &mut VisualTestContext) -> (Vec<String>, Vec<String>) {
     let sequence = cx.update(|window, _| window.painted_sequence());
-    let sequence = sequence.iter().map(|(k, b)| format!("{k} {b:?}")).collect();
+    let untiled = |k: &str| match (k.find(", tile: "), k.find(", transformation: ")) {
+        (Some(a), Some(b)) if a < b => format!("{}{}", &k[..a], &k[b..]),
+        _ => k.to_owned(),
+    };
+    let sequence = sequence
+        .iter()
+        .map(|(k, b)| format!("{} {b:?}", untiled(k)))
+        .collect();
     (quads(cx), sequence)
 }
 
@@ -143,11 +153,41 @@ fn a_box_value_on_a_shape_on_the_screen_keeps_the_frame_as_fresh(cx: &mut TestAp
 }
 
 #[gpui::test]
-fn a_geometry_attribute_of_a_shape_builds_its_frame_as_fresh(cx: &mut TestAppContext) {
-    // `rx` is read by the `svg` image as it is: the revision is built.
+fn a_geometry_or_presentation_attribute_of_a_shape_builds_its_frame_as_fresh(
+    cx: &mut TestAppContext,
+) {
+    // The `svg` image reads these as they are: the revision is built.
+    for edit in [
+        " rx=9",
+        " fill=#f00",
+        " width=20",
+        " transform=translate(5)",
+    ] {
+        for below in [true, false] {
+            let (kept, edited, fresh) = shape_edit(cx, edit, below);
+            assert!(!kept, "{edit}: the frame was kept");
+            assert_eq!(edited, fresh, "{edit}: a frame differs from a fresh one");
+        }
+    }
+}
+
+#[gpui::test]
+fn a_class_that_changes_how_a_shape_paints_builds_its_frame_as_fresh(cx: &mut TestAppContext) {
+    // Fill, stroke, opacity, transform, display: the image changes.
+    for class in ["f", "s", "o", "t", "n"] {
+        for below in [true, false] {
+            let (kept, edited, fresh) = shape_edit(cx, &format!(" class={class}"), below);
+            assert!(!kept, "{class}: the frame was kept");
+            assert_eq!(edited, fresh, "{class}: a frame differs from a fresh one");
+        }
+    }
+}
+
+#[gpui::test]
+fn html_boxes_whose_selectors_read_a_shape_class_show_as_fresh(cx: &mut TestAppContext) {
+    // `:has` and a sibling combinator reach HTML boxes outside the `svg`.
     for below in [true, false] {
-        let (kept, edited, fresh) = shape_edit(cx, " rx=9", below);
-        assert!(!kept, "the frame was kept");
+        let (_, edited, fresh) = shape_edit(cx, " class=h", below);
         assert_eq!(edited, fresh, "a frame differs from a fresh one");
     }
 }
