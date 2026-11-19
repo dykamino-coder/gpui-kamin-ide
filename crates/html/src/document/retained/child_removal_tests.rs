@@ -1,9 +1,30 @@
 //! A child-list revision preserves the records of the surviving flow blocks.
-use super::box_repaint_tests::{first_difference, frames, fresh, quads};
+use super::box_repaint_tests::{first_difference, frames};
 use super::reuse_tests::{reused, settled};
 use super::tests::{View, frame, open};
 use crate::document::Mutation;
 use gpui::{TestAppContext, VisualTestContext, px, size};
+
+/// Compare these translated solid fills at their final device coordinates.
+/// The effective clip on each fill includes all four edges of its content mask.
+fn visible_quads(cx: &mut VisualTestContext) -> Vec<String> {
+    cx.update(|window, _| {
+        window
+            .painted_quads()
+            .into_iter()
+            .map(|mut quad| {
+                assert_eq!(quad.transformation.rotation_scale, [[1., 0.], [0., 1.]]);
+                let [x, y] = quad.transformation.translation;
+                quad.bounds.origin.x.0 += x;
+                quad.bounds.origin.y.0 += y;
+                quad.transformation.translation = [0., 0.];
+                quad.content_mask.bounds = quad.content_mask.bounds.intersect(&quad.bounds);
+                quad.order = 0;
+                format!("{quad:?}")
+            })
+            .collect()
+    })
+}
 
 #[gpui::test]
 fn removing_a_visible_child_matches_fresh_and_the_next_frame_replays(cx: &mut TestAppContext) {
@@ -12,9 +33,11 @@ fn removing_a_visible_child_matches_fresh_and_the_next_frame_replays(cx: &mut Te
     let page = |first: &str| format!("{style}<body>{first}{survivors}</body>");
     let first = "<div id=first>b</div>";
     let start = page(first);
-    let expected = fresh(cx, &page(""));
+    let (_, expected_cx) = open(cx, &page(""));
+    frame(expected_cx);
+    let expected = visible_quads(expected_cx);
     let (view, vcx) = settled(cx, &page("<div id=first>x</div>"), &start);
-    let before = quads(vcx);
+    let before = visible_quads(vcx);
     assert!(!expected.is_empty());
     assert_ne!(before, expected);
     assert!(
@@ -44,7 +67,7 @@ fn removing_a_visible_child_matches_fresh_and_the_next_frame_replays(cx: &mut Te
         })
     });
     frame(vcx);
-    assert_eq!(first_difference(&quads(vcx), &expected), None);
+    assert_eq!(first_difference(&visible_quads(vcx), &expected), None);
     assert!(
         reused(&view, vcx).1 > skipped + 100,
         "removing the first row lost the later block records"
@@ -52,12 +75,12 @@ fn removing_a_visible_child_matches_fresh_and_the_next_frame_replays(cx: &mut Te
     let (builds, replays) = frames(&view, vcx);
     frame(vcx);
     assert_eq!(frames(&view, vcx), (builds, replays + 1));
-    assert_eq!(first_difference(&quads(vcx), &expected), None);
+    assert_eq!(first_difference(&visible_quads(vcx), &expected), None);
     fn reveal(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> Vec<String> {
         cx.update(|_, cx| view.update(cx, |v, _| v.viewport.1 = 4000.));
         cx.simulate_resize(size(px(400.), px(4000.)));
         frame(cx);
-        quads(cx)
+        visible_quads(cx)
     }
     let revealed = reveal(&view, vcx);
     let (fresh_view, fresh_cx) = open(cx, &page(""));
