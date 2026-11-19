@@ -8229,7 +8229,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..04809346a406a9abc17e67c331f0b0b0cbd80fe4
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..b6b622564b64bf334460431b628ca8270eed4b7e
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -8723,7 +8723,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..04809346a406a9abc17e67c331f0b0b0
 +    /// KaminIDE patch: the owner the box's own paint binds its values to
 +    /// (`Window::with_paint_owner`); 0 for none.
 +    pub(crate) paint_owner: u32,
-+    box_run: crate::scene::BoxContents,
++    pub(super) box_run: crate::scene::BoxContents,
 @@ -2150,0 +2346,2 @@
 +    /// KaminIDE patch: listener and drag-style lists, allocated by the first registration.
 +    pub(crate) listeners: Option<Box<InteractivityListeners>>,

@@ -2325,7 +2325,7 @@ pub struct Interactivity {
     /// KaminIDE patch: the owner the box's own paint binds its values to
     /// (`Window::with_paint_owner`); 0 for none.
     pub(crate) paint_owner: u32,
-    box_run: crate::scene::BoxContents,
+    pub(super) box_run: crate::scene::BoxContents,
     /// The element ID of the element. In id is required to support a stateful subset of the interactivity such as on_click.
     pub element_id: Option<ElementId>,
     /// Whether the element was clicked. This will only be present after layout.
