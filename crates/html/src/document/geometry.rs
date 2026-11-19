@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{RenderOpts, layout::geometry::Collector};
 use gpui::{App, AvailableSpace, IntoElement, ParentElement, Styled, Window, div, point, px, size};
-use markup5ever_rcdom::NodeData;
+use markup5ever_rcdom::{Handle, NodeData};
 use std::{collections::HashMap, rc::Rc};
 
 struct QueryState(Rc<DocState>);
@@ -17,8 +17,10 @@ impl Drop for QueryState {
     }
 }
 
+mod read;
 #[cfg(test)]
 mod tests;
+pub use read::GeometryRead;
 
 #[cfg(test)]
 thread_local! { static FLUSHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
@@ -60,13 +62,28 @@ impl Document {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Vec<ElementGeometry>, GeometryError> {
+        self.with_geometry(layout, scope, opts, window, cx, |read| read.elements())
+    }
+
+    /// Flush this view once. Read any number of element rectangles before the
+    /// next mutation, viewport change or scripted scroll. The borrow ends with
+    /// the callback, so geometry from a previous layout cannot be used again.
+    pub fn with_geometry<R>(
+        &self,
+        layout: GeometryLayout,
+        scope: Option<&gpui::GlobalElementId>,
+        opts: &RenderOpts,
+        window: &mut Window,
+        cx: &mut App,
+        read: impl FnOnce(GeometryRead<'_>) -> R,
+    ) -> Result<R, GeometryError> {
         let budget = self.budget();
         let revision =
             crate::budget::DocumentBudget::new(budget.limits().clone(), budget.governor().clone())
                 .map_err(|e| DocumentFailure::new(super::FailureReason::Budget(e)))?
                 .revision();
         let Some(input) = self.state.values.query_input(revision.clone()) else {
-            return Ok(Vec::new());
+            return Ok(read(GeometryRead(None)));
         };
         let mut media: crate::style::css::Media = self.state.media();
         media.width = opts.viewport.0;
@@ -159,52 +176,17 @@ impl Document {
             });
         });
         sink.finish_captions();
-        let mut boxes = sink.0.borrow_mut();
-        let mut out = Vec::new();
-        let mut pending = vec![(input.dom.document, Vec::new())];
-        while let Some((node, path)) = pending.pop() {
-            if let NodeData::Element { name, attrs, .. } = &node.data {
-                let id = ids.get(&(Rc::as_ptr(&node) as usize)).copied().unwrap_or(0);
-                let b = boxes.remove(&id).unwrap_or_default();
-                let attr = |key: &str| {
-                    attrs
-                        .borrow()
-                        .iter()
-                        .find(|a| &*a.name.local == key)
-                        .map(|a| a.value.to_string())
-                        .unwrap_or_default()
-                };
-                let (font_size, line_height) = sink
-                    .1
-                    .get(&id)
-                    .map(|style| {
-                        crate::layout::geometry::font(style, opts.base_size(), state.values())
-                    })
-                    .or(b.font)
-                    .unwrap_or((16., LineHeight::Normal));
-                out.push(ElementGeometry {
-                    path: path.clone(),
-                    tag: name.local.to_string(),
-                    id: attr("id"),
-                    class: attr("class"),
-                    border_box: Rect::bounding(&b.border),
-                    client_rects: b.border,
-                    padding_boxes: b.padding,
-                    content_boxes: b.content,
-                    font_size,
-                    line_height,
-                });
-            }
-            for (i, child) in node.children.borrow().iter().enumerate().rev() {
-                let mut path = path.clone();
-                path.push(i);
-                pending.push((child.clone(), path));
-            }
-        }
-        Ok(out)
+        Ok(read(GeometryRead(Some(read::Fragments {
+            root: &input.dom.document,
+            ids: &ids,
+            sink: &sink,
+            base: opts.base_size(),
+            state: &state,
+        }))))
     }
 
-    /// CSSOM View §6: список border boxes фрагментов в порядке содержимого.
+    /// Read one element in continuous layout. Batch adjacent CSSOM reads with
+    /// `with_geometry` when running a script turn.
     pub fn get_client_rects(
         &self,
         path: &[usize],
@@ -212,15 +194,12 @@ impl Document {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Vec<Rect>, GeometryError> {
-        Ok(self
-            .element_geometry(opts, window, cx)?
-            .into_iter()
-            .find(|e| e.path == path)
-            .map(|e| e.client_rects)
-            .unwrap_or_default())
+        self.with_geometry(GeometryLayout::Continuous, None, opts, window, cx, |read| {
+            read.get_client_rects(path)
+        })
     }
 
-    /// CSSOM View §6: bounding box списка getClientRects по шагам 2–4.
+    /// Read one bounding rectangle without exporting every source element.
     pub fn get_bounding_client_rect(
         &self,
         path: &[usize],
@@ -228,7 +207,8 @@ impl Document {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Rect, GeometryError> {
-        self.get_client_rects(path, opts, window, cx)
-            .map(|r| Rect::bounding(&r))
+        self.with_geometry(GeometryLayout::Continuous, None, opts, window, cx, |read| {
+            read.get_bounding_client_rect(path)
+        })
     }
 }

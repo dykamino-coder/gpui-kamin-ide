@@ -25,6 +25,7 @@ mod geometry;
 pub use crate::layout::geometry::{
     ElementGeometry, GeometryError, GeometryLayout, LineHeight, Rect,
 };
+pub use geometry::GeometryRead;
 #[cfg(test)]
 mod diagnostics_tests;
 #[cfg(test)]

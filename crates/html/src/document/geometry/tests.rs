@@ -253,22 +253,33 @@ fn adjacent_cssom_reads_share_layout_and_match_fresh_fragments(cx: &mut TestAppC
             frag: Default::default(),
         };
         let doc = view.read(cx).0.clone();
+        let mut source = doc.source_dom();
+        for index in &target.path {
+            let child = source.children.borrow()[*index].clone();
+            source = child;
+        }
         let before = super::FLUSHES.with(|n| n.get());
-        assert_eq!(
-            doc.get_client_rects(&target.path, &opts, window, cx)
-                .unwrap(),
-            target.client_rects
-        );
-        assert_eq!(
-            doc.get_bounding_client_rect(&target.path, &opts, window, cx)
-                .unwrap(),
-            target.border_box
-        );
-        assert!(
-            doc.get_client_rects(&hidden.path, &opts, window, cx)
-                .unwrap()
-                .is_empty()
-        );
+        doc.with_geometry(
+            crate::GeometryLayout::Continuous,
+            None,
+            &opts,
+            window,
+            cx,
+            |read| {
+                assert_eq!(read.client_rects_for(&source), target.client_rects);
+                assert_eq!(read.get_client_rects(&target.path), target.client_rects);
+                assert_eq!(
+                    read.get_bounding_client_rect(&target.path),
+                    target.border_box
+                );
+                assert!(read.get_client_rects(&hidden.path).is_empty());
+                assert_eq!(
+                    read.get_bounding_client_rect(&[usize::MAX]),
+                    crate::Rect::default()
+                );
+            },
+        )
+        .unwrap();
         assert_eq!(super::FLUSHES.with(|n| n.get()) - before, 1);
     });
 }
