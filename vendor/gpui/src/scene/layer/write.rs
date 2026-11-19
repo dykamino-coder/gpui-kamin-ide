@@ -43,31 +43,26 @@ impl LayerHandle {
     /// primitives under no transformation, outside stacking layers (the runs
     /// of an inline box' band on its line layer take value writes only).
     pub fn holds_box(&self, owner: u32) -> bool {
-        let content = self.0.content.borrow();
-        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
-        runs.peek().is_some()
-            && runs.all(|b| {
-                b.replaceable
-                    && b.env.layer.is_none()
-                    && b.env.transformation == crate::TransformationMatrix::unit()
-            })
+        self.accepts(owner, crate::LayerPainter::Box)
     }
 
-    /// Whether every run of box `owner` is a piece of its band that the layer
-    /// records again (`Window::rerecord_layer_band`): at least one, each of
-    /// plain primitives, none cut by another painter. A piece in the stacking
-    /// layer of its line takes the layer's order; one painted outside any
-    /// stacking layer is planned as a box's run is (`SceneLayer::check_box`).
-    /// An empty piece counts: its box may take a band.
+    /// Whether every piece of the owner's band can be recorded again.
     pub fn holds_band(&self, owner: u32) -> bool {
+        self.accepts(owner, crate::LayerPainter::Band)
+    }
+
+    /// Painter of the runs actually recorded in this layer. Mixed runs need a full repaint.
+    pub fn painter(&self, owner: u32) -> Option<crate::LayerPainter> {
         let content = self.0.content.borrow();
-        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
-        runs.peek().is_some()
-            && runs.all(|b| {
-                b.replaceable
-                    && b.env.piece.is_some()
-                    && b.env.transformation == crate::TransformationMatrix::unit()
-            })
+        let mut kinds = content.runs_of(owner).map(|at| content.boxes[at].env.painter.kind());
+        let first = kinds.next()?;
+        Some(if kinds.all(|kind| kind == first) { first } else { crate::LayerPainter::External })
+    }
+
+    pub(crate) fn accepts(&self, owner: u32, painter: crate::LayerPainter) -> bool {
+        let content = self.0.content.borrow();
+        let mut runs = content.runs_of(owner).peekable();
+        runs.peek().is_some() && runs.all(|at| content.boxes[at].accepts(painter))
     }
 
     /// The device-pixel area the runs of box `owner` cover, their placed box

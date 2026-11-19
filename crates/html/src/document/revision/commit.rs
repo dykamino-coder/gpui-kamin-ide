@@ -133,8 +133,8 @@ impl Document {
             crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);
             return false;
         };
-        let own = |a: &crate::dom::Element, b: &crate::dom::Element| {
-            super::layer_write::own_paint_of(&self.state, a, b)
+        let own = |e: &crate::dom::Element| {
+            crate::paint::box_tree::styled::requested_painter(&self.state, e)
         };
         // A box under a block the frame skipped: any block on its path.
         let unseen = |path: &super::patch::Path| {
@@ -148,10 +148,12 @@ impl Document {
         let off = |id: u64| self.reuse.off_screen(&layer, id);
         // A box the layer cannot record, wholly off the screen (`offscreen`).
         let boxes = self.state.boxes.borrow();
-        let waits =
-            |path: &super::patch::Path, a: &crate::dom::Element, b: &crate::dom::Element| {
-                super::offscreen::waits(&self.reuse, &boxes, &layer, (&self.nodes, path), a, b)
-            };
+        let waits = |kind,
+                     path: &super::patch::Path,
+                     a: &crate::dom::Element,
+                     b: &crate::dom::Element| {
+            super::offscreen::waits(kind, &self.reuse, &boxes, &layer, (&self.nodes, path), a, b)
+        };
         let mut frames = Vec::new();
         let Some(taken) = super::layer_write::write_paint_values(
             &self.nodes,

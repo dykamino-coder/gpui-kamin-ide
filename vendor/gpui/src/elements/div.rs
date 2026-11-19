@@ -1869,9 +1869,24 @@ impl Div {
         self
     }
 
+    /// Record a box whose decorations also paint in child elements.
+    pub fn decorated_paint_owner(mut self, owner: u32) -> Self {
+        self.interactivity.paint_owner = owner;
+        self.interactivity.box_run = crate::scene::BoxContents::DecoratedBox;
+        self
+    }
+
+    /// Bind this box's values, retaining that other painters contribute to its output.
+    pub fn partial_paint_owner(mut self, owner: u32) -> Self {
+        self.interactivity.paint_owner = owner;
+        self.interactivity.box_run = crate::scene::BoxContents::External;
+        self
+    }
+
     /// KaminIDE patch: name the values the box's own paint binds in a scene
     /// layer (`LayerHandle::set_background`) by `owner`; 0 for none.
     pub fn paint_owner(mut self, owner: u32) -> Self {
+        self.interactivity.box_run = crate::scene::BoxContents::Own;
         self.interactivity.paint_owner = owner;
         self
     }
@@ -2310,6 +2325,7 @@ pub struct Interactivity {
     /// KaminIDE patch: the owner the box's own paint binds its values to
     /// (`Window::with_paint_owner`); 0 for none.
     pub(crate) paint_owner: u32,
+    box_run: crate::scene::BoxContents,
     /// The element ID of the element. In id is required to support a stateful subset of the interactivity such as on_click.
     pub element_id: Option<ElementId>,
     /// Whether the element was clicked. This will only be present after layout.
@@ -2360,6 +2376,7 @@ impl Default for Interactivity {
         Self {
             box_painter: None,
             paint_owner: 0,
+            box_run: crate::scene::BoxContents::Own,
             element_id: None,
             active: None,
             hovered: None,
@@ -3652,13 +3669,19 @@ impl Interactivity {
     }
 
     /// KaminIDE patch: the box's own paint (shadows, fill, borders, host
-    /// painter) under its scene-layer run (`Window::with_box_paint`). A leaf
+    /// painter) under its scene-layer run (`Window::with_run`). A leaf
     /// of the paint recursion: its paint state and painter stay out of the
     /// recursive frame of `paint_with_state`, which every nesting level of a
     /// deep tree lays out again.
     #[inline(never)]
     fn paint_own_box(&self, style: &Style, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        window.with_box_paint(self.paint_owner, bounds, |window| {
+        let contents = if self.box_painter.is_some() {
+            crate::scene::BoxContents::External
+        } else {
+            self.box_run
+        };
+        let painter = crate::scene::RunPainter::Box(contents);
+        window.with_run(self.paint_owner, bounds, painter, |window| {
             style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx)
         });
     }

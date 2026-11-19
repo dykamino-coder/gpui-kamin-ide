@@ -32,59 +32,6 @@ mod reach;
 /// The area an edit off the screen can paint and why it waits for a frame.
 pub(super) type FrameWait = (Bounds<ScaledPixels>, Wait);
 
-/// The refusals an edit wholly off the screen waits before: a box with
-/// decorations, a band change that moves no layout. Another refusal, or a
-/// box whose area is not known to be off the screen (`wait`), refuses
-/// (`None`); otherwise the edit waits in `frames`.
-pub(super) fn wait_or_refuse(
-    reason: &'static str,
-    wait: impl FnOnce() -> Option<FrameWait>,
-    frames: &mut Vec<FrameWait>,
-) -> Option<()> {
-    let waits = matches!(
-        reason,
-        "decoration" | "band_paint" | "band_nested" | "band_geometry"
-    );
-    match waits.then(wait).flatten() {
-        Some(w) => {
-            frames.push(w);
-            Some(())
-        }
-        None => {
-            super::layer_write::refuse_not_own(reason);
-            None
-        }
-    }
-}
-
-/// The `records` of boxes the layer holds (`held`); an inline box it does not
-/// hold waits off the screen (`waits`) or refuses the path (`None`).
-pub(super) fn unheld(
-    (old, new): (&[Node], &[Node]),
-    records: Vec<(Path, u64)>,
-    held: impl Fn(u64) -> bool,
-    waits: &impl Fn(&Path, &Element, &Element) -> Option<FrameWait>,
-    frames: &mut Vec<FrameWait>,
-) -> Option<Vec<(Path, u64)>> {
-    let mut kept = Vec::with_capacity(records.len());
-    for (path, id) in records {
-        if held(id) {
-            kept.push((path, id));
-            continue;
-        }
-        let wait = super::layer_write::at(old, &path, id)
-            .zip(super::layer_write::at(new, &path, id))
-            .filter(|(a, _)| super::layer_band::records_band(a))
-            .and_then(|(a, b)| waits(&path, a, b));
-        let Some(wait) = wait else {
-            crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
-            return None;
-        };
-        frames.push(wait);
-    }
-    Some(kept)
-}
-
 /// Count the edits waiting for a frame by why they wait.
 pub(super) fn count(frames: &[FrameWait]) {
     for (_, wait) in frames {
@@ -99,6 +46,7 @@ pub(super) fn count(frames: &[FrameWait]) {
 /// The area box `a` (at `path` in `old`) restyled to `b` can paint and why it
 /// waits, when that area lies wholly off the area the layer's frame showed.
 pub(super) fn waits(
+    kind: Wait,
     store: &Store,
     boxes: &crate::document::boxes::BoxTree,
     layer: &LayerHandle,
@@ -107,17 +55,14 @@ pub(super) fn waits(
     b: &Element,
 ) -> Option<(Bounds<ScaledPixels>, Wait)> {
     let outset = reach(a)?.max(reach(b)?);
-    let (area, wait) = if super::layer_band::records_band(a) {
-        (
-            inline_area(store, boxes, old, path, a, outset)?,
-            Wait::Inline,
-        )
-    } else {
-        let scale = store.shown_scale();
-        let run = layer.box_area(u32::try_from(a.node_id).ok()?)?;
-        (grow(run, outset * scale), Wait::Decoration)
+    let area = match kind {
+        Wait::Inline => inline_area(store, boxes, old, path, a, outset)?,
+        Wait::Decoration => {
+            let run = layer.box_area(u32::try_from(a.node_id).ok()?)?;
+            grow(run, outset * store.shown_scale())
+        }
     };
-    store.misses_shown(area).then_some((area, wait))
+    store.misses_shown(area).then_some((area, kind))
 }
 
 /// The fragments of inline box `a` grown by `outset`, device pixels.
@@ -143,26 +88,37 @@ fn fragments_of<R>(
     a: &Element,
     f: impl FnOnce(&crate::layout::retained::InlineFragments, u32) -> R,
 ) -> Option<R> {
-    let mut owners = vec![a.node_id];
-    // The first ancestor that is not an inline box contains the paragraph.
-    let container = (1..path.len()).rev().find_map(|k| {
-        let e = element_at(old, &path[..k])?;
-        if super::layer_band::records_band(e) {
-            owners.push(e.node_id);
-            None
-        } else {
-            Some(e)
-        }
-    })?;
-    let slot = boxes.slot(boxes.box_of(container.node_id)?)?;
-    let fragments = slot.inline.as_deref()?;
+    use crate::document::boxes::inline::ItemKind;
+    let id = boxes.box_of(a.node_id)?;
+    let container = boxes
+        .ancestors(id)
+        .find(|p| boxes.get(*p).is_some_and(|r| r.inline.is_some()))?;
+    let fragments = boxes.slot(container)?.inline.as_deref()?;
     if !store.fragments_hold(fragments.stamp()) {
         return None;
     }
-    let owner = owners
-        .into_iter()
-        .filter_map(|o| u32::try_from(o).ok())
-        .find(|o| fragments.has(*o))?;
+    let own = u32::try_from(a.node_id).ok()?;
+    if fragments.has(own) {
+        return Some(f(fragments, own));
+    }
+    // A nested inline can inherit another run's owner. Only an opening item
+    // in this recorded flow is covered by its enclosing inline fragments.
+    let content = boxes.get(container)?.inline.as_ref()?;
+    if !content
+        .items()
+        .iter()
+        .any(|item| item.box_id == id && item.kind == ItemKind::Open)
+    {
+        return None;
+    }
+    let owner = (1..path.len())
+        .rev()
+        .map_while(|n| {
+            let e = element_at(old, &path[..n])?;
+            (boxes.box_of(e.node_id)? != container).then_some(e.node_id)
+        })
+        .filter_map(|node| u32::try_from(node).ok())
+        .find(|owner| fragments.has(*owner))?;
     Some(f(fragments, owner))
 }
 
@@ -176,9 +132,6 @@ impl crate::document::Document {
     #[cfg_attr(not(test), allow(dead_code, reason = "read by the script binding"))]
     pub(crate) fn inline_rects(&self, path: &[usize]) -> Option<Vec<gpui::Bounds<gpui::Pixels>>> {
         let e = element_at(&self.nodes, path)?;
-        if !super::layer_band::records_band(e) {
-            return None;
-        }
         let boxes = self.state.boxes.borrow();
         fragments_of(&self.reuse, &boxes, &self.nodes, path, e, |f, owner| {
             f.rects(owner).collect()

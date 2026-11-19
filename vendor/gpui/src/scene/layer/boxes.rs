@@ -1,7 +1,7 @@
 //! KaminIDE patch: the paint ranges of boxes in a scene layer.
 //!
 //! While a layer is recorded, the own paint of a box (its shadows, fill,
-//! borders and host painter, `Window::with_box_paint`) is painted as without
+//! borders and host painter, `Window::with_run`) is painted as without
 //! a layer: each command takes its order from the scene's bounds tree when it
 //! is painted. The layer only notes the box's run of commands, its ink and
 //! paint state, so a later recording of the box replaces the run whole
@@ -13,6 +13,43 @@
 use super::super::{PaintOperation, Primitive, ScaledPixels, Scene, placed_bounds};
 use crate::{Bounds, ContentMask, Pixels, TransformationMatrix};
 use std::ops::Range;
+
+/// Painter responsible for a recorded owner's output.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerPainter {
+    /// The box painter supplies all of its own paint.
+    Box,
+    /// The inline painter supplies one or more line fragments.
+    Band,
+    /// Decorations are painted by child elements.
+    DecoratedBox,
+    /// Other painters contribute to this owner's output.
+    External,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum BoxContents {
+    Own,
+    DecoratedBox,
+    External,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum RunPainter {
+    Box(BoxContents),
+    Band(Option<crate::text_system::band_piece::BandEdges>),
+}
+
+impl RunPainter {
+    pub(crate) fn kind(self) -> LayerPainter {
+        match self {
+            Self::Box(BoxContents::Own) => LayerPainter::Box,
+            Self::Box(BoxContents::DecoratedBox) => LayerPainter::DecoratedBox,
+            Self::Box(BoxContents::External) => LayerPainter::External,
+            Self::Band(_) => LayerPainter::Band,
+        }
+    }
+}
 
 /// The paint state a box's own paint ran in: what its later recording
 /// restores.
@@ -28,10 +65,7 @@ pub(crate) struct BoxEnv {
     /// The order of the stacking layer the run was painted in (`None`:
     /// outside layers, ordered by the bounds tree).
     pub(crate) layer: Option<crate::scene::DrawOrder>,
-    /// The run is a piece of an inline box's band on a line, with the
-    /// segment in `bounds` (`text_system::band_piece`); `None` for a box's
-    /// own painter and for pieces cut by another painter.
-    pub(crate) piece: Option<crate::text_system::band_piece::BandEdges>,
+    pub(crate) painter: RunPainter,
 }
 
 /// A box's own paint in a layer: its owner, its placed area and ink, its run
@@ -48,6 +82,18 @@ pub(crate) struct BoxRange {
     /// How the run's commands came here from the paint record its box painted
     /// in (`super::placed`); a recording of the box is placed the same way.
     pub(crate) placed: Option<super::Placed>,
+}
+
+impl BoxRange {
+    pub(crate) fn accepts(&self, painter: LayerPainter) -> bool {
+        self.replaceable
+            && self.env.transformation == TransformationMatrix::unit()
+            && match (self.env.painter, painter) {
+                (RunPainter::Box(BoxContents::Own), LayerPainter::Box) => self.env.layer.is_none(),
+                (RunPainter::Band(Some(_)), LayerPainter::Band) => true,
+                _ => false,
+            }
+    }
 }
 
 /// A box's own paint being recorded: where its commands start.

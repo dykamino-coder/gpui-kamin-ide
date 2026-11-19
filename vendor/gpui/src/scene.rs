@@ -2,8 +2,8 @@
 #![cfg_attr(windows, allow(dead_code))]
 
 mod layer;
-pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
+pub use layer::{LayerHandle, LayerPainter, LayerValue, SceneLayer, layer_counters};
+pub(crate) use layer::{Binding, BoxContents, BoxEnv, RunPainter, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
 mod damage;
 pub(crate) mod image_resources;
 mod record;

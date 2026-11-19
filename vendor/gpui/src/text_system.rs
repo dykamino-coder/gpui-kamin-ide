@@ -1415,7 +1415,7 @@ pub struct TextRun {
     pub background_line_gap: bool,
     /// KaminIDE patch: the box whose band the run paints (the host's node
     /// number of an inline box; 0 for none). Each piece of the band is that
-    /// box's run in a scene layer (`Window::with_box_paint`) and its fill a
+    /// box's run in a scene layer (`Window::with_run`) and its fill a
     /// background value bound to it, so the box's fragments over all lines
     /// are one owner's runs (`LayerHandle::set_backgrounds`).
     pub background_owner: u32,
