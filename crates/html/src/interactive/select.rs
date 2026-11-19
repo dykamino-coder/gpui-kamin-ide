@@ -103,14 +103,11 @@ impl Element for Selectable {
             return;
         };
         // Над текстом курсор — как в браузере, каретка.
-        if hitbox.is_hovered(window) {
-            window.set_cursor_style(gpui::CursorStyle::IBeam, hitbox);
-        }
-        let inside = hitbox.is_hovered(window);
-
+        // The frame resolves it by the hitbox hovered at its end.
+        window.set_cursor_style(gpui::CursorStyle::IBeam, hitbox);
         track_selection(
             global_id,
-            inside,
+            hitbox,
             move |p| {
                 Some(match layout.index_for_position(p) {
                     Ok(i) | Err(i) => i,
