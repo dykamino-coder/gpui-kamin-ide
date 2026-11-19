@@ -179,3 +179,22 @@ fn an_empty_block_reaching_into_the_screen_is_not_left_stale(cx: &mut TestAppCon
         "the empty block's new fill differs from a fresh one"
     );
 }
+
+/// Grow both the window clip and the document viewport so the edited row
+/// contributes paint. An unedited fresh document is the negative control.
+#[gpui::test]
+fn the_revealed_row_contributes_its_changed_fill(cx: &mut TestAppContext) {
+    let reveal = |view: &gpui::Entity<View>, cx: &mut VisualTestContext| {
+        cx.update(|_, cx| view.update(cx, |v, _| v.viewport.1 = 4200.));
+        window(cx, 4200.);
+    };
+
+    let row = 140;
+    let (kept, waiting, _, after) = edited(cx, row, false, reveal);
+    let (_, fresh_edit) = fresh(cx, &page(row, " data-edit"), reveal);
+    let (_, unchanged) = fresh(cx, &page(row, ""), reveal);
+    assert!(kept && waiting > 0);
+    assert!(!fresh_edit.is_empty());
+    assert_ne!(fresh_edit, unchanged, "the changed row must be visible");
+    assert_eq!(after, fresh_edit);
+}
