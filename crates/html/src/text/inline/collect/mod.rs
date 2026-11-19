@@ -1,6 +1,7 @@
 //! Сборка кусков абзаца из узлов (collect_with_empty_metrics) и сдвиги наложений.
 
 mod element_nodes;
+pub(crate) use element_nodes::band_of;
 #[cfg(test)]
 mod tests {
     use crate::document::parsed::parse;

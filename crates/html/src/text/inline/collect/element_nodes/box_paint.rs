@@ -19,6 +19,14 @@ pub(super) fn atomic_marker(style: BoxStyle) -> Piece {
     }
 }
 
+/// The band inline box `e` (a child of block `parent`) paints in its runs,
+/// as the collection gives it (`element_style`, `runs::band_style`).
+pub(crate) fn band_of(e: &Element, parent: &Element, vcx: ValueCx<'_>) -> gpui::BandStyle {
+    let inherited = BoxStyle::shared(parent.style.used());
+    let (merged, _) = element_style(e, &inherited, vcx);
+    crate::text::inline::runs::band_style(&merged.inline_decoration)
+}
+
 pub(super) fn element_style(
     e: &Element,
     inherited: &BoxStyle,
@@ -210,6 +218,13 @@ pub(super) fn element_style(
     // пробелами — они рвали ряд схлопываемых пробелов, возвращали
     // краевой проход и добавляли лишнюю точку переноса. Та же
     // отсечка стоит в `has_own_box`.
+    if e.style.used().reset_box_layout.display.is_none() && merged.inline_decoration.band_owner == 0
+    {
+        // An inline box under no band owns the pieces of its lines all the
+        // same: in a scene layer they are its empty runs, which a band that
+        // appears on it paints (`gpui::TextRun::background_owner`).
+        merged.inline_decoration.band_owner = band_owner(e);
+    }
     (merged, painted_bg)
 }
 

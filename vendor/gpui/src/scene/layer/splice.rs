@@ -76,9 +76,12 @@ impl SceneLayer {
         if !new.paint_operations.iter().all(plain) {
             return None;
         }
-        let plan = self
-            .plan_box(b, &new.paint_operations)
-            .filter(|plan| plan.later.is_empty() || self.lists_follow_commands());
+        let plan = if b.env.layer.is_some() {
+            self.plan_layer_run(b, &new.paint_operations)
+        } else {
+            self.plan_box(b, &new.paint_operations)
+        };
+        let plan = plan.filter(|plan| plan.later.is_empty() || self.lists_follow_commands());
         let Some(plan) = plan else {
             layer_counters::RUNS_REORDERED.fetch_add(1, Relaxed);
             return None;
