@@ -93,6 +93,13 @@ impl<'a> DocumentBuilder<'a> {
         self.build_for_view(false)
     }
 
+    /// `build` with the root scroll state of the standalone browser view
+    /// (`host::DocumentView`): the root scroller takes wheel input and keeps
+    /// its offset in `DocState::root_scroll`. Benches of scrolling use it.
+    pub fn build_root_scroller(&self) -> Result<Document, super::DocumentFailure> {
+        self.build_for_view(true)
+    }
+
     pub(crate) fn build_for_view(
         &self,
         viewport: bool,

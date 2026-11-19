@@ -13,6 +13,10 @@ use serde_json::{Value, json};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+/// Scroll: one wheel step down, in CSS px, before each frame (a classic wheel
+/// notch of three 40 px lines, as Chromium's kScrollbarPixelsPerLineStep).
+pub(super) const WHEEL_STEP: f32 = 120.0;
+
 /// Окно и входы прогона для проверок после замеров.
 pub(super) type Run<'a, 'b> = (
     &'a mut AsyncApp,
@@ -48,6 +52,7 @@ pub(super) struct Frames {
     pixels: Vec<Recorder>,
     base: (u32, u32),
     relayout: bool,
+    scroll: bool,
     before: (u64, u64),
     /// Сборки внутри `Window::draw` до кадра (`Document::builds_inside_draw`).
     before_inside: u64,
@@ -71,6 +76,7 @@ impl Frames {
             pixels,
             base: args.viewport,
             relayout,
+            scroll: args.mode == Mode::Scroll,
             before: (0, 0),
             before_inside: 0,
             before_contents: 0,
@@ -84,7 +90,22 @@ impl Frames {
         window: WindowHandle<View>,
         index: usize,
     ) -> Result<()> {
-        window.update(cx, |view, _, _| {
+        window.update(cx, |view, window, cx| {
+            if self.scroll {
+                // The step goes through window input dispatch, as a platform wheel event
+                // does: the root scroller's handler moves DocState::root_scroll.
+                let size = window.viewport_size();
+                let wheel = gpui::ScrollWheelEvent {
+                    position: gpui::point(size.width / 2.0, size.height / 2.0),
+                    delta: gpui::ScrollDelta::Pixels(gpui::point(
+                        gpui::px(0.0),
+                        gpui::px(-WHEEL_STEP),
+                    )),
+                    modifiers: gpui::Modifiers::default(),
+                    touch_phase: gpui::TouchPhase::Moved,
+                };
+                window.dispatch_event(gpui::PlatformInput::ScrollWheel(wheel), cx);
+            }
             if self.relayout {
                 // Меняется только CSS-вход: HWND остаётся прежним и не получает WM_SIZE.
                 view.viewport = Some(viewport(self.base, !index.is_multiple_of(2)));
@@ -104,12 +125,13 @@ impl Frames {
         mode: &str,
         index: usize,
     ) -> Result<()> {
-        let (after, inside, contents) = window.read_with(cx, |view, _| {
+        let (after, inside, contents, offset) = window.read_with(cx, |view, _| {
             let doc = &view.doc;
             (
                 doc.retained_frames(),
                 doc.builds_inside_draw(),
                 doc.replayed_contents(),
+                doc.root_scroll_offset(),
             )
         })?;
         let cold = mode == "cold";
@@ -128,6 +150,8 @@ impl Frames {
         let group = usize::from(self.relayout && !index.is_multiple_of(2));
         self.samples.push(json!({"mode": mode, "sample_index": index,
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
+            "wheel_step_px": if self.scroll { json!(WHEEL_STEP) } else { Value::Null },
+            "root_scroll_offset": offset.map(|(x, y)| json!([x, y])),
             "builds_inside_draw": inside,
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents })}));
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)

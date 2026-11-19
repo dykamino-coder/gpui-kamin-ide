@@ -9,11 +9,12 @@ use std::path::PathBuf;
 pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window]\n\
+    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|scroll|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window]\n\
     engine_bench --list-gpus\n\
     engine_bench --build-info   (features and profile of this exe, as in the JSON's `build`)\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
     Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
+Scroll dispatches one wheel step of 120 px down over the viewport centre before each frame.\n\
     Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
     then checks each variant pixel-for-pixel against a fresh document.\n\
     insert copies and remove deletes the first leaf element after the middle; --edit-markup FILE is\n\
@@ -45,6 +46,8 @@ pub(super) enum Mode {
     Warm,
     Both,
     Relayout,
+    /// One wheel step on the root scroller before each frame (`frames::WHEEL_STEP`).
+    Scroll,
     /// Локальная правка разметки между кадрами (`edit::Edit`, `edits`).
     Edit,
 }
@@ -57,6 +60,7 @@ impl Mode {
             Self::Warm => &[("warm", false)],
             Self::Both => &[("cold", true), ("warm", false)],
             Self::Relayout => &[("relayout", false)],
+            Self::Scroll => &[("scroll", false)],
             Self::Edit => &[],
         }
     }
@@ -216,8 +220,13 @@ impl Args {
                         "warm" => Mode::Warm,
                         "both" => Mode::Both,
                         "relayout" => Mode::Relayout,
+                        "scroll" => Mode::Scroll,
                         "edit" => Mode::Edit,
-                        _ => return Err("mode must be cold, warm, both, relayout or edit".into()),
+                        _ => {
+                            return Err(
+                                "mode must be cold, warm, both, relayout, scroll or edit".into()
+                            );
+                        }
                     };
                 }
                 "--edit" => out.edit = super::edit::Edit::parse(&value)?,
@@ -247,7 +256,11 @@ impl Args {
             }
         }
         if out.memory_settle_ms > 0
-            && (out.runs < 5 || matches!(out.mode, Mode::Cold | Mode::Relayout | Mode::Edit))
+            && (out.runs < 5
+                || matches!(
+                    out.mode,
+                    Mode::Cold | Mode::Relayout | Mode::Scroll | Mode::Edit
+                ))
         {
             return Err("memory audit requires at least five unchanged warm frames".into());
         }

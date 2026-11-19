@@ -157,11 +157,18 @@ pub(super) async fn sample_with(
                 resources_time = Some(t.elapsed());
                 let t = kamin_html::work::Clock::now();
                 kamin_html::work::phase!(_document, DocumentOther);
-                let doc = Document::builder(&html, BROWSER_CSS)
+                let mut builder = Document::builder(&html, BROWSER_CSS);
+                builder
                     .path(&args.path)
                     .fonts(fonts)
-                    .viewport((args.viewport.0 as f32, args.viewport.1 as f32))
-                    .build()?;
+                    .viewport((args.viewport.0 as f32, args.viewport.1 as f32));
+                // Scroll measures the standalone browser view, whose root scroller
+                // takes the wheel (`host::DocumentView`).
+                let doc = if args.mode == Mode::Scroll {
+                    builder.build_root_scroller()?
+                } else {
+                    builder.build()?
+                };
                 build_time = Some(t.elapsed());
                 if let Some(limit) = doc.traversal_limit() {
                     return Err(format!("degraded document: {limit}").into());
@@ -318,7 +325,10 @@ pub(super) async fn run(
     let mut work_samples = Vec::with_capacity(3);
     let mut frames = Frames::new(args)?;
     let mut snapshot_pending = args.snapshot.as_deref();
-    if matches!(args.mode, Mode::Warm | Mode::Relayout | Mode::Edit) {
+    if matches!(
+        args.mode,
+        Mode::Warm | Mode::Relayout | Mode::Scroll | Mode::Edit
+    ) {
         sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
     }
     if args.mode == Mode::Edit {
