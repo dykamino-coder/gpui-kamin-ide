@@ -95,10 +95,7 @@ impl Element for Retained {
     type RequestLayoutState = ();
     type PrepaintState = ();
 
-    /// Ключ — записи блоков документа: они переживают правки (новый `Slot`),
-    /// и состояние элемента должно пережить их тоже, чтобы видимые блоки
-    /// повторялись из прошлого кадра (`Store::draw`). Запись кадра чужого
-    /// `Slot` отсеивает `Record::reusable`.
+    /// Use the document store's identity across edits to the element tree.
     fn id(&self) -> Option<ElementId> {
         Some(super::prepared::document_id(&self.builder.store))
     }
