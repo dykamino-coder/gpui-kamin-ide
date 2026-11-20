@@ -16,6 +16,8 @@ export interface SessionAgentInput {
   /** Re-send the engine's live turn state to a newly attached client: an edge
    *  sent while no client was attached is otherwise lost for good. */
   replay?(): void
+  /** Work in progress that keeps the chat awake (idle hibernation); null = idle. */
+  liveWork?(): 'turn' | 'submission' | null
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@
 //! ховер text-primary 10 % (`feedback_popover_surface`).
 
 use crate::host_link::ShellEvent;
-use crate::overlay::{dropdown_shadow, hit_area};
+use crate::overlay::dropdown_shadow;
 use gpui::prelude::*;
 use gpui::px;
 use kamin_metrics as m;
@@ -67,7 +67,6 @@ pub fn web_menu(
         .border_color(tint(rgba(p.text_primary), 0.06))
         .max_h(px((vh - 16.0).max(64.0)))
         .shadow(dropdown_shadow())
-        .child(hit_area())
         .child(crate::probe::registry::probe_area("web-ctx-menu"));
 
     for (i, item) in menu.items.iter().enumerate() {

@@ -25,7 +25,7 @@ pub(super) fn defer(
     paint_key: u64,
     root_box: Option<crate::paint::background::RootMeasurement>,
     out: &mut Vec<AnyElement>,
-    rest: &[crate::dom::Node],
+    rest: crate::layout::positioned::predicates::Later<'_>,
 ) -> bool {
     if !geometry_ok
         || opts.paged_build().is_some()
@@ -87,12 +87,11 @@ pub(super) fn defer(
     let inherited = inherited.clone();
     let mut build_opts = opts.clone();
     build_opts.cx.position.oof_identities = Some(identities);
-    let _ = build_opts.cx.scroll.frame.take_if(|_| anchor.is_some());
+    crate::layout::positioned::viewport_anchor::unscroll(&mut build_opts.cx, anchor.is_some());
     let frame = frame.clone();
     let paint_last = crate::layout::order::paint_last_ok(e, rest, &opts.cx);
-    let source_paint = (!paint_last
-        || crate::layout::positioned::predicates::stays_positioned(rest))
-    .then(crate::layout::positioned::containing_block::DeferredPaint::default);
+    let source_paint = (!paint_last || rest.stays_positioned())
+        .then(crate::layout::positioned::containing_block::DeferredPaint::default);
     let base_opts = build_opts.clone();
     let base_source = source.clone();
     let base_inherited = inherited.clone();

@@ -2,7 +2,8 @@
 //! moved (`gpui::Window::plan_scrolled_replay`): no build, and the painted
 //! quads are those of a fresh tree built at the new offset.
 
-use super::fixed_tests::{boxes, fixed_box, painted, root, rows, same_paint};
+use super::fixed_tests::{boxes, fixed_box, root, rows};
+use super::paint_compare::{painted, same_paint};
 
 type Painted = (String, u32, gpui::Bounds<gpui::ScaledPixels>);
 use super::tests::{frame, open};

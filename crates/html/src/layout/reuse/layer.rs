@@ -57,7 +57,9 @@ impl Store {
             // The frame painting now names its skipped blocks when it finishes.
             self.layer.unpainted.take();
             let shown = window.content_mask().bounds.scale(window.scale_factor());
-            self.layer.deferred.start(Some(shown));
+            self.layer
+                .deferred
+                .start(Some(shown), self.epoch.get(), window.scale_factor());
         }
         let mut inner = None;
         let (_, layer) = window.record_scene_layer(source.as_ref(), |window| {
@@ -95,7 +97,7 @@ impl Store {
     /// Drop the layer: the next frame paints a new one.
     pub(crate) fn drop_layer(&self) {
         self.layer.layer.replace(None);
-        self.layer.deferred.start(None);
+        self.layer.deferred.start(None, self.epoch.get(), 1.);
     }
 
     /// The layer of the last recorded frame, if it painted into one.

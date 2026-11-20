@@ -79,6 +79,8 @@ pub(super) struct Frames {
     before_contents: u64,
     /// Root scroll offset before the wheel step of the sample (`scrolled`).
     wheel_from: Option<(f32, f32)>,
+    /// Root-flow blocks replayed in the document before the frame (`Document::replayed_blocks`).
+    before_blocks: u64,
     samples: Vec<Value>,
 }
 
@@ -103,6 +105,7 @@ impl Frames {
             before_inside: 0,
             before_contents: 0,
             wheel_from: None,
+            before_blocks: 0,
             samples: Vec::new(),
         })
     }
@@ -138,6 +141,7 @@ impl Frames {
             self.before = view.doc.retained_frames();
             self.before_inside = view.doc.builds_inside_draw();
             self.before_contents = view.doc.replayed_contents();
+            self.before_blocks = view.doc.replayed_blocks();
         })?;
         Ok(())
     }
@@ -150,12 +154,13 @@ impl Frames {
         mode: &str,
         index: usize,
     ) -> Result<()> {
-        let (after, inside, contents, offset) = window.read_with(cx, |view, _| {
+        let (after, inside, contents, blocks, offset) = window.read_with(cx, |view, _| {
             let doc = &view.doc;
             (
                 doc.retained_frames(),
                 doc.builds_inside_draw(),
                 doc.replayed_contents(),
+                doc.replayed_blocks(),
                 doc.root_scroll_offset(),
             )
         })?;
@@ -182,7 +187,8 @@ impl Frames {
             "root_scroll_offset": offset.map(|(x, y)| json!([x, y])),
             "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
             "builds_inside_draw": inside,
-            "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents })}));
+            "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
+            "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks })}));
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
     }
 

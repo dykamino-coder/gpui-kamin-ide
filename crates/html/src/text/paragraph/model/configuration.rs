@@ -220,6 +220,12 @@ impl Paragraph {
 }
 
 impl Paragraph {
+    /// Where the paint writes the line fragments of the inline boxes.
+    pub fn fragments_to(mut self, target: Option<crate::layout::retained::FragmentTarget>) -> Self {
+        self.fragments = target.map(std::rc::Rc::new);
+        self
+    }
+
     /// Content extents of inline boxes with edge spacers.
     pub fn box_extents(mut self, extents: Vec<(u32, usize, usize)>) -> Self {
         self.invalidate_prepared();

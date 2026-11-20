@@ -23,21 +23,12 @@ pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui:
     styled_div_with(e, &BoxStyle::shared(e.style.used()), cx)
 }
 
-/// Whether the box of `e` paints nothing but its own painter's commands
-/// (`Style::paint_box`) under `styled_div`: no hover layer, no decoration
-/// painted as a child element, no alternate painter (clone or geometry
-/// fragments), not the root's canvas, not hidden, no filter or backdrop
-/// layer. Only such a box records its own paint again in the document's
-/// scene layer (`document::retained::box_repaint`).
-pub(crate) fn paints_only_own_box(
-    doc: &std::rc::Rc<crate::document::state::DocState>,
-    e: &Element,
-) -> bool {
-    own_box_refusal(doc, e).is_none()
-}
-
-/// Why the box of `e` does not paint its own commands only
-/// (`paints_only_own_box`); `None` when it does.
+/// Why the box of `e` does not paint nothing but its own painter's commands
+/// (`Style::paint_box`) under `styled_div`; `None` when it does: no hover
+/// layer, no decoration painted as a child element, no alternate painter
+/// (clone or geometry fragments), not the root's canvas, not hidden, no
+/// filter or backdrop layer. Only such a box records its own paint again in
+/// the document's scene layer (`document::retained::box_repaint`).
 pub(crate) fn own_box_refusal(
     doc: &std::rc::Rc<crate::document::state::DocState>,
     e: &Element,

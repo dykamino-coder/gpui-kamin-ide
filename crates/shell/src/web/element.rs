@@ -5,6 +5,7 @@
 //! меню и модалки рисуются ПОВЕРХ него просто потому, что идут позже
 //! (`plan/101-cef.md`, Ф2).
 
+use super::drag::AcceptDrag as _;
 use gpui::prelude::*;
 use gpui::{Bounds, Corners, Pixels, canvas, px};
 
@@ -341,6 +342,8 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
     let fh_click = fh.clone();
     gpui::div()
         .id(gpui::SharedString::from(format!("webview:{id}")))
+        // Drag файлов в страницу: CEF windowless и OLE-сессию окна не видит.
+        .accept_drag(id)
         .relative()
         .size_full()
         // Без track_focus клавиатура НЕ приходит: gpui шлёт key-события
@@ -355,7 +358,12 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
         // ссылкой, каретка над текстом. Смена формы заказывает кадр.
         .cursor(super::cursors::style(id))
         .child(frame)
-        .on_mouse_move(move |ev: &gpui::MouseMoveEvent, window, _cx| {
+        .on_mouse_move(move |ev: &gpui::MouseMoveEvent, window, cx| {
+            // Во время drag'а движение уходит в drag_target_* (`drag.rs`):
+            // зажатая «левая» от gpui выделяла бы текст страницы.
+            if cx.has_active_drag() {
+                return;
+            }
             let (x, y) = local(ev.position, id);
             super::input::mouse_move(
                 id,
@@ -610,6 +618,11 @@ pub(crate) fn hit_any_view(x: f32, y: f32) -> bool {
 }
 
 /// Координаты курсора в системе вью: экранные минус начало его прямоугольника.
+/// Точка окна → CSS px вью `id` (по прямоугольнику последней отрисовки).
+pub(super) fn view_point(id: &'static str, pos: gpui::Point<Pixels>) -> (f32, f32) {
+    local(pos, id)
+}
+
 fn local(pos: gpui::Point<Pixels>, id: &'static str) -> (f32, f32) {
     let (ox, oy, _, _) = ORIGINS
         .lock()

@@ -39,6 +39,15 @@ pub(crate) fn viewport_box(child: AnyElement) -> AnyElement {
         .into_any_element()
 }
 
+/// Build a viewport-fixed box's subtree outside the root scroll frame: the
+/// box is not part of the scrolled content (nchor_of). The one place the
+/// build context drops the frame for it.
+pub(crate) fn unscroll(cx: &mut crate::layout::cx::LayoutCx, anchored: bool) {
+    if anchored {
+        cx.scroll.frame = None;
+    }
+}
+
 /// The root scroll handle a fixed box hangs on: `Some` when the box's
 /// containing block is the viewport (`viewport_fixed`: `position: fixed`
 /// without a fixed containing block among its ancestors) and the open ICB

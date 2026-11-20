@@ -216,7 +216,9 @@ const handlers = {
     t.mcp = mcpFromConfig(p?.config) ?? t.mcp
     await initializeMcp(t.mcp)
     if (p?.model) t.model = p.model
-    if (typeof p?.developerInstructions === 'string') t.instructions = p.developerInstructions
+    // Like codex: developer instructions reach the model only with a thread's
+    // initial context. A thread that already ran a turn keeps what it was told.
+    if (typeof p?.developerInstructions === 'string' && !t.turns) t.instructions = p.developerInstructions
     threads.set(t.id, t)
     saveThread(t)
     return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
@@ -230,14 +232,19 @@ const handlers = {
     if (!t) throw new RpcError(-32600, 'thread not loaded')
     if (t.active) throw new RpcError(-32600, 'turn already running')
     if (p.model) t.model = p.model
-    const turnId = `turn-${++t.turns}`
+    // Real codex turn ids are UUIDs, unique across threads (usage rows key on them).
+    t.turns++
+    const turnId = randomUUID()
     t.active = { id: turnId, interrupted: false, effort: p.effort ?? null, model: t.model }
     saveThread(t)
-    const text = (p.input ?? []).map((i) => i.text ?? '').join('\n')
+    // Bridge's session context travels as its own input item in front of the message.
+    const parts = (p.input ?? []).map((i) => i.text ?? '')
+    const context = parts.filter((s) => s.startsWith('<bridge_session_context>'))
+    const text = parts.filter((s) => !s.startsWith('<bridge_session_context>')).join('\n')
     // What the thread was told, for /fake-recall (a hidden context block included).
-    ;(t.inputs ??= []).push(text)
+    ;(t.inputs ??= []).push(...context, text)
     saveThread(t)
-    queueMicrotask(() => void runTurn(t, turnId, text))
+    queueMicrotask(() => void runTurn(t, turnId, text, context))
     return { turn: { id: turnId, status: 'inProgress', error: null, items: [] } }
   },
   'turn/steer': (p) => {
@@ -252,6 +259,30 @@ const handlers = {
     if (t?.active && t.active.id === p.turnId) t.active.interrupted = true
     return {}
   },
+  // Context compaction runs as its own turn: no model answer, one
+  // contextCompaction item. Counted so tests can tell it from a text turn.
+  'thread/compact/start': (p) => {
+    const t = threads.get(p?.threadId)
+    if (!t) throw new RpcError(-32600, 'thread not loaded')
+    if (t.active) throw new RpcError(-32600, 'turn already running')
+    // Real codex turn ids are UUIDs, unique across threads (usage rows key on them).
+    t.turns++
+    const turnId = randomUUID()
+    t.active = { id: turnId, interrupted: false, effort: null, model: t.model }
+    t.compactions = (t.compactions ?? 0) + 1
+    saveThread(t)
+    queueMicrotask(() => {
+      notify('turn/started', { threadId: t.id, turn: { id: turnId, status: 'inProgress', error: null, items: [] } })
+      item(t, turnId, { type: 'contextCompaction', id: `compact-${t.compactions}` })
+      t.active = null
+      saveThread(t)
+      notify('turn/completed', {
+        threadId: t.id,
+        turn: { id: turnId, status: 'completed', error: null, items: [], durationMs: 1 },
+      })
+    })
+    return {}
+  },
 }
 
 function item(t, turnId, it, started = true) {
@@ -259,13 +290,9 @@ function item(t, turnId, it, started = true) {
   notify('item/completed', { threadId: t.id, turnId, item: it, completedAtMs: Date.now() })
 }
 
-function userMessage(t, turnId, text) {
-  item(
-    t,
-    turnId,
-    { type: 'userMessage', id: randomUUID(), content: [{ type: 'text', text, text_elements: [] }] },
-    false,
-  )
+function userMessage(t, turnId, text, context = []) {
+  const content = [...context, text].map((s) => ({ type: 'text', text: s, text_elements: [] }))
+  item(t, turnId, { type: 'userMessage', id: randomUUID(), content }, false)
 }
 
 function agentMessage(t, turnId, text) {
@@ -333,10 +360,10 @@ async function callMcp(t, tool, argsJson) {
   return { result: json?.result ?? null }
 }
 
-async function runTurn(t, turnId, text) {
+async function runTurn(t, turnId, text, context = []) {
   const started = Date.now()
   notify('turn/started', { threadId: t.id, turn: { id: turnId, status: 'inProgress', error: null, items: [] } })
-  userMessage(t, turnId, text)
+  userMessage(t, turnId, text, context)
   let status = 'completed'
   let error = null
   try {

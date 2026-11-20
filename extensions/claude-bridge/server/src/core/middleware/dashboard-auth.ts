@@ -5,7 +5,7 @@
 import type { Context, Next } from 'hono'
 import { consumeJsonlDownload } from '../dashboard/jsonl-download'
 import { isDashboardAuthEnabled, validateDashboardSession, validateCredentials } from '../auth/dashboard-auth'
-import { resolveTokenSync } from '../auth/tokens'
+import { resolveToken } from '../auth/tokens'
 
 /** Paths that don't require dashboard authentication */
 const PUBLIC_PATHS = [
@@ -19,6 +19,11 @@ const PUBLIC_PATHS = [
   '/api/dashboard/tokens',
 ]
 
+/** A user's chat list (titles, folders, usage) sits under /tokens but is not
+ *  part of the token bootstrap: it needs the caller's credentials, so a user
+ *  token is limited to its own list (denyForeignSubject). */
+const PRIVATE_UNDER_PUBLIC = /^\/api\/dashboard\/tokens\/[^/]+\/sessions\/?$/
+
 export async function dashboardAuthMiddleware(c: Context, next: Next) {
   if (consumeJsonlDownload(c)) return next()
 
@@ -27,7 +32,8 @@ export async function dashboardAuthMiddleware(c: Context, next: Next) {
 
   // Skip public auth endpoints (exact or prefix match for /tokens/:id)
   const path = c.req.path
-  if (PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'))) return next()
+  if (PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/')) && !PRIVATE_UNDER_PUBLIC.test(path))
+    return next()
 
   // Check for session token
   const auth = c.req.header('authorization')
@@ -55,7 +61,10 @@ export async function dashboardAuthMiddleware(c: Context, next: Next) {
   // /ws/session). Stamp the resolved userName onto the request context so
   // downstream endpoints can scope responses to the caller's data only —
   // an API-token holder must never see another user's stats.
-  const resolved = resolveTokenSync(token)
+  // Async resolver: token create/rename/delete drops the cache, and the sync
+  // lookup returned null for EVERY valid API token until something else
+  // re-read it — a 401 right after managing tokens.
+  const resolved = await resolveToken(token)
   if (resolved) {
     c.set('authKind', 'api')
     c.set('apiUserName', resolved.userName)

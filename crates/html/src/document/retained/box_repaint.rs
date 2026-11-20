@@ -29,6 +29,11 @@ impl Builder {
         // Deferred boxes this replay shows are recorded with the queued ones.
         if let Some(layer) = self.store.scene_layer() {
             let shown = window.content_mask().bounds.scale(window.scale_factor());
+            // An edit the layer cannot record that this replay shows: one
+            // frame is built for every edit waiting (`layout::reuse::Wait`).
+            if self.store.due_frames(shown) {
+                return false;
+            }
             self.store
                 .queue_repaints(self.store.due_repaints(&layer, shown));
         }
@@ -54,6 +59,21 @@ impl Builder {
             let Ok(owner) = u32::try_from(e.node_id) else {
                 return false;
             };
+            // An inline box: the pieces of its band, from its new band.
+            if crate::document::revision::records_band(e) {
+                let Some(parent) = crate::document::revision::parent_at(&self.nodes, path) else {
+                    return false;
+                };
+                let band = crate::text::inline::band_of(e, parent, self.opts.cx.vcx());
+                match window.rerecord_layer_band(&layer, owner, cx, band) {
+                    Some(shifted) => moved |= shifted,
+                    None => {
+                        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+                        return false;
+                    }
+                }
+                continue;
+            }
             let mut div = crate::paint::box_tree::styled::own_paint_div(e, &self.opts.cx);
             let mut style = gpui::Style::default();
             style.refine(div.style());

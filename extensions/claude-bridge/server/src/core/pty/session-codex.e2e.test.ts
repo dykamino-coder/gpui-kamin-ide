@@ -351,6 +351,42 @@ describe('codex chat over the Bridge session WebSocket', () => {
     }
   }, 30_000)
 
+  it('/compact (typed or the Compact button) compacts the codex thread instead of sending a model turn', async () => {
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, 'first message', 'k1')
+    await client.entry((e) => text(e).startsWith('echo: first message'), 15_000)
+    const from = client.frames.length
+    // What the Compact button sends: `/compact <hand-off instructions>`.
+    const receipt = await say(client, '/compact Summarise HANDOFF-K9 for a fresh agent', 'k2')
+    expect(receipt).toMatchObject({ state: 'read' })
+    const boundary = await client.entry(
+      (e) =>
+        e.subtype === 'compact_boundary' &&
+        client.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= from,
+      15_000,
+    )
+    expect(boundary).toMatchObject({ type: 'system', content: 'Conversation compacted' })
+    // The thread was never told the command as text, and nothing answered it.
+    const mark = client.frames.length
+    await say(client, '/fake-recall HANDOFF-K9', 'k3')
+    const recall = await client.entry(
+      (e) =>
+        e.type === 'assistant' &&
+        text(e).startsWith('recall:') &&
+        client.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= mark,
+      15_000,
+    )
+    expect(text(recall)).toBe('recall: nothing about HANDOFF-K9')
+    const echoed = client.frames
+      .slice(from)
+      .flatMap((f) => (f.type === 'jsonl:entries' ? f.entries : []))
+      .some((e: Record<string, any>) => text(e).includes('echo: /compact'))
+    expect(echoed).toBe(false)
+    client.send({ type: 'session:end' })
+    client.close()
+  })
+
   it('switches model and effort for the next turn, interrupts, and explains failures', async () => {
     const client = await Client.open(port)
     await createChat(client, { engine: 'codex' })
@@ -444,6 +480,58 @@ describe('codex chat over the Bridge session WebSocket', () => {
     again.close()
   }, 30_000)
 
+  it('lets an idle ChatGPT chat sleep instead of ending it, and wakes it with the next message', async () => {
+    const { sweepIdleSessions } = await import('./session-hibernation')
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex', basePrompt: 'Standing rule BP-SLEEP-3301: answer tersely.' })
+    await say(client, 'before sleep', 'z1')
+    const first = await client.entry((e) => text(e).startsWith('echo: before sleep'))
+    const conv = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+
+    // An hour later: the sweep puts the chat to sleep; the client is told it
+    // sleeps, not that the session ended (which made it resume at once).
+    const mark = client.frames.length
+    const config = { idleMs: 15 * 60_000, maxAwake: 0, wakeConcurrency: 2, evictIdleMs: 60_000 }
+    expect(sweepIdleSessions(Date.now() + 60 * 60_000, config)).toBeGreaterThanOrEqual(1)
+    await client.next((f) => f.type === 'session:activity' && f.hibernation === 'asleep', 15_000, mark)
+
+    await say(client, '/fake-recall BP-SLEEP-3301', 'z2')
+    const recall = await client.entry(
+      (e) =>
+        e.type === 'assistant' &&
+        text(e).startsWith('recall:') &&
+        client.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= mark,
+      15_000,
+    )
+    // Same thread, the chat's standing instructions still there.
+    expect(recall.sessionId).toBe(conv)
+    expect(text(recall)).toContain('Standing rule BP-SLEEP-3301')
+    const after = client.frames.slice(mark)
+    expect(after.some((f) => f.type === 'session:activity' && f.hibernation === 'awake')).toBe(true)
+    expect(after.some((f) => f.type === 'session:exit')).toBe(false)
+    const user = await client.entry((e) => e.type === 'user' && text(e) === '/fake-recall BP-SLEEP-3301')
+    expect(user.parentUuid).toBe(first.uuid)
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
+  it('keeps a ChatGPT chat awake while its turn runs', async () => {
+    const { sweepIdleSessions } = await import('./session-hibernation')
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, '/fake-slow', 'w1')
+    await client.next((f) => f.type === 'session:activity' && f.isWorking === true, 15_000)
+    const mark = client.frames.length
+    const config = { idleMs: 15 * 60_000, maxAwake: 0, wakeConcurrency: 2, evictIdleMs: 60_000 }
+    sweepIdleSessions(Date.now() + 60 * 60_000, config)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(client.frames.slice(mark).some((f) => f.type === 'session:activity' && f.hibernation === 'asleep')).toBe(
+      false,
+    )
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
   it('resumes a codex chat on the model and effort chosen after its last turn', async () => {
     const client = await Client.open(port)
     await createChat(client, { engine: 'codex' })
@@ -478,6 +566,60 @@ describe('codex chat over the Bridge session WebSocket', () => {
     again.send({ type: 'session:end' })
     again.close()
   }, 30_000)
+
+  it('brings a base prompt saved after the first turn and the exact model to the resumed thread, once', async () => {
+    // Owner's case: the thread ran turns before the prompt was saved; after a
+    // restart codex resumes it, and resume instructions never reach its context.
+    // Answers already given (a resumed chat replays them) are not the new one.
+    const answered = new Set<string>()
+    const recall = async (c: Client, word: string, id: string) => {
+      await say(c, `/fake-recall ${word}`, id)
+      const hit = await c.entry((e) => e.type === 'assistant' && text(e).startsWith('recall:') && !answered.has(e.uuid))
+      answered.add(hit.uuid)
+      return text(hit)
+    }
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    expect(await recall(client, 'BP-RES-7310', 'p1')).toBe('recall: nothing about BP-RES-7310')
+    // The model line arrives with the first turn (the start named no model).
+    expect(await recall(client, 'runs on the model', 'p1m')).toContain('`gpt-fake`')
+    const conv = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+    client.send({ type: 'session:end' })
+    client.close()
+    await runtimeMod.codexRuntime().close()
+    runtimeMod.setCodexRuntimeForTests(newRuntime())
+
+    const again = await Client.open(port)
+    again.send({
+      type: 'session:resume',
+      token: 'tok-a',
+      conversationId: conv,
+      protocolVersion: 1,
+      cwd: '/work/project',
+      basePrompt: 'Saved later BP-RES-7310: reply in Russian.',
+    })
+    expect(await again.next((f) => f.type === 'session:created')).toMatchObject({ engine: 'codex' })
+    const seen = await recall(again, 'BP-RES-7310', 'p2')
+    expect(seen.split('Saved later BP-RES-7310')).toHaveLength(2)
+    // The chat shows the message, not the context sent in front of it.
+    const bubble = await again.entry((e) => e.type === 'user' && text(e).includes('/fake-recall BP-RES-7310'))
+    expect(text(bubble)).toBe('/fake-recall BP-RES-7310')
+    // Delivered once: the next turns do not repeat it.
+    expect((await recall(again, 'BP-RES-7310', 'p3')).split('Saved later BP-RES-7310')).toHaveLength(2)
+
+    // A model and effort switch updates the model line once, without the prompt again.
+    again.send({ type: 'session:change-model', model: 'gpt-fake-mini' })
+    await again.next((f) => f.type === 'session:model-changed' && f.model === 'gpt-fake-mini')
+    again.send({ type: 'session:change-effort', effort: 'low' })
+    await again.next((f) => f.type === 'session:model-changed' && f.effort === 'low')
+    const lines = await recall(again, 'runs on the model', 'p4')
+    expect(lines).toContain('This chat runs on the model `gpt-fake-mini` with reasoning effort `low`.')
+    expect(lines.split('`gpt-fake-mini`')).toHaveLength(2)
+    expect((await recall(again, 'BP-RES-7310', 'p5')).split('Saved later BP-RES-7310')).toHaveLength(2)
+    expect((await recall(again, 'gpt-fake-mini', 'p6')).split('runs on the model `gpt-fake-mini`')).toHaveLength(2)
+    again.send({ type: 'session:end' })
+    again.close()
+  }, 40_000)
 
   it('continues a chat that never ran a turn on a new thread after a restart, with its choice', async () => {
     // codex 0.160.1 writes a rollout only with the first turn (acceptance
@@ -892,6 +1034,81 @@ describe('engine switch inside one chat', () => {
     again.send({ type: 'session:end' })
     again.close()
   }, 60_000)
+
+  it("keeps the chat's standing instructions across Claude → ChatGPT → Claude, exactly once", async () => {
+    const client = await Client.open(port)
+    const basePrompt = 'Standing rule BP-MARK-5521: answer tersely.'
+    await createChat(client, { engine: 'claude', basePrompt })
+    await say(client, '/fake-note 9', 'b1')
+    await client.entry((e) => e.type === 'assistant' && text(e) === 'noted: 9', 15_000)
+
+    const toGpt = await switchTo(client, 'codex', 'gpt-fake')
+    expect(toGpt.restarted).toMatchObject({ type: 'session:restarted', engine: 'codex' })
+    let mark = client.frames.length
+    await say(client, '/fake-recall BP-MARK-5521', 'b2')
+    const recall = text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))
+    // The developer instructions of the codex thread carry the prompt, once.
+    expect(recall).toContain('Standing rule BP-MARK-5521')
+    expect(recall.split('BP-MARK-5521')).toHaveLength(2)
+
+    // Back on Claude and on ChatGPT again: still there (the new segment keeps it too).
+    expect((await switchTo(client, 'claude', 'claude-sonnet-5-5')).restarted).toMatchObject({ engine: 'claude' })
+    expect((await switchTo(client, 'codex', 'gpt-fake')).restarted).toMatchObject({ engine: 'codex' })
+    mark = client.frames.length
+    await say(client, '/fake-recall BP-MARK-5521', 'b3')
+    const again = text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))
+    expect(again.split('Standing rule BP-MARK-5521')).toHaveLength(2)
+
+    // Another chat without a prompt does not get this one.
+    const other = await Client.open(port)
+    await createChat(other, { engine: 'codex' })
+    const from = other.frames.length
+    await say(other, '/fake-recall BP-MARK-5521', 'o1')
+    const none = await other.entry(
+      (e) =>
+        e.type === 'assistant' &&
+        text(e).startsWith('recall:') &&
+        other.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= from,
+      15_000,
+    )
+    expect(text(none)).toBe('recall: nothing about BP-MARK-5521')
+    for (const c of [client, other]) {
+      c.send({ type: 'session:end' })
+      c.close()
+    }
+  }, 60_000)
+
+  // Each chain recalls only at its end: an earlier recall answer would put the
+  // marker into the carried history and hide a lost prompt.
+  const chains: Array<[string, string[]]> = [
+    ['ChatGPT → Claude', ['codex', 'claude']],
+    ['ChatGPT → Claude → ChatGPT', ['codex', 'claude', 'codex']],
+    ['Claude → ChatGPT → Claude', ['claude', 'codex', 'claude']],
+  ]
+  const modelOf = (engine: string) => (engine === 'codex' ? 'gpt-fake' : 'claude-sonnet-5-5')
+  it.each(chains)(
+    "keeps the chat's standing instructions on %s",
+    async (_name, [start, ...hops]) => {
+      const client = await Client.open(port)
+      const marker = `BP-HOP-${start}-${hops.length}`
+      await createChat(client, { engine: start, basePrompt: `Standing rule ${marker}: answer tersely.` })
+      await say(client, '/fake-note 7', 'h0')
+      await client.entry((e) => e.type === 'assistant' && text(e).includes('7'), 15_000)
+      for (const engine of hops) {
+        expect((await switchTo(client, engine, modelOf(engine))).restarted).toMatchObject({
+          type: 'session:restarted',
+          engine,
+        })
+      }
+      const mark = client.frames.length
+      await say(client, `/fake-recall ${marker}`, 'h1')
+      const recall = text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))
+      expect(recall).toContain(`Standing rule ${marker}`)
+      client.send({ type: 'session:end' })
+      client.close()
+    },
+    60_000,
+  )
 
   it('restarts an empty chat on the other engine, holds a prompt sent meanwhile and refuses the same engine', async () => {
     const client = await Client.open(port)

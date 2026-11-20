@@ -20,7 +20,7 @@ pub(crate) async fn position_element(
     under_tf: bool,
     ordered_context: bool,
     geometry_layer_ok: bool,
-    nodes: &[crate::dom::Node],
+    nodes: &crate::layout::positioned::predicates::Siblings<'_>,
     idx: usize,
     paint_key: u64,
     out: &mut Vec<AnyElement>,
@@ -43,7 +43,7 @@ pub(crate) async fn position_element(
         paint_key,
         root_box.clone(),
         out,
-        &nodes[idx + 1..],
+        nodes.after(idx),
     ) {
         return;
     }
@@ -57,7 +57,7 @@ pub(crate) async fn position_element(
     );
     let unscrolled = anchor
         .is_some()
-        .then(|| opts.inner(|cx| cx.scroll.frame = None));
+        .then(|| opts.inner(|cx| crate::layout::positioned::viewport_anchor::unscroll(cx, true)));
     let build_opts = unscrolled.as_deref().unwrap_or(opts);
     let built = build::build(stk, e, inherited, build_opts, frame, layer_ok, root_box).await;
     let built = crate::layout::positioned::viewport_anchor::anchored(built, anchor.as_ref());

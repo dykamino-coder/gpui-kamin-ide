@@ -36,27 +36,42 @@ impl Paragraph {
 }
 
 impl Paragraph {
-    /// Подложка промежутка между словами — только если оба соседа и сам
-    /// промежуток лежат в ОДНОМ прогоне, и у него есть фон.
-    pub(crate) fn gap_background(&self, left: &Word, right: &Word) -> Option<gpui::Hsla> {
+    /// The fill of the gap between two words, only when both neighbours and
+    /// the gap lie in ONE run that has a background; with the box that
+    /// binds the fill as its background (0 for none: a band with a border
+    /// binds none, `gpui::TextRun::background_owner`).
+    pub(crate) fn gap_background(&self, left: &Word, right: &Word) -> Option<(gpui::Hsla, u32)> {
         let a = self.run_at(left.range.end.saturating_sub(1))?;
         let b = self.run_at(right.range.start)?;
         let gap = self.run_at(left.range.end)?;
         if a != b || a != gap {
             return None;
         }
-        self.runs[a].background_color
+        let run = &self.runs[a];
+        let owner = if run.background_border.is_some() {
+            0
+        } else {
+            run.background_owner
+        };
+        run.background_color.map(|c| (c, owner))
     }
 }
 
 impl Paragraph {
-    /// Band identity (colour and border) of the run holding byte `at`.
+    /// Band identity (colour, border and owning box) of the run holding byte `at`.
     // A decoration band independently supplies background and border colors/widths.
     #[allow(clippy::type_complexity)]
-    pub(crate) fn band_at(&self, at: usize) -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
+    pub(crate) fn band_at(
+        &self,
+        at: usize,
+    ) -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>, u32)> {
         self.run_at(at).map(|i| {
             let run = &self.runs[i];
-            (run.background_color, run.background_border)
+            (
+                run.background_color,
+                run.background_border,
+                run.background_owner,
+            )
         })
     }
 }
@@ -77,7 +92,11 @@ impl Paragraph {
             if run.background_color.is_none() {
                 continue;
             }
-            let own = Some((run.background_color, run.background_border));
+            let own = Some((
+                run.background_color,
+                run.background_border,
+                run.background_owner,
+            ));
             cut_band_sides(run, left == own, right == own);
         }
     }

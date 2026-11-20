@@ -88,9 +88,7 @@ pub fn session_menu(
         .border_1()
         .border_color(tint(rgba(p.text_primary), 0.06))
         .shadow(crate::overlay::dropdown_shadow())
-        // Hit-регион overlay-окна: ввод ловится только над меню
-        .child(crate::overlay::hit_area())
-        // клик внутри меню не закрывает его (скрим ловит только промах)
+        // Клик внутри меню не закрывает его (скрим ловит только промах)
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation());
 
     // Rename → inline-редактирование строки (1:1 beginRename)

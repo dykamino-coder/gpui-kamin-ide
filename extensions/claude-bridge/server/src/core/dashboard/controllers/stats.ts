@@ -13,7 +13,6 @@ import {
   queryEvents,
   getEventById,
   deleteEventById,
-  clearOtelData,
   clearOtelDataForUser,
 } from '../../telemetry/store'
 import { parseDeleteFilter, parseListQuery, toRequestLogEntry } from './request-log'
@@ -204,8 +203,8 @@ export function registerStatsRoutes(api: Hono): void {
   api.delete('/api/dashboard/requests', async (c) => {
     const denied = denyApiToken(c)
     if (denied) return denied
+    // One transaction over requests + OTel: all cleared or none.
     await clearAll()
-    await clearOtelData()
     return c.json({ ok: true })
   })
 

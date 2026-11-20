@@ -13,6 +13,8 @@ pub mod emit;
 pub mod emit_tools;
 pub mod emit_ui;
 pub mod emit_view;
+#[cfg(feature = "probe")]
+pub mod file_drop;
 pub mod host;
 pub mod input;
 #[cfg(feature = "probe")]

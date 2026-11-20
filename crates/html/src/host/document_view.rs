@@ -139,6 +139,8 @@ mod fixed_hoisted_tests;
 #[cfg(test)]
 mod fixed_tests;
 #[cfg(test)]
+mod paint_compare;
+#[cfg(test)]
 mod resize_tests;
 #[cfg(test)]
 mod scroll_replay_tests;

@@ -30,7 +30,7 @@ pub(crate) struct Plan {
     /// `(kind, order, n)`: the `n` primitives of a kind and order of the old
     /// or new run painted before the run (each sorted list holds an order's
     /// entries in paint order).
-    before: Vec<(u8, DrawOrder, usize)>,
+    pub(crate) before: Vec<(u8, DrawOrder, usize)>,
     /// Whether an ink or order of the run, or a later order, changed.
     pub(crate) changed: bool,
     /// `(command, bucket)`: later commands (primitives outside layers and
@@ -184,25 +184,7 @@ impl SceneLayer {
             return None;
         }
         let orders: Vec<DrawOrder> = buckets.iter().map(|t| t * ORDER_STEP).collect();
-        let mut before: Vec<(u8, DrawOrder, usize)> = Vec::new();
-        let olds = ops[run.clone()].iter();
-        let news = new.iter().zip(&orders).map(|(op, o)| (op, *o));
-        for (op, order) in olds.map(|op| (op, order_of(op))).chain(news) {
-            if let PaintOperation::Primitive(p) = op
-                && let Some(kind) = plain_kind(p)
-                && !before.iter().any(|b| b.0 == kind && b.1 == order)
-            {
-                before.push((kind, order, 0));
-            }
-        }
-        for op in &ops[..run.start] {
-            if let PaintOperation::Primitive(p) = op
-                && let Some(kind) = plain_kind(p)
-                && let Some(b) = before.iter_mut().find(|b| b.0 == kind && b.1 == p.order())
-            {
-                b.2 += 1;
-            }
-        }
+        let before = before_run(ops, &run, new, &orders);
         let changed = !later.is_empty()
             || old.len() != rects.len()
             || old.iter().zip(rects.iter().zip(&buckets)).any(|((o, t), (n, u))| o != n || t != u);
@@ -235,6 +217,37 @@ impl SceneLayer {
         });
         high
     }
+}
+
+/// `(kind, order, n)` for each kind and order of the old run `run` of `ops`
+/// and of the new commands `new` (with `orders`): the `n` primitives of that
+/// kind and order painted before the run.
+pub(crate) fn before_run(
+    ops: &[PaintOperation],
+    run: &std::ops::Range<usize>,
+    new: &[PaintOperation],
+    orders: &[DrawOrder],
+) -> Vec<(u8, DrawOrder, usize)> {
+    let mut before: Vec<(u8, DrawOrder, usize)> = Vec::new();
+    let olds = ops[run.clone()].iter();
+    let news = new.iter().zip(orders).map(|(op, o)| (op, *o));
+    for (op, order) in olds.map(|op| (op, order_of(op))).chain(news) {
+        if let PaintOperation::Primitive(p) = op
+            && let Some(kind) = plain_kind(p)
+            && !before.iter().any(|b| b.0 == kind && b.1 == order)
+        {
+            before.push((kind, order, 0));
+        }
+    }
+    for op in &ops[..run.start] {
+        if let PaintOperation::Primitive(p) = op
+            && let Some(kind) = plain_kind(p)
+            && let Some(b) = before.iter_mut().find(|b| b.0 == kind && b.1 == p.order())
+        {
+            b.2 += 1;
+        }
+    }
+    before
 }
 
 fn order_of(op: &PaintOperation) -> DrawOrder {
