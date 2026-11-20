@@ -1,5 +1,6 @@
-//! Липкие коробки `position: sticky`: распорка, снимающая коробку родителя и видимую часть
-//! ленты, и обёртка `Sticky` с порогами из `inset`.
+//! Sticky boxes (`position: sticky`): a probe that records the parent's box
+//! and the visible part of the scrollport, and the `Sticky` wrapper with the
+//! thresholds from `inset`.
 //!
 //! A sticky box paints as a positioned box of step 8 of its stacking context,
 //! above the flow scrolling under it; GPUI's deferred pass is kept only for a
