@@ -12,9 +12,14 @@ pub(crate) struct GeometryBoxes {
     pub(crate) font: Option<(f64, LineHeight)>,
 }
 
+pub(crate) struct CollectedGeometry<'a> {
+    pub(crate) boxes: HashMap<u64, GeometryBoxes>,
+    pub(crate) styles: &'a HashMap<u64, Rc<crate::style::computed::Computed>>,
+}
+
 pub(crate) struct Collector(
-    pub(crate) RefCell<HashMap<u64, GeometryBoxes>>,
-    pub(crate) HashMap<u64, Rc<crate::style::computed::Computed>>,
+    RefCell<HashMap<u64, GeometryBoxes>>,
+    HashMap<u64, Rc<crate::style::computed::Computed>>,
     HashMap<u64, Vec<u64>>,
     Arc<resvg::usvg::fontdb::Database>,
 );
@@ -97,9 +102,8 @@ impl Collector {
     }
 
     // CSSOM View §6: коробка таблицы и подписи, без анонимной обёртки.
-    pub(crate) fn finish_captions(&self) {
-        let boxes: &RefCell<HashMap<u64, GeometryBoxes>> = &self.0;
-        let mut all = boxes.borrow_mut();
+    pub(crate) fn finish(&self) -> CollectedGeometry<'_> {
+        let mut all = self.0.take();
         for (table, captions) in &self.2 {
             for caption in captions {
                 let Some(boxes) = all.get(caption) else {
@@ -115,6 +119,10 @@ impl Collector {
                 out.padding.extend(padding);
                 out.content.extend(content);
             }
+        }
+        CollectedGeometry {
+            boxes: all,
+            styles: &self.1,
         }
     }
 
