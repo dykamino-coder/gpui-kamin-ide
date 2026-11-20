@@ -12,7 +12,34 @@ fn face(name: &str, width: f32, weight: f32, slope: u8, angle: f32) -> Face {
         family: name.into(),
         adjust: 1.0,
         features: Vec::new(),
+        ranges: Vec::new(),
     }
+}
+
+#[test]
+fn composite_face_leads_with_the_space_face_and_keeps_later_rules_first() {
+    let part = |name: &str, ranges: Vec<(u32, u32)>| Face {
+        ranges,
+        ..face(name, 100.0, 400.0, 0, 0.0)
+    };
+    let faces = vec![
+        part("ext", vec![(0x100, 0x24F)]),
+        part("latin", vec![(0x0, 0xFF)]),
+        part("cyr", vec![(0x400, 0x45F)]),
+        face("bold", 100.0, 700.0, 0, 0.0),
+    ];
+    let style = Computed::default();
+    let request = style.font_request("composite-test", 0.0);
+    let order: Vec<String> = crate::font_facts::matching::composite(&faces, &request)
+        .into_iter()
+        .map(|f| f.family)
+        .collect();
+    assert_eq!(order, ["latin", "cyr", "ext"]);
+    assert_eq!(
+        unicode_ranges(Some("U+0-7F, u+4??, U+20")),
+        [(0, 0x7F), (0x400, 0x4FF), (0x20, 0x20)]
+    );
+    assert!(unicode_ranges(Some("U+zz")).is_empty());
 }
 
 fn chosen(faces: Vec<Face>, request: Computed) -> String {

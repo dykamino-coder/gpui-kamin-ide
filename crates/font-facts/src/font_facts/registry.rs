@@ -89,6 +89,24 @@ impl FontRegistrySnapshot {
         matching::select(faces, &request)
     }
 
+    /// The other faces of the composite face `alias_for` leads (faces of the
+    /// same descriptors split by `unicode-range`), each with its ranges, in
+    /// the order characters look for them (css-fonts-4 §5.1 step 3).
+    pub fn composite_rest(
+        &self,
+        family: &str,
+        request: FontRequest<'_>,
+    ) -> Vec<(String, Vec<(u32, u32)>)> {
+        let Some(faces) = key::with(family, |family| self.registry.faces.get(family)) else {
+            return Vec::new();
+        };
+        matching::composite(faces, &request)
+            .into_iter()
+            .skip(1)
+            .map(|face| (face.family, face.ranges))
+            .collect()
+    }
+
     pub fn alias_for(&self, family: &str, request: FontRequest<'_>) -> Option<String> {
         self.matching_face(family, request)
             .map(|f| f.family)

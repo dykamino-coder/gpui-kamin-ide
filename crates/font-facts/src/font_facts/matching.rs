@@ -15,6 +15,8 @@ pub struct Face {
     pub family: String,
     pub adjust: f32,
     pub features: Vec<(String, u32)>,
+    /// `unicode-range` of the rule; empty: every character.
+    pub ranges: Vec<(u32, u32)>,
 }
 
 pub fn range(value: Option<&str>, default: f32) -> (f32, f32) {
@@ -150,30 +152,81 @@ fn style(face: &Face, request: &FontRequest<'_>) -> (u8, f32) {
 }
 
 pub fn select(faces: &[Face], request: &FontRequest<'_>) -> Option<Face> {
-    {
-        let width = request.width;
-        let rank = |face: &Face| {
-            [
-                directed(width, face.width, width > 100.0),
-                style(face, request),
-                weight(request.weight, face.weight),
-            ]
-        };
-        // Later declarations win equal capabilities (composite subsets remain
-        // ordered here; character coverage is handled separately by fallback).
-        faces
-            .iter()
-            .rev()
-            .min_by(|a, b| {
-                rank(a)
-                    .into_iter()
-                    .zip(rank(b))
-                    .map(|(a, b)| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)))
-                    .find(|order| !order.is_eq())
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .cloned()
+    composite(faces, request).into_iter().next()
+}
+
+/// The faces of the best descriptor match, a composite face split by
+/// `unicode-range` (css-fonts-4 §4.5 "composite fonts"): later declarations
+/// first (§4.5: overlapping ranges are checked in reverse order), and the
+/// first face whose range holds U+0020 leads, since it gives the first
+/// available font (§5.1, Blink `CSSSegmentedFontFace::GetFontData`).
+pub fn composite(faces: &[Face], request: &FontRequest<'_>) -> Vec<Face> {
+    let width = request.width;
+    let rank = |face: &Face| {
+        [
+            directed(width, face.width, width > 100.0),
+            style(face, request),
+            weight(request.weight, face.weight),
+        ]
+    };
+    let order = |a: &Face, b: &Face| {
+        rank(a)
+            .into_iter()
+            .zip(rank(b))
+            .map(|(a, b)| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)))
+            .find(|order| !order.is_eq())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    };
+    let Some(best) = faces.iter().rev().min_by(|a, b| order(a, b)) else {
+        return Vec::new();
+    };
+    let mut out: Vec<Face> = faces
+        .iter()
+        .rev()
+        .filter(|f| order(f, best).is_eq())
+        .cloned()
+        .collect();
+    if let Some(at) = out.iter().position(|f| f.covers(0x20)) {
+        let lead = out.remove(at);
+        out.insert(0, lead);
     }
+    out
+}
+
+impl Face {
+    /// The face's `unicode-range` holds `c` (no ranges: every character).
+    pub fn covers(&self, c: u32) -> bool {
+        self.ranges.is_empty() || self.ranges.iter().any(|&(lo, hi)| (lo..=hi).contains(&c))
+    }
+}
+
+/// `unicode-range` descriptor value (css-fonts-4 §4.5): `U+20`, `U+0-7F`,
+/// `U+4??`; an invalid descriptor is dropped and the default `U+0-10FFFF`
+/// applies, given here as an empty list.
+pub fn unicode_ranges(value: Option<&str>) -> Vec<(u32, u32)> {
+    let Some(value) = value else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for part in value.split(',') {
+        let part = part.trim();
+        let Some(body) = part.strip_prefix("U+").or_else(|| part.strip_prefix("u+")) else {
+            return Vec::new();
+        };
+        let hex = |s: &str| u32::from_str_radix(s.trim(), 16).ok();
+        let (lo, hi) = match body.split_once('-') {
+            Some((a, b)) => (hex(a), hex(b)),
+            None if body.contains('?') => {
+                (hex(&body.replace('?', "0")), hex(&body.replace('?', "F")))
+            }
+            None => (hex(body), hex(body)),
+        };
+        match (lo, hi) {
+            (Some(lo), Some(hi)) if lo <= hi => out.push((lo, hi.min(0x10FFFF))),
+            _ => return Vec::new(),
+        }
+    }
+    out
 }
 
 /// Descriptor capabilities override binary style metadata: an oblique/bold

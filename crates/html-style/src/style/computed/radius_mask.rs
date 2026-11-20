@@ -96,7 +96,13 @@ impl Computed {
             Some(l) => l.to_px(None, FontCx::FALLBACK, vcx),
             None => None,
         };
-        if self.reset_context.contain_paint == Some(true)
+        // An overflow clip is the same clip (css-overflow-3 §3: "the overflow
+        // clip edge … shaped by the border radius", css-backgrounds-3 §5.3):
+        // `overflow: hidden` with rounded corners clips its content round.
+        let clips = |o: Option<Overflow>| matches!(o, Some(Overflow::Hidden | Overflow::Clip));
+        let overflow_clip =
+            clips(self.reset_box_layout.overflow_x) || clips(self.reset_box_layout.overflow_y);
+        if (self.reset_context.contain_paint == Some(true) || overflow_clip)
             && shadows_empty
             && self.reset_effects.shadow_raw.is_none()
             && self.reset_border.outline.is_none()

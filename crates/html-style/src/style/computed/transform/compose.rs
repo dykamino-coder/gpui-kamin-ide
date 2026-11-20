@@ -113,8 +113,12 @@ impl Transform {
             ];
             Some(((sx, sy), angle, m))
         };
-        let (mut sa, mut aa, ma) = unmatrix(self.lin)?;
-        let (sb, mut ab, mb) = unmatrix(other.lin)?;
+        let mix = |x: f32, y: f32| x + (y - x) * k;
+        let (Some((mut sa, mut aa, ma)), Some((sb, mut ab, mb))) =
+            (unmatrix(self.lin), unmatrix(other.lin))
+        else {
+            return self.lerp_scales(other, k);
+        };
         if (sa.0 < 0.0 && sb.1 < 0.0) || (sa.1 < 0.0 && sb.0 < 0.0) {
             sa = (-sa.0, -sa.1);
             aa += if aa < 0.0 { PI } else { -PI };
@@ -132,7 +136,6 @@ impl Transform {
                 ab -= TAU;
             }
         }
-        let mix = |x: f32, y: f32| x + (y - x) * k;
         let (sx, sy) = (mix(sa.0, sb.0), mix(sa.1, sb.1));
         let m: [f32; 4] = std::array::from_fn(|i| mix(ma[i], mb[i]));
         let angle = mix(aa, ab);
@@ -163,5 +166,54 @@ impl Transform {
             translate_pct: (tr[0][1], tr[1][2]),
             ..out
         })
+    }
+
+    /// A singular side (`scale(0)`) has no decomposition, but when both linear
+    /// parts are pure axis scales the lists are pairs of the same primitive
+    /// (`translate`/`scale`), which interpolate argument by argument
+    /// (css-transforms-1 §interpolation-of-transforms, step 3) — the same
+    /// result as mixing the diagonal and the shift linearly.
+    fn lerp_scales(&self, other: &Transform, k: f32) -> Option<Transform> {
+        let diagonal = |l: &[[f32; 2]; 2]| l[0][1] == 0.0 && l[1][0] == 0.0;
+        if !diagonal(&self.lin) || !diagonal(&other.lin) {
+            return None;
+        }
+        let mix = |x: f32, y: f32| x + (y - x) * k;
+        let (sx, sy) = (
+            mix(self.lin[0][0], other.lin[0][0]),
+            mix(self.lin[1][1], other.lin[1][1]),
+        );
+        let tr: [[f32; 3]; 2] =
+            std::array::from_fn(|i| std::array::from_fn(|j| mix(self.tr[i][j], other.tr[i][j])));
+        let mut out = Transform::default();
+        out.push(Self::diag(sx, sy), tr);
+        Some(Transform {
+            scale: (sx, sy),
+            translate: (tr[0][0], tr[1][0]),
+            translate_pct: (tr[0][1], tr[1][2]),
+            ..out
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn singular_scale_interpolates_argument_by_argument() {
+        let mut zero = Transform::default();
+        zero.push(Transform::diag(0.0, 0.0), NO_SHIFT);
+        let one = Transform::default();
+        let mid = zero.lerp_2d(&one, 0.25).unwrap();
+        assert_eq!(mid.lin, [[0.25, 0.0], [0.0, 0.25]]);
+        assert_eq!(
+            one.lerp_2d(&zero, 1.0).unwrap().lin,
+            [[0.0, 0.0], [0.0, 0.0]]
+        );
+        // A rotated singular side is not a pair of scales: discrete.
+        let mut skewed = Transform::default();
+        skewed.push([[0.0, 1.0], [0.0, 0.0]], NO_SHIFT);
+        assert!(skewed.lerp_2d(&one, 0.5).is_none());
     }
 }

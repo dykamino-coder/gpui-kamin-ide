@@ -1,6 +1,6 @@
 //! Адаптер вычисленного запроса к нейтральному matching; формулы живут в font_facts.
 
-pub(crate) use crate::font_facts::matching::{Face, range, slope};
+pub(crate) use crate::font_facts::matching::{Face, range, slope, unicode_ranges};
 use crate::style::computed::Computed;
 use crate::values::ValueCx;
 

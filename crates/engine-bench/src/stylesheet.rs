@@ -35,20 +35,22 @@ pub(super) fn load(url: &Url, stack: &mut Vec<Url>) -> Result<String> {
     result
 }
 
+/// End of the string token opened at `start` (css-syntax-3 §4.3.5): the
+/// closing quote, an unescaped newline (a bad-string, which ends there and
+/// costs only its declaration) or the end of the sheet.
 fn quoted_end(text: &str, start: usize) -> Result<usize> {
     let bytes = text.as_bytes();
     let quote = bytes[start];
     let mut i = start + 1;
     while i < bytes.len() {
-        if bytes[i] == b'\\' {
-            i += 2;
-        } else if bytes[i] == quote {
-            return Ok(i + 1);
-        } else {
-            i += 1;
+        match bytes[i] {
+            b'\\' => i += 2,
+            b'\n' | b'\r' | b'\x0c' => return Ok(i),
+            c if c == quote => return Ok(i + 1),
+            _ => i += 1,
         }
     }
-    Err("unterminated CSS string in local stylesheet".into())
+    Ok(bytes.len())
 }
 
 fn url_end(text: &str, start: usize) -> Result<usize> {
@@ -64,6 +66,13 @@ fn url_end(text: &str, start: usize) -> Result<usize> {
     Err("unterminated CSS url() in local stylesheet".into())
 }
 
+/// Bytes an escape at `i` takes outside strings (css-syntax-3 §4.3.7): a
+/// backslash and the code point after it, so an escaped quote (`\'` in a
+/// Tailwind class selector) opens no string.
+fn escape_len(text: &str, i: usize) -> usize {
+    1 + text[i + 1..].chars().next().map_or(0, char::len_utf8)
+}
+
 fn bare(text: &str) -> Result<String> {
     Ok(kamin_html::css::try_unescape(
         text.trim().trim_matches(['\'', '"']),
@@ -77,6 +86,8 @@ pub(super) fn expand(text: &str, base: &Url, stack: &mut Vec<Url>) -> Result<Str
         let tail = &text[i..];
         if tail.starts_with("/*") {
             i += tail.find("*/").map_or(tail.len(), |n| n + 2);
+        } else if tail.as_bytes()[0] == b'\\' {
+            i += escape_len(text, i);
         } else if matches!(tail.as_bytes()[0], b'\'' | b'"') {
             i = quoted_end(text, i)?;
         } else if tail
@@ -151,6 +162,19 @@ mod tests {
         let text = "/* url(no) */ p {content:'url(no)';background:url('data:image/svg+xml,<svg>(x)</svg>')}";
         let base = Url::parse("file:///C:/example/main.css").unwrap();
         assert_eq!(expand(text, &base, &mut vec![]).unwrap(), text);
+    }
+
+    #[test]
+    fn escaped_quotes_and_bad_strings_do_not_swallow_the_sheet() {
+        let base = Url::parse("file:///C:/example/main.css").unwrap();
+        for text in [
+            r".\[\&_svg\:not\(\[class\*\=\'size-\'\]\)\]{width:1px} a{color:red}",
+            r".list-image-\[url\(\'data\:x\'\)\]{list-style:none}",
+            "a{content:'open\n} b{color:red}",
+            "a{content:'open at the end",
+        ] {
+            assert_eq!(expand(text, &base, &mut vec![]).unwrap(), text);
+        }
     }
 
     #[test]

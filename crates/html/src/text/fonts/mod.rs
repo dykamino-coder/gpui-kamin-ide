@@ -15,6 +15,7 @@
 //! Упаковки `woff` и `woff2` — это тот же sfnt: у первой сжаты таблицы, у
 //! второй сверх того перестроены глифы. Распаковку делает крейт `wuff`.
 
+mod face_rename;
 mod face_rules;
 pub(crate) mod fallbacks;
 mod font_faces;

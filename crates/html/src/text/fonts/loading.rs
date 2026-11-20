@@ -119,6 +119,8 @@ pub(super) fn load_faces_into(
             continue;
         };
         let src = crate::resources::url_loader::resolve(&src, base, admission)?;
+        let ranges =
+            super::matching::unicode_ranges(declaration(&block, "unicode-range").as_deref());
         let real = vcx.doc.font_faces.loaded.borrow().get(&src).cloned();
         let real = match real {
             Some(hit) => hit,
@@ -131,6 +133,14 @@ pub(super) fn load_faces_into(
                         .romn_by_src
                         .borrow_mut()
                         .insert(src.clone(), romn);
+                    // A part of a composite face goes in under its own name
+                    // (`face_rename`): its siblings share family and style.
+                    let bytes = if ranges.is_empty() {
+                        bytes
+                    } else {
+                        let family = super::face_rename::private_family(&bytes);
+                        super::face_rename::renamed(&bytes, &family).unwrap_or(bytes)
+                    };
                     crate::text::metrics::load_font(bytes, fonts)
                 });
                 vcx.doc
@@ -200,6 +210,7 @@ pub(super) fn load_faces_into(
                     family: real.clone(),
                     adjust,
                     features,
+                    ranges,
                 });
             if let Some(list) = declaration(&block, "font-feature-settings")
                 .and_then(|v| crate::style::computed::feature_list(&v))

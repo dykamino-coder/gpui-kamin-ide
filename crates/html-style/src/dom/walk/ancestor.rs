@@ -102,6 +102,7 @@ pub(super) fn element_ancestor(
             .map(|r| (r.clone(), sibs.pos)),
         target_group: None,
         target_current: false,
+        checked: tree.form.checked(handle, tag, attrs),
         empty: crate::style::select::is_empty_node(handle),
         foreign: match &handle.data {
             markup5ever_rcdom::NodeData::Element { name, .. } => {

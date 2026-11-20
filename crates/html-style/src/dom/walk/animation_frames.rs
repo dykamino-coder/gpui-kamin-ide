@@ -3,9 +3,9 @@
 //! Вход — стиль элемента, наборы кадров документа и его переменные; выход —
 //! список `(доля, Computed)`, где каждый кадр — объявления поверх базового
 //! стиля (кадр заменяет `transform`, а не дописывает). Считается здесь,
-//! потому что к отрисовке таблицы стилей уже нет. У остановленной анимации
-//! достраиваются `0%`/`100%` (css-animations-1 §keyframes), несколько
-//! остановленных складываются слоями по порядку списка (§3).
+//! потому что к отрисовке таблицы стилей уже нет.
+//! Missing `0%`/`100%` frames are built from the underlying style
+//! (css-animations-1 §keyframes); several frozen animations stack in list order (§3).
 
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, Keyframes, VarMap};
@@ -53,19 +53,10 @@ pub(super) fn animation_frames(
                     (*at, c)
                 })
                 .collect();
-            // Недостающие `0%`/`100%` строятся из вычисленного стиля
-            // (css-animations-1 §keyframes). Только у остановленной:
-            // живая обёртка с таким кадром сделала бы reftest
-            // недетерминированным (`individual-transform-combine`: пять
-            // наборов из одного `to`).
-            if a.frozen() {
-                if resolved.first().is_some_and(|f| f.0 > 0.0) {
-                    resolved.insert(0, (0.0, base.clone()));
-                }
-                if resolved.last().is_some_and(|f| f.0 < 1.0) {
-                    resolved.push((1.0, base.clone()));
-                }
-            }
+            // Missing `0%`/`100%` frames are built from the underlying computed
+            // style (css-animations-1 §keyframes), for running and frozen
+            // animations alike: `to { opacity: 1 }` over `opacity: 0` fades in.
+            close_track(&mut resolved, base);
             (resolved.len() >= 2).then_some(resolved)
         };
         // Несколько остановленных анимаций — слоями по порядку списка
@@ -118,6 +109,18 @@ pub(super) fn animation_frames(
     anim
 }
 
+/// Adds the implicit `0%`/`100%` keyframes (css-animations-1 §keyframes:
+/// "If a 0% or from keyframe is not specified, then the user agent constructs
+/// a 0% keyframe using the computed values of the properties being animated").
+fn close_track(track: &mut Vec<(f32, Computed)>, base: &Computed) {
+    if track.first().is_some_and(|f| f.0 > 0.0) {
+        track.insert(0, (0.0, base.clone()));
+    }
+    if track.last().is_some_and(|f| f.0 < 1.0) {
+        track.push((1.0, base.clone()));
+    }
+}
+
 /// Одно свойство или сокращение и его длинное свойство (`background` и
 /// `background-color`): пока сокращения не раскрыты при разборе, так
 /// узнаётся, что кадр трогает важное свойство.
@@ -132,6 +135,34 @@ fn related(a: &str, b: &str) -> bool {
 mod tests {
     use super::*;
     use crate::style::values::value::Len;
+
+    #[test]
+    fn running_animation_gets_implicit_end_frames_from_the_underlying_style() {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let mut base = Computed::default();
+        base.apply_one("animation", "fade 1s linear", vcx);
+        base.apply_one("opacity", "0", vcx);
+        assert!(!base.reset_context.animation.as_ref().unwrap().frozen());
+        for (track, at) in [
+            (
+                vec![(1.0, crate::style::css::parse_decls("opacity: 1"))],
+                [0.0, 1.0],
+            ),
+            (
+                vec![(0.5, crate::style::css::parse_decls("opacity: 1"))],
+                [0.0, 0.5],
+            ),
+        ] {
+            let tracks = HashMap::from([("fade".into(), track)]);
+            let frames = animation_frames(&base, &tracks, &HashMap::new(), None, vcx).unwrap();
+            assert_eq!(frames.first().unwrap().0, 0.0);
+            assert_eq!(frames.last().unwrap().0, 1.0);
+            assert_eq!(frames[0].1.reset_effects.opacity, Some(0.0));
+            let declared = frames.iter().find(|f| f.0 == at[1]).unwrap();
+            assert_eq!(declared.1.reset_effects.opacity, Some(1.0));
+        }
+    }
 
     #[test]
     fn only_declared_margin_tracks_replace_normalized_flow_edges() {

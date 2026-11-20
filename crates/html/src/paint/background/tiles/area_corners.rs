@@ -13,8 +13,13 @@ pub(super) fn corners(
     c: &Computed,
     clip: Bounds<Pixels>,
 ) -> impl Fn(Bounds<Pixels>) -> Corners<Pixels> {
+    // A percentage resolves against the box (css-backgrounds-3 §5.1); the
+    // circular corner takes the shorter side, and an elliptical one is cut
+    // by the group's radius mask (`Computed::radius_masked`) anyway.
+    let side = f32::from(clip.size.width).min(f32::from(clip.size.height));
     let r = |l: Option<Len>| match l {
         Some(Len::Px(v)) => v.max(0.0),
+        Some(Len::Pct(p)) => (p * side).max(0.0),
         _ => 0.0,
     };
     let radii = [

@@ -31,6 +31,8 @@ pub enum PseudoKind {
     /// `:dir(rtl)` (`true`) or any other direction (`false`).
     Dir(bool),
     TargetCurrent,
+    /// `:checked`: the checkedness kept by `dom::form_state`.
+    Checked,
     Root,
     Empty,
     /// `:lang(…)`; the ranges are read from the text.
@@ -90,6 +92,7 @@ impl PseudoKind {
             ("link", _) => Self::Link,
             ("visited", _) => Self::Visited,
             ("target-current", _) => Self::TargetCurrent,
+            ("checked", _) => Self::Checked,
             ("root", _) => Self::Root,
             ("empty", _) => Self::Empty,
             ("hover" | "active", _) => Self::UserAction,

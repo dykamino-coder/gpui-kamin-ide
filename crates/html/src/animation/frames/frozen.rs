@@ -9,10 +9,8 @@ use crate::values::ValueCx;
 /// кадр `(-delay)/duration` подставляется прямо в стиль, и дальше работает
 /// весь обычный конвейер. `transforms` — нести ли и `rotate`/`scale`/
 /// `transform`: их матрицу строит `transformed()` СНАРУЖИ элемента, от стиля,
-/// который ему передан. Остановленный блочный путь пока
-/// их не берёт: `!important` у нас кадры не перекрывает, а обязан
-/// (css-cascade-5 §cascade-origin) — `translation-animation-on-important-
-/// property` с `transform: none !important` уехала бы на середину пути.
+/// который ему передан. Important declarations are already layered over
+/// each frame when the frames are resolved (css-cascade-5 §cascade-origin).
 pub(crate) fn bake_frozen(e: &Element, transforms: bool, vcx: ValueCx<'_>) -> Option<Element> {
     let own = e.style.used();
     let (Some(frames), Some(spec)) = (e.anim.as_ref(), own.reset_context.animation.as_ref()) else {
