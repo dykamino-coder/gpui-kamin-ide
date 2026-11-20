@@ -101,7 +101,9 @@ describe('Claude effort changed during the chat', () => {
     // The command itself goes to the CLI unchanged.
     expect(f.pasted()).toBe('/effort low')
     expect(f.session.effort).toBe('low')
-    expect(sent).toContainEqual(expect.objectContaining({ type: 'session:model-changed', effort: 'low', inPlace: true }))
+    expect(sent).toContainEqual(
+      expect.objectContaining({ type: 'session:model-changed', effort: 'low', inPlace: true }),
+    )
     send(f.session, 'which effort now?')
     expect(f.pasted()).toContain('Reasoning effort is now `low`')
     // Not a level, or another command: nothing changes.

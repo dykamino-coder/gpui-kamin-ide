@@ -653,7 +653,13 @@ describe('codex chat over the Bridge session WebSocket', () => {
       // Edited while the chat was closed: the resumed thread learns the new text once.
       fs.writeFileSync(path.join(projDir, 'AGENTS.md'), 'Project rule PAG-5512: lint before commit.\n')
       const again = await Client.open(port)
-      again.send({ type: 'session:resume', token: 'tok-a', conversationId: conv, protocolVersion: 1, cwd: '/work/project' })
+      again.send({
+        type: 'session:resume',
+        token: 'tok-a',
+        conversationId: conv,
+        protocolVersion: 1,
+        cwd: '/work/project',
+      })
       expect(await again.next((f) => f.type === 'session:created')).toMatchObject({ engine: 'codex' })
       expect((await recall(again, 'PAG-5512', 's3')).split('Project rule PAG-5512')).toHaveLength(2)
       expect(await recall(again, 'UCM-4410', 's4')).toContain('User rule UCM-4410')
