@@ -45,29 +45,6 @@ fn groups(cx: &mut VisualTestContext) -> Groups {
     (areas, groups)
 }
 
-/// The quads and groups of a new tree built at `offset`, not a replay.
-fn fresh(
-    cx: &mut TestAppContext,
-    html: &str,
-    offset: gpui::Point<Pixels>,
-) -> (Vec<Painted>, Groups) {
-    let mut app = cx.clone();
-    let (view, fresh) = open(&mut app, html);
-    root(&view, fresh).set_offset(offset);
-    fresh.update(|_, cx| {
-        view.update(cx, |view, cx| {
-            view.document
-                .update(&format!("{html}<!-- fresh -->"), "")
-                .unwrap();
-            cx.notify();
-        })
-    });
-    frame(fresh);
-    frame(fresh);
-    assert_eq!(root(&view, fresh).offset(), offset);
-    (painted(fresh), groups(fresh))
-}
-
 #[gpui::test]
 fn wheel_steps_replay_a_frame_with_composition_groups_without_a_build(cx: &mut TestAppContext) {
     let html = rows(STYLE);
@@ -88,7 +65,8 @@ fn wheel_steps_replay_a_frame_with_composition_groups_without_a_build(cx: &mut T
         // The event's own frame replays the step, the next one replays still.
         let misses = vcx.update(|_, cx| view.read(cx).document.take_frame_misses());
         assert_eq!((b1 - b0, r1 - r0), (0, 2), "{name}: built for {misses:?}");
-        let (quads, reference) = fresh(cx, &html, root(&view, vcx).offset());
+        let offset = root(&view, vcx).offset();
+        let (quads, reference) = fresh_with(cx, &html, offset, |c| (painted(c), groups(c)));
         assert_same(&name, &painted(vcx), &quads);
         assert_eq!(groups(vcx), reference, "{name}: groups");
     }

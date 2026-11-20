@@ -27,6 +27,16 @@ fn frames(view: &Entity<DocumentView>, cx: &mut VisualTestContext) -> (u64, u64)
 
 /// The quads of a new tree built at `offset`, not a replay.
 fn fresh_quads(cx: &mut TestAppContext, html: &str, offset: gpui::Point<Pixels>) -> Vec<Painted> {
+    fresh_with(cx, html, offset, painted)
+}
+
+/// What `read` reads from the frame of a new tree built at `offset`.
+fn fresh_with<T>(
+    cx: &mut TestAppContext,
+    html: &str,
+    offset: gpui::Point<Pixels>,
+    read: impl FnOnce(&mut VisualTestContext) -> T,
+) -> T {
     let mut app = cx.clone();
     let (view, fresh) = open(&mut app, html);
     root(&view, fresh).set_offset(offset);
@@ -41,7 +51,7 @@ fn fresh_quads(cx: &mut TestAppContext, html: &str, offset: gpui::Point<Pixels>)
     frame(fresh);
     frame(fresh);
     assert_eq!(root(&view, fresh).offset(), offset);
-    painted(fresh)
+    read(fresh)
 }
 
 fn assert_same(step: &str, after: &[Painted], fresh: &[Painted]) {
