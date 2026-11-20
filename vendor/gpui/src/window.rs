@@ -1087,6 +1087,9 @@ pub(crate) struct Frame {
     pub(crate) scroll_paint: scroll_nodes::PaintPairing,
     /// KaminIDE patch: hitboxes inserted under scroll nodes (`scroll_masks`).
     pub(crate) scroll_hitboxes: Vec<scroll_masks::HitboxMark>,
+    /// KaminIDE patch: paint that follows a scroll offset outside its node
+    /// (`paint_scroll_dependent`), with its scene index.
+    pub(crate) scroll_dependents: Vec<(scroll_nodes::ScrollNodeId, usize, crate::scene::scroll_marks::SceneSpace)>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
     /// KaminIDE patch: views drawn isolated in this frame.
     pub(crate) isolated_views: FxHashSet<EntityId>,
@@ -1242,6 +1245,7 @@ impl Frame {
             scroll_node_stack: Vec::new(),
             scroll_paint: Default::default(),
             scroll_hitboxes: Vec::new(),
+            scroll_dependents: Vec::new(),
             deferred_draws: Vec::new(),
             isolated_views: FxHashSet::default(),
             input_handlers: Vec::new(),
@@ -1279,6 +1283,7 @@ impl Frame {
         self.scroll_node_stack.clear();
         self.scroll_paint.clear();
         self.scroll_hitboxes.clear();
+        self.scroll_dependents.clear();
         self.deferred_draws.clear();
         self.isolated_views.clear();
         self.tab_stops.clear();
@@ -4581,11 +4586,17 @@ impl Window {
         // KaminIDE patch: a range recorded inside a scene layer is in its scene.
         let scenes = range.start.scene_index..range.end.scene_index;
         let landed = self.next_frame.scene.paint_operations.len();
-        match self.replay_source() {
-            Some(source) => self.next_frame.scene.replay(scenes.clone(), source.scene()),
-            None => self.next_frame.scene.replay(scenes.clone(), &self.rendered_frame.scene),
-        }
-        self.land_scroll_nodes(scenes, landed);
+        let from = match self.replay_source() {
+            Some(source) => {
+                self.next_frame.scene.replay(scenes.clone(), source.scene());
+                source.scene().scroll.space
+            }
+            None => {
+                self.next_frame.scene.replay(scenes.clone(), &self.rendered_frame.scene);
+                self.rendered_frame.scene.scroll.space
+            }
+        };
+        self.land_scroll_paint(scenes, landed, from);
     }
 
     /// KaminIDE patch: read the host context of type `T` for this traversal.

@@ -86,7 +86,7 @@ fn scrolled(
     to: f32,
 ) -> Option<(RetainedPrepaint, RetainedPaint)> {
     handle.set_offset(point(px(0.), px(to)));
-    let plan = window.plan_scrolled_replay(records.0, records.1)?;
+    let plan = window.plan_scrolled_replay(records.0, records.1, None)?;
     window.invalidator.set_phase(DrawPhase::Prepaint);
     let prepaint = window.replay_retained_prepaint_scrolled(records.0, &plan);
     window.invalidator.set_phase(DrawPhase::Paint);
@@ -189,7 +189,7 @@ fn nested_nodes_and_anchors_follow_their_parent(cx: &mut TestAppContext) {
             next_frame(window);
             outer.set_offset(point(px(0.), px(-20.)));
             fixed_at.set(point(px(0.), px(20.)));
-            let plan = window.plan_scrolled_replay(&prepaint, &paint).expect("inside the interest rect");
+            let plan = window.plan_scrolled_replay(&prepaint, &paint, None).expect("inside the interest rect");
             window.invalidator.set_phase(DrawPhase::Prepaint);
             window.replay_retained_prepaint_scrolled(&prepaint, &plan);
             window.invalidator.set_phase(DrawPhase::Paint);
@@ -231,7 +231,7 @@ fn an_unmarked_command_under_a_node_needs_a_build(cx: &mut TestAppContext) {
             });
             next_frame(window);
             handle.set_offset(point(px(0.), px(-10.)));
-            assert!(window.plan_scrolled_replay(&prepaint, &paint).is_none());
+            assert!(window.plan_scrolled_replay(&prepaint, &paint, None).is_none());
         })
         .unwrap();
 }
@@ -287,7 +287,7 @@ fn scrolled_replay_cost(cx: &mut TestAppContext) {
                     next_frame(window);
                     let started = std::time::Instant::now();
                     handle.set_offset(point(px(0.), px(-120. * step as f32)));
-                    let plan = window.plan_scrolled_replay(&prepaint, &paint).expect("inside the interest");
+                    let plan = window.plan_scrolled_replay(&prepaint, &paint, None).expect("inside the interest");
                     planned.push(started.elapsed().as_secs_f64() * 1000.);
                     window.invalidator.set_phase(DrawPhase::Prepaint);
                     let p = window.replay_retained_prepaint_scrolled(&prepaint, &plan);

@@ -46,6 +46,17 @@ impl RetainedPaint {
         self.range.start.unpack()..self.range.end.unpack()
     }
 
+    /// This record's frame state (listeners, element states, ...) with the
+    /// commands of `inner`, recorded inside the scene layer this record drew:
+    /// `inner` indexes that layer's scene, which a plain replay of this record
+    /// keeps, while the frame state moves with each replay.
+    pub fn in_layer(&self, inner: &RetainedPaint) -> RetainedPaint {
+        let (mut range, layer) = (self.range(), inner.range());
+        range.start.scene_index = layer.start.scene_index;
+        range.end.scene_index = layer.end.scene_index;
+        RetainedPaint::of(range, self.replayable && inner.replayable, self.allowed)
+    }
+
     /// Whether these commands can be copied into a later frame unchanged.
     /// Composition groups live outside the command list (`Scene::groups`) and
     /// isolated scenes are discarded by their owner, so neither replays.

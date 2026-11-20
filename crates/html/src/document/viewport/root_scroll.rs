@@ -7,6 +7,15 @@ use std::cell::Cell;
 pub(crate) struct RootScroll {
     pub(crate) handle: ScrollHandle,
     pub(crate) axes: Cell<[bool; 2]>,
+    /// Inputs that only moved the offset (a scroll key): the document frame
+    /// does not count them as interaction (`WindowKey::capture`) and
+    /// replays them through its scroll nodes.
+    pub(crate) scroll_inputs: Cell<u64>,
+    /// The document's frame element draws the bars (`RootBars`): set by it
+    /// before its tree prepaints.
+    pub(crate) hosted: Cell<bool>,
+    /// The bars of the last built frame.
+    pub(crate) bars: std::cell::RefCell<Option<std::rc::Rc<crate::interactive::scroll_area::RootBars>>>,
 }
 
 impl RootScroll {
@@ -49,6 +58,7 @@ impl RootScroll {
             return false;
         }
         handle.set_offset(next);
+        self.scroll_inputs.set(self.scroll_inputs.get().wrapping_add(1));
         true
     }
 }

@@ -15,6 +15,19 @@
 use super::*;
 use crate::ScrollHandle;
 
+use crate::scene::{PaintOperation, scroll_marks::SceneSpace};
+
+/// The scenes of the layers `operations` draw (`scene::layer`).
+fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
+    operations
+        .iter()
+        .filter_map(|operation| match operation {
+            PaintOperation::Layer(op) => op.cell.upgrade().map(|cell| cell.content.borrow().scene().scroll.space),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Identity of a scroll node across frames: the scroll handle's shared state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ScrollNodeId(pub(crate) usize);
@@ -57,8 +70,32 @@ pub(crate) struct ScrollNodeRecord {
     pub(crate) source: NodeSource,
     /// Scene commands of the node's children; empty until they paint.
     pub(crate) paint: Option<Range<usize>>,
+    /// The scene `paint` counts in: a layer's while one records.
+    pub(crate) painted_in: Option<SceneSpace>,
+    /// Paint of the children deferred out of `paint` and run later under the
+    /// node again (`PaintCtx` replays): more ranges of the same scene.
+    pub(crate) more: Vec<Range<usize>>,
+    /// Deferred paint of the children landed in another scene than `paint`:
+    /// a scrolled replay cannot move it.
+    pub(crate) torn: bool,
     /// Paired with a paint that has not ended yet.
     pub(crate) pending: bool,
+}
+
+impl ScrollNodeRecord {
+    /// Take a landed paint range: the node's `paint` or one of `more`.
+    pub(crate) fn land(&mut self, range: Range<usize>, space: SceneSpace, main: bool) {
+        if main {
+            (self.paint, self.painted_in) = (Some(range), Some(space));
+        } else {
+            self.more.push(range);
+        }
+    }
+
+    /// All its paint ranges.
+    pub(crate) fn ranges(&self) -> impl Iterator<Item = Range<usize>> + '_ {
+        self.paint.iter().cloned().chain(self.more.iter().cloned())
+    }
 }
 
 /// The offset of a scroll node in the current state (`plan_scrolled_replay`).
@@ -93,7 +130,8 @@ pub(crate) struct PaintPairing {
     cursor: usize,
     /// Copied nodes waiting for the paint range that holds them: index and
     /// scene range in the rendered frame (`reuse_scroll_nodes`).
-    pub(crate) landing: Vec<(u32, Range<usize>)>,
+    /// The last field: whether the range is the node's `paint` (else one of `more`).
+    pub(crate) landing: Vec<(u32, Range<usize>, SceneSpace, bool)>,
     /// Content mask depth under each open prepaint node.
     pub(crate) depths: Vec<usize>,
     /// Open paint nodes and the content mask depth under each.
@@ -201,6 +239,9 @@ impl Window {
             anchored,
             source,
             paint: None,
+            painted_in: None,
+            more: Vec::new(),
+            torn: false,
             pending: false,
         });
         self.next_frame.scroll_node_stack.push(index);
@@ -235,12 +276,48 @@ impl Window {
         frame.scroll_paint.cursor = frame.scroll_paint.cursor.max(index + 1);
         let start = frame.scene.paint_operations.len();
         frame.scroll_nodes[index].paint = Some(start..start);
+        frame.scroll_nodes[index].painted_in = Some(frame.scene.scroll.space);
         frame.scroll_nodes[index].pending = true;
         let interest = frame.scroll_nodes[index].interest;
         self.open_interest(interest, true);
         let depth = self.content_mask_stack.len() - 1;
         self.next_frame.scroll_paint.open.push((index as u32, depth));
         Some(index as u32)
+    }
+
+    /// Enter or leave (alternating, as a `PaintCtx` replay swaps its state in
+    /// and out) the scroll node `node` that painted when the context was
+    /// captured: paint deferred out of a node's children (positioned and
+    /// inline jobs) runs under it again, its primitives marked under it, and
+    /// what it painted becomes one more range of the node. A node whose
+    /// paint is still open holds that range already; one in another scene is
+    /// torn (`plan_scrolled_replay` then builds).
+    pub(crate) fn reenter_scroll_node(
+        &mut self,
+        node: Option<(u32, usize)>,
+        reentry: &mut Option<(usize, SceneSpace)>,
+        swapped: &mut bool,
+    ) {
+        let Some(node) = node else { return };
+        let frame = &mut self.next_frame;
+        let (ops, space) = (frame.scene.paint_operations.len(), frame.scene.scroll.space);
+        *swapped = !*swapped;
+        if *swapped {
+            frame.scroll_paint.open.push(node);
+            *reentry = Some((ops, space));
+            return;
+        }
+        frame.scroll_paint.open.pop();
+        let Some((start, began)) = reentry.take() else { return };
+        let record = &mut frame.scroll_nodes[node.0 as usize];
+        if ops <= start || record.pending {
+            return;
+        }
+        if record.painted_in == Some(space) && began == space {
+            record.more.push(start..ops);
+        } else {
+            record.torn = true;
+        }
     }
 
     /// End the paint started by `begin_scroll_node_paint`.
@@ -286,35 +363,69 @@ impl Window {
             self.next_frame.scroll_nodes.push(ScrollNodeRecord {
                 parent,
                 paint: None,
+                painted_in: None,
+                more: Vec::new(),
                 pending: false,
                 ..node.clone()
             });
-            if let Some(paint) = &node.paint {
-                self.next_frame.scroll_paint.landing.push((new_index(old.start + at), paint.clone()));
+            if let (Some(paint), Some(space)) = (&node.paint, node.painted_in) {
+                let index = new_index(old.start + at);
+                let landing = &mut self.next_frame.scroll_paint.landing;
+                landing.push((index, paint.clone(), space, true));
+                landing.extend(node.more.iter().map(|more| (index, more.clone(), space, false)));
             }
         }
     }
 
-    /// `reuse_paint` of the rendered scene's `scenes` landed at `landed`: the
-    /// copied nodes painted in it take the moved range. A copy that was not
-    /// one-to-one leaves them unpainted (not listed as segments).
-    pub(crate) fn land_scroll_nodes(&mut self, scenes: Range<usize>, landed: usize) {
+    /// `reuse_paint` of `scenes` of the scene in space `from` landed at
+    /// `landed`: the copied nodes and dependents painted in it take the moved
+    /// range. A copy that was not one-to-one leaves them unpainted (not
+    /// listed as segments). Ranges in the scene of a layer the copy draws
+    /// (the layer's one command) stay: the layer holds them as they were.
+    pub(crate) fn land_scroll_paint(&mut self, scenes: Range<usize>, landed: usize, from: SceneSpace) {
         let frame = &mut self.next_frame;
-        if frame.scroll_paint.landing.is_empty() {
+        let foreign = |space: SceneSpace| space != from;
+        let dependents = &self.rendered_frame.scroll_dependents;
+        if frame.scroll_paint.landing.is_empty() && dependents.is_empty() {
             return;
         }
         let exact = frame.scene.paint_operations.len() - landed == scenes.len();
+        let here = frame.scene.scroll.space;
+        let layers: Vec<SceneSpace> = if frame.scroll_paint.landing.iter().any(|entry| foreign(entry.2))
+            || dependents.iter().any(|entry| foreign(entry.2))
+        {
+            layer_spaces(&frame.scene.paint_operations[landed..])
+        } else {
+            Vec::new()
+        };
+        let inside = |paint: &Range<usize>| paint.start >= scenes.start && paint.end <= scenes.end;
+        let map = |at: usize| landed + at - scenes.start;
         let nodes = &mut frame.scroll_nodes;
-        frame.scroll_paint.landing.retain(|(index, paint)| {
-            if paint.start < scenes.start || paint.end > scenes.end {
+        frame.scroll_paint.landing.retain(|(index, paint, space, main)| {
+            let node = &mut nodes[*index as usize];
+            if layers.contains(space) {
+                node.land(paint.clone(), *space, *main);
+                return false;
+            }
+            if foreign(*space) || !inside(paint) {
                 return true;
             }
             if exact {
-                let at = landed + paint.start - scenes.start;
-                nodes[*index as usize].paint = Some(at..at + paint.len());
+                node.land(map(paint.start)..map(paint.end), here, *main);
             }
             false
         });
+        let landed: Vec<_> = dependents
+            .iter()
+            .filter_map(|&(id, at, space)| {
+                if layers.contains(&space) {
+                    Some((id, at, space))
+                } else {
+                    (exact && !foreign(space) && scenes.contains(&at)).then(|| (id, map(at), here))
+                }
+            })
+            .collect();
+        frame.scroll_dependents.extend(landed);
     }
     /// The scroll nodes of the rendered frame inside a record made in it:
     /// both ranges of each node lie within the record's, outermost first, each

@@ -36,6 +36,9 @@ impl Wrap for Stationary {
         });
     }
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        // Cancels the scroll offset outside the scroll node's clip: a replay
+        // that moves the node needs a build.
+        window.paint_scroll_dependent(&self.handle);
         let clip = self.clip.get().unwrap_or_else(|| window.content_mask());
         window.with_content_mask_replaced(clip, |window| self.child.paint(window, cx));
     }

@@ -6,7 +6,8 @@
 //! is drawn and hit-tested with own mask ∩ the node's real clip chain.
 
 use super::*;
-use crate::scene::Primitive;
+use crate::ScrollHandle;
+use crate::scene::{Primitive, scroll_marks::SceneSpace};
 
 /// The scroll node and own mask of a hitbox inserted under it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,5 +81,34 @@ impl Window {
             }
             None => (mask, None),
         }
+    }
+
+    /// Paint something that depends on `handle`'s offset outside its node
+    /// (a scrollbar thumb): a scrolled replay of a record holding it while
+    /// that node moved needs a build (`plan_scrolled_replay`).
+    pub fn paint_scroll_dependent(&mut self, handle: &ScrollHandle) {
+        let at = self.next_frame.scene.paint_operations.len();
+        let space = self.next_frame.scene.scroll.space;
+        self.next_frame.scroll_dependents.push((ScrollNodeId::of(handle), at, space));
+    }
+
+    /// `paint_scroll_dependent` for the innermost scroll node painting now
+    /// (a sticky box: its place follows that scroller's offset).
+    pub fn paint_dependent_on_open_scroll_node(&mut self) {
+        let frame = &mut self.next_frame;
+        if let Some(&(index, _)) = frame.scroll_paint.open.last() {
+            let id = frame.scroll_nodes[index as usize].id;
+            let at = frame.scene.paint_operations.len();
+            frame.scroll_dependents.push((id, at, frame.scene.scroll.space));
+        }
+    }
+
+    /// Whether a dependent painted in `scenes` of the rendered frame belongs
+    /// (in scene `space`) to a node `moved` says moved.
+    pub(crate) fn scroll_dependents_moved(&self, space: SceneSpace, scenes: &Range<usize>, moved: impl Fn(ScrollNodeId) -> bool) -> bool {
+        self.rendered_frame
+            .scroll_dependents
+            .iter()
+            .any(|&(id, at, of)| of == space && scenes.contains(&at) && moved(id))
     }
 }

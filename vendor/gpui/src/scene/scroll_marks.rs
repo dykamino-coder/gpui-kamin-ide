@@ -30,10 +30,25 @@ pub(crate) struct ScrollMark {
     pub(crate) raised: DrawOrder,
 }
 
+/// Which scene a command index counts in: each scene has its own, kept by
+/// a copy of the scene (a layer's content written while a frame holds it).
+/// A scroll node painted while a layer records has its range in the layer's
+/// scene, not the frame's (`Window::begin_scroll_node_paint`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SceneSpace(u32);
+
+impl Default for SceneSpace {
+    fn default() -> Self {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
 /// The scroll marks of a scene, sorted by command.
 #[derive(Default)]
 pub(crate) struct ScrollBook {
     pub(crate) marks: Vec<ScrollMark>,
+    pub(crate) space: SceneSpace,
     /// The node a primitive inserted now paints under, with that node's real
     /// clip chain (set by `Window::insert_scene_primitive` around one insert).
     pub(crate) open: Option<(ScrollNodeId, Bounds<ScaledPixels>)>,

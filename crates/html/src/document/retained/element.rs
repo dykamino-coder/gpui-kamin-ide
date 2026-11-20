@@ -31,6 +31,9 @@ pub(super) struct Retained {
     replay: bool,
     /// The scroll nodes of the replayed record moved (`prepaint` to `paint`).
     scroll_plan: Option<gpui::ScrollReplay>,
+    /// The root scrollport's bars and their hit areas this frame, drawn
+    /// after the record (`RootBars`).
+    root_bars: Option<RootBarsNow>,
     /// Дерево собрано и разложено шагом документа до кадра (`prepared`) для
     /// элемента документа под этим местом в кадре: коробка области просмотра
     /// — лист её размера.
@@ -58,6 +61,7 @@ impl Retained {
                 scheduled: prepared.scheduled,
                 replay: false,
                 scroll_plan: None,
+                root_bars: None,
                 laid_out: Some(prepared.parent),
             };
         }
@@ -78,6 +82,7 @@ impl Retained {
             scheduled: 0,
             replay: false,
             scroll_plan: None,
+            root_bars: None,
             laid_out: None,
         }
     }
@@ -147,7 +152,45 @@ impl Element for Retained {
         cx: &mut App,
     ) {
         let Some(id) = id else { return };
-        let key = WindowKey::capture(bounds, window, cx);
+        if let Some(root) = &self.builder.state.root_scroll {
+            root.hosted.set(true);
+        }
+        self.prepaint_record(id, bounds, window, cx);
+        // After the record: hit areas of the bars at the offset now.
+        let bars = self.builder.state.root_scroll.as_ref().and_then(|root| root.bars.borrow().clone());
+        self.root_bars = bars.map(|bars| {
+            let hits = bars.prepaint(window);
+            (bars, hits)
+        });
+    }
+
+    fn paint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let Some(id) = id else { return };
+        self.paint_record(id, window, cx);
+        if let Some((bars, hits)) = self.root_bars.take() {
+            bars.paint(&hits, window);
+        }
+    }
+}
+
+type RootBarsNow = (
+    Rc<crate::interactive::scroll_area::RootBars>,
+    Vec<crate::interactive::scrollbars::interaction::HitBar>,
+);
+
+impl Retained {
+    fn prepaint_record(&mut self, id: &GlobalElementId, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let scroll_inputs =self.builder.state.root_scroll.as_ref().map_or(0, |root| root.scroll_inputs.get());
+        let key = WindowKey::capture(bounds, window, cx, scroll_inputs);
         let root = window.retained_root_environment();
         // A document under its root scroller records past the viewport, so a
         // wheel step replays the frame moved (`gpui::Window::plan_scrolled_replay`).
@@ -166,7 +209,13 @@ impl Element for Retained {
                 if !window.retained_scrolled(&r.prepaint) {
                     return true;
                 }
-                plan = window.plan_scrolled_replay(&r.prepaint, &r.paint);
+                // A layered record copies from the document's layer.
+                let layer = self.builder.scene_layer();
+                plan = match (&r.layered, &layer) {
+                    (Some(inner), Some(layer)) => window.plan_scrolled_replay(&r.prepaint, &r.paint.in_layer(inner), Some(layer)),
+                    (Some(_), None) => None,
+                    (None, _) => window.plan_scrolled_replay(&r.prepaint, &r.paint, None),
+                };
                 plan.is_some()
             });
             if let Some(r) = &record
@@ -222,6 +271,7 @@ impl Element for Retained {
                 window: Some(key),
                 prepaint,
                 paint: RetainedPaint::default(),
+                layered: None,
                 root,
                 settled: false,
             };
@@ -230,31 +280,25 @@ impl Element for Retained {
         });
     }
 
-    fn paint(
-        &mut self,
-        id: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let Some(id) = id else { return };
+    fn paint_record(&mut self, id: &GlobalElementId, window: &mut Window, cx: &mut App) {
         window.with_element_state::<Record, _>(id, |record, window| {
             let mut record = record.unwrap_or_default();
             if self.replay {
-                record.paint = match self.scroll_plan.take() {
-                    Some(plan) => window.replay_retained_paint_scrolled(&record.paint, &plan),
-                    None => window.replay_retained_paint(&record.paint),
-                };
+                match (self.scroll_plan.take(), record.layered.clone()) {
+                    (Some(plan), Some(inner)) => {
+                        (record.paint, record.layered) = self.builder.replay_paint_scrolled(window, &record.paint.in_layer(&inner), &plan);
+                    }
+                    (Some(plan), None) => record.paint = window.replay_retained_paint_scrolled(&record.paint, &plan),
+                    (None, _) => record.paint = window.replay_retained_paint(&record.paint),
+                }
                 return ((), record);
             }
             let Some(tree) = self.tree.as_mut() else {
                 return ((), record);
             };
             let before = window.next_frame_callback_count();
-            let paint = self.builder.record_paint(window, |w| tree.paint(w, cx));
+            let (paint, layered) = self.builder.record_paint(window, |w| tree.paint(w, cx));
+            record.layered = layered;
             if let Some(flow) = &self.flow {
                 flow.finish();
             }

@@ -21,7 +21,9 @@ pub(super) struct WindowKey {
 }
 
 impl WindowKey {
-    pub(super) fn capture(bounds: Bounds<Pixels>, window: &Window, cx: &App) -> Self {
+    /// `scroll_inputs`: inputs so far that only moved the root scroller
+    /// (`RootScroll::key`); the frame replays them through its scroll nodes.
+    pub(super) fn capture(bounds: Bounds<Pixels>, window: &Window, cx: &App, scroll_inputs: u64) -> Self {
         Self {
             bounds,
             content_mask: window.content_mask(),
@@ -29,7 +31,7 @@ impl WindowKey {
             offset: window.element_offset(),
             scale: window.scale_factor(),
             rem: window.rem_size(),
-            interaction: window.interaction_epoch(),
+            interaction: window.interaction_epoch().wrapping_sub(scroll_inputs),
             active: window.is_window_active(),
             appearance: window.appearance(),
             elapsed: cx.try_global::<gpui::AnimationElapsedTime>().map(|t| t.0),

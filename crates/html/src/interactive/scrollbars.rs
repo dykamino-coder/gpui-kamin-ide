@@ -34,6 +34,10 @@ pub(crate) fn paint(
 ) {
     if uses_modern(c) {
         let bars = modern::bars(c, handle, selected, range, insets, bounds);
+        // The thumb follows the offset outside the scroll node.
+        if alpha > 0.0 {
+            window.paint_scroll_dependent(handle);
+        }
         modern::paint(c, &bars, alpha, window);
         return;
     }
@@ -41,6 +45,9 @@ pub(crate) fn paint(
     let width = c.reset_box_layout.scroll.thickness();
     if width == 0.0 || c.inh.ui.hidden == Some(true) {
         return;
+    }
+    if bars.iter().any(|shown| *shown) {
+        window.paint_scroll_dependent(handle);
     }
     let edges = c.borders();
     let edge = |v| match v {

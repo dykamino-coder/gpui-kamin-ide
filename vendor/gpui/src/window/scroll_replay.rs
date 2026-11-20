@@ -9,6 +9,7 @@
 //! recorded for (its interest rect, moved with it); otherwise the host builds.
 
 use super::*;
+use crate::scene::LayerHandle;
 use collections::FxHashMap;
 
 /// A planned scrolled replay: per node of the record, in record order, its
@@ -62,10 +63,15 @@ impl Window {
     /// record must be built instead: a node's new clip shows content outside
     /// what was recorded, or the record holds commands a moved copy cannot
     /// place (unmarked copies, layers, depth sorting, deferred draws).
+    ///
+    /// `layer`: the record's paint was made inside that scene layer (`paint`
+    /// indexes its scene), and the replay paints a new layer from it
+    /// (`replay_retained_paint_scrolled` while that layer is the source).
     pub fn plan_scrolled_replay(
         &self,
         prepaint: &RetainedPrepaint,
         paint: &RetainedPaint,
+        layer: Option<&LayerHandle>,
     ) -> Option<ScrollReplay> {
         let (prepaints, paints) = (prepaint.range(), paint.range());
         let scene = &self.next_frame.scene;
@@ -77,13 +83,19 @@ impl Window {
         {
             return None;
         }
+        let content = layer.map(LayerHandle::content);
+        let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
+        let space = source.scroll.space;
         let first = prepaints.start.scroll_nodes_index;
         let records = &self.rendered_frame.scroll_nodes[first..prepaints.end.scroll_nodes_index];
         let scenes = paints.start.scene_index..paints.end.scene_index;
         let mut plan = ScrollReplay { nodes: Vec::with_capacity(records.len()), by_id: FxHashMap::default() };
         for node in records {
-            let painted = node.paint.clone()?;
-            if painted.start < scenes.start || painted.end > scenes.end {
+            // Every paint range of the node in the record's scene, deferred ones too.
+            if node.paint.is_none() || node.painted_in != Some(space) || node.torn {
+                return None;
+            }
+            if node.ranges().any(|painted| painted.start < scenes.start || painted.end > scenes.end) {
                 return None;
             }
             let new = node.source.offset();
@@ -107,8 +119,13 @@ impl Window {
             plan.by_id.insert(node.id, plan.nodes.len());
             plan.nodes.push(PlannedNode { offset: new, shift, clip, chain, interest });
         }
-        let nodes = records.iter().filter_map(|node| node.paint.clone());
-        self.rendered_frame.scene.scrollable(&scenes, nodes).then_some(plan)
+        // Paint that follows a moved node's offset outside it (a thumb).
+        let moved = |id: ScrollNodeId| plan.by_id.get(&id).is_some_and(|&at| plan.nodes[at].shift != Point::default());
+        if self.scroll_dependents_moved(space, &scenes, moved) {
+            return None;
+        }
+        let nodes = records.iter().flat_map(|node| node.ranges());
+        source.scrollable(&scenes, nodes).then_some(plan)
     }
 
     /// `replay_retained_prepaint` of a planned scrolled replay: hitboxes
@@ -149,21 +166,38 @@ impl Window {
         let scenes = range.start.scene_index..range.end.scene_index;
         let scale = self.scale_factor();
         let scaled = |point: Point<Pixels>| point.scale(scale);
+        // The record's scene: the source layer's while one records
+        // (`plan_scrolled_replay` with a layer), else the rendered frame's.
+        let layer = self.replay_source();
+        let space = layer.as_deref().map_or(self.rendered_frame.scene.scroll.space, |layer| layer.scene().scroll.space);
+        let here = self.next_frame.scene.scroll.space;
         // The copied nodes' scene ranges, mapped through the replay.
         let landing = std::mem::take(&mut self.next_frame.scroll_paint.landing);
-        let (mine, others): (Vec<_>, Vec<_>) =
-            landing.into_iter().partition(|(_, paint)| paint.start >= scenes.start && paint.end <= scenes.end);
+        let (mine, others): (Vec<_>, Vec<_>) = landing
+            .into_iter()
+            .partition(|(_, paint, of, _)| *of == space && paint.start >= scenes.start && paint.end <= scenes.end);
         self.next_frame.scroll_paint.landing = others;
-        let mut edges: Vec<(usize, usize)> = mine.iter().flat_map(|(_, paint)| [(paint.start, 0), (paint.end, 0)]).collect();
+        let mut edges: Vec<(usize, usize)> = mine.iter().flat_map(|(_, paint, _, _)| [(paint.start, 0), (paint.end, 0)]).collect();
+        let dependents: Vec<(ScrollNodeId, usize)> = self
+            .rendered_frame
+            .scroll_dependents
+            .iter()
+            .filter(|&&(_, at, of)| of == space && scenes.contains(&at))
+            .map(|&(id, at, _)| (id, at))
+            .collect();
+        edges.extend(dependents.iter().map(|&(_, at)| (at, 0)));
         edges.sort_unstable();
         edges.dedup();
-        self.next_frame.scene.replay_scrolled(scenes, &self.rendered_frame.scene, |id| {
+        let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
+        self.next_frame.scene.replay_scrolled(scenes, source, |id| {
             let node = plan.node(id);
             (scaled(node.shift), node.clip.scale(scale))
         }, &mut edges);
         let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
-        for (index, paint) in mine {
-            self.next_frame.scroll_nodes[index as usize].paint = Some(land(paint.start)..land(paint.end));
+        let landed: Vec<_> = dependents.iter().map(|&(id, at)| (id, land(at), here)).collect();
+        self.next_frame.scroll_dependents.extend(landed);
+        for (index, paint, _, main) in mine {
+            self.next_frame.scroll_nodes[index as usize].land(land(paint.start)..land(paint.end), here, main);
         }
         self.allow_replayed(record);
         RetainedPaint::of(start..self.paint_index(), true, record.allowed)
