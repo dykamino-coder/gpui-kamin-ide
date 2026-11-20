@@ -8230,7 +8230,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..302f0b0e32cda4407a2f57be6d8105ce65e728a6
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..ccfbfc5ddbb89602b50381811f0b4dfa5a0857fc
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -8539,9 +8539,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..302f0b0e32cda4407a2f57be6d8105ce
 +    }
 +
 +    /// Record a box whose decorations also paint in child elements.
-+    pub fn decorated_paint_owner(mut self, owner: u32) -> Self {
++    pub fn decorated_paint_owner(mut self, owner: u32, outset: Pixels) -> Self {
 +        self.interactivity.paint_owner = owner;
-+        self.interactivity.box_run = crate::scene::BoxContents::DecoratedBox;
++        self.interactivity.box_run = crate::scene::BoxContents::DecoratedBox(outset);
 +        self
 +    }
 +
@@ -15376,7 +15376,7 @@ index 0000000000000000000000000000000000000000..11424f2c1b223888b2f1580f4774a928
 +mod clipped_tests;
 diff --git a/vendor/gpui/src/scene/layer/boxes.rs b/vendor/gpui/src/scene/layer/boxes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9c756df7d454801750deec9699a4fe4876ea166c
+index 0000000000000000000000000000000000000000..83581a398187597f6a12043a42f7bb0a197b7970
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/boxes.rs
 @@ -0,0 +1,199 @@
@@ -15412,7 +15412,7 @@ index 0000000000000000000000000000000000000000..9c756df7d454801750deec9699a4fe48
 +#[derive(Clone, Copy, Debug)]
 +pub(crate) enum BoxContents {
 +    Own,
-+    DecoratedBox,
++    DecoratedBox(Pixels),
 +    External,
 +}
 +
@@ -15426,7 +15426,7 @@ index 0000000000000000000000000000000000000000..9c756df7d454801750deec9699a4fe48
 +    pub(crate) fn kind(self) -> LayerPainter {
 +        match self {
 +            Self::Box(BoxContents::Own) => LayerPainter::Box,
-+            Self::Box(BoxContents::DecoratedBox) => LayerPainter::DecoratedBox,
++            Self::Box(BoxContents::DecoratedBox(_)) => LayerPainter::DecoratedBox,
 +            Self::Box(BoxContents::External) => LayerPainter::External,
 +            Self::Band(_) => LayerPainter::Band,
 +        }
@@ -18035,10 +18035,10 @@ index 0000000000000000000000000000000000000000..4b5566f9dca8053c196b56fc8eb41a4e
 +}
 diff --git a/vendor/gpui/src/scene/layer/write.rs b/vendor/gpui/src/scene/layer/write.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3dadcd1da948ce0af6dcefb8243bf2db09400289
+index 0000000000000000000000000000000000000000..ea7d44347ceb8b24695d27ffe568a57971e64139
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/write.rs
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,186 @@
 +//! KaminIDE patch: value writes into a scene layer (`LayerHandle`).
 +//!
 +//! A value write changes a painted value of existing commands in place: the
@@ -18115,6 +18115,38 @@ index 0000000000000000000000000000000000000000..3dadcd1da948ce0af6dcefb8243bf2db
 +            .runs_of(owner)
 +            .map(|at| content.boxes[at].area)
 +            .reduce(|a, b| a.union(&b))
++    }
++
++    /// Bounds of the old and proposed decoration paint in the layer's coordinates.
++    /// Grow the original border box before any clip. A clipped or empty own run
++    /// can still have a child outline that reaches the viewport.
++    pub fn decoration_area(
++        &self,
++        owner: u32,
++        proposed: crate::Pixels,
++        scale: f32,
++    ) -> Option<Bounds<ScaledPixels>> {
++        use super::{BoxContents, RunPainter};
++        let content = self.0.content.borrow();
++        let mut area = None;
++        for at in content.runs_of(owner) {
++            let run = &content.boxes[at];
++            if run.env.transformation != crate::TransformationMatrix::unit() {
++                return None;
++            }
++            let outset = match run.env.painter {
++                RunPainter::Box(BoxContents::Own) => proposed,
++                RunPainter::Box(BoxContents::DecoratedBox(old)) => proposed.max(old),
++                _ => return None,
++            };
++            let mut bounds = run.env.bounds.dilate(outset).scale(scale);
++            if let Some(placed) = run.placed {
++                bounds.origin = bounds.origin + placed.offset;
++            }
++            let bounds = bounds.union(&run.area);
++            area = Some(area.map_or(bounds, |other: Bounds<_>| other.union(&bounds)));
++        }
++        area
 +    }
 +
 +    /// Write the background of `owner` from `from` to `to`.

@@ -76,6 +76,38 @@ impl LayerHandle {
             .reduce(|a, b| a.union(&b))
     }
 
+    /// Bounds of the old and proposed decoration paint in the layer's coordinates.
+    /// Grow the original border box before any clip. A clipped or empty own run
+    /// can still have a child outline that reaches the viewport.
+    pub fn decoration_area(
+        &self,
+        owner: u32,
+        proposed: crate::Pixels,
+        scale: f32,
+    ) -> Option<Bounds<ScaledPixels>> {
+        use super::{BoxContents, RunPainter};
+        let content = self.0.content.borrow();
+        let mut area = None;
+        for at in content.runs_of(owner) {
+            let run = &content.boxes[at];
+            if run.env.transformation != crate::TransformationMatrix::unit() {
+                return None;
+            }
+            let outset = match run.env.painter {
+                RunPainter::Box(BoxContents::Own) => proposed,
+                RunPainter::Box(BoxContents::DecoratedBox(old)) => proposed.max(old),
+                _ => return None,
+            };
+            let mut bounds = run.env.bounds.dilate(outset).scale(scale);
+            if let Some(placed) = run.placed {
+                bounds.origin = bounds.origin + placed.offset;
+            }
+            let bounds = bounds.union(&run.area);
+            area = Some(area.map_or(bounds, |other: Bounds<_>| other.union(&bounds)));
+        }
+        area
+    }
+
     /// Write the background of `owner` from `from` to `to`.
     /// `set_backgrounds` of one write.
     pub fn set_background(&self, owner: u32, from: Hsla, to: Hsla) -> Option<Bounds<ScaledPixels>> {

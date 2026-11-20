@@ -203,7 +203,10 @@ fn built_div(
     let id = u32::try_from(e.node_id).unwrap_or(0);
     let d = match owner::painter(e, style, || decorated) {
         Own::Plain => d.paint_owner(id),
-        Own::Not(Refusal::Decoration) => d.decorated_paint_owner(id),
+        Own::Not(Refusal::Decoration) => match crate::paint::decorations::outset(c) {
+            Some(outset) => d.decorated_paint_owner(id, gpui::px(outset)),
+            None => d.partial_paint_owner(id),
+        },
         _ => d.partial_paint_owner(id),
     };
     super::container_units::observe(d, e, style)

@@ -50,7 +50,7 @@ pub(super) fn write_paint_values(
     own: impl Fn(&Element) -> Own,
     unseen: impl Fn(&Path) -> bool,
     off: impl Fn(u64) -> bool,
-    waits: impl Fn(&Path, &Element, &Element) -> Option<super::offscreen::FrameWait>,
+    waits: impl Fn(Wait, &Path, &Element, &Element) -> Option<super::offscreen::FrameWait>,
     frames: &mut Vec<super::offscreen::FrameWait>,
 ) -> Option<Taken> {
     if paths.is_empty() {
@@ -85,7 +85,7 @@ pub(super) fn write_paint_values(
         let owner = u32::try_from(a.node_id).ok()?;
         let recorded = layer.painter(owner);
         let mut wait = |kind, reason| {
-            if let Some(frame) = waits(path, a, b).filter(|(_, recorded)| *recorded == kind) {
+            if let Some(frame) = waits(kind, path, a, b) {
                 frames.push(frame);
                 Some(())
             } else {
@@ -119,9 +119,7 @@ pub(super) fn write_paint_values(
                 super::layer_band::BandChange::Nothing => (),
                 super::layer_band::BandChange::Refused(reason) => wait(Wait::Inline, reason)?,
                 super::layer_band::BandChange::Pieces => {
-                    if let Some(frame) =
-                        waits(path, a, b).filter(|(_, recorded)| *recorded == Wait::Inline)
-                    {
+                    if let Some(frame) = waits(Wait::Inline, path, a, b) {
                         frames.push(frame);
                     } else {
                         crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
