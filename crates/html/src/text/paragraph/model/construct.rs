@@ -105,6 +105,7 @@ impl Paragraph {
             overlays: Vec::new(),
             overlay_hidden: Vec::new(),
             kept: Default::default(),
+            fragments: None,
         }
     }
 }

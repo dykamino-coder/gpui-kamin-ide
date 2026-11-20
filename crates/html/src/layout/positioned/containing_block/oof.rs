@@ -14,7 +14,8 @@ pub(crate) type BuildTrials =
 /// Готовая геометрия остаётся в исходной раскладке; отложенная строится один раз.
 pub(crate) enum OofKid {
     Ready(AnyElement),
-    Prepared(AnyElement),
+    /// Laid out ahead of the host's prepaint in these host bounds.
+    Prepared(AnyElement, Bounds<Pixels>),
     Waiting(crate::layout::positioned::anchor::Dependencies, Box<OofKid>),
     Deferred(BuildOof, Option<DeferredPaint>),
     Trials(BuildTrials, Option<DeferredPaint>),

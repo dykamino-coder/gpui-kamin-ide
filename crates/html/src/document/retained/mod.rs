@@ -184,8 +184,8 @@ impl Document {
     /// либо повторить прошлый, если ни один его вход не изменился.
     pub fn render_viewport(&self, opts: &crate::RenderOpts) -> AnyElement {
         let key = FrameKey::of(opts);
-        let candidate = self.retained.inputs(key.as_ref()).is_some()
-            && self.state.values.resources_unchanged();
+        let candidate =
+            self.retained.inputs(key.as_ref()).is_some() && self.state.values.resources_unchanged();
         let prepared = self.retained.take_prepared(&key);
         let builder = self.frame_builder(opts, &key);
         element::Retained::new(self.retained.clone(), key, builder, candidate, prepared)
