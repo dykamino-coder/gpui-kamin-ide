@@ -33,14 +33,15 @@ pub(super) fn element(
     let vcx = opts.cx.vcx();
     let margins = &e.style.used().reset_box_layout.margin;
     let mut d = crate::paint::apply::margins(div(), margins, vcx);
-    let mut style = gpui::Style::default();
-    style.refine(d.style());
-    style.display = gpui::Display::Block;
-    style.flex_shrink = 0.0;
+    let mut refined = gpui::Style::default();
+    refined.refine(d.style());
+    let style = gpui::Style {
+        display: gpui::Display::Block,
+        flex_shrink: 0.0,
+        ..refined
+    };
     let mut block = e.clone();
-    let own = &mut block.style.used_mut().reset_box_layout.margin;
-    own.left = None;
-    own.right = None;
+    crate::render::blocks::strip_inline_margins(&mut block);
     let opts = opts.inner(|cx| {
         cx.contracts.reuse = None;
         cx.contracts.offscreen_off = true;
