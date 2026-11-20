@@ -110,7 +110,7 @@ impl kamin_heap::HeapSize for InlineContent {
         // one shared block: the `Arc` counters, then the bytes.
         const INLINE: usize = 23;
         const COUNTERS: usize = 2 * size_of::<usize>();
-        let text = if self.text.len() > INLINE {
+        let text = if self.text.len() > INLINE && ops.once(self.text.as_ptr()) {
             ops.buffer(
                 self.text.as_ptr().wrapping_sub(COUNTERS),
                 self.text.len() + COUNTERS,
@@ -118,7 +118,16 @@ impl kamin_heap::HeapSize for InlineContent {
         } else {
             0
         };
-        text + ops.buffer(self.chunk.items.as_ptr(), self.chunk.items.len())
+        // The chunk holds the items of every flow of one publication: counted
+        // by its first flow only, not once per flow (that made the report
+        // quadratic in the flows of a publication: 655 MB on a 225 MB heap).
+        let chunk = ops.shallow(Rc::as_ptr(&self.chunk));
+        let items = if chunk > 0 {
+            chunk + ops.buffer(self.chunk.items.as_ptr(), self.chunk.items.len())
+        } else {
+            0
+        };
+        text + items
     }
 }
 
@@ -188,4 +197,40 @@ pub(super) fn append(buffer: &mut String, text: &str) -> (u32, u32) {
     let start = len(buffer.len());
     buffer.push_str(text);
     (start, len(buffer.len()))
+}
+
+#[cfg(all(test, feature = "heap-report"))]
+mod heap_tests {
+    use super::*;
+    use kamin_heap::{HeapSize, Ops};
+
+    #[test]
+    fn the_flows_of_one_chunk_count_its_items_once() {
+        let text = "a text longer than the inline capacity";
+        let items: Vec<Item> = (0..64)
+            .map(|slot| Item {
+                box_id: BoxId {
+                    slot,
+                    generation: 1,
+                },
+                kind: ItemKind::Open,
+            })
+            .collect();
+        let flows = [
+            (BoxId::NONE, Some(((0, len(text.len())), (0, 32)))),
+            (BoxId::NONE, Some(((0, len(text.len())), (32, 64)))),
+        ];
+        let sealed = seal(text, &items, &flows, |_| None);
+        let mut alone = Ops::default();
+        let first = sealed[0].1.as_ref().unwrap().heap_size(&mut alone);
+        let mut both = Ops::default();
+        let total: usize = sealed
+            .iter()
+            .map(|(_, content)| content.as_ref().unwrap().heap_size(&mut both))
+            .sum();
+        // The second flow adds only its own text, not the shared chunk again.
+        assert!(first > 64 * size_of::<Item>());
+        assert!(total < first + 64 * size_of::<Item>(), "{total} vs {first}");
+        assert_eq!(both.report().total() as usize, total);
+    }
 }

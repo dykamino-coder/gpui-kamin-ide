@@ -219,7 +219,11 @@ impl BoxTree {
 #[cfg(feature = "heap-report")]
 impl kamin_heap::HeapSize for Prepared {
     fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
-        let dependencies = self.dependencies.as_deref().unwrap_or_default();
+        // A shared list is counted by its first holder only.
+        let dependencies = match self.dependencies.as_deref() {
+            Some(shared) if ops.once(shared.as_ptr()) => shared,
+            _ => &[],
+        };
         self.inputs.flow_heap_size(ops)
             + self
                 .text
