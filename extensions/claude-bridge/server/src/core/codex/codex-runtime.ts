@@ -434,7 +434,26 @@ export class CodexRuntime {
     }
     // Current generation only (model-list-filter); the selector and model
     // changes all read this list.
-    return currentModels(out).map(({ hidden: _hidden, upgrade: _upgrade, upgradeInfo: _info, ...option }) => option)
+    const list = currentModels(out).map(
+      ({ hidden: _hidden, upgrade: _upgrade, upgradeInfo: _info, ...option }) => option,
+    )
+    this.modelList = { at: Date.now(), list }
+    return list
+  }
+
+  private modelList: { at: number; list: CodexModelOption[] } | undefined
+
+  /** The catalog for a chat's model line: the last list when it is recent
+   *  (the selector usually just read it), else one `model/list`. */
+  async recentModels(maxAgeMs = 10 * 60_000): Promise<readonly CodexModelOption[]> {
+    if (this.modelList && Date.now() - this.modelList.at < maxAgeMs) return this.modelList.list
+    return this.models()
+  }
+
+  /** The catalog entry of `model` from the last list read, if any. */
+  knownModel(model: string | null | undefined): CodexModelOption | undefined {
+    if (!model) return undefined
+    return this.modelList?.list.find((m) => m.model === model || m.id === model)
   }
 
   async close(): Promise<void> {

@@ -131,7 +131,8 @@ mod tests {
             .iter()
             .flat_map(|s| property_fields(s))
             .collect();
-        assert!(fields.len() >= 528);
+        // `side_order` is a group handle of its own (ResetCascade), not a leaf.
+        assert!(fields.len() >= 527);
         assert!(fields.contains(&"border_width") && fields.contains(&"font_families"));
     }
 }

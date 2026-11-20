@@ -24,9 +24,13 @@ protections do not).
 import ctypes
 import ctypes.wintypes as w
 import json
+import os
 import subprocess
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import memprof_guard  # noqa: E402
 
 MEM_COMMIT, MEM_IMAGE, MEM_MAPPED, MEM_PRIVATE = 0x1000, 0x1000000, 0x40000, 0x20000
 PAGE_GUARD, PAGE_NOCACHE, PAGE_WRITECOMBINE = 0x100, 0x200, 0x400
@@ -134,14 +138,13 @@ def breakdown(handle):
             "private_reservations": [{"reserved": size, "resident": res} for (alloc, size), res in top]}
 
 
-def sample(pid, interval_ms, step_mb):
-    """Follow `pid` until it exits; the breakdown at its working-set peak."""
+def sample(pid, interval_ms, step_mb, deadline):
+    """Follow `pid` until it exits or `deadline` (time.monotonic) passes; the breakdown at its working-set peak."""
     h = k32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE, False, pid)
     if not h:
         raise OSError(ctypes.get_last_error(), f"OpenProcess {pid}")
     best, best_ws, peak, pmc = None, 0, 0, PMC()
     pmc.cb = ctypes.sizeof(pmc)
-    deadline = time.monotonic() + 1800
     try:
         while time.monotonic() < deadline:
             if not psapi.GetProcessMemoryInfo(h, ctypes.byref(pmc), pmc.cb):
@@ -166,26 +169,39 @@ def sample(pid, interval_ms, step_mb):
     return best
 
 
-def run_side(exe, bench, launcher, interval_ms, step_mb, out_json):
-    """Launch one engine_bench (through the hidden-desktop launcher, which prints its child pid first)."""
+def run_side(exe, bench, launcher, interval_ms, step_mb, out_json, timeout):
+    """Launch one engine_bench (through the hidden-desktop launcher, which prints its child pid first).
+
+    The launcher chain runs in a job of its own (memprof_guard): past `timeout` the whole tree is
+    terminated and `memprof_guard.Stopped` is raised, so no bench is left on the benchmark cores."""
     # stdout goes to a file, never a pipe: the bench writes its JSON while it is sampled, and an unread
     # pipe would block it. The launcher's first line names its child.
     command = [*launcher, exe, *bench]
+    started = time.monotonic()
+    result = {}
+
+    def follow(proc):
+        pid = proc.pid
+        if launcher:
+            deadline = time.monotonic() + 60
+            line = ""
+            while time.monotonic() < deadline and proc.poll() is None:
+                with open(out_json, "rb") as f:
+                    line = f.readline().decode(errors="replace")
+                if line.endswith("\n"):
+                    break
+                time.sleep(0.005)
+            if not line.endswith("\n"):
+                return
+            pid = int(line.rsplit(":", 1)[1])
+        result["best"] = sample(pid, interval_ms, step_mb, started + timeout)
+
     with open(out_json, "wb") as stdout:
-        proc = subprocess.Popen(command, stdout=stdout, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
-    pid = proc.pid
-    if launcher:
-        deadline = time.monotonic() + 60
-        while time.monotonic() < deadline:
-            with open(out_json, "rb") as f:
-                line = f.readline().decode(errors="replace")
-            if line.endswith("\n"):
-                break
-            time.sleep(0.005)
-        pid = int(line.rsplit(":", 1)[1])
-    best = sample(pid, interval_ms, step_mb)
-    proc.wait()
-    return best
+        memprof_guard.run(command, timeout=timeout, stdout=stdout, stderr=subprocess.DEVNULL,
+                          stdin=subprocess.DEVNULL, started=follow)
+    if result.get("best") is None:
+        raise memprof_guard.Stopped(f"{exe} printed no working-set sample (see {out_json})")
+    return result["best"]
 
 
 def mb(v):
@@ -219,9 +235,15 @@ def ws_command(args, launcher):
         bench = bench[1:]
     if "--json" not in bench:
         bench.append("--json")
-    cand = run_side(args.exe, bench, launcher, args.interval_ms, args.step_mb, os.path.join(args.out, "cand.json"))
-    base = run_side(args.base_exe, bench, launcher, args.interval_ms, args.step_mb,
-                    os.path.join(args.out, "base.json")) if args.base_exe else None
+    def side(exe, name):
+        try:
+            return run_side(exe, bench, launcher, args.interval_ms, args.step_mb,
+                            os.path.join(args.out, f"{name}.json"), args.timeout)
+        except memprof_guard.Stopped as stop:
+            raise SystemExit(f"{name}: engine_bench stopped: {stop}")
+
+    cand = side(args.exe, "cand")
+    base = side(args.base_exe, "base") if args.base_exe else None
     report = {"cand": cand, "base": base}
     with open(os.path.join(args.out, "ws.json"), "w") as f:
         json.dump(report, f, indent=1)
