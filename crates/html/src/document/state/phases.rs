@@ -8,6 +8,8 @@ use crate::values::{DocumentValues, ValueCx};
 use std::rc::Rc;
 
 pub struct DocState {
+    #[cfg(test)]
+    pub(in crate::document) geometry_flushes: std::cell::Cell<usize>,
     /// Нижние данные: арены, at-правила, метрики корня, ресурсы, шрифтовые факты.
     pub(crate) values: Rc<DocumentValues>,
     /// Anchor registries and root frame geometry of the layout phase of this document.
@@ -49,6 +51,8 @@ impl DocState {
     /// основа подготовки нового (`LayoutState::continuing`).
     pub(crate) fn adopting(previous: &Self) -> Rc<Self> {
         Rc::new(Self {
+            #[cfg(test)]
+            geometry_flushes: Default::default(),
             values: previous.values.clone(),
             layout: Rc::new(crate::layout::layout_state::LayoutState::continuing(
                 &previous.layout,
@@ -77,6 +81,8 @@ impl DocState {
             None => DocumentValues::new(media, fonts),
         };
         Rc::new(Self {
+            #[cfg(test)]
+            geometry_flushes: Default::default(),
             values,
             layout: Default::default(),
             text,

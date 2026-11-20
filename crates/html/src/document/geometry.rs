@@ -22,9 +22,6 @@ mod read;
 mod tests;
 pub use read::GeometryRead;
 
-#[cfg(test)]
-thread_local! { static FLUSHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
-
 impl Document {
     /// Снимок всех исходных элементов в DOM preorder, включая элементы без коробок.
     /// Запрос синхронно завершает отдельную раскладку; не публикует кадр и не
@@ -145,7 +142,9 @@ impl Document {
         let scroll_states =
             crate::interactive::scroll_area::query_states(window, &node_map, scope)?;
         #[cfg(test)]
-        FLUSHES.with(|count| count.set(count.get() + 1));
+        self.state
+            .geometry_flushes
+            .set(self.state.geometry_flushes.get() + 1);
         window.with_layout_query(cx, |window, cx| {
             scroll_states(window);
             window.with_render_context(Some(sink.clone()), |window| {
