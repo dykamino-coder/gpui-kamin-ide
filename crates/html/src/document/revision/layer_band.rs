@@ -11,6 +11,7 @@
 
 use super::patch::{Path, element_at};
 use crate::dom::Element;
+use crate::paint::box_tree::styled::Refusal;
 use crate::style::values::value::Len;
 
 /// Whether the box of `e` is recorded again as its band's pieces
@@ -29,7 +30,7 @@ pub(super) enum BandChange {
     /// Its pieces are painted again from the new style.
     Pieces,
     /// The layer cannot, for the reason named (`paint_path::not_own`).
-    Refused(&'static str),
+    Refused(Refusal),
 }
 
 fn zero(l: Option<Len>) -> bool {
@@ -67,7 +68,7 @@ pub(super) fn band_change(
 ) -> BandChange {
     if super::layer_write::painted_background(b).is_none() {
         // A gradient or an image: no colour of a band.
-        return BandChange::Refused("band_paint");
+        return BandChange::Refused(Refusal::BandPaint);
     }
     let appears = has_fill(a) != has_fill(b);
     if a.children.is_empty() && !padded(b) && !bordered(b) && !bordered(a) {
@@ -82,10 +83,10 @@ pub(super) fn band_change(
         .checked_sub(1)
         .and_then(|n| element_at(old, &path[..n]));
     if parent.is_some_and(|p| p.inline && p.style.used().reset_box_layout.display.is_none()) {
-        return BandChange::Refused("band_nested");
+        return BandChange::Refused(Refusal::BandNested);
     }
     if padded(b) && !bordered(b) {
-        return BandChange::Refused("band_geometry");
+        return BandChange::Refused(Refusal::BandGeometry);
     }
     BandChange::Pieces
 }

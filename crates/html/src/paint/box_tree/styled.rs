@@ -23,47 +23,23 @@ pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui:
     styled_div_with(e, &BoxStyle::shared(e.style.used()), cx)
 }
 
-/// Why the box of `e` does not paint nothing but its own painter's commands
-/// (`Style::paint_box`) under `styled_div`; `None` when it does: no hover
-/// layer, no decoration painted as a child element, no alternate painter
-/// (clone or geometry fragments), not the root's canvas, not hidden, no
-/// filter or backdrop layer. Only such a box records its own paint again in
-/// the document's scene layer (`document::retained::box_repaint`).
-pub(crate) fn own_box_refusal(
+mod owner;
+pub(crate) use owner::{Own, Refusal};
+
+/// The painter requested by new used values, before program changes are applied.
+pub(crate) fn requested_painter(
     doc: &std::rc::Rc<crate::document::state::DocState>,
     e: &Element,
-) -> Option<&'static str> {
-    if matches!(e.tag.as_str(), "html" | "body") {
-        return Some("root_canvas");
-    }
-    if e.hover.is_some() {
-        return Some("hover");
-    }
+) -> Own {
     let style = BoxStyle::shared(e.style.used());
-    // An inline box paints as fragments of its lines, not by its own painter.
-    if style.reset_box_layout.display.is_none() && e.inline {
-        return Some("inline");
-    }
-    let c = &style;
-    let reason = if c.inh.ui.hidden == Some(true) {
-        "hidden"
-    } else if c.reset_fragmentation.bdb_clone {
-        "clone"
-    } else if c.reset_effects.filter_ref.is_some() || c.reset_effects.backdrop_color.is_some() {
-        "filter"
-    } else if c.reset_transforms.transform.is_some() || c.reset_transforms.transform_ancestor {
-        "transform"
-    } else {
+    owner::painter(e, &style, || {
         let cx = crate::layout::cx::LayoutCx::default()
             .with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
         let empty = !e.children.iter().any(|n| !is_blank(n));
-        if decorations(c, empty, cx.frame(), Some(&cx)).is_empty() {
-            return None;
-        }
-        "decoration"
-    };
-    Some(reason)
+        !decorations(&style, empty, cx.frame(), Some(&cx)).is_empty()
+    })
 }
+
 pub(crate) fn styled_div_with(
     e: &Element,
     style: &BoxStyle,
@@ -202,6 +178,7 @@ fn built_div(
     } else {
         c
     };
+    let mut decorated = false;
     if cx.position.geometry_record.is_some() {
         d = d.paint_box_with(crate::paint::coordinator::segments::box_painter(
             c.self_node,
@@ -215,12 +192,19 @@ fn built_div(
             d = d.child(clone_hidden::layer(e.node_id, extra));
         }
     } else {
-        for extra in decorations(c, empty, frame, Some(cx)) {
+        let extras = decorations(c, empty, frame, Some(cx));
+        decorated = !extras.is_empty();
+        for extra in extras {
             d = d.child(extra);
         }
     }
     // The box's own fill binds to its number in the document's scene layer
     // (`document::revision::layer_write`).
-    let d = d.paint_owner(u32::try_from(e.node_id).unwrap_or(0));
+    let id = u32::try_from(e.node_id).unwrap_or(0);
+    let d = match owner::painter(e, style, || decorated) {
+        Own::Plain => d.paint_owner(id),
+        Own::Not(Refusal::Decoration) => d.decorated_paint_owner(id),
+        _ => d.partial_paint_owner(id),
+    };
     super::container_units::observe(d, e, style)
 }

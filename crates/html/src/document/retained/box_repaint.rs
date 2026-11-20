@@ -60,7 +60,7 @@ impl Builder {
                 return false;
             };
             // An inline box: the pieces of its band, from its new band.
-            if crate::document::revision::records_band(e) {
+            if layer.painter(owner) == Some(gpui::LayerPainter::Band) {
                 let Some(parent) = crate::document::revision::parent_at(&self.nodes, path) else {
                     return false;
                 };

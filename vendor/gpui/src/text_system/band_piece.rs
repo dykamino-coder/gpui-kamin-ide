@@ -5,7 +5,7 @@
 //! A piece is where an inline box meets one line: its place (the segment of
 //! the line, `BandEdges`) is layout, its paint (`BandStyle`) is style. In a
 //! scene layer every piece of a box with a band, or of a box that could take
-//! one, is a run of that box (`Window::with_box_paint`), an empty one when it
+//! one, is a run of that box (`Window::with_run`), an empty one when it
 //! paints nothing, so a band that appears, goes or changes its colours or
 //! corners is painted again into those runs alone, in the order of the line's
 //! stacking layer. Blink paints the whole block's fragment items again for
@@ -130,7 +130,7 @@ pub(crate) fn paint_band(piece: Piece, owner: u32, style: BandStyle, window: &mu
     let shown = window.content_mask().bounds.intersects(&segment);
     if style.color.is_none() && (window.band_split || !shown) {
         // No run of the box here: it is recorded again nowhere.
-        window.unhold_band(owner);
+        window.unhold_owner(owner);
         return;
     }
     let edges = (!window.band_split).then_some(piece.edges);

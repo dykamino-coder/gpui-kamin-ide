@@ -32,59 +32,6 @@ mod reach;
 /// The area an edit off the screen can paint and why it waits for a frame.
 pub(super) type FrameWait = (Bounds<ScaledPixels>, Wait);
 
-/// The refusals an edit wholly off the screen waits before: a box with
-/// decorations, a band change that moves no layout. Another refusal, or a
-/// box whose area is not known to be off the screen (`wait`), refuses
-/// (`None`); otherwise the edit waits in `frames`.
-pub(super) fn wait_or_refuse(
-    reason: &'static str,
-    wait: impl FnOnce() -> Option<FrameWait>,
-    frames: &mut Vec<FrameWait>,
-) -> Option<()> {
-    let waits = matches!(
-        reason,
-        "decoration" | "band_paint" | "band_nested" | "band_geometry"
-    );
-    match waits.then(wait).flatten() {
-        Some(w) => {
-            frames.push(w);
-            Some(())
-        }
-        None => {
-            super::layer_write::refuse_not_own(reason);
-            None
-        }
-    }
-}
-
-/// The `records` of boxes the layer holds (`held`); an inline box it does not
-/// hold waits off the screen (`waits`) or refuses the path (`None`).
-pub(super) fn unheld(
-    (old, new): (&[Node], &[Node]),
-    records: Vec<(Path, u64)>,
-    held: impl Fn(u64) -> bool,
-    waits: &impl Fn(&Path, &Element, &Element) -> Option<FrameWait>,
-    frames: &mut Vec<FrameWait>,
-) -> Option<Vec<(Path, u64)>> {
-    let mut kept = Vec::with_capacity(records.len());
-    for (path, id) in records {
-        if held(id) {
-            kept.push((path, id));
-            continue;
-        }
-        let wait = super::layer_write::at(old, &path, id)
-            .zip(super::layer_write::at(new, &path, id))
-            .filter(|(a, _)| super::layer_band::records_band(a))
-            .and_then(|(a, b)| waits(&path, a, b));
-        let Some(wait) = wait else {
-            crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
-            return None;
-        };
-        frames.push(wait);
-    }
-    Some(kept)
-}
-
 /// Count the edits waiting for a frame by why they wait.
 pub(super) fn count(frames: &[FrameWait]) {
     for (_, wait) in frames {
