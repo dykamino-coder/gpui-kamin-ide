@@ -187,14 +187,20 @@ pub(super) fn attribute_records(
 /// Узел принадлежит DOM `root` и стоит под элементами HTML вне шаблонов и
 /// чужого содержимого: у такого узла атрибуты и текст не часть формы
 /// (`shape`). Текст требует родителя-элемента.
+/// An element may also be in an SVG subtree: of its attributes the edit
+/// paths take only `class` and `data-*` (`restyle::invalidation`,
+/// `adopt::neutral`), which SVG reads through the cascade alone; texts in
+/// SVG stay closed (`<text>` and `<style>` are read as they are).
 pub(super) fn open(node: &Handle, root: &Handle) -> bool {
+    let element = matches!(node.data, NodeData::Element { .. });
     let mut at = node.clone();
     let mut first = true;
     loop {
         match &at.data {
             NodeData::Document => return Rc::ptr_eq(&at, root) && !first,
             NodeData::Element { name, .. } => {
-                if name.ns != html5ever::ns!(html) || &*name.local == "template" {
+                let svg = element && name.ns == html5ever::ns!(svg);
+                if !(name.ns == html5ever::ns!(html) || svg) || &*name.local == "template" {
                     return false;
                 }
             }

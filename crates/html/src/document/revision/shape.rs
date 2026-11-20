@@ -6,6 +6,8 @@
 //! такими атрибутами и текстами; их и перечисляет `Shape`. Любое другое
 //! отличие (дети, атрибут или текст SVG/MathML или внутри `<template>`) —
 //! `None`: такая ревизия собирается заново.
+//! `class` and `data-*` of SVG elements are not shape: SVG sees them only
+//! through the cascade.
 
 use super::mutation::{Mutation, attribute_records};
 use markup5ever_rcdom::{Handle, NodeData};
@@ -62,9 +64,8 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
         texts: Vec::new(),
         sheets: Vec::new(),
     };
-    // Узел, его пара, признак «атрибуты и тексты здесь — часть формы» и
-    // есть ли у узла родитель.
-    let mut stack = vec![(old.clone(), new.clone(), false, false)];
+    // A node, its pair, what is shape there (`Form`), whether it has a parent.
+    let mut stack = vec![(old.clone(), new.clone(), Form::Open, false)];
     while let Some((a, b, frozen, child)) = stack.pop() {
         let frozen = match (&a.data, &b.data) {
             (NodeData::Document, NodeData::Document) => frozen,
@@ -82,7 +83,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
             ) if name == n && public_id == p && system_id == s => frozen,
             (NodeData::Text { contents }, NodeData::Text { contents: c }) => {
                 if *contents.borrow() != *c.borrow() {
-                    if frozen || !child {
+                    if frozen != Form::Open || !child {
                         return None;
                     }
                     shape.texts.push(Edited {
@@ -123,10 +124,18 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                 }
                 // Чужое содержимое (SVG, MathML) и шаблоны обрабатываются своими
                 // проходами, читающими атрибуты как есть: там они — часть формы.
-                let frozen =
-                    frozen || name.ns != html5ever::ns!(html) || &*name.local == "template";
+                // Except `class` and `data-*` in SVG outside templates and
+                // MathML: SVG sees them only through the cascade.
+                let frozen = match frozen {
+                    Form::Closed => Form::Closed,
+                    _ if &*name.local == "template" => Form::Closed,
+                    _ if name.ns == html5ever::ns!(svg) => Form::Svg,
+                    form if name.ns == html5ever::ns!(html) => form,
+                    _ => Form::Closed,
+                };
                 if *attrs.borrow() != *at.borrow() {
-                    if frozen {
+                    let cascade = || svg_cascade_only(&attrs.borrow(), &at.borrow());
+                    if frozen == Form::Closed || (frozen == Form::Svg && !cascade()) {
                         return None;
                     }
                     shape.changed.push(Changed {
@@ -139,7 +148,7 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
                 }
                 match (&*template_contents.borrow(), &*t.borrow()) {
                     (None, None) => {}
-                    (Some(x), Some(y)) => stack.push((x.clone(), y.clone(), true, false)),
+                    (Some(x), Some(y)) => stack.push((x.clone(), y.clone(), Form::Closed, false)),
                     _ => return None,
                 }
                 frozen
@@ -155,6 +164,18 @@ pub(super) fn compare(old: &Handle, new: &Handle) -> Option<Shape> {
         }
     }
     Some(shape)
+}
+
+/// What is shape in a subtree.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Form {
+    /// Under HTML elements: neither attributes nor texts.
+    Open,
+    /// In SVG (and under a `foreignObject` in it): texts and attributes but
+    /// `class` and `data-*` (`svg_cascade_only`).
+    Svg,
+    /// In a template or MathML: everything.
+    Closed,
 }
 
 fn text_of(node: &Handle) -> String {
@@ -189,4 +210,25 @@ pub(super) fn sheets(root: &Handle) -> Vec<String> {
         stack.extend(node.children.borrow().iter().rev().cloned());
     }
     out
+}
+
+/// An attribute change `old` to `new` of an SVG element that SVG sees only
+/// through the cascade: only `class` and `data-*` without a namespace (not
+/// `data-kamin*`) differ. Its other attributes are geometry and presentation,
+/// which the image's serialization reads as they are (`svg_document::serialize`).
+fn svg_cascade_only(old: &[html5ever::Attribute], new: &[html5ever::Attribute]) -> bool {
+    fn value<'a>(
+        list: &'a [html5ever::Attribute],
+        name: &html5ever::QualName,
+    ) -> Option<&'a html5ever::tendril::StrTendril> {
+        list.iter().find(|a| a.name == *name).map(|a| &a.value)
+    }
+    old.iter().chain(new).all(|attr| {
+        let local = &*attr.name.local;
+        value(old, &attr.name) == value(new, &attr.name)
+            || (attr.name.ns == html5ever::ns!()
+                && attr.name.prefix.is_none()
+                && (local == "class"
+                    || (local.starts_with("data-") && !local.starts_with("data-kamin"))))
+    })
 }

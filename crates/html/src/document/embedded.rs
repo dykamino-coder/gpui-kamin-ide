@@ -173,6 +173,9 @@ pub(super) fn unwrap_document(
         // обычный способ задать типографику страницы, и без этого шага он
         // пропадал молча, а текст набирался умолчанием движка.
         let wrapper = BoxStyle::from(e.style.cascaded().clone());
+        // Children whose cascades the style pass shared keep sharing: one merge
+        // per distinct cascade, so the computed stage computes it once.
+        let mut merged = crate::style::cascade::inherit::Unwrapped::default();
         nodes = e
             .children
             .into_iter()
@@ -181,12 +184,7 @@ pub(super) fn unwrap_document(
                     let input = child.style.used();
                     // Document preparation: the unwrapped child's cascade takes the
                     // wrapper's values (before materialization).
-                    child.style = crate::style::cascade::inherit::inherit_unwrapped(
-                        &wrapper,
-                        child.style.cascaded(),
-                        vcx,
-                    )
-                    .into();
+                    child.style = merged.inherit(&wrapper, child.style.cascaded(), vcx).into();
                     child.style.set_background_paint(input.background_paint);
                     child.style.set_canvas_background(input.canvas_background);
                     Node::Element(child)

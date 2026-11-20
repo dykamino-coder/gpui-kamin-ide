@@ -66,7 +66,7 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
     }
     let gutters = crate::interactive::scroll_extent::classic::model(
         opts.cx.scroll.frame.as_ref(),
-        e.node_id,
+        e,
         &merged,
     );
     // Equal values are not written, so the box-layout group stays shared with

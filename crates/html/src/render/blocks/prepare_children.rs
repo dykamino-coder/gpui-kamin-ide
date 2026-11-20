@@ -218,6 +218,7 @@ pub(crate) fn prepare_children(
 pub(super) fn container_flags(inherited: &BoxStyle) -> (bool, bool) {
     let under_tf = inherited.reset_transforms.transform_ancestor
         || inherited.reset_transforms.transform.is_some()
+        || inherited.reset_transforms.perspective.is_some()
         || inherited.reset_context.contain_layout == Some(true)
         || inherited.reset_context.contain_paint == Some(true)
         || crate::style::computed::filter_contains_fixed(inherited)

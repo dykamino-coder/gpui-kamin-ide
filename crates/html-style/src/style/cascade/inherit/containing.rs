@@ -84,6 +84,9 @@ pub(super) fn inherit_containing(
         parent.reset_transforms.transform_ancestor
         || parent.reset_transforms.transform.is_some()
         || parent.reset_transforms.preserve_3d == Some(true)
+        // css-transforms-2 §perspective-property: `perspective` other than
+        // `none` is a containing block for fixed descendants too.
+        || parent.reset_transforms.perspective.is_some()
         || parent.reset_context.contain_layout == Some(true)
         || parent.reset_context.contain_paint == Some(true)
         || crate::style::computed::filter_contains_fixed(parent)

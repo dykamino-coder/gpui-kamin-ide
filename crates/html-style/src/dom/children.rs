@@ -5,7 +5,9 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 mod box_summary;
+mod positioned_facts;
 pub use box_summary::{BoxTextFacts, BoxTreeSummary};
+pub use positioned_facts::{PositionedFacts, PositionedQuery};
 
 /// Дети элемента с копированием при изменении списка.
 #[derive(Clone, Debug, Default)]
@@ -35,6 +37,7 @@ struct Snapshot {
     nodes: Vec<Node>,
     intrinsic: super::intrinsic::IntrinsicCache,
     box_summary: std::cell::Cell<Option<BoxTreeSummary>>,
+    positioned: std::cell::Cell<PositionedFacts>,
 }
 
 impl Clone for Snapshot {
@@ -43,6 +46,7 @@ impl Clone for Snapshot {
             nodes: self.nodes.clone(),
             intrinsic: Default::default(),
             box_summary: Default::default(),
+            positioned: Default::default(),
         }
     }
 }
@@ -57,6 +61,7 @@ impl Children {
     pub fn dirty_intrinsic_sizes(&self) {
         self.0.intrinsic.dirty();
         self.0.box_summary.set(None);
+        self.0.positioned.take();
     }
 
     /// Ready facts of the list without walking the nodes or a separate tree index.
@@ -67,6 +72,23 @@ impl Children {
     /// Publication of the post-order preparation; the facts live as long as the snapshot.
     pub fn publish_box_summary(&self, summary: BoxTreeSummary) {
         self.0.box_summary.set(Some(summary));
+    }
+
+    /// Answer of `query` about the subtrees of the list: computed by `answer`
+    /// once per snapshot, forgotten with any change of the list.
+    pub fn positioned_fact(
+        &self,
+        query: PositionedQuery,
+        answer: impl FnOnce(&[Node]) -> bool,
+    ) -> bool {
+        if let Some(known) = self.0.positioned.get().get(query) {
+            return known;
+        }
+        let value = answer(&self.0.nodes);
+        self.0
+            .positioned
+            .set(self.0.positioned.get().with(query, value));
+        value
     }
 
     /// Идентичность неизменяемого снимка: изменение списка отделяет его через COW.
@@ -98,6 +120,7 @@ impl From<Vec<Node>> for Children {
             nodes,
             intrinsic: Default::default(),
             box_summary: Default::default(),
+            positioned: Default::default(),
         }))
     }
 }
@@ -122,6 +145,7 @@ impl DerefMut for Children {
         let snapshot = Rc::make_mut(&mut self.0);
         snapshot.intrinsic.dirty();
         snapshot.box_summary.set(None);
+        snapshot.positioned.take();
         &mut snapshot.nodes
     }
 }

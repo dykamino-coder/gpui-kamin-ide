@@ -61,7 +61,7 @@ mod test_tree;
 mod tests;
 #[cfg(test)]
 mod update_tests;
-mod viewport;
+pub(crate) mod viewport;
 mod writing_mode;
 use crate::document::canvas_background::any_containment;
 use crate::document::canvas_background::any_side;
