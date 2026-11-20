@@ -18,6 +18,7 @@ import { needsTerminalDelivery, sessionCliControl } from './session-cli-control'
 import { trackTerminalCommand } from './terminal-command-receipts'
 import { takeTurnContext } from '../conversation/conversation'
 import { withContextBlock } from '../engine/handoff'
+import { takeEffortNote } from './effort-note'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -250,7 +251,10 @@ export function submitTextToSession(session: PtySession, text: string, submissio
   // Receipts keep the user's own text: it is the client's submission
   // identity (the browser workspace persists it with its digest), and the
   // block is the engine's input only.
-  const context = session.conversation ? takeTurnContext(session.conversation) : null
+  // A live `/effort` since the last message adds the current level (effort-note.ts).
+  const handoff = session.conversation ? takeTurnContext(session.conversation) : null
+  const effortNote = takeEffortNote(session, text)
+  const context = handoff && effortNote ? withContextBlock(handoff, effortNote) : (handoff ?? effortNote)
   if (context) {
     const engineText = withContextBlock(text, context)
     // A multi-line paste needs the CLI's prompt up (see whenPromptReady).
