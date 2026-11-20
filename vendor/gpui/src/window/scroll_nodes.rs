@@ -278,6 +278,9 @@ impl Window {
         frame.scroll_nodes[index].paint = Some(start..start);
         frame.scroll_nodes[index].painted_in = Some(frame.scene.scroll.space);
         frame.scroll_nodes[index].pending = true;
+        // Inside an open layer or depth context its commands take orders a
+        // moved copy cannot give again (`Scene::scrollable` sees only its range).
+        frame.scroll_nodes[index].torn |= !frame.scene.at_root();
         let interest = frame.scroll_nodes[index].interest;
         self.open_interest(interest, true);
         let depth = self.content_mask_stack.len() - 1;
@@ -305,6 +308,7 @@ impl Window {
         if *swapped {
             frame.scroll_paint.open.push(node);
             *reentry = Some((ops, space));
+            frame.scroll_nodes[node.0 as usize].torn |= !frame.scene.at_root();
             return;
         }
         frame.scroll_paint.open.pop();

@@ -151,9 +151,20 @@ impl Window {
                 *mask = mask.intersect(&clip);
             }
             // KaminIDE patch: the copied scroll nodes moved with their children.
-            for node in &mut self.next_frame.scroll_nodes[start.scroll_nodes_index..] {
+            let frame = &mut self.next_frame;
+            for node in &mut frame.scroll_nodes[start.scroll_nodes_index..] {
                 node.clip.origin += offset;
                 node.clip = node.clip.intersect(&clip);
+            }
+            // Hitboxes under a node keep their own masks moved, hit-tested
+            // with own ∩ their node's clip.
+            let from = frame.scroll_hitboxes.partition_point(|mark| (mark.index as usize) < start.hitboxes_index);
+            for mark in &mut frame.scroll_hitboxes[from..] {
+                mark.own.origin += offset;
+                mark.own = mark.own.intersect(&clip);
+                if let Some(node) = frame.scroll_nodes.iter().rev().find(|node| node.id == mark.node) {
+                    frame.hitboxes[mark.index as usize].content_mask.bounds = mark.own.intersect(&node.clip);
+                }
             }
         }
         RetainedPrepaint::of(start..self.prepaint_index())
@@ -269,9 +280,13 @@ impl Window {
             .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
         // A range recorded inside a scene layer is in its scene (`reuse_paint`).
         let scenes = range.start.scene_index..range.end.scene_index;
+        // KaminIDE patch: a copy under a scroll node is marked under it.
         match self.replay_source() {
-            Some(source) => self.next_frame.scene.replay_moved(scenes, source.scene(), offset, clip),
-            None => self.next_frame.scene.replay_moved(scenes, &self.rendered_frame.scene, offset, clip),
+            Some(source) => self.next_frame.with_scene_node(scale, |scene| scene.replay_moved(scenes, source.scene(), offset, clip)),
+            None => {
+                let prev = &self.rendered_frame.scene;
+                self.next_frame.with_scene_node(scale, |scene| scene.replay_moved(scenes, prev, offset, clip))
+            }
         }
         // A movable record has no listener or state read to allow.
         RetainedPaint::of(start..self.paint_index(), true, (0, 0))

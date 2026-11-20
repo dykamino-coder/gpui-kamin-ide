@@ -55,7 +55,10 @@ pub(super) fn boxes(cx: &mut VisualTestContext) -> Vec<(f32, f32)> {
             // Placed: a moved replay translates the quad.
             .map(|q| {
                 let t = q.transformation.translation;
-                ((q.bounds.origin.x.0 + t[0]) / s, (q.bounds.origin.y.0 + t[1]) / s)
+                (
+                    (q.bounds.origin.x.0 + t[0]) / s,
+                    (q.bounds.origin.y.0 + t[1]) / s,
+                )
             })
             .collect()
     })
@@ -84,7 +87,9 @@ pub(super) fn quads(cx: &mut VisualTestContext) -> Vec<String> {
 }
 
 /// The painted quads with their draw orders and drawn areas (`quads`).
-pub(super) fn painted(cx: &mut VisualTestContext) -> Vec<(String, u32, gpui::Bounds<gpui::ScaledPixels>)> {
+pub(super) fn painted(
+    cx: &mut VisualTestContext,
+) -> Vec<(String, u32, gpui::Bounds<gpui::ScaledPixels>)> {
     let keys = quads(cx);
     let drawn: Vec<_> = cx.update(|window, _| {
         window
@@ -99,7 +104,10 @@ pub(super) fn painted(cx: &mut VisualTestContext) -> Vec<(String, u32, gpui::Bou
             })
             .collect()
     });
-    keys.into_iter().zip(drawn).map(|(key, (order, area))| (key, order, area)).collect()
+    keys.into_iter()
+        .zip(drawn)
+        .map(|(key, (order, area))| (key, order, area))
+        .collect()
 }
 
 /// Whether two frames draw the same pixels: the same quads, and every two

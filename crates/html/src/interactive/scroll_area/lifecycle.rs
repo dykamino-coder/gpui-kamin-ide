@@ -202,7 +202,10 @@ pub(crate) struct RootBars {
 
 impl RootBars {
     /// The hit areas of the bars.
-    pub(crate) fn prepaint(&self, window: &mut Window) -> Vec<crate::interactive::scrollbars::interaction::HitBar> {
+    pub(crate) fn prepaint(
+        &self,
+        window: &mut Window,
+    ) -> Vec<crate::interactive::scrollbars::interaction::HitBar> {
         crate::interactive::scrollbars::interaction::prepaint(
             self.freeze,
             &self.style,
@@ -216,8 +219,14 @@ impl RootBars {
     }
 
     /// Their listeners and paint at the offset now.
-    pub(crate) fn paint(&self, hitbars: &[crate::interactive::scrollbars::interaction::HitBar], window: &mut Window) {
-        let alpha = self.interaction.paint(self.freeze, hitbars, &self.handle, window);
+    pub(crate) fn paint(
+        &self,
+        hitbars: &[crate::interactive::scrollbars::interaction::HitBar],
+        window: &mut Window,
+    ) {
+        let alpha = self
+            .interaction
+            .paint(self.freeze, hitbars, &self.handle, window);
         crate::interactive::scrollbars::paint(
             &self.style,
             &self.handle,

@@ -5345,7 +5345,9 @@ impl Window {
                     size: size(ScaledPixels(x1 - x0), ScaledPixels(y1 - y0)),
                 };
             }
-            self.next_frame.scene.push_layer(scaled);
+            // KaminIDE patch: under a scroll node the layer moves with it.
+            let scale = self.scale_factor();
+            self.next_frame.with_scene_node(scale, |scene| scene.push_layer(scaled));
         }
 
         self.with_restore(!clipped_bounds.is_empty(), |window, pushed| {
@@ -7623,7 +7625,15 @@ impl Window {
 
     fn dispatch_key_event(&mut self, event: &dyn Any, cx: &mut App) {
         if self.invalidator.is_dirty() {
+            // KaminIDE patch: this frame shows the state before the key's
+            // handlers run, so it is drawn at the epoch before this input
+            // (`dispatch_event` counted it): a retained subtree replays here
+            // and judges the input once its handlers ran.
+            let (epoch, before) = (self.interaction_epoch, self.interaction_epoch.wrapping_sub(1));
+            self.interaction_epoch = before;
             self.draw(cx).clear(cx);
+            // Inputs the draw itself counted (a focus change) stay counted.
+            self.interaction_epoch = epoch.wrapping_add(self.interaction_epoch.wrapping_sub(before));
         }
 
         let node_id = self.focus_node_id_in_rendered_frame(self.focus);

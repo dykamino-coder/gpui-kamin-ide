@@ -54,6 +54,10 @@ pub(crate) struct ScrollBook {
     pub(crate) open: Option<(ScrollNodeId, Bounds<ScaledPixels>)>,
     /// The order raise of the last `replay_shifted` copy (0 for any other).
     pub(crate) raise: DrawOrder,
+    /// A primitive under `open` that a later offset may show could not be
+    /// kept (a bottom layer or depth context): its node cannot be replayed
+    /// moved (`Window::taint_open_scroll_node`).
+    pub(crate) lost: bool,
 }
 
 impl ScrollBook {
@@ -87,16 +91,67 @@ impl Scene {
         let ordered = placed.intersect(&own);
         let at = self.paint_operations.len() as u32;
         if placed.intersect(&primitive.content_mask().bounds).is_empty() {
-            // Dormant only where its order can come from the bounds tree.
-            if !ordered.is_empty() && self.layer_stack.is_empty() && self.depth.contexts.is_empty() {
-                *primitive.order_mut() = self.tree_mut().insert(ordered) * ORDER_STEP;
-                self.paint_operations.push(PaintOperation::Dormant(std::rc::Rc::new(primitive.clone())));
-                self.scroll.marks.push(ScrollMark { op: at, node, own, placed, moved: Point::default(), raised: 0 });
+            if ordered.is_empty() {
+                return None;
             }
+            // Dormant where its order is known: from the bounds tree, or the
+            // order of the layer it paints in (a text line, `Window::paint_layer`).
+            let order = match self.layer_stack.last().copied() {
+                _ if !self.depth.contexts.is_empty() => None,
+                None => Some(self.tree_mut().insert(ordered) * ORDER_STEP),
+                Some(BOTTOM_LAYER) => None,
+                Some(layer) => Some(layer),
+            };
+            let Some(order) = order else {
+                self.scroll.lost = true;
+                return None;
+            };
+            *primitive.order_mut() = order;
+            self.paint_operations.push(PaintOperation::Dormant(std::rc::Rc::new(primitive.clone())));
+            self.scroll.marks.push(ScrollMark { op: at, node, own, placed, moved: Point::default(), raised: 0 });
             return None;
         }
         self.scroll.marks.push(ScrollMark { op: at, node, own, placed, moved: Point::default(), raised: 0 });
         Some(ordered)
+    }
+
+    /// `replay_shifted` of a copy under the open node: mark a primitive (its
+    /// mask now is its own: the order came from it) and draw it with own ∩
+    /// chain, or turn it dormant (`true`, raised by `raise`: the caller keeps
+    /// it as it is); mark a layer.
+    pub(super) fn mark_copied(&mut self, operation: &mut PaintOperation, raise: DrawOrder) -> bool {
+        let Some((node, chain)) = self.scroll.open else { return false };
+        let op = self.paint_operations.len() as u32;
+        match operation {
+            PaintOperation::Primitive(primitive) => {
+                let own = primitive.content_mask().bounds;
+                primitive.content_mask_mut().bounds = own.intersect(&chain);
+                let placed = placed_bounds(primitive);
+                self.scroll.marks.push(ScrollMark { op, node, own, placed, moved: Point::default(), raised: 0 });
+                if !placed.intersect(&primitive.content_mask().bounds).is_empty() {
+                    return false;
+                }
+                *primitive.order_mut() += raise;
+                *operation = PaintOperation::Dormant(std::rc::Rc::new(primitive.clone()));
+                true
+            }
+            PaintOperation::StartLayer(bounds, _) => {
+                let mark = ScrollMark { op, node, own: *bounds, placed: *bounds, moved: Point::default(), raised: 0 };
+                self.scroll.marks.push(mark);
+                false
+            }
+            _ => false,
+        }
+    }
+
+    /// Mark the layer `push_layer` opens now under the open node: its bounds
+    /// (clipped by the own mask) move with the node, as its primitives do.
+    pub(super) fn mark_layer(&mut self, bounds: Bounds<ScaledPixels>) {
+        if let Some((node, _)) = self.scroll.open {
+            let op = self.paint_operations.len() as u32;
+            let mark = ScrollMark { op, node, own: bounds, placed: bounds, moved: Point::default(), raised: 0 };
+            self.scroll.marks.push(mark);
+        }
     }
 
     /// After a command range of `source` was copied here starting at
@@ -116,6 +171,33 @@ impl Scene {
         }));
     }
 
+    /// The commands of `range` as a moved copy places them: a primitive
+    /// painted under a scroll node, dormant or not, with its own mask (the
+    /// copy is clipped and marked where it lands), a reservoir as all it
+    /// holds instead of what it drew.
+    pub(crate) fn unscrolled(&self, range: Range<usize>) -> Vec<PaintOperation> {
+        let mut marks = self.scroll.within(&range).iter().peekable();
+        let mut out = Vec::with_capacity(range.len());
+        let mut at = range.start;
+        while at < range.end {
+            let mark = marks.next_if(|mark| mark.op as usize == at);
+            match (&self.paint_operations[at], mark) {
+                (PaintOperation::Reservoir(reservoir), _) => {
+                    reservoir.run.expand(reservoir.shift, reservoir.raised, &mut out);
+                    at += reservoir.drawn as usize;
+                }
+                (operation @ (PaintOperation::Primitive(_) | PaintOperation::Dormant(_)), Some(mark)) => {
+                    let Piece::Primitive(mut primitive) = Item::of(operation, mark).piece else { unreachable!() };
+                    primitive.content_mask_mut().bounds = mark.own;
+                    out.push(PaintOperation::Primitive(primitive));
+                }
+                (operation, _) => out.push(operation.clone()),
+            }
+            at += 1;
+        }
+        out
+    }
+
     /// Whether no layer or depth context is open (a scrolled replay copies
     /// runs as `replay` does at the root).
     pub(crate) fn at_root(&self) -> bool {
@@ -124,24 +206,33 @@ impl Scene {
 
     /// Whether `range` of this finished scene can be replayed scrolled: its
     /// commands keep their orders under one shift (`shiftable`), and inside
-    /// each node's scene range (`nodes`) every command is a marked primitive
-    /// or a reservoir with the primitives it drew (copies that dropped marks,
-    /// layers or depth sorting need a build).
+    /// each node's scene range (`nodes`) every command is a marked primitive,
+    /// a marked layer of one node holding marked primitives of it, or a
+    /// reservoir with what it drew (copies that dropped marks, bottom layers
+    /// or depth sorting need a build).
     pub(crate) fn scrollable(&self, range: &Range<usize>, nodes: impl Iterator<Item = Range<usize>>) -> bool {
-        Self::shiftable(&self.paint_operations[range.clone()])
-            && nodes.into_iter().all(|node| {
-                let mut plain = 0;
-                let mut at = node.start;
-                while at < node.end {
-                    match &self.paint_operations[at] {
-                        PaintOperation::Reservoir(reservoir) => at += reservoir.drawn as usize,
-                        PaintOperation::Primitive(_) | PaintOperation::Dormant(_) => plain += 1,
-                        _ => return false,
-                    }
-                    at += 1;
-                }
-                at == node.end && plain == self.scroll.within(&node).len()
-            })
+        Self::shiftable(&self.paint_operations[range.clone()]) && nodes.into_iter().all(|node| self.node_scrollable(&node))
+    }
+
+    fn node_scrollable(&self, node: &Range<usize>) -> bool {
+        let mut marks = self.scroll.within(node).iter().peekable();
+        // The node of each layer open in the range.
+        let mut layers: Vec<ScrollNodeId> = Vec::new();
+        let mut at = node.start;
+        while at < node.end {
+            let mark = marks.next_if(|mark| mark.op as usize == at);
+            let foreign = mark.is_some_and(|mark| layers.last().is_some_and(|&layer| layer != mark.node));
+            match (&self.paint_operations[at], mark) {
+                _ if foreign => return false,
+                (PaintOperation::Reservoir(reservoir), None) if layers.is_empty() => at += reservoir.drawn as usize,
+                (PaintOperation::Primitive(_) | PaintOperation::Dormant(_), Some(_)) => {}
+                (PaintOperation::StartLayer(..), Some(mark)) => layers.push(mark.node),
+                (PaintOperation::EndLayer, None) if layers.pop().is_some() => {}
+                _ => return false,
+            }
+            at += 1;
+        }
+        at == node.end && layers.is_empty()
     }
 
     /// `replay` of `range` of the rendered `prev` with the scroll nodes moved:
@@ -183,11 +274,7 @@ impl Scene {
                 _ => match marks.peek() {
                     Some(mark) if mark.op as usize == at => {
                         let id = mark.node;
-                        let mut items = Vec::new();
-                        while let Some(mark) = marks.next_if(|mark| mark.op as usize == at && mark.node == id) {
-                            items.push(Item::of(&prev.paint_operations[at], mark));
-                            at += 1;
-                        }
+                        let items = Item::collect(&prev.paint_operations, &mut marks, &mut at, id);
                         let run = std::rc::Rc::new(Run::new(id, items));
                         Some((ReservoirOp { run, shift: Point::default(), raised: 0, drawn: 0 }, node(id)))
                     }
@@ -249,16 +336,27 @@ const TILE: f32 = 512.;
 /// A primitive covering more tiles is checked on every draw instead.
 const SPREAD: usize = 16;
 
-/// One primitive of a reservoir, as of the frame it was made in.
+/// One command of a reservoir, as of the frame it was made in.
 #[derive(Clone)]
-struct Item {
-    primitive: Primitive,
+enum Piece {
+    Primitive(Primitive),
+    /// A layer (a text line) and its order; its commands follow up to `end`.
+    Layer(DrawOrder),
+    End,
+}
+
+/// One command of a reservoir with its own mask and where it lands.
+#[derive(Clone)]
+pub(crate) struct Item {
+    piece: Piece,
     own: Bounds<ScaledPixels>,
     placed: Bounds<ScaledPixels>,
+    /// Of a layer: the index past its `End`.
+    end: u32,
 }
 
 impl Item {
-    /// A marked command with the shift and raise it has not taken yet.
+    /// A marked primitive with the shift and raise it has not taken yet.
     fn of(operation: &PaintOperation, mark: &ScrollMark) -> Self {
         let mut primitive = match operation {
             PaintOperation::Primitive(primitive) => primitive.clone(),
@@ -269,7 +367,46 @@ impl Item {
             record::geometry::primitive(&mut primitive, mark.moved, None);
         }
         *primitive.order_mut() += mark.raised;
-        Item { primitive, own: mark.own, placed: mark.placed }
+        Item { piece: Piece::Primitive(primitive), own: mark.own, placed: mark.placed, end: 0 }
+    }
+
+    /// The marked commands of node `id` from `at` on (`Scene::scrollable`
+    /// checked their shape): primitives, and layers with what they hold.
+    fn collect<'a>(
+        operations: &[PaintOperation],
+        marks: &mut std::iter::Peekable<impl Iterator<Item = &'a ScrollMark>>,
+        at: &mut usize,
+        id: ScrollNodeId,
+    ) -> Vec<Item> {
+        let mut items = Vec::new();
+        // Indices of the layer items open now.
+        let mut open: Vec<usize> = Vec::new();
+        loop {
+            let here = *at;
+            let mark = if open.is_empty() {
+                marks.next_if(|mark| mark.op as usize == here && mark.node == id)
+            } else {
+                marks.next_if(|mark| mark.op as usize == here)
+            };
+            match (&operations[here], mark) {
+                (PaintOperation::StartLayer(bounds, order), Some(mark)) => {
+                    open.push(items.len());
+                    items.push(Item { piece: Piece::Layer(*order), own: mark.own, placed: *bounds, end: 0 });
+                }
+                (PaintOperation::EndLayer, None) if !open.is_empty() => {
+                    items.push(Item { piece: Piece::End, own: Bounds::default(), placed: Bounds::default(), end: 0 });
+                    let start = open.pop().unwrap_or_default();
+                    items[start].end = items.len() as u32;
+                }
+                (operation, Some(mark)) => items.push(Item::of(operation, mark)),
+                _ => break,
+            }
+            *at += 1;
+            if *at == operations.len() {
+                break;
+            }
+        }
+        items
     }
 }
 
@@ -301,7 +438,18 @@ pub(crate) struct ReservoirOp {
 
 impl Run {
     fn new(node: ScrollNodeId, items: Vec<Item>) -> Self {
-        let area = items.iter().map(|item| item.placed.intersect(&item.own)).reduce(|a, b| a.union(&b));
+        // The grid and the tree hold the top commands: a layer stands for
+        // what it holds, as `Scene::packed` and the bounds tree see it.
+        let mut top = Vec::with_capacity(items.len());
+        let mut at = 0;
+        while at < items.len() {
+            top.push(at as u32);
+            at = match items[at].piece {
+                Piece::Layer(_) => (items[at].end as usize).max(at + 1),
+                _ => at + 1,
+            };
+        }
+        let area = top.iter().map(|&at| &items[at as usize]).map(|item| item.placed.intersect(&item.own)).reduce(|a, b| a.union(&b));
         let area = area.unwrap_or_default();
         let tile = |value: ScaledPixels, from: ScaledPixels| ((value.0 - from.0) / TILE).floor().max(0.) as usize;
         let columns = tile(area.right(), area.left()) + 1;
@@ -313,15 +461,14 @@ impl Run {
         };
         let mut counts = vec![0u32; columns * rows + 1];
         let mut spread = Vec::new();
-        let reach: Vec<_> = items
+        let reach: Vec<_> = top
             .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let shown = item.placed.intersect(&item.own);
+            .map(|&index| {
+                let shown = items[index as usize].placed.intersect(&items[index as usize].own);
                 let (left, right, top, bottom) = span(&shown);
                 let wide = shown.is_empty() || (right - left + 1) * (bottom - top + 1) > SPREAD;
                 if wide {
-                    spread.push(index as u32);
+                    spread.push(index);
                 } else {
                     for row in top..=bottom {
                         for column in left..=right {
@@ -337,27 +484,45 @@ impl Run {
         }
         let mut fill = counts.clone();
         let mut tiled = vec![0u32; *counts.last().unwrap_or(&0) as usize];
-        for (index, &(wide, left, right, top, bottom)) in reach.iter().enumerate() {
+        for (&index, &(wide, left, right, top, bottom)) in top.iter().zip(&reach) {
             if wide {
                 continue;
             }
             for row in top..=bottom {
                 for column in left..=right {
                     let cell = row * columns + column;
-                    tiled[fill[cell] as usize] = index as u32;
+                    tiled[fill[cell] as usize] = index;
                     fill[cell] += 1;
                 }
             }
         }
-        let rects = items
+        let rects = top
             .iter()
-            .map(|item| (item.placed.intersect(&item.own), item.primitive.order() / ORDER_STEP))
+            .map(|&at| &items[at as usize])
+            .map(|item| (item.placed.intersect(&item.own), item.order() / ORDER_STEP))
             .filter(|(rect, _)| !rect.is_empty())
             .collect();
         let mut tree = crate::bounds_tree::BoundsTree::packed(rects, |coordinate| coordinate.0);
         tree.freeze();
         let tree = std::rc::Rc::new(tree);
         Run { node, items, origin: area.origin, columns, rows, cells: counts, tiled, spread, tree }
+    }
+
+    /// Append every command of the run moved by `shift` and raised by
+    /// `raised`, primitives with their own masks (a moved copy of it).
+    fn expand(&self, shift: Point<ScaledPixels>, raised: DrawOrder, out: &mut Vec<PaintOperation>) {
+        for item in &self.items {
+            match &item.piece {
+                Piece::Primitive(primitive) => {
+                    let mut primitive = primitive.clone();
+                    record::geometry::primitive(&mut primitive, shift, None);
+                    *primitive.order_mut() += raised;
+                    primitive.content_mask_mut().bounds = record::geometry::bounds(item.own, shift);
+                    out.push(PaintOperation::Primitive(primitive));
+                }
+                _ => item.draw(shift, raised, Bounds::default(), out),
+            }
+        }
     }
 
     /// Append the primitives `chain` shows with the run moved by `shift`, in
@@ -382,15 +547,50 @@ impl Run {
         picked.dedup();
         for index in picked {
             let item = &self.items[index as usize];
-            let mask = item.own.intersect(&seen);
-            if item.placed.intersect(&mask).is_empty() {
+            if item.placed.intersect(&item.own.intersect(&seen)).is_empty() {
                 continue;
             }
-            let mut primitive = item.primitive.clone();
-            record::geometry::primitive(&mut primitive, shift, None);
-            *primitive.order_mut() += raised;
-            primitive.content_mask_mut().bounds = record::geometry::bounds(mask, shift);
-            out.push(PaintOperation::Primitive(primitive));
+            match item.piece {
+                Piece::Layer(_) => {
+                    for inner in &self.items[index as usize..(item.end as usize).max(index as usize + 1)] {
+                        inner.draw(shift, raised, seen, out);
+                    }
+                }
+                _ => item.draw(shift, raised, seen, out),
+            }
+        }
+    }
+}
+
+impl Item {
+    fn order(&self) -> DrawOrder {
+        match &self.piece {
+            Piece::Primitive(primitive) => primitive.order(),
+            Piece::Layer(order) => *order,
+            Piece::End => 0,
+        }
+    }
+
+    /// Append this command moved by `shift` and raised by `raised`: a
+    /// primitive only where `seen` (the clip in the run's coordinates) shows
+    /// it, with (own ∩ seen) + shift as its mask; a layer's ends always.
+    fn draw(&self, shift: Point<ScaledPixels>, raised: DrawOrder, seen: Bounds<ScaledPixels>, out: &mut Vec<PaintOperation>) {
+        match &self.piece {
+            Piece::Primitive(primitive) => {
+                let mask = self.own.intersect(&seen);
+                if self.placed.intersect(&mask).is_empty() {
+                    return;
+                }
+                let mut primitive = primitive.clone();
+                record::geometry::primitive(&mut primitive, shift, None);
+                *primitive.order_mut() += raised;
+                primitive.content_mask_mut().bounds = record::geometry::bounds(mask, shift);
+                out.push(PaintOperation::Primitive(primitive));
+            }
+            Piece::Layer(order) => {
+                out.push(PaintOperation::StartLayer(record::geometry::bounds(self.placed, shift), order + raised));
+            }
+            Piece::End => out.push(PaintOperation::EndLayer),
         }
     }
 }

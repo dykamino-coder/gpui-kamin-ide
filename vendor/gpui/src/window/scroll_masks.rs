@@ -7,7 +7,7 @@
 
 use super::*;
 use crate::ScrollHandle;
-use crate::scene::{Primitive, scroll_marks::SceneSpace};
+use crate::scene::{Primitive, Scene, scroll_marks::SceneSpace};
 
 /// The scroll node and own mask of a hitbox inserted under it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -16,6 +16,28 @@ pub(crate) struct HitboxMark {
     pub(crate) index: u32,
     pub(crate) node: ScrollNodeId,
     pub(crate) own: Bounds<Pixels>,
+}
+
+impl Frame {
+    /// Run `f` on the scene with the innermost open paint node as the node
+    /// its commands land under (`Scene::mark_scrolled`, `mark_layer`,
+    /// `mark_copied`): its id and real clip chain in scene pixels. A
+    /// primitive the scene could not keep taints the node.
+    pub(crate) fn with_scene_node<R>(&mut self, scale: f32, f: impl FnOnce(&mut Scene) -> R) -> R {
+        let open = self.scroll_paint.open.last().map(|&(index, _)| index);
+        self.scene.scroll.open = open.map(|index| {
+            let node = &self.scroll_nodes[index as usize];
+            (node.id, node.clip.scale(scale))
+        });
+        let result = f(&mut self.scene);
+        self.scene.scroll.open = None;
+        if std::mem::take(&mut self.scene.scroll.lost) {
+            if let Some(index) = open {
+                self.scroll_nodes[index as usize].torn = true;
+            }
+        }
+        result
+    }
 }
 
 impl Window {
@@ -57,14 +79,7 @@ impl Window {
     /// open paint node when there is one.
     pub(crate) fn insert_scene_primitive(&mut self, primitive: impl Into<Primitive>) {
         let scale = self.scale_factor();
-        let frame = &mut self.next_frame;
-        let open = frame.scroll_paint.open.last().map(|&(index, _)| {
-            let node = &frame.scroll_nodes[index as usize];
-            (node.id, node.clip.scale(scale))
-        });
-        frame.scene.scroll.open = open;
-        frame.scene.insert_primitive(primitive);
-        frame.scene.scroll.open = None;
+        self.next_frame.with_scene_node(scale, |scene| scene.insert_primitive(primitive));
     }
 
     /// The mask a hitbox inserted now is hit-tested with, and its mark when

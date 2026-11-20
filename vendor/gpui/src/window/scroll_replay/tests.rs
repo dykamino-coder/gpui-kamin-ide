@@ -236,6 +236,115 @@ fn an_unmarked_command_under_a_node_needs_a_build(cx: &mut TestAppContext) {
         .unwrap();
 }
 
+/// One text line as a line paints it: a layer over the line with two glyph
+/// sprites in it, under the current content mask.
+fn glyph_line(window: &mut Window, y: f32) {
+    let scale = window.scale_factor();
+    window.paint_layer(rect(0., y, 40., 10.), |window| {
+        for x in [0., 20.] {
+            let bounds = rect(x, y, 8., 10.).scale(scale);
+            let content_mask = window.content_mask().scale(scale);
+            window.insert_scene_primitive(crate::MonochromeSprite {
+                order: 0,
+                pad: 0,
+                bounds,
+                content_mask,
+                color: Default::default(),
+                tile: crate::AtlasTile {
+                    texture_id: crate::AtlasTextureId { index: 0, kind: crate::AtlasTextureKind::Monochrome },
+                    tile_id: crate::TileId(1),
+                    padding: 0,
+                    bounds: Default::default(),
+                },
+                transformation: crate::TransformationMatrix::unit(),
+            });
+        }
+    });
+}
+
+/// Drawn glyphs (left and top in window pixels, drawn mask), each inside a layer.
+fn glyphs(window: &Window) -> Vec<(f32, f32, Bounds<ScaledPixels>)> {
+    let scale = window.scale_factor();
+    let mut depth = 0usize;
+    let mut out = Vec::new();
+    for operation in &window.next_frame.scene.paint_operations {
+        match operation {
+            PaintOperation::StartLayer(..) => depth += 1,
+            PaintOperation::EndLayer => depth -= 1,
+            PaintOperation::Primitive(primitive @ Primitive::MonochromeSprite(_)) => {
+                assert!(depth > 0, "a glyph outside its line's layer");
+                let placed = crate::scene::placed_bounds(primitive);
+                out.push((placed.origin.x.0 / scale, placed.origin.y.0 / scale, primitive.content_mask().bounds));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Text lines are layers of glyphs (`paint_layer`), painted under the node
+/// directly or copied there moved from a line record of the previous frame
+/// (an inline line capture replayed, `replay_retained_paint_moved`): both
+/// move with the node, and a step equals a fresh paint of the lines.
+#[crate::test]
+fn glyph_lines_and_their_moved_copies_scroll_like_a_fresh_paint(cx: &mut TestAppContext) {
+    let window = cx.add_window(|_, _| Empty);
+    window
+        .update(cx, |_, window, _| {
+            window.scroll_interest_margin = px(100.);
+            let handle = ScrollHandle::new();
+            handle.set_max_offset(point(px(0.), px(10_000.)));
+            let node = ScrollNodeId::of(&handle);
+            // The middle line: a record made at -60 (frame 0), copied moved
+            // by 120 (frame 1), or painted where it is (a fresh paint).
+            let paint_lines = |window: &mut Window, offset: f32, copy: Option<&RetainedPaint>, source: bool| {
+                handle.set_offset(point(px(0.), px(offset)));
+                window.invalidator.set_phase(DrawPhase::Prepaint);
+                let (_, prepaint) = window.record_retained_prepaint(|window| {
+                    window.with_scroll_node_prepaint(&handle, clip(), |_| {});
+                });
+                window.invalidator.set_phase(DrawPhase::Paint);
+                let mut line = None;
+                let (_, paint) = window.record_retained_paint(|window| {
+                    window.with_scroll_node_paint(node, |window| {
+                        glyph_line(window, 10. + offset);
+                        match copy {
+                            Some(record) => {
+                                window.replay_retained_paint_moved(record, point(px(0.), px(120.)));
+                            }
+                            None if source => {
+                                line = Some(window.record_retained_paint(|window| glyph_line(window, -60. + offset)).1);
+                            }
+                            None => glyph_line(window, 60. + offset),
+                        }
+                        glyph_line(window, 110. + offset);
+                    });
+                });
+                (prepaint, paint, line)
+            };
+            let (_, _, line) = paint_lines(window, 0., None, true);
+            let line = line.unwrap();
+            next_frame(window);
+            let (prepaint, paint, _) = paint_lines(window, 0., Some(&line), false);
+            assert_eq!(glyphs(window).len(), 2, "only the first line shows at rest");
+            next_frame(window);
+            let (prepaint, paint) = scrolled(window, (&prepaint, &paint), &handle, -40.).expect("a step inside the interest rect");
+            let stepped = glyphs(window);
+            next_frame(window);
+            scrolled(window, (&prepaint, &paint), &handle, -80.).expect("a second step");
+            let second = glyphs(window);
+            next_frame(window);
+            paint_lines(window, -40., None, false);
+            assert_eq!(stepped, glyphs(window), "the first step is a fresh paint at -40");
+            assert_eq!(stepped.iter().map(|glyph| glyph.1).collect::<Vec<_>>(), vec![20., 20.], "the copied line");
+            next_frame(window);
+            paint_lines(window, -80., None, false);
+            assert_eq!(second, glyphs(window), "the second step is a fresh paint at -80");
+            assert_eq!(second.iter().map(|glyph| glyph.1).collect::<Vec<_>>(), vec![30., 30.], "the third line");
+        })
+        .unwrap();
+}
+
 /// The cost of a scrolled replay against a plain one on a text-like record:
 /// lines of glyph-sized quads every 20 px (80 and 480 a line) under an 800x600 node with
 /// a 2000 px interest margin. Runs only with `KAMIN_SCROLL_COST_OUT` set (a

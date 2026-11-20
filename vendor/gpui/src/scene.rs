@@ -437,6 +437,8 @@ impl Scene {
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
         let order = self.tree_mut().insert(bounds) * ORDER_STEP;
         self.layer_stack.push(order);
+        // KaminIDE patch: a layer opened under a scroll node moves with it.
+        self.mark_layer(bounds);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds, order));
     }
@@ -638,7 +640,8 @@ impl Scene {
         offset: Point<ScaledPixels>,
         clip: Bounds<ScaledPixels>,
     ) {
-        let mut operations = prev_scene.paint_operations[range].to_vec();
+        // KaminIDE patch: what a scroll node kept, with its own masks.
+        let mut operations = prev_scene.unscrolled(range);
         operations.retain_mut(|operation| match operation {
             PaintOperation::Primitive(primitive) => {
                 record::geometry::primitive(primitive, offset, Some(clip));
@@ -814,6 +817,14 @@ impl Scene {
             let mut operation = operation.clone();
             if !place(&mut operation) {
                 layer::PlacedMap::skip(&mut self.book.placed_map);
+                continue;
+            }
+            // KaminIDE patch: a copy landing under a scroll node is marked
+            // there, ordered by its own mask, dormant where the chain hides it.
+            if self.scroll.open.is_some() && self.mark_copied(&mut operation, shift) {
+                let at = self.paint_operations.len();
+                layer::PlacedMap::land(&mut self.book.placed_map, at, None);
+                self.paint_operations.push(operation);
                 continue;
             }
             let mut quad = None;

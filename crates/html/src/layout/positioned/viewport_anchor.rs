@@ -71,7 +71,12 @@ pub(crate) struct ViewportAnchor {
 
 impl ViewportAnchor {
     pub(crate) fn wrap(child: AnyElement, scroll: ScrollHandle) -> AnyElement {
-        Self { child, scroll, token: std::rc::Rc::new(()) }.hooked()
+        Self {
+            child,
+            scroll,
+            token: std::rc::Rc::new(()),
+        }
+        .hooked()
     }
 }
 
@@ -87,7 +92,8 @@ impl Wrap for ViewportAnchor {
         // A scroll anchor: a replay that moves the root scroll node cancels
         // the move for the box as this shift does (`with_scroll_anchor_prepaint`).
         let scroll = self.scroll.clone();
-        let counter: std::rc::Rc<dyn Fn() -> gpui::Point<Pixels>> = std::rc::Rc::new(move || -scroll.offset());
+        let counter: std::rc::Rc<dyn Fn() -> gpui::Point<Pixels>> =
+            std::rc::Rc::new(move || -scroll.offset());
         let id = gpui::ScrollNodeId::of_token(&self.token);
         window.with_scroll_anchor_prepaint(id, counter, |window| {
             window.with_exact_element_offset(shift, |window| child.prepaint(window, cx))
