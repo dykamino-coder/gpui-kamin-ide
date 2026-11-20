@@ -31,15 +31,25 @@ impl FlowReuse {
         let mut floats = Vec::new();
         for slot in slots.iter() {
             if matches!(slot.kind, Kind::Floats) {
-                if let Some(id) = slot.layout.get() {
+                if let Some(id) = slot.node_in(window) {
                     floats.push(window.layout_subtree_bounds(id));
                 }
                 continue;
             }
-            let Some(id) = slot.layout.get() else {
+            let Some(id) = slot.node_in(window) else {
+                // Not laid out in the frame's tree (under a measured host, or
+                // not at all): the block stands built from now on.
                 if slot.leaf() {
                     refused.insert(slot.node);
                 }
+                let (at, span) = (slot.at, (0.0, 0.0));
+                let never = Kept {
+                    snapshot: None,
+                    at,
+                    span,
+                    viewport,
+                };
+                kept.insert(slot.node, never);
                 continue;
             };
             let bounds = window.layout_bounds(id);

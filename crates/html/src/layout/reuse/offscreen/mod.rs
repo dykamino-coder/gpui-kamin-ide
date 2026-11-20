@@ -24,13 +24,16 @@ pub(crate) use above::root_scroller_build;
 mod eligible;
 mod frame;
 mod leaf;
+mod slot;
+use slot::Kind;
+pub(crate) use slot::Slot;
 pub(crate) mod switch;
 
 use super::FlowReuse;
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
-use gpui::{AnyElement, LayoutId, LayoutSnapshot};
+use gpui::{AnyElement, LayoutSnapshot};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -67,53 +70,6 @@ pub(crate) struct Store {
     /// Blocks every check of this frame saw: they keep what was learnt.
     seen: Cell<HashSet<u64>>,
 }
-
-enum Kind {
-    Measured,
-    Exact(LayoutSnapshot),
-    Built,
-    /// A built block whose floats reach past it: no leaf may meet them.
-    Floats,
-}
-
-impl Slot {
-    fn new(node: u64, kind: Kind, at: u32) -> Self {
-        Self {
-            node,
-            kind,
-            at,
-            layout: Cell::new(None),
-            measured: Cell::new(None),
-            failed: Cell::new(false),
-            sizes: Default::default(),
-        }
-    }
-
-    /// A leaf stands for the block: the frame check decides on it.
-    fn leaf(&self) -> bool {
-        matches!(self.kind, Kind::Measured | Kind::Exact(_))
-    }
-}
-
-/// A block of this build standing as its leaf or built where a leaf could.
-pub(crate) struct Slot {
-    node: u64,
-    kind: Kind,
-    at: u32,
-    layout: Cell<Option<LayoutId>>,
-    /// The leaf of the block built by the measure at a definite width.
-    measured: Cell<Option<LayoutSnapshot>>,
-    failed: Cell<bool>,
-    /// What the measure laid out at each width it was asked for.
-    sizes: RefCell<Vec<Laid>>,
-}
-
-/// A width a measure was asked for, its size and its exact leaf.
-type Laid = (
-    gpui::AvailableSpace,
-    gpui::Size<gpui::Pixels>,
-    Option<LayoutSnapshot>,
-);
 
 /// The leaves of one build.
 #[derive(Default)]

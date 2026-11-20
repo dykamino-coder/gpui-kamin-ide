@@ -102,7 +102,7 @@ impl Wrap for Watch {
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         let id = self.child.request_layout(window, cx);
-        self.slot.layout.set(Some(id));
+        self.slot.place(id, window);
         id
     }
 }
@@ -213,7 +213,7 @@ impl Hooks for Measured {
                 measure(&source, &slot, known, available, window, cx)
             },
         );
-        self.slot.layout.set(Some(id));
+        self.slot.place(id, window);
         (id, ())
     }
 
@@ -237,7 +237,7 @@ impl Hooks for Exact {
             return (window.request_layout(gpui::Style::default(), [], cx), ());
         }
         let id = window.request_snapshot_layout(&self.snapshot.stretched());
-        self.slot.layout.set(Some(id));
+        self.slot.place(id, window);
         (id, ())
     }
 
