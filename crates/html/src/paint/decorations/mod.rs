@@ -20,6 +20,8 @@ mod backdrop;
 mod border_shape;
 mod gradient_stripes;
 mod outline;
+mod outset;
+pub(crate) use outset::outset;
 pub(crate) mod outline_phase;
 pub(crate) mod rect_minus;
 mod shadows;

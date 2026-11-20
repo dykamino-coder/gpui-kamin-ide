@@ -2,11 +2,10 @@
 //! a scrolled replay (`gpui::Window::plan_scrolled_replay`) and a build, and
 //! paint replays or records accordingly.
 
-use super::super::record::Record;
+use super::super::record::{Inputs, Record, Replay};
 use super::super::window_key::WindowKey;
 use super::Retained;
 use gpui::{App, Bounds, GlobalElementId, Pixels, RetainedPaint, Window, px};
-use std::rc::Rc;
 
 impl Retained {
     pub(super) fn prepaint_record(
@@ -16,13 +15,7 @@ impl Retained {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let scroll_inputs = self
-            .builder
-            .state
-            .root_scroll
-            .as_ref()
-            .map_or(0, |root| root.scroll_inputs.get());
-        let key = WindowKey::capture(bounds, window, cx, scroll_inputs);
+        let key = WindowKey::capture(bounds, window, cx, &self.builder.state);
         let root = window.retained_root_environment();
         // A document under its root scroller records past the viewport, so a
         // wheel step replays the frame moved (`gpui::Window::plan_scrolled_replay`).
@@ -34,41 +27,25 @@ impl Retained {
         window.with_scroll_interest_margin(margin, |window| {
             window.with_element_state::<Record, _>(id, |record, window| {
                 let before = window.next_frame_callback_count();
-                // The element state lives one frame: without it the window's
-                // last frame did not draw the document, and no block replays from it.
-                self.builder.store.draw(record.is_some());
-                let record = record.filter(|r| r.reusable(&self.slot, &self.key, &key));
-                // A scroll node of the record moved: replay it moved when every
-                // node stays inside what was recorded, otherwise build.
-                let mut plan = None;
-                let record = record.filter(|r| {
-                    if !window.retained_scrolled(&r.prepaint) {
-                        return true;
-                    }
-                    // A layered record copies from the document's layer.
-                    let layer = self.builder.scene_layer();
-                    plan = match (&r.layered, &layer) {
-                        (Some(inner), Some(layer)) => window.plan_scrolled_replay(
-                            &r.prepaint,
-                            &r.paint.in_layer(inner),
-                            Some(layer),
-                        ),
-                        (Some(_), None) => None,
-                        (None, _) => window.plan_scrolled_replay(&r.prepaint, &r.paint, None),
-                    };
-                    plan.is_some()
-                });
-                if let Some(r) = &record
-                    && !window.retained_replayable(&r.prepaint, &r.paint)
-                {
-                    self.slot.unreplayable.set(true);
-                    *self.slot.recorded.borrow_mut() = None;
-                }
+                let mut record = record.unwrap_or_default();
+                let epoch = record.begin(&self.builder.store, window);
                 if self.tree.is_none()
-                    && root
-                    && !self.slot.unreplayable.get()
-                    && let Some(record) = record.filter(|_| self.builder.repaint_boxes(window, cx))
+                    && let Some(replay) = record.replay(
+                        &self.slot,
+                        self.key.as_ref(),
+                        &key,
+                        window,
+                        &self.builder.store,
+                    )
+                    && self.builder.repaint_boxes(window, cx)
                 {
+                    if let Some(inputs) = &record.inputs {
+                        window.replay_layout_inputs(&inputs.layout);
+                    }
+                    let plan = match replay {
+                        Replay::Still => None,
+                        Replay::Scrolled(plan) => Some(plan),
+                    };
                     self.replay = true;
                     self.builder.store.forget_replays();
                     self.slot.replays.set(self.slot.replays.get() + 1);
@@ -81,17 +58,23 @@ impl Retained {
                     // A moved replay remaps scene and scroll-node ranges.
                     self.same_prepaint =
                         plan.is_none() && prepaint.preserves_window_slots(&record.prepaint);
+                    record.prepaint = prepaint;
                     self.scroll_plan = plan;
-                    return ((), Record { prepaint, ..record });
+                    return ((), record);
                 }
-                // A placeholder that came near the screen cancels the skip: the
-                // frame is built again without placeholders (`layout::reuse`).
-                if let Some(flow) = self.flow.as_ref()
-                    && self.tree.is_some()
+                if let Some(checked) = self.checked.take() {
+                    if !checked.holds(epoch, Some(&key), window)
+                        || !self.layout_inputs.scroll_unchanged()
+                    {
+                        self.tree = None;
+                        self.flow = None;
+                    }
+                } else if let Some(flow) = &self.flow
                     && !flow.validate(window)
                 {
                     flow.note_rebuild();
                     self.tree = None;
+                    self.flow = None;
                 }
                 let prepaint = match self.tree.as_mut() {
                     // Laid out as a root before the frame: in place, as in `build_in`.
@@ -110,17 +93,14 @@ impl Retained {
                     None => self.build_in(bounds, window, cx),
                 };
                 self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-                let record = Record {
-                    slot: Rc::downgrade(&self.slot),
-                    key: self.key.clone(),
-                    window: Some(key),
-                    prepaint,
-                    paint: RetainedPaint::default(),
-                    layered: None,
-                    layer: None,
-                    root,
-                    settled: false,
-                };
+                record.inputs = self.key.clone().map(|frame| {
+                    Inputs::new(frame, key, window, std::mem::take(&mut self.layout_inputs))
+                });
+                record.prepaint = prepaint;
+                record.paint = RetainedPaint::default();
+                record.layered = None;
+                record.layer = None;
+                record.root = root;
                 ((), record)
             })
         });
@@ -149,6 +129,10 @@ impl Retained {
                         record.replay_paint(window, &self.builder.store, self.same_prepaint)
                     }
                 }
+                record.painted();
+                if let Some(inputs) = &record.inputs {
+                    inputs.replayed(window);
+                }
                 return ((), record);
             }
             let Some(tree) = self.tree.as_mut() else {
@@ -162,13 +146,13 @@ impl Retained {
                 flow.finish();
             }
             self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-            record.settled = record.root
+            let settled = record.root
                 && paint.replayable()
                 && self.scheduled == 0
                 && self.builder.state.values.frame_ready();
             record.paint = paint;
-            record.settled &= !self.slot.unreplayable.get();
-            *self.slot.recorded.borrow_mut() = self.key.clone().filter(|_| record.settled);
+            record.painted();
+            record.publish(&self.slot, settled && !self.slot.unreplayable.get());
             ((), record)
         });
     }

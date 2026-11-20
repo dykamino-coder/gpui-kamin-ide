@@ -3,7 +3,7 @@
 //! from a new band style.
 
 use super::*;
-use crate::scene::LayerHandle;
+use crate::scene::{LayerHandle, LayerPainter, RunPainter};
 use crate::text_system::band_piece::{BandEdges, paint_piece_style};
 use crate::BandStyle;
 
@@ -23,12 +23,12 @@ impl Window {
         edges: Option<BandEdges>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        self.with_run(owner, bounds, edges, f)
+        self.with_run(owner, bounds, RunPainter::Band(edges), f)
     }
 
     /// Box `owner` has paint in this recording outside its runs: the layer
     /// holds none of its runs and bindings (`SceneLayer::finish`).
-    pub(crate) fn unhold_band(&mut self, owner: u32) {
+    pub(crate) fn unhold_owner(&mut self, owner: u32) {
         if let Some(runs) = self.next_frame.scene.book.record_runs.as_mut() {
             runs.unheld.push(owner);
         } else if let Some(recording) = self.layer_recording.as_mut() {
@@ -48,8 +48,8 @@ impl Window {
         cx: &mut App,
         style: BandStyle,
     ) -> Option<bool> {
-        self.rerecord_runs(layer, owner, cx, true, |window, _, env| {
-            if let Some(edges) = env.piece {
+        self.rerecord_runs(layer, owner, cx, LayerPainter::Band, |window, _, env| {
+            if let RunPainter::Band(Some(edges)) = env.painter {
                 paint_piece_style(env.bounds, edges, style, window);
             }
         })
