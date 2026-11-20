@@ -105,7 +105,15 @@ mod tests {
         {
             frame.begin(Some(&root));
             let parent = {
+                // The scrollport's owner is a scroll container (CSS Overflow 3 §3).
                 let mut with_inherited = BoxStyle::from(Computed {
+                    reset_box_layout: crate::style::computed::StyleGroup::new(
+                        crate::style::computed::ResetBoxLayout {
+                            overflow_x: Some(crate::style::computed::Overflow::Hidden),
+                            overflow_y: Some(crate::style::computed::Overflow::Hidden),
+                            ..Default::default()
+                        },
+                    ),
                     reset_positioned: crate::style::computed::StyleGroup::new(
                         crate::style::computed::ResetPositioned {
                             position: Some(Position::Relative),
@@ -118,7 +126,7 @@ mod tests {
                 with_inherited.inh.writing.rtl = Some(true);
                 with_inherited
             };
-            classic::model(Some(&frame), 7, &parent);
+            classic::model(Some(&frame), &root, &parent);
             let absolute = crate::style::cascade::inherit::inherit(
                 &parent,
                 &Computed {
@@ -177,7 +185,7 @@ mod tests {
         };
         {
             frame.begin(Some(&root));
-            classic::model(Some(&frame), 7, &c);
+            classic::model(Some(&frame), &root, &c);
             frame.marker.push(());
             // Original root x=80, child x=110; the ancestor adds 40px.
             let link = ShiftLink::inside(None);

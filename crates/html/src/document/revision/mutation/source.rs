@@ -81,15 +81,17 @@ pub(super) fn parent(node: &Handle) -> Option<Handle> {
     parent
 }
 
-/// Scalar edits can reuse shape only below HTML elements outside templates.
+/// Attribute edits can reach SVG elements. SVG text and template contents stay closed.
 pub(in crate::document::revision) fn open(node: &Handle, root: &Handle) -> bool {
+    let element = matches!(node.data, NodeData::Element { .. });
     let mut at = node.clone();
     let mut first = true;
     loop {
         match &at.data {
             NodeData::Document => return Rc::ptr_eq(&at, root) && !first,
             NodeData::Element { name, .. } => {
-                if name.ns != html5ever::ns!(html) || &*name.local == "template" {
+                let svg = element && name.ns == html5ever::ns!(svg);
+                if !(name.ns == html5ever::ns!(html) || svg) || &*name.local == "template" {
                     return false;
                 }
             }

@@ -130,6 +130,7 @@ impl Document {
             }
             return Ok(report);
         }
+        crate::paint_path::add(&crate::paint_path::REFUSED_SHAPE, 1);
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
         let state = super::state::DocState::continuing(media, &self.state);

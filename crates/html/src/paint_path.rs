@@ -12,6 +12,9 @@ pub static RECORDS: AtomicU64 = AtomicU64::new(0);
 /// Boxes under a block the frame skipped off the screen: neither written nor
 /// recorded, their block's record takes the change.
 pub static UNSEEN: AtomicU64 = AtomicU64::new(0);
+/// SVG content elements (no CSS box) whose change was only in the box paint
+/// groups they do not paint (background, border colours): nothing to paint.
+pub static SVG_UNPAINTED: AtomicU64 = AtomicU64::new(0);
 /// Boxes in the layer whose runs showed no pixel of its frame: their records
 /// wait for a frame that shows them (`layout::reuse::deferred`).
 pub static DEFERRED: AtomicU64 = AtomicU64::new(0);
@@ -24,6 +27,10 @@ pub static REFUSED_NO_LAYER: AtomicU64 = AtomicU64::new(0);
 /// Boxes the layer refused to record again (no run, order, transform, sprites).
 pub static REFUSED_BY_LAYER: AtomicU64 = AtomicU64::new(0);
 
+/// Updates whose markup differs in shape (`document::revision::shape`:
+/// children, attributes SVG reads as they are, texts in SVG, templates or
+/// MathML): the markup is parsed and built anew.
+pub static REFUSED_SHAPE: AtomicU64 = AtomicU64::new(0);
 /// Batches with no plan (`document::revision::plan`): the document is
 /// rebuilt. Each takes one reason below.
 pub static REFUSED_REBUILT: AtomicU64 = AtomicU64::new(0);
@@ -105,7 +112,7 @@ pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
 pub mod not_own;
 
 /// Counters before the reasons of `REFUSED_NOT_OWN` (`not_own`) in `NAMES`.
-const PATH: usize = 26;
+const PATH: usize = 28;
 
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
@@ -120,11 +127,13 @@ fn counters() -> [&'static AtomicU64; PATH] {
         &VALUES,
         &RECORDS,
         &UNSEEN,
+        &SVG_UNPAINTED,
         &DEFERRED,
         &REFUSED_NOT_PAINT,
         &REFUSED_NOT_OWN,
         &REFUSED_NO_LAYER,
         &REFUSED_BY_LAYER,
+        &REFUSED_SHAPE,
         &REFUSED_REBUILT,
         &REFUSED_PLAN_STATE,
         &REFUSED_PLAN_ELEMENT,
@@ -152,11 +161,13 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "values",
     "records",
     "unseen",
+    "svg_unpainted",
     "deferred",
     "refused_not_paint",
     "refused_not_own",
     "refused_no_layer",
     "refused_by_layer",
+    "refused_shape",
     "refused_rebuilt",
     "refused_plan_state",
     "refused_plan_element",

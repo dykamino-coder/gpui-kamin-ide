@@ -25,7 +25,9 @@ mod intrinsic;
 pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
 pub mod invalidation;
 pub mod traversal;
-pub use children::{BoxTextFacts, BoxTreeSummary, Children, ChildrenMark};
+pub use children::{
+    BoxTextFacts, BoxTreeSummary, Children, ChildrenMark, PositionedFacts, PositionedQuery,
+};
 mod direction;
 pub mod early_admission;
 mod shared_style;

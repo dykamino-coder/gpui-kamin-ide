@@ -66,6 +66,11 @@ pub(crate) fn canvas(
 }
 
 impl Target {
+    /// The scroll handle of this scrollport when it is the box `node`.
+    pub(crate) fn handle_of(&self, node: u64) -> Option<&ScrollHandle> {
+        (self.node == node).then_some(&self.handle)
+    }
+
     pub(crate) fn claim(&self, node: u64, style_node: u64) -> Option<AppliedTarget> {
         if self.applied.get() || self.node != node || self.node != style_node {
             return None;

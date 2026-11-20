@@ -6,10 +6,10 @@
 //! первом проходе; подготовка снимка запоминает порядок документа, а этот модуль
 //! отвечает на этот вопрос (`paint_last_ok`). GPUI-обёртки остаются у построителей.
 
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::box_kind::block_level_in_flow;
 use crate::layout::cx::LayoutCx;
-use crate::layout::positioned::predicates::positioned_later;
+use crate::layout::positioned::predicates::Later;
 use crate::style::computed::Display;
 
 /// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
@@ -59,13 +59,13 @@ pub(crate) fn hoists_inline_abs(e: &Element, cx: &LayoutCx) -> bool {
     e.style.used().reset_positioned.z_index.unwrap_or(0) == 0 && known == Some(true)
 }
 
-pub(crate) fn paint_last_ok(e: &Element, rest: &[Node], cx: &LayoutCx) -> bool {
+pub(crate) fn paint_last_ok(e: &Element, rest: Later<'_>, cx: &LayoutCx) -> bool {
     let u = &*cx.deferred.unkeyed;
     let known =
         u.0.get(&e.node_id)
             .map(|&end| u.1.is_none_or(|last| last < end));
     match known {
         Some(ok) => ok,
-        None => !positioned_later(rest),
+        None => !rest.positioned_later(),
     }
 }
