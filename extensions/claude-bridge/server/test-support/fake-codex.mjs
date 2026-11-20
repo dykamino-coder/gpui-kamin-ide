@@ -24,7 +24,11 @@
 // Knobs: FAKE_CODEX_LOGGED_IN=1 (start signed in), FAKE_CODEX_LOGIN_DELAY_MS,
 // FAKE_CODEX_LOGIN_FAIL=<error>, FAKE_CODEX_INIT_FAIL=<error> (stderr + exit 2),
 // FAKE_CODEX_START_DELAY_MS (app-server answers nothing for that long),
-// FAKE_CODEX_THREAD_START_FAIL=<error> (thread/start answers with that error).
+// FAKE_CODEX_THREAD_START_FAIL=<error> (thread/start answers with that error),
+// FAKE_CODEX_CONFIG_EFFORT=<level> (the effort its config sets, like
+// model_reasoning_effort; unset: the model's default `medium`). The model and
+// effort fields of every thread/turn request go to $CODEX_HOME/fake-state/rpc.jsonl,
+// so tests check what the protocol carried.
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -46,6 +50,7 @@ const threadsDir = path.join(stateDir, 'threads')
 fs.mkdirSync(threadsDir, { recursive: true })
 const accountFile = path.join(stateDir, 'account.json')
 
+const DEFAULT_EFFORT = 'medium'
 const MODELS = [
   { slug: 'gpt-fake', display_name: 'GPT Fake', description: 'Fake default model', is_default: true },
   { slug: 'gpt-fake-mini', display_name: 'GPT Fake Mini', description: 'Fake small model', is_default: false },
@@ -197,6 +202,8 @@ const handlers = {
       mcp: mcpFromConfig(p?.config),
       instructions: p?.developerInstructions ?? '',
       turns: 0,
+      // Like codex: a thread runs on its config's effort until a turn sets one.
+      effort: process.env.FAKE_CODEX_CONFIG_EFFORT || DEFAULT_EFFORT,
     }
     await initializeMcp(t.mcp)
     threads.set(t.id, t)
@@ -204,7 +211,7 @@ const handlers = {
     // that never ran one cannot be resumed by a later app-server.
     if (!process.env.FAKE_CODEX_ROLLOUT_ON_TURN) saveThread(t)
     queueMicrotask(() => notify('thread/started', { thread: { id: t.id } }))
-    return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
+    return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model, reasoningEffort: t.effort }
   },
   'thread/resume': async (p) => {
     const loaded = threads.get(p?.threadId)
@@ -221,7 +228,11 @@ const handlers = {
     if (typeof p?.developerInstructions === 'string' && !t.turns) t.instructions = p.developerInstructions
     threads.set(t.id, t)
     saveThread(t)
-    return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
+    return {
+      thread: { id: t.id, model: t.model, cwd: t.cwd, path: null },
+      model: t.model,
+      reasoningEffort: t.effort ?? DEFAULT_EFFORT,
+    }
   },
   'thread/unsubscribe': (p) => {
     threads.delete(p?.threadId)
@@ -232,10 +243,12 @@ const handlers = {
     if (!t) throw new RpcError(-32600, 'thread not loaded')
     if (t.active) throw new RpcError(-32600, 'turn already running')
     if (p.model) t.model = p.model
+    // turn/start.effort applies to this turn and the later ones.
+    if (p.effort) t.effort = p.effort
     // Real codex turn ids are UUIDs, unique across threads (usage rows key on them).
     t.turns++
     const turnId = randomUUID()
-    t.active = { id: turnId, interrupted: false, effort: p.effort ?? null, model: t.model }
+    t.active = { id: turnId, interrupted: false, effort: t.effort ?? DEFAULT_EFFORT, model: t.model }
     saveThread(t)
     // Bridge's session context travels as its own input item in front of the message.
     const parts = (p.input ?? []).map((i) => i.text ?? '')
@@ -470,6 +483,11 @@ rl.on('line', (line) => {
   if (msg.id === undefined) return // notifications (initialized) and responses
   if (!msg.method) return
   const handler = handlers[msg.method]
+  if (msg.method.startsWith('thread/') || msg.method.startsWith('turn/')) {
+    const { model = null, effort = null, developerInstructions = null } = msg.params ?? {}
+    const record = { method: msg.method, model, effort, instructions: developerInstructions }
+    fs.appendFileSync(path.join(stateDir, 'rpc.jsonl'), JSON.stringify(record) + '\n')
+  }
   if (!handler) {
     send({ id: msg.id, error: { code: -32601, message: `fake-codex: ${msg.method} not implemented` } })
     return
