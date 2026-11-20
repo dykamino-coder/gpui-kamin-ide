@@ -177,6 +177,9 @@ interface LeftOut {
   bytes: number
   from: string | null
   to: string | null
+  /** Where the history above starts in the log: line number and entry uuid. */
+  line: number | null
+  uuid: string | null
 }
 
 const when = (ts: string | null) =>
@@ -191,7 +194,7 @@ function historyNote(id: string, engine: 'claude' | 'codex', left: LeftOut | nul
     : left.turns > 0
       ? `Not shown above: ${left.turns} earlier turns (about ${Math.ceil(left.bytes / 1024)} KB)${period}; only the user's requests from them are listed.`
       : `Not shown above: about ${Math.ceil(left.bytes / 1024)} KB cut from the start of the turns above.`
-  return [
+  const plain = [
     `<${NOTE_TAG}>`,
     `Conversation id: ${id}`,
     omitted,
@@ -199,6 +202,23 @@ function historyNote(id: string, engine: 'claude' | 'codex', left: LeftOut | nul
     `To recall a detail that is not shown here, search for it with session_id "${id}" and read around the hit with from_index instead of guessing.`,
     `</${NOTE_TAG}>`,
   ].join('\n')
+  if (!left || left.turns === 0 || left.line === null) return plain
+  // With a pointer to where the history above starts. The note keeps the
+  // size bound of the plain one (noteBound), so the history keeps its budget
+  // and its bytes; a pointer that does not fit drops the uuid, then itself.
+  const bound = noteBound(id, engine)
+  for (const entry of left.uuid ? [` (entry ${left.uuid})`, ''] : ['']) {
+    const text = [
+      `<${NOTE_TAG}>`,
+      `Conversation id: ${id}`,
+      omitted,
+      `Chat tools, as you call them: ${tools.join(', ')}.`,
+      `Not shown: search session_id "${id}", or read the lines before line ${left.line}${entry} with from_index; never guess.`,
+      `</${NOTE_TAG}>`,
+    ].join('\n')
+    if (bytes(text) <= bound) return text
+  }
+  return plain
 }
 
 /** Largest note for this id and engine (any counts and dates). */
@@ -209,11 +229,16 @@ const noteBound = (id: string, engine: 'claude' | 'codex') =>
       bytes: 99_999_999 * 1024,
       from: '0000-00-00 00:00 UTC',
       to: '0000-00-00 00:00 UTC',
+      line: null,
+      uuid: null,
     }),
   )
 
 interface KeptTurn extends HandoffTurn {
   index: number
+  /** Log line of the turn's first entry, and that entry's uuid. */
+  line: number
+  uuid: string | null
   /** Timestamp of the turn's first entry. */
   ts: string | null
   /** turnBytes once the turn is complete; null while it may still grow. */
@@ -228,24 +253,81 @@ interface KeptTurn extends HandoffTurn {
  * one before them), the earlier user requests as far as their list can reach,
  * and counts. Memory stays near the budget whatever the transcript size; the
  * result is the one `transcriptTurns` + the whole-list build would give.
+ *
+ * The state is plain data (`snapshot`/`restore`): the conversation digest
+ * (transcript-digest.ts) keeps it next to the log, so a switch reads only what
+ * was appended since.
  */
-class TurnDigest {
+export interface DigestState {
+  budget: number
+  total: number
+  users: number
+  doneBytes: number
+  keptDone: number
+  kept: KeptTurn[]
+  requests: Array<{ index: number; line: string }>
+  requestBytes: number
+  toolNames: Array<[string, string]>
+  firstTs: string | null
+  droppedTs: string | null
+}
+
+/** Tool call ids remembered for naming their results. A result names a call
+ *  made shortly before it; the cap keeps the state small for any length. */
+const TOOL_NAMES_CAP = 4096
+
+export class TurnDigest {
   total = 0
   users = 0
   /** Sum of turnBytes of completed turns. */
   private doneBytes = 0
   /** Sum of sizes of the completed turns in `kept`. */
   private keptDone = 0
-  readonly kept: KeptTurn[] = []
+  kept: KeptTurn[] = []
   /** "- <request>" lines of the first user turns, while their list can use them. */
-  readonly requests: Array<{ index: number; line: string }> = []
+  requests: Array<{ index: number; line: string }> = []
   private requestBytes = 0
-  private readonly toolNames = new Map<string, string>()
+  private toolNames = new Map<string, string>()
   /** Timestamps of the first turn and of the last turn dropped from `kept`. */
   firstTs: string | null = null
   droppedTs: string | null = null
 
-  constructor(private readonly budget: number) {}
+  constructor(readonly budget: number) {}
+
+  snapshot(): DigestState {
+    return {
+      budget: this.budget,
+      total: this.total,
+      users: this.users,
+      doneBytes: this.doneBytes,
+      keptDone: this.keptDone,
+      kept: this.kept.map((t) => ({ ...t })),
+      requests: this.requests.slice(),
+      requestBytes: this.requestBytes,
+      toolNames: [...this.toolNames],
+      firstTs: this.firstTs,
+      droppedTs: this.droppedTs,
+    }
+  }
+
+  static restore(s: DigestState): TurnDigest {
+    const d = new TurnDigest(s.budget)
+    d.total = s.total
+    d.users = s.users
+    d.doneBytes = s.doneBytes
+    d.keptDone = s.keptDone
+    d.kept = s.kept.map((t) => ({ ...t }))
+    d.requests = s.requests.slice()
+    d.requestBytes = s.requestBytes
+    d.toolNames = new Map(s.toolNames)
+    d.firstTs = s.firstTs
+    d.droppedTs = s.droppedTs
+    return d
+  }
+
+  clone(): TurnDigest {
+    return TurnDigest.restore(this.snapshot())
+  }
 
   /** Timestamp of turn `index` when the digest still knows it. */
   tsOf(index: number): string | null {
@@ -256,8 +338,11 @@ class TurnDigest {
     return this.kept[index - first.index]?.ts ?? null
   }
 
-  add(e: JsonlEntry): void {
-    for (const [role, text] of entryPieces(e, this.toolNames)) {
+  /** Feed one entry; `line` is its line in the log. */
+  add(e: JsonlEntry, line = 0): void {
+    const pieces = entryPieces(e, this.toolNames)
+    while (this.toolNames.size > TOOL_NAMES_CAP) this.toolNames.delete(this.toolNames.keys().next().value!)
+    for (const [role, text] of pieces) {
       const t = text.trim()
       if (!t) continue
       const last = this.kept[this.kept.length - 1]
@@ -269,7 +354,17 @@ class TurnDigest {
       if (last) this.complete(last)
       const ts = typeof e.timestamp === 'string' ? e.timestamp : null
       if (this.total === 0) this.firstTs = ts
-      this.kept.push({ role, text: t, index: this.total++, ts, size: null, running: turnBytes({ role, text: t }) })
+      const uuid = typeof (e as { uuid?: unknown }).uuid === 'string' ? (e as { uuid: string }).uuid : null
+      this.kept.push({
+        role,
+        text: t,
+        index: this.total++,
+        line,
+        uuid,
+        ts,
+        size: null,
+        running: turnBytes({ role, text: t }),
+      })
       if (role === 'user') this.users++
       this.trim()
     }
@@ -329,7 +424,7 @@ function requestList(d: TurnDigest, start: number, maxBytes: number): string {
   return `Earlier in the conversation (${start} turns, not included in full) the user asked:\n${out.join('\n')}`
 }
 
-function fromDigest(d: TurnDigest, source: HandoffSource, total: number): Handoff | null {
+export function fromDigest(d: TurnDigest, source: HandoffSource, total: number): Handoff | null {
   if (d.total === 0) return null
   const kept = d.kept
   const target = source.target ?? (source.engine === 'claude' ? 'codex' : 'claude')
@@ -393,11 +488,14 @@ function fromDigest(d: TurnDigest, source: HandoffSource, total: number): Handof
     const earlier =
       start > 0 && room > 0 ? `${requestList(d, start, room)}\n\n--- The most recent turns, verbatim ---\n\n` : ''
     body = tailBytes(`${earlier}${recent}`, budget)
+    const first = kept.find((t) => t.index === start) ?? null
     omitted = {
       turns: start,
       bytes: Math.max(0, d.fullBytes() - bytes(recent)),
       from: start > 0 ? when(d.tsOf(0)) : null,
       to: start > 0 ? when(d.tsOf(start - 1)) : null,
+      line: first?.line ?? null,
+      uuid: first?.uuid ?? null,
     }
   }
   const text = [head, body, foot, historyNote(source.conversationId, target, omitted), end].join('\n')
@@ -413,7 +511,7 @@ export function buildHandoff(
 ): Handoff | null {
   const budget = blockBudget(options)
   const d = new TurnDigest(budget)
-  for (const e of entries) d.add(e)
+  entries.forEach((e, line) => d.add(e, line))
   return fromDigest(d.finish(), source, budget)
 }
 
@@ -424,7 +522,9 @@ const READ_CHUNK_BYTES = 1024 * 1024
  * `buildHandoff` of a transcript file, read in chunks with the event loop
  * free between them: a long conversation is neither held in memory nor parsed
  * in one blocking pass (a shared server answers every other user meanwhile).
- * A missing file is an empty conversation; a torn line is skipped.
+ * A missing file is an empty conversation; a torn line is skipped. Reads the
+ * whole log: a switch uses the conversation digest (transcript-digest.ts),
+ * which reads only what was appended since its last checkpoint.
  */
 export async function readHandoff(
   file: string,
@@ -443,11 +543,13 @@ export async function readHandoff(
     const buf = Buffer.allocUnsafe(READ_CHUNK_BYTES)
     let pos = 0
     let carry: Buffer[] = []
-    const take = (line: Buffer) => {
-      const text = line.toString('utf8')
+    let line = 0
+    const take = (raw: Buffer) => {
+      const n = line++
+      const text = raw.toString('utf8')
       if (!text.trim()) return
       try {
-        d.add(JSON.parse(text) as JsonlEntry)
+        d.add(JSON.parse(text) as JsonlEntry, n)
       } catch {
         /* torn line */
       }
