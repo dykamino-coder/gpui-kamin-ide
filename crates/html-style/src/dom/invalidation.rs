@@ -223,8 +223,7 @@ fn has(kind: Kind, name: &str, tag: &str, attrs: &[(String, String)]) -> bool {
         Kind::Attr => value(name).is_some(),
         Kind::Id => value("id").is_some_and(|v| v.eq_ignore_ascii_case(name)),
         Kind::Class => value("class").is_some_and(|v| {
-            v.split_ascii_whitespace()
-                .any(|t| t.eq_ignore_ascii_case(name))
+            crate::dom::class_tokens::tokens(v).any(|t| t.eq_ignore_ascii_case(name))
         }),
     }
 }

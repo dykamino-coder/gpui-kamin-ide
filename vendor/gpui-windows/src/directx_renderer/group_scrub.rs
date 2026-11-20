@@ -1,14 +1,7 @@
-//! KaminIDE patch: протирка удержанных картинок групп (`group_cache`).
+//! Retained group pixel auditing, enabled by `GPUI_GROUP_SCRUB=1`.
 //!
-//! Удержанная картинка верна, пока верна та отрисовка, которой её получили.
-//! Сбой одной отрисовки (GPU, драйвер, пропущенная зависимость) без кэша
-//! исчезал со следующим кадром, а с кэшем он остаётся. Поэтому каждый кадр,
-//! в котором удержана хотя бы одна группа, одна удержанная группа по кругу
-//! рисуется заново на своё место в атласе. Так ошибка живёт не дольше круга.
-//! Старая и новая картинки копируются в staging-текстуры. Сравниваются они
-//! позже, когда GPU их отдаст без ожидания (`D3D11_MAP_FLAG_DO_NOT_WAIT`).
-//! Расхождение пишется в лог и в счётчик [`group_scrub_mismatches`]: в бою
-//! это детектор, в аудите гейта он обязан дать 0.
+//! Normal frames validate content and resources without audit redraws or readbacks.
+//! A busy GPU defers readback; device errors reach renderer recovery.
 
 use super::*;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,8 +13,8 @@ pub fn group_scrub_mismatches() -> u64 {
     MISMATCHES.load(Ordering::Relaxed)
 }
 
-#[derive(Default)]
 pub(super) struct Scrub {
+    pub(super) enabled: bool,
     /// Следующая группа круга.
     cursor: usize,
     /// Сравнение, ждущее GPU: размер, группа, кадр.
@@ -30,6 +23,25 @@ pub(super) struct Scrub {
     staging: Option<(u32, u32, ID3D11Texture2D, ID3D11Texture2D)>,
     /// Расхождения этого рендерера (тесты).
     pub(super) mismatches: u64,
+}
+
+impl Default for Scrub {
+    fn default() -> Self {
+        Self {
+            enabled: std::env::var_os("GPUI_GROUP_SCRUB").is_some_and(|v| v == "1"),
+            cursor: 0,
+            pending: None,
+            staging: None,
+            mismatches: 0,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Scrub {
+    pub(super) fn has_readbacks(&self) -> bool {
+        self.staging.is_some()
+    }
 }
 
 impl DirectXRenderer {
@@ -51,6 +63,9 @@ impl DirectXRenderer {
 
     /// Redraw the next kept group of `scene` (`reuse`) in place, comparing later.
     pub(super) fn scrub_kept_group(&mut self, scene: &Scene, reuse: &[bool]) -> Result<()> {
+        if !self.retained.groups.scrub.enabled {
+            return Ok(());
+        }
         self.finish_scrub(false)?;
         let n = reuse.len();
         if self.retained.groups.scrub.pending.is_some() || !reuse.contains(&true) {
@@ -90,11 +105,22 @@ impl DirectXRenderer {
             D3D11_MAPPED_SUBRESOURCE::default(),
             D3D11_MAPPED_SUBRESOURCE::default(),
         );
-        if unsafe { ctx.Map(&old, 0, D3D11_MAP_READ, flags, Some(&mut a)) }.is_err() {
+        if !self
+            .retained
+            .groups
+            .scrub
+            .readback_ready(unsafe { ctx.Map(&old, 0, D3D11_MAP_READ, flags, Some(&mut a)) })?
+        {
             return Ok(());
         }
-        if unsafe { ctx.Map(&new, 0, D3D11_MAP_READ, flags, Some(&mut b)) }.is_err() {
+        let new_ready = self
+            .retained
+            .groups
+            .scrub
+            .readback_ready(unsafe { ctx.Map(&new, 0, D3D11_MAP_READ, flags, Some(&mut b)) });
+        if !matches!(&new_ready, Ok(true)) {
             unsafe { ctx.Unmap(&old, 0) };
+            new_ready?;
             return Ok(());
         }
         let row = (w * 4) as usize;
@@ -201,3 +227,23 @@ impl DirectXRenderer {
         Ok((a, b))
     }
 }
+
+impl Scrub {
+    fn readback_ready(&mut self, result: windows::core::Result<()>) -> windows::core::Result<bool> {
+        match result {
+            Ok(()) => Ok(true),
+            Err(error)
+                if error.code() == windows::Win32::Graphics::Dxgi::DXGI_ERROR_WAS_STILL_DRAWING =>
+            {
+                Ok(false)
+            }
+            Err(error) => {
+                self.pending = None;
+                Err(error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

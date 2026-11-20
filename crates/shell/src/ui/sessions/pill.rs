@@ -212,15 +212,7 @@ pub fn overlay_pill(
             });
         })
         // Visible region не включает мост: fallback без alpha остаётся чистым.
-        .child(crate::overlay::input_area())
-        .child(
-            div()
-                .relative()
-                .w(px(pill_w))
-                .h(px(PILL_H))
-                .child(crate::overlay::hit_area())
-                .child(inner),
-        );
+        .child(div().relative().w(px(pill_w)).h(px(PILL_H)).child(inner));
     if on_right {
         wrapper.justify_end().into_any_element()
     } else {

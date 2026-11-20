@@ -16,6 +16,7 @@ import { DEFAULT_SESSION_MODEL } from '../config'
 import { eventBus } from '../events/bus'
 import { makeRoomForOneMore } from './session-hibernation'
 import { debugLog, warnLog, infoLog } from '../logging'
+import { forgetDigest } from '../engine/transcript-digest'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import { codexTranscriptPath, createCodexSession, transcriptEngine } from './session-codex'
@@ -260,7 +261,7 @@ async function createAdmittedSession(
     // A swept Claude transcript comes back from the archive; without one the
     // segment continues in a new session that gets the whole conversation.
     if (segment.nativeId && segment.engine === 'claude' && !(await ensureSegmentTranscript(segment)))
-      segment = restartSegmentFresh(manifest)
+      segment = await restartSegmentFresh(manifest)
     settingsDir = segment.settingsDir
     fs.mkdirSync(settingsDir, { recursive: true })
     config.resumeConversationId = segment.nativeId ?? undefined
@@ -304,7 +305,7 @@ async function createAdmittedSession(
     if (manifest && (codex.resumedOnFreshThread || codex.resumeNotFound)) {
       // The new thread has none of the segment's context: it gets the whole
       // conversation with its first turn, and the client keeps the chat.
-      restartSegmentFresh(manifest)
+      await restartSegmentFresh(manifest)
       codex.resumeNotFound = false
       codex.resumedOnFreshThread = false
     }
@@ -1319,7 +1320,7 @@ export async function switchSessionEngine(
   old.segmentPump?.flush()
   const folderSuffix = old.cwd ? '-' + sanitizeDirName(old.cwd) : ''
   const sessionsDir = path.join(SESSIONS_BASE, tokenId + folderSuffix)
-  const plan = planSwitch({
+  const plan = await planSwitch({
     manifest: known,
     sessionsDir,
     from: {
@@ -1708,7 +1709,10 @@ export async function deleteSessionByConversationId(
   forgetEffortSelection(conversationId)
   fs.rmSync(target.settingsDir, { recursive: true, force: true })
   // Do not follow a project-directory link even when an archive identified ownership.
-  if (isPlainDirectory(path.dirname(target.jsonlPath))) fs.rmSync(target.jsonlPath, { force: true })
+  if (isPlainDirectory(path.dirname(target.jsonlPath))) {
+    fs.rmSync(target.jsonlPath, { force: true })
+    forgetDigest(target.jsonlPath)
+  }
 }
 
 /**

@@ -354,6 +354,27 @@ async function execute(command) {
       )
       break
     }
+    case '/fake-tool': {
+      // `/fake-tool <name> <json-args>`: one call of a Bridge MCP tool, its
+      // result in the transcript and as the answer (how a model reads it).
+      const args = command.slice(action.length + parameter.length + 2).trim()
+      await rpc('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'fake-claude', version: '0.0.0' },
+      })
+      await rpc('notifications/initialized', {})
+      const input = args ? JSON.parse(args) : {}
+      const call = rec.tool(`mcp__user-tools__${parameter}`, input)
+      emit(call)
+      const response = await rpc('tools/call', { name: parameter, arguments: input })
+      const text = (response.result?.content ?? []).map((c) => c.text ?? '').join('\n')
+      emit(
+        rec.result(call.message.content[0].id, text || JSON.stringify(response.error), Boolean(response.error)),
+        rec.assistant([{ type: 'text', text: `tool said: ${text}` }]),
+      )
+      break
+    }
     case '/fake-stream':
       await streamTurn(command.split(/\s+/).slice(1))
       break

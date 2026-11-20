@@ -70,7 +70,13 @@ pub(crate) fn emit_session(
             }
         }
         "toast" => ShellEvent::Toast(crate::ui::toasts::Toast {
-            id: "probe-toast".into(),
+            // Свой `id` — отдельная карта в стопке (стенды стопок 3/8);
+            // без него каждый пробный тост заменяет предыдущий.
+            id: req
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("probe-toast")
+                .to_string(),
             // Агенты шлют и `severity`, и `level` — принимаем оба, иначе
             // тестовый тост «Compile error» приезжал с ЗЕЛЁНОЙ галкой
             severity: req

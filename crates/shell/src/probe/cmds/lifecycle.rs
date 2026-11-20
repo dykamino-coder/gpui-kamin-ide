@@ -8,6 +8,7 @@ pub(crate) fn handle(cmd: &str, req: &Value) -> Option<Value> {
             crate::host_link::client().map(|client| move || client.disconnect()),
         )),
         "keystroke" => Some(crate::probe::keyboard::keystroke(req)),
+        "filedrop" => Some(crate::probe::file_drop::file_drop(req)),
         // {"cmd":"damageAudit","on":true,"trace":true}: every partially drawn
         // frame is compared with a whole redraw, mismatches are logged as
         // errors; `trace` also logs the damaged tiles of every frame.
