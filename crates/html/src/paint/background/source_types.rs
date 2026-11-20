@@ -25,7 +25,7 @@ impl Source {
             Self::Shape { .. } => None,
         }
     }
-    /// Файл картинки без обработки: в текстуру лениво, точки декодирует загрузка.
+    /// An unprocessed image file: a lazy texture whose upload decodes the pixels.
     fn encoded(&self) -> Option<&Arc<EncodedRaster>> {
         match self.cpu()? {
             crate::resources::css_images::Source::Raster(RasterImage::Encoded(e)) => Some(e),

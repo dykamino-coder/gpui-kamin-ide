@@ -108,7 +108,7 @@ impl CpuRaster {
     }
 }
 
-/// Результат декодирования: растр или разметка рисунка, которую растрируют под
+/// The decoded value: a raster or the markup of a picture rasterised at the size of
 /// размер места (у рисунка своих точек нет).
 #[derive(Clone, Debug)]
 pub enum DecodedImage {
@@ -134,7 +134,7 @@ impl DecodedImage {
         }
     }
 
-    /// Байты, которые держит значение (точки, файл или разметка).
+    /// Bytes the value holds (pixels, the file or markup).
     pub fn held_bytes(&self) -> usize {
         match self {
             DecodedImage::Raster(RasterImage::Ready(r)) => r.bytes.len(),

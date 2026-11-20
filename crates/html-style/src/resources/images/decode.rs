@@ -1,10 +1,10 @@
-//! Декодер картинки из байт в нейтральное значение: рисунок SVG распознаётся по
-//! содержимому (у `data:` расширения нет), растр — кодеками крейта `image` (тот же набор
-//! форматов, что у GPUI). При загрузке растр читается только до ЗАГОЛОВКА: стороны,
-//! формат точек и EXIF-ориентация дают природный размер после поворота (css-images-3
-//! §5.4) и допуск заявленного размера (`admission`); сами точки декодирует по требованию
-//! [`super::encoded::EncodedRaster`] — тем же путём [`decode_pixels`]: точки → цветовой
-//! профиль → ориентация → порядок каналов.
+//! Image bytes to a neutral value: an SVG picture is recognised by its content (a
+//! `data:` URL has no extension), a raster by the codecs of the `image` crate (the same
+//! formats as GPUI). At load a raster is read only up to its HEADER: its size, pixel
+//! format and EXIF orientation give the natural size after rotation (css-images-3
+//! §5.4) and the admission of the declared size (`admission`); the pixels are decoded
+//! on demand by [`super::encoded::EncodedRaster`] through [`decode_pixels`]: pixels ->
+//! colour profile -> orientation -> channel order.
 
 use super::admission::{Declared, Grant, Retention};
 use super::colour::{convert_to_srgb, png_icc_profile};
@@ -19,7 +19,7 @@ use crate::color::IccProfile;
 use image::ImageDecoder;
 use std::sync::Arc;
 
-/// Разобрать байты картинки; `admit` получает заявленный растр до любых точек.
+/// Parse image bytes; `admit` sees the declared raster before any pixels.
 pub fn decode(
     bytes: &Arc<[u8]>,
     options: &DecodeOptions,
@@ -33,7 +33,7 @@ pub fn decode(
     }
     let (_, declared, tag) = header(bytes, options)?;
     let Grant { retention, .. } = admit(&declared)?;
-    // Поворот на 90° (метки 5..8) меняет стороны местами.
+    // A 90 degree turn (tags 5..8) swaps the sides.
     let (width, height) = match tag {
         Some(5..=8) => (declared.height, declared.width),
         _ => (declared.width, declared.height),
@@ -50,7 +50,7 @@ pub fn decode(
 
 type Header<'a> = (Box<dyn image::ImageDecoder + 'a>, Declared, Option<u16>);
 
-/// Заголовок растра: кодек, заявленный растр и действующая EXIF-метка.
+/// The header of a raster: its codec, declared raster and effective EXIF tag.
 fn header<'a>(bytes: &'a [u8], options: &DecodeOptions) -> Result<Header<'a>, ImageError> {
     let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
@@ -71,7 +71,7 @@ fn header<'a>(bytes: &'a [u8], options: &DecodeOptions) -> Result<Header<'a>, Im
     Ok((Box::new(decoder), declared, tag))
 }
 
-/// Точки растра, допущенного при загрузке: `retention` — его physical квота.
+/// The pixels of a raster admitted at load: `retention` is its physical quota.
 pub(super) fn decode_pixels(
     bytes: &[u8],
     options: &DecodeOptions,
@@ -86,7 +86,7 @@ pub(super) fn decode_pixels(
     limits.reserve(decoder.total_bytes()).map_err(codec_error)?;
     decoder.set_limits(limits).map_err(codec_error)?;
     let image = image::DynamicImage::from_decoder(decoder).map_err(codec_error)?;
-    // Выход RGBA8 переходит в растр без копии; прочие форматы переводятся один раз.
+    // RGBA8 output moves into the raster without a copy; other formats convert once.
     let mut rgba = match image {
         image::DynamicImage::ImageRgba8(rgba) => rgba,
         other => other.into_rgba8(),

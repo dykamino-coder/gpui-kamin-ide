@@ -245,7 +245,6 @@ pub fn increment(counter: Counter, amount: u64) {
         s.counts[s.phase.load(Relaxed)][counter as usize].fetch_add(amount, Relaxed);
     });
 }
-
 #[cfg(test)]
 #[path = "enabled_tests.rs"]
 mod tests;

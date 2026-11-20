@@ -23,8 +23,8 @@ static PIXELS: BoundedCache<UploadedPixels, Image> =
         .with_key_weight(|key: &UploadedPixels| key.2.len())
         .for_paint();
 
-/// Файл картинки для текстуры: GPUI получает стороны сразу, а точки декодируются при
-/// загрузке в атлас (только нарисованной картинки) и после неё не удерживаются.
+/// An image file for a texture: GPUI gets its size at once, and the pixels are decoded
+/// by the atlas upload (of a painted image only) and not kept after it.
 struct Lazy(Arc<EncodedRaster>);
 
 impl gpui::LazyBgra for Lazy {
@@ -38,7 +38,7 @@ impl gpui::LazyBgra for Lazy {
     }
 }
 
-/// Ключ — сам растр по адресу: равные байты уже слиты кэшем декодирования.
+/// Keyed by the raster's address: equal bytes are already merged by the decode cache.
 #[derive(Clone)]
 struct EncodedKey(Arc<EncodedRaster>);
 
@@ -56,8 +56,8 @@ impl std::hash::Hash for EncodedKey {
     }
 }
 
-// Одна картинка GPUI на файл: её id — ключ текстуры атласа между кадрами. Вес — байты
-// файла, которые держит ключ; точек запись не держит.
+// One GPUI image per file: its id keys the atlas texture across frames. The weight is
+// the file bytes the key holds; an entry holds no pixels.
 static ENCODED: BoundedCache<EncodedKey, Image> = BoundedCache::new(16 * MIB, |_| 0)
     .with_key_weight(|key: &EncodedKey| key.0.encoded_len())
     .for_paint();
@@ -69,7 +69,7 @@ pub(crate) fn upload_encoded(encoded: &Arc<EncodedRaster>) -> Image {
     })
 }
 
-/// Растр картинки для текстуры: файл — лениво, готовые точки — как есть.
+/// The raster of an image for a texture: a file lazily, ready pixels as they are.
 pub(crate) fn upload_image(image: &RasterImage) -> Image {
     match image {
         RasterImage::Ready(cpu) => upload(cpu),

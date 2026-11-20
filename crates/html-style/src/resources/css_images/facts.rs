@@ -136,9 +136,10 @@ impl BackgroundImageValues for Rc<BackgroundImages> {
     }
 }
 
-/// Сплошной цвет растра для свёртки фона. Файл, ещё не декодированный, проверяется
-/// только малым (до 256×256): точки декодируются на одну проверку и не удерживаются,
-/// а крупная картинка рисуется как картинка — свёртка лишь экономия, не смысл.
+/// The solid colour of a raster for folding a background. A file not decoded yet is
+/// checked only when small (up to 256x256): its pixels are decoded for that one check
+/// and not kept, and a large image is painted as an image (folding saves work, it
+/// changes no result).
 fn uniform_raster(raster: &RasterImage) -> Option<Color> {
     const CHECKED: u64 = 256 * 256;
     match raster {
