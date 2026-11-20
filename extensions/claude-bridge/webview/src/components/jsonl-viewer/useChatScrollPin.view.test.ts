@@ -31,7 +31,7 @@ it('follows the end again when another segment of the same tab is opened (INC-20
     get scrollTop() { return top },
     set scrollTop(value: number) { top = Math.min(this.scrollHeight - this.clientHeight, Math.max(0, value)) },
     scrollHeight: 2000, clientHeight: 500,
-    addEventListener: (_name: string, callback: () => void) => { harness.scroll = callback },
+    addEventListener: (name: string, callback: () => void) => { if (name === 'scroll') harness.scroll = callback },
     removeEventListener() {},
   }
   const render = (entries: number[], view: string) => {
