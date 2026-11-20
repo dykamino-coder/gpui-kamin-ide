@@ -36841,10 +36841,10 @@ index 0000000000000000000000000000000000000000..c63e084b94a6344306491f7a2dea173f
 +}
 diff --git a/vendor/gpui/src/window/scroll_masks.rs b/vendor/gpui/src/window/scroll_masks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b4a9f45767553cc3a02b5734556351dd206b7900
+index 0000000000000000000000000000000000000000..966a2af02aa16cae41109849d36b7a09181320ca
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_masks.rs
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,119 @@
 +//! KaminIDE patch: masks under scroll nodes (`scroll_nodes`).
 +//!
 +//! The children of a scroll node are prepainted and painted under the node's
@@ -36946,23 +36946,13 @@ index 0000000000000000000000000000000000000000..b4a9f45767553cc3a02b5734556351dd
 +    }
 +
 +    /// Paint something that depends on `handle`'s offset outside its node
-+    /// (a scrollbar thumb): a scrolled replay of a record holding it while
-+    /// that node moved needs a build (`plan_scrolled_replay`).
++    /// other than by a translation (a follower node moves those): a
++    /// scrolled replay of a record holding it while that node moved needs a
++    /// build (`plan_scrolled_replay`).
 +    pub fn paint_scroll_dependent(&mut self, handle: &ScrollHandle) {
 +        let at = self.next_frame.scene.paint_operations.len();
 +        let space = self.next_frame.scene.scroll.space;
 +        self.next_frame.scroll_dependents.push((ScrollNodeId::of(handle), at, space));
-+    }
-+
-+    /// `paint_scroll_dependent` for the innermost scroll node painting now
-+    /// (a sticky box: its place follows that scroller's offset).
-+    pub fn paint_dependent_on_open_scroll_node(&mut self) {
-+        let frame = &mut self.next_frame;
-+        if let Some(&(index, _)) = frame.scroll_paint.open.last() {
-+            let id = frame.scroll_nodes[index as usize].id;
-+            let at = frame.scene.paint_operations.len();
-+            frame.scroll_dependents.push((id, at, frame.scene.scroll.space));
-+        }
 +    }
 +
 +    /// Whether a dependent painted in `scenes` of the rendered frame belongs
@@ -36977,10 +36967,10 @@ index 0000000000000000000000000000000000000000..b4a9f45767553cc3a02b5734556351dd
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..202677749a2c0d576c4f9bc510dce634d956b480
+index 0000000000000000000000000000000000000000..e9cd30df51b10a3fa5c0e81d218f71f9084696f2
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,611 @@
+@@ -0,0 +1,663 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -37024,6 +37014,12 @@ index 0000000000000000000000000000000000000000..202677749a2c0d576c4f9bc510dce634
 +    /// The node of a host's anchor: stable while 	oken lives.
 +    pub fn of_token<T>(token: &Rc<T>) -> Self {
 +        Self(Rc::as_ptr(token) as *const () as usize)
++    }
++
++    /// A follower node of a scroll handle (its scrollbar thumb on `axis`):
++    /// the handle's state is aligned, so the low bits name the follower.
++    pub fn follower(handle: &ScrollHandle, axis: usize) -> Self {
++        Self(handle.node_identity() | (1 + (axis & 1)))
 +    }
 +}
 +
@@ -37086,6 +37082,10 @@ index 0000000000000000000000000000000000000000..202677749a2c0d576c4f9bc510dce634
 +pub(crate) enum NodeSource {
 +    Handle(ScrollHandle),
 +    Anchor(Rc<dyn Fn() -> Point<Pixels>>),
++    /// A follower (`with_scroll_follower_prepaint`): its offset is `at` of
++    /// the change of another node's offset since `base`, the offset that
++    /// node had when the follower prepainted.
++    Follow { on: Box<NodeSource>, base: Point<Pixels>, at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>> },
 +}
 +
 +impl NodeSource {
@@ -37102,6 +37102,7 @@ index 0000000000000000000000000000000000000000..202677749a2c0d576c4f9bc510dce634
 +                clamped
 +            }
 +            NodeSource::Anchor(offset) => offset(),
++            NodeSource::Follow { on, base, at } => at(on.offset() - *base),
 +        }
 +    }
 +}
@@ -37201,6 +37202,47 @@ index 0000000000000000000000000000000000000000..202677749a2c0d576c4f9bc510dce634
 +        let result = f(self);
 +        self.end_scroll_node_prepaint(Some(0));
 +        result
++    }
++
++    /// Open a follower: a node whose children move by `at(change)` as
++    /// another node's offset changes by `change` since now — of `on`, a
++    /// scroller's handle (its scrollbar thumb), or else of the innermost open
++    /// node (a sticky box under its scroller). Unlike an anchor its mask
++    /// moves with the enclosing node. The geometry `at` reads is the
++    /// host's, recorded now: a scrolled replay moves the children by its
++    /// change, as cc's compositor places sticky boxes and scrollbar thumbs
++    /// from the scroll offset alone. Without a node to follow, `f` just runs.
++    pub fn with_scroll_follower_prepaint<R>(
++        &mut self,
++        id: ScrollNodeId,
++        on: Option<&ScrollHandle>,
++        at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>>,
++        f: impl FnOnce(&mut Self) -> R,
++    ) -> R {
++        let on = match on {
++            Some(handle) => NodeSource::Handle(handle.clone()),
++            None => match self.next_frame.scroll_node_stack.last() {
++                Some(&top) => self.next_frame.scroll_nodes[top as usize].source.clone(),
++                None => return f(self),
++            },
++        };
++        let (chain, base) = (self.content_mask().bounds, on.offset());
++        let now = at(Point::default());
++        self.open_scroll_node(id, chain, now, NodeSource::Follow { on: Box::new(on), base, at });
++        let result = f(self);
++        self.end_scroll_node_prepaint(Some(0));
++        result
++    }
++
++    /// The visible part of what the innermost open prepaint node shows:
++    /// the content mask, which under a node is its interest rect, clipped
++    /// by the node's real clip chain (a sticky box's scrollport).
++    pub fn scroll_visible_mask(&self) -> Bounds<Pixels> {
++        let mask = self.content_mask().bounds;
++        match self.next_frame.scroll_node_stack.last() {
++            Some(&top) => mask.intersect(&self.next_frame.scroll_nodes[top as usize].clip),
++            None => mask,
++        }
 +    }
 +
 +    fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, source: NodeSource) -> u32 {
