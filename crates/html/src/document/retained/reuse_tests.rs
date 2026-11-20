@@ -65,11 +65,19 @@ fn an_offscreen_edit_skips_the_unchanged_offscreen_blocks(cx: &mut TestAppContex
 fn a_skipped_block_that_reaches_the_screen_rebuilds_the_frame(cx: &mut TestAppContext) {
     let tall = |end: &str| format!("{}{end}", "x ".repeat(6000));
     let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
+    let page = |text: &str| page(text).replace("height:20px'", "height:20px;background:#abc'");
+    let short = page("x");
+    let expected = super::box_repaint_tests::fresh(cx, &short);
     let (view, cx) = settled(cx, &page(&tall("x")), &page(&tall("y")));
-    update(&view, cx, &page("x"));
-    frame(cx);
-    let (_, _, rebuilt) = reused(&view, cx);
+    update(&view, cx, &short);
+    let (_, skipped, rebuilt) = reused(&view, cx);
     assert_eq!(rebuilt, 1, "blocks pulled into view were left skipped");
+    assert!(
+        skipped > 300,
+        "unaffected blocks lost their reuse: {skipped}"
+    );
+    assert_eq!(super::l0_tests::builds(&view, cx).1, 0);
+    assert_eq!(super::box_repaint_tests::quads(cx), expected);
 }
 
 #[gpui::test]

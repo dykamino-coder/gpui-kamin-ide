@@ -119,9 +119,4 @@ impl Builder {
             window.replay_retained_paint_scrolled(inner, plan);
         })
     }
-
-    /// The document's last scene layer, the scene a layered record indexes.
-    pub(super) fn scene_layer(&self) -> Option<gpui::LayerHandle> {
-        self.store.scene_layer()
-    }
 }
