@@ -1330,6 +1330,49 @@ describe('engine switch inside one chat', () => {
     client.close()
   }, 30_000)
 
+  it('REAL121: a new ChatGPT chat whose engine reports no effort runs on the catalog default it shows', async () => {
+    const rpcFile = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
+    const lines = () => (fs.existsSync(rpcFile) ? fs.readFileSync(rpcFile, 'utf8').split('\n').filter(Boolean) : [])
+    const working = runtimeMod.codexRuntime()
+    // Like the real app-server: thread/start answers `reasoningEffort: null`, and
+    // a turn without effort runs on a level of its own (here `low`).
+    runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_UNREPORTED_EFFORT: 'low' }))
+    try {
+      // One chat per connection, as the other tests do.
+      const turn = async (id: string) => {
+        const client = await Client.open(port)
+        const rpc = lines().length
+        // Its own folder: a chat in the same folder reopens that folder's last thread.
+        const created = await createChat(client, { engine: 'codex', cwd: `/work/real121-${id}` })
+        const mark = client.frames.length
+        await say(client, `hi ${id}`, id)
+        const answer = text(await answerAfter(client, mark, `echo: hi ${id}`))
+        const calls = lines()
+          .slice(rpc)
+          .map((l) => JSON.parse(l) as { method: string; effort: string | null; instructions: string | null })
+        client.send({ type: 'session:end' })
+        client.close()
+        return { created, answer, calls }
+      }
+      // The catalog names `medium` for gpt-fake: shown, named and sent.
+      const listed = await turn('r1')
+      expect(listed.created).toMatchObject({ effort: 'medium' })
+      expect(listed.calls.find((c) => c.method === 'thread/start')!.instructions).toContain(
+        'with reasoning effort `medium`',
+      )
+      expect(listed.calls.filter((c) => c.method === 'turn/start').map((c) => c.effort)).toEqual(['medium'])
+      expect(listed.answer).toContain('effort=medium]')
+      // A catalog without a default: no level is shown and none is sent.
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_UNREPORTED_EFFORT: 'low', FAKE_CODEX_NO_DEFAULT_EFFORT: '1' }))
+      const unlisted = await turn('r2')
+      expect(unlisted.created).toMatchObject({ effort: null })
+      expect(unlisted.calls.filter((c) => c.method === 'turn/start').map((c) => c.effort)).toEqual([null])
+    } finally {
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(working)
+    }
+  }, 60_000)
   it('keeps the chat on the leaving engine when the joining one fails to start (B1)', async () => {
     const client = await Client.open(port)
     await createChat(client, { engine: 'claude' })
