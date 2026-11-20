@@ -90,6 +90,24 @@ fn wheel_steps_inside_the_interest_rect_replay_without_a_build(cx: &mut TestAppC
     }
 }
 
+/// The root element's decorations paint stationary in the root scrollport
+/// (`scroll_target::stationary`, a scroll anchor): a step still replays.
+#[gpui::test]
+fn a_stationary_root_background_keeps_steps_replayed(cx: &mut TestAppContext) {
+    let html = format!(
+        "<style>html{{background:#fafafa}}</style>{}",
+        rows(&fixed_box())
+    );
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    for (i, dy) in [-120., -120., 120.].into_iter().enumerate() {
+        let name = format!("wheel {i} by {dy}");
+        let (builds, replays) = step(cx, &html, &name, |c| wheel_by(c, dy), &view, vcx);
+        assert_eq!((builds, replays), (0, 2), "{name}");
+    }
+}
+
 #[gpui::test]
 fn scroll_keys_replay_near_steps_and_build_far_jumps(cx: &mut TestAppContext) {
     let html = rows(&fixed_box());
