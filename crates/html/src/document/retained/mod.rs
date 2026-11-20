@@ -27,6 +27,8 @@ mod content_replay_tests;
 #[cfg(test)]
 mod content_resize_tests;
 mod counters;
+#[cfg(test)]
+mod decorated_fill_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;
