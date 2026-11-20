@@ -126,22 +126,35 @@ attribute edits) is applied as DOM mutation records (`edit_input: "mutation_reco
 changes the shape (a node inserted or removed) enters the engine the only way it has today,
 `Document::update` with the new markup, parse included (`edit_input: "document_update"`). `--edit` picks
 the second markup: `text` (one letter of a text node after the middle of the document), `attr`
-(a `data-edit` attribute on an element there), `class` (`class="alt"` on the root), `insert`
+(a `data-edit` attribute on the middle eligible element in parsed DOM preorder), `class` (`class="alt"` on the root), `insert`
 (a copy of the first leaf element after the middle, placed right after it: one node more) and
 `remove` (that leaf element deleted: one node less). A leaf element has no child elements, so its
 copy is valid in any parent and the edit changes one node, not how the surroundings parse.
 `--edit-markup FILE` gives the second markup itself, for any other mutation; the mode's `edit`
 field is then `{"markup": FILE}`.
 
-In `relayout` and `edit` modes, `fresh_checks` also records
-`incremental_bgr_fnv1a64` and `fresh_bgr_fnv1a64`, using the same RGB-only BGR
-fingerprint as the measured sequence. `--fresh-check-dir DIR` retains both frames
-for every check, including matching checks: `relayout-N-incremental.png` and
-`relayout-N-fresh.png` for each viewport group, or `edit-N-*.png` for each variant.
-Paths are recorded in each check's `artifacts`. An edit mismatch's second fresh
-control also gets hashes and optional PNGs in `second_fresh`. Use a new directory
-for each invocation. These checks and PNG writes occur after the measured samples;
-they do not change the exact RGB verdict or discard timing samples.
+In `edit` mode, `matches_fresh` is true only when at least one comparison was
+performed and every required measured frame was captured and matched. The
+`fresh_validation` object reports `required`, `compared`, `skipped` and a status
+of `not_checked`, `incomplete`, `matched` or `mismatched`. With
+`ENGINE_BENCH_PRESENT_SKIP=1`, a skipped presentation has no pixels to compare;
+it remains unverified and prevents a passing verdict. Timing samples are retained.
+
+Two reference images are captured from fresh Documents before edit sampling, then
+the base Document is restored. Each actual measured capture is compared after its
+own timing and counters close, so a later matching frame cannot erase an earlier
+mismatch. Only the two references and current image need to remain live. Reference
+Documents have independent DOM/style/layout state; platform font and GPU resources
+are shared, so this is not an independent-process test of shared caches.
+
+In `relayout` and `edit` modes, `fresh_checks` records `different_rgb_pixels`,
+`incremental_bgr_fnv1a64` and `fresh_bgr_fnv1a64`. Edit checks also carry the
+`sample_index` and `variant`. `--fresh-check-dir DIR` retains both images for every
+comparison, including matches: `relayout-N-*.png` per viewport group or
+`edit-SAMPLE-variant-VARIANT-*.png` per measured edit. Paths appear in `artifacts`.
+Use a new directory for each invocation. Comparisons and PNG writes are outside
+sample timing. `--edit-markup` belongs to the parsed session configuration, so
+separate sessions can select different files in the same process.
 
 Known platform limitation: Intel Iris Xe with driver 32.0.101.7085 can produce
 rare single-pixel changes on the native D3D11 hardware backend, setting

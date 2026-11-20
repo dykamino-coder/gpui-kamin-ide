@@ -13,6 +13,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 import type { AgentEngineId } from '../../shared/agent-events'
+import { noteAppended } from '../engine/transcript-digest'
 
 type Entry = JsonlEntry & { uuid?: string; parentUuid?: string | null; subtype?: string }
 
@@ -195,6 +196,7 @@ export class UnifiedLog {
     if (lines.length === 0) return
     fs.mkdirSync(path.dirname(this.file), { recursive: true })
     fs.appendFileSync(this.file, lines.join('\n') + '\n')
+    noteAppended(this.file)
   }
 
   /** "→ GPT-6.1-Sol": where the conversation moved to another engine. */

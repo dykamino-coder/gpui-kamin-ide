@@ -6,11 +6,19 @@
 // appended since: transcripts grow at the end. A different file (identity), a
 // shorter one, or a same-size rewrite starts it over. Memory is one number per
 // STRIDE lines; transcript text is never kept.
+//
+// The offsets are also kept on disk, in the conversation digest next to the
+// log (engine/transcript-digest.ts): when it exists, the index starts from it
+// and scans only what follows; when it does not, the scan here serves the
+// call (the chat tools never write; the server builds the digest as the log
+// grows, engine/transcript-digest.ts).
 
+import fs from 'node:fs'
 import type fsp from 'node:fs/promises'
+import { DIGEST_STRIDE, digestOf, sidecarOf } from '../engine/transcript-digest'
 import { readLines, type Line } from './line-reader'
 
-export const STRIDE = 1024
+export const STRIDE = DIGEST_STRIDE
 const SCAN_CHUNK = 1024 * 1024
 const CACHE_LIMIT = 256
 
@@ -30,7 +38,7 @@ interface LineIndex {
 const cache = new Map<string, LineIndex>()
 
 /** Scans performed and bytes they read — lets tests and the bench prove reuse. */
-export const indexStats = { builds: 0, extends: 0, bytesScanned: 0 }
+export const indexStats = { builds: 0, extends: 0, bytesScanned: 0, fromDigest: 0 }
 
 export async function lineIndex(file: string, fh: fsp.FileHandle): Promise<LineIndex> {
   const st = await fh.stat()
@@ -46,6 +54,13 @@ export async function lineIndex(file: string, fh: fsp.FileHandle): Promise<LineI
     cache.delete(file)
     cache.set(file, base)
     return base
+  }
+  if (!base) {
+    const dg = fs.existsSync(sidecarOf(file)) ? await digestOf(file, undefined, { persist: false }) : null
+    if (dg && dg.identity === identity && dg.end <= st.size) {
+      indexStats.fromDigest++
+      base = { identity, size: dg.end, mtimeMs: 0, scanned: dg.end, lines: dg.lines, offsets: dg.offsets }
+    }
   }
   // Extend a copy: a concurrent caller keeps using the published snapshot.
   const idx: LineIndex = base
@@ -118,4 +133,5 @@ export function resetLineIndexForTests(): void {
   indexStats.builds = 0
   indexStats.extends = 0
   indexStats.bytesScanned = 0
+  indexStats.fromDigest = 0
 }

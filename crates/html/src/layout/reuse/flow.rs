@@ -192,7 +192,7 @@ impl FlowCx {
         &self,
         e: &Element,
         edge: bool,
-        mark: Mark,
+        mut mark: Mark,
         opts: &RenderOpts,
         out: &mut Vec<AnyElement>,
     ) {
@@ -214,9 +214,12 @@ impl FlowCx {
             self.record_replay(e, mark, now.start, opts, out);
             return;
         }
-        let skip_at = ((self.settled || self.resized) && (!edge || self.edges) && mark.inert.of(e))
-            .then(|| self.record_skip(e, &mark, now.start, opts, out))
-            .flatten();
+        if (self.settled || self.resized) && (!edge || self.edges) {
+            mark.skip_origin = super::plain::skip_origin(e, opts.cx.vcx());
+        }
+        let skip_at = mark
+            .skip_origin
+            .and_then(|origin| self.record_skip(e, &mark, now.start, origin, opts, out));
         let skip = skip_at.is_some();
         // Блок, обёрнутый для пропуска, не пишется для повтора:
         // - первой устоявшейся сборкой: она собирает весь поток, а ближние

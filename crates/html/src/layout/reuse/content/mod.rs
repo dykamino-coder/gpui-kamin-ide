@@ -19,7 +19,7 @@
 pub(super) mod inert;
 mod key;
 pub(crate) mod shared;
-pub(super) use key::inert_tree;
+pub(super) use key::{inert_node, inert_tree};
 
 use super::replay::{PendingReplay, Replay, ReplayRecord, ReplayRecorder, ReplaySlot};
 use super::{Counters, FlowReuse, Source};

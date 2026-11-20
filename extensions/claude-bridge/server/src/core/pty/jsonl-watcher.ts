@@ -40,6 +40,7 @@ import {
   type Tagged,
 } from './jsonl-replay'
 import { debugLog } from '../logging'
+import { noteAppended } from '../engine/transcript-digest'
 
 // Cheap pre-filter before JSON.parse — skips ~60-80% of lines on sessions
 // with heavy file-history-snapshot logging (Write/Edit tool heavy sessions).
@@ -753,6 +754,9 @@ export class JsonlWatcher {
 
   private startTailing(): void {
     if (this.stopped || !this.filePath) return
+    // A chat from before the conversation digest gets one, in the background,
+    // before a switch or a chat tool needs it (engine/transcript-digest.ts).
+    noteAppended(this.filePath)
 
     // Extract conversationId from filename (UUID without .jsonl extension)
     if (this.onConversationId) {
@@ -1509,6 +1513,7 @@ export class JsonlWatcher {
         return
       }
 
+      noteAppended(filePath)
       if (entries.length === 0) {
         // Only skipped/torn lines (no complete entries yet) — advance past the
         // clean prefix and wait for the rest.
