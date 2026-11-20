@@ -46,6 +46,39 @@ fn radio_group_keeps_its_last_checked_button_per_form_owner() {
 }
 
 #[test]
+fn explicit_and_ancestor_form_owners_share_one_radio_group() {
+    let ids = checked_ids(
+        "<form id=f><input id=a type=radio name=g checked></form>\
+         <input id=b type=radio name=g checked form=f>\
+         <input id=c type=radio name=g checked form=later>\
+         <form id=later><input id=d type=radio name=g checked></form>",
+    );
+    assert_eq!(ids, ["b", "d"]);
+}
+
+#[test]
+fn missing_or_non_form_targets_leave_radios_without_a_form_owner() {
+    let ids = checked_ids(
+        "<input id=a type=radio name=g checked form=missing>\
+         <svg id=duplicate></svg><form id=duplicate>\
+         <input id=b type=radio name=g checked form=duplicate></form>\
+         <input id=c type=radio name=g checked>",
+    );
+    assert_eq!(ids, ["c"]);
+}
+
+#[test]
+fn an_empty_form_attribute_cannot_associate_with_an_empty_id() {
+    assert_eq!(
+        checked_ids(
+            "<form id=''><input id=a type=radio name=g checked form=''></form>\
+         <input id=b type=radio name=g checked>"
+        ),
+        ["b"]
+    );
+}
+
+#[test]
 fn checked_pseudo_class_matches_subjects_siblings_and_ancestors() {
     let parsed = crate::dom::parse(
         "<style>b{width:1px} :checked + b{width:7px} :checked ~ i b{width:9px}\
@@ -76,7 +109,18 @@ fn single_select_has_one_selected_option() {
         "<select><option id=a selected><option id=b selected></select>\
          <select><option id=c disabled><optgroup><option id=d></optgroup></select>\
          <select multiple><option id=e selected><option id=f selected></select>\
-         <select size=3><option id=g></select>",
+         <select size=3><option id=g></select>\
+         <select size=3><option id=h selected><option id=i selected></select>",
     );
-    assert_eq!(ids, ["b", "d", "e", "f"]);
+    assert_eq!(ids, ["b", "d", "e", "f", "i"]);
+}
+
+#[test]
+fn select_size_uses_html_non_negative_integer_parsing() {
+    let ids = checked_ids(
+        "<select size='+3rows'><option id=a></select>\
+         <select size='+1row'><option id=b></select>\
+         <select size='-3'><option id=c></select>",
+    );
+    assert_eq!(ids, ["b", "c"]);
 }

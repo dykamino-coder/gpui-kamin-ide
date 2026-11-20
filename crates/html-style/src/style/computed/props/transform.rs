@@ -128,6 +128,8 @@ impl Computed {
                 // а не превращается в ноль (`scale(invalid)` схлопывал фигуру,
                 // хотя обязан быть проигнорирован — svg-document-styles-005).
                 let mut invalid = false;
+                let mut only_scale = self.reset_transforms.transform.is_none();
+                let mut calls = 0;
                 for call in v.split(')') {
                     let Some((name, arg)) = call.split_once('(') else {
                         continue;
@@ -182,6 +184,8 @@ impl Computed {
                     // — одно и то же.
                     let lower = name.to_ascii_lowercase();
                     let name = lower.as_str();
+                    calls += 1;
+                    only_scale &= matches!(name, "scale" | "scalex" | "scaley");
                     // `matrix()`/`matrix3d()` — только числа (css-transforms-1
                     // §matrix): единица делает объявление невалидным
                     // (`transform-matrix-008`).
@@ -206,6 +210,7 @@ impl Computed {
                         self.accept_declaration();
                     }
                 } else if !invalid {
+                    t.scale_primitive = only_scale && calls == 1;
                     self.reset_transforms.transform = accept_parsed!(self, Some(t));
                 }
             }

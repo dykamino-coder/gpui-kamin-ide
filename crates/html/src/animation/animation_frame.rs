@@ -69,15 +69,12 @@ pub(super) fn sample(
         style.reset_effects.drop_shadow = frame.reset_effects.drop_shadow.clone();
     }
     if transforms {
-        if frame.reset_transforms.rotate_prop.is_some() {
-            style.reset_transforms.rotate_prop = frame.reset_transforms.rotate_prop;
-        }
-        if frame.reset_transforms.scale_prop.is_some() {
-            style.reset_transforms.scale_prop = frame.reset_transforms.scale_prop;
-        }
-        if frame.reset_transforms.transform.is_some() {
-            style.reset_transforms.transform = frame.reset_transforms.transform;
-        }
+        // Frames are complete computed styles, including `none`. Copying only
+        // present values would keep the underlying transform after a discrete
+        // animation has switched to a `none` endpoint.
+        style.reset_transforms.rotate_prop = frame.reset_transforms.rotate_prop;
+        style.reset_transforms.scale_prop = frame.reset_transforms.scale_prop;
+        style.reset_transforms.transform = frame.reset_transforms.transform;
     }
     crate::style::cascade::materialize::rematerialize(&e.style, inner, vcx)
 }
@@ -216,5 +213,21 @@ mod tests {
         let margin = &sampled.style.used().reset_box_layout.margin;
         assert_eq!(margin.top, Some(Len::Px(0.0)));
         assert_eq!(margin.left, Some(Len::Px(50.0)));
+    }
+
+    #[test]
+    fn a_none_transform_frame_replaces_the_underlying_transform() {
+        let parsed = crate::document::parsed::parse(
+            "<div style='transform:matrix(0,0,0,0,0,0);rotate:10deg;scale:2'></div>",
+            "",
+        );
+        let element = crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "div").unwrap();
+        let frame = Computed::default();
+        let sampled = sample(element, &frame, true, parsed.values());
+        let transforms = &sampled.style.used().reset_transforms;
+        assert!(transforms.transform.is_none());
+        assert!(transforms.rotate_prop.is_none());
+        assert!(transforms.scale_prop.is_none());
+        assert!(element.style.used().reset_transforms.transform.is_some());
     }
 }

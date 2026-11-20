@@ -157,7 +157,7 @@ fn reads(sel: &Selector, changed: &Changed) -> bool {
     };
     // `:checked` reads the attributes its state derives from (`form_state`).
     let state = |raw: &String| {
-        raw == "checked"
+        (raw.contains('\\') || mentions(raw, "checked"))
             && crate::dom::form_state::READS
                 .iter()
                 .any(|name| among(&changed.attrs, name))

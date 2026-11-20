@@ -55,6 +55,8 @@ pub struct Transform {
     /// Встретилась действительно объёмная функция: отрисовка идёт по `m4`,
     /// иначе — прежний плоский путь по `lin`/`tr`.
     pub has_3d: bool,
+    /// Identity or a single 2D scale function, eligible for primitive interpolation.
+    pub(crate) scale_primitive: bool,
 }
 
 /// Ячейка матрицы перспективы элемента в точках устройства
@@ -134,6 +136,7 @@ impl Default for Transform {
             m4: IDENTITY4,
             m4_pct: [[[0.0; 4]; 4]; 2],
             has_3d: false,
+            scale_primitive: true,
         }
     }
 }

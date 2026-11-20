@@ -47,6 +47,11 @@ pub(super) fn animation_frames(
                             .cloned()
                             .collect();
                         if !over.is_empty() {
+                            // An important transform replaces the animation's
+                            // list; applying it to that matrix would append it.
+                            if over.contains("transform") {
+                                c.reset_transforms.transform = None;
+                            }
                             c.apply_decls_with_vars(&over, vars, vcx);
                         }
                     }
@@ -186,6 +191,25 @@ mod tests {
                     (property == "margin").then_some(Len::Px(20.0))
                 );
             }
+        }
+    }
+    #[test]
+    fn important_transform_replaces_the_animated_list() {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let mut base = Computed::default();
+        base.apply_one("animation", "a 1s linear", vcx);
+        base.apply_one("transform", "translateX(10px)", vcx);
+        let decls = crate::style::css::parse_decls("transform: scale(2)");
+        let important = crate::style::css::parse_decls("transform: translateX(10px)");
+        let tracks = HashMap::from([("a".into(), vec![(0.0, decls.clone()), (1.0, decls)])]);
+        let frames =
+            animation_frames(&base, &tracks, &HashMap::new(), Some(&important), vcx).unwrap();
+        for (_, frame) in frames {
+            assert_eq!(
+                frame.reset_transforms.transform,
+                base.reset_transforms.transform
+            );
         }
     }
 }

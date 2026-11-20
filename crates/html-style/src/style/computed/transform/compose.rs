@@ -71,6 +71,7 @@ impl Transform {
             tr: out.tr,
             m4: out.m4,
             m4_pct: out.m4_pct,
+            scale_primitive: false,
             ..self
         }
     }
@@ -87,6 +88,9 @@ impl Transform {
         use std::f32::consts::{PI, TAU};
         // Столбцы `lin` — образы осей: `row0` псевдокода = (a, b) записи
         // `matrix(a, b, c, d, e, f)`, `row1` = (c, d).
+        if self.scale_primitive && other.scale_primitive {
+            return self.lerp_scales(other, k);
+        }
         let unmatrix = |l: [[f32; 2]; 2]| -> Option<((f32, f32), f32, [f32; 4])> {
             let (r0x, r0y, r1x, r1y) = (l[0][0], l[1][0], l[0][1], l[1][1]);
             let det = r0x * r1y - r0y * r1x;
@@ -117,7 +121,7 @@ impl Transform {
         let (Some((mut sa, mut aa, ma)), Some((sb, mut ab, mb))) =
             (unmatrix(self.lin), unmatrix(other.lin))
         else {
-            return self.lerp_scales(other, k);
+            return None;
         };
         if (sa.0 < 0.0 && sb.1 < 0.0) || (sa.1 < 0.0 && sb.0 < 0.0) {
             sa = (-sa.0, -sa.1);
@@ -168,11 +172,10 @@ impl Transform {
         })
     }
 
-    /// A singular side (`scale(0)`) has no decomposition, but when both linear
-    /// parts are pure axis scales the lists are pairs of the same primitive
-    /// (`translate`/`scale`), which interpolate argument by argument
-    /// (css-transforms-1 §interpolation-of-transforms, step 3) — the same
-    /// result as mixing the diagonal and the shift linearly.
+    /// A single scale function (or identity padding for `none`) interpolates
+    /// its arguments even at zero. Matrix functions and composed lists use
+    /// decomposition instead; a diagonal matrix does not prove matching
+    /// primitives (css-transforms-1 section interpolation-of-transforms).
     fn lerp_scales(&self, other: &Transform, k: f32) -> Option<Transform> {
         let diagonal = |l: &[[f32; 2]; 2]| l[0][1] == 0.0 && l[1][0] == 0.0;
         if !diagonal(&self.lin) || !diagonal(&other.lin) {
@@ -197,23 +200,4 @@ impl Transform {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn singular_scale_interpolates_argument_by_argument() {
-        let mut zero = Transform::default();
-        zero.push(Transform::diag(0.0, 0.0), NO_SHIFT);
-        let one = Transform::default();
-        let mid = zero.lerp_2d(&one, 0.25).unwrap();
-        assert_eq!(mid.lin, [[0.25, 0.0], [0.0, 0.25]]);
-        assert_eq!(
-            one.lerp_2d(&zero, 1.0).unwrap().lin,
-            [[0.0, 0.0], [0.0, 0.0]]
-        );
-        // A rotated singular side is not a pair of scales: discrete.
-        let mut skewed = Transform::default();
-        skewed.push([[0.0, 1.0], [0.0, 0.0]], NO_SHIFT);
-        assert!(skewed.lerp_2d(&one, 0.5).is_none());
-    }
-}
+mod tests;
