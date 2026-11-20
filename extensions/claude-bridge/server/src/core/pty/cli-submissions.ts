@@ -9,7 +9,10 @@ import type { JsonlEntry } from '../../shared/jsonl-types'
 type State = 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
 interface Submission {
   id: string
+  /** What the CLI gets and stores in its prompt row (may carry a context block). */
   text: string
+  /** What the user wrote: the receipt text, the client's submission identity. */
+  userText: string
   state: State
   uuid?: string
   warning?: string
@@ -18,6 +21,14 @@ interface Submission {
   createdAt: number
   /** Server time the mod reported the CLI accepted an idle submit. */
   acceptedAt?: number
+}
+
+/** A submission an engine switch takes from the leaving CLI. */
+export interface CarriedSubmission {
+  id: string
+  /** What the user wrote (the joining engine adds its own context). */
+  text: string
+  createdAt: number
 }
 
 /** A text handed to the CLI whose stored prompt row is not seen yet. */
@@ -44,6 +55,8 @@ export class CliSubmissions {
   private awaiting: Awaiting[] = []
   /** Rows already matched: a range the watcher re-reads must not match twice. */
   private matchedRows = new Set<string>()
+  /** The chat moved to another engine (retire). */
+  private retired = false
 
   constructor(
     private session: PtySession,
@@ -62,11 +75,12 @@ export class CliSubmissions {
   }
 
   private emit(item: Submission): void {
+    if (this.retired) return
     sendToClient(this.session.ws, {
       type: 'session:submission',
       sessionId: this.session.id,
       id: item.id,
-      text: item.text,
+      text: item.userText,
       state: item.state,
       uuid: item.uuid,
       cancelable: item.state === 'queued',
@@ -141,7 +155,28 @@ export class CliSubmissions {
     return safe
   }
 
-  submit(id: string, text: string): boolean {
+  /** Engine switch: this CLI goes away with whatever it holds. Messages it
+   * never got move to the joining engine (in order); messages it got but did
+   * not confirm go back to the user. From here on this queue reports nothing:
+   * the joining session owns these ids, and a late ack of this CLI (its mod
+   * accepting an armed submit, its exit marking items uncertain) would
+   * contradict what the joining one reports. */
+  retire(): { moved: CarriedSubmission[]; returned: CarriedSubmission[] } {
+    const moved = new Set(this.handoff())
+    const out = { moved: [] as CarriedSubmission[], returned: [] as CarriedSubmission[] }
+    for (const item of this.items.values()) {
+      const carried = { id: item.id, text: item.userText, createdAt: item.createdAt }
+      if (moved.has(item.id)) out.moved.push(carried)
+      else if (item.state === 'native' || item.state === 'sending') out.returned.push(carried)
+    }
+    this.retired = true
+    this.items.clear()
+    this.awaiting = []
+    this.matchedRows.clear()
+    return out
+  }
+
+  submit(id: string, text: string, userText = text): boolean {
     if (!id || id.length > 128 || Buffer.byteLength(text) > 131_072) return false
     const existing = this.items.get(id)
     if (existing) {
@@ -164,7 +199,7 @@ export class CliSubmissions {
       }
       if (this.items.size >= 256) return false
     }
-    const item: Submission = { id, text, state: 'queued', createdAt: Date.now() }
+    const item: Submission = { id, text, userText, state: 'queued', createdAt: Date.now() }
     this.items.set(id, item)
     this.emit(item)
     this.drain()

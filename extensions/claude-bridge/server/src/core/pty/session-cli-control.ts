@@ -3,7 +3,7 @@ import type { PtySession } from './types'
 import { sendToClient } from './session-io'
 import { getSessionInputSnapshot, setSessionPromptReady, submitCoordinatedText } from './session-input-coordinator'
 import { ProgramStatusParser, type ProgramStatus } from './program-status'
-import { CliSubmissions } from './cli-submissions'
+import { CliSubmissions, type CarriedSubmission } from './cli-submissions'
 import { replayTerminalCommandReceipts } from './terminal-command-receipts'
 import type { CliModTransport } from './cli-mod-transport'
 import type { JsonlEntry } from '../../shared/jsonl-types'
@@ -197,16 +197,23 @@ export class SessionCliControl {
     return this.submissions?.handoff() ?? []
   }
 
-  submit(text: string, submissionId?: string): boolean {
+  /** Engine switch: see CliSubmissions.retire. */
+  retire(): { moved: CarriedSubmission[]; returned: CarriedSubmission[] } {
+    return this.submissions?.retire() ?? { moved: [], returned: [] }
+  }
+
+  /** `text` goes to the CLI; `userText` is what the user wrote (receipts,
+   *  routing): a hidden history block may quote a command or a mention. */
+  submit(text: string, submissionId?: string, userText = text): boolean {
     const input = getSessionInputSnapshot(this.session)
     // Engine submit intentionally does not expand mentions, pastes or native commands.
     if (
-      needsTerminalDelivery(text) ||
+      needsTerminalDelivery(userText) ||
       (!submissionId &&
         (input.rawInputDirty || input.activeKind || input.queuedSubmissions || input.pendingMaintenance.length))
     )
       return false
-    if (submissionId) return this.submissions?.submit(submissionId, text) ?? false
+    if (submissionId) return this.submissions?.submit(submissionId, text, userText) ?? false
     // Older clients retain native mid-turn semantics, including their queue mirror.
     if (this.busy()) return false
     return this.mod?.submit(text, () => submitCoordinatedText(this.session, text)) ?? false

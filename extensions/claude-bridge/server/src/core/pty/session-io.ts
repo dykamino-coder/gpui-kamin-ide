@@ -247,30 +247,42 @@ export function submitTextToSession(session: PtySession, text: string, submissio
   }
   // The first turn of an engine that joined the conversation carries the
   // history as a hidden block (conversation/conversation.ts, handoff.ts).
+  // Receipts keep the user's own text: it is the client's submission
+  // identity (the browser workspace persists it with its digest), and the
+  // block is the engine's input only.
   const context = session.conversation ? takeTurnContext(session.conversation) : null
   if (context) {
-    text = withContextBlock(text, context)
+    const engineText = withContextBlock(text, context)
     // A multi-line paste needs the CLI's prompt up (see whenPromptReady).
     if (!session.agentInput && !getSessionInputSnapshot(session).promptReady) {
       const ready = whenPromptReady(session, FIRST_TURN_PROMPT_WAIT_MS).then(() => {
         firstTurnGates.delete(session)
-        deliverText(session, text, submissionId)
+        deliverText(session, { engine: engineText, user: text }, submissionId)
       })
       firstTurnGates.set(session, ready)
       return
     }
+    return deliverText(session, { engine: engineText, user: text }, submissionId)
   }
-  deliverText(session, text, submissionId)
+  deliverText(session, { engine: text, user: text }, submissionId)
 }
 
 /** A joining Claude session's first turn waits at most this long for the prompt. */
 const FIRST_TURN_PROMPT_WAIT_MS = 10_000
 const firstTurnGates = new WeakMap<PtySession, Promise<void>>()
 
-function deliverText(session: PtySession, text: string, submissionId?: string): void {
-  if (session.state !== 'running') return submitTextToSession(session, text, submissionId)
-  if (session.agentInput) return session.agentInput.submit(text, submissionId)
-  if (sessionCliControl(session)?.submit(text, submissionId)) return
+/** One user message: what the engine reads (with any hidden context block)
+ *  and what the user wrote (the receipt text and terminal-routing decision). */
+interface SubmittedText {
+  engine: string
+  user: string
+}
+
+function deliverText(session: PtySession, text: SubmittedText, submissionId?: string): void {
+  // The context block was already taken; a stopped session only reports.
+  if (session.state !== 'running') return submitTextToSession(session, text.user, submissionId)
+  if (session.agentInput) return session.agentInput.submit(text.engine, submissionId, text.user)
+  if (sessionCliControl(session)?.submit(text.engine, submissionId, text.user)) return
   // A command, mention or attachment path goes through the terminal by design;
   // the client warns only when delivery fell back for another reason.
   if (submissionId) {
@@ -279,15 +291,15 @@ function deliverText(session: PtySession, text: string, submissionId?: string): 
       type: 'session:submission',
       sessionId: session.id,
       id: submissionId,
-      text,
+      text: text.user,
       state: 'fallback',
       cancelable: false,
-      ...(needsTerminalDelivery(text) ? {} : { warning: 'Using native terminal delivery for this message.' }),
+      ...(needsTerminalDelivery(text.user) ? {} : { warning: 'Using native terminal delivery for this message.' }),
       createdAt,
     })
-    trackTerminalCommand(session, submissionId, text, createdAt)
+    trackTerminalCommand(session, submissionId, text.user, createdAt)
   }
-  submitCoordinatedText(session, text)
+  submitCoordinatedText(session, text.engine)
 }
 
 /**
