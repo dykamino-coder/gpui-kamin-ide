@@ -81,6 +81,15 @@ impl Wrap for Projected {
             window.with_exact_element_offset(shift, |window| child.prepaint(window, cx))
         });
     }
+
+    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        // A reversed axis moves the content against the offset outside the
+        // scroll node's own shift: a replay that moves the node needs a build.
+        if self.projection.reverse.iter().any(|reverse| *reverse) {
+            window.paint_scroll_dependent(&self.projection.handle);
+        }
+        self.child.paint(window, cx);
+    }
 }
 
 #[cfg(test)]

@@ -965,11 +965,14 @@ impl WindowTextSystem {
         let mut lines = SmallVec::new();
         let mut max_wrap_lines = line_clamp;
         let mut wrapped_lines = 0;
+        // KaminIDE patch: the runs of a line are gathered in one buffer and the
+        // line keeps an exact copy. A fresh `with_capacity(32)` per line kept
+        // 32 runs (~5 KB) alive in every wrapped line of a document.
+        let mut decoration_runs = Vec::<DecorationRun>::with_capacity(32);
 
         let mut process_line = |line_text: SharedString, line_start, line_end| {
             font_runs.clear();
-
-            let mut decoration_runs = <Vec<DecorationRun>>::with_capacity(32);
+            decoration_runs.clear();
             let mut run_start = line_start;
             while run_start < line_end {
                 let Some(run) = runs.peek_mut() else {
@@ -1041,7 +1044,7 @@ impl WindowTextSystem {
 
             lines.push(WrappedLine {
                 layout,
-                decoration_runs,
+                decoration_runs: decoration_runs.to_vec(),
                 text: line_text,
             });
 

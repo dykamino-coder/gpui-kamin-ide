@@ -53,8 +53,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from memprof_symbols import Symbols  # noqa: E402
+import memprof_guard  # noqa: E402
 
 SCHEMA = "kamin.memprof.v1"
+# Mean sampling interval of `run` unless --sample says otherwise: an exact probe of a real page writes tens
+# of GB of stacks (15 GB for one page was seen); 16 KiB sampling gave 45 MB instead of 3.5 GB on wide-16000
+# with totals within 0.3% of the audit counter (docs/memprof.md, Limits).
+DEFAULT_SAMPLE = 16384
 
 # Frames of the allocator itself. Only a leading run of them is dropped, and a frame counts only when
 # its name STARTS with one of these: generic arguments such as `Vec<T, alloc::alloc::Global>` inside
@@ -744,7 +749,9 @@ def run_command(args):
     if args.retainers:
         if args.sample:
             raise SystemExit("--retainers names every block: run it exact, without --sample")
-        args.owners = True
+        args.sample, args.owners = 0, True
+    elif args.sample is None:
+        args.sample = DEFAULT_SAMPLE
     if args.owners:
         # The owner report follows the last frame of a mode: the probe records the whole run.
         phase, spec = None, "*"
@@ -784,9 +791,18 @@ def run_command(args):
             env.pop("ENGINE_BENCH_ALLOC_STACKS_SAMPLE", None)
         prefix = [part.strip('"') for part in shlex.split(args.launcher, posix=False)] if args.launcher else []
         command = [*prefix, exe, *bench]
-        with open(out / f"{name}.json", "wb") as stdout, open(out / f"{name}.err", "wb") as stderr:
-            code = subprocess.run(command, env=env, stdout=stdout, stderr=stderr,
-                                  stdin=subprocess.DEVNULL, timeout=args.timeout).returncode
+        try:
+            with open(out / f"{name}.json", "wb") as stdout, open(out / f"{name}.err", "wb") as stderr:
+                code = memprof_guard.run(command, env=env, stdout=stdout, stderr=stderr, stdin=subprocess.DEVNULL,
+                                         timeout=args.timeout, watch=stacks,
+                                         max_bytes=int(args.max_stacks_gb * 1e9),
+                                         min_free=int(args.min_free_gb * (1 << 30)))
+        except memprof_guard.Stopped as stop:
+            if not args.keep_stacks and stacks.exists():
+                drop_stacks(stacks)
+            raise SystemExit(f"{name}: engine_bench stopped: {stop}. A bench that keeps working after its "
+                             f"report writes stacks without bound: see {out / (name + '.err')}; sample coarser "
+                             "(--sample), or raise --max-stacks-gb / --timeout if the run is expected to need it")
         print(f"{name}: exit {code}, {stacks}", file=sys.stderr)
         if code:
             if not args.keep_stacks and stacks.exists():
@@ -826,15 +842,21 @@ def main(argv=None):
                      help="who keeps each block alive: retention graph after the owner report (implies --owners)")
     run.add_argument("--heapsnapshot", action="store_true", help="with --retainers: also a V8 .heapsnapshot")
     run.add_argument("--start", type=int, default=0, help="first recorded frame (0 = process start, default)")
-    run.add_argument("--sample", type=int, default=0, help="mean sampling interval in bytes (0 = exact)")
+    run.add_argument("--sample", type=int, default=None,
+                     help=f"mean sampling interval in bytes (default {DEFAULT_SAMPLE}; 0 = exact, "
+                          "--retainers is always exact)")
+    run.add_argument("--max-stacks-gb", type=float, default=2,
+                     help="stop the bench and its launcher when a stack file grows past this (default 2)")
     run.add_argument("--out", required=True, help="directory for stacks, bench JSON and reports")
     run.add_argument("--launcher", help="command prefix, e.g. a hidden-desktop launcher")
-    run.add_argument("--timeout", type=int, default=1800)
+    run.add_argument("--timeout", type=int, default=900,
+                     help="seconds per side before the bench and its whole launcher tree are terminated (default 900)")
     run.add_argument("--frames", help="A-B: report only blocks allocated in these frames")
     run.add_argument("--keep-stacks", action="store_true",
                      help="keep the raw probe files (GBs in exact mode); by default each is removed once folded")
     run.add_argument("--min-free-gb", type=float, default=60,
-                     help="an exact run does not start with less free disk space than this (default 60)")
+                     help="an exact run does not start, and any run is stopped, with less free disk space "
+                          "than this (default 60)")
     run.add_argument("--ignore-hold", action="store_true", help="start even when a KAMIN_BENCH_HOLD file exists")
     run.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
@@ -869,6 +891,8 @@ def main(argv=None):
     wsp.add_argument("--launcher", help="command prefix that prints 'own child: <pid>' first")
     wsp.add_argument("--interval-ms", type=int, default=1, help="working-set sampling interval")
     wsp.add_argument("--step-mb", type=int, default=2, help="new breakdown when the peak grows by this much")
+    wsp.add_argument("--timeout", type=int, default=600,
+                     help="seconds per side before the bench and its whole launcher tree are terminated (default 600)")
     wsp.add_argument("--ignore-hold", action="store_true", help="start even when a KAMIN_BENCH_HOLD file exists")
     wsp.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 

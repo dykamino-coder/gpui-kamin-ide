@@ -9,7 +9,9 @@ pub struct ResetCascade {
     /// 40px` против авторского `padding-top: 0` в вертикальном письме —
     /// `line-box-direction-vrl-019`).
     pub decl_order: DeclOrder,
-    pub side_order: SideOrder,
+    /// A shared group of its own: its 30 places (~1 KB) are copied only by a
+    /// side, size or border declaration, not by every write to this group.
+    pub side_order: StyleGroup<SideOrder>,
     /// Ненаследуемые длинные свойства реестра с каскадным значением
     /// `inherit` (css-cascade-5 §7.3.1): вычисленное значение родителя
     /// копирует стадия вычисленных значений (`style::cascade::compute`) —

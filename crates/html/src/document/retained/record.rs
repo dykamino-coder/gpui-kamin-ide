@@ -14,6 +14,10 @@ pub(super) struct Record {
     pub(super) window: Option<WindowKey>,
     pub(super) prepaint: RetainedPrepaint,
     pub(super) paint: RetainedPaint,
+    /// The paint inside the document's scene layer (`Store::paint_layered`):
+    /// a scrolled replay copies it from that layer's scene.
+    pub(super) layered: Option<RetainedPaint>,
+    /// Layer whose unchanged commands still occupy the nested block ranges.
     pub(super) layer: Option<(u64, u64)>,
     /// Prepaint шёл в корневом окружении окна.
     pub(super) root: bool,

@@ -160,6 +160,13 @@ impl Document {
         self.state.clone()
     }
 
+    /// The root scroller's offset in CSS px, down and right positive, when the
+    /// document was built with one (`DocumentBuilder::build_root_scroller`).
+    pub fn root_scroll_offset(&self) -> Option<(f32, f32)> {
+        let offset = self.state.root_scroll.as_ref()?.handle.offset();
+        Some((-f32::from(offset.x), -f32::from(offset.y)))
+    }
+
     pub fn nodes(&self) -> &[Node] {
         &self.nodes
     }
