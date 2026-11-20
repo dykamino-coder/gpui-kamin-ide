@@ -18,6 +18,30 @@ export function withoutBridgeContext(text: string): string {
   return `${text.slice(0, start)}\n${text.slice(end + CLOSE.length)}`.trim()
 }
 
+/** The visible part of an answer that is still streaming. The closing tag of a
+ *  quoted block arrives deltas later, and `withoutBridgeContext` keeps a block
+ *  it cannot see the end of, so the history used to show until the stored
+ *  answer replaced the stream. Here an open block hides everything after its
+ *  tag, and a tail that may be the start of the tag waits for the next delta.
+ *  The stream text itself is not changed: deltas keep appending to the raw text. */
+export function withoutBridgeContextWhileStreaming(text: string): string {
+  const start = text.indexOf(OPEN)
+  if (start >= 0) {
+    const end = text.lastIndexOf(CLOSE)
+    if (end < start) return text.slice(0, start).trimEnd()
+    return withoutBridgeContextWhileStreaming(withoutBridgeContext(text))
+  }
+  return text.slice(0, text.length - openTagPrefixAtEnd(text))
+}
+
+/** Length of the longest proper prefix of the opening tag that ends `text`. */
+function openTagPrefixAtEnd(text: string): number {
+  for (let n = Math.min(OPEN.length - 1, text.length); n > 0; n--) {
+    if (text.endsWith(OPEN.slice(0, n))) return n
+  }
+  return 0
+}
+
 export function hasBridgeContext(text: string): boolean {
   return text.includes(OPEN)
 }
