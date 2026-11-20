@@ -22,9 +22,9 @@ impl Default for ChildBuild {
             FlowBuild::new(
                 blocks,
                 |stk, nodes, inherited, opts| {
-                    Box::pin(crate::render::blocks::blocks_stack(
-                        stk, nodes, inherited, opts,
-                    ))
+                    stk.run_erased(move |stk| {
+                        crate::render::blocks::blocks_stack(stk, nodes, inherited, opts)
+                    })
                 },
                 paragraph,
                 crate::render::generic_box::child_probes,
@@ -32,9 +32,9 @@ impl Default for ChildBuild {
             ),
             element,
             |stk, e, inherited, opts| {
-                Box::pin(crate::render::element::element_stack(
-                    stk, e, inherited, opts,
-                ))
+                stk.run_erased(move |stk| {
+                    crate::render::element::element_stack(stk, e, inherited, opts)
+                })
             },
             BoxBuild::new(
                 styled_div_with_dimensions,

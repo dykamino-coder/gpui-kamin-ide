@@ -21,6 +21,7 @@ PINS = {
     "html5ever": "html5ever 0.40.1",
     "tendril": "tendril 0.5.1",
     "xml-rs": "xml-rs 0.8.29",
+    "reblessive": "reblessive 0.4.3",
     "markup5ever_rcdom": "markup5ever_rcdom 0.39.0+unofficial",
     "resvg": "resvg 0.48.1 + src at linebender/resvg 77b12f4951a7b75d759c42e8c9497cff7c839c3c",
     "usvg": "usvg 0.48.1 + src at linebender/resvg 77b12f4951a7b75d759c42e8c9497cff7c839c3c",
@@ -32,6 +33,7 @@ PACKAGE_REVISIONS = {
 }
 
 FIXES = {
+    "reblessive": ["Erased stack futures: Stk::run_erased keeps the closure that starts a nested future inline (64 bytes, checked at compile time) behind a poll/drop pair, so a function pointer returns a stack future without boxing it; the nested future still goes on the stack allocator at its first poll, with the drop and cancel behaviour of Stk::run."],
     "tendril": ["Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped."],
     "xml-rs": ["Admission: canonical reader storage and leased events grow fallibly before mutation; a typed terminal driver releases partial state and stops reads, entity expansion and callbacks immediately.", "XML namespace constraints: reject duplicate declarations and duplicate expanded attribute names; recursive entity references remain syntax errors independently of work limits."],
     "gpui": [

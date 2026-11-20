@@ -16,6 +16,7 @@
 | `html5ever` | crates.io `html5ever` 0.40.1 |
 | `tendril` | crates.io `tendril` 0.5.1; fallible storage с leases, подключён через path override |
 | `xml-rs` | crates.io `xml-rs` 0.8.29; canonical fallible reader и leased events, подключён через path override |
+| `reblessive` | crates.io `reblessive` 0.4.3; `Stk::run_erased` — стековое будущее без имени замыкания, подключён через path override |
 | `markup5ever_rcdom` | crates.io `markup5ever_rcdom` 0.39.0+unofficial |
 | `resvg`, `usvg` | crates.io 0.48.1 с заменой `src/` из linebender/resvg commit `77b12f4951a7b75d759c42e8c9497cff7c839c3c` |
 
