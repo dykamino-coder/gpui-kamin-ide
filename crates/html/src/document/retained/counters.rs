@@ -38,6 +38,27 @@ impl Document {
         self.reuse.stats.get().subtrees
     }
 
+    /// Why the frame was built instead of replayed since the last call: the
+    /// counter name of each reason and its count (`record::FrameMiss`).
+    pub fn take_frame_misses(&self) -> Vec<(String, u64)> {
+        self.retained.take_misses()
+    }
+
+    /// The root scroller's largest offset (CSS px, positive down), as of its last layout.
+    pub fn root_scroll_max(&self) -> Option<(f32, f32)> {
+        let max = self.state.root_scroll.as_ref()?.handle.max_offset();
+        Some((f32::from(max.x), f32::from(max.y)))
+    }
+
+    /// Open the root scroller at `(x, y)` CSS px from the top left (a fresh
+    /// document compared with a scrolled one, engine-bench scroll mode).
+    pub fn set_root_scroll_offset(&self, (x, y): (f32, f32)) {
+        if let Some(root) = self.state.root_scroll.as_ref() {
+            root.handle
+                .set_offset(gpui::point(gpui::px(-x), gpui::px(-y)));
+        }
+    }
+
     /// Elements of box contents replayed at any depth (`layout::reuse::content`).
     pub fn replayed_contents(&self) -> u64 {
         self.reuse.stats.get().contents

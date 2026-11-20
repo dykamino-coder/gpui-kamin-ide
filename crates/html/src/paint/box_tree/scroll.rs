@@ -49,6 +49,10 @@ pub(crate) fn attach(
         stateful = stateful.overflow_y_scroll();
     }
     let mut div = stateful.0;
+    // A wheel moves only the axes the box scrolls, as in browsers: a vertical
+    // wheel over a box that scrolls only horizontally chains to its ancestor
+    // (`scroll_area::wheel`) instead of moving the box sideways.
+    div.style().restrict_scroll_to_axis = Some(true);
     let bars = crate::interactive::scroll_extent::classic::reserve(cx.scroll.frame.as_ref(), e, c);
     div.style().scrollbar_width = Some(gpui::px(c.reset_box_layout.scroll.thickness()).into());
     // Taffy reserves a classic gutter for Scroll, while Hidden has the same

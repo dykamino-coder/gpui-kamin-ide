@@ -138,3 +138,5 @@ fn a_nested_step_under_a_sticky_box_replays(cx: &mut TestAppContext) {
     let costs = steps_with(cx, &html, (100., 100.), &[-60., -60., 60.], stuck);
     assert!(costs.iter().all(|c| c.0 == 0), "{costs:?}");
 }
+
+mod axis;

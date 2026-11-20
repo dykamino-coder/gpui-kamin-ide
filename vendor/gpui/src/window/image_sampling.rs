@@ -70,7 +70,8 @@ impl Window {
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
         let before = self.next_frame.scene.len();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        // Under the open scroll node like every primitive (`insert_scene_primitive`).
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: u32::from(matches!(

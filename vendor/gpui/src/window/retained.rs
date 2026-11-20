@@ -25,6 +25,8 @@ pub struct RetainedPaint {
     /// ones, inert under the same guarantee, and allows them again, or a
     /// replayed subtree would taint the sinks of the subtrees around it.
     pub(super) allowed: (u32, u32),
+    /// The composition groups it made: an index range of the frame's list.
+    pub(super) groups: (u32, u32),
 }
 
 impl RetainedPrepaint {
@@ -39,7 +41,7 @@ impl RetainedPrepaint {
 
 impl RetainedPaint {
     pub(super) fn of(range: Range<PaintIndex>, replayable: bool, allowed: (u32, u32)) -> Self {
-        Self { range: range.start.pack()..range.end.pack(), replayable, allowed }
+        Self { range: range.start.pack()..range.end.pack(), replayable, allowed, groups: (0, 0) }
     }
 
     pub(crate) fn range(&self) -> Range<PaintIndex> {
@@ -54,14 +56,14 @@ impl RetainedPaint {
         let (mut range, layer) = (self.range(), inner.range());
         range.start.scene_index = layer.start.scene_index;
         range.end.scene_index = layer.end.scene_index;
-        RetainedPaint::of(range, self.replayable && inner.replayable, self.allowed)
+        RetainedPaint { groups: self.groups, ..RetainedPaint::of(range, self.replayable && inner.replayable, self.allowed) }
     }
 
-    /// Whether these commands can be copied into a later frame unchanged.
-    /// Composition groups live outside the command list (`Scene::groups`) and
-    /// isolated scenes are discarded by their owner, so neither replays.
+    /// Whether these commands can be copied into a later frame unchanged and
+    /// made no composition group (`replayable_with_groups`): isolated scenes
+    /// are discarded by their owner, so they never replay.
     pub fn replayable(&self) -> bool {
-        self.replayable
+        self.replayable && self.groups.0 == self.groups.1
     }
 
     /// Extend this output by `next`, recorded right after it in the same
@@ -73,7 +75,7 @@ impl RetainedPaint {
             return false;
         }
         self.range.end = next.range.end;
-        self.replayable &= next.replayable;
+        self.replayable &= next.replayable && self.join_groups(next);
         self.allowed.0 = self.allowed.0.wrapping_add(next.allowed.0);
         self.allowed.1 = self.allowed.1.wrapping_add(next.allowed.1);
         true
@@ -115,10 +117,7 @@ impl Window {
     }
 
     /// Run the prepaint of a subtree and return its range in this frame.
-    pub fn record_retained_prepaint<R>(
-        &mut self,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> (R, RetainedPrepaint) {
+    pub fn record_retained_prepaint<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> (R, RetainedPrepaint) {
         let start = self.prepaint_index();
         let result = f(self);
         (result, RetainedPrepaint::of(start..self.prepaint_index()))
@@ -135,11 +134,7 @@ impl Window {
     /// `replay_retained_prepaint` of a movable record (`retained_movable`)
     /// whose subtree now lies `offset` from where it was prepainted: its
     /// hitboxes move by the offset, their masks clipped by the current one.
-    pub fn replay_retained_prepaint_moved(
-        &mut self,
-        record: &RetainedPrepaint,
-        offset: Point<Pixels>,
-    ) -> RetainedPrepaint {
+    pub fn replay_retained_prepaint_moved(&mut self, record: &RetainedPrepaint, offset: Point<Pixels>) -> RetainedPrepaint {
         let start = self.prepaint_index();
         self.reuse_prepaint(record.range());
         if offset != Point::default() {
@@ -192,7 +187,7 @@ impl Window {
                 )
             })
         };
-        paint.replayable
+        paint.replayable()
             && (first == prepaint.end.deferred_draws_index
                 || !frame.deferred_draws[first..].iter().any(groups))
     }
@@ -204,20 +199,23 @@ impl Window {
         let start = self.paint_index();
         let before = self.next_frame.scene.ink_allowed;
         let result = f(self);
-        let replayable = root && groups == self.next_frame.scene.groups.len();
+        // Groups made at the frame's root are in its list (a layer's are spliced).
+        let replayable = root && (groups == self.next_frame.scene.groups.len() || self.layer_recording.is_none());
         let after = self.next_frame.scene.ink_allowed;
         let allowed = (after.0.wrapping_sub(before.0), after.1.wrapping_sub(before.1));
-        (result, RetainedPaint::of(start..self.paint_index(), replayable, allowed))
+        let made = groups..self.next_frame.scene.groups.len();
+        (result, RetainedPaint::of(start..self.paint_index(), replayable, allowed).grouped(made))
     }
 
     /// Copy replayable paint output recorded in the previous frame into this one.
     /// The caller guarantees the record comes from the rendered frame.
     pub fn replay_retained_paint(&mut self, record: &RetainedPaint) -> RetainedPaint {
         debug_assert!(record.replayable, "non-replayable paint record");
-        let start = self.paint_index();
+        let (start, groups) = (self.paint_index(), self.replay_groups(record, None));
         self.reuse_paint(record.range());
+        self.next_frame.scene.relabel = 0;
         self.allow_replayed(record);
-        RetainedPaint::of(start..self.paint_index(), true, record.allowed)
+        RetainedPaint::of(start..self.paint_index(), true, record.allowed).grouped(groups)
     }
 
     /// The effects of `record` its frame allowed are allowed in this one
@@ -241,7 +239,7 @@ impl Window {
         let (p, q) = (&prepaints.start, &prepaints.end);
         let (a, b) = (&paints.start, &paints.end);
         let hitboxes = &self.next_frame.hitboxes[p.hitboxes_index..q.hitboxes_index];
-        paint.replayable
+        paint.replayable()
             && hitboxes
                 .iter()
                 .all(|h| h.content_mask.bounds.intersect(&h.bounds) == h.bounds)
