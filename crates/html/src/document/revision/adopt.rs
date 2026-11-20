@@ -15,7 +15,7 @@
 //! (арены, шрифты, at-правила, картинки) и соответствие исходных узлов узлам
 //! коробок — прежними: записи пишутся в тот же исходный DOM.
 
-use super::commit::Plan;
+use super::commit::{Edited, Plan};
 use super::mentions::mentions;
 use super::mutation::{AttrChange, Batch, open};
 use super::patch::{Target, attr_paths, patch};
@@ -125,7 +125,7 @@ impl Document {
             return Some(Plan::Clean(None));
         }
         let mut nodes = (*self.nodes).clone();
-        if !(patch(&mut nodes, attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
+        if !(patch(&mut nodes, &attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
             return why::refuse(&why::REFUSED_PLAN_PATHS);
         }
         // Цели атрибутов — только `class` и `data-*` (`neutral`): их читают
@@ -134,7 +134,7 @@ impl Document {
             self.forget_has();
         }
         Some(if texts.is_empty() {
-            Plan::Clean(Some(nodes))
+            Plan::Clean(Some(Edited { nodes, attrs }))
         } else {
             Plan::Patched(nodes)
         })
