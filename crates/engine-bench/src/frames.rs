@@ -35,17 +35,17 @@ fn viewport(base: (u32, u32), alternate: bool) -> (u32, u32) {
     }
 }
 
-/// A wheel sample counts only when the step moved the root scroller by the
-/// whole step down: an event a nested scroller took, or one at the end of the
-/// document, measures a frame without a root scroll.
-fn scrolled(from: Option<(f32, f32)>, to: Option<(f32, f32)>) -> Result<()> {
+/// A wheel sample counts only when the step moved the root scroller by the whole step down:
+/// an event a nested scroller took, or one at the document's end, scrolls no root.
+type Offset = Option<(f32, f32)>;
+fn scrolled(from: Offset, to: Offset, max: Offset) -> Result<()> {
     let (Some(from), Some(to)) = (from, to) else {
         return Err("scroll mode needs the root scroller offset before and after the step".into());
     };
     if to.0 != from.0 || (to.1 - from.1 - WHEEL_STEP).abs() > 0.5 {
         return Err(format!(
             "the wheel step did not scroll the root by {WHEEL_STEP} px: {from:?} -> {to:?} \
-             (a nested scroller took it, or the document ended)"
+             (root max offset {max:?}: a nested scroller took it, or the document ended)"
         )
         .into());
     }
@@ -118,8 +118,7 @@ impl Frames {
     ) -> Result<()> {
         window.update(cx, |view, window, cx| {
             if self.scroll {
-                // The step goes through window input dispatch, as a platform wheel event
-                // does: the root scroller's handler moves DocState::root_scroll.
+                // Dispatched as a platform wheel event: the root scroller's handler moves it.
                 let size = window.viewport_size();
                 let wheel = gpui::ScrollWheelEvent {
                     position: gpui::point(size.width / 2.0, size.height / 2.0),
@@ -142,6 +141,7 @@ impl Frames {
             self.before_inside = view.doc.builds_inside_draw();
             self.before_contents = view.doc.replayed_contents();
             self.before_blocks = view.doc.replayed_blocks();
+            view.doc.take_frame_misses();
         })?;
         Ok(())
     }
@@ -161,16 +161,16 @@ impl Frames {
                 doc.builds_inside_draw(),
                 doc.replayed_contents(),
                 doc.replayed_blocks(),
-                doc.root_scroll_offset(),
+                (doc.root_scroll_offset(), doc.root_scroll_max()),
             )
         })?;
+        let misses = window.read_with(cx, |view, _| view.doc.take_frame_misses())?;
         let cold = mode == "cold";
         let counts = delta(if cold { (0, 0) } else { self.before }, after)?;
         let inside = inside
             .checked_sub(if cold { 0 } else { self.before_inside })
             .ok_or("document inside-draw build counter regressed")?;
-        // A frame whose reused blocks were refused at prepaint is built once
-        // more within the same frame; both builds are part of the sample.
+        // A frame built again within the same frame counts both builds.
         if self.relayout && (counts.0 == 0 || counts.1 != 0) {
             return Err(format!(
                 "relayout requires a document build and no replay; received {counts:?}"
@@ -178,23 +178,23 @@ impl Frames {
             .into());
         }
         if self.scroll {
-            scrolled(self.wheel_from.take(), offset)?;
+            scrolled(self.wheel_from.take(), offset.0, offset.1)?;
         }
         let group = usize::from(self.relayout && !index.is_multiple_of(2));
         self.samples.push(json!({"mode": mode, "sample_index": index,
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
             "wheel_step_px": if self.scroll { json!(WHEEL_STEP) } else { Value::Null },
-            "root_scroll_offset": offset.map(|(x, y)| json!([x, y])),
+            "root_scroll_offset": offset.0.map(|(x, y)| json!([x, y])),
             "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
             "builds_inside_draw": inside,
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
-            "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks })}));
+            "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks }),
+            "frame_misses": misses.into_iter().map(|(k, n)| (k, json!(n))).collect::<serde_json::Map<_, _>>()}));
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
     }
 
-    /// Scroll: frames after the measured one until the document replays its
-    /// frame (settled), so a deferred second build of the step is counted with
-    /// the step and not in the next one. At most `SETTLE_FRAMES` frames.
+    /// Scroll: frames after the measured one until the document replays its frame (settled), so a
+    /// deferred second build of the step counts with the step. At most `SETTLE_FRAMES` frames.
     pub(super) async fn settle(&mut self, run: Run<'_, '_>, step: Step<'_>) -> Result<()> {
         const SETTLE_FRAMES: usize = 8;
         let (cx, window, fonts, args, capture, luid) = run;
@@ -292,11 +292,11 @@ mod tests {
     /// Only a whole step down on the root counts as a wheel sample.
     #[test]
     fn a_wheel_sample_requires_the_root_to_scroll_by_the_step() {
-        assert!(scrolled(Some((0., 0.)), Some((0., WHEEL_STEP))).is_ok());
-        assert!(scrolled(Some((0., 240.)), Some((0., 240.))).is_err());
-        assert!(scrolled(Some((0., 0.)), Some((0., 40.))).is_err());
-        assert!(scrolled(Some((0., 0.)), Some((5., WHEEL_STEP))).is_err());
-        assert!(scrolled(None, Some((0., WHEEL_STEP))).is_err());
+        assert!(scrolled(Some((0., 0.)), Some((0., WHEEL_STEP)), Some((0., 9000.))).is_ok());
+        assert!(scrolled(Some((0., 240.)), Some((0., 240.)), Some((0., 9000.))).is_err());
+        assert!(scrolled(Some((0., 0.)), Some((0., 40.)), Some((0., 9000.))).is_err());
+        assert!(scrolled(Some((0., 0.)), Some((5., WHEEL_STEP)), Some((0., 9000.))).is_err());
+        assert!(scrolled(None, Some((0., WHEEL_STEP)), Some((0., 9000.))).is_err());
     }
 
     #[test]

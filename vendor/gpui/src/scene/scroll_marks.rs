@@ -338,7 +338,7 @@ const SPREAD: usize = 16;
 
 /// One command of a reservoir, as of the frame it was made in.
 #[derive(Clone)]
-enum Piece {
+pub(super) enum Piece {
     Primitive(Primitive),
     /// A layer (a text line) and its order; its commands follow up to `end`.
     Layer(DrawOrder),
@@ -348,7 +348,7 @@ enum Piece {
 /// One command of a reservoir with its own mask and where it lands.
 #[derive(Clone)]
 pub(crate) struct Item {
-    piece: Piece,
+    pub(super) piece: Piece,
     own: Bounds<ScaledPixels>,
     placed: Bounds<ScaledPixels>,
     /// Of a layer: the index past its `End`.
@@ -412,9 +412,9 @@ impl Item {
 
 /// The primitives one node painted between other commands, in paint order,
 /// with a tile grid over where they land (CSR: `cells` offsets into `tiled`).
-pub(crate) struct Run {
-    node: ScrollNodeId,
-    items: Vec<Item>,
+#[derive(Clone)] pub(crate) struct Run {
+    pub(super) node: ScrollNodeId,
+    pub(super) items: Vec<Item>,
     origin: Point<ScaledPixels>,
     columns: usize,
     rows: usize,

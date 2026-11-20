@@ -2,7 +2,7 @@
 //! a scrolled replay (`gpui::Window::plan_scrolled_replay`) and a build, and
 //! paint replays or records accordingly.
 
-use super::super::record::{Inputs, Record, Replay};
+use super::super::record::{FrameMiss, Inputs, Record, Replay};
 use super::super::window_key::WindowKey;
 use super::Retained;
 use gpui::{App, Bounds, GlobalElementId, Pixels, RetainedPaint, Window, px};
@@ -29,16 +29,20 @@ impl Retained {
                 let before = window.next_frame_callback_count();
                 let mut record = record.unwrap_or_default();
                 let epoch = record.begin(&self.builder.store, window);
-                if self.tree.is_none()
-                    && let Some(replay) = record.replay(
-                        &self.slot,
-                        self.key.as_ref(),
-                        &key,
-                        window,
-                        &self.builder.store,
-                    )
-                    && self.builder.repaint_boxes(window, cx)
-                {
+                // A tree the document step built already counted its reason.
+                let replay = self.tree.is_none().then(|| {
+                    let store = &self.builder.store;
+                    let replay = record.replay(&self.slot, self.key.as_ref(), &key, window, store);
+                    let boxes = |replay| match self.builder.repaint_boxes(window, cx) {
+                        true => Ok(replay),
+                        false => Err(FrameMiss::Boxes),
+                    };
+                    replay
+                        .and_then(boxes)
+                        .inspect_err(|miss| self.slot.missed(*miss))
+                        .ok()
+                });
+                if let Some(Some(replay)) = replay {
                     if let Some(inputs) = &record.inputs {
                         window.replay_layout_inputs(&inputs.layout);
                     }
@@ -134,13 +138,23 @@ impl Retained {
                 flow.finish();
             }
             self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-            let settled = record.root
-                && paint.replayable()
-                && self.scheduled == 0
-                && self.builder.state.values.frame_ready();
+            let refusal = [
+                (!record.root, FrameMiss::NotRoot),
+                (!paint.replayable_with_groups(), FrameMiss::Commands),
+                (self.scheduled != 0, FrameMiss::Scheduled),
+                (
+                    !self.builder.state.values.frame_ready(),
+                    FrameMiss::NotReady,
+                ),
+                (self.slot.unreplayable.get(), FrameMiss::Unreplayable),
+            ];
+            let refusal = refusal
+                .into_iter()
+                .find(|(refused, _)| *refused)
+                .map(|(_, miss)| miss);
             record.paint = paint;
             record.painted();
-            record.publish(&self.slot, settled && !self.slot.unreplayable.get());
+            record.publish(&self.slot, refusal);
             ((), record)
         });
     }

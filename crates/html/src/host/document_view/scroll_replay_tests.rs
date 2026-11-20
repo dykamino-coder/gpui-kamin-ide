@@ -161,3 +161,5 @@ fn scripted_viewport_scroll_matches_fresh_and_then_replays(cx: &mut TestAppConte
         assert_same("still after scroll", &painted(vcx), &reference);
     }
 }
+
+mod groups;
