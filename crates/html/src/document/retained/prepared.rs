@@ -19,6 +19,7 @@ pub(super) struct Prepared {
     pub(super) tree: AnyElement,
     pub(super) flow: Option<Rc<FlowReuse>>,
     pub(super) checked: CheckedRoot,
+    pub(super) layout_inputs: gpui::RetainedLayoutInputs,
     /// Кадры, заказанные сборкой и раскладкой шага.
     pub(super) scheduled: usize,
     /// Место в кадре, под которым стоит элемент документа этого дерева.
@@ -94,12 +95,13 @@ impl Document {
                         (record.begin(&builder.store, window), record)
                     });
                 let before = window.next_frame_callback_count();
-                let (tree, flow) = builder.layout_checked(bounds, window, cx, |phase| {
-                    if phase == UpdatePhase::Built {
-                        self.retained.builds.set(self.retained.builds.get() + 1);
-                    }
-                    observe(phase);
-                });
+                let (tree, flow, layout_inputs) =
+                    builder.layout_checked(bounds, window, cx, |phase| {
+                        if phase == UpdatePhase::Built {
+                            self.retained.builds.set(self.retained.builds.get() + 1);
+                        }
+                        observe(phase);
+                    });
                 let checked = CheckedRoot::new(epoch, bounds, window, cx);
                 let scheduled = window.next_frame_callback_count().saturating_sub(before);
                 self.retained.prepared.replace(Some(Prepared {
@@ -108,6 +110,7 @@ impl Document {
                     tree,
                     flow,
                     checked,
+                    layout_inputs,
                     scheduled,
                     parent: parent.clone(),
                 }));

@@ -2607,6 +2607,10 @@ impl Interactivity {
                     );
                 }
 
+                if let Some(offset) = &self.scroll_offset {
+                    window.record_scroll_input(offset, self.tracked_scroll_handle.as_ref());
+                }
+
                 let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
                 // Every state style lives in `rare`: without it the style is the base
                 // refinement on the default style (`compute_style_internal`).
@@ -4658,6 +4662,11 @@ impl ScrollHandle {
     /// Get the current scroll offset.
     pub fn offset(&self) -> Point<Pixels> {
         *self.0.borrow().offset.borrow()
+    }
+
+    pub(crate) fn has_pending_scroll(&self) -> bool {
+        let state = self.0.borrow();
+        state.scroll_to_bottom || state.active_item.is_some()
     }
 
     /// Get the maximum scroll offset.

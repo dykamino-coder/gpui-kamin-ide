@@ -32,12 +32,13 @@ impl Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> RetainedPrepaint {
-        let (mut tree, flow) = self.builder.layout_checked(bounds, window, cx, |phase| {
+        let (mut tree, flow, inputs) = self.builder.layout_checked(bounds, window, cx, |phase| {
             if phase == UpdatePhase::Built {
                 self.slot.builds.set(self.slot.builds.get() + 1);
                 self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
             }
         });
+        self.layout_inputs = inputs;
         let (_, prepaint) =
             window.record_retained_prepaint(|w| tree.prepaint_at(bounds.origin, w, cx));
         self.tree = Some(tree);

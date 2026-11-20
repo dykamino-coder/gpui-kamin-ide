@@ -12,15 +12,22 @@ pub(super) struct Inputs {
     window: AnyWindowHandle,
     serial: Cell<u64>,
     environment: WindowKey,
+    pub(super) layout: gpui::RetainedLayoutInputs,
 }
 
 impl Inputs {
-    pub(super) fn new(key: FrameKey, environment: WindowKey, window: &Window) -> Rc<Self> {
+    pub(super) fn new(
+        key: FrameKey,
+        environment: WindowKey,
+        window: &Window,
+        layout: gpui::RetainedLayoutInputs,
+    ) -> Rc<Self> {
         Rc::new(Self {
             key,
             window: window.window_handle(),
             serial: Cell::new(window.frame_serial()),
             environment,
+            layout,
         })
     }
 
@@ -29,6 +36,7 @@ impl Inputs {
             && self.serial.get().checked_add(1) == Some(window.frame_serial())
             && window.retained_root_environment()
             && self.environment == *environment
+            && self.layout.scroll_unchanged()
     }
 
     pub(super) fn replayed(&self, window: &Window) {
@@ -87,7 +95,11 @@ impl Record {
     }
 
     pub(super) fn publish(&self, slot: &Slot, settled: bool) {
-        let inputs = self.inputs.as_ref().filter(|_| settled).map(Rc::downgrade);
+        let inputs = self
+            .inputs
+            .as_ref()
+            .filter(|inputs| settled && inputs.layout.scroll_unchanged())
+            .map(Rc::downgrade);
         slot.recorded.replace(inputs.unwrap_or_default());
     }
 }

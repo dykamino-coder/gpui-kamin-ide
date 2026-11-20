@@ -43,7 +43,11 @@ impl Builder {
         window: &mut Window,
         cx: &mut App,
         mut observe: impl FnMut(UpdatePhase),
-    ) -> (AnyElement, Option<Rc<FlowReuse>>) {
+    ) -> (
+        AnyElement,
+        Option<Rc<FlowReuse>>,
+        gpui::RetainedLayoutInputs,
+    ) {
         let space = size(
             AvailableSpace::Definite(bounds.size.width),
             AvailableSpace::Definite(bounds.size.height),
@@ -53,10 +57,12 @@ impl Builder {
             let retry = self.counters.get().is_some();
             let (mut tree, flow) = self.build(allow, true);
             observe(UpdatePhase::Built);
-            window.with_layout_keys(self.layout_keys && !retry, |window| {
-                tree.request_layout(window, cx);
-                observe(UpdatePhase::Requested);
-                tree.layout_as_root(space, window, cx);
+            let (_, inputs) = window.record_layout_inputs(|window| {
+                window.with_layout_keys(self.layout_keys && !retry, |window| {
+                    tree.request_layout(window, cx);
+                    observe(UpdatePhase::Requested);
+                    tree.layout_as_root(space, window, cx);
+                })
             });
             let refused = flow.as_ref().filter(|flow| !flow.validate(window));
             observe(UpdatePhase::LaidOut);
@@ -69,7 +75,7 @@ impl Builder {
                 allow = !retry;
                 continue;
             }
-            return (tree, flow);
+            return (tree, flow, inputs);
         }
     }
 }

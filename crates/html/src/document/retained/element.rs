@@ -28,6 +28,7 @@ pub(super) struct Retained {
     /// — лист её размера.
     laid_out: Option<gpui::ElementPlace>,
     checked: Option<super::prepared::CheckedRoot>,
+    layout_inputs: gpui::RetainedLayoutInputs,
 }
 
 impl Retained {
@@ -52,6 +53,7 @@ impl Retained {
                 replay: false,
                 laid_out: Some(prepared.parent),
                 checked: Some(prepared.checked),
+                layout_inputs: prepared.layout_inputs,
             };
         }
         let (tree, flow) = if candidate {
@@ -72,6 +74,7 @@ impl Retained {
             replay: false,
             laid_out: None,
             checked: None,
+            layout_inputs: Default::default(),
         }
     }
 
@@ -119,7 +122,11 @@ impl Element for Retained {
             }
             Some(tree) => {
                 let keys = self.builder.layout_keys;
-                window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
+                let (id, inputs) = window.record_layout_inputs(|window| {
+                    window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
+                });
+                self.layout_inputs = inputs;
+                id
             }
             None => window.request_layout(self.viewport_style(), None, cx),
         };
@@ -157,6 +164,9 @@ impl Element for Retained {
                 && candidate
                 && self.builder.repaint_boxes(window, cx)
             {
+                if let Some(inputs) = &state.inputs {
+                    window.replay_layout_inputs(&inputs.layout);
+                }
                 self.replay = true;
                 self.builder.store.forget_replays();
                 self.slot.replays.set(self.slot.replays.get() + 1);
@@ -164,7 +174,9 @@ impl Element for Retained {
                 return ((), state);
             }
             if let Some(checked) = self.checked.take() {
-                if !checked.holds(epoch, environment.as_ref(), window) {
+                if !checked.holds(epoch, environment.as_ref(), window)
+                    || !self.layout_inputs.scroll_unchanged()
+                {
                     self.tree = None;
                     self.flow = None;
                 }
@@ -192,11 +204,9 @@ impl Element for Retained {
                 None => self.build_in(bounds, window, cx),
             };
             self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-            state.inputs = self
-                .key
-                .clone()
-                .zip(environment)
-                .map(|(key, env)| Inputs::new(key, env, window));
+            state.inputs = self.key.clone().zip(environment).map(|(key, env)| {
+                Inputs::new(key, env, window, std::mem::take(&mut self.layout_inputs))
+            });
             state.prepaint = prepaint;
             state.paint = RetainedPaint::default();
             state.root = root;
