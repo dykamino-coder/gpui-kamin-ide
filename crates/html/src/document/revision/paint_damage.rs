@@ -77,12 +77,11 @@ pub(crate) fn classify(a: &Element, b: &Element, in_svg: impl FnOnce() -> bool) 
     let Some(bits) = own_paint_only(old, new) else {
         return PaintDamage::Rebuild;
     };
-    // `fill` and `stroke` paint SVG shapes only: in an `svg` subtree they
-    // raster the image again (the frame is built); on any other box they
-    // paint nothing, and no rule passes them from it into an `svg`
+    // `fill`, `stroke` and `stroke-width` paint SVG shapes only: in an `svg`
+    // subtree they raster the image again (the frame is built); on any other
+    // box they paint nothing, and no rule passes them from it into an `svg`
     // (`resources::svg_document::serialize` reads each shape's own value).
-    let svg = (&old.reset_svg_math, &new.reset_svg_math);
-    if (svg.0.svg_fill != svg.1.svg_fill || svg.0.svg_stroke != svg.1.svg_stroke) && in_svg() {
+    if !old.reset_svg_math.same_paint(&new.reset_svg_math) && in_svg() {
         return PaintDamage::Rebuild;
     }
     if bits.layer_writable() {
