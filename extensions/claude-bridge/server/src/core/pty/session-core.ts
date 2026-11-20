@@ -79,6 +79,7 @@ import { createCliModTransport, CLI_MOD_PLUGIN } from './cli-mod-transport'
 import { CliHandlerConditions, hasCliHandlerConditions } from '../hooks/cli-handler-conditions'
 import { BASH_HOME_ENV } from '../hooks/hook-environment'
 import { SessionCliControl, sessionCliControl } from './session-cli-control'
+import type { CarriedSubmission } from './cli-submissions'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -1260,6 +1261,9 @@ export interface EngineSwitchResult {
   timings: { prepareMs: number; startMs: number }
   /** History the joining engine gets with its first turn (UTF-8 bytes). */
   contextBytes: number
+  /** The leaving CLI's queue: `moved` goes to the joining engine, `returned`
+   *  back to the user (CliSubmissions.retire). */
+  carried: { moved: CarriedSubmission[]; returned: CarriedSubmission[] }
 }
 
 /** Stop a session the engine switch replaced. Its transcript is copied up to
@@ -1364,7 +1368,9 @@ export async function switchSessionEngine(
     throw err
   }
   // The leaving engine stops talking to the client; the client replays the
-  // unified log.
+  // unified log. Its queue goes with it: what it never got moves on, what it
+  // got unconfirmed goes back to the user (session-ws reports both).
+  const carried = sessionCliControl(old)?.retire() ?? { moved: [], returned: [] }
   old.isRestarting = true
   old.outputDebounce?.dispose()
   old.jsonlWatcher?.stop()
@@ -1396,7 +1402,7 @@ export async function switchSessionEngine(
     contextBytes,
     ...timings,
   })
-  return { session, timings, contextBytes }
+  return { session, timings, contextBytes, carried }
 }
 /**
  * Get a session by ID (for MCP routing).

@@ -224,6 +224,17 @@ export function thinkingDisplayArgs(sessionConfig: SessionConfig): string[] {
   return display === 'summarized' ? ['--thinking-display', 'summarized'] : []
 }
 
+/** Claude Code tells the model its exact id but not the `--effort` it runs
+ *  with; this line does. A live `/effort` later in the chat changes the level
+ *  without a respawn, and its command output in the conversation says so. */
+export function claudeEffortLine(effort: string): string {
+  return [
+    '## Reasoning effort',
+    `This chat was started with reasoning effort \`${effort}\`; a later \`/effort\` command in this conversation sets the current level.`,
+    'When asked about your reasoning effort, answer with that exact level.',
+  ].join('\n')
+}
+
 export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readonly string[] = []): string[] {
   const args: string[] = [
     '--disallowedTools',
@@ -255,7 +266,7 @@ export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readon
     sessionConfig.transcriptMirrorDir,
     sessionConfig.host,
   )
-  args.push('--append-system-prompt', systemPrompt)
+  args.push('--append-system-prompt', `${systemPrompt}\n\n${claudeEffortLine(sessionConfig.effort || 'high')}`)
 
   for (const pluginDir of pluginDirs) args.push('--plugin-dir', pluginDir)
 
