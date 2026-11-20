@@ -2,7 +2,7 @@
 
 mod collect;
 pub(crate) mod fragments;
-pub(crate) use collect::Collector;
+pub(crate) use collect::{CollectedGeometry, Collector};
 
 /// Неподвижный снимок DOMRect в CSS px относительно области просмотра.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

@@ -4,7 +4,7 @@ use super::*;
 pub(super) struct Fragments<'a> {
     pub(super) root: &'a Handle,
     pub(super) ids: &'a HashMap<usize, u64>,
-    pub(super) sink: &'a Collector,
+    pub(super) geometry: crate::layout::geometry::CollectedGeometry<'a>,
     pub(super) base: f32,
     pub(super) state: &'a DocState,
 }
@@ -27,11 +27,10 @@ impl GeometryRead<'_> {
         let Some(f) = &self.0 else {
             return read(&[]);
         };
-        let boxes = f.sink.0.borrow();
         let b = f
             .ids
             .get(&(Rc::as_ptr(node) as usize))
-            .and_then(|id| boxes.get(id));
+            .and_then(|id| f.geometry.boxes.get(id));
         read(b.map_or(&[], |b| b.border.as_slice()))
     }
 
@@ -61,20 +60,21 @@ impl GeometryRead<'_> {
         let Some(Fragments {
             root,
             ids,
-            sink,
+            mut geometry,
             base,
             state,
         }) = self.0
         else {
             return Vec::new();
         };
-        let mut boxes = sink.0.borrow_mut();
         let mut out = Vec::new();
         let mut pending = vec![(root.clone(), Vec::new())];
         while let Some((node, path)) = pending.pop() {
             if let NodeData::Element { name, attrs, .. } = &node.data {
                 let id = ids.get(&(Rc::as_ptr(&node) as usize));
-                let b = id.and_then(|id| boxes.remove(id)).unwrap_or_default();
+                let b = id
+                    .and_then(|id| geometry.boxes.remove(id))
+                    .unwrap_or_default();
                 let attr = |key: &str| {
                     attrs
                         .borrow()
@@ -84,7 +84,7 @@ impl GeometryRead<'_> {
                         .unwrap_or_default()
                 };
                 let (font_size, line_height) = id
-                    .and_then(|id| sink.1.get(id))
+                    .and_then(|id| geometry.styles.get(id))
                     .map(|style| crate::layout::geometry::font(style, base, state.values()))
                     .or(b.font)
                     .unwrap_or((16., LineHeight::Normal));

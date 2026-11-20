@@ -162,11 +162,10 @@ impl Document {
                 window.finish_layout_query(cx);
             });
         });
-        sink.finish_captions();
         Ok(read(GeometryRead(Some(read::Fragments {
             root: &input.dom.document,
             ids: &ids,
-            sink: &sink,
+            geometry: sink.finish(),
             base: opts.base_size(),
             state: &state,
         }))))
