@@ -66,13 +66,23 @@ impl Element for ScrollArea {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
+        id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         child: &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
+        // A frame that replays a retained record runs no layout: it keeps the
+        // element states its prepaint range touched (`Window::reuse_prepaint`).
+        // Touch the scroller's state here too, or the next build starts it
+        // over (a new handle at offset zero) after a replayed wheel step.
+        // The root's handle lives with the view (`RootScroll`), not here.
+        if let Some(id) = id.filter(|_| self.root.is_none()) {
+            window.with_element_state::<Persistent, _>(id, |state, _| {
+                ((), state.unwrap_or_default())
+            });
+        }
         // Match CSS border painting: inset the unrounded box, not a rounded
         // border box. A relocated prepaint_at node must retain its new bounds.
         let exact = Bounds {
@@ -180,60 +190,6 @@ impl Element for ScrollArea {
             child.2.range(),
             child.2.insets(),
             paint_bounds.0,
-            alpha,
-            window,
-        );
-    }
-}
-
-/// The bars of a scrollport, drawn apart from its content. The thumbs follow
-/// the scroll offset, so the root scrollport's are drawn by the document's
-/// frame element after its retained record, every frame: a wheel step that
-/// replays the record moved draws them at the new offset (as cc keeps
-/// scrollbar layers out of the scrolled content's paint).
-pub(crate) struct RootBars {
-    style: crate::style::computed::BoxStyle,
-    freeze: bool,
-    handle: gpui::ScrollHandle,
-    extent: crate::interactive::scroll_extent::Frame,
-    interaction: crate::interactive::scrollbars::interaction::Interaction,
-    bounds: Bounds<Pixels>,
-}
-
-impl RootBars {
-    /// The hit areas of the bars.
-    pub(crate) fn prepaint(
-        &self,
-        window: &mut Window,
-    ) -> Vec<crate::interactive::scrollbars::interaction::HitBar> {
-        crate::interactive::scrollbars::interaction::prepaint(
-            self.freeze,
-            &self.style,
-            &self.handle,
-            self.extent.bars(),
-            self.extent.range(),
-            self.extent.insets(),
-            self.bounds,
-            window,
-        )
-    }
-
-    /// Their listeners and paint at the offset now.
-    pub(crate) fn paint(
-        &self,
-        hitbars: &[crate::interactive::scrollbars::interaction::HitBar],
-        window: &mut Window,
-    ) {
-        let alpha = self
-            .interaction
-            .paint(self.freeze, hitbars, &self.handle, window);
-        crate::interactive::scrollbars::paint(
-            &self.style,
-            &self.handle,
-            self.extent.bars(),
-            self.extent.range(),
-            self.extent.insets(),
-            self.bounds,
             alpha,
             window,
         );
