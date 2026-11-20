@@ -1,6 +1,6 @@
 //! Отложенная фаза спаннера: пробы живут во вложенной раскладке, финальные
-//! элементы создаются заново при окончательном ограничении ширины — кроме
-//! принятой меры (`Adopt`): её дерево и раскладка рисуются как есть.
+//! elements are created again at the final width constraint, except for an
+//! adopted measure (`Adopt`): its tree and layout are painted as they are.
 
 use crate::hooks::{Hooks, IntoHooked};
 use gpui::{

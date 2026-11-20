@@ -1,4 +1,4 @@
-//! Может ли prepaint рисовать меру спаннер-потока как есть (`Adopt`).
+//! Whether prepaint may paint the measure of a spanner flow as it is (`Adopt`).
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;

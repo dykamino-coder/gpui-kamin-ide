@@ -78,8 +78,8 @@ pub(super) async fn build(
     let built = if let Some(block_axis) = holder_axis {
         inset_holder_box(e, block_axis, inherited, opts, &kw_len)
     } else {
-        // Текстовый лист строится одним проходом (`flow::leaf`); остальные —
-        // общим путём, со слитым стилем листа, если он уже посчитан.
+        // A leaf text block is built in one pass (`flow::leaf`); the rest go
+        // the common way, with the leaf's merged style if it is already computed.
         let inner = match leaf::try_build(e, inherited, opts) {
             None => animated(stk, e, inherited, opts).await,
             Some(Leaf::Built(el)) => el,

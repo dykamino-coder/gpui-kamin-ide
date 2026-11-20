@@ -1,4 +1,4 @@
-//! Проверки условий текстового листа.
+//! Checks of the leaf text block conditions.
 use super::*;
 use crate::style::computed::{Computed, Display, ResetBoxLayout, ResetPositioned, StyleGroup};
 
