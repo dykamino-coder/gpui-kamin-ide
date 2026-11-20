@@ -2162,7 +2162,16 @@ impl Window {
                     })
                 } else if needs_present {
                     handle
-                        .update(&mut cx, |_, window, _| window.present())
+                        .update(&mut cx, |_, window, _| {
+                            // KaminIDE patch: presenting the drawn frame again
+                            // (high-rate input) is present time too (`frame_perf`).
+                            let t0 = std::time::Instant::now();
+                            window.present();
+                            crate::frame_perf::PRESENT_US.fetch_add(
+                                t0.elapsed().as_micros() as u32,
+                                std::sync::atomic::Ordering::Relaxed,
+                            );
+                        })
                         .log_err();
                 }
 
