@@ -1,9 +1,9 @@
 //! Checkedness of form controls, the state `:checked` matches (selectors-4
-//! В§14.3.1, HTML В§4.16.3): `input` checkboxes and radio buttons, and the
+//! section 14.3.1, HTML section 4.16.3): `input` checkboxes and radio buttons, and the
 //! selectedness of `option` elements.
 //!
 //! The state is derived from the content attributes as a document without
-//! user input or script has it (HTML В§4.10.5.1.15 "checkedness", В§4.10.10
+//! user input or script has it (HTML section 4.10.5.1.15 "checkedness", section 4.10.10
 //! "selectedness setting algorithm"): a radio group keeps only its last
 //! checked button in tree order, a single-select keeps its last selected
 //! option, or (for a one-row select) its first enabled one. Blink keeps the same state on the
@@ -119,7 +119,7 @@ fn element(handle: &Handle) -> Option<(&str, Vec<(String, String)>)> {
 }
 
 /// Group key of a radio button: its form owner (the `form` attribute, else
-/// the nearest `form` ancestor) and its name (HTML В§4.10.5.1.15).
+/// the nearest `form` ancestor) and its name (HTML section 4.10.5.1.15).
 fn group_key(
     handle: &Handle,
     attrs: &[(String, String)],

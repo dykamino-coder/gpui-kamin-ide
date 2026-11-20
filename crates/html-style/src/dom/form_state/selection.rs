@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// Selectedness of an `option` (HTML В§4.10.10 "selectedness setting
+/// Selectedness of an `option` (HTML section 4.10.10 "selectedness setting
 /// algorithm"); outside a `select` it is the `selected` attribute.
 impl FormState {
     pub(super) fn selected(&self, option: &Handle, attrs: &[(String, String)]) -> bool {
