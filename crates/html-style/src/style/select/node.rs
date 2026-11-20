@@ -25,7 +25,11 @@ pub fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ances
         html_attrs: content::html_attributes(&name.ns, tree.xhtml),
         id: find("id"),
         classes: find("class")
-            .map(|v| v.split_whitespace().map(str::to_string).collect())
+            .map(|v| {
+                crate::dom::class_tokens::tokens(&v)
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default(),
         attrs: attrs
             .iter()

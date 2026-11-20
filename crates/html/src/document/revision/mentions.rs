@@ -12,8 +12,9 @@
 //! неэкранированной точки. «Не упомянуто» означает «ни одно правило от имени
 //! не зависит»; лишнее упоминание лишь отменяет короткий путь.
 
-/// Упоминает ли `css` имя атрибута из `attrs` где угодно или класс из
-/// `classes` после точки (имена — в нижнем ASCII-регистре).
+/// Whether `css` mentions an attribute name of `attrs` anywhere or a class of
+/// `classes` after a dot. Attribute names are ASCII lowercase; classes are as
+/// written and compared ignoring ASCII case (a superset of the matches).
 pub(super) fn mentions(css: &str, attrs: &[String], classes: &[String]) -> bool {
     let mut word = String::new();
     let mut dotted = false;
@@ -33,7 +34,10 @@ pub(super) fn mentions(css: &str, attrs: &[String], classes: &[String]) -> bool 
             }
             _ => {}
         }
-        if !word.is_empty() && (attrs.contains(&word) || dotted && classes.contains(&word)) {
+        if !word.is_empty()
+            && (attrs.contains(&word)
+                || dotted && classes.iter().any(|c| c.eq_ignore_ascii_case(&word)))
+        {
             return true;
         }
         word.clear();

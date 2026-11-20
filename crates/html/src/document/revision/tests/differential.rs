@@ -104,3 +104,16 @@ fn equal_texts_are_told_apart_by_their_source() {
     let merged = |a: &str| format!("<body><p>{a}<!-- c -->b</p></body>");
     assert!(!update(&merged("a"), &merged("c"), ""));
 }
+
+#[test]
+fn a_class_that_changes_only_its_case_restyles_like_a_fresh_build() {
+    // Outside quirks mode class selectors match case-sensitively (Selectors 4
+    // §6.6; HTML §4.4 "class"): `A` and `a` are different classes.
+    let page = |class: &str| {
+        format!(
+            "<!doctype html><style>.A{{color:red}}.a{{color:blue}}</style><p class={class}>x</p>"
+        )
+    };
+    update(&page("A"), &page("a"), "");
+    update(&page("a"), &page("A"), "");
+}
