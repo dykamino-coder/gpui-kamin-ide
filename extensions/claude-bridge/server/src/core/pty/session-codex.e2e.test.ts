@@ -1364,7 +1364,9 @@ describe('engine switch inside one chat', () => {
       expect(listed.answer).toContain('effort=medium]')
       // A catalog without a default: no level is shown and none is sent.
       await runtimeMod.codexRuntime().close()
-      runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_UNREPORTED_EFFORT: 'low', FAKE_CODEX_NO_DEFAULT_EFFORT: '1' }))
+      runtimeMod.setCodexRuntimeForTests(
+        newRuntime({ FAKE_CODEX_UNREPORTED_EFFORT: 'low', FAKE_CODEX_NO_DEFAULT_EFFORT: '1' }),
+      )
       const unlisted = await turn('r2')
       expect(unlisted.created).toMatchObject({ effort: null })
       expect(unlisted.calls.filter((c) => c.method === 'turn/start').map((c) => c.effort)).toEqual([null])

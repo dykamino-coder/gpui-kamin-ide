@@ -214,7 +214,11 @@ const handlers = {
     // that never ran one cannot be resumed by a later app-server.
     if (!process.env.FAKE_CODEX_ROLLOUT_ON_TURN) saveThread(t)
     queueMicrotask(() => notify('thread/started', { thread: { id: t.id } }))
-    return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model, reasoningEffort: reportedEffort(t) }
+    return {
+      thread: { id: t.id, model: t.model, cwd: t.cwd, path: null },
+      model: t.model,
+      reasoningEffort: reportedEffort(t),
+    }
   },
   'thread/resume': async (p) => {
     const loaded = threads.get(p?.threadId)
