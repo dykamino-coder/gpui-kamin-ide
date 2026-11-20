@@ -23,9 +23,7 @@ pub(crate) fn add_menus_context(
     }
 
     if let Some(menu) = r.session_menu.clone() {
-        // Hit-регион кладёт само меню (hit_area в его корне): вне него
-        // WM_NCHITTEST отдаёт ввод в main (скрим-закрытие делает main,
-        // ховеры соседних элементов живут).
+        // Скрим-закрытие делает main, ховеры соседних элементов живут.
         layer = layer.child(crate::ui::context_menu::session_menu(&menu, tx, vw, vh, p));
     }
 

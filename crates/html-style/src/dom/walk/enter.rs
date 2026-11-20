@@ -110,7 +110,7 @@ pub(super) fn enter<'a>(
             let shared = Shared {
                 candidates,
                 style,
-                vars: Rc::new(own_vars),
+                vars: own_vars,
                 scheme,
                 important,
                 layers,

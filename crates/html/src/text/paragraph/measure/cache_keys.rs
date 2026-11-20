@@ -33,17 +33,8 @@ impl Paragraph {
         for run in &self.runs {
             run.len.hash(&mut h);
             run.font_size.map(|s| f32::from(s).to_bits()).hash(&mut h);
-            run.font.family.hash(&mut h);
-            run.font.weight.0.to_bits().hash(&mut h);
-            (run.font.style as u8).hash(&mut h);
-            // Возможности OpenType меняют и подстановку, и продвижение
-            // (`vert`, `hwid`) — без них кэш отдавал чужой набор.
-            let features = run.font.features.tag_value_list();
-            features.len().hash(&mut h);
-            for (tag, value) in features {
-                tag.hash(&mut h);
-                value.hash(&mut h);
-            }
+            // Use the same complete font identity as the shaping cache.
+            run.font.hash(&mut h);
         }
         // Segments after a tab (or a soft hyphen) retain cumulative offsets.
         // Those offsets include inline spacing and ruby spacer advances;

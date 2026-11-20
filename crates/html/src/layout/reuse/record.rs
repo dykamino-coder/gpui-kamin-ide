@@ -12,6 +12,8 @@ pub(crate) struct Record {
     pub(super) key: Rc<FlowKey>,
     pub(super) start: Counters,
     pub(super) end: Counters,
+    /// Recorded numbers are local to this subtree.
+    pub(super) relative_counters: bool,
     /// The exact leaf; `None` until the record is sealed (`recorder`).
     pub(super) snapshot: Cell<Option<LayoutSnapshot>>,
     /// Чернила относительно точного начала коробки; `None` — ничего не рисовал.
@@ -49,6 +51,7 @@ impl Record {
             key: self.key.clone(),
             start: self.start,
             end: self.end,
+            relative_counters: self.relative_counters,
             snapshot: self.snapshot.clone(),
             ink: self.ink.clone(),
             resizable: self.resizable.clone(),
@@ -74,6 +77,15 @@ impl Record {
             self.replay.take();
             self.repaint.set(true);
         }
+    }
+
+    /// Counter state after substituting the block at this build's origin.
+    pub(super) fn end_at(&self, start: Counters, same_paint: bool) -> Option<Counters> {
+        if start == self.start {
+            return Some(self.end);
+        }
+        (self.relative_counters && same_paint && !self.repaint.get())
+            .then(|| start.advanced(self.start, self.end))
     }
 
     /// Запись годна в потоке ключа `key` другой ширины.

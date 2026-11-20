@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 impl Store {
     /// The document `old` was rebuilt as `new` from the same source DOM
-    /// (`Document::apply`, same-shape `Document::update`): the node ids are
+    /// (`Document::apply`, same-shape `Document::update`): surviving node ids are
     /// the same. `restyled`: the elements the rebuild restyled, if known;
     /// otherwise each record's block is compared in the two trees by its
     /// cascaded values (`dom::same_cascaded_tree`: both computed from them
@@ -106,12 +106,7 @@ impl Store {
                 {
                     roots_seen = Roots::Equal(roots);
                 }
-                // The same source DOM: the flows have the same children in
-                // the same order, so the blocks pair by position.
-                for (x, y) in elements(was, now) {
-                    let Some(record) = records.get(&x.node_id) else {
-                        continue;
-                    };
+                for (record, x, y) in holders::recorded_pairs(was, now, &records) {
                     let exact = roots && same_cascaded_tree(x, y, false, &mut memo);
                     let repaint =
                         !exact && record.far.get() && same_cascaded_tree(x, y, true, &mut memo);
@@ -159,17 +154,6 @@ impl Store {
 
 /// Pairs of flow blocks of the two trees by node id.
 type Blocks<'a> = HashMap<u64, (&'a Element, &'a Element)>;
-
-/// The element pairs of two flows by position.
-fn elements<'a>(
-    was: &'a [Node],
-    now: &'a [Node],
-) -> impl Iterator<Item = (&'a Element, &'a Element)> {
-    was.iter().zip(now).filter_map(|pair| match pair {
-        (Node::Element(a), Node::Element(b)) => Some((a, b)),
-        _ => None,
-    })
-}
 
 /// The comparison by the restyled elements `ids` only: whether the root
 /// boxes `a`/`b` (`html`, `body`) cascade equal values (`None`: not even
