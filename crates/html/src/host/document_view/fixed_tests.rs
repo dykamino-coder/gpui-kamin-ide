@@ -3,6 +3,7 @@
 //! (`layout::positioned::viewport_anchor`), a box under a fixed containing
 //! block scrolls with it, and neither adds work to a scroll frame.
 
+use super::paint_compare::{painted, same_paint};
 use super::tests::{frame, open};
 use super::*;
 use gpui::{
@@ -52,20 +53,13 @@ pub(super) fn boxes(cx: &mut VisualTestContext) -> Vec<(f32, f32)> {
                 (q.bounds.size.width.0 / s - 50.).abs() < 0.5
                     && (q.bounds.size.height.0 / s - 50.).abs() < 0.5
             })
-            .map(|q| (q.bounds.origin.x.0 / s, q.bounds.origin.y.0 / s))
-            .collect()
-    })
-}
-
-/// The painted quads in paint order, without their draw orders.
-pub(super) fn quads(cx: &mut VisualTestContext) -> Vec<String> {
-    cx.update(|window, _| {
-        window
-            .painted_quads()
-            .into_iter()
-            .map(|mut q| {
-                q.order = 0;
-                format!("{q:?}")
+            // Placed: a moved replay translates the quad.
+            .map(|q| {
+                let t = q.transformation.translation;
+                (
+                    (q.bounds.origin.x.0 + t[0]) / s,
+                    (q.bounds.origin.y.0 + t[1]) / s,
+                )
             })
             .collect()
     })
@@ -179,7 +173,7 @@ pub(super) fn matches_fresh(cx: &mut TestAppContext, html: &str) {
     frame(scrolled);
     frame(scrolled);
     let offset = root(&view, scrolled).offset();
-    let after = quads(scrolled);
+    let after = painted(scrolled);
     // The fresh frame: a new tree built at that offset, not a replay.
     let (fresh_view, fresh) = open(cx, html);
     root(&fresh_view, fresh).set_offset(offset);
@@ -194,16 +188,10 @@ pub(super) fn matches_fresh(cx: &mut TestAppContext, html: &str) {
     frame(fresh);
     frame(fresh);
     assert_eq!(root(&fresh_view, fresh).offset(), offset);
-    let fresh = quads(fresh);
-    let at = (0..after.len().max(fresh.len())).find(|&i| after.get(i) != fresh.get(i));
-    assert!(
-        at.is_none(),
-        "quad {at:?} of {}/{}: scrolled {:?}, fresh {:?}",
-        after.len(),
-        fresh.len(),
-        at.and_then(|i| after.get(i)),
-        at.and_then(|i| fresh.get(i)),
-    );
+    let fresh = painted(fresh);
+    if let Err(diff) = same_paint(&after, &fresh) {
+        panic!("scrolled and fresh frames differ: {diff}");
+    }
 }
 
 #[gpui::test]

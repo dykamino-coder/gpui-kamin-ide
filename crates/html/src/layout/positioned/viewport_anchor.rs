@@ -74,11 +74,18 @@ pub(crate) fn anchored(child: AnyElement, anchor: Option<&ScrollHandle>) -> AnyE
 pub(crate) struct ViewportAnchor {
     child: AnyElement,
     scroll: ScrollHandle,
+    /// Identity of the anchor's scroll node for this build.
+    token: std::rc::Rc<()>,
 }
 
 impl ViewportAnchor {
     pub(crate) fn wrap(child: AnyElement, scroll: ScrollHandle) -> AnyElement {
-        Self { child, scroll }.hooked()
+        Self {
+            child,
+            scroll,
+            token: std::rc::Rc::new(()),
+        }
+        .hooked()
     }
 }
 
@@ -91,6 +98,20 @@ impl Wrap for ViewportAnchor {
         // GPUI scroll offsets are non-positive: content moves up and left.
         let shift = -self.scroll.offset();
         let child = &mut self.child;
-        window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
+        // A scroll anchor: a replay that moves the root scroll node cancels
+        // the move for the box as this shift does (`with_scroll_anchor_prepaint`).
+        let scroll = self.scroll.clone();
+        let counter: std::rc::Rc<dyn Fn() -> gpui::Point<Pixels>> =
+            std::rc::Rc::new(move || -scroll.offset());
+        let id = gpui::ScrollNodeId::of_token(&self.token);
+        window.with_scroll_anchor_prepaint(id, counter, |window| {
+            window.with_exact_element_offset(shift, |window| child.prepaint(window, cx))
+        });
+    }
+
+    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let id = gpui::ScrollNodeId::of_token(&self.token);
+        let child = &mut self.child;
+        window.with_scroll_node_paint(id, |window| child.paint(window, cx));
     }
 }

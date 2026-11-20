@@ -41,9 +41,16 @@ in the bench JSON).
    `--at <phase>@<frame>` is the moment: the end of that phase in that measured frame (frames are
    numbered from 1 in process order; 0 is process start). Every block allocated from process start
    (`--start`) and not freed by that moment is counted, so the result is the whole live heap, not
-   only what the frame allocated. Add `--sample 16384` for a sampled run (much smaller files and
-   faster runs; bytes become estimates). Wrap the bench with `--launcher "<command prefix>"`, for
-   example a hidden-desktop launcher.
+   only what the frame allocated. Runs are sampled by default (`--sample 16384`: much smaller files
+   and faster runs; bytes become estimates); `--sample 0` is exact, and `--retainers` always is.
+   Wrap the bench with `--launcher "<command prefix>"`, for example a hidden-desktop launcher.
+
+   Each side runs in a Job Object of its own (`scripts/memprof_guard.py`): the launcher chain and the
+   bench are terminated together, by job, and their process ids are named in the error when a side
+   runs past `--timeout` (default 900 s; `ws` 600 s), when its stack file grows past
+   `--max-stacks-gb` (default 2) or when free disk space at `--out` falls under `--min-free-gb`.
+   The stopped side's stack file is removed. Processes a finished side leaves behind are terminated
+   too. A bench that keeps working after its report would otherwise write stacks without bound.
 
    The raw probe files (`cand.stacks`, `base.stacks`; gigabytes each in exact mode) are folded and
    removed side by side: the candidate runs, is folded and its file is deleted before the base
@@ -111,10 +118,10 @@ rebuilt with `memprof.py build`.
   not today's `main`, so the difference is the candidate's own change. Build both sides with
   `memprof.py build` and the same `--features` (`--worktree` points at the base checkout; the
   script of a newer checkout builds an older commit as it is).
-- Exact (default, `allocation-audit`): every block; totals equal the audit counter. Use it for the
-  final answer and for differences under a few MB.
-- Sampled (`--sample 16384`, `allocation-audit` or `heap-profile`): first look at a large page or a
-  long window, or a build close to the timing build (`heap-profile` has no audit counters).
+- Exact (`--sample 0`, `allocation-audit`): every block; totals equal the audit counter. Use it for
+  differences under a few MB on a small page; raise `--max-stacks-gb` for a large one.
+- Sampled (default `--sample 16384`, `allocation-audit` or `heap-profile`): a large page or a long
+  window, or a build close to the timing build (`heap-profile` has no audit counters).
 - Churn instead of live heap: `report --allocated` over a narrow window such as
   `ENGINE_BENCH_ALLOC_STACKS=build_elements@3` (the old `alloc_stacks.py` question).
 
@@ -197,7 +204,8 @@ nobody reported, by allocation site and stack (`unreported_stacks` in the JSON):
 reporters still to write. Holders no reporter can reach, such as captures of type-erased mouse
 listeners, are inferred from the stacks of unreported blocks by the small `HELD_BY` table in
 `scripts/memprof.py` and printed apart, marked «inferred from stacks, not measured». `--owners`
-records the whole run exactly (several GB on wide-16000; the file is removed once folded).
+records the whole run, sampled by default; with `--sample 0` (and with `--retainers`) it is exact,
+several GB on wide-16000, so raise `--max-stacks-gb` for it. The file is removed once folded.
 
 Owner paths, about:memory style: `dom/nodes`, `dom/text`, `dom/attributes`, `dom/source-tree` (the
 parse tree a revision keeps), `style/computed`, `style/groups`, `style/inherited`,

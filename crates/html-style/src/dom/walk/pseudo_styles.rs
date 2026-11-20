@@ -48,6 +48,8 @@ pub(super) fn pseudo_styles(
     let hover = (!hovered.is_empty()).then(|| {
         let mut merged = style.clone();
         merged.cascade_onto(&hovered, &DeclBlock::new(), vars, CascadeCx::NONE, vcx);
+        // The layer shares every group its rules leave as the base style has it.
+        merged.share_unchanged(style);
         Box::new(merged)
     });
     // Псевдоэлементы первой буквы и первой строки — тем же слоем
@@ -85,9 +87,9 @@ pub(super) fn pseudo_styles(
         .then(|| {
             // CSS Lists 3 marker UA style preserves spaces and tab characters.
             let mut m = {
-                let mut with_inherited = Computed {
-                    ..Default::default()
-                };
+                // The document's initial groups, not new ones: a marker without
+                // rules of its own keeps no group copies.
+                let mut with_inherited = vcx.doc.initial_style();
                 with_inherited.inh.text_flow.keep_spaces = Some(true);
                 with_inherited.inh.text_flow.preserve_newlines = Some(true);
                 with_inherited.inh.text_flow.nowrap = Some(true);
@@ -99,6 +101,7 @@ pub(super) fn pseudo_styles(
                 m.reset_cascade.bidi_isolate = Some(true);
             }
             m.cascade_onto(&found, &DeclBlock::new(), vars, CascadeCx::NONE, vcx);
+            m.share_unchanged(vcx.doc.initial_style_ref());
             Box::new(m)
         })
     };
