@@ -176,8 +176,21 @@ export function modelLine(model: string | null | undefined, effort: string | nul
   return [
     '## Model',
     `This chat runs on the model \`${model}\`${level ? ` with reasoning effort \`${level}\`` : ''}.`,
-    'When asked which model you are, answer with this exact identifier.',
+    level
+      ? 'When asked which model or reasoning effort you run on, answer with these exact values.'
+      : 'When asked which model you are, answer with this exact identifier.',
   ].join('\n')
+}
+
+/** The effort a turn of `model` runs with: the one chosen in the chat, else
+ *  the model's own default from the codex catalog. A chat that never picked
+ *  one still runs on a definite level, and the model line must name it. */
+export function effectiveEffort(
+  model: string | null | undefined,
+  effort: string | null | undefined,
+  catalog: { knownModel(model: string | null | undefined): { defaultReasoningEffort: string | null } | undefined },
+): string | undefined {
+  return codexEffort(effort) ?? codexEffort(catalog.knownModel(model)?.defaultReasoningEffort)
 }
 
 /** The context record of what a thread was given at thread/start. */
@@ -336,7 +349,11 @@ export async function createCodexSession(
   const saved = placement.resumeThreadId ? loadCodexChoice(settingsDir, placement.resumeThreadId) : null
   const effort = saved?.effort ?? config.effort
   const instructions = developerInstructions(config)
-  const startLine = modelLine(codexModel(saved?.model) ?? codexModel(config.model), effort)
+  // A chat on the default model still learns which model and effort that is
+  // (the catalog names the default; no model call).
+  const catalog = await deps.runtime.recentModels().catch(() => [])
+  const lineModel = codexModel(saved?.model) ?? codexModel(config.model) ?? catalog.find((m) => m.isDefault)?.model
+  const startLine = modelLine(lineModel, effectiveEffort(lineModel, effort, deps.runtime))
   const startOptions = {
     host,
     id: sessionId,
@@ -697,9 +714,9 @@ export class CodexSessionBinding {
 
   // ── Input ──────────────────────────────────────────────────────────────
 
-  submit(text: string, submissionId?: string): void {
+  submit(text: string, submissionId?: string, userText = text): void {
     this.delivering++
-    void this.deliver(text, submissionId).finally(() => this.delivering--)
+    void this.deliver(text, submissionId, userText).finally(() => this.delivering--)
   }
 
   /** Messages handed to the thread whose delivery has not settled yet. */
@@ -740,7 +757,8 @@ export class CodexSessionBinding {
     return true
   }
 
-  private async deliver(text: string, submissionId?: string): Promise<void> {
+  /** Receipts carry `userText`: the client's identity of this submission. */
+  private async deliver(text: string, submissionId: string | undefined, userText: string): Promise<void> {
     // Queued behind an app-server restart, then sent to the resumed thread.
     if (this.recovering) await this.recovering
     const account = await this.runtime.accountStatus()
@@ -751,7 +769,7 @@ export class CodexSessionBinding {
         account.checkFailed && account.error
           ? describeCodexError(account.error)
           : (account.error && account.error.kind !== 'other' ? account.error : loginRequired()).message
-      this.receipt(text, submissionId, 'uncertain', message)
+      this.receipt(userText, submissionId, 'uncertain', message)
       sendToClient(this.session.ws, { type: 'codex:auth', sessionId: this.session.id, ...account })
       this.appendSystem(message, 'error')
       return
@@ -762,10 +780,10 @@ export class CodexSessionBinding {
       // that compacted nothing. Codex compaction takes no instructions.
       if (isCompactCommand(text)) await this.agent.compact()
       else await this.agent.send(text, submissionId, () => this.turnContext())
-      this.receipt(text, submissionId, 'read')
+      this.receipt(userText, submissionId, 'read')
     } catch (error) {
       const info = classifyCodexError((error as Error).message)
-      this.receipt(text, submissionId, 'uncertain', describeCodexError(info))
+      this.receipt(userText, submissionId, 'uncertain', describeCodexError(info))
     }
   }
 
@@ -776,7 +794,12 @@ export class CodexSessionBinding {
     if (instructions === undefined || !threadId) return null
     const { settingsDir } = this.session
     const choice = loadCodexChoice(settingsDir, threadId)
-    const next = sessionContextFor(choice?.context, instructions, modelLine(this.agent.model, this.session.effort))
+    const model = this.agent.model
+    const next = sessionContextFor(
+      choice?.context,
+      instructions,
+      modelLine(model, effectiveEffort(model, this.session.effort, this.runtime)),
+    )
     if (!next) return null
     return {
       text: next.text,
