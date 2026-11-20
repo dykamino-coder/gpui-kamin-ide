@@ -1,6 +1,7 @@
 //! Сохраняемый кадр: неизменный документ повторяется, любой изменённый вход
 //! (опции хоста, ввод окна, живая анимация, новое дерево) собирает кадр заново.
 
+use super::box_repaint_tests::frames;
 use crate::{Document, RenderOpts};
 use gpui::{
     Context, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window, point, px,
@@ -87,10 +88,6 @@ pub(super) fn frame(cx: &mut VisualTestContext) {
     });
 }
 
-fn frames(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> (u64, u64) {
-    cx.update(|_, cx| view.read(cx).doc.retained_frames())
-}
-
 const PAGE: &str = "<p style='margin:20px;color:red'>hello <b>world</b></p><div style='width:50px;height:50px;background:blue'></div>";
 
 #[gpui::test]
@@ -121,14 +118,20 @@ fn viewport_change_rebuilds(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn window_input_rebuilds(cx: &mut TestAppContext) {
+    let expected = super::box_repaint_tests::fresh(cx, PAGE);
     let (view, cx) = open(cx, PAGE);
     frame(cx);
     let (builds, replays) = frames(&view, cx);
+    let inside = super::l0_tests::builds(&view, cx).1;
     cx.simulate_mouse_move(point(px(30.), px(30.)), None, Modifiers::default());
     frame(cx);
     let (after, again) = frames(&view, cx);
     assert!(after > builds, "input did not rebuild the frame");
     assert_eq!(again, replays);
+    assert_eq!(super::l0_tests::builds(&view, cx).1, inside);
+    assert_eq!(super::box_repaint_tests::quads(cx), expected);
+    frame(cx);
+    assert_eq!(frames(&view, cx), (after, again + 1));
 }
 
 #[gpui::test]
@@ -176,9 +179,7 @@ fn a_group_painted_by_a_deferred_draw_is_never_replayed(cx: &mut TestAppContext)
     );
 }
 
-/// A rebuilt frame (here after a revision update) finds the line splits of the
-/// previous frame: the measurement cache rotates once per frame, not once per
-/// `begin_frame` and once more per tree build.
+/// A rebuilt frame can reuse line splits from the previous frame.
 #[gpui::test]
 fn a_rebuilt_frame_reuses_the_previous_frames_line_splits(cx: &mut TestAppContext) {
     let spans: String = (0..60)

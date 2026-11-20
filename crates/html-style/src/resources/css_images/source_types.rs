@@ -6,7 +6,7 @@ use crate::resources::images::viewport::with_viewport;
 use crate::values::ValueCx;
 
 use super::Intrinsic;
-use crate::resources::images::types::CpuRaster;
+use crate::resources::images::types::{CpuRaster, RasterImage};
 use std::sync::Arc;
 
 /// Чем задана фоновая картинка: готовым растром или разметкой рисунка.
@@ -16,7 +16,7 @@ use std::sync::Arc;
 /// увеличении и лишним расходом при уменьшении.
 #[derive(Clone)]
 pub enum Source {
-    Raster(Arc<CpuRaster>),
+    Raster(RasterImage),
     /// Filter after resolving the input image at its concrete object size.
     Filtered {
         image: Box<Source>,
@@ -71,8 +71,8 @@ impl Source {
     pub fn intrinsic(&self) -> Intrinsic {
         match self {
             Source::Raster(image) => {
-                let s = image;
-                let (w, h) = ((s.width as f32).max(1.0), (s.height as f32).max(1.0));
+                let (w, h) = image.size();
+                let (w, h) = ((w as f32).max(1.0), (h as f32).max(1.0));
                 Intrinsic {
                     w: Some(w),
                     h: Some(h),
@@ -92,7 +92,7 @@ impl Source {
     /// Растр под нужный размер плитки.
     pub fn raster(&self, tile: (f32, f32), vcx: ValueCx<'_>) -> Option<Arc<CpuRaster>> {
         match self {
-            Source::Raster(image) => Some(image.clone()),
+            Source::Raster(image) => image.pixels(),
             Source::Filtered { image, list } => {
                 super::filtered_raster::raster(image, list, tile, false, vcx)
             }

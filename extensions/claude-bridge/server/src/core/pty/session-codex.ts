@@ -44,6 +44,7 @@ import { attachOutputDebounce, sendToClient } from './session-io'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import type { SessionUsage, SessionUsageWindow } from './session-statusline'
 import { buildSystemPrompt } from './system-prompt'
+import { syncedInstructions } from './synced-instructions'
 import type { PtySession, SessionConfig } from './types'
 
 export interface CodexSessionDeps {
@@ -309,10 +310,15 @@ export function codexEffort(effort: string | null | undefined): string | undefin
 function developerInstructions(config: SessionConfig): string {
   // Same session context the Claude CLI receives, with Bridge tool names as
   // codex sees them (server `bridge` instead of Claude's `user-tools`).
+  // The synced CLAUDE.md / AGENTS.md come last, where a Claude session's CLAUDE.md
+  // has them; a resumed thread that was not given them gets them with its next turn.
   const text = [
     buildSystemPrompt(config.cwd, config.basePrompt, config.transcriptMirrorDir, config.host),
     bridgeClaudeMd(config.host),
-  ].join('\n\n')
+    syncedInstructions(config.bearerHash, config.cwd),
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   return text.replaceAll('mcp__user-tools__', 'mcp__bridge__')
 }
 

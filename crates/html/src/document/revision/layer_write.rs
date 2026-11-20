@@ -17,8 +17,10 @@
 use super::paint_damage::{PaintDamage, PaintValue, classify, unpainted_svg};
 use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
+use crate::layout::reuse::Wait;
+use crate::paint::box_tree::styled::{Own, Refusal};
 use crate::style::computed::BoxStyle;
-use gpui::{Hsla, LayerHandle};
+use gpui::{Hsla, LayerHandle, LayerPainter};
 
 /// An owner's fill before and after.
 type Write = (u32, Option<Hsla>, Option<Hsla>);
@@ -45,23 +47,18 @@ pub(super) fn write_paint_values(
     new: &[Node],
     paths: &[(Path, u64)],
     layer: &LayerHandle,
-    own: impl Fn(&Element, &Element) -> Own,
+    own: impl Fn(&Element) -> Own,
     unseen: impl Fn(&Path) -> bool,
     off: impl Fn(u64) -> bool,
-    waits: impl Fn(&Path, &Element, &Element) -> Option<super::offscreen::FrameWait>,
+    waits: impl Fn(Wait, &Path, &Element, &Element) -> Option<super::offscreen::FrameWait>,
     frames: &mut Vec<super::offscreen::FrameWait>,
 ) -> Option<Taken> {
     if paths.is_empty() {
         // No element's style changed: the frame stands as it is.
         return Some(Taken::default());
     }
-    // A box's own painter's runs, or the pieces of the boxes in `bands`,
-    // recorded again as their bands (`records_band`) into uncut pieces only.
-    let held = |id: u64, bands: &[u64]| {
-        u32::try_from(id)
-            .is_ok_and(|o| layer.holds_band(o) || (!bands.contains(&id) && layer.holds_box(o)))
-    };
-    let mut bands: Vec<u64> = Vec::new();
+    // A replacement must cover every recorded run of the owner.
+    let held = |id: u64| u32::try_from(id).is_ok_and(|o| layer.holds_box(o) || layer.holds_band(o));
     let mut writes: Vec<Write> = Vec::with_capacity(paths.len());
     let mut records: Vec<(Path, u64)> = Vec::new();
     let mut deferred: Vec<(Path, u64)> = Vec::new();
@@ -76,7 +73,7 @@ pub(super) fn write_paint_values(
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
         }
-        if unpainted_svg(old, path) {
+        if unpainted_svg(old, path) || super::paint_damage::unboxed(a, b) {
             continue;
         }
         if unseen(path) {
@@ -85,19 +82,54 @@ pub(super) fn write_paint_values(
         }
         // The pieces of an inline box's band take value writes only, at once:
         // a write paints nothing, on the screen or off it.
-        let banded = match own(a, b) {
-            Own::Plain => false,
-            Own::Band => true,
-            Own::Not(reason) => {
-                super::offscreen::wait_or_refuse(reason, || waits(path, a, b), frames)?;
-                continue;
+        let owner = u32::try_from(a.node_id).ok()?;
+        let recorded = layer.painter(owner);
+        let mut wait = |kind, reason| {
+            if let Some(frame) = waits(kind, path, a, b) {
+                frames.push(frame);
+                Some(())
+            } else {
+                refuse_not_own(reason);
+                None
             }
         };
-        u32::try_from(a.node_id).ok()?;
-        if super::layer_band::records_band(a) {
-            bands.push(a.node_id);
+        let banded = match (recorded, own(b)) {
+            (Some(LayerPainter::Box), Own::Plain) => false,
+            (
+                Some(LayerPainter::Box | LayerPainter::DecoratedBox),
+                Own::Not(Refusal::Decoration),
+            )
+            | (Some(LayerPainter::DecoratedBox), Own::Plain) => {
+                wait(Wait::Decoration, Refusal::Decoration)?;
+                continue;
+            }
+            (Some(LayerPainter::Band) | None, Own::Band) => true,
+            (_, Own::Not(reason)) => {
+                refuse_not_own(reason);
+                return None;
+            }
+            _ => {
+                refuse_not_own(Refusal::Kind);
+                return None;
+            }
+        };
+        if banded && recorded.is_none() {
+            // Culled and nested bands can have line fragments but no scene run.
+            match super::layer_band::band_change(old, path, a, b) {
+                super::layer_band::BandChange::Nothing => (),
+                super::layer_band::BandChange::Refused(reason) => wait(Wait::Inline, reason)?,
+                super::layer_band::BandChange::Pieces => {
+                    if let Some(frame) = waits(Wait::Inline, path, a, b) {
+                        frames.push(frame);
+                    } else {
+                        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+                        return None;
+                    }
+                }
+            }
+            continue;
         }
-        if !banded && off(a.node_id) && held(a.node_id, &bands) {
+        if !banded && off(a.node_id) && held(a.node_id) {
             deferred.push((path.clone(), a.node_id));
             continue;
         }
@@ -119,22 +151,28 @@ pub(super) fn write_paint_values(
             // Any other change of a band: its pieces are painted again.
             _ if banded => match super::layer_band::band_change(old, path, a, b) {
                 super::layer_band::BandChange::Nothing => continue,
-                super::layer_band::BandChange::Pieces => records.push((path.clone(), a.node_id)),
+                super::layer_band::BandChange::Pieces if held(a.node_id) => {
+                    records.push((path.clone(), a.node_id))
+                }
+                super::layer_band::BandChange::Pieces => wait(Wait::Inline, Refusal::BandGeometry)?,
                 super::layer_band::BandChange::Refused(reason) => {
-                    super::offscreen::wait_or_refuse(reason, || waits(path, a, b), frames)?
+                    wait(Wait::Inline, reason)?;
                 }
             },
             _ => records.push((path.clone(), a.node_id)),
         }
     }
-    // An unheld box waits off the screen or builds the frame, unwritten.
-    let held_in = |id: u64| held(id, &bands);
-    let mut records = super::offscreen::unheld((old, new), records, held_in, &waits, frames)?;
+    // A box the layer cannot record again builds the frame as before;
+    // nothing is written then.
+    if !records.iter().all(|r| held(r.1)) {
+        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+        return None;
+    }
     let mut values = writes.len();
     if layer.set_backgrounds(&writes).is_none() {
         // A fill the layer does not hold as painted: its box records again.
         let owners = writes.iter().map(|w| u64::from(w.0));
-        if !owners.clone().all(|o| held(o, &bands)) {
+        if !owners.clone().all(held) {
             crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
             return None;
         }
@@ -191,60 +229,8 @@ pub(super) fn painted_background(e: &Element) -> Option<Option<Hsla>> {
     plain.then(|| values.color.map(|c| c.to_hsla()))
 }
 
-/// What the scene layer holds of a box's own paint.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub(super) enum Own {
-    /// Its own painter's commands only (`own_box_refusal` is `None`).
-    Plain,
-    /// An inline box whose own paint is its band, the pieces of its text
-    /// runs over all its lines (`gpui::TextRun::background_owner`): in the
-    /// layer they are its runs, and its background colour a value bound to
-    /// them.
-    Band,
-    /// Neither, for the reason named (`paint_path::not_own::REASONS`).
-    Not(&'static str),
-}
-
-/// What the layer holds of the own paint of the box of `e`. An inline box
-/// under a filter, a transform, a clone or `hidden` paints its band
-/// otherwise (`band_effect`).
-pub(super) fn own_paint(doc: &std::rc::Rc<crate::document::state::DocState>, e: &Element) -> Own {
-    match crate::paint::box_tree::styled::own_box_refusal(doc, e) {
-        None => Own::Plain,
-        Some("inline") => {
-            let c = BoxStyle::shared(e.style.used());
-            let effect = c.inh.ui.hidden == Some(true)
-                || c.reset_fragmentation.bdb_clone
-                || c.reset_effects.filter_ref.is_some()
-                || c.reset_effects.backdrop_color.is_some()
-                || c.reset_transforms.transform.is_some()
-                || c.reset_transforms.transform_ancestor;
-            if effect {
-                Own::Not("band_effect")
-            } else {
-                Own::Band
-            }
-        }
-        Some(reason) => Own::Not(reason),
-    }
-}
-
-/// `own_paint` of a box before (`a`) and after (`b`) a restyle: a box that
-/// changed between an own box and a band is neither (`kind`).
-pub(super) fn own_paint_of(
-    doc: &std::rc::Rc<crate::document::state::DocState>,
-    a: &Element,
-    b: &Element,
-) -> Own {
-    match (own_paint(doc, a), own_paint(doc, b)) {
-        (Own::Not(r), _) | (_, Own::Not(r)) => Own::Not(r),
-        (x, y) if x == y => x,
-        _ => Own::Not("kind"),
-    }
-}
-
 /// Count a refusal of a box whose own paint the layer does not hold.
-pub(super) fn refuse_not_own(reason: &str) {
+fn refuse_not_own(reason: Refusal) {
     crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
-    crate::paint_path::not_own::add(reason);
+    crate::paint_path::not_own::add(reason.label());
 }

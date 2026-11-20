@@ -109,6 +109,8 @@ mod layout_inputs;
 // KaminIDE patch: frames that redraw only isolated views.
 mod isolated;
 use isolated::{IsolatedDraw, RootRanges};
+mod retained_layout_inputs;
+pub use retained_layout_inputs::RetainedLayoutInputs;
 mod retained_layout;
 mod update_rendering;
 pub use update_rendering::ElementPlace;
@@ -1498,6 +1500,7 @@ pub struct Window {
     /// KaminIDE patch: the hosts' steps before a draw (`update_rendering`).
     pub(crate) update_rendering_observers: SubscriberSet<(), AnyObserver>,
     /// KaminIDE patch: element states of layout reads (`update_rendering`).
+    layout_scroll_inputs: Option<Vec<retained_layout_inputs::ScrollInput>>,
     pub(crate) read_states: update_rendering::ReadStates,
     active: Rc<Cell<bool>>,
     visibility: WindowVisibility,
@@ -2462,6 +2465,7 @@ impl Window {
             appearance_observers: SubscriberSet::new(),
             button_layout_observers: SubscriberSet::new(),
             update_rendering_observers: SubscriberSet::new(),
+            layout_scroll_inputs: None,
             read_states: Default::default(),
             active,
             visibility,
@@ -5988,10 +5992,7 @@ impl Window {
             .get_or_insert_with(params.into(), &mut || {
                 Ok(Some((
                     data.size(frame_index),
-                    Cow::Borrowed(
-                        data.as_bytes(frame_index)
-                            .expect("It's the caller's job to pass a valid frame index"),
-                    ),
+                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
                 )))
             })?
             .expect("Callback above only returns Some");
@@ -6091,10 +6092,7 @@ impl Window {
             .get_or_insert_with(params.into(), &mut || {
                 Ok(Some((
                     data.size(frame_index),
-                    Cow::Borrowed(
-                        data.as_bytes(frame_index)
-                            .expect("It's the caller's job to pass a valid frame index"),
-                    ),
+                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
                 )))
             })?
             .expect("Callback above only returns Some");

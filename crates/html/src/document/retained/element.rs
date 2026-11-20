@@ -1,11 +1,5 @@
-//! Элемент сохраняемого кадра: собирает и записывает кадр документа либо
-//! повторяет записанный в прошлом кадре.
-//!
-//! Решение принимается на prepaint, когда известны границы и окружение окна.
-//! Кандидат повтора на раскладке занимает узел того же размера, что коробка
-//! области просмотра; если запись не подошла, дерево собирается здесь же и
-//! раскладывается отдельным корнем в тех же границах. Коробка имеет точный
-//! размер, поэтому её содержимое раскладывается так же, как в потоке.
+//! Draw the prepared root or replay the recorded frame. A host that changes
+//! the placement or skips the document step supplies its final inputs here.
 
 use super::{Builder, FrameKey, Slot};
 mod build_in;
@@ -13,7 +7,7 @@ mod frame_record;
 use crate::layout::reuse::FlowReuse;
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Style, Window, px, size,
+    LayoutId, Pixels, Window,
 };
 use std::rc::Rc;
 
@@ -37,6 +31,8 @@ pub(super) struct Retained {
     /// элемента документа под этим местом в кадре: коробка области просмотра
     /// — лист её размера.
     laid_out: Option<gpui::ElementPlace>,
+    checked: Option<super::prepared::CheckedRoot>,
+    layout_inputs: gpui::RetainedLayoutInputs,
 }
 
 impl Retained {
@@ -62,6 +58,8 @@ impl Retained {
                 scroll_plan: None,
                 root_bars: None,
                 laid_out: Some(prepared.parent),
+                checked: Some(prepared.checked),
+                layout_inputs: prepared.layout_inputs,
             };
         }
         let (tree, flow) = if candidate {
@@ -83,14 +81,8 @@ impl Retained {
             scroll_plan: None,
             root_bars: None,
             laid_out: None,
-        }
-    }
-
-    fn viewport_style(&self) -> Style {
-        let (w, h) = self.builder.opts.viewport;
-        Style {
-            size: size(px(w).into(), px(h).into()),
-            ..Style::default()
+            checked: None,
+            layout_inputs: Default::default(),
         }
     }
 }
@@ -106,10 +98,7 @@ impl Element for Retained {
     type RequestLayoutState = ();
     type PrepaintState = ();
 
-    /// Ключ — записи блоков документа: они переживают правки (новый `Slot`),
-    /// и состояние элемента должно пережить их тоже, чтобы видимые блоки
-    /// повторялись из прошлого кадра (`Store::draw`). Запись кадра чужого
-    /// `Slot` отсеивает `Record::reusable`.
+    /// Use the document store's identity across edits to the element tree.
     fn id(&self) -> Option<ElementId> {
         Some(super::prepared::document_id(&self.builder.store))
     }
@@ -125,20 +114,7 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        self.check_place(window);
-        let before = window.next_frame_callback_count();
-        let id = match self.tree.as_mut() {
-            Some(_) if self.laid_out.is_some() => {
-                window.request_layout(self.viewport_style(), None, cx)
-            }
-            Some(tree) => {
-                let keys = self.builder.layout_keys;
-                window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
-            }
-            None => window.request_layout(self.viewport_style(), None, cx),
-        };
-        self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-        (id, ())
+        (self.request_viewport_layout(window, cx), ())
     }
 
     fn prepaint(

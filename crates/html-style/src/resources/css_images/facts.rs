@@ -3,7 +3,10 @@
 
 use crate::resources::images::{
     store::{ImageRequest, ImageState, ImageStore},
-    types::{ColourPolicy, CpuRaster, DecodeOptions, DecodedImage, OrientationMode, PixelFormat},
+    types::{
+        ColourPolicy, CpuRaster, DecodeOptions, DecodedImage, OrientationMode, PixelFormat,
+        RasterImage,
+    },
 };
 use crate::style::computed::flat_background::{BackgroundImageValues, ImageAvailability};
 use crate::style::computed::{GradSpace, ImageSource};
@@ -62,7 +65,7 @@ impl BackgroundImages {
                     Some(ImageState::Ready { image, .. }) => Fact {
                         availability: ImageAvailability::Ready,
                         uniform: match image {
-                            DecodedImage::Raster(r) => uniform(r),
+                            DecodedImage::Raster(r) => uniform_raster(r),
                             DecodedImage::Vector(_) => None,
                         },
                     },
@@ -129,6 +132,24 @@ impl BackgroundImageValues for Rc<BackgroundImages> {
                 .then_some(c)
             }
             _ => None,
+        }
+    }
+}
+
+/// The solid colour of a raster for folding a background. A file not decoded yet is
+/// checked only when small (up to 256x256): its pixels are decoded for that one check
+/// and not kept, and a large image is painted as an image (folding saves work, it
+/// changes no result).
+fn uniform_raster(raster: &RasterImage) -> Option<Color> {
+    const CHECKED: u64 = 256 * 256;
+    match raster {
+        RasterImage::Ready(r) => uniform(r),
+        RasterImage::Encoded(e) => {
+            if u64::from(e.width) * u64::from(e.height) > CHECKED {
+                return None;
+            }
+            let cpu = e.pixels_once()?;
+            uniform(&cpu)
         }
     }
 }
