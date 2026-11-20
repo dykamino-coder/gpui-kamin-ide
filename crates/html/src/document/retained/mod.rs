@@ -201,3 +201,6 @@ impl Document {
         self.retained.recorded.borrow().is_some()
     }
 }
+
+#[cfg(test)]
+mod moved_glyph_tests;
