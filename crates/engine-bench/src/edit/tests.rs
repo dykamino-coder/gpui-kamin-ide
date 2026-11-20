@@ -2,6 +2,14 @@
 
 use super::Edit;
 
+#[test]
+fn attribute_edit_preserves_the_complete_custom_element_name() {
+    let page = "<body><x-card>alpha</x-card></body>";
+    let edited = Edit::Attr.markup(page).unwrap();
+    assert!(edited.contains("<x-card data-edit=\"1\">"), "{edited}");
+    assert!(edited.contains("</x-card>"));
+}
+
 fn page() -> String {
     let body = "<p>alpha</p>".repeat(10);
     format!(
@@ -81,18 +89,12 @@ fn class_goes_on_the_implicit_root_after_the_doctype() {
 }
 
 #[test]
-fn attribute_falls_back_to_the_last_start_tag_before_the_middle() {
+fn attribute_edit_preserves_deep_nesting() {
     let page = format!("<body>{}{}", "<div>".repeat(20), "</div>".repeat(20));
     let edited = Edit::Attr.markup(&page).unwrap();
-    assert_eq!(
-        edited.matches("<div data-edit=\"1\">").count(),
-        1,
-        "{edited}"
-    );
-    assert!(
-        edited.ends_with(&format!("<div data-edit=\"1\">{}", "</div>".repeat(20))),
-        "{edited}"
-    );
+    assert_eq!(edited.matches("data-edit=\"1\"").count(), 1);
+    assert_eq!(edited.matches("<div").count(), 20);
+    assert_eq!(edited.matches("</div>").count(), 20);
 }
 
 #[test]
@@ -100,4 +102,49 @@ fn unknown_edits_are_rejected() {
     assert!(Edit::parse("resize").is_err());
     assert!(Edit::parse("nope").is_err());
     assert_eq!(Edit::parse("attr").unwrap(), Edit::Attr);
+}
+
+#[test]
+fn parsed_attribute_edit_changes_only_one_attribute_of_one_element() {
+    use html5ever::tendril::TendrilSink;
+    use markup5ever_rcdom::{NodeData, RcDom, SerializableHandle};
+    let canonical = |dom: RcDom| {
+        let mut bytes = Vec::new();
+        html5ever::serialize(
+            &mut bytes,
+            &SerializableHandle::from(dom.document),
+            Default::default(),
+        )
+        .unwrap();
+        bytes
+    };
+    for page in [
+        "<!doctype html><body><x-card title='a>b'>alpha</x-card></body>",
+        "<body><!-- <fake> --><script>const x='<fake>'</script><x:card>beta</x:card>",
+        "<body><x-card data-edit='1'>alpha</x-card>",
+        "<body><table><tr><td>A</td><td>B</td></tr></table>",
+    ] {
+        let edited = Edit::Attr.markup(page).unwrap();
+        let dom = html5ever::parse_document(RcDom::default(), Default::default()).one(edited);
+        let original = html5ever::parse_document(RcDom::default(), Default::default()).one(page);
+        let mut pending = vec![dom.document.clone()];
+        let mut changes = 0;
+        while let Some(node) = pending.pop() {
+            if let NodeData::Element { attrs, .. } = &node.data {
+                let mut attrs = attrs.borrow_mut();
+                if let Some(index) = attrs.iter().position(|a| &*a.name.local == "data-edit") {
+                    changes += 1;
+                    if page.contains("data-edit='1'") {
+                        assert_eq!(&*attrs[index].value, "2");
+                        attrs[index].value = "1".into();
+                    } else {
+                        attrs.remove(index);
+                    }
+                }
+            }
+            pending.extend(node.children.borrow().iter().cloned());
+        }
+        assert_eq!(changes, 1, "{page}");
+        assert_eq!(canonical(dom), canonical(original), "{page}");
+    }
 }
