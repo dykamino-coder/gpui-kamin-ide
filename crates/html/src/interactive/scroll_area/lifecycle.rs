@@ -130,16 +130,23 @@ impl Element for ScrollArea {
                 window.refresh();
             });
         }
-        let hitbars = crate::interactive::scrollbars::interaction::prepaint(
-            self.freeze_scrollbars,
-            &self.style,
-            &child.1,
-            child.2.bars(),
-            child.2.range(),
-            child.2.insets(),
-            paint_bounds,
-            window,
-        );
+        let bars = RootBars {
+            style: self.style.clone(),
+            freeze: self.freeze_scrollbars,
+            handle: child.1.clone(),
+            extent: child.2.clone(),
+            interaction: child.4.clone(),
+            bounds: paint_bounds,
+        };
+        // The root scrollport's bars follow the offset: the document's frame
+        // element draws them after its record each frame (`RootBars`).
+        let hitbars = match self.root.as_ref().filter(|root| root.hosted.get()) {
+            Some(root) => {
+                root.bars.replace(Some(Rc::new(bars)));
+                Vec::new()
+            }
+            None => bars.prepaint(window),
+        };
         (paint_bounds, hitbox, hitbars)
     }
 
@@ -160,6 +167,9 @@ impl Element for ScrollArea {
         // Register before descendants: bubble dispatch runs the inner adapter first.
         super::wheel::listen(paint_bounds.1.clone(), child.1.clone(), window);
         crate::hooks::paint_reopen(window, |window| child.0.paint(window, cx));
+        if self.root.as_ref().is_some_and(|root| root.hosted.get()) {
+            return;
+        }
         let alpha = child
             .4
             .paint(self.freeze_scrollbars, &paint_bounds.2, &child.1, window);
@@ -170,6 +180,60 @@ impl Element for ScrollArea {
             child.2.range(),
             child.2.insets(),
             paint_bounds.0,
+            alpha,
+            window,
+        );
+    }
+}
+
+/// The bars of a scrollport, drawn apart from its content. The thumbs follow
+/// the scroll offset, so the root scrollport's are drawn by the document's
+/// frame element after its retained record, every frame: a wheel step that
+/// replays the record moved draws them at the new offset (as cc keeps
+/// scrollbar layers out of the scrolled content's paint).
+pub(crate) struct RootBars {
+    style: crate::style::computed::BoxStyle,
+    freeze: bool,
+    handle: gpui::ScrollHandle,
+    extent: crate::interactive::scroll_extent::Frame,
+    interaction: crate::interactive::scrollbars::interaction::Interaction,
+    bounds: Bounds<Pixels>,
+}
+
+impl RootBars {
+    /// The hit areas of the bars.
+    pub(crate) fn prepaint(
+        &self,
+        window: &mut Window,
+    ) -> Vec<crate::interactive::scrollbars::interaction::HitBar> {
+        crate::interactive::scrollbars::interaction::prepaint(
+            self.freeze,
+            &self.style,
+            &self.handle,
+            self.extent.bars(),
+            self.extent.range(),
+            self.extent.insets(),
+            self.bounds,
+            window,
+        )
+    }
+
+    /// Their listeners and paint at the offset now.
+    pub(crate) fn paint(
+        &self,
+        hitbars: &[crate::interactive::scrollbars::interaction::HitBar],
+        window: &mut Window,
+    ) {
+        let alpha = self
+            .interaction
+            .paint(self.freeze, hitbars, &self.handle, window);
+        crate::interactive::scrollbars::paint(
+            &self.style,
+            &self.handle,
+            self.extent.bars(),
+            self.extent.range(),
+            self.extent.insets(),
+            self.bounds,
             alpha,
             window,
         );

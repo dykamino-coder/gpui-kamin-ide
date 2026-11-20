@@ -251,19 +251,20 @@ class RunCommand(unittest.TestCase):
         for name in ("Symbols",):
             self.addCleanup(setattr, memprof, name, getattr(memprof, name))
         memprof.Symbols = lambda exe, base: FakeSymbols(NAMES)
-        original = memprof.subprocess.run
-        self.addCleanup(setattr, memprof.subprocess, "run", original)
-        self.seen = []
+        original = memprof.memprof_guard.run
+        self.addCleanup(setattr, memprof.memprof_guard, "run", original)
+        self.seen, self.envs = [], []
 
         def bench(command, env, **_):
+            self.envs.append(env)
             # The previous side's probe file must be gone before the next side writes its own.
             self.seen.append(sorted(p.name for p in self.out.glob("*.stacks")))
             pathlib.Path(env["ENGINE_BENCH_ALLOC_STACKS_OUT"]).write_text(
                 "# engine_bench alloc stacks v3 base=0 filter=*@0-2 until=paint sample=0\na 1 layout 100 10 1 2\n",
                 encoding="utf-8")
-            return __import__("types").SimpleNamespace(returncode=0)
+            return 0
 
-        memprof.subprocess.run = bench
+        memprof.memprof_guard.run = bench
 
     def run_memprof(self, *extra):
         with unittest.mock.patch("sys.stdout", io.StringIO()), unittest.mock.patch("sys.stderr", io.StringIO()):
@@ -309,9 +310,30 @@ class RunCommand(unittest.TestCase):
         with self.assertRaises(SystemExit) as stop:
             with unittest.mock.patch("sys.stderr", io.StringIO()):
                 memprof.main(["run", "--exe", "c.exe", "--at", "paint@2", "--out", str(self.out),
-                              "--min-free-gb", "1e9", "--", "p.html"])
+                              "--min-free-gb", "1e9", "--sample", "0", "--", "p.html"])
         self.assertIn("GiB free", str(stop.exception))
         self.assertEqual(self.seen, [])
+
+    def test_runs_are_sampled_unless_asked_exact(self):
+        self.run_memprof()
+        self.assertEqual({env.get("ENGINE_BENCH_ALLOC_STACKS_SAMPLE") for env in self.envs},
+                         {str(memprof.DEFAULT_SAMPLE)})
+        self.envs.clear()
+        self.run_memprof("--sample", "0")
+        self.assertEqual([env.get("ENGINE_BENCH_ALLOC_STACKS_SAMPLE") for env in self.envs], [None, None])
+
+    def test_a_stopped_bench_fails_the_run_and_its_stack_file_is_removed(self):
+        def runaway(command, env, **limits):
+            self.seen.append(limits["max_bytes"])
+            pathlib.Path(env["ENGINE_BENCH_ALLOC_STACKS_OUT"]).write_text("# huge\n", encoding="utf-8")
+            raise memprof.memprof_guard.Stopped("cand.stacks reached 2.10 GB, over the limit of 2.00 GB")
+
+        memprof.memprof_guard.run = runaway
+        with self.assertRaises(SystemExit) as stop:
+            self.run_memprof()
+        self.assertIn("cand: engine_bench stopped: cand.stacks reached 2.10 GB", str(stop.exception))
+        self.assertEqual(self.seen, [2_000_000_000])
+        self.assertEqual(list(self.out.glob("*.stacks")), [])
 
 
 class Build(unittest.TestCase):

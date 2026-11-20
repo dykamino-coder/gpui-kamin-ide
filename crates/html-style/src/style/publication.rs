@@ -39,15 +39,20 @@ impl Deref for Published {
     }
 }
 
-pub(super) struct ComputedBuilder(Computed);
+/// The computed style under construction and the cascaded style it starts from.
+pub(super) struct ComputedBuilder(Computed, Computed);
 
 impl ComputedBuilder {
     pub(super) fn from_cascaded(own: &Computed) -> Self {
-        Self(own.clone())
+        Self(own.clone(), own.clone())
     }
 
+    /// Publishes the style. A group the computation wrote without changing its
+    /// value is the cascaded one again: only real changes keep their copy.
     pub(super) fn finish(self) -> Published {
-        let legacy = Rc::new(self.0);
+        let Self(mut computed, cascaded) = self;
+        computed.share_unchanged(&cascaded);
+        let legacy = Rc::new(computed);
         Published {
             handle: ComputedHandle(legacy.clone()),
             legacy,
@@ -87,6 +92,35 @@ mod tests {
         assert_eq!(retained.inh.font.font_size, Some(Len::Px(20.0)));
         assert!(handle.ptr_eq(&retained));
         assert!(!std::ptr::eq::<Computed>(&*handle, &*legacy));
+    }
+
+    #[test]
+    fn a_write_of_the_same_value_keeps_the_cascaded_group() {
+        let mut cascade = Computed::default();
+        cascade.reset_box_layout.width = Some(Len::Pct(0.5));
+        let mut builder = ComputedBuilder::from_cascaded(&cascade);
+        builder.reset_box_layout.width = Some(Len::Pct(0.5));
+        builder.reset_border.border_box = Some(true);
+        let published = builder.finish();
+        assert!(published.reset_box_layout.ptr_eq(&cascade.reset_box_layout));
+        assert!(!published.reset_border.ptr_eq(&cascade.reset_border));
+        assert_eq!(published.reset_border.border_box, Some(true));
+    }
+
+    #[test]
+    fn inherited_subgroups_equal_to_the_origin_are_shared() {
+        let parent = Computed::default();
+        let mut child = parent.clone();
+        child.inh.font.font_weight = Some(700);
+        child.inh.text_flow.nowrap = parent.inh.text_flow.nowrap;
+        assert!(!child.inh.text_flow.ptr_eq(&parent.inh.text_flow));
+        child.inh.share_unchanged(&parent.inh);
+        assert!(!Rc::ptr_eq(&child.inh.0, &parent.inh.0));
+        assert!(child.inh.text_flow.ptr_eq(&parent.inh.text_flow));
+        assert!(!child.inh.font.ptr_eq(&parent.inh.font));
+        child.inh.font.font_weight = parent.inh.font.font_weight;
+        child.inh.share_unchanged(&parent.inh);
+        assert!(Rc::ptr_eq(&child.inh.0, &parent.inh.0));
     }
 
     #[test]

@@ -29,6 +29,13 @@ pub struct PaintCtx {
     /// line-layout release scope, which deferred paint keeps too
     /// (`Window::with_line_layouts_released`), so the snapshot keeps its size.
     ink_scope: u32,
+    /// KaminIDE patch: the scroll node painting at capture and the content
+    /// mask depth under it: deferred paint runs under it again
+    /// (`Window::reenter_scroll_node`).
+    scroll_node: Option<(u32, usize)>,
+    /// While replayed: where the replay began painting, and in which scene.
+    scroll_reentry: Option<(usize, crate::scene::scroll_marks::SceneSpace)>,
+    scroll_swapped: bool,
 }
 
 /// KaminIDE patch: the release-scope bit of `PaintCtx::ink_scope`.
@@ -79,6 +86,7 @@ impl PaintCtx {
         let mut scope = self.ink_scope & !LAYOUTS_RELEASED;
         mem::swap(&mut window.next_frame.scene.ink_scope, &mut scope);
         self.ink_scope = scope | if released { LAYOUTS_RELEASED } else { 0 };
+        window.reenter_scroll_node(self.scroll_node, &mut self.scroll_reentry, &mut self.scroll_swapped);
     }
 }
 
@@ -102,6 +110,9 @@ impl Window {
             image_cache_stack: self.image_cache_stack.clone(),
             ink: self.next_frame.scene.ink.clone(),
             ink_scope: capture_scope(self),
+            scroll_node: self.next_frame.scroll_paint.open.last().copied(),
+            scroll_reentry: None,
+            scroll_swapped: false,
         }
     }
 

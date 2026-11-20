@@ -112,6 +112,9 @@ impl Wrap for Sticky {
     }
 
     fn paint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        // Its shift follows the scroller's offset: a replay that moves that
+        // scroll node needs a build.
+        window.paint_dependent_on_open_scroll_node();
         // Отложенный проход рисует вне обрезки ленты — возвращаем её сами,
         // иначе прилипший элемент вылезал бы за края прокручиваемой области.
         let child = &mut self.child;

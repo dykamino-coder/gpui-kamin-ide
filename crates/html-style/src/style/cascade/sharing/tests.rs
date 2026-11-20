@@ -35,6 +35,25 @@ fn repeated_input_shares_groups_but_mutation_is_local() {
 }
 
 #[test]
+fn a_declaration_of_the_initial_value_keeps_the_initial_group() {
+    let doc = DocumentValues::detached(Media::default());
+    let vcx = doc.values();
+    let initial = doc.initial_style();
+    let style = resolve(
+        &mut StyleSharing::default(),
+        &parse_decls_in("box-sizing: initial", vcx),
+        vcx,
+    );
+    assert!(style.reset_border.ptr_eq(&initial.reset_border));
+    let changed = resolve(
+        &mut StyleSharing::default(),
+        &parse_decls_in("box-sizing: border-box", vcx),
+        vcx,
+    );
+    assert!(!changed.reset_border.ptr_eq(&initial.reset_border));
+}
+
+#[test]
 fn root_metrics_and_declarations_invalidate_cache() {
     let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
@@ -106,7 +125,7 @@ fn a_cycle_of_ninety_one_inputs_hits_on_its_second_round() {
 #[test]
 fn only_context_free_color_functions_are_admitted() {
     for value in ["rgb(1, 2, 3)", "HSL(30 10% 80%)", "oklch(.5 .2 30)"] {
-        assert!(pure_value(value), "{value}");
+        assert!(pure::pure_value(value), "{value}");
     }
     for value in [
         "rgb(from var(--base) r g b)",
@@ -114,7 +133,7 @@ fn only_context_free_color_functions_are_admitted() {
         "rgb(0 0 calc(1 + 2))",
         r"r\67 b(0 0 0)",
     ] {
-        assert!(!pure_value(value), "{value}");
+        assert!(!pure::pure_value(value), "{value}");
     }
 }
 

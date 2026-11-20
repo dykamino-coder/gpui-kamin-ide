@@ -233,7 +233,7 @@ describe('codex chat over the Bridge session WebSocket', () => {
     expect(await say(client, 'hello codex', 'sub-1')).toMatchObject({ state: 'read' })
     const answer = await client.entry((e) => e.type === 'assistant' && text(e).startsWith('echo: hello codex'))
     expect(answer).toMatchObject({ engine: 'codex', message: { model: 'gpt-fake' } })
-    expect(text(answer)).toBe('echo: hello codex [model=gpt-fake effort=default]')
+    expect(text(answer)).toBe('echo: hello codex [model=gpt-fake effort=medium]')
     const user = await client.entry((e) => e.type === 'user' && text(e) === 'hello codex')
     expect(answer.parentUuid).toBe(user.uuid)
 
@@ -536,7 +536,7 @@ describe('codex chat over the Bridge session WebSocket', () => {
     const client = await Client.open(port)
     await createChat(client, { engine: 'codex' })
     await say(client, 'first turn', 'k1')
-    await client.entry((e) => text(e).startsWith('echo: first turn [model=gpt-fake effort=default]'))
+    await client.entry((e) => text(e).startsWith('echo: first turn [model=gpt-fake effort=medium]'))
     const conv = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
     // Chosen in the chat, no turn afterwards: codex's rollout does not know it yet.
     client.send({ type: 'session:change-model', model: 'gpt-fake-mini' })
@@ -1025,7 +1025,7 @@ describe('engine switch inside one chat', () => {
     const chain: any[] = []
     for (let e = log.filter((x) => !x.isSidechain).at(-1); e; e = byUuid.get(e.parentUuid)) chain.push(e)
     const chained = chain.map(text)
-    for (const needle of ['noted: 4217', 'echo: my dog is called Sharik [model=gpt-fake effort=default]'])
+    for (const needle of ['noted: 4217', 'echo: my dog is called Sharik [model=gpt-fake effort=high]'])
       expect(chained).toContain(needle)
     expect(chain.at(-1)).toMatchObject({ sessionId: first }) // back into the chat's first segment
 
@@ -1116,11 +1116,11 @@ describe('engine switch inside one chat', () => {
     expect(await told('reasoning effort', 'm3')).toContain(
       'This chat was started with reasoning effort `high`; a later `/effort` command in this conversation sets the current level.',
     )
-    // Claude → ChatGPT: the joining engine starts on its model's default effort.
+    // Claude → ChatGPT: the joining engine keeps the chat's effort.
     // Its instructions come first; the history block after them quotes the old line.
     await switchTo(client, 'codex', 'gpt-fake-mini')
     expect((await told('chat runs', 'm4'))[0]).toBe(
-      'This chat runs on the model `gpt-fake-mini` with reasoning effort `medium`.',
+      'This chat runs on the model `gpt-fake-mini` with reasoning effort `high`.',
     )
     const id = client.frames.filter((f) => f.type === 'session:conversation-id').at(-1)!.conversationId
     client.send({ type: 'session:end' })
@@ -1141,10 +1141,103 @@ describe('engine switch inside one chat', () => {
         again.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= mark,
       15_000,
     )
-    expect(text(answer)).toContain('This chat runs on the model `gpt-fake-mini` with reasoning effort `medium`.')
+    expect(text(answer)).toContain('This chat runs on the model `gpt-fake-mini` with reasoning effort `high`.')
     again.send({ type: 'session:end' })
     again.close()
   }, 60_000)
+
+  it('REAL120: the effort the chat shows is the one turn/start names and the model line states', async () => {
+    const rpcFile = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
+    const rpcCount = () =>
+      fs.existsSync(rpcFile) ? fs.readFileSync(rpcFile, 'utf8').split('\n').filter(Boolean).length : 0
+    const rpcSince = (from: number) =>
+      fs
+        .readFileSync(rpcFile, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .slice(from)
+        .map(
+          (line) =>
+            JSON.parse(line) as {
+              method: string
+              model: string | null
+              effort: string | null
+              instructions: string | null
+            },
+        )
+    let client = await Client.open(port)
+    // One turn: what the engine ran it with (its echo), and what turn/start carried.
+    const turn = async (message: string, id: string) => {
+      const mark = client.frames.length
+      const rpc = rpcCount()
+      await say(client, message, id)
+      const answer = text(await answerAfter(client, mark, `echo: ${message}`))
+      const starts = rpcSince(rpc).filter((r) => r.method === 'turn/start')
+      return { ran: /effort=(\w+)\]/.exec(answer)?.[1], sent: starts.map((r) => r.effort) }
+    }
+    const line = async (id: string) => {
+      const mark = client.frames.length
+      await say(client, '/fake-recall chat runs', id)
+      return text(await answerAfter(client, mark, 'recall:'))
+        .split(' | ')
+        .filter((l) => l.startsWith('This chat runs'))
+        .at(-1)
+    }
+
+    // (a) A new ChatGPT chat shows the effort its engine resolves (thread/start
+    // gets that line); High picked in the selector reaches the first turn.
+    let rpc = rpcCount()
+    expect(await createChat(client, { engine: 'codex' })).toMatchObject({ effort: 'medium' })
+    const start = rpcSince(rpc).find((r) => r.method === 'thread/start')!
+    expect(start).toMatchObject({ effort: null })
+    expect(start.instructions).toContain('This chat runs on the model `gpt-fake` with reasoning effort `medium`.')
+    expect(await turn('a0', 'a0')).toEqual({ ran: 'medium', sent: ['medium'] })
+    client.send({ type: 'session:change-effort', effort: 'high' })
+    await client.next((f) => f.type === 'session:model-changed' && f.effort === 'high')
+    expect(await turn('a1', 'a1')).toEqual({ ran: 'high', sent: ['high'] })
+    expect(await line('a2')).toBe('This chat runs on the model `gpt-fake` with reasoning effort `high`.')
+    client.send({ type: 'session:end' })
+    client.close()
+
+    // (b) Claude on High → ChatGPT: the chat stays on High in the UI and in the engine.
+    client = await Client.open(port)
+    expect(await createChat(client, { engine: 'claude' })).toMatchObject({ effort: 'high' })
+    rpc = rpcCount()
+    const { restarted } = await switchTo(client, 'codex', 'gpt-fake')
+    expect(restarted).toMatchObject({ type: 'session:restarted', engine: 'codex', effort: 'high' })
+    expect(rpcSince(rpc).find((r) => r.method === 'thread/start')!.instructions).toContain(
+      'This chat runs on the model `gpt-fake` with reasoning effort `high`.',
+    )
+    expect(await turn('b1', 'b1')).toEqual({ ran: 'high', sent: ['high'] })
+
+    // (c) The selector mid-chat: the next turn and the line follow it, both ways.
+    client.send({ type: 'session:change-effort', effort: 'low' })
+    expect(await client.next((f) => f.type === 'session:model-changed')).toMatchObject({ effort: 'low', inPlace: true })
+    expect(await turn('c1', 'c1')).toEqual({ ran: 'low', sent: ['low'] })
+    expect(await line('c2')).toBe('This chat runs on the model `gpt-fake` with reasoning effort `low`.')
+    const back = client.frames.length
+    client.send({ type: 'session:change-effort', effort: 'high' })
+    expect(await client.next((f) => f.type === 'session:model-changed', 10_000, back)).toMatchObject({ effort: 'high' })
+    expect(await turn('c3', 'c3')).toEqual({ ran: 'high', sent: ['high'] })
+    expect(await line('c4')).toBe('This chat runs on the model `gpt-fake` with reasoning effort `high`.')
+
+    // Reopened (thread/resume): the chat still shows and runs High.
+    const conversationId = client.frames.filter((f) => f.type === 'session:conversation-id').at(-1)!.conversationId
+    client.send({ type: 'session:end' })
+    client.close()
+    client = await Client.open(port)
+    rpc = rpcCount()
+    client.send({ type: 'session:resume', token: 'tok-a', conversationId, protocolVersion: 1, cwd: '/work/project' })
+    expect(await client.next((f) => f.type === 'session:created', 15_000)).toMatchObject({ effort: 'high' })
+    expect(rpcSince(rpc).some((r) => r.method === 'thread/resume')).toBe(true)
+    expect(await turn('r1', 'r1')).toEqual({ ran: 'high', sent: ['high'] })
+
+    // (d) ChatGPT → Claude keeps it too.
+    const toClaude = await switchTo(client, 'claude', 'claude-sonnet-5-5')
+    expect(toClaude.restarted).toMatchObject({ engine: 'claude', effort: 'high' })
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 90_000)
   it("keeps the chat's standing instructions across Claude → ChatGPT → Claude, exactly once", async () => {
     const client = await Client.open(port)
     const basePrompt = 'Standing rule BP-MARK-5521: answer tersely.'

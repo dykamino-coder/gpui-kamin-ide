@@ -468,6 +468,8 @@ export async function createCodexSession(
   const transcript = codexTranscriptPath(settingsDir, threadId, projectsDir(deps))
   const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound && !freshThread
   session.model = agent.model
+  // A chat that chose no effort shows the one its turns run with.
+  if (!session.effort && agent.reasoningEffort) session.effort = agent.reasoningEffort
   session.cliConversationId = resumed ? threadId : null
   // A new thread's initial context holds the instructions and the start line;
   // a resumed one keeps what its record says it was given.
@@ -798,7 +800,8 @@ export class CodexSessionBinding {
     const next = sessionContextFor(
       choice?.context,
       instructions,
-      modelLine(model, effectiveEffort(model, this.session.effort, this.runtime)),
+      // The effort this turn/start names, so the line never says another one.
+      modelLine(model, this.agent.reasoningEffort ?? effectiveEffort(model, this.session.effort, this.runtime)),
     )
     if (!next) return null
     return {
