@@ -112,9 +112,8 @@ pub(super) async fn sample_with(
     let skipped = gpui::layer_counters::PRESENTS_SKIPPED.load(std::sync::atomic::Ordering::Relaxed);
     let (started, before, seq, resources_time, build_time, timings, phases, work) = window
         .update(cx, |view, window, cx| -> Result<_> {
-            // Разметка той же формы сводится к записям мутаций до начала замера.
-            // Правка формы (вставка, удаление узла) входит в движок одним путём —
-            // `Document::update` с новой разметкой; он и меряется.
+            // Markup of the same shape becomes mutation records before the sample; a change of shape
+            // (insertion, removal) enters as one `Document::update` with the new markup, measured.
             let edit = match step {
                 Step::Edit(html) => Some((html, view.doc.mutations(html))),
                 _ => None,
@@ -175,6 +174,9 @@ pub(super) async fn sample_with(
                 }
                 timings = Some(doc.build_timings());
                 view.doc = doc;
+                if let Some(at) = view.fresh_scroll.take() {
+                    view.doc.set_root_scroll_offset(at)
+                }
             }
             view.phases = Rc::new(RefCell::new(Phases::requested(observer_setup)));
             capture.arm_first();
@@ -236,11 +238,12 @@ pub(super) async fn sample_with(
     let frame = capture
         .take_first()
         .ok_or("armed first frame was not captured")?;
-    if completed != seq + 1
+    let ambiguous = completed != seq + 1
         || frame.seq != seq + 1
         || after.frames.wrapping_sub(before.frames) != 1
-        || phases.borrow().renders != 1
-    {
+        || phases.borrow().renders != 1;
+    // Scroll mode's load is no sample: a page may draw again as it loads.
+    if ambiguous && !(args.mode == Mode::Scroll && matches!(step, Step::Cold(_))) {
         return Err(format!(
             "unexpected extra/reused frame: start={seq}, completed={completed}, first={}, latest={}, draws={}, renders={}; refusing an ambiguous phase sample",
             frame.seq,
@@ -392,9 +395,11 @@ pub(super) async fn run(
         }
     }
     let run = (cx, window, fonts, args, capture, luid);
-    frames.finish(&mut report, run).await?;
+    // A failed check (a frame unlike the fresh document) still fails the run,
+    // but after the report: the timings and the per-step checks are kept.
+    let finished = frames.finish(&mut report, run).await;
     // После замера установившейся памяти: запись сборки — куча стенда, не страницы.
     report["build"] = super::build_info::json();
     report::print(&report, args.json)?;
-    Ok(())
+    finished
 }

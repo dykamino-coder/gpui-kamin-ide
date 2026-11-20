@@ -73,15 +73,27 @@ impl Window {
         paint: &RetainedPaint,
         layer: Option<&LayerHandle>,
     ) -> Option<ScrollReplay> {
+        self.scroll_replay_plan(prepaint, paint, layer).ok()
+    }
+
+    /// `plan_scrolled_replay` with the reason a record must be built.
+    pub fn scroll_replay_plan(
+        &self,
+        prepaint: &RetainedPrepaint,
+        paint: &RetainedPaint,
+        layer: Option<&LayerHandle>,
+    ) -> Result<ScrollReplay, ScrollRefusal> {
         let (prepaints, paints) = (prepaint.range(), paint.range());
         let scene = &self.next_frame.scene;
         if !paint.replayable
             || self.replay_source().is_some()
             || scene.segment_capture.is_some()
             || !scene.at_root()
-            || prepaints.start.deferred_draws_index != prepaints.end.deferred_draws_index
         {
-            return None;
+            return Err(ScrollRefusal::Environment);
+        }
+        if prepaints.start.deferred_draws_index != prepaints.end.deferred_draws_index {
+            return Err(ScrollRefusal::DeferredDraws);
         }
         let content = layer.map(LayerHandle::content);
         let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
@@ -93,10 +105,10 @@ impl Window {
         for node in records {
             // Every paint range of the node in the record's scene, deferred ones too.
             if node.paint.is_none() || node.painted_in != Some(space) || node.torn {
-                return None;
+                return Err(ScrollRefusal::Node);
             }
             if node.ranges().any(|painted| painted.start < scenes.start || painted.end > scenes.end) {
-                return None;
+                return Err(ScrollRefusal::NodeRange);
             }
             let new = node.source.offset();
             let parent = node
@@ -114,7 +126,7 @@ impl Window {
             let shift = parent_shift + (new - node.offset);
             let interest = moved(node.interest, shift);
             if !inside(clip, interest) {
-                return None;
+                return Err(ScrollRefusal::Interest);
             }
             plan.by_id.insert(node.id, plan.nodes.len());
             plan.nodes.push(PlannedNode { offset: new, shift, clip, chain, interest });
@@ -122,10 +134,18 @@ impl Window {
         // Paint that follows a moved node's offset outside it (a thumb).
         let moved = |id: ScrollNodeId| plan.by_id.get(&id).is_some_and(|&at| plan.nodes[at].shift != Point::default());
         if self.scroll_dependents_moved(space, &scenes, moved) {
-            return None;
+            return Err(ScrollRefusal::Dependent);
+        }
+        // The groups the record made move with their labels' nodes (`group_replay`).
+        let groups = paint.groups();
+        if !groups.is_empty() {
+            let labels = source.group_label_nodes(scenes.clone(), groups.clone());
+            if layer.is_some() || !source.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
+                return Err(ScrollRefusal::Groups);
+            }
         }
         let nodes = records.iter().flat_map(|node| node.ranges());
-        source.scrollable(&scenes, nodes).then_some(plan)
+        source.scroll_check(&scenes, nodes).map(|()| plan)
     }
 
     /// `replay_retained_prepaint` of a planned scrolled replay: hitboxes
@@ -188,11 +208,16 @@ impl Window {
         edges.extend(dependents.iter().map(|&(_, at)| (at, 0)));
         edges.sort_unstable();
         edges.dedup();
-        let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
-        self.next_frame.scene.replay_scrolled(scenes, source, |id| {
+        let node = |id: ScrollNodeId| {
             let node = plan.node(id);
             (scaled(node.shift), node.clip.scale(scale))
-        }, &mut edges);
+        };
+        // Groups come from the rendered frame (`plan_scrolled_replay` refuses a layer's).
+        let labels = self.rendered_frame.scene.group_label_nodes(scenes.clone(), record.groups());
+        let groups = self.replay_groups(record, Some((&labels, &node)));
+        let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
+        self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
+        self.next_frame.scene.relabel = 0;
         let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
         let landed: Vec<_> = dependents.iter().map(|&(id, at)| (id, land(at), here)).collect();
         self.next_frame.scroll_dependents.extend(landed);
@@ -200,9 +225,11 @@ impl Window {
             self.next_frame.scroll_nodes[index as usize].land(land(paint.start)..land(paint.end), here, main);
         }
         self.allow_replayed(record);
-        RetainedPaint::of(start..self.paint_index(), true, record.allowed)
+        RetainedPaint::of(start..self.paint_index(), true, record.allowed).grouped(groups)
     }
 }
 
+#[cfg(test)]
+mod kinds_tests;
 #[cfg(test)]
 mod tests;

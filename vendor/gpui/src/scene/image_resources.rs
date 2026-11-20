@@ -70,7 +70,7 @@ impl Scene {
         source: &ImageResources,
     ) {
         let before = self.paint_operations.len();
-        self.replay_operation(operation);
+        self.replay_operation(self.relabel_owned(operation));
         if self.paint_operations.len() > before
             && let Some(super::PaintOperation::Primitive(Primitive::PolychromeSprite(sprite))) =
                 self.paint_operations.last()
