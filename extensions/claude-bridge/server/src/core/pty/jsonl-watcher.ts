@@ -40,6 +40,7 @@ import {
   type Tagged,
 } from './jsonl-replay'
 import { debugLog } from '../logging'
+import { noteAppended } from '../engine/transcript-digest'
 
 // Cheap pre-filter before JSON.parse — skips ~60-80% of lines on sessions
 // with heavy file-history-snapshot logging (Write/Edit tool heavy sessions).
@@ -1509,6 +1510,7 @@ export class JsonlWatcher {
         return
       }
 
+      noteAppended(filePath)
       if (entries.length === 0) {
         // Only skipped/torn lines (no complete entries yet) — advance past the
         // clean prefix and wait for the rest.

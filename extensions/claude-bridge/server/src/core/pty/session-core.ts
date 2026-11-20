@@ -16,6 +16,7 @@ import { DEFAULT_SESSION_MODEL } from '../config'
 import { eventBus } from '../events/bus'
 import { makeRoomForOneMore } from './session-hibernation'
 import { debugLog, warnLog, infoLog } from '../logging'
+import { forgetDigest } from '../engine/transcript-digest'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import { codexTranscriptPath, createCodexSession, transcriptEngine } from './session-codex'
@@ -1708,7 +1709,10 @@ export async function deleteSessionByConversationId(
   forgetEffortSelection(conversationId)
   fs.rmSync(target.settingsDir, { recursive: true, force: true })
   // Do not follow a project-directory link even when an archive identified ownership.
-  if (isPlainDirectory(path.dirname(target.jsonlPath))) fs.rmSync(target.jsonlPath, { force: true })
+  if (isPlainDirectory(path.dirname(target.jsonlPath))) {
+    fs.rmSync(target.jsonlPath, { force: true })
+    forgetDigest(target.jsonlPath)
+  }
 }
 
 /**
