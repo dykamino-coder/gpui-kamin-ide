@@ -84,16 +84,16 @@ impl Document {
                     window.with_element_state::<super::record::Record, _>(id, |record, window| {
                         let mut record = record.unwrap_or_default();
                         let epoch = record.begin(&self.reuse, window);
-                        let replay = self.state.values.resources_unchanged()
-                            && record
-                                .replay(
-                                    &self.retained,
-                                    Some(&key),
-                                    &environment,
-                                    window,
-                                    &self.reuse,
-                                )
-                                .is_some();
+                        let replay = match self.state.values.resources_unchanged() {
+                            true => {
+                                let slot = &self.retained;
+                                record.replay(slot, Some(&key), &environment, window, &self.reuse)
+                            }
+                            false => Err(super::record::FrameMiss::Resources),
+                        };
+                        let replay = replay
+                            .inspect_err(|miss| self.retained.missed(*miss))
+                            .is_ok();
                         ((epoch, replay), record)
                     });
                 if replay {

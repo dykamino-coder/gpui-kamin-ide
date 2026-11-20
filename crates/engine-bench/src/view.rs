@@ -44,6 +44,8 @@ pub(super) struct View {
     /// Опции, с которыми шаг этого кадра подготовил документ: кадр берёт их
     /// же, а не строит вторые (каждые опции — свои контексты раскладки).
     pub(super) step_opts: Option<RenderOpts>,
+    /// Root scroll offset the next fresh document opens at (`scroll_fresh`).
+    pub(super) fresh_scroll: Option<(f32, f32)>,
 }
 
 impl View {

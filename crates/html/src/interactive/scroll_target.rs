@@ -42,6 +42,20 @@ pub(crate) fn stationary(
         _ => child,
     }
 }
+/// A canvas background layer positioned from the root element's box, not
+/// `background-attachment: fixed`: it scrolls with the document
+/// (CSS Backgrounds 3 §2.11.2, §3.5), while the canvas layer around it stays
+/// in the viewport (`canvas`).
+pub(crate) fn canvas_scrolling(
+    target: Option<&Target>,
+    fixed: Option<bool>,
+    child: gpui::AnyElement,
+) -> gpui::AnyElement {
+    match target.filter(|_| fixed != Some(true)) {
+        Some(target) => stationary::follow(child, target.handle.clone()),
+        None => child,
+    }
+}
 // CSS Backgrounds 3 §2.11: the canvas covers the viewport, including gutters.
 pub(crate) fn canvas(
     frame: Option<&super::scroll_extent::Frame>,

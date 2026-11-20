@@ -6,7 +6,7 @@ pub use layer::{LayerHandle, LayerPainter, LayerValue, SceneLayer, layer_counter
 pub(crate) use layer::{Binding, BoxContents, BoxEnv, RunPainter, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
 mod damage;
 pub(crate) mod image_resources;
-mod record;
+mod record; mod group_replay;
 #[doc(hidden)]
 pub use damage::{DAMAGE_TILE, SceneDamage};
 mod vector_transform;
@@ -166,6 +166,8 @@ pub struct Scene {
     pub surfaces: Vec<PaintSurface>,
     /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
     pub(crate) in_group: bool,
+    /// KaminIDE patch: renumber copied group labels by this (group_replay).
+    pub(crate) relabel: i32,
     /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
     /// группы рисуется ДО кадра, и копировать подложку в нём не из чего
     /// (filter-effects-2 §3 шаг 1 — «Backdrop Root Image» лежит ПОД
@@ -814,7 +816,7 @@ impl Scene {
         // capacity for the next frame, so a reservation for every recorded
         // command would stay as dead capacity in both frames.
         for operation in operations {
-            let mut operation = operation.clone();
+            let mut operation = self.relabeled(operation);
             if !place(&mut operation) {
                 layer::PlacedMap::skip(&mut self.book.placed_map);
                 continue;
@@ -1006,12 +1008,9 @@ impl Scene {
         self.quads.sort_by_key(|quad| quad.order);
         self.paths.sort_by_key(|path| path.order);
         self.underlines.sort_by_key(|underline| underline.order);
-        self.monochrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-        self.subpixel_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-        self.polychrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+        self.monochrome_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+        self.subpixel_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+        self.polychrome_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
         self.surfaces.sort_by_key(|surface| surface.order);
         self.finish_layers();
     }

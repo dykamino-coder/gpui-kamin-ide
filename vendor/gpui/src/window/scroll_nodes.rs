@@ -344,9 +344,9 @@ impl Window {
     /// and out) the scroll node `node` that painted when the context was
     /// captured: paint deferred out of a node's children (positioned and
     /// inline jobs) runs under it again, its primitives marked under it, and
-    /// what it painted becomes one more range of the node. A node whose
-    /// paint is still open holds that range already; one in another scene is
-    /// torn (`plan_scrolled_replay` then builds).
+    /// what it painted becomes one more range of the node. A node whose paint is still open holds
+    /// that range already; one in another scene is torn (`plan_scrolled_replay` then builds), but a
+    /// group's scene: it is copied with its label, and its commands checked (`group_replay`).
     pub(crate) fn reenter_scroll_node(
         &mut self,
         node: Option<(u32, usize)>,
@@ -371,7 +371,7 @@ impl Window {
         }
         if record.painted_in == Some(space) && began == space {
             record.more.push(start..ops);
-        } else {
+        } else if !(frame.scene.in_group && began == space) {
             record.torn = true;
         }
     }
