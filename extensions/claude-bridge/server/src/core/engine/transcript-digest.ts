@@ -468,13 +468,30 @@ export function peekDigest(file: string): Digest | null {
   return cache.get(file) ?? null
 }
 
+/** Background updates at a time: many chats attached at once (a server
+ *  start) build their digests a few at a time, not all together. */
+const BACKGROUND_LIMIT = 2
+const queued: string[] = []
+let active = 0
+function drain(): void {
+  while (active < BACKGROUND_LIMIT && queued.length) {
+    const file = queued.shift()!
+    active++
+    void digestOf(file).finally(() => {
+      active--
+      drain()
+    })
+  }
+}
+
 /** The log grew: bring its digest along shortly (appends close together are
  *  read in one pass). */
 export function noteAppended(file: string): void {
   if (timers.has(file)) return
   const t = setTimeout(() => {
     timers.delete(file)
-    void digestOf(file)
+    queued.push(file)
+    drain()
   }, APPEND_DELAY_MS)
   t.unref?.()
   timers.set(file, t)
@@ -547,6 +564,7 @@ export function resetDigestsForTests(): void {
   running.clear()
   for (const t of timers.values()) clearTimeout(t)
   timers.clear()
+  queued.length = 0
   digestStats.builds = 0
   digestStats.resumes = 0
   digestStats.bytesParsed = 0

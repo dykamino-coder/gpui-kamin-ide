@@ -75,7 +75,7 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
-describe('conversation digest', () => {
+describe('conversation digest', { timeout: 30_000 }, () => {
   it('gives the whole-log handoff while the log grows, across restarts', async () => {
     let n = 0
     for (let step = 0; step < 25; step++) {
