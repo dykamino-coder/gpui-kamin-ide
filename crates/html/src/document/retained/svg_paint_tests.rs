@@ -1,4 +1,4 @@
-//! A class that changes the SVG paints `fill` and `stroke` of a box
+//! A class that changes the SVG paints `fill`, `stroke` and `stroke-width` of a box
 //! (`Computed::same_layout`, `revision::paint_damage`): on an HTML box they
 //! paint nothing, so the revision keeps the frame and writes the rest of the
 //! change into the scene layer; on a shape in an `svg` the frame is built
@@ -29,7 +29,7 @@ fn page(class: &str) -> String {
     format!(
         "<!doctype html><html><head><style>html,body{{margin:0;background:#fff;color:#000}}\
          .r{{height:20px}} .hl{{background:#eee;fill:#e00;stroke:#00e}} \
-         .paint{{fill:#0a0;stroke:#a0a}}</style></head><body>{rows}\
+         .paint{{fill:#0a0;stroke:#a0a;stroke-width:3px}}</style></head><body>{rows}\
          <svg width=40 height=20><rect class='{class}' width=30 height=10 /></svg></body></html>"
     )
 }
@@ -83,7 +83,7 @@ fn shapes(edit: &str, below: bool) -> String {
     format!(
         "<!doctype html><html><head><style>html,body{{margin:0;background:#fff;color:#000}}\
          .r{{height:20px}} svg{{vertical-align:top}} [data-edit],.hl{{background:#eee}}\
-         .f{{fill:#e00}} .s{{stroke:#00e}} .o{{opacity:.5}} .t{{transform:translate(5px)}}\
+         .f{{fill:#e00}} .s{{stroke:#00e}} .w{{stroke-width:4px}} .o{{opacity:.5}} .t{{transform:translate(5px)}}\
          .n{{display:none}} body:has(rect.h) .r:nth-child(odd){{background:#eee}}\
          svg:has(.h) ~ .r{{color:#e00}}</style></head><body>{top}{bottom}</body></html>"
     )
@@ -173,8 +173,8 @@ fn a_geometry_or_presentation_attribute_of_a_shape_builds_its_frame_as_fresh(
 
 #[gpui::test]
 fn a_class_that_changes_how_a_shape_paints_builds_its_frame_as_fresh(cx: &mut TestAppContext) {
-    // Fill, stroke, opacity, transform, display: the image changes.
-    for class in ["f", "s", "o", "t", "n"] {
+    // Fill, stroke, its width, opacity, transform, display: the image changes.
+    for class in ["f", "s", "w", "o", "t", "n"] {
         for below in [true, false] {
             let (kept, edited, fresh) = shape_edit(cx, &format!(" class={class}"), below);
             assert!(!kept, "{class}: the frame was kept");
