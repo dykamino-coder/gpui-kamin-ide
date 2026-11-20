@@ -153,14 +153,28 @@ function fresh(file: string, budget: number): Digest {
   }
 }
 
-async function readSidecar(file: string): Promise<{ recs: Rec[]; ends: number[] }> {
+/** A checkpoint line, parsed only when it is a candidate start point: they are
+ *  most of the sidecar's bytes, and a resume needs the newest valid one. */
+type Raw = { k: 'zraw'; raw: Buffer }
+const CHECKPOINT_PREFIX = Buffer.from('{"k":"z"')
+
+function parseCheckpoint(r: Raw): Extract<Rec, { k: 'z' }> | null {
+  try {
+    const z = JSON.parse(r.raw.toString('utf8')) as Rec
+    return z.k === 'z' ? z : null
+  } catch {
+    return null
+  }
+}
+
+async function readSidecar(file: string): Promise<{ recs: Array<Rec | Raw>; ends: number[] }> {
   let buf: Buffer
   try {
     buf = await fsp.readFile(sidecarOf(file))
   } catch {
     return { recs: [], ends: [] }
   }
-  const recs: Rec[] = []
+  const recs: Array<Rec | Raw> = []
   const ends: number[] = []
   let pos = 0
   let yieldAt = READ_CHUNK
@@ -169,6 +183,12 @@ async function readSidecar(file: string): Promise<{ recs: Rec[]; ends: number[] 
     if (pos >= yieldAt) {
       yieldAt += READ_CHUNK
       await yieldLoop()
+    }
+    if (buf.subarray(pos, pos + CHECKPOINT_PREFIX.length).equals(CHECKPOINT_PREFIX)) {
+      recs.push({ k: 'zraw', raw: buf.subarray(pos, nl) })
+      ends.push(nl + 1)
+      pos = nl + 1
+      continue
     }
     try {
       recs.push(JSON.parse(buf.toString('utf8', pos, nl)) as Rec)
@@ -194,18 +214,22 @@ async function load(file: string, fh: fsp.FileHandle, size: number, budget: numb
   const { recs, ends } = await readSidecar(file)
   const head = recs[0]
   let keep = -1
+  let z: Extract<Rec, { k: 'z' }> | null = null
   if (head?.k === 'h' && head.v === VERSION && head.budget === budget && head.stride === DIGEST_STRIDE) {
     for (let i = recs.length - 1; i > 0; i--) {
       const r = recs[i]!
-      if (r.k === 'z' && (await lineMatches(fh, size, r))) {
+      if (r.k !== 'zraw') continue
+      const parsed = parseCheckpoint(r)
+      if (parsed && (await lineMatches(fh, size, parsed))) {
         keep = i
+        z = parsed
         break
       }
     }
   }
   const d = fresh(file, budget)
   d.persisted = persist
-  if (keep === -1) {
+  if (keep === -1 || !z) {
     const header: Rec = { k: 'h', v: VERSION, budget, stride: DIGEST_STRIDE }
     if (persist) await fsp.writeFile(sidecarOf(file), JSON.stringify(header) + '\n', { mode: 0o600 })
     digestStats.builds++
@@ -219,7 +243,6 @@ async function load(file: string, fh: fsp.FileHandle, size: number, budget: numb
     else if (r.k === 's') d.segments.push(strip(r))
     else if (r.k === 'p') d.periods.push(strip(r))
   }
-  const z = recs[keep] as Extract<Rec, { k: 'z' }>
   d.end = z.end
   d.lines = z.n
   d.lastStart = z.o
