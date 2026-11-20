@@ -246,8 +246,39 @@ describe('ChatGPT (codex) responses in the cost and context chip', () => {
     expect(stats.codexUnpricedTokens).toBe(0)
     expect(stats).toMatchObject({ used: 10000, limit: 258000, limitSource: 'engine', model: 'gpt-5.5' })
     const shown = costDisplay(stats)
-    expect(shown.text).toMatch(/^\$[\d.]+ \+ ≈\$[\d.]+ API$/)
+    // Each amount is its agent's; the chip text carries no "≈", "~", "API" or "estimate".
+    expect(shown.parts.map((p) => p.engine)).toEqual(['claude', 'codex'])
+    for (const p of shown.parts) expect(p.text).toMatch(/^\$[\d.]+$/)
     expect(shown.tooltip).toContain('ChatGPT plan')
+    expect(shown.tooltip).toContain('OpenAI API prices')
+  })
+
+  it('a chat switched from Claude measures codex context by the codex window, not the old auto-compact point', () => {
+    const claudeSession = { autoCompactAt: 900_000, contextWindowSize: 1_000_000 }
+    const entries = [turn('c1', 400_000), usageLine('usage:t:1', 'gpt-5.5', 800, 25_000, 50)] as any
+    expect(computeContextStats(entries, true, 'gpt-5.5', claudeSession)).toMatchObject({
+      used: 25_800, limit: 258_000, limitSource: 'engine', pct: 10,
+    })
+    // Back on Claude: its own turn has no engine window, the compact point is 100% again.
+    const back = [...entries, turn('c2', 450_000)]
+    expect(computeContextStats(back, true, 'claude-opus-5', claudeSession)).toMatchObject({ limit: 900_000, limitSource: 'compact', pct: 50 })
+  })
+
+  it('after an engine switch the context waits for the joining engine instead of showing the leaving one', () => {
+    const sw = (engine: string) => ({ type: 'system', subtype: 'engine_switch', engine }) as any
+    // Claude → ChatGPT: no codex answer yet.
+    const toGpt = [turn('c1', 400_000), sw('codex')] as any
+    expect(computeContextStats(toGpt, true, 'gpt-5.5')).toMatchObject({ used: null, pct: null, freshness: 'switch' })
+    // Its first answer brings its own numbers.
+    expect(computeContextStats([...toGpt, usageLine('usage:t:1', 'gpt-5.5', 800, 25_000, 50)], true, 'gpt-5.5'))
+      .toMatchObject({ used: 25_800, freshness: 'usage', limit: 258_000 })
+    // ChatGPT → Claude: the codex numbers do not stay either.
+    const toClaude = [usageLine('usage:t:1', 'gpt-5.5', 800, 25_000, 50), sw('claude')] as any
+    expect(computeContextStats(toClaude, true, 'claude-opus-5')).toMatchObject({ used: null, freshness: 'switch' })
+    // The cost of the earlier engine still counts.
+    expect(computeContextStats(toClaude, true, 'claude-opus-5')!.codexCost).toBeGreaterThan(0)
+    // An archived segment is not live: it keeps its peak.
+    expect(computeContextStats(toGpt, false, 'gpt-5.5')).toMatchObject({ used: 400_000 })
   })
 
   it('shows tokens without a price for a model with no published API price', () => {
@@ -255,8 +286,13 @@ describe('ChatGPT (codex) responses in the cost and context chip', () => {
     expect(stats.cost).toBe(0)
     expect(stats.codexCost).toBe(0)
     expect(stats.codexUnpricedTokens).toBe(2000)
-    expect(costDisplay(stats).text).toBe('2.0K tok')
-    // A Claude-only chat keeps the plain cost text.
-    expect(costDisplay({ cost: 0.5, codexCost: null, codexUnpricedTokens: 0 }).text).toBe(formatCost(0.5))
+    expect(costDisplay(stats).parts).toEqual([{ engine: 'codex', text: '2.0K tok' }])
+    // A chat of one engine shows that engine's icon before its one amount.
+    expect(costDisplay({ cost: 0.5, codexCost: null, codexUnpricedTokens: 0 }).parts).toEqual([
+      { engine: 'claude', text: formatCost(0.5) },
+    ])
+    expect(costDisplay({ cost: 0, codexCost: 0.09, codexUnpricedTokens: 0 }).parts).toEqual([
+      { engine: 'codex', text: formatCost(0.09) },
+    ])
   })
 })

@@ -64,13 +64,8 @@ impl Paragraph {
             }
             len.hash(&mut h);
             run.font_size.map(|s| f32::from(s).to_bits()).hash(&mut h);
-            run.font.family.hash(&mut h);
-            run.font.weight.0.to_bits().hash(&mut h);
-            (run.font.style as u8).hash(&mut h);
-            for (tag, value) in run.font.features.tag_value_list() {
-                tag.hash(&mut h);
-                value.hash(&mut h);
-            }
+            // Shaping also depends on fallback families and font stretch.
+            run.font.hash(&mut h);
         }
         h.finish()
     }
@@ -153,6 +148,40 @@ pub(super) fn tracking(p: &Paragraph) -> gpui::Pixels {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shaping_keys_distinguish_fallbacks_and_stretch() {
+        let paragraph = |font| {
+            let text = "alpha beta \u{03a9} ".repeat(1024);
+            Paragraph::new(
+                text.clone().into(),
+                vec![gpui::TextRun {
+                    len: text.len(),
+                    font,
+                    ..Default::default()
+                }],
+                px(16.),
+                px(20.),
+                Align::Left,
+                Wrap::default(),
+            )
+        };
+        let base = paragraph(gpui::font("Primary"));
+        let mut fallback = gpui::font("Primary");
+        fallback.fallbacks = Some(gpui::FontFallbacks::from_fonts(vec!["Greek".into()]));
+        let mut stretched = gpui::font("Primary");
+        stretched.stretch = gpui::FontStretch::Condensed;
+        for font in [fallback, stretched] {
+            let changed = paragraph(font);
+            let range = 0..base.text.len();
+            assert_ne!(base.chunk_key(&range), changed.chunk_key(&range));
+            assert_ne!(base.measure_key(), changed.measure_key());
+            assert_ne!(
+                base.split_key(Some(px(400.))),
+                changed.split_key(Some(px(400.)))
+            );
+        }
+    }
 
     #[test]
     fn points_are_neutral_and_follow_the_text_not_the_offset() {

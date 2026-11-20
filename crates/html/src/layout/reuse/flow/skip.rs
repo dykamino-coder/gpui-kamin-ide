@@ -17,6 +17,7 @@ impl FlowCx {
         e: &Element,
         mark: &Mark,
         end: Counters,
+        origin: super::super::plain::CounterOrigin,
         opts: &RenderOpts,
         out: &mut [AnyElement],
     ) -> Option<usize> {
@@ -37,6 +38,7 @@ impl FlowCx {
             self.reuse.shells.source(e),
             self.key.clone(),
             (mark.start, end),
+            mark.paint_last.is_none() && origin == super::super::plain::CounterOrigin::Relative,
         ));
         let making = Making::new(
             width,

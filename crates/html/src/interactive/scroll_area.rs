@@ -7,6 +7,9 @@ use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
 use gpui::{AnyElement, ElementId};
 mod lifecycle;
+mod root_bars;
+pub(crate) use root_bars::RootBars;
+mod wheel;
 use std::rc::Rc;
 
 type ScrollBuilder =
@@ -27,6 +30,7 @@ pub struct ScrollArea {
     /// Values of the document the area's style lengths come from.
     values: crate::values::ValueDoc,
     freeze_scrollbars: bool,
+    root: Option<Rc<crate::document::viewport::RootScroll>>,
 }
 
 impl ScrollArea {
@@ -40,6 +44,7 @@ impl ScrollArea {
         ScrollArea {
             values: vcx.keep(),
             freeze_scrollbars: false,
+            root: None,
             id,
             horizontal,
             vertical,
@@ -71,6 +76,14 @@ impl ScrollArea {
         sticky: Option<crate::interactive::scroll_extent::StickyShift>,
     ) -> Self {
         self.sticky = sticky;
+        self
+    }
+
+    pub(crate) fn with_root(
+        mut self,
+        root: Option<Rc<crate::document::viewport::RootScroll>>,
+    ) -> Self {
+        self.root = root;
         self
     }
 }

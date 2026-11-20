@@ -27,7 +27,7 @@ import {
   isPlainFile,
   listTranscripts,
   resolveScope,
-  subagentDir,
+  subagentDirs,
   validConversationId,
   type CallerContext,
 } from './scope'
@@ -140,7 +140,8 @@ async function startedAt(file: string): Promise<string> {
 
 async function targets(ctx: CallerContext, ids: Set<string> | null, withSubagents: boolean): Promise<SearchTarget[]> {
   const scope = resolveScope(ctx)
-  const refs = listTranscripts(ctx, scope, true).filter((r) => !ids || ids.has(r.conversationId))
+  const want = ids ? new Set([...ids].map((id) => scope.aliases.get(id) ?? id)) : null
+  const refs = listTranscripts(ctx, scope, true).filter((r) => !want || want.has(r.conversationId))
   const out: SearchTarget[] = []
   const withStart = []
   for (const ref of refs) withStart.push({ ref, started: await startedAt(ref.file) })
@@ -149,21 +150,20 @@ async function targets(ctx: CallerContext, ids: Set<string> | null, withSubagent
   )
   for (const { ref, started } of withStart) {
     out.push({ key: ref.conversationId, conversationId: ref.conversationId, agentId: null, file: ref.file, started })
-    const dir = withSubagents ? subagentDir(ref) : null
-    if (!dir) continue
-    for (const name of (await fsp.readdir(dir)).sort()) {
-      const m = /^agent-([A-Za-z0-9_-]{1,128})\.jsonl$/.exec(name)
-      const file = path.join(dir, name)
-      if (m && isPlainFile(file)) {
-        out.push({
-          key: `${ref.conversationId}/${m[1]}`,
-          conversationId: ref.conversationId,
-          agentId: m[1]!,
-          file,
-          started,
-        })
+    for (const dir of withSubagents ? subagentDirs(ref) : [])
+      for (const name of (await fsp.readdir(dir)).sort()) {
+        const m = /^agent-([A-Za-z0-9_-]{1,128})\.jsonl$/.exec(name)
+        const file = path.join(dir, name)
+        if (m && isPlainFile(file)) {
+          out.push({
+            key: `${ref.conversationId}/${m[1]}`,
+            conversationId: ref.conversationId,
+            agentId: m[1]!,
+            file,
+            started,
+          })
+        }
       }
-    }
   }
   return out
 }

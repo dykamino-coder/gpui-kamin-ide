@@ -29,6 +29,11 @@ impl Builder {
         // Deferred boxes this replay shows are recorded with the queued ones.
         if let Some(layer) = self.store.scene_layer() {
             let shown = window.content_mask().bounds.scale(window.scale_factor());
+            // An edit the layer cannot record that this replay shows: one
+            // frame is built for every edit waiting (`layout::reuse::Wait`).
+            if self.store.due_frames(shown) {
+                return false;
+            }
             self.store
                 .queue_repaints(self.store.due_repaints(&layer, shown));
         }
@@ -96,8 +101,27 @@ impl Builder {
         &self,
         window: &mut Window,
         f: impl FnOnce(&mut Window),
-    ) -> gpui::RetainedPaint {
+    ) -> (gpui::RetainedPaint, Option<gpui::RetainedPaint>) {
         self.store.take_repaints();
-        self.store.record_layered(window, f)
+        self.store.record_layered(window, true, f)
+    }
+
+    /// A scrolled replay of the document's last layer (`inner`, its record
+    /// there) painted into a new layer: the commands move under their
+    /// scroll nodes (`gpui::Window::replay_retained_paint_scrolled`).
+    pub(super) fn replay_paint_scrolled(
+        &self,
+        window: &mut Window,
+        inner: &gpui::RetainedPaint,
+        plan: &gpui::ScrollReplay,
+    ) -> (gpui::RetainedPaint, Option<gpui::RetainedPaint>) {
+        self.store.record_layered(window, false, |window| {
+            window.replay_retained_paint_scrolled(inner, plan);
+        })
+    }
+
+    /// The document's last scene layer, the scene a layered record indexes.
+    pub(super) fn scene_layer(&self) -> Option<gpui::LayerHandle> {
+        self.store.scene_layer()
     }
 }

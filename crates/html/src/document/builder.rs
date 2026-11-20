@@ -90,6 +90,20 @@ impl<'a> DocumentBuilder<'a> {
     /// Исходный DOM сохраняется целиком; предел обхода даёт Degraded в report().
     /// Source admission предшествует разбору и ранним проходам документа.
     pub fn build(&self) -> Result<Document, super::DocumentFailure> {
+        self.build_for_view(false)
+    }
+
+    /// `build` with the root scroll state of the standalone browser view
+    /// (`host::DocumentView`): the root scroller takes wheel input and keeps
+    /// its offset in `DocState::root_scroll`. Benches of scrolling use it.
+    pub fn build_root_scroller(&self) -> Result<Document, super::DocumentFailure> {
+        self.build_for_view(true)
+    }
+
+    pub(crate) fn build_for_view(
+        &self,
+        viewport: bool,
+    ) -> Result<Document, super::DocumentFailure> {
         let budget = crate::budget::DocumentBudget::new(self.limits.clone(), self.governor.clone())
             .map_err(|e| super::DocumentFailure::new(super::FailureReason::Budget(e)))?;
         let revision = budget.revision();
@@ -106,7 +120,7 @@ impl<'a> DocumentBuilder<'a> {
                 .transpose()?
                 .flatten(),
             self.xml,
-            super::state::DocState::new(self.medium()),
+            super::state::DocState::for_view(self.medium(), viewport),
             &self.fonts,
             revision,
         )

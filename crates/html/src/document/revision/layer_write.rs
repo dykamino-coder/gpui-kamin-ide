@@ -14,7 +14,7 @@
 //! layers, decorations painted as child elements, the root's canvas) refuses,
 //! and the document builds its frame as before.
 
-use super::paint_damage::{PaintDamage, PaintValue, classify};
+use super::paint_damage::{PaintDamage, PaintValue, classify, unpainted_svg};
 use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
 use crate::style::computed::BoxStyle;
@@ -37,7 +37,8 @@ type Write = (u32, Option<Hsla>, Option<Hsla>);
 /// it (`layout::reuse::deferred`). An inline box whose own paint is its band
 /// (`Own::Band`) takes a new background colour as a value written into every
 /// piece of its band; any other change of its band paints its pieces again
-/// on the next frame (`layer_band`).
+/// on the next frame (`layer_band`). A box the layer cannot record whose
+/// whole paint lies off the screen (`waits`) waits in `frames` (`offscreen`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_paint_values(
     old: &[Node],
@@ -47,6 +48,8 @@ pub(super) fn write_paint_values(
     own: impl Fn(&Element, &Element) -> Own,
     unseen: impl Fn(&Path) -> bool,
     off: impl Fn(u64) -> bool,
+    waits: impl Fn(&Path, &Element, &Element) -> Option<super::offscreen::FrameWait>,
+    frames: &mut Vec<super::offscreen::FrameWait>,
 ) -> Option<Taken> {
     if paths.is_empty() {
         // No element's style changed: the frame stands as it is.
@@ -73,6 +76,9 @@ pub(super) fn write_paint_values(
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
         }
+        if unpainted_svg(old, path) {
+            continue;
+        }
         if unseen(path) {
             crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
             continue;
@@ -83,8 +89,8 @@ pub(super) fn write_paint_values(
             Own::Plain => false,
             Own::Band => true,
             Own::Not(reason) => {
-                refuse_not_own(reason);
-                return None;
+                super::offscreen::wait_or_refuse(reason, || waits(path, a, b), frames)?;
+                continue;
             }
         };
         u32::try_from(a.node_id).ok()?;
@@ -115,19 +121,15 @@ pub(super) fn write_paint_values(
                 super::layer_band::BandChange::Nothing => continue,
                 super::layer_band::BandChange::Pieces => records.push((path.clone(), a.node_id)),
                 super::layer_band::BandChange::Refused(reason) => {
-                    refuse_not_own(reason);
-                    return None;
+                    super::offscreen::wait_or_refuse(reason, || waits(path, a, b), frames)?
                 }
             },
             _ => records.push((path.clone(), a.node_id)),
         }
     }
-    // A box the layer cannot record again builds the frame as before;
-    // nothing is written then.
-    if !records.iter().all(|r| held(r.1, &bands)) {
-        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
-        return None;
-    }
+    // An unheld box waits off the screen or builds the frame, unwritten.
+    let held_in = |id: u64| held(id, &bands);
+    let mut records = super::offscreen::unheld((old, new), records, held_in, &waits, frames)?;
     let mut values = writes.len();
     if layer.set_backgrounds(&writes).is_none() {
         // A fill the layer does not hold as painted: its box records again.
@@ -145,6 +147,7 @@ pub(super) fn write_paint_values(
     crate::paint_path::add(&crate::paint_path::RECORDS, records.len() as u64);
     crate::paint_path::add(&crate::paint_path::VALUES, values as u64);
     crate::paint_path::add(&crate::paint_path::DEFERRED, deferred.len() as u64);
+    super::offscreen::count(frames);
     Some(Taken { records, deferred })
 }
 
@@ -241,7 +244,7 @@ pub(super) fn own_paint_of(
 }
 
 /// Count a refusal of a box whose own paint the layer does not hold.
-fn refuse_not_own(reason: &str) {
+pub(super) fn refuse_not_own(reason: &str) {
     crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
     crate::paint_path::not_own::add(reason);
 }

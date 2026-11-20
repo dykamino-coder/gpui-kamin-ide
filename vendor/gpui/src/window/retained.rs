@@ -19,31 +19,42 @@ pub struct RetainedPrepaint(Range<PackedPrepaintIndex>);
 #[derive(Clone, Default)]
 pub struct RetainedPaint {
     range: Range<PackedPaintIndex>,
-    replayable: bool,
+    pub(super) replayable: bool,
     /// Mouse listeners and element state reads of the range that open ink
     /// sinks allowed (`Window::offscreen_inert`): a replay copies the same
     /// ones, inert under the same guarantee, and allows them again, or a
     /// replayed subtree would taint the sinks of the subtrees around it.
-    allowed: (u32, u32),
+    pub(super) allowed: (u32, u32),
 }
 
 impl RetainedPrepaint {
-    fn of(range: Range<PrepaintStateIndex>) -> Self {
+    pub(super) fn of(range: Range<PrepaintStateIndex>) -> Self {
         Self(range.start.pack()..range.end.pack())
     }
 
-    fn range(&self) -> Range<PrepaintStateIndex> {
+    pub(crate) fn range(&self) -> Range<PrepaintStateIndex> {
         self.0.start.unpack()..self.0.end.unpack()
     }
 }
 
 impl RetainedPaint {
-    fn of(range: Range<PaintIndex>, replayable: bool, allowed: (u32, u32)) -> Self {
+    pub(super) fn of(range: Range<PaintIndex>, replayable: bool, allowed: (u32, u32)) -> Self {
         Self { range: range.start.pack()..range.end.pack(), replayable, allowed }
     }
 
-    fn range(&self) -> Range<PaintIndex> {
+    pub(crate) fn range(&self) -> Range<PaintIndex> {
         self.range.start.unpack()..self.range.end.unpack()
+    }
+
+    /// This record's frame state (listeners, element states, ...) with the
+    /// commands of `inner`, recorded inside the scene layer this record drew:
+    /// `inner` indexes that layer's scene, which a plain replay of this record
+    /// keeps, while the frame state moves with each replay.
+    pub fn in_layer(&self, inner: &RetainedPaint) -> RetainedPaint {
+        let (mut range, layer) = (self.range(), inner.range());
+        range.start.scene_index = layer.start.scene_index;
+        range.end.scene_index = layer.end.scene_index;
+        RetainedPaint::of(range, self.replayable && inner.replayable, self.allowed)
     }
 
     /// Whether these commands can be copied into a later frame unchanged.
@@ -139,6 +150,22 @@ impl Window {
                 mask.origin += offset;
                 *mask = mask.intersect(&clip);
             }
+            // KaminIDE patch: the copied scroll nodes moved with their children.
+            let frame = &mut self.next_frame;
+            for node in &mut frame.scroll_nodes[start.scroll_nodes_index..] {
+                node.clip.origin += offset;
+                node.clip = node.clip.intersect(&clip);
+            }
+            // Hitboxes under a node keep their own masks moved, hit-tested
+            // with own ∩ their node's clip.
+            let from = frame.scroll_hitboxes.partition_point(|mark| (mark.index as usize) < start.hitboxes_index);
+            for mark in &mut frame.scroll_hitboxes[from..] {
+                mark.own.origin += offset;
+                mark.own = mark.own.intersect(&clip);
+                if let Some(node) = frame.scroll_nodes.iter().rev().find(|node| node.id == mark.node) {
+                    frame.hitboxes[mark.index as usize].content_mask.bounds = mark.own.intersect(&node.clip);
+                }
+            }
         }
         RetainedPrepaint::of(start..self.prepaint_index())
     }
@@ -195,7 +222,7 @@ impl Window {
 
     /// The effects of `record` its frame allowed are allowed in this one
     /// (`RetainedPaint::allowed`).
-    fn allow_replayed(&mut self, record: &RetainedPaint) {
+    pub(super) fn allow_replayed(&mut self, record: &RetainedPaint) {
         let allowed = &mut self.next_frame.scene.ink_allowed;
         allowed.0 = allowed.0.wrapping_add(record.allowed.0);
         allowed.1 = allowed.1.wrapping_add(record.allowed.1);
@@ -253,9 +280,13 @@ impl Window {
             .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
         // A range recorded inside a scene layer is in its scene (`reuse_paint`).
         let scenes = range.start.scene_index..range.end.scene_index;
+        // KaminIDE patch: a copy under a scroll node is marked under it.
         match self.replay_source() {
-            Some(source) => self.next_frame.scene.replay_moved(scenes, source.scene(), offset, clip),
-            None => self.next_frame.scene.replay_moved(scenes, &self.rendered_frame.scene, offset, clip),
+            Some(source) => self.next_frame.with_scene_node(scale, |scene| scene.replay_moved(scenes, source.scene(), offset, clip)),
+            None => {
+                let prev = &self.rendered_frame.scene;
+                self.next_frame.with_scene_node(scale, |scene| scene.replay_moved(scenes, prev, offset, clip))
+            }
         }
         // A movable record has no listener or state read to allow.
         RetainedPaint::of(start..self.paint_index(), true, (0, 0))
@@ -466,7 +497,10 @@ pub struct InkScope {
     pub tainted: bool,
 }
 
-/// Paint effects of a scope observed by open ink sinks.
+/// Paint effects of a scope observed by open ink sinks. A cursor style bound
+/// to a hitbox is not one: the frame resolves it by the hitbox hovered at its
+/// end (`Frame::cursor_style`), so it does nothing while the hitbox is not
+/// hovered, and a replay copies it with the hitbox (`Window::reuse_paint`).
 pub(crate) struct InkProbe {
     start: PaintIndex,
     groups: usize,
@@ -494,7 +528,9 @@ impl InkProbe {
         let quiet = self.clean
             && end.mouse_listeners_index - start.mouse_listeners_index == (allowed.0 - self.allowed.0) as usize
             && start.input_handlers_index == end.input_handlers_index
-            && start.cursor_styles_index == end.cursor_styles_index
+            && window.next_frame.cursor_styles[start.cursor_styles_index..end.cursor_styles_index]
+                .iter()
+                .all(|request| request.hitbox_id.is_some())
             && end.accessed_element_states_index - start.accessed_element_states_index
                 == (allowed.1 - self.allowed.1) as usize
             && start.tab_handle_index == end.tab_handle_index

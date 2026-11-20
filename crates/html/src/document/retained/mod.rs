@@ -17,6 +17,8 @@ mod box_repaint;
 #[cfg(test)]
 mod box_repaint_tests;
 #[cfg(test)]
+mod child_removal_tests;
+#[cfg(test)]
 mod column_repaint_tests;
 #[cfg(test)]
 mod column_unseen_tests;

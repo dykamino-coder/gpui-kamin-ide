@@ -24,6 +24,13 @@ use crate::ui::icon::codicon;
 pub const TOAST_MS: u32 = 8000;
 /// Длительность slide-in/out; после slide-out `ToastGone` удаляет карту.
 pub const TOAST_OUT_MS: u64 = 180;
+/// `.stack { max-width: 360px }`: длинное сообщение переносится внутри
+/// карточки, а не растягивает её в одну строку за край слота (NEW-NOTIFY-ONE-LINE).
+pub const TOAST_MAX_W: f32 = 360.0;
+/// Сообщение — до 4 строк, заголовок — до 2, дальше многоточие: стопка
+/// из нескольких длинных тостов остаётся в окне (как у VS Code).
+const MESSAGE_LINES: usize = 4;
+const TITLE_LINES: usize = 2;
 
 pub use super::toast_timer::ToastTimer;
 
@@ -87,12 +94,16 @@ fn toast_card(
                 .mb(px(2.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(rgba(p.text_primary))
+                .line_clamp(TITLE_LINES)
+                .text_ellipsis()
                 .child(title.clone()),
         );
     }
     content = content.child(
         div()
             .text_color(rgba(p.text_secondary))
+            .line_clamp(MESSAGE_LINES)
+            .text_ellipsis()
             .child(t.message.clone()),
     );
     if !t.actions.is_empty() {
@@ -143,6 +154,11 @@ fn toast_card(
         // проваливаться в элементы под ним (кликался титлбар сквозь тост).
         .occlude()
         .relative()
+        .debug_selector({
+            let id = t.id.clone();
+            move || format!("toast-card-{id}")
+        })
+        .max_w(px(TOAST_MAX_W))
         .flex()
         .items_start()
         .gap(px(m::SPACE_3))
@@ -264,11 +280,17 @@ pub fn toasts(
     let mut stack = div()
         .relative()
         .child(crate::probe::registry::probe_area("ov-toasts"))
+        .max_w(px(TOAST_MAX_W))
         .flex()
         .flex_col()
+        // Узкие карты держатся правого края стопки.
+        .items_end()
         .gap(px(m::SPACE_2));
     for t in items {
         stack = stack.child(toast_card(t, timers.get(&t.id), tx, p));
     }
     stack.into_any_element()
 }
+
+#[cfg(test)]
+mod tests;

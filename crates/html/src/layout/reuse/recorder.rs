@@ -211,12 +211,14 @@ impl Record {
         source: Source,
         key: Rc<FlowKey>,
         (start, end): (Counters, Counters),
+        relative_counters: bool,
     ) -> Self {
         Self {
             source,
             key,
             start,
             end,
+            relative_counters,
             snapshot: Cell::new(None),
             ink: Cell::new(None),
             resizable: Cell::new(None),

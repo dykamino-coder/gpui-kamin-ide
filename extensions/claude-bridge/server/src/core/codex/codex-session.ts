@@ -45,6 +45,13 @@ export interface CodexSessionOptions {
 
 const textInput = (text: string): UserInput[] => [{ type: 'text', text, text_elements: [] }]
 
+/** Text a new turn carries in front of the user's message (Bridge session
+ *  context the thread has not seen yet); `delivered` runs once codex took it. */
+export interface TurnContext {
+  text: string
+  delivered(): void
+}
+
 export class CodexAgentSession implements AgentSession, ThreadSink {
   readonly engine = 'codex' as const
   readonly capabilities: AgentCapabilities = { nativeSteer: true, liveModelSwitch: true, normalizedTranscript: true }
@@ -98,6 +105,10 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       : await o.host.rpc.request<ThreadStartResponse>('thread/start', common)
     this.threadId = response.thread.id
     this.currentModel = response.model ?? response.thread.model ?? null
+    // No chosen effort: the thread runs on the one its config resolves (which a
+    // user's codex config may set below the model's default). Every turn then
+    // names it, so the chat, the model line and the engine agree.
+    if (!this.effort && response.reasoningEffort) this.effort = response.reasoningEffort
     this.detach = o.host.attach(this.threadId, this)
     this.events.emit({
       kind: 'session.started',
@@ -156,18 +167,20 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
 
   /** A running turn is steered; otherwise a new turn starts. Calls are
    *  serialized, so quick successive messages become one turn plus steers. */
-  send(text: string, submissionId?: string): Promise<void> {
-    const next = this.sending.then(() => this.deliver(text, submissionId))
+  send(text: string, submissionId?: string, context?: () => TurnContext | null): Promise<void> {
+    const next = this.sending.then(() => this.deliver(text, submissionId, context))
     this.sending = next.catch(() => undefined)
     return next
   }
 
-  private async deliver(text: string, submissionId?: string): Promise<void> {
-    if (this.activeTurnId) return this.steerNow(text, submissionId)
+  private async deliver(text: string, submissionId?: string, context?: () => TurnContext | null): Promise<void> {
+    if (this.activeTurnId) return this.steerNow(text, submissionId, context)
     const threadId = this.requireThread()
+    // Only a new turn carries the context: a steer joins a turn that already has it.
+    const extra = context?.() ?? null
     const response = await this.options.host.rpc.request<TurnStartResponse>('turn/start', {
       threadId,
-      input: textInput(text),
+      input: extra ? [...textInput(extra.text), ...textInput(text)] : textInput(text),
       ...(submissionId ? { clientUserMessageId: submissionId } : {}),
       ...(this.nextModel ? { model: this.nextModel } : {}),
       ...(this.effort ? { effort: this.effort } : {}),
@@ -177,6 +190,7 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       summary: CODEX_REASONING_SUMMARY,
     })
     this.nextModel = undefined
+    extra?.delivered()
     const turn = response.turn
     if (turn.status === 'inProgress' && this.activeTurnId === null && !this.completed.has(turn.id)) {
       this.activeTurnId = turn.id
@@ -187,9 +201,23 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
     return this.send(text, submissionId)
   }
 
-  private async steerNow(text: string, submissionId?: string): Promise<void> {
+  /** Compact the thread's context (`thread/compact/start`) — what codex's own
+   *  `/compact` does — instead of sending the text as a model turn. Runs after
+   *  the current turn ends, in order with queued messages; the compaction then
+   *  runs as its own turn (turn/started … contextCompaction … turn/completed). */
+  compact(): Promise<void> {
+    const next = this.sending.then(async () => {
+      await this.waitForIdle()
+      const threadId = this.requireThread()
+      await this.options.host.rpc.request('thread/compact/start', { threadId })
+    })
+    this.sending = next.catch(() => undefined)
+    return next
+  }
+
+  private async steerNow(text: string, submissionId?: string, context?: () => TurnContext | null): Promise<void> {
     const turnId = this.activeTurnId
-    if (!turnId) return this.deliver(text, submissionId)
+    if (!turnId) return this.deliver(text, submissionId, context)
     const threadId = this.requireThread()
     try {
       await this.options.host.rpc.request<TurnSteerResponse>('turn/steer', {
@@ -200,7 +228,8 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       })
     } catch (error) {
       // The turn ended between our check and codex's: the text starts a new one.
-      if (error instanceof JsonRpcError && this.activeTurnId !== turnId) return this.deliver(text, submissionId)
+      if (error instanceof JsonRpcError && this.activeTurnId !== turnId)
+        return this.deliver(text, submissionId, context)
       throw error
     }
   }
@@ -222,6 +251,11 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
   /** Reasoning effort for the next and later turns (turn/start.effort). */
   setEffort(effort: string | undefined): void {
     this.effort = effort
+  }
+
+  /** The effort the next turn runs with (sent as turn/start.effort). */
+  get reasoningEffort(): string | undefined {
+    return this.effort
   }
 
   /** Model of the thread, or the one requested for the next turn. */

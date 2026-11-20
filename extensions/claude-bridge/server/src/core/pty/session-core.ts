@@ -16,6 +16,7 @@ import { DEFAULT_SESSION_MODEL } from '../config'
 import { eventBus } from '../events/bus'
 import { makeRoomForOneMore } from './session-hibernation'
 import { debugLog, warnLog, infoLog } from '../logging'
+import { forgetDigest } from '../engine/transcript-digest'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import { codexTranscriptPath, createCodexSession, transcriptEngine } from './session-codex'
@@ -78,6 +79,7 @@ import { createCliModTransport, CLI_MOD_PLUGIN } from './cli-mod-transport'
 import { CliHandlerConditions, hasCliHandlerConditions } from '../hooks/cli-handler-conditions'
 import { BASH_HOME_ENV } from '../hooks/hook-environment'
 import { SessionCliControl, sessionCliControl } from './session-cli-control'
+import type { CarriedSubmission } from './cli-submissions'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -260,7 +262,7 @@ async function createAdmittedSession(
     // A swept Claude transcript comes back from the archive; without one the
     // segment continues in a new session that gets the whole conversation.
     if (segment.nativeId && segment.engine === 'claude' && !(await ensureSegmentTranscript(segment)))
-      segment = restartSegmentFresh(manifest)
+      segment = await restartSegmentFresh(manifest)
     settingsDir = segment.settingsDir
     fs.mkdirSync(settingsDir, { recursive: true })
     config.resumeConversationId = segment.nativeId ?? undefined
@@ -304,7 +306,7 @@ async function createAdmittedSession(
     if (manifest && (codex.resumedOnFreshThread || codex.resumeNotFound)) {
       // The new thread has none of the segment's context: it gets the whole
       // conversation with its first turn, and the client keeps the chat.
-      restartSegmentFresh(manifest)
+      await restartSegmentFresh(manifest)
       codex.resumeNotFound = false
       codex.resumedOnFreshThread = false
     }
@@ -1259,6 +1261,9 @@ export interface EngineSwitchResult {
   timings: { prepareMs: number; startMs: number }
   /** History the joining engine gets with its first turn (UTF-8 bytes). */
   contextBytes: number
+  /** The leaving CLI's queue: `moved` goes to the joining engine, `returned`
+   *  back to the user (CliSubmissions.retire). */
+  carried: { moved: CarriedSubmission[]; returned: CarriedSubmission[] }
 }
 
 /** Stop a session the engine switch replaced. Its transcript is copied up to
@@ -1274,6 +1279,33 @@ async function retireSwitchedSession(old: PtySession): Promise<void> {
     else if (old.cliConversationId) void archiveTranscriptForSession(old.settingsDir, old.cliConversationId)
     debugLog('Switched-away engine stopped', { sessionId: old.id, ms: Math.round(performance.now() - t0) })
   }
+}
+
+/** The chat's effort as the joining engine takes it. Both engines read the
+ *  selector's levels (codex maps `max` to `xhigh`); a codex-only level such as
+ *  `minimal` has no Claude `--effort`, so Claude starts on its default then. */
+export function switchedEffort(effort: string | null | undefined, engine: AgentEngineId): string | undefined {
+  if (!effort) return undefined
+  if (engine === 'codex') return effort
+  return CLAUDE_EFFORTS.has(effort) ? effort : undefined
+}
+/** Claude Code's `--effort` scale (live-switch.ts EFFORT_LEVELS). */
+const CLAUDE_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
+
+/** What an engine switch keeps from the chat's launch: the client-supplied
+ *  context of the chat. Not the engine's own choices (model, effort), the
+ *  resume/segment placement the switch plans itself, the terminal size, nor a
+ *  new chat's one-shot history cursor. */
+export function engineSwitchLaunchContext(launch: SessionConfig | undefined): SessionConfig {
+  if (!launch) return {}
+  const keep: SessionConfig = {}
+  if (launch.basePrompt !== undefined) keep.basePrompt = launch.basePrompt
+  if (launch.thinkingDisplay !== undefined) keep.thinkingDisplay = launch.thinkingDisplay
+  if (launch.transcriptMirrorDir !== undefined) keep.transcriptMirrorDir = launch.transcriptMirrorDir
+  if (launch.extraArgs !== undefined) keep.extraArgs = launch.extraArgs
+  if (launch.isSubAgent !== undefined) keep.isSubAgent = launch.isSubAgent
+  if (launch.parentSessionId !== undefined) keep.parentSessionId = launch.parentSessionId
+  return keep
 }
 
 /**
@@ -1303,7 +1335,7 @@ export async function switchSessionEngine(
   old.segmentPump?.flush()
   const folderSuffix = old.cwd ? '-' + sanitizeDirName(old.cwd) : ''
   const sessionsDir = path.join(SESSIONS_BASE, tokenId + folderSuffix)
-  const plan = planSwitch({
+  const plan = await planSwitch({
     manifest: known,
     sessionsDir,
     from: {
@@ -1316,13 +1348,19 @@ export async function switchSessionEngine(
   })
   const t1 = performance.now()
 
+  const effort = switchedEffort(old.effort, target.engine)
   const session = await createSession(ws, userName, tokenId, {
+    // The chat's launch context (the user's standing instructions, thinking
+    // display, transcript mirror, sub-agent placement) belongs to the chat, not
+    // to the engine: the joining engine starts with it, like a wake or restart.
+    ...engineSwitchLaunchContext(old.launchConfig),
     cwd: old.cwd,
     cols: 120,
     rows: 40,
     engine: target.engine,
     ...(target.model ? { model: target.model } : {}),
-    // Effort levels differ per engine: the joining one starts on its own default.
+    // The chat keeps the effort the user sees: the joining engine runs on it.
+    ...(effort ? { effort } : {}),
     ...(plan
       ? { conversation: plan.ref, segmentStart: { settingsDir: plan.segment.settingsDir }, deferTranscript: true }
       : {}),
@@ -1343,7 +1381,9 @@ export async function switchSessionEngine(
     throw err
   }
   // The leaving engine stops talking to the client; the client replays the
-  // unified log.
+  // unified log. Its queue goes with it: what it never got moves on, what it
+  // got unconfirmed goes back to the user (session-ws reports both).
+  const carried = sessionCliControl(old)?.retire() ?? { moved: [], returned: [] }
   old.isRestarting = true
   old.outputDebounce?.dispose()
   old.jsonlWatcher?.stop()
@@ -1375,7 +1415,7 @@ export async function switchSessionEngine(
     contextBytes,
     ...timings,
   })
-  return { session, timings, contextBytes }
+  return { session, timings, contextBytes, carried }
 }
 /**
  * Get a session by ID (for MCP routing).
@@ -1688,7 +1728,10 @@ export async function deleteSessionByConversationId(
   forgetEffortSelection(conversationId)
   fs.rmSync(target.settingsDir, { recursive: true, force: true })
   // Do not follow a project-directory link even when an archive identified ownership.
-  if (isPlainDirectory(path.dirname(target.jsonlPath))) fs.rmSync(target.jsonlPath, { force: true })
+  if (isPlainDirectory(path.dirname(target.jsonlPath))) {
+    fs.rmSync(target.jsonlPath, { force: true })
+    forgetDigest(target.jsonlPath)
+  }
 }
 
 /**

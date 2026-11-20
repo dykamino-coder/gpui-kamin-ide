@@ -41,17 +41,30 @@ impl Store {
     /// Paint the document `f` into a new scene layer drawn here, with the
     /// last one as the source of the blocks replayed inside, and keep it.
     /// Paint the layer cannot hold goes into the frame (`RecordedLayer`).
+    ///
+    /// Returns the record of `f` inside the layer (its ranges index the
+    /// layer's scene), `None` when the content did not land in a layer.
+    /// `fresh`: `f` paints the tree (not a copy of the last layer's commands,
+    /// which keeps the blocks it skipped and its deferred records).
     pub(crate) fn paint_layered(
         &self,
         window: &mut gpui::Window,
+        fresh: bool,
         f: impl FnOnce(&mut gpui::Window),
-    ) {
+    ) -> Option<gpui::RetainedPaint> {
         let source = self.scene_layer();
-        // The frame painting now names its skipped blocks when it finishes.
-        self.layer.unpainted.take();
-        let shown = window.content_mask().bounds.scale(window.scale_factor());
-        self.layer.deferred.start(Some(shown));
-        let (_, layer) = window.record_scene_layer(source.as_ref(), f);
+        if fresh {
+            // The frame painting now names its skipped blocks when it finishes.
+            self.layer.unpainted.take();
+            let shown = window.content_mask().bounds.scale(window.scale_factor());
+            self.layer
+                .deferred
+                .start(Some(shown), self.epoch.get(), window.scale_factor());
+        }
+        let mut inner = None;
+        let (_, layer) = window.record_scene_layer(source.as_ref(), |window| {
+            inner = Some(window.record_retained_paint(f).1);
+        });
         let layer = match layer {
             gpui::RecordedLayer::Layer(layer) => {
                 window.paint_scene_layer(&layer);
@@ -63,24 +76,28 @@ impl Store {
             }
             gpui::RecordedLayer::Painted => None,
         };
+        let inner = inner.filter(|_| layer.is_some());
         self.layer.layer.replace(layer);
+        inner
     }
 
-    /// `paint_layered` as the document's retained paint record.
+    /// `paint_layered` as the document's retained paint record: the record
+    /// in the frame and the one inside the layer.
     pub(crate) fn record_layered(
         &self,
         window: &mut gpui::Window,
+        fresh: bool,
         f: impl FnOnce(&mut gpui::Window),
-    ) -> gpui::RetainedPaint {
-        window
-            .record_retained_paint(|window| self.paint_layered(window, f))
-            .1
+    ) -> (gpui::RetainedPaint, Option<gpui::RetainedPaint>) {
+        let (inner, outer) =
+            window.record_retained_paint(|window| self.paint_layered(window, fresh, f));
+        (outer, inner)
     }
 
     /// Drop the layer: the next frame paints a new one.
     pub(crate) fn drop_layer(&self) {
         self.layer.layer.replace(None);
-        self.layer.deferred.start(None);
+        self.layer.deferred.start(None, self.epoch.get(), 1.);
     }
 
     /// The layer of the last recorded frame, if it painted into one.

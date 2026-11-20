@@ -13,7 +13,6 @@ import {
   queryEvents,
   getEventById,
   deleteEventById,
-  clearOtelData,
   clearOtelDataForUser,
 } from '../../telemetry/store'
 import { parseDeleteFilter, parseListQuery, toRequestLogEntry } from './request-log'
@@ -25,6 +24,7 @@ import { engineClause, nullableEngineClause, parseEngineFilter } from '../../sta
 import { clearRevisionCaches, createRevisionCache } from '../../stats/database/revision-cache'
 import type { CardData } from '../../stats/database/cards-overview'
 import { warnLog } from '../../logging'
+import { forgetDigest } from '../../engine/transcript-digest'
 
 /** Resolve the owning user_name for a sessionId (session_tokens is the
  *  authoritative owner map). Returns undefined if unknown. */
@@ -204,8 +204,8 @@ export function registerStatsRoutes(api: Hono): void {
   api.delete('/api/dashboard/requests', async (c) => {
     const denied = denyApiToken(c)
     if (denied) return denied
+    // One transaction over requests + OTel: all cleared or none.
     await clearAll()
-    await clearOtelData()
     return c.json({ ok: true })
   })
 
@@ -553,6 +553,7 @@ export function registerStatsRoutes(api: Hono): void {
       if (row?.file_path && fs.existsSync(row.file_path)) {
         try {
           fs.unlinkSync(row.file_path)
+          forgetDigest(row.file_path)
           fileRemoved = true
         } catch (error) {
           warnLog('dashboard JSONL removal failed', { error: String(error) })

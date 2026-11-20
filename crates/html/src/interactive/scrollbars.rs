@@ -20,6 +20,22 @@ pub(crate) fn visible(c: &Computed, selected: [bool; 2]) -> [bool; 2] {
     std::array::from_fn(|axis| overflow[axis] == Some(Overflow::Scroll) && selected[axis])
 }
 
+/// Prepaint the follower nodes of the bars' thumbs (`modern::follow`); the
+/// classic theme's arrows change with the offset too, so it stays a
+/// dependent (`Window::paint_scroll_dependent`).
+pub(crate) fn follow(
+    c: &Computed,
+    handle: &ScrollHandle,
+    selected: [bool; 2],
+    range: [f32; 2],
+    insets: [f32; 4],
+    bounds: Bounds<Pixels>,
+    window: &mut Window,
+) {
+    let bars = modern::bars(c, handle, selected, range, insets, bounds);
+    modern::follow(&bars, handle, window);
+}
+
 // The painter consumes the scroll geometry and the GPUI paint context together.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn paint(
@@ -33,14 +49,18 @@ pub(crate) fn paint(
     window: &mut Window,
 ) {
     if uses_modern(c) {
+        // Each thumb paints under its follower node (`follow`).
         let bars = modern::bars(c, handle, selected, range, insets, bounds);
-        modern::paint(c, &bars, alpha, window);
+        modern::paint(c, &bars, handle, alpha, window);
         return;
     }
     let bars = visible(c, selected);
     let width = c.reset_box_layout.scroll.thickness();
     if width == 0.0 || c.inh.ui.hidden == Some(true) {
         return;
+    }
+    if bars.iter().any(|shown| *shown) {
+        window.paint_scroll_dependent(handle);
     }
     let edges = c.borders();
     let edge = |v| match v {

@@ -9,13 +9,14 @@ use std::path::PathBuf;
 pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window]\n\
+    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|scroll|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window]\n\
     engine_bench --list-gpus\n\
     engine_bench --build-info   (features and profile of this exe, as in the JSON's `build`)\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
     Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
+Scroll dispatches one wheel step of 120 px down over the viewport centre before each frame.\n\
     Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
-    then checks each variant pixel-for-pixel against a fresh document.\n\
+    then checks every captured edit frame against a fresh document; missing captures cannot pass.\n\
     insert copies and remove deletes the first leaf element after the middle; --edit-markup FILE is\n\
     the second markup itself, for any other mutation.\n\
     Surface: offscreen (default) draws into a GPU texture of a message-only window, never seen\n\
@@ -45,6 +46,8 @@ pub(super) enum Mode {
     Warm,
     Both,
     Relayout,
+    /// One wheel step on the root scroller before each frame (`frames::WHEEL_STEP`).
+    Scroll,
     /// Локальная правка разметки между кадрами (`edit::Edit`, `edits`).
     Edit,
 }
@@ -57,90 +60,14 @@ impl Mode {
             Self::Warm => &[("warm", false)],
             Self::Both => &[("cold", true), ("warm", false)],
             Self::Relayout => &[("relayout", false)],
+            Self::Scroll => &[("scroll", false)],
             Self::Edit => &[],
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::Args;
-
-    #[test]
-    fn rejects_missing_and_empty_gpu_before_opening_the_input() {
-        for options in [
-            vec!["missing.html", "--gpu"],
-            vec!["missing.html", "--gpu", " "],
-        ] {
-            let error = Args::parse(options.into_iter().map(str::to_owned))
-                .err()
-                .unwrap();
-            assert!(error.to_string().contains("value") || error.to_string().contains("empty"));
-        }
-    }
-
-    #[test]
-    fn memory_audit_requires_five_warm_frames_and_a_bounded_hold() {
-        for options in [
-            vec!["--runs", "4", "--memory-settle-ms", "2000"],
-            vec!["--mode", "cold", "--memory-settle-ms", "2000"],
-            vec!["--mode", "relayout", "--memory-settle-ms", "2000"],
-            vec!["--memory-settle-ms", "0"],
-            vec!["--memory-settle-ms", "60001"],
-        ] {
-            let error = Args::parse(
-                std::iter::once("missing.html")
-                    .chain(options)
-                    .map(str::to_owned),
-            )
-            .err()
-            .unwrap();
-            assert!(error.to_string().contains("memory audit"));
-        }
-    }
-
-    /// mimalloc отдаёт страницы через ~1 с: окно короче 2 с меряет время кадров.
-    #[test]
-    fn memory_audit_window_is_at_least_the_two_second_steady_window() {
-        let page = std::env::temp_dir().join("engine-bench-settle-window-test.html");
-        std::fs::write(&page, "<p>x</p>").unwrap();
-        let parse = |ms: &str| {
-            Args::parse(
-                [page.to_str().unwrap(), "--memory-settle-ms", ms]
-                    .into_iter()
-                    .map(str::to_owned),
-            )
-        };
-        for short in ["1", "500", "1999"] {
-            let error = parse(short).err().unwrap().to_string();
-            assert!(error.contains("memory audit hold must be 2000"), "{error}");
-        }
-        let args = parse("2000").unwrap().unwrap();
-        assert_eq!(args.memory_settle_ms, super::MEMORY_STEADY_WINDOW_MS);
-        std::fs::remove_file(&page).unwrap();
-    }
-
-    #[test]
-    fn surface_defaults_to_offscreen_and_rejects_unknown_values() {
-        let page = std::env::temp_dir().join("engine-bench-surface-test.html");
-        std::fs::write(&page, "<p>x</p>").unwrap();
-        let parse = |extra: &[&str]| {
-            Args::parse(
-                std::iter::once(page.to_str().unwrap())
-                    .chain(extra.iter().copied())
-                    .map(str::to_owned),
-            )
-        };
-        assert_eq!(
-            parse(&[]).unwrap().unwrap().surface,
-            super::Surface::Offscreen
-        );
-        let window = parse(&["--surface", "window"]).unwrap().unwrap();
-        assert_eq!(window.surface, super::Surface::Window);
-        assert!(parse(&["--surface", "hidden"]).is_err());
-        std::fs::remove_file(&page).unwrap();
-    }
-}
+mod tests;
 
 pub(super) struct Args {
     pub(super) path: PathBuf,
@@ -149,6 +76,7 @@ pub(super) struct Args {
     pub(super) runs: usize,
     pub(super) mode: Mode,
     pub(super) edit: super::edit::Edit,
+    pub(super) edit_markup: Option<PathBuf>,
     pub(super) json: bool,
     pub(super) trace_frames: bool,
     pub(super) memory_settle_ms: u64,
@@ -176,6 +104,7 @@ impl Args {
             runs: 30,
             mode: Mode::Both,
             edit: super::edit::Edit::Text,
+            edit_markup: None,
             json: false,
             trace_frames: false,
             memory_settle_ms: 0,
@@ -216,12 +145,21 @@ impl Args {
                         "warm" => Mode::Warm,
                         "both" => Mode::Both,
                         "relayout" => Mode::Relayout,
+                        "scroll" => Mode::Scroll,
                         "edit" => Mode::Edit,
-                        _ => return Err("mode must be cold, warm, both, relayout or edit".into()),
+                        _ => {
+                            return Err(
+                                "mode must be cold, warm, both, relayout, scroll or edit".into()
+                            );
+                        }
                     };
                 }
                 "--edit" => out.edit = super::edit::Edit::parse(&value)?,
-                "--edit-markup" => super::edit::set_markup_file(value.into())?,
+                "--edit-markup" => {
+                    if out.edit_markup.replace(value.into()).is_some() {
+                        return Err("--edit-markup is given twice".into());
+                    }
+                }
                 "--gpu" if !value.trim().is_empty() => out.gpu = value,
                 "--gpu" => return Err("GPU selector must not be empty".into()),
                 "--snapshot" => out.snapshot = Some(value.into()),
@@ -247,7 +185,11 @@ impl Args {
             }
         }
         if out.memory_settle_ms > 0
-            && (out.runs < 5 || matches!(out.mode, Mode::Cold | Mode::Relayout | Mode::Edit))
+            && (out.runs < 5
+                || matches!(
+                    out.mode,
+                    Mode::Cold | Mode::Relayout | Mode::Scroll | Mode::Edit
+                ))
         {
             return Err("memory audit requires at least five unchanged warm frames".into());
         }

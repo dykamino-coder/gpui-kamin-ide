@@ -33,6 +33,8 @@ pub struct Sticky {
     pub frame: StickyCell,
     /// The shift this box applies to its subtree (`ShiftLink`).
     pub(crate) link: crate::interactive::scroll_extent::StickyShift,
+    /// Painted by GPUI's deferred pass, outside the scroller's clip.
+    pub(crate) deferred: bool,
 }
 
 impl Sticky {
@@ -49,12 +51,33 @@ impl Sticky {
             left: None,
             right: None,
             frame,
+            deferred: false,
         }
     }
 
+    fn edges(&self) -> Edges {
+        Edges {
+            top: self.top,
+            bottom: self.bottom,
+            left: self.left,
+            right: self.right,
+        }
+    }
+}
+
+/// Sticky thresholds of a box: what its shift depends on besides the
+/// geometry, kept by the follower node a scrolled replay moves it with.
+#[derive(Clone, Copy)]
+struct Edges {
+    top: Option<f32>,
+    bottom: Option<f32>,
+    left: Option<f32>,
+    right: Option<f32>,
+}
+
+impl Edges {
     /// Насколько сдвинуть элемент, чтобы он остался у края видимой части.
-    pub(crate) fn shift(&self, bounds: Bounds<Pixels>) -> gpui::Point<Pixels> {
-        let frame = self.frame.get();
+    fn shift(self, frame: StickyFrame, bounds: Bounds<Pixels>) -> gpui::Point<Pixels> {
         let Some(view) = frame.viewport else {
             return gpui::point(px(0.0), px(0.0));
         };
@@ -104,23 +127,40 @@ impl Wrap for Sticky {
     }
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let shift = self.shift(bounds);
+        let (edges, frame) = (self.edges(), self.frame.get());
+        let shift = edges.shift(frame, bounds);
+        // The shift follows the scroller's offset (css-position-3
+        // §stickypos-scroll): a follower node moves the subtree when only
+        // that offset changes, the box and its scrollport as recorded now.
+        let moved = move |change: gpui::Point<Pixels>| {
+            let (mut box_frame, mut at) = (frame, bounds);
+            at.origin += change;
+            if let Some(container) = &mut box_frame.container {
+                container.origin += change;
+            }
+            edges.shift(box_frame, at) - shift
+        };
+        let id = gpui::ScrollNodeId::of_token(&self.frame);
         let child = &mut self.child;
         self.link.applied(shift, || {
-            window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
+            window.with_scroll_follower_prepaint(id, None, std::rc::Rc::new(moved), |window| {
+                window.with_exact_element_offset(shift, |window| child.prepaint(window, cx))
+            });
         });
     }
 
     fn paint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        // Отложенный проход рисует вне обрезки ленты — возвращаем её сами,
-        // иначе прилипший элемент вылезал бы за края прокручиваемой области.
+        let id = gpui::ScrollNodeId::of_token(&self.frame);
         let child = &mut self.child;
-        match self.frame.get().viewport {
+        // A box deferred out of its scroller paints outside the scroller's
+        // clip: put the clip back (`sticky_wrap`, positive `z-index`).
+        let view = self.deferred.then(|| self.frame.get().viewport).flatten();
+        window.with_scroll_node_paint(id, |window| match view {
             Some(view) => window
                 .with_content_mask(Some(gpui::ContentMask { bounds: view }), |window| {
                     child.paint(window, cx)
                 }),
             None => child.paint(window, cx),
-        }
+        });
     }
 }

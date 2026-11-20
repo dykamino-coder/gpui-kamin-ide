@@ -157,11 +157,18 @@ pub(super) async fn sample_with(
                 resources_time = Some(t.elapsed());
                 let t = kamin_html::work::Clock::now();
                 kamin_html::work::phase!(_document, DocumentOther);
-                let doc = Document::builder(&html, BROWSER_CSS)
+                let mut builder = Document::builder(&html, BROWSER_CSS);
+                builder
                     .path(&args.path)
                     .fonts(fonts)
-                    .viewport((args.viewport.0 as f32, args.viewport.1 as f32))
-                    .build()?;
+                    .viewport((args.viewport.0 as f32, args.viewport.1 as f32));
+                // Scroll measures the standalone browser view, whose root scroller
+                // takes the wheel (`host::DocumentView`).
+                let doc = if args.mode == Mode::Scroll {
+                    builder.build_root_scroller()?
+                } else {
+                    builder.build()?
+                };
                 build_time = Some(t.elapsed());
                 if let Some(limit) = doc.traversal_limit() {
                     return Err(format!("degraded document: {limit}").into());
@@ -318,7 +325,10 @@ pub(super) async fn run(
     let mut work_samples = Vec::with_capacity(3);
     let mut frames = Frames::new(args)?;
     let mut snapshot_pending = args.snapshot.as_deref();
-    if matches!(args.mode, Mode::Warm | Mode::Relayout | Mode::Edit) {
+    if matches!(
+        args.mode,
+        Mode::Warm | Mode::Relayout | Mode::Scroll | Mode::Edit
+    ) {
         sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
     }
     if args.mode == Mode::Edit {
@@ -330,7 +340,12 @@ pub(super) async fn run(
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
         let mut work = Vec::with_capacity(args.runs);
-        let step = super::memory::phase_step(cx, capture, cold).await?;
+        let (step, busy_windows) = if args.mode == Mode::Scroll {
+            let busy = super::memory::converge(cx, capture, 5).await?;
+            (Step::Warm, Some(busy))
+        } else {
+            (super::memory::phase_step(cx, capture, cold).await?, None)
+        };
         for index in 1..=args.runs {
             frames.prepare(cx, window, index)?;
             let (sample, frame, counts) =
@@ -340,6 +355,9 @@ pub(super) async fn run(
                 pixels::save(&frame.pixels, path)?;
             }
             frames.observe(cx, window, frame, name, index)?;
+            frames
+                .settle((&mut *cx, window, fonts, args, capture, luid), step)
+                .await?;
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
@@ -347,6 +365,9 @@ pub(super) async fn run(
         let mut mode = report::measured_mode(&samples, &diagnostics);
         #[cfg(feature = "heap-report")]
         super::holders::attach(cx, window, name, &mut mode)?;
+        if let Some(busy) = busy_windows {
+            mode["start_busy_steady_windows"] = json!(busy);
+        }
         modes.insert(name.into(), mode);
         work_samples.push((name, work));
     }

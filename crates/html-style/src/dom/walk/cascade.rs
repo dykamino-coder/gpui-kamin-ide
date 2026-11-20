@@ -20,6 +20,17 @@ use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
 use std::rc::Rc;
 
+/// The style of an element, its custom properties (the parent's map when it
+/// adds nothing), its used color scheme, its shadow root and its important
+/// declarations.
+type Cascaded = (
+    Box<Computed>,
+    Rc<VarMap>,
+    crate::style::values::value::Scheme,
+    Option<Rc<crate::dom::shadow::Shadow>>,
+    Option<DeclBlock>,
+);
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn cascade_element(
     me: &mut Ancestor,
@@ -29,18 +40,12 @@ pub(super) fn cascade_element(
     tree: &TreeIndex,
     scope: &crate::dom::shadow::Scope,
     candidates: &[usize],
-    inherited_vars: &VarMap,
+    inherited_vars: &Rc<VarMap>,
     path: &[Ancestor],
     spot: Spot,
     sibs: Sibs,
     vcx: crate::values::ValueCx<'_>,
-) -> (
-    Box<Computed>,
-    VarMap,
-    crate::style::values::value::Scheme,
-    Option<Rc<crate::dom::shadow::Shadow>>,
-    Option<DeclBlock>,
-) {
+) -> Cascaded {
     // css-overflow-5 §scroll-target-group: links with a fragment URL inside a
     // `scroll-target-group: auto` element are its scroll markers. At the
     // initial scroll position the first target in tree order is current
@@ -56,7 +61,6 @@ pub(super) fn cascade_element(
         me.target_current = true;
     }
     let rules = &scope.rules;
-    let vars = inherited_vars;
     let inline_decls: DeclBlock = attrs
         .iter()
         .find(|(k, _)| k == "style")
@@ -101,7 +105,6 @@ pub(super) fn cascade_element(
     // и `.dark{--c:blue}` складывались в него подряд, и последнее
     // объявление красило ВЕСЬ документ — переключение темы классом
     // не работало в принципе.
-    let registered = tree.doc.property_rules();
     // Одна карта каскада на пользовательские свойства и `color-scheme`:
     // подсказки и лист форм их не задают.
     let hints = presentational_hints::rules(&tag, &attrs, path, vcx);
@@ -118,24 +121,16 @@ pub(super) fn cascade_element(
         .chain(std::iter::once(&inline_decls))
         .any(|block| block.iter().any(|d| d.name.starts_with("--")));
     let pre = (custom || form).then(|| CascadeMap::collect(&matched, &inline_decls));
-    let no_custom = CascadeMap::default();
-    let cascaded = crate::style::css::custom_properties::cascade_map(
-        pre.as_ref().unwrap_or(&no_custom),
-        vars,
-        &registered.rules,
-        |s, v| syntax_accepts(s, v, vcx),
+    let own_vars = super::own_vars::own_vars(
+        &matched,
+        &inline_decls,
+        custom,
+        pre.as_ref(),
+        inherited_vars,
+        tree,
+        vcx,
     );
-    let revision = tree.doc.revision_budget();
-    let work = crate::style::css::variable_values::Work::new(&revision);
-    let own_vars = crate::style::css::variable_values::compute(
-        &cascaded,
-        vars,
-        &registered.rules,
-        |s, v| syntax_accepts(s, v, vcx),
-        &work,
-    );
-    work.finish(&tree.doc);
-    let vars = &own_vars;
+    let vars: &VarMap = &own_vars;
     // Типизированный `attr()` читает атрибуты ЭТОГО элемента
     // (css-values-5 §7.7), `sibling-index()` — его место среди братьев.
     let element = CascadeCx {

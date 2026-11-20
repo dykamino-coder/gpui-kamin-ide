@@ -9,7 +9,8 @@ use std::rc::Rc;
 pub(crate) struct Retained {
     cb: Vec<(u8, Option<u16>, Destination)>,
     pending: Vec<super::Pending>,
-    icb: Vec<Destination>,
+    /// ICB destinations with the root scroll handle of each layer (`anchors`).
+    icb: Vec<(Destination, Option<gpui::ScrollHandle>)>,
     late: Vec<Destination>,
     flex_content: crate::layout::probe::Sink<(u64, gpui::Bounds<gpui::Pixels>)>,
 }
@@ -24,7 +25,13 @@ impl Positioning {
                 .iter()
                 .map(|l| (l.takes, l.strict, l.taken.retain()))
                 .collect(),
-            icb: self.icb.borrow().iter().map(|l| l.retain()).collect(),
+            icb: self
+                .icb
+                .borrow()
+                .iter()
+                .zip(self.anchors.borrow().iter())
+                .map(|(l, anchor)| (l.retain(), anchor.clone()))
+                .collect(),
             late: self.late.borrow().iter().map(|l| l.retain()).collect(),
             flex_content: self.flex_content.clone(),
         }
@@ -98,12 +105,17 @@ impl Retained {
                 })
             })
             .collect();
-        let icb = self.icb.iter().filter_map(&mut local).collect();
+        let (icb, anchors) = self
+            .icb
+            .iter()
+            .filter_map(|(dest, anchor)| Some((local(dest)?, anchor.clone())))
+            .unzip();
         let late = self.late.iter().filter_map(&mut local).collect();
         let positioning = Rc::new(Positioning {
             cb: RefCell::new(cb),
             pending: RefCell::new(self.pending.clone()),
             icb: RefCell::new(icb),
+            anchors: RefCell::new(anchors),
             late: RefCell::new(late),
             flex_content: self.flex_content.fork(),
         });
@@ -113,6 +125,11 @@ impl Retained {
     /// Закрытый стек не открывается заново глобально: у поддерева свой стек,
     /// а назначения старых предков разделяются с их живыми хостами.
     pub(crate) fn resume(&self) -> Rc<Positioning> {
+        let (icb, anchors) = self
+            .icb
+            .iter()
+            .filter_map(|(dest, anchor)| Some((dest.upgrade()?, anchor.clone())))
+            .unzip();
         Rc::new(Positioning {
             pending: RefCell::new(self.pending.clone()),
             cb: RefCell::new(
@@ -127,7 +144,8 @@ impl Retained {
                     })
                     .collect(),
             ),
-            icb: RefCell::new(self.icb.iter().filter_map(Destination::upgrade).collect()),
+            icb: RefCell::new(icb),
+            anchors: RefCell::new(anchors),
             late: RefCell::new(self.late.iter().filter_map(Destination::upgrade).collect()),
             flex_content: self.flex_content.clone(),
         })

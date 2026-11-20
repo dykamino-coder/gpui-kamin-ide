@@ -68,7 +68,6 @@ pub fn find_in_files(
         // 10vh реального вьюпорта БЕЗ клампа 600 (ревью ц.1)
         .pt(px(0.10 * viewport_h))
         .bg(scrim)
-        .child(crate::overlay::input_area())
         // Escape ловим в ФАЗЕ CAPTURE: фокус держит `Input` оверлея, он
         // обрабатывает клавишу первым, и до bubble-обработчика скрима
         // Escape не доходил — оверлей не закрывался (баг найден юзером)
@@ -97,9 +96,8 @@ pub fn find_in_files(
                 _ => {}
             },
         )
-        // Клик мимо коробки: ловим на СВОЁМ абсолютном слое, а не на скриме.
-        // `input_area()` — канвас `absolute size_full` НАД скримом, и
-        // mouse-down скрима до него не доходил (баг найден юзером)
+        // Клик мимо коробки: ловим на СВОЁМ абсолютном слое, а не на скриме
+        // (mouse-down скрима до него не доходил, баг найден юзером).
         .child(
             div()
                 .absolute()
@@ -140,7 +138,6 @@ pub fn find_in_files(
                 .relative()
                 .child(crate::probe::registry::probe_area("ov-fif"))
                 .bg(rgba(p.bg_mantle))
-                .child(crate::overlay::hit_area())
                 .border_1()
                 .border_color(tint(rgba(p.bg_surface), 0.6))
                 .shadow(crate::ui::shadows::dropdown())

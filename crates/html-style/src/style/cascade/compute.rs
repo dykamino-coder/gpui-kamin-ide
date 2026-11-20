@@ -156,9 +156,8 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
     // Те же наследуемые значения, что у родителя, — его же группа: дети без
     // своих наследуемых значений делят её, и сравнение по указателю решает
     // повторное использование (Blink: общие группы `ComputedStyle`).
-    if c.inh == parent.inh {
-        c.inh = parent.inh.clone();
-    }
+    // A child with a font size of its own shares the other subgroups.
+    c.inh.share_unchanged(&parent.inh);
     c
 }
 
