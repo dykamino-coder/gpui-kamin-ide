@@ -17,6 +17,8 @@ use crate::paint::decorations::shadows::{inset_shadows, outer_shadows};
 use gpui::AnyElement;
 
 mod backdrop;
+mod background_free;
+pub(crate) use background_free::background_free;
 mod border_shape;
 mod gradient_stripes;
 mod outline;

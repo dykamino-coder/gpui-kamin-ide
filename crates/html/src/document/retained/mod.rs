@@ -27,6 +27,8 @@ mod content_replay_tests;
 #[cfg(test)]
 mod content_resize_tests;
 mod counters;
+#[cfg(test)]
+mod decorated_fill_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;
@@ -59,7 +61,11 @@ mod prepared;
 mod rebuild_key_tests;
 #[cfg(test)]
 mod recolour_layout_tests;
+#[cfg(test)]
+mod record_release_tests;
 pub use prepared::UpdatePhase;
+#[cfg(test)]
+mod attr_scope_tests;
 #[cfg(test)]
 mod band_rerecord_tests;
 #[cfg(test)]
@@ -108,6 +114,10 @@ pub(super) struct Slot {
     prepared: std::cell::RefCell<Option<prepared::Prepared>>,
     /// Сборки внутри `Window::draw` — наблюдение для тестов и стенда.
     inside_draw: Cell<u64>,
+    /// Why the frame record was built instead of replayed (`record::FrameMiss`).
+    misses: Cell<[u64; record::MISSES]>,
+    /// Why the last painted record was not published for replay.
+    unsettled: Cell<Option<record::FrameMiss>>,
 }
 
 /// Опции хоста, от которых зависит кадр. Остальные поля `RenderOpts` хосту
@@ -187,7 +197,7 @@ impl Document {
     pub fn render_viewport(&self, opts: &crate::RenderOpts) -> AnyElement {
         let key = FrameKey::of(opts);
         let candidate =
-            self.retained.inputs(key.as_ref()).is_some() && self.state.values.resources_unchanged();
+            self.retained.inputs(key.as_ref()).is_ok() && self.state.values.resources_unchanged();
         let prepared = self.retained.take_prepared(&key);
         let builder = self.frame_builder(opts, &key);
         element::Retained::new(self.retained.clone(), key, builder, candidate, prepared)
@@ -200,3 +210,6 @@ impl Document {
         self.retained.recorded.borrow().strong_count() != 0
     }
 }
+
+#[cfg(test)]
+mod moved_glyph_tests;

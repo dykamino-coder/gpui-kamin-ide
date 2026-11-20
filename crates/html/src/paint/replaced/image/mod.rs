@@ -70,7 +70,7 @@ fn view_boxed(
     style.reset_context.contain_size = Some(false);
     style.reset_context.contain_inline_size = Some(false);
     let (sx, sy) = (bw / vw, bh / vh);
-    let ready = crate::paint::background::image_adapter::upload(&ready)?;
+    let ready = crate::paint::background::image_adapter::upload_image(&ready)?;
     let picture = gpui::img(ready)
         .preserve_natural_pixels(true)
         .pixelated(e.style.cascaded().inh.ui.image_pixelated == Some(true))

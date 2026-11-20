@@ -42,6 +42,12 @@ impl ScrollNodeId {
     pub fn of_token<T>(token: &Rc<T>) -> Self {
         Self(Rc::as_ptr(token) as *const () as usize)
     }
+
+    /// A follower node of a scroll handle (its scrollbar thumb on `axis`):
+    /// the handle's state is aligned, so the low bits name the follower.
+    pub fn follower(handle: &ScrollHandle, axis: usize) -> Self {
+        Self(handle.node_identity() | (1 + (axis & 1)))
+    }
 }
 
 /// One scroll container prepainted in a frame (or copied into it with a
@@ -103,6 +109,10 @@ impl ScrollNodeRecord {
 pub(crate) enum NodeSource {
     Handle(ScrollHandle),
     Anchor(Rc<dyn Fn() -> Point<Pixels>>),
+    /// A follower (`with_scroll_follower_prepaint`): its offset is `at` of
+    /// the change of another node's offset since `base`, the offset that
+    /// node had when the follower prepainted.
+    Follow { on: Box<NodeSource>, base: Point<Pixels>, at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>> },
 }
 
 impl NodeSource {
@@ -119,6 +129,7 @@ impl NodeSource {
                 clamped
             }
             NodeSource::Anchor(offset) => offset(),
+            NodeSource::Follow { on, base, at } => at(on.offset() - *base),
         }
     }
 }
@@ -220,6 +231,47 @@ impl Window {
         result
     }
 
+    /// Open a follower: a node whose children move by `at(change)` as
+    /// another node's offset changes by `change` since now — of `on`, a
+    /// scroller's handle (its scrollbar thumb), or else of the innermost open
+    /// node (a sticky box under its scroller). Unlike an anchor its mask
+    /// moves with the enclosing node. The geometry `at` reads is the
+    /// host's, recorded now: a scrolled replay moves the children by its
+    /// change, as cc's compositor places sticky boxes and scrollbar thumbs
+    /// from the scroll offset alone. Without a node to follow, `f` just runs.
+    pub fn with_scroll_follower_prepaint<R>(
+        &mut self,
+        id: ScrollNodeId,
+        on: Option<&ScrollHandle>,
+        at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let on = match on {
+            Some(handle) => NodeSource::Handle(handle.clone()),
+            None => match self.next_frame.scroll_node_stack.last() {
+                Some(&top) => self.next_frame.scroll_nodes[top as usize].source.clone(),
+                None => return f(self),
+            },
+        };
+        let (chain, base) = (self.content_mask().bounds, on.offset());
+        let now = at(Point::default());
+        self.open_scroll_node(id, chain, now, NodeSource::Follow { on: Box::new(on), base, at });
+        let result = f(self);
+        self.end_scroll_node_prepaint(Some(0));
+        result
+    }
+
+    /// The visible part of what the innermost open prepaint node shows:
+    /// the content mask, which under a node is its interest rect, clipped
+    /// by the node's real clip chain (a sticky box's scrollport).
+    pub fn scroll_visible_mask(&self) -> Bounds<Pixels> {
+        let mask = self.content_mask().bounds;
+        match self.next_frame.scroll_node_stack.last() {
+            Some(&top) => mask.intersect(&self.next_frame.scroll_nodes[top as usize].clip),
+            None => mask,
+        }
+    }
+
     fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, source: NodeSource) -> u32 {
         let anchored = matches!(source, NodeSource::Anchor(_));
         let index = self.next_frame.scroll_nodes.len() as u32;
@@ -292,9 +344,9 @@ impl Window {
     /// and out) the scroll node `node` that painted when the context was
     /// captured: paint deferred out of a node's children (positioned and
     /// inline jobs) runs under it again, its primitives marked under it, and
-    /// what it painted becomes one more range of the node. A node whose
-    /// paint is still open holds that range already; one in another scene is
-    /// torn (`plan_scrolled_replay` then builds).
+    /// what it painted becomes one more range of the node. A node whose paint is still open holds
+    /// that range already; one in another scene is torn (`plan_scrolled_replay` then builds), but a
+    /// group's scene: it is copied with its label, and its commands checked (`group_replay`).
     pub(crate) fn reenter_scroll_node(
         &mut self,
         node: Option<(u32, usize)>,
@@ -319,7 +371,7 @@ impl Window {
         }
         if record.painted_in == Some(space) && began == space {
             record.more.push(start..ops);
-        } else {
+        } else if !(frame.scene.in_group && began == space) {
             record.torn = true;
         }
     }

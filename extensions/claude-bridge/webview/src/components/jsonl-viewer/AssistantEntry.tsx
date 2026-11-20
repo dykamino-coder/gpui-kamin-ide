@@ -12,6 +12,7 @@ import { JsonlTextBlock } from './JsonlTextBlock'
 import { renderContentBlocks } from './ContentBlocks'
 import { contentWithThinkingDuration } from './thinking-duration'
 import { MessageActions } from './MessageActions'
+import { streamingView } from '../../utils/bridge-context'
 
 interface AssistantEntryProps {
   entry: JsonlEntryData
@@ -46,7 +47,10 @@ function classifyAssistantText(text: string): { origin: 'anthropic' | 'cli' | 'b
   return { origin: null, label: '' }
 }
 
-export function AssistantEntry({ entry, toolResults }: AssistantEntryProps): JSX.Element | null {
+export function AssistantEntry({ entry: row, toolResults }: AssistantEntryProps): JSX.Element | null {
+  // A live stream can hold the start of Bridge's hidden history block (an
+  // answer that quotes its prompt) long before the closing tag arrives.
+  const entry = row.__streaming === undefined ? row : streamingView(row)
   const usage = entry.usage || entry.message?.usage
   const content = entry.message?.content
 

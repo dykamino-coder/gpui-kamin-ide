@@ -57,7 +57,9 @@ pub(super) struct Record {
     painted: bool,
 }
 
+mod miss;
 mod replay;
+pub(super) use miss::{FrameMiss, MISSES};
 pub(super) use replay::Replay;
 
 impl Record {
@@ -100,20 +102,44 @@ impl Record {
         self.painted = true;
     }
 
-    pub(super) fn publish(&self, slot: &Slot, settled: bool) {
+    /// Publish the record for replay, or keep why it is not (`refusal`).
+    pub(super) fn publish(&self, slot: &Slot, refusal: Option<FrameMiss>) {
+        let read = self
+            .inputs
+            .as_ref()
+            .is_some_and(|inputs| !inputs.layout.scroll_unchanged());
+        let refusal = refusal.or(read.then_some(FrameMiss::ScrollRead));
         let inputs = self
             .inputs
             .as_ref()
-            .filter(|inputs| settled && inputs.layout.scroll_unchanged())
+            .filter(|_| refusal.is_none())
             .map(Rc::downgrade);
+        slot.unsettled.set(refusal);
         slot.recorded.replace(inputs.unwrap_or_default());
     }
 }
 
 /// Both the rendering step and the element inspect the same recording.
 impl Slot {
-    pub(super) fn inputs(&self, key: Option<&FrameKey>) -> Option<Rc<Inputs>> {
-        let inputs = self.recorded.borrow().upgrade()?;
-        (Some(&inputs.key) == key).then_some(inputs)
+    pub(super) fn inputs(&self, key: Option<&FrameKey>) -> Result<Rc<Inputs>, FrameMiss> {
+        let unpublished = || self.unsettled.get().unwrap_or(FrameMiss::Unpublished);
+        let inputs = self.recorded.borrow().upgrade().ok_or_else(unpublished)?;
+        (Some(&inputs.key) == key)
+            .then_some(inputs)
+            .ok_or(FrameMiss::Key)
+    }
+
+    /// Count a build of the frame record for `miss`.
+    pub(super) fn missed(&self, miss: FrameMiss) {
+        miss.count(&self.misses);
+    }
+
+    /// The build reasons counted since the last call (name, count), non-zero only.
+    pub(super) fn take_misses(&self) -> Vec<(String, u64)> {
+        let counts = self.misses.take();
+        (0..MISSES)
+            .filter(|&at| counts[at] > 0)
+            .map(|at| (FrameMiss::name(at), counts[at]))
+            .collect()
     }
 }

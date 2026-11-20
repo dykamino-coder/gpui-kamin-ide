@@ -7,6 +7,7 @@ mod inline_node;
 pub(super) use inline_node::inline_node;
 
 mod element;
+mod leaf;
 mod trim;
 pub(super) use element::paint_element;
 
@@ -54,8 +55,8 @@ pub(super) async fn blocks_flow(
         requests.extend(own_requests);
         trim_own = crate::text::line_trim::take(&requests, owner);
         requests.retain(|q| q.owner != owner);
-        child_opts = opts.inner(|cx| cx.inline.trim_requests = std::rc::Rc::new(requests));
-        &*child_opts
+        child_opts = opts.inner_value(|cx| cx.inline.trim_requests = std::rc::Rc::new(requests));
+        &child_opts
     };
     // Поток `body` с повтором устоявшихся блоков (`layout::reuse`).
     let reuse = opts
@@ -86,7 +87,7 @@ pub(super) async fn blocks_flow(
                 letter_scope.paragraph(
                     taken,
                     inherited,
-                    &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
+                    &opts.inner_value(|cx| cx.inline.trim_para = Some((owner, t))),
                 ),
                 opts,
             ));
@@ -110,7 +111,7 @@ pub(super) async fn blocks_flow(
                 letter_scope.paragraph(
                     taken,
                     inherited,
-                    &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
+                    &opts.inner_value(|cx| cx.inline.trim_para = Some((owner, t))),
                 ),
                 opts,
             ));
@@ -213,7 +214,7 @@ pub(super) async fn blocks_flow(
             letter_scope.paragraph(
                 &nodes[start..],
                 inherited,
-                &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
+                &opts.inner_value(|cx| cx.inline.trim_para = Some((owner, t))),
             ),
             opts,
         ));

@@ -92,8 +92,8 @@ impl Store {
         epoch
     }
 
-    /// Whole-frame replay drops records that depend on a kept layout tree.
-    /// Inline block ranges can separately survive a verified layer copy.
+    /// Кадр документа повторён целиком: диапазоны записей повтора блоков
+    /// указывают в кадр до него и больше не годятся.
     /// The layout pass of the replayed frame did not request the document's
     /// nodes either, so no kept layout subtree is left (`far`).
     pub(crate) fn forget_replays(&self) {

@@ -84,7 +84,7 @@ impl Window {
         crate::scene::release_unheld(&mut bindings, &mut boxes, unheld);
         if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
             let scene = self.adopt_scene(scene);
-            self.next_frame.scene.replay_record(&scene);
+            self.splice_scene(&scene);
             return (result, RecordedLayer::Spliced);
         }
         (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))))

@@ -621,6 +621,57 @@ describe('codex chat over the Bridge session WebSocket', () => {
     again.close()
   }, 40_000)
 
+  it("gives a ChatGPT chat the user's synced CLAUDE.md and the project's AGENTS.md, also after resume", async () => {
+    // Owner 20.11: a resumed GPT chat did not know CLAUDE.md / AGENTS.md. A
+    // Claude session reads them from its session CLAUDE.md; codex never did.
+    const hash = (s: string) => require('node:crypto').createHash('sha256').update(s).digest('hex').slice(0, 16)
+    const sync = path.join(state.home, 'data', 'bridge-sync')
+    const userDir = path.join(sync, 'users', hash('tok-a'))
+    const projDir = path.join(sync, 'projects', hash('tok-a'), hash('/work/project'))
+    fs.mkdirSync(userDir, { recursive: true })
+    fs.mkdirSync(projDir, { recursive: true })
+    fs.writeFileSync(path.join(userDir, 'CLAUDE.md'), 'User rule UCM-4410: sign every answer.\n')
+    fs.writeFileSync(path.join(projDir, 'AGENTS.md'), 'Project rule PAG-4411: run tests first.\n')
+    const answered = new Set<string>()
+    const recall = async (c: Client, word: string, id: string) => {
+      await say(c, `/fake-recall ${word}`, id)
+      const hit = await c.entry((e) => e.type === 'assistant' && text(e).startsWith('recall:') && !answered.has(e.uuid))
+      answered.add(hit.uuid)
+      return text(hit)
+    }
+    try {
+      const client = await Client.open(port)
+      await createChat(client, { engine: 'codex' })
+      expect(await recall(client, 'UCM-4410', 's1')).toContain('User rule UCM-4410')
+      expect(await recall(client, 'PAG-4411', 's2')).toContain('Project rule PAG-4411')
+      const conv = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+      client.send({ type: 'session:end' })
+      client.close()
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(newRuntime())
+
+      // Edited while the chat was closed: the resumed thread learns the new text once.
+      fs.writeFileSync(path.join(projDir, 'AGENTS.md'), 'Project rule PAG-5512: lint before commit.\n')
+      const again = await Client.open(port)
+      again.send({
+        type: 'session:resume',
+        token: 'tok-a',
+        conversationId: conv,
+        protocolVersion: 1,
+        cwd: '/work/project',
+      })
+      expect(await again.next((f) => f.type === 'session:created')).toMatchObject({ engine: 'codex' })
+      expect((await recall(again, 'PAG-5512', 's3')).split('Project rule PAG-5512')).toHaveLength(2)
+      expect(await recall(again, 'UCM-4410', 's4')).toContain('User rule UCM-4410')
+      expect((await recall(again, 'PAG-5512', 's5')).split('Project rule PAG-5512')).toHaveLength(2)
+      again.send({ type: 'session:end' })
+      again.close()
+    } finally {
+      fs.rmSync(path.join(sync, 'users'), { recursive: true, force: true })
+      fs.rmSync(path.join(sync, 'projects'), { recursive: true, force: true })
+    }
+  }, 40_000)
+
   it('continues a chat that never ran a turn on a new thread after a restart, with its choice', async () => {
     // codex 0.160.1 writes a rollout only with the first turn (acceptance
     // 2026-11-12: such a chat came back as "Conversation not found").
@@ -1114,7 +1165,7 @@ describe('engine switch inside one chat', () => {
     // ChatGPT → Claude: the Claude CLI is told its effort (it names its id itself).
     await switchTo(client, 'claude', 'claude-sonnet-5-5')
     expect(await told('reasoning effort', 'm3')).toContain(
-      'This chat was started with reasoning effort `high`; a later `/effort` command in this conversation sets the current level.',
+      'This chat was started with reasoning effort `high`. A later `/effort` command, or a Bridge note in a user message that names a new reasoning effort, sets the current level.',
     )
     // Claude → ChatGPT: the joining engine keeps the chat's effort.
     // Its instructions come first; the history block after them quotes the old line.
@@ -1330,6 +1381,51 @@ describe('engine switch inside one chat', () => {
     client.close()
   }, 30_000)
 
+  it('REAL121: a new ChatGPT chat whose engine reports no effort runs on the catalog default it shows', async () => {
+    const rpcFile = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
+    const lines = () => (fs.existsSync(rpcFile) ? fs.readFileSync(rpcFile, 'utf8').split('\n').filter(Boolean) : [])
+    const working = runtimeMod.codexRuntime()
+    // Like the real app-server: thread/start answers `reasoningEffort: null`, and
+    // a turn without effort runs on a level of its own (here `low`).
+    runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_UNREPORTED_EFFORT: 'low' }))
+    try {
+      // One chat per connection, as the other tests do.
+      const turn = async (id: string) => {
+        const client = await Client.open(port)
+        const rpc = lines().length
+        // Its own folder: a chat in the same folder reopens that folder's last thread.
+        const created = await createChat(client, { engine: 'codex', cwd: `/work/real121-${id}` })
+        const mark = client.frames.length
+        await say(client, `hi ${id}`, id)
+        const answer = text(await answerAfter(client, mark, `echo: hi ${id}`))
+        const calls = lines()
+          .slice(rpc)
+          .map((l) => JSON.parse(l) as { method: string; effort: string | null; instructions: string | null })
+        client.send({ type: 'session:end' })
+        client.close()
+        return { created, answer, calls }
+      }
+      // The catalog names `medium` for gpt-fake: shown, named and sent.
+      const listed = await turn('r1')
+      expect(listed.created).toMatchObject({ effort: 'medium' })
+      expect(listed.calls.find((c) => c.method === 'thread/start')!.instructions).toContain(
+        'with reasoning effort `medium`',
+      )
+      expect(listed.calls.filter((c) => c.method === 'turn/start').map((c) => c.effort)).toEqual(['medium'])
+      expect(listed.answer).toContain('effort=medium]')
+      // A catalog without a default: no level is shown and none is sent.
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(
+        newRuntime({ FAKE_CODEX_UNREPORTED_EFFORT: 'low', FAKE_CODEX_NO_DEFAULT_EFFORT: '1' }),
+      )
+      const unlisted = await turn('r2')
+      expect(unlisted.created).toMatchObject({ effort: null })
+      expect(unlisted.calls.filter((c) => c.method === 'turn/start').map((c) => c.effort)).toEqual([null])
+    } finally {
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(working)
+    }
+  }, 60_000)
   it('keeps the chat on the leaving engine when the joining one fails to start (B1)', async () => {
     const client = await Client.open(port)
     await createChat(client, { engine: 'claude' })

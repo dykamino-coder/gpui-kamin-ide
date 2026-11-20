@@ -78,12 +78,12 @@ mod frame_capture;
 mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
-mod retained;
+mod retained; mod group_replay;
 mod scroll_masks;
 mod scroll_nodes;
-mod scroll_replay;
+mod scroll_replay; mod scroll_refusal;
 pub use scroll_nodes::{ScrollNodeId, ScrollSegment};
-pub use scroll_replay::ScrollReplay;
+pub use scroll_replay::ScrollReplay; pub use scroll_refusal::ScrollRefusal;
 pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
 pub(crate) use retained::InkSinks;
 pub use retained::{InkScope, InkSink, InkSinkList, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
@@ -3964,6 +3964,7 @@ impl Window {
                 });
         }
 
+        retained_layout::release_frame_layouts();
         self.layout_engine.as_mut().unwrap().clear();
         self.text_system().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
@@ -5643,9 +5644,7 @@ impl Window {
         path.content_mask = content_mask;
         let color: Background = color.into();
         path.color = color.opacity(opacity);
-        self.next_frame
-            .scene
-            .insert_primitive(path.scale(scale_factor));
+        self.insert_scene_primitive(path.scale(scale_factor));
     }
 
     /// Paint an underline into the scene for the next frame at the current z-index.
@@ -5991,10 +5990,7 @@ impl Window {
             .get_or_insert_with(params.into(), &mut || {
                 Ok(Some((
                     data.size(frame_index),
-                    Cow::Borrowed(
-                        data.as_bytes(frame_index)
-                            .expect("It's the caller's job to pass a valid frame index"),
-                    ),
+                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
                 )))
             })?
             .expect("Callback above only returns Some");
@@ -6094,10 +6090,7 @@ impl Window {
             .get_or_insert_with(params.into(), &mut || {
                 Ok(Some((
                     data.size(frame_index),
-                    Cow::Borrowed(
-                        data.as_bytes(frame_index)
-                            .expect("It's the caller's job to pass a valid frame index"),
-                    ),
+                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
                 )))
             })?
             .expect("Callback above only returns Some");
@@ -6178,10 +6171,7 @@ impl Window {
     /// current transformation is applied to their device bounds here, the
     /// way quads apply it in the vertex shader (Filter Effects 2
     /// §backdrop-filter: the filtered region is the transformed border box).
-    fn backdrop_device_bounds(
-        &self,
-        bounds: Bounds<ScaledPixels>,
-    ) -> Bounds<ScaledPixels> {
+    fn backdrop_device_bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
         let m = self.current_transformation();
         let [[a, b], [c, d]] = m.rotation_scale;
         if m == TransformationMatrix::unit() || b != 0.0 || c != 0.0 || a <= 0.0 || d <= 0.0 {
@@ -6198,7 +6188,6 @@ impl Window {
             ),
         }
     }
-
 
     /// KaminIDE patch: `backdrop-filter` с цветовыми функциями — матрица 4×5
     /// над подложкой (и размытие, если оно тоже задано). Прозрачность
@@ -6341,7 +6330,8 @@ impl Window {
         // (фон, рамка, дети — filter-effects-2 §3 шаг 5) композитится поверх.
         self.next_frame.scene.adopt_backdrops(hoisted);
         let unbounded = self.content_mask_stack.len() == 1;
-        self.next_frame.scene.insert_group_surface(PaintSurface {
+        // KaminIDE patch: a label under a scroll node is marked there (`scroll_marks`).
+        self.next_frame.with_scene_node(scale_factor, |scene| scene.insert_group_surface(PaintSurface {
             order: 0,
             bounds: scaled,
             content_mask,
@@ -6351,7 +6341,7 @@ impl Window {
             opacity,
             color_matrix: None,
             fragment: 0,
-        }, unbounded);
+        }, unbounded));
         result
     }
 

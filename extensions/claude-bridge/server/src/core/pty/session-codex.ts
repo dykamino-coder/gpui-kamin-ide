@@ -44,6 +44,7 @@ import { attachOutputDebounce, sendToClient } from './session-io'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import type { SessionUsage, SessionUsageWindow } from './session-statusline'
 import { buildSystemPrompt } from './system-prompt'
+import { syncedInstructions } from './synced-instructions'
 import type { PtySession, SessionConfig } from './types'
 
 export interface CodexSessionDeps {
@@ -309,10 +310,15 @@ export function codexEffort(effort: string | null | undefined): string | undefin
 function developerInstructions(config: SessionConfig): string {
   // Same session context the Claude CLI receives, with Bridge tool names as
   // codex sees them (server `bridge` instead of Claude's `user-tools`).
+  // The synced CLAUDE.md / AGENTS.md come last, where a Claude session's CLAUDE.md
+  // has them; a resumed thread that was not given them gets them with its next turn.
   const text = [
     buildSystemPrompt(config.cwd, config.basePrompt, config.transcriptMirrorDir, config.host),
     bridgeClaudeMd(config.host),
-  ].join('\n\n')
+    syncedInstructions(config.bearerHash, config.cwd),
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   return text.replaceAll('mcp__user-tools__', 'mcp__bridge__')
 }
 
@@ -468,8 +474,19 @@ export async function createCodexSession(
   const transcript = codexTranscriptPath(settingsDir, threadId, projectsDir(deps))
   const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound && !freshThread
   session.model = agent.model
-  // A chat that chose no effort shows the one its turns run with.
-  if (!session.effort && agent.reasoningEffort) session.effort = agent.reasoningEffort
+  // A chat that chose no effort runs on ONE level that the selector shows, the
+  // model line names and every turn/start sends: the one the engine reports
+  // for the thread, else the model's default from the catalog (a real
+  // app-server can answer thread/start with `reasoningEffort: null`, and a
+  // turn without effort ran on a level nobody showed, REAL-121). With neither,
+  // no level is sent and the chat shows none.
+  if (!session.effort) {
+    const resolved = agent.reasoningEffort ?? effectiveEffort(agent.model ?? lineModel, null, deps.runtime)
+    if (resolved) {
+      agent.setEffort(resolved)
+      session.effort = resolved
+    }
+  }
   session.cliConversationId = resumed ? threadId : null
   // A new thread's initial context holds the instructions and the start line;
   // a resumed one keeps what its record says it was given.

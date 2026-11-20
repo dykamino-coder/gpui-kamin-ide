@@ -12,14 +12,15 @@
 //! (`paint_controller.cc:228`, `:267`); here the layer's other commands stay
 //! where they are. A box whose paint is not its own commands only (hover
 //! layers, decorations painted as child elements, the root's canvas) refuses,
-//! and the document builds its frame as before.
+//! and the document builds its frame as before; a box with decorations whose
+//! change leaves them as painted (`fill::kept_decorations`) takes a new fill
+//! colour as a value all the same.
 
 use super::paint_damage::{PaintDamage, PaintValue, classify, unpainted_svg};
 use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
 use crate::layout::reuse::Wait;
 use crate::paint::box_tree::styled::{Own, Refusal};
-use crate::style::computed::BoxStyle;
 use gpui::{Hsla, LayerHandle, LayerPainter};
 
 /// An owner's fill before and after.
@@ -73,7 +74,7 @@ pub(super) fn write_paint_values(
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
         }
-        if unpainted_svg(old, path) {
+        if unpainted_svg(old, path) || super::paint_damage::unboxed(a, b) {
             continue;
         }
         if unseen(path) {
@@ -93,8 +94,16 @@ pub(super) fn write_paint_values(
                 None
             }
         };
+        // A box whose decorations stay as painted takes its own fill
+        // (`kept_decorations`); its decorations are elements of the frame.
+        let decorated = recorded == Some(LayerPainter::DecoratedBox);
         let banded = match (recorded, own(b)) {
             (Some(LayerPainter::Box), Own::Plain) => false,
+            (Some(LayerPainter::DecoratedBox), Own::Not(Refusal::Decoration))
+                if kept_decorations(a, b) =>
+            {
+                false
+            }
             (
                 Some(LayerPainter::Box | LayerPainter::DecoratedBox),
                 Own::Not(Refusal::Decoration),
@@ -147,6 +156,12 @@ pub(super) fn write_paint_values(
                 if writes.last().is_none_or(|w: &Write| w.0 != owner) {
                     writes.push((owner, Some(from), Some(to)));
                 }
+            }
+            // The layer records no decorated run again: a fill that appears
+            // or goes builds the frame unless it waits off the screen.
+            _ if decorated => {
+                wait(Wait::Decoration, Refusal::Decoration)?;
+                continue;
             }
             // Any other change of a band: its pieces are painted again.
             _ if banded => match super::layer_band::band_change(old, path, a, b) {
@@ -214,20 +229,9 @@ pub(in crate::document) fn parent_at<'a>(nodes: &'a [Node], path: &[usize]) -> O
         .and_then(|n| element_at(nodes, &path[..n]))
 }
 
-/// The plain colour the box's background paints (`Some(None)`: no fill);
-/// `None` for a gradient, an image stack, a flattened stack or a colour
-/// clipped apart from the box (`background-clip`), which no single fill of
-/// the box's own painter (`Style::paint_box`) carries.
-pub(super) fn painted_background(e: &Element) -> Option<Option<Hsla>> {
-    let style = BoxStyle::shared(e.style.used());
-    let values = style.paint_background();
-    let plain = values.gradient.is_none()
-        && values.gradient_image.is_none()
-        && values.layers.is_none()
-        && values.flat.is_none()
-        && values.color_clip.is_none();
-    plain.then(|| values.color.map(|c| c.to_hsla()))
-}
+mod fill;
+use fill::kept_decorations;
+pub(super) use fill::painted_background;
 
 /// Count a refusal of a box whose own paint the layer does not hold.
 fn refuse_not_own(reason: Refusal) {

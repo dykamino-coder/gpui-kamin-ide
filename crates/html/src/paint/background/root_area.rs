@@ -8,6 +8,9 @@ use gpui::{Bounds, Pixels, px};
 /// недоступен: автоматическую высоту нельзя восстанавливать по высоте холста.
 #[derive(Clone, Default)]
 pub struct RootArea {
+    /// The layer paints under a follower of the root scroller
+    /// (`scroll_target::canvas_scrolling`): its viewport clip is the node's.
+    pub(crate) scrolls: bool,
     /// Geometry of the real root box, recorded before the canvas is painted.
     pub(crate) measured: Option<super::root_box::Measurement>,
     /// Поле плюс рамка корня с этой стороны.

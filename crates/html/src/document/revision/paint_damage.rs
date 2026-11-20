@@ -77,12 +77,11 @@ pub(crate) fn classify(a: &Element, b: &Element, in_svg: impl FnOnce() -> bool) 
     let Some(bits) = own_paint_only(old, new) else {
         return PaintDamage::Rebuild;
     };
-    // `fill` and `stroke` paint SVG shapes only: in an `svg` subtree they
-    // raster the image again (the frame is built); on any other box they
-    // paint nothing, and no rule passes them from it into an `svg`
+    // `fill`, `stroke` and `stroke-width` paint SVG shapes only: in an `svg`
+    // subtree they raster the image again (the frame is built); on any other
+    // box they paint nothing, and no rule passes them from it into an `svg`
     // (`resources::svg_document::serialize` reads each shape's own value).
-    let svg = (&old.reset_svg_math, &new.reset_svg_math);
-    if (svg.0.svg_fill != svg.1.svg_fill || svg.0.svg_stroke != svg.1.svg_stroke) && in_svg() {
+    if !old.reset_svg_math.same_paint(&new.reset_svg_math) && in_svg() {
         return PaintDamage::Rebuild;
     }
     if bits.layer_writable() {
@@ -103,6 +102,26 @@ pub(super) fn unpainted_svg(nodes: &[crate::dom::Node], path: &[usize]) -> bool 
         crate::paint_path::add(&crate::paint_path::SVG_UNPAINTED, 1);
     }
     unpainted
+}
+
+/// A restyle that is not `Rebuild` of the box `a` (new `b`) paints nothing
+/// when the element is `display: contents` before and after: it generates no
+/// box (css-display-3 §2.5), so its own background and border colours reach
+/// no pixel, as Blink gives such an element no `LayoutObject` to invalidate.
+/// Inherited values are the same (`own_paint_only`); a descendant that takes
+/// a reset value with `inherit` (css-cascade-5 §7.3.1) would paint it, so
+/// such a subtree is left to the layer.
+pub(super) fn unboxed(a: &Element, b: &Element) -> bool {
+    use crate::style::computed::Display;
+    let contents = |e: &Element| {
+        matches!(
+            e.style.cascaded().reset_box_layout.display,
+            Some(Display::Contents)
+        )
+    };
+    contents(a)
+        && contents(b)
+        && super::patch::elements(&b.children, |d, _| !d.style.inherits_reset())
 }
 
 /// The element at `path` in `nodes` is SVG content: inside an `svg` element

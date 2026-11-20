@@ -86,3 +86,32 @@ fn paint_snapshot_reactivates_the_owner_and_can_reenter_the_root_arena(
         },
     );
 }
+
+#[gpui::test]
+fn a_layout_its_own_measure_holds_ends_with_the_frame(cx: &mut gpui::TestAppContext) {
+    // A measure function in the nodes of a layout keeps that layout (a
+    // prepared float child and the plans that hold it): a cycle of `Rc`s
+    // that only the frame boundary ends (`gpui::RetainedLayout`).
+    let token = Rc::new(());
+    let held = token.clone();
+    cx.add_empty_window().draw(
+        point(px(0.), px(0.)),
+        size(px(100.), px(100.)),
+        move |window, _| {
+            let mut arena = RetainedLayout::default();
+            let cycle = arena.clone();
+            window.with_retained_layout(&mut arena, |window| {
+                window.request_measured_layout(gpui::Style::default(), move |_, _, _, _| {
+                    let _ = (&cycle, &held);
+                    size(px(1.), px(1.))
+                });
+            });
+            div()
+        },
+    );
+    assert_eq!(
+        Rc::strong_count(&token),
+        1,
+        "the frame kept the layout's nodes"
+    );
+}

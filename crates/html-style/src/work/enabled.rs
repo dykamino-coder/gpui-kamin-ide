@@ -1,5 +1,4 @@
 //! РџРѕС‚РѕРєРѕРІС‹Р№ СЃР±РѕСЂС‰РёРє С†РµР»С‹С… СЃС‡С‘С‚С‡РёРєРѕРІ: РѕРґРЅР° СЃРµСЃСЃРёСЏ РєР°РґСЂР°, РёСЃРєР»СЋС‡Р°СЋС‰РёРµ РґСЂСѓРі РґСЂСѓРіР° С„Р°Р·С‹.
-
 use std::{
     marker::PhantomData,
     rc::Rc,
@@ -48,6 +47,7 @@ vocabulary!(Counter {
     SvgRenderAllocatedBytes => "svg_render_allocated_bytes",
     SvgRasterCacheHits => "svg_raster_cache_hits",
     SvgRasterCacheMisses => "svg_raster_cache_misses",
+    ImageDecodes => "image_decodes",
     StyleSharingHits => "style_sharing_hits",
     ElementSharingHits => "element_sharing_hits",
     MaterializedSharingHits => "materialized_sharing_hits",
@@ -76,6 +76,7 @@ vocabulary!(Counter {
     SpannerMeasureReuses => "spanner_measure_reuses",
     SpannerRowReuses => "spanner_row_reuses",
     MulticolMeasureReuses => "multicol_measure_reuses",
+    SpannerMeasureAdoptions => "spanner_measure_adoptions",
     BandProbeCalls => "band_probe_calls",
     BandProbeBuildNs => "band_probe_build_ns",
     BandProbeLayoutNs => "band_probe_layout_ns",
@@ -244,7 +245,6 @@ pub fn increment(counter: Counter, amount: u64) {
         s.counts[s.phase.load(Relaxed)][counter as usize].fetch_add(amount, Relaxed);
     });
 }
-
 #[cfg(test)]
 #[path = "enabled_tests.rs"]
 mod tests;

@@ -27,7 +27,7 @@
 // FAKE_CODEX_THREAD_START_FAIL=<error> (thread/start answers with that error),
 // FAKE_CODEX_CONFIG_EFFORT=<level> (the effort its config sets, like
 // model_reasoning_effort; unset: the model's default `medium`). The model and
-// effort fields of every thread/turn request go to $CODEX_HOME/fake-state/rpc.jsonl,
+// FAKE_CODEX_UNREPORTED_EFFORT=<level> (like a real app-server: thread/start and\n// thread/resume answer reasoningEffort: null, and a turn without effort runs on\n// this hidden level). The model and\n// effort fields of every thread/turn request go to $CODEX_HOME/fake-state/rpc.jsonl,
 // so tests check what the protocol carried.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -51,6 +51,8 @@ fs.mkdirSync(threadsDir, { recursive: true })
 const accountFile = path.join(stateDir, 'account.json')
 
 const DEFAULT_EFFORT = 'medium'
+/** What thread/start and thread/resume report as the thread's effort. */
+const reportedEffort = (t) => (process.env.FAKE_CODEX_UNREPORTED_EFFORT ? null : (t.effort ?? DEFAULT_EFFORT))
 const MODELS = [
   { slug: 'gpt-fake', display_name: 'GPT Fake', description: 'Fake default model', is_default: true },
   { slug: 'gpt-fake-mini', display_name: 'GPT Fake Mini', description: 'Fake small model', is_default: false },
@@ -181,7 +183,8 @@ const handlers = {
         { reasoningEffort: 'medium', description: 'medium' },
         { reasoningEffort: 'high', description: 'high' },
       ],
-      defaultReasoningEffort: 'medium',
+      // FAKE_CODEX_NO_DEFAULT_EFFORT=1: a catalog that names no default level.
+      defaultReasoningEffort: process.env.FAKE_CODEX_NO_DEFAULT_EFFORT ? null : 'medium',
       inputModalities: ['text'],
       supportsPersonality: false,
       multiAgentVersion: null,
@@ -203,7 +206,7 @@ const handlers = {
       instructions: p?.developerInstructions ?? '',
       turns: 0,
       // Like codex: a thread runs on its config's effort until a turn sets one.
-      effort: process.env.FAKE_CODEX_CONFIG_EFFORT || DEFAULT_EFFORT,
+      effort: process.env.FAKE_CODEX_UNREPORTED_EFFORT || process.env.FAKE_CODEX_CONFIG_EFFORT || DEFAULT_EFFORT,
     }
     await initializeMcp(t.mcp)
     threads.set(t.id, t)
@@ -211,7 +214,11 @@ const handlers = {
     // that never ran one cannot be resumed by a later app-server.
     if (!process.env.FAKE_CODEX_ROLLOUT_ON_TURN) saveThread(t)
     queueMicrotask(() => notify('thread/started', { thread: { id: t.id } }))
-    return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model, reasoningEffort: t.effort }
+    return {
+      thread: { id: t.id, model: t.model, cwd: t.cwd, path: null },
+      model: t.model,
+      reasoningEffort: reportedEffort(t),
+    }
   },
   'thread/resume': async (p) => {
     const loaded = threads.get(p?.threadId)
@@ -231,7 +238,7 @@ const handlers = {
     return {
       thread: { id: t.id, model: t.model, cwd: t.cwd, path: null },
       model: t.model,
-      reasoningEffort: t.effort ?? DEFAULT_EFFORT,
+      reasoningEffort: reportedEffort(t),
     }
   },
   'thread/unsubscribe': (p) => {

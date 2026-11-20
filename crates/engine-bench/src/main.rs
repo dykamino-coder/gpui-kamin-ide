@@ -39,6 +39,7 @@ mod report;
 mod resources;
 #[cfg(windows)]
 mod run;
+mod scroll_fresh;
 #[cfg(windows)]
 mod startup;
 mod step;
