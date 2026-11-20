@@ -38,16 +38,7 @@ pub(in crate::document::retained) enum FrameMiss {
     Scroll(ScrollRefusal),
 }
 
-const SCROLL: [ScrollRefusal; 8] = [
-    ScrollRefusal::Environment,
-    ScrollRefusal::DeferredDraws,
-    ScrollRefusal::Node,
-    ScrollRefusal::NodeRange,
-    ScrollRefusal::Interest,
-    ScrollRefusal::Dependent,
-    ScrollRefusal::Groups,
-    ScrollRefusal::Commands,
-];
+const SCROLL: [ScrollRefusal; ScrollRefusal::ALL.len()] = ScrollRefusal::ALL;
 
 /// Reasons before the scrolled replay refusals, in counter order.
 const PLAIN: [(FrameMiss, &str); 14] = [

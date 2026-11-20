@@ -17,6 +17,42 @@ pub enum ScrollRefusal {
     Dependent,
     /// Composition groups that cannot be moved with their nodes.
     Groups,
-    /// Commands a moved copy cannot place (`Scene::scrollable`).
-    Commands,
+    // Commands a moved copy cannot place (`Scene::scroll_check`):
+    /// A bottom layer in the record's range.
+    BottomLayer,
+    /// A depth context or plane (sorted, not painted in order).
+    DepthSort,
+    /// A layer that ends without its start, or stays open.
+    UnbalancedLayer,
+    /// A primitive or layer of another node inside a node's layer.
+    ForeignMark,
+    /// A primitive in a node's range without a scroll mark.
+    Unmarked,
+    /// A layer in a node's range without a scroll mark.
+    UnmarkedLayer,
+    /// A retained scene layer in a node's range.
+    RetainedLayer,
+    /// A reservoir inside a layer, or one that draws past its node's range.
+    LayerReservoir,
+}
+
+impl ScrollRefusal {
+    /// Every refusal, in counter order.
+    pub const ALL: [ScrollRefusal; 15] = [
+        Self::Environment,
+        Self::DeferredDraws,
+        Self::Node,
+        Self::NodeRange,
+        Self::Interest,
+        Self::Dependent,
+        Self::Groups,
+        Self::BottomLayer,
+        Self::DepthSort,
+        Self::UnbalancedLayer,
+        Self::ForeignMark,
+        Self::Unmarked,
+        Self::UnmarkedLayer,
+        Self::RetainedLayer,
+        Self::LayerReservoir,
+    ];
 }

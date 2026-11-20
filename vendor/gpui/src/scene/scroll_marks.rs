@@ -12,6 +12,7 @@
 //! order raise still to apply, so a step costs a rectangle test per dormant
 //! command, not a copy of it.
 
+mod check;
 use super::*;
 use crate::ScrollNodeId;
 
@@ -202,37 +203,6 @@ impl Scene {
     /// runs as `replay` does at the root).
     pub(crate) fn at_root(&self) -> bool {
         self.layer_stack.is_empty() && self.depth.contexts.is_empty() && self.depth.plane_stack.is_empty()
-    }
-
-    /// Whether `range` of this finished scene can be replayed scrolled: its
-    /// commands keep their orders under one shift (`shiftable`), and inside
-    /// each node's scene range (`nodes`) every command is a marked primitive,
-    /// a marked layer of one node holding marked primitives of it, or a
-    /// reservoir with what it drew (copies that dropped marks, bottom layers
-    /// or depth sorting need a build).
-    pub(crate) fn scrollable(&self, range: &Range<usize>, nodes: impl Iterator<Item = Range<usize>>) -> bool {
-        Self::shiftable(&self.paint_operations[range.clone()]) && nodes.into_iter().all(|node| self.node_scrollable(&node))
-    }
-
-    fn node_scrollable(&self, node: &Range<usize>) -> bool {
-        let mut marks = self.scroll.within(node).iter().peekable();
-        // The node of each layer open in the range.
-        let mut layers: Vec<ScrollNodeId> = Vec::new();
-        let mut at = node.start;
-        while at < node.end {
-            let mark = marks.next_if(|mark| mark.op as usize == at);
-            let foreign = mark.is_some_and(|mark| layers.last().is_some_and(|&layer| layer != mark.node));
-            match (&self.paint_operations[at], mark) {
-                _ if foreign => return false,
-                (PaintOperation::Reservoir(reservoir), None) if layers.is_empty() => at += reservoir.drawn as usize,
-                (PaintOperation::Primitive(_) | PaintOperation::Dormant(_), Some(_)) => {}
-                (PaintOperation::StartLayer(..), Some(mark)) => layers.push(mark.node),
-                (PaintOperation::EndLayer, None) if layers.pop().is_some() => {}
-                _ => return false,
-            }
-            at += 1;
-        }
-        at == node.end && layers.is_empty()
     }
 
     /// `replay` of `range` of the rendered `prev` with the scroll nodes moved:

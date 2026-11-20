@@ -145,7 +145,7 @@ impl Window {
             }
         }
         let nodes = records.iter().flat_map(|node| node.ranges());
-        source.scrollable(&scenes, nodes).then_some(plan).ok_or(ScrollRefusal::Commands)
+        source.scroll_check(&scenes, nodes).map(|()| plan)
     }
 
     /// `replay_retained_prepaint` of a planned scrolled replay: hitboxes
