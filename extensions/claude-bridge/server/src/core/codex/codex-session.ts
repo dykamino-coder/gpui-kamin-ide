@@ -105,6 +105,10 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
       : await o.host.rpc.request<ThreadStartResponse>('thread/start', common)
     this.threadId = response.thread.id
     this.currentModel = response.model ?? response.thread.model ?? null
+    // No chosen effort: the thread runs on the one its config resolves (which a
+    // user's codex config may set below the model's default). Every turn then
+    // names it, so the chat, the model line and the engine agree.
+    if (!this.effort && response.reasoningEffort) this.effort = response.reasoningEffort
     this.detach = o.host.attach(this.threadId, this)
     this.events.emit({
       kind: 'session.started',
@@ -247,6 +251,11 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
   /** Reasoning effort for the next and later turns (turn/start.effort). */
   setEffort(effort: string | undefined): void {
     this.effort = effort
+  }
+
+  /** The effort the next turn runs with (sent as turn/start.effort). */
+  get reasoningEffort(): string | undefined {
+    return this.effort
   }
 
   /** Model of the thread, or the one requested for the next turn. */

@@ -143,6 +143,13 @@ impl Scene {
             subpixel_sprites: self.subpixel_sprites.clone(),
             polychrome_sprites: self.polychrome_sprites.clone(),
             surfaces: self.surfaces.clone(),
+            // The copy keeps the scroll marks and the space ranges recorded in
+            // the layer count in (`scroll_marks::SceneSpace`).
+            scroll: super::super::scroll_marks::ScrollBook {
+                marks: self.scroll.marks.clone(),
+                space: self.scroll.space,
+                ..Default::default()
+            },
             ..Scene::default()
         }
     }

@@ -64,3 +64,42 @@ impl std::ops::DerefMut for InheritedGroup {
         std::rc::Rc::make_mut(&mut self.0)
     }
 }
+
+/// A group a write detached but left equal to its origin shares the origin's
+/// again: the copy lives only until this check. Blink compares in every
+/// `ComputedStyle` setter; here one check per style covers every write through
+/// `&mut`, including a declaration of the initial value (`box-sizing: initial`).
+macro_rules! share_unchanged {
+    ($self:ident, $origin:ident: $($group:ident),+) => {
+        $(if !$self.$group.ptr_eq(&$origin.$group) && *$self.$group == *$origin.$group {
+            $self.$group = $origin.$group.clone();
+        })+
+    };
+}
+
+impl Computed {
+    /// Each group equal to the one of `origin` shares `origin`'s; the style does
+    /// not change.
+    pub fn share_unchanged(&mut self, origin: &Computed) {
+        share_unchanged!(self, origin: reset_text_box, reset_cascade, reset_box_layout,
+            reset_flex, reset_border, reset_grid, reset_context, reset_generated,
+            reset_svg_math, reset_positioned, reset_effects, reset_background, reset_mask,
+            reset_shapes, reset_fragmentation, reset_transforms);
+        self.inh.share_unchanged(&origin.inh);
+    }
+}
+
+impl InheritedGroup {
+    /// The whole group of `origin` when equal; otherwise each equal subgroup is
+    /// `origin`'s (a child that sets only its font keeps its parent's text groups).
+    pub fn share_unchanged(&mut self, origin: &InheritedGroup) {
+        if std::rc::Rc::ptr_eq(&self.0, &origin.0) {
+            return;
+        }
+        if *self == *origin {
+            *self = origin.clone();
+        } else if let Some(own) = std::rc::Rc::get_mut(&mut self.0) {
+            share_unchanged!(own, origin: ui, font, text_flow, table_list, text_ink, writing);
+        }
+    }
+}
