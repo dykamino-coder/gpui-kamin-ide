@@ -1,13 +1,13 @@
 //! Карточка внешнего тоста — порт `toast-card.ts` (`buildToastCard`).
 //!
-//! Ряд «точка + заголовок + бейдж +N + ×», сообщение (3 строки), ряд кнопок
+//! Ряд «точка + заголовок (до 3 строк) + бейдж +N + ×», сообщение (3 строки), ряд кнопок
 //! справа и полоса обратного отсчёта внизу: 2px акцентом, `shrink 8000ms
 //! linear`, `#card:hover #bar { animation-play-state: paused }` — ховер
 //! останавливает И полосу, И таймер закрытия.
 
 use crate::ui::toast_metrics::{
     BAR_H, BODY_PAD, CARD_ALPHA, CARD_ALPHA_HOVER, CARD_GAP, CARD_PAD_X, CARD_PAD_Y, CARD_RADIUS,
-    DOT, action_btn,
+    DOT, MESSAGE_LINES, TITLE_LINE_H, TITLE_LINES, action_btn, fit_window,
 };
 use std::time::{Duration, Instant};
 
@@ -114,7 +114,10 @@ impl Render for ToastView {
             .child(
                 div()
                     .id("toast-card")
-                    .size_full()
+                    .w_full()
+                    // Высота — по содержимому, не меньше прежней карточки;
+                    // окно подгоняется под неё по замеру ниже.
+                    .min_h(px(crate::toast::HEIGHT - 2.0 * BODY_PAD))
                     .relative()
                     .overflow_hidden()
                     .flex()
@@ -132,22 +135,27 @@ impl Render for ToastView {
                     .child(
                         div()
                             .flex()
-                            .items_center()
+                            .items_start()
                             .gap(px(m::SPACE_2))
                             .child(
                                 div()
                                     .w(px(DOT))
                                     .h(px(DOT))
+                                    .mt(px((TITLE_LINE_H - DOT) / 2.0))
                                     .rounded_full()
                                     .flex_shrink_0()
                                     .bg(accent),
                             )
+                            // Заголовок переносится до трёх строк (владелец: одна
+                            // длинная строка с многоточием не читалась); длиннее —
+                            // многоточие в конце третьей.
                             .child(
                                 div()
                                     .flex_1()
                                     .min_w(px(0.))
                                     .overflow_hidden()
-                                    .whitespace_nowrap()
+                                    .line_height(px(TITLE_LINE_H))
+                                    .line_clamp(TITLE_LINES)
                                     .text_ellipsis()
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .child(self.opts.title.clone()),
@@ -188,18 +196,23 @@ impl Render for ToastView {
                                     })),
                             ),
                     )
-                    // `.msg` — 12px text-secondary, три строки, lh 1.3
+                    // `.msg` — 12px text-secondary, три строки, lh 1.3.
+                    // Основа — по тексту (не `flex_1` с основой 0): иначе
+                    // сообщение не входит в высоту карточки и обрезается.
                     .child(
                         div()
-                            .flex_1()
-                            .min_h(px(0.))
+                            .flex_grow_1()
+                            .flex_shrink_0()
                             .overflow_hidden()
                             .text_size(px(12.0))
                             .line_height(px(12.0 * 1.3))
+                            .line_clamp(MESSAGE_LINES)
+                            .text_ellipsis()
                             .text_color(rgba(p.text_secondary))
                             .child(self.opts.message.clone()),
                     )
                     .child(actions)
+                    .child(fit_window(id))
                     // `#bar` — только у НЕ-sticky
                     .when(!self.opts.sticky, |d| {
                         d.child(

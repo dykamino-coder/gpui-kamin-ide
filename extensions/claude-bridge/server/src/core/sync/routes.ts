@@ -14,7 +14,9 @@ import { requestMaintenanceSubmission } from '../pty/session-input-coordinator'
 import { refreshSessionSkills } from '../pty/session-settings'
 import { resolveToken } from '../auth/tokens'
 import { withProjectSyncLock, withUserSyncLock } from './lock'
-import { prepareSyncStorage, resolveSyncBase } from './storage'
+import { getProjectSyncDir, getUserSyncDir, prepareSyncStorage, resolveSyncBase } from './storage'
+
+export { getProjectSyncDir, getUserSyncDir } from './storage'
 import { writePluginModuleTree } from './plugin-modules'
 import { readSkillsReloadTelemetry, recordSkillsSnapshot } from './skills-reload-telemetry'
 import type { SkillsReloadContext } from './skills-reload-telemetry'
@@ -37,9 +39,7 @@ export function tokenHash(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex').slice(0, 16)
 }
 
-function assertTokenHash(hash: string): void {
-  if (!TOKEN_HASH_RE.test(hash)) throw new Error('Invalid tokenId')
-}
+
 
 async function requireOwnedToken(c: import('hono').Context): Promise<Response | null> {
   const hash = c.req.param('tokenId')
@@ -131,23 +131,6 @@ function validateSnapshotShape(root: unknown): void {
       }
     }
   }
-}
-
-/** Hash a project path for storage keying */
-function projectHash(projectPath: string): string {
-  return crypto.createHash('sha256').update(projectPath).digest('hex').slice(0, 16)
-}
-
-/** Get the user sync directory for a given token hash */
-export function getUserSyncDir(hash: string): string {
-  assertTokenHash(hash)
-  return path.join(resolveSyncBase(), 'users', hash)
-}
-
-/** Get the project sync directory for a given token hash + project path */
-export function getProjectSyncDir(hash: string, projectPath: string): string {
-  assertTokenHash(hash)
-  return path.join(resolveSyncBase(), 'projects', hash, projectHash(projectPath))
 }
 
 /** Write a Record<relativePath, content> into a directory. Async so the sync

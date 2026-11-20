@@ -12,7 +12,8 @@ mod win32;
 
 pub use win32::{cursor_over, focus_main, raw_hwnd};
 
-use stack::{ensure_ticker, max_visible, publish_overflow, pump_queue, relayout, slot_position};
+pub(crate) use stack::set_height;
+use stack::{ensure_ticker, publish_overflow, pump_queue, relayout, room_for, slot_position};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -75,6 +76,8 @@ pub struct ToastOpts {
 struct Active {
     id: u64,
     window: AnyWindowHandle,
+    /// Логическая высота окна: растёт под заголовок в несколько строк.
+    height: f32,
     view: gpui::WeakEntity<ToastView>,
 }
 
@@ -122,10 +125,10 @@ pub fn show(opts: ToastOpts, cx: &mut App) {
     if QUITTING.load(Ordering::Relaxed) {
         return;
     }
-    let max = max_visible(cx);
+    let room = room_for(cx, 0);
     let spawn = {
         let Ok(mut inner) = STATE.lock() else { return };
-        if inner.active.len() >= max {
+        if !room {
             inner.queue.push_back(opts);
             None
         } else {
@@ -169,6 +172,7 @@ pub(crate) fn open_window(id: u64, slot: usize, opts: ToastOpts, cx: &mut App) {
             inner.active.push(Active {
                 id,
                 window: window.window_handle(),
+                height: HEIGHT,
                 view: view.downgrade(),
             });
         }

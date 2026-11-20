@@ -20,6 +20,36 @@ pub(crate) const CARD_ALPHA: f32 = 1.0;
 pub(crate) const CARD_ALPHA_HOVER: f32 = 1.0;
 pub(crate) const BAR_H: f32 = 2.0;
 pub(crate) const DOT: f32 = 6.0;
+/// Заголовок переносится до трёх строк по 17 px (13 px × 1.3), сообщение —
+/// до трёх строк; длиннее — многоточие в конце последней.
+pub(crate) const TITLE_LINES: usize = 3;
+pub(crate) const TITLE_LINE_H: f32 = 17.0;
+pub(crate) const MESSAGE_LINES: usize = 3;
+
+/// Высота окна под карточку: её замер плюс поля `body`, не ниже прежней.
+pub(crate) fn window_height(card: f32) -> f32 {
+    (card + 2.0 * BODY_PAD).max(crate::toast::HEIGHT).ceil()
+}
+
+/// Невидимый замер карточки: canvas на всю её площадь сообщает высоту,
+/// и окно тоста подгоняется под неё сразу после этого кадра. Не через
+/// `on_next_frame`: неактивному PopUp-окну gpui следующий кадр сам не
+/// планирует, и подгонка у части тостов не наступала (замер на стенде).
+pub(crate) fn fit_window(id: u64) -> impl IntoElement {
+    gpui::canvas(
+        move |bounds, window, cx| {
+            let want = window_height(f32::from(bounds.size.height));
+            if (want - f32::from(window.viewport_size().height)).abs() >= 0.5 {
+                cx.defer(move |cx| crate::toast::set_height(id, want, cx));
+            }
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+}
 /// Кнопка ряда действий: последняя — `.btn.primary`, прочие — `.btn.ghost`.
 pub(crate) fn action_btn(
     label: String,
@@ -56,5 +86,21 @@ pub(crate) fn action_btn(
                     .text_color(hover_fg)
             })
             .child(label)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::window_height;
+    use crate::toast::HEIGHT;
+
+    #[test]
+    fn a_short_card_keeps_the_old_window_height() {
+        assert_eq!(window_height(60.0), HEIGHT);
+    }
+
+    #[test]
+    fn a_wrapped_title_grows_the_window() {
+        assert_eq!(window_height(170.4), 175.0);
     }
 }

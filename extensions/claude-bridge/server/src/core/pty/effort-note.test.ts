@@ -92,4 +92,21 @@ describe('Claude effort changed during the chat', () => {
     send(f.session, 'hello')
     expect(f.pasted()).toBe('hello')
   })
+
+  it('a /effort typed in the chat is the same live change: chat, model and respawn learn it', () => {
+    const f = fakeSession('high')
+    const sent: Array<Record<string, unknown>> = []
+    ;(f.session as unknown as { ws: unknown }).ws = { readyState: 1, send: (raw: string) => sent.push(JSON.parse(raw)) }
+    send(f.session, '/effort low')
+    // The command itself goes to the CLI unchanged.
+    expect(f.pasted()).toBe('/effort low')
+    expect(f.session.effort).toBe('low')
+    expect(sent).toContainEqual(expect.objectContaining({ type: 'session:model-changed', effort: 'low', inPlace: true }))
+    send(f.session, 'which effort now?')
+    expect(f.pasted()).toContain('Reasoning effort is now `low`')
+    // Not a level, or another command: nothing changes.
+    send(f.session, '/effort turbo')
+    send(f.session, '/effortless high')
+    expect(f.session.effort).toBe('low')
+  })
 })

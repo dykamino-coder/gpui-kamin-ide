@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -45,4 +46,23 @@ export function prepareSyncStorage(
   }
 
   return target;
+}
+
+const TOKEN_HASH_RE = /^[a-f0-9]{16}$/;
+
+/** Hash a project path for storage keying */
+function projectHash(projectPath: string): string {
+  return crypto.createHash("sha256").update(projectPath).digest("hex").slice(0, 16);
+}
+
+/** Get the user sync directory for a given token hash */
+export function getUserSyncDir(hash: string): string {
+  if (!TOKEN_HASH_RE.test(hash)) throw new Error("Invalid tokenId");
+  return path.join(resolveSyncBase(), "users", hash);
+}
+
+/** Get the project sync directory for a given token hash + project path */
+export function getProjectSyncDir(hash: string, projectPath: string): string {
+  if (!TOKEN_HASH_RE.test(hash)) throw new Error("Invalid tokenId");
+  return path.join(resolveSyncBase(), "projects", hash, projectHash(projectPath));
 }
