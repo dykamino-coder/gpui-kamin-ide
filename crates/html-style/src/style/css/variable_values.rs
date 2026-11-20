@@ -182,8 +182,10 @@ impl<F: Fn(&str, &str) -> bool> Resolver<'_, F> {
     }
 }
 
+mod declared;
 mod substitution;
 mod work;
+pub use declared::compute_declared;
 pub use substitution::has_var;
 #[cfg(test)]
 pub use substitution::substitute;

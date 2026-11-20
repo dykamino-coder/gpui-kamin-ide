@@ -3,7 +3,7 @@
 //! Слой вынесен из `OverlayWindow::render` как есть (`plan/100-refactor-250.md`).
 
 use crate::host_link::ShellEvent;
-use crate::overlay::{dropdown_shadow, hit_area};
+use crate::overlay::dropdown_shadow;
 use crate::root::RootView;
 use gpui::prelude::*;
 
@@ -83,7 +83,6 @@ pub(crate) fn add_menus_session(
                     c
                 })
                 .shadow(dropdown_shadow())
-                .child(hit_area())
                 .child(item(
                     "ns-folder",
                     "\u{eaf7}", // codicon-folder-opened

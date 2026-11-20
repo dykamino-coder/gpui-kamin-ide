@@ -158,7 +158,7 @@ export interface ContextStats {
   /** Model id used to estimate the limit (empty when none is known). */
   model: string
   /** Compact metadata is provisional until a real post-boundary usage arrives. */
-  freshness: 'usage' | 'compact' | 'pending'
+  freshness: 'usage' | 'compact' | 'pending' | 'switch'
 }
 
 /** Cost + context-pressure for ONE compact segment's entries (already sliced).
@@ -196,6 +196,7 @@ export function computeContextStats(
   let latestWindow = 0
   const messageCosts = new Map<string, number>()
   let lastCompact: { postTokens?: number } | null = null
+  let switchedSinceUsage = false
 
   for (const e of entries) {
     if ((e.isSidechain || e.subagentId) && e.type !== 'assistant') continue
@@ -205,6 +206,15 @@ export function computeContextStats(
       lastCompact = e.compactMetadata ?? {}
       latestUsage = null
       latestUsedTokens = -1
+      continue
+    }
+    if (isLiveSegment && e.type === 'system' && e.subtype === 'engine_switch') {
+      // The joining engine has its own window and has not answered yet: the
+      // leaving engine's occupancy is not its context. Pending until it does.
+      switchedSinceUsage = true
+      latestUsage = null
+      latestUsedTokens = -1
+      lastCompact = null
       continue
     }
     // ChatGPT (codex): one `api_usage` line per model response; its item lines
@@ -247,6 +257,7 @@ export function computeContextStats(
       if (modelId) peakModel = modelId
     }
     // Chronological input → last assignment is the newest real turn.
+    switchedSinceUsage = false
     latestUsedTokens = used
     latestUsage = usage
     latestWindow = window
@@ -285,6 +296,10 @@ export function computeContextStats(
     used = typeof post === 'number' && Number.isSafeInteger(post) && post >= 0 ? post : null
     freshness = used === null ? 'pending' : 'compact'
   }
+  if (isLiveSegment && switchedSinceUsage) {
+    used = null
+    freshness = 'switch'
+  }
   const pct = used === null ? null : Math.min(100, Math.round((used / limit) * 100))
   return {
     pct,
@@ -299,35 +314,51 @@ export function computeContextStats(
   }
 }
 
-/** The chip's cost text and tooltip. Claude responses show their API cost;
- *  ChatGPT responses are billed by the ChatGPT plan, so they show only the
- *  API-equivalent list price, and tokens where no price is published. */
+/** One amount of the cost chip and the agent it belongs to. */
+export interface CostPart {
+  engine: 'claude' | 'codex'
+  text: string
+}
+
+/** The chip's cost amounts, each with its agent (the chip draws the agent's
+ *  icon before it: the same icons as the engine-switch dividers), and the
+ *  tooltip. The chip text is only the icon and the amount; what an amount
+ *  means lives in the tooltip. Claude responses show their API cost; ChatGPT
+ *  responses are billed by the ChatGPT plan, so their amount is the
+ *  API-equivalent list price, or tokens where no price is published. */
 export function costDisplay(s: Pick<ContextStats, 'cost' | 'codexCost' | 'codexUnpricedTokens'>): {
+  parts: CostPart[]
+  /** The amounts as plain text (tooltips, logs). */
   text: string
   tooltip: string
 } {
-  if (s.codexCost === null) return { text: formatCost(s.cost), tooltip: 'Session cost (estimate)' }
-  const parts: string[] = []
+  const parts: CostPart[] = []
   const notes: string[] = []
-  const claude = s.cost > 0
-  if (claude) {
-    parts.push(formatCost(s.cost))
-    notes.push(`Claude ${formatCost(s.cost)} (API estimate)`)
+  if (s.codexCost === null || s.cost > 0) {
+    parts.push({ engine: 'claude', text: formatCost(s.cost) })
+    notes.push(`Claude ${formatCost(s.cost)}: session cost at Anthropic API prices`)
   }
-  const priced = s.codexCost > 0 || s.codexUnpricedTokens === 0
-  if (priced) {
-    parts.push(`≈${formatCost(s.codexCost)} API`)
-    notes.push(
-      `ChatGPT ≈${formatCost(s.codexCost)}: billed by the ChatGPT plan; this is the API-equivalent price ` +
-        `(OpenAI list prices as of ${OPENAI_PRICES_AS_OF})`,
-    )
+  if (s.codexCost !== null) {
+    const priced = s.codexCost > 0 || s.codexUnpricedTokens === 0
+    if (priced) {
+      parts.push({ engine: 'codex', text: formatCost(s.codexCost) })
+      notes.push(
+        `ChatGPT ${formatCost(s.codexCost)}: billed by the ChatGPT plan; this is the equivalent at OpenAI API ` +
+          `prices (list prices as of ${OPENAI_PRICES_AS_OF})`,
+      )
+    }
+    if (s.codexUnpricedTokens > 0) {
+      const tokens = formatTokenCount(s.codexUnpricedTokens)
+      parts.push({ engine: 'codex', text: `${tokens} tok` })
+      notes.push(`${tokens} ChatGPT tokens of a model without a published API price`)
+    }
   }
-  if (s.codexUnpricedTokens > 0) {
-    const tokens = formatTokenCount(s.codexUnpricedTokens)
-    parts.push(`${tokens} tok`)
-    notes.push(`${tokens} ChatGPT tokens of a model without a published API price`)
+  const label = { claude: 'Claude', codex: 'ChatGPT' } as const
+  return {
+    parts,
+    text: parts.map((p) => `${label[p.engine]} ${p.text}`).join(' · '),
+    tooltip: notes.join(' · '),
   }
-  return { text: parts.join(' + '), tooltip: notes.join(' · ') }
 }
 
 function formatTokenCount(n: number): string {

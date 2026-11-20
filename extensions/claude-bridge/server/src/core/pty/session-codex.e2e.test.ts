@@ -480,6 +480,58 @@ describe('codex chat over the Bridge session WebSocket', () => {
     again.close()
   }, 30_000)
 
+  it('lets an idle ChatGPT chat sleep instead of ending it, and wakes it with the next message', async () => {
+    const { sweepIdleSessions } = await import('./session-hibernation')
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex', basePrompt: 'Standing rule BP-SLEEP-3301: answer tersely.' })
+    await say(client, 'before sleep', 'z1')
+    const first = await client.entry((e) => text(e).startsWith('echo: before sleep'))
+    const conv = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+
+    // An hour later: the sweep puts the chat to sleep; the client is told it
+    // sleeps, not that the session ended (which made it resume at once).
+    const mark = client.frames.length
+    const config = { idleMs: 15 * 60_000, maxAwake: 0, wakeConcurrency: 2, evictIdleMs: 60_000 }
+    expect(sweepIdleSessions(Date.now() + 60 * 60_000, config)).toBeGreaterThanOrEqual(1)
+    await client.next((f) => f.type === 'session:activity' && f.hibernation === 'asleep', 15_000, mark)
+
+    await say(client, '/fake-recall BP-SLEEP-3301', 'z2')
+    const recall = await client.entry(
+      (e) =>
+        e.type === 'assistant' &&
+        text(e).startsWith('recall:') &&
+        client.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= mark,
+      15_000,
+    )
+    // Same thread, the chat's standing instructions still there.
+    expect(recall.sessionId).toBe(conv)
+    expect(text(recall)).toContain('Standing rule BP-SLEEP-3301')
+    const after = client.frames.slice(mark)
+    expect(after.some((f) => f.type === 'session:activity' && f.hibernation === 'awake')).toBe(true)
+    expect(after.some((f) => f.type === 'session:exit')).toBe(false)
+    const user = await client.entry((e) => e.type === 'user' && text(e) === '/fake-recall BP-SLEEP-3301')
+    expect(user.parentUuid).toBe(first.uuid)
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
+  it('keeps a ChatGPT chat awake while its turn runs', async () => {
+    const { sweepIdleSessions } = await import('./session-hibernation')
+    const client = await Client.open(port)
+    await createChat(client, { engine: 'codex' })
+    await say(client, '/fake-slow', 'w1')
+    await client.next((f) => f.type === 'session:activity' && f.isWorking === true, 15_000)
+    const mark = client.frames.length
+    const config = { idleMs: 15 * 60_000, maxAwake: 0, wakeConcurrency: 2, evictIdleMs: 60_000 }
+    sweepIdleSessions(Date.now() + 60 * 60_000, config)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(client.frames.slice(mark).some((f) => f.type === 'session:activity' && f.hibernation === 'asleep')).toBe(
+      false,
+    )
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 30_000)
+
   it('resumes a codex chat on the model and effort chosen after its last turn', async () => {
     const client = await Client.open(port)
     await createChat(client, { engine: 'codex' })
@@ -981,6 +1033,54 @@ describe('engine switch inside one chat', () => {
     await again.entry((e) => text(e).startsWith('echo: my dog is called Sharik'), 15_000)
     again.send({ type: 'session:end' })
     again.close()
+  }, 60_000)
+
+  it('REAL119: receipts after a switch carry the user text, the engine gets the history, both ways', async () => {
+    const client = await Client.open(port)
+    const receipts = (id: string) => client.frames.filter((f) => f.type === 'session:submission' && f.id === id)
+    const settled = (id: string, from: number) =>
+      client.next(
+        (f) => f.type === 'session:submission' && f.id === id && ['read', 'fallback', 'uncertain'].includes(f.state),
+        15_000,
+        from,
+      )
+    expect(await createChat(client, { engine: 'claude' })).toMatchObject({ engine: 'claude' })
+    await say(client, '/fake-note 5307', 'r1')
+    await client.entry((e) => e.type === 'assistant' && text(e) === 'noted: 5307', 15_000)
+
+    // Claude → ChatGPT: the first turn carries the hidden history.
+    await switchTo(client, 'codex', 'gpt-fake')
+    let mark = client.frames.length
+    client.send({ type: 'session:submitText', data: 'first on gpt', submissionId: 'g1' })
+    expect(await settled('g1', mark)).toMatchObject({ state: 'read', text: 'first on gpt' })
+    await after(client, mark)((e) => text(e).startsWith('echo: first on gpt'))
+    mark = client.frames.length
+    await say(client, '/fake-recall 5307', 'g2')
+    expect(text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))).toContain(
+      'noted: 5307',
+    )
+
+    // ChatGPT → Claude: same contract on the terminal/mod path.
+    await switchTo(client, 'claude', 'claude-sonnet-5-5')
+    mark = client.frames.length
+    client.send({ type: 'session:submitText', data: 'first on claude', submissionId: 'c1' })
+    await settled('c1', mark)
+    mark = client.frames.length
+    await say(client, '/fake-recall 5307', 'c2')
+    expect(text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))).toContain(
+      'noted: 5307',
+    )
+    for (const [id, typed] of [
+      ['g1', 'first on gpt'],
+      ['g2', '/fake-recall 5307'],
+      ['c1', 'first on claude'],
+      ['c2', '/fake-recall 5307'],
+    ] as const) {
+      expect(receipts(id).length).toBeGreaterThan(0)
+      for (const r of receipts(id)) expect(r.text).toBe(typed)
+    }
+    client.send({ type: 'session:end' })
+    client.close()
   }, 60_000)
 
   it("keeps the chat's standing instructions across Claude → ChatGPT → Claude, exactly once", async () => {

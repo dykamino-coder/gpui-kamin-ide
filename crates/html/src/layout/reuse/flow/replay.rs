@@ -77,7 +77,10 @@ impl FlowCx {
         let pending = Rc::new(PendingReplay::new(
             Some(self.key.clone()),
             (mark.start, end),
-            super::super::content::inert_tree(e, opts.cx.vcx()),
+            mark.skip_origin.map_or_else(
+                || super::super::content::inert_tree(e, opts.cx.vcx()),
+                |origin| origin == super::super::plain::CounterOrigin::Relative,
+            ),
             widths,
             super::super::plain::fills_width(e),
             &self.reuse.ink,

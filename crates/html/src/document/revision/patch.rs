@@ -45,11 +45,11 @@ pub(super) fn attr_paths(
 /// Записать атрибуты новой ревизии по путям `attr_paths` (копия только путей).
 pub(super) fn patch(
     nodes: &mut Vec<Node>,
-    paths: Vec<(Path, u64)>,
+    paths: &[(Path, u64)],
     targets: &HashMap<u64, Target>,
 ) -> bool {
     for (path, id) in paths {
-        match (apply(nodes, &path), targets.get(&id)) {
+        match (apply(nodes, path), targets.get(id)) {
             (Some(Node::Element(e)), Some(target)) => e.attrs = target.new.clone(),
             _ => return false,
         }

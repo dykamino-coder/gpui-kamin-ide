@@ -46,10 +46,10 @@ impl FlowCx {
                 && !repaint
                 && !self.reuse.store.banned(e.node_id)
                 && record.current(&self.reuse));
-        let fits = (same || width()) && paintable && Counters::read(&opts.cx) == record.start;
-        if !fits {
+        if !paintable || !(same || width()) {
             return None;
         }
+        let end = record.end_at(Counters::read(&opts.cx), same && !repaint)?;
         // The block's paint changed here: its record now compares with this
         // tree and holds no recorded paint, so it keeps neither the previous
         // tree nor its stale output alive (`Record::moved_to`).
@@ -59,7 +59,7 @@ impl FlowCx {
             true => Rc::new(record.moved_to(self.reuse.shells.source(e), repaint)),
             false => record,
         };
-        record.end.write(&opts.cx);
+        end.write(&opts.cx);
         let mut next = self.reuse.next.take();
         next.insert(e.node_id, record.clone());
         self.reuse.next.replace(next);

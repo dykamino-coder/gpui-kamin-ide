@@ -13,6 +13,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 import type { AgentEngineId } from '../../shared/agent-events'
+import { noteAppended } from '../engine/transcript-digest'
 
 type Entry = JsonlEntry & { uuid?: string; parentUuid?: string | null; subtype?: string }
 
@@ -24,26 +25,59 @@ function offChain(e: { isSidechain?: unknown; type?: unknown; subtype?: unknown 
   return Boolean(e.isSidechain) || (e.type === 'system' && e.subtype === 'api_usage')
 }
 
-/** Last main-chain uuid in a transcript file (side chains and usage rows skipped). */
-export function lastUuidIn(file: string): string | null {
-  let raw: string
+/** Bytes read per step by the whole-log scans below: they run on the server's
+ *  event loop, so neither holds the log in memory as one string. */
+const SCAN_CHUNK = 1024 * 1024
+
+/** Lines of `file` from the end backwards, read in chunks; stops when `visit`
+ *  returns true. */
+function visitLinesBackwards(file: string, visit: (line: string) => boolean): void {
+  let fd: number | undefined
   try {
-    raw = fs.readFileSync(file, 'utf8')
+    fd = fs.openSync(file, 'r')
+    let pos = fs.fstatSync(fd).size
+    let carry = Buffer.alloc(0)
+    const buf = Buffer.allocUnsafe(SCAN_CHUNK)
+    while (pos > 0) {
+      const len = Math.min(SCAN_CHUNK, pos)
+      pos -= len
+      fs.readSync(fd, buf, 0, len, pos)
+      const data = carry.length ? Buffer.concat([buf.subarray(0, len), carry]) : buf.subarray(0, len)
+      let end = data.length
+      for (let nl = data.lastIndexOf(10, end - 1); nl !== -1; nl = data.lastIndexOf(10, end - 1)) {
+        if (visit(data.subarray(nl + 1, end).toString('utf8'))) return
+        end = nl
+        if (end === 0) break
+      }
+      carry = Buffer.from(data.subarray(0, end))
+    }
+    if (carry.length) visit(carry.toString('utf8'))
   } catch {
-    return null
+    /* no log */
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd)
   }
-  const lines = raw.trimEnd().split('\n')
-  for (let i = lines.length - 1; i >= 0; i--) {
+}
+
+/** Last main-chain uuid in a transcript file (side chains and usage rows
+ *  skipped), read from the end. */
+export function lastUuidIn(file: string): string | null {
+  let found: string | null = null
+  visitLinesBackwards(file, (line) => {
+    if (!line.trim()) return false
     try {
-      const e = JSON.parse(lines[i]!) as { uuid?: unknown; isSidechain?: unknown; type?: unknown; subtype?: unknown }
-      if (typeof e.uuid === 'string' && e.uuid && !offChain(e)) return e.uuid
+      const e = JSON.parse(line) as { uuid?: unknown; isSidechain?: unknown; type?: unknown; subtype?: unknown }
+      if (typeof e.uuid === 'string' && e.uuid && !offChain(e)) {
+        found = e.uuid
+        return true
+      }
     } catch {
       /* torn line */
     }
-  }
-  return null
+    return false
+  })
+  return found
 }
-
 /** A crash mid-append leaves a line without its newline: cut it, so the next
  *  append does not glue onto it. The copy position (manifest) is saved after
  *  the append, so the pump copies that entry again. */
@@ -75,13 +109,28 @@ function cutTornTail(file: string): void {
  *  appended twice. */
 function uuidsIn(file: string): Set<string> {
   const out = new Set<string>()
-  let raw: string
+  let fd: number | undefined
   try {
-    raw = fs.readFileSync(file, 'utf8')
+    fd = fs.openSync(file, 'r')
+    const buf = Buffer.allocUnsafe(SCAN_CHUNK)
+    let carry = ''
+    let pos = 0
+    for (;;) {
+      const n = fs.readSync(fd, buf, 0, SCAN_CHUNK, pos)
+      if (n === 0) break
+      pos += n
+      // Whole lines only: a uuid never spans two chunks.
+      const nl = buf.lastIndexOf(10, n - 1)
+      const text = carry + buf.toString('utf8', 0, nl === -1 ? 0 : nl + 1)
+      carry = nl === -1 ? carry + buf.toString('utf8', 0, n) : buf.toString('utf8', nl + 1, n)
+      for (const m of text.matchAll(/"uuid":"([^"]+)"/g)) out.add(m[1]!)
+    }
+    for (const m of carry.matchAll(/"uuid":"([^"]+)"/g)) out.add(m[1]!)
   } catch {
-    return out
+    /* no log yet */
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd)
   }
-  for (const m of raw.matchAll(/"uuid":"([^"]+)"/g)) out.add(m[1]!)
   return out
 }
 
@@ -147,6 +196,7 @@ export class UnifiedLog {
     if (lines.length === 0) return
     fs.mkdirSync(path.dirname(this.file), { recursive: true })
     fs.appendFileSync(this.file, lines.join('\n') + '\n')
+    noteAppended(this.file)
   }
 
   /** "→ GPT-6.1-Sol": where the conversation moved to another engine. */
@@ -209,13 +259,30 @@ export function readLogEntries(file: string, from = 0): LogItem[] {
  *  as a byte copy of the chat's transcript so far. */
 export function seedUnifiedLog(file: string, source: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  let data = ''
   try {
-    data = fs.readFileSync(source, 'utf8')
+    // A file copy, not a read into memory: the chat so far can be hundreds of MB.
+    fs.copyFileSync(source, file)
   } catch {
     /* an empty chat has no transcript yet */
+    fs.writeFileSync(file, '', { mode: 0o600 })
+    return
   }
+  fs.chmodSync(file, 0o600)
   // A torn last line (process killed mid-write) is dropped, not copied.
-  const end = data.lastIndexOf('\n')
-  fs.writeFileSync(file, end >= 0 ? data.slice(0, end + 1) : '', { mode: 0o600 })
+  let keep = 0
+  const fd = fs.openSync(file, 'r+')
+  try {
+    const size = fs.fstatSync(fd).size
+    const buf = Buffer.allocUnsafe(SCAN_CHUNK)
+    for (let pos = size; pos > 0 && keep === 0;) {
+      const len = Math.min(SCAN_CHUNK, pos)
+      pos -= len
+      fs.readSync(fd, buf, 0, len, pos)
+      const nl = buf.subarray(0, len).lastIndexOf(10)
+      if (nl !== -1) keep = pos + nl + 1
+    }
+    if (keep < size) fs.ftruncateSync(fd, keep)
+  } finally {
+    fs.closeSync(fd)
+  }
 }

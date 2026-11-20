@@ -6,6 +6,8 @@ import { LOST_RECEIPT_WARNING, lostAfterSnapshot, matchReceiptsToTranscript, mat
 const TAB_EVENTS = new Set(['session:activity', 'session:usage', 'session:title', 'connection-state-changed'])
 const GLOBAL_EVENTS = new Set(['tree-update', 'mcp-servers-changed', 'mcp-loading', 'mcp-ready', 'config-ready'])
 const QUESTIONS = new Set(['permission-request', 'elicitation-request', 'ask-user-question', 'mcp-elicitation-request'])
+export const STORAGE_REFUSED_WARNING = 'Not sent: the workspace could not save this message first (check its disk space and permissions). ' +
+  'Your text is back in the input; send it again once storage works.'
 
 /** Host-owned presentation metadata. Transcripts and execution stay in the
  * shared ConnectionManager; this index never implements an agent handler. */
@@ -16,6 +18,7 @@ export class WorkspacePresentation {
   private accepted = new Map<string, { digest: string; bytes: number }>()
   private acceptedBytes = 0
   private consumedQueueRows = new Map<string, Set<string>>()
+  private engines = new Map<string, string>()
   private storageFailed = false
 
   constructor(private publish: (channel: string, ...args: unknown[]) => void,
@@ -40,18 +43,25 @@ export class WorkspacePresentation {
     for (const [tabId, rows] of state?.consumedRows ?? []) if (tabIds.has(tabId)) this.consumedQueueRows.set(tabId, new Set(rows))
   }
 
-  private persist(strict = false): void {
-    if (!this.storage) return
+  /** Writes the whole state; false when storage refused it. A refused status
+   *  update only loses detail a restart marks uncertain anyway (the identity
+   *  barrier of every accepted submission reached disk before its dispatch),
+   *  so the next save simply retries; nothing stays blocked by it. */
+  private persist(): boolean {
+    if (!this.storage) return true
     try {
       this.storage.save({ submissions: [...this.accepted].map(([key, identity]) => {
         const [tabId, receipt] = this.submissions.get(key)!.args as [string, SubmissionUpdate & { text: string }]
         return { tabId, ...identity, receipt }
       }), consumedRows: [...this.consumedQueueRows].map(([tab, rows]) => [tab, [...rows]]) })
     } catch {
-      if (!this.storageFailed) console.warn('Could not persist workspace submission state; new submissions blocked')
+      if (!this.storageFailed) console.warn('Could not persist workspace submission state; new submissions are refused until it can be saved')
       this.storageFailed = true
+      return false
     }
-    if (strict && this.storageFailed) throw new Error('Submission persistence unavailable; restore storage and restart the workspace host')
+    if (this.storageFailed) console.warn('Workspace submission state saved again; submissions accepted')
+    this.storageFailed = false
+    return true
   }
 
   observe(frame: HostFrame): void {
@@ -71,6 +81,12 @@ export class WorkspacePresentation {
       const key = `${args[0]}:${args[1].id}`
       const previous = this.submissions.get(key)?.args as unknown[] | undefined
       const receipt = { ...(previous?.[1] as SubmissionUpdate), ...args[1] }
+      // The text is the submission's identity (persisted with its digest).
+      // A server may report the engine's input instead — the user's text plus
+      // a hidden history block after an engine switch — and that must not
+      // replace what the user sent.
+      const identity = (previous?.[1] as SubmissionUpdate | undefined)?.text
+      if (typeof identity === 'string') receipt.text = identity
       if ((previous?.[1] as SubmissionUpdate)?.committed) receipt.committed = true
       receipt.fallbackQueue = mergeFallbackQueue((previous?.[1] as SubmissionUpdate)?.fallbackQueue, args[1].fallbackQueue)
       // The server saw the CLI complete this terminal command (SessionStart after
@@ -85,6 +101,12 @@ export class WorkspacePresentation {
       if (args[1].state === 'fallback') this.reconcileFallback(args[0], this.entries(args[0]))
       if (!receipt.committed) this.reconcileTranscript(args[0], this.entries(args[0]))
       this.persist()
+    }
+    if (channel === 'session-restarted' && typeof args[1]?.engine === 'string') {
+      const tabId = String(args[0])
+      const before = this.engines.get(tabId)
+      this.engines.set(tabId, args[1].engine)
+      if (before && before !== args[1].engine) this.endQueueOnEngineSwitch(tabId)
     }
     if (channel === 'session:submission' && Array.isArray(args[1]?.known)) this.applyKnownSnapshot(args[0], new Set(args[1].known))
     if (channel === 'jsonl-entries' && Array.isArray(args[1])) {
@@ -171,7 +193,6 @@ export class WorkspacePresentation {
       this.dismissQueue(args[0], args[1].filter((id: unknown) => typeof id === 'string'))
     }
     if (channel === 'pty-submit-text' && typeof args[0] === 'string' && typeof args[1] === 'string' && typeof args[2] === 'string') {
-      if (this.storageFailed) throw new Error('Submission persistence unavailable; restore storage and restart the workspace host')
       if (!args[2] || args[2].length > 1024) throw new Error('Expected a submission identity')
       const key = `${args[0]}:${args[2]}`
       const digest = createHash('sha256').update(args[1]).digest('hex')
@@ -189,7 +210,18 @@ export class WorkspacePresentation {
       const receipt: SubmissionUpdate = { id: args[2], text: args[1], state: 'queued', cancelable: true,
         fallbackQueue: { afterOrd: queueWatermark(this.entries(args[0])), enqueuedAt: Date.now() } }
       this.submissions.set(key, { kind: 'event', channel: 'session:submission', args: [args[0], receipt] })
-      this.persist(true) // The duplicate barrier must reach disk BEFORE handler dispatch.
+      // The duplicate barrier must reach disk BEFORE handler dispatch. Without
+      // it the message is not sent: the user sees why, gets the text back in
+      // the input, and the next send retries the save (no restart needed).
+      if (!this.persist()) {
+        this.accepted.delete(key)
+        this.acceptedBytes -= bytes
+        this.submissions.delete(key) // the refusal is this identity's first receipt
+        this.publish('session:submission', args[0], { id: args[2], text: args[1], state: 'cancelled', rejected: true,
+          cancelable: false, warning: STORAGE_REFUSED_WARNING })
+        this.submissions.delete(key) // nothing of a refused send stays in memory
+        return false
+      }
       this.publish('session:submission', args[0], receipt)
     }
     if (['permission-response', 'elicitation-response', 'ask-user-response'].includes(channel)) return this.resolve(args[0])
@@ -206,6 +238,21 @@ export class WorkspacePresentation {
       receipt.fallbackQueue = { ...receipt.fallbackQueue, dismissed: true }
       this.publish('session:submission', tabId, receipt)
     }
+  }
+
+  /** The chat moved to the other agent: the previous CLI is gone with what it
+   *  had queued, and the replay re-tags positions, so rows that answered these
+   *  items can no longer be matched. Every page drops them from its queue. */
+  private endQueueOnEngineSwitch(tabId: string): void {
+    this.consumedQueueRows.delete(tabId)
+    const pending = [...this.submissions.values()].map(frame => frame.args as [string, SubmissionUpdate])
+      .filter(([id, receipt]) => id === tabId && receipt.state === 'fallback' && receipt.fallbackQueue &&
+        !receipt.fallbackQueue.consumed && !receipt.fallbackQueue.dismissed)
+    for (const [, receipt] of pending) {
+      receipt.fallbackQueue = { ...receipt.fallbackQueue!, dismissed: true }
+      this.publish('session:submission', tabId, receipt)
+    }
+    if (pending.length) this.persist()
   }
 
   private reconcileFallback(tabId: string, entries: readonly QueueEntry[]): void {
@@ -236,6 +283,7 @@ export class WorkspacePresentation {
 
   private forgetTab(tabId: unknown): void {
     this.consumedQueueRows.delete(String(tabId))
+    this.engines.delete(String(tabId))
     for (const [key, frame] of this.latest) if ((frame.args as unknown[])?.[0] === tabId && !GLOBAL_EVENTS.has(String(frame.channel))) this.latest.delete(key)
     for (const [id, frame] of this.questions) if ((frame.args as unknown[])?.[0] === tabId) this.resolve(id)
     for (const [key, frame] of this.submissions) if ((frame.args as unknown[])?.[0] === tabId) this.submissions.delete(key)

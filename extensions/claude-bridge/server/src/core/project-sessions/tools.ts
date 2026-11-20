@@ -49,7 +49,7 @@ const SCOPE_NOTE =
 export const PROJECT_SESSION_TOOLS = [
   {
     name: 'project_sessions_list',
-    description: `Lists the Claude conversations of this project on the Bridge server, newest activity first: session_id, title (custom title or first prompt), started_at, last_activity_at, size_bytes, lines, subagents count, source (live or archive for expired transcripts), live (a CLI session is running it), attached (a client is connected) and self (it is THIS conversation). Use it to find a neighbouring chat or an earlier conversation whose history you need to recover, then read it with project_session_brief / project_session_read. ${SCOPE_NOTE}`,
+    description: `Lists the conversations of this project, both engines (Claude and codex), newest activity first: session_id, title, engine and model (a chat that switched engines also lists its segments; engine/model is the one answering now), started_at, last_activity_at, size_bytes, lines, subagents, source (live, or archive for expired transcripts), live, attached and self (this conversation). Find an earlier or neighbouring chat here, then read it with project_session_brief or project_session_read. ${SCOPE_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -64,7 +64,7 @@ export const PROJECT_SESSION_TOOLS = [
   },
   {
     name: 'project_session_read',
-    description: `Reads one conversation of this project as readable text, paged. Each entry starts with "#<index> <timestamp> <kind>"; index is the JSONL line number used by all project_session_* tools. detail "text" (default) shows prompts, assistant text, compact summaries and one-line tool calls; include_tools adds full tool arguments and tool results, include_thinking adds thinking. detail "full" shows everything: thinking, tool calls with arguments, full tool results, attachments, system rows, model and token usage, other rows as JSON. Filter with kinds, since/until, from_index/to_index, or tail (last N matching entries). The last block is page JSON: next_cursor (null when done), first/last index, redactions. ${SCOPE_NOTE}`,
+    description: `Reads one conversation of this project as readable text, paged. Each entry starts with "#<index> <timestamp> <kind>" (assistant entries add engine and model); index is the JSONL line number used by all project_session_* tools. detail "text" (default) shows prompts, assistant text, compact summaries and one-line tool calls; include_tools adds full tool arguments and tool results, include_thinking adds thinking. detail "full" shows everything: thinking, tool calls with arguments, full tool results, attachments, system rows, model and token usage, other rows as JSON. Filter with kinds, since/until, from_index/to_index, or tail (last N matching entries). The last block is page JSON: next_cursor (null when done), first/last index, redactions. ${SCOPE_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {

@@ -112,7 +112,6 @@ pub(crate) fn frame(
         .border_1()
         .border_color(tint(rgba(p.text_primary), 0.06))
         .shadow(crate::overlay::dropdown_shadow())
-        .child(crate::overlay::hit_area())
         .child(header)
         .child(
             div()

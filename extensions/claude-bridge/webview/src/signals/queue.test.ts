@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { localQueue, enqueueLocal, clearLocalQueue, reconcileQueueWithEntries } from './queue'
+import { localQueue, enqueueLocal, clearLocalQueue, reconcileQueueWithEntries, dropQueueOnEngineSwitch } from './queue'
 import { jsonlEntriesByTab } from './jsonl'
 import type { JsonlEntryData } from '../types/jsonl'
 
@@ -174,5 +174,32 @@ describe('reconcileQueueWithEntries', () => {
     ] } })])
     reconcileQueueWithEntries(TAB)
     expect(queued()).toBe(1)
+  })
+})
+
+describe('dropQueueOnEngineSwitch', () => {
+  beforeEach(() => {
+    clearLocalQueue(TAB)
+    jsonlEntriesByTab.value = new Map()
+  })
+
+  it('an engine switch takes the previous agent\'s queue off the widget, host-owned items stay', () => {
+    setEntries([row({ type: 'user', message: { content: 'first' } })])
+    enqueueLocal(TAB, 'answered under positions the replay no longer has')
+    enqueueLocal(TAB, 'browser host decides', { hostOwned: true })
+    // The server replays the transcript after the switch: positions start over.
+    ord = 0
+    setEntries([row({ type: 'user', message: { content: 'answered under positions the replay no longer has' } })])
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(2)
+    dropQueueOnEngineSwitch(TAB)
+    expect(localQueue.value.get(TAB)?.map(item => item.content)).toEqual(['browser host decides'])
+  })
+
+  it('leaves other tabs alone', () => {
+    enqueueLocal('other', 'still queued elsewhere')
+    dropQueueOnEngineSwitch(TAB)
+    expect(localQueue.value.get('other')?.length).toBe(1)
+    clearLocalQueue('other')
   })
 })

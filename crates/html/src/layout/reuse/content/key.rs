@@ -168,7 +168,7 @@ pub(in crate::layout::reuse) fn inert_tree(e: &Element, vcx: crate::values::Valu
 }
 
 /// The box `e` itself is inert (`inert_tree`).
-fn inert_node(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
+pub(in crate::layout::reuse) fn inert_node(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
     super::super::plain::replayable_node(e, vcx)
         && e.style.used().reset_positioned.anchor_name.is_none()
         && e.style.used().reset_positioned.implicit_anchor.is_none()

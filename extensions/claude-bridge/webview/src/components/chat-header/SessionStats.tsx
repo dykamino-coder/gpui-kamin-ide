@@ -6,7 +6,8 @@ import { compactSegments, activeSegmentIdx } from '../../signals/compact-segment
 import { replayProgressByTab } from '../../signals/replay-progress'
 import { usageByTab, usageForEngine } from '../../signals/session-usage'
 import { useBridge } from '../../hooks/useBridge'
-import { computeContextStats, costDisplay } from '../../utils/session-cost'
+import { computeContextStats, costDisplay, type CostPart } from '../../utils/session-cost'
+import { engineIcon } from '../../lib/engine-icon'
 import { CHIP_LABEL_STYLE, CHIP_STYLE, METER_TRACK_STYLE, meterFillStyle } from '../input-bar/usage-chip'
 
 // Context pressure bands — reused by color AND by the Compact button. The pct
@@ -119,8 +120,13 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
   const limitNote = s.limitSource === 'compact'
     ? ` (auto-compact at ${formatTokens(s.limit)})`
     : s.limitSource === 'model' ? ' (estimated window)' : ''
-  const contextText = s.used === null ? 'Context pending' : `${s.freshness === 'compact' ? '≈' : ''}${formatTokens(s.used)}`
-  const contextTooltip = s.freshness === 'pending'
+  // After an agent switch the chip keeps its place (empty meter, a dash) until
+  // the joining agent's first answer instead of jumping to a wider label.
+  const switching = s.freshness === 'switch'
+  const contextText = switching ? '—' : s.used === null ? 'Context pending' :`${s.freshness === 'compact' ? '≈' : ''}${formatTokens(s.used)}`
+  const contextTooltip = s.freshness === 'switch'
+    ? 'Switched agent: its context shows after its first answer.'
+    : s.freshness === 'pending'
     ? 'Compact completed; waiting for post-compact context usage.'
     : s.freshness === 'compact'
       ? `Post-compact context ≈ ${formatTokens(s.used!)} / ${formatTokens(s.limit)}; waiting for the next model usage.`
@@ -136,11 +142,12 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
       <>
         <span data-tooltip={contextTooltip} title={contextTooltip} style={CHIP_STYLE}>
           <span style={CHIP_LABEL_STYLE}>ctx</span>
-          {meters && s.pct !== null && (
+          {meters && (s.pct !== null || switching) && (
             <span aria-hidden="true" style={METER_TRACK_STYLE}>
-              <span style={meterFillStyle(s.pct, meterColor)} />
+              <span style={meterFillStyle(s.pct ?? 0, meterColor)} />
             </span>
           )}
+          {switching && <span aria-hidden="true" style="visibility:hidden;font-weight:600">0%</span>}
           {s.pct !== null && (
             <span style={`color:${meters ? pctColor : meterColor};font-weight:600`}>{s.freshness === 'compact' ? '≈' : ''}{s.pct}%</span>
           )}
@@ -151,7 +158,9 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
           title={costSettling ? 'Session cost finalises once history finishes loading' : cost.tooltip}
           style={CHIP_STYLE}
         >
-          <span style={`color:${costSettling ? 'var(--text-disabled)' : 'var(--text-secondary)'};font-weight:600`}>{costText}</span>
+          {costSettling
+            ? <span style="color:var(--text-disabled);font-weight:600">{costText}</span>
+            : <CostAmounts parts={cost.parts} />}
         </span>
         {band !== 'ok' && (
           <button
@@ -174,9 +183,9 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
       data-tooltip={`${contextTooltip} · ${costSettling ? 'Session cost: calculating…' : `${cost.tooltip}: ${cost.text}`}`}
       style="display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);line-height:1;font-variant-numeric:tabular-nums"
     >
-      {s.pct !== null && <div style="width:60px;height:4px;background:var(--bg-surface);border-radius:var(--radius-xs);overflow:hidden;flex-shrink:0">
+      {(s.pct !== null || switching) && <div style="width:60px;height:4px;background:var(--bg-surface);border-radius:var(--radius-xs);overflow:hidden;flex-shrink:0">
         <div
-          style={`width:${s.pct}%;height:100%;background:${barColor};transition:width 0.3s;border-radius:var(--radius-xs)`}
+          style={`width:${s.pct ?? 0}%;height:100%;background:${barColor};transition:width 0.3s;border-radius:var(--radius-xs)`}
         />
       </div>}
       {s.pct !== null && <span style={`color:${pctColor};font-weight:600`}>{s.freshness === 'compact' ? '≈' : ''}{s.pct}%</span>}
@@ -185,7 +194,7 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
       <span style="color:var(--text-disabled)">·</span>
       {costSettling
         ? <span style="color:var(--text-disabled)" title="Session cost finalises once history finishes loading">…</span>
-        : <span title={cost.tooltip}>{cost.text}</span>}
+        : <span title={cost.tooltip}><CostAmounts parts={cost.parts} /></span>}
       {band !== 'ok' && (
         <button
           onClick={sendCompact}
@@ -198,6 +207,23 @@ export function SessionStats({ variant = 'strip', meters = true }: { variant?: '
         </button>
       )}
     </div>
+  )
+}
+
+/** Each amount after its agent's icon: "[Claude] $0.27 · [GPT] $0.09".
+ *  Tabular digits and a minimum width per amount keep the chip from
+ *  shifting while a sum grows. */
+export function CostAmounts({ parts }: { parts: CostPart[] }): JSX.Element {
+  return (
+    <span style="display:inline-flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums">
+      {parts.map((p, i) => (
+        <span key={`${p.engine}-${i}`} data-cost-engine={p.engine} style="display:inline-flex;align-items:center;gap:3px">
+          {i > 0 && <span style="color:var(--text-disabled)">·</span>}
+          <i class={engineIcon(p.engine)} aria-label={p.engine === 'codex' ? 'ChatGPT' : 'Claude'} style="font-size:9px;color:var(--text-muted)" />
+          <span style="min-width:4ch;color:var(--text-secondary);font-weight:600">{p.text}</span>
+        </span>
+      ))}
+    </span>
   )
 }
 

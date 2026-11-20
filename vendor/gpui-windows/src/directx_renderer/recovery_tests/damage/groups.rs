@@ -3,8 +3,8 @@
 //! group keeps the images of the others — and the frame equals its whole
 //! redraw.
 
-use super::*;
 use super::super::super::group_cache::GroupCounts;
+use super::*;
 
 /// One group per cell of a 4×3 grid: a quad of `colors[i]` at opacity 0.8.
 fn groups(cells: &[(usize, Hsla)]) -> Scene {
@@ -69,7 +69,11 @@ fn a_group_atlas_packed_again_within_a_chain_keeps_no_stale_image() {
             let mut q = quad([0., 0., W as f32, H as f32], hsla(0.55, 0.6, 0.5, 1.));
             q.order = 1;
             inner.quads.push(q);
-            s.groups.push(PaintGroup { scene: inner, bounds: b(0., 0., W as f32, H as f32), ..Default::default() });
+            s.groups.push(PaintGroup {
+                scene: inner,
+                bounds: b(0., 0., W as f32, H as f32),
+                ..Default::default()
+            });
             s.surfaces.push(PaintSurface {
                 order: 7,
                 bounds: b(0., 0., W as f32, H as f32),
@@ -98,14 +102,23 @@ fn a_group_atlas_packed_again_within_a_chain_keeps_no_stale_image() {
         previous = s;
         // Frame 1 packs the atlas again (nothing kept); frame 2 keeps only the images of frame 1.
         let kept = [0, 0, 6, 11][i];
-        assert_eq!(r.retained.groups.counts.kept, kept, "frame {i}: groups kept");
+        assert_eq!(
+            r.retained.groups.counts.kept, kept,
+            "frame {i}: groups kept"
+        );
         let got = target_bytes(&mut r);
         let mut whole = offscreen(&device, W, H);
         let mut alone = frame(i);
         alone.note_frame_damage(&Scene::default(), 1, (W, H));
-        whole.draw(&alone, WindowBackgroundAppearance::Opaque).unwrap();
+        whole
+            .draw(&alone, WindowBackgroundAppearance::Opaque)
+            .unwrap();
         let want = target_bytes(&mut whole);
-        assert!(got == want, "frame {i}: {} pixels differ from the whole frame", differing(&got, &want));
+        assert!(
+            got == want,
+            "frame {i}: {} pixels differ from the whole frame",
+            differing(&got, &want)
+        );
     }
 }
 
@@ -142,6 +155,26 @@ fn group_images_follow_content_across_removal_insertion_and_reordering() {
     }
 }
 
+#[test]
+fn normal_retained_frames_do_not_allocate_pixel_audit_readbacks() {
+    let device = DirectXDevices::new().unwrap();
+    let base: Vec<(usize, Hsla)> = (0..12).map(|i| (i, color(i))).collect();
+    let mut recolored = base.clone();
+    recolored[6].1 = hsla(0.95, 0.9, 0.4, 1.);
+    let mut r = offscreen(&device, W, H);
+    let mut first = groups(&base);
+    first.note_frame_damage(&Scene::default(), 1, (W, H));
+    r.draw(&first, WindowBackgroundAppearance::Opaque).unwrap();
+    let mut next = groups(&recolored);
+    next.note_frame_damage(&first, 2, (W, H));
+    r.draw(&next, WindowBackgroundAppearance::Opaque).unwrap();
+    assert_eq!(r.retained.groups.counts, GroupCounts { kept: 11, drawn: 1 });
+    assert!(
+        !r.retained.groups.scrub.has_readbacks(),
+        "an ordinary retained frame must not allocate diagnostic readback textures"
+    );
+}
+
 /// A kept image spoiled after it was drawn is drawn again within one round
 /// of the scrub, and the comparison counts it once.
 #[test]
@@ -153,6 +186,7 @@ fn a_spoiled_kept_image_is_redrawn_within_a_scrub_round_and_counted() {
     let mut recolored = base.clone();
     recolored[6].1 = hsla(0.95, 0.9, 0.4, 1.);
     let mut r = offscreen(&device, W, H);
+    r.retained.groups.scrub.enabled = true;
     let first = {
         let mut s = groups(&base);
         s.note_frame_damage(&Scene::default(), 1, (W, H));
@@ -175,8 +209,15 @@ fn a_spoiled_kept_image_is_redrawn_within_a_scrub_round_and_counted() {
     r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
     assert_eq!(r.retained.groups.counts, GroupCounts { kept: 11, drawn: 1 });
     r.finish_scrub(true).unwrap();
-    assert_eq!(r.retained.groups.scrub.mismatches, 1, "the spoiled image is counted once");
+    assert_eq!(
+        r.retained.groups.scrub.mismatches, 1,
+        "the spoiled image is counted once"
+    );
     let got = target_bytes(&mut r);
     let (want, _) = chain(&device, &[recolored]);
-    assert!(got == want, "{} pixels differ from the whole frame", differing(&got, &want));
+    assert!(
+        got == want,
+        "{} pixels differ from the whole frame",
+        differing(&got, &want)
+    );
 }

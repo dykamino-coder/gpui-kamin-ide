@@ -1,13 +1,9 @@
-//! Режим `edit`: кадры после локальной правки разметки (`edit::Edit`),
-//! применённой записями мутаций DOM (`Document::apply`), а когда правка меняет
-//! форму дерева (вставка, удаление узла) — `Document::update`, по очереди правка и
-//! возврат, затем проверка, что каждый вариант совпадает по пикселям со свежим
-//! документом той же разметки. Отчёт режима несёт работу документа каждого
-//! кадра правки (`document_frame_samples`: сборки, повторы, сборки внутри draw).
+//! Alternating edits with exact RGB validation of every captured transition.
+//! Missing captures and intermediate mismatches cannot produce a passing verdict.
 
 use super::{
     args::Args,
-    pixels, report, resources,
+    report, resources,
     run::{Step, sample},
     view::View,
     work,
@@ -28,7 +24,7 @@ pub(super) async fn run(
     luid: &super::work::Adapter,
 ) -> Result<(Value, Vec<work::Sample>)> {
     let base = resources::read(&args.path)?;
-    let edited = match super::edit::markup_file() {
+    let edited = match args.edit_markup.as_deref() {
         Some(path) => resources::read(path)?,
         None => args.edit.markup(&base)?,
     };
@@ -42,7 +38,34 @@ pub(super) async fn run(
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
     let mut work = Vec::with_capacity(args.runs);
-    let mut last = [None, None];
+    // Fresh Documents do not inherit incremental layout/style state. Keep only
+    // two references, then restore the input before the measured transitions.
+    let mut references = Vec::with_capacity(2);
+    for markup in variants {
+        let (_, fresh, _) = sample(
+            cx,
+            window,
+            fonts,
+            args,
+            Step::Cold(Some(markup)),
+            capture,
+            luid,
+        )
+        .await?;
+        references.push(fresh.pixels);
+    }
+    sample(
+        cx,
+        window,
+        fonts,
+        args,
+        Step::Cold(Some(variants[0])),
+        capture,
+        luid,
+    )
+    .await?;
+    let mut checks = Vec::with_capacity(args.runs);
+    let mut skipped_checks = 0;
     let mut layer = Vec::with_capacity(args.runs);
     // ENGINE_BENCH_PRESENT_SKIP: the edits may skip presentation (a change
     // off screen); such samples end where the frame decided it.
@@ -74,9 +97,6 @@ pub(super) async fn run(
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         work.push(counts);
-        if let Some(frame) = frame {
-            last[variant] = Some(frame.pixels);
-        }
         let after = (
             layer_work(),
             window.read_with(cx, |view, _| view.doc.retained_frames())?,
@@ -87,70 +107,34 @@ pub(super) async fn run(
             delta[format!("path_{name}")] = json!(path_after[i].wrapping_sub(path_before[i]));
         }
         layer.push(delta);
-    }
-    let mut checks = Vec::new();
-    for (variant, incremental) in last.iter().enumerate() {
-        let Some(incremental) = incremental else {
-            continue;
-        };
-        let markup = variants[variant];
-        let (_, fresh, _) = sample(
-            cx,
-            window,
-            fonts,
-            args,
-            Step::Cold(Some(markup)),
-            capture,
-            luid,
-        )
-        .await?;
-        let mut check = super::fresh_check::compare(
-            incremental,
-            &fresh.pixels,
-            args.fresh_check_dir.as_deref(),
-            &format!("edit-{variant}"),
-        )?;
-        check["variant"] = json!(variant);
-        if check["different_rgb_pixels"] != 0 {
-            // Второй свежий кадр отличает недетерминизм свежей сборки от
-            // ошибки инкрементального пути.
-            let (_, again, _) = sample(
-                cx,
-                window,
-                fonts,
-                args,
-                Step::Cold(Some(markup)),
-                capture,
-                luid,
-            )
-            .await?;
-            check["fresh_vs_fresh_rgb_pixels"] =
-                json!(pixels::differing(&fresh.pixels, &again.pixels)?);
-            check["incremental_vs_second_fresh_rgb_pixels"] =
-                json!(pixels::differing(incremental, &again.pixels)?);
-            check["second_fresh"] = super::fresh_check::compare(
-                incremental,
-                &again.pixels,
+        // Compare the actual measured frame after its timing and counters close.
+        // A skipped presentation has no captured pixels and cannot prove equality.
+        if let Some(frame) = frame {
+            let mut check = super::fresh_check::compare(
+                &frame.pixels,
+                &references[variant],
                 args.fresh_check_dir.as_deref(),
-                &format!("edit-{variant}-second"),
+                &format!("edit-{index}-variant-{variant}"),
             )?;
-            check["detail"] = pixels::detail(incremental, &fresh.pixels);
-            if let Some(dir) = &args.frame_diff_dir {
-                std::fs::create_dir_all(dir)?;
-                pixels::save(
-                    incremental,
-                    &dir.join(format!("edit-{variant}-incremental.png")),
-                )?;
-                pixels::save(
-                    &fresh.pixels,
-                    &dir.join(format!("edit-{variant}-fresh.png")),
+            check["sample_index"] = json!(index);
+            check["variant"] = json!(variant);
+            if check["different_rgb_pixels"] != 0
+                && let Some(directory) = &args.frame_diff_dir
+            {
+                super::fresh_check::compare(
+                    &frame.pixels,
+                    &references[variant],
+                    Some(directory),
+                    &format!("edit-{index}-variant-{variant}"),
                 )?;
             }
+            checks.push(check);
+        } else {
+            skipped_checks += 1;
         }
-        checks.push(check);
     }
     let mut mode = report::measured_mode(&samples, &diagnostics);
-    mode["edit"] = match super::edit::markup_file() {
+    mode["edit"] = match args.edit_markup.as_deref() {
         Some(path) => json!({"markup": path}),
         None => json!(format!("{:?}", args.edit).to_lowercase()),
     };
@@ -161,7 +145,14 @@ pub(super) async fn run(
     });
     mode["presentation_required"] = json!(present);
     mode["scene_layer"] = json!({"samples": layer, "census": census});
-    mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
+    mode["matches_fresh"] = json!(super::fresh_check::matches_series(args.runs, &checks));
+    mode["fresh_validation"] = json!({
+        "required": args.runs, "compared": checks.len(), "skipped": skipped_checks,
+        "status": if checks.is_empty() { "not_checked" }
+            else if checks.len() != args.runs { "incomplete" }
+            else if super::fresh_check::matches_series(args.runs, &checks) { "matched" } else { "mismatched" },
+        "method": "each_measured_capture_against_fresh_document",
+    });
     mode["fresh_checks"] = json!(checks);
     mode["document_frame_samples"] = frame_samples
         .iter()

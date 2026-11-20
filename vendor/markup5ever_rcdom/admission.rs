@@ -14,6 +14,8 @@ use tendril::StrTendril;
 
 mod diagnostics;
 mod mutations;
+mod removal;
+pub use removal::Removal;
 mod selectedcontent;
 
 /// None is used by the original, infallible API only.

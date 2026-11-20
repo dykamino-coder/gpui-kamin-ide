@@ -32,6 +32,7 @@ mod diag_outbox;
 mod diag_sink;
 pub(crate) mod diag_views;
 pub(crate) mod diag_why;
+mod drag;
 mod element;
 mod focus;
 mod frame_size;
