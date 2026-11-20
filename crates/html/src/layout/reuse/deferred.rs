@@ -23,7 +23,26 @@ use std::cell::Cell;
 pub(crate) struct Deferred {
     /// The content mask of the frame that recorded the layer, device pixels.
     shown: Cell<Option<Bounds<ScaledPixels>>>,
+    /// `Store::epoch` of the frame that recorded the layer: the retained
+    /// fragments painted in it describe the layer (`fragments_hold`).
+    stamp: Cell<u64>,
+    /// The device scale of that frame.
+    scale: Cell<f32>,
     paths: Cell<Vec<(Vec<usize>, u64)>>,
+    /// Edits of boxes the layer cannot record again, wholly off the screen
+    /// (`revision::offscreen`): the area each can paint and why the layer
+    /// refused it. A replay that shows one builds the frame.
+    frames: Cell<Vec<(Bounds<ScaledPixels>, Wait)>>,
+}
+
+/// Why an edit off the screen waits for a frame rather than a record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Wait {
+    /// An inline box whose band the layer does not record again (a justified
+    /// line, a band appearing on a nested box).
+    Inline,
+    /// A box with decorations painted as elements of their own.
+    Decoration,
 }
 
 /// Margin of the area shown for the rounding of edges, device pixels.
@@ -50,12 +69,35 @@ fn misses(layer: &LayerHandle, owner: u64, shown: Bounds<ScaledPixels>) -> bool 
         .is_some_and(|area| !grown(area).intersects(&shown))
 }
 
+/// Where a paragraph of the document whose container is node `node`, built
+/// under `opts`, writes its line fragments (`layout::retained::fragments`);
+/// `None` outside the document's own flow or for a container without a box.
+pub(crate) fn fragment_target(
+    opts: &crate::layout::options::RenderOpts,
+    node: u64,
+) -> Option<crate::layout::retained::FragmentTarget> {
+    let flow = opts.cx.contracts.reuse.as_ref()?;
+    if opts.cx.contracts.document_root != Some(flow.doc) {
+        return None;
+    }
+    let boxes = opts.cx.doc().boxes.clone();
+    let owner = boxes.borrow().box_of(node)?;
+    Some(crate::layout::retained::FragmentTarget {
+        boxes,
+        owner,
+        store: flow.store.clone(),
+    })
+}
+
 impl Deferred {
     /// A new layer was recorded with the frame's content mask `shown`: it
     /// paints every box from its current style.
-    pub(super) fn start(&self, shown: Option<Bounds<ScaledPixels>>) {
+    pub(super) fn start(&self, shown: Option<Bounds<ScaledPixels>>, stamp: u64, scale: f32) {
         self.shown.set(shown);
+        self.scale.set(scale);
+        self.stamp.set(stamp);
         self.paths.take();
+        self.frames.take();
     }
 }
 
@@ -98,6 +140,69 @@ impl Store {
             .partition(|(_, id)| misses(layer, *id, shown));
         deferred.paths.set(wait);
         due
+    }
+
+    /// The number of the frame being drawn (`draw`).
+    pub(crate) fn frame_epoch(&self) -> u64 {
+        self.epoch.get()
+    }
+
+    /// Whether fragments painted in frame `stamp` describe the layer.
+    pub(crate) fn fragments_hold(&self, stamp: u64) -> bool {
+        let deferred = self.layer.deferred();
+        deferred.shown.get().is_some() && deferred.stamp.get() == stamp
+    }
+
+    /// The device scale of the layer's frame.
+    pub(crate) fn shown_scale(&self) -> f32 {
+        self.layer.deferred().scale.get()
+    }
+
+    /// Whether `area` (device pixels) misses what the layer's frame showed.
+    pub(crate) fn misses_shown(&self, area: Bounds<ScaledPixels>) -> bool {
+        let shown = self.layer.deferred().shown.get();
+        shown.is_some_and(|shown| !grown(area).intersects(&shown))
+    }
+
+    /// Keep edits off the screen that the layer cannot record: a replay
+    /// that shows any builds the frame (`due_frames`).
+    pub(crate) fn defer_frames(&self, waits: Vec<(Bounds<ScaledPixels>, Wait)>) {
+        if waits.is_empty() {
+            return;
+        }
+        let deferred = self.layer.deferred();
+        let mut kept = deferred.frames.take();
+        kept.extend(waits);
+        deferred.frames.set(kept);
+    }
+
+    /// Whether a replay showing `shown` reaches an edit waiting for a frame;
+    /// each reached edit is counted by its reason, and one frame takes all.
+    pub(crate) fn due_frames(&self, shown: Bounds<ScaledPixels>) -> bool {
+        let deferred = self.layer.deferred();
+        let kept = deferred.frames.take();
+        let mut due = false;
+        for (area, wait) in &kept {
+            if grown(*area).intersects(&shown) {
+                due = true;
+                let counter = match wait {
+                    Wait::Inline => &crate::paint_path::ARRIVED_INLINE,
+                    Wait::Decoration => &crate::paint_path::ARRIVED_DECORATION,
+                };
+                crate::paint_path::add(counter, 1);
+            }
+        }
+        deferred.frames.set(kept);
+        due
+    }
+
+    /// The number of edits waiting for a frame.
+    #[cfg(test)]
+    pub(crate) fn deferred_frames(&self) -> usize {
+        let frames = self.layer.deferred().frames.take();
+        let n = frames.len();
+        self.layer.deferred().frames.set(frames);
+        n
     }
 
     /// The number of boxes whose records wait.

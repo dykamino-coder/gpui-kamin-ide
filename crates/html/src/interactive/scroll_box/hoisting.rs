@@ -2,7 +2,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::layout::positioned::predicates::{edge_set, stays_positioned};
+use crate::layout::positioned::predicates::{Siblings, edge_set};
 use crate::style::computed::{BoxStyle, Display};
 
 /// Вынуть из поддерева ленты прокрутки абсолютных потомков, которым лента не
@@ -41,6 +41,7 @@ pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &BoxStyle, opts: &Re
     ) {
         return;
     }
+    let siblings = Siblings::new(&e.children);
     let take: Vec<bool> = (0..e.children.len())
         .map(|i| {
             let Node::Element(c) = &e.children[i] else {
@@ -54,7 +55,7 @@ pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &BoxStyle, opts: &Re
                 && c.style.used().reset_positioned.z_index.unwrap_or(0) >= 0
                 && x_set
                 && y_set
-                && !stays_positioned(&e.children[i + 1..])
+                && !siblings.after(i).stays_positioned()
         })
         .collect();
     if !take.iter().any(|t| *t) {
