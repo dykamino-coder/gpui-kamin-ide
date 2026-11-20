@@ -82,8 +82,8 @@ pub(super) struct Frames {
     /// Root-flow blocks replayed in the document before the frame (`Document::replayed_blocks`).
     before_blocks: u64,
     samples: Vec<Value>,
-    /// Scroll: the last frame and its root offset (`scroll_fresh`).
-    last: super::scroll_fresh::LastFrame,
+    /// Scroll: every step frame and its root offset (`scroll_fresh`).
+    steps: super::scroll_fresh::StepFrames,
 }
 
 impl Frames {
@@ -109,7 +109,7 @@ impl Frames {
             wheel_from: None,
             before_blocks: 0,
             samples: Vec::new(),
-            last: None,
+            steps: Vec::new(),
         })
     }
 
@@ -193,8 +193,13 @@ impl Frames {
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
             "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks }),
             "frame_misses": misses.into_iter().map(|(k, n)| (k, json!(n))).collect::<serde_json::Map<_, _>>()}));
-        if let (true, Some(at)) = (self.scroll, offset.0) {
-            self.last = Some((frame.pixels.clone(), at))
+        if let (true, Some(offset)) = (self.scroll, offset.0) {
+            let (measured, settled) = (frame.pixels.clone(), None);
+            (self.steps).push(super::scroll_fresh::StepFrame {
+                measured,
+                settled,
+                offset,
+            })
         }
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
     }
@@ -210,7 +215,10 @@ impl Frames {
         let (mut frames, mut builds, mut replays, mut settled) = (0, 0, 0, false);
         while frames < SETTLE_FRAMES && !settled {
             let before = window.read_with(cx, |view, _| view.doc.retained_frames())?;
-            sample(cx, window, fonts, args, step, capture, luid).await?;
+            let (_, frame, _) = sample(cx, window, fonts, args, step, capture, luid).await?;
+            if let Some(last) = self.steps.last_mut() {
+                last.settled = Some(frame.pixels);
+            }
             let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
             let (b, r) = delta(before, after)?;
             frames += 1;
@@ -263,7 +271,7 @@ impl Frames {
     /// же ширины.
     async fn fresh(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
         if self.scroll {
-            return super::scroll_fresh::check(self.last, report, run).await;
+            return super::scroll_fresh::check(self.steps, report, run).await;
         }
         let (cx, window, fonts, args, capture, luid) = run;
         if !self.relayout {
