@@ -194,3 +194,11 @@ impl Element for ScrollArea {
         );
     }
 }
+
+impl IntoElement for ScrollArea {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
