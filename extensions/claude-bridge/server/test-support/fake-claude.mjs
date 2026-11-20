@@ -35,7 +35,19 @@ const slugDir = path.join(home, '.claude', 'projects', projectSlug(process.cwd()
 const file = path.join(slugDir, `${conversation}.jsonl`)
 fs.mkdirSync(slugDir, { recursive: true })
 if (resumed >= 0 && !fs.existsSync(file)) throw new Error('No conversation found')
-const prior = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).length : 0
+// Continue after the highest record number already used: the transcript a resume
+// reads can hold fewer lines than earlier processes numbered, and a reused UUID
+// makes the client drop the new row as a duplicate.
+const prior = fs.existsSync(file)
+  ? fs
+      .readFileSync(file, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .reduce((max, line, i) => {
+        const seq = Number(line.split(`"uuid":"${conversation}-`)[1]?.match(/^(\d+)"/)?.[1] ?? 0)
+        return Math.max(max, i + 1, seq)
+      }, 0)
+  : 0
 const rec = records(conversation, prior)
 const emit = (...entries) => {
   fs.appendFileSync(file, entries.map((e) => JSON.stringify(e) + '\n').join(''))
@@ -251,8 +263,10 @@ async function execute(command) {
     return
   }
   await hook('UserPromptSubmit', { prompt: command })
-  // Input content itself is synthetic control, never user prompt capture.
-  emit(rec.user('Synthetic harness command'))
+  // Input content itself is synthetic control, never user prompt capture. A
+  // queue acceptance run opts in to the real CLI's behaviour: the transcript
+  // records what was typed, so the client can match its pending item to it.
+  emit(rec.user(process.env.BRIDGE_FAKE_CLI_RECORD_INPUT === '1' ? command : 'Synthetic harness command'))
   received.push(command)
   const [action, parameter] = command.split(/\s+/)
   switch (action) {
