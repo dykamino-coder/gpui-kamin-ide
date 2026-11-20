@@ -77,7 +77,8 @@ impl Element for ScrollArea {
         // element states its prepaint range touched (`Window::reuse_prepaint`).
         // Touch the scroller's state here too, or the next build starts it
         // over (a new handle at offset zero) after a replayed wheel step.
-        if let Some(id) = id {
+        // The root's handle lives with the view (`RootScroll`), not here.
+        if let Some(id) = id.filter(|_| self.root.is_none()) {
             window.with_element_state::<Persistent, _>(id, |state, _| {
                 ((), state.unwrap_or_default())
             });
