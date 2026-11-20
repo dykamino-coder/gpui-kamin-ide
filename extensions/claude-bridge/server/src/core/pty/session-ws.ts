@@ -26,6 +26,7 @@ import { SessionAdmissionError } from './session-admission'
 import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId } from './live-switch'
 import { interruptClaudeTurn, switchClaudeModelInPlace } from './claude-turn'
 import { rememberEffortSelection } from './effort-selection'
+import { noteEffortChanged } from './effort-note'
 import type { SessionConfig } from '../types/pty'
 
 /** A client's per-chat thinking display, validated: unknown values keep the default. */
@@ -1129,6 +1130,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // tick, so the dialog cannot slip past the responder.
               armSwitchConfirm(session, 'effort', msg.effort)
               session.effort = msg.effort
+              noteEffortChanged(session)
               // The live `/effort` reaches only this process; a respawn reads
               // the choice back from here (INC-2026-0099).
               rememberEffortSelection(session.cliConversationId, msg.effort)

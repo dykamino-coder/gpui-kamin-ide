@@ -226,11 +226,12 @@ export function thinkingDisplayArgs(sessionConfig: SessionConfig): string[] {
 
 /** Claude Code tells the model its exact id but not the `--effort` it runs
  *  with; this line does. A live `/effort` later in the chat changes the level
- *  without a respawn, and its command output in the conversation says so. */
+ *  without a respawn; the next user message then names the new level in a
+ *  hidden block (effort-note.ts). */
 export function claudeEffortLine(effort: string): string {
   return [
     '## Reasoning effort',
-    `This chat was started with reasoning effort \`${effort}\`; a later \`/effort\` command in this conversation sets the current level.`,
+    `This chat was started with reasoning effort \`${effort}\`. A later \`/effort\` command, or a Bridge note in a user message that names a new reasoning effort, sets the current level.`,
     'When asked about your reasoning effort, answer with that exact level.',
   ].join('\n')
 }
