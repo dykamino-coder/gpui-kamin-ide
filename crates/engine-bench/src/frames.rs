@@ -129,27 +129,26 @@ impl Frames {
             if self.scroll {
                 self.wheel_from = view.doc.root_scroll_offset();
                 self.dispatched = Some(std::time::Instant::now());
+                // The step goes through window input dispatch, as a platform wheel
+                // event does: the root scroller's handler moves DocState::root_scroll.
+                let size = window.viewport_size();
+                let mut at = gpui::point(size.width / 2.0, size.height / 2.0);
                 if let Some(from) = self.back_from {
-                    // `--scroll-back`: the root scroller itself moves, down
-                    // and then up, wherever a wheel would land.
+                    // `--scroll-back`: down and then up, by the root's own
+                    // scrollbar edge, which no nested scroller covers.
                     self.step = if index >= from { -self.jump } else { self.jump };
-                    let y = self.wheel_from.map_or(0.0, |o| o.1) + self.step;
-                    view.doc.set_root_scroll(y.max(0.0));
-                } else {
-                    // The step goes through window input dispatch, as a platform wheel
-                    // event does: the root scroller's handler moves DocState::root_scroll.
-                    let size = window.viewport_size();
-                    let wheel = gpui::ScrollWheelEvent {
-                        position: gpui::point(size.width / 2.0, size.height / 2.0),
-                        delta: gpui::ScrollDelta::Pixels(gpui::point(
-                            gpui::px(0.0),
-                            gpui::px(-WHEEL_STEP),
-                        )),
-                        modifiers: gpui::Modifiers::default(),
-                        touch_phase: gpui::TouchPhase::Moved,
-                    };
-                    window.dispatch_event(gpui::PlatformInput::ScrollWheel(wheel), cx);
+                    at.x = size.width - gpui::px(2.0);
                 }
+                let wheel = gpui::ScrollWheelEvent {
+                    position: at,
+                    delta: gpui::ScrollDelta::Pixels(gpui::point(
+                        gpui::px(0.0),
+                        gpui::px(-self.step),
+                    )),
+                    modifiers: gpui::Modifiers::default(),
+                    touch_phase: gpui::TouchPhase::Moved,
+                };
+                window.dispatch_event(gpui::PlatformInput::ScrollWheel(wheel), cx);
             }
             if self.relayout {
                 // Меняется только CSS-вход: HWND остаётся прежним и не получает WM_SIZE.
