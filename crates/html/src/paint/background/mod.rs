@@ -77,6 +77,8 @@ pub(crate) fn canvas_layer(
     layer.image.as_ref()?;
     let layer = layer.clone();
     let opaque_borders = std::array::from_fn(|i| geometry.used_border_color(i).a >= 1.0);
+    // Scrolling under a follower, the canvas clip is its node's, not its own.
+    let own_clip = !(area.scrolls && layer.fixed != Some(true));
     Some(
         gpui::canvas(
             |_, _, _| {},
@@ -94,7 +96,7 @@ pub(crate) fn canvas_layer(
                     },
                     &geometry,
                     bounds,
-                    Some(clip),
+                    own_clip.then_some(clip),
                     window,
                     None,
                     vcx,

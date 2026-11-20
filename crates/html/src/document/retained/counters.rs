@@ -50,6 +50,15 @@ impl Document {
         Some((f32::from(max.x), f32::from(max.y)))
     }
 
+    /// Open the root scroller at `(x, y)` CSS px from the top left (a fresh
+    /// document compared with a scrolled one, engine-bench scroll mode).
+    pub fn set_root_scroll_offset(&self, (x, y): (f32, f32)) {
+        if let Some(root) = self.state.root_scroll.as_ref() {
+            root.handle
+                .set_offset(gpui::point(gpui::px(-x), gpui::px(-y)));
+        }
+    }
+
     /// Elements of box contents replayed at any depth (`layout::reuse::content`).
     pub fn replayed_contents(&self) -> u64 {
         self.reuse.stats.get().contents

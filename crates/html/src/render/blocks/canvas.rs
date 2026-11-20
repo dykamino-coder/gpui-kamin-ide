@@ -85,6 +85,13 @@ pub(crate) fn canvas_layer(
     // схлопкой верха, и над краской проступала полоса
     // (background-size-document-root-vrl-*).
     let mut layer = layer.into_any_element();
+    let scrolling = |fixed, t| {
+        crate::interactive::scroll_target::canvas_scrolling(
+            opts.cx.scroll.target.as_deref(),
+            fixed,
+            t,
+        )
+    };
     // Донор — САМ корень: область ОТСЧЁТА плитки это его коробка
     // (§14.2 «sized and positioned relative to the root element's
     // box»), а красит она весь холст. Тот же отсчёт получает фон body.
@@ -111,6 +118,7 @@ pub(crate) fn canvas_layer(
             let root_left = e.style.cascaded().wm().block_rl();
             let padding = geometry.padding;
             let area = crate::paint::background::RootArea {
+                scrolls: opts.cx.scroll.target.is_some(),
                 measured,
                 left: side(geometry.margin.left) + side(b.left),
                 top: side(geometry.margin.top) + side(b.top),
@@ -143,17 +151,16 @@ pub(crate) fn canvas_layer(
                             area.clone(),
                             vcx,
                         ) {
-                            stack = stack.child(t);
+                            stack = stack.child(scrolling(l.fixed, t));
                         }
                     }
                     Some(stack.into_any_element())
                 }
-                None => crate::paint::background::canvas_layer(
-                    root_tile.as_ref().unwrap_or(&background.top),
-                    st.style_rc().clone(),
-                    area,
-                    vcx,
-                ),
+                None => {
+                    let top = root_tile.as_ref().unwrap_or(&background.top);
+                    crate::paint::background::canvas_layer(top, st.style_rc().clone(), area, vcx)
+                        .map(|t| scrolling(top.fixed, t))
+                }
             }
         }
     {
@@ -199,7 +206,7 @@ pub(crate) fn canvas_layer(
             .right_0()
             .bottom_0()
             .child(layer)
-            .child(band.child(tiles))
+            .child(band.child(scrolling(background.top.fixed, tiles)))
             .into_any_element();
     }
     // Прозрачность корня — на ГОТОВЫЙ слой холста целиком, вместе

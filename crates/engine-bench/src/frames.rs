@@ -82,6 +82,8 @@ pub(super) struct Frames {
     /// Root-flow blocks replayed in the document before the frame (`Document::replayed_blocks`).
     before_blocks: u64,
     samples: Vec<Value>,
+    /// Scroll: the last frame and its root offset (`scroll_fresh`).
+    last: super::scroll_fresh::LastFrame,
 }
 
 impl Frames {
@@ -107,6 +109,7 @@ impl Frames {
             wheel_from: None,
             before_blocks: 0,
             samples: Vec::new(),
+            last: None,
         })
     }
 
@@ -190,6 +193,9 @@ impl Frames {
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
             "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks }),
             "frame_misses": misses.into_iter().map(|(k, n)| (k, json!(n))).collect::<serde_json::Map<_, _>>()}));
+        if let (true, Some(at)) = (self.scroll, offset.0) {
+            self.last = Some((frame.pixels.clone(), at))
+        }
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
     }
 
@@ -256,6 +262,9 @@ impl Frames {
     /// `frame_pixels_changed`) совпадает по пикселям со свежим документом той
     /// же ширины.
     async fn fresh(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
+        if self.scroll {
+            return super::scroll_fresh::check(self.last, report, run).await;
+        }
         let (cx, window, fonts, args, capture, luid) = run;
         if !self.relayout {
             return Ok(());

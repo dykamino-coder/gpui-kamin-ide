@@ -141,6 +141,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                         viewport: None,
                         step: None,
                         step_opts: None,
+                        fresh_scroll: None,
                     });
                     let step = super::step::register(&view, window);
                     view.update(cx, |view, _| view.step = Some(step));

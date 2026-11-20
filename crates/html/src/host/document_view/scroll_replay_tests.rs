@@ -172,4 +172,5 @@ fn scripted_viewport_scroll_matches_fresh_and_then_replays(cx: &mut TestAppConte
     }
 }
 
+mod canvas;
 mod groups;

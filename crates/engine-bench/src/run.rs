@@ -174,6 +174,9 @@ pub(super) async fn sample_with(
                 }
                 timings = Some(doc.build_timings());
                 view.doc = doc;
+                if let Some(at) = view.fresh_scroll.take() {
+                    view.doc.set_root_scroll_offset(at)
+                }
             }
             view.phases = Rc::new(RefCell::new(Phases::requested(observer_setup)));
             capture.arm_first();
