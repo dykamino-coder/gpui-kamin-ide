@@ -184,6 +184,8 @@ fn main() {
             cx.open_window(options, |window, cx| {
                 #[cfg(feature = "probe")]
                 probe::keyboard::start(window.window_handle(), cx);
+                #[cfg(feature = "probe")]
+                probe::file_drop::start(window.window_handle(), cx);
                 let view = cx.new(|cx| RootView::new(view_tx, cx));
                 let fh = view.read(cx).focus_handle.clone();
                 window.focus(&fh, cx);
