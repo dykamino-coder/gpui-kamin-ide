@@ -154,6 +154,7 @@ pub(super) fn own_box_atom(
             &merged,
             crate::style::computed::stacking::fixed_cb_layer_box(&merged),
         )
+        .in_node(opts.cx.scroll.node.clone())
     });
     let mut kids =
         crate::layout::multicol::gap_rules::decorated_children(e, &merged, opts, |opts| {

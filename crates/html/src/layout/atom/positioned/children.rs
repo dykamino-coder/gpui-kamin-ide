@@ -11,7 +11,8 @@ pub(super) fn children(e: &Element, own: &BoxStyle, opts: &RenderOpts) -> Vec<An
         &opts.cx.position.state,
         own,
         crate::style::computed::stacking::fixed_cb_layer_box(own),
-    );
+    )
+    .in_node(opts.cx.scroll.node.clone());
     let mut children = opts.cx.contracts.build.blocks(&e.children, own, opts);
     children.extend(layer.finish());
     children

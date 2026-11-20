@@ -103,6 +103,7 @@ pub(crate) fn multicol_column_stack(
                 crate::layout::positioned::layer_scope::LayerScope::fixed_only(
                     &opts.cx.position.state,
                 )
+                .in_node(opts.cx.scroll.node.clone())
             });
             let children = if deferred.is_some() {
                 Vec::new()

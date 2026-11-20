@@ -38,6 +38,9 @@ struct CbLayer {
     /// index of the owner (`Computed::cb_depth` + 1).
     strict: Option<u16>,
     taken: OofQueue,
+    /// Scroll node whose content the layer's owner lays its boxes out in
+    /// (`ScrollContext::node`); `None` until `cb_set_node`.
+    node: Option<gpui::ScrollHandle>,
 }
 
 #[derive(Default)]
@@ -111,7 +114,37 @@ impl Positioning {
             taken: OofQueue::with_pending(
                 self.pending.borrow().last().cloned().unwrap_or_default(),
             ),
+            node: None,
         });
+    }
+
+    /// Record the scroll node of the containing-block layer opened last.
+    pub(crate) fn cb_set_node(&self, node: Option<gpui::ScrollHandle>) {
+        if let Some(layer) = self.cb.borrow_mut().last_mut() {
+            layer.node = node;
+        }
+    }
+
+    /// The scroll node of the layer a box goes to (`icb_push`, `cb_push_fixed`
+    /// or `cb_push` for the box's nearest containing block): the space its layout half is placed in.
+    pub(crate) fn layer_node(
+        &self,
+        to_icb: bool,
+        far_fixed: bool,
+        inherited: &BoxStyle,
+    ) -> Option<gpui::ScrollHandle> {
+        if to_icb {
+            return self.viewport_anchor();
+        }
+        let nearest = super::nearest_cb_index(inherited);
+        let layers = self.cb.borrow();
+        let mut open = layers.iter().rev();
+        let layer = if far_fixed {
+            open.find(|l| l.takes & FIX != 0)
+        } else {
+            open.find(|l| l.takes & ABS != 0 && l.strict.is_none_or(|d| d == nearest))
+        };
+        layer.and_then(|l| l.node.clone())
     }
 
     /// Is a containing-block layer available for this positioned box?

@@ -71,6 +71,15 @@ impl<'a> LayerScope<'a> {
         Self::new(positioning, Layer::Initial)
     }
 
+    /// A containing-block layer whose owner lays its boxes out in the content
+    /// of scroll node `node` (`ScrollContext::node`).
+    pub(crate) fn in_node(self, node: Option<gpui::ScrollHandle>) -> Self {
+        if matches!(self.layer, Layer::Containing) {
+            self.positioning.cb_set_node(node);
+        }
+        self
+    }
+
     pub(crate) fn late(positioning: &'a Positioning) -> Self {
         positioning.late_open();
         Self::new(positioning, Layer::Late)

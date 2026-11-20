@@ -202,6 +202,7 @@ pub(super) fn build_copy(
             &opts.cx.position.state,
             fixed_cb_layer_box(inner),
         )
+        .in_node(opts.cx.scroll.node.clone())
     });
     let child_build = &child_opts.cx.contracts.build;
     // CSS 2 §5.12: the copy's content gets the first-line/first-letter layers

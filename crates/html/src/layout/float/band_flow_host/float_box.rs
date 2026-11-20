@@ -65,6 +65,7 @@ pub(super) async fn float_box_stack(
                 &opts.cx.position.state,
                 crate::style::computed::stacking::fixed_cb_layer_box(&merged),
             )
+            .in_node(opts.cx.scroll.node.clone())
         });
         let span = open_clamp_span(&opts.cx);
         let mut kids = opts
