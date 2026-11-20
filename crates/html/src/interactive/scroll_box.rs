@@ -118,8 +118,8 @@ pub(crate) fn scrollable(
                 cx.scroll.target = Some(target.clone());
                 cx.scroll.frame = frame;
             });
-            let _frame = crate::layout::reuse::root_scroller_build(&inner_opts, node.tag == "html-viewport");
-            let built = (inner_opts.cx.contracts.build).element(&inner, &inherited, &inner_opts);
+            let (build, _frame) = crate::layout::reuse::root_scroller_build(&inner_opts, &node.tag);
+            let built = build.element(&inner, &inherited, &inner_opts);
             if target.applied() {
                 return built;
             }

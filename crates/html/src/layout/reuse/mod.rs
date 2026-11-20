@@ -51,9 +51,9 @@ pub(crate) use deferred::{Wait, fragment_target};
 use frame::{placed, scaled};
 use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
 pub(crate) use key::{Counters, FlowKey};
-pub(crate) use offscreen::{Far, root_scroller_build};
 #[cfg(test)]
 pub(crate) use offscreen::switch as offscreen_switch;
+pub(crate) use offscreen::{Far, root_scroller_build};
 pub(crate) use placeholder::Replay;
 pub(crate) use record::Record;
 use source::{Shells, Source};

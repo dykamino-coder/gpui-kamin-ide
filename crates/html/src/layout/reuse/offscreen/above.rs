@@ -125,11 +125,19 @@ impl FlowReuse {
     }
 }
 
-/// The root scroller (`root`) builds the document in its own layout request
-/// (`interactive::scroll_box`): still the frame's build (`FlowReuse::building`).
-pub(crate) fn root_scroller_build(opts: &RenderOpts, root: bool) -> Option<Building<'_>> {
+/// The build contract of a scroller's content (`tag` the scroller's), and,
+/// for the root scroller, which builds the document in its own layout
+/// request (`interactive::scroll_box`), the frame's build (`FlowReuse::building`).
+pub(crate) fn root_scroller_build<'a>(
+    opts: &'a RenderOpts,
+    tag: &str,
+) -> (
+    crate::layout::build_contracts::ChildBuild,
+    Option<Building<'a>>,
+) {
     let reuse = opts.cx.contracts.reuse.as_ref();
-    reuse.filter(|_| root).map(|r| r.building())
+    let root = reuse.filter(|_| tag == "html-viewport");
+    (opts.cx.contracts.build, root.map(|r| r.building()))
 }
 
 /// The least height `chars` characters of text take at the viewport's width.
