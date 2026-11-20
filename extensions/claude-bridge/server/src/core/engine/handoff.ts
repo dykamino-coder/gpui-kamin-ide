@@ -36,10 +36,17 @@ export interface HandoffTurn {
 /** Hidden context Bridge adds to a user turn. The chat does not show it, and
  *  later handoffs leave it out (it repeats what the log already holds). */
 export const CONTEXT_TAG = 'bridge-context'
-const CONTEXT_BLOCK = new RegExp(`\\s*<${CONTEXT_TAG}>[\\s\\S]*?</${CONTEXT_TAG}>\\s*`, 'g')
 
+/** The block runs from its first opening tag to the LAST closing one: its
+ *  history can quote an earlier block (an answer that repeated its prompt). */
 export function withoutContextBlocks(text: string): string {
-  return text.includes(`<${CONTEXT_TAG}>`) ? text.replace(CONTEXT_BLOCK, '\n').trim() : text
+  const open = `<${CONTEXT_TAG}>`
+  const close = `</${CONTEXT_TAG}>`
+  const start = text.indexOf(open)
+  if (start < 0) return text
+  const end = text.lastIndexOf(close)
+  if (end < start) return text
+  return `${text.slice(0, start)}\n${text.slice(end + close.length)}`.trim()
 }
 
 /** A user message with Bridge's hidden context after it. */
@@ -89,7 +96,8 @@ function entryPieces(e: JsonlEntry, toolNames: Map<string, string>): Array<[Hand
   if (e.isSidechain || e.isMeta || (e.type !== 'user' && e.type !== 'assistant')) return []
   const content = e.message?.content
   if (content === undefined) return []
-  const own = (text: string) => flat(e.type === 'user' ? withoutContextBlocks(text) : text)
+  // An answer can repeat its prompt with the hidden block: never carry it on.
+  const own = (text: string) => flat(withoutContextBlocks(text))
   if (typeof content === 'string') return [[e.type, own(content)]]
   const out: Array<[HandoffTurn['role'], string]> = []
   for (const block of content) {

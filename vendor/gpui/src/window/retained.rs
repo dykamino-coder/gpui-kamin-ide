@@ -466,7 +466,10 @@ pub struct InkScope {
     pub tainted: bool,
 }
 
-/// Paint effects of a scope observed by open ink sinks.
+/// Paint effects of a scope observed by open ink sinks. A cursor style bound
+/// to a hitbox is not one: the frame resolves it by the hitbox hovered at its
+/// end (`Frame::cursor_style`), so it does nothing while the hitbox is not
+/// hovered, and a replay copies it with the hitbox (`Window::reuse_paint`).
 pub(crate) struct InkProbe {
     start: PaintIndex,
     groups: usize,
@@ -494,7 +497,9 @@ impl InkProbe {
         let quiet = self.clean
             && end.mouse_listeners_index - start.mouse_listeners_index == (allowed.0 - self.allowed.0) as usize
             && start.input_handlers_index == end.input_handlers_index
-            && start.cursor_styles_index == end.cursor_styles_index
+            && window.next_frame.cursor_styles[start.cursor_styles_index..end.cursor_styles_index]
+                .iter()
+                .all(|request| request.hitbox_id.is_some())
             && end.accessed_element_states_index - start.accessed_element_states_index
                 == (allowed.1 - self.allowed.1) as usize
             && start.tab_handle_index == end.tab_handle_index

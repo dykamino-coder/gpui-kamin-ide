@@ -698,7 +698,19 @@ export class CodexSessionBinding {
   // ── Input ──────────────────────────────────────────────────────────────
 
   submit(text: string, submissionId?: string): void {
-    void this.deliver(text, submissionId)
+    this.delivering++
+    void this.deliver(text, submissionId).finally(() => this.delivering--)
+  }
+
+  /** Messages handed to the thread whose delivery has not settled yet. */
+  private delivering = 0
+
+  /** What keeps the chat awake (idle hibernation): a turn that runs, a message
+   *  on its way to the thread, or a thread being resumed. */
+  liveWork(): 'turn' | 'submission' | null {
+    if (this.turnOpen || this.agent.running) return 'turn'
+    if (this.delivering > 0 || this.recovering) return 'submission'
+    return null
   }
 
   /** A turn that ended while no client was attached must not stay `working`. */

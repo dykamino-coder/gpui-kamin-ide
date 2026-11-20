@@ -14,7 +14,7 @@
 //! layers, decorations painted as child elements, the root's canvas) refuses,
 //! and the document builds its frame as before.
 
-use super::paint_damage::{PaintDamage, PaintValue, classify};
+use super::paint_damage::{PaintDamage, PaintValue, classify, unpainted_svg};
 use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
 use crate::style::computed::BoxStyle;
@@ -75,6 +75,9 @@ pub(super) fn write_paint_values(
         if damage == PaintDamage::Rebuild {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
+        }
+        if unpainted_svg(old, path) {
+            continue;
         }
         if unseen(path) {
             crate::paint_path::add(&crate::paint_path::UNSEEN, 1);

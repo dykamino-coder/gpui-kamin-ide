@@ -62,6 +62,16 @@ describe('transcriptTurns', () => {
       { role: 'user', text: 'what was the fact?' },
     ])
   })
+
+  it('an answer that repeats its prompt with the block carries no nested block on', () => {
+    const block = buildHandoff([user('old fact'), assistant('ok')], source)!.text
+    const sent = withContextBlock('what was the fact?', block)
+    const turns = transcriptTurns([user(sent), assistant(`echo: ${sent} [model=gpt]`)])
+    expect(turns[1]!.text).toMatch(/^echo: what was the fact\?\s+\[model=gpt\]$/)
+    const next = buildHandoff([user(sent), assistant(`echo: ${sent}`)], source)!.text
+    expect(next.split('<bridge-context>')).toHaveLength(2)
+    expect(withoutContextBlocks(withContextBlock('again', next))).toBe('again')
+  })
 })
 
 describe('buildHandoff', () => {

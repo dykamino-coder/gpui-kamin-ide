@@ -1,12 +1,10 @@
-//! Сабклассы WndProc: per-pixel hit-test overlay и зеркалирование состояния main.
+//! Win32-хелперы титлбара главного окна: нативный драг и разворот.
 //!
 //! Вынесено без изменения поведения (`plan/100-refactor-250.md`).
 
 use super::MAIN_HWND;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::Ordering;
 
-/// HWND overlay-окна. Ставится overlay-окном при первом (видимом) рендере.
-pub(super) static OVERLAY_HWND: AtomicIsize = AtomicIsize::new(0);
 /// Запомнить HWND главного окна (main.rs).
 /// Нативный драг окна за титлбар: gpui start_window_move на Windows —
 /// НЕ реализован (только wayland/x11). ReleaseCapture + WM_NCLBUTTONDOWN

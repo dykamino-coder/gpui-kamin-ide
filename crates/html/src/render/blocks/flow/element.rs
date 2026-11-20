@@ -17,7 +17,6 @@ pub(crate) use position::position_element;
 
 use super::BelowRun;
 use crate::animation::frames::transitioned;
-use crate::dom::Node;
 use crate::interactive::scroll_box::{resizable, scrollable};
 use crate::layout::atom::pct_resolved_for_wrapper;
 use crate::layout::replaced::limits::content_limit_swapped;
@@ -31,7 +30,7 @@ use gpui::AnyElement;
 pub(crate) async fn paint_element(
     stk: &mut reblessive::Stk,
     e: &crate::dom::Element,
-    nodes: &[Node],
+    nodes: &crate::layout::positioned::predicates::Siblings<'_>,
     idx: usize,
     inherited: &BoxStyle,
     opts: &RenderOpts,

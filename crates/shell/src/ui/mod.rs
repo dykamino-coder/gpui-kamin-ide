@@ -108,8 +108,3 @@ pub mod webview_skeleton;
 pub mod webview_theme;
 pub mod welcome;
 pub mod workspace_symbols;
-
-/// Радиус скругления поповеров (для оконного региона overlay).
-pub fn metrics_radius() -> f32 {
-    kamin_metrics::RADIUS_MD
-}

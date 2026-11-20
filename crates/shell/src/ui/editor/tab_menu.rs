@@ -75,7 +75,6 @@ pub fn editor_tab_menu(
         .bg(rgba(p.bg_surface))
         .border_1()
         .border_color(tint(rgba(p.text_primary), 0.06))
-        .child(crate::overlay::hit_area())
         .child(item(
             "etm-pin",
             if menu.pinned { "Unpin Tab" } else { "Pin Tab" },

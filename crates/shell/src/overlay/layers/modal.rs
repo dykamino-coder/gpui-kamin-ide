@@ -3,7 +3,6 @@
 //! Блок перенесён из `OverlayWindow::render` как есть (`plan/100-refactor-250.md`).
 
 use crate::host_link::ShellEvent;
-use crate::overlay::region::input_area;
 use crate::state::model::RootView;
 use crate::ui::modal::render_modal;
 use gpui::prelude::*;
@@ -59,18 +58,11 @@ impl RootView {
                 self.modal_input = None;
                 self.modal_input_sub = None;
             }
-            // Модалка — модальная: hit-регион на всё окно (скрим свой).
+            // Модалка — модальная: скрим свой, на всё окно.
             let tx_cancel = tx.clone();
             let tx_confirm = tx.clone();
             let input_for_confirm = self.modal_input.clone();
-            layer = layer.child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .size_full()
-                    .child(input_area()),
-            );
+            layer = layer.child(div().absolute().top_0().left_0().size_full());
             // `validate` гоняется на каждый ввод (`PromptModal.tsx:64`)
             let modal_error = modal.validate.and_then(|f| {
                 let value = self
