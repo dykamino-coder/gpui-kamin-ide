@@ -141,6 +141,12 @@ candidate-specific ACK fault test as well; this proxy covers the pre-delivery cu
 Close-session/timeout/multi-tab cases remain part of INC-0057's acceptance matrix.
 The tool barrier has a 90-second fail-safe and fake HTTP has a 120-second fail-safe.
 
+Queue acceptance (INC-2026-0031) needs transcript rows that carry what was typed,
+as the real CLI writes them. Set `BRIDGE_FAKE_CLI_RECORD_INPUT=1` before server
+launch; otherwise every input is recorded as a fixed synthetic line. Record UUIDs
+continue after the highest number already in the transcript, so a resumed fake
+CLI never reuses one (the client would drop the new row as a duplicate).
+
 ## Windows acceptance matrix
 
 | Task          | Actions in the running exact candidate                                                                                                                                 | Evidence to record                                                                                                                                                                     |
