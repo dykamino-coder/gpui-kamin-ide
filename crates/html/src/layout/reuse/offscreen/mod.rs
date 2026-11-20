@@ -24,6 +24,7 @@ pub(crate) use above::root_scroller_build;
 mod eligible;
 mod frame;
 mod leaf;
+mod measure;
 mod slot;
 use slot::Kind;
 pub(crate) use slot::Slot;
@@ -155,15 +156,21 @@ impl FlowReuse {
         let height = above::height(chars, opts);
         let (top, bottom) = self.zone(opts);
         let slot = |kind| Rc::new(Slot::new(e.node_id, kind, at.1));
+        // A far block of a screen or less is measured alone. A larger one is
+        // built through, so its children stand as leaves of their own: a
+        // measure holds one small block at a time, never a large one whole.
+        // The measure lays the block out in a block container; under an
+        // anonymous box (a float band host, a split inline) it stands built.
+        let small = height <= opts.viewport.1 && inherited.self_node != 0;
         let leaf = match kept {
             // A build after a refused rebuild stands no leaf at all.
             _ if refused || !self.allow => None,
-            _ if remeasure => Some(Kind::Measured),
+            _ if remeasure => small.then_some(Kind::Measured),
             Some(k) => {
                 let near = k.span.1 >= top && k.span.0 <= bottom;
                 k.snapshot.filter(|_| !near).map(Kind::Exact)
             }
-            None if self.allow && !self.again && self.offscreen.above.get() > bottom => {
+            None if !self.again && small && self.offscreen.above.get() > bottom => {
                 Some(Kind::Measured)
             }
             None => None,
@@ -175,13 +182,12 @@ impl FlowReuse {
                 seen.insert(e.node_id);
                 store.seen.set(seen);
             }
-            // A block of a screen or less is watched for its place; a larger
-            // one is built through, its children may stand as leaves.
-            return (height <= opts.viewport.1).then(|| {
-                let slot = slot(Kind::Built);
-                super::push(&self.offscreen.slots, slot.clone());
-                Far::Watch(slot)
-            });
+            // A built block is watched for its place and its exact leaf: a
+            // later frame that finds it far stands it as that leaf, however
+            // large it is (its children's leaves then go).
+            let slot = slot(Kind::Built);
+            super::push(&self.offscreen.slots, slot.clone());
+            return Some(Far::Watch(slot));
         };
         self.offscreen
             .above

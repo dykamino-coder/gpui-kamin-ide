@@ -82,6 +82,20 @@ impl FlowReuse {
                     // the leaf's does.
                     let leaf = window.layout_snapshot(id);
                     let size = window.layout_size_unrounded(id);
+                    if std::env::var_os("KAMIN_DBG_LEAF").is_some() {
+                        let m = slot.measured.get();
+                        eprintln!(
+                            "DBGFIT node={} leaf={:?} m={:?} margins={:?} h={} mh={:?} w={} mw={:?}",
+                            slot.node,
+                            leaf,
+                            m,
+                            m.map(|m| leaf.is_some_and(|l| l.same_block_margins(&m))),
+                            size.height.as_f32(),
+                            m.map(|m| m.height()),
+                            size.width.as_f32(),
+                            m.map(|m| m.width())
+                        );
+                    }
                     let measured = slot.measured.get().filter(|m| {
                         leaf.is_some_and(|l| l.same_block_margins(m))
                             && (size.height.as_f32() - m.height()).abs() <= EXACT
@@ -100,6 +114,14 @@ impl FlowReuse {
             let snapshot = snapshot.filter(|_| !slot.failed.get() && !floated);
             let wider = matches!(slot.kind, Kind::Exact(_)) && !fits;
             if slot.leaf() && (near || floated || slot.failed.get() || (!fits && !wider)) {
+                if std::env::var_os("KAMIN_DBG_LEAF").is_some() {
+                    eprintln!(
+                        "DBGREF node={} measured={} near={near} floated={floated} failed={} fits={fits} top={top} bottom={bottom} scroll={scroll}",
+                        slot.node,
+                        matches!(slot.kind, Kind::Measured),
+                        slot.failed.get()
+                    );
+                }
                 refused.insert(slot.node);
             } else if wider {
                 remeasure.insert(slot.node);
@@ -119,6 +141,10 @@ impl FlowReuse {
         seen.extend(slots.iter().map(|s| s.node));
         self.store.offscreen.seen.set(seen);
         let ok = refused.is_empty() && remeasure.is_empty();
+        if std::env::var_os("KAMIN_DBG_LEAF").is_some() {
+            let n = slots.iter().filter(|s| s.leaf()).count();
+            eprintln!("DBGVALIDATE slots={} leaves={n} refused={} remeasure={}", slots.len(), refused.len(), remeasure.len());
+        }
         let mut all = self.store.offscreen.refused.take();
         all.extend(refused);
         self.store.offscreen.refused.set(all);

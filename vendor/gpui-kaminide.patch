@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Far blocks as exact leaves: expose a layout snapshot's height and block-axis margin equality, the children of a laid out node and the union of its subtree's bounds, so a host can stand a measured block far from the screen as one leaf and check it before prepaint.
+# 1. Far blocks as exact leaves: expose a layout snapshot's height and block-axis margin equality, the children of a laid out node and the union of its subtree's bounds, so a host can stand a measured block far from the screen as one leaf and check it before prepaint. A leaf of a block container repeats the node's layout output (taffy LeafOutput: edge margin sets, collapse-through, scrollable overflow, baselines), so descendant margins may adjoin its edges and content may overflow it; a measured leaf gives the output of the block it measured (MeasuredContent::standing_for).
 # 2. Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.
 # 3. Shared render image: a validated immutable dense BGRA frame borrows its Arc CPU owner without a pixel clone; CPU consumers can recover that owner, keeping its resource lease alive with the backing.
 # 4. Lazy render image: an owner may produce the dense BGRA frame only when the atlas uploads it, so the image keeps no resident CPU pixel copy; CPU readers decode a transient frame on demand.
@@ -22524,10 +22524,10 @@ index 0000000000000000000000000000000000000000..44ff1922d2401218197ad0f07236de75
 +}
 diff --git a/vendor/gpui/src/taffy/exact_leaf.rs b/vendor/gpui/src/taffy/exact_leaf.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..abfacc1ae823a5445e04c85f8d34cf47181b4967
+index 0000000000000000000000000000000000000000..92dfd41d59bf306642e263b8f861ebc11241c2a3
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/exact_leaf.rs
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,255 @@
 +//! KaminIDE patch: an exact leaf standing in for a laid out subtree.
 +//!
 +//! A host that skips building a settled subtree still needs its parent to
@@ -22546,6 +22546,7 @@ index 0000000000000000000000000000000000000000..abfacc1ae823a5445e04c85f8d34cf47
 +use super::{LayoutId, TaffyLayoutEngine};
 +use taffy::prelude::*;
 +use taffy::style::{BoxSizing, Direction, Overflow};
++use taffy::tree::LeafOutput;
 +
 +/// What an exact leaf repeats of the laid out node: its border-box size,
 +/// margins, self-alignment and the axes its parent reads. A few words instead
@@ -22564,6 +22565,9 @@ index 0000000000000000000000000000000000000000..abfacc1ae823a5445e04c85f8d34cf47
 +    /// Lower bound of a stretched width: the inline-end edge of the content
 +    /// of a box that paints nothing (`TaffyLayoutEngine::unpainted_leaf`).
 +    min_width: f32,
++    /// What the node's layout gave its block container: the margin sets of
++    /// its edges and its overflow (`None` in a container without collapse).
++    output: Option<LeafOutput>,
 +}
 +
 +impl ExactLeaf {
@@ -22582,7 +22586,16 @@ index 0000000000000000000000000000000000000000..abfacc1ae823a5445e04c85f8d34cf47
 +    }
 +
 +    pub(crate) fn same_block_margins(&self, other: &ExactLeaf) -> bool {
-+        self.margin.top == other.margin.top && self.margin.bottom == other.margin.bottom
++        let sets = |o: &Option<LeafOutput>| o.map(|o| (o.top_margin, o.bottom_margin));
++        self.margin.top == other.margin.top
++            && self.margin.bottom == other.margin.bottom
++            && sets(&self.output) == sets(&other.output)
++    }
++
++    /// What the node gave its block container, for a measured leaf standing
++    /// for it (`MeasuredContent::standing_for`).
++    pub(crate) fn output(&self) -> Option<LeafOutput> {
++        self.output
 +    }
 +
 +    fn style(&self) -> Style {
@@ -22617,6 +22630,7 @@ index 0000000000000000000000000000000000000000..abfacc1ae823a5445e04c85f8d34cf47
 +            justify_self: self.justify_self,
 +            flex_grow: 0.0,
 +            flex_shrink: 0.0,
++            leaf_output: self.output.map(Box::new),
 +            ..Style::default()
 +        }
 +    }
@@ -22648,28 +22662,39 @@ index 0000000000000000000000000000000000000000..abfacc1ae823a5445e04c85f8d34cf47
 +        let parent = self.taffy.style(self.taffy.parent(node)?).ok()?;
 +        // A block container (Taffy block layout, or a column flex container
 +        // with block flow) places the item by its margins collapsed with
-+        // those of its descendants (CSS2 §8.3.1); the leaf has only its own,
-+        // so every descendant margin adjoining its edges must be zero.
++        // those of its descendants (CSS2 §8.3.1) and unions its scrollable
++        // overflow into its own: the leaf repeats what the node's layout gave
++        // the parent (`LeafOutput`), margin sets and overflow, so neither need
++        // stay inside the node. An unpainted leaf stands at other widths too,
++        // where that output would differ: its descendant margins must not
++        // adjoin its edges.
 +        let block = parent.display == Display::Block;
 +        let column = block
 +            || parent.display == Display::Flex
 +                && parent.flex_direction == FlexDirection::Column
 +                && parent.flex_wrap == FlexWrap::NoWrap;
-+        let flow = match (block, parent.block_flow) {
-+            (false, None) => true,
-+            (_, flow) => {
-+                flow.is_none_or(|flow| !flow.vertical && !flow.block_reverse)
-+                    && self.own_margins(node, true)
-+                    && self.own_margins(node, false)
++        let collapsing = block || parent.block_flow.is_some();
++        let physical = parent
++            .block_flow
++            .is_none_or(|flow| !flow.vertical && !flow.block_reverse);
++        let output = match collapsing && !unpainted {
++            true => {
++                let output = self.taffy.computed_layout_output(node).ok().flatten();
++                Some(LeafOutput::of(&output?))
 +            }
++            false => None,
 +        };
++        let flow = !collapsing
++            || physical
++                && (output.is_some() || self.own_margins(node, true) && self.own_margins(node, false));
 +        let size = layout.size;
 +        let overflow = layout.scrollable_overflow_rect;
 +        let content_right = layout.border.left + overflow.right;
-+        let inside = overflow.left >= 0.0
-+            && overflow.top >= 0.0
-+            && (unpainted || content_right <= size.width)
-+            && layout.border.top + overflow.bottom <= size.height;
++        let inside = output.is_some()
++            || overflow.left >= 0.0
++                && overflow.top >= 0.0
++                && (unpainted || content_right <= size.width)
++                && layout.border.top + overflow.bottom <= size.height;
 +        let margins = [
 +            style.margin.left,
 +            style.margin.right,
@@ -22684,7 +22709,9 @@ index 0000000000000000000000000000000000000000..abfacc1ae823a5445e04c85f8d34cf47
 +            && style.overflow.y == Overflow::Visible
 +            && (block || style.flex_grow == 0.0 && style.flex_shrink == 0.0)
 +            && margins.iter().all(|m| !m.into_raw().has_calc());
-+        (column && flow && inside && normal && size.width > 0.0 && size.height > 0.0).then(|| ExactLeaf {
++        // An empty box collapses through or not as its output says.
++        let sized = size.width > 0.0 && (size.height > 0.0 || output.is_some());
++        (column && flow && inside && normal && sized).then(|| ExactLeaf {
 +            display: style.display,
 +            direction: style.direction,
 +            block_flow: style.block_flow,
@@ -22694,9 +22721,9 @@ index 0000000000000000000000000000000000000000..abfacc1ae823a5445e04c85f8d34cf47
 +            justify_self: style.justify_self,
 +            stretch: unpainted,
 +            min_width: if unpainted { content_right.max(0.0) } else { 0.0 },
++            output,
 +        })
 +    }
-+
 +    /// Whether no descendant margin adjoins the top (`top`) or bottom edge of
 +    /// `node`: a border or padding separates them, or the first (last)
 +    /// in-flow child has a zero margin there, cannot collapse through and
@@ -23846,10 +23873,10 @@ index 0000000000000000000000000000000000000000..96010ce19be719780cab6e49cc10a707
 +}
 diff --git a/vendor/gpui/src/taffy/measured_content.rs b/vendor/gpui/src/taffy/measured_content.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5481d0d5208eb1345375695bcce643a7c6d88038
+index 0000000000000000000000000000000000000000..59cc056ac2b5085b1c0c1c5c778532b8a1b23f3e
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/measured_content.rs
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,133 @@
 +//! Actual content baselines on both physical axes, before native scaling and insets.
 +
 +use crate::{Bounds, Pixels, Size};
@@ -23886,6 +23913,9 @@ index 0000000000000000000000000000000000000000..5481d0d5208eb1345375695bcce643a7
 +    pub lines_y: Option<Vec<Pixels>>,
 +    /// Every vertical-text line offset in content order, using the selected X origin.
 +    pub lines_x: Option<Vec<Pixels>>,
++    /// KaminIDE patch: the leaf stands for a laid out subtree and gives its block
++    /// container what that subtree gave (`standing_for`).
++    pub leaf: Option<taffy::LeafOutput>,
 +}
 +
 +impl MeasuredContent {
@@ -23893,8 +23923,15 @@ index 0000000000000000000000000000000000000000..5481d0d5208eb1345375695bcce643a7
 +    pub fn new(size: Size<Pixels>) -> Self {
 +        Self {
 +            static_positions: Vec::new(), size, first_y: None, last_y: None, first_x: None, last_x: None,
-+            x_from_right: false, lines_y: None, lines_x: None,
++            x_from_right: false, lines_y: None, lines_x: None, leaf: None,
 +        }
++    }
++
++    /// KaminIDE patch: content of a leaf standing for the laid out node of `snapshot`,
++    /// `size` its size: the leaf gives its block container the margin sets and
++    /// overflow that node gave, at the same device scale.
++    pub fn standing_for(size: Size<Pixels>, snapshot: &crate::LayoutSnapshot) -> Self {
++        Self { leaf: snapshot.leaf_output(), ..Self::new(size) }
 +    }
 +
 +    pub(super) fn to_native(&self, scale: f32) -> taffy::MeasureOutput {
@@ -23975,10 +24012,10 @@ index 0000000000000000000000000000000000000000..5481d0d5208eb1345375695bcce643a7
 +}
 diff --git a/vendor/gpui/src/taffy/measurement.rs b/vendor/gpui/src/taffy/measurement.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8cdacedb0e83e0223d6fe43b3a1e018715375b01
+index 0000000000000000000000000000000000000000..60c8c40b2f81639171a3fdf2099246fdeb3a1800
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/measurement.rs
-@@ -0,0 +1,220 @@
+@@ -0,0 +1,227 @@
 +//! Measure a copied native subtree while the Window layout engine is borrowed by a parent.
 +//! Styles and cache state are independent; actual element measurement callbacks are shared.
 +
@@ -24142,7 +24179,9 @@ index 0000000000000000000000000000000000000000..8cdacedb0e83e0223d6fe43b3a1e0187
 +            }
 +        }
 +    }
-+    taffy::compute_leaf_layout(input, style, taffy::tree::calc_value, |known, available| {
++    // A leaf standing for a laid out subtree gives what the subtree gave.
++    let mut standing = None;
++    let mut output = taffy::compute_leaf_layout(input, style, taffy::tree::calc_value, |known, available| {
 +        crate::frame_perf::LAYOUT_MEASURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +        let _timer = super::MeasureTimer(std::time::Instant::now());
 +        let Some(context) = context else {
@@ -24175,6 +24214,7 @@ index 0000000000000000000000000000000000000000..8cdacedb0e83e0223d6fe43b3a1e0187
 +            };
 +        }
 +        let measured = context.measure.borrow_mut().measure(known, available, geometry, window, cx);
++        standing = measured.leaf;
 +        let output = measured.to_native(scale);
 +        // Intrinsic probes must not replace metadata belonging to a cached full layout.
 +        if performed {
@@ -24193,7 +24233,11 @@ index 0000000000000000000000000000000000000000..8cdacedb0e83e0223d6fe43b3a1e0187
 +            context.performed_size = size;
 +        }
 +        output
-+    })
++    });
++    if let Some(leaf) = standing {
++        leaf.apply(&mut output);
++    }
++    output
 +}
 +
 +#[cfg(test)]
@@ -35503,10 +35547,10 @@ index 0000000000000000000000000000000000000000..9d92561b810c8a95400783f1054dbeed
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ebeec054186864762dc149f513cc7c97bd000b77
+index 0000000000000000000000000000000000000000..034105ce275d190a2277f889d42e30ee51dc9c7a
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,851 @@
+@@ -0,0 +1,856 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -36122,6 +36166,11 @@ index 0000000000000000000000000000000000000000..ebeec054186864762dc149f513cc7c97
 +    /// Device scale of the layout the snapshot was taken from.
 +    pub fn scale(&self) -> f32 {
 +        self.scale
++    }
++
++    /// What the node gave its block container, in device pixels.
++    pub(crate) fn leaf_output(&self) -> Option<taffy::LeafOutput> {
++        self.leaf.output()
 +    }
 +
 +    /// Border-box width of the snapshot leaf, in logical pixels; for an

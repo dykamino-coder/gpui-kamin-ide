@@ -68,7 +68,7 @@ pub(super) async fn blocks_flow(
         .reuse
         .as_ref()
         .and_then(|r| r.claim(inherited, opts));
-    let leaves = leaves::Leaves::new(opts, reuse.is_some()); // far blocks (`reuse::offscreen`)
+    let leaves = leaves::Leaves::new(opts, reuse.is_some() || ordered_context); // `reuse::offscreen`
     let last_element = nodes.iter().rposition(|n| matches!(n, Node::Element(_)));
     let mut first_element = true;
     let mut late_layer =

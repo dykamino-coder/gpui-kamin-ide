@@ -20,6 +20,9 @@ pub use layout::{
     LayoutInput, LayoutOutput, MeasureOutput, OofCandidate, OofCandidates, OofPositioningArea,
     RequestedAxis, RunMode, SizingMode,
 };
+pub use layout::LeafOutput;
+#[cfg(all(test, feature = "block_layout", feature = "content_size"))]
+mod leaf_output_tests;
 pub use node::NodeId;
 pub(crate) use traits::LayoutPartialTreeExt;
 pub use traits::{LayoutContainingBlock, LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree, TraverseTree};

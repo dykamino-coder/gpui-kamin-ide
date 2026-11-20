@@ -603,7 +603,7 @@ impl RetainedSubtree {
 
 /// KaminIDE patch: an exact layout leaf standing in for a laid out subtree
 /// (`Window::layout_snapshot`), valid at the device scale it was taken at.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct LayoutSnapshot {
     leaf: crate::taffy::ExactLeaf,
     scale: f32,
@@ -613,6 +613,11 @@ impl LayoutSnapshot {
     /// Device scale of the layout the snapshot was taken from.
     pub fn scale(&self) -> f32 {
         self.scale
+    }
+
+    /// What the node gave its block container, in device pixels.
+    pub(crate) fn leaf_output(&self) -> Option<taffy::LeafOutput> {
+        self.leaf.output()
     }
 
     /// Border-box width of the snapshot leaf, in logical pixels; for an

@@ -16,6 +16,7 @@
 use super::{LayoutId, TaffyLayoutEngine};
 use taffy::prelude::*;
 use taffy::style::{BoxSizing, Direction, Overflow};
+use taffy::tree::LeafOutput;
 
 /// What an exact leaf repeats of the laid out node: its border-box size,
 /// margins, self-alignment and the axes its parent reads. A few words instead
@@ -34,6 +35,9 @@ pub(crate) struct ExactLeaf {
     /// Lower bound of a stretched width: the inline-end edge of the content
     /// of a box that paints nothing (`TaffyLayoutEngine::unpainted_leaf`).
     min_width: f32,
+    /// What the node's layout gave its block container: the margin sets of
+    /// its edges and its overflow (`None` in a container without collapse).
+    output: Option<LeafOutput>,
 }
 
 impl ExactLeaf {
@@ -52,7 +56,16 @@ impl ExactLeaf {
     }
 
     pub(crate) fn same_block_margins(&self, other: &ExactLeaf) -> bool {
-        self.margin.top == other.margin.top && self.margin.bottom == other.margin.bottom
+        let sets = |o: &Option<LeafOutput>| o.map(|o| (o.top_margin, o.bottom_margin));
+        self.margin.top == other.margin.top
+            && self.margin.bottom == other.margin.bottom
+            && sets(&self.output) == sets(&other.output)
+    }
+
+    /// What the node gave its block container, for a measured leaf standing
+    /// for it (`MeasuredContent::standing_for`).
+    pub(crate) fn output(&self) -> Option<LeafOutput> {
+        self.output
     }
 
     fn style(&self) -> Style {
@@ -87,6 +100,7 @@ impl ExactLeaf {
             justify_self: self.justify_self,
             flex_grow: 0.0,
             flex_shrink: 0.0,
+            leaf_output: self.output.map(Box::new),
             ..Style::default()
         }
     }
@@ -118,28 +132,57 @@ impl TaffyLayoutEngine {
         let parent = self.taffy.style(self.taffy.parent(node)?).ok()?;
         // A block container (Taffy block layout, or a column flex container
         // with block flow) places the item by its margins collapsed with
-        // those of its descendants (CSS2 §8.3.1); the leaf has only its own,
-        // so every descendant margin adjoining its edges must be zero.
+        // those of its descendants (CSS2 §8.3.1); every parent unions its
+        // scrollable overflow into its own: the leaf repeats what the node's
+        // layout gave the parent (`LeafOutput`), margin sets and overflow, so
+        // neither need stay inside the node. An unpainted leaf stands at other widths too,
+        // where that output would differ: its descendant margins must not
+        // adjoin its edges.
         let block = parent.display == Display::Block;
         let column = block
             || parent.display == Display::Flex
                 && parent.flex_direction == FlexDirection::Column
                 && parent.flex_wrap == FlexWrap::NoWrap;
-        let flow = match (block, parent.block_flow) {
-            (false, None) => true,
-            (_, flow) => {
-                flow.is_none_or(|flow| !flow.vertical && !flow.block_reverse)
-                    && self.own_margins(node, true)
-                    && self.own_margins(node, false)
+        let collapsing = block || parent.block_flow.is_some();
+        let physical = parent
+            .block_flow
+            .is_none_or(|flow| !flow.vertical && !flow.block_reverse);
+        // In a block container the node's own block-axis margins join the
+        // sets and the leaf has none of its own: its place then does not
+        // depend on whether a build of the node hoisted its children's
+        // margins into its own (collapsing with a margin already in a set
+        // changes nothing).
+        let output = match unpainted {
+            false => {
+                let output = self.taffy.computed_layout_output(node).ok().flatten()?;
+                let mut leaf = LeafOutput::of(&output);
+                if collapsing {
+                    leaf.top_margin = leaf.top_margin.collapse_with_margin(layout.margin.top);
+                    leaf.bottom_margin = leaf.bottom_margin.collapse_with_margin(layout.margin.bottom);
+                }
+                Some(leaf)
             }
+            true => None,
         };
+        let margin = match output.is_some() && collapsing {
+            true => Rect {
+                top: LengthPercentageAuto::length(0.0),
+                bottom: LengthPercentageAuto::length(0.0),
+                ..style.margin
+            },
+            false => style.margin,
+        };
+        let flow = !collapsing
+            || physical
+                && (output.is_some() || self.own_margins(node, true) && self.own_margins(node, false));
         let size = layout.size;
         let overflow = layout.scrollable_overflow_rect;
         let content_right = layout.border.left + overflow.right;
-        let inside = overflow.left >= 0.0
-            && overflow.top >= 0.0
-            && (unpainted || content_right <= size.width)
-            && layout.border.top + overflow.bottom <= size.height;
+        let inside = output.is_some()
+            || overflow.left >= 0.0
+                && overflow.top >= 0.0
+                && (unpainted || content_right <= size.width)
+                && layout.border.top + overflow.bottom <= size.height;
         let margins = [
             style.margin.left,
             style.margin.right,
@@ -154,19 +197,21 @@ impl TaffyLayoutEngine {
             && style.overflow.y == Overflow::Visible
             && (block || style.flex_grow == 0.0 && style.flex_shrink == 0.0)
             && margins.iter().all(|m| !m.into_raw().has_calc());
-        (column && flow && inside && normal && size.width > 0.0 && size.height > 0.0).then(|| ExactLeaf {
+        // An empty box collapses through or not as its output says.
+        let sized = size.width > 0.0 && (size.height > 0.0 || output.is_some());
+        (column && flow && inside && normal && sized).then(|| ExactLeaf {
             display: style.display,
             direction: style.direction,
             block_flow: style.block_flow,
             size,
-            margin: style.margin,
+            margin,
             align_self: style.align_self,
             justify_self: style.justify_self,
             stretch: unpainted,
             min_width: if unpainted { content_right.max(0.0) } else { 0.0 },
+            output,
         })
     }
-
     /// Whether no descendant margin adjoins the top (`top`) or bottom edge of
     /// `node`: a border or padding separates them, or the first (last)
     /// in-flow child has a zero margin there, cannot collapse through and

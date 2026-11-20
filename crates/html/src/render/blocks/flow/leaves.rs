@@ -12,8 +12,9 @@ use std::rc::Rc;
 pub(super) struct Leaves<'a> {
     reuse: Option<&'a Rc<FlowReuse>>,
     floated: bool,
-    /// The root flow keeps its far blocks in its own records (`FlowCx`):
-    /// its children stand built.
+    /// The root flow keeps its far blocks in its own records (`FlowCx`), and
+    /// a flex or grid item is not measured in its container's context: such
+    /// children stand built.
     root: bool,
 }
 

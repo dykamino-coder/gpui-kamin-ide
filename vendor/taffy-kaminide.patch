@@ -1,28 +1,29 @@
 # KaminIDE patches — taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)
 #
 # 1. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
-# 2. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
-# 3. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
-# 4. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
-# 5. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
-# 6. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
-# 7. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
-# 8. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
-# 9. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
-# 10. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
-# 11. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
-# 12. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
-# 13. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
-# 14. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
-# 15. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
-# 16. Packaging: retain the selected source/examples; omit the upstream generated test module.
-# 17. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
-# 18. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
-# 19. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
-# 20. Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
-# 21. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
-# 22. Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.
-# 23. Grid contribution memo: a grid of 64 or more items without subgrids or margin-trim keeps, for one layout pass only, the last min-content, max-content and minimum contribution of each item per axis, keyed bit for bit by its grid area size (and the container inner size for the minimum); it is read only where the item's per-query cache is empty and fills that cache as the measurement would, so repeated size queries of one pass (a flex column asking min- and max-content heights) give identical results without reaching the items (css-grid-1 section 11.5).
+# 2. Leaf output: a leaf may repeat what a laid out subtree gave its parent (Style::leaf_output: edge margin sets kept as positive and negative parts, collapse-through, scrollable overflow, baselines), so a block container places and collapses it exactly as the subtree, margins of both signs included.
+# 3. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
+# 4. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
+# 5. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
+# 6. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
+# 7. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
+# 8. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
+# 9. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
+# 10. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
+# 11. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
+# 12. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
+# 13. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
+# 14. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
+# 15. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
+# 16. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
+# 17. Packaging: retain the selected source/examples; omit the upstream generated test module.
+# 18. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
+# 19. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
+# 20. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
+# 21. Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
+# 22. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
+# 23. Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.
+# 24. Grid contribution memo: a grid of 64 or more items without subgrids or margin-trim keeps, for one layout pass only, the last min-content, max-content and minimum contribution of each item per axis, keyed bit for bit by its grid area size (and the container inner size for the minimum); it is read only where the item's per-query cache is empty and fills that cache as the measurement would, so repeated size queries of one pass (a flex column asking min- and max-content heights) give identical results without reaching the items (css-grid-1 section 11.5).
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -808,10 +809,10 @@ index 0000000000000000000000000000000000000000..0a9893fe954185fff9442267198a60c3
 +}
 diff --git a/vendor/taffy/src/compute/block_flow/style.rs b/vendor/taffy/src/compute/block_flow/style.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f2913032e609b849506b384bb126ef6297fa22f5
+index 0000000000000000000000000000000000000000..6c216515f21eb531981eb2b8b6d8647d66b4bbb9
 --- /dev/null
 +++ b/vendor/taffy/src/compute/block_flow/style.rs
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,142 @@
 +//! Project block styles into a logical coordinate frame while retaining native sizing contracts.
 +use crate::style::*;
 +use crate::{Point, Rect, Size};
@@ -856,6 +857,12 @@ index 0000000000000000000000000000000000000000..f2913032e609b849506b384bb126ef62
 +    }
 +    fn is_flow_root(&self) -> bool {
 +        self.style.is_flow_root()
++    }
++    /// The output a leaf repeats is the one its node gave in this same flow;
++    /// only the block axis must be the physical one.
++    fn leaf_output(&self) -> Option<crate::tree::LeafOutput> {
++        let identity = !self.flow.vertical && !self.flow.block_reverse;
++        self.style.leaf_output().filter(|_| identity)
 +    }
 +    fn direction(&self) -> Direction {
 +        if self.flow.inline_reverse {
@@ -15045,7 +15052,7 @@ index 70838fe7c835483ab9b849c1e535b75e2d21483d..fab7ee9ef7e47beb5677216c39df345d
 +                        .collect()
 +                })
 diff --git a/vendor/taffy/src/compute/leaf.rs b/vendor/taffy/src/compute/leaf.rs
-index 415b41d0ce13288ad652e29e7e3225f629c010cb..b515b024feb6069efd74dce4c153096fb2a81289
+index 415b41d0ce13288ad652e29e7e3225f629c010cb..6269f0975f00715c12a1e68ce961ba36a498dcb4
 --- a/vendor/taffy/src/compute/leaf.rs
 +++ b/vendor/taffy/src/compute/leaf.rs
 @@ -8 +8 @@
@@ -15100,19 +15107,27 @@ index 415b41d0ce13288ad652e29e7e3225f629c010cb..b515b024feb6069efd74dce4c153096f
 +            box_sizing_adjustment,
 +            &resolve_calc_value,
 +        ),
+@@ -103 +99 @@
+-            return LayoutOutput {
++            let mut output = LayoutOutput {
 @@ -107,0 +104 @@
 +                baselines_x: Baselines::NONE,
 @@ -110,0 +108 @@
 +                inline_block_last_y: None,
-@@ -140 +138 @@
+@@ -113,0 +112,4 @@
++            if let Some(leaf) = style.leaf_output() {
++                leaf.apply(&mut output);
++            }
++            return output;
+@@ -140 +142 @@
 -    let measured_size = measure_function(
 +    let measured: MeasureOutput = measure_function(
-@@ -147 +145,3 @@
+@@ -147 +149,3 @@
 -    );
 +    )
 +    .into();
 +    let measured_size = measured.size;
-@@ -152,4 +152,8 @@
+@@ -152,4 +156,8 @@
 -    let size = Size {
 -        width: clamped_size.width,
 -        height: f32_max(clamped_size.height, aspect_ratio.map(|ratio| clamped_size.width / ratio).unwrap_or(0.0)),
@@ -15125,7 +15140,8 @@ index 415b41d0ce13288ad652e29e7e3225f629c010cb..b515b024feb6069efd74dce4c153096f
 +        node_min_size,
 +        node_max_size,
 +    );
-@@ -174,0 +179,9 @@
+@@ -175 +183,10 @@
+-    LayoutOutput {
 +    let baselines = measured_baselines::with_inset(
 +        style,
 +        measured.baseline,
@@ -15135,13 +15151,22 @@ index 415b41d0ce13288ad652e29e7e3225f629c010cb..b515b024feb6069efd74dce4c153096f
 +    let baselines_x =
 +        measured_baselines::physical_x(style, measured, size.width, content_box_inset);
 +
-@@ -179 +192,2 @@
++    let mut output = LayoutOutput {
+@@ -179 +196,2 @@
 -        baselines: Baselines::NONE,
 +        baselines,
 +        baselines_x,
-@@ -184,0 +199 @@
+@@ -184,0 +203 @@
 +        inline_block_last_y: None,
-@@ -188,0 +204,82 @@
+@@ -187 +206,6 @@
+-    }
++    };
++    // A leaf standing for a laid out subtree gives what the subtree gave.
++    if let Some(leaf) = style.leaf_output() {
++        leaf.apply(&mut output);
++    }
++    output
+@@ -188,0 +213,82 @@
 +
 +#[cfg(test)]
 +mod measured_baseline_tests {
@@ -16359,7 +16384,7 @@ index f6ffa8092af88917af985592c77a132b2b3b6921..10ece19aa5e966b04f1232eb44e47666
 +                GenericGridTemplateComponent::Repeat(repetition)
 +            }
 diff --git a/vendor/taffy/src/style/mod.rs b/vendor/taffy/src/style/mod.rs
-index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8783bfce1
+index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..cc44c6a6450a3437427ab96805180cd78805b326
 --- a/vendor/taffy/src/style/mod.rs
 +++ b/vendor/taffy/src/style/mod.rs
 @@ -29 +29 @@
@@ -16401,7 +16426,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn calc_size_basis(&self) -> [Dimension; 6] { [Dimension::auto(); 6] }
 +    /// Whether calc-size expressions operate on the content box.
 +    fn calc_size_content_box(&self) -> bool { false }
-@@ -121,0 +155,9 @@
+@@ -121,0 +155,13 @@
 +    }
 +    /// Physical grid axes supplied by a writing-mode adapter; otherwise use direction.
 +    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
@@ -16411,7 +16436,11 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    #[cfg(feature = "block_layout")]
 +    fn block_flow(&self) -> Option<BlockFlow> {
 +        None
-@@ -178,2 +220,7 @@
++    }
++    /// KaminIDE patch: what a leaf standing for a laid out subtree gives its parent.
++    fn leaf_output(&self) -> Option<crate::tree::LeafOutput> {
++        None
+@@ -178,2 +224,7 @@
 -    /// Sets the preferred aspect ratio for the item
 -    /// The ratio is calculated as width divided by height.
 +    /// Border-box preferred size transferred by an adapter from a definite ratio axis.
@@ -16421,7 +16450,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    }
 +
 +    /// Sets the preferred aspect ratio, calculated as width divided by height.
-@@ -200,0 +248,51 @@
+@@ -200,0 +252,51 @@
 +    /// KaminIDE patch: приставка `safe` у выравнивания
 +    /// (`align_items`, `align_self`, `align_content`, `justify_content`) —
 +    /// css-align-3 §4.4.
@@ -16473,7 +16502,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn subgrid(&self) -> u8 {
 +        0
 +    }
-@@ -206,0 +305,128 @@
+@@ -206,0 +309,128 @@
 +    /// Empty content-box intrinsic sizes for size-contained physical axes.
 +    #[inline(always)]
 +    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
@@ -16602,26 +16631,31 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    /// Ось укладки — блочная ось контейнера при ФИЗИЧЕСКИХ рядах (лунки
 +    /// колонками в вертикальном письме): элемент по ней — по содержимому.
 +    pub stack_block: bool,
-@@ -720,0 +947,6 @@
+@@ -720,0 +951,6 @@
 +    /// KaminIDE patch: `max-width`/`max-height` given as `min-content` /
 +    /// `max-content` (css-sizing-3 §3.2). `max_size` cannot hold these
 +    /// keywords; a flex container measures them for its items.
 +    pub item_max_size_keywords: Size<Option<AvailableSpace>>,
 +    /// Explicit intrinsic min-width/min-height for flex items.
 +    pub item_min_size_keywords: Size<Option<AvailableSpace>>,
-@@ -727,0 +960,5 @@
+@@ -727,0 +964,10 @@
 +    /// Logical grid track order projected onto the physical x/y axes.
 +    pub grid_axis_reversed: Option<Size<bool>>,
 +    /// Native block layout in logical axes, retaining its BFC and margin rules.
 +    #[cfg(feature = "block_layout")]
 +    pub block_flow: Option<BlockFlow>,
-@@ -735,0 +973,2 @@
++    /// KaminIDE patch: a leaf standing for a laid out subtree gives its parent
++    /// what the subtree gave (`compute_leaf_layout`). Boxed: only such leaves
++    /// pay for it.
++    #[cfg_attr(feature = "serde", serde(skip))]
++    pub leaf_output: Option<crate::util::sys::Box<crate::tree::LeafOutput>>,
+@@ -735,0 +982,2 @@
 +    /// Empty content-box intrinsic sizes for size-contained physical axes.
 +    pub contained_intrinsic_size: Size<Option<f32>>,
-@@ -764,0 +1004,2 @@
+@@ -764,0 +1013,2 @@
 +    /// Border-box ratio transfer preserved independently of content expansion.
 +    pub aspect_ratio_preferred_size: Size<Option<f32>>,
-@@ -795,0 +1037,20 @@
+@@ -795,0 +1046,20 @@
 +    /// KaminIDE patch: приставка `safe` у выравнивания (css-align-3 §4.4):
 +    /// при переполнении области выравнивание падает к `start`, чтобы
 +    /// содержимое не уезжало за начало и не становилось недоступным.
@@ -16642,7 +16676,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    pub calc_size_basis: [Dimension; 6],
 +    /// Maximum-size calculations, X/Y.
 +    pub calc_size_max: [Option<(f32, f32, f32, f32)>; 2],
-@@ -799,0 +1061,65 @@
+@@ -799,0 +1070,65 @@
 +    /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
 +    /// балансировка строк с минимумом N строк (`flex-line-count`).
 +    #[cfg(feature = "flexbox")]
@@ -16708,14 +16742,14 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    /// KaminIDE patch: подсетка — биты [`CoreStyle::subgrid`].
 +    #[cfg(feature = "grid")]
 +    pub subgrid: u8,
-@@ -863,0 +1190,6 @@
+@@ -863,0 +1199,6 @@
 +    /// KaminIDE patch: `<line-name-list>` подсеточных колонок (см. [`SubgridLineNames`]).
 +    #[cfg(feature = "grid")]
 +    pub subgrid_column_names: Option<SubgridLineNames<S>>,
 +    /// KaminIDE patch: `<line-name-list>` подсеточных рядов.
 +    #[cfg(feature = "grid")]
 +    pub subgrid_row_names: Option<SubgridLineNames<S>>,
-@@ -880,0 +1213,8 @@
+@@ -880,0 +1222,8 @@
 +        item_max_size_keywords: Size {
 +            width: None,
 +            height: None,
@@ -16724,27 +16758,28 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +            width: None,
 +            height: None,
 +        },
-@@ -884 +1224,7 @@
+@@ -884 +1233,8 @@
 -        overflow: Point { x: Overflow::Visible, y: Overflow::Visible },
 +        grid_axis_reversed: None,
 +        #[cfg(feature = "block_layout")]
 +        block_flow: None,
++        leaf_output: None,
 +        overflow: Point {
 +            x: Overflow::Visible,
 +            y: Overflow::Visible,
 +        },
-@@ -886,0 +1233 @@
+@@ -886,0 +1243 @@
 +        contained_intrinsic_size: Size::NONE,
-@@ -899,0 +1247 @@
+@@ -899,0 +1257 @@
 +        aspect_ratio_preferred_size: Size::NONE,
-@@ -902,0 +1251,6 @@
+@@ -902,0 +1261,6 @@
 +        #[cfg(any(feature = "flexbox", feature = "grid"))]
 +        safe_alignment: (false, false, false, false),
 +        calc_size: [None; 4],
 +        calc_size_content_box: false,
 +        calc_size_basis: [Dimension::auto(); 6],
 +        calc_size_max: [None; 2],
-@@ -923,0 +1278,20 @@
+@@ -923,0 +1288,20 @@
 +        flex_balance_lines: 0,
 +        #[cfg(feature = "flexbox")]
 +        flex_cross_reverse: false,
@@ -16765,12 +16800,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        #[cfg(feature = "grid")]
 +        subgrid: 0,
 +        #[cfg(feature = "flexbox")]
-@@ -940,0 +1315,4 @@
+@@ -940,0 +1325,4 @@
 +        subgrid_column_names: None,
 +        #[cfg(feature = "grid")]
 +        subgrid_row_names: None,
 +        #[cfg(feature = "grid")]
-@@ -962,0 +1341,7 @@
+@@ -962,0 +1351,7 @@
 +    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
 +        self.calc_size
 +    }
@@ -16778,13 +16813,13 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn calc_size_content_box(&self) -> bool { self.calc_size_content_box }
 +
 +    #[inline(always)]
-@@ -974,0 +1360,5 @@
+@@ -974,0 +1370,5 @@
 +    #[cfg(feature = "block_layout")]
 +    fn is_flow_root(&self) -> bool {
 +        matches!(self.display, Display::FlowRoot)
 +    }
 +    #[inline(always)]
-@@ -989,0 +1380,7 @@
+@@ -989,0 +1390,10 @@
 +    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
 +        self.grid_axis_reversed
 +    }
@@ -16792,12 +16827,15 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn block_flow(&self) -> Option<BlockFlow> {
 +        self.block_flow
 +    }
-@@ -1018,0 +1416,4 @@
++    fn leaf_output(&self) -> Option<crate::tree::LeafOutput> {
++        self.leaf_output.as_deref().copied()
++    }
+@@ -1018,0 +1429,4 @@
 +    fn aspect_ratio_preferred_size(&self) -> Size<Option<f32>> {
 +        self.aspect_ratio_preferred_size
 +    }
 +    #[inline(always)]
-@@ -1034,0 +1436,33 @@
+@@ -1034,0 +1449,33 @@
 +    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
 +        self.safe_alignment
 +    }
@@ -16831,12 +16869,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        self.subgrid
 +    }
 +    #[inline(always)]
-@@ -1036,0 +1471,4 @@
+@@ -1036,0 +1484,4 @@
 +    }
 +    #[inline(always)]
 +    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
 +        self.contained_intrinsic_size
-@@ -1070,0 +1509,7 @@
+@@ -1070,0 +1522,7 @@
 +    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
 +        (*self).calc_size()
 +    }
@@ -16844,12 +16882,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn calc_size_content_box(&self) -> bool { (*self).calc_size_content_box() }
 +
 +    #[inline(always)]
-@@ -1078,0 +1524,4 @@
+@@ -1078,0 +1537,4 @@
 +    fn is_flow_root(&self) -> bool {
 +        (*self).is_flow_root()
 +    }
 +    #[inline(always)]
-@@ -1093,0 +1543,7 @@
+@@ -1093,0 +1556,10 @@
 +    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
 +        (*self).grid_axis_reversed()
 +    }
@@ -16857,12 +16895,15 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn block_flow(&self) -> Option<BlockFlow> {
 +        (*self).block_flow()
 +    }
-@@ -1126,0 +1583,4 @@
++    fn leaf_output(&self) -> Option<crate::tree::LeafOutput> {
++        (*self).leaf_output()
++    }
+@@ -1126,0 +1599,4 @@
 +    fn aspect_ratio_preferred_size(&self) -> Size<Option<f32>> {
 +        (*self).aspect_ratio_preferred_size()
 +    }
 +    #[inline(always)]
-@@ -1142,0 +1603,33 @@
+@@ -1142,0 +1619,33 @@
 +    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
 +        (*self).safe_alignment()
 +    }
@@ -16896,17 +16937,17 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        (*self).subgrid()
 +    }
 +    #[inline(always)]
-@@ -1145,0 +1639,4 @@
+@@ -1145,0 +1655,4 @@
 +    #[inline(always)]
 +    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
 +        (*self).contained_intrinsic_size()
 +    }
-@@ -1281,0 +1779,4 @@
+@@ -1281,0 +1795,4 @@
 +    fn is_table_container(&self) -> bool {
 +        self.item_is_table
 +    }
 +    #[inline(always)]
-@@ -1294,0 +1796,16 @@
+@@ -1294,0 +1812,16 @@
 +    fn flex_balance_lines(&self) -> u16 {
 +        self.flex_balance_lines
 +    }
@@ -16923,12 +16964,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        self.percent_basis_from_parent
 +    }
 +    #[inline(always)]
-@@ -1314,0 +1832,4 @@
+@@ -1314,0 +1848,4 @@
 +    fn is_table_container(&self) -> bool {
 +        (*self).is_table_container()
 +    }
 +    #[inline(always)]
-@@ -1327,0 +1849,16 @@
+@@ -1327,0 +1865,16 @@
 +    fn flex_balance_lines(&self) -> u16 {
 +        (*self).flex_balance_lines()
 +    }
@@ -16945,12 +16986,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        (*self).percent_basis_from_parent()
 +    }
 +    #[inline(always)]
-@@ -1351,0 +1889,4 @@
+@@ -1351,0 +1905,4 @@
 +    fn is_line_row(&self) -> bool {
 +        self.percent_basis_from_parent
 +    }
 +    #[inline(always)]
-@@ -1362,0 +1904,13 @@
+@@ -1362,0 +1920,13 @@
 +    #[inline(always)]
 +    fn is_table_item(&self) -> bool {
 +        self.item_is_table
@@ -16964,12 +17005,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
 +        self.item_min_size_keywords
 +    }
-@@ -1371,0 +1926,4 @@
+@@ -1371,0 +1942,4 @@
 +    fn is_line_row(&self) -> bool {
 +        (*self).is_line_row()
 +    }
 +    #[inline(always)]
-@@ -1381,0 +1940,13 @@
+@@ -1381,0 +1956,13 @@
 +    }
 +    #[inline(always)]
 +    fn is_table_item(&self) -> bool {
@@ -16983,13 +17024,13 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    #[inline(always)]
 +    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
 +        (*self).min_size_keywords()
-@@ -1407 +1978,4 @@
+@@ -1407 +1994,4 @@
 -        = core::iter::Map<core::slice::Iter<'a, GridTrackVec<S>>, fn(&GridTrackVec<S>) -> core::slice::Iter<'_, S>>
 +        = core::iter::Map<
 +        core::slice::Iter<'a, GridTrackVec<S>>,
 +        fn(&GridTrackVec<S>) -> core::slice::Iter<'_, S>,
 +    >
-@@ -1482 +2056,14 @@
+@@ -1482 +2072,14 @@
 -        Some(self.grid_template_row_names.iter().map(|names| names.iter()))
 +        Some(
 +            self.grid_template_row_names
@@ -17005,12 +17046,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        } else {
 +            self.subgrid_row_names.clone()
 +        }
-@@ -1577,0 +2165,4 @@
+@@ -1577,0 +2181,4 @@
 +    #[inline(always)]
 +    fn subgrid_line_names(&self, columns: bool) -> Option<SubgridLineNames<Self::CustomIdent>> {
 +        (*self).subgrid_line_names(columns)
 +    }
-@@ -1635,0 +2227,30 @@
+@@ -1635,0 +2243,30 @@
 +            #[cfg(any(feature = "flexbox", feature = "grid"))]
 +            safe_alignment: (false, false, false, false),
 +            calc_size: [None; 4],
@@ -17041,7 +17082,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +            subgrid_column_names: None,
 +            #[cfg(feature = "grid")]
 +            subgrid_row_names: None,
-@@ -1639,0 +2261,8 @@
+@@ -1639,0 +2277,8 @@
 +            item_max_size_keywords: Size {
 +                width: None,
 +                height: None,
@@ -17050,15 +17091,16 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +                width: None,
 +                height: None,
 +            },
-@@ -1646,0 +2276,3 @@
+@@ -1646,0 +2292,4 @@
 +            grid_axis_reversed: None,
 +            #[cfg(feature = "block_layout")]
 +            block_flow: None,
-@@ -1649,0 +2282 @@
++            leaf_output: None,
+@@ -1649,0 +2299 @@
 +            contained_intrinsic_size: Size::NONE,
-@@ -1683,0 +2317 @@
+@@ -1683,0 +2334 @@
 +            aspect_ratio_preferred_size: Size::NONE,
-@@ -1808 +2442,10 @@
+@@ -1808 +2459,10 @@
 -        assert_type_size::<Style<String>>(560);
 +        // KaminIDE patch: account for the fork's calc-size basis/max payloads,
 +        // containment, subgrid names, lanes, and writing-mode/baseline hints.
@@ -17069,12 +17111,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        assert_type_size::<Option<GridLanes>>(20);
 +        assert_type_size::<Option<(f32, bool)>>(8);
 +        assert_type_size::<Size<Option<f32>>>(16);
-+        assert_type_size::<Style<String>>(1016);
-@@ -1814,3 +2457,3 @@
++        assert_type_size::<Style<String>>(1024);
+@@ -1814,3 +2474,3 @@
 -        assert_type_size::<Style<Arc<str>>>(528);
 -    }
 -}
-+        assert_type_size::<Style<Arc<str>>>(984);
++        assert_type_size::<Style<Arc<str>>>(992);
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/baseline_orientation_tests.rs b/vendor/taffy/src/tree/baseline_orientation_tests.rs
@@ -24789,13 +24831,64 @@ index 0000000000000000000000000000000000000000..5c60d4596b0d65e0bd8766c9e3977dff
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/layout.rs b/vendor/taffy/src/tree/layout.rs
-index bb175dde340480f32138f1d069473d184b7097b9..0ae7dd553264efa3d90f90fbddbd0b500f24ec64
+index bb175dde340480f32138f1d069473d184b7097b9..35b7faf2578fb3e799611dd78f981b62c6b24e2d
 --- a/vendor/taffy/src/tree/layout.rs
 +++ b/vendor/taffy/src/tree/layout.rs
 @@ -27,0 +28,2 @@
 +    /// Content probe ignoring own min/max only in the requested axis.
 +    IntrinsicSize,
-@@ -311 +313,8 @@
+@@ -214,0 +217,50 @@
++/// KaminIDE patch: what a parent reads of a laid out subtree, repeated by a
++/// leaf standing for it (`Style::leaf_output`).
++///
++/// A block container places a child by its border-box size and the margin
++/// sets adjoining its edges (CSS2 §8.3.1), and unions the child's scrollable
++/// overflow into its own (CSS Overflow 3 §2.2). Kept as sets, not as solved
++/// margins, the collapse with the parent's other margins stays exact for
++/// margins of both signs, as Blink's cached layout result keeps its end
++/// margin strut.
++#[derive(Debug, Copy, Clone, PartialEq)]
++pub struct LeafOutput {
++    /// The margins adjoining the top edge, as the subtree's layout output had them.
++    pub top_margin: CollapsibleMarginSet,
++    /// The margins adjoining the bottom edge.
++    pub bottom_margin: CollapsibleMarginSet,
++    /// Whether margins collapse through the subtree.
++    pub margins_can_collapse_through: bool,
++    /// The subtree's scrollable overflow, relative to its border box.
++    #[cfg(feature = "content_size")]
++    pub scrollable_overflow_rect: Rect<f32>,
++    /// The subtree's first and last baselines.
++    pub baselines: Baselines,
++}
++
++impl LeafOutput {
++    /// What `output` gives a parent.
++    pub fn of(output: &LayoutOutput) -> Self {
++        Self {
++            top_margin: output.top_margin,
++            bottom_margin: output.bottom_margin,
++            margins_can_collapse_through: output.margins_can_collapse_through,
++            #[cfg(feature = "content_size")]
++            scrollable_overflow_rect: output.scrollable_overflow_rect,
++            baselines: output.baselines,
++        }
++    }
++
++    /// Give `output` of a leaf what the subtree gave its parent.
++    pub fn apply(&self, output: &mut LayoutOutput) {
++        output.top_margin = self.top_margin;
++        output.bottom_margin = self.bottom_margin;
++        output.margins_can_collapse_through = self.margins_can_collapse_through;
++        #[cfg(feature = "content_size")]
++        {
++            output.scrollable_overflow_rect = self.scrollable_overflow_rect;
++        }
++        output.baselines = self.baselines;
++    }
++}
++
+@@ -311 +363,8 @@
 -            let start_position = !matches!(keyword, AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd) ^ axis_is_rtl;
 +            // KaminIDE patch: `last baseline` falls back to (safe) self-end (css-align-3 §9.1;
 +            // Blink `absolute_utils.cc` GetAlignmentInsetBias: kLastBaseline -> InlineEnd).
@@ -24805,13 +24898,13 @@ index bb175dde340480f32138f1d069473d184b7097b9..0ae7dd553264efa3d90f90fbddbd0b50
 +                    | AlignItemsKeyword::FlexEnd
 +                    | AlignItemsKeyword::LastBaseline
 +            ) ^ axis_is_rtl;
-@@ -480,0 +490,5 @@
+@@ -480,0 +540,5 @@
 +    /// KaminIDE patch: vertical-text first/last baselines, measured from the left
 +    /// border-box edge along the physical x axis. Horizontal baselines remain
 +    /// in the native baselines channel; the two axes must not alias.
 +    pub baselines_x: Baselines,
 +
-@@ -489,0 +504,7 @@
+@@ -489,0 +554,7 @@
 +    /// KaminIDE patch: the last baseline this box exports to an enclosing `inline-block`
 +    /// whose baseline is being computed. Block containers report it separately
 +    /// because tables (at any block-flow depth) contribute no baseline in that mode
@@ -24819,16 +24912,16 @@ index bb175dde340480f32138f1d069473d184b7097b9..0ae7dd553264efa3d90f90fbddbd0b50
 +    /// `PropagateBaselineFromBlockChild`: "table's don't contribute any baselines").
 +    /// `None` means "same as [`Self::last_or_first_y`]".
 +    pub inline_block_last_y: Option<Option<f32>>,
-@@ -508,0 +530,4 @@
+@@ -508,0 +580,4 @@
 +#[path = "measured_output.rs"]
 +mod measured_output;
 +pub use measured_output::MeasureOutput;
 +
-@@ -515,0 +541 @@
+@@ -515,0 +591 @@
 +        baselines_x: Baselines::NONE,
-@@ -518,0 +545 @@
+@@ -518,0 +595 @@
 +        inline_block_last_y: None,
-@@ -531,0 +559,16 @@
+@@ -531,0 +609,16 @@
 +        Self::from_sizes_and_all_baselines(
 +            size,
 +            scrollable_overflow_rect,
@@ -24845,11 +24938,11 @@ index bb175dde340480f32138f1d069473d184b7097b9..0ae7dd553264efa3d90f90fbddbd0b50
 +        baselines: Baselines,
 +        baselines_x: Baselines,
 +    ) -> Self {
-@@ -536,0 +580 @@
+@@ -536,0 +630 @@
 +            baselines_x,
-@@ -539,0 +584 @@
+@@ -539,0 +634 @@
 +            inline_block_last_y: None,
-@@ -542,0 +588,16 @@
+@@ -542,0 +638,16 @@
 +    }
 +
 +    /// KaminIDE patch: a missing last baseline uses the first, as in the previous fork.
@@ -24866,24 +24959,24 @@ index bb175dde340480f32138f1d069473d184b7097b9..0ae7dd553264efa3d90f90fbddbd0b50
 +    /// Vertical counterpart, retaining an independent physical x channel.
 +    pub fn last_or_first_x(&self) -> Option<f32> {
 +        self.baselines_x.last.or(self.baselines_x.first)
-@@ -559,0 +621 @@
+@@ -559,0 +671 @@
 +            baselines_x: Baselines::NONE,
-@@ -562,0 +625 @@
+@@ -562,0 +675 @@
 +            inline_block_last_y: None,
-@@ -586,0 +650,4 @@
+@@ -586,0 +700,4 @@
 +    /// KaminIDE patch: used physical relative-position displacement, separate from normal flow.
 +    /// Normal location is `location - relative_offset`; alignment is already included in location.
 +    /// Upstream proposal: <https://github.com/DioxusLabs/taffy/issues/1353>.
 +    pub relative_offset: Point<f32>,
-@@ -630,0 +698 @@
+@@ -630,0 +748 @@
 +            relative_offset: Point::ZERO,
-@@ -650,0 +719 @@
+@@ -650,0 +769 @@
 +            relative_offset: Point::ZERO,
-@@ -717,0 +787,3 @@
+@@ -717,0 +837,3 @@
 +    /// KaminIDE patch: final flex lines and normal-flow item geometry.
 +    #[cfg(feature = "flexbox")]
 +    Flex(crate::util::sys::Box<crate::tree::DetailedFlexInfo>),
-@@ -728,0 +801,36 @@
+@@ -728,0 +851,36 @@
 +
 +#[cfg(test)]
 +mod baseline_channel_tests {
@@ -24919,6 +25012,78 @@ index bb175dde340480f32138f1d069473d184b7097b9..0ae7dd553264efa3d90f90fbddbd0b50
 +        assert_eq!(output.last_or_first_y(), Some(18.0));
 +        assert_eq!(output.last_or_first_x(), None);
 +    }
++}
+diff --git a/vendor/taffy/src/tree/leaf_output_tests.rs b/vendor/taffy/src/tree/leaf_output_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..770140c5ff4ddf4081a398f52949fcab5fdb9640
+--- /dev/null
++++ b/vendor/taffy/src/tree/leaf_output_tests.rs
+@@ -0,0 +1,66 @@
++//! KaminIDE patch: a leaf repeating a laid out subtree's output (`LeafOutput`)
++//! is placed and collapses its margins exactly as the subtree.
++
++use crate::style_helpers::*;
++use crate::{Display, LeafOutput, NodeId, Rect, Size, Style, TaffyTree};
++
++fn block(height: f32, top: f32, bottom: f32) -> Style {
++    Style {
++        display: Display::Block,
++        size: Size { width: auto(), height: length(height) },
++        margin: Rect { left: zero(), right: zero(), top: length(top), bottom: length(bottom) },
++        ..Style::DEFAULT
++    }
++}
++
++/// A block whose first and last children's margins collapse through its
++/// edges, between two siblings: `(tree, root, [before, middle, after])`.
++fn page(inner: (f32, f32), middle: Option<Style>) -> (TaffyTree<()>, NodeId, [NodeId; 3]) {
++    let mut tree: TaffyTree<()> = TaffyTree::new();
++    tree.disable_rounding();
++    let before = tree.new_leaf(block(10.0, 0.0, 4.0)).unwrap();
++    let middle = match middle {
++        Some(leaf) => tree.new_leaf(leaf).unwrap(),
++        None => {
++            let first = tree.new_leaf(block(20.0, inner.0, 0.0)).unwrap();
++            let last = tree.new_leaf(block(20.0, 0.0, inner.1)).unwrap();
++            let style = Style { size: Size { width: auto(), height: auto() }, ..block(0.0, 3.0, 2.0) };
++            tree.new_with_children(style, &[first, last]).unwrap()
++        }
++    };
++    let after = tree.new_leaf(block(10.0, 5.0, 0.0)).unwrap();
++    let root_style = Style {
++        display: Display::Block,
++        size: Size { width: length(100.0), height: auto() },
++        ..Style::DEFAULT
++    };
++    let root = tree.new_with_children(root_style, &[before, middle, after]).unwrap();
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    (tree, root, [before, middle, after])
++}
++
++fn places(inner: (f32, f32)) {
++    let (tree, root, [_, middle, after]) = page(inner, None);
++    let built = tree.layout(middle).unwrap();
++    let output = tree.computed_layout_output(middle).unwrap().expect("laid out");
++    let leaf = Style {
++        size: Size { width: auto(), height: length(built.size.height) },
++        leaf_output: Some(Box::new(LeafOutput::of(&output))),
++        ..block(0.0, 3.0, 2.0)
++    };
++    let (stand, stand_root, [_, leaf_node, stand_after]) = page(inner, Some(leaf));
++    assert_eq!(stand.layout(leaf_node).unwrap().location, built.location, "leaf at the block's place");
++    assert_eq!(stand.layout(stand_after).unwrap().location, tree.layout(after).unwrap().location);
++    assert_eq!(stand.layout(stand_root).unwrap().size, tree.layout(root).unwrap().size);
++}
++
++#[test]
++fn a_leaf_collapses_the_margins_of_the_subtree_edges_as_the_subtree() {
++    places((16.0, 24.0));
++}
++
++#[test]
++fn margins_of_both_signs_collapse_exactly_through_the_leaf() {
++    places((-7.0, -9.0));
++    places((12.0, -30.0));
 +}
 diff --git a/vendor/taffy/src/tree/leaf_xy_baselines_tests.rs b/vendor/taffy/src/tree/leaf_xy_baselines_tests.rs
 new file mode 100644
@@ -25115,7 +25280,7 @@ index 0000000000000000000000000000000000000000..9e5fc43a10f480a5f0c060d6ebed5d50
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/mod.rs b/vendor/taffy/src/tree/mod.rs
-index 1d70419936e58bdaeda090b9f73188c0f7999985..033b6be448a4bff7a4c4425eec212282bac23eb7
+index 1d70419936e58bdaeda090b9f73188c0f7999985..6675843d7ad3641e2a490148160e81a04a7ac332
 --- a/vendor/taffy/src/tree/mod.rs
 +++ b/vendor/taffy/src/tree/mod.rs
 @@ -9,0 +10,5 @@
@@ -25134,7 +25299,11 @@ index 1d70419936e58bdaeda090b9f73188c0f7999985..033b6be448a4bff7a4c4425eec212282
 +    AxisStaticAlign, AxisStaticEdge, AxisStaticPosition, Baselines, CollapsibleMarginSet, Layout,
 +    LayoutInput, LayoutOutput, MeasureOutput, OofCandidate, OofCandidates, OofPositioningArea,
 +    RequestedAxis, RunMode, SizingMode,
-@@ -36 +39,9 @@
+@@ -19,0 +23,3 @@
++pub use layout::LeafOutput;
++#[cfg(all(test, feature = "block_layout", feature = "content_size"))]
++mod leaf_output_tests;
+@@ -36 +42,9 @@
 -pub use taffy_tree::{TaffyError, TaffyResult, TaffyTree};
 +pub use taffy_tree::{SharedStyle, TaffyError, TaffyResult, TaffyTree};
 +#[cfg(feature = "taffy_tree")]
@@ -25145,7 +25314,7 @@ index 1d70419936e58bdaeda090b9f73188c0f7999985..033b6be448a4bff7a4c4425eec212282
 +pub use kamin_calc::calc_value;
 +#[cfg(all(feature = "taffy_tree", feature = "std"))]
 +pub use kamin_calc::{calc_handle, CalcScope};
-@@ -38,0 +50,190 @@
+@@ -38,0 +53,190 @@
 +
 +#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 +mod flex_safe_alignment_tests;

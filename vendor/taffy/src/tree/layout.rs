@@ -214,6 +214,56 @@ pub struct Baselines {
     pub last: Option<f32>,
 }
 
+/// KaminIDE patch: what a parent reads of a laid out subtree, repeated by a
+/// leaf standing for it (`Style::leaf_output`).
+///
+/// A block container places a child by its border-box size and the margin
+/// sets adjoining its edges (CSS2 §8.3.1), and unions the child's scrollable
+/// overflow into its own (CSS Overflow 3 §2.2). Kept as sets, not as solved
+/// margins, the collapse with the parent's other margins stays exact for
+/// margins of both signs, as Blink's cached layout result keeps its end
+/// margin strut.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct LeafOutput {
+    /// The margins adjoining the top edge, as the subtree's layout output had them.
+    pub top_margin: CollapsibleMarginSet,
+    /// The margins adjoining the bottom edge.
+    pub bottom_margin: CollapsibleMarginSet,
+    /// Whether margins collapse through the subtree.
+    pub margins_can_collapse_through: bool,
+    /// The subtree's scrollable overflow, relative to its border box.
+    #[cfg(feature = "content_size")]
+    pub scrollable_overflow_rect: Rect<f32>,
+    /// The subtree's first and last baselines.
+    pub baselines: Baselines,
+}
+
+impl LeafOutput {
+    /// What `output` gives a parent.
+    pub fn of(output: &LayoutOutput) -> Self {
+        Self {
+            top_margin: output.top_margin,
+            bottom_margin: output.bottom_margin,
+            margins_can_collapse_through: output.margins_can_collapse_through,
+            #[cfg(feature = "content_size")]
+            scrollable_overflow_rect: output.scrollable_overflow_rect,
+            baselines: output.baselines,
+        }
+    }
+
+    /// Give `output` of a leaf what the subtree gave its parent.
+    pub fn apply(&self, output: &mut LayoutOutput) {
+        output.top_margin = self.top_margin;
+        output.bottom_margin = self.bottom_margin;
+        output.margins_can_collapse_through = self.margins_can_collapse_through;
+        #[cfg(feature = "content_size")]
+        {
+            output.scrollable_overflow_rect = self.scrollable_overflow_rect;
+        }
+        output.baselines = self.baselines;
+    }
+}
+
 impl Baselines {
     /// A `Baselines` with neither a first nor a last baseline
     pub const NONE: Self = Self { first: None, last: None };
