@@ -1,3 +1,5 @@
+import { withoutBridgeContext } from './bridge-context'
+
 export interface SubmissionUpdate {
   /** Local transport refused this prompt before sending it; restore its draft. */
   rejected?: boolean
@@ -115,7 +117,9 @@ export function matchSubmissionQueue(
       const text = typeof content === 'string' ? content : blocks.length ? blocks.map(block => block.text).join('\n') : undefined
       if (text === undefined || COMMAND_OUTPUT.test(text)) continue
       const command = recordedCommand(text)
-      rows.push({ entry, text: norm(text), ord, ts, kind: command ? 'command' : 'user', ...(command ? { command } : {}) })
+      // A first turn after an engine switch stores the hidden history after
+      // the user's text; items carry only what the user wrote.
+      rows.push({ entry, text: norm(withoutBridgeContext(text)), ord, ts, kind: command ? 'command' : 'user', ...(command ? { command } : {}) })
     }
   }
   const matches: Array<{ item: LocalQueueItem; entry: QueueEntry }> = []

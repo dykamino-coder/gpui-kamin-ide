@@ -176,8 +176,21 @@ export function modelLine(model: string | null | undefined, effort: string | nul
   return [
     '## Model',
     `This chat runs on the model \`${model}\`${level ? ` with reasoning effort \`${level}\`` : ''}.`,
-    'When asked which model you are, answer with this exact identifier.',
+    level
+      ? 'When asked which model or reasoning effort you run on, answer with these exact values.'
+      : 'When asked which model you are, answer with this exact identifier.',
   ].join('\n')
+}
+
+/** The effort a turn of `model` runs with: the one chosen in the chat, else
+ *  the model's own default from the codex catalog. A chat that never picked
+ *  one still runs on a definite level, and the model line must name it. */
+export function effectiveEffort(
+  model: string | null | undefined,
+  effort: string | null | undefined,
+  catalog: { knownModel(model: string | null | undefined): { defaultReasoningEffort: string | null } | undefined },
+): string | undefined {
+  return codexEffort(effort) ?? codexEffort(catalog.knownModel(model)?.defaultReasoningEffort)
 }
 
 /** The context record of what a thread was given at thread/start. */
@@ -336,7 +349,11 @@ export async function createCodexSession(
   const saved = placement.resumeThreadId ? loadCodexChoice(settingsDir, placement.resumeThreadId) : null
   const effort = saved?.effort ?? config.effort
   const instructions = developerInstructions(config)
-  const startLine = modelLine(codexModel(saved?.model) ?? codexModel(config.model), effort)
+  // A chat on the default model still learns which model and effort that is
+  // (the catalog names the default; no model call).
+  const catalog = await deps.runtime.recentModels().catch(() => [])
+  const lineModel = codexModel(saved?.model) ?? codexModel(config.model) ?? catalog.find((m) => m.isDefault)?.model
+  const startLine = modelLine(lineModel, effectiveEffort(lineModel, effort, deps.runtime))
   const startOptions = {
     host,
     id: sessionId,
@@ -777,7 +794,12 @@ export class CodexSessionBinding {
     if (instructions === undefined || !threadId) return null
     const { settingsDir } = this.session
     const choice = loadCodexChoice(settingsDir, threadId)
-    const next = sessionContextFor(choice?.context, instructions, modelLine(this.agent.model, this.session.effort))
+    const model = this.agent.model
+    const next = sessionContextFor(
+      choice?.context,
+      instructions,
+      modelLine(model, effectiveEffort(model, this.session.effort, this.runtime)),
+    )
     if (!next) return null
     return {
       text: next.text,

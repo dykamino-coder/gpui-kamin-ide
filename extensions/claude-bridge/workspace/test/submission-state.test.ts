@@ -161,6 +161,16 @@ test('REAL119: a receipt with the engine input (text plus hidden history) keeps 
   assert.equal(send(restarted, 'after-restart', 'after restart'), true)
 })
 
+test('a short queued message is confirmed by the row that stores it with the hidden history', t => {
+  const { host } = fixture(t)
+  const state = host()
+  send(state, 'short', 'short one')
+  update(state, { id: 'short', state: 'fallback' })
+  state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', [{ type: 'user', uuid: 'stored', _ord: 1,
+    message: { role: 'user', content: 'short one\n\n<bridge-context>\n<conversation-history>\nUser: x\n</conversation-history>\n</bridge-context>' } }]] })
+  assert.equal(receipt(state, 'short').fallbackQueue.consumed, true)
+})
+
 test('a receipt recovered as uncertain keeps server time and settles from a later transcript row', t => {
   const { host } = fixture(t)
   const t0 = Date.parse('2026-11-10T10:00:00Z')

@@ -77,6 +77,12 @@ import { sendToClient } from './session-io'
 import { wsDeflateOptions } from './ws-compression'
 import { isTerminalResponseInput } from './session-input-coordinator'
 import { sessionCliControl } from './session-cli-control'
+
+/** A queued message the leaving CLI had taken but not confirmed when the chat
+ *  moved to the other engine: it is not sent on, the user decides. */
+export const SWITCH_RETURNED_WARNING =
+  'The chat moved to the other engine before this queued message was confirmed, so it was not sent on. ' +
+  'Check the chat; your text is back in the input.'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 import { notifyToolListChanged, replaceRegisteredTools } from './mcp-tool-notify'
@@ -1251,6 +1257,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               session: next,
               timings,
               contextBytes,
+              carried,
             } = await switchSessionEngine(
               oldSessionId,
               { engine: msg.engine, model },
@@ -1275,6 +1282,21 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 engineSwitch: { ...timings, contextBytes },
               }),
             )
+            // The leaving CLI's queue, after the client knows the new session
+            // and before the gate lets later prompts through (their order).
+            for (const item of carried.returned)
+              sendToClient(ws, {
+                type: 'session:submission',
+                sessionId: next.id,
+                id: item.id,
+                text: item.text,
+                state: 'cancelled',
+                rejected: true,
+                cancelable: false,
+                warning: SWITCH_RETURNED_WARNING,
+                createdAt: item.createdAt,
+              })
+            for (const item of carried.moved) submitText(next.id, item.text, item.id)
             void sendAgentPreferences(ws, session.tokenId)
             broadcastTree(session.tokenId)
           } catch (err) {
