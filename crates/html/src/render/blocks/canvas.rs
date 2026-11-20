@@ -3,6 +3,7 @@ use crate::layout::options::RenderOpts;
 use gpui::IntoElement;
 
 use crate::dom::Element;
+use crate::interactive::scroll_target::canvas_scrolling;
 use crate::paint::effects::grouped::grouped;
 use crate::style::canvas_background::{CanvasBackground, CanvasBackgroundSource};
 use crate::style::computed::BoxStyle;
@@ -85,13 +86,8 @@ pub(crate) fn canvas_layer(
     // схлопкой верха, и над краской проступала полоса
     // (background-size-document-root-vrl-*).
     let mut layer = layer.into_any_element();
-    let scrolling = |fixed, t| {
-        crate::interactive::scroll_target::canvas_scrolling(
-            opts.cx.scroll.target.as_deref(),
-            fixed,
-            t,
-        )
-    };
+    let target = opts.cx.scroll.target.as_deref();
+    let scrolling = |fixed, t| canvas_scrolling(target, fixed, t);
     // Донор — САМ корень: область ОТСЧЁТА плитки это его коробка
     // (§14.2 «sized and positioned relative to the root element's
     // box»), а красит она весь холст. Тот же отсчёт получает фон body.
@@ -166,10 +162,7 @@ pub(crate) fn canvas_layer(
     {
         layer = div()
             .absolute()
-            .top_0()
-            .left_0()
-            .right_0()
-            .bottom_0()
+            .inset_0()
             .child(layer)
             .child(tiles)
             .into_any_element();
@@ -201,10 +194,7 @@ pub(crate) fn canvas_layer(
         };
         layer = div()
             .absolute()
-            .top_0()
-            .left_0()
-            .right_0()
-            .bottom_0()
+            .inset_0()
             .child(layer)
             .child(band.child(scrolling(background.top.fixed, tiles)))
             .into_any_element();
