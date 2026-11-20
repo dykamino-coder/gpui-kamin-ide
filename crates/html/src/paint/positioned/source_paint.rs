@@ -22,6 +22,10 @@ pub(crate) fn split(
     child: AnyElement,
     node: Option<gpui::ScrollHandle>,
 ) -> (AnyElement, AnyElement) {
+    // The layer only lays the box out; the source half places it.
+    let mut state = spot.get();
+    state.layout_only = true;
+    spot.set(state);
     let child = Rc::new(RefCell::new(PlacedChild {
         element: LatePlace { child, spot }.hooked(),
         layout: None,

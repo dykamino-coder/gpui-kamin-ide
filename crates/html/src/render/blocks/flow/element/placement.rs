@@ -153,14 +153,8 @@ pub(crate) fn place_element(
                 built
             };
             let built = if nodes.after(idx).stays_positioned() {
-                let mut state = spot.get();
-                state.layout_only = true;
-                spot.set(state);
-                let node = opts
-                    .cx
-                    .position
-                    .state
-                    .layer_node(to_icb, far_fixed, inherited);
+                let state = &opts.cx.position.state;
+                let node = state.layer_node(to_icb, far_fixed, inherited);
                 let (layout, paint) =
                     crate::paint::positioned::split_source_paint(spot.clone(), built, node);
                 source_paint = Some(paint);
