@@ -3960,6 +3960,7 @@ impl Window {
                 });
         }
 
+        retained_layout::release_frame_layouts();
         self.layout_engine.as_mut().unwrap().clear();
         self.text_system().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
