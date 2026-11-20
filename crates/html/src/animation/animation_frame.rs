@@ -17,15 +17,24 @@ pub(super) fn sample(
     let mut inner = e.clone();
     // Animations are an origin of the cascade (css-cascade-5 §6.2): the sampled
     // values enter the cascaded style and are computed with it.
-    // Margins stay the box's USED ones: layout may already have collapsed or
-    // moved them (`used_mut`), and editing the cascaded style drops that layer,
-    // so falling back to the cascaded margin would apply it a second time.
+    // Block-axis margins stay the box's USED ones: layout may already have
+    // collapsed them (`used_mut`), and editing the cascaded style drops that
+    // layer, so the cascaded margin would be applied a second time. Inline-axis
+    // margins stay cascaded: `auto` resolves against the sampled width.
     let used = e.style.used().reset_box_layout.margin;
     let style = inner.style.cascaded_mut();
     style.reset_box_layout.margin.top = frame.reset_box_layout.margin.top.or(used.top);
-    style.reset_box_layout.margin.right = frame.reset_box_layout.margin.right.or(used.right);
+    style.reset_box_layout.margin.right = frame
+        .reset_box_layout
+        .margin
+        .right
+        .or(style.reset_box_layout.margin.right);
     style.reset_box_layout.margin.bottom = frame.reset_box_layout.margin.bottom.or(used.bottom);
-    style.reset_box_layout.margin.left = frame.reset_box_layout.margin.left.or(used.left);
+    style.reset_box_layout.margin.left = frame
+        .reset_box_layout
+        .margin
+        .left
+        .or(style.reset_box_layout.margin.left);
     if frame.reset_effects.opacity.is_some() {
         style.reset_effects.opacity = frame.reset_effects.opacity;
     }
