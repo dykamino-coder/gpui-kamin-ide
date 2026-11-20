@@ -6,7 +6,7 @@ fn checked_ids(source: &str) -> Vec<String> {
         .dom;
     let state = FormState::default();
     let mut out = vec![];
-    let mut stack = vec![dom.document.clone()];
+    let mut stack = vec![dom.document];
     while let Some(node) = stack.pop() {
         if let Some((tag, attrs)) = element(&node)
             && state.checked(&node, tag, &attrs)

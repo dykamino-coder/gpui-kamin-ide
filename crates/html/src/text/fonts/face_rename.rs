@@ -22,14 +22,14 @@ pub(crate) fn renamed(bytes: &[u8], family: &str) -> Option<Vec<u8>> {
         .find(|&at| bytes.get(at..at + 4) == Some(b"name"))?;
     bytes.get(..12 + 16 * tables)?;
     let mut out = bytes.to_vec();
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0);
     }
     let table = name_table(family);
     let offset = u32::try_from(out.len()).ok()?;
     let length = u32::try_from(table.len()).ok()?;
     out.extend_from_slice(&table);
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0);
     }
     out[record + 4..record + 8].copy_from_slice(&checksum(&table).to_be_bytes());
