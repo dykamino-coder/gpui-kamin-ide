@@ -12,7 +12,7 @@ pub(crate) struct RootScroll {
     /// replays them through its scroll nodes.
     pub(crate) scroll_inputs: Cell<u64>,
     /// The key the last scroll key press scrolled with, until its release.
-    pressed: std::cell::RefCell<Option<String>>,
+    pressed: Cell<Option<String>>,
     /// The document's frame element draws the bars (`RootBars`): set by it
     /// before its tree prepaints.
     pub(crate) hosted: Cell<bool>,
@@ -63,18 +63,19 @@ impl RootScroll {
         handle.set_offset(next);
         self.scroll_inputs
             .set(self.scroll_inputs.get().wrapping_add(1));
-        self.pressed.replace(Some(event.keystroke.key.clone()));
+        self.pressed.set(Some(event.keystroke.key.clone()));
         true
     }
 
     /// The release of the key `key` scrolled with is one more input that
     /// only moved the offset.
     pub(crate) fn released(&self, event: &KeyUpEvent) {
-        let mut pressed = self.pressed.borrow_mut();
+        let pressed = self.pressed.take();
         if pressed.as_ref() == Some(&event.keystroke.key) {
-            *pressed = None;
             self.scroll_inputs
                 .set(self.scroll_inputs.get().wrapping_add(1));
+        } else {
+            self.pressed.set(pressed);
         }
     }
 }
