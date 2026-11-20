@@ -169,6 +169,12 @@ impl FlowReuse {
             None => None,
         };
         let Some(kind) = leaf else {
+            if kept.is_some() {
+                // What was learnt stays while the block is built through.
+                let mut seen = store.seen.take();
+                seen.insert(e.node_id);
+                store.seen.set(seen);
+            }
             // A block of a screen or less is watched for its place; a larger
             // one is built through, its children may stand as leaves.
             return (height <= opts.viewport.1).then(|| {

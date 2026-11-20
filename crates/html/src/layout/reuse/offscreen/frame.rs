@@ -8,6 +8,12 @@ use std::collections::{HashMap, HashSet};
 /// Exactness of a leaf against its block, in px.
 const EXACT: f32 = 0.01;
 
+/// The block of `slot` was kept as never a leaf at the same build.
+fn failed(kept: &HashMap<u64, Kept>, slot: &super::Slot) -> bool {
+    let k = kept.get(&slot.node);
+    k.is_some_and(|k| k.snapshot.is_none() && k.at == slot.at)
+}
+
 impl FlowReuse {
     /// The leaves of this build before prepaint, `screen` the window mask
     /// grown by the interest margin. A leaf near the screen, a measured block
@@ -85,6 +91,9 @@ impl FlowReuse {
                     // margins, which its measured copy is built without.
                     (leaf.filter(|_| measured.is_some()), measured.is_some())
                 }
+                // A block whose leaf failed at this build stays built: its
+                // built box need not fit a leaf either.
+                Kind::Built | Kind::Floats if failed(&kept, slot) => continue,
                 Kind::Built | Kind::Floats => (window.layout_snapshot(id), true),
             };
             let floated = floats.iter().any(|f| f.intersects(&bounds));
