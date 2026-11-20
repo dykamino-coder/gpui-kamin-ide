@@ -32,7 +32,8 @@ export async function dashboardAuthMiddleware(c: Context, next: Next) {
 
   // Skip public auth endpoints (exact or prefix match for /tokens/:id)
   const path = c.req.path
-  if (PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/')) && !PRIVATE_UNDER_PUBLIC.test(path)) return next()
+  if (PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/')) && !PRIVATE_UNDER_PUBLIC.test(path))
+    return next()
 
   // Check for session token
   const auth = c.req.header('authorization')
