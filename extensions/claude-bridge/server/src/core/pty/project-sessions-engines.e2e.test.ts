@@ -384,4 +384,99 @@ describe('project session tools for Claude and ChatGPT chats', () => {
       cl.close()
     }
   }, 90_000)
+  async function blockOf(conversationId: string): Promise<string> {
+    const { loadManifest, activeSegment } = await import('../conversation/manifest')
+    const s = await sessionOf(conversationId)
+    return activeSegment(loadManifest(s.conversation!.dir)!).pendingContext ?? ''
+  }
+  async function switchTo(client: Client, engine: 'claude' | 'codex', model: string, before: string) {
+    const from = client.frames.length
+    client.send({ type: 'session:switch-engine', engine, model })
+    await client.next((f) => f.type === 'session:restarted', 15_000, from)
+    const id = (
+      await client
+        .next((f) => f.type === 'session:conversation-id' && f.conversationId !== before, 15_000, from)
+        .catch(() => ({ conversationId: before }))
+    ).conversationId as string
+    return id
+  }
+
+  it('after a switch the joining engine finds an early fact the handoff block left out, both ways', async () => {
+    // Claude first: the fact is only in an early answer, then the chat outgrows the block.
+    const c = await chat('claude')
+    await say(c, '/fake-note KESTREL-4417', 'k0')
+    await c.entry((e) => e.type === 'assistant' && text(e) === 'noted: KESTREL-4417', 15_000)
+    for (let i = 1; i <= 36; i++) {
+      await say(c, `/fake-note filler${i}-${'x'.repeat(2000)}`, `k${i}`)
+      await c.entry((e) => e.type === 'assistant' && text(e).startsWith(`noted: filler${i}-`), 15_000)
+    }
+    const cFirst = await conversationOf(c)
+    const cId = await switchTo(c, 'codex', 'gpt-fake', cFirst)
+    const block = await blockOf(cId)
+    expect(block).toContain('<history-note>')
+    expect(block).toContain(`Conversation id: ${cId}`)
+    expect(block).toMatch(/Not shown above: \d+ earlier turns/)
+    expect(block).toContain('mcp__bridge__project_session_search')
+    expect(block).not.toContain('KESTREL-4417')
+    expect(Buffer.byteLength(block)).toBeLessThanOrEqual(64_000)
+    // The block rides with the first message after the switch.
+    await say(c, 'first after switch', 'k-f')
+    await c.entry((e) => text(e).startsWith('echo: first after switch'), 15_000)
+    // The codex stub does what the note says: search, then read around the hit.
+    const n = c.entries().length
+    await say(c, '/fake-mcp project_session_search {"query":"KESTREL-4417"}', 'k-s')
+    const found = await c.entry(
+      (e) =>
+        c.entries().indexOf(e) >= n &&
+        Array.isArray(e.message?.content) &&
+        e.message.content.some((b: any) => b.type === 'tool_result'),
+      15_000,
+    )
+    expect(text(found)).toContain('noted: KESTREL-4417')
+    const hit = new RegExp(`${cId} #(\\d+)`).exec(text(found))!
+    expect(hit).not.toBeNull()
+    const n2 = c.entries().length
+    await say(
+      c,
+      `/fake-mcp project_session_read {"session_id":"${cId}","from_index":${hit[1]},"to_index":${Number(hit[1]) + 1}}`,
+      'k-r',
+    )
+    const read = await c.entry(
+      (e) =>
+        c.entries().indexOf(e) >= n2 &&
+        Array.isArray(e.message?.content) &&
+        e.message.content.some((b: any) => b.type === 'tool_result'),
+      15_000,
+    )
+    expect(text(read)).toContain('noted: KESTREL-4417')
+
+    // ChatGPT first: the fact sits past the 200 characters the request list keeps.
+    const x = await chat('codex')
+    await say(x, `${'p'.repeat(250)} OSPREY-9157`, 'o0')
+    await x.entry((e) => text(e).startsWith('echo: ') && text(e).includes('OSPREY-9157'), 15_000)
+    for (let i = 1; i <= 18; i++) {
+      await say(x, `filler${i} ${'y'.repeat(2000)}`, `o${i}`)
+      await x.entry((e) => text(e).startsWith(`echo: filler${i} `), 15_000)
+    }
+    const xFirst = await conversationOf(x)
+    const xId = await switchTo(x, 'claude', 'sonnet', xFirst)
+    const back = await blockOf(xId)
+    expect(back).toContain('mcp__user-tools__project_session_search')
+    expect(back).not.toContain('mcp__bridge__')
+    expect(back).not.toContain('OSPREY-9157')
+    await say(x, '/fake-note ready', 'o-f')
+    await x.entry((e) => e.type === 'assistant' && text(e) === 'noted: ready', 15_000)
+    const n3 = x.entries().length
+    await say(x, '/fake-tool project_session_search {"query":"OSPREY-9157"}', 'o-s')
+    const answer = await x.entry(
+      (e) => x.entries().indexOf(e) >= n3 && e.type === 'assistant' && text(e).startsWith('tool said:'),
+      15_000,
+    )
+    expect(text(answer)).toContain('OSPREY-9157')
+    expect(text(answer)).toContain(xId)
+    for (const cl of [c, x]) {
+      cl.send({ type: 'session:end' })
+      cl.close()
+    }
+  }, 180_000)
 })

@@ -3,6 +3,8 @@ import type { JsonlEntry } from '../../shared/jsonl-types'
 import {
   buildHandoff,
   HANDOFF_BUDGET_BYTES,
+  HISTORY_TOOLS,
+  readHandoff,
   HANDOFF_TOOL_PREVIEW_CHARS,
   transcriptTurns,
   withContextBlock,
@@ -155,5 +157,71 @@ describe('buildHandoff', () => {
     const t0 = performance.now()
     buildHandoff(entries, source)
     expect(performance.now() - t0).toBeLessThan(200)
+  })
+})
+
+describe('history note at the end of the block', () => {
+  const at = (i: number) => new Date(Date.UTC(2026, 10, 1, 8, 0) + i * 60_000).toISOString()
+  const stamped = (e: JsonlEntry, i: number) => ({ ...e, timestamp: at(i) }) as JsonlEntry
+
+  it('names the conversation, says nothing is left out and lists the tools as the joining engine calls them', () => {
+    const text = buildHandoff([user('Remember 4217.'), assistant('Remembered.')], source)!.text
+    const note = text.slice(text.indexOf('<history-note>'), text.indexOf('</history-note>'))
+    expect(text.indexOf('</conversation-history>')).toBeLessThan(text.indexOf('<history-note>'))
+    expect(text.endsWith('</history-note>\n</bridge-context>')).toBe(true)
+    expect(note).toContain(`Conversation id: ${source.conversationId}`)
+    expect(note).toContain('Nothing is left out')
+    // Claude hands over to codex by default: codex names Bridge tools mcp__bridge__*.
+    for (const tool of HISTORY_TOOLS) expect(note).toContain(`mcp__bridge__${tool}`)
+    expect(note).toContain(`session_id "${source.conversationId}"`)
+    const back = buildHandoff([user('a'), assistant('b')], { ...source, engine: 'codex', target: 'claude' })!.text
+    expect(back).toContain('mcp__user-tools__project_session_search')
+    expect(back).not.toContain('mcp__bridge__')
+  })
+
+  it('counts the turns and bytes left out and the period they span, within the budget', () => {
+    const entries: JsonlEntry[] = [stamped(user('The launch code is 4217.'), 0), stamped(assistant('OK.'), 1)]
+    for (let i = 0; i < 40; i++)
+      entries.push(
+        stamped(user(`question ${i} ${'q'.repeat(80)}`), 2 + 2 * i),
+        stamped(assistant(`answer ${i}`), 3 + 2 * i),
+      )
+    const handoff = buildHandoff(entries, { ...source, target: 'claude' }, { budgetBytes: 4_000 })!
+    expect(handoff.shortened).toBe(true)
+    expect(Buffer.byteLength(handoff.text)).toBeLessThanOrEqual(4_000)
+    const note = handoff.text.slice(handoff.text.indexOf('<history-note>'))
+    const m = /Not shown above: (\d+) earlier turns \(about (\d+) KB\) from (.+?) to (.+?); only/.exec(note)!
+    expect(m).not.toBeNull()
+    const leftTurns = Number(m[1])
+    expect(leftTurns).toBeGreaterThan(0)
+    expect(handoff.text).toContain(`(${leftTurns} turns, not included in full)`)
+    expect(Number(m[2])).toBeGreaterThan(0)
+    expect(m[3]).toBe('2026-11-01 08:00 UTC')
+    expect(m[4]).toBe(
+      `${at(leftTurns - 1)
+        .slice(0, 16)
+        .replace('T', ' ')} UTC`,
+    )
+    expect(note).toContain('mcp__user-tools__project_session_read')
+  })
+
+  it('keeps the 64 KB cap with the note and reads the same block from a file', async () => {
+    const entries: JsonlEntry[] = []
+    for (let i = 0; i < 400; i++)
+      entries.push(user(`вопрос ${i} ${'ж'.repeat(300)}`), assistant(`ответ ${i} ${'щ'.repeat(300)}`))
+    const handoff = buildHandoff(entries, source)!
+    expect(Buffer.byteLength(handoff.text)).toBeLessThanOrEqual(HANDOFF_BUDGET_BYTES)
+    expect(handoff.text).toContain('ответ 399')
+    const fs = await import('node:fs')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'handoff-note-'))
+    try {
+      const file = path.join(dir, 'c.jsonl')
+      fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n')
+      expect(await readHandoff(file, source)).toEqual(handoff)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

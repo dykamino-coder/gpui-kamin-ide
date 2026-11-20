@@ -95,6 +95,7 @@ export async function planSwitch(opts: {
     engine: from.engine,
     model: from.model,
     engines: [...new Set([...(manifest?.segments.map((s) => s.engine) ?? []), from.engine])],
+    target: target.engine,
   }
   const handoff = await readHandoff(
     manifest ? unifiedLogPath(ref) : path.join(slugDirOf(from.settingsDir), `${from.nativeId}.jsonl`),
@@ -177,6 +178,7 @@ export async function restartSegmentFresh(manifest: ConversationManifest): Promi
     engine: previous.engine,
     model: previous.model,
     engines: [...new Set(manifest.segments.map((s) => s.engine))],
+    target: segment.engine,
   })
   segment.nativeId = null
   segment.pump = { file: null, pos: 0 }

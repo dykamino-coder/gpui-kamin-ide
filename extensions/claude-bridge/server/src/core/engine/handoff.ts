@@ -61,6 +61,8 @@ export interface HandoffSource {
   model: string | null
   /** Every engine that took part so far. */
   engines?: Array<'claude' | 'codex'>
+  /** The engine that joins (names the tools in the note); the other one by default. */
+  target?: 'claude' | 'codex'
 }
 
 export interface Handoff {
@@ -150,15 +152,70 @@ const turnBytes = (t: HandoffTurn) => bytes(`${label(t.role)}: ${t.text}`) + 2
 
 const ENGINE_NAME = { claude: 'Claude', codex: 'ChatGPT' } as const
 
-/** Fixed text of the block around the history (its bytes count too). */
-const FRAME_BYTES = 900
-
-function historyBudget(options: { budgetBytes?: number }): number {
-  return Math.max(2_000, (options.budgetBytes ?? HANDOFF_BUDGET_BYTES) - FRAME_BYTES)
+/** Whole-block budget in bytes (frame, history and note). */
+function blockBudget(options: { budgetBytes?: number }): number {
+  return options.budgetBytes ?? HANDOFF_BUDGET_BYTES
 }
+
+/** How each engine names a Bridge MCP tool: Claude reads the `user-tools`
+ *  server of its .mcp.json (pty/session-settings.ts), codex the `bridge`
+ *  server of its thread config (codex/config-toml.ts BRIDGE_MCP_SERVER). */
+const TOOL_PREFIX = { claude: 'mcp__user-tools__', codex: 'mcp__bridge__' } as const
+/** The chat-reading tools the note points at (project-sessions/tools.ts). */
+export const HISTORY_TOOLS = [
+  'project_session_search',
+  'project_session_read',
+  'project_session_outline',
+  'project_session_brief',
+  'project_session_raw',
+] as const
+
+export const NOTE_TAG = 'history-note'
+
+interface LeftOut {
+  turns: number
+  bytes: number
+  from: string | null
+  to: string | null
+}
+
+const when = (ts: string | null) =>
+  ts && /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(ts) ? `${ts.slice(0, 16).replace('T', ' ')} UTC` : null
+
+/** The end section: where the joining engine finds what the block leaves out. */
+function historyNote(id: string, engine: 'claude' | 'codex', left: LeftOut | null): string {
+  const tools = HISTORY_TOOLS.map((t) => `${TOOL_PREFIX[engine]}${t}`)
+  const period = left?.from && left.to ? ` from ${left.from} to ${left.to}` : ''
+  const omitted = !left
+    ? 'Nothing is left out: the history above is the whole conversation so far.'
+    : left.turns > 0
+      ? `Not shown above: ${left.turns} earlier turns (about ${Math.ceil(left.bytes / 1024)} KB)${period}; only the user's requests from them are listed.`
+      : `Not shown above: about ${Math.ceil(left.bytes / 1024)} KB cut from the start of the turns above.`
+  return [
+    `<${NOTE_TAG}>`,
+    `Conversation id: ${id}`,
+    omitted,
+    `Tools that read the whole conversation, as you call them: ${tools.join(', ')}.`,
+    `To recall a detail that is not shown here, search for it with session_id "${id}" and read around the hit with from_index instead of guessing.`,
+    `</${NOTE_TAG}>`,
+  ].join('\n')
+}
+
+/** Largest note for this id and engine (any counts and dates). */
+const noteBound = (id: string, engine: 'claude' | 'codex') =>
+  bytes(
+    historyNote(id, engine, {
+      turns: 99_999_999,
+      bytes: 99_999_999 * 1024,
+      from: '0000-00-00 00:00 UTC',
+      to: '0000-00-00 00:00 UTC',
+    }),
+  )
 
 interface KeptTurn extends HandoffTurn {
   index: number
+  /** Timestamp of the turn's first entry. */
+  ts: string | null
   /** turnBytes once the turn is complete; null while it may still grow. */
   size: number | null
   /** turnBytes so far, kept up to date while the turn grows. */
@@ -184,8 +241,20 @@ class TurnDigest {
   readonly requests: Array<{ index: number; line: string }> = []
   private requestBytes = 0
   private readonly toolNames = new Map<string, string>()
+  /** Timestamps of the first turn and of the last turn dropped from `kept`. */
+  firstTs: string | null = null
+  droppedTs: string | null = null
 
   constructor(private readonly budget: number) {}
+
+  /** Timestamp of turn `index` when the digest still knows it. */
+  tsOf(index: number): string | null {
+    if (index === 0) return this.firstTs
+    const first = this.kept[0]
+    if (!first || index < first.index - 1) return null
+    if (index === first.index - 1) return this.droppedTs
+    return this.kept[index - first.index]?.ts ?? null
+  }
 
   add(e: JsonlEntry): void {
     for (const [role, text] of entryPieces(e, this.toolNames)) {
@@ -198,7 +267,9 @@ class TurnDigest {
         continue
       }
       if (last) this.complete(last)
-      this.kept.push({ role, text: t, index: this.total++, size: null, running: turnBytes({ role, text: t }) })
+      const ts = typeof e.timestamp === 'string' ? e.timestamp : null
+      if (this.total === 0) this.firstTs = ts
+      this.kept.push({ role, text: t, index: this.total++, ts, size: null, running: turnBytes({ role, text: t }) })
       if (role === 'user') this.users++
       this.trim()
     }
@@ -223,7 +294,9 @@ class TurnDigest {
     const open = this.kept[this.kept.length - 1]
     const growing = open && open.size === null ? open.running : 0
     while (this.kept.length > 1 && this.keptDone + growing - this.kept[0]!.size! > this.budget) {
-      this.keptDone -= this.kept.shift()!.size!
+      const dropped = this.kept.shift()!
+      this.keptDone -= dropped.size!
+      this.droppedTs = dropped.ts
     }
   }
 
@@ -256,11 +329,31 @@ function requestList(d: TurnDigest, start: number, maxBytes: number): string {
   return `Earlier in the conversation (${start} turns, not included in full) the user asked:\n${out.join('\n')}`
 }
 
-function fromDigest(d: TurnDigest, source: HandoffSource, budget: number): Handoff | null {
+function fromDigest(d: TurnDigest, source: HandoffSource, total: number): Handoff | null {
   if (d.total === 0) return null
   const kept = d.kept
+  const target = source.target ?? (source.engine === 'claude' ? 'codex' : 'claude')
+  const names = [...new Set(source.engines ?? [source.engine])].map((e) => ENGINE_NAME[e])
+  const latest = `${ENGINE_NAME[source.engine]}${source.model ? ` (${source.model})` : ''}`
+  const head = [
+    `<${CONTEXT_TAG}>`,
+    `Bridge note, not written by the user: you are joining a conversation the user is having with`,
+    `${names.join(' and ')}; until now ${latest} answered. Treat the history below as your own earlier`,
+    'turns: keep its facts, decisions and open tasks, and do not greet the user as if the conversation',
+    'were new. Tool results are abbreviated; re-read files or re-run commands when you need their current',
+    "content. Then answer the user's message above.",
+    '<conversation-history>',
+  ].join('\n')
+  const foot = `</conversation-history>`
+  const end = `</${CONTEXT_TAG}>`
+  // The history gets the whole budget but the frame and the largest note.
+  const budget = Math.max(
+    1_000,
+    total - bytes(head) - bytes(foot) - bytes(end) - noteBound(source.conversationId, target) - 4,
+  )
   let body: string
   let shortened = false
+  let omitted: LeftOut | null = null
   if (d.fullBytes() <= budget) {
     body = renderTurns(kept)
   } else {
@@ -300,21 +393,14 @@ function fromDigest(d: TurnDigest, source: HandoffSource, budget: number): Hando
     const earlier =
       start > 0 && room > 0 ? `${requestList(d, start, room)}\n\n--- The most recent turns, verbatim ---\n\n` : ''
     body = tailBytes(`${earlier}${recent}`, budget)
+    omitted = {
+      turns: start,
+      bytes: Math.max(0, d.fullBytes() - bytes(recent)),
+      from: start > 0 ? when(d.tsOf(0)) : null,
+      to: start > 0 ? when(d.tsOf(start - 1)) : null,
+    }
   }
-  const names = [...new Set(source.engines ?? [source.engine])].map((e) => ENGINE_NAME[e])
-  const latest = `${ENGINE_NAME[source.engine]}${source.model ? ` (${source.model})` : ''}`
-  const text = [
-    `<${CONTEXT_TAG}>`,
-    `Bridge note, not written by the user: you are joining a conversation the user is having with`,
-    `${names.join(' and ')}; until now ${latest} answered. Treat the history below as your own earlier`,
-    'turns: keep its facts, decisions and open tasks, and do not greet the user as if the conversation',
-    'were new. Tool results are abbreviated; re-read files or re-run commands when you need their current',
-    "content. Then answer the user's message above.",
-    '<conversation-history>',
-    body,
-    '</conversation-history>',
-    `</${CONTEXT_TAG}>`,
-  ].join('\n')
+  const text = [head, body, foot, historyNote(source.conversationId, target, omitted), end].join('\n')
   return { text, turns: d.total, shortened }
 }
 
@@ -325,7 +411,7 @@ export function buildHandoff(
   source: HandoffSource,
   options: { budgetBytes?: number } = {},
 ): Handoff | null {
-  const budget = historyBudget(options)
+  const budget = blockBudget(options)
   const d = new TurnDigest(budget)
   for (const e of entries) d.add(e)
   return fromDigest(d.finish(), source, budget)
@@ -345,7 +431,7 @@ export async function readHandoff(
   source: HandoffSource,
   options: { budgetBytes?: number } = {},
 ): Promise<Handoff | null> {
-  const budget = historyBudget(options)
+  const budget = blockBudget(options)
   const d = new TurnDigest(budget)
   let fh: fs.promises.FileHandle
   try {
