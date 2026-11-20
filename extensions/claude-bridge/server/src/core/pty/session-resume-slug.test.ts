@@ -100,3 +100,54 @@ describe('INC-2026-0070: reverseSlugToPath keeps the real token directory', () =
     expect(fs.readdirSync(SESSIONS_BASE)).toEqual([tokenDir])
   })
 })
+
+describe('resume by id stays within the caller token', () => {
+  const OTHER = '8a07ae2d-9d0f-4c1e-9a55-000000000002'
+
+  it('does not hand out another token settings dir for a known conversation id', async () => {
+    const helpers = await freshHelpers()
+    const { SESSIONS_BASE } = await import('./session-settings')
+    const settingsDir = path.join(SESSIONS_BASE, `${TOKEN}-C_Projects_app`, SESSION)
+    fs.mkdirSync(settingsDir, { recursive: true })
+    const slugDir = path.join(home, '.claude', 'projects', slugOf(settingsDir))
+    fs.mkdirSync(slugDir, { recursive: true })
+    const jsonl = path.join(slugDir, `${CONV}.jsonl`)
+    fs.writeFileSync(jsonl, '{"type":"user","uuid":"u1"}\n')
+
+    expect(await helpers.findOrRecreateSettingsDir(CONV, OTHER)).toBeNull()
+    // Nothing was created for the caller and the owner's transcript is untouched.
+    expect(fs.readdirSync(SESSIONS_BASE)).toEqual([`${TOKEN}-C_Projects_app`])
+    expect(fs.readFileSync(jsonl, 'utf8')).toBe('{"type":"user","uuid":"u1"}\n')
+    expect(await helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
+  })
+
+  it('does not restore another token archived transcript', async () => {
+    const helpers = await freshHelpers()
+    const archive = await import('./transcript-archive')
+    const { SESSIONS_BASE } = await import('./session-settings')
+    const settingsDir = path.join(SESSIONS_BASE, `${TOKEN}-C_Projects_app`, SESSION)
+    const slugDir = path.join(home, '.claude', 'projects', slugOf(settingsDir))
+    fs.mkdirSync(slugDir, { recursive: true })
+    const jsonl = path.join(slugDir, `${CONV}.jsonl`)
+    fs.writeFileSync(jsonl, '{"type":"user","uuid":"u1","message":{"role":"user","content":"hi"}}\n')
+    expect(await archive.archiveTranscript(jsonl, CONV)).toBe(true)
+    fs.rmSync(slugDir, { recursive: true, force: true })
+
+    expect(await helpers.findOrRecreateSettingsDir(CONV, OTHER)).toBeNull()
+    expect(fs.existsSync(jsonl)).toBe(false)
+    expect(await helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
+  })
+
+  it('slugOwnedBy matches the token segment only', async () => {
+    const helpers = await freshHelpers()
+    const { SESSIONS_BASE } = await import('./session-settings')
+    const mine = slugOf(path.join(SESSIONS_BASE, `${TOKEN}-C_x`, SESSION))
+    const bare = slugOf(path.join(SESSIONS_BASE, TOKEN, SESSION))
+    const legacy = slugOf(path.join(SESSIONS_BASE, `${TOKEN.replace(/-/g, '_')}_C_x`, SESSION))
+    expect(helpers.slugOwnedBy(mine, TOKEN)).toBe(true)
+    expect(helpers.slugOwnedBy(bare, TOKEN)).toBe(true)
+    expect(helpers.slugOwnedBy(legacy, TOKEN)).toBe(true)
+    expect(helpers.slugOwnedBy(mine, OTHER)).toBe(false)
+    expect(helpers.slugOwnedBy(mine, '')).toBe(false)
+  })
+})

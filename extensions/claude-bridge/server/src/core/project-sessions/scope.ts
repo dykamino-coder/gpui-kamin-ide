@@ -19,6 +19,8 @@
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import type { AgentEngineId } from '../../shared/agent-events'
+import { MANIFEST_FILE, readManifest, type ConversationManifest } from '../conversation/manifest'
 
 export const CONVERSATION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const AGENT_ID_RE = /^[A-Za-z0-9_-]{1,128}$/
@@ -97,9 +99,31 @@ export async function containedIn(root: string, file: string): Promise<boolean> 
   }
 }
 
+export interface SegmentInfo {
+  engine: AgentEngineId
+  model: string | null
+  startedAt: string
+  /** Native transcript dir of the segment (its subagents hang off it). */
+  slugDir: string
+  nativeId: string | null
+}
+
+/** A chat that ran on more than one engine segment (conversation/manifest.ts). */
+export interface MixedConversation {
+  id: string
+  segments: SegmentInfo[]
+  active: number
+}
+
 export interface ProjectScope {
   /** Slug directory names under projectsDir owned by the caller's project. */
   slugs: Set<string>
+  /** Chats with an engine manifest, by logical id. */
+  mixed: Map<string, MixedConversation>
+  /** Native segment transcript id → logical id. Segment transcripts are copied
+   *  into the logical conversation's log, so they are never listed or searched
+   *  on their own; a lookup by a native id answers with the conversation. */
+  aliases: Map<string, string>
 }
 
 /** The caller's project directories, by exact name only. */
@@ -129,6 +153,7 @@ function projectDirs(ctx: CallerContext): string[] {
 
 export function resolveScope(ctx: CallerContext): ProjectScope {
   const slugs = new Set<string>()
+  const manifests: ConversationManifest[] = []
   for (const dir of projectDirs(ctx)) {
     let entries: fs.Dirent[]
     try {
@@ -139,10 +164,36 @@ export function resolveScope(ctx: CallerContext): ProjectScope {
     for (const e of entries) {
       if (!e.isDirectory()) continue
       const settingsDir = path.join(dir, e.name)
-      if (isPlainDir(settingsDir)) slugs.add(slugOf(settingsDir))
+      if (!isPlainDir(settingsDir)) continue
+      slugs.add(slugOf(settingsDir))
+      if (isPlainFile(path.join(settingsDir, MANIFEST_FILE))) {
+        const m = readManifest(settingsDir)
+        if (m && CONVERSATION_ID_RE.test(m.id)) manifests.push(m)
+      }
     }
   }
-  return { slugs }
+  const mixed = new Map<string, MixedConversation>()
+  const aliases = new Map<string, string>()
+  for (const m of manifests) {
+    // Only segments inside the caller's own project count; a manifest cannot
+    // widen the scope.
+    if (!slugs.has(slugOf(m.dir))) continue
+    const segments: SegmentInfo[] = []
+    for (const s of m.segments) {
+      const slug = slugOf(s.settingsDir)
+      if (!slugs.has(slug)) continue
+      segments.push({
+        engine: s.engine,
+        model: s.model ?? null,
+        startedAt: s.startedAt,
+        slugDir: path.join(ctx.projectsDir, slug),
+        nativeId: s.nativeId && CONVERSATION_ID_RE.test(s.nativeId) ? s.nativeId : null,
+      })
+      if (s.nativeId && s.nativeId !== m.id && CONVERSATION_ID_RE.test(s.nativeId)) aliases.set(s.nativeId, m.id)
+    }
+    if (segments.length) mixed.set(m.id, { id: m.id, segments, active: Math.min(m.active, segments.length - 1) })
+  }
+  return { slugs, mixed, aliases }
 }
 
 export interface TranscriptRef {
@@ -151,6 +202,8 @@ export interface TranscriptRef {
   source: 'live' | 'archive'
   /** Slug dir (live) — subagents hang off it. */
   slugDir: string | null
+  /** Set for a chat that ran on engine segments. */
+  mixed?: MixedConversation
 }
 
 export function validConversationId(id: unknown): id is string {
@@ -172,9 +225,9 @@ export function listTranscripts(ctx: CallerContext, scope: ProjectScope, include
     for (const name of names) {
       if (!name.endsWith('.jsonl')) continue
       const id = name.slice(0, -'.jsonl'.length)
-      if (!CONVERSATION_ID_RE.test(id) || out.has(id)) continue
+      if (!CONVERSATION_ID_RE.test(id) || out.has(id) || scope.aliases.has(id)) continue
       const file = path.join(slugDir, name)
-      if (isPlainFile(file)) out.set(id, { conversationId: id, file, source: 'live', slugDir })
+      if (isPlainFile(file)) out.set(id, withMixed(scope, { conversationId: id, file, source: 'live', slugDir }))
     }
   }
   if (includeArchived && ctx.archiveRoot && isPlainDir(ctx.archiveRoot)) {
@@ -185,7 +238,7 @@ export function listTranscripts(ctx: CallerContext, scope: ProjectScope, include
       /* no archive */
     }
     for (const id of names) {
-      if (!CONVERSATION_ID_RE.test(id) || out.has(id)) continue
+      if (!CONVERSATION_ID_RE.test(id) || out.has(id) || scope.aliases.has(id)) continue
       const ref = archiveRef(ctx, scope, id)
       if (ref) out.set(id, ref)
     }
@@ -206,21 +259,28 @@ function archiveRef(ctx: CallerContext, scope: ProjectScope, id: string): Transc
   } catch {
     return null
   }
-  return { conversationId: id, file, source: 'archive', slugDir: null }
+  return withMixed(scope, { conversationId: id, file, source: 'archive', slugDir: null })
+}
+
+function withMixed(scope: ProjectScope, ref: TranscriptRef): TranscriptRef {
+  const mixed = scope.mixed.get(ref.conversationId)
+  return mixed ? { ...ref, mixed } : ref
 }
 
 /** Locate one conversation inside the caller's scope or throw NOT_FOUND. */
 export async function locateTranscript(
   ctx: CallerContext,
   scope: ProjectScope,
-  conversationId: unknown,
+  requested: unknown,
 ): Promise<TranscriptRef> {
-  if (!validConversationId(conversationId)) throw new ScopeError(NOT_FOUND, 'invalid')
+  if (!validConversationId(requested)) throw new ScopeError(NOT_FOUND, 'invalid')
+  // A segment's native id names the whole conversation it belongs to.
+  const conversationId = scope.aliases.get(requested) ?? requested
   for (const slug of scope.slugs) {
     const slugDir = path.join(ctx.projectsDir, slug)
     const file = path.join(slugDir, `${conversationId}.jsonl`)
     if (isPlainDir(slugDir) && isPlainFile(file) && (await containedIn(ctx.projectsDir, file))) {
-      return { conversationId, file, source: 'live', slugDir }
+      return withMixed(scope, { conversationId, file, source: 'live', slugDir })
     }
   }
   const ref = archiveRef(ctx, scope, conversationId)
@@ -234,21 +294,32 @@ export function normalizeAgentId(agentId: unknown): string | null {
   return AGENT_ID_RE.test(id) ? id : null
 }
 
-/** `<slugDir>/<conversationId>/subagents` when every component is a plain dir. */
-export function subagentDir(ref: TranscriptRef): string | null {
-  if (!ref.slugDir) return null
-  const convDir = path.join(ref.slugDir, ref.conversationId)
+function subagentDirIn(slugDir: string, id: string): string | null {
+  const convDir = path.join(slugDir, id)
   const dir = path.join(convDir, 'subagents')
   return isPlainDir(convDir) && isPlainDir(dir) ? dir : null
 }
 
+/** `<slugDir>/<conversationId>/subagents` when every component is a plain dir;
+ *  for a chat with engine segments, each segment's own one. */
+export function subagentDirs(ref: TranscriptRef): string[] {
+  const dirs: string[] = []
+  const own = ref.slugDir ? subagentDirIn(ref.slugDir, ref.conversationId) : null
+  if (own) dirs.push(own)
+  for (const s of ref.mixed?.segments ?? []) {
+    const dir = s.nativeId ? subagentDirIn(s.slugDir, s.nativeId) : null
+    if (dir && !dirs.includes(dir)) dirs.push(dir)
+  }
+  return dirs
+}
+
 export async function locateSubagent(ctx: CallerContext, ref: TranscriptRef, agentId: unknown): Promise<string> {
   const id = normalizeAgentId(agentId)
-  const dir = subagentDir(ref)
-  if (!id || !dir) throw new ScopeError('Subagent transcript not found in this conversation', 'not_found')
-  const file = path.join(dir, `agent-${id}.jsonl`)
-  if (!isPlainFile(file) || !(await containedIn(ctx.projectsDir, file))) {
-    throw new ScopeError('Subagent transcript not found in this conversation', 'not_found')
+  if (id) {
+    for (const dir of subagentDirs(ref)) {
+      const file = path.join(dir, `agent-${id}.jsonl`)
+      if (isPlainFile(file) && (await containedIn(ctx.projectsDir, file))) return file
+    }
   }
-  return file
+  throw new ScopeError('Subagent transcript not found in this conversation', 'not_found')
 }

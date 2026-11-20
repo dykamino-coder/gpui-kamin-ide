@@ -71,7 +71,6 @@ pub fn command_palette(
         .items_start()
         .pt(px(PALETTE_TOP))
         .bg(scrim)
-        .child(crate::overlay::input_area())
         .on_key_down(
             move |ev: &gpui::KeyDownEvent, _, _| match ev.keystroke.key.as_str() {
                 "escape" => {
@@ -108,7 +107,6 @@ pub fn command_palette(
                 .relative()
                 .child(crate::probe::registry::probe_area("ov-palette"))
                 .bg(rgba(p.bg_mantle))
-                .child(crate::overlay::hit_area())
                 .border_1()
                 .border_color(tint(rgba(p.bg_surface), 0.8))
                 // `--shadow-modal` из словаря: в светлой теме он ink-tinted

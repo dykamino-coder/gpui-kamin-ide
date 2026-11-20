@@ -232,7 +232,9 @@ const handlers = {
     if (!t) throw new RpcError(-32600, 'thread not loaded')
     if (t.active) throw new RpcError(-32600, 'turn already running')
     if (p.model) t.model = p.model
-    const turnId = `turn-${++t.turns}`
+    // Real codex turn ids are UUIDs, unique across threads (usage rows key on them).
+    t.turns++
+    const turnId = randomUUID()
     t.active = { id: turnId, interrupted: false, effort: p.effort ?? null, model: t.model }
     saveThread(t)
     // Bridge's session context travels as its own input item in front of the message.
@@ -263,7 +265,9 @@ const handlers = {
     const t = threads.get(p?.threadId)
     if (!t) throw new RpcError(-32600, 'thread not loaded')
     if (t.active) throw new RpcError(-32600, 'turn already running')
-    const turnId = `turn-${++t.turns}`
+    // Real codex turn ids are UUIDs, unique across threads (usage rows key on them).
+    t.turns++
+    const turnId = randomUUID()
     t.active = { id: turnId, interrupted: false, effort: null, model: t.model }
     t.compactions = (t.compactions ?? 0) + 1
     saveThread(t)

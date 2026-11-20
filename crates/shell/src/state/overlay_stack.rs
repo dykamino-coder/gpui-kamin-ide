@@ -42,7 +42,7 @@ impl RootView {
         let vh = f32::from(vp.height);
 
         // Снимки состояний для стендов (раньше публиковало overlay-окно).
-        crate::overlay::diag_states::publish_states(self, window);
+        crate::overlay::diag_states::publish_states(self);
 
         // Шрифт/метрика как у корня: слой строится отдельным поддеревом.
         let mut layer = div()
