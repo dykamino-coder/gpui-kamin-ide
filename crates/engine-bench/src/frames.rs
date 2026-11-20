@@ -135,7 +135,6 @@ impl Frames {
                     self.step = if index >= from { -self.jump } else { self.jump };
                     let y = self.wheel_from.map_or(0.0, |o| o.1) + self.step;
                     view.doc.set_root_scroll(y.max(0.0));
-                    window.refresh();
                 } else {
                     // The step goes through window input dispatch, as a platform wheel
                     // event does: the root scroller's handler moves DocState::root_scroll.
