@@ -155,11 +155,11 @@ fn contents_of_blocks_that_fill_the_width_are_built_after_a_width_change(cx: &mu
 
 #[gpui::test]
 fn contents_of_blocks_of_a_fixed_width_replay_across_a_width_change(cx: &mut TestAppContext) {
-    // All but the first: the test window's pointer rests at the origin, on
-    // the first block's text, whose paint takes live selection listeners and
-    // the text cursor (`interactive::selection`): an ink sink taint keeps
-    // that content from being recorded, as for any block under the pointer.
-    assert_eq!(resized(cx, &blocks("width:200px")), 8);
+    // All of them, the first too: the test window's pointer rests at the
+    // origin, on the first block's text, whose selection listeners and text
+    // cursor hit-test when the event comes (`interactive::selection`), so its
+    // paint does not depend on the pointer and is recorded as the others.
+    assert_eq!(resized(cx, &blocks("width:200px")), 9);
 }
 
 #[gpui::test]
@@ -177,6 +177,6 @@ fn percentages_of_a_block_sized_by_the_window_are_built(cx: &mut TestAppContext)
 
 #[gpui::test]
 fn percentages_inside_a_block_of_a_fixed_width_replay(cx: &mut TestAppContext) {
-    // All but the block under the pointer, as for blocks of a fixed width.
-    assert_eq!(resized(cx, &nested("width:200px", "width:50%")), 8);
+    // All of them, the block under the pointer too, as for blocks of a fixed width.
+    assert_eq!(resized(cx, &nested("width:200px", "width:50%")), 9);
 }
