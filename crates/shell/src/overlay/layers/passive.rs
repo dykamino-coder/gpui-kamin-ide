@@ -3,7 +3,6 @@
 //! Слой вынесен из `OverlayWindow::render` как есть (`plan/100-refactor-250.md`).
 
 use crate::host_link::ShellEvent;
-use crate::overlay::hit_area;
 use crate::root::RootView;
 use gpui::div;
 use gpui::prelude::*;
@@ -25,16 +24,19 @@ pub(crate) fn add_passive(
     let _ = window;
 
     if !r.toasts.is_empty() {
-        // Тосты интерактивны точечно (кнопка dismiss) — hit-регион на
-        // контейнере тостов, остальное окно прозрачно для ввода.
+        // Тосты интерактивны точечно (кнопка dismiss, действия).
         // Обёртка НЕСЁТ размер (нулевой anchor давал интринсик-сжатие
         // карт и нулевой hit-rect — тосты не кликались)
         // Якорим ОТ ЛЕВОГО-ВЕРХНЕГО угла по размеру MAIN-вьюпорта:
         // `bottom/right` резолвятся к вьюпорту overlay-окна, который
         // после win32-ресайза бывает больше main — стопка уезжала за
         // пределы окна и не показывалась вовсе (ревью ц.14 + замер).
-        let stack_w = 360.0_f32;
-        let stack_h = 260.0_f32.min(vh - 48.0);
+        let stack_w = crate::ui::toasts::TOAST_MAX_W;
+        // Слот до верха окна (отступ 8): многострочные тосты стопкой из 3–8
+        // в слот высотой 260 не помещались. Слой рисуется в главном окне
+        // (Ф6), клики берут сами карты (`occlude` + обработчики), пустой
+        // слот их не ест; hit_area здесь только копил ректы каждый кадр.
+        let stack_h = (vh - 36.0 - 8.0).max(0.0);
         layer = layer.child(
             div()
                 .absolute()
@@ -56,7 +58,6 @@ pub(crate) fn add_passive(
                 // БЕЗ .relative(): он перезаписывал position=Absolute
                 // (последний вызов выигрывает) — тосты улетали в
                 // левый-верх потоком
-                .child(hit_area())
                 .child(crate::ui::toasts::toasts(&r.toasts, &r.toast_timers, tx, p)),
         );
     }
