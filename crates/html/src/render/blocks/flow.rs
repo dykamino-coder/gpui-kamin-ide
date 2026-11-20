@@ -13,7 +13,6 @@ pub(super) use below::BelowRun;
 mod leaves;
 mod trim;
 pub(super) use element::paint_element;
-pub(crate) use element::strip_inline_margins;
 
 use crate::dom::Node;
 use crate::paint::effects::containment_paint;

@@ -144,7 +144,7 @@ pub(crate) async fn paint_element(
     let e = if hoist_margins || hoist_place {
         let mut copy = e.clone();
         if hoist_margins {
-            strip_inline_margins(&mut copy);
+            crate::layout::block::margins::strip_inline_margins(&mut copy);
         }
         if hoist_place {
             copy.style.used_mut().reset_grid.grid_row = None;
@@ -230,12 +230,4 @@ pub(crate) async fn paint_element(
         root_box,
     )
     .await
-}
-
-/// `e` without its inline margins: a wrapper or a leaf standing for it
-/// keeps them instead.
-pub(crate) fn strip_inline_margins(e: &mut crate::dom::Element) {
-    let margin = &mut e.style.used_mut().reset_box_layout.margin;
-    margin.left = None;
-    margin.right = None;
 }

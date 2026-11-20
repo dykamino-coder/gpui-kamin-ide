@@ -41,7 +41,7 @@ pub(super) fn element(
         ..refined
     };
     let mut block = e.clone();
-    crate::render::blocks::strip_inline_margins(&mut block);
+    crate::layout::block::margins::strip_inline_margins(&mut block);
     let opts = opts.inner(|cx| {
         cx.contracts.reuse = None;
         cx.contracts.offscreen_off = true;
