@@ -1,7 +1,7 @@
 import type { ClientFrame, HostFrame } from './protocol.js'
 import { createHash } from 'node:crypto'
 import type { SubmissionStorage } from './submission-state.js'
-import { LOST_RECEIPT_WARNING, lostAfterSnapshot, matchReceiptsToTranscript, matchSubmissionQueue, mergeFallbackQueue, queueRowIdentity, queueWatermark, type QueueEntry, type SubmissionUpdate } from '../../webview/shared/submission-queue.js'
+import { LOST_RECEIPT_WARNING, lostAfterSnapshot, matchReceiptsToTranscript, matchSubmissionQueue, mergeFallbackQueue, queuePosition, queueRowIdentity, queueWatermark, type QueueEntry, type SubmissionUpdate } from '../../webview/shared/submission-queue.js'
 
 const TAB_EVENTS = new Set(['session:activity', 'session:usage', 'session:title', 'connection-state-changed'])
 const GLOBAL_EVENTS = new Set(['tree-update', 'mcp-servers-changed', 'mcp-loading', 'mcp-ready', 'config-ready'])
@@ -155,7 +155,7 @@ export class WorkspacePresentation {
     const claimed = new Set(used)
     for (const receipt of receipts) if (receipt.uuid) claimed.add(`uuid:${receipt.uuid}`)
     const matches = matchReceiptsToTranscript(receipts.map(receipt => ({ ...receipt,
-      afterOrd: receipt.fallbackQueue?.afterOrd ?? -1 })), entries, claimed)
+      afterOrd: receipt.fallbackQueue?.afterOrd ?? -1, afterPos: receipt.fallbackQueue?.afterPos })), entries, claimed)
     if (!matches.length) return false
     this.consumedQueueRows.set(tabId, used)
     for (const { id, entry } of matches) {
@@ -208,7 +208,7 @@ export class WorkspacePresentation {
       this.accepted.set(key, { digest, bytes })
       this.acceptedBytes += bytes
       const receipt: SubmissionUpdate = { id: args[2], text: args[1], state: 'queued', cancelable: true,
-        fallbackQueue: { afterOrd: queueWatermark(this.entries(args[0])), enqueuedAt: Date.now() } }
+        fallbackQueue: { afterOrd: queueWatermark(this.entries(args[0])), afterPos: queuePosition(this.entries(args[0])), enqueuedAt: Date.now() } }
       this.submissions.set(key, { kind: 'event', channel: 'session:submission', args: [args[0], receipt] })
       // The duplicate barrier must reach disk BEFORE handler dispatch. Without
       // it the message is not sent: the user sees why, gets the text back in
@@ -261,7 +261,8 @@ export class WorkspacePresentation {
       .map(([, receipt]) => receipt)
     const used = this.consumedQueueRows.get(tabId) ?? new Set<string>()
     const matches = matchSubmissionQueue(pending.map(receipt => ({ id: receipt.id, content: receipt.text ?? '',
-      afterOrd: receipt.fallbackQueue!.afterOrd, enqueuedAt: receipt.fallbackQueue!.enqueuedAt })), entries, used)
+      afterOrd: receipt.fallbackQueue!.afterOrd, afterPos: receipt.fallbackQueue!.afterPos,
+      enqueuedAt: receipt.fallbackQueue!.enqueuedAt })), entries, used)
     if (!matches.length) return
     this.consumedQueueRows.set(tabId, used)
     for (const { item, entry } of matches) {

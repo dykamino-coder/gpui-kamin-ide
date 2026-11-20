@@ -83,12 +83,13 @@ export class WorkspaceSubmissionState implements SubmissionStorage {
       ids.add(key)
       const queue = receipt.fallbackQueue
       if (queue && (!Number.isSafeInteger(queue.afterOrd) || queue.afterOrd < -1 ||
+          !(queue.afterPos === undefined || Number.isSafeInteger(queue.afterPos) && queue.afterPos >= -1) ||
           !Number.isSafeInteger(queue.enqueuedAt) || queue.enqueuedAt < 0 ||
           !boolean(queue.consumed) || !boolean(queue.dismissed))) throw new Error('Invalid queue receipt')
       return { tabId: item.tabId, digest: item.digest, bytes: item.bytes,
         receipt: { id: receipt.id, text: receipt.text, state: receipt.state, uuid: receipt.uuid,
           committed: receipt.committed, cancelable: receipt.cancelable, warning: receipt.warning, createdAt: receipt.createdAt,
-          fallbackQueue: queue && { afterOrd: queue.afterOrd, enqueuedAt: queue.enqueuedAt, consumed: queue.consumed, dismissed: queue.dismissed } } }
+          fallbackQueue: queue && { afterOrd: queue.afterOrd, ...(queue.afterPos !== undefined ? { afterPos: queue.afterPos } : {}), enqueuedAt: queue.enqueuedAt, consumed: queue.consumed, dismissed: queue.dismissed } } }
     })
     const tabs = new Set<string>()
     let rows = 0

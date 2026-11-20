@@ -3,7 +3,7 @@
 // transcript matcher, bounded by a position watermark and the server's time.
 import { signal } from '@preact/signals'
 import type { SubmissionUpdate } from '../../shared/types'
-import { LOST_RECEIPT_WARNING, lostAfterSnapshot, matchReceiptsToTranscript, mergeFallbackQueue, queueRowIdentity, queueWatermark, unresolvedReceipt } from '../../shared/submission-queue'
+import { LOST_RECEIPT_WARNING, lostAfterSnapshot, matchReceiptsToTranscript, mergeFallbackQueue, queuePosition, queueRowIdentity, queueWatermark, unresolvedReceipt } from '../../shared/submission-queue'
 import type { JsonlEntryData } from '../types/jsonl'
 import { enqueueLocal, reconcileQueueWithEntries, removeLocalQueueItem } from './queue'
 import { jsonlEntriesByTab } from './jsonl'
@@ -15,6 +15,8 @@ export interface Submission extends SubmissionUpdate {
   timestamp: string
   /** Store position watermark when this id first appeared: older rows never confirm it. */
   afterOrd?: number
+  /** The same watermark as a transcript byte offset (stable across server restarts). */
+  afterPos?: number
   /** Identity of the transcript row that confirmed it (claims the row). */
   matchedRow?: string
 }
@@ -38,8 +40,11 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
       restoreRejectedInputDraft(tabId, data.text ?? existing?.text ?? '')
     removeLocalQueueItem(tabId, data.id)
   }
+  const rows = jsonlEntriesByTab.peek().get(tabId) ?? []
   const item: Submission = { text: '', timestamp: new Date().toISOString(), ...existing, ...data, warning: data.warning,
-    afterOrd: existing?.afterOrd ?? queueWatermark(jsonlEntriesByTab.peek().get(tabId) ?? []) }
+    afterOrd: existing?.afterOrd ?? queueWatermark(rows),
+    // Survives a server restart, unlike `afterOrd` (INC-2026-0031).
+    afterPos: existing ? existing.afterPos : queuePosition(rows) }
   if (existing?.committed) item.committed = true
   // An engine without a CLI mod (codex) reports 'read' without the stored UUID;
   // its transcript row is the message itself, so the receipt adds no row.

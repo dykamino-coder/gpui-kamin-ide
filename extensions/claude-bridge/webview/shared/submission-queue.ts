@@ -7,7 +7,7 @@ export interface SubmissionUpdate {
    *  the CLI complete a terminal command. Survives eviction from replay windows. */
   committed?: boolean
   /** Browser host сохраняет курсор legacy queue независимо от страниц. */
-  fallbackQueue?: { afterOrd: number; enqueuedAt: number; consumed?: boolean; dismissed?: boolean }
+  fallbackQueue?: { afterOrd: number; afterPos?: number; enqueuedAt: number; consumed?: boolean; dismissed?: boolean }
   id: string
   text?: string
   state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
@@ -38,6 +38,11 @@ export interface LocalQueueItem {
   enqueuedAt: number
   /** Только строки после этой позиции могут подтвердить отправку. */
   afterOrd: number
+  /** The same watermark as a byte offset in the server's transcript (`_pos`).
+   *  `_ord` is numbered per server process, so a restarted server numbers the
+   *  same file lower and an `_ord` watermark refused every later row: the item
+   *  stayed pending (INC-2026-0031). Positioned rows compare by this when known. */
+  afterPos?: number
   /** Browser queue отображает решение host, desktop использует локальный matcher. */
   hostOwned?: boolean
   /** Server time (ms): a row with an older CLI timestamp cannot confirm it. */
@@ -48,6 +53,7 @@ export interface QueueEntry {
   type: string
   uuid?: string
   _ord?: number
+  _pos?: number
   timestamp?: string
   isMeta?: boolean
   content?: unknown
@@ -57,6 +63,11 @@ export interface QueueEntry {
 
 export function queueWatermark(entries: readonly QueueEntry[]): number {
   return entries.reduce((max, row) => Math.max(max, row._ord ?? -1), -1)
+}
+
+/** Byte-offset watermark: the newest transcript position the chat holds. */
+export function queuePosition(entries: readonly QueueEntry[]): number {
+  return entries.reduce((max, row) => (typeof row._pos === 'number' ? Math.max(max, row._pos) : max), -1)
 }
 
 export function queueRowIdentity(row: QueueEntry): string | undefined {
@@ -90,7 +101,7 @@ function recordedCommand(text: string): string | undefined {
 /** Output of a local command: it follows the command, it never is one. */
 const COMMAND_OUTPUT = /^\s*<local-command-(?:stdout|stderr|caveat)>/i
 
-type QueueRow = { entry: QueueEntry; text: string; ord: number; ts: number; kind: 'user' | 'command' | 'queued'; command?: string }
+type QueueRow = { entry: QueueEntry; text: string; ord: number; pos?: number; ts: number; kind: 'user' | 'command' | 'queued'; command?: string }
 
 /** Один matcher для desktop queue и headless host; системные notices и
  * tool_result не подтверждают отправку. Одна строка принимает только один item.
@@ -106,11 +117,12 @@ export function matchSubmissionQueue(
     if (identity && (consumed.has(identity) || seen.has(identity))) continue
     if (identity) seen.add(identity)
     const ord = entry._ord ?? Number.MAX_SAFE_INTEGER
+    const pos = entry._pos
     const ts = entry.timestamp ? Date.parse(entry.timestamp) : NaN
     if (entry.type === 'attachment' && entry.attachment?.type === 'queued_command' && typeof entry.attachment.prompt === 'string') {
-      rows.push({ entry, text: norm(entry.attachment.prompt), ord, ts, kind: 'queued' })
+      rows.push({ entry, text: norm(entry.attachment.prompt), ord, pos, ts, kind: 'queued' })
     } else if (entry.type === 'system' && typeof entry.content === 'string' && /<command-name>/i.test(entry.content)) {
-      rows.push({ entry, text: norm(entry.content), ord, ts, kind: 'command', command: recordedCommand(entry.content) })
+      rows.push({ entry, text: norm(entry.content), ord, pos, ts, kind: 'command', command: recordedCommand(entry.content) })
     } else if (entry.type === 'user' && !entry.isMeta) {
       const content = entry.message?.content
       const blocks = Array.isArray(content) ? content.filter(block => block?.type === 'text' && typeof block.text === 'string') : []
@@ -119,7 +131,7 @@ export function matchSubmissionQueue(
       const command = recordedCommand(text)
       // A first turn after an engine switch stores the hidden history after
       // the user's text; items carry only what the user wrote.
-      rows.push({ entry, text: norm(withoutBridgeContext(text)), ord, ts, kind: command ? 'command' : 'user', ...(command ? { command } : {}) })
+      rows.push({ entry, text: norm(withoutBridgeContext(text)), ord, pos, ts, kind: command ? 'command' : 'user', ...(command ? { command } : {}) })
     }
   }
   const matches: Array<{ item: LocalQueueItem; entry: QueueEntry }> = []
@@ -129,7 +141,8 @@ export function matchSubmissionQueue(
     const command = typedCommand(item.content)
     // Rows written before the server accepted the item (its own clock) cannot
     // confirm it; a 2 s margin covers the CLI and server rounding the same instant.
-    const after = (row: { ord: number; ts: number }): boolean => row.ord > item.afterOrd &&
+    const after = (row: { ord: number; pos?: number; ts: number }): boolean =>
+      (item.afterPos !== undefined && row.pos !== undefined ? row.pos > item.afterPos : row.ord > item.afterOrd) &&
       !(item.notBefore !== undefined && Number.isFinite(row.ts) && row.ts < item.notBefore - 2000)
     let index = command !== undefined
       ? rows.findIndex((row, i) => i >= cursor && after(row) && (row.command === command || (row.kind === 'user' && row.text === text)))
@@ -173,12 +186,13 @@ export function lostAfterSnapshot(receipt: SubmissionUpdate, known: ReadonlySet<
  *  matcher as the queue: a row confirms at most one receipt, in order, and
  *  never one written before the receipt (position watermark, server time). */
 export function matchReceiptsToTranscript(
-  receipts: ReadonlyArray<SubmissionUpdate & { afterOrd: number }>,
+  receipts: ReadonlyArray<SubmissionUpdate & { afterOrd: number; afterPos?: number }>,
   entries: readonly QueueEntry[],
   consumed: ReadonlySet<string>,
 ): Array<{ id: string; entry: QueueEntry }> {
   const items = receipts.filter(unresolvedReceipt).map(receipt => ({
     id: receipt.id, content: receipt.text!, enqueuedAt: 0, afterOrd: receipt.afterOrd,
+    ...(receipt.afterPos !== undefined ? { afterPos: receipt.afterPos } : {}),
     ...(receipt.createdAt !== undefined ? { notBefore: receipt.createdAt } : {}),
   }))
   // Untagged live rows carry no position, so without the server time only a
@@ -187,7 +201,7 @@ export function matchReceiptsToTranscript(
   const untimed = items.filter(item => item.notBefore === undefined)
   const used = new Set(consumed)
   const out: Array<{ id: string; entry: QueueEntry }> = []
-  for (const [group, rows] of [[timed, entries], [untimed, entries.filter(row => typeof row._ord === 'number')]] as const) {
+  for (const [group, rows] of [[timed, entries], [untimed, entries.filter(row => typeof row._ord === 'number' || typeof row._pos === 'number')]] as const) {
     for (const { item, entry } of matchSubmissionQueue(group, rows, used)) {
       const key = queueRowIdentity(entry)
       if (key) used.add(key)

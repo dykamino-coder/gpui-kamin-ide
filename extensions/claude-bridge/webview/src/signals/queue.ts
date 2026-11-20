@@ -1,7 +1,7 @@
 import { signal, computed } from '@preact/signals'
 import { activeTabId } from './tabs'
 import { jsonlEntriesByTab } from './jsonl'
-import { matchSubmissionQueue, queueRowIdentity, queueWatermark, type LocalQueueItem } from '../../shared/submission-queue'
+import { matchSubmissionQueue, queuePosition, queueRowIdentity, queueWatermark, type LocalQueueItem } from '../../shared/submission-queue'
 
 // Claude CLI writes queue-operation entries in JSONL but *without* `content`
 // in recent versions (2.1.116+). We can't reconstruct the queue text from
@@ -18,8 +18,13 @@ export function enqueueLocal(tabId: string, content: string, identity?: Partial<
   const list = [...(next.get(tabId) ?? [])]
   const id = identity?.id ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   if (list.some(item => item.id === id)) return
+  const entries = jsonlEntriesByTab.value.get(tabId) ?? []
+  // A watermark handed over by the host stays its own: one taken now could
+  // already lie past the row that consumed the item.
+  const afterPos = identity?.afterOrd !== undefined ? identity.afterPos : queuePosition(entries)
   list.push({ id, content, enqueuedAt: identity?.enqueuedAt ?? Date.now(),
-    afterOrd: identity?.afterOrd ?? queueWatermark(jsonlEntriesByTab.value.get(tabId) ?? []),
+    afterOrd: identity?.afterOrd ?? queueWatermark(entries),
+    ...(afterPos !== undefined ? { afterPos } : {}),
     ...(identity?.hostOwned ? { hostOwned: true } : {}) })
   next.set(tabId, list)
   localQueue.value = next

@@ -49,7 +49,7 @@ test('host retains prompts and receipts, resolves them across views and never re
   assert.ok(state.snapshot().some(frame => frame.channel === 'permission-request'))
   assert.deepEqual((state.snapshot().find(frame => frame.channel === 'session:submission' && (frame.args as any)[1].id)?.args as any)[1],
     { id: 'identity', text: 'once', state: 'native', cancelable: true,
-      fallbackQueue: { afterOrd: -1, enqueuedAt: (events[0].args[1] as any).fallbackQueue.enqueuedAt } })
+      fallbackQueue: { afterOrd: -1, afterPos: -1, enqueuedAt: (events[0].args[1] as any).fallbackQueue.enqueuedAt } })
   assert.equal(state.accept({ kind: 'send', channel: 'permission-response', args: ['permission', 'allow'] }), true)
   assert.equal(state.accept({ kind: 'send', channel: 'permission-response', args: ['permission', 'deny'] }), false)
   assert.equal(state.snapshot().some(frame => frame.channel === 'permission-request'), false)
@@ -88,6 +88,19 @@ test('fallback receipts retain ingress cursor and consumption with zero views an
   assert.equal(state.accept({ kind: 'send', channel: 'pty-submit-text', args: ['tab', 'repeat this message', 'first'] }), false)
   state.observe({ kind: 'event', channel: 'tab:closed', args: ['tab'] })
   assert.deepEqual(state.snapshot(), [])
+})
+
+test('INC-2026-0031 a fallback item consumed after a Bridge server restart is still consumed', () => {
+  // A restarted server numbers the same transcript lower (`_ord`); the byte offset stays.
+  let entries: any[] = [{ type: 'user', uuid: 'old', _pos: 9000, _ord: 19001, message: { content: 'earlier message' } }]
+  const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }), () => entries)
+  state.accept({ kind: 'send', channel: 'pty-submit-text', args: ['tab', 'queued during the restart', 'q'] })
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'q', state: 'fallback' }] })
+  entries = [{ type: 'user', uuid: 'old', _pos: 9000, _ord: 9000, message: { content: 'earlier message' } },
+    { type: 'user', uuid: 'new', _pos: 9500, _ord: 9500, message: { content: 'queued during the restart' } }]
+  state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', entries] })
+  const receipt = (state.snapshot().find(frame => frame.channel === 'session:submission' && (frame.args as any)[1].id === 'q')!.args as any)[1]
+  assert.equal(receipt.fallbackQueue.consumed, true)
 })
 
 test('an engine switch drops the queued items of the previous agent on every page', () => {
