@@ -48,6 +48,15 @@ impl ElementPlace {
 }
 
 impl Window {
+    /// Snapshot the current element ancestry and rendering view for a later layout step.
+    /// KaminIDE patch: embedded hosts must preserve ancestor IDs, not only their own view.
+    pub fn element_place(&self) -> ElementPlace {
+        ElementPlace {
+            ids: self.element_id_context(),
+            view: self.rendered_entity_stack.last().copied(),
+        }
+    }
+
     /// The element being laid out, prepainted or painted now (its own id on
     /// top of the stack) stands directly under `parent`. Allocates nothing.
     pub fn element_stands_under(&self, parent: &ElementPlace) -> bool {

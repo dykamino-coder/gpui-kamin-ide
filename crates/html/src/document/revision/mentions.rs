@@ -13,10 +13,12 @@
 //! не зависит»; лишнее упоминание лишь отменяет короткий путь.
 
 /// Whether `css` mentions an attribute name of `attrs` anywhere or a class of
-/// `classes` after a dot (names in ASCII lowercase).
+/// `classes` after a dot. Attribute names are ASCII lowercase; classes are as
+/// written and compared ignoring ASCII case (a superset of the matches).
 pub(super) fn mentions(css: &str, attrs: &[String], classes: &[String]) -> bool {
     scan(css, |word, dotted| {
-        attrs.iter().any(|a| a == word) || dotted && classes.iter().any(|c| c == word)
+        attrs.iter().any(|a| a == word)
+            || dotted && classes.iter().any(|c| c.eq_ignore_ascii_case(word))
     })
 }
 
@@ -47,10 +49,12 @@ impl Mentions {
         index
     }
 
-    /// `mentions` over every indexed text.
+    /// `mentions` over every indexed text: the words are kept in ASCII
+    /// lowercase, so a class written in any case is looked up lowercased
+    /// (the same superset of selector matches as `mentions`).
     pub(super) fn any(&self, attrs: &[String], classes: &[String]) -> bool {
         attrs.iter().any(|a| self.words.contains(a))
-            || classes.iter().any(|c| self.dotted.contains(c))
+            || (classes.iter()).any(|c| self.dotted.contains(&c.to_ascii_lowercase()))
     }
 }
 
@@ -164,6 +168,20 @@ mod tests {
             assert!(mentions(css, &data, &[]), "{css}");
         }
         assert!(!mentions("[data-edits]{}[data]{}.classy{}", &data, &[]));
+    }
+
+    #[test]
+    fn a_class_in_any_case_is_mentioned_by_the_index_as_by_each_sheet() {
+        // The changed classes of `A` -> `a` are both as written (#1073): the
+        // index finds them as `mentions` does, ignoring ASCII case.
+        let changed = names(&["A", "a"]);
+        for css in [".A{color:red}", ".a{color:blue}", ".\\41 {}"] {
+            assert!(mentions(css, &[], &changed), "{css}");
+            assert!(super::Mentions::of([css]).any(&[], &changed), "{css}");
+        }
+        let upper = names(&["ALT"]);
+        assert!(super::Mentions::of([".alt{}"]).any(&[], &upper));
+        assert!(!super::Mentions::of([".salt{}"]).any(&[], &upper));
     }
 
     #[test]

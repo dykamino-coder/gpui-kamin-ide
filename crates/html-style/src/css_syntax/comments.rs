@@ -37,11 +37,19 @@ pub fn strip_comments(css: &str) -> String {
             _ => {}
         }
         if css[at..].starts_with("/*") {
-            // На месте комментария остаётся ПРОБЕЛ: разбор идёт по строке, а
-            // не по разборным единицам, и без него соседние значения
-            // склеивались в одно (`hsla(120/* … */75%/* … */50%)` выходило
-            // `hsla(12075%50%)` — цвет пропадал целиком).
-            out.push(' ');
+            // A comment produces no token (CSS Syntax §4.3.2): `div/**/.a` is
+            // the compound `div.a`. Parsing goes on over text, so a space
+            // stands in only where the neighbours would otherwise merge into
+            // one token (the pairs §9 separates in serialization), e.g.
+            // `hsla(120/**/75% ...)` keeps two numbers.
+            let next = css[at + 2..]
+                .find("*/")
+                .and_then(|end| css[at + 2 + end + 2..].chars().next());
+            if let (Some(prev), Some(next)) = (out.chars().next_back(), next)
+                && would_merge(prev, next)
+            {
+                out.push(' ');
+            }
             match css[at + 2..].find("*/") {
                 Some(end) => at += 2 + end + 2,
                 // Незакрытый комментарий тянется до конца файла (§4.3.2).
@@ -53,4 +61,38 @@ pub fn strip_comments(css: &str) -> String {
         at += ch.len_utf8();
     }
     out
+}
+
+/// Whether the token ending in `prev` and the one starting with `next` would
+/// read as one token when written together (CSS Syntax §9, the pairs that need
+/// a comment between them; ASCII whitespace never merges).
+fn would_merge(prev: char, next: char) -> bool {
+    let name =
+        |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '\\') || !c.is_ascii();
+    // A percentage before a number is two tokens, but the value parsers read
+    // text split at spaces: keep them apart there too.
+    ((name(prev) || matches!(prev, '#' | '@')) && (name(next) || matches!(next, '(' | '%')))
+        || (prev == '%' && name(next))
+        || (matches!(prev, '.' | '+') && next.is_ascii_digit())
+        || (prev.is_ascii_digit() && next == '.')
+        || (prev == '/' && next == '*')
+        || (prev == '<' && next == '!')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_comments;
+
+    #[test]
+    fn a_comment_separates_only_tokens_that_would_merge() {
+        assert_eq!(strip_comments("div/**/.a{}"), "div.a{}");
+        assert_eq!(strip_comments("a/* x */>b{}"), "a>b{}");
+        assert_eq!(
+            strip_comments("hsla(120/**/75%/**/50%)"),
+            "hsla(120 75% 50%)"
+        );
+        assert_eq!(strip_comments("1/**/.5 a/**/b x/**/(y)"), "1 .5 a b x (y)");
+        assert_eq!(strip_comments("p /* x */ i"), "p  i");
+        assert_eq!(strip_comments("/* a */p{}"), "p{}");
+    }
 }

@@ -11,7 +11,7 @@ use crate::style::computed::BoxStyle;
 /// (`reuse::FlowCx::replay`).
 pub(crate) fn paints_at_step8(
     e: &crate::dom::Element,
-    rest: &[crate::dom::Node],
+    rest: crate::layout::positioned::predicates::Later<'_>,
     inherited: &BoxStyle,
     under_tf: bool,
     cx: &LayoutCx,

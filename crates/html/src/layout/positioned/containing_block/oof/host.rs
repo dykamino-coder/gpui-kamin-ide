@@ -22,7 +22,13 @@ pub(super) fn build_one(
     cx: &mut App,
 ) -> (AnyElement, Option<super::DeferredPaint>) {
     let (spot, mut kid) = item;
-    if let OofKid::Prepared(root) = kid {
+    if let OofKid::Prepared(mut root, at) = kid {
+        // Prepared without the offsets of the host's ancestors: a host
+        // inside a scrolled scrollport prepaints its kids where that offset
+        // puts it, and a prepared kid moves there with it.
+        if at.origin != bounds.origin {
+            root.layout_as_root_at(bounds.origin, definite(bounds), window, cx);
+        }
         return (root, None);
     }
     while let OofKid::Waiting(_, inner) = kid {
@@ -42,16 +48,15 @@ pub(super) fn build_one(
         .h(bounds.size.height)
         .child(place(spot, child))
         .into_any_element();
-    root.layout_as_root_at(
-        bounds.origin,
-        size(
-            AvailableSpace::Definite(bounds.size.width),
-            AvailableSpace::Definite(bounds.size.height),
-        ),
-        window,
-        cx,
-    );
+    root.layout_as_root_at(bounds.origin, definite(bounds), window, cx);
     (root, paint)
+}
+
+fn definite(bounds: Bounds<Pixels>) -> gpui::Size<AvailableSpace> {
+    size(
+        AvailableSpace::Definite(bounds.size.width),
+        AvailableSpace::Definite(bounds.size.height),
+    )
 }
 
 impl Hooks for OofHost {

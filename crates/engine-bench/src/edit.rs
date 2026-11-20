@@ -1,6 +1,5 @@
-//! Локальная правка разметки для режима `edit` (ширину меняет режим `relayout`).
-//! Правка детерминирована и не зависит от страницы, кроме места: первый
-//! подходящий узел после середины разметки.
+//! Deterministic markup edits for the benchmark edit mode.
+//! Attribute edits use parsed DOM identity; text and leaf edits use source positions.
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -8,7 +7,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub(crate) enum Edit {
     /// Одна буква текстового узла после середины документа.
     Text,
-    /// Новый атрибут `data-edit` у элемента после середины документа.
+    /// Toggle `data-edit` on the middle eligible element in DOM preorder.
     Attr,
     /// Класс `alt` у корневого `html` (так переключают стиль пробы браузеров).
     Class,
@@ -16,21 +15,6 @@ pub(crate) enum Edit {
     Insert,
     /// Удаление первого листового элемента после середины документа.
     Remove,
-}
-
-/// Готовая вторая разметка (`--edit-markup FILE`) вместо правки `Edit`. Хранится
-/// вне `Args`: их размер входит в кучу стенда (замыкание и задача цикла событий),
-/// а аудит сравнивает живые байты кандидата и базы точно.
-static MARKUP_FILE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-
-pub(crate) fn set_markup_file(path: std::path::PathBuf) -> Result<()> {
-    MARKUP_FILE
-        .set(path)
-        .map_err(|_| "--edit-markup is given twice".into())
-}
-
-pub(crate) fn markup_file() -> Option<&'static std::path::Path> {
-    MARKUP_FILE.get().map(std::path::PathBuf::as_path)
 }
 
 impl Edit {
@@ -104,35 +88,53 @@ fn text(html: &str) -> Option<String> {
     None
 }
 
-/// Начало имени открывающего тега (позиция после `<`) вне `<script>`/`<style>`.
-fn start_tag_at(html: &str, open: usize) -> bool {
-    html.as_bytes()
-        .get(open)
-        .is_some_and(u8::is_ascii_alphabetic)
-        && !in_raw_text(html, open)
-}
-
-/// Первый открывающий тег после середины; если во второй половине одни
-/// закрывающие теги (короткая страница, глубокая вложенность) — последний до неё.
+/// Change an attribute on a parsed element, preserving HTML tag and tree identity.
 fn attr(html: &str) -> Option<String> {
-    let bytes = html.as_bytes();
-    let middle = middle(html);
-    let after = html[middle..]
-        .match_indices('<')
-        .map(|(i, _)| middle + i + 1)
-        .find(|&open| start_tag_at(html, open));
-    let open = after.or_else(|| {
-        html[..middle]
-            .rmatch_indices('<')
-            .map(|(i, _)| i + 1)
-            .find(|&open| start_tag_at(html, open))
-    })?;
-    let name = (open..html.len())
-        .find(|&i| !bytes[i].is_ascii_alphanumeric())
-        .unwrap_or(html.len());
-    let mut out = html.to_owned();
-    out.insert_str(name, " data-edit=\"1\"");
-    Some(out)
+    use html5ever::tendril::TendrilSink;
+    use markup5ever_rcdom::{NodeData, RcDom, SerializableHandle};
+
+    let dom = html5ever::parse_document(RcDom::default(), Default::default()).one(html);
+    let mut pending = vec![dom.document.clone()];
+    let mut elements = Vec::new();
+    while let Some(node) = pending.pop() {
+        if let NodeData::Element { name, .. } = &node.data {
+            if matches!(
+                &*name.local,
+                "head" | "script" | "style" | "template" | "title"
+            ) {
+                continue;
+            }
+            if !matches!(&*name.local, "html" | "body") {
+                elements.push(node.clone());
+            }
+        }
+        pending.extend(node.children.borrow().iter().rev().cloned());
+    }
+    let target = elements.get(elements.len() / 2)?;
+    let NodeData::Element { attrs, .. } = &target.data else {
+        return None;
+    };
+    let mut attrs = attrs.borrow_mut();
+    if let Some(attribute) = attrs
+        .iter_mut()
+        .find(|a| a.name.ns.is_empty() && &*a.name.local == "data-edit")
+    {
+        attribute.value = if &*attribute.value == "1" { "2" } else { "1" }.into();
+    } else {
+        attrs.push(html5ever::Attribute {
+            name: html5ever::QualName::new(None, Default::default(), "data-edit".into()),
+            value: "1".into(),
+        });
+    }
+    drop(attrs);
+    let mut bytes = Vec::new();
+    html5ever::serialize(
+        &mut bytes,
+        &SerializableHandle::from(dom.document),
+        Default::default(),
+    )
+    .ok()?;
+    String::from_utf8(bytes).ok()
 }
 
 /// Первый листовой элемент после середины: `<имя ...>текст</имя>` без вложенных

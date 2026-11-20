@@ -17,6 +17,7 @@ mod text_nodes;
 
 mod cascade;
 mod form_appearance;
+mod own_vars;
 
 mod animation_frames;
 mod details_content;

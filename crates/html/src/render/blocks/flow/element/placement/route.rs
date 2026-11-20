@@ -1,7 +1,7 @@
 //! Выбор содержащего блока и слоя для позиционированной коробки.
 
 use crate::layout::fragment::token::resume::oof::FixedPolicy;
-use crate::layout::positioned::predicates::{edge_set, stays_positioned};
+use crate::layout::positioned::predicates::edge_set;
 use crate::paint::stacking::{fixed_cb_layer_box, stacking_context};
 use crate::style::computed::BoxStyle;
 
@@ -13,7 +13,7 @@ pub(crate) fn layer_route(
     under_tf: bool,
     ordered_context: bool,
     geometry_layer_ok: bool,
-    nodes: &[crate::dom::Node],
+    nodes: &crate::layout::positioned::predicates::Siblings<'_>,
     idx: usize,
     cx: &crate::layout::cx::LayoutCx,
 ) -> (bool, bool, bool, bool, bool, bool, bool) {
@@ -113,7 +113,7 @@ pub(crate) fn layer_route(
         // Исходная геометрия записывается без paint: порядок соседних слоёв
         // не меняет CSS containing block и базу процентов вынесенной коробки.
         && (cx.position.geometry_record.is_some()
-            || !stays_positioned(&nodes[idx + 1..])
+            || !nodes.after(idx).stays_positioned()
             || cx.position.state.icb_active() && !(fixed && paged));
     // В гибком контейнере и сетке слой содержащего блока закрыт: там
     // нет щупа статической позиции. Но при ОБЕИХ заданных осях щуп и не
@@ -126,6 +126,6 @@ pub(crate) fn layer_route(
         && geometry_layer_ok
         && far_abs
         && e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0
-        && (!stays_positioned(&nodes[idx + 1..]) || cx.position.state.cb_active(far_fixed));
+        && (!nodes.after(idx).stays_positioned() || cx.position.state.cb_active(far_fixed));
     (x_set, y_set, fixed, below_icb, to_icb, to_cb, far_fixed)
 }
