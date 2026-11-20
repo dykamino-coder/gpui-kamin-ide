@@ -11,6 +11,10 @@ use super::reuse_tests::{settled, update};
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext, px, size};
 
+/// Edits off the screen that the layer cannot record (`revision::offscreen`).
+#[path = "offscreen_tests.rs"]
+mod offscreen;
+
 /// Rows of 20px; `edit` is spliced into the start tag of row `at`. Row 14
 /// straddles the bottom of the 300px window (`small`); the empty block after row 13
 /// paints nothing and reaches into the viewport (its edit: `at == HOLE`).

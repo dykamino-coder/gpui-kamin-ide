@@ -14,6 +14,7 @@ impl Element for ScrollArea {
     );
     type PrepaintState = (
         Bounds<Pixels>,
+        gpui::Hitbox,
         Vec<crate::interactive::scrollbars::interaction::HitBar>,
     );
 
@@ -28,7 +29,11 @@ impl Element for ScrollArea {
     ) -> (LayoutId, Self::RequestLayoutState) {
         let build = self.build.clone();
         let (h, v) = (self.horizontal, self.vertical);
-        let layout = |state: Persistent, window: &mut Window, cx: &mut App| {
+        let layout = |mut state: Persistent, window: &mut Window, cx: &mut App| {
+            if let Some(root) = &self.root {
+                state.handle = root.handle.clone();
+                root.axes.set([h, v]);
+            }
             state.extent.set_handle(state.handle.clone());
             let (layout_id, el) = {
                 let frame = state.extent.begin(self.tree.as_deref());
@@ -93,6 +98,7 @@ impl Element for ScrollArea {
                 self.sticky.as_ref(),
             );
         }
+        let hitbox = window.insert_hitbox(paint_bounds, gpui::HitboxBehavior::Normal);
         child.2.set_decoration_clip(window.content_mask());
         child.2.begin(self.tree.as_deref());
         {
@@ -134,7 +140,7 @@ impl Element for ScrollArea {
             paint_bounds,
             window,
         );
-        (paint_bounds, hitbars)
+        (paint_bounds, hitbox, hitbars)
     }
 
     fn paint(
@@ -151,10 +157,12 @@ impl Element for ScrollArea {
         // CSS2 Appendix E.2: scrolling does not establish a stacking context.
         // Preserve its block-background / inline-foreground phases through
         // this native adapter (Blink box_fragment_painter.cc:877-959).
+        // Register before descendants: bubble dispatch runs the inner adapter first.
+        super::wheel::listen(paint_bounds.1.clone(), child.1.clone(), window);
         crate::hooks::paint_reopen(window, |window| child.0.paint(window, cx));
         let alpha = child
             .4
-            .paint(self.freeze_scrollbars, &paint_bounds.1, &child.1, window);
+            .paint(self.freeze_scrollbars, &paint_bounds.2, &child.1, window);
         crate::interactive::scrollbars::paint(
             &self.style,
             &child.1,

@@ -62,6 +62,15 @@ impl<'a> LayerScope<'a> {
         Self::new(positioning, Layer::Initial)
     }
 
+    /// The ICB layer of the root scrollport scrolled by `anchor`.
+    pub(crate) fn viewport(
+        positioning: &'a Positioning,
+        anchor: Option<gpui::ScrollHandle>,
+    ) -> Self {
+        positioning.icb_open_anchored(anchor);
+        Self::new(positioning, Layer::Initial)
+    }
+
     pub(crate) fn late(positioning: &'a Positioning) -> Self {
         positioning.late_open();
         Self::new(positioning, Layer::Late)
@@ -88,6 +97,7 @@ impl Drop for LayerScope<'_> {
             }
             Layer::Initial => {
                 self.positioning.icb.borrow_mut().pop();
+                self.positioning.anchors.borrow_mut().pop();
                 self.positioning.pending.borrow_mut().pop();
             }
             Layer::Late => {

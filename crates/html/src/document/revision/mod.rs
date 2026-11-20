@@ -9,6 +9,7 @@ mod kept;
 mod layer_band;
 mod layer_write;
 mod media;
+mod offscreen;
 pub(super) use layer_band::records_band;
 pub(super) use layer_write::{at, parent_at};
 mod mentions;
@@ -129,6 +130,7 @@ impl Document {
             }
             return Ok(report);
         }
+        crate::paint_path::add(&crate::paint_path::REFUSED_SHAPE, 1);
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
         let state = super::state::DocState::continuing(media, &self.state);

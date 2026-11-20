@@ -21,7 +21,7 @@ pub(crate) fn finish_element(
     built: AnyElement,
     layer_ok: bool,
     under_tf: bool,
-    nodes: &[crate::dom::Node],
+    nodes: &crate::layout::positioned::predicates::Siblings<'_>,
     idx: usize,
     paint_key: u64,
     out: &mut Vec<AnyElement>,
@@ -173,7 +173,7 @@ pub(crate) fn finish_element(
         done =
             crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(done));
     }
-    if super::step8::paints_at_step8(e, &nodes[idx + 1..], inherited, under_tf, &opts.cx) {
+    if super::step8::paints_at_step8(e, nodes.after(idx), inherited, under_tf, &opts.cx) {
         // A root-flow child the flow records for replay takes its step-8
         // wrapper outside the recorder (`reuse::FlowCx::record`).
         if !crate::layout::cx::deferred::hold_paint_last(
