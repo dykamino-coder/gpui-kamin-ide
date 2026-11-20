@@ -186,21 +186,31 @@ function historyNote(id: string, engine: 'claude' | 'codex', left: LeftOut | nul
     : left.turns > 0
       ? `Not shown above: ${left.turns} earlier turns (about ${Math.ceil(left.bytes / 1024)} KB)${period}; only the user's requests from them are listed.`
       : `Not shown above: about ${Math.ceil(left.bytes / 1024)} KB cut from the start of the turns above.`
-  const where =
-    left && left.turns > 0 && left.line !== null
-      ? [
-          `The history above starts at line ${left.line} of the conversation log${left.uuid ? ` (entry ${left.uuid})` : ''}; the turns not shown are on the lines before it, and project_session_outline lists where each earlier request starts.`,
-        ]
-      : []
-  return [
+  const plain = [
     `<${NOTE_TAG}>`,
     `Conversation id: ${id}`,
     omitted,
-    ...where,
     `Tools that read the whole conversation, as you call them: ${tools.join(', ')}.`,
     `To recall a detail that is not shown here, search for it with session_id "${id}" and read around the hit with from_index instead of guessing.`,
     `</${NOTE_TAG}>`,
   ].join('\n')
+  if (!left || left.turns === 0 || left.line === null) return plain
+  // With a pointer to where the history above starts. The note keeps the
+  // size bound of the plain one (noteBound), so the history keeps its budget
+  // and its bytes; a pointer that does not fit drops the uuid, then itself.
+  const bound = noteBound(id, engine)
+  for (const entry of left.uuid ? [` (entry ${left.uuid})`, ''] : ['']) {
+    const text = [
+      `<${NOTE_TAG}>`,
+      `Conversation id: ${id}`,
+      omitted,
+      `Chat tools, as you call them: ${tools.join(', ')}.`,
+      `Not shown: search session_id "${id}", or read the lines before line ${left.line}${entry} with from_index; never guess.`,
+      `</${NOTE_TAG}>`,
+    ].join('\n')
+    if (bytes(text) <= bound) return text
+  }
+  return plain
 }
 
 /** Largest note for this id and engine (any counts and dates). */
@@ -211,8 +221,8 @@ const noteBound = (id: string, engine: 'claude' | 'codex') =>
       bytes: 99_999_999 * 1024,
       from: '0000-00-00 00:00 UTC',
       to: '0000-00-00 00:00 UTC',
-      line: 9_999_999_999,
-      uuid: 'x'.repeat(64),
+      line: null,
+      uuid: null,
     }),
   )
 

@@ -389,8 +389,17 @@ describe('project_session_outline and project_session_brief', () => {
     expect(o.models).toEqual({ 'claude-test': 1, 'claude-other': 1 })
     expect(o.first_prompts[0]).toEqual({ index: 1, text: 'Please fix the parser bug' })
     expect(o.git_branches).toEqual(['main'])
+    // Where things are: each pointer is a from_index, a byte offset and a uuid.
+    expect(o.log_map.requests[0]).toMatchObject({ line: 1, text: 'Please fix the parser bug' })
+    expect(o.log_map.requests[0].offset).toBeGreaterThan(0)
+    expect(o.log_map.compactions[0]).toMatchObject({ line: 6, trigger: 'auto', preTokens: 150000 })
+    const read = await call(ctxFor(l, TOKEN, CWD), 'project_session_read', {
+      session_id: A,
+      from_index: o.log_map.requests[0].line,
+      to_index: o.log_map.requests[0].line + 1,
+    })
+    expect(read.body).toContain('Please fix the parser bug')
   })
-
   it('builds a continuation brief with the compact summary and last turns', async () => {
     seedProject()
     const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_brief', { session_id: A, turns: 1 })

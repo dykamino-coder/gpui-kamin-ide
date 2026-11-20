@@ -754,6 +754,9 @@ export class JsonlWatcher {
 
   private startTailing(): void {
     if (this.stopped || !this.filePath) return
+    // A chat from before the conversation digest gets one, in the background,
+    // before a switch or a chat tool needs it (engine/transcript-digest.ts).
+    noteAppended(this.filePath)
 
     // Extract conversationId from filename (UUID without .jsonl extension)
     if (this.onConversationId) {

@@ -163,7 +163,13 @@ async function readSidecar(file: string): Promise<{ recs: Rec[]; ends: number[] 
   const recs: Rec[] = []
   const ends: number[] = []
   let pos = 0
+  let yieldAt = READ_CHUNK
   for (let nl = buf.indexOf(10); nl !== -1; nl = buf.indexOf(10, pos)) {
+    // A long conversation's sidecar is megabytes: parse it in slices.
+    if (pos >= yieldAt) {
+      yieldAt += READ_CHUNK
+      await yieldLoop()
+    }
     try {
       recs.push(JSON.parse(buf.toString('utf8', pos, nl)) as Rec)
       ends.push(nl + 1)

@@ -35,7 +35,13 @@ function entries(n: number, from = 0): object[] {
         type: 'user',
         message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${i - 1}`, content: text(size) }] },
       })
-    else if (r < 0.48) out.push({ ...base, type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 1000 } })
+    else if (r < 0.48)
+      out.push({
+        ...base,
+        type: 'system',
+        subtype: 'compact_boundary',
+        compactMetadata: { trigger: 'auto', preTokens: 1000 },
+      })
     else if (r < 0.5) out.push({ ...base, type: 'system', subtype: 'engine_switch', engine: 'codex', model: 'gpt' })
     else
       out.push({
@@ -81,7 +87,9 @@ describe('conversation digest', () => {
       for (const budgetBytes of [3_000, 64_000]) {
         const log = path.join(dir, `b${budgetBytes}.jsonl`)
         fs.appendFileSync(log, add)
-        expect(await handoffFromLog(log, source, { budgetBytes })).toEqual(await readHandoff(log, source, { budgetBytes }))
+        expect(await handoffFromLog(log, source, { budgetBytes })).toEqual(
+          await readHandoff(log, source, { budgetBytes }),
+        )
       }
     }
     expect(digestStats.resumes).toBeGreaterThan(0)
@@ -155,7 +163,9 @@ describe('conversation digest', () => {
     fs.writeFileSync(file, lines(es))
     const d = (await digestOf(file))!
     const users = es.flatMap((e, line) =>
-      e.type === 'user' && typeof (e.message as { content: unknown }).content === 'string' && String((e.message as { content: string }).content).trim()
+      e.type === 'user' &&
+      typeof (e.message as { content: unknown }).content === 'string' &&
+      String((e.message as { content: string }).content).trim()
         ? [line]
         : [],
     )
@@ -166,7 +176,9 @@ describe('conversation digest', () => {
       expect(r.offset).toBe(offsets[r.line])
       expect(r.uuid).toBe(`u-${r.line}`)
     }
-    expect(d.compactions.map((c) => c.line)).toEqual(es.flatMap((e, i) => (e.subtype === 'compact_boundary' ? [i] : [])))
+    expect(d.compactions.map((c) => c.line)).toEqual(
+      es.flatMap((e, i) => (e.subtype === 'compact_boundary' ? [i] : [])),
+    )
     expect(d.segments.map((c) => c.line)).toEqual(es.flatMap((e, i) => (e.subtype === 'engine_switch' ? [i] : [])))
     const hours = [...d.periods, d.period!]
     expect(hours.reduce((n, h) => n + h.bytes, 0)).toBe(fs.statSync(file).size)
@@ -177,9 +189,27 @@ describe('conversation digest', () => {
   it('the note points at the line the verbatim history starts on', async () => {
     fs.writeFileSync(file, lines(entries(3000)))
     const h = (await handoffFromLog(file, source))!
-    const m = /starts at line (\d+) of the conversation log \(entry (u-\d+)\)/.exec(h.text)
+    const m = /read the lines before line (\d+) \(entry (u-\d+)\) with from_index/.exec(h.text)
     expect(m).not.toBeNull()
     expect(m![2]).toBe(`u-${m![1]}`)
+  })
+
+  it('the line index of a restarted process comes from the sidecar, without a scan', async () => {
+    const { lineIndex, indexStats, resetLineIndexForTests, totalLines } = await import('../project-sessions/line-index')
+    fs.writeFileSync(file, lines(entries(3000)))
+    await digestOf(file)
+    resetDigestsForTests()
+    resetLineIndexForTests()
+    const fh = await fs.promises.open(file, 'r')
+    try {
+      const idx = await lineIndex(file, fh)
+      expect(indexStats.fromDigest).toBe(1)
+      expect(indexStats.bytesScanned).toBe(0)
+      expect(totalLines(idx)).toBe(3000)
+      expect(idx.offsets.length).toBe(3)
+    } finally {
+      await fh.close()
+    }
   })
 
   it('a deleted log takes its sidecar with it', async () => {
