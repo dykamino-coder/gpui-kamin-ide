@@ -114,7 +114,7 @@ fn resample(
     if let Some(found) = cache.get(&key) {
         return Some(found.clone());
     }
-    let bytes = image.as_bytes(frame)?;
+    let bytes = image.upload_bytes(frame)?;
     let mut out = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         let sy = sample(y, ih, phase[1], scale);

@@ -21,14 +21,18 @@ pub(super) struct WindowKey {
 }
 
 impl WindowKey {
-    /// `scroll_inputs`: inputs so far that only moved the root scroller
+    /// Discount inputs that only moved the root scroller
     /// (`RootScroll::key`); the frame replays them through its scroll nodes.
     pub(super) fn capture(
         bounds: Bounds<Pixels>,
         window: &Window,
         cx: &App,
-        scroll_inputs: u64,
+        state: &super::DocState,
     ) -> Self {
+        let scroll_inputs = state
+            .root_scroll
+            .as_ref()
+            .map_or(0, |root| root.scroll_inputs.get());
         Self {
             bounds,
             content_mask: window.content_mask(),

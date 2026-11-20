@@ -47,6 +47,7 @@ vocabulary!(Counter {
     SvgRenderAllocatedBytes => "svg_render_allocated_bytes",
     SvgRasterCacheHits => "svg_raster_cache_hits",
     SvgRasterCacheMisses => "svg_raster_cache_misses",
+    ImageDecodes => "image_decodes",
     StyleSharingHits => "style_sharing_hits",
     ElementSharingHits => "element_sharing_hits",
     MaterializedSharingHits => "materialized_sharing_hits",
@@ -244,7 +245,6 @@ pub fn increment(counter: Counter, amount: u64) {
         s.counts[s.phase.load(Relaxed)][counter as usize].fetch_add(amount, Relaxed);
     });
 }
-
 #[cfg(test)]
 #[path = "enabled_tests.rs"]
 mod tests;

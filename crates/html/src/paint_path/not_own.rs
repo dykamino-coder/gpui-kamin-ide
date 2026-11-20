@@ -1,6 +1,6 @@
 //! The exact reason of each refusal counted in `REFUSED_NOT_OWN`: why the
 //! restyled box's paint is not its own commands only
-//! (`paint::box_tree::styled::own_box_refusal`), or which part of an inline
+//! (`paint::box_tree::styled::requested_painter`), or which part of an inline
 //! box's band the scene layer does not take
 //! (`document::revision::layer_write::own_paint`). One counter per reason.
 

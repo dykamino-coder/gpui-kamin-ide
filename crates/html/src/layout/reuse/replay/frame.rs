@@ -26,6 +26,14 @@ impl super::super::FlowReuse {
             self.store.banned.replace(banned);
             return false;
         }
+        self.replay_slots.set(slots);
+        true
+    }
+
+    /// The replay records of this frame: replayed and finished near screen `screen`.
+    pub(in crate::layout::reuse) fn finish_replays(&self, screen: Bounds<ScaledPixels>) {
+        // A checked tree may still be discarded if its host moves before paint.
+        let slots = self.replay_slots.take();
         if !slots.is_empty() {
             let mut stats = self.store.stats.get();
             let contents = slots.iter().filter(|s| s.record.key.is_none()).count() as u64;
@@ -35,11 +43,6 @@ impl super::super::FlowReuse {
             stats.contents += contents;
             self.store.stats.set(stats);
         }
-        true
-    }
-
-    /// The replay records of this frame: replayed and finished near screen `screen`.
-    pub(in crate::layout::reuse) fn finish_replays(&self, screen: Bounds<ScaledPixels>) {
         let mut replays = self.next_replays.take();
         let mut reads = self.store.reads_widths.take();
         let pending = self.pending_replays.take();

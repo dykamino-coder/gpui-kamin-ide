@@ -5,37 +5,100 @@
 use crate::toast::STATE;
 use crate::toast::TICKER;
 use crate::toast::open_window;
-use crate::toast::win32::move_window;
 use crate::toast::win32::work_area;
+use crate::toast::win32::{place_window, raw_hwnd};
 use crate::toast::{HARD_MAX_VISIBLE, HEIGHT, MARGIN, STEP, WIDTH};
 use gpui::prelude::*;
 use gpui::{AnyWindowHandle, App};
 
-/// Сколько тостов помещается по высоте (`max_visible`).
-pub(crate) fn max_visible(cx: &App) -> usize {
-    let (_, _, _, wh) = work_area(cx);
-    let fits = ((wh - 2.0 * MARGIN) / STEP).floor().max(1.0) as usize;
-    HARD_MAX_VISIBLE.min(fits)
+/// Зазор между карточками стопки: прежний шаг минус прежняя высота.
+const GAP: f32 = STEP - HEIGHT;
+
+/// Верхние края окон стопки снизу вверх: высота у каждого своя — заголовок
+/// переносится до трёх строк, и карточка растёт по содержимому.
+pub(crate) fn stack_tops(bottom: f32, heights: &[f32]) -> Vec<f32> {
+    let mut edge = bottom;
+    heights
+        .iter()
+        .map(|h| {
+            let top = edge - h;
+            edge = top - GAP;
+            top
+        })
+        .collect()
 }
+
+/// Влезет ли ещё одна карточка (пока базовой высоты) над уже открытыми.
+pub(crate) fn has_room(heights: &[f32], work_height: f32) -> bool {
+    if heights.len() >= HARD_MAX_VISIBLE {
+        return false;
+    }
+    let used: f32 = heights.iter().map(|h| h + GAP).sum();
+    heights.is_empty() || used + HEIGHT <= work_height - 2.0 * MARGIN
+}
+
+fn heights() -> Vec<f32> {
+    STATE
+        .lock()
+        .map(|inner| inner.active.iter().map(|a| a.height).collect())
+        .unwrap_or_default()
+}
+
+/// Место для ещё одного тоста по высоте рабочей области.
+pub(crate) fn room_for(cx: &App, open: usize) -> bool {
+    let (_, _, _, wh) = work_area(cx);
+    let mut h = heights();
+    h.extend(std::iter::repeat_n(HEIGHT, open));
+    has_room(&h, wh)
+}
+
 pub(crate) fn slot_position(cx: &App, slot: usize) -> (f32, f32) {
     let (wx, wy, ww, wh) = work_area(cx);
+    let mut h = heights();
+    h.resize(slot + 1, HEIGHT);
     (
         wx + ww - WIDTH - MARGIN,
-        wy + wh - HEIGHT - MARGIN - (slot as f32) * STEP,
+        stack_tops(wy + wh - MARGIN, &h)[slot],
     )
 }
-/// Перестроить стопку снизу вверх после закрытия (`relayout`).
+/// Перестроить стопку снизу вверх после закрытия или смены высоты (`relayout`).
 pub(crate) fn relayout(cx: &mut App) {
-    let handles: Vec<AnyWindowHandle> = STATE
+    let handles: Vec<(AnyWindowHandle, f32)> = STATE
         .lock()
-        .map(|inner| inner.active.iter().map(|a| a.window).collect())
+        .map(|inner| inner.active.iter().map(|a| (a.window, a.height)).collect())
         .unwrap_or_default();
-    for (slot, handle) in handles.into_iter().enumerate() {
+    let mut places = Vec::with_capacity(handles.len());
+    for (slot, (handle, h)) in handles.into_iter().enumerate() {
         let (x, y) = slot_position(cx, slot);
-        let _ = handle.update(cx, |_, window, _| move_window(window, x, y));
+        if let Ok(hwnd) = handle.update(cx, |_, window, _| raw_hwnd(window)) {
+            places.push((hwnd, x, y, h));
+        }
     }
+    // Вне занятого App: см. `place_window`.
+    cx.spawn(async move |_| {
+        for (hwnd, x, y, h) in places {
+            place_window(hwnd, x, y, h);
+        }
+    })
+    .detach();
     publish_overflow(cx);
 }
+/// Карточка измерила себя: окно принимает её высоту, стопка перекладывается.
+pub fn set_height(id: u64, height: f32, cx: &mut App) {
+    {
+        let Ok(mut inner) = STATE.lock() else { return };
+        let Some(active) = inner.active.iter_mut().find(|a| a.id == id) else {
+            return;
+        };
+        if (active.height - height).abs() < 0.5 {
+            return;
+        }
+        active.height = height;
+    }
+    // Размер окна ставит `relayout` вместе с местом (`move_window`).
+    relayout(cx);
+}
+
 /// Бейдж «+N» показывает ВЕРХНИЙ тост, остальные — ничего.
 pub(crate) fn publish_overflow(cx: &mut App) {
     let (views, queued) = {
@@ -62,20 +125,27 @@ pub(crate) fn publish_overflow(cx: &mut App) {
 }
 /// Поднять очередь в освободившиеся слоты (`pump_queue`).
 pub(crate) fn pump_queue(cx: &mut App) {
-    let max = max_visible(cx);
-    let specs = {
-        let Ok(mut inner) = STATE.lock() else { return };
-        let mut specs = Vec::new();
-        while inner.active.len() + specs.len() < max {
-            let Some(opts) = inner.queue.pop_front() else {
-                break;
-            };
-            inner.next_id += 1;
-            specs.push((inner.next_id, inner.active.len() + specs.len(), opts));
+    // По одному: каждое открытие заносит свою высоту, и место считается от неё.
+    loop {
+        let spec = {
+            let Ok(inner) = STATE.lock() else { return };
+            if inner.queue.is_empty() {
+                None
+            } else {
+                Some(inner.active.len())
+            }
+        };
+        let Some(slot) = spec else { break };
+        if !room_for(cx, 0) {
+            break;
         }
-        specs
-    };
-    for (id, slot, opts) in specs {
+        let Some((id, opts)) = STATE.lock().ok().and_then(|mut inner| {
+            let opts = inner.queue.pop_front()?;
+            inner.next_id += 1;
+            Some((inner.next_id, opts))
+        }) else {
+            break;
+        };
         open_window(id, slot, opts, cx);
     }
     publish_overflow(cx);
@@ -111,4 +181,26 @@ pub(crate) fn ensure_ticker(cx: &mut App) {
         }
     })
     .detach();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GAP, has_room, stack_tops};
+    use crate::toast::{HEIGHT, MARGIN};
+
+    #[test]
+    fn taller_cards_push_the_ones_above_up() {
+        let tops = stack_tops(1000.0, &[HEIGHT, 190.0, HEIGHT]);
+        assert_eq!(tops[0], 1000.0 - HEIGHT);
+        assert_eq!(tops[1], tops[0] - GAP - 190.0);
+        assert_eq!(tops[2], tops[1] - GAP - HEIGHT);
+    }
+
+    #[test]
+    fn room_counts_real_heights_not_a_fixed_step() {
+        let work = 2.0 * MARGIN + 3.0 * (HEIGHT + GAP);
+        assert!(has_room(&[HEIGHT, HEIGHT], work));
+        assert!(!has_room(&[HEIGHT, 200.0], work));
+        assert!(has_room(&[], 10.0), "the first toast always opens");
+    }
 }

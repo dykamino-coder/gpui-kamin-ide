@@ -1,5 +1,28 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Acceptance on the published KaminIDE 1.0.121 — 2026-11-20
+
+Acceptance by the executor `kacc26` on a private copy of the installed
+`kaminide-v1.0.121` (own profile, hidden desktop) and source tests on the
+`kaminide-v1.0.121` tree. Stubs only, no real model. The details are in each
+card's dated section. Closing a card as `done` is the maintainer's decision.
+
+| Card | Result | Remaining |
+| --- | --- | --- |
+| [INC-0122](runtime-issues/INC-2026-0122.md) | passed: WM_CLOSE 10/10 within 0.42 s, close button 10/10 within 0.57 s, CPU under 60 %, relaunch normal | maintainer decision |
+| [INC-0089](runtime-issues/INC-2026-0089.md) | passed: automated LSP label tests | Linux Podman run |
+| [INC-0090](runtime-issues/INC-2026-0090.md) | passed: automated TabManager tests | Linux Podman run, stdio reproducer |
+| [INC-0098](runtime-issues/INC-2026-0098.md) | passed: automated render tests | live session with a real model |
+| [INC-0101](runtime-issues/INC-2026-0101.md) | passed: automated queue tests | maintainer decision |
+| [INC-0102](runtime-issues/INC-2026-0102.md) | automated part passed | live `/resume` with a real CLI |
+| [INC-0125](runtime-issues/INC-2026-0125.md) | automated part passed | live server restart 3/3 |
+| [INC-0015](runtime-issues/INC-2026-0015.md) | automated part passed | isolated dashboard runtime |
+| [INC-0016](runtime-issues/INC-2026-0016.md) | automated part passed | reconciliation with the acceptance list |
+| [INC-0019](runtime-issues/INC-2026-0019.md) | automated part passed | Linux WS and Windows save/progress gates |
+| [INC-0051](runtime-issues/INC-2026-0051.md) | automated part passed | Windows link activation |
+
+No card failed in this run.
+
 ## Acceptance on the published KaminIDE 1.0.116 / server 6.3.193 — 2026-11-19
 
 Live acceptance by the executor `kacc18` on the installed release
