@@ -60,6 +60,7 @@ mod rebuild_key_tests;
 #[cfg(test)]
 mod recolour_layout_tests;
 pub use prepared::UpdatePhase;
+mod attr_scope_tests;
 #[cfg(test)]
 mod band_rerecord_tests;
 #[cfg(test)]
