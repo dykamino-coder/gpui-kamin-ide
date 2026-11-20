@@ -1047,7 +1047,7 @@ fn paint_line_background(
             }
             if !single {
                 for r in all_style_runs.iter().filter(|r| r.background_owner != 0) {
-                    window.unhold_band(r.background_owner);
+                    window.unhold_owner(r.background_owner);
                 }
             }
         }

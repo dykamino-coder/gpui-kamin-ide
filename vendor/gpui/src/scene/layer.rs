@@ -28,7 +28,8 @@ mod splice;
 mod write;
 
 use super::{Bounds, ScaledPixels, Scene};
-pub(crate) use boxes::{BoxEnv, BoxRange, OpenBox, ink_of};
+pub use boxes::LayerPainter;
+pub(crate) use boxes::{BoxContents, BoxEnv, RunPainter, BoxRange, OpenBox, ink_of};
 pub(crate) use frame::{LayerOp, LayerSlot};
 pub(crate) use placed::{Placed, PlacedMap, RecordRuns, place_run, release_unheld};
 use std::cell::{Cell, RefCell};
