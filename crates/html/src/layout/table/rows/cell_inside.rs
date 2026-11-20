@@ -106,7 +106,7 @@ pub(super) async fn cell_contents(
             stk,
             flow.as_deref().unwrap_or(&cell.children),
             &cm,
-            &opts.inner(|cx| cx.constraints.cell_bfc = true),
+            &opts.inner_value(|cx| cx.constraints.cell_bfc = true),
         )
         .await;
     let inside = super::cell_alignment::subject(&cm, inside);

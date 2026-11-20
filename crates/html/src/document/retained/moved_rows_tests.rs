@@ -1,11 +1,15 @@
 //! Edits by mutation records (`Document::apply`) that move the root-flow
 //! blocks below them: the rows replay their output at the new place.
 
+#[cfg(windows)]
+mod real_glyph_tests;
+
 use super::content_replay_tests::{cx_replays, placed};
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext};
 
 /// 600 rows; the class `class` on row 3 sets its top padding.
+// Exact line heights isolate integer movement from accumulated f32 phases.
 fn padded(class: &str) -> String {
     let rows: String = (0..600)
         .map(|i| {
@@ -15,7 +19,7 @@ fn padded(class: &str) -> String {
         .collect();
     format!(
         "<!doctype html><html><head><style>body{{margin:0}} \
-         .r{{border-bottom:1px solid #abc}} .big{{padding-top:40px}}</style></head>\
+         .r{{line-height:20px;border-bottom:1px solid #abc}} .big{{padding-top:40px}}</style></head>\
          <body>{rows}</body></html>"
     )
 }

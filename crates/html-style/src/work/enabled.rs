@@ -1,5 +1,4 @@
 //! РџРѕС‚РѕРєРѕРІС‹Р№ СЃР±РѕСЂС‰РёРє С†РµР»С‹С… СЃС‡С‘С‚С‡РёРєРѕРІ: РѕРґРЅР° СЃРµСЃСЃРёСЏ РєР°РґСЂР°, РёСЃРєР»СЋС‡Р°СЋС‰РёРµ РґСЂСѓРі РґСЂСѓРіР° С„Р°Р·С‹.
-
 use std::{
     marker::PhantomData,
     rc::Rc,
@@ -77,6 +76,7 @@ vocabulary!(Counter {
     SpannerMeasureReuses => "spanner_measure_reuses",
     SpannerRowReuses => "spanner_row_reuses",
     MulticolMeasureReuses => "multicol_measure_reuses",
+    SpannerMeasureAdoptions => "spanner_measure_adoptions",
     BandProbeCalls => "band_probe_calls",
     BandProbeBuildNs => "band_probe_build_ns",
     BandProbeLayoutNs => "band_probe_layout_ns",
