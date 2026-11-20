@@ -1,3 +1,4 @@
+//! Ordered child insertion and movement in a single revision.
 use super::*;
 
 fn place(

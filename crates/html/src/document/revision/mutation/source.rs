@@ -1,7 +1,7 @@
 //! A script-held reference keeps its document identity while the node is detached.
 use super::{Address, ApplyError};
 use crate::document::{Document, DocumentFailure};
-use markup5ever_rcdom::{Handle, WeakHandle};
+use markup5ever_rcdom::{Handle, NodeData, WeakHandle};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -79,4 +79,33 @@ pub(super) fn parent(node: &Handle) -> Option<Handle> {
         .and_then(markup5ever_rcdom::WeakHandle::upgrade);
     node.parent.set(weak);
     parent
+}
+
+/// Scalar edits can reuse shape only below HTML elements outside templates.
+pub(in crate::document::revision) fn open(node: &Handle, root: &Handle) -> bool {
+    let mut at = node.clone();
+    let mut first = true;
+    loop {
+        match &at.data {
+            NodeData::Document => return Rc::ptr_eq(&at, root) && !first,
+            NodeData::Element { name, .. } => {
+                if name.ns != html5ever::ns!(html) || &*name.local == "template" {
+                    return false;
+                }
+            }
+            NodeData::Text { .. } if first => {}
+            _ => return false,
+        }
+        let Some(parent) = parent(&at) else {
+            return false;
+        };
+        if first
+            && matches!(at.data, NodeData::Text { .. })
+            && !matches!(parent.data, NodeData::Element { .. })
+        {
+            return false;
+        }
+        first = false;
+        at = parent;
+    }
 }

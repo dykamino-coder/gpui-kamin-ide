@@ -14,7 +14,7 @@ mod build_in;
 use crate::layout::reuse::FlowReuse;
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, RetainedPaint, Style, Window, px, size,
+    LayoutId, Pixels, RetainedPaint, Window,
 };
 use std::rc::Rc;
 
@@ -78,14 +78,6 @@ impl Retained {
             replay: false,
             same_prepaint: false,
             laid_out: None,
-        }
-    }
-
-    fn viewport_style(&self) -> Style {
-        let (w, h) = self.builder.opts.viewport;
-        Style {
-            size: size(px(w).into(), px(h).into()),
-            ..Style::default()
         }
     }
 }
@@ -226,15 +218,7 @@ impl Element for Retained {
         window.with_element_state::<Record, _>(id, |record, window| {
             let mut record = record.unwrap_or_default();
             if self.replay {
-                let paint = window.replay_retained_paint(&record.paint);
-                if self.same_prepaint
-                    && paint.preserves_window_slots(&record.paint)
-                    && record.layer.is_some()
-                    && record.layer == self.builder.store.layer_version()
-                {
-                    self.builder.store.copied_layer_ranges();
-                }
-                record.paint = paint;
+                record.replay_paint(window, &self.builder.store, self.same_prepaint);
                 return ((), record);
             }
             let Some(tree) = self.tree.as_mut() else {

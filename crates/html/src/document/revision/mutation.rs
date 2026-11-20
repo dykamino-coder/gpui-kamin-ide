@@ -11,6 +11,7 @@ mod children;
 mod source;
 pub(super) use attributes::attribute_records;
 pub use source::SourceNode;
+pub(super) use source::open;
 use source::parent;
 
 use super::apply::ApplyError;
@@ -216,36 +217,5 @@ impl Batch {
                 list.replace(attrs(e).clone());
             }
         }
-    }
-}
-
-/// Узел принадлежит DOM `root` и стоит под элементами HTML вне шаблонов и
-/// чужого содержимого: у такого узла атрибуты и текст не часть формы
-/// (`shape`). Текст требует родителя-элемента.
-pub(super) fn open(node: &Handle, root: &Handle) -> bool {
-    let mut at = node.clone();
-    let mut first = true;
-    loop {
-        match &at.data {
-            NodeData::Document => return Rc::ptr_eq(&at, root) && !first,
-            NodeData::Element { name, .. } => {
-                if name.ns != html5ever::ns!(html) || &*name.local == "template" {
-                    return false;
-                }
-            }
-            NodeData::Text { .. } if first => {}
-            _ => return false,
-        }
-        let Some(parent) = parent(&at) else {
-            return false;
-        };
-        if first
-            && matches!(at.data, NodeData::Text { .. })
-            && !matches!(parent.data, NodeData::Element { .. })
-        {
-            return false;
-        }
-        first = false;
-        at = parent;
     }
 }

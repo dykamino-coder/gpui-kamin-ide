@@ -3,9 +3,17 @@
 //! подготовленное отказала проверка заместителей.
 
 use super::Retained;
-use gpui::{App, AvailableSpace, Bounds, Pixels, RetainedPrepaint, Window, size};
+use gpui::{App, AvailableSpace, Bounds, Pixels, RetainedPrepaint, Style, Window, px, size};
 
 impl Retained {
+    pub(super) fn viewport_style(&self) -> Style {
+        let (w, h) = self.builder.opts.viewport;
+        Style {
+            size: size(px(w).into(), px(h).into()),
+            ..Style::default()
+        }
+    }
+
     /// Дерево шага, собранное для другого места в кадре, не годится: ключи
     /// состояний его элементов отличались бы от кадра — тогда кадр
     /// собирается здесь, как без шага.

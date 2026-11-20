@@ -60,9 +60,6 @@ pub(crate) struct Store {
     /// Номер кадра prepaint документа (`draw`): диапазоны повтора записи
     /// годны только в кадре сразу после своего.
     pub(super) epoch: Cell<u64>,
-    /// Inclusive run of frames that hold the same block ranges. A rebuild,
-    /// a gap or an unverified copy ends the run without walking any records.
-    copied: Cell<Option<(u64, u64)>>,
     /// Наблюдение для тестов и стенда: записано, пропущено, кадров заново.
     pub(crate) stats: Cell<ReuseStats>,
     /// The document was patched since the last frame (`Document::commit`):
@@ -92,25 +89,6 @@ impl Store {
     pub(crate) fn draw(&self, continued: bool) {
         self.epoch
             .set(self.epoch.get() + if continued { 1 } else { 2 });
-    }
-
-    /// The whole document was copied to the same frame slots and its scene
-    /// layer kept its version. Only inline, complete block output can carry.
-    pub(crate) fn copied_layer_ranges(&self) {
-        let frame = self.epoch.get();
-        let previous = frame - 1;
-        let first = self
-            .copied
-            .get()
-            .filter(|&(_, last)| last == previous)
-            .map_or(previous, |(first, _)| first);
-        self.copied.set(Some((first, frame)));
-    }
-
-    pub(super) fn block_source(&self, frame: u64, recorded: u64) -> bool {
-        self.copied
-            .get()
-            .is_some_and(|(first, last)| last == frame && recorded >= first && recorded < frame)
     }
 
     /// Whole-frame replay drops records that depend on a kept layout tree.

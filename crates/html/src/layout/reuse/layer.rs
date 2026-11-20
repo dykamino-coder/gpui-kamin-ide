@@ -7,13 +7,16 @@
 //! into it (`document::revision::layer_write`) instead of a new frame.
 
 use super::store::Store;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 
 /// The document's scene layer of the last recorded frame, and the boxes whose
 /// own commands the next frame records again into it (`queue_repaints`).
 #[derive(Default)]
 pub(crate) struct Kept {
+    /// Inclusive run of frames that hold the same block ranges. A rebuild,
+    /// a gap or an unverified copy ends the run without walking any records.
+    copied: Cell<Option<(u64, u64)>>,
     layer: RefCell<Option<gpui::LayerHandle>>,
     repaints: RefCell<Vec<(Vec<usize>, u64)>>,
     /// The root-flow blocks the layer's frame skipped off the screen
@@ -30,6 +33,27 @@ impl Kept {
 }
 
 impl Store {
+    /// The whole document was copied to the same frame slots and its scene
+    /// layer kept its version. Only inline, complete block output can carry.
+    pub(crate) fn copied_layer_ranges(&self) {
+        let frame = self.epoch.get();
+        let previous = frame - 1;
+        let first = self
+            .layer
+            .copied
+            .get()
+            .filter(|&(_, last)| last == previous)
+            .map_or(previous, |(first, _)| first);
+        self.layer.copied.set(Some((first, frame)));
+    }
+
+    pub(super) fn block_source(&self, frame: u64, recorded: u64) -> bool {
+        self.layer
+            .copied
+            .get()
+            .is_some_and(|(first, last)| last == frame && recorded >= first && recorded < frame)
+    }
+
     /// The paint of the frame being drawn did not stay at its recorded
     /// indices (`gpui::RecordedLayer::Spliced`): no record made in it
     /// replays, as when the chain of frames breaks (`draw`).

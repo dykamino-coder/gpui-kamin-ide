@@ -21,6 +21,23 @@ pub(super) struct Record {
 }
 
 impl Record {
+    pub(super) fn replay_paint(
+        &mut self,
+        window: &mut gpui::Window,
+        store: &crate::layout::reuse::Store,
+        same_prepaint: bool,
+    ) {
+        let paint = window.replay_retained_paint(&self.paint);
+        if same_prepaint
+            && paint.preserves_window_slots(&self.paint)
+            && self.layer.is_some()
+            && self.layer == store.layer_version()
+        {
+            store.copied_layer_ranges();
+        }
+        self.paint = paint;
+    }
+
     pub(super) fn reusable(
         &self,
         slot: &Rc<Slot>,
