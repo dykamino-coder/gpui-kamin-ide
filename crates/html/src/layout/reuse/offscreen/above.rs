@@ -43,6 +43,15 @@ impl FlowReuse {
         self.offscreen.made.get()
     }
 
+    /// The root scroller builds the document again (another scrollbar
+    /// choice): only the last build's blocks are in the frame.
+    fn restart(&self) -> Building<'_> {
+        self.offscreen.slots.borrow_mut().clear();
+        self.offscreen.above.set(0.0);
+        self.offscreen.floated.set(false);
+        self.building()
+    }
+
     /// This build's own blocks under `opts` count (`building`).
     pub(super) fn counts(&self, opts: &RenderOpts) -> bool {
         opts.cx.contracts.document_root == Some(self.doc)
@@ -137,7 +146,7 @@ pub(crate) fn root_scroller_build<'a>(
 ) {
     let reuse = opts.cx.contracts.reuse.as_ref();
     let root = reuse.filter(|_| tag == "html-viewport");
-    (opts.cx.contracts.build, root.map(|r| r.building()))
+    (opts.cx.contracts.build, root.map(|r| r.restart()))
 }
 
 /// The least height `chars` characters of text take at the viewport's width.

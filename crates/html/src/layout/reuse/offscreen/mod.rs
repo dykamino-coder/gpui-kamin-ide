@@ -61,6 +61,11 @@ pub(crate) struct Store {
     kept: RefCell<HashMap<u64, Kept>>,
     /// Leaves refused by the frame check: its rebuild builds them.
     refused: Cell<HashSet<u64>>,
+    /// Exact leaves refused only for another width (a scrollbar came): the
+    /// rebuild measures them again at the width it gives.
+    remeasure: Cell<HashSet<u64>>,
+    /// Blocks every check of this frame saw: they keep what was learnt.
+    seen: Cell<HashSet<u64>>,
 }
 
 enum Kind {
@@ -80,6 +85,7 @@ impl Slot {
             layout: Cell::new(None),
             measured: Cell::new(None),
             failed: Cell::new(false),
+            sizes: Default::default(),
         }
     }
 
@@ -98,7 +104,16 @@ pub(crate) struct Slot {
     /// The leaf of the block built by the measure at a definite width.
     measured: Cell<Option<LayoutSnapshot>>,
     failed: Cell<bool>,
+    /// What the measure laid out at each width it was asked for.
+    sizes: RefCell<Vec<Laid>>,
 }
+
+/// A width a measure was asked for, its size and its exact leaf.
+type Laid = (
+    gpui::AvailableSpace,
+    gpui::Size<gpui::Pixels>,
+    Option<LayoutSnapshot>,
+);
 
 /// The leaves of one build.
 #[derive(Default)]
@@ -174,18 +189,20 @@ impl FlowReuse {
         let store = &self.store.offscreen;
         let kept = store.kept.borrow().get(&e.node_id).copied();
         let kept = kept.filter(|k| at.0 <= k.at && k.at <= at.1 && k.viewport == opts.viewport);
-        let refused = {
-            let refused = store.refused.take();
-            let found = refused.contains(&e.node_id);
-            store.refused.set(refused);
+        let has = |set: &Cell<HashSet<u64>>| {
+            let ids = set.take();
+            let found = ids.contains(&e.node_id);
+            set.set(ids);
             found
         };
+        let (refused, remeasure) = (has(&store.refused), has(&store.remeasure));
         let height = above::height(chars, opts);
         let (top, bottom) = self.zone(opts);
         let slot = |kind| Rc::new(Slot::new(e.node_id, kind, at.1));
         let leaf = match kept {
             // A build after a refused rebuild stands no leaf at all.
             _ if refused || !self.allow => None,
+            _ if remeasure => Some(Kind::Measured),
             Some(k) => {
                 let near = k.span.1 >= top && k.span.0 <= bottom;
                 k.snapshot.filter(|_| !near).map(Kind::Exact)

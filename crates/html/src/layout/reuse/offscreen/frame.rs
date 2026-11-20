@@ -22,7 +22,7 @@ impl FlowReuse {
         let scale = window.scale_factor();
         let scroll = self.offscreen.scroll.get().unwrap_or(0.0);
         let viewport = self.offscreen.viewport.get();
-        let mut refused = HashSet::new();
+        let (mut refused, mut remeasure) = (HashSet::new(), HashSet::new());
         let mut kept = self.store.offscreen.kept.take();
         let slots = self.offscreen.slots.borrow();
         // Where the floats that reach past their blocks lie: a later leaf they
@@ -71,14 +71,19 @@ impl FlowReuse {
                             && (size.height.as_f32() - m.height()).abs() <= EXACT
                             && (size.width.as_f32() - m.width()).abs() <= EXACT
                     });
-                    (measured, measured.is_some())
+                    // The leaf itself is kept: it has the block's inline
+                    // margins, which its measured copy is built without.
+                    (leaf.filter(|_| measured.is_some()), measured.is_some())
                 }
                 Kind::Built | Kind::Floats => (window.layout_snapshot(id), true),
             };
             let floated = floats.iter().any(|f| f.intersects(&bounds));
             let snapshot = snapshot.filter(|_| !slot.failed.get() && !floated);
-            if slot.leaf() && (near || floated || !fits || slot.failed.get()) {
+            let wider = matches!(slot.kind, Kind::Exact(_)) && !fits;
+            if slot.leaf() && (near || floated || slot.failed.get() || (!fits && !wider)) {
                 refused.insert(slot.node);
+            } else if wider {
+                remeasure.insert(slot.node);
             }
             kept.insert(
                 slot.node,
@@ -91,10 +96,17 @@ impl FlowReuse {
             );
         }
         self.store.offscreen.kept.replace(kept);
-        let ok = refused.is_empty();
+        let mut seen = self.store.offscreen.seen.take();
+        seen.extend(slots.iter().map(|s| s.node));
+        self.store.offscreen.seen.set(seen);
+        let ok = refused.is_empty() && remeasure.is_empty();
         let mut all = self.store.offscreen.refused.take();
         all.extend(refused);
         self.store.offscreen.refused.set(all);
+        // A leaf refused for its width once is measured once more only.
+        let again = self.store.offscreen.remeasure.take();
+        remeasure.retain(|id| !again.contains(id));
+        self.store.offscreen.remeasure.set(remeasure);
         ok
     }
 
@@ -102,8 +114,10 @@ impl FlowReuse {
     /// keep their leaves, so removed blocks leave nothing behind.
     pub(in crate::layout::reuse) fn finish_offscreen(&self) {
         self.store.offscreen.refused.take();
+        self.store.offscreen.remeasure.take();
         let slots = self.offscreen.slots.borrow();
-        let seen: HashSet<u64> = slots.iter().map(|s| s.node).collect();
+        let mut seen = self.store.offscreen.seen.take();
+        seen.extend(slots.iter().map(|s| s.node));
         let leaves = || slots.iter().filter(|s| s.leaf());
         let mut stats = self.store.stats.get();
         stats.offscreen += leaves().count() as u64;

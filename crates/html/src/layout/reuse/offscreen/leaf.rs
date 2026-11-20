@@ -138,6 +138,16 @@ fn measure(
     let width = known
         .width
         .map_or(available.width, AvailableSpace::Definite);
+    // Layout asks a leaf for the same width more than once (intrinsic
+    // sizes, then the final pass): the block is built once per width.
+    let cached = slot.sizes.borrow().iter().find(|s| s.0 == width).copied();
+    if let Some((_, laid, snapshot)) = cached {
+        slot.measured.set(snapshot.or(slot.measured.get()));
+        return laid;
+    }
+    if slot.failed.get() {
+        return Size::default();
+    }
     let counters = Counters::read(&source.opts.cx);
     let laid_out = gpui::with_temporary_element_arena(|| {
         window.with_nested_layout(|window| {
@@ -182,6 +192,8 @@ fn measure(
         Some(None) => slot.failed.set(true),
         None => {}
     }
+    let snapshot = snapshot.flatten();
+    slot.sizes.borrow_mut().push((width, laid, snapshot));
     laid
 }
 
