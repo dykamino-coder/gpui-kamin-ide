@@ -22,7 +22,7 @@ pub(crate) fn place_element(
     inherited: &BoxStyle,
     ordered_context: bool,
     geometry_layer_ok: bool,
-    nodes: &[crate::dom::Node],
+    nodes: &crate::layout::positioned::predicates::Siblings<'_>,
     idx: usize,
     built: AnyElement,
     layer_ok: bool,
@@ -51,6 +51,11 @@ pub(crate) fn place_element(
             fixed_axes: (x_set, y_set),
             preserve_cb_geometry: to_cb,
             viewport_static: to_icb,
+            viewport_fixed: crate::layout::positioned::viewport_anchor::anchor_of(
+                to_icb && fixed && opts.paged_build().is_none(),
+                &opts.cx.position.state,
+            )
+            .is_some(),
             free_margin: (
                 if x_set {
                     0.0
@@ -133,7 +138,7 @@ pub(crate) fn place_element(
             } else {
                 built
             };
-            let built = if paint_last_ok(e, &nodes[idx + 1..], &opts.cx) {
+            let built = if paint_last_ok(e, nodes.after(idx), &opts.cx) {
                 crate::paint::coordinator::PaintLast::new(built)
                     .key(paint_key)
                     .into_any_element()
@@ -147,18 +152,17 @@ pub(crate) fn place_element(
             } else {
                 built
             };
-            let built =
-                if crate::layout::positioned::predicates::stays_positioned(&nodes[idx + 1..]) {
-                    let mut state = spot.get();
-                    state.layout_only = true;
-                    spot.set(state);
-                    let (layout, paint) =
-                        crate::paint::positioned::split_source_paint(spot.clone(), built);
-                    source_paint = Some(paint);
-                    layout
-                } else {
-                    built
-                };
+            let built = if nodes.after(idx).stays_positioned() {
+                let mut state = spot.get();
+                state.layout_only = true;
+                spot.set(state);
+                let (layout, paint) =
+                    crate::paint::positioned::split_source_paint(spot.clone(), built);
+                source_paint = Some(paint);
+                layout
+            } else {
+                built
+            };
             if to_icb {
                 opts.cx.position.state.icb_push(spot.clone(), built)
             } else if far_fixed {

@@ -14,9 +14,10 @@
 //! layers, decorations painted as child elements, the root's canvas) refuses,
 //! and the document builds its frame as before.
 
-use super::paint_damage::{PaintDamage, PaintValue, classify};
+use super::paint_damage::{PaintDamage, PaintValue, classify, unpainted_svg};
 use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
+use crate::layout::reuse::Wait;
 use crate::paint::box_tree::styled::{Own, Refusal};
 use crate::style::computed::BoxStyle;
 use gpui::{Hsla, LayerHandle, LayerPainter};
@@ -38,7 +39,8 @@ type Write = (u32, Option<Hsla>, Option<Hsla>);
 /// it (`layout::reuse::deferred`). An inline box whose own paint is its band
 /// (`Own::Band`) takes a new background colour as a value written into every
 /// piece of its band; any other change of its band paints its pieces again
-/// on the next frame (`layer_band`).
+/// on the next frame (`layer_band`). A box the layer cannot record whose
+/// whole paint lies off the screen (`waits`) waits in `frames` (`offscreen`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_paint_values(
     old: &[Node],
@@ -48,6 +50,8 @@ pub(super) fn write_paint_values(
     own: impl Fn(&Element) -> Own,
     unseen: impl Fn(&Path) -> bool,
     off: impl Fn(u64) -> bool,
+    waits: impl Fn(&Path, &Element, &Element) -> Option<super::offscreen::FrameWait>,
+    frames: &mut Vec<super::offscreen::FrameWait>,
 ) -> Option<Taken> {
     if paths.is_empty() {
         // No element's style changed: the frame stands as it is.
@@ -69,6 +73,9 @@ pub(super) fn write_paint_values(
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
         }
+        if unpainted_svg(old, path) {
+            continue;
+        }
         if unseen(path) {
             crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
             continue;
@@ -77,25 +84,28 @@ pub(super) fn write_paint_values(
         // a write paints nothing, on the screen or off it.
         let owner = u32::try_from(a.node_id).ok()?;
         let recorded = layer.painter(owner);
+        let mut wait = |kind, reason| {
+            if let Some(frame) = waits(path, a, b).filter(|(_, recorded)| *recorded == kind) {
+                frames.push(frame);
+                Some(())
+            } else {
+                refuse_not_own(reason);
+                None
+            }
+        };
         let banded = match (recorded, own(b)) {
+            (Some(LayerPainter::Box), Own::Plain) => false,
+            (
+                Some(LayerPainter::Box | LayerPainter::DecoratedBox),
+                Own::Not(Refusal::Decoration),
+            )
+            | (Some(LayerPainter::DecoratedBox), Own::Plain) => {
+                wait(Wait::Decoration, Refusal::Decoration)?;
+                continue;
+            }
+            (Some(LayerPainter::Band) | None, Own::Band) => true,
             (_, Own::Not(reason)) => {
                 refuse_not_own(reason);
-                return None;
-            }
-            (Some(LayerPainter::Box), Own::Plain) => false,
-            (Some(LayerPainter::Band), Own::Band) => true,
-            (None, Own::Band) => {
-                match super::layer_band::band_change(old, path, a, b) {
-                    super::layer_band::BandChange::Nothing => continue,
-                    super::layer_band::BandChange::Pieces => {
-                        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1)
-                    }
-                    super::layer_band::BandChange::Refused(reason) => refuse_not_own(reason),
-                }
-                return None;
-            }
-            (Some(LayerPainter::DecoratedBox), _) => {
-                refuse_not_own(Refusal::Decoration);
                 return None;
             }
             _ => {
@@ -103,6 +113,24 @@ pub(super) fn write_paint_values(
                 return None;
             }
         };
+        if banded && recorded.is_none() {
+            // Culled and nested bands can have line fragments but no scene run.
+            match super::layer_band::band_change(old, path, a, b) {
+                super::layer_band::BandChange::Nothing => (),
+                super::layer_band::BandChange::Refused(reason) => wait(Wait::Inline, reason)?,
+                super::layer_band::BandChange::Pieces => {
+                    if let Some(frame) =
+                        waits(path, a, b).filter(|(_, recorded)| *recorded == Wait::Inline)
+                    {
+                        frames.push(frame);
+                    } else {
+                        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+                        return None;
+                    }
+                }
+            }
+            continue;
+        }
         if !banded && off(a.node_id) && held(a.node_id) {
             deferred.push((path.clone(), a.node_id));
             continue;
@@ -125,10 +153,12 @@ pub(super) fn write_paint_values(
             // Any other change of a band: its pieces are painted again.
             _ if banded => match super::layer_band::band_change(old, path, a, b) {
                 super::layer_band::BandChange::Nothing => continue,
-                super::layer_band::BandChange::Pieces => records.push((path.clone(), a.node_id)),
+                super::layer_band::BandChange::Pieces if held(a.node_id) => {
+                    records.push((path.clone(), a.node_id))
+                }
+                super::layer_band::BandChange::Pieces => wait(Wait::Inline, Refusal::BandGeometry)?,
                 super::layer_band::BandChange::Refused(reason) => {
-                    refuse_not_own(reason);
-                    return None;
+                    wait(Wait::Inline, reason)?;
                 }
             },
             _ => records.push((path.clone(), a.node_id)),
@@ -157,6 +187,7 @@ pub(super) fn write_paint_values(
     crate::paint_path::add(&crate::paint_path::RECORDS, records.len() as u64);
     crate::paint_path::add(&crate::paint_path::VALUES, values as u64);
     crate::paint_path::add(&crate::paint_path::DEFERRED, deferred.len() as u64);
+    super::offscreen::count(frames);
     Some(Taken { records, deferred })
 }
 

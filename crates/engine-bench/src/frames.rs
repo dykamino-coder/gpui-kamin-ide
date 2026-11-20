@@ -53,6 +53,8 @@ pub(super) struct Frames {
     before_inside: u64,
     /// Contents replayed in the document before the frame (`Document::replayed_contents`).
     before_contents: u64,
+    /// Root-flow blocks replayed in the document before the frame (`Document::replayed_blocks`).
+    before_blocks: u64,
     samples: Vec<Value>,
 }
 
@@ -74,6 +76,7 @@ impl Frames {
             before: (0, 0),
             before_inside: 0,
             before_contents: 0,
+            before_blocks: 0,
             samples: Vec::new(),
         })
     }
@@ -92,6 +95,7 @@ impl Frames {
             self.before = view.doc.retained_frames();
             self.before_inside = view.doc.builds_inside_draw();
             self.before_contents = view.doc.replayed_contents();
+            self.before_blocks = view.doc.replayed_blocks();
         })?;
         Ok(())
     }
@@ -104,12 +108,13 @@ impl Frames {
         mode: &str,
         index: usize,
     ) -> Result<()> {
-        let (after, inside, contents) = window.read_with(cx, |view, _| {
+        let (after, inside, contents, blocks) = window.read_with(cx, |view, _| {
             let doc = &view.doc;
             (
                 doc.retained_frames(),
                 doc.builds_inside_draw(),
                 doc.replayed_contents(),
+                doc.replayed_blocks(),
             )
         })?;
         let cold = mode == "cold";
@@ -129,7 +134,8 @@ impl Frames {
         self.samples.push(json!({"mode": mode, "sample_index": index,
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
             "builds_inside_draw": inside,
-            "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents })}));
+            "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
+            "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks })}));
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
     }
 

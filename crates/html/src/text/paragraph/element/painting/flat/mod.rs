@@ -7,6 +7,7 @@
 //! и слежение за выделением. Строки, чьи чернила целиком вне маски, не рисуются (`cull`).
 
 mod cull;
+mod fragments;
 mod rows;
 
 use crate::layout::fragment::line_admission;
@@ -225,6 +226,7 @@ impl Paragraph {
             }
         }
         window.replace_glyph_offset(outer_nudge);
+        self.write_fragments(cull.as_ref(), &bands, window);
         self.paint_atoms(&bands, window, cx);
         for (i, (_, el, _)) in self.overlays.iter_mut().enumerate() {
             if !self.overlay_hidden.get(i).copied().unwrap_or(false) {

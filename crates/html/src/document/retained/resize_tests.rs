@@ -2,6 +2,7 @@
 //! блок, чья раскладка от ширины не зависит, переживает её.
 
 mod alone_table;
+mod hovered_paragraph;
 mod painted_rows;
 mod replay_records;
 

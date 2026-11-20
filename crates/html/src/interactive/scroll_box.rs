@@ -56,6 +56,9 @@ pub(crate) fn scrollable(
     // Слой ICB закрывается раньше, чем `ScrollArea` позовёт `build`, — поэтому
     // выносим кандидатов сейчас, из ещё не отданного в замыкание клона.
     hoist_from_scroll(&mut node, inherited, opts);
+    let root = (e.tag == "html-viewport")
+        .then(|| opts.cx.doc().root_scroll.clone())
+        .flatten();
     let (inherited, opts) = (inherited.clone(), opts.clone());
     let build = std::rc::Rc::new(
         move |handle: &gpui::ScrollHandle, h: bool, v: bool, frame| -> AnyElement {
@@ -204,6 +207,7 @@ pub(crate) fn scrollable(
         )
         .with_style(scroll_style, freeze_scrollbars)
         .with_tree(e, parent_frame.as_ref())
+        .with_root(root)
         .with_sticky(area_sticky)
         .into_any_element(),
         scroll_projection,

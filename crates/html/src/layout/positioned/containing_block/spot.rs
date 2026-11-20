@@ -40,6 +40,10 @@ pub struct Spot {
     pub layout_only: bool,
     /// Static coordinates must leave any enclosing fragmentation contexts.
     pub viewport_static: bool,
+    /// A fixed box of the root scrollport's ICB layer that hangs on the
+    /// viewport (`viewport_anchor`): the layer lays it out in a box of the
+    /// scrollport's own size, so it adds nothing to the scroll range.
+    pub viewport_fixed: bool,
     /// Толщина колонки строки в повёрнутом абзаце: на неё отступает экранная
     /// точка дырки от правого края рамки. Ноль — коробка вне поворота.
     pub line_thickness: f32,
