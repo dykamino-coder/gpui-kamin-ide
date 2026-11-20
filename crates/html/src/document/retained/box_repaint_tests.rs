@@ -103,3 +103,56 @@ fn an_outline_builds_the_frame(cx: &mut TestAppContext) {
         assert_eq!(first_difference(&scene, &fresh), None);
     }
 }
+
+#[gpui::test]
+fn a_replayed_paint_edit_publishes_its_new_flow_snapshot(cx: &mut TestAppContext) {
+    use crate::dom::{Children, Node};
+
+    fn group(nodes: &[Node]) -> Children {
+        let mut lists = vec![nodes];
+        while let Some(list) = lists.pop() {
+            for node in list {
+                if let Node::Element(e) = node {
+                    if e.tag == "section" {
+                        return e.children.clone();
+                    }
+                    lists.push(&e.children);
+                }
+            }
+        }
+        panic!("missing section");
+    }
+
+    let page = |edit| {
+        page(edit)
+            .replace("<body>", "<body><section>")
+            .replace("</body>", "</section></body>")
+    };
+    let (view, vcx) = settled(cx, &page(""), &page(" data-x"));
+    update(&view, vcx, &page(""));
+    update(&view, vcx, &page(""));
+    let (old, id) = vcx.update(|_, cx| {
+        let doc = &view.read(cx).doc;
+        let children = group(&doc.nodes);
+        let id = doc
+            .state
+            .boxes
+            .borrow()
+            .flow(&children)
+            .expect("published flow");
+        (children, id)
+    });
+    let before = frames(&view, vcx);
+    let html = page(" data-edit");
+    update(&view, vcx, &html);
+    assert_eq!(frames(&view, vcx), (before.0, before.1 + 1));
+    vcx.update(|_, cx| {
+        let doc = &view.read(cx).doc;
+        let children = group(&doc.nodes);
+        assert_ne!(old.identity(), children.identity());
+        let boxes = doc.state.boxes.borrow();
+        assert_eq!(boxes.flow(&children), Some(id));
+        assert_eq!(boxes.flow(&old), None);
+    });
+    assert_eq!(quads(vcx), fresh(cx, &html));
+}

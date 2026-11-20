@@ -14,7 +14,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { AgentEngineId } from '../../shared/agent-events'
-import { readHandoff, type HandoffSource } from '../engine/handoff'
+import type { HandoffSource } from '../engine/handoff'
+import { copyDigest, forgetDigest, handoffFromLog } from '../engine/transcript-digest'
 import { computeProjectSlug } from '../pty/jsonl-watcher'
 import { archiveTranscript, dropArchivedTranscript, restoreArchivedTranscript } from '../pty/transcript-archive'
 import { infoLog, warnLog } from '../logging'
@@ -97,7 +98,7 @@ export async function planSwitch(opts: {
     engines: [...new Set([...(manifest?.segments.map((s) => s.engine) ?? []), from.engine])],
     target: target.engine,
   }
-  const handoff = await readHandoff(
+  const handoff = await handoffFromLog(
     manifest ? unifiedLogPath(ref) : path.join(slugDirOf(from.settingsDir), `${from.nativeId}.jsonl`),
     source,
   )
@@ -129,6 +130,7 @@ export function commitSwitch(plan: SwitchPlan): ConversationManifest {
     const source = path.join(slugDirOf(plan.from.settingsDir), `${plan.from.nativeId}.jsonl`)
     const log = unifiedLogPath(plan.ref)
     seedUnifiedLog(log, source)
+    copyDigest(source, log)
     manifest = {
       version: 1,
       id: plan.ref.id,
@@ -173,7 +175,7 @@ export async function restartSegmentFresh(manifest: ConversationManifest): Promi
     nativeId: segment.nativeId,
   })
   const previous = manifest.segments[manifest.active - 1] ?? segment
-  const handoff = await readHandoff(unifiedLogPath(manifest), {
+  const handoff = await handoffFromLog(unifiedLogPath(manifest), {
     conversationId: manifest.id,
     engine: previous.engine,
     model: previous.model,
@@ -218,12 +220,14 @@ export function deleteConversationFiles(dir: string, owned: (settingsDir: string
     if (segment.nativeId) dropArchivedTranscript(segment.nativeId)
     const file = nativeTranscriptPath(segment)
     if (file) fs.rmSync(file, { force: true })
+    if (file) forgetDigest(file)
     if (segment.nativeId)
       fs.rmSync(path.join(slugDirOf(segment.settingsDir), segment.nativeId), { recursive: true, force: true })
     if (segment.settingsDir !== dir && owned(segment.settingsDir))
       fs.rmSync(segment.settingsDir, { recursive: true, force: true })
   }
   fs.rmSync(unifiedLogPath(manifest), { force: true })
+  forgetDigest(unifiedLogPath(manifest))
   dropArchivedTranscript(manifest.id)
   forgetManifest(dir)
 }

@@ -85,6 +85,15 @@ impl Boxes {
         first.into_iter().chain(more).map(|at| self.path(at))
     }
 
+    /// A source with exactly one occurrence addresses its box directly.
+    pub(super) fn unique(&self, id: u64) -> bool {
+        id != 0
+            && match self.more.get(&id) {
+                None => true,
+                Some(copies) => self.first.is_empty() && copies.len() == 1,
+            }
+    }
+
     fn path(&self, mut at: u32) -> Path {
         let mut path = Vec::new();
         while at != NONE {
