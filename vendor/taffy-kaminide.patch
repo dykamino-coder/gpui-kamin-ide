@@ -1,7 +1,7 @@
 # KaminIDE patches — taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)
 #
 # 1. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
-# 2. Leaf output: a leaf may repeat what a laid out subtree gave its parent (Style::leaf_output: edge margin sets kept as positive and negative parts, collapse-through, scrollable overflow, baselines), so a block container places and collapses it exactly as the subtree, margins of both signs included.
+# 2. Leaf output: a leaf may repeat what a laid out subtree gave its parent (Style::leaf_output: edge margin sets kept as positive and negative parts, collapse-through, scrollable overflow, baselines), so a block container places and collapses it exactly as the subtree, margins of both signs included. TaffyTree::measured_by_content reports whether a node's cached layout answered an indefinite (min- or max-content) inline query.
 # 3. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
 # 4. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
 # 5. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
@@ -18077,7 +18077,7 @@ index 0000000000000000000000000000000000000000..57982f945270c6761605269a2604a293
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/cache.rs b/vendor/taffy/src/tree/cache.rs
-index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..7342650e4b6dba2d82bf2fa41285d3abc63d0cd9
+index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..5d7d833e434834b222bd509693a11f8f1cc00e2f
 --- a/vendor/taffy/src/tree/cache.rs
 +++ b/vendor/taffy/src/tree/cache.rs
 @@ -7,0 +8 @@
@@ -18295,15 +18295,27 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..7342650e4b6dba2d82bf2fa41285d3ab
 -        self.measure_entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
 +        // KaminIDE patch: a measured node keeps its entry storage for the next measurements.
 +        self.measure_entries.clear();
-@@ -357 +382,6 @@
+@@ -357 +382,18 @@
 -        self.final_layout_entry.is_none() && !self.measure_entries.iter().any(|entry| entry.is_some())
 +        self.final_layout_entry.is_none() && !self.measure_slots().iter().any(|entry| entry.is_some())
++    }
++
++    /// KaminIDE patch: whether a held entry measured the node at a min- or
++    /// max-content width without a known one: a parent asked for its
++    /// intrinsic inline contribution (CSS Sizing 3 §5).
++    pub(crate) fn measured_by_content(&self) -> bool {
++        let by_content = |key: &CacheKey| {
++            let width = (key.kd_available_space >> 32) as u32;
++            width == NEG_INFINITY_BITS || width == INFINITY_BITS
++        };
++        self.final_layout_entry.as_ref().is_some_and(|e| by_content(&e.key))
++            || self.measure_slots().iter().flatten().any(|e| by_content(&e.key))
 +    }
 +
 +    /// KaminIDE patch: the measurement slots, empty before the first measurement.
 +    fn measure_slots(&self) -> &[Option<CacheEntry<Measurement>>] {
 +        self.measure_entries.as_slice()
-@@ -392,0 +423,15 @@
+@@ -392,0 +435,28 @@
 +    fn measure_storage_is_allocated_by_the_first_measurement_and_kept_by_clear() {
 +        let mut cache = Cache::new();
 +        cache.store(&LayoutInput { run_mode: RunMode::PerformLayout, ..input(1.0) }, output(1.0));
@@ -18319,10 +18331,23 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..7342650e4b6dba2d82bf2fa41285d3ab
 +    }
 +
 +    #[test]
-@@ -414 +459 @@
++    fn only_a_measure_without_a_known_definite_width_is_by_content() {
++        let mut cache = Cache::new();
++        cache.store(&input(5.0), output(5.0));
++        let definite = Size { width: AvailableSpace::Definite(5.0), height: AvailableSpace::MaxContent };
++        let fill = LayoutInput { known_dimensions: Size::NONE, available_space: definite, ..input(5.0) };
++        cache.store(&fill, output(5.0));
++        assert!(!cache.measured_by_content());
++        let max = LayoutInput { known_dimensions: Size::NONE, ..input(5.0) };
++        cache.store(&max, output(7.0));
++        assert!(cache.measured_by_content());
++    }
++
++    #[test]
+@@ -414 +484 @@
 -        assert_eq!(cache.measure_entries.iter().flatten().count(), 2);
 +        assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
-@@ -419,12 +464,15 @@
+@@ -419,12 +489,15 @@
 -    fn measurements_with_margin_collapse_metadata_are_not_cached() {
 -        let mut cache = Cache::new();
 -
@@ -18350,17 +18375,17 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..7342650e4b6dba2d82bf2fa41285d3ab
 +        cache.store(&input(1.0), output(3.0));
 +        assert_eq!(cache.get(&input(1.0)), Some(output(3.0)));
 +        assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
-@@ -467 +515 @@
+@@ -467 +540 @@
 -        let mut modes = [CacheMode::INITIAL; 8];
 +        let mut modes = [CacheMode(0); 8];
-@@ -498,2 +546,2 @@
+@@ -498,2 +571,2 @@
 -    fn storing_with_a_different_mode_drops_the_existing_entries() {
 -        for other in other_modes(input(3.0)) {
 +    fn storing_with_a_different_mode_keeps_the_entries_of_other_modes() {
 +        for other in other_modes(input(1.0)) {
-@@ -503,0 +552 @@
+@@ -503,0 +577 @@
 +            // The same sizes in another mode are another measurement
-@@ -506,9 +555,3 @@
+@@ -506,9 +580,3 @@
 -            assert!(cache.final_layout_entry.is_none());
 -            assert_eq!(cache.measure_entries.iter().flatten().count(), 1);
 -
@@ -18373,13 +18398,13 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..7342650e4b6dba2d82bf2fa41285d3ab
 +            assert_eq!(cache.get(&input(1.0)), Some(output(2.0)));
 +            assert_eq!(cache.get(&perform_layout_input(100.0, 50.0)), Some(output(1.0)));
 +            assert_eq!(cache.measure_slots().iter().flatten().count(), 2);
-@@ -521,0 +565 @@
+@@ -521,0 +590 @@
 +            // The final layout has one slot: the latest one stands
-@@ -524 +567,0 @@
+@@ -524 +592,0 @@
 -            assert!(cache.measure_entries.iter().all(|entry| entry.is_none()));
-@@ -525,0 +569 @@
+@@ -525,0 +594 @@
 +            assert_eq!(cache.get(&input(1.0)), Some(output(2.0)));
-@@ -538,18 +582,74 @@
+@@ -538,18 +607,74 @@
 -    #[cfg(all(debug_assertions, feature = "std"))]
 -    fn mode_change_evictions_are_counted_for_non_empty_caches_only() {
 -        let content_size = LayoutInput { sizing_mode: SizingMode::ContentSize, ..input(1.0) };
@@ -26372,7 +26397,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf99e25d4b
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..65969ee4667a36488e66f7c7d5cfb38d32bc292c
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,18 @@
@@ -27201,7 +27226,13 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1610,31 @@
+@@ -908,0 +1610,37 @@
++    /// KaminIDE patch: whether a parent asked `node` for its intrinsic inline
++    /// contribution in a layout its cache still holds (`Cache::measured_by_content`).
++    pub fn measured_by_content(&self, node: NodeId) -> bool {
++        self.nodes.get(node.into()).is_some_and(|data| data.cache.measured_by_content())
++    }
++
 +    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
 +    #[inline]
 +    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
@@ -27233,10 +27264,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1645 @@
+@@ -913 +1651 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1649,8 @@
+@@ -916,0 +1655,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -27245,7 +27276,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1717,8 @@
+@@ -977 +1723,8 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -27255,7 +27286,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +            grid_memos: Default::default(),
 +            measure_function,
 +        };
-@@ -984,0 +1732,26 @@
+@@ -984,0 +1738,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -27282,17 +27313,17 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1761 @@
+@@ -988 +1767 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1776,5 @@
+@@ -1003 +1782,5 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            #[cfg(feature = "grid")]
 +            grid_memos: Default::default(),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1807,54 @@
+@@ -1029,0 +1813,54 @@
 +    }
 +
 +    #[test]
@@ -27347,7 +27378,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2374,81 @@
+@@ -1543 +2380,81 @@
 -}
 +
 +    #[test]
