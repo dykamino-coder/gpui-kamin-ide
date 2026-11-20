@@ -80,6 +80,8 @@ pub(crate) struct Store {
     /// (`FlowKey::strip_boxes`) found them different in paint-only values.
     pub(super) repainted_roots: Cell<bool>,
     pub(super) layer: super::layer::Kept,
+    pub(super) offscreen: super::offscreen::Store, // far blocks' leaves
+
 }
 
 impl Store {

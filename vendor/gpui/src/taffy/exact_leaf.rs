@@ -47,6 +47,14 @@ impl ExactLeaf {
         Self { stretch: true, ..self }
     }
 
+    pub(crate) fn height(&self) -> f32 {
+        self.size.height
+    }
+
+    pub(crate) fn same_block_margins(&self, other: &ExactLeaf) -> bool {
+        self.margin.top == other.margin.top && self.margin.bottom == other.margin.bottom
+    }
+
     fn style(&self) -> Style {
         let size = self.size;
         let width = |definite: Dimension| if self.stretch { Dimension::auto() } else { definite };

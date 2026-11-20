@@ -6665,6 +6665,25 @@ impl Window {
         self.layout_engine.as_ref()?.grid_item_lines(child, axis)
     }
 
+    /// KaminIDE patch: the union of the layout bounds of `layout_id` and of
+    /// every node under it, as [`Self::layout_bounds`] places them: where the
+    /// floats of a subtree lie past its own box.
+    pub fn layout_subtree_bounds(&mut self, layout_id: LayoutId) -> Bounds<Pixels> {
+        let mut union = self.layout_bounds(layout_id);
+        let mut open = vec![layout_id];
+        while let Some(id) = open.pop() {
+            let children = match self.layout_engine.as_ref() {
+                Some(engine) => engine.layout_children(id),
+                None => Vec::new(),
+            };
+            for child in children {
+                union = union.union(&self.layout_bounds(child));
+                open.push(child);
+            }
+        }
+        union
+    }
+
     /// KaminIDE patch: layout parent identity, independent of physical coordinates.
     pub fn parent_layout_id(&self, child: LayoutId) -> Option<LayoutId> {
         self.layout_engine.as_ref()?.parent_layout_id(child)

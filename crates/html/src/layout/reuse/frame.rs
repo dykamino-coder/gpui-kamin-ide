@@ -95,7 +95,8 @@ impl FlowReuse {
         }
         // Far blocks laid out at their new place must still be far (`far`).
         refused.extend(self.validate_far(window, root));
-        let ok = refused.is_empty();
+        let leaves = self.validate_offscreen(window, screen);
+        let ok = refused.is_empty() && leaves;
         // Отказанный блок сдвинулся: как и при отказе повтора с поддеревом,
         // он не повторяется на экране, пока ключ потока тот же (`Store::banned`).
         let mut banned = self.store.banned.take();
@@ -164,6 +165,7 @@ impl FlowReuse {
         self.finish_replays(screen);
         self.finish_contents();
         self.finish_far();
+        self.finish_offscreen();
         // The frame's ink measures are read: the sinks go with the frame.
         self.ink.release();
         // Кадр без записей и пропусков под тем же ключом оставляет прежние:

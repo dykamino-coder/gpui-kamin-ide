@@ -9,7 +9,7 @@ use std::path::PathBuf;
 pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|scroll|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window]\n\
+    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|scroll|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--scroll-back [--scroll-step PX]] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window]\n\
     engine_bench --list-gpus\n\
     engine_bench --build-info   (features and profile of this exe, as in the JSON's `build`)\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
@@ -79,6 +79,11 @@ pub(super) struct Args {
     pub(super) edit_markup: Option<PathBuf>,
     pub(super) json: bool,
     pub(super) trace_frames: bool,
+    /// Scroll: the root scroller moves by `scroll_step` directly, not by a wheel
+    /// event a nested scroller may take, and the second half of the steps
+    /// goes back up.
+    pub(super) scroll_back: bool,
+    pub(super) scroll_step: f32,
     pub(super) memory_settle_ms: u64,
     pub(super) snapshot: Option<PathBuf>,
     pub(super) frame_diff_dir: Option<PathBuf>,
@@ -107,6 +112,8 @@ impl Args {
             edit_markup: None,
             json: false,
             trace_frames: false,
+            scroll_back: false,
+            scroll_step: 120.0,
             memory_settle_ms: 0,
             snapshot: None,
             frame_diff_dir: None,
@@ -116,6 +123,10 @@ impl Args {
         while let Some(flag) = args.next() {
             if flag == "--json" {
                 out.json = true;
+                continue;
+            }
+            if flag == "--scroll-back" {
+                out.scroll_back = true;
                 continue;
             }
             if flag == "--trace-frames" {
@@ -170,6 +181,12 @@ impl Args {
                             "memory audit hold must be {MEMORY_STEADY_WINDOW_MS}..60000 milliseconds"
                         )
                         .into());
+                    }
+                }
+                "--scroll-step" => {
+                    out.scroll_step = value.parse()?;
+                    if !(1.0..=100_000.0).contains(&out.scroll_step) {
+                        return Err("scroll step must be 1..100000 CSS pixels".into());
                     }
                 }
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),

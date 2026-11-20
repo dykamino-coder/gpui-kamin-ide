@@ -628,6 +628,17 @@ impl LayoutSnapshot {
     pub fn stretched(self) -> Self {
         Self { leaf: self.leaf.stretched(), ..self }
     }
+
+    /// Border-box height of the snapshot leaf, in logical pixels.
+    pub fn height(&self) -> f32 {
+        self.leaf.height() / self.scale
+    }
+
+    /// Both snapshots place their box by the same block-axis margins: a leaf
+    /// requested from the box's own style stands where the box would.
+    pub fn same_block_margins(&self, other: &LayoutSnapshot) -> bool {
+        self.scale == other.scale && self.leaf.same_block_margins(&other.leaf)
+    }
 }
 
 impl Window {

@@ -736,6 +736,12 @@ impl TaffyLayoutEngine {
         grid_item_lines::grid_item_lines(&self.taffy, child.into(), axis)
     }
 
+    /// KaminIDE patch: the children of node `id` in this pass's tree.
+    pub fn layout_children(&self, id: LayoutId) -> Vec<LayoutId> {
+        let children = self.taffy.children_slice(id.into());
+        children.iter().map(|&child| child.into()).collect()
+    }
+
     /// KaminIDE patch: parent identity for joining completed layout metadata.
     pub fn parent_layout_id(&self, child: LayoutId) -> Option<LayoutId> {
         self.taffy.parent(child.into()).map(Into::into)

@@ -49,6 +49,12 @@ impl Document {
         self.reuse.stats.get().far
     }
 
+    /// Blocks far from the screen that stood as their leaf in painted frames
+    /// (`layout::reuse::offscreen`).
+    pub fn offscreen_leaves(&self) -> u64 {
+        self.reuse.stats.get().offscreen
+    }
+
     /// Far records kept for the next build.
     #[cfg(test)]
     pub(crate) fn far_records(&self) -> usize {

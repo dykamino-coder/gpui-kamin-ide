@@ -22,4 +22,7 @@ pub struct ReuseStats {
     /// Elements of box contents replayed at any depth (`content`), apart
     /// from the root flow's blocks.
     pub contents: u64,
+    /// Blocks far from the screen that stood as their leaf in a painted
+    /// frame (`offscreen`).
+    pub offscreen: u64,
 }

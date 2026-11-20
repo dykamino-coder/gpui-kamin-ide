@@ -167,6 +167,18 @@ impl Document {
         Some((-f32::from(offset.x), -f32::from(offset.y)))
     }
 
+    /// Scroll the root scroller to `y` CSS px down, as a scroll input of its
+    /// own does (the next layout clamps it); `false` without a root scroller.
+    pub fn set_root_scroll(&self, y: f32) -> bool {
+        let Some(root) = self.state.root_scroll.as_ref() else {
+            return false;
+        };
+        root.handle
+            .set_offset(gpui::point(gpui::px(0.0), gpui::px(-y)));
+        root.scroll_inputs.set(root.scroll_inputs.get() + 1);
+        true
+    }
+
     pub fn nodes(&self) -> &[Node] {
         &self.nodes
     }

@@ -31,6 +31,8 @@ mod element;
 #[cfg(test)]
 mod escaped_replay_tests;
 #[cfg(test)]
+mod far_leaf_tests;
+#[cfg(test)]
 mod far_tests;
 #[cfg(test)]
 mod float_root_replay_tests;
@@ -165,18 +167,26 @@ impl Builder {
         let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow, drawn, again);
         let mut opts = self.opts.clone();
         opts.cx.contracts.reuse = flow.clone();
-        let tree = div()
-            .w(px(w))
-            .h(px(h))
-            .bg(rgb(0xffffff))
-            .text_size(self.opts.text.font_size)
-            .font_family(self.opts.text.font_family.clone())
-            .children(super::scope::render(
-                &self.state,
-                (&self.nodes, self.tree),
-                &opts,
-            ))
-            .into_any_element();
+        let tree = {
+            // The frame's own build: its far blocks may stand as leaves.
+            let _build = flow.as_ref().map(|flow| {
+                let root = self.state.root_scroll.as_ref();
+                flow.set_scroll(root.map(|root| -f32::from(root.handle.offset().y)));
+                flow.building()
+            });
+            div()
+                .w(px(w))
+                .h(px(h))
+                .bg(rgb(0xffffff))
+                .text_size(self.opts.text.font_size)
+                .font_family(self.opts.text.font_family.clone())
+                .children(super::scope::render(
+                    &self.state,
+                    (&self.nodes, self.tree),
+                    &opts,
+                ))
+                .into_any_element()
+        };
         (tree, flow)
     }
 }

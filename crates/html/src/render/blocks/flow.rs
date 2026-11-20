@@ -6,7 +6,10 @@ use crate::style::computed::BoxStyle;
 mod inline_node;
 pub(super) use inline_node::inline_node;
 
+mod below;
 mod element;
+pub(super) use below::BelowRun;
+mod leaves;
 mod trim;
 pub(super) use element::paint_element;
 
@@ -64,6 +67,7 @@ pub(super) async fn blocks_flow(
         .reuse
         .as_ref()
         .and_then(|r| r.claim(inherited, opts));
+    let leaves = leaves::Leaves::new(opts, reuse.is_some()); // far blocks (`reuse::offscreen`)
     let last_element = nodes.iter().rposition(|n| matches!(n, Node::Element(_)));
     let mut first_element = true;
     let mut late_layer =
@@ -80,6 +84,7 @@ pub(super) async fn blocks_flow(
     for (idx, n) in nodes.iter().enumerate() {
         if run_breaks.contains(&idx) && start < idx {
             let taken = &nodes[start..idx];
+            let _inline = leaves.run(taken, opts);
             start = idx;
             let t = trim::para_flags(trim_own, std::mem::take(&mut first_para), false);
             out.push(paint_inline_step7(
@@ -96,11 +101,13 @@ pub(super) async fn blocks_flow(
             if let Some(flow) = &reuse {
                 flow.built(n);
             }
+            leaves.built(n, None, None, opts);
             continue;
         }
         let taken = &nodes[start..idx];
         start = idx + 1;
         if !taken.is_empty() {
+            let _inline = leaves.run(taken, opts);
             let t = trim::para_flags(
                 trim_own,
                 std::mem::take(&mut first_para),
@@ -160,10 +167,12 @@ pub(super) async fn blocks_flow(
                 e
             };
             let edge = std::mem::take(&mut first_element) || Some(idx) == last_element;
+            let (before, built_at) = (leaves.before(), out.len());
             if let Some(flow) = &reuse
                 && let Some(el) = flow.placeholder(e, edge, opts)
             {
                 out.push(el);
+                leaves.built(n, before, Some((&mut out, built_at)), opts);
                 continue;
             }
             if let Some(flow) = &reuse
@@ -179,8 +188,13 @@ pub(super) async fn blocks_flow(
             {
                 out.push(el);
                 flow.built(n);
+                leaves.built(n, before, Some((&mut out, built_at)), opts);
                 continue;
             }
+            let leaves::Child::Build(far) = leaves.leaf(e, edge, inherited, opts, &mut out) else {
+                reuse.iter().for_each(|flow| flow.built(n));
+                continue;
+            };
             let mark = reuse.as_ref().map(|flow| flow.mark(e, opts, out.len()));
             let tracked = reuse
                 .as_ref()
@@ -205,9 +219,12 @@ pub(super) async fn blocks_flow(
                 flow.record(e, edge, mark, opts, &mut out);
                 flow.built(n);
             }
+            leaves.wrap(far, built_at, &mut out);
+            leaves.built(n, before, Some((&mut out, built_at)), opts);
         }
     }
     if start < nodes.len() {
+        let _inline = leaves.run(&nodes[start..], opts);
         let t = trim::para_flags(trim_own, first_para, true);
         out.push(paint_inline_step7(
             letter_scope.paragraph(
@@ -227,11 +244,6 @@ pub(super) async fn blocks_flow(
     // Верхний слой: то, что обязано рисоваться поверх соседей, идёт последним
     // и возвращается на своё место замеренным сдвигом.
     out.extend(late_layer.finish());
+    leaves.end();
     containment_paint::collect(out, inherited)
-}
-
-pub(super) struct BelowRun {
-    start: usize,
-    end: usize,
-    zs: Vec<i32>,
 }

@@ -38,13 +38,13 @@ fn viewport(base: (u32, u32), alternate: bool) -> (u32, u32) {
 /// A wheel sample counts only when the step moved the root scroller by the
 /// whole step down: an event a nested scroller took, or one at the end of the
 /// document, measures a frame without a root scroll.
-fn scrolled(from: Option<(f32, f32)>, to: Option<(f32, f32)>) -> Result<()> {
+fn scrolled(from: Option<(f32, f32)>, to: Option<(f32, f32)>, step: f32) -> Result<()> {
     let (Some(from), Some(to)) = (from, to) else {
         return Err("scroll mode needs the root scroller offset before and after the step".into());
     };
-    if to.0 != from.0 || (to.1 - from.1 - WHEEL_STEP).abs() > 0.5 {
+    if to.0 != from.0 || (to.1 - from.1 - step).abs() > 0.5 {
         return Err(format!(
-            "the wheel step did not scroll the root by {WHEEL_STEP} px: {from:?} -> {to:?} \
+            "the wheel step did not scroll the root by {step} px: {from:?} -> {to:?} \
              (a nested scroller took it, or the document ended)"
         )
         .into());
@@ -70,6 +70,12 @@ pub(super) struct Frames {
     base: (u32, u32),
     relayout: bool,
     scroll: bool,
+    /// Scroll: the sample from which the steps go back up (`--scroll-back`).
+    back_from: Option<usize>,
+    /// The root scroll the step of the sample asks for, down positive.
+    step: f32,
+    /// The step of `--scroll-back` (`Args::scroll_step`).
+    jump: f32,
     /// When the step's wheel event was dispatched (prepare).
     dispatched: Option<std::time::Instant>,
     before: (u64, u64),
@@ -100,6 +106,9 @@ impl Frames {
             base: args.viewport,
             relayout,
             scroll: args.mode == Mode::Scroll,
+            back_from: args.scroll_back.then_some(args.runs / 2),
+            step: WHEEL_STEP,
+            jump: args.scroll_step,
             dispatched: None,
             before: (0, 0),
             before_inside: 0,
@@ -118,21 +127,30 @@ impl Frames {
     ) -> Result<()> {
         window.update(cx, |view, window, cx| {
             if self.scroll {
-                // The step goes through window input dispatch, as a platform wheel event
-                // does: the root scroller's handler moves DocState::root_scroll.
-                let size = window.viewport_size();
-                let wheel = gpui::ScrollWheelEvent {
-                    position: gpui::point(size.width / 2.0, size.height / 2.0),
-                    delta: gpui::ScrollDelta::Pixels(gpui::point(
-                        gpui::px(0.0),
-                        gpui::px(-WHEEL_STEP),
-                    )),
-                    modifiers: gpui::Modifiers::default(),
-                    touch_phase: gpui::TouchPhase::Moved,
-                };
                 self.wheel_from = view.doc.root_scroll_offset();
                 self.dispatched = Some(std::time::Instant::now());
-                window.dispatch_event(gpui::PlatformInput::ScrollWheel(wheel), cx);
+                if let Some(from) = self.back_from {
+                    // `--scroll-back`: the root scroller itself moves, down
+                    // and then up, wherever a wheel would land.
+                    self.step = if index >= from { -self.jump } else { self.jump };
+                    let y = self.wheel_from.map_or(0.0, |o| o.1) + self.step;
+                    view.doc.set_root_scroll(y.max(0.0));
+                    window.refresh();
+                } else {
+                    // The step goes through window input dispatch, as a platform wheel
+                    // event does: the root scroller's handler moves DocState::root_scroll.
+                    let size = window.viewport_size();
+                    let wheel = gpui::ScrollWheelEvent {
+                        position: gpui::point(size.width / 2.0, size.height / 2.0),
+                        delta: gpui::ScrollDelta::Pixels(gpui::point(
+                            gpui::px(0.0),
+                            gpui::px(-WHEEL_STEP),
+                        )),
+                        modifiers: gpui::Modifiers::default(),
+                        touch_phase: gpui::TouchPhase::Moved,
+                    };
+                    window.dispatch_event(gpui::PlatformInput::ScrollWheel(wheel), cx);
+                }
             }
             if self.relayout {
                 // Меняется только CSS-вход: HWND остаётся прежним и не получает WM_SIZE.
@@ -154,16 +172,18 @@ impl Frames {
         mode: &str,
         index: usize,
     ) -> Result<()> {
-        let (after, inside, contents, blocks, offset) = window.read_with(cx, |view, _| {
-            let doc = &view.doc;
-            (
-                doc.retained_frames(),
-                doc.builds_inside_draw(),
-                doc.replayed_contents(),
-                doc.replayed_blocks(),
-                doc.root_scroll_offset(),
-            )
-        })?;
+        let (after, inside, contents, blocks, offset, leaves) =
+            window.read_with(cx, |view, _| {
+                let doc = &view.doc;
+                (
+                    doc.retained_frames(),
+                    doc.builds_inside_draw(),
+                    doc.replayed_contents(),
+                    doc.replayed_blocks(),
+                    doc.root_scroll_offset(),
+                    doc.offscreen_leaves(),
+                )
+            })?;
         let cold = mode == "cold";
         let counts = delta(if cold { (0, 0) } else { self.before }, after)?;
         let inside = inside
@@ -178,15 +198,20 @@ impl Frames {
             .into());
         }
         if self.scroll {
-            scrolled(self.wheel_from.take(), offset)?;
+            match self.back_from {
+                // The document's end clamps a direct step: only a root
+                // scroller is required.
+                Some(_) if offset.is_some() => {}
+                _ => scrolled(self.wheel_from.take(), offset, self.step)?,
+            }
         }
         let group = usize::from(self.relayout && !index.is_multiple_of(2));
         self.samples.push(json!({"mode": mode, "sample_index": index,
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
-            "wheel_step_px": if self.scroll { json!(WHEEL_STEP) } else { Value::Null },
+            "wheel_step_px": if self.scroll { json!(self.step) } else { Value::Null },
             "root_scroll_offset": offset.map(|(x, y)| json!([x, y])),
             "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
-            "builds_inside_draw": inside,
+            "builds_inside_draw": inside, "offscreen_leaves_total": leaves,
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
             "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks })}));
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
@@ -292,11 +317,12 @@ mod tests {
     /// Only a whole step down on the root counts as a wheel sample.
     #[test]
     fn a_wheel_sample_requires_the_root_to_scroll_by_the_step() {
-        assert!(scrolled(Some((0., 0.)), Some((0., WHEEL_STEP))).is_ok());
-        assert!(scrolled(Some((0., 240.)), Some((0., 240.))).is_err());
-        assert!(scrolled(Some((0., 0.)), Some((0., 40.))).is_err());
-        assert!(scrolled(Some((0., 0.)), Some((5., WHEEL_STEP))).is_err());
-        assert!(scrolled(None, Some((0., WHEEL_STEP))).is_err());
+        assert!(scrolled(Some((0., 0.)), Some((0., WHEEL_STEP)), WHEEL_STEP).is_ok());
+        assert!(scrolled(Some((0., 240.)), Some((0., 120.)), -WHEEL_STEP).is_ok());
+        assert!(scrolled(Some((0., 240.)), Some((0., 240.)), WHEEL_STEP).is_err());
+        assert!(scrolled(Some((0., 0.)), Some((0., 40.)), WHEEL_STEP).is_err());
+        assert!(scrolled(Some((0., 0.)), Some((5., WHEEL_STEP)), WHEEL_STEP).is_err());
+        assert!(scrolled(None, Some((0., WHEEL_STEP)), WHEEL_STEP).is_err());
     }
 
     #[test]

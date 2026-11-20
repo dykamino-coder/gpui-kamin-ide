@@ -23,4 +23,7 @@ pub(crate) struct BuildContext {
         std::rc::Rc<std::cell::RefCell<crate::layout::fragment::line_shape::LengthFacts>>,
     /// Повтор устоявшихся блоков корневого потока этой сборки (layout::reuse).
     pub(crate) reuse: Option<std::rc::Rc<crate::layout::reuse::FlowReuse>>,
+    /// No block of this build stands as its leaf far from the screen: the
+    /// private build of a leaf's measure (`layout::reuse::offscreen`).
+    pub(crate) offscreen_off: bool,
 }

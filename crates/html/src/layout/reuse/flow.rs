@@ -204,6 +204,7 @@ impl FlowCx {
             && now.coordinates == mark.coordinates
             && now.late == mark.late
             && now.queued == mark.queued
+            && now.leaves == mark.leaves
             && out.last().is_some_and(|el| el.paint_metadata().is_none());
         if !single {
             return;
