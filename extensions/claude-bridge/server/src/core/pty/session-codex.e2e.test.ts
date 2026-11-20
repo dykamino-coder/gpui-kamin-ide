@@ -946,6 +946,16 @@ describe('engine switch inside one chat', () => {
       (e) => pred(e) && client.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= from,
       15_000,
     )
+  /** A new answer: the replay after a switch repeats earlier ones after `from`. */
+  const answerAfter = (client: Client, from: number, prefix: string) => {
+    const old = new Set(
+      client.frames
+        .slice(0, from)
+        .filter((f) => f.type === 'jsonl:entries')
+        .flatMap((f) => f.entries.map((e: Record<string, any>) => e.uuid)),
+    )
+    return after(client, from)((e) => e.type === 'assistant' && text(e).startsWith(prefix) && !old.has(e.uuid))
+  }
 
   it('carries the conversation Claude → ChatGPT → Claude in the same chat and resumes it', async () => {
     const client = await Client.open(port)
@@ -1035,6 +1045,106 @@ describe('engine switch inside one chat', () => {
     again.close()
   }, 60_000)
 
+  it('REAL119: receipts after a switch carry the user text, the engine gets the history, both ways', async () => {
+    const client = await Client.open(port)
+    const receipts = (id: string) => client.frames.filter((f) => f.type === 'session:submission' && f.id === id)
+    const settled = (id: string, from: number) =>
+      client.next(
+        (f) => f.type === 'session:submission' && f.id === id && ['read', 'fallback', 'uncertain'].includes(f.state),
+        15_000,
+        from,
+      )
+    expect(await createChat(client, { engine: 'claude' })).toMatchObject({ engine: 'claude' })
+    await say(client, '/fake-note 5307', 'r1')
+    await client.entry((e) => e.type === 'assistant' && text(e) === 'noted: 5307', 15_000)
+
+    // Claude → ChatGPT: the first turn carries the hidden history.
+    await switchTo(client, 'codex', 'gpt-fake')
+    let mark = client.frames.length
+    client.send({ type: 'session:submitText', data: 'first on gpt', submissionId: 'g1' })
+    expect(await settled('g1', mark)).toMatchObject({ state: 'read', text: 'first on gpt' })
+    await after(client, mark)((e) => text(e).startsWith('echo: first on gpt'))
+    mark = client.frames.length
+    await say(client, '/fake-recall 5307', 'g2')
+    expect(text(await answerAfter(client, mark, 'recall:'))).toContain('noted: 5307')
+
+    // ChatGPT → Claude: same contract on the terminal/mod path.
+    await switchTo(client, 'claude', 'claude-sonnet-5-5')
+    mark = client.frames.length
+    client.send({ type: 'session:submitText', data: 'first on claude', submissionId: 'c1' })
+    await settled('c1', mark)
+    mark = client.frames.length
+    await say(client, '/fake-recall 5307', 'c2')
+    expect(text(await answerAfter(client, mark, 'recall:'))).toContain('noted: 5307')
+    for (const [id, typed] of [
+      ['g1', 'first on gpt'],
+      ['g2', '/fake-recall 5307'],
+      ['c1', 'first on claude'],
+      ['c2', '/fake-recall 5307'],
+    ] as const) {
+      expect(receipts(id).length).toBeGreaterThan(0)
+      for (const r of receipts(id)) expect(r.text).toBe(typed)
+    }
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 60_000)
+
+  it('REAL119: the model gets its exact id and effort: new chat, effort change, both switches, resume', async () => {
+    const client = await Client.open(port)
+    // What the engine was actually told (instructions, inputs), not a helper's output.
+    const told = async (word: string, id: string) => {
+      const mark = client.frames.length
+      await say(client, `/fake-recall ${word}`, id)
+      const answer = await answerAfter(client, mark, 'recall:')
+      return text(answer)
+        .slice('recall: '.length)
+        .split(' | ')
+        .filter((line) => !line.startsWith('/fake-recall'))
+    }
+    // A new ChatGPT chat that picked neither model nor effort: the catalog default.
+    await createChat(client, { engine: 'codex' })
+    expect(await told('chat runs', 'm1')).toEqual([
+      'This chat runs on the model `gpt-fake` with reasoning effort `medium`.',
+    ])
+    client.send({ type: 'session:change-effort', effort: 'high' })
+    await client.next((f) => f.type === 'session:model-changed' && f.effort === 'high')
+    expect((await told('chat runs', 'm2')).at(-1)).toBe(
+      'This chat runs on the model `gpt-fake` with reasoning effort `high`.',
+    )
+    // ChatGPT → Claude: the Claude CLI is told its effort (it names its id itself).
+    await switchTo(client, 'claude', 'claude-sonnet-5-5')
+    expect(await told('reasoning effort', 'm3')).toContain(
+      'This chat was started with reasoning effort `high`; a later `/effort` command in this conversation sets the current level.',
+    )
+    // Claude → ChatGPT: the joining engine starts on its model's default effort.
+    // Its instructions come first; the history block after them quotes the old line.
+    await switchTo(client, 'codex', 'gpt-fake-mini')
+    expect((await told('chat runs', 'm4'))[0]).toBe(
+      'This chat runs on the model `gpt-fake-mini` with reasoning effort `medium`.',
+    )
+    const id = client.frames.filter((f) => f.type === 'session:conversation-id').at(-1)!.conversationId
+    client.send({ type: 'session:end' })
+    client.close()
+    // Reopened: the resumed thread keeps the line it was given, no second copy.
+    const again = await Client.open(port)
+    again.send({ type: 'session:resume', token: 'tok-a', conversationId: id, protocolVersion: 1, cwd: '/work/project' })
+    await again.next((f) => f.type === 'session:created', 15_000)
+    const mark = again.frames.length
+    again.send({ type: 'session:submitText', data: '/fake-recall chat runs', submissionId: 'm5' })
+    // The reopened chat replays the earlier answers: only a new one counts.
+    const earlier = new Set(client.entries().map((e) => e.uuid))
+    const answer = await again.entry(
+      (e) =>
+        e.type === 'assistant' &&
+        text(e).startsWith('recall:') &&
+        !earlier.has(e.uuid) &&
+        again.frames.findIndex((f) => f.type === 'jsonl:entries' && f.entries.includes(e)) >= mark,
+      15_000,
+    )
+    expect(text(answer)).toContain('This chat runs on the model `gpt-fake-mini` with reasoning effort `medium`.')
+    again.send({ type: 'session:end' })
+    again.close()
+  }, 60_000)
   it("keeps the chat's standing instructions across Claude → ChatGPT → Claude, exactly once", async () => {
     const client = await Client.open(port)
     const basePrompt = 'Standing rule BP-MARK-5521: answer tersely.'
