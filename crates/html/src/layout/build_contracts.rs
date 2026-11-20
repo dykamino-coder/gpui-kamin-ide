@@ -27,12 +27,13 @@ use crate::values::ValueCx;
 use gpui::AnyElement;
 
 type BuildElement = fn(&Element, &BoxStyle, &RenderOpts) -> AnyElement;
-type BuildStackElement = for<'a> fn(
-    &'a mut reblessive::Stk,
-    &'a Element,
-    &'a BoxStyle,
-    &'a RenderOpts,
-) -> reblessive::stack::ErasedStkFuture<'a, AnyElement>;
+type BuildStackElement =
+    for<'a> fn(
+        &'a mut reblessive::Stk,
+        &'a Element,
+        &'a BoxStyle,
+        &'a RenderOpts,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = AnyElement> + 'a>>;
 
 type BuildReplaced = fn(&Element, Option<f32>, &LayoutCx) -> AnyElement;
 type BuildLayer = fn(Layer<'_>) -> AnyElement;
@@ -124,7 +125,8 @@ impl ChildBuild {
         inherited: &BoxStyle,
         opts: &RenderOpts,
     ) -> AnyElement {
-        (self.element_stack)(stk, e, inherited, opts).await
+        stk.run(|stk| (self.element_stack)(stk, e, inherited, opts))
+            .await
     }
 
     /// One inline formatting context over `nodes`.
