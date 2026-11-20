@@ -78,7 +78,6 @@ pub(crate) struct Store {
     pub(super) repainted_roots: Cell<bool>,
     pub(super) layer: super::layer::Kept,
     pub(super) offscreen: super::offscreen::Store, // far blocks' leaves
-
 }
 
 impl Store {
