@@ -66,13 +66,23 @@ impl Element for ScrollArea {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
+        id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         child: &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
+        // A frame that replays a retained record runs no layout: it keeps the
+        // element states its prepaint range touched (`Window::reuse_prepaint`).
+        // Touch the scroller's state here too, or the next build starts it
+        // over (a new handle at offset zero) after a replayed wheel step.
+        // The root's handle lives with the view (`RootScroll`), not here.
+        if let Some(id) = id.filter(|_| self.root.is_none()) {
+            window.with_element_state::<Persistent, _>(id, |state, _| {
+                ((), state.unwrap_or_default())
+            });
+        }
         // Match CSS border painting: inset the unrounded box, not a rounded
         // border box. A relocated prepaint_at node must retain its new bounds.
         let exact = Bounds {

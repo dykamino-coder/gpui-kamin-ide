@@ -468,6 +468,19 @@ export async function createCodexSession(
   const transcript = codexTranscriptPath(settingsDir, threadId, projectsDir(deps))
   const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound && !freshThread
   session.model = agent.model
+  // A chat that chose no effort runs on ONE level that the selector shows, the
+  // model line names and every turn/start sends: the one the engine reports
+  // for the thread, else the model's default from the catalog (a real
+  // app-server can answer thread/start with `reasoningEffort: null`, and a
+  // turn without effort ran on a level nobody showed, REAL-121). With neither,
+  // no level is sent and the chat shows none.
+  if (!session.effort) {
+    const resolved = agent.reasoningEffort ?? effectiveEffort(agent.model ?? lineModel, null, deps.runtime)
+    if (resolved) {
+      agent.setEffort(resolved)
+      session.effort = resolved
+    }
+  }
   session.cliConversationId = resumed ? threadId : null
   // A new thread's initial context holds the instructions and the start line;
   // a resumed one keeps what its record says it was given.
@@ -798,7 +811,8 @@ export class CodexSessionBinding {
     const next = sessionContextFor(
       choice?.context,
       instructions,
-      modelLine(model, effectiveEffort(model, this.session.effort, this.runtime)),
+      // The effort this turn/start names, so the line never says another one.
+      modelLine(model, this.agent.reasoningEffort ?? effectiveEffort(model, this.session.effort, this.runtime)),
     )
     if (!next) return null
     return {

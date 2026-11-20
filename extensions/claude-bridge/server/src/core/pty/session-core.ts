@@ -45,6 +45,7 @@ import { clearSession as clearHookSession, cancelSessionLocalExecs, HOOK_RELAY_T
 import { buildSessionEnv as buildEnv, modelForResume } from './session-env'
 import { resendSessionUsage, watchSessionStatusLine } from './session-statusline'
 import { buildSessionClaudeArgs } from './session-plugin-args'
+import { forgetEffortChange } from './effort-note'
 import {
   SESSIONS_BASE,
   sanitizeDirName,
@@ -1129,6 +1130,8 @@ export async function restartWithEffort(
 
   // Mark as restarting so onExit handler doesn't send session:exit
   session.isRestarting = true
+  // The respawned CLI's system prompt names the current effort.
+  forgetEffortChange(session)
   session.outputDebounce?.dispose()
 
   // Stop JSONL watcher before killing PTY
@@ -1201,6 +1204,8 @@ export async function restartWithModel(
 
   // Mark as restarting so onExit handler doesn't send session:exit
   session.isRestarting = true
+  // The respawned CLI's system prompt names the current effort.
+  forgetEffortChange(session)
   session.outputDebounce?.dispose()
 
   // Stop JSONL watcher before killing PTY
@@ -1281,6 +1286,17 @@ async function retireSwitchedSession(old: PtySession): Promise<void> {
   }
 }
 
+/** The chat's effort as the joining engine takes it. Both engines read the
+ *  selector's levels (codex maps `max` to `xhigh`); a codex-only level such as
+ *  `minimal` has no Claude `--effort`, so Claude starts on its default then. */
+export function switchedEffort(effort: string | null | undefined, engine: AgentEngineId): string | undefined {
+  if (!effort) return undefined
+  if (engine === 'codex') return effort
+  return CLAUDE_EFFORTS.has(effort) ? effort : undefined
+}
+/** Claude Code's `--effort` scale (live-switch.ts EFFORT_LEVELS). */
+const CLAUDE_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
+
 /** What an engine switch keeps from the chat's launch: the client-supplied
  *  context of the chat. Not the engine's own choices (model, effort), the
  *  resume/segment placement the switch plans itself, the terminal size, nor a
@@ -1337,6 +1353,7 @@ export async function switchSessionEngine(
   })
   const t1 = performance.now()
 
+  const effort = switchedEffort(old.effort, target.engine)
   const session = await createSession(ws, userName, tokenId, {
     // The chat's launch context (the user's standing instructions, thinking
     // display, transcript mirror, sub-agent placement) belongs to the chat, not
@@ -1347,7 +1364,8 @@ export async function switchSessionEngine(
     rows: 40,
     engine: target.engine,
     ...(target.model ? { model: target.model } : {}),
-    // Effort levels differ per engine: the joining one starts on its own default.
+    // The chat keeps the effort the user sees: the joining engine runs on it.
+    ...(effort ? { effort } : {}),
     ...(plan
       ? { conversation: plan.ref, segmentStart: { settingsDir: plan.segment.settingsDir }, deferTranscript: true }
       : {}),

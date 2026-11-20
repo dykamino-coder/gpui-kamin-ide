@@ -99,23 +99,13 @@ impl Window {
     }
 
     /// Paint something that depends on `handle`'s offset outside its node
-    /// (a scrollbar thumb): a scrolled replay of a record holding it while
-    /// that node moved needs a build (`plan_scrolled_replay`).
+    /// other than by a translation (a follower node moves those): a
+    /// scrolled replay of a record holding it while that node moved needs a
+    /// build (`plan_scrolled_replay`).
     pub fn paint_scroll_dependent(&mut self, handle: &ScrollHandle) {
         let at = self.next_frame.scene.paint_operations.len();
         let space = self.next_frame.scene.scroll.space;
         self.next_frame.scroll_dependents.push((ScrollNodeId::of(handle), at, space));
-    }
-
-    /// `paint_scroll_dependent` for the innermost scroll node painting now
-    /// (a sticky box: its place follows that scroller's offset).
-    pub fn paint_dependent_on_open_scroll_node(&mut self) {
-        let frame = &mut self.next_frame;
-        if let Some(&(index, _)) = frame.scroll_paint.open.last() {
-            let id = frame.scroll_nodes[index as usize].id;
-            let at = frame.scene.paint_operations.len();
-            frame.scroll_dependents.push((id, at, frame.scene.scroll.space));
-        }
     }
 
     /// Whether a dependent painted in `scenes` of the rendered frame belongs

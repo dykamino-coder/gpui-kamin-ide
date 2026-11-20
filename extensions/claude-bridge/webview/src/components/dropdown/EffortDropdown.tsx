@@ -20,16 +20,35 @@ const EFFORT_OPTIONS = [
   { value: 'max', icon: 'fa-brain', name: 'Max', description: 'Maximum reasoning depth' },
 ] as const
 
+/** Shown when a ChatGPT chat runs on a level Bridge does not know: the
+ *  app-server reported none and the catalog names no default for the model, so
+ *  turns go without effort and the engine picks its own. */
+const ENGINE_DEFAULT = { value: 'default', icon: 'fa-circle-half-stroke', name: 'Default', description: "The engine's own level" } as const
+
+type EffortOption = (typeof EFFORT_OPTIONS)[number] | typeof ENGINE_DEFAULT
+
+/** The level the selector shows for a tab. A Claude chat without a level runs
+ *  on `--effort high` (server session-env.ts), so High is its truth. A ChatGPT
+ *  chat reports the level its turns are sent with (server session-codex.ts);
+ *  until it does, or when it has none, the selector says Default instead of
+ *  naming a level the engine does not run with (REAL-121). */
+export function effortShown(
+  tab: { engine?: string | null; effort?: string | null } | undefined,
+  lastPicked: string | null | undefined,
+): EffortOption {
+  const codex = tab?.engine === 'codex'
+  const effort = codex ? tab?.effort : (tab?.effort ?? lastPicked)
+  return EFFORT_OPTIONS.find(o => o.value === effort)
+    ?? (codex ? ENGINE_DEFAULT : EFFORT_OPTIONS.find(o => o.value === 'high') ?? EFFORT_OPTIONS[2])
+}
+
 export function EffortDropdown(): JSX.Element {
   const [open, setOpen] = useState(false)
   const bridge = useBridge()
   const tabId = activeTabId.value
   const activeTab = tabId ? tabs.value.find(t => t.id === tabId) : undefined
-  const effort = activeTab?.effort ?? currentEffort.value
-
-  const current = EFFORT_OPTIONS.find(o => o.value === effort)
-    ?? EFFORT_OPTIONS.find(o => o.value === 'high')
-    ?? EFFORT_OPTIONS[2]
+  const current = effortShown(activeTab, currentEffort.value)
+  const effort = current.value
 
   function handleSelect(value: string): void {
     currentEffort.value = value
