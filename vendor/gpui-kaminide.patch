@@ -25626,7 +25626,7 @@ index 0000000000000000000000000000000000000000..eef752e18136bc4aecbfd29cc78fc373
 +    }
 +}
 diff --git a/vendor/gpui/src/text_system.rs b/vendor/gpui/src/text_system.rs
-index cf6bb10293699bb4b9a5c8149f996822444fd732..d6cd63626c3556f4169a509f19de0fc45814d422
+index cf6bb10293699bb4b9a5c8149f996822444fd732..c66a43e6fe6e822f4fec170b378524f49fdf057e
 --- a/vendor/gpui/src/text_system.rs
 +++ b/vendor/gpui/src/text_system.rs
 @@ -0,0 +1,2 @@
@@ -25865,29 +25865,41 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..d6cd63626c3556f4169a509f19de0fc4
 +        line_clamp: Option<usize>,
 +        letter_spacing: Pixels,
 +    ) -> Result<SmallVec<[WrappedLine; 1]>> {
-@@ -782,0 +987 @@
+@@ -763,0 +968,4 @@
++        // KaminIDE patch: the runs of a line are gathered in one buffer and the
++        // line keeps an exact copy. A fresh `with_capacity(32)` per line kept
++        // 32 runs (~5 KB) alive in every wrapped line of a document.
++        let mut decoration_runs = Vec::<DecorationRun>::with_capacity(32);
+@@ -767,2 +975 @@
+-
+-            let mut decoration_runs = <Vec<DecorationRun>>::with_capacity(32);
++            decoration_runs.clear();
+@@ -782,0 +990 @@
 +                    && last_run.background_owner == run.background_owner
-@@ -790,0 +996,5 @@
+@@ -790,0 +999,5 @@
 +                        background_pad: run.background_pad,
 +                        background_radius: run.background_radius,
 +                        background_line_gap: run.background_line_gap,
 +                        background_owner: run.background_owner,
 +                        background_border: run.background_border,
-@@ -797,0 +1008 @@
+@@ -797,0 +1011 @@
 +                let run_size = run.font_size.unwrap_or(font_size);
-@@ -800 +1011,2 @@
+@@ -800 +1014,2 @@
 -                    && !decoration_changed
 +                    && font_run.font_size == run_size
 +                    && (!self.break_ligatures || !decoration_changed)
-@@ -806,0 +1019,2 @@
+@@ -806,0 +1022,2 @@
 +                        font_size: run_size,
 +                        break_ligatures: self.break_ligatures,
-@@ -818 +1032 @@
+@@ -818 +1035 @@
 -            let layout = self.line_layout_cache.layout_wrapped_line(
 +            let layout = self.line_layout_cache.layout_wrapped_line_spaced(
-@@ -823,0 +1038 @@
+@@ -823,0 +1041 @@
 +                letter_spacing,
-@@ -893 +1108,12 @@
+@@ -829 +1047 @@
+-                decoration_runs,
++                decoration_runs: decoration_runs.to_vec(),
+@@ -893 +1111,12 @@
 -        let mut last_run = None::<&TextRun>;
 +        self.layout_line_spaced(text, font_size, runs, force_width, px(0.))
 +    }
@@ -25901,7 +25913,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..d6cd63626c3556f4169a509f19de0fc4
 +        force_width: Option<Pixels>,
 +        letter_spacing: Pixels,
 +    ) -> Arc<LineLayout> {
-@@ -897,30 +1123,14 @@
+@@ -897,30 +1126,14 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -25946,14 +25958,14 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..d6cd63626c3556f4169a509f19de0fc4
 +        let text = self.no_break_hyphens(text, &font_runs);
 +        let layout = self.line_layout_cache.layout_line_spaced(
 +            &SharedString::new(&*text),
-@@ -929,0 +1140 @@
+@@ -929,0 +1143 @@
 +            letter_spacing,
-@@ -947,0 +1159,2 @@
+@@ -947,0 +1162,2 @@
 +                    font_size,
 +                    break_ligatures: true,
-@@ -975 +1187,0 @@
+@@ -975 +1190,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -979,27 +1191 @@
+@@ -979,27 +1194 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -25982,9 +25994,9 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..d6cd63626c3556f4169a509f19de0fc4
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1037 +1222,0 @@
+@@ -1037 +1225,0 @@
 -        let mut last_run = None::<&TextRun>;
-@@ -1041,27 +1226 @@
+@@ -1041,27 +1229 @@
 -        for run in runs.iter() {
 -            let decoration_changed = if let Some(last_run) = last_run
 -                && last_run.color == run.color
@@ -26013,7 +26025,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..d6cd63626c3556f4169a509f19de0fc4
 -            }
 -        }
 +        self.fill_font_runs(runs, font_size, &mut font_runs);
-@@ -1236,0 +1396,26 @@
+@@ -1236,0 +1399,26 @@
 +    /// KaminIDE patch: свой кегль прогона (`font-size` у `<span>` в строке).
 +    ///
 +    /// `None` — кегль всего блока. Без этого поля кусок другого размера
@@ -26040,7 +26052,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..d6cd63626c3556f4169a509f19de0fc4
 +    /// background value bound to it, so the box's fragments over all lines
 +    /// are one owner's runs (`LayerHandle::set_backgrounds`).
 +    pub background_owner: u32,
-@@ -1308,0 +1494,49 @@
+@@ -1308,0 +1497,49 @@
 +
 +    /// KaminIDE patch: ширина начертания (`font-stretch`).
 +    ///
@@ -26090,9 +26102,9 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..d6cd63626c3556f4169a509f19de0fc4
 +            _ => FontStretch::UltraExpanded,
 +        }
 +    }
-@@ -1323,0 +1558 @@
+@@ -1323,0 +1561 @@
 +        stretch: crate::FontStretch::default(),
-@@ -1448,0 +1684,8 @@
+@@ -1448,0 +1687,8 @@
 +impl WindowTextSystem {
 +    /// KaminIDE patch: the shaped line caches for the engine bench's memory report
 +    /// (`crate::heap_report`).
