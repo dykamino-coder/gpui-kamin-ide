@@ -1035,6 +1035,54 @@ describe('engine switch inside one chat', () => {
     again.close()
   }, 60_000)
 
+  it('REAL119: receipts after a switch carry the user text, the engine gets the history, both ways', async () => {
+    const client = await Client.open(port)
+    const receipts = (id: string) => client.frames.filter((f) => f.type === 'session:submission' && f.id === id)
+    const settled = (id: string, from: number) =>
+      client.next(
+        (f) => f.type === 'session:submission' && f.id === id && ['read', 'fallback', 'uncertain'].includes(f.state),
+        15_000,
+        from,
+      )
+    expect(await createChat(client, { engine: 'claude' })).toMatchObject({ engine: 'claude' })
+    await say(client, '/fake-note 5307', 'r1')
+    await client.entry((e) => e.type === 'assistant' && text(e) === 'noted: 5307', 15_000)
+
+    // Claude → ChatGPT: the first turn carries the hidden history.
+    await switchTo(client, 'codex', 'gpt-fake')
+    let mark = client.frames.length
+    client.send({ type: 'session:submitText', data: 'first on gpt', submissionId: 'g1' })
+    expect(await settled('g1', mark)).toMatchObject({ state: 'read', text: 'first on gpt' })
+    await after(client, mark)((e) => text(e).startsWith('echo: first on gpt'))
+    mark = client.frames.length
+    await say(client, '/fake-recall 5307', 'g2')
+    expect(text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))).toContain(
+      'noted: 5307',
+    )
+
+    // ChatGPT → Claude: same contract on the terminal/mod path.
+    await switchTo(client, 'claude', 'claude-sonnet-5-5')
+    mark = client.frames.length
+    client.send({ type: 'session:submitText', data: 'first on claude', submissionId: 'c1' })
+    await settled('c1', mark)
+    mark = client.frames.length
+    await say(client, '/fake-recall 5307', 'c2')
+    expect(text(await after(client, mark)((e) => e.type === 'assistant' && text(e).startsWith('recall:')))).toContain(
+      'noted: 5307',
+    )
+    for (const [id, typed] of [
+      ['g1', 'first on gpt'],
+      ['g2', '/fake-recall 5307'],
+      ['c1', 'first on claude'],
+      ['c2', '/fake-recall 5307'],
+    ] as const) {
+      expect(receipts(id).length).toBeGreaterThan(0)
+      for (const r of receipts(id)) expect(r.text).toBe(typed)
+    }
+    client.send({ type: 'session:end' })
+    client.close()
+  }, 60_000)
+
   it("keeps the chat's standing instructions across Claude → ChatGPT → Claude, exactly once", async () => {
     const client = await Client.open(port)
     const basePrompt = 'Standing rule BP-MARK-5521: answer tersely.'

@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
-import { WorkspacePresentation } from '../src/presentation.js'
+import { STORAGE_REFUSED_WARNING, WorkspacePresentation } from '../src/presentation.js'
 import { WorkspaceSubmissionState, type SubmissionStorage } from '../src/submission-state.js'
 
 function fixture(t: any) {
@@ -95,23 +95,33 @@ test('scope changes isolate identities; corrupt or truncated state fails closed 
   }
 })
 
-test('preforward storage failure blocks dispatch; observer failures do not throw into shared handlers', t => {
+test('preforward storage failure refuses that send visibly; the next send retries the save', t => {
   const { storage, host } = fixture(t)
-  let fail = true, publications = 0
+  let fail = true
+  const published: any[] = [], restored: unknown[] = []
   const broken: SubmissionStorage = { load: () => storage.load(), save: value => { if (fail) throw new Error('private filesystem detail'); storage.save(value) } }
-  const state = new WorkspacePresentation(() => { publications++ }, () => [], broken)
-  assert.throws(() => send(state, 'never-forwarded'), /Submission persistence unavailable/)
-  assert.equal(publications, 0)
+  const state: WorkspacePresentation = new WorkspacePresentation((channel, ...args) => {
+    published.push(args[1]); state.observe({ kind: 'event', channel, args })
+  }, () => [], broken, (tab, text) => restored.push([tab, text]))
+  assert.equal(send(state, 'never-forwarded'), false, 'Without the duplicate barrier on disk nothing is dispatched')
+  assert.deepEqual(published, [{ id: 'never-forwarded', text: 'same text', state: 'cancelled', rejected: true,
+    cancelable: false, warning: STORAGE_REFUSED_WARNING }])
+  assert.deepEqual(restored, [['tab', 'same text']], 'The refused text goes back to the input')
+  assert.equal(receipt(state, 'never-forwarded'), undefined, 'A refused send keeps nothing in memory')
+  assert.equal(send(state, 'never-forwarded-again'), false, 'Still failing storage still refuses')
   fail = false
-  assert.throws(() => send(state, 'later'), /Submission persistence unavailable/, 'A failed barrier remains blocked until restart')
-  assert.equal(storage.load().submissions.length, 0)
+  assert.equal(send(state, 'later'), true, 'Storage that works again accepts without a restart')
+  assert.deepEqual(storage.load().submissions.map(item => item.receipt.id), ['later'])
+  assert.equal(send(state, 'never-forwarded'), true, 'A refused identity was never used and may be sent again')
   const before = host()
   send(before, 'safe')
   const recovered = new WorkspacePresentation((channel, ...args) => recovered.observe({ kind: 'event', channel, args }), () => [], broken)
   recovered.restore(new Set(['tab']))
   fail = true
   assert.doesNotThrow(() => update(recovered, { id: 'safe', state: 'read', uuid: 'uuid-safe' }))
-  assert.throws(() => send(recovered, 'blocked'), /Submission persistence unavailable/)
+  assert.equal(send(recovered, 'refused'), false)
+  fail = false
+  assert.equal(send(recovered, 'accepted'), true, 'An observer save failure does not block later sends')
 })
 
 test('an actual failed atomic write leaves the last durable duplicate barrier intact', t => {
@@ -120,10 +130,35 @@ test('an actual failed atomic write leaves the last durable duplicate barrier in
   send(state, 'durable')
   const before = fs.readFileSync(file, 'utf8')
   fs.mkdirSync(`${file}.tmp`)
-  assert.throws(() => send(state, 'not-forwarded'), /Submission persistence unavailable/)
+  assert.equal(send(state, 'not-forwarded'), false)
   assert.equal(fs.readFileSync(file, 'utf8'), before)
   assert.equal(storage.load().submissions.length, 1)
   assert.equal(send(host(['tab']), 'durable'), false)
+  fs.rmdirSync(`${file}.tmp`)
+  assert.equal(send(state, 'not-forwarded'), true)
+  assert.equal(storage.load().submissions.length, 2)
+})
+
+test('REAL119: a receipt with the engine input (text plus hidden history) keeps the user text and its digest', t => {
+  const { storage, host } = fixture(t)
+  const block = '<bridge-context>\n<conversation-history>\nUser: earlier\n</conversation-history>\n</bridge-context>'
+  const state = host()
+  for (const [id, text] of [['to-codex', 'what did we decide?'], ['to-claude', 'and now? see report.pdf']] as const) {
+    assert.equal(send(state, id, text), true)
+    // Older servers (<= 6.3.196) echo the engine input in every receipt.
+    update(state, { id, text: `${text}\n\n${block}`, state: 'read', uuid: `uuid-${id}` })
+    assert.equal(receipt(state, id).text, text)
+    assert.equal(receipt(state, id).uuid, `uuid-${id}`)
+  }
+  const saved = storage.load().submissions
+  assert.deepEqual(saved.map(item => [item.receipt.id, item.receipt.text, item.receipt.state]),
+    [['to-codex', 'what did we decide?', 'read'], ['to-claude', 'and now? see report.pdf', 'read']])
+  assert.equal(send(state, 'next', 'next message'), true, 'The send after a handoff is accepted')
+  assert.equal(send(state, 'next', 'next message'), false, 'and is dispatched exactly once')
+  const restarted = host(['tab'])
+  assert.equal(receipt(restarted, 'to-codex').text, 'what did we decide?')
+  assert.equal(send(restarted, 'next', 'next message'), false, 'A restarted host still refuses the duplicate')
+  assert.equal(send(restarted, 'after-restart', 'after restart'), true)
 })
 
 test('a receipt recovered as uncertain keeps server time and settles from a later transcript row', t => {

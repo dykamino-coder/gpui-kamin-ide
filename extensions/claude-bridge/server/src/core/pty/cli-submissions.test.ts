@@ -54,6 +54,25 @@ afterEach(() => {
 })
 
 describe('hybrid message receipts', () => {
+  it('REAL119: hands the CLI the text with hidden history, receipts keep what the user wrote', () => {
+    const user = 'what did we decide?'
+    const engine = `${user}\n\n<bridge-context>\n<conversation-history>\nUser: x\n</conversation-history>\n</bridge-context>`
+    for (const busy of [false, true]) {
+      const f = fixture(busy)
+      f.queue.submit('handoff', engine, user)
+      if (busy) f.armed[0]!()
+      else expect(f.mod.submit).toHaveBeenCalledWith(engine, expect.any(Function), 'handoff', expect.any(Function))
+      if (busy) expect(deliver).toHaveBeenCalledWith(expect.anything(), engine)
+      // The CLI stores the text it got: that row is still the read receipt.
+      f.queue.transcript([prompt(engine, 'uuid-handoff')])
+      expect(f.frames.filter((frame) => frame.id === 'handoff').map((frame) => frame.state)).toContain('read')
+      expect(new Set(f.frames.filter((frame) => frame.id === 'handoff').map((frame) => frame.text))).toEqual(
+        new Set([user]),
+      )
+      vi.useRealTimers()
+    }
+  })
+
   it('serializes identical native messages and associates each by ID and stored UUID', () => {
     const f = fixture()
     for (let i = 1; i <= 3; i++) f.queue.submit('id-' + i, 'same text')

@@ -9,8 +9,9 @@ import type { AgentEngineId } from '../../shared/agent-events'
 /** Input side of a session driven by a non-PTY engine (codex app-server).
  *  session-io delegates to it instead of writing a terminal. */
 export interface SessionAgentInput {
-  /** A whole user message; the engine sends receipts itself. */
-  submit(text: string, submissionId?: string): void
+  /** A whole user message; the engine sends receipts itself, carrying
+   *  `userText` (what the user wrote, without Bridge's hidden context). */
+  submit(text: string, submissionId?: string, userText?: string): void
   /** Raw terminal input. Only Ctrl+C (interrupt) has a meaning; false = ignored. */
   input(data: string): boolean
   /** Re-send the engine's live turn state to a newly attached client: an edge
