@@ -37613,10 +37613,10 @@ index 0000000000000000000000000000000000000000..966a2af02aa16cae41109849d36b7a09
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2445f59a1b5669f4fc6666b02f7e29f7874f9d98
+index 0000000000000000000000000000000000000000..0b6ebec3aa68c37906cc55ceedd6a17978913ca2
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,687 @@
+@@ -0,0 +1,691 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -37922,7 +37922,11 @@ index 0000000000000000000000000000000000000000..2445f59a1b5669f4fc6666b02f7e29f7
 +            None => chain,
 +        };
 +        let interest = clip.dilate(self.scroll_interest_margin);
-+        let children_offset = self.element_offset() + offset;
++        // Read the stack directly instead of `element_offset()`: opening a
++        // node is not tied to a draw phase (records are built outside one),
++        // and outside prepaint the stack is empty, so the base is zero.
++        let base = self.element_offset_stack.last().copied().unwrap_or_default();
++        let children_offset = base + offset;
 +        self.next_frame.scroll_nodes.push(ScrollNodeRecord {
 +            id,
 +            parent,

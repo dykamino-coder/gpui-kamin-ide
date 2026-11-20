@@ -115,9 +115,7 @@ pub(crate) fn scrollable(
                 outer_margin,
             );
             let inner_opts = opts.inner(|cx| {
-                cx.scroll.target = Some(target.clone());
-                cx.scroll.frame = frame;
-                cx.scroll.node = Some(handle.clone());
+                cx.scroll.enter(target.clone(), frame, handle.clone());
             });
             let build = inner_opts.cx.contracts.build;
             let built = build.element(&inner, &inherited, &inner_opts);

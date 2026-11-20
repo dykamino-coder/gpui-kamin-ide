@@ -161,8 +161,8 @@ pub(crate) async fn generic_children(
         crate::layout::positioned::layer_scope::LayerScope::cb(
             &opts.cx.position.state,
             fixed_cb_layer_box(&merged),
+            opts.cx.scroll.node.clone(),
         )
-        .in_node(opts.cx.scroll.node.clone())
     });
     // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
     // задан стиль хотя бы одной линейки: начальное `none` означает,

@@ -39,7 +39,7 @@ struct CbLayer {
     strict: Option<u16>,
     taken: OofQueue,
     /// Scroll node whose content the layer's owner lays its boxes out in
-    /// (`ScrollContext::node`); `None` until `cb_set_node`.
+    /// (`ScrollContext::node`), given when the layer opens.
     node: Option<gpui::ScrollHandle>,
 }
 
@@ -86,16 +86,20 @@ impl Positioning {
     /// `contain: layout|paint`, css-transforms-1 §transform-rendering). Such a
     /// layer takes fixed descendants past intermediate positioned ancestors
     /// (`cb_push_fixed`).
-    pub fn cb_open_with(&self, fixed_cb: bool) {
-        self.open_cb(ABS | if fixed_cb { FIX } else { 0 }, None);
+    pub fn cb_open_with(&self, fixed_cb: bool, node: Option<gpui::ScrollHandle>) {
+        self.open_cb(ABS | if fixed_cb { FIX } else { 0 }, None, node);
     }
 
     /// Open a strict layer around the children of a box whose own style is
     /// `own`: an absolute descendant whose nearest containing block is a box
     /// without a layer below it (a table part, a positioned inline) passes
     /// this layer by and keeps its previous route.
-    pub fn cb_open_strict(&self, own: &BoxStyle, fixed_cb: bool) {
-        self.open_cb(ABS | if fixed_cb { FIX } else { 0 }, Some(own.cb_depth + 1));
+    pub fn cb_open_strict(&self, own: &BoxStyle, fixed_cb: bool, node: Option<gpui::ScrollHandle>) {
+        self.open_cb(
+            ABS | if fixed_cb { FIX } else { 0 },
+            Some(own.cb_depth + 1),
+            node,
+        );
     }
 
     /// Open a layer that takes ONLY `position: fixed`: a multicol box with a
@@ -103,26 +107,21 @@ impl Positioning {
     /// (css-transforms-1 §transform-rendering), but absolute descendants of
     /// the column copies stay in their copies and are cut by the columns
     /// (css-position-3 §abspos-breaking).
-    pub fn cb_open_fixed_only(&self) {
-        self.open_cb(FIX, None);
+    pub fn cb_open_fixed_only(&self, node: Option<gpui::ScrollHandle>) {
+        self.open_cb(FIX, None, node);
     }
 
-    fn open_cb(&self, takes: u8, strict: Option<u16>) {
+    /// `node`: the scroll node whose content the layer's owner lays its
+    /// boxes out in (`ScrollContext::node`).
+    fn open_cb(&self, takes: u8, strict: Option<u16>, node: Option<gpui::ScrollHandle>) {
         self.cb.borrow_mut().push(CbLayer {
             takes,
             strict,
             taken: OofQueue::with_pending(
                 self.pending.borrow().last().cloned().unwrap_or_default(),
             ),
-            node: None,
+            node,
         });
-    }
-
-    /// Record the scroll node of the containing-block layer opened last.
-    pub(crate) fn cb_set_node(&self, node: Option<gpui::ScrollHandle>) {
-        if let Some(layer) = self.cb.borrow_mut().last_mut() {
-            layer.node = node;
-        }
     }
 
     /// The scroll node of the layer a box goes to (`icb_push`, `cb_push_fixed`

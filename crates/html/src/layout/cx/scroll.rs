@@ -19,3 +19,20 @@ pub(crate) struct ScrollContext {
     /// paint-time shifts.
     pub(crate) sticky: Option<crate::interactive::scroll_extent::StickyShift>,
 }
+
+impl ScrollContext {
+    /// The context of a scroll container's content: the container offers its
+    /// native handle (`target`), owns the overflow (`frame`), and its node is
+    /// the space the content is built in (`node`). One step, so the three
+    /// never disagree.
+    pub(crate) fn enter(
+        &mut self,
+        target: Rc<crate::interactive::scroll_target::Target>,
+        frame: Option<crate::interactive::scroll_extent::Frame>,
+        node: gpui::ScrollHandle,
+    ) {
+        self.target = Some(target);
+        self.frame = frame;
+        self.node = Some(node);
+    }
+}

@@ -303,7 +303,11 @@ impl Window {
             None => chain,
         };
         let interest = clip.dilate(self.scroll_interest_margin);
-        let children_offset = self.element_offset() + offset;
+        // Read the stack directly instead of `element_offset()`: opening a
+        // node is not tied to a draw phase (records are built outside one),
+        // and outside prepaint the stack is empty, so the base is zero.
+        let base = self.element_offset_stack.last().copied().unwrap_or_default();
+        let children_offset = base + offset;
         self.next_frame.scroll_nodes.push(ScrollNodeRecord {
             id,
             parent,
