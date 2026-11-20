@@ -1,4 +1,4 @@
-import { withoutBridgeContext } from './bridge-context'
+import { withoutBridgeContext } from './bridge-context.js'
 
 export interface SubmissionUpdate {
   /** Local transport refused this prompt before sending it; restore its draft. */
