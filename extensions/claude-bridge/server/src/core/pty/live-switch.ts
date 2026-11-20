@@ -34,6 +34,12 @@ export function isEffortLevel(value: unknown): value is EffortLevel {
   return typeof value === 'string' && (EFFORT_LEVELS as readonly string[]).includes(value)
 }
 
+/** `/effort <level>` typed as a chat message: the level it sets, else null. */
+export function typedEffort(text: string): EffortLevel | null {
+  const level = /^\s*\/effort\s+(\S+)\s*$/.exec(text)?.[1]
+  return isEffortLevel(level) ? level : null
+}
+
 /** A model id or alias that is safe to type into the CLI prompt: no control
  *  characters or spaces, so it can never submit a second line. Covers
  *  `claude-sonnet-4-6`, `opus[1m]`, `us.anthropic.…-v1:0`, gateway ids. */

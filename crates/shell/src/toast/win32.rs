@@ -50,26 +50,65 @@ pub(crate) fn work_area(cx: &App) -> (f32, f32, f32, f32) {
 pub(crate) fn work_area(cx: &App) -> (f32, f32, f32, f32) {
     fallback_area(cx)
 }
-/// Подвинуть окно тоста: API перемещения у gpui нет (только `resize`),
-/// поэтому дергаем `SetWindowPos` по сырому HWND окна.
+/// Поставить окно тоста (логические px, `height` — высота клиентской части)
+/// одним `SetWindowPos` по сырому HWND: API перемещения у gpui нет, а его
+/// `resize` у этого PopUp-окна размер не менял (замер: клиент оставался 140).
+///
+/// Звать ВНЕ обновления App/окна (из `spawn`): смена размера синхронно шлёт
+/// WM_SIZE, и gpui рисует новый кадр прямо в нём — под занятым App кадр
+/// терялся и низ окна оставался чёрным (замер на стенде).
+#[cfg(windows)]
+pub(crate) fn place_window(hwnd_raw: isize, x: f32, y: f32, height: f32) {
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::UI::HiDpi::GetDpiForWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClientRect, GetWindowRect, HWND_TOPMOST, SWP_NOACTIVATE, SetWindowPos,
+    };
+
+    if hwnd_raw == 0 {
+        return;
+    }
+    let hwnd = HWND(hwnd_raw as *mut std::ffi::c_void);
+    unsafe {
+        let dpi = GetDpiForWindow(hwnd);
+        let scale = if dpi == 0 { 1.0 } else { dpi as f32 / 96.0 };
+        // Рамка окна вокруг клиента — та, что есть сейчас.
+        let (mut outer, mut inner) = (RECT::default(), RECT::default());
+        let (fw, fh) =
+            if GetWindowRect(hwnd, &mut outer).is_ok() && GetClientRect(hwnd, &mut inner).is_ok() {
+                (
+                    (outer.right - outer.left) - (inner.right - inner.left),
+                    (outer.bottom - outer.top) - (inner.bottom - inner.top),
+                )
+            } else {
+                (0, 0)
+            };
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            (x * scale) as i32,
+            (y * scale) as i32,
+            (crate::toast::WIDTH * scale).round() as i32 + fw,
+            (height * scale).round() as i32 + fh,
+            SWP_NOACTIVATE,
+        );
+    }
+}
+#[cfg(not(windows))]
+pub(crate) fn place_window(_hwnd_raw: isize, _x: f32, _y: f32, _height: f32) {}
+/// Подвинуть только что открытое окно тоста (размер прежний — WM_SIZE нет).
 #[cfg(windows)]
 pub(crate) fn move_window(window: &gpui::Window, x: f32, y: f32) {
-    use raw_window_handle::RawWindowHandle;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::HiDpi::GetDpiForWindow;
     use windows::Win32::UI::WindowsAndMessaging::{
         HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOSIZE, SetWindowPos,
     };
-
-    // `Window::window_handle` — инherent-метод gpui (AnyWindowHandle),
-    // сырой HWND даёт только трейт
-    let Ok(handle) = raw_window_handle::HasWindowHandle::window_handle(window) else {
+    let raw = raw_hwnd(window);
+    if raw == 0 {
         return;
-    };
-    let RawWindowHandle::Win32(h) = handle.as_raw() else {
-        return;
-    };
-    let hwnd = HWND(isize::from(h.hwnd) as *mut std::ffi::c_void);
+    }
+    let hwnd = HWND(raw as *mut std::ffi::c_void);
     unsafe {
         let dpi = GetDpiForWindow(hwnd);
         let scale = if dpi == 0 { 1.0 } else { dpi as f32 / 96.0 };
