@@ -20,7 +20,7 @@ pub(super) fn sample(
     // Margins stay the box's USED ones: layout may already have collapsed or
     // moved them (`used_mut`), and editing the cascaded style drops that layer,
     // so falling back to the cascaded margin would apply it a second time.
-    let used = e.style.used().reset_box_layout.margin.clone();
+    let used = e.style.used().reset_box_layout.margin;
     let style = inner.style.cascaded_mut();
     style.reset_box_layout.margin.top = frame.reset_box_layout.margin.top.or(used.top);
     style.reset_box_layout.margin.right = frame.reset_box_layout.margin.right.or(used.right);
