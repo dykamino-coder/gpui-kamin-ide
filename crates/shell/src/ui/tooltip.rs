@@ -192,7 +192,6 @@ impl Render for KaminTooltip {
                     .top(px(-(box_h() + 14.0)))
                     // Регион на САМ бокс (легаси region-режим): обёртка в регионе
                     // рисовалась чёрной плитой
-                    .child(crate::overlay::tooltip_region())
                     .bg(rgba(p.bg_surface))
                     .text_color(rgba(p.text_primary))
                     .px(px(m::SPACE_2))

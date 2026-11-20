@@ -1,7 +1,7 @@
-//! Rebind transient adapter slices when an unread attribute copies a path.
+//! Publish replacement flow snapshots when a revision keeps the same boxes.
 
 use super::{BoxTree, source::Source};
-use crate::dom::{BoxId, Node};
+use crate::dom::Node;
 
 impl BoxTree {
     /// Raw text is distinct from CSS Text normalization (direction, shadows, hashing).
@@ -26,35 +26,42 @@ impl BoxTree {
         prepared.or(record.inline.as_ref()).map(|t| t.shared_text())
     }
 
-    /// Clean commits preserve topology and all inputs read by IFC preparation.
-    /// Only the adapter allocation changes; neither slots nor prepared runs do.
-    pub(crate) fn rebind(&mut self, nodes: &[Node]) {
-        self.flows.clear();
-        let root = self
-            .get(self.first)
-            .is_some_and(|record| record.origin == Source::Root);
-        let first = if root {
-            self.set_root_flow(nodes, self.first);
-            self.get(self.first).map_or(BoxId::NONE, |r| r.first)
-        } else {
-            self.first
+    /// Attribute and paint writes preserve topology and text sources. Only
+    /// ancestor lists copied by COW acquire a new published snapshot.
+    pub(crate) fn rebind_path(
+        &mut self,
+        mut nodes: &[Node],
+        path: &[usize],
+        unique: impl Fn(u64) -> bool,
+    ) {
+        let Some((_, parents)) = path.split_last() else {
+            return;
         };
-        let mut pending = vec![(nodes.iter(), first)];
-        while let Some((siblings, next)) = pending.last_mut() {
-            match siblings.next() {
-                Some(Node::Element(e)) => {
-                    let id = *next;
-                    let Some(record) = self.get(id) else { continue };
-                    let (first, sibling) = (record.first, record.next);
-                    *next = sibling;
-                    self.set_flow(&e.children, id);
-                    pending.push((e.children.iter(), first));
-                }
-                Some(Node::Text(_)) => {}
-                None => {
-                    pending.pop();
-                }
-            }
+        let mut first = self.first;
+        if let Some(root) = self.get(first)
+            && root.origin == Source::Root
+        {
+            first = root.first;
+        }
+        for &index in parents {
+            let Some(Node::Element(e)) = nodes.get(index) else {
+                return;
+            };
+            // Anonymous boxes and copies of a source are addressed by their
+            // exact sibling occurrence. Text nodes occupy no arena slot.
+            let id = if unique(e.node_id) {
+                self.box_of(e.node_id)
+            } else {
+                nodes[..index]
+                    .iter()
+                    .filter(|n| matches!(n, Node::Element(_)))
+                    .try_fold(first, |id, _| Some(self.get(id)?.next))
+            };
+            let Some(id) = id else { return };
+            let Some(record) = self.get(id) else { return };
+            first = record.first;
+            self.flows.rebind_mark(id, &e.children);
+            nodes = &e.children;
         }
     }
 }

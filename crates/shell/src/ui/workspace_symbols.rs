@@ -75,7 +75,6 @@ pub fn workspace_symbols(
         .items_start()
         .pt(px(0.12 * viewport_h)) // 12vh реального вьюпорта
         .bg(scrim)
-        .child(crate::overlay::input_area())
         .on_key_down(
             move |ev: &gpui::KeyDownEvent, _, _| match ev.keystroke.key.as_str() {
                 "escape" => {
@@ -110,7 +109,6 @@ pub fn workspace_symbols(
                 .relative()
                 .child(crate::probe::registry::probe_area("ov-symbols"))
                 .bg(rgba(p.bg_mantle))
-                .child(crate::overlay::hit_area())
                 .border_1()
                 .border_color(tint(rgba(p.bg_surface), 0.6))
                 .shadow(crate::ui::shadows::dropdown())

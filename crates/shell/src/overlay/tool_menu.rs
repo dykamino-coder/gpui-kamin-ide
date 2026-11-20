@@ -2,7 +2,7 @@
 //!
 //! Вынесено без изменения поведения (`plan/100-refactor-250.md`).
 
-use super::{dropdown_shadow, hit_area};
+use super::dropdown_shadow;
 use crate::host_link::ShellEvent;
 use gpui::prelude::*;
 
@@ -76,7 +76,6 @@ pub(super) fn tool_tab_menu(
             // `--shadow-dropdown` — как у всех прочих дропдаунов
             // (единственное меню, где тени не было)
             .shadow(dropdown_shadow())
-            .child(hit_area())
     };
     let hover_bg = tint(rgba(p.text_primary), 0.10);
 

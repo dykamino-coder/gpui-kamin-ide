@@ -68,7 +68,6 @@ pub fn popover_frame(
         .bg(rgba(p.bg_surface))
         .border_1()
         .border_color(tint(rgba(p.text_primary), 0.06))
-        .child(crate::overlay::hit_area())
         // Замер собственной коробки для анкора следующего кадра
         .child(crate::probe::registry::probe_area(id))
         .shadow(crate::overlay::dropdown_shadow())

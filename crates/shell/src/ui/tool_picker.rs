@@ -2,7 +2,7 @@
 //! заголовок «Tools», по строке на тул реестра (иконка + label + check у
 //! pinned). Клик: pinned → unpin (toggle-off), иначе pin (+активация).
 //! Открывается «...»-кнопкой стрипа и «Open Tool»-пилюлей плейсхолдера.
-//! Рендер — overlay-слой; hit_area в корне; скрим-закрытие делает main.
+//! Рендер — overlay-слой; скрим-закрытие делает main.
 
 pub use crate::ui::picker_parts::picker_anchor_id;
 
@@ -152,7 +152,6 @@ pub fn tool_picker(
         .border_1()
         .border_color(tint(rgba(p.text_primary), 0.06))
         .shadow(crate::overlay::dropdown_shadow())
-        .child(crate::overlay::hit_area())
         .child(
             div()
                 .px(px(m::SPACE_3))

@@ -15,8 +15,8 @@
 //! (арены, шрифты, at-правила, картинки) и соответствие исходных узлов узлам
 //! коробок — прежними: записи пишутся в тот же исходный DOM.
 
-use super::commit::Plan;
-use super::mentions::mentions;
+use super::commit::{Edited, Plan};
+use super::mentions::{Mentions, mentions};
 use super::mutation::{AttrChange, Batch, open};
 use super::patch::{Target, attr_paths, patch};
 use super::text::{TextEdits, editable, patch_texts, text_paths};
@@ -66,6 +66,8 @@ impl Document {
                 all.push(crate::style::ua::QUIRKS_CSS);
             }
             all.extend(sheets.iter().map(String::as_str));
+            // One pass over the sheets for the whole batch.
+            let all = Mentions::of(all);
             let ids = match changed {
                 Some(changed) => changed.elements.iter().copied().map(Some).collect(),
                 None => {
@@ -125,7 +127,7 @@ impl Document {
             return Some(Plan::Clean(None));
         }
         let mut nodes = (*self.nodes).clone();
-        if !(patch(&mut nodes, attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
+        if !(patch(&mut nodes, &attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
             return why::refuse(&why::REFUSED_PLAN_PATHS);
         }
         // Цели атрибутов — только `class` и `data-*` (`neutral`): их читают
@@ -134,7 +136,7 @@ impl Document {
             self.forget_has();
         }
         Some(if texts.is_empty() {
-            Plan::Clean(Some(nodes))
+            Plan::Clean(Some(Edited { nodes, attrs }))
         } else {
             Plan::Patched(nodes)
         })
@@ -195,7 +197,7 @@ pub(super) fn tag_of(handle: &markup5ever_rcdom::Handle) -> String {
 /// изменены только `class` и `data-*` без пространства имён, и ни один лист
 /// (и собственный `style`, где `attr()` читает атрибуты элемента) не упоминает
 /// ни имя изменённого атрибута, ни добавленный или снятый класс.
-fn neutral(change: &AttrChange, sheets: &[&str]) -> bool {
+fn neutral(change: &AttrChange, sheets: &Mentions) -> bool {
     let (old, new) = (&change.old, &change.new);
     let value = |list: &[html5ever::Attribute], name: &html5ever::QualName| {
         list.iter()
@@ -215,16 +217,12 @@ fn neutral(change: &AttrChange, sheets: &[&str]) -> bool {
             return false;
         }
         if local == "class" {
-            let tokens = |v: &Option<String>| -> Vec<String> {
-                v.as_deref()
-                    .unwrap_or("")
-                    .split_ascii_whitespace()
-                    .map(str::to_ascii_lowercase)
-                    .collect()
-            };
-            let (a, b) = (tokens(&was), tokens(&is));
-            classes.extend(a.iter().filter(|t| !b.contains(t)).cloned());
-            classes.extend(b.iter().filter(|t| !a.contains(t)).cloned());
+            // Compared as selectors match them (`dom::class_tokens`): `A` -> `a`
+            // changes the class outside quirks mode.
+            classes.extend(crate::dom::class_tokens::changed(
+                was.as_deref(),
+                is.as_deref(),
+            ));
         }
         names.push(local.to_ascii_lowercase());
     }
@@ -232,9 +230,5 @@ fn neutral(change: &AttrChange, sheets: &[&str]) -> bool {
         new,
         &html5ever::QualName::new(None, html5ever::ns!(), "style".into()),
     );
-    !sheets
-        .iter()
-        .copied()
-        .chain(own.as_deref())
-        .any(|css| mentions(css, &names, &classes))
+    !sheets.any(&names, &classes) && !own.is_some_and(|css| mentions(&css, &names, &classes))
 }

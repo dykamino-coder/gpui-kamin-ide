@@ -42,6 +42,22 @@ export function clearLocalQueue(tabId: string): void {
   localQueue.value = next
 }
 
+/** The chat moved to the other agent: the previous agent's CLI is gone with
+ *  whatever it had queued, and the server replays the transcript under new
+ *  positions, so the rows that answered these items can no longer be matched
+ *  (they stayed "pending" until the 10-minute sweep). Items the host decides
+ *  on (browser host) keep following its receipts. */
+export function dropQueueOnEngineSwitch(tabId: string): void {
+  consumedRows.delete(tabId)
+  const list = localQueue.peek().get(tabId)
+  if (!list?.some(item => !item.hostOwned)) return
+  const kept = list.filter(item => item.hostOwned)
+  const next = new Map(localQueue.peek())
+  if (kept.length) next.set(tabId, kept)
+  else next.delete(tabId)
+  localQueue.value = next
+}
+
 // Стабильные UUID/_ord не дают одной строке принять два одинаковых prompt
 // при отдельных JSONL batches. Matcher также используется headless host.
 export function reconcileQueueWithEntries(tabId: string): void {
