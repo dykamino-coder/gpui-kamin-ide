@@ -55,11 +55,6 @@ impl Sticky {
         }
     }
 
-    /// Насколько сдвинуть элемент, чтобы он остался у края видимой части.
-    pub(crate) fn shift(&self, bounds: Bounds<Pixels>) -> gpui::Point<Pixels> {
-        self.edges().shift(self.frame.get(), bounds)
-    }
-
     fn edges(&self) -> Edges {
         Edges {
             top: self.top,
@@ -81,6 +76,7 @@ struct Edges {
 }
 
 impl Edges {
+    /// Насколько сдвинуть элемент, чтобы он остался у края видимой части.
     fn shift(self, frame: StickyFrame, bounds: Bounds<Pixels>) -> gpui::Point<Pixels> {
         let Some(view) = frame.viewport else {
             return gpui::point(px(0.0), px(0.0));
@@ -160,9 +156,10 @@ impl Wrap for Sticky {
         // clip: put the clip back (`sticky_wrap`, positive `z-index`).
         let view = self.deferred.then(|| self.frame.get().viewport).flatten();
         window.with_scroll_node_paint(id, |window| match view {
-            Some(view) => window.with_content_mask(Some(gpui::ContentMask { bounds: view }), |window| {
-                child.paint(window, cx)
-            }),
+            Some(view) => window
+                .with_content_mask(Some(gpui::ContentMask { bounds: view }), |window| {
+                    child.paint(window, cx)
+                }),
             None => child.paint(window, cx),
         });
     }

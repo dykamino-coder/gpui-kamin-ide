@@ -1,7 +1,9 @@
 //! Липкие коробки `position: sticky`: распорка, снимающая коробку родителя и видимую часть
-//! ленты, и обёртка `Sticky` с порогами из `inset`. Липкий красится как позиционированный
-//! шага 8 своего контекста наложения, поверх проезжающего под ним потока; отложенный проход
-//! GPUI остался только для положительного `z-index` (css-position-3 §sticky-pos).
+//! ленты, и обёртка `Sticky` с порогами из `inset`.
+//!
+//! A sticky box paints as a positioned box of step 8 of its stacking context,
+//! above the flow scrolling under it; GPUI's deferred pass is kept only for a
+//! positive `z-index` (css-position-3 §stickypos).
 
 use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;

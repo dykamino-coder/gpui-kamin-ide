@@ -112,18 +112,34 @@ fn travel_at(axis: usize, travel: f32, maximum: f32, reverse: bool, offset: Poin
 pub(super) fn follow(bars: &[Bar], handle: &ScrollHandle, window: &mut Window) {
     let base = handle.offset();
     for bar in bars.iter().filter(|bar| bar.maximum > 0.0) {
-        let Bar { axis, travel, maximum, reverse, .. } = *bar;
+        let Bar {
+            axis,
+            travel,
+            maximum,
+            reverse,
+            ..
+        } = *bar;
         let from = travel_at(axis, travel, maximum, reverse, base);
         let along = move |change: Point<Pixels>| {
             let by = px(travel_at(axis, travel, maximum, reverse, base + change) - from);
-            if axis == 0 { point(by, px(0.0)) } else { point(px(0.0), by) }
+            if axis == 0 {
+                point(by, px(0.0))
+            } else {
+                point(px(0.0), by)
+            }
         };
         let id = gpui::ScrollNodeId::follower(handle, axis);
         window.with_scroll_follower_prepaint(id, Some(handle), std::rc::Rc::new(along), |_| {});
     }
 }
 
-pub(super) fn paint(c: &BoxStyle, bars: &[Bar], handle: &ScrollHandle, alpha: f32, window: &mut Window) {
+pub(super) fn paint(
+    c: &BoxStyle,
+    bars: &[Bar],
+    handle: &ScrollHandle,
+    alpha: f32,
+    window: &mut Window,
+) {
     let color = |value: u32, alpha| {
         let mut color = crate::style::values::value::Color {
             r: value as f32 / 255.0,

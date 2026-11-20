@@ -7,7 +7,8 @@ use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
 use gpui::{AnyElement, ElementId};
 mod lifecycle;
-pub(crate) use lifecycle::RootBars;
+mod root_bars;
+pub(crate) use root_bars::RootBars;
 mod wheel;
 use std::rc::Rc;
 

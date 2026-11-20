@@ -42,10 +42,10 @@ fn steps_with(
     let mut app = cx.clone();
     let (view, vcx) = open(&mut app, html);
     frame(vcx);
-    let frames = |vcx: &mut VisualTestContext| {
-        vcx.update(|_, cx| view.read(cx).document.retained_frames())
-    };
+    let frames =
+        |vcx: &mut VisualTestContext| vcx.update(|_, cx| view.read(cx).document.retained_frames());
     let mut costs = Vec::new();
+    check(vcx);
     for (i, &dy) in dys.iter().enumerate() {
         let (b0, r0) = frames(vcx);
         wheel_at(vcx, at.0, at.1, dy);
@@ -53,20 +53,23 @@ fn steps_with(
         let (b1, r1) = frames(vcx);
         let after = painted(vcx);
         check(vcx);
-        // The same document rebuilt: element states (scroll offsets) stay.
-        vcx.update(|_, cx| {
-            view.update(cx, |view, cx| {
-                view.document
-                    .update(&format!("{html}<!-- fresh {i} -->"), "")
-                    .unwrap();
-                cx.notify();
-            })
-        });
-        frame(vcx);
+        // The same revision built again at this offset: a window resized and
+        // back has another window key (no record replays), and its elements
+        // keep their states, the nested scroll offsets among them (a new
+        // revision would give the scrollers new states).
+        let size = vcx.update(|window, _| window.viewport_size());
+        for size in [gpui::size(size.width, size.height + px(1.)), size] {
+            vcx.simulate_resize(size);
+            frame(vcx);
+        }
         frame(vcx);
         let fresh = painted(vcx);
         if let Err(diff) = same_paint(&after, &fresh) {
-            panic!("step {i} by {dy} (builds {}, replays {}): {diff}", b1 - b0, r1 - r0);
+            panic!(
+                "step {i} by {dy} (builds {}, replays {}): {diff}",
+                b1 - b0,
+                r1 - r0
+            );
         }
         costs.push((b1 - b0, r1 - r0));
     }
@@ -131,6 +134,7 @@ fn a_nested_step_under_a_sticky_box_replays(cx: &mut TestAppContext) {
         rows(100)
     );
     let stuck = |vcx: &mut VisualTestContext| assert_eq!(tops(vcx, 30.), vec![10.]);
-    let costs = steps_with(cx, &html, (100., 100.), &[-120., -120., 120.], stuck);
+    // Within its containing block (the scroller's box, 200px) it stays stuck.
+    let costs = steps_with(cx, &html, (100., 100.), &[-60., -60., 60.], stuck);
     assert!(costs.iter().all(|c| c.0 == 0), "{costs:?}");
 }
