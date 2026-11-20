@@ -8,7 +8,7 @@ mod build_in;
 use crate::layout::reuse::FlowReuse;
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, RetainedPaint, Style, Window, px, size,
+    LayoutId, Pixels, RetainedPaint, Window,
 };
 use std::rc::Rc;
 
@@ -77,14 +77,6 @@ impl Retained {
             layout_inputs: Default::default(),
         }
     }
-
-    fn viewport_style(&self) -> Style {
-        let (w, h) = self.builder.opts.viewport;
-        Style {
-            size: size(px(w).into(), px(h).into()),
-            ..Style::default()
-        }
-    }
 }
 
 impl IntoElement for Retained {
@@ -114,24 +106,7 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        self.check_place(window);
-        let before = window.next_frame_callback_count();
-        let id = match self.tree.as_mut() {
-            Some(_) if self.laid_out.is_some() => {
-                window.request_layout(self.viewport_style(), None, cx)
-            }
-            Some(tree) => {
-                let keys = self.builder.layout_keys;
-                let (id, inputs) = window.record_layout_inputs(|window| {
-                    window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
-                });
-                self.layout_inputs = inputs;
-                id
-            }
-            None => window.request_layout(self.viewport_style(), None, cx),
-        };
-        self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-        (id, ())
+        (self.request_viewport_layout(window, cx), ())
     }
 
     fn prepaint(

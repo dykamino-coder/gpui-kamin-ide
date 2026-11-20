@@ -2,13 +2,41 @@
 
 use super::Retained;
 use crate::document::retained::UpdatePhase;
-use gpui::{App, Bounds, Pixels, RetainedPrepaint, Window};
+use gpui::{App, Bounds, LayoutId, Pixels, RetainedPrepaint, Style, Window, px, size};
 
 impl Retained {
+    pub(super) fn request_viewport_layout(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> LayoutId {
+        self.check_place(window);
+        let before = window.next_frame_callback_count();
+        let id = if self.laid_out.is_none()
+            && let Some(tree) = self.tree.as_mut()
+        {
+            let keys = self.builder.layout_keys;
+            let (id, inputs) = window.record_layout_inputs(|window| {
+                window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
+            });
+            self.layout_inputs = inputs;
+            id
+        } else {
+            let (w, h) = self.builder.opts.viewport;
+            let style = Style {
+                size: size(px(w).into(), px(h).into()),
+                ..Style::default()
+            };
+            window.request_layout(style, None, cx)
+        };
+        self.scheduled += window.next_frame_callback_count().saturating_sub(before);
+        id
+    }
+
     /// Дерево шага, собранное для другого места в кадре, не годится: ключи
     /// состояний его элементов отличались бы от кадра — тогда кадр
     /// собирается здесь, как без шага.
-    pub(super) fn check_place(&mut self, window: &Window) {
+    fn check_place(&mut self, window: &Window) {
         if self
             .laid_out
             .as_ref()
