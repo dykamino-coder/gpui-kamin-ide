@@ -12,6 +12,11 @@ describe('bridge context in the chat', () => {
     expect(withoutBridgeContext('plain <b>text</b>')).toBe('plain <b>text</b>')
   })
 
+  it('hides a block whose history quotes an earlier block', () => {
+    const quoted = `<bridge-context>\nBridge note…\n<conversation-history>\nUser: hi\nAssistant: echo: hi ${block} [model=gpt]\n</conversation-history>\n</bridge-context>`
+    expect(withoutBridgeContext(`next question\n\n${quoted}`)).toBe('next question')
+  })
+
   it('cleans user rows with string and block content, leaves assistants alone', () => {
     const str = { type: 'user', uuid: 'u1', message: { role: 'user', content: `hi\n\n${block}` } } as JsonlEntryData
     const blocks = {
