@@ -55,6 +55,7 @@ impl Builder {
         let mut allow = bounds.origin == Default::default() && window.retained_root_environment();
         loop {
             let retry = self.counters.get().is_some();
+            let attempt = window.mark_layout_attempt();
             let (mut tree, flow) = self.build(allow, true);
             observe(UpdatePhase::Built);
             let (_, inputs) = window.record_layout_inputs(|window| {
@@ -73,6 +74,11 @@ impl Builder {
                 // First rebuild the refused blocks. If that layout also fails,
                 // build the full tree. Other blocks keep their reuse on the first retry.
                 allow = !retry;
+                // The refused tree goes before the next build: its elements
+                // and layout nodes would otherwise stay to the frame's end,
+                // and the peak would hold both trees.
+                drop((tree, inputs));
+                window.abandon_layout_attempt(attempt);
                 continue;
             }
             return (tree, flow, inputs);

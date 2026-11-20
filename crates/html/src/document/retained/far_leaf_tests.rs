@@ -4,7 +4,6 @@
 
 use super::tests::{View, frame, open_document};
 use crate::Document;
-use crate::layout::reuse::offscreen_switch::set_off;
 use gpui::{TestAppContext, VisualTestContext};
 
 type Drawn = Vec<(String, [i32; 4])>;
@@ -17,6 +16,16 @@ fn scroller<'a>(
         cx,
         Document::builder(html, "").build_root_scroller().unwrap(),
     )
+}
+
+/// A document whose frames are built without leaves.
+fn leafless<'a>(
+    cx: &'a mut TestAppContext,
+    html: &str,
+) -> (gpui::Entity<View>, &'a mut VisualTestContext) {
+    let doc = Document::builder(html, "").build_root_scroller().unwrap();
+    doc.turn_off_offscreen_leaves();
+    open_document(cx, doc)
 }
 
 fn scroll_to(view: &gpui::Entity<View>, cx: &mut VisualTestContext, y: f32) {
@@ -53,13 +62,10 @@ fn leaves(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
 
 /// What a fresh document without leaves draws scrolled to `y`.
 fn fresh(cx: &mut TestAppContext, html: &str, y: f32) -> Drawn {
-    set_off(true);
-    let (view, cx) = scroller(cx, html);
+    let (view, cx) = leafless(cx, html);
     frame(cx);
     scroll_to(&view, cx, y);
-    let drawn = drawn(cx);
-    set_off(false);
-    drawn
+    drawn(cx)
 }
 
 /// Paragraphs with collapsing margins, blocks whose children's margins meet
@@ -127,6 +133,67 @@ fn frames_scrolled_anywhere_draw_what_a_fresh_document_draws(cx: &mut TestAppCon
     let stops = [0.0, 2500.0, 9000.0, 21000.0, 4800.0, 15000.0, 0.0];
     let leaves = sweep(cx, &plain_page(), &stops);
     assert!(leaves > 100, "far blocks were built: {leaves} leaves");
+    first_frame_builds_once(cx, &plain_page());
+}
+
+/// Paragraphs around `special` every tenth block: a block whose own
+/// margins are not hoisted from its children, or blocks in a container sized
+/// by its content.
+fn page_with(special: &str) -> String {
+    let text = "alpha beta gamma delta epsilon ".repeat(8);
+    let blocks: String = (0..200)
+        .map(|i| match i % 10 {
+            5 => special
+                .replace("{i}", &i.to_string())
+                .replace("{text}", &text),
+            _ => format!("<p style='margin:6px 0;background:#eef'>{i} {text}</p>"),
+        })
+        .collect();
+    format!("<body style='margin:0'><div>{blocks}</div></body>")
+}
+
+/// The first frame of `html` takes one build, stands far blocks as leaves
+/// and draws as without them wherever it is scrolled.
+fn one_build(cx: &mut TestAppContext, html: &str) {
+    first_frame_builds_once(cx, html);
+    sweep(cx, html, &[0.0, 6000.0, 14000.0, 3000.0, 0.0]);
+}
+
+/// The first frames of `html` under a scrollbar from the start (whose
+/// coming changes every width) build once and stand far blocks as leaves.
+fn first_frame_builds_once(cx: &mut TestAppContext, html: &str) {
+    let steady = html.replacen("<body", "<html style='overflow-y:scroll'><body", 1);
+    let (view, vcx) = scroller(cx, &steady);
+    frame(vcx);
+    let rebuilt = vcx.update(|_, cx| view.read(cx).doc.reused_blocks().2);
+    assert_eq!(rebuilt, 0, "the first frame was built again");
+    assert!(leaves(&view, vcx) > 20, "far blocks were built");
+}
+
+#[gpui::test]
+fn flex_blocks_with_their_own_margins_stand_in_one_build(cx: &mut TestAppContext) {
+    one_build(
+        cx,
+        &page_with(
+            "<div style='display:flex;margin:20px 0 25px;background:#cfc'>\
+             <div>{i} {text}</div></div>",
+        ),
+    );
+}
+
+#[gpui::test]
+fn blocks_in_containers_sized_by_content_stand_in_one_build(cx: &mut TestAppContext) {
+    for box_style in [
+        "display:inline-block",
+        "display:table-cell",
+        "width:max-content",
+    ] {
+        let special = format!(
+            "<div style='{box_style};background:#fcc'><p>{{i}} first</p>\
+             <p style='margin:8px 0'>{{text}}</p><p>{{i}} middle</p><p>last</p></div>"
+        );
+        one_build(cx, &page_with(&special));
+    }
 }
 
 #[gpui::test]

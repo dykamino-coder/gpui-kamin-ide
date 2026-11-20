@@ -86,7 +86,7 @@ pub use scroll_nodes::{ScrollNodeId, ScrollSegment};
 pub use scroll_replay::ScrollReplay;
 pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
 pub(crate) use retained::InkSinks;
-pub use retained::{InkScope, InkSink, InkSinkList, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
+pub use retained::{InkScope, InkSink, InkSinkList, LayoutAttempt, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
 mod hit_transform;
 pub use hit_transform::PaintHitScope;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
@@ -452,6 +452,20 @@ pub fn with_temporary_element_arena<R>(f: impl FnOnce() -> R) -> R {
     // This is a private arena, not an App draw; dropping it performs the clear.
     drop(scope.exit(&arena));
     result
+}
+
+/// KaminIDE patch: the present end of the current element arena
+/// (`Arena::mark`), to drop what a discarded attempt allocates after it.
+pub fn mark_element_arena() -> crate::ArenaMark {
+    with_element_arena(|arena| arena.mark())
+}
+
+/// KaminIDE patch: drop the elements allocated in the current arena since
+/// `mark` and reuse their memory (`Arena::rewind`). Nothing allocated since
+/// may be used again: it panics as after the frame's clear. False when the
+/// mark is not the arena's innermost open one: nothing is dropped then.
+pub fn rewind_element_arena(mark: crate::ArenaMark) -> bool {
+    with_element_arena(|arena| arena.rewind(mark))
 }
 
 /// Scope guard that sets CURRENT_ELEMENT_ARENA for the duration of a draw

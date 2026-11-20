@@ -28,7 +28,6 @@ mod measure;
 mod slot;
 use slot::Kind;
 pub(crate) use slot::Slot;
-pub(crate) mod switch;
 
 use super::FlowReuse;
 use crate::dom::Element;
@@ -70,6 +69,27 @@ pub(crate) struct Store {
     remeasure: Cell<HashSet<u64>>,
     /// Blocks every check of this frame saw: they keep what was learnt.
     seen: Cell<HashSet<u64>>,
+    /// No block of this document stands as its leaf (tests compare frames
+    /// with leaves against frames without them).
+    #[cfg(test)]
+    off: Cell<bool>,
+}
+
+impl Store {
+    fn off(&self) -> bool {
+        #[cfg(test)]
+        return self.off.get();
+        #[cfg(not(test))]
+        false
+    }
+}
+
+#[cfg(test)]
+impl super::Store {
+    /// Build this document's frames without leaves.
+    pub(crate) fn turn_off_offscreen_leaves(&self) {
+        self.offscreen.off.set(true);
+    }
 }
 
 /// The leaves of one build.
@@ -131,7 +151,7 @@ impl FlowReuse {
             || e.node_id == 0
             || !self.counts(opts)
             || self.offscreen.floated.get()
-            || switch::off()
+            || self.store.offscreen.off()
         {
             return None;
         }

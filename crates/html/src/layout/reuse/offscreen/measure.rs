@@ -71,8 +71,7 @@ fn measure(
             window.with_line_layouts_released(|window| {
                 let opts = &source.opts;
                 let build = &opts.cx.contracts.build;
-                let mut kids =
-                    build.blocks(std::slice::from_ref(&source.node), &source.inherited, opts);
+                let mut kids = build.prepared_block(&source.node, &source.inherited, opts);
                 if kids.len() != 1 {
                     return None;
                 }
@@ -148,4 +147,3 @@ impl gpui::CompactMeasure for LeafMeasure {
         None
     }
 }
-

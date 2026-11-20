@@ -20,7 +20,7 @@ impl Default for ChildBuild {
     fn default() -> Self {
         ChildBuild::new(
             FlowBuild::new(
-                blocks,
+                (blocks, crate::render::blocks::prepared_block),
                 |stk, nodes, inherited, opts| {
                     Box::pin(crate::render::blocks::blocks_stack(
                         stk, nodes, inherited, opts,

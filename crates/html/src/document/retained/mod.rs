@@ -33,8 +33,6 @@ mod escaped_replay_tests;
 #[cfg(test)]
 mod far_leaf_tests;
 #[cfg(test)]
-mod dbg_page_tests;
-#[cfg(test)]
 mod far_tests;
 #[cfg(test)]
 mod float_root_replay_tests;

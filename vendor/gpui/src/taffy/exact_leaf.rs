@@ -107,6 +107,12 @@ impl ExactLeaf {
 }
 
 impl TaffyLayoutEngine {
+    /// Whether a parent asked the laid out node `id` for its intrinsic
+    /// inline size (`Window::layout_sized_by_content`).
+    pub(crate) fn sized_by_content(&self, id: LayoutId) -> bool {
+        self.taffy.measured_by_content(id.into())
+    }
+
     /// The exact leaf of the laid out node `id`, if it qualifies.
     pub(crate) fn exact_leaf(&self, id: LayoutId) -> Option<ExactLeaf> {
         self.leaf(id, false)
@@ -147,31 +153,18 @@ impl TaffyLayoutEngine {
         let physical = parent
             .block_flow
             .is_none_or(|flow| !flow.vertical && !flow.block_reverse);
-        // In a block container the node's own block-axis margins join the
-        // sets and the leaf has none of its own: its place then does not
-        // depend on whether a build of the node hoisted its children's
-        // margins into its own (collapsing with a margin already in a set
-        // changes nothing).
+        // The parent reads the node's own margins and its output (margin
+        // sets, overflow): the leaf has both. Whether the parent collapses
+        // the sets with the siblings' margins depends on the node being in
+        // its formatting context, which the leaf's display, overflow and
+        // containment repeat (`normal`).
         let output = match unpainted {
-            false => {
-                let output = self.taffy.computed_layout_output(node).ok().flatten()?;
-                let mut leaf = LeafOutput::of(&output);
-                if collapsing {
-                    leaf.top_margin = leaf.top_margin.collapse_with_margin(layout.margin.top);
-                    leaf.bottom_margin = leaf.bottom_margin.collapse_with_margin(layout.margin.bottom);
-                }
-                Some(leaf)
-            }
+            false => Some(LeafOutput::of(
+                &self.taffy.computed_layout_output(node).ok().flatten()?,
+            )),
             true => None,
         };
-        let margin = match output.is_some() && collapsing {
-            true => Rect {
-                top: LengthPercentageAuto::length(0.0),
-                bottom: LengthPercentageAuto::length(0.0),
-                ..style.margin
-            },
-            false => style.margin,
-        };
+        let margin = style.margin;
         let flow = !collapsing
             || physical
                 && (output.is_some() || self.own_margins(node, true) && self.own_margins(node, false));
@@ -195,6 +188,8 @@ impl TaffyLayoutEngine {
             && style.clear == taffy::style::Clear::None
             && style.overflow.x == Overflow::Visible
             && style.overflow.y == Overflow::Visible
+            && style.contain == taffy::style::Contain::NONE
+            && style.align_content == taffy::style::AlignContent::NORMAL
             && (block || style.flex_grow == 0.0 && style.flex_shrink == 0.0)
             && margins.iter().all(|m| !m.into_raw().has_calc());
         // An empty box collapses through or not as its output says.

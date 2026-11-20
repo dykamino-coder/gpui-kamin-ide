@@ -82,6 +82,9 @@ pub struct Arena {
     chunks: Vec<Chunk>,
     elements: Vec<ArenaElement>,
     valid: Rc<Cell<bool>>,
+    /// KaminIDE patch: validity flags of the values allocated before each open
+    /// mark (`mark`), outermost first; a clear invalidates them all.
+    marked: Vec<Rc<Cell<bool>>>,
     current_chunk_index: usize,
     chunk_size: NonZeroUsize,
     scope_depth: usize,
@@ -103,6 +106,7 @@ impl Arena {
             chunks: vec![Chunk::new(chunk_size)],
             elements: Vec::new(),
             valid: Rc::new(Cell::new(true)),
+            marked: Vec::new(),
             current_chunk_index: 0,
             chunk_size,
             scope_depth: 0,
@@ -169,6 +173,9 @@ impl Arena {
 
     fn force_clear(&mut self) {
         self.valid.set(false);
+        for valid in self.marked.drain(..) {
+            valid.set(false);
+        }
         self.valid = Rc::new(Cell::new(true));
         self.elements.clear();
         self.layoutless = 0;
@@ -215,6 +222,47 @@ impl Arena {
         }
     }
 
+    /// KaminIDE patch: the arena's present end. The values allocated after it
+    /// get a validity flag of their own, so `rewind` can drop them alone.
+    pub fn mark(&mut self) -> ArenaMark {
+        let generation = Rc::new(Cell::new(true));
+        let before = std::mem::replace(&mut self.valid, generation.clone());
+        self.marked.push(before);
+        ArenaMark {
+            elements: self.elements.len(),
+            layoutless: self.layoutless,
+            chunk: self.current_chunk_index,
+            offset: self.chunks[self.current_chunk_index].offset.addr(),
+            depth: self.marked.len(),
+            generation,
+        }
+    }
+
+    /// KaminIDE patch: drop the values allocated since `mark` and reuse their
+    /// memory; a box of them panics on use as after a clear. Returns false
+    /// and drops nothing when `mark` is not the arena's innermost open mark
+    /// (a clear since, another arena, a later mark still open).
+    pub fn rewind(&mut self, mark: ArenaMark) -> bool {
+        let innermost = self.marked.len() == mark.depth && Rc::ptr_eq(&self.valid, &mark.generation);
+        if !innermost || self.elements.len() < mark.elements {
+            return false;
+        }
+        self.valid.set(false);
+        self.valid = self.marked.pop().expect("an open mark");
+        // Later values first, as a frame's clear drops whole frames.
+        while self.elements.len() > mark.elements {
+            drop(self.elements.pop());
+        }
+        self.layoutless = mark.layoutless;
+        for chunk in &mut self.chunks[mark.chunk + 1..=self.current_chunk_index] {
+            chunk.reset();
+        }
+        self.current_chunk_index = mark.chunk;
+        let chunk = &mut self.chunks[mark.chunk];
+        chunk.offset = chunk.start.with_addr(mark.offset);
+        true
+    }
+
     #[inline(never)]
     fn allocate_next_chunk(&mut self, layout: alloc::Layout) -> *mut u8 {
         self.current_chunk_index += 1;
@@ -237,6 +285,16 @@ impl Arena {
             );
         }
     }
+}
+
+/// KaminIDE patch: an end of an arena's allocations (`Arena::mark`).
+pub struct ArenaMark {
+    elements: usize,
+    layoutless: usize,
+    chunk: usize,
+    offset: usize,
+    depth: usize,
+    generation: Rc<Cell<bool>>,
 }
 
 pub struct ArenaBox<T: ?Sized> {
@@ -332,6 +390,38 @@ mod tests {
         arena.alloc(|| DropGuard(dropped.clone()));
         arena.clear();
         assert!(dropped.get());
+    }
+
+    #[test]
+    fn a_rewind_drops_and_reuses_only_what_came_after_its_mark() {
+        struct Count(Rc<Cell<usize>>);
+        impl Drop for Count {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+        let dropped = Rc::new(Cell::new(0));
+        let mut arena = Arena::new(16);
+        let kept = arena.alloc(|| 7u64);
+        let mark = arena.mark();
+        let (offset, chunks) = (arena.chunks[0].offset, arena.chunks.len());
+        for _ in 0..5 {
+            arena.alloc(|| Count(dropped.clone()));
+        }
+        let late = arena.alloc(|| 9u64);
+        assert!(arena.rewind(mark));
+        assert_eq!(dropped.get(), 5);
+        assert_eq!((arena.chunks[0].offset, arena.current_chunk_index), (offset, 0));
+        assert!(arena.chunks.len() > chunks, "chunks are kept for reuse");
+        assert_eq!(*kept, 7);
+        let stale = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| *late));
+        assert!(stale.is_err(), "a rewound box is invalid");
+        // A mark taken before a clear names nothing after it.
+        let mark = arena.mark();
+        arena.clear();
+        assert!(!arena.rewind(mark));
+        let stale = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| *kept));
+        assert!(stale.is_err(), "a clear invalidates the values before a mark");
     }
 
     #[test]

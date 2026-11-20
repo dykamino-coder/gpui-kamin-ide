@@ -70,7 +70,15 @@ fn an_overflowing_unpainted_wrapper_is_replaced_at_any_narrower_width() {
     let wrap = wrapper(&mut engine, 500.0);
     flow(&mut engine, 300.0, wrap);
     let id = LayoutId::from(wrap);
-    assert!(engine.exact_leaf(id).is_none(), "the content overflows the wrapper");
+    // The exact leaf repeats the overflow its layout gave the parent.
+    let exact = engine.exact_leaf(id).expect("the leaf carries the overflow");
+    let mut real = TaffyLayoutEngine::new();
+    let real_wrap = wrapper(&mut real, 500.0);
+    let real_root = flow(&mut real, 300.0, real_wrap);
+    let mut replaced = TaffyLayoutEngine::new();
+    let stand_in: NodeId = replaced.request_exact_leaf(&exact).into();
+    let replaced_root = flow(&mut replaced, 300.0, stand_in);
+    assert_eq!(seen(&real, real_root, real_wrap), seen(&replaced, replaced_root, stand_in));
     let leaf = engine.unpainted_leaf(id).expect("an unpainted wrapper qualifies");
     assert_eq!(leaf.width(), 500.0);
     for width in [300.0, 200.0, 499.0] {

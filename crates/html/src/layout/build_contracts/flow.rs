@@ -10,6 +10,7 @@ use crate::text::clamp::ClampSpan;
 use gpui::AnyElement;
 
 type BuildNodes = fn(&[Node], &BoxStyle, &RenderOpts) -> Vec<AnyElement>;
+type BuildPrepared = fn(&Node, &BoxStyle, &RenderOpts) -> Vec<AnyElement>;
 type BuildStackNodes =
     for<'a> fn(
         &'a mut reblessive::Stk,
@@ -27,6 +28,7 @@ type FirstLineRoute = fn(Vec<Node>, &crate::style::computed::Computed) -> Vec<No
 #[derive(Clone, Copy)]
 pub(crate) struct FlowBuild {
     blocks: BuildNodes,
+    prepared: BuildPrepared,
     blocks_stack: BuildStackNodes,
     paragraph: BuildParagraph,
     probes: BuildProbes,
@@ -35,7 +37,7 @@ pub(crate) struct FlowBuild {
 
 impl FlowBuild {
     pub(crate) const fn new(
-        blocks: BuildNodes,
+        (blocks, prepared): (BuildNodes, BuildPrepared),
         blocks_stack: BuildStackNodes,
         paragraph: BuildParagraph,
         probes: BuildProbes,
@@ -43,6 +45,7 @@ impl FlowBuild {
     ) -> Self {
         Self {
             blocks,
+            prepared,
             blocks_stack,
             paragraph,
             probes,
@@ -57,6 +60,15 @@ impl FlowBuild {
         opts: &RenderOpts,
     ) -> Vec<AnyElement> {
         (self.blocks)(nodes, inherited, opts)
+    }
+
+    pub(super) fn prepared(
+        &self,
+        node: &Node,
+        inherited: &BoxStyle,
+        opts: &RenderOpts,
+    ) -> Vec<AnyElement> {
+        (self.prepared)(node, inherited, opts)
     }
 
     pub(super) async fn blocks_stack(
@@ -99,5 +111,18 @@ impl FlowBuild {
         parent: &crate::style::computed::Computed,
     ) -> Vec<Node> {
         (self.first_line_route)(nodes, parent)
+    }
+}
+
+impl super::ChildBuild {
+    /// The boxes of a child of a block list the list's preparation already
+    /// made, built as its flow builds it among its siblings.
+    pub(crate) fn prepared_block(
+        &self,
+        node: &Node,
+        inherited: &BoxStyle,
+        opts: &RenderOpts,
+    ) -> Vec<AnyElement> {
+        self.flow.prepared(node, inherited, opts)
     }
 }
