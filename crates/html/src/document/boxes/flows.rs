@@ -43,6 +43,12 @@ impl Flows {
         self.marks[slot] = mark.map(|mark| (id.generation, mark));
     }
 
+    pub(super) fn rebind_mark(&mut self, id: BoxId, children: &Children) {
+        if !self.mark(id).is_some_and(|mark| mark.holds(children)) {
+            self.set_mark(id, Some(children.mark()));
+        }
+    }
+
     fn mark(&self, id: BoxId) -> Option<&ChildrenMark> {
         match self.marks.get(id.slot as usize)? {
             Some((generation, mark)) if *generation == id.generation => Some(mark),
