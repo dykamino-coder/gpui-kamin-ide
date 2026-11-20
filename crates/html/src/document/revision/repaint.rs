@@ -67,7 +67,7 @@ impl Document {
     /// `changed` — the names and node ids of the batch (`invalidation`).
     pub(super) fn repaint_plan(
         &self,
-        batch: &Batch,
+        batch: &mut Batch,
         changed: &crate::dom::invalidation::Changed,
         theme_css: &str,
     ) -> Option<Plan> {
@@ -148,7 +148,7 @@ impl Document {
     /// `None` — пакет доходит дальше значений краски.
     fn restyles(
         &self,
-        batch: &Batch,
+        batch: &mut Batch,
         changed: &crate::dom::invalidation::Changed,
         (input, index): (&crate::dom::input::Admitted, &SourceIndex),
         theme_css: &str,

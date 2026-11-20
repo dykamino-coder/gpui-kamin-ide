@@ -33,7 +33,7 @@ impl Document {
     /// посчитанные один раз на пакет. Ничего в ревизии не меняется.
     pub(super) fn plan(
         &self,
-        batch: &Batch,
+        batch: &mut Batch,
         theme_css: &str,
         sheets: Option<&[String]>,
         changed: Option<&crate::dom::invalidation::Changed>,

@@ -3,7 +3,7 @@
 use super::{Address, ApplyError, parent};
 use crate::dom::input::Context;
 use markup5ever_rcdom::{Handle, NodeData, WeakHandle, admission::ChildList};
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 #[derive(Default)]
 pub(super) struct Requests {
@@ -186,7 +186,7 @@ impl Requests {
             let children = context
                 .child_list(ordered())
                 .map_err(ApplyError::Rejected)?;
-            changes.lists.push((list.parent, RefCell::new(children)));
+            changes.lists.push((list.parent, children));
         }
         for link in self.links.into_values() {
             let old = parent(&link.node);
@@ -204,7 +204,7 @@ impl Requests {
 
 #[derive(Default)]
 pub(super) struct Changes {
-    lists: Vec<(Handle, RefCell<ChildList>)>,
+    lists: Vec<(Handle, ChildList)>,
     links: Vec<(Handle, Option<WeakHandle>, Option<WeakHandle>)>,
 }
 
@@ -213,9 +213,9 @@ impl Changes {
         self.lists.is_empty()
     }
 
-    pub(super) fn exchange(&self, forward: bool) {
-        for (parent, list) in &self.lists {
-            list.borrow_mut().exchange(parent);
+    pub(super) fn exchange(&mut self, forward: bool) {
+        for (parent, list) in &mut self.lists {
+            list.exchange(parent);
         }
         for (node, old, new) in &self.links {
             node.parent.set(if forward { new } else { old }.clone());

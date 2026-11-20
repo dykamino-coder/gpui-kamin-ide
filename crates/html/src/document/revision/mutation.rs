@@ -191,13 +191,13 @@ impl Batch {
     }
 
     /// Записать итоговые значения в исходный DOM.
-    pub(super) fn write(&self) {
+    pub(super) fn write(&mut self) {
         self.store(|t| &t.new, |e| &e.new);
         self.children.exchange(true);
     }
 
     /// Вернуть прежние значения: пакет отвергнут.
-    pub(super) fn undo(&self) {
+    pub(super) fn undo(&mut self) {
         self.children.exchange(false);
         self.store(|t| &t.old, |e| &e.old);
     }

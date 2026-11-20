@@ -48,7 +48,7 @@ impl Document {
         let started = crate::work::Clock::now();
         let root = self.source_dom();
         let revision = std::cell::OnceCell::new();
-        let batch = Batch::in_document(records, &root, || {
+        let mut batch = Batch::in_document(records, &root, || {
             let budget = revision.get_or_init(|| self.budget().revision());
             self.state
                 .values
@@ -81,8 +81,13 @@ impl Document {
             None
         } else {
             let invalidation = self.invalidation(&batch, theme_css);
-            if let Some(plan) = self.plan(&batch, theme_css, None, invalidation.as_ref(), &revision)
-            {
+            if let Some(plan) = self.plan(
+                &mut batch,
+                theme_css,
+                None,
+                invalidation.as_ref(),
+                &revision,
+            ) {
                 batch.write();
                 self.commit(
                     plan,
@@ -99,14 +104,14 @@ impl Document {
             invalidation
         };
         crate::paint_path::add(&crate::paint_path::REFUSED_REBUILT, 1);
-        self.rebuild(&batch, invalidation, theme_css, key, revision)
+        self.rebuild(&mut batch, invalidation, theme_css, key, revision)
             .map_err(ApplyError::Rejected)
     }
 
     /// Записать пакет в исходный DOM и собрать его заново в свежем состоянии.
     pub(super) fn rebuild(
         &mut self,
-        batch: &Batch,
+        batch: &mut Batch,
         invalidation: Option<crate::dom::invalidation::Changed>,
         theme_css: &str,
         key: u64,
@@ -124,9 +129,9 @@ impl Document {
         let context = input.replace_context(next_context);
         let agent_css = input.agent_css.get();
         batch.write();
-        let refused = |this: &mut Self,
-                       mut failure: DocumentFailure,
-                       mut input: crate::dom::input::Admitted| {
+        let mut refused = |this: &mut Self,
+                           mut failure: DocumentFailure,
+                           mut input: crate::dom::input::Admitted| {
             batch.undo();
             input.replace_context(context.clone());
             input.agent_css.set(agent_css);
