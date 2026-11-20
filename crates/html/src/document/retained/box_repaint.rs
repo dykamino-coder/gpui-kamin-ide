@@ -101,8 +101,22 @@ impl Builder {
         &self,
         window: &mut Window,
         f: impl FnOnce(&mut Window),
-    ) -> gpui::RetainedPaint {
+    ) -> (gpui::RetainedPaint, Option<gpui::RetainedPaint>) {
         self.store.take_repaints();
-        self.store.record_layered(window, f)
+        self.store.record_layered(window, true, f)
+    }
+
+    /// A scrolled replay of the document's last layer (`inner`, its record
+    /// there) painted into a new layer: the commands move under their
+    /// scroll nodes (`gpui::Window::replay_retained_paint_scrolled`).
+    pub(super) fn replay_paint_scrolled(
+        &self,
+        window: &mut Window,
+        inner: &gpui::RetainedPaint,
+        plan: &gpui::ScrollReplay,
+    ) -> (gpui::RetainedPaint, Option<gpui::RetainedPaint>) {
+        self.store.record_layered(window, false, |window| {
+            window.replay_retained_paint_scrolled(inner, plan);
+        })
     }
 }

@@ -76,24 +76,30 @@ impl Document {
         let (w, h) = key.viewport;
         let bounds = gpui::Bounds::new(Default::default(), size(px(w), px(h)));
         window.with_layout_outside_draw(parent, cx, |window, cx| {
-            if self.state.values.resources_unchanged()
-                && self.retained.inputs(Some(&key)).is_some_and(|r| {
-                    r.matches(
-                        &super::window_key::WindowKey::capture(bounds, window, cx),
-                        window,
-                    )
-                })
-            {
-                return;
-            }
-            let builder = self.frame_builder(opts, &Some(key.clone()));
             let id = document_id(&self.reuse);
             window.with_global_id(id, |id, window| {
-                let epoch =
+                let environment =
+                    super::window_key::WindowKey::capture(bounds, window, cx, &self.state);
+                let (epoch, replay) =
                     window.with_element_state::<super::record::Record, _>(id, |record, window| {
                         let mut record = record.unwrap_or_default();
-                        (record.begin(&builder.store, window), record)
+                        let epoch = record.begin(&self.reuse, window);
+                        let replay = self.state.values.resources_unchanged()
+                            && record
+                                .replay(
+                                    &self.retained,
+                                    Some(&key),
+                                    &environment,
+                                    window,
+                                    &self.reuse,
+                                )
+                                .is_some();
+                        ((epoch, replay), record)
                     });
+                if replay {
+                    return;
+                }
+                let builder = self.frame_builder(opts, &Some(key.clone()));
                 let before = window.next_frame_callback_count();
                 let (tree, flow, layout_inputs) =
                     builder.layout_checked(bounds, window, cx, |phase| {
@@ -102,7 +108,7 @@ impl Document {
                         }
                         observe(phase);
                     });
-                let checked = CheckedRoot::new(epoch, bounds, window, cx);
+                let checked = CheckedRoot::new(epoch, environment, window);
                 let scheduled = window.next_frame_callback_count().saturating_sub(before);
                 self.retained.prepared.replace(Some(Prepared {
                     key,

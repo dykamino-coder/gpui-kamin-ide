@@ -111,6 +111,7 @@ impl Render for DocumentView {
         self.place = Some(window.element_place());
         let root = self.document.state_rc().root_scroll.clone();
         let focus = self.focus.clone();
+        let released = root.clone();
         // An anonymous wrapper preserves the document step's element-id place.
         // Wheel input is handled by the document's existing scroll adapters.
         div()
@@ -124,6 +125,11 @@ impl Render for DocumentView {
                     window.refresh();
                 }
             })
+            .on_key_up(move |event, _, _| {
+                if let Some(root) = &released {
+                    root.released(event);
+                }
+            })
             .child(self.document.render_viewport(&self.opts))
     }
 }
@@ -132,6 +138,8 @@ impl Render for DocumentView {
 mod fixed_hoisted_tests;
 #[cfg(test)]
 mod fixed_tests;
+#[cfg(test)]
+mod paint_compare;
 #[cfg(test)]
 mod resize_tests;
 #[cfg(test)]

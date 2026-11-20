@@ -13,12 +13,16 @@ impl FlowReuse {
     /// поддеревом раскладки проверяются тоже (`validate_replays`).
     pub(crate) fn validate(&self, window: &mut Window) -> bool {
         let scale = window.scale_factor();
+        // Past the screen by the interest margin of a document under its root
+        // scroller: a scrolled replay may show what is recorded there.
+        let margin = window.scroll_interest_margin();
         let mask = window.content_mask().bounds;
+        let screen_mask = mask.dilate(margin);
         let screen = Bounds {
-            origin: scaled(mask.origin, scale),
+            origin: scaled(screen_mask.origin, scale),
             size: size(
-                ScaledPixels(mask.size.width.as_f32() * scale),
-                ScaledPixels(mask.size.height.as_f32() * scale),
+                ScaledPixels(screen_mask.size.width.as_f32() * scale),
+                ScaledPixels(screen_mask.size.height.as_f32() * scale),
             ),
         };
         self.screen.set(Some(screen));

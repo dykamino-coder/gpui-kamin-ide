@@ -1,72 +1,163 @@
-//! A rendered viewport reads the native scroll position even without input dispatch.
+//! A root scroll step inside the recorded interest rect replays the frame
+//! moved (`gpui::Window::plan_scrolled_replay`): no build, and the painted
+//! quads are those of a fresh tree built at the new offset.
+
+use super::fixed_tests::{boxes, fixed_box, root, rows};
+use super::paint_compare::{painted, same_paint};
+
+type Painted = (String, u32, gpui::Bounds<gpui::ScaledPixels>);
 use super::tests::{frame, open};
-use gpui::{TestAppContext, VisualTestContext, point, px};
+use super::*;
+use gpui::{
+    Entity, Modifiers, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext, point,
+};
 
-const BANDS: &str = "<style>body{margin:0}section{height:120px;background:red}
-    article{height:180px;background:lime}main{height:800px;background:blue}</style>
-    <section></section><article></article><main></main>";
+fn wheel_by(cx: &mut VisualTestContext, dy: f32) {
+    cx.simulate_event(ScrollWheelEvent {
+        position: point(px(200.), px(20.)),
+        delta: ScrollDelta::Pixels(point(px(0.), px(dy))),
+        modifiers: Modifiers::default(),
+        touch_phase: gpui::TouchPhase::Moved,
+    });
+}
 
-fn scene(cx: &mut VisualTestContext) -> Vec<gpui::Quad> {
-    cx.update(|window, _| {
-        window
-            .painted_quads()
-            .into_iter()
-            .map(|mut quad| {
-                quad.order = 0;
-                quad
-            })
-            .collect()
-    })
+fn frames(view: &Entity<DocumentView>, cx: &mut VisualTestContext) -> (u64, u64) {
+    cx.update(|_, cx| view.read(cx).document.retained_frames())
+}
+
+/// The quads of a new tree built at `offset`, not a replay.
+fn fresh_quads(cx: &mut TestAppContext, html: &str, offset: gpui::Point<Pixels>) -> Vec<Painted> {
+    let mut app = cx.clone();
+    let (view, fresh) = open(&mut app, html);
+    root(&view, fresh).set_offset(offset);
+    fresh.update(|_, cx| {
+        view.update(cx, |view, cx| {
+            view.document
+                .update(&format!("{html}<!-- fresh -->"), "")
+                .unwrap();
+            cx.notify();
+        })
+    });
+    frame(fresh);
+    frame(fresh);
+    assert_eq!(root(&view, fresh).offset(), offset);
+    painted(fresh)
+}
+
+fn assert_same(step: &str, after: &[Painted], fresh: &[Painted]) {
+    if let Err(diff) = same_paint(after, fresh) {
+        panic!("{step}: {diff}");
+    }
+}
+
+/// One step: `input` moves the root, one frame paints it. Returns the
+/// builds and replays the step cost, after checking it against a fresh frame.
+fn step(
+    cx: &mut TestAppContext,
+    html: &str,
+    name: &str,
+    input: impl FnOnce(&mut VisualTestContext),
+    view: &Entity<DocumentView>,
+    vcx: &mut VisualTestContext,
+) -> (u64, u64) {
+    let before = root(view, vcx).offset();
+    let (b0, r0) = frames(view, vcx);
+    input(vcx);
+    frame(vcx);
+    let (b1, r1) = frames(view, vcx);
+    let offset = root(view, vcx).offset();
+    assert_ne!(offset, before, "{name}: the root did not scroll");
+    assert_eq!(boxes(vcx), vec![(0., 100.)], "{name}: the fixed box moved");
+    let after = painted(vcx);
+    let name = format!("{name} (builds {}, replays {})", b1 - b0, r1 - r0);
+    assert_same(&name, &after, &fresh_quads(cx, html, offset));
+    (b1 - b0, r1 - r0)
+}
+
+#[gpui::test]
+fn wheel_steps_inside_the_interest_rect_replay_without_a_build(cx: &mut TestAppContext) {
+    let html = rows(&fixed_box());
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    for (i, dy) in [-120., -120., -120., -120., 120., 120.]
+        .into_iter()
+        .enumerate()
+    {
+        let name = format!("wheel {i} by {dy}");
+        // The event's own frame replays the step, the next one replays still.
+        let (builds, replays) = step(cx, &html, &name, |c| wheel_by(c, dy), &view, vcx);
+        assert_eq!((builds, replays), (0, 2), "{name}");
+    }
+}
+
+/// The root element's decorations paint stationary in the root scrollport
+/// (`scroll_target::stationary`, a scroll anchor): a step still replays.
+#[gpui::test]
+fn a_stationary_root_background_keeps_steps_replayed(cx: &mut TestAppContext) {
+    let html = format!(
+        "<style>html{{background:#fafafa}}</style>{}",
+        rows(&fixed_box())
+    );
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    for (i, dy) in [-120., -120., 120.].into_iter().enumerate() {
+        let name = format!("wheel {i} by {dy}");
+        let (builds, replays) = step(cx, &html, &name, |c| wheel_by(c, dy), &view, vcx);
+        assert_eq!((builds, replays), (0, 2), "{name}");
+    }
+}
+
+#[gpui::test]
+fn scroll_keys_replay_near_steps_and_build_far_jumps(cx: &mut TestAppContext) {
+    let html = rows(&fixed_box());
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    for key in ["pagedown", "down", "pageup"] {
+        // A key may also draw before its handlers run (`Window::dispatch_key_event`).
+        let (builds, replays) = step(cx, &html, key, |c| c.simulate_keystrokes(key), &view, vcx);
+        assert_eq!(builds, 0, "{key} (replays {replays})");
+        assert!(replays > 0, "{key}");
+    }
+    // End and Home leave the recorded rect (8000 px of rows): a fresh build,
+    // still the same frame as a new tree at that offset.
+    for key in ["end", "pageup", "home"] {
+        step(cx, &html, key, |c| c.simulate_keystrokes(key), &view, vcx);
+    }
 }
 
 #[gpui::test]
 fn scripted_viewport_scroll_matches_fresh_and_then_replays(cx: &mut TestAppContext) {
-    let reference = {
-        let (view, cx) = open(cx, BANDS);
-        cx.update(|_, cx| {
-            view.update(cx, |view, _| {
-                // A new visual tree must build even on an engine that ignores scroll offsets.
-                view.document
-                    .update(&format!("{BANDS}<aside></aside>"), "")
-                    .unwrap();
-                view.document
-                    .state_rc()
-                    .root_scroll
-                    .as_ref()
-                    .unwrap()
-                    .handle
-                    .set_offset(point(px(0.), px(-170.)));
-            })
-        });
-        // A new document resolves its native scrollbar gutter on the following frame.
-        frame(cx);
-        frame(cx);
-        scene(cx)
+    let html = rows(&fixed_box());
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    let inside = |vcx: &mut VisualTestContext| {
+        vcx.update(|_, cx| view.read(cx).document.builds_inside_draw())
     };
-    let (view, cx) = open(cx, BANDS);
-    let before = scene(cx);
-    assert_ne!(reference, before, "scroll must expose different bands");
-    let counts =
-        |_: &mut gpui::Window, app: &mut gpui::App| view.read(app).document.retained_frames();
-    let initial = cx.update(counts);
-    cx.update(|_, cx| {
-        view.read(cx)
-            .document
-            .state_rc()
-            .root_scroll
-            .as_ref()
-            .unwrap()
-            .handle
-            .set_offset(point(px(0.), px(-170.)))
-    });
-    frame(cx);
-    assert_eq!(
-        scene(cx),
-        reference,
-        "scripted scroll replayed the old scene"
-    );
-    let moved = cx.update(counts);
-    assert!(moved.0 > initial.0);
-    frame(cx);
-    assert_eq!(cx.update(counts), (moved.0, moved.1 + 1));
+    let initial_inside = inside(vcx);
+    for (y, expected_builds) in [(-170., 0), (-6500., 1)] {
+        let before = frames(&view, vcx);
+        let offset = point(px(0.), px(y));
+        root(&view, vcx).set_offset(offset);
+        frame(vcx);
+        assert_eq!(root(&view, vcx).offset(), offset);
+        let reference = fresh_quads(cx, &html, offset);
+        assert_same("scripted scroll", &painted(vcx), &reference);
+        let moved = frames(&view, vcx);
+        assert_eq!(
+            moved,
+            (before.0 + expected_builds, before.1 + 1 - expected_builds)
+        );
+        assert_eq!(
+            inside(vcx),
+            initial_inside,
+            "a far jump must be prepared before draw"
+        );
+        frame(vcx);
+        assert_eq!(frames(&view, vcx), (moved.0, moved.1 + 1));
+        assert_same("still after scroll", &painted(vcx), &reference);
+    }
 }

@@ -37,6 +37,25 @@ impl RetainedLayoutInputs {
 }
 
 impl Window {
+    /// A changed layout offset can replay only if the same native scroll handle
+    /// belongs to this recorded range. Its node then supplies the clip and shift.
+    /// A pending scroll-to-item still needs layout to resolve its destination.
+    pub fn layout_scroll_replayable(&self, inputs: &RetainedLayoutInputs, record: &super::RetainedPrepaint) -> bool {
+        let range = record.range();
+        inputs.scroll.iter().all(|input| {
+            let handle = input.handle.as_ref();
+            if handle.is_some_and(ScrollHandle::has_pending_scroll) {
+                return false;
+            }
+            *input.offset.borrow() == input.position || handle.is_some_and(|handle| {
+                let id = super::ScrollNodeId::of(handle);
+                self.rendered_frame.scroll_nodes[range.start.scroll_nodes_index..range.end.scroll_nodes_index]
+                    .iter()
+                    .any(|node| node.id == id)
+            })
+        })
+    }
+
     /// Capture the keyed state reads and native scroll inputs of this layout.
     pub fn record_layout_inputs<R>(
         &mut self,

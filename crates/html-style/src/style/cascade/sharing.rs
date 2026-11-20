@@ -165,6 +165,7 @@ impl Cache {
         let mut style = vcx.doc.initial_style();
         style.apply_map(map(), vars, cx, vcx);
         finish(&mut style);
+        style.share_unchanged(vcx.doc.initial_style_ref());
         if let Some(bytes) = bytes {
             let admission = vcx
                 .doc
@@ -223,7 +224,7 @@ fn cacheable(
         .chain(std::iter::once(inline))
     {
         for decl in block.iter() {
-            if !pure_value(&decl.value) {
+            if !pure::pure_value(&decl.value) {
                 return None;
             }
             bytes = bytes.checked_add(
@@ -242,7 +243,6 @@ fn cacheable(
 }
 
 mod pure;
-use pure::pure_value;
 
 #[cfg(test)]
 mod gradient_tests;

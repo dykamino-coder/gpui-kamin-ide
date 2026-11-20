@@ -15,10 +15,10 @@ pub(in crate::document::retained) struct CheckedRoot {
 }
 
 impl CheckedRoot {
-    pub(super) fn new(epoch: u64, bounds: Bounds<Pixels>, window: &Window, cx: &App) -> Self {
+    pub(super) fn new(epoch: u64, environment: WindowKey, window: &Window) -> Self {
         Self {
             epoch,
-            window: WindowKey::capture(bounds, window, cx),
+            window: environment,
             stale: window.layout_stale(),
         }
     }

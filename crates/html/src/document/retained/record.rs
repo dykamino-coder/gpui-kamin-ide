@@ -36,7 +36,6 @@ impl Inputs {
             && self.serial.get().checked_add(1) == Some(window.frame_serial())
             && window.retained_root_environment()
             && self.environment == *environment
-            && self.layout.scroll_unchanged()
     }
 
     pub(super) fn replayed(&self, window: &Window) {
@@ -49,11 +48,15 @@ pub(super) struct Record {
     pub(super) inputs: Option<Rc<Inputs>>,
     pub(super) prepaint: RetainedPrepaint,
     pub(super) paint: RetainedPaint,
+    pub(super) layered: Option<RetainedPaint>,
     pub(super) root: bool,
     /// Window frame and document generation that own this element state.
     frame: Option<(u64, u64)>,
     painted: bool,
 }
+
+mod replay;
+pub(super) use replay::Replay;
 
 impl Record {
     /// The rendering step and the actual draw enter the same generation.
@@ -76,22 +79,6 @@ impl Record {
 
     pub(super) fn painted(&mut self) {
         self.painted = true;
-    }
-
-    pub(super) fn matches(
-        &self,
-        slot: &Slot,
-        key: Option<&FrameKey>,
-        environment: Option<&WindowKey>,
-        window: &Window,
-    ) -> bool {
-        self.inputs
-            .as_ref()
-            .zip(slot.inputs(key))
-            .is_some_and(|(own, published)| {
-                Rc::ptr_eq(own, &published)
-                    && environment.is_some_and(|env| own.matches(env, window))
-            })
     }
 
     pub(super) fn publish(&self, slot: &Slot, settled: bool) {
