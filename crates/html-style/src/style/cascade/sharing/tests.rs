@@ -35,6 +35,25 @@ fn repeated_input_shares_groups_but_mutation_is_local() {
 }
 
 #[test]
+fn a_declaration_of_the_initial_value_keeps_the_initial_group() {
+    let doc = DocumentValues::detached(Media::default());
+    let vcx = doc.values();
+    let initial = doc.initial_style();
+    let style = resolve(
+        &mut StyleSharing::default(),
+        &parse_decls_in("box-sizing: initial", vcx),
+        vcx,
+    );
+    assert!(style.reset_border.ptr_eq(&initial.reset_border));
+    let changed = resolve(
+        &mut StyleSharing::default(),
+        &parse_decls_in("box-sizing: border-box", vcx),
+        vcx,
+    );
+    assert!(!changed.reset_border.ptr_eq(&initial.reset_border));
+}
+
+#[test]
 fn root_metrics_and_declarations_invalidate_cache() {
     let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
