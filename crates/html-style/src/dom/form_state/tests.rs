@@ -8,7 +8,10 @@ fn checked_ids(source: &str) -> Vec<String> {
         .dom;
     let state = FormState::default();
     let mut out = vec![];
-    let mut stack = vec![dom.document];
+    // Parent links are weak: the document must outlive the walk, or a popped
+    // ancestor is freed and a radio button no longer finds its tree root.
+    let document = dom.document;
+    let mut stack = vec![document.clone()];
     while let Some(node) = stack.pop() {
         if let Some((tag, attrs)) = element(&node)
             && state.checked(&node, tag, &attrs)
@@ -17,6 +20,7 @@ fn checked_ids(source: &str) -> Vec<String> {
         }
         stack.extend(node.children.borrow().iter().rev().cloned());
     }
+    drop(document);
     out
 }
 
