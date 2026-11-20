@@ -1,11 +1,13 @@
 //! Отложенная фаза спаннера: пробы живут во вложенной раскладке, финальные
-//! элементы создаются заново при окончательном ограничении ширины.
+//! elements are created again at the final width constraint, except for an
+//! adopted measure (`Adopt`): its tree and layout are painted as they are.
 
 use crate::hooks::{Hooks, IntoHooked};
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, LayoutId, Pixels, Size, Window, point, px, size,
+    AnyElement, App, AvailableSpace, Bounds, LayoutId, Pixels, RetainedLayout, Size, Window, point,
+    px, size,
 };
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SpannerPass {
@@ -16,12 +18,33 @@ pub(crate) enum SpannerPass {
 type Build = dyn Fn(Size<AvailableSpace>, SpannerPass, &mut Window, &mut App) -> AnyElement;
 type Intrinsic = dyn Fn(Size<AvailableSpace>, &mut Window, &mut App) -> f32;
 
+/// The measure build of a spanner flow that prepaint may paint as it is.
+///
+/// Such a measure is built with the document's own paint collectors, in the
+/// layout context of the flow's place and in its own retained engine. The
+/// flow has nothing inside whose paint order or place its build time decides
+/// (`spanners::adopt::adoptable`: no positioned box, no stacking context, no
+/// fragmentation recorder), so the measure is the tree the final build would
+/// make (Blink propagates a child's out-of-flow candidates and paint order
+/// only when it takes its layout result,
+/// `BoxFragmentBuilder::PropagateFromLayoutResult`).
+pub(crate) struct Adopt {
+    pub(crate) paint: Rc<crate::layout::cx::deferred::Deferred>,
+}
+
+/// A measure build kept for prepaint, by its resolved space.
+type Kept = (Size<AvailableSpace>, AnyElement, RetainedLayout);
+
 pub(crate) struct SpannerFlow {
     pub(crate) build: Rc<Build>,
     pub(crate) intrinsic: Rc<Intrinsic>,
     child: Option<AnyElement>,
     definite_height: Rc<Cell<Option<Pixels>>>,
     measured: Rc<MeasureMemo>,
+    adopt: Option<Rc<Adopt>>,
+    kept: Rc<RefCell<Option<Kept>>>,
+    /// The engine of the adopted measure: prepaint and paint run in it.
+    engine: Option<RetainedLayout>,
 }
 
 /// The last measure-pass result of this element, by its resolved space.
@@ -39,6 +62,7 @@ impl SpannerFlow {
     pub(crate) fn deferred(
         build: impl Fn(Size<AvailableSpace>, SpannerPass, &mut Window, &mut App) -> AnyElement + 'static,
         intrinsic: impl Fn(Size<AvailableSpace>, &mut Window, &mut App) -> f32 + 'static,
+        adopt: Option<Adopt>,
     ) -> AnyElement {
         Self {
             build: Rc::new(build),
@@ -46,6 +70,9 @@ impl SpannerFlow {
             child: None,
             definite_height: Default::default(),
             measured: Default::default(),
+            adopt: adopt.map(Rc::new),
+            kept: Default::default(),
+            engine: None,
         }
         .hooked()
     }
@@ -60,6 +87,9 @@ impl Hooks for SpannerFlow {
         let intrinsic = self.intrinsic.clone();
         let definite_height = self.definite_height.clone();
         let measured = self.measured.clone();
+        let adopt = self.adopt.clone();
+        let kept = self.kept.clone();
+        let context = adopt.is_some().then(|| window.element_layout_context());
         let mut style: gpui::Style = gpui::Style::default();
         // Анонимный поток сохраняет определённую высоту своего CSS-хоста;
         // при auto-высоте циклический процент остаётся неопределённым.
@@ -68,34 +98,50 @@ impl Hooks for SpannerFlow {
             style,
             move |known, available, window, cx| {
                 definite_height.set(known.height);
-                window.with_nested_layout(|window| {
-                    let height = known
-                        .height
-                        .map_or(AvailableSpace::MaxContent, AvailableSpace::Definite);
-                    let width =
-                        known
-                            .width
-                            .map(f32::from)
-                            .unwrap_or_else(|| match available.width {
-                                AvailableSpace::Definite(w) => f32::from(w),
-                                other => intrinsic(size(other, height), window, cx),
-                            });
-                    let available = size(AvailableSpace::Definite(px(width)), height);
-                    let last = measured.take();
-                    if let Some((space, content)) = last.as_ref()
-                        && *space == available
-                    {
-                        crate::work::add!(SpannerMeasureReuses, 1);
-                        let content = content.clone();
-                        measured.set(last);
-                        return content;
+                let height = known
+                    .height
+                    .map_or(AvailableSpace::MaxContent, AvailableSpace::Definite);
+                let width = known
+                    .width
+                    .map(f32::from)
+                    .unwrap_or_else(|| match available.width {
+                        AvailableSpace::Definite(w) => f32::from(w),
+                        other => window.with_nested_layout(|window| {
+                            intrinsic(size(other, height), window, cx)
+                        }),
+                    });
+                let available = size(AvailableSpace::Definite(px(width)), height);
+                let last = measured.take();
+                if let Some((space, content)) = last.as_ref()
+                    && *space == available
+                {
+                    crate::work::add!(SpannerMeasureReuses, 1);
+                    let content = content.clone();
+                    measured.set(last);
+                    return content;
+                }
+                let mut engine = RetainedLayout::default();
+                let held = adopt.as_ref().map(|a| a.paint.held_paint_last.get());
+                let (child, content) = window.with_retained_layout(&mut engine, |window| {
+                    let mut measure = |window: &mut Window| {
+                        let mut child = build(available, SpannerPass::Measure, window, cx);
+                        let mut snapshot = child.snapshot_layout_measurement(window, cx);
+                        let content = snapshot.measure_physical_baselines(available, window, cx);
+                        (child, content)
+                    };
+                    match &context {
+                        Some(context) => window.with_element_layout_context(context, measure),
+                        None => measure(window),
                     }
-                    let mut child = build(available, SpannerPass::Measure, window, cx);
-                    let mut snapshot = child.snapshot_layout_measurement(window, cx);
-                    let content = snapshot.measure_physical_baselines(available, window, cx);
-                    measured.set(Some((available, content.clone())));
-                    content
-                })
+                });
+                // A root-flow record asked for a wrapper inside: build again.
+                let unregistered = adopt
+                    .as_ref()
+                    .zip(held)
+                    .is_some_and(|(a, before)| a.paint.held_paint_last.get() == before);
+                kept.replace(unregistered.then(|| (available, child, engine)));
+                measured.set(Some((available, content.clone())));
+                content
             },
         );
         (id, id)
@@ -116,9 +162,21 @@ impl Hooks for SpannerFlow {
                 .get()
                 .map_or(AvailableSpace::MaxContent, AvailableSpace::Definite),
         );
-        let mut child = (self.build)(available, SpannerPass::Final, window, cx);
-        child.layout_as_root_at(origin, available, window, cx);
-        child.prepaint_at(point(px(0.), px(0.)), window, cx);
+        let kept = self.kept.take().filter(|(space, ..)| *space == available);
+        let Some((_, mut child, mut engine)) = kept else {
+            self.engine = None;
+            let mut child = (self.build)(available, SpannerPass::Final, window, cx);
+            child.layout_as_root_at(origin, available, window, cx);
+            child.prepaint_at(point(px(0.), px(0.)), window, cx);
+            self.child = Some(child);
+            return;
+        };
+        crate::work::add!(SpannerMeasureAdoptions, 1);
+        window.with_retained_layout(&mut engine, |window| {
+            child.layout_as_root_at(origin, available, window, cx);
+            child.prepaint_at(point(px(0.), px(0.)), window, cx);
+        });
+        self.engine = Some(engine);
         self.child = Some(child);
     }
 
@@ -130,8 +188,12 @@ impl Hooks for SpannerFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        if let Some(child) = &mut self.child {
-            child.paint(window, cx);
+        let Some(child) = &mut self.child else {
+            return;
+        };
+        match &mut self.engine {
+            Some(engine) => window.with_retained_layout(engine, |window| child.paint(window, cx)),
+            None => child.paint(window, cx),
         }
     }
 }

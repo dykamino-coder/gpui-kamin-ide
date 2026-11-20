@@ -6,7 +6,7 @@
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext};
 
-fn rows(edit: usize, text: &str) -> String {
+pub(super) fn rows(edit: usize, text: &str) -> String {
     let rows: String = (0..600)
         .map(|i| {
             let body = if i == edit {
@@ -83,7 +83,12 @@ fn a_skipped_block_that_reaches_the_screen_rebuilds_the_frame(cx: &mut TestAppCo
 #[gpui::test]
 fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppContext) {
     let grown = format!("{}x", "x ".repeat(300));
-    let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
+    // Only integral movement can replay rasterized glyphs unchanged.
+    let page = |text: &str| {
+        rows(5, text)
+            .replace("margin:0", "margin:0;line-height:20px")
+            .replace("<div style='height:20px'>x", "<div>x")
+    };
     let (view, cx) = settled(cx, &page("x"), &page("xy"));
     // The grown block moves the visible blocks below it: they replay their
     // output at the new place (`placeholder`), and no frame is built twice.
@@ -220,30 +225,4 @@ fn right_to_left_blocks_are_skipped_too(cx: &mut TestAppContext) {
 
 fn replayed(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
     cx.update(|_, cx| view.read(cx).doc.replayed_blocks())
-}
-
-#[gpui::test]
-fn a_changed_block_releases_its_record_before_it_is_built(cx: &mut TestAppContext) {
-    let (view, cx) = settled(cx, &rows(300, "row 300"), &rows(300, "row edited"));
-    let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
-    let recorded = store.recorded();
-    assert!(recorded.len() > 400, "settled blocks were not recorded");
-    let block = recorded.into_iter().find(|e| e.tag == "div").unwrap();
-    assert!(
-        store.same_tree(&block).is_some(),
-        "an unchanged block lost its record"
-    );
-    // The same block after `Document::update` lost its text: the record can
-    // never fit it, so it must not keep the previous subtree alive while the
-    // new one is built.
-    let mut changed = block.clone();
-    changed.children = Vec::new().into();
-    assert!(
-        store.same_tree(&changed).is_none(),
-        "a changed block fit its record"
-    );
-    assert!(
-        store.same_tree(&block).is_none(),
-        "the record of a changed block stayed in the store"
-    );
 }

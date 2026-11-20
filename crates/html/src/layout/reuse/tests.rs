@@ -25,3 +25,39 @@ fn placed_ink_moves_with_the_box_and_grows_by_the_margin() {
     let far = placed(ink, point(ScaledPixels(0.0), ScaledPixels(700.0)), SNAP);
     assert!(!far.intersects(&screen));
 }
+
+#[test]
+fn moved_output_preserves_both_device_pixel_phases() {
+    let at = |x, y| point(ScaledPixels(x), ScaledPixels(y));
+    let from = at(10.25, -20.5);
+    for to in [from, at(11.25, -19.5), at(-9.75, 30.5)] {
+        assert!(frame::raster_phase_matches(from, to), "{from:?} -> {to:?}");
+    }
+    for to in [
+        at(10.5, -20.5),
+        at(10.25, -20.25),
+        at(f32::NAN, 0.0),
+        at(0.0, f32::INFINITY),
+    ] {
+        assert!(!frame::raster_phase_matches(from, to), "{from:?} -> {to:?}");
+    }
+    // The small residual must not disappear in a large f32 subtraction.
+    assert!(!frame::raster_phase_matches(
+        at(0.0001, 0.0),
+        at(10000.0, 0.0)
+    ));
+}
+
+#[test]
+fn moved_output_checks_physical_pixels_at_the_current_scale() {
+    let from = point(px(3.0), px(8.0));
+    let to = point(px(3.5), px(8.5));
+    assert!(!frame::raster_phase_matches(
+        scaled(from, 1.0),
+        scaled(to, 1.0)
+    ));
+    assert!(frame::raster_phase_matches(
+        scaled(from, 2.0),
+        scaled(to, 2.0)
+    ));
+}

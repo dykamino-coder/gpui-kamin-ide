@@ -61,6 +61,8 @@ mod prepared;
 mod rebuild_key_tests;
 #[cfg(test)]
 mod recolour_layout_tests;
+#[cfg(test)]
+mod record_release_tests;
 pub use prepared::UpdatePhase;
 #[cfg(test)]
 mod attr_scope_tests;
@@ -212,3 +214,6 @@ impl Document {
         self.retained.recorded.borrow().strong_count() != 0
     }
 }
+
+#[cfg(test)]
+mod moved_glyph_tests;
