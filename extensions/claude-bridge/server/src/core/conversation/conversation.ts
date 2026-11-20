@@ -14,7 +14,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { AgentEngineId } from '../../shared/agent-events'
-import { buildHandoff, readTranscript, type HandoffSource } from '../engine/handoff'
+import { readHandoff, type HandoffSource } from '../engine/handoff'
 import { computeProjectSlug } from '../pty/jsonl-watcher'
 import { archiveTranscript, dropArchivedTranscript, restoreArchivedTranscript } from '../pty/transcript-archive'
 import { infoLog, warnLog } from '../logging'
@@ -79,27 +79,27 @@ export interface SwitchPlan {
 /** What a switch to `target` will do — reads only. Null when the chat has no
  *  conversation to carry (no native session yet): the switch is a plain
  *  restart on the other engine. */
-export function planSwitch(opts: {
+export async function planSwitch(opts: {
   manifest: ConversationManifest | null
   sessionsDir: string
   from: SwitchFrom
   target: { engine: AgentEngineId; model: string | null }
-}): SwitchPlan | null {
+}): Promise<SwitchPlan | null> {
   const { manifest, from, target } = opts
   if (!manifest && !from.nativeId) return null
   const id = manifest?.id ?? randomUUID()
   const dir = manifest?.dir ?? path.join(opts.sessionsDir, id)
   const ref = { id, dir }
-  const entries = manifest
-    ? readTranscript(unifiedLogPath(ref))
-    : readTranscript(path.join(slugDirOf(from.settingsDir), `${from.nativeId}.jsonl`))
   const source: HandoffSource = {
     conversationId: id,
     engine: from.engine,
     model: from.model,
     engines: [...new Set([...(manifest?.segments.map((s) => s.engine) ?? []), from.engine])],
   }
-  const handoff = buildHandoff(entries, source)
+  const handoff = await readHandoff(
+    manifest ? unifiedLogPath(ref) : path.join(slugDirOf(from.settingsDir), `${from.nativeId}.jsonl`),
+    source,
+  )
   return {
     ref,
     existing: Boolean(manifest),
@@ -164,7 +164,7 @@ export function commitSwitch(plan: SwitchPlan): ConversationManifest {
 /** The active segment lost its native session (codex no longer has the
  *  thread; the Claude transcript is gone and has no archived copy): it
  *  continues in a new one, which gets the whole conversation again. */
-export function restartSegmentFresh(manifest: ConversationManifest): ConversationSegment {
+export async function restartSegmentFresh(manifest: ConversationManifest): Promise<ConversationSegment> {
   const segment = activeSegment(manifest)
   warnLog('Conversation: native session of the segment lost, starting a new one', {
     id: manifest.id,
@@ -172,7 +172,7 @@ export function restartSegmentFresh(manifest: ConversationManifest): Conversatio
     nativeId: segment.nativeId,
   })
   const previous = manifest.segments[manifest.active - 1] ?? segment
-  const handoff = buildHandoff(readTranscript(unifiedLogPath(manifest)), {
+  const handoff = await readHandoff(unifiedLogPath(manifest), {
     conversationId: manifest.id,
     engine: previous.engine,
     model: previous.model,
