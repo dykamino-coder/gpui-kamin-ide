@@ -76,7 +76,7 @@ pub(super) fn write_paint_values(
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
         }
-        if unpainted_svg(old, path) {
+        if unpainted_svg(old, path) || super::paint_damage::unboxed(a, b) {
             continue;
         }
         if unseen(path) {
