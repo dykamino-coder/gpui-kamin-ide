@@ -197,16 +197,18 @@ export class SessionCliControl {
     return this.submissions?.handoff() ?? []
   }
 
-  submit(text: string, submissionId?: string): boolean {
+  /** `text` goes to the CLI; `userText` is what the user wrote (receipts,
+   *  routing): a hidden history block may quote a command or a mention. */
+  submit(text: string, submissionId?: string, userText = text): boolean {
     const input = getSessionInputSnapshot(this.session)
     // Engine submit intentionally does not expand mentions, pastes or native commands.
     if (
-      needsTerminalDelivery(text) ||
+      needsTerminalDelivery(userText) ||
       (!submissionId &&
         (input.rawInputDirty || input.activeKind || input.queuedSubmissions || input.pendingMaintenance.length))
     )
       return false
-    if (submissionId) return this.submissions?.submit(submissionId, text) ?? false
+    if (submissionId) return this.submissions?.submit(submissionId, text, userText) ?? false
     // Older clients retain native mid-turn semantics, including their queue mirror.
     if (this.busy()) return false
     return this.mod?.submit(text, () => submitCoordinatedText(this.session, text)) ?? false

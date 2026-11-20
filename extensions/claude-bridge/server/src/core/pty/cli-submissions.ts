@@ -9,7 +9,10 @@ import type { JsonlEntry } from '../../shared/jsonl-types'
 type State = 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
 interface Submission {
   id: string
+  /** What the CLI gets and stores in its prompt row (may carry a context block). */
   text: string
+  /** What the user wrote: the receipt text, the client's submission identity. */
+  userText: string
   state: State
   uuid?: string
   warning?: string
@@ -66,7 +69,7 @@ export class CliSubmissions {
       type: 'session:submission',
       sessionId: this.session.id,
       id: item.id,
-      text: item.text,
+      text: item.userText,
       state: item.state,
       uuid: item.uuid,
       cancelable: item.state === 'queued',
@@ -141,7 +144,7 @@ export class CliSubmissions {
     return safe
   }
 
-  submit(id: string, text: string): boolean {
+  submit(id: string, text: string, userText = text): boolean {
     if (!id || id.length > 128 || Buffer.byteLength(text) > 131_072) return false
     const existing = this.items.get(id)
     if (existing) {
@@ -164,7 +167,7 @@ export class CliSubmissions {
       }
       if (this.items.size >= 256) return false
     }
-    const item: Submission = { id, text, state: 'queued', createdAt: Date.now() }
+    const item: Submission = { id, text, userText, state: 'queued', createdAt: Date.now() }
     this.items.set(id, item)
     this.emit(item)
     this.drain()
