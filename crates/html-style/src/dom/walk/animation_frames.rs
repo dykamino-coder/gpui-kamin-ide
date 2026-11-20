@@ -1,9 +1,9 @@
-//! Разрешение `@keyframes` элемента при обходе: кадры как готовые стили.
+//! Resolves an element's `@keyframes` during the walk: frames as finished styles.
 //!
-//! Вход — стиль элемента, наборы кадров документа и его переменные; выход —
-//! список `(доля, Computed)`, где каждый кадр — объявления поверх базового
-//! стиля (кадр заменяет `transform`, а не дописывает). Считается здесь,
-//! потому что к отрисовке таблицы стилей уже нет.
+//! Input is the element style, the document keyframe sets and its variables; output is
+//! a list of `(progress, Computed)` where each frame is declarations over the base
+//! style (a frame replaces `transform`, it does not append). It is computed here
+//! because the stylesheets are gone by paint time.
 //! Missing `0%`/`100%` frames are built from the underlying style
 //! (css-animations-1 §keyframes); several frozen animations stack in list order (§3).
 

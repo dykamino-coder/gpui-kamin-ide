@@ -1,3 +1,5 @@
+//! Checkedness and selectedness derived from content attributes.
+
 use super::*;
 
 fn checked_ids(source: &str) -> Vec<String> {

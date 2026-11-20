@@ -5,11 +5,11 @@ use crate::animation::animation_frame;
 use crate::dom::Element;
 use crate::values::ValueCx;
 
-/// Остановленная анимация (`AnimSpec::frozen`), запечённая в копию элемента:
-/// кадр `(-delay)/duration` подставляется прямо в стиль, и дальше работает
-/// весь обычный конвейер. `transforms` — нести ли и `rotate`/`scale`/
-/// `transform`: их матрицу строит `transformed()` СНАРУЖИ элемента, от стиля,
-/// который ему передан. Important declarations are already layered over
+/// A frozen animation (`AnimSpec::frozen`) baked into a copy of the element:
+/// the frame at `(-delay)/duration` is written straight into the style and the
+/// normal pipeline runs on it. `transforms` says whether `rotate`/`scale`/
+/// `transform` are carried too: `transformed()` builds their matrix OUTSIDE the
+/// element, from the style it is given. Important declarations are already layered over
 /// each frame when the frames are resolved (css-cascade-5 §cascade-origin).
 pub(crate) fn bake_frozen(e: &Element, transforms: bool, vcx: ValueCx<'_>) -> Option<Element> {
     let own = e.style.used();
