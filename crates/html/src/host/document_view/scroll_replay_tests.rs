@@ -127,3 +127,37 @@ fn scroll_keys_replay_near_steps_and_build_far_jumps(cx: &mut TestAppContext) {
         step(cx, &html, key, |c| c.simulate_keystrokes(key), &view, vcx);
     }
 }
+
+#[gpui::test]
+fn scripted_viewport_scroll_matches_fresh_and_then_replays(cx: &mut TestAppContext) {
+    let html = rows(&fixed_box());
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    let inside = |vcx: &mut VisualTestContext| {
+        vcx.update(|_, cx| view.read(cx).document.builds_inside_draw())
+    };
+    let initial_inside = inside(vcx);
+    for (y, expected_builds) in [(-170., 0), (-6500., 1)] {
+        let before = frames(&view, vcx);
+        let offset = point(px(0.), px(y));
+        root(&view, vcx).set_offset(offset);
+        frame(vcx);
+        assert_eq!(root(&view, vcx).offset(), offset);
+        let reference = fresh_quads(cx, &html, offset);
+        assert_same("scripted scroll", &painted(vcx), &reference);
+        let moved = frames(&view, vcx);
+        assert_eq!(
+            moved,
+            (before.0 + expected_builds, before.1 + 1 - expected_builds)
+        );
+        assert_eq!(
+            inside(vcx),
+            initial_inside,
+            "a far jump must be prepared before draw"
+        );
+        frame(vcx);
+        assert_eq!(frames(&view, vcx), (moved.0, moved.1 + 1));
+        assert_same("still after scroll", &painted(vcx), &reference);
+    }
+}

@@ -65,11 +65,8 @@ pub(crate) struct Store {
     /// The document was patched since the last frame (`Document::commit`):
     /// the records are known to hold only by the next build's comparison.
     pub(super) patched: Cell<bool>,
-    /// A rebuild dropped records (`rebase`), and every frame since followed
-    /// a rebuild: restyles keep reaching the blocks, so the frames build them
-    /// without recording them again (`FlowCx::restyled`). The first frame
-    /// after no rebuild still records nothing, as a fresh document's first
-    /// frame; the next records the blocks.
+    /// Consecutive restyles build affected blocks without recording them again.
+    /// The first unchanged build settles the flow, and the next records blocks.
     pub(super) restyled: Cell<bool>,
     /// The blocks the last rebuild restyled, when it restyled no root box:
     /// only they are built without being recorded (`FlowCx::restyled`).
@@ -83,12 +80,16 @@ pub(crate) struct Store {
 }
 
 impl Store {
-    /// Начался prepaint документа; `continued` — его состояние элемента было
-    /// в прошлом кадре окна, то есть прошлый кадр рисовал этот документ.
-    /// Иначе цепочка кадров рвётся, и ни один диапазон повтора не годен.
-    pub(crate) fn draw(&self, continued: bool) {
-        self.epoch
-            .set(self.epoch.get() + if continued { 1 } else { 2 });
+    /// Generation of the document output. A discontinuity leaves a gap so a
+    /// range in an older window frame can never follow the new generation.
+    pub(crate) fn epoch(&self) -> u64 {
+        self.epoch.get()
+    }
+
+    pub(crate) fn draw(&self, continued: bool) -> u64 {
+        let epoch = self.epoch.get() + if continued { 1 } else { 2 };
+        self.epoch.set(epoch);
+        epoch
     }
 
     /// Кадр документа повторён целиком: диапазоны записей повтора блоков

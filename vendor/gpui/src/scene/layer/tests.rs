@@ -196,8 +196,24 @@ fn env() -> super::BoxEnv {
         rem_size: crate::px(16.),
         fill: None,
         layer: None,
-        piece: None,
+        painter: crate::scene::RunPainter::Box(crate::scene::BoxContents::Own),
     }
+}
+
+#[test]
+fn an_unstacked_band_does_not_accept_a_box_painter() {
+    let mut scene = Scene::default();
+    let mut state = env();
+    state.painter = crate::scene::RunPainter::Band(Some(crate::text_system::band_piece::BandEdges {
+        content_height: crate::px(12.), start: true, end: true, sides: 0,
+    }));
+    let area = rect(0., 0., 30., 12.);
+    assert!(scene.open_box(42, area, state));
+    scene.insert_primitive(quad(area, red(), 1.));
+    let run = scene.close_box().unwrap();
+    let layer = LayerHandle::new(SceneLayer::finish(scene, Vec::new(), vec![run]));
+    assert!(layer.holds_band(42));
+    assert!(!layer.holds_box(42));
 }
 
 /// Paint box `owner` of `area` as the quads `fills` (the first bound as its

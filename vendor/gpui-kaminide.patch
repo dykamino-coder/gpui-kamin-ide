@@ -2,56 +2,57 @@
 #
 # 1. Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.
 # 2. Shared render image: a validated immutable dense BGRA frame borrows its Arc CPU owner without a pixel clone; CPU consumers can recover that owner, keeping its resource lease alive with the backing.
-# 3. Natural image lifetime: each window owns its resampled CPU cache; cached entries and accepted scene commands share upload leases, including replay, clipping, transforms and retained scene copies. The final cache or scene owner removes the atlas tile.
-# 4. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
-# 5. Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.
-# 6. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen (counted also where no sink is open and carried out of an isolated scene, for the ink probes of the paint around it); exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
-# 7. Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.
-# 8. Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.
-# 9. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
-# 10. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
-# 11. Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.
-# 12. Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.
-# 13. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
-# 14. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
-# 15. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
-# 16. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
-# 17. Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).
-# 18. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
-# 19. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
-# 20. Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
-# 21. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
-# 22. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
-# 23. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
-# 24. Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.
-# 25. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
-# 26. Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.
-# 27. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
-# 28. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
-# 29. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
-# 30. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
-# 31. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
-# 32. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
-# 33. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
-# 34. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
-# 35. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
-# 36. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
-# 37. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
-# 38. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
-# 39. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
-# 40. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
-# 41. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
-# 42. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
-# 43. Retained subtrees: public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
-# 44. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
-# 45. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
-# 46. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
-# 47. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
-# 48. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
-# 49. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
-# 50. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
-# 51. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
-# 52. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
+# 3. Lazy render image: an owner may produce the dense BGRA frame only when the atlas uploads it, so the image keeps no resident CPU pixel copy; CPU readers decode a transient frame on demand.
+# 4. Natural image lifetime: each window owns its resampled CPU cache; cached entries and accepted scene commands share upload leases, including replay, clipping, transforms and retained scene copies. The final cache or scene owner removes the atlas tile.
+# 5. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
+# 6. Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.
+# 7. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen (counted also where no sink is open and carried out of an isolated scene, for the ink probes of the paint around it); exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
+# 8. Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.
+# 9. Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.
+# 10. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
+# 11. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
+# 12. Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.
+# 13. Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.
+# 14. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
+# 15. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
+# 16. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
+# 17. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
+# 18. Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).
+# 19. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
+# 20. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
+# 21. Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
+# 22. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
+# 23. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
+# 24. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
+# 25. Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.
+# 26. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
+# 27. Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.
+# 28. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
+# 29. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
+# 30. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
+# 31. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
+# 32. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
+# 33. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
+# 34. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
+# 35. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
+# 36. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
+# 37. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
+# 38. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
+# 39. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
+# 40. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
+# 41. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
+# 42. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
+# 43. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
+# 44. Retained subtrees: public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
+# 45. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
+# 46. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
+# 47. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
+# 48. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
+# 49. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
+# 50. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
+# 51. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
+# 52. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
+# 53. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -5678,21 +5679,22 @@ index ea5968f84e9cb08dd878e5e09195eb88f587b1ce..7f2096597bdbcbb79495e851e4b9bd97
 +
 +    #[test]
 diff --git a/vendor/gpui/src/assets.rs b/vendor/gpui/src/assets.rs
-index cb8b47ed0166ba1bf67842766cd50cdd30e8a6d2..671f7d3e64dc9b42937ac03a0978ce02a9474298
+index cb8b47ed0166ba1bf67842766cd50cdd30e8a6d2..5e8f6e00ef3fb8de911b19c3fe1fe74860dbb72e
 --- a/vendor/gpui/src/assets.rs
 +++ b/vendor/gpui/src/assets.rs
-@@ -0,0 +1,6 @@
+@@ -0,0 +1,7 @@
 +//! Application assets and immutable render images, owned or shared with a CPU consumer.
 +
 +// KaminIDE patch: share immutable CPU backing with the renderer and its consumers.
 +mod shared;
++pub use shared::LazyBgra;
 +use shared::SharedImage;
 +
-@@ -48,0 +55 @@
+@@ -48,0 +56 @@
 +    shared: Option<SharedImage>,
-@@ -67,0 +75 @@
+@@ -67,0 +76 @@
 +            shared: None,
-@@ -68,0 +77,18 @@
+@@ -68,0 +78,36 @@
 +    }
 +
 +    /// Share a dense, straight BGRA frame without copying its pixels. The owner
@@ -5707,15 +5709,33 @@ index cb8b47ed0166ba1bf67842766cd50cdd30e8a6d2..671f7d3e64dc9b42937ac03a0978ce02
 +        Some(image)
 +    }
 +
++    /// KaminIDE patch: a dense straight BGRA frame of known size whose pixels the owner
++    /// produces for each upload ([`LazyBgra`]); the image keeps no CPU copy.
++    pub fn from_lazy_bgra<T: LazyBgra>(width: u32, height: u32, owner: std::sync::Arc<T>) -> Option<Self> {
++        let shared = SharedImage::lazy(width, height, owner)?;
++        let mut image = Self::new(SmallVec::new());
++        image.shared = Some(shared);
++        Some(image)
++    }
++
++    /// KaminIDE patch: the frame for one upload into a texture: borrowed when resident,
++    /// produced on demand (and dropped after the upload) for a lazy image.
++    pub fn upload_bytes(&self, frame_index: usize) -> Option<Cow<'_, [u8]>> {
++        if let Some(shared) = &self.shared {
++            return (frame_index == 0).then(|| shared.upload()).flatten();
++        }
++        self.as_bytes(frame_index).map(Cow::Borrowed)
++    }
++
 +    /// Recover a shared CPU owner for a consumer that understands its format.
 +    /// Owned/animated images have no shared owner.
 +    pub fn shared_bgra_owner<T: Send + Sync + 'static>(&self) -> Option<std::sync::Arc<T>> {
 +        self.shared.as_ref()?.owner()
-@@ -72,0 +99,3 @@
+@@ -72,0 +118,3 @@
 +        if let Some(shared) = &self.shared {
-+            return (frame_index == 0).then(|| shared.bytes());
++            return (frame_index == 0).then(|| shared.bytes()).flatten();
 +        }
-@@ -79,0 +109,7 @@
+@@ -79,0 +128,7 @@
 +        if let Some(shared) = &self.shared {
 +            return if frame_index == 0 {
 +                size(shared.width.into(), shared.height.into())
@@ -5723,21 +5743,22 @@ index cb8b47ed0166ba1bf67842766cd50cdd30e8a6d2..671f7d3e64dc9b42937ac03a0978ce02
 +                Size::default()
 +            };
 +        }
-@@ -105 +141 @@
+@@ -105 +160 @@
 -        self.data.len()
 +        self.shared.as_ref().map_or(self.data.len(), |_| 1)
-@@ -113 +149 @@
+@@ -113 +168 @@
 -            .field("size", &self.data.first().map(|f| f.buffer().dimensions()))
 +            .field("size", &self.size(0))
 diff --git a/vendor/gpui/src/assets/shared.rs b/vendor/gpui/src/assets/shared.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f7b6be3af1c9860665daf0d73007b17e664c90ae
+index 0000000000000000000000000000000000000000..b3546e8d16158b5f111ca8af70696ef919bcfcfe
 --- /dev/null
 +++ b/vendor/gpui/src/assets/shared.rs
-@@ -0,0 +1,77 @@
-+//! Dense immutable BGRA backing shared with an external CPU owner.
+@@ -0,0 +1,150 @@
++//! Dense immutable BGRA backing shared with an external CPU owner, or produced by it on
++//! demand (KaminIDE patch: decode on upload).
 +
-+use std::{any::Any, sync::Arc};
++use std::{any::Any, borrow::Cow, sync::Arc};
 +
 +trait Pixels: Any + Send + Sync {
 +    fn bytes(&self) -> &[u8];
@@ -5749,10 +5770,28 @@ index 0000000000000000000000000000000000000000..f7b6be3af1c9860665daf0d73007b17e
 +    }
 +}
 +
++/// KaminIDE patch: an owner that produces the dense straight BGRA frame when the
++/// renderer needs it (an atlas upload), so the image keeps no CPU copy of its pixels.
++pub trait LazyBgra: Any + Send + Sync {
++    /// The frame, `width * height * 4` bytes; `None` when the source cannot produce it.
++    fn bgra(&self) -> Option<Vec<u8>>;
++}
++
++enum Backing {
++    Ready(Arc<dyn Pixels>),
++    Lazy(Arc<dyn LazyBgra>),
++}
++
 +pub(super) struct SharedImage {
 +    pub width: u32,
 +    pub height: u32,
-+    pixels: Arc<dyn Pixels>,
++    pixels: Backing,
++}
++
++fn frame_len(width: u32, height: u32) -> Option<usize> {
++    (width as usize)
++        .checked_mul(height as usize)?
++        .checked_mul(4)
 +}
 +
 +impl SharedImage {
@@ -5760,33 +5799,62 @@ index 0000000000000000000000000000000000000000..f7b6be3af1c9860665daf0d73007b17e
 +    where
 +        T: AsRef<[u8]> + Send + Sync + 'static,
 +    {
-+        let len = (width as usize)
-+            .checked_mul(height as usize)?
-+            .checked_mul(4)?;
-+        if owner.as_ref().as_ref().len() != len {
++        if owner.as_ref().as_ref().len() != frame_len(width, height)? {
 +            return None;
 +        }
 +        Some(Self {
 +            width,
 +            height,
-+            pixels: owner,
++            pixels: Backing::Ready(owner),
 +        })
 +    }
 +
-+    pub fn bytes(&self) -> &[u8] {
-+        self.pixels.bytes()
++    pub fn lazy<T: LazyBgra>(width: u32, height: u32, owner: Arc<T>) -> Option<Self> {
++        frame_len(width, height)?;
++        Some(Self {
++            width,
++            height,
++            pixels: Backing::Lazy(owner),
++        })
++    }
++
++    /// Resident pixels; a lazy frame has none until a consumer asks [`Self::upload`].
++    pub fn bytes(&self) -> Option<&[u8]> {
++        match &self.pixels {
++            Backing::Ready(pixels) => Some(pixels.bytes()),
++            Backing::Lazy(_) => None,
++        }
++    }
++
++    /// The frame for one upload: borrowed when resident, produced (and not kept) when lazy.
++    pub fn upload(&self) -> Option<Cow<'_, [u8]>> {
++        match &self.pixels {
++            Backing::Ready(pixels) => Some(Cow::Borrowed(pixels.bytes())),
++            Backing::Lazy(owner) => {
++                let bytes = owner.bgra()?;
++                (Some(bytes.len()) == frame_len(self.width, self.height))
++                    .then_some(Cow::Owned(bytes))
++            }
++        }
 +    }
 +
 +    pub fn owner<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
-+        let owner: Arc<dyn Any + Send + Sync> = self.pixels.clone();
++        let owner: Arc<dyn Any + Send + Sync> = match &self.pixels {
++            Backing::Ready(pixels) => pixels.clone(),
++            Backing::Lazy(owner) => owner.clone(),
++        };
 +        owner.downcast().ok()
 +    }
 +}
 +
 +#[cfg(test)]
 +mod tests {
++    use super::LazyBgra;
 +    use crate::RenderImage;
-+    use std::sync::Arc;
++    use std::sync::{
++        Arc,
++        atomic::{AtomicUsize, Ordering},
++    };
 +
 +    #[test]
 +    fn shared_pixels_keep_owner_and_validate_frame_extent() {
@@ -5810,6 +5878,31 @@ index 0000000000000000000000000000000000000000..f7b6be3af1c9860665daf0d73007b17e
 +        assert!(weak.upgrade().is_some());
 +        drop(image);
 +        assert!(weak.upgrade().is_none());
++    }
++
++    struct Counted(AtomicUsize, Vec<u8>);
++
++    impl LazyBgra for Counted {
++        fn bgra(&self) -> Option<Vec<u8>> {
++            self.0.fetch_add(1, Ordering::Relaxed);
++            Some(self.1.clone())
++        }
++    }
++
++    #[test]
++    fn lazy_pixels_are_produced_per_upload_and_never_resident() {
++        let owner = Arc::new(Counted(AtomicUsize::new(0), vec![1, 2, 3, 4, 5, 6, 7, 8]));
++        let image = RenderImage::from_lazy_bgra(2, 1, owner.clone()).unwrap();
++        assert_eq!(owner.0.load(Ordering::Relaxed), 0, "nothing decoded at creation");
++        assert_eq!(image.size(0), crate::size(2.into(), 1.into()));
++        assert_eq!(image.as_bytes(0), None, "no resident CPU copy");
++        assert_eq!(image.upload_bytes(0).as_deref(), Some(&owner.1[..]));
++        assert_eq!(owner.0.load(Ordering::Relaxed), 1);
++        assert!(image.shared_bgra_owner::<Counted>().is_some());
++        assert!(RenderImage::from_lazy_bgra(3, 1, owner.clone())
++            .unwrap()
++            .upload_bytes(0)
++            .is_none(), "a frame of the wrong extent is refused");
 +    }
 +}
 diff --git a/vendor/gpui/src/batch_cost.rs b/vendor/gpui/src/batch_cost.rs
@@ -8230,7 +8323,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276b251c086
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7a653616b8fa09adb1bf7194565f368ee5c149fd
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -8531,16 +8624,31 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +    fn prepaint(&mut self, window: &mut Window) -> bool;
 +}
 +
-@@ -1813,0 +1866,31 @@
+@@ -1813,0 +1866,46 @@
 +    /// Локальная замена собственной краски; callback не наследуется потомками.
 +    pub fn paint_box_with(mut self, painter: crate::BoxPainter) -> Self {
 +        self.interactivity.box_painter = Some(painter);
 +        self
 +    }
 +
++    /// Record a box whose decorations also paint in child elements.
++    pub fn decorated_paint_owner(mut self, owner: u32, outset: Pixels) -> Self {
++        self.interactivity.paint_owner = owner;
++        self.interactivity.box_run = crate::scene::BoxContents::DecoratedBox(outset);
++        self
++    }
++
++    /// Bind this box's values, retaining that other painters contribute to its output.
++    pub fn partial_paint_owner(mut self, owner: u32) -> Self {
++        self.interactivity.paint_owner = owner;
++        self.interactivity.box_run = crate::scene::BoxContents::External;
++        self
++    }
++
 +    /// KaminIDE patch: name the values the box's own paint binds in a scene
 +    /// layer (`LayerHandle::set_background`) by `owner`; 0 for none.
 +    pub fn paint_owner(mut self, owner: u32) -> Self {
++        self.interactivity.box_run = crate::scene::BoxContents::Own;
 +        self.interactivity.paint_owner = owner;
 +        self
 +    }
@@ -8563,22 +8671,22 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +        self.layout_observer = Some(Box::new(observer));
 +        self
 +    }
-@@ -1854,0 +1938,4 @@
+@@ -1854,0 +1953,4 @@
 +    /// KaminIDE patch: this node's layout id and its unrounded window
 +    /// bounds (set in prepaint) for device-pixel snapping of CSS borders.
 +    layout_id: Option<LayoutId>,
 +    exact_bounds: Option<Bounds<Pixels>>,
-@@ -1873 +1960 @@
+@@ -1873 +1975 @@
 -        &mut self.interactivity.base_style
 +        self.interactivity.base_style_mut()
-@@ -1893,0 +1981,2 @@
+@@ -1893,0 +1996,2 @@
 +    fn paint_boundary(&self) -> bool { false }
 +
-@@ -1909 +1998,2 @@
+@@ -1909 +2013,2 @@
 -            .override_role
 +            .rare()
 +            .and_then(|rare| rare.override_role)
-@@ -1922 +2012,6 @@
+@@ -1922 +2027,6 @@
 -        if let Some(f) = self.interactivity.a11y_synthetic_children.take() {
 +        if let Some(f) = self
 +            .interactivity
@@ -8586,13 +8694,13 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +            .as_deref_mut()
 +            .and_then(|rare| rare.a11y_synthetic_children.take())
 +        {
-@@ -1942 +2037 @@
+@@ -1942 +2052 @@
 -            self.interactivity.request_layout(
 +            self.interactivity.request_layout_boxed(
-@@ -1947 +2042 @@
+@@ -1947 +2057 @@
 -                |style, window, cx| {
 +                |style, refinement, window, cx| {
-@@ -1954 +2049,7 @@
+@@ -1954 +2064,7 @@
 -                        window.request_layout(style, child_layout_ids.iter().copied(), cx)
 +                        let children = child_layout_ids.iter().copied();
 +                        match refinement {
@@ -8601,7 +8709,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +                            }
 +                            None => window.request_layout_ref(&style, children, cx),
 +                        }
-@@ -1960 +2061,12 @@
+@@ -1960 +2076,12 @@
 -        (layout_id, DivFrameState { child_layout_ids })
 +        // KaminIDE patch: capture identity in the tree receiving this node.
 +        if let Some(observer) = &mut self.layout_observer {
@@ -8615,14 +8723,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +                exact_bounds: None,
 +            },
 +        )
-@@ -1972,0 +2085,6 @@
+@@ -1972,0 +2100,6 @@
 +        // KaminIDE patch: stale descendants cannot publish inputs in this pass.
 +        if let Some(observer) = &mut self.layout_observer
 +            && !observer.prepaint(window)
 +        {
 +            return None;
 +        }
-@@ -2019 +2137,22 @@
+@@ -2019 +2152,22 @@
 -        self.interactivity.prepaint(
 +        // KaminIDE patch: unrounded bounds of this node, only when they lie
 +        // within half a device pixel of the snapped ones (a node moved by
@@ -8646,40 +8754,40 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +
 +        let scroll_handle = self.interactivity.tracked_scroll_handle.clone();
 +        let hitbox = self.interactivity.prepaint(
-@@ -2026,0 +2166,2 @@
+@@ -2026,0 +2181,2 @@
 +                // Children bring their own exact bounds.
 +                window.raster_frame.exact_bounds = None;
-@@ -2031,0 +2173,2 @@
+@@ -2031,0 +2188,2 @@
 +                // KaminIDE patch: a scroll container's children form a scroll node.
 +                let node = scroll_handle.as_ref().map(|handle| (handle, window.content_mask().bounds));
-@@ -2032,0 +2176 @@
+@@ -2032,0 +2191 @@
 +                    let open = window.begin_scroll_node_prepaint(node, scroll_offset);
-@@ -2033,0 +2178,3 @@
+@@ -2033,0 +2193,3 @@
 +                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
 +                            (traversal.enter_children)(window);
 +                        }
-@@ -2046,0 +2194 @@
+@@ -2046,0 +2209 @@
 +                    window.end_scroll_node_prepaint(open);
-@@ -2055 +2203,3 @@
+@@ -2055 +2218,3 @@
 -        )
 +        );
 +        window.raster_frame.exact_bounds = outer_exact;
 +        hitbox
-@@ -2064 +2214 @@
+@@ -2064 +2229 @@
 -        _request_layout: &mut Self::RequestLayoutState,
 +        request_layout: &mut Self::RequestLayoutState,
-@@ -2073,0 +2224,6 @@
+@@ -2073,0 +2239,6 @@
 +        let outer_exact = std::mem::replace(
 +            &mut window.raster_frame.exact_bounds,
 +            request_layout.exact_bounds.map(|exact| (bounds, exact)),
 +        );
 +        // KaminIDE patch: the children of a scroll container paint as its node.
 +        let scroll_node = self.interactivity.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
-@@ -2082,0 +2239,3 @@
+@@ -2082,0 +2254,3 @@
 +                    let exact_bounds = window.raster_frame.exact_bounds;
 +                    // Own borders are painted; children bring their own bounds.
 +                    window.raster_frame.exact_bounds = None;
-@@ -2088,2 +2247,23 @@
+@@ -2088,2 +2262,23 @@
 -                    for child in &mut self.children {
 -                        child.paint(window, cx);
 +                    let painter = self.child_painter.clone().or_else(|| {
@@ -8705,27 +8813,28 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +                        );
 +                    } else {
 +                        for child in children { child.paint(window, cx); }
-@@ -2090,0 +2271 @@
+@@ -2090,0 +2286 @@
 +                    window.end_scroll_node_paint(open);
-@@ -2093,0 +2275 @@
+@@ -2093,0 +2290 @@
 +        window.raster_frame.exact_bounds = outer_exact;
-@@ -2100 +2282,4 @@
+@@ -2100 +2297,4 @@
 -    fn into_element(self) -> Self::Element {
 +    // KaminIDE patch: a finished div's base style may point at an equal earlier one
 +    // (`refinement_share`); later writes copy it.
 +    fn into_element(mut self) -> Self::Element {
 +        super::refinement_share::share(&mut self.interactivity.base_style);
-@@ -2132 +2316,0 @@
+@@ -2132 +2331,0 @@
 -#[derive(Default)]
-@@ -2133,0 +2318,4 @@
+@@ -2133,0 +2333,5 @@
 +    pub(crate) box_painter: Option<crate::BoxPainter>,
 +    /// KaminIDE patch: the owner the box's own paint binds its values to
 +    /// (`Window::with_paint_owner`); 0 for none.
 +    pub(crate) paint_owner: u32,
-@@ -2150,0 +2339,2 @@
++    pub(super) box_run: crate::scene::BoxContents,
+@@ -2150,0 +2355,2 @@
 +    /// KaminIDE patch: listener and drag-style lists, allocated by the first registration.
 +    pub(crate) listeners: Option<Box<InteractivityListeners>>,
-@@ -2153,8 +2343,65 @@
+@@ -2153,8 +2359,66 @@
 -    pub base_style: Box<StyleRefinement>,
 -    pub(crate) focus_style: Option<Box<StyleRefinement>>,
 -    pub(crate) in_focus_style: Option<Box<StyleRefinement>>,
@@ -8763,6 +8872,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +        Self {
 +            box_painter: None,
 +            paint_owner: 0,
++            box_run: crate::scene::BoxContents::Own,
 +            element_id: None,
 +            active: None,
 +            hovered: None,
@@ -8799,9 +8909,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +/// registration; a box without listeners keeps a single null pointer.
 +#[derive(Default)]
 +pub(crate) struct InteractivityListeners {
-@@ -2179 +2425,0 @@
+@@ -2179 +2442,0 @@
 -    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2181,0 +2428,21 @@
+@@ -2181,0 +2445,21 @@
 +    pub(crate) a11y_action_listeners:
 +        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
 +}
@@ -8823,7 +8933,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +    pub(crate) active_style: Option<Box<StyleRefinement>>,
 +    pub(crate) group_active_style: Option<GroupStyle>,
 +    pub(crate) can_drop_predicate: Option<CanDropPredicate>,
-@@ -2188,7 +2454,0 @@
+@@ -2188,7 +2471,0 @@
 -    pub(crate) hitbox_behavior: HitboxBehavior,
 -    pub(crate) tab_index: Option<isize>,
 -    pub(crate) tab_group: bool,
@@ -8831,16 +8941,16 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 -
 -    pub(crate) a11y_action_listeners:
 -        Vec<(accesskit::Action, crate::window::a11y::A11yActionListener)>,
-@@ -2196 +2455,0 @@
+@@ -2196 +2472,0 @@
 -    pub(crate) report_active_descendant_focus: bool,
-@@ -2199,6 +2457,0 @@
+@@ -2199,6 +2474,0 @@
 -
 -    #[cfg(any(feature = "inspector", debug_assertions))]
 -    pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
 -
 -    #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
 -    pub(crate) debug_selector: Option<String>,
-@@ -2206,0 +2460,56 @@
+@@ -2206,0 +2477,56 @@
 +impl InteractivityRare {
 +    /// Whether a rare field needs the element's hitbox.
 +    fn need_hitbox(&self) -> bool {
@@ -8897,7 +9007,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +        }
 +    }
 +}
-@@ -2216,0 +2526,16 @@
+@@ -2216,0 +2543,16 @@
 +        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, _, window, cx| {
 +            f(style.into_owned(), window, cx)
 +        })
@@ -8914,21 +9024,25 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +        cx: &mut App,
 +        f: impl FnOnce(ComputedStyle, Option<&Rc<StyleRefinement>>, &mut Window, &mut App) -> LayoutId,
 +    ) -> LayoutId {
-@@ -2223 +2548 @@
+@@ -2223 +2565 @@
 -                    self.base_style = inspector_state.base_style.clone();
 +                    self.base_style = Rc::from(inspector_state.base_style.clone());
-@@ -2226 +2551 @@
+@@ -2226 +2568 @@
 -                        base_style: self.base_style.clone(),
 +                        base_style: Box::new((*self.base_style).clone()),
-@@ -2294,2 +2619,5 @@
+@@ -2294,2 +2636,9 @@
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
 -                let layout_id = f(style, window, cx);
++                if let Some(offset) = &self.scroll_offset {
++                    window.record_scroll_input(offset, self.tracked_scroll_handle.as_ref());
++                }
++
 +                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
 +                // Every state style lives in `rare`: without it the style is the base
 +                // refinement on the default style (`compute_style_internal`).
 +                let refinement = self.rare.is_none().then_some(&self.base_style);
 +                let layout_id = f(style, refinement, window, cx);
-@@ -2354,11 +2682,56 @@
+@@ -2354,11 +2703,56 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -8996,7 +9110,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +                        element_state.long_press_tooltip_active.as_ref()
 +                    {
 +                        long_press_tooltip_active.set(false);
-@@ -2366,18 +2739 @@
+@@ -2366,18 +2760 @@
 -                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
 -                        element_state
 -                            .hover_state
@@ -9016,7 +9130,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 -                        }
 -                    }
 +                    element_state.active_tooltip.take();
-@@ -2385,20 +2741,12 @@
+@@ -2385,20 +2762,12 @@
 -
 -                window.with_text_style(style.text_style().cloned(), |window| {
 -                    window.with_content_mask(
@@ -9049,9 +9163,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
 +            f(&style, scroll_offset, hitbox, window, cx)
 +        })
-@@ -2409 +2756,0 @@
+@@ -2409 +2777,0 @@
 -            || self.window_control.is_some()
-@@ -2414,17 +2761,2 @@
+@@ -2414,17 +2782,2 @@
 -            || self.hover_style.is_some()
 -            || self.group_hover_style.is_some()
 -            || self.hover_listener.is_some()
@@ -9071,7 +9185,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 -            || self.tooltip_builder.is_some()
 +            || self.rare().is_some_and(InteractivityRare::need_hitbox)
 +            || self.listeners.as_deref().is_some_and(InteractivityListeners::need_hitbox)
-@@ -2518,113 +2850,109 @@
+@@ -2518,113 +2871,109 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -9294,7 +9408,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +2960,28 @@
+@@ -2632,2 +2981,28 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -9325,54 +9439,54 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +2989,2 @@
+@@ -2635,4 +3010,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -2789 +3141,3 @@
+@@ -2789 +3162,3 @@
 -        for listener in self.mouse_down_listeners.drain(..) {
 +        let mut no_listeners = InteractivityListeners::default();
 +        let listeners = self.listeners.as_deref_mut().unwrap_or(&mut no_listeners);
 +        for listener in listeners.mouse_down_listeners.drain(..) {
-@@ -2796 +3150 @@
+@@ -2796 +3171 @@
 -        for listener in self.mouse_up_listeners.drain(..) {
 +        for listener in listeners.mouse_up_listeners.drain(..) {
-@@ -2803 +3157 @@
+@@ -2803 +3178 @@
 -        for listener in self.mouse_pressure_listeners.drain(..) {
 +        for listener in listeners.mouse_pressure_listeners.drain(..) {
-@@ -2810 +3164 @@
+@@ -2810 +3185 @@
 -        for listener in self.mouse_move_listeners.drain(..) {
 +        for listener in listeners.mouse_move_listeners.drain(..) {
-@@ -2817 +3171 @@
+@@ -2817 +3192 @@
 -        for listener in self.mouse_exit_listeners.drain(..) {
 +        for listener in listeners.mouse_exit_listeners.drain(..) {
-@@ -2824 +3178 @@
+@@ -2824 +3199 @@
 -        for listener in self.file_drop_exit_listeners.drain(..) {
 +        for listener in listeners.file_drop_exit_listeners.drain(..) {
-@@ -2831 +3185 @@
+@@ -2831 +3206 @@
 -        for listener in self.scroll_wheel_listeners.drain(..) {
 +        for listener in listeners.scroll_wheel_listeners.drain(..) {
-@@ -2838 +3192 @@
+@@ -2838 +3213 @@
 -        for listener in self.pinch_listeners.drain(..) {
 +        for listener in listeners.pinch_listeners.drain(..) {
-@@ -2845 +3199,2 @@
+@@ -2845 +3220,2 @@
 -        if self.hover_style.is_some()
 +        let has_hover_style = self.rare.as_deref().is_some_and(|rare| rare.hover_style.is_some());
 +        if has_hover_style
-@@ -2847 +3202,2 @@
+@@ -2847 +3223,2 @@
 -            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
 +            || cx.active_drag.is_some()
 +                && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
-@@ -2850 +3206 @@
+@@ -2850 +3227 @@
 -            let hover_state = self.hover_style.as_ref().and_then(|_| {
 +            let hover_state = has_hover_style.then_some(()).and_then(|_| {
-@@ -2872 +3228 @@
+@@ -2872 +3249 @@
 -        if let Some(group_hover) = self.group_hover_style.as_ref() {
 +        if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -2897,5 +3253,5 @@
+@@ -2897,5 +3274,5 @@
 -        let mut drag_listener = mem::take(&mut self.drag_listener);
 -        let drop_listeners = mem::take(&mut self.drop_listeners);
 -        let click_listeners = mem::take(&mut self.click_listeners);
@@ -9383,25 +9497,25 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +        let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
 +        let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
 +        let can_drop_predicate = self.rare.as_deref_mut().and_then(|rare| rare.can_drop_predicate.take());
-@@ -3133 +3489 @@
+@@ -3133 +3510 @@
 -            if let Some(hover_listener) = self.hover_listener.take() {
 +            if let Some(hover_listener) = self.take_hover_listener() {
-@@ -3152 +3508 @@
+@@ -3152 +3529 @@
 -                let hover_listener_mode = self.hover_listener_mode;
 +                let hover_listener_mode = self.rare().map(|rare| rare.hover_listener_mode).unwrap_or_default();
-@@ -3187 +3543 @@
+@@ -3187 +3564 @@
 -            if let Some(tooltip_builder) = self.tooltip_builder.take() {
 +            if let Some(tooltip_builder) = self.take_tooltip_builder() {
-@@ -3228 +3584 @@
+@@ -3228 +3605 @@
 -                    self.tooltip_show_delay,
 +                    self.rare().and_then(|rare| rare.tooltip_show_delay),
-@@ -3252,2 +3608,3 @@
+@@ -3252,2 +3629,3 @@
 -                    .group_active_style
 -                    .as_ref()
 +                    .rare
 +                    .as_deref()
 +                    .and_then(|rare| rare.group_active_style.as_ref())
-@@ -3275,4 +3632,4 @@
+@@ -3275,4 +3653,4 @@
 -        let key_down_listeners = mem::take(&mut self.key_down_listeners);
 -        let key_up_listeners = mem::take(&mut self.key_up_listeners);
 -        let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
@@ -9410,25 +9524,31 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +        let key_up_listeners = self.take_listeners(|l| &mut l.key_up_listeners);
 +        let modifiers_changed_listeners = self.take_listeners(|l| &mut l.modifiers_changed_listeners);
 +        let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
-@@ -3305,0 +3663,12 @@
+@@ -3305,0 +3684,18 @@
 +    /// KaminIDE patch: the box's own paint (shadows, fill, borders, host
-+    /// painter) under its scene-layer run (`Window::with_box_paint`). A leaf
++    /// painter) under its scene-layer run (`Window::with_run`). A leaf
 +    /// of the paint recursion: its paint state and painter stay out of the
 +    /// recursive frame of `paint_with_state`, which every nesting level of a
 +    /// deep tree lays out again.
 +    #[inline(never)]
 +    fn paint_own_box(&self, style: &Style, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-+        window.with_box_paint(self.paint_owner, bounds, |window| {
++        let contents = if self.box_painter.is_some() {
++            crate::scene::BoxContents::External
++        } else {
++            self.box_run
++        };
++        let painter = crate::scene::RunPainter::Box(contents);
++        window.with_run(self.paint_owner, bounds, painter, |window| {
 +            style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx)
 +        });
 +    }
 +
-@@ -3308,2 +3677,2 @@
+@@ -3308,2 +3704,2 @@
 -            .group_hover_style
 -            .as_ref()
 +            .rare()
 +            .and_then(|rare| rare.group_hover_style.as_ref())
-@@ -3404,0 +3774,28 @@
+@@ -3404,0 +3801,28 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -9457,43 +9577,43 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +        )))
 +    }
 +
-@@ -3414,0 +3812 @@
+@@ -3414,0 +3839 @@
 +        let rare = self.rare.as_deref();
-@@ -3417 +3815 @@
+@@ -3417 +3842 @@
 -            if let Some(in_focus_style) = self.in_focus_style.as_ref()
 +            if let Some(in_focus_style) = rare.and_then(|rare| rare.in_focus_style.as_ref())
-@@ -3423 +3821 @@
+@@ -3423 +3848 @@
 -            if let Some(focus_style) = self.focus_style.as_ref()
 +            if let Some(focus_style) = rare.and_then(|rare| rare.focus_style.as_ref())
-@@ -3429 +3827 @@
+@@ -3429 +3854 @@
 -            if let Some(focus_visible_style) = self.focus_visible_style.as_ref()
 +            if let Some(focus_visible_style) = rare.and_then(|rare| rare.focus_visible_style.as_ref())
-@@ -3438 +3836 @@
+@@ -3438 +3863 @@
 -            if let Some(group_hover) = self.group_hover_style.as_ref() {
 +            if let Some(group_hover) = rare.and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -3458 +3856 @@
+@@ -3458 +3883 @@
 -            if let Some(hover_style) = self.hover_style.as_ref() {
 +            if let Some(hover_style) = rare.and_then(|rare| rare.hover_style.as_ref()) {
-@@ -3481 +3879 @@
+@@ -3481 +3906 @@
 -                if let Some(can_drop_predicate) = &self.can_drop_predicate {
 +                if let Some(can_drop_predicate) = rare.and_then(|rare| rare.can_drop_predicate.as_ref()) {
-@@ -3486 +3884 @@
+@@ -3486 +3911 @@
 -                    for (state_type, group_drag_style) in &self.group_drag_over_styles {
 +                    for (state_type, group_drag_style) in self.listeners.iter().flat_map(|l| &l.group_drag_over_styles) {
-@@ -3496 +3894 @@
+@@ -3496 +3921 @@
 -                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
 +                    for (state_type, build_drag_over_style) in self.listeners.iter().flat_map(|l| &l.drag_over_styles) {
-@@ -3499 +3897,2 @@
+@@ -3499 +3924,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -3515 +3914 @@
+@@ -3515 +3941 @@
 -                && let Some(group) = self.group_active_style.as_ref()
 +                && let Some(group) = rare.and_then(|rare| rare.group_active_style.as_ref())
-@@ -3520 +3919 @@
+@@ -3520 +3946 @@
 -            if let Some(active_style) = self.active_style.as_ref()
 +            if let Some(active_style) = rare.and_then(|rare| rare.active_style.as_ref())
-@@ -3531,64 +3930,66 @@
+@@ -3531,64 +3957,66 @@
 -        if let Some(id) = &self.aria.author_id {
 -            node.set_author_id(id.to_string());
 -        }
@@ -9624,14 +9744,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +            }
 +        }
 +        if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
-@@ -3600 +4001 @@
+@@ -3600 +4028 @@
 -        for (action, _) in &self.a11y_action_listeners {
 +        for (action, _) in self.listeners.iter().flat_map(|l| &l.a11y_action_listeners) {
-@@ -4102,0 +4504,3 @@
+@@ -4102,0 +4531,3 @@
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
 +
-@@ -4250,0 +4655,7 @@
+@@ -4250,0 +4682,7 @@
 +impl ScrollHandle {
 +    /// KaminIDE patch: identity of the shared state, the scroll node's id.
 +    pub(crate) fn node_identity(&self) -> usize {
@@ -9639,14 +9759,20 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +    }
 +}
 +
-@@ -4270,0 +4682,6 @@
+@@ -4267,0 +4706,5 @@
++    pub(crate) fn has_pending_scroll(&self) -> bool {
++        let state = self.0.borrow();
++        state.scroll_to_bottom || state.active_item.is_some()
++    }
++
+@@ -4270,0 +4714,6 @@
 +    }
 +
 +    /// KaminIDE patch: the scroll range a prepaint would record (tests).
 +    #[cfg(test)]
 +    pub(crate) fn set_max_offset(&self, max: Point<Pixels>) {
 +        self.0.borrow_mut().max_offset = max;
-@@ -4448,0 +4866,21 @@
+@@ -4448,0 +4898,21 @@
 +
 +    #[test]
 +    fn listener_lists_are_allocated_by_the_first_registration() {
@@ -9668,7 +9794,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..50355644f2b1c5e5d4f9a92e1ff3a276
 +                >= 18 * std::mem::size_of::<Vec<()>>()
 +        );
 +    }
-@@ -5268,8 +5706,8 @@
+@@ -5268,8 +5738,8 @@
 -        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
 -        interactivity.aria.label = Some("Buffer Font Size".into());
 -        interactivity.aria.value = Some("15".into());
@@ -12273,14 +12399,14 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..0f23027dfb9f339f9a62b9b12c3935e916cd179f
+index 160587a4ad924f80c2dd01b90a8300febbc13105..e097696de1a386d24917d6e4830cbfced1497ccd
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,38 @@
 +
 +mod layer;
-+pub use layer::{LayerHandle, LayerValue, SceneLayer, layer_counters};
-+pub(crate) use layer::{Binding, BoxEnv, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
++pub use layer::{LayerHandle, LayerPainter, LayerValue, SceneLayer, layer_counters};
++pub(crate) use layer::{Binding, BoxContents, BoxEnv, RunPainter, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
 +mod damage;
 +pub(crate) mod image_resources;
 +mod record;
@@ -15078,10 +15204,10 @@ index 0000000000000000000000000000000000000000..66de2fec3140115ea4618035c2c64bcc
 +}
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f733f11c154f4c1ec935310d821812050f3d1199
+index 0000000000000000000000000000000000000000..11424f2c1b223888b2f1580f4774a928937852ef
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
-@@ -0,0 +1,268 @@
+@@ -0,0 +1,269 @@
 +//! KaminIDE patch: a retained scene layer.
 +//!
 +//! A host paints content once into a layer (`Window::record_scene_layer`),
@@ -15112,7 +15238,8 @@ index 0000000000000000000000000000000000000000..f733f11c154f4c1ec935310d82181205
 +mod write;
 +
 +use super::{Bounds, ScaledPixels, Scene};
-+pub(crate) use boxes::{BoxEnv, BoxRange, OpenBox, ink_of};
++pub use boxes::LayerPainter;
++pub(crate) use boxes::{BoxContents, BoxEnv, RunPainter, BoxRange, OpenBox, ink_of};
 +pub(crate) use frame::{LayerOp, LayerSlot};
 +pub(crate) use placed::{Placed, PlacedMap, RecordRuns, place_run, release_unheld};
 +use std::cell::{Cell, RefCell};
@@ -15352,14 +15479,14 @@ index 0000000000000000000000000000000000000000..f733f11c154f4c1ec935310d82181205
 +mod clipped_tests;
 diff --git a/vendor/gpui/src/scene/layer/boxes.rs b/vendor/gpui/src/scene/layer/boxes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..771c2ff6da49f95d5595cb1fe31e1a96c9fa9fb2
+index 0000000000000000000000000000000000000000..83581a398187597f6a12043a42f7bb0a197b7970
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/boxes.rs
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,199 @@
 +//! KaminIDE patch: the paint ranges of boxes in a scene layer.
 +//!
 +//! While a layer is recorded, the own paint of a box (its shadows, fill,
-+//! borders and host painter, `Window::with_box_paint`) is painted as without
++//! borders and host painter, `Window::with_run`) is painted as without
 +//! a layer: each command takes its order from the scene's bounds tree when it
 +//! is painted. The layer only notes the box's run of commands, its ink and
 +//! paint state, so a later recording of the box replaces the run whole
@@ -15371,6 +15498,43 @@ index 0000000000000000000000000000000000000000..771c2ff6da49f95d5595cb1fe31e1a96
 +use super::super::{PaintOperation, Primitive, ScaledPixels, Scene, placed_bounds};
 +use crate::{Bounds, ContentMask, Pixels, TransformationMatrix};
 +use std::ops::Range;
++
++/// Painter responsible for a recorded owner's output.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum LayerPainter {
++    /// The box painter supplies all of its own paint.
++    Box,
++    /// The inline painter supplies one or more line fragments.
++    Band,
++    /// Decorations are painted by child elements.
++    DecoratedBox,
++    /// Other painters contribute to this owner's output.
++    External,
++}
++
++#[derive(Clone, Copy, Debug)]
++pub(crate) enum BoxContents {
++    Own,
++    DecoratedBox(Pixels),
++    External,
++}
++
++#[derive(Clone, Copy, Debug)]
++pub(crate) enum RunPainter {
++    Box(BoxContents),
++    Band(Option<crate::text_system::band_piece::BandEdges>),
++}
++
++impl RunPainter {
++    pub(crate) fn kind(self) -> LayerPainter {
++        match self {
++            Self::Box(BoxContents::Own) => LayerPainter::Box,
++            Self::Box(BoxContents::DecoratedBox(_)) => LayerPainter::DecoratedBox,
++            Self::Box(BoxContents::External) => LayerPainter::External,
++            Self::Band(_) => LayerPainter::Band,
++        }
++    }
++}
 +
 +/// The paint state a box's own paint ran in: what its later recording
 +/// restores.
@@ -15386,10 +15550,7 @@ index 0000000000000000000000000000000000000000..771c2ff6da49f95d5595cb1fe31e1a96
 +    /// The order of the stacking layer the run was painted in (`None`:
 +    /// outside layers, ordered by the bounds tree).
 +    pub(crate) layer: Option<crate::scene::DrawOrder>,
-+    /// The run is a piece of an inline box's band on a line, with the
-+    /// segment in `bounds` (`text_system::band_piece`); `None` for a box's
-+    /// own painter and for pieces cut by another painter.
-+    pub(crate) piece: Option<crate::text_system::band_piece::BandEdges>,
++    pub(crate) painter: RunPainter,
 +}
 +
 +/// A box's own paint in a layer: its owner, its placed area and ink, its run
@@ -15406,6 +15567,18 @@ index 0000000000000000000000000000000000000000..771c2ff6da49f95d5595cb1fe31e1a96
 +    /// How the run's commands came here from the paint record its box painted
 +    /// in (`super::placed`); a recording of the box is placed the same way.
 +    pub(crate) placed: Option<super::Placed>,
++}
++
++impl BoxRange {
++    pub(crate) fn accepts(&self, painter: LayerPainter) -> bool {
++        self.replaceable
++            && self.env.transformation == TransformationMatrix::unit()
++            && match (self.env.painter, painter) {
++                (RunPainter::Box(BoxContents::Own), LayerPainter::Box) => self.env.layer.is_none(),
++                (RunPainter::Band(Some(_)), LayerPainter::Band) => true,
++                _ => false,
++            }
++    }
 +}
 +
 +/// A box's own paint being recorded: where its commands start.
@@ -16130,7 +16303,7 @@ index 0000000000000000000000000000000000000000..6b953056e7c90f41ab6f6a9cbbd9da64
 +}
 diff --git a/vendor/gpui/src/scene/layer/order_tests.rs b/vendor/gpui/src/scene/layer/order_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c627f7bf7a86707ef0c50d748d0b07194c39a82b
+index 0000000000000000000000000000000000000000..cf3658745704c1235d9edc0a61be538fbfb3dcce
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/order_tests.rs
 @@ -0,0 +1,166 @@
@@ -16185,7 +16358,7 @@ index 0000000000000000000000000000000000000000..c627f7bf7a86707ef0c50d748d0b0719
 +        rem_size: crate::px(16.),
 +        fill: None,
 +        layer: None,
-+        piece: None,
++        painter: crate::scene::RunPainter::Box(crate::scene::BoxContents::Own),
 +    }
 +}
 +
@@ -17467,10 +17640,10 @@ index 0000000000000000000000000000000000000000..ab399dff0929fff96b4a7189e56f4fb3
 +}
 diff --git a/vendor/gpui/src/scene/layer/tests.rs b/vendor/gpui/src/scene/layer/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..521e3216ed4a6a6a509bdcb341b8e4cffc32fbd3
+index 0000000000000000000000000000000000000000..4b5566f9dca8053c196b56fc8eb41a4eb588c164
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/tests.rs
-@@ -0,0 +1,476 @@
+@@ -0,0 +1,492 @@
 +//! Scene layers: value writes, copy on write, batching and replay.
 +
 +use super::{Binding, LayerHandle, LayerValue, SceneLayer, layer_counters};
@@ -17669,8 +17842,24 @@ index 0000000000000000000000000000000000000000..521e3216ed4a6a6a509bdcb341b8e4cf
 +        rem_size: crate::px(16.),
 +        fill: None,
 +        layer: None,
-+        piece: None,
++        painter: crate::scene::RunPainter::Box(crate::scene::BoxContents::Own),
 +    }
++}
++
++#[test]
++fn an_unstacked_band_does_not_accept_a_box_painter() {
++    let mut scene = Scene::default();
++    let mut state = env();
++    state.painter = crate::scene::RunPainter::Band(Some(crate::text_system::band_piece::BandEdges {
++        content_height: crate::px(12.), start: true, end: true, sides: 0,
++    }));
++    let area = rect(0., 0., 30., 12.);
++    assert!(scene.open_box(42, area, state));
++    scene.insert_primitive(quad(area, red(), 1.));
++    let run = scene.close_box().unwrap();
++    let layer = LayerHandle::new(SceneLayer::finish(scene, Vec::new(), vec![run]));
++    assert!(layer.holds_band(42));
++    assert!(!layer.holds_box(42));
 +}
 +
 +/// Paint box `owner` of `area` as the quads `fills` (the first bound as its
@@ -17949,10 +18138,10 @@ index 0000000000000000000000000000000000000000..521e3216ed4a6a6a509bdcb341b8e4cf
 +}
 diff --git a/vendor/gpui/src/scene/layer/write.rs b/vendor/gpui/src/scene/layer/write.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d3f0684eb925d8d9657024549860c66d63dec3d2
+index 0000000000000000000000000000000000000000..ea7d44347ceb8b24695d27ffe568a57971e64139
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/write.rs
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,186 @@
 +//! KaminIDE patch: value writes into a scene layer (`LayerHandle`).
 +//!
 +//! A value write changes a painted value of existing commands in place: the
@@ -17998,31 +18187,26 @@ index 0000000000000000000000000000000000000000..d3f0684eb925d8d9657024549860c66d
 +    /// primitives under no transformation, outside stacking layers (the runs
 +    /// of an inline box' band on its line layer take value writes only).
 +    pub fn holds_box(&self, owner: u32) -> bool {
-+        let content = self.0.content.borrow();
-+        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
-+        runs.peek().is_some()
-+            && runs.all(|b| {
-+                b.replaceable
-+                    && b.env.layer.is_none()
-+                    && b.env.transformation == crate::TransformationMatrix::unit()
-+            })
++        self.accepts(owner, crate::LayerPainter::Box)
 +    }
 +
-+    /// Whether every run of box `owner` is a piece of its band that the layer
-+    /// records again (`Window::rerecord_layer_band`): at least one, each of
-+    /// plain primitives, none cut by another painter. A piece in the stacking
-+    /// layer of its line takes the layer's order; one painted outside any
-+    /// stacking layer is planned as a box's run is (`SceneLayer::check_box`).
-+    /// An empty piece counts: its box may take a band.
++    /// Whether every piece of the owner's band can be recorded again.
 +    pub fn holds_band(&self, owner: u32) -> bool {
++        self.accepts(owner, crate::LayerPainter::Band)
++    }
++
++    /// Painter of the runs actually recorded in this layer. Mixed runs need a full repaint.
++    pub fn painter(&self, owner: u32) -> Option<crate::LayerPainter> {
 +        let content = self.0.content.borrow();
-+        let mut runs = content.runs_of(owner).map(|at| &content.boxes[at]).peekable();
-+        runs.peek().is_some()
-+            && runs.all(|b| {
-+                b.replaceable
-+                    && b.env.piece.is_some()
-+                    && b.env.transformation == crate::TransformationMatrix::unit()
-+            })
++        let mut kinds = content.runs_of(owner).map(|at| content.boxes[at].env.painter.kind());
++        let first = kinds.next()?;
++        Some(if kinds.all(|kind| kind == first) { first } else { crate::LayerPainter::External })
++    }
++
++    pub(crate) fn accepts(&self, owner: u32, painter: crate::LayerPainter) -> bool {
++        let content = self.0.content.borrow();
++        let mut runs = content.runs_of(owner).peekable();
++        runs.peek().is_some() && runs.all(|at| content.boxes[at].accepts(painter))
 +    }
 +
 +    /// The device-pixel area the runs of box `owner` cover, their placed box
@@ -18034,6 +18218,38 @@ index 0000000000000000000000000000000000000000..d3f0684eb925d8d9657024549860c66d
 +            .runs_of(owner)
 +            .map(|at| content.boxes[at].area)
 +            .reduce(|a, b| a.union(&b))
++    }
++
++    /// Bounds of the old and proposed decoration paint in the layer's coordinates.
++    /// Grow the original border box before any clip. A clipped or empty own run
++    /// can still have a child outline that reaches the viewport.
++    pub fn decoration_area(
++        &self,
++        owner: u32,
++        proposed: crate::Pixels,
++        scale: f32,
++    ) -> Option<Bounds<ScaledPixels>> {
++        use super::{BoxContents, RunPainter};
++        let content = self.0.content.borrow();
++        let mut area = None;
++        for at in content.runs_of(owner) {
++            let run = &content.boxes[at];
++            if run.env.transformation != crate::TransformationMatrix::unit() {
++                return None;
++            }
++            let outset = match run.env.painter {
++                RunPainter::Box(BoxContents::Own) => proposed,
++                RunPainter::Box(BoxContents::DecoratedBox(old)) => proposed.max(old),
++                _ => return None,
++            };
++            let mut bounds = run.env.bounds.dilate(outset).scale(scale);
++            if let Some(placed) = run.placed {
++                bounds.origin = bounds.origin + placed.offset;
++            }
++            let bounds = bounds.union(&run.area);
++            area = Some(area.map_or(bounds, |other: Bounds<_>| other.union(&bounds)));
++        }
++        area
 +    }
 +
 +    /// Write the background of `owner` from `from` to `to`.
@@ -26333,7 +26549,7 @@ index 0000000000000000000000000000000000000000..eef752e18136bc4aecbfd29cc78fc373
 +    }
 +}
 diff --git a/vendor/gpui/src/text_system.rs b/vendor/gpui/src/text_system.rs
-index cf6bb10293699bb4b9a5c8149f996822444fd732..c66a43e6fe6e822f4fec170b378524f49fdf057e
+index cf6bb10293699bb4b9a5c8149f996822444fd732..3a181f62c0cb1ac0049bcd36cf5b8c787537e3c0
 --- a/vendor/gpui/src/text_system.rs
 +++ b/vendor/gpui/src/text_system.rs
 @@ -0,0 +1,2 @@
@@ -26755,7 +26971,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..c66a43e6fe6e822f4fec170b378524f4
 +    pub background_line_gap: bool,
 +    /// KaminIDE patch: the box whose band the run paints (the host's node
 +    /// number of an inline box; 0 for none). Each piece of the band is that
-+    /// box's run in a scene layer (`Window::with_box_paint`) and its fill a
++    /// box's run in a scene layer (`Window::with_run`) and its fill a
 +    /// background value bound to it, so the box's fragments over all lines
 +    /// are one owner's runs (`LayerHandle::set_backgrounds`).
 +    pub background_owner: u32,
@@ -26822,7 +27038,7 @@ index cf6bb10293699bb4b9a5c8149f996822444fd732..c66a43e6fe6e822f4fec170b378524f4
 +
 diff --git a/vendor/gpui/src/text_system/band_piece.rs b/vendor/gpui/src/text_system/band_piece.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b16bfb1d3d9e7d981136a8957afe1c57696b6c30
+index 0000000000000000000000000000000000000000..5e0df77a411a052bb9509b7c05445c136c214558
 --- /dev/null
 +++ b/vendor/gpui/src/text_system/band_piece.rs
 @@ -0,0 +1,150 @@
@@ -26833,7 +27049,7 @@ index 0000000000000000000000000000000000000000..b16bfb1d3d9e7d981136a8957afe1c57
 +//! A piece is where an inline box meets one line: its place (the segment of
 +//! the line, `BandEdges`) is layout, its paint (`BandStyle`) is style. In a
 +//! scene layer every piece of a box with a band, or of a box that could take
-+//! one, is a run of that box (`Window::with_box_paint`), an empty one when it
++//! one, is a run of that box (`Window::with_run`), an empty one when it
 +//! paints nothing, so a band that appears, goes or changes its colours or
 +//! corners is painted again into those runs alone, in the order of the line's
 +//! stacking layer. Blink paints the whole block's fragment items again for
@@ -26958,7 +27174,7 @@ index 0000000000000000000000000000000000000000..b16bfb1d3d9e7d981136a8957afe1c57
 +    let shown = window.content_mask().bounds.intersects(&segment);
 +    if style.color.is_none() && (window.band_split || !shown) {
 +        // No run of the box here: it is recorded again nowhere.
-+        window.unhold_band(owner);
++        window.unhold_owner(owner);
 +        return;
 +    }
 +    let edges = (!window.band_split).then_some(piece.edges);
@@ -27246,7 +27462,7 @@ index 63dc89ba41ea9cf44bdffb7d81d3015d696f4413..5462b9187e77fa30da6629fa4f46aace
 +        }
 +    }
 diff --git a/vendor/gpui/src/text_system/line.rs b/vendor/gpui/src/text_system/line.rs
-index f5210052e2b73d03521c35207b0e05550aba3e48..a5503ba9d4b5ffa0f0f2491f88ad01b491ecbe7b
+index f5210052e2b73d03521c35207b0e05550aba3e48..eaed2ee43954b52722799b2815bd983f6f263eef
 --- a/vendor/gpui/src/text_system/line.rs
 +++ b/vendor/gpui/src/text_system/line.rs
 @@ -4 +4 @@
@@ -27546,7 +27762,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..a5503ba9d4b5ffa0f0f2491f88ad01b4
 +            }
 +            if !single {
 +                for r in all_style_runs.iter().filter(|r| r.background_owner != 0) {
-+                    window.unhold_band(r.background_owner);
++                    window.unhold_owner(r.background_owner);
 +                }
 +            }
 +        }
@@ -29040,13 +29256,13 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca3eb13780
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..cdaa4a8f97f841bbc7da358fdcbbcbae2229bb7e
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
 -    EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
 +    EntityId, EventEmitter, ExternalTexture, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
-@@ -67,0 +68,52 @@
+@@ -67,0 +68,54 @@
 +mod image_sampling;
 +mod natural_image;
 +mod absolute_transformation;
@@ -29091,6 +29307,8 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +// KaminIDE patch: frames that redraw only isolated views.
 +mod isolated;
 +use isolated::{IsolatedDraw, RootRanges};
++mod retained_layout_inputs;
++pub use retained_layout_inputs::RetainedLayoutInputs;
 +mod retained_layout;
 +mod update_rendering;
 +pub use update_rendering::ElementPlace;
@@ -29099,20 +29317,20 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +pub use layout_inputs::LayoutInputId;
 +pub use plane3d::PlaneSpec;
 +pub use image_sampling::ImageSampling;
-@@ -280,0 +333,5 @@
+@@ -280,0 +335,5 @@
 +    /// KaminIDE patch: the current draw phase (`Window::rerecord_layer_box`).
 +    pub(crate) fn phase(&self) -> DrawPhase {
 +        self.inner.borrow().draw_phase
 +    }
 +
-@@ -364,0 +422,6 @@
+@@ -364,0 +424,6 @@
 +/// KaminIDE patch: the element just built lays out as its child and takes no
 +/// node of the layout tree (a wrapper that only records or hooks its child).
 +pub fn note_layoutless_element() {
 +    with_element_arena(|arena| arena.note_layoutless());
 +}
 +
-@@ -376,0 +440,13 @@
+@@ -376,0 +442,13 @@
 +}
 +
 +/// KaminIDE patch: private measurement storage, released on return or unwind.
@@ -29126,22 +29344,22 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    // This is a private arena, not an App draw; dropping it performs the clear.
 +    drop(scope.exit(&arena));
 +    result
-@@ -978 +1054,4 @@
+@@ -978 +1056,4 @@
 -    text_style_stack: Vec<TextStyleRefinement>,
 +    text_style_stack: TextStyleScope,
 +    // KaminIDE patch: restore host scopes when drawing outside the original traversal.
 +    render_contexts: render_context::Snapshot,
 +    layout_owner: RetainedLayout,
-@@ -984,0 +1064,2 @@
+@@ -984,0 +1066,2 @@
 +    // KaminIDE patch: set for an isolated view's draw (`window/isolated.rs`).
 +    isolated: Option<IsolatedDraw>,
-@@ -995,0 +1077,5 @@
+@@ -995,0 +1079,5 @@
 +    /// KaminIDE patch: inverse-matrix scopes of hitboxes inserted under a transform.
 +    pub(crate) hitbox_scopes: FxHashMap<HitboxId, Rc<hit_transform::HitScope>>,
 +    /// KaminIDE patch: scopes of single segment placements (index in `hitboxes`),
 +    /// overriding the scope of their hitbox id.
 +    pub(crate) hitbox_entry_scopes: FxHashMap<usize, Option<Rc<hit_transform::HitScope>>>,
-@@ -996,0 +1083,11 @@
+@@ -996,0 +1085,11 @@
 +    /// KaminIDE patch: scroll containers prepainted in this frame (`scroll_nodes`).
 +    pub(crate) scroll_nodes: Vec<scroll_nodes::ScrollNodeRecord>,
 +    /// KaminIDE patch: the scroll nodes open while prepainting.
@@ -29153,16 +29371,16 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    /// KaminIDE patch: paint that follows a scroll offset outside its node
 +    /// (`paint_scroll_dependent`), with its scene index.
 +    pub(crate) scroll_dependents: Vec<(scroll_nodes::ScrollNodeId, usize, crate::scene::scroll_marks::SceneSpace)>,
-@@ -997,0 +1095,2 @@
+@@ -997,0 +1097,2 @@
 +    /// KaminIDE patch: views drawn isolated in this frame.
 +    pub(crate) isolated_views: FxHashSet<EntityId>,
-@@ -1018,0 +1118,2 @@
+@@ -1018,0 +1120,2 @@
 +    /// KaminIDE patch: scroll nodes prepainted so far (`scroll_nodes`).
 +    scroll_nodes_index: usize,
-@@ -1022 +1123 @@
+@@ -1022 +1125 @@
 -#[derive(Clone, Default)]
 +#[derive(Clone, Default, PartialEq)]
-@@ -1034,0 +1136,89 @@
+@@ -1034,0 +1138,89 @@
 +/// KaminIDE patch: a frame list index in a 32-bit word (`PackedPaintIndex`).
 +pub(crate) fn pack_index(index: usize) -> u32 {
 +    u32::try_from(index).expect("frame list index fits 32 bits")
@@ -29252,29 +29470,29 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    }
 +}
 +
-@@ -1051,0 +1242,2 @@
+@@ -1051,0 +1244,2 @@
 +            hitbox_scopes: FxHashMap::default(),
 +            hitbox_entry_scopes: FxHashMap::default(),
-@@ -1052,0 +1245,5 @@
+@@ -1052,0 +1247,5 @@
 +            scroll_nodes: Vec::new(),
 +            scroll_node_stack: Vec::new(),
 +            scroll_paint: Default::default(),
 +            scroll_hitboxes: Vec::new(),
 +            scroll_dependents: Vec::new(),
-@@ -1053,0 +1251 @@
+@@ -1053,0 +1253 @@
 +            isolated_views: FxHashSet::default(),
-@@ -1081,0 +1280,2 @@
+@@ -1081,0 +1282,2 @@
 +        self.hitbox_scopes.clear();
 +        self.hitbox_entry_scopes.clear();
-@@ -1082,0 +1283,5 @@
+@@ -1082,0 +1285,5 @@
 +        self.scroll_nodes.clear();
 +        self.scroll_node_stack.clear();
 +        self.scroll_paint.clear();
 +        self.scroll_hitboxes.clear();
 +        self.scroll_dependents.clear();
-@@ -1083,0 +1289 @@
+@@ -1083,0 +1291 @@
 +        self.isolated_views.clear();
-@@ -1118,3 +1324,6 @@
+@@ -1118,3 +1326,6 @@
 -        for hitbox in self.hitboxes.iter().rev() {
 -            let bounds = hitbox.bounds.intersect(&hitbox.content_mask.bounds);
 -            if bounds.contains(&position) {
@@ -29284,17 +29502,17 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +                None => self.hitbox_scopes.get(&hitbox.id),
 +            };
 +            if hit_transform::HitScope::hitbox_contains(scope, hitbox, position) {
-@@ -1154 +1363,4 @@
+@@ -1154 +1365,4 @@
 -        self.scene.finish();
 +        // KaminIDE patch: also releases the frame's grafts (`finish_frame`).
 +        self.scene.finish_frame();
 +        // KaminIDE patch: what changed against the frame this one replays.
 +        self.scene.note_damage(&prev_frame.scene);
-@@ -1174,0 +1387 @@
+@@ -1174,0 +1389 @@
 +    natural_images: natural_image::Cache,
-@@ -1184,0 +1398 @@
+@@ -1184,0 +1400 @@
 +    layout_owner: RetainedLayout,
-@@ -1187 +1401,6 @@
+@@ -1187 +1403,6 @@
 -    pub(crate) text_style_stack: Vec<TextStyleRefinement>,
 +    pub(crate) text_style_stack: TextStyleScope,
 +    // KaminIDE patch: typed host context belongs to this window and traversal.
@@ -29302,7 +29520,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    paint_window: Rc<()>,
 +    paint_pass: PaintPassId,
 +    paint_scope: PaintScopeId,
-@@ -1189,0 +1409,23 @@
+@@ -1189,0 +1411,23 @@
 +    /// KaminIDE patch: nesting depth of [`Window::with_exact_element_offset`];
 +    /// while non-zero, `layout_bounds` adds the element offset unsnapped.
 +    pub(crate) exact_element_offset_depth: u32,
@@ -29326,7 +29544,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    mask_map: Option<TransformationMatrix>,
 +    /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
 +    pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
-@@ -1190,0 +1433,25 @@
+@@ -1190,0 +1435,25 @@
 +    /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
 +    pub(crate) box_fill: Option<Bounds<Pixels>>,
 +    /// KaminIDE patch: the bands painted now are cut into pieces by another
@@ -29352,12 +29570,12 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    pub(crate) unpresented_readback: bool,
 +    pub(crate) paint_owner: u32,
 +    pub(crate) paint_value: Option<crate::LayerValue>,
-@@ -1191,0 +1459,4 @@
+@@ -1191,0 +1461,4 @@
 +    /// KaminIDE patch: `set_scroll_interest_margin`.
 +    pub(crate) scroll_interest_margin: Pixels,
 +    /// KaminIDE patch: the innermost transformed-subtree hit scope during prepaint.
 +    hit_scope: Option<Rc<hit_transform::HitScope>>,
-@@ -1205,0 +1477,8 @@
+@@ -1205,0 +1479,8 @@
 +    /// KaminIDE patch: a dirty view lies outside every isolated view, so the
 +    /// root must be drawn again (`window/isolated.rs`).
 +    dirty_outside_isolated: bool,
@@ -29366,37 +29584,38 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    /// KaminIDE patch: entities the drawn frame read; a frame that keeps the
 +    /// root keeps observing them.
 +    last_accessed_entities: FxHashSet<EntityId>,
-@@ -1218,0 +1498,4 @@
+@@ -1218,0 +1500,5 @@
 +    /// KaminIDE patch: the hosts' steps before a draw (`update_rendering`).
 +    pub(crate) update_rendering_observers: SubscriberSet<(), AnyObserver>,
 +    /// KaminIDE patch: element states of layout reads (`update_rendering`).
++    layout_scroll_inputs: Option<Vec<retained_layout_inputs::ScrollInput>>,
 +    pub(crate) read_states: update_rendering::ReadStates,
-@@ -1235,0 +1519,3 @@
+@@ -1235,0 +1522,3 @@
 +    // KaminIDE patch: a completed layout changed an input to style/layout.
 +    layout_retry: bool,
 +    layout_inputs: Option<FxHashSet<LayoutInputId>>,
-@@ -1237,0 +1524,3 @@
+@@ -1237,0 +1527,3 @@
 +    /// KaminIDE patch: фокус пришёл с КЛАВИАТУРЫ (`:focus-visible` браузера).
 +    /// Поднимается на Tab-переходах, гаснет на любом mouse-down.
 +    pub(crate) focus_visible: bool,
-@@ -1241,0 +1531,4 @@
+@@ -1241,0 +1534,4 @@
 +    /// KaminIDE patch: dispatched inputs and focus moves (`interaction_epoch`).
 +    interaction_epoch: u64,
 +    /// KaminIDE patch: frames drawn so far (Window::frame_serial).
 +    pub(crate) frame_serial: u64,
-@@ -1522,0 +1816 @@
+@@ -1522,0 +1819 @@
 +
-@@ -1717,0 +2012,3 @@
+@@ -1717,0 +2015,3 @@
 +                log::debug!(target: "gpui::frame", "request force={} deferred={} source={:?} dirty={} nested={}",
 +                    request_frame_options.force_render, deferred_force_render,
 +                    request_frame_options.signal_source, invalidator.is_dirty(), draw_in_progress());
-@@ -1833,0 +2131 @@
+@@ -1833,0 +2134 @@
 +                log::debug!(target: "gpui::frame", "decision draw={should_draw} force={force_render} present={needs_present}");
-@@ -1837,0 +2136,3 @@
+@@ -1837,0 +2139,3 @@
 +                                // KaminIDE patch: стоимость кадра — в счётчики
 +                                // `frame_perf`, приложение печатает сводку.
 +                                let t0 = std::time::Instant::now();
-@@ -1844 +2145,14 @@
+@@ -1844 +2148,14 @@
 -                                window.present();
 +                                let t1 = std::time::Instant::now();
 +                                // KaminIDE patch: a drawn frame that changed
@@ -29412,7 +29631,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +                                // KaminIDE patch: the app is not idle (`App::on_idle`).
 +                                cx.frame_drawn();
 +                                // drop the arena elements after present to reduce latency
-@@ -1851 +2165,10 @@
+@@ -1851 +2168,10 @@
 -                        .update(&mut cx, |_, window, _| window.present())
 +                        .update(&mut cx, |_, window, _| {
 +                            // KaminIDE patch: presenting the drawn frame again
@@ -29424,31 +29643,31 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +                                std::sync::atomic::Ordering::Relaxed,
 +                            );
 +                        })
-@@ -1872,0 +2196,2 @@
+@@ -1872,0 +2199,2 @@
 +                log::debug!(target: "gpui::frame", "complete dirty={} next={}",
 +                    invalidator.is_dirty(), next_frame_callbacks.borrow().len());
-@@ -2073,0 +2399 @@
+@@ -2073,0 +2402 @@
 +            natural_images: Default::default(),
-@@ -2079,0 +2406 @@
+@@ -2079,0 +2409 @@
 +            layout_owner: RetainedLayout::active(),
-@@ -2082 +2409,5 @@
+@@ -2082 +2412,5 @@
 -            text_style_stack: Vec::new(),
 +            text_style_stack: TextStyleScope::default(),
 +            render_contexts: Default::default(),
 +            paint_window: Rc::new(()),
 +            paint_pass: PaintPassId::default(),
 +            paint_scope: PaintScopeId::default(),
-@@ -2084,0 +2416,6 @@
+@@ -2084,0 +2419,6 @@
 +            exact_element_offset_depth: 0,
 +            raster_frame: RasterFrame::default(),
 +            transformation_stack: Vec::new(),
 +            mask_scale: None,
 +            mask_map: None,
 +            plane_contexts: Vec::new(),
-@@ -2085,0 +2423,2 @@
+@@ -2085,0 +2426,2 @@
 +            scroll_interest_margin: Pixels::ZERO,
 +            hit_scope: None,
-@@ -2086,0 +2426,12 @@
+@@ -2086,0 +2429,12 @@
 +            box_fill: None,
 +            band_split: false,
 +            layer_recording: None,
@@ -29461,28 +29680,29 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            unpresented_readback: false,
 +            paint_owner: 0,
 +            paint_value: None,
-@@ -2096,0 +2448,3 @@
+@@ -2096,0 +2451,3 @@
 +            dirty_outside_isolated: false,
 +            root_ranges: None,
 +            last_accessed_entities: FxHashSet::default(),
-@@ -2109,0 +2464,2 @@
+@@ -2109,0 +2467,3 @@
 +            update_rendering_observers: SubscriberSet::new(),
++            layout_scroll_inputs: None,
 +            read_states: Default::default(),
-@@ -2127,0 +2484,2 @@
+@@ -2127,0 +2488,2 @@
 +            layout_retry: false,
 +            layout_inputs: None,
-@@ -2129,0 +2488,2 @@
+@@ -2129,0 +2492,2 @@
 +            // KaminIDE patch: см. `Window::focus_visible`
 +            focus_visible: false,
-@@ -2131,0 +2492,2 @@
+@@ -2131,0 +2496,2 @@
 +            interaction_epoch: 0,
 +            frame_serial: 0,
-@@ -2191,0 +2554 @@
+@@ -2191,0 +2558 @@
 +
-@@ -2194,0 +2558,2 @@
+@@ -2194,0 +2562,2 @@
 +        // KaminIDE patch: the walk stops at an isolated view, which is redrawn
 +        // alone; reaching the top means the root is drawn again.
-@@ -2201,3 +2566,7 @@
+@@ -2201,3 +2570,7 @@
 -                break;
 -            }
 -        }
@@ -29493,41 +29713,41 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            }
 +        }
 +        self.dirty_outside_isolated = true;
-@@ -2315,0 +2685,2 @@
+@@ -2315,0 +2689,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2317,0 +2689 @@
+@@ -2317,0 +2693 @@
 +            crate::dirty_sources::note("refresh", std::panic::Location::caller());
-@@ -2352,0 +2725 @@
+@@ -2352,0 +2729 @@
 +        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -2367,0 +2741 @@
+@@ -2367,0 +2745 @@
 +            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -2378,0 +2753,5 @@
+@@ -2378,0 +2757,5 @@
 +    /// KaminIDE patch: фокус получен клавиатурой — рисуем `:focus-visible`.
 +    pub fn focus_visible(&self) -> bool {
 +        self.focus_visible
 +    }
 +
-@@ -2385,0 +2765,2 @@
+@@ -2385,0 +2769,2 @@
 +            // KaminIDE patch: Tab — клавиатурная модальность
 +            self.focus_visible = true;
-@@ -2396,0 +2778,2 @@
+@@ -2396,0 +2782,2 @@
 +            // KaminIDE patch: Shift+Tab — тоже клавиатура
 +            self.focus_visible = true;
-@@ -2409,3 +2792 @@
+@@ -2409,3 +2796 @@
 -        for refinement in &self.text_style_stack {
 -            style.refine(refinement);
 -        }
 +        self.text_style_stack.refine(&mut style);
-@@ -2649,0 +3031,2 @@
+@@ -2649,0 +3035,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2650,0 +3034 @@
+@@ -2650,0 +3038 @@
 +        crate::dirty_sources::note("next-frame", std::panic::Location::caller());
-@@ -2669,0 +3054,2 @@
+@@ -2669,0 +3058,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2672,0 +3059,14 @@
+@@ -2672,0 +3063,14 @@
 +    }
 +
 +    /// KaminIDE patch: show the last drawn frame again, without a draw.
@@ -29542,7 +29762,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        self.platform_window.schedule_frame();
 +        // Presenting creates frame demand without dirtying the window.
 +        self.invalidator.wake_platform();
-@@ -2764 +3164,6 @@
+@@ -2764 +3168,6 @@
 -        self.rendered_frame.scene.quads.clone()
 +        let scene = &self.rendered_frame.scene;
 +        let mut quads = scene.quads.clone();
@@ -29550,7 +29770,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            quads.extend(layer.scene().quads.iter().copied());
 +        }
 +        quads
-@@ -2770,3 +3175,27 @@
+@@ -2770,3 +3179,27 @@
 -        self.rendered_frame.scene.underlines.clone()
 -    }
 -
@@ -29581,7 +29801,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        crate::scene::draw_sequence(&self.rendered_frame.scene, &mut out);
 +        out
 +    }
-@@ -2884,2 +3313,66 @@
+@@ -2884,2 +3317,66 @@
 -    /// Handle window movement for Linux and macOS.
 -    /// Tells the compositor to take control of window movement (Wayland and X11)
 +    /// KaminIDE patch: raw ID3D11Device окна — по нему открывается общий
@@ -29650,7 +29870,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +
 +    /// KaminIDE patch: нарисовать чужую текстуру как обычный спрайт — с теми
 +    /// же скруглением и маской, что у картинок.
-@@ -2887 +3380,71 @@
+@@ -2887 +3384,71 @@
 -    /// Events may not be received during a move operation.
 +    /// Зовётся в фазе отрисовки элемента.
 +    pub fn paint_external_texture(
@@ -29723,36 +29943,36 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    }
 +
 +    /// Start moving the window (drag) via the platform.
-@@ -3019,0 +3583 @@
+@@ -3019,0 +3587 @@
 +        let depth = self.element_id_stack.len();
-@@ -3021,3 +3585 @@
+@@ -3021,3 +3589 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -3038,0 +3601 @@
+@@ -3038,0 +3605 @@
 +            let depth = self.rem_size_override_stack.len();
-@@ -3040,3 +3603 @@
+@@ -3040,3 +3607 @@
 -            let result = f(self);
 -            self.rem_size_override_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.rem_size_override_stack.truncate(*depth), f).0
-@@ -3109 +3670 @@
+@@ -3109 +3674 @@
 -            self.next_frame.scene.insert_primitive(underline);
 +            self.insert_scene_primitive(underline);
-@@ -3127 +3688 @@
+@@ -3127 +3692 @@
 -            self.next_frame.scene.insert_primitive(underline);
 +            self.insert_scene_primitive(underline);
-@@ -3133 +3694 @@
+@@ -3133 +3698 @@
 -            self.next_frame.scene.insert_primitive(Underline {
 +            self.insert_scene_primitive(Underline {
-@@ -3189,5 +3749,0 @@
+@@ -3189,5 +3753,0 @@
 -    #[inline]
 -    fn snap_border_widths(&self, edges: Edges<Pixels>) -> Edges<ScaledPixels> {
 -        edges.map(|e| self.snap_stroke(*e))
 -    }
 -
-@@ -3305,0 +3862,12 @@
+@@ -3305,0 +3866,12 @@
 +        // KaminIDE patch: the hosts lay out before the paint pass (`update_rendering`).
 +        self.update_rendering(cx);
 +        let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
@@ -29765,16 +29985,16 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    }
 +
 +    fn draw_frame(&mut self, cx: &mut App) -> ArenaClearNeeded {
-@@ -3355,0 +3924,6 @@
+@@ -3355,0 +3928,6 @@
 +        // A caught unwind still aborts this pass; never publish its partial scene.
 +        if !self.paint_pass.is_live() {
 +            // KaminIDE patch: the recorded root ranges index the dropped frame.
 +            self.root_ranges = None;
 +            return arena_scope.exit(&cx.element_arena);
 +        }
-@@ -3356,0 +3931 @@
+@@ -3356,0 +3935 @@
 +        self.dirty_outside_isolated = false;
-@@ -3390,0 +3966,10 @@
+@@ -3390,0 +3970,10 @@
 +        // KaminIDE patch: where the new scene paints otherwise than the one this
 +        // window drew last (scene/damage.rs); a renderer that keeps its target
 +        // redraws only there.
@@ -29785,22 +30005,22 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        self.next_frame
 +            .scene
 +            .note_frame_damage(&self.rendered_frame.scene, self.frame_serial + 1, device);
-@@ -3395,0 +3981 @@
+@@ -3395,0 +3985 @@
 +        self.frame_serial += 1;
-@@ -3463,0 +4050 @@
+@@ -3463,0 +4054 @@
 +        self.last_accessed_entities.clone_from(&entities);
-@@ -3488,0 +4076,3 @@
+@@ -3488,0 +4080,3 @@
 +        // KaminIDE patch: the frame holds its layers' content only while it
 +        // is drawn (`scene::layer`); a host's write after this copies nothing.
 +        self.rendered_frame.scene.hold_layers();
-@@ -3489,0 +4080,2 @@
+@@ -3489,0 +4084,2 @@
 +        self.rendered_frame.scene.release_layers();
 +        self.frame_presented = true;
-@@ -3554,3 +4145,0 @@
+@@ -3554,3 +4149,0 @@
 -        if self.a11y.is_active() {
 -            self.a11y.begin_frame();
 -        }
-@@ -3579,37 +4168,18 @@
+@@ -3579,37 +4172,18 @@
 -        let scale_factor = self.scale_factor();
 -        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
 -        let root_layout_id = root_element.request_layout(self, cx);
@@ -29856,12 +30076,12 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        );
 +
 +        let _hit_started = std::time::Instant::now();
-@@ -3616,0 +4187,4 @@
+@@ -3616,0 +4191,4 @@
 +        crate::frame_perf::HITTEST_US.fetch_add(
 +            _hit_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3620 +4194,16 @@
+@@ -3620 +4198,16 @@
 -        root_element.paint(self, cx);
 +        let _paint_started = std::time::Instant::now();
 +        // KaminIDE patch: a kept root replays its paint records (`window/isolated.rs`).
@@ -29879,17 +30099,17 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            _paint_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3763,0 +4353,5 @@
+@@ -3763,0 +4357,5 @@
 +                let _render_scope = self.render_contexts.enter_snapshot(
 +                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
 +                );
 +                // KaminIDE patch: a dirty isolated view is drawn again alone.
 +                self.rebuild_isolated(deferred_draw_ix, cx);
-@@ -3768,2 +4362 @@
+@@ -3768,2 +4366 @@
 -                    self.text_style_stack
 -                        .clone_from(&deferred_draw.text_style_stack);
 +                    self.text_style_stack = deferred_draw.text_style_stack.clone();
-@@ -3783,4 +4376,8 @@
+@@ -3783,4 +4380,8 @@
 -                    self.with_rendered_view(current_view, |window| {
 -                        window.with_rem_size(Some(rem_size), |window| {
 -                            window.with_absolute_element_offset(absolute_offset, |window| {
@@ -29902,13 +30122,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +                                window.with_absolute_element_offset(absolute_offset, |window| {
 +                                    element.prepaint(window, cx);
 +                                });
-@@ -3800 +4397 @@
+@@ -3800 +4401 @@
 -            self.text_style_stack.clear();
 +            self.text_style_stack = TextStyleScope::default();
-@@ -3817,0 +4415,2 @@
+@@ -3817,0 +4419,2 @@
 +            let _render_scope = self.render_contexts
 +                .enter_snapshot(deferred_draw.render_contexts.clone());
-@@ -3827,5 +4426,7 @@
+@@ -3827,5 +4430,7 @@
 -                self.with_rendered_view(deferred_draw.current_view, |window| {
 -                    window.with_content_mask(content_mask, |window| {
 -                        window.with_rem_size(Some(deferred_draw.rem_size), |window| {
@@ -29921,9 +30141,9 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +                                element.paint(window, cx);
 +                            });
 +                        })
-@@ -3857,0 +4459 @@
+@@ -3857,0 +4463 @@
 +            scroll_nodes_index: self.next_frame.scroll_nodes.len(),
-@@ -3862,0 +4465,14 @@
+@@ -3862,0 +4469,14 @@
 +        // KaminIDE patch: the scroll nodes prepainted in the range.
 +        self.reuse_scroll_nodes(&range);
 +        for hitbox in &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index] {
@@ -29938,12 +30158,12 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +                self.next_frame.hitbox_entry_scopes.insert(entry, scope.clone());
 +            }
 +        }
-@@ -3901,0 +4518,2 @@
+@@ -3901,0 +4522,2 @@
 +                    render_contexts: deferred_draw.render_contexts.clone(),
 +                    layout_owner: deferred_draw.layout_owner.clone(),
-@@ -3908,0 +4527 @@
+@@ -3908,0 +4531 @@
 +                    isolated: deferred_draw.isolated.clone(),
-@@ -3910,0 +4530,9 @@
+@@ -3910,0 +4534,9 @@
 +        // KaminIDE patch: reused isolated draws stay isolated in the new frame.
 +        let isolated = &mut self.next_frame.isolated_views;
 +        for draw in &self.rendered_frame.deferred_draws
@@ -29953,11 +30173,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +                isolated.insert(draw.view.entity_id());
 +            }
 +        }
-@@ -3927 +4555,2 @@
+@@ -3927 +4559,2 @@
 -    pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
 +    /// KaminIDE patch: `reuse_paint` of everything but the scene commands.
 +    pub(crate) fn reuse_paint_state(&mut self, range: &Range<PaintIndex>) {
-@@ -3966,5 +4595,38 @@
+@@ -3966,5 +4599,38 @@
 -            .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
 -        self.next_frame.scene.replay(
 -            range.start.scene_index..range.end.scene_index,
@@ -30001,7 +30221,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    ) -> R {
 +        let scope = self.render_contexts.enter(context);
 +        self.with_restore(scope, |_, _| {}, f).0
-@@ -3982,4 +4644,3 @@
+@@ -3982,4 +4648,3 @@
 -            self.text_style_stack.push(style);
 -            let result = f(self);
 -            self.text_style_stack.pop();
@@ -30009,7 +30229,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            let inner = self.text_style_stack.push(style);
 +            let outer = std::mem::replace(&mut self.text_style_stack, inner);
 +            self.with_restore(outer, |window, outer| window.text_style_stack = std::mem::take(outer), f).0
-@@ -3988,0 +4650,24 @@
+@@ -3988,0 +4654,24 @@
 +    }
 +
 +    /// Apply borrowed text and overflow context together during child drawing.
@@ -30034,7 +30254,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    #[inline(never)]
 +    fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
 +        self.text_style_stack = self.text_style_stack.push(style.clone());
-@@ -4034,0 +4720,8 @@
+@@ -4034,0 +4724,8 @@
 +        let depth = self.content_mask_stack.len();
 +        let _clip_scope = self.push_content_mask(mask);
 +        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
@@ -30043,7 +30263,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    // Prepare mask temporaries before entering the recursive child traversal.
 +    #[inline(never)]
 +    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> Option<render_context::Scope> {
-@@ -4036,5 +4729,12 @@
+@@ -4036,5 +4733,12 @@
 -            let mask = mask.intersect(&self.content_mask());
 -            self.content_mask_stack.push(mask);
 -            let result = f(self);
@@ -30061,7 +30281,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            let scope = self.segment_clip_scope(mask, false);
 +            self.content_mask_stack.push(mask.intersect(&self.content_mask()));
 +            scope
-@@ -4042,2 +4742,136 @@
+@@ -4042,2 +4746,136 @@
 -            f(self)
 -        }
 +            None
@@ -30200,7 +30420,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    ) -> R {
 +        let prev = self.mask_scale.replace((origin, scale));
 +        self.with_restore(prev, |window, prev| window.mask_scale = *prev, f).0
-@@ -4060,0 +4895,19 @@
+@@ -4060,0 +4899,19 @@
 +    }
 +
 +    /// KaminIDE patch: like [`Self::with_element_offset`], but descendants'
@@ -30220,21 +30440,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        let abs_offset = self.element_offset() + offset;
 +        self.with_restore(depth, |window, depth| window.exact_element_offset_depth = *depth,
 +            |window| window.with_absolute_element_offset(abs_offset, f)).0
-@@ -4071,0 +4925 @@
+@@ -4071,0 +4929 @@
 +        let depth = self.element_offset_stack.len();
-@@ -4073,3 +4927 @@
+@@ -4073,3 +4931 @@
 -        let result = f(self);
 -        self.element_offset_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_offset_stack.truncate(*depth), f).0
-@@ -4091,3 +4943 @@
+@@ -4091,3 +4947 @@
 -        let result = f(self);
 -        self.element_opacity = previous_opacity;
 -        result
 +        self.with_restore(previous_opacity, |window, previous| window.element_opacity = *previous, f).0
-@@ -4106,0 +4957 @@
+@@ -4106,0 +4961 @@
 +            self.next_frame.hitbox_entry_scopes.retain(|entry, _| *entry < index.hitboxes_index);
-@@ -4147 +4998,10 @@
+@@ -4147 +5002,10 @@
 -        cx.asset_entry::<A>(source).use_by(self.current_view())
 +        // KaminIDE patch: a measure callback (detached layout during
 +        // `compute_layout`) has no current view; then the window's root view
@@ -30246,7 +30466,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            Some(view) => entry.use_by(view),
 +            None => entry.get(),
 +        }
-@@ -4157,0 +5018,56 @@
+@@ -4157,0 +5022,56 @@
 +    /// Obtain the current element offset. This method should only be called during the
 +    /// prepaint phase of element drawing.
 +    /// KaminIDE patch: действующее преобразование.
@@ -30303,33 +30523,33 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        self.with_transform_frame(combined, keeps_axes.then_some(combined), f)
 +    }
 +
-@@ -4168,2 +5084 @@
+@@ -4168,2 +5088 @@
 -    /// Obtain the current element opacity. This method should only be called during the
 -    /// prepaint phase of element drawing.
 +    /// Текущая накопленная непрозрачность элемента в фазе prepaint или paint.
-@@ -4171 +5086 @@
+@@ -4171 +5090 @@
 -    pub(crate) fn element_opacity(&self) -> f32 {
 +    pub fn element_opacity(&self) -> f32 {
-@@ -4178,0 +5094 @@
+@@ -4178,0 +5098 @@
 +        if let Some(mask) = self.segment_capture_mask() { return mask; }
-@@ -4196,0 +5113 @@
+@@ -4196,0 +5117 @@
 +        let depth = self.element_id_stack.len();
-@@ -4198,3 +5115 @@
+@@ -4198,3 +5119 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -4330,2 +5245,2 @@
+@@ -4330,2 +5249,2 @@
 -        self.invalidator.debug_assert_paint_or_prepaint();
 -
 +        // KaminIDE patch: without an id nothing is read or written, so an
 +        // element without one lays out in any phase (`update_rendering`).
-@@ -4383,0 +5299,2 @@
+@@ -4383,0 +5303,2 @@
 +            render_contexts: self.render_contexts.snapshot(),
 +            layout_owner: self.retained_layout(),
-@@ -4390,0 +5308 @@
+@@ -4390,0 +5312 @@
 +            isolated: None,
-@@ -4405,12 +5323,93 @@
+@@ -4405,12 +5327,93 @@
 -            self.next_frame
 -                .scene
 -                .push_layer(self.cover_bounds(clipped_bounds));
@@ -30435,13 +30655,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        }, |window| {
 +            if pushed { window.with_paint_scope(f) } else { f(window) }
 +        }).0
-@@ -4442 +5441 @@
+@@ -4442 +5445 @@
 -            self.next_frame.scene.insert_primitive(Shadow {
 +            self.insert_scene_primitive(Shadow {
-@@ -4487 +5486 @@
+@@ -4487 +5490 @@
 -            self.next_frame.scene.insert_primitive(Shadow {
 +            self.insert_scene_primitive(Shadow {
-@@ -4554,2 +5553,8 @@
+@@ -4554,2 +5557,8 @@
 -        let snapped_bounds = self.snap_bounds(quad.bounds);
 -        let snapped_border_widths = self.snap_border_widths(quad.border_widths);
 +        // KaminIDE patch: действующее преобразование едет вместе с квадом.
@@ -30452,19 +30672,19 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        // округление сдвигало бы их второй раз, а у преобразованного квада
 +        // локальные координаты снэпать нельзя вовсе (см. decisions.md).
 +        let scale_factor = self.scale_factor();
-@@ -4556,0 +5562 @@
+@@ -4556,0 +5566 @@
 +            transformation,
-@@ -4558,2 +5564,2 @@
+@@ -4558,2 +5568,2 @@
 -            bounds: snapped_bounds,
 -            content_mask: self.snapped_content_mask(),
 +            bounds: quad.bounds.scale(scale_factor),
 +            content_mask: self.content_mask().scale(scale_factor),
-@@ -4562,2 +5568,2 @@
+@@ -4562,2 +5572,2 @@
 -            corner_radii: quad.corner_radii.scale(self.scale_factor()),
 -            border_widths: snapped_border_widths,
 +            corner_radii: quad.corner_radii.scale(scale_factor),
 +            border_widths: quad.border_widths.scale(scale_factor),
-@@ -4567,2 +5573,8 @@
+@@ -4567,2 +5577,8 @@
 -        if !quad.background.is_transparent() {
 -            self.next_frame.scene.insert_primitive(quad);
 +        // The strip split below restricts screen-space content masks, which
@@ -30475,19 +30695,19 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            if self.paint_value.is_some() {
 +                self.bind_painted_quad(before, opacity);
 +            }
-@@ -4578 +5590 @@
+@@ -4578 +5594 @@
 -            self.next_frame.scene.insert_primitive(quad);
 +            self.insert_scene_primitive(quad);
-@@ -4608 +5620 @@
+@@ -4608 +5624 @@
 -                self.next_frame.scene.insert_primitive(Quad {
 +                self.insert_scene_primitive(Quad {
-@@ -4646 +5658 @@
+@@ -4646 +5662 @@
 -        self.next_frame.scene.insert_primitive(underline);
 +        self.insert_scene_primitive(underline);
-@@ -4668 +5680 @@
+@@ -4668 +5684 @@
 -        self.next_frame.scene.insert_primitive(Underline {
 +        self.insert_scene_primitive(Underline {
-@@ -4676,0 +5689,9 @@
+@@ -4676,0 +5693,9 @@
 +    }
 +
 +    /// KaminIDE patch: set the offset added to the origin of every glyph
@@ -30497,7 +30717,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    /// its glyphs keep the fractional position while its boxes stay snapped.
 +    pub fn replace_glyph_offset(&mut self, offset: Point<Pixels>) -> Point<Pixels> {
 +        std::mem::replace(&mut self.raster_frame.glyph_offset, offset)
-@@ -4699,14 +5720,32 @@
+@@ -4699,14 +5724,32 @@
 -        let glyph_origin = origin.scale(scale_factor);
 -
 -        let quantized_origin = Point::new(
@@ -30544,7 +30764,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            )
 +        };
 +        let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size, pixel_exact);
-@@ -4738 +5777,6 @@
+@@ -4738 +5781,6 @@
 -            let content_mask = self.snapped_content_mask();
 +            // KaminIDE patch: маска без upstream-расширения до целых пикселей
 +            // (как у квада, см. `paint_quad`).
@@ -30552,19 +30772,19 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            // KaminIDE patch: глиф едет тем же преобразованием, что и
 +            // подложка, — иначе повёрнутая кнопка оставляла бы ровный текст.
 +            let transformation = self.current_transformation();
-@@ -4741 +5785 @@
+@@ -4741 +5789 @@
 -                self.next_frame.scene.insert_primitive(SubpixelSprite {
 +                self.insert_scene_primitive(SubpixelSprite {
-@@ -4748 +5792 @@
+@@ -4748 +5796 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4751 +5795 @@
+@@ -4751 +5799 @@
 -                self.next_frame.scene.insert_primitive(MonochromeSprite {
 +                self.insert_scene_primitive(MonochromeSprite {
-@@ -4758 +5802 @@
+@@ -4758 +5806 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4763,19 +5806,0 @@
+@@ -4763,19 +5810,0 @@
 -    }
 -
 -    fn should_use_subpixel_rendering(&self, font_id: FontId, font_size: Pixels) -> bool {
@@ -30584,7 +30804,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 -        };
 -
 -        mode == TextRenderingMode::Subpixel
-@@ -4798,0 +5824,14 @@
+@@ -4798,0 +5828,14 @@
 +        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
 +    }
 +
@@ -30599,11 +30819,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        font_size: Pixels,
 +        alpha: f32,
 +    ) -> Result<()> {
-@@ -4803 +5842,2 @@
+@@ -4803 +5846,2 @@
 -        let integer_origin = glyph_origin.map(|c| ScaledPixels(round_half_toward_zero(c.0)));
 +        // KaminIDE patch: floor, as for monochrome glyphs (see `paint_glyph`).
 +        let integer_origin = glyph_origin.map(|px| px.floor());
-@@ -4829,4 +5869,6 @@
+@@ -4829,4 +5873,6 @@
 -            let content_mask = self.snapped_content_mask();
 -            let opacity = self.element_opacity();
 -
@@ -30614,16 +30834,22 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            let transformation = self.current_transformation();
 +            self.insert_scene_primitive(PolychromeSprite {
 +                transformation,
-@@ -4898 +5940 @@
+@@ -4898 +5944 @@
 -        self.next_frame.scene.insert_primitive(MonochromeSprite {
 +        self.insert_scene_primitive(MonochromeSprite {
-@@ -5004 +6046,4 @@
+@@ -4948,4 +5994 @@
+-                    Cow::Borrowed(
+-                        data.as_bytes(frame_index)
+-                            .expect("It's the caller's job to pass a valid frame index"),
+-                    ),
++                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
+@@ -5004 +6047,4 @@
 -        self.next_frame.scene.insert_primitive(PolychromeSprite {
 +        // KaminIDE patch: картинка едет действующим преобразованием.
 +        let transformation = self.current_transformation();
 +        self.insert_scene_primitive(PolychromeSprite {
 +            transformation,
-@@ -5016,0 +6062,71 @@
+@@ -5016,0 +6063,68 @@
 +    /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
 +    ///
 +    /// `paint_image` вписывает ВЕСЬ образ в `bounds` — для software-кадров CEF
@@ -30655,10 +30881,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .get_or_insert_with(params.into(), &mut || {
 +                Ok(Some((
 +                    data.size(frame_index),
-+                    Cow::Borrowed(
-+                        data.as_bytes(frame_index)
-+                            .expect("It's the caller's job to pass a valid frame index"),
-+                    ),
++                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
 +                )))
 +            })?
 +            .expect("Callback above only returns Some");
@@ -30695,7 +30918,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        Ok(())
 +    }
 +
-@@ -5018,0 +6135,219 @@
+@@ -5018,0 +6133,219 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -30915,10 +31138,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        result
 +    }
 +
-@@ -5028 +6363 @@
+@@ -5028 +6361 @@
 -        self.next_frame.scene.insert_primitive(PaintSurface {
 +        self.insert_scene_primitive(PaintSurface {
-@@ -5076,0 +6412,24 @@
+@@ -5076,0 +6410,24 @@
 +        self.request_layout_ref(&style, children, cx)
 +    }
 +
@@ -30943,7 +31166,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
-@@ -5082,0 +6442,26 @@
+@@ -5082,0 +6440,26 @@
 +        self.reserve_layout_nodes();
 +
 +        self.layout_engine.as_mut().unwrap().request_layout_refined(
@@ -30970,7 +31193,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        let rem_size = self.rem_size();
 +        let scale_factor = self.scale_factor();
 +        self.reserve_layout_nodes();
-@@ -5089,0 +6475,66 @@
+@@ -5089,0 +6473,66 @@
 +    }
 +
 +    /// KaminIDE patch: key the next measured leaf request of the frame tree.
@@ -31037,10 +31260,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            engine.set_layout_keys(previous);
 +        }
 +        result
-@@ -5108,0 +6560,2 @@
+@@ -5108,0 +6558,2 @@
 +        let scope = self.measure_scope();
 +        self.reserve_layout_nodes();
-@@ -5112 +6565,229 @@
+@@ -5112 +6563,229 @@
 -            .request_measured_layout(style, rem_size, scale_factor, measure)
 +            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
 +                scope.enter(window, |window| measure(known, available, window, cx))
@@ -31271,7 +31494,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .as_mut()?
 +            .grid_tracks(grid, scale_factor)?;
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
-@@ -5132,0 +6814,48 @@
+@@ -5132,0 +6812,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -31320,7 +31543,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6876,6 @@
+@@ -5147,2 +6874,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -31329,11 +31552,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5160 +6893,2 @@
+@@ -5160 +6891,2 @@
 -        let content_mask = self.content_mask();
 +        // KaminIDE patch: under a scroll node, own mask ∩ the node's clip.
 +        let (content_mask, scroll_mark) = self.scroll_hitbox_mask(self.content_mask());
-@@ -5169 +6903,10 @@
+@@ -5169 +6901,10 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -31345,7 +31568,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            }
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +6955,16 @@
+@@ -5211,0 +6953,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -31362,21 +31585,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6983 @@
+@@ -5223,0 +6981 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6985 @@
+@@ -5225,3 +6983 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6994 @@
+@@ -5235,0 +6992 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6996 @@
+@@ -5237,3 +6994 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +7216,7 @@
+@@ -5458,0 +7214,7 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        // A wheel step moves scroll offsets, which retained records replay
 +        // through their scroll nodes (`retained_scrolled`); a listener that
@@ -31384,44 +31607,44 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        if !matches!(event, PlatformInput::ScrollWheel(_)) {
 +            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
 +        }
-@@ -5792,0 +7557,5 @@
+@@ -5792,0 +7555,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -5872,0 +7642,6 @@
+@@ -5872,0 +7640,6 @@
 +            // KaminIDE patch: this frame shows the state before the key's
 +            // handlers run, so it is drawn at the epoch before this input
 +            // (`dispatch_event` counted it): a retained subtree replays here
 +            // and judges the input once its handlers ran.
 +            let (epoch, before) = (self.interaction_epoch, self.interaction_epoch.wrapping_sub(1));
 +            self.interaction_epoch = before;
-@@ -5873,0 +7649,2 @@
+@@ -5873,0 +7647,2 @@
 +            // Inputs the draw itself counted (a focus change) stay counted.
 +            self.interaction_epoch = epoch.wrapping_add(self.interaction_epoch.wrapping_sub(before));
-@@ -6132 +7909 @@
+@@ -6132 +7907 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6144 +7921 @@
+@@ -6144 +7919 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6164 +7941 @@
+@@ -6164 +7939 @@
 -            for listener in node.modifiers_changed_listeners.clone() {
 +            for listener in node.modifiers_changed_listeners().to_vec() {
-@@ -6396 +8173 @@
+@@ -6396 +8171 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6419 +8196 @@
+@@ -6419 +8194 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6598 +8375 @@
+@@ -6598 +8373 @@
 -            .filter_map(move |&node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(move |&node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6701 +8478 @@
+@@ -6701 +8476 @@
 -            .filter_map(|node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(|node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6789,0 +8567,7 @@
+@@ -6789,0 +8565,7 @@
 +    }
 +
 +    /// KaminIDE patch: GPU memory the window's renderer holds, one call per texture: owner path
@@ -31429,7 +31652,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    /// report it.
 +    pub fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
 +        self.platform_window.gpu_memory(sink)
-@@ -7181,0 +8966,11 @@
+@@ -7181,0 +8964,11 @@
 +        // KaminIDE patch: a read sets states aside for the next frame, which
 +        // takes them before those of the drawn frame (`update_rendering`).
 +        if self.read_states.active {
@@ -31441,13 +31664,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +                .or_else(|| self.rendered_frame.element_states.remove(&key));
 +            return (key, state);
 +        }
-@@ -7186,0 +8982 @@
+@@ -7186,0 +8980 @@
 +            .or_else(|| self.read_states.states.remove(&key))
-@@ -7196,0 +8993,3 @@
+@@ -7196,0 +8991,3 @@
 +        if self.read_states.active {
 +            return self.read_states.states.insert(key, state);
 +        }
-@@ -7733,0 +9533,44 @@
+@@ -7733,0 +9531,44 @@
 +impl Frame {
 +    /// KaminIDE patch: the frame's buffers and tables for the engine bench's memory report
 +    /// (`crate::heap_report`). What listeners and element states own is not walked.
@@ -31492,7 +31715,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    }
 +}
 +
-@@ -7752,0 +9596,31 @@
+@@ -7752,0 +9594,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
@@ -31524,7 +31747,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        drop(scope.exit(&outer));
 +        outer.borrow_mut().clear();
 +    }
-@@ -7913,0 +9788,36 @@
+@@ -7913,0 +9786,36 @@
 +    /// `request_present` shows the last frame again: it wakes the platform,
 +    /// and the frame it gets presents without rendering any view.
 +    #[gpui::test]
@@ -31561,7 +31784,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .unwrap();
 +    }
 +
-@@ -8034,0 +9945,67 @@
+@@ -8034,0 +9943,67 @@
 +    }
 +
 +    /// KaminIDE patch: the open ink sinks, copied into every paint snapshot,
@@ -31875,10 +32098,10 @@ index 0000000000000000000000000000000000000000..4dd6f006fee72a8210e087a6c2b1d36c
 +}
 diff --git a/vendor/gpui/src/window/image_sampling.rs b/vendor/gpui/src/window/image_sampling.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..686f0c1cd0f86a47b2cb00e013e8acf444312c9c
+index 0000000000000000000000000000000000000000..d95baecf30c9f6066504e62f3643a1a4005a1b1d
 --- /dev/null
 +++ b/vendor/gpui/src/window/image_sampling.rs
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,100 @@
 +//! Image sampling selected by the caller without changing the native UI default.
 +
 +use super::*;
@@ -31942,10 +32165,7 @@ index 0000000000000000000000000000000000000000..686f0c1cd0f86a47b2cb00e013e8acf4
 +            .get_or_insert_with(params.into(), &mut || {
 +                Ok(Some((
 +                    data.size(frame_index),
-+                    Cow::Borrowed(
-+                        data.as_bytes(frame_index)
-+                            .expect("It's the caller's job to pass a valid frame index"),
-+                    ),
++                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
 +                )))
 +            })?
 +            .expect("Callback above only returns Some");
@@ -32081,7 +32301,7 @@ index 0000000000000000000000000000000000000000..93f2f0bbacaa0657963ad078248a1a78
 +}
 diff --git a/vendor/gpui/src/window/layer_band.rs b/vendor/gpui/src/window/layer_band.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..31ea73a7deeab900a780fc17b064789b4dd11fae
+index 0000000000000000000000000000000000000000..f5a089f2d1a7ee12b2f4b662ff88a5f6b2d9f1c1
 --- /dev/null
 +++ b/vendor/gpui/src/window/layer_band.rs
 @@ -0,0 +1,57 @@
@@ -32090,7 +32310,7 @@ index 0000000000000000000000000000000000000000..31ea73a7deeab900a780fc17b064789b
 +//! from a new band style.
 +
 +use super::*;
-+use crate::scene::LayerHandle;
++use crate::scene::{LayerHandle, LayerPainter, RunPainter};
 +use crate::text_system::band_piece::{BandEdges, paint_piece_style};
 +use crate::BandStyle;
 +
@@ -32110,12 +32330,12 @@ index 0000000000000000000000000000000000000000..31ea73a7deeab900a780fc17b064789b
 +        edges: Option<BandEdges>,
 +        f: impl FnOnce(&mut Self) -> R,
 +    ) -> R {
-+        self.with_run(owner, bounds, edges, f)
++        self.with_run(owner, bounds, RunPainter::Band(edges), f)
 +    }
 +
 +    /// Box `owner` has paint in this recording outside its runs: the layer
 +    /// holds none of its runs and bindings (`SceneLayer::finish`).
-+    pub(crate) fn unhold_band(&mut self, owner: u32) {
++    pub(crate) fn unhold_owner(&mut self, owner: u32) {
 +        if let Some(runs) = self.next_frame.scene.book.record_runs.as_mut() {
 +            runs.unheld.push(owner);
 +        } else if let Some(recording) = self.layer_recording.as_mut() {
@@ -32135,8 +32355,8 @@ index 0000000000000000000000000000000000000000..31ea73a7deeab900a780fc17b064789b
 +        cx: &mut App,
 +        style: BandStyle,
 +    ) -> Option<bool> {
-+        self.rerecord_runs(layer, owner, cx, true, |window, _, env| {
-+            if let Some(edges) = env.piece {
++        self.rerecord_runs(layer, owner, cx, LayerPainter::Band, |window, _, env| {
++            if let RunPainter::Band(Some(edges)) = env.painter {
 +                paint_piece_style(env.bounds, edges, style, window);
 +            }
 +        })
@@ -32144,10 +32364,10 @@ index 0000000000000000000000000000000000000000..31ea73a7deeab900a780fc17b064789b
 +}
 diff --git a/vendor/gpui/src/window/layer_box.rs b/vendor/gpui/src/window/layer_box.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4d751e64f35ba7685d61bf5e1b6c28c72f2087c4
+index 0000000000000000000000000000000000000000..4c4e67c95fa3dbb6a3491a97b2dd608e221dedc3
 --- /dev/null
 +++ b/vendor/gpui/src/window/layer_box.rs
-@@ -0,0 +1,220 @@
+@@ -0,0 +1,196 @@
 +//! KaminIDE patch: the own paint of a box in a scene layer, and its later
 +//! recording into the box's run (`scene::layer::boxes`).
 +//!
@@ -32160,29 +32380,16 @@ index 0000000000000000000000000000000000000000..4d751e64f35ba7685d61bf5e1b6c28c7
 +
 +use super::scene_layer::LayerRecording;
 +use super::*;
-+use crate::scene::{BoxEnv, LayerHandle, Primitive};
++use crate::scene::{BoxEnv, LayerHandle, LayerPainter, Primitive, RunPainter};
 +use crate::{PaintTraversal, Style};
 +
 +impl Window {
-+    /// The own paint `f` of box `owner` with border box `bounds`: inside a
-+    /// layer recording it notes its run and keeps its paint state for a later
-+    /// recording of the box; elsewhere it only names the owner of its values.
-+    pub(crate) fn with_box_paint<R>(
-+        &mut self,
-+        owner: u32,
-+        bounds: Bounds<Pixels>,
-+        f: impl FnOnce(&mut Self) -> R,
-+    ) -> R {
-+        self.with_run(owner, bounds, None, f)
-+    }
-+
-+    /// The own paint `f` of box `owner` in `bounds`, a piece of its band on a
-+    /// line when `piece` is given (`text_system::band_piece`).
++    /// Record the painter that produced the run alongside its geometry and commands.
 +    pub(crate) fn with_run<R>(
 +        &mut self,
 +        owner: u32,
 +        bounds: Bounds<Pixels>,
-+        piece: Option<crate::text_system::band_piece::BandEdges>,
++        painter: RunPainter,
 +        f: impl FnOnce(&mut Self) -> R,
 +    ) -> R {
 +        if owner == 0 || self.layer_recording.is_none() {
@@ -32196,14 +32403,12 @@ index 0000000000000000000000000000000000000000..4d751e64f35ba7685d61bf5e1b6c28c7
 +            rem_size: self.rem_size(),
 +            fill: None,
 +            layer: None,
-+            piece,
++            painter,
 +        };
 +        let area = self.box_area(&env);
 +        if !self.next_frame.scene.open_box(owner, area, env) {
-+            // A band piece outside a run: its box is recorded again nowhere.
-+            if piece.is_some() {
-+                self.unhold_band(owner);
-+            }
++            // A partial set of runs cannot represent all paint for this owner.
++            self.unhold_owner(owner);
 +            return self.with_paint_owner(owner, f);
 +        }
 +        let result = self.with_paint_owner(owner, f);
@@ -32266,7 +32471,7 @@ index 0000000000000000000000000000000000000000..4d751e64f35ba7685d61bf5e1b6c28c7
 +        cx: &mut App,
 +        mut paint: impl FnMut(&mut Self, &mut App, Bounds<Pixels>),
 +    ) -> Option<bool> {
-+        self.rerecord_runs(layer, owner, cx, false, |w, cx, env| paint(w, cx, env.bounds))
++        self.rerecord_runs(layer, owner, cx, LayerPainter::Box, |w, cx, env| paint(w, cx, env.bounds))
 +    }
 +
 +    /// Record the runs of box `owner` again, each with `paint` in the paint
@@ -32278,19 +32483,16 @@ index 0000000000000000000000000000000000000000..4d751e64f35ba7685d61bf5e1b6c28c7
 +        layer: &LayerHandle,
 +        owner: u32,
 +        cx: &mut App,
-+        band: bool,
++        painter: LayerPainter,
 +        mut paint: impl FnMut(&mut Self, &mut App, &BoxEnv),
 +    ) -> Option<bool> {
-+        if self.layer_recording.is_some() || owner == 0 {
++        if self.layer_recording.is_some() || !layer.accepts(owner, painter) {
 +            return None;
 +        }
 +        let runs: Vec<usize> = {
 +            let content = layer.0.content.borrow();
 +            content.runs_of(owner).collect()
 +        };
-+        if runs.is_empty() {
-+            return None;
-+        }
 +        let mut moved = false;
 +        for at in runs {
 +            let (area, env, placed) = {
@@ -32300,12 +32502,6 @@ index 0000000000000000000000000000000000000000..4d751e64f35ba7685d61bf5e1b6c28c7
 +            };
 +            // A run in a stacking layer keeps the layer's order
 +            // (`SceneLayer::plan_layer_run`): only band pieces are there.
-+            if env.transformation != TransformationMatrix::unit()
-+                || env.piece.is_some() != band
-+                || (env.layer.is_some() && !band)
-+            {
-+                return None;
-+            }
 +            let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);
 +            // A run placed from a paint record: the new commands are placed the same way.
 +            let (scene, bindings) = match placed {
@@ -32657,7 +32853,7 @@ index 0000000000000000000000000000000000000000..106501ad7a57ae23f3909d5dfd29da9d
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/natural_image.rs b/vendor/gpui/src/window/natural_image.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4d7f040e99a3a014833edb9872c0a6c4e3a7d296
+index 0000000000000000000000000000000000000000..c8ef6618037d12f6ab25f4dc175f458ac6eb916d
 --- /dev/null
 +++ b/vendor/gpui/src/window/natural_image.rs
 @@ -0,0 +1,244 @@
@@ -32777,7 +32973,7 @@ index 0000000000000000000000000000000000000000..4d7f040e99a3a014833edb9872c0a6c4
 +    if let Some(found) = cache.get(&key) {
 +        return Some(found.clone());
 +    }
-+    let bytes = image.as_bytes(frame)?;
++    let bytes = image.upload_bytes(frame)?;
 +    let mut out = Vec::with_capacity((w * h * 4) as usize);
 +    for y in 0..h {
 +        let sy = sample(y, ih, phase[1], scale);
@@ -36260,6 +36456,124 @@ index 0000000000000000000000000000000000000000..28d4ccccb08958fbb534e0e7477619c3
 +        self.layout_engine = retained.0.borrow_mut().take();
 +        let restore = Restore { window: self, outer };
 +        f(restore.window)
++    }
++}
+diff --git a/vendor/gpui/src/window/retained_layout_inputs.rs b/vendor/gpui/src/window/retained_layout_inputs.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..1f3eba8201e5f8ac5b602f605b4968340d822651
+--- /dev/null
++++ b/vendor/gpui/src/window/retained_layout_inputs.rs
+@@ -0,0 +1,112 @@
++//! Keyed state used during request_layout belongs to the recorded subtree even
++//! when layout precedes its prepaint range. Scroll positions can change between
++//! frames without dispatching an input event.
++
++use super::Window;
++use crate::{Pixels, Point, ScrollHandle};
++use std::{
++    cell::{Cell, RefCell},
++    rc::Rc,
++};
++
++#[derive(Clone)]
++pub(super) struct ScrollInput {
++    offset: Rc<RefCell<Point<Pixels>>>,
++    position: Point<Pixels>,
++    handle: Option<ScrollHandle>,
++}
++
++/// Inputs of the layout that produced a retained subtree in this window.
++#[derive(Default)]
++pub struct RetainedLayoutInputs {
++    states: Cell<(usize, usize)>,
++    scroll: Vec<ScrollInput>,
++}
++
++impl RetainedLayoutInputs {
++    /// Each native scroller still has the position the recorded layout saw.
++    pub fn scroll_unchanged(&self) -> bool {
++        self.scroll.iter().all(|input| {
++            *input.offset.borrow() == input.position
++                && !input
++                    .handle
++                    .as_ref()
++                    .is_some_and(ScrollHandle::has_pending_scroll)
++        })
++    }
++}
++
++impl Window {
++    /// A changed layout offset can replay only if the same native scroll handle
++    /// belongs to this recorded range. Its node then supplies the clip and shift.
++    /// A pending scroll-to-item still needs layout to resolve its destination.
++    pub fn layout_scroll_replayable(&self, inputs: &RetainedLayoutInputs, record: &super::RetainedPrepaint) -> bool {
++        let range = record.range();
++        inputs.scroll.iter().all(|input| {
++            let handle = input.handle.as_ref();
++            if handle.is_some_and(ScrollHandle::has_pending_scroll) {
++                return false;
++            }
++            *input.offset.borrow() == input.position || handle.is_some_and(|handle| {
++                let id = super::ScrollNodeId::of(handle);
++                self.rendered_frame.scroll_nodes[range.start.scroll_nodes_index..range.end.scroll_nodes_index]
++                    .iter()
++                    .any(|node| node.id == id)
++            })
++        })
++    }
++
++    /// Capture the keyed state reads and native scroll inputs of this layout.
++    pub fn record_layout_inputs<R>(
++        &mut self,
++        layout: impl FnOnce(&mut Self) -> R,
++    ) -> (R, RetainedLayoutInputs) {
++        let start = self.next_frame.accessed_element_states.len();
++        let outer = self.layout_scroll_inputs.replace(Vec::new());
++        let (result, captured) = self.with_restore(
++            outer,
++            |window, outer| {
++                std::mem::swap(&mut window.layout_scroll_inputs, outer);
++            },
++            layout,
++        );
++        let scroll = captured.unwrap_or_default();
++        if let Some(outer) = &mut self.layout_scroll_inputs {
++            outer.extend_from_slice(&scroll);
++        }
++        (
++            result,
++            RetainedLayoutInputs {
++                states: Cell::new((start, self.next_frame.accessed_element_states.len())),
++                scroll,
++            },
++        )
++    }
++
++    pub(crate) fn record_scroll_input(
++        &mut self,
++        offset: &Rc<RefCell<Point<Pixels>>>,
++        handle: Option<&ScrollHandle>,
++    ) {
++        if let Some(inputs) = &mut self.layout_scroll_inputs {
++            inputs.push(ScrollInput {
++                position: *offset.borrow(),
++                offset: offset.clone(),
++                handle: handle.cloned(),
++            });
++        }
++    }
++
++    /// Keep only this laid-out subtree's keyed states on replay. Advance the
++    /// range to its new location so consecutive replays retain the same states.
++    pub fn replay_layout_inputs(&mut self, inputs: &RetainedLayoutInputs) {
++        let (start, end) = inputs.states.get();
++        let states = &mut self.next_frame.accessed_element_states;
++        let next = states.len();
++        states.extend_from_slice(&self.rendered_frame.accessed_element_states[start..end]);
++        inputs.states.set((next, states.len()));
++        if let Some(outer) = &mut self.layout_scroll_inputs {
++            outer.extend_from_slice(&inputs.scroll);
++        }
 +    }
 +}
 diff --git a/vendor/gpui/src/window/scene_capture.rs b/vendor/gpui/src/window/scene_capture.rs

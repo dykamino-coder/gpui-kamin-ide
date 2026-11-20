@@ -118,8 +118,18 @@ pub(crate) fn emit(req: &Value) -> Value {
         "extToast" => ShellEvent::ExternalToast(crate::ui::toasts::Toast {
             id: format!("probe-{name}"),
             severity: if name.is_empty() { "info".into() } else { name },
-            title: Some("Probe toast".into()),
-            message: "External toast from probe — hover pauses the timer bar.".into(),
+            // "title"/"message" — свой текст: стенд проверяет перенос заголовка.
+            title: Some(
+                req.get("title")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Probe toast")
+                    .into(),
+            ),
+            message: req
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("External toast from probe — hover pauses the timer bar.")
+                .into(),
             actions: if req.get("dir").and_then(Value::as_bool).unwrap_or(false) {
                 vec!["Retry".into(), "Show log".into()]
             } else {

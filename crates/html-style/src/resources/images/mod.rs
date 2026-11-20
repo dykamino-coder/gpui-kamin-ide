@@ -10,6 +10,7 @@ pub mod admission;
 pub mod cache;
 pub mod colour;
 pub mod decode;
+pub mod encoded;
 pub mod natural;
 pub mod orientation;
 pub mod store;

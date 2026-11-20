@@ -6,8 +6,11 @@ use super::*;
 fn numeric_filters_hit_with_nan_and_signed_zero_without_hiding_changes() {
     let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
-    let input =
-        Source::Raster(crate::resources::images::pixels::bgra(1, 1, vec![0, 128, 0, 255]).unwrap());
+    let input = Source::Raster(
+        crate::resources::images::pixels::bgra(1, 1, vec![0, 128, 0, 255])
+            .unwrap()
+            .into(),
+    );
     let mut list = crate::style::computed::ImageFilter::parse("invert(0)", vcx);
     let set = |list: &mut crate::style::computed::ImageFilter, value: f32| {
         list.filter.as_mut().unwrap().invert = value;
@@ -33,8 +36,11 @@ fn numeric_filters_hit_with_nan_and_signed_zero_without_hiding_changes() {
 fn authored_operation_order_is_part_of_the_cache_key() {
     let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
-    let input =
-        Source::Raster(crate::resources::images::pixels::bgra(1, 1, vec![0, 128, 0, 255]).unwrap());
+    let input = Source::Raster(
+        crate::resources::images::pixels::bgra(1, 1, vec![0, 128, 0, 255])
+            .unwrap()
+            .into(),
+    );
     let parse = |raw| crate::style::computed::ImageFilter::parse(raw, vcx);
     let first = parse("brightness(50%) invert(100%)");
     let second = parse("invert(100%) brightness(50%)");
@@ -57,7 +63,7 @@ fn fractional_tile_scale_is_part_of_shadow_key() {
     let image =
         crate::resources::images::pixels::bgra(3, 1, vec![0, 128, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0])
             .unwrap();
-    let input = Source::Raster(image.clone());
+    let input = Source::Raster(image.clone().into());
     let list = crate::style::computed::ImageFilter::parse("drop-shadow(1.5px 0 0 green)", vcx);
     let mut results = Vec::new();
     for width in [2.6, 3.4] {
@@ -74,7 +80,7 @@ fn concrete_size_keeps_shadow_lengths_in_css_pixels() {
     let vcx = doc.values();
     let original =
         crate::resources::images::pixels::bgra(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
-    let input = Source::Raster(original);
+    let input = Source::Raster(original.into());
     let filtered = Source::Filtered {
         image: Box::new(input),
         list: Box::new(crate::style::computed::ImageFilter::parse(
@@ -108,7 +114,7 @@ fn allocation_limit_preserves_css_shadow_offset() {
     let vcx = doc.values();
     let original =
         crate::resources::images::pixels::bgra(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
-    let input = Source::Raster(original);
+    let input = Source::Raster(original.into());
     let result = raster(
         &input,
         &crate::style::computed::ImageFilter::parse("drop-shadow(1500px 0 0 green)", vcx),

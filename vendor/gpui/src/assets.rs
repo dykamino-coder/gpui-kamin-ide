@@ -2,6 +2,7 @@
 
 // KaminIDE patch: share immutable CPU backing with the renderer and its consumers.
 mod shared;
+pub use shared::LazyBgra;
 use shared::SharedImage;
 
 use crate::{DevicePixels, Pixels, Result, SharedString, Size, size};
@@ -88,6 +89,24 @@ impl RenderImage {
         Some(image)
     }
 
+    /// KaminIDE patch: a dense straight BGRA frame of known size whose pixels the owner
+    /// produces for each upload ([`LazyBgra`]); the image keeps no CPU copy.
+    pub fn from_lazy_bgra<T: LazyBgra>(width: u32, height: u32, owner: std::sync::Arc<T>) -> Option<Self> {
+        let shared = SharedImage::lazy(width, height, owner)?;
+        let mut image = Self::new(SmallVec::new());
+        image.shared = Some(shared);
+        Some(image)
+    }
+
+    /// KaminIDE patch: the frame for one upload into a texture: borrowed when resident,
+    /// produced on demand (and dropped after the upload) for a lazy image.
+    pub fn upload_bytes(&self, frame_index: usize) -> Option<Cow<'_, [u8]>> {
+        if let Some(shared) = &self.shared {
+            return (frame_index == 0).then(|| shared.upload()).flatten();
+        }
+        self.as_bytes(frame_index).map(Cow::Borrowed)
+    }
+
     /// Recover a shared CPU owner for a consumer that understands its format.
     /// Owned/animated images have no shared owner.
     pub fn shared_bgra_owner<T: Send + Sync + 'static>(&self) -> Option<std::sync::Arc<T>> {
@@ -97,7 +116,7 @@ impl RenderImage {
     /// Convert this image into a byte slice.
     pub fn as_bytes(&self, frame_index: usize) -> Option<&[u8]> {
         if let Some(shared) = &self.shared {
-            return (frame_index == 0).then(|| shared.bytes());
+            return (frame_index == 0).then(|| shared.bytes()).flatten();
         }
         self.data
             .get(frame_index)

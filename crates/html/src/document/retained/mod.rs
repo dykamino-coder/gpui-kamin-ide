@@ -61,6 +61,8 @@ mod rebuild_key_tests;
 mod recolour_layout_tests;
 pub use prepared::UpdatePhase;
 #[cfg(test)]
+mod attr_scope_tests;
+#[cfg(test)]
 mod band_rerecord_tests;
 #[cfg(test)]
 mod band_value_tests;
@@ -97,7 +99,7 @@ use std::rc::Rc;
 #[derive(Default)]
 pub(super) struct Slot {
     /// Опции хоста последнего записанного устоявшегося кадра.
-    recorded: std::cell::RefCell<Option<FrameKey>>,
+    recorded: std::cell::RefCell<std::rc::Weak<record::Inputs>>,
     /// Отложенные отрисовки дерева рисовали группу композиции после записи
     /// его кадра: такое дерево больше не повторяется.
     unreplayable: Cell<bool>,
@@ -186,9 +188,8 @@ impl Document {
     /// либо повторить прошлый, если ни один его вход не изменился.
     pub fn render_viewport(&self, opts: &crate::RenderOpts) -> AnyElement {
         let key = FrameKey::of(opts);
-        let candidate = key.is_some()
-            && *self.retained.recorded.borrow() == key
-            && self.state.values.resources_unchanged();
+        let candidate =
+            self.retained.inputs(key.as_ref()).is_some() && self.state.values.resources_unchanged();
         let prepared = self.retained.take_prepared(&key);
         let builder = self.frame_builder(opts, &key);
         element::Retained::new(self.retained.clone(), key, builder, candidate, prepared)
@@ -198,6 +199,6 @@ impl Document {
     /// Есть записанный устоявшийся кадр этого дерева: следующий кадр с теми же
     /// опциями хоста может его повторить.
     pub(super) fn frame_recorded(&self) -> bool {
-        self.retained.recorded.borrow().is_some()
+        self.retained.recorded.borrow().strong_count() != 0
     }
 }

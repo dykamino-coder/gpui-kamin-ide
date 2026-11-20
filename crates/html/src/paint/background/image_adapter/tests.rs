@@ -160,6 +160,12 @@ fn shared_render_image_retains_physical_pixel_grant_until_drop() {
     let (DecodedImage::Raster(cpu), _) = decoded.unwrap() else {
         panic!("raster")
     };
+    // One read: the recent-decode cache would keep its own copy and quota.
+    let RasterImage::Encoded(encoded) = cpu else {
+        panic!("a file is decoded on demand")
+    };
+    let cpu = encoded.pixels_once().unwrap();
+    drop(encoded);
     let image = gpui::RenderImage::from_shared_bgra(1, 1, cpu.clone()).unwrap();
     assert!(Arc::ptr_eq(&cpu, &super::download(&image).unwrap()));
     drop((cpu, admission, cache, doc));

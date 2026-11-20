@@ -80,7 +80,7 @@ impl ImageChange {
 fn same_image(a: &super::DecodedImage, b: &super::DecodedImage) -> bool {
     use super::DecodedImage::{Raster, Vector};
     match (a, b) {
-        (Raster(a), Raster(b)) => std::sync::Arc::ptr_eq(a, b),
+        (Raster(a), Raster(b)) => a.same(b),
         (Vector(a), Vector(b)) => std::sync::Arc::ptr_eq(a, b),
         _ => false,
     }
