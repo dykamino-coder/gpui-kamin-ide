@@ -697,9 +697,9 @@ export class CodexSessionBinding {
 
   // ── Input ──────────────────────────────────────────────────────────────
 
-  submit(text: string, submissionId?: string): void {
+  submit(text: string, submissionId?: string, userText = text): void {
     this.delivering++
-    void this.deliver(text, submissionId).finally(() => this.delivering--)
+    void this.deliver(text, submissionId, userText).finally(() => this.delivering--)
   }
 
   /** Messages handed to the thread whose delivery has not settled yet. */
@@ -740,7 +740,8 @@ export class CodexSessionBinding {
     return true
   }
 
-  private async deliver(text: string, submissionId?: string): Promise<void> {
+  /** Receipts carry `userText`: the client's identity of this submission. */
+  private async deliver(text: string, submissionId: string | undefined, userText: string): Promise<void> {
     // Queued behind an app-server restart, then sent to the resumed thread.
     if (this.recovering) await this.recovering
     const account = await this.runtime.accountStatus()
@@ -751,7 +752,7 @@ export class CodexSessionBinding {
         account.checkFailed && account.error
           ? describeCodexError(account.error)
           : (account.error && account.error.kind !== 'other' ? account.error : loginRequired()).message
-      this.receipt(text, submissionId, 'uncertain', message)
+      this.receipt(userText, submissionId, 'uncertain', message)
       sendToClient(this.session.ws, { type: 'codex:auth', sessionId: this.session.id, ...account })
       this.appendSystem(message, 'error')
       return
@@ -762,10 +763,10 @@ export class CodexSessionBinding {
       // that compacted nothing. Codex compaction takes no instructions.
       if (isCompactCommand(text)) await this.agent.compact()
       else await this.agent.send(text, submissionId, () => this.turnContext())
-      this.receipt(text, submissionId, 'read')
+      this.receipt(userText, submissionId, 'read')
     } catch (error) {
       const info = classifyCodexError((error as Error).message)
-      this.receipt(text, submissionId, 'uncertain', describeCodexError(info))
+      this.receipt(userText, submissionId, 'uncertain', describeCodexError(info))
     }
   }
 
