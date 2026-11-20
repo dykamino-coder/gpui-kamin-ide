@@ -89,8 +89,7 @@ pub fn quick_pick(
         .bg(rgba(p.bg_mantle))
         .border_1()
         .border_color(tint(rgba(p.bg_surface), 0.8))
-        .shadow(crate::ui::shadows::modal())
-        .child(crate::overlay::hit_area());
+        .shadow(crate::ui::shadows::modal());
     if let Some(t) = &st.title {
         boxx = boxx.child(
             div()

@@ -3,7 +3,7 @@
 //! PanelIcon-мини + label + галка; «дети» disabled без родителя (hint
 //! Requires X). Клик НЕ закрывает (несколько тумблеров за одно открытие).
 //! И поповер «Appearance»: Dark/Light + Icons (Catppuccin built-in).
-//! Рендер — overlay-слой (поверх вебвью), hit_area в корне.
+//! Рендер — overlay-слой (поверх вебвью).
 
 pub use crate::ui::appearance_popover::appearance_popover;
 use crate::ui::popover::frame::menu_label;
