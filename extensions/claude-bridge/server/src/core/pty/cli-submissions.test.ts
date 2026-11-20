@@ -73,6 +73,30 @@ describe('hybrid message receipts', () => {
     }
   })
 
+  it('REAL119 engine switch: moves what the CLI never got, returns what it got, then stays silent', () => {
+    const f = fixture()
+    ;(f.mod as any).withdrawSubmission = vi.fn(() => true)
+    f.queue.submit('running', 'first turn')
+    f.armed[0]!() // the CLI queued it natively
+    f.queue.submit('second', 'second line', 'second line')
+    f.queue.submit('third', 'third line')
+    vi.advanceTimersByTime(100) // `second` is armed now, the mod has not accepted it
+    const before = f.frames.length
+    const carried = f.queue.retire()
+    expect(carried.moved.map((c) => [c.id, c.text])).toEqual([
+      ['second', 'second line'],
+      ['third', 'third line'],
+    ])
+    expect(carried.returned.map((c) => c.id)).toEqual(['running'])
+    // A late acceptance, an exit marking items uncertain, a stored row: no receipt.
+    f.armed.at(-1)!()
+    f.queue.uncertain()
+    f.queue.transcript([prompt('first turn', 'late-row')])
+    vi.advanceTimersByTime(10_000)
+    expect(f.frames.slice(before)).toEqual([])
+    expect(deliver).toHaveBeenCalledTimes(1)
+  })
+
   it('serializes identical native messages and associates each by ID and stored UUID', () => {
     const f = fixture()
     for (let i = 1; i <= 3; i++) f.queue.submit('id-' + i, 'same text')
