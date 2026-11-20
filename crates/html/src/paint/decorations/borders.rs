@@ -38,7 +38,7 @@ pub(crate) fn box_borders(
         }
         // Скругление — как у квада (`apply::apply_radius`): при маске группы
         // или `border-shape` квад углов не получает, и слой тоже.
-        if !c.radius_masked(vcx) && c.reset_border.border_shape.is_none() {
+        if !c.quad_radius_dropped(vcx) && c.reset_border.border_shape.is_none() {
             let rad = |l: Option<Len>| crate::paint::apply::radius_px(c, l, vcx).unwrap_or(0.0);
             layer = layer
                 .rounded_tl(px(rad(c.reset_border.radius.tl)))
@@ -79,7 +79,7 @@ pub(crate) fn box_borders(
             .border_b(px(o_b))
             .border_l(px(o_l))
             .border_color(colour.to_hsla());
-        if !c.radius_masked(vcx) {
+        if !c.quad_radius_dropped(vcx) {
             let rad = |x: Option<Len>| crate::paint::apply::radius_px(c, x, vcx).unwrap_or(0.0);
             let shrink = |x: Option<Len>, a: f32, b: f32| (rad(x) - a.max(b)).max(0.0);
             outer = outer

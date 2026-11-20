@@ -17,27 +17,15 @@ pub(super) fn sample(
     let mut inner = e.clone();
     // Animations are an origin of the cascade (css-cascade-5 §6.2): the sampled
     // values enter the cascaded style and are computed with it.
+    // Margins stay the box's USED ones: layout may already have collapsed or
+    // moved them (`used_mut`), and editing the cascaded style drops that layer,
+    // so falling back to the cascaded margin would apply it a second time.
+    let used = e.style.used().reset_box_layout.margin.clone();
     let style = inner.style.cascaded_mut();
-    style.reset_box_layout.margin.top = frame
-        .reset_box_layout
-        .margin
-        .top
-        .or(style.reset_box_layout.margin.top);
-    style.reset_box_layout.margin.right = frame
-        .reset_box_layout
-        .margin
-        .right
-        .or(style.reset_box_layout.margin.right);
-    style.reset_box_layout.margin.bottom = frame
-        .reset_box_layout
-        .margin
-        .bottom
-        .or(style.reset_box_layout.margin.bottom);
-    style.reset_box_layout.margin.left = frame
-        .reset_box_layout
-        .margin
-        .left
-        .or(style.reset_box_layout.margin.left);
+    style.reset_box_layout.margin.top = frame.reset_box_layout.margin.top.or(used.top);
+    style.reset_box_layout.margin.right = frame.reset_box_layout.margin.right.or(used.right);
+    style.reset_box_layout.margin.bottom = frame.reset_box_layout.margin.bottom.or(used.bottom);
+    style.reset_box_layout.margin.left = frame.reset_box_layout.margin.left.or(used.left);
     if frame.reset_effects.opacity.is_some() {
         style.reset_effects.opacity = frame.reset_effects.opacity;
     }
@@ -198,5 +186,26 @@ mod tests {
                 .rotate_prop,
             frame.reset_transforms.rotate_prop
         );
+    }
+    #[test]
+    fn sampled_frame_keeps_the_used_margins_layout_gave_a_materialized_box() {
+        let parsed =
+            crate::document::parsed::parse("<div style='margin:50px;opacity:0.5'></div>", "");
+        let div = crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "div").unwrap();
+        let mut collapsed = div.clone();
+        collapsed.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(0.0));
+        let frame = Computed {
+            reset_effects: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetEffects {
+                    opacity: Some(1.0),
+                    ..Default::default()
+                },
+            ),
+            ..Computed::default()
+        };
+        let sampled = sample(&collapsed, &frame, true, parsed.values());
+        let margin = &sampled.style.used().reset_box_layout.margin;
+        assert_eq!(margin.top, Some(Len::Px(0.0)));
+        assert_eq!(margin.left, Some(Len::Px(50.0)));
     }
 }

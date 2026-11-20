@@ -219,7 +219,7 @@ fn apply_radius(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // лезвием (см. `Computed::radius_masked`).
     // `border-shape` не совместим с `border-radius`: радиус — «as if it was
     // set to 0» (css-borders-4 §border-shape-radius-interaction).
-    if c.radius_masked(vcx) || c.reset_border.border_shape.is_some() {
+    if c.quad_radius_dropped(vcx) || c.reset_border.border_shape.is_some() {
         return d;
     }
     let r = &c.reset_border.radius;

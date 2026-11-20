@@ -25,6 +25,29 @@ impl Computed {
         shadows_empty: bool,
         vcx: ValueCx<'_>,
     ) -> bool {
+        self.radius_masked_gate(single_corner, shadows_empty, true, vcx)
+    }
+
+    /// The quad drops its own rounding: the group mask draws a shape the quad
+    /// cannot, or `contain: paint` clips with it. A rounded overflow clip of a
+    /// shape the quad can draw keeps the quad rounding, so the box stays round
+    /// on paths that paint it without the group buffer (3D planes).
+    pub fn quad_radius_dropped(&self, vcx: ValueCx<'_>) -> bool {
+        self.radius_masked_gate(
+            crate::style::computed::single_corner::eligible(self),
+            self.reset_effects.shadows.is_empty(),
+            false,
+            vcx,
+        )
+    }
+
+    fn radius_masked_gate(
+        &self,
+        single_corner: bool,
+        shadows_empty: bool,
+        overflow: bool,
+        vcx: ValueCx<'_>,
+    ) -> bool {
         if single_corner {
             return false;
         }
@@ -100,8 +123,12 @@ impl Computed {
         // clip edge … shaped by the border radius", css-backgrounds-3 §5.3):
         // `overflow: hidden` with rounded corners clips its content round.
         let clips = |o: Option<Overflow>| matches!(o, Some(Overflow::Hidden | Overflow::Clip));
-        let overflow_clip =
-            clips(self.reset_box_layout.overflow_x) || clips(self.reset_box_layout.overflow_y);
+        // A nonzero `overflow-clip-margin` moves the clip edge outside the
+        // border box (css-overflow-4 §overflow-clip-margin); the border-box mask
+        // would cut there, so such boxes keep the rectangular clip.
+        let overflow_clip = overflow
+            && (clips(self.reset_box_layout.overflow_x) || clips(self.reset_box_layout.overflow_y))
+            && self.reset_mask.clip_margin.is_none_or(|m| m <= 0.0);
         if (self.reset_context.contain_paint == Some(true) || overflow_clip)
             && shadows_empty
             && self.reset_effects.shadow_raw.is_none()
