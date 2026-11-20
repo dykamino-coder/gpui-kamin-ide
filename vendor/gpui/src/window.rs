@@ -5644,9 +5644,7 @@ impl Window {
         path.content_mask = content_mask;
         let color: Background = color.into();
         path.color = color.opacity(opacity);
-        self.next_frame
-            .scene
-            .insert_primitive(path.scale(scale_factor));
+        self.insert_scene_primitive(path.scale(scale_factor));
     }
 
     /// Paint an underline into the scene for the next frame at the current z-index.
