@@ -11,8 +11,8 @@ export function DropOverlay({ active }: DropOverlayProps): JSX.Element | null {
   return (
     <div class={styles.dropOverlay}>
       <div class={styles.dropContent}>
-        <i class="fas fa-images" />
-        <span>Drop images to attach</span>
+        <i class="fas fa-paperclip" />
+        <span>Drop files to attach</span>
       </div>
     </div>
   )

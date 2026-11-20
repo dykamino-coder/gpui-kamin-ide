@@ -16,6 +16,7 @@ export class WorkspacePresentation {
   private accepted = new Map<string, { digest: string; bytes: number }>()
   private acceptedBytes = 0
   private consumedQueueRows = new Map<string, Set<string>>()
+  private engines = new Map<string, string>()
   private storageFailed = false
 
   constructor(private publish: (channel: string, ...args: unknown[]) => void,
@@ -85,6 +86,12 @@ export class WorkspacePresentation {
       if (args[1].state === 'fallback') this.reconcileFallback(args[0], this.entries(args[0]))
       if (!receipt.committed) this.reconcileTranscript(args[0], this.entries(args[0]))
       this.persist()
+    }
+    if (channel === 'session-restarted' && typeof args[1]?.engine === 'string') {
+      const tabId = String(args[0])
+      const before = this.engines.get(tabId)
+      this.engines.set(tabId, args[1].engine)
+      if (before && before !== args[1].engine) this.endQueueOnEngineSwitch(tabId)
     }
     if (channel === 'session:submission' && Array.isArray(args[1]?.known)) this.applyKnownSnapshot(args[0], new Set(args[1].known))
     if (channel === 'jsonl-entries' && Array.isArray(args[1])) {
@@ -208,6 +215,21 @@ export class WorkspacePresentation {
     }
   }
 
+  /** The chat moved to the other agent: the previous CLI is gone with what it
+   *  had queued, and the replay re-tags positions, so rows that answered these
+   *  items can no longer be matched. Every page drops them from its queue. */
+  private endQueueOnEngineSwitch(tabId: string): void {
+    this.consumedQueueRows.delete(tabId)
+    const pending = [...this.submissions.values()].map(frame => frame.args as [string, SubmissionUpdate])
+      .filter(([id, receipt]) => id === tabId && receipt.state === 'fallback' && receipt.fallbackQueue &&
+        !receipt.fallbackQueue.consumed && !receipt.fallbackQueue.dismissed)
+    for (const [, receipt] of pending) {
+      receipt.fallbackQueue = { ...receipt.fallbackQueue!, dismissed: true }
+      this.publish('session:submission', tabId, receipt)
+    }
+    if (pending.length) this.persist()
+  }
+
   private reconcileFallback(tabId: string, entries: readonly QueueEntry[]): void {
     const pending = [...this.submissions.values()].map(frame => frame.args as [string, SubmissionUpdate])
       .filter(([id, receipt]) => id === tabId && receipt.state === 'fallback' && receipt.fallbackQueue && !receipt.fallbackQueue.consumed)
@@ -236,6 +258,7 @@ export class WorkspacePresentation {
 
   private forgetTab(tabId: unknown): void {
     this.consumedQueueRows.delete(String(tabId))
+    this.engines.delete(String(tabId))
     for (const [key, frame] of this.latest) if ((frame.args as unknown[])?.[0] === tabId && !GLOBAL_EVENTS.has(String(frame.channel))) this.latest.delete(key)
     for (const [id, frame] of this.questions) if ((frame.args as unknown[])?.[0] === tabId) this.resolve(id)
     for (const [key, frame] of this.submissions) if ((frame.args as unknown[])?.[0] === tabId) this.submissions.delete(key)

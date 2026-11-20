@@ -60,7 +60,7 @@ export async function readConversation(ctx: CallerContext, args: Record<string, 
   }
   const fh = await openTranscript(target.file)
   try {
-    const start = await startPosition(fh, cursor, fromIndex, tail, matches)
+    const start = await startPosition(target.file, fh, cursor, fromIndex, tail, matches)
     let out = ''
     let entries = 0
     let firstIndex: number | null = null
@@ -134,7 +134,7 @@ export async function readRaw(ctx: CallerContext, args: Record<string, unknown>)
   const target = await resolveTarget(ctx, args)
   const fh = await openTranscript(target.file)
   try {
-    const start = await startPosition(fh, cursor, fromIndex, tail, null)
+    const start = await startPosition(target.file, fh, cursor, fromIndex, tail, null)
     let out = ''
     let lines = 0
     let firstIndex: number | null = null

@@ -3,7 +3,7 @@
 // up; a list of hundreds of agents must not read hundreds of whole transcripts.
 import type { Stats } from 'node:fs'
 import { headTail, openTranscript } from './line-reader'
-import { classify, parseEntry, promptText, timestampOf, type Entry } from './render'
+import { classify, engineOf, modelOf, parseEntry, promptText, timestampOf, type Entry } from './render'
 
 export const SUMMARY_BYTES = 128 * 1024
 export const COUNT_SLICE_BYTES = 256 * 1024
@@ -14,6 +14,10 @@ interface Summary {
   startedAt: string | null
   lastEntryAt: string | null
   lines: number | null
+  /** Engine that wrote the transcript (first entry). */
+  engine: 'claude' | 'codex' | null
+  /** Model of the newest answer in the tail (or head) window. */
+  model: string | null
 }
 interface Cached {
   identity: string
@@ -50,6 +54,7 @@ export async function summarize(file: string, stat: Stats): Promise<Summary> {
         if (e.type === 'custom-title' && typeof e.customTitle === 'string') custom = e.customTitle
       }
       const first = heads.find((e) => classify(e) === 'user' && promptText(e).trim() !== '')
+      const model = [...heads, ...tails].reverse().map(modelOf).find(Boolean) ?? null
       c = {
         identity,
         size: stat.size,
@@ -62,6 +67,8 @@ export async function summarize(file: string, stat: Stats): Promise<Summary> {
           startedAt: heads.map(timestampOf).find(Boolean) ?? null,
           lastEntryAt: [...tails].reverse().map(timestampOf).find(Boolean) ?? null,
           lines: null,
+          engine: heads.length ? engineOf(heads[0]!) : null,
+          model,
         },
       }
     }

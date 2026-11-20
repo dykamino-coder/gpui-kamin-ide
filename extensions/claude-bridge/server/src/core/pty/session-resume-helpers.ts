@@ -10,7 +10,7 @@ import path from 'path'
 import os from 'os'
 import { debugLog, warnLog } from '../logging'
 import { SESSIONS_BASE } from './session-settings'
-import { archiveTranscript, restoreArchivedTranscript } from './transcript-archive'
+import { archiveTranscript, readArchiveMeta, restoreArchivedTranscript } from './transcript-archive'
 import { NO_REPAIR, repairJsonlTail, type JsonlRepairStats } from './jsonl-repair'
 import { transcriptEngine } from './transcript-engine'
 import { MANIFEST_FILE } from '../conversation/manifest'
@@ -41,6 +41,9 @@ export async function findOrRecreateSettingsDir(conversationId: string, tokenId:
   const projectsDir = path.join(os.homedir(), '.claude', 'projects')
   const found = await locateSettingsDir(projectsDir, conversationId, tokenId)
   if (found) return found
+  // Never restore another token's transcript just because its id was named.
+  const archived = readArchiveMeta(conversationId)
+  if (!archived || !slugOwnedBy(archived.slug, tokenId)) return null
 
   // Nothing under projects/ holds this conversation. Claude Code sweeps that
   // tree by `cleanupPeriodDays`, so an idle conversation Bridge still lists can
@@ -50,11 +53,18 @@ export async function findOrRecreateSettingsDir(conversationId: string, tokenId:
   return locateSettingsDir(projectsDir, conversationId, tokenId)
 }
 
-async function locateSettingsDir(
-  projectsDir: string,
-  conversationId: string,
-  tokenId?: string,
-): Promise<string | null> {
+/**
+ * A projects/ slug directory belongs to the token iff the settings dir it was
+ * built from sits in that token's own directory: the slug then holds
+ * `-<tokenId>-` (token ids are UUIDs, so no other token can match). The same
+ * rule the transcript export uses; legacy underscored token dirs slug the same.
+ */
+export function slugOwnedBy(slug: string, tokenId: string): boolean {
+  const tokenSlug = tokenId.replace(/[^a-zA-Z0-9]/g, '-')
+  return tokenSlug.replace(/-/g, '').length > 0 && slug.includes(`-${tokenSlug}-`)
+}
+
+async function locateSettingsDir(projectsDir: string, conversationId: string, tokenId: string): Promise<string | null> {
   const jsonlFilename = `${conversationId}.jsonl`
 
   try {
@@ -62,6 +72,9 @@ async function locateSettingsDir(
     const slugDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
     for (const slugDir of slugDirs) {
       if (!slugDir.isDirectory()) continue
+      // Resume by id is the caller's own conversations only: another token's
+      // transcript with this id is treated exactly like a missing one.
+      if (!slugOwnedBy(slugDir.name, tokenId)) continue
       const jsonlPath = path.join(projectsDir, slugDir.name, jsonlFilename)
       if (!fs.existsSync(jsonlPath)) continue
 

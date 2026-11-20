@@ -90,6 +90,18 @@ test('fallback receipts retain ingress cursor and consumption with zero views an
   assert.deepEqual(state.snapshot(), [])
 })
 
+test('an engine switch drops the queued items of the previous agent on every page', () => {
+  const entries: any[] = [{ type: 'user', uuid: 'old', _ord: 40, message: { content: 'earlier' } }]
+  const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }), () => entries)
+  const receipt = (id: string) => (state.snapshot().find(frame => frame.channel === 'session:submission' && (frame.args as any)[1].id === id)!.args as any)[1]
+  state.observe({ kind: 'event', channel: 'session-restarted', args: ['tab', { engine: 'claude' }] })
+  state.accept({ kind: 'send', channel: 'pty-submit-text', args: ['tab', 'answered before the switch', 'q1'] })
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'q1', state: 'fallback' }] })
+  state.observe({ kind: 'event', channel: 'session-restarted', args: ['tab', { engine: 'claude', model: 'opus' }] })
+  assert.equal(receipt('q1').fallbackQueue.dismissed, undefined, 'A model change on the same agent keeps the queue')
+  state.observe({ kind: 'event', channel: 'session-restarted', args: ['tab', { engine: 'codex' }] })
+  assert.equal(receipt('q1').fallbackQueue.dismissed, true)
+})
 test('JSONL arriving before fallback is reconciled from the shared cache', () => {
   let entries: any[] = []
   const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }), () => entries)
