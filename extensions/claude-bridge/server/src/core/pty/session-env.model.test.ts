@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { buildClaudeArgs, buildSessionEnv, modelForResume } from './session-env'
+import { buildClaudeArgs, buildSessionEnv, claudeEffortLine, modelForResume } from './session-env'
 import { lastModelFromJsonlTail } from './session-resume-helpers'
 import type { SessionConfig } from '../types/pty'
 
@@ -103,5 +103,13 @@ describe('Claude CLI model selection', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('Claude effort line', () => {
+  it('points the model at the note a live /effort adds to the next message (effort-note.ts)', () => {
+    const line = claudeEffortLine('high')
+    expect(line).toContain('started with reasoning effort `high`')
+    expect(line).toContain('Bridge note in a user message')
   })
 })

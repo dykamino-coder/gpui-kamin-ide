@@ -1114,7 +1114,7 @@ describe('engine switch inside one chat', () => {
     // ChatGPT → Claude: the Claude CLI is told its effort (it names its id itself).
     await switchTo(client, 'claude', 'claude-sonnet-5-5')
     expect(await told('reasoning effort', 'm3')).toContain(
-      'This chat was started with reasoning effort `high`; a later `/effort` command in this conversation sets the current level.',
+      'This chat was started with reasoning effort `high`. A later `/effort` command, or a Bridge note in a user message that names a new reasoning effort, sets the current level.',
     )
     // Claude → ChatGPT: the joining engine keeps the chat's effort.
     // Its instructions come first; the history block after them quotes the old line.

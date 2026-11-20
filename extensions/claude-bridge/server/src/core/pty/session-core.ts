@@ -45,6 +45,7 @@ import { clearSession as clearHookSession, cancelSessionLocalExecs, HOOK_RELAY_T
 import { buildSessionEnv as buildEnv, modelForResume } from './session-env'
 import { resendSessionUsage, watchSessionStatusLine } from './session-statusline'
 import { buildSessionClaudeArgs } from './session-plugin-args'
+import { forgetEffortChange } from './effort-note'
 import {
   SESSIONS_BASE,
   sanitizeDirName,
@@ -1129,6 +1130,8 @@ export async function restartWithEffort(
 
   // Mark as restarting so onExit handler doesn't send session:exit
   session.isRestarting = true
+  // The respawned CLI's system prompt names the current effort.
+  forgetEffortChange(session)
   session.outputDebounce?.dispose()
 
   // Stop JSONL watcher before killing PTY
@@ -1201,6 +1204,8 @@ export async function restartWithModel(
 
   // Mark as restarting so onExit handler doesn't send session:exit
   session.isRestarting = true
+  // The respawned CLI's system prompt names the current effort.
+  forgetEffortChange(session)
   session.outputDebounce?.dispose()
 
   // Stop JSONL watcher before killing PTY
