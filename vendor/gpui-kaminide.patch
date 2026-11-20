@@ -41,7 +41,7 @@
 # 39. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
 # 40. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
 # 41. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
-# 42. Retained subtrees: public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
+# 42. Retained subtrees: preservation of nested window slots across whole-subtree replay for hosts tracking scene versions and line-cache dependencies; public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
 # 43. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
 # 44. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
 # 45. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
@@ -34397,10 +34397,10 @@ index 0000000000000000000000000000000000000000..9d92561b810c8a95400783f1054dbeed
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..31254abc2bbd49cb11911147c07a4b01e43d4d89
+index 0000000000000000000000000000000000000000..a20da7cf4a0bf488c34ec5299ba2e08b53b1bf87
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,804 @@
+@@ -0,0 +1,828 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -34431,6 +34431,21 @@ index 0000000000000000000000000000000000000000..31254abc2bbd49cb11911147c07a4b01
 +}
 +
 +impl RetainedPrepaint {
++    /// Whether a whole-subtree replay kept the window slots of nested draws
++    /// in place. Deferred draws run outside this span. Text layout uses have
++    /// their own cache order; the caller checks each nested record below.
++    pub fn preserves_window_slots(&self, source: &Self) -> bool {
++        let range = self.range();
++        self.0.start.0 == source.0.start.0
++            && self.0.end.0 == source.0.end.0
++            && range.start.deferred_draws_index == range.end.deferred_draws_index
++    }
++
++    /// No nested cache keys need to be looked up in an older text frame.
++    pub fn has_no_line_layouts(&self, paint: &RetainedPaint) -> bool {
++        self.0.start.1 == self.0.end.1 && paint.range.start.line == paint.range.end.line
++    }
++
 +    fn of(range: Range<PrepaintStateIndex>) -> Self {
 +        Self(range.start.pack()..range.end.pack())
 +    }
@@ -34441,6 +34456,15 @@ index 0000000000000000000000000000000000000000..31254abc2bbd49cb11911147c07a4b01
 +}
 +
 +impl RetainedPaint {
++    /// Whether a whole-subtree replay kept the paint slots of nested draws
++    /// in place. The caller owns the nested scene and checks its version.
++    pub fn preserves_window_slots(&self, source: &Self) -> bool {
++        let same = |index: PackedPaintIndex, old: PackedPaintIndex| {
++            PackedPaintIndex { line: old.line, ..index } == old
++        };
++        same(self.range.start, source.range.start) && same(self.range.end, source.range.end)
++    }
++
 +    fn of(range: Range<PaintIndex>, replayable: bool, allowed: (u32, u32)) -> Self {
 +        Self { range: range.start.pack()..range.end.pack(), replayable, allowed }
 +    }

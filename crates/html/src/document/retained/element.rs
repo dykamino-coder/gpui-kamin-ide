@@ -29,6 +29,7 @@ pub(super) struct Retained {
     /// Кадры, заказанные поддеревом на этом кадре: такой кадр не устоялся.
     scheduled: usize,
     replay: bool,
+    same_prepaint: bool,
     /// Дерево собрано и разложено шагом документа до кадра (`prepared`) для
     /// элемента документа под этим местом в кадре: коробка области просмотра
     /// — лист её размера.
@@ -55,6 +56,7 @@ impl Retained {
                 flow: prepared.flow,
                 scheduled: prepared.scheduled,
                 replay: false,
+                same_prepaint: false,
                 laid_out: Some(prepared.parent),
             };
         }
@@ -74,6 +76,7 @@ impl Retained {
             flow,
             scheduled: 0,
             replay: false,
+            same_prepaint: false,
             laid_out: None,
         }
     }
@@ -166,6 +169,7 @@ impl Element for Retained {
                 self.builder.store.forget_replays();
                 self.slot.replays.set(self.slot.replays.get() + 1);
                 let prepaint = window.replay_retained_prepaint(&record.prepaint);
+                self.same_prepaint = prepaint.preserves_window_slots(&record.prepaint);
                 return ((), Record { prepaint, ..record });
             }
             // Заместитель, оказавшийся у экрана, отменяет пропуск: кадр
@@ -200,6 +204,7 @@ impl Element for Retained {
                 window: Some(key),
                 prepaint,
                 paint: RetainedPaint::default(),
+                layer: None,
                 root,
                 settled: false,
             };
@@ -221,7 +226,15 @@ impl Element for Retained {
         window.with_element_state::<Record, _>(id, |record, window| {
             let mut record = record.unwrap_or_default();
             if self.replay {
-                record.paint = window.replay_retained_paint(&record.paint);
+                let paint = window.replay_retained_paint(&record.paint);
+                if self.same_prepaint
+                    && paint.preserves_window_slots(&record.paint)
+                    && record.layer.is_some()
+                    && record.layer == self.builder.store.layer_version()
+                {
+                    self.builder.store.copied_layer_ranges();
+                }
+                record.paint = paint;
                 return ((), record);
             }
             let Some(tree) = self.tree.as_mut() else {
@@ -237,6 +250,7 @@ impl Element for Retained {
                 && paint.replayable()
                 && self.scheduled == 0
                 && self.builder.state.values.frame_ready();
+            record.layer = self.builder.store.layer_version();
             record.paint = paint;
             record.settled &= !self.slot.unreplayable.get();
             *self.slot.recorded.borrow_mut() = self.key.clone().filter(|_| record.settled);

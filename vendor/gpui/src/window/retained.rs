@@ -28,6 +28,21 @@ pub struct RetainedPaint {
 }
 
 impl RetainedPrepaint {
+    /// Whether a whole-subtree replay kept the window slots of nested draws
+    /// in place. Deferred draws run outside this span. Text layout uses have
+    /// their own cache order; the caller checks each nested record below.
+    pub fn preserves_window_slots(&self, source: &Self) -> bool {
+        let range = self.range();
+        self.0.start.0 == source.0.start.0
+            && self.0.end.0 == source.0.end.0
+            && range.start.deferred_draws_index == range.end.deferred_draws_index
+    }
+
+    /// No nested cache keys need to be looked up in an older text frame.
+    pub fn has_no_line_layouts(&self, paint: &RetainedPaint) -> bool {
+        self.0.start.1 == self.0.end.1 && paint.range.start.line == paint.range.end.line
+    }
+
     fn of(range: Range<PrepaintStateIndex>) -> Self {
         Self(range.start.pack()..range.end.pack())
     }
@@ -38,6 +53,15 @@ impl RetainedPrepaint {
 }
 
 impl RetainedPaint {
+    /// Whether a whole-subtree replay kept the paint slots of nested draws
+    /// in place. The caller owns the nested scene and checks its version.
+    pub fn preserves_window_slots(&self, source: &Self) -> bool {
+        let same = |index: PackedPaintIndex, old: PackedPaintIndex| {
+            PackedPaintIndex { line: old.line, ..index } == old
+        };
+        same(self.range.start, source.range.start) && same(self.range.end, source.range.end)
+    }
+
     fn of(range: Range<PaintIndex>, replayable: bool, allowed: (u32, u32)) -> Self {
         Self { range: range.start.pack()..range.end.pack(), replayable, allowed }
     }

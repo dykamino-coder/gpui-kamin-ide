@@ -90,6 +90,13 @@ impl Store {
         self.layer.layer.borrow().clone()
     }
 
+    /// Identity and content version of the layer containing the block ranges.
+    pub(crate) fn layer_version(&self) -> Option<(u64, u64)> {
+        let layer = self.layer.layer.borrow();
+        let content = layer.as_ref()?.content();
+        Some((content.id(), content.version()))
+    }
+
     /// Queue the boxes at `paths` (child indices from the root, with their
     /// box numbers) to record their own commands again into the layer before
     /// the next frame replays (`document::retained`). The edits that queue

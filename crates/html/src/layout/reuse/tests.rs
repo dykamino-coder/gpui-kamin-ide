@@ -25,3 +25,26 @@ fn placed_ink_moves_with_the_box_and_grows_by_the_margin() {
     let far = placed(ink, point(ScaledPixels(0.0), ScaledPixels(700.0)), SNAP);
     assert!(!far.intersects(&screen));
 }
+
+#[test]
+fn copied_block_ranges_expire_at_a_gap_or_an_unverified_frame() {
+    let store = Store::default();
+    store.draw(false);
+    let source = store.epoch.get();
+    for _ in 0..2 {
+        store.draw(true);
+        store.copied_layer_ranges();
+        assert!(store.block_source(store.epoch.get(), source));
+    }
+
+    store.draw(true);
+    let rebuilt = store.epoch.get();
+    assert!(!store.block_source(rebuilt, source));
+    store.draw(true);
+    store.copied_layer_ranges();
+    assert!(store.block_source(store.epoch.get(), rebuilt));
+    assert!(!store.block_source(store.epoch.get(), source));
+
+    store.draw(false);
+    assert!(!store.block_source(store.epoch.get(), rebuilt));
+}

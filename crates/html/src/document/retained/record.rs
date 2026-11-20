@@ -14,6 +14,7 @@ pub(super) struct Record {
     pub(super) window: Option<WindowKey>,
     pub(super) prepaint: RetainedPrepaint,
     pub(super) paint: RetainedPaint,
+    pub(super) layer: Option<(u64, u64)>,
     /// Prepaint шёл в корневом окружении окна.
     pub(super) root: bool,
     pub(super) settled: bool,
