@@ -395,9 +395,11 @@ pub(super) async fn run(
         }
     }
     let run = (cx, window, fonts, args, capture, luid);
-    frames.finish(&mut report, run).await?;
+    // A failed check (a frame unlike the fresh document) still fails the run,
+    // but after the report: the timings and the per-step checks are kept.
+    let finished = frames.finish(&mut report, run).await;
     // После замера установившейся памяти: запись сборки — куча стенда, не страницы.
     report["build"] = super::build_info::json();
     report::print(&report, args.json)?;
-    Ok(())
+    finished
 }
