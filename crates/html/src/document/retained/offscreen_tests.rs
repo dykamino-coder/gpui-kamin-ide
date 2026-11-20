@@ -104,6 +104,10 @@ fn check(cx: &mut TestAppContext, page: impl Fn(&str) -> String + Copy, waits: b
     let thens: [fn(&gpui::Entity<View>, &mut VisualTestContext); 2] = [grown, tall];
     for then in thens {
         let (kept, waiting, edited, fresh) = edited(cx, page, then);
+        assert!(
+            !fresh.0.is_empty() && !fresh.1.is_empty(),
+            "empty reference scene"
+        );
         assert_eq!(waiting > 0, waits, "edits waiting: {waiting}");
         assert!(!waits || kept, "a waiting edit kept no frame");
         assert_eq!(
@@ -138,15 +142,8 @@ fn a_shadow_reaching_the_screen_from_a_band_below_is_not_left_waiting(cx: &mut T
     check(cx, |e| spans(20, e, false, css), false);
 }
 
-#[gpui::test]
-fn a_box_with_decorations_far_below_waits_and_shows_as_fresh(cx: &mut TestAppContext) {
-    check(cx, |e| rows(140, e, "0 0 0 3px #444"), true);
-}
-
-#[gpui::test]
-fn a_shadow_reaching_the_screen_from_a_box_below_is_not_left_waiting(cx: &mut TestAppContext) {
-    check(cx, |e| rows(18, e, "0 -80px 0 #444"), false);
-}
+#[path = "offscreen_tests/decorated.rs"]
+mod decorated;
 
 /// The path of the element with `id` in `nodes`.
 fn path_of(nodes: &[Node], id: &str) -> Option<Vec<usize>> {

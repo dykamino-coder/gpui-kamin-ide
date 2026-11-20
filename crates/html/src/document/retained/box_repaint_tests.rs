@@ -156,3 +156,15 @@ fn a_replayed_paint_edit_publishes_its_new_flow_snapshot(cx: &mut TestAppContext
     });
     assert_eq!(quads(vcx), fresh(cx, &html));
 }
+
+#[gpui::test]
+fn an_inactive_hover_painter_keeps_the_recorded_box(cx: &mut TestAppContext) {
+    let (kept, edited, fresh) = super::band_rerecord_tests::edit(
+        cx,
+        "#s{pointer-events:none;background:red;height:20px} #s:hover{background:green} #s.b{background:blue}",
+        "<div id=s class='CLASS'></div>",
+        "b",
+    );
+    assert_eq!(edited, fresh);
+    assert!(kept);
+}

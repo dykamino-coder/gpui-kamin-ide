@@ -105,6 +105,26 @@ pub(super) fn unpainted_svg(nodes: &[crate::dom::Node], path: &[usize]) -> bool 
     unpainted
 }
 
+/// A restyle that is not `Rebuild` of the box `a` (new `b`) paints nothing
+/// when the element is `display: contents` before and after: it generates no
+/// box (css-display-3 §2.5), so its own background and border colours reach
+/// no pixel, as Blink gives such an element no `LayoutObject` to invalidate.
+/// Inherited values are the same (`own_paint_only`); a descendant that takes
+/// a reset value with `inherit` (css-cascade-5 §7.3.1) would paint it, so
+/// such a subtree is left to the layer.
+pub(super) fn unboxed(a: &Element, b: &Element) -> bool {
+    use crate::style::computed::Display;
+    let contents = |e: &Element| {
+        matches!(
+            e.style.cascaded().reset_box_layout.display,
+            Some(Display::Contents)
+        )
+    };
+    contents(a)
+        && contents(b)
+        && super::patch::elements(&b.children, |d, _| !d.style.inherits_reset())
+}
+
 /// The element at `path` in `nodes` is SVG content: inside an `svg` element
 /// (not that outermost `svg`, a CSS box itself), and neither a
 /// `foreignObject` nor under one below that `svg` (HTML boxes again). SVG 2

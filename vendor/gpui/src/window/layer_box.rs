@@ -10,29 +10,16 @@
 
 use super::scene_layer::LayerRecording;
 use super::*;
-use crate::scene::{BoxEnv, LayerHandle, Primitive};
+use crate::scene::{BoxEnv, LayerHandle, LayerPainter, Primitive, RunPainter};
 use crate::{PaintTraversal, Style};
 
 impl Window {
-    /// The own paint `f` of box `owner` with border box `bounds`: inside a
-    /// layer recording it notes its run and keeps its paint state for a later
-    /// recording of the box; elsewhere it only names the owner of its values.
-    pub(crate) fn with_box_paint<R>(
-        &mut self,
-        owner: u32,
-        bounds: Bounds<Pixels>,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        self.with_run(owner, bounds, None, f)
-    }
-
-    /// The own paint `f` of box `owner` in `bounds`, a piece of its band on a
-    /// line when `piece` is given (`text_system::band_piece`).
+    /// Record the painter that produced the run alongside its geometry and commands.
     pub(crate) fn with_run<R>(
         &mut self,
         owner: u32,
         bounds: Bounds<Pixels>,
-        piece: Option<crate::text_system::band_piece::BandEdges>,
+        painter: RunPainter,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         if owner == 0 || self.layer_recording.is_none() {
@@ -46,14 +33,12 @@ impl Window {
             rem_size: self.rem_size(),
             fill: None,
             layer: None,
-            piece,
+            painter,
         };
         let area = self.box_area(&env);
         if !self.next_frame.scene.open_box(owner, area, env) {
-            // A band piece outside a run: its box is recorded again nowhere.
-            if piece.is_some() {
-                self.unhold_band(owner);
-            }
+            // A partial set of runs cannot represent all paint for this owner.
+            self.unhold_owner(owner);
             return self.with_paint_owner(owner, f);
         }
         let result = self.with_paint_owner(owner, f);
@@ -116,7 +101,7 @@ impl Window {
         cx: &mut App,
         mut paint: impl FnMut(&mut Self, &mut App, Bounds<Pixels>),
     ) -> Option<bool> {
-        self.rerecord_runs(layer, owner, cx, false, |w, cx, env| paint(w, cx, env.bounds))
+        self.rerecord_runs(layer, owner, cx, LayerPainter::Box, |w, cx, env| paint(w, cx, env.bounds))
     }
 
     /// Record the runs of box `owner` again, each with `paint` in the paint
@@ -128,19 +113,16 @@ impl Window {
         layer: &LayerHandle,
         owner: u32,
         cx: &mut App,
-        band: bool,
+        painter: LayerPainter,
         mut paint: impl FnMut(&mut Self, &mut App, &BoxEnv),
     ) -> Option<bool> {
-        if self.layer_recording.is_some() || owner == 0 {
+        if self.layer_recording.is_some() || !layer.accepts(owner, painter) {
             return None;
         }
         let runs: Vec<usize> = {
             let content = layer.0.content.borrow();
             content.runs_of(owner).collect()
         };
-        if runs.is_empty() {
-            return None;
-        }
         let mut moved = false;
         for at in runs {
             let (area, env, placed) = {
@@ -150,12 +132,6 @@ impl Window {
             };
             // A run in a stacking layer keeps the layer's order
             // (`SceneLayer::plan_layer_run`): only band pieces are there.
-            if env.transformation != TransformationMatrix::unit()
-                || env.piece.is_some() != band
-                || (env.layer.is_some() && !band)
-            {
-                return None;
-            }
             let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);
             // A run placed from a paint record: the new commands are placed the same way.
             let (scene, bindings) = match placed {

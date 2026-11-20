@@ -60,7 +60,7 @@ impl Builder {
                 return false;
             };
             // An inline box: the pieces of its band, from its new band.
-            if crate::document::revision::records_band(e) {
+            if layer.painter(owner) == Some(gpui::LayerPainter::Band) {
                 let Some(parent) = crate::document::revision::parent_at(&self.nodes, path) else {
                     return false;
                 };
@@ -118,10 +118,5 @@ impl Builder {
         self.store.record_layered(window, false, |window| {
             window.replay_retained_paint_scrolled(inner, plan);
         })
-    }
-
-    /// The document's last scene layer, the scene a layered record indexes.
-    pub(super) fn scene_layer(&self) -> Option<gpui::LayerHandle> {
-        self.store.scene_layer()
     }
 }
