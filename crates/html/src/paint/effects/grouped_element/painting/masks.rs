@@ -101,7 +101,7 @@ pub(crate) fn resolve_mask(
                 vcx,
             );
             (
-                crate::paint::background::image_adapter::upload(img)?,
+                crate::paint::background::image_adapter::upload(&img.pixels()?)?,
                 tw,
                 th,
             )

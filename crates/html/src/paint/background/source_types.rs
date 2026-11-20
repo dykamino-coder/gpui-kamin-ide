@@ -3,6 +3,7 @@
 use crate::values::ValueCx;
 
 use super::Intrinsic;
+use crate::resources::images::types::{EncodedRaster, RasterImage};
 use gpui::RenderImage;
 use std::sync::Arc;
 
@@ -22,6 +23,13 @@ impl Source {
         match self {
             Self::Image(source) => Some(source),
             Self::Shape { .. } => None,
+        }
+    }
+    /// Файл картинки без обработки: в текстуру лениво, точки декодирует загрузка.
+    fn encoded(&self) -> Option<&Arc<EncodedRaster>> {
+        match self.cpu()? {
+            crate::resources::css_images::Source::Raster(RasterImage::Encoded(e)) => Some(e),
+            _ => None,
         }
     }
     pub(crate) fn from_cpu(source: crate::resources::css_images::Source) -> Self {
@@ -58,6 +66,9 @@ impl Source {
         if let Self::Shape { .. } = self {
             return self.raster(tile, vcx);
         }
+        if let Some(encoded) = self.encoded() {
+            return super::image_adapter::upload_encoded(encoded);
+        }
         let source = self.cpu()?;
         let cpu = source.sampled_raster(tile, pixelated, vcx)?;
         super::image_adapter::upload(&cpu)
@@ -71,6 +82,9 @@ impl Source {
                 1.0,
                 vcx,
             );
+        }
+        if let Some(encoded) = self.encoded() {
+            return super::image_adapter::upload_encoded(encoded);
         }
         let cpu = self.cpu()?.raster(tile, vcx)?;
         super::image_adapter::upload(&cpu)

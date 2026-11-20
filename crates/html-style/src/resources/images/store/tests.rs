@@ -35,7 +35,7 @@ fn raster(store: &ImageStore, id: ImageId) -> Arc<CpuRaster> {
         Some(ImageState::Ready {
             image: DecodedImage::Raster(r),
             ..
-        }) => r.clone(),
+        }) => r.pixels().expect("decodable raster"),
         other => panic!("raster expected, got {other:?}"),
     }
 }
@@ -174,8 +174,9 @@ fn budget_eviction_keeps_live_values() {
     let mut dir = TempDir::new("evict");
     dir.write("a.png", &png_bytes([10, 0, 0, 255]));
     dir.write("b.png", &png_bytes([20, 0, 0, 255]));
-    // Each entry holds 1 KiB of pixels: the budget keeps exactly one.
-    let tight = services(1800);
+    // Each entry holds its encoded file (pixels decode on demand): the budget keeps exactly one.
+    let one = png_bytes([10, 0, 0, 255]).len();
+    let tight = services(one + one / 2);
     let mut doc = store(&tight, &dir, ResourcePolicy::default());
     let a = ask(&mut doc, "a.png");
     doc.subscribe(a, ConsumerId(1), ImageUse::Pixels).unwrap();

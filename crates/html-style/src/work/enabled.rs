@@ -48,6 +48,7 @@ vocabulary!(Counter {
     SvgRenderAllocatedBytes => "svg_render_allocated_bytes",
     SvgRasterCacheHits => "svg_raster_cache_hits",
     SvgRasterCacheMisses => "svg_raster_cache_misses",
+    ImageDecodes => "image_decodes",
     StyleSharingHits => "style_sharing_hits",
     ElementSharingHits => "element_sharing_hits",
     MaterializedSharingHits => "materialized_sharing_hits",

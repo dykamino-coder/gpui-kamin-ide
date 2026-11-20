@@ -14,7 +14,9 @@
 
 use super::admission::{self, Admission};
 use super::decode::decode;
-use super::types::{DecodeOptions, DecodedImage, ImageError, ImageLimit, ImageMetadata};
+use super::types::{
+    DecodeOptions, DecodedImage, ImageError, ImageLimit, ImageMetadata, RasterImage,
+};
 use crate::budget::{DocumentBudget, ResourceGovernor};
 use crate::cache::{BoundedCache, Hinted, MIB, hint};
 use std::sync::{Arc, LazyLock};
@@ -40,10 +42,11 @@ struct Entry {
 }
 
 fn weigh(entry: &Entry) -> usize {
-    let decoded = entry
-        .decoded
-        .as_ref()
-        .map_or(0, |(image, _)| image.held_bytes());
+    let decoded = entry.decoded.as_ref().map_or(0, |(image, _)| match image {
+        // The raster shares the file bytes counted in `encoded`.
+        DecodedImage::Raster(RasterImage::Encoded(_)) => 0,
+        image => image.held_bytes(),
+    });
     entry.encoded + decoded
 }
 
@@ -129,7 +132,7 @@ impl DecodedImageCache {
 
 fn admit(decoded: Decoded, budget: &DocumentBudget) -> (Decoded, Option<Admission>) {
     let admission = match &decoded {
-        Ok((DecodedImage::Raster(raster), _)) => admission::admit(budget, &raster.retention),
+        Ok((DecodedImage::Raster(raster), _)) => admission::admit(budget, raster.retention()),
         _ => Ok(None),
     };
     match admission {
@@ -174,14 +177,11 @@ mod tests {
                 panic!("raster")
             };
             let transforms = tag == Some(6);
-            assert_eq!(Arc::ptr_eq(&turned, &raw), !transforms, "tag {tag:?}");
+            assert_eq!(turned.same(&raw), !transforms, "tag {tag:?}");
             assert_eq!(cache.len(), if transforms { 2 } else { 1 });
             assert_eq!(meta.applied_orientation, tag.filter(|_| transforms));
-            assert_eq!((raw.width, raw.height), (3, 2));
-            assert_eq!(
-                (turned.width, turned.height),
-                if transforms { (2, 3) } else { (3, 2) }
-            );
+            assert_eq!(raw.size(), (3, 2));
+            assert_eq!(turned.size(), if transforms { (2, 3) } else { (3, 2) });
         }
     }
 }

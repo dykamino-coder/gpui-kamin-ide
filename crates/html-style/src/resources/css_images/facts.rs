@@ -3,7 +3,10 @@
 
 use crate::resources::images::{
     store::{ImageRequest, ImageState, ImageStore},
-    types::{ColourPolicy, CpuRaster, DecodeOptions, DecodedImage, OrientationMode, PixelFormat},
+    types::{
+        ColourPolicy, CpuRaster, DecodeOptions, DecodedImage, OrientationMode, PixelFormat,
+        RasterImage,
+    },
 };
 use crate::style::computed::flat_background::{BackgroundImageValues, ImageAvailability};
 use crate::style::computed::{GradSpace, ImageSource};
@@ -62,7 +65,7 @@ impl BackgroundImages {
                     Some(ImageState::Ready { image, .. }) => Fact {
                         availability: ImageAvailability::Ready,
                         uniform: match image {
-                            DecodedImage::Raster(r) => uniform(r),
+                            DecodedImage::Raster(r) => uniform_raster(r),
                             DecodedImage::Vector(_) => None,
                         },
                     },
@@ -129,6 +132,23 @@ impl BackgroundImageValues for Rc<BackgroundImages> {
                 .then_some(c)
             }
             _ => None,
+        }
+    }
+}
+
+/// Сплошной цвет растра для свёртки фона. Файл, ещё не декодированный, проверяется
+/// только малым (до 256×256): точки декодируются на одну проверку и не удерживаются,
+/// а крупная картинка рисуется как картинка — свёртка лишь экономия, не смысл.
+fn uniform_raster(raster: &RasterImage) -> Option<Color> {
+    const CHECKED: u64 = 256 * 256;
+    match raster {
+        RasterImage::Ready(r) => uniform(r),
+        RasterImage::Encoded(e) => {
+            if u64::from(e.width) * u64::from(e.height) > CHECKED {
+                return None;
+            }
+            let cpu = e.pixels_once()?;
+            uniform(&cpu)
         }
     }
 }

@@ -131,7 +131,7 @@ fn documents_share_one_physical_raster_and_eviction_keeps_live_owners() {
         Ok((DecodedImage::Raster(r), _)) => r.clone(),
         _ => panic!("raster expected"),
     };
-    assert!(Arc::ptr_eq(&raster(&first), &raster(&second)));
+    assert!(raster(&first).same(&raster(&second)));
     assert_eq!(cache.len(), 1);
     assert_eq!(
         governor.used(BudgetKind::DecodedPixels),
